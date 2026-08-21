@@ -1,0 +1,96 @@
+/**
+ * Runtime validation shared by the Worker and the SPA. Each schema is simultaneously the
+ * API contract and the TypeScript type, so the two cannot drift.
+ */
+import { z } from 'zod';
+
+/** D1 rejects rows over 2MB; cap note bodies below that with room for the other columns. */
+export const MAX_BODY_BYTES = 1_800_000;
+
+/** Cloudflare caps request bodies at 100MB; leave headroom for headers and metadata. */
+export const MAX_ATTACHMENT_BYTES = 95 * 1024 * 1024;
+
+export const MAX_TITLE_LENGTH = 500;
+export const MAX_TAG_LENGTH = 100;
+
+/** Rejects path separators and traversal so a filename can never escape its note prefix. */
+export const filenameSchema = z
+  .string()
+  .min(1)
+  .max(255)
+  .refine((n) => !n.includes('/') && !n.includes('\\'), 'Filename may not contain path separators')
+  .refine((n) => n !== '.' && n !== '..', 'Invalid filename')
+  .refine((n) => !n.startsWith('.'), 'Filename may not start with a dot');
+
+export const tagNameSchema = z.string().trim().min(1).max(MAX_TAG_LENGTH);
+
+export const noteIdSchema = z.string().uuid();
+
+export const createNoteSchema = z.object({
+  title: z.string().max(MAX_TITLE_LENGTH).default(''),
+  body: z.string().max(MAX_BODY_BYTES).default(''),
+  tags: z.array(tagNameSchema).max(100).default([]),
+});
+
+export const updateNoteSchema = z.object({
+  title: z.string().max(MAX_TITLE_LENGTH).optional(),
+  body: z.string().max(MAX_BODY_BYTES).optional(),
+  tags: z.array(tagNameSchema).max(100).optional(),
+});
+
+export const listNotesQuerySchema = z.object({
+  cursor: z.string().optional(),
+  limit: z.coerce.number().int().min(1).max(100).default(50),
+  tag: z.string().optional(),
+});
+
+export const searchQuerySchema = z.object({
+  q: z.string().min(1).max(500),
+  limit: z.coerce.number().int().min(1).max(100).default(50),
+});
+
+/**
+ * One note from an ENEX import. `contentHash` makes the endpoint idempotent so an
+ * interrupted import can be re-run without duplicating notes.
+ */
+export const importNoteSchema = z.object({
+  title: z.string().max(MAX_TITLE_LENGTH).default(''),
+  body: z.string().max(MAX_BODY_BYTES).default(''),
+  tags: z.array(tagNameSchema).max(100).default([]),
+  createdAt: z.number().int().nonnegative(),
+  updatedAt: z.number().int().nonnegative(),
+  contentHash: z.string().length(64),
+  sourceEnex: z.string().max(255).optional(),
+});
+
+export type CreateNoteInput = z.infer<typeof createNoteSchema>;
+export type UpdateNoteInput = z.infer<typeof updateNoteSchema>;
+export type ListNotesQuery = z.infer<typeof listNotesQuerySchema>;
+export type SearchQuery = z.infer<typeof searchQuerySchema>;
+export type ImportNoteInput = z.infer<typeof importNoteSchema>;
+
+export interface NoteSummary {
+  id: string;
+  title: string;
+  updatedAt: number;
+  createdAt: number;
+  tags: string[];
+  excerpt?: string;
+}
+
+export interface Note extends NoteSummary {
+  body: string;
+}
+
+export interface AttachmentInfo {
+  filename: string;
+  contentType: string;
+  size: number;
+}
+
+export interface SearchResult {
+  id: string;
+  title: string;
+  updatedAt: number;
+  snippet: string;
+}
