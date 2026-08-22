@@ -228,6 +228,7 @@ function buildDecorations(view: EditorView, options: RichMarkdownOptions): Decor
          */
         if (MARK_NODES.has(node.name)) {
           const scope = node.node.parent ?? node;
+
           if (!selectionTouches(state, scope.from, scope.to)) {
             let end = node.to;
             if (MARKS_WITH_TRAILING_SPACE.has(node.name)) {

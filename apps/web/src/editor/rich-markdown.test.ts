@@ -97,6 +97,35 @@ describe('syntax hiding', () => {
   });
 });
 
+/**
+ * CommonMark joins consecutive lines into a single Paragraph node, so a mark's parent can
+ * span lines the cursor is nowhere near. Revealing all of them at once reflows text the
+ * user is not editing.
+ */
+describe('reveal scope', () => {
+  const twoLines = '_italic_ one\n**bold** two\n\nplain';
+
+  it('reveals only the line the cursor is on', () => {
+    // Cursor inside the italic on line 1.
+    const v = mount(twoLines, 3);
+    expect(visibleText(v, 1)).toBe('_italic_ one');
+    expect(visibleText(v, 2)).toBe('bold two');
+  });
+
+  it('reveals the second line without disturbing the first', () => {
+    // Cursor inside the bold on line 2.
+    const v = mount(twoLines, 17);
+    expect(visibleText(v, 1)).toBe('italic one');
+    expect(visibleText(v, 2)).toBe('**bold** two');
+  });
+
+  it('hides both when the cursor is elsewhere', () => {
+    const v = mount(twoLines, twoLines.length);
+    expect(visibleText(v, 1)).toBe('italic one');
+    expect(visibleText(v, 2)).toBe('bold two');
+  });
+});
+
 /** The whole reason for this editor: the document is never rewritten. */
 describe('document fidelity', () => {
   it.each([
