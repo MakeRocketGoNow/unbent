@@ -63,9 +63,26 @@ const schema = {
   },
 };
 
+/**
+ * Disable setext headings (`Title` followed by a line of `---` or `===`).
+ *
+ * While indenting a list, the next line is often a lone `-` before any text is typed.
+ * CommonMark treats that as a setext underline, promoting the parent item text
+ * to a huge H2 in preview. Headings in Unbent are ATX-only via the toolbar, so setext
+ * parsing buys nothing and breaks nested lists.
+ */
+function remarkDisableSetext() {
+  // @ts-expect-error — unified plugin `this` typing.
+  const self = this;
+  const data = self.data();
+  const extensions = data.micromarkExtensions || (data.micromarkExtensions = []);
+  extensions.push({ disable: { null: ['setextUnderline'] } });
+}
+
 export function renderMarkdown(markdown: string, opts: { noteId: string }): string {
   return unified()
     .use(remarkParse)
+    .use(remarkDisableSetext)
     .use(remarkGfm)
     /**
      * Treat a single newline as a line break.
