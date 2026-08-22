@@ -1,5 +1,6 @@
 import { useSession, signOut } from './auth-client.js';
 import { Login } from './components/Login.js';
+import { Notes } from './components/Notes.js';
 
 export function App() {
   const { data: session, isPending } = useSession();
@@ -21,7 +22,7 @@ export function App() {
   }
 
   return (
-    <main className="shell">
+    <main className="shell wide">
       <header className="topbar">
         <h1>Unbent</h1>
         <div className="account">
@@ -32,7 +33,7 @@ export function App() {
         </div>
       </header>
 
-      <p className="muted">Signed in. Notes arrive in the next phase.</p>
+      <Notes />
     </main>
   );
 }

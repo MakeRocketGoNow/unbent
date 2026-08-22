@@ -10,7 +10,9 @@
     "migrate:local": "wrangler d1 migrations apply unbent --local",
     "migrate:remote": "wrangler d1 migrations apply unbent --remote",
     "cf-typegen": "wrangler types",
-    "test": "vitest run"
+    "test": "vitest run",
+    "posttest": "./scripts/purge-test-data.sh",
+    "purge-test-data": "./scripts/purge-test-data.sh"
   },
   "dependencies": {
     "@hono/zod-validator": "^0.9.0",

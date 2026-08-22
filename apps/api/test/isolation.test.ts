@@ -48,6 +48,12 @@ function asUser(actor: Actor): RequestInit {
 let alice: Actor;
 let bob: Actor;
 
+/**
+ * Test actors use @example.test addresses. Cleanup runs as a posttest SQL purge rather
+ * than API calls: note deletion is a soft delete by design, so dropping the user row and
+ * letting the FK cascade is the only way to leave the local database as it was found.
+ */
+
 beforeAll(async () => {
   const stamp = Date.now();
   alice = await signUp(`alice-${stamp}@example.test`, 'alice-password-123', 'Alice');
