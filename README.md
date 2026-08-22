@@ -51,13 +51,22 @@ is simply not offered, so local development works with none of them set.
 Sessions are cookie-based and same-origin. Better Auth enforces CSRF by requiring a trusted
 `Origin`, so API clients outside the browser must send one.
 
+## Blob garbage collection
+
+R2 has no foreign keys, so objects can outlive their metadata — a crash between the upload
+and the metadata insert, or a user row cascading away its attachment rows. `POST
+/api/admin/gc-blobs` sweeps the caller's own prefix and reports what it finds; add
+`?apply=1` to delete. It is scoped to `users/{caller}/` by design, so it can never see or
+remove another account's objects.
+
 ## Known gaps
 
 - **Trash is never purged.** Note deletion is a soft delete, and the note's attachments
   stay in R2 so a restore is not left with dead links. Nothing reclaims that storage yet;
   a trash purge needs to delete the rows and their blobs together.
-- **Deleting a user orphans blobs.** The D1 rows cascade, but R2 has no foreign keys, so
-  the objects under `users/{id}/` remain. Account deletion needs an explicit prefix sweep.
+- **Deleting a user strands its blobs.** The D1 rows cascade, but the objects under
+  `users/{id}/` remain and the scoped sweep above cannot reach them once the account is
+  gone. Account deletion needs to sweep the prefix before removing the user row.
 
 ## Tenant isolation
 

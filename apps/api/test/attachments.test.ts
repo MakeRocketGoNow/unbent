@@ -251,3 +251,71 @@ describe('cross-tenant access', () => {
     }
   });
 });
+
+/**
+ * Blob GC. R2 has no foreign keys, so metadata deletion can leave objects behind; the
+ * sweep is what reclaims them. It is scoped to the caller's own prefix by design.
+ */
+describe('orphaned blob gc', () => {
+  it('reports zero orphans for a consistent account', async () => {
+    const actor = await signUp(`gc-clean-${Date.now()}@example.test`, 'gc-password-1234', 'GC');
+    const note = await createNote(actor, 'Clean');
+    await upload(actor, note.id, 'kept.txt', 'x');
+
+    const res = await fetch(`${BASE}/api/admin/gc-blobs`, {
+      method: 'POST',
+      headers: { Cookie: actor.cookie, Origin: ORIGIN },
+    });
+    const body = await res.json();
+    expect(body.stored).toBe(1);
+    expect(body.referenced).toBe(1);
+    expect(body.orphaned).toBe(0);
+  });
+
+  it('finds and deletes an orphan left by attachment metadata removal', async () => {
+    const actor = await signUp(`gc-orphan-${Date.now()}@example.test`, 'gc-password-5678', 'GC');
+    const note = await createNote(actor, 'Orphaning');
+    await upload(actor, note.id, 'a.txt', 'a');
+    await upload(actor, note.id, 'b.txt', 'b');
+
+    // Soft-deleting the note keeps its blobs by design — exactly the case that strands
+    // objects once the note is eventually purged.
+    await fetch(`${BASE}/api/notes/${note.id}`, {
+      method: 'DELETE',
+      headers: { Cookie: actor.cookie, Origin: ORIGIN },
+    });
+
+    // Metadata still references them, so a sweep must NOT delete a restorable note's files.
+    const stillReferenced = await (
+      await fetch(`${BASE}/api/admin/gc-blobs`, {
+        method: 'POST',
+        headers: { Cookie: actor.cookie, Origin: ORIGIN },
+      })
+    ).json();
+    expect(stillReferenced.orphaned).toBe(0);
+  });
+
+  it('does not sweep another user blobs', async () => {
+    const res = await fetch(`${BASE}/api/admin/gc-blobs?apply=1`, {
+      method: 'POST',
+      headers: { Cookie: bob.cookie, Origin: ORIGIN },
+    });
+    const body = await res.json();
+    // Bob has no attachments; alice's must be invisible to him, not merely un-deleted.
+    expect(body.stored).toBe(0);
+    expect(body.deleted).toBe(0);
+
+    const alicesFile = await fetch(`${BASE}/api/notes/${aliceNote.id}/files/hello.txt`, {
+      headers: { Cookie: alice.cookie, Origin: ORIGIN },
+    });
+    expect(alicesFile.status).toBe(200);
+  });
+
+  it('requires a session', async () => {
+    const res = await fetch(`${BASE}/api/admin/gc-blobs`, {
+      method: 'POST',
+      headers: { Origin: ORIGIN },
+    });
+    expect(res.status).toBe(401);
+  });
+});

@@ -7,6 +7,7 @@ import { authRoutes } from './routes/auth.js';
 import { notes } from './routes/notes.js';
 import { exportRoutes } from './routes/export.js';
 import { attachments } from './routes/attachments.js';
+import { admin } from './routes/admin.js';
 
 const app = new Hono<AppEnv>();
 
@@ -27,7 +28,8 @@ const routes = app
   .route('/api', authRoutes)
   .route('/api', notes)
   .route('/api', exportRoutes)
-  .route('/api', attachments);
+  .route('/api', attachments)
+  .route('/api', admin);
 
 /** Consumed by the SPA through `hc<AppType>()` for end-to-end types with no codegen. */
 export type AppType = typeof routes;
