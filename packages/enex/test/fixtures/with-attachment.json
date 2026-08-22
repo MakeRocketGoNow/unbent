@@ -1,0 +1,17 @@
+{
+  "enml": "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"no\"?>\n<!DOCTYPE en-note SYSTEM \"http://xml.evernote.com/pub/enml2.dtd\"><en-note><div><en-media hash=\"c4ca4238a0b923820dcc509a6f75849b\" type=\"application/pdf\" style=\"cursor:pointer;\" /></div><div><en-media hash=\"c81e728d9d4c2f636f067f89cc14862c\" type=\"application/pdf\" style=\"cursor:pointer;\" /></div><div><br /></div></en-note>",
+  "resources": [
+    {
+      "md5": "c81e728d9d4c2f636f067f89cc14862c",
+      "mime": "application/pdf",
+      "filename": "2020_02_29_10_30_00.pdf",
+      "size": 245120
+    },
+    {
+      "md5": "c4ca4238a0b923820dcc509a6f75849b",
+      "mime": "application/pdf",
+      "filename": "2020_02_29_10_31_45.pdf",
+      "size": 198336
+    }
+  ]
+}
