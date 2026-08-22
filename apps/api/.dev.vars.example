@@ -7,13 +7,16 @@ BETTER_AUTH_SECRET=replace-me
 # offered, and the sign-in endpoint returns PROVIDER_NOT_FOUND. Configure at least one to
 # exercise the real login flow.
 #
+# Callback URLs use the SPA origin (5173), not the Worker port: APP_URL is the SPA and the
+# Vite proxy forwards /api to the Worker, so that is the origin Better Auth advertises.
+#
 # Google:  https://console.cloud.google.com/apis/credentials
-#   Authorized redirect URI: http://localhost:8787/api/auth/callback/google
+#   Authorized redirect URI: http://localhost:5173/api/auth/callback/google
 # GOOGLE_CLIENT_ID=
 # GOOGLE_CLIENT_SECRET=
 #
 # GitHub:  https://github.com/settings/developers
-#   Authorization callback URL: http://localhost:8787/api/auth/callback/github
+#   Authorization callback URL: http://localhost:5173/api/auth/callback/github
 # GITHUB_CLIENT_ID=
 # GITHUB_CLIENT_SECRET=
 
