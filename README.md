@@ -51,6 +51,26 @@ is simply not offered, so local development works with none of them set.
 Sessions are cookie-based and same-origin. Better Auth enforces CSRF by requiring a trusted
 `Origin`, so API clients outside the browser must send one.
 
+## Search
+
+FTS5 over note titles and bodies, weighted 10:1 toward titles. The index is
+external-content (`content='notes'`), so it references the notes table rather than storing
+a second copy of every body.
+
+Rows must be removed from the index with FTS5's `'delete'` command carrying the old column
+values. A plain `DELETE FROM notes_fts` does not error — it silently corrupts the index,
+and the damage surfaces later as edited or deleted notes still matching their old text.
+`test/search.test.ts` asserts this directly; introducing the plain-DELETE form makes three
+of those tests fail.
+
+To rebuild the index from scratch: `INSERT INTO notes_fts(notes_fts) VALUES('rebuild');`
+
+## Local database
+
+`pnpm --filter @unbent/api db:reset` rebuilds the local D1 from migrations, copying the
+current state into `.wrangler/backups/` first. Use it instead of removing the state
+directory by hand — that has no undo and has already cost one set of local notes.
+
 ## Blob garbage collection
 
 R2 has no foreign keys, so objects can outlive their metadata — a crash between the upload

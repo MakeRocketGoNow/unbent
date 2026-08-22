@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useState } from 'react';
-import type { Note, NoteSummary } from '@unbent/shared';
+import type { Note, NoteSummary, SearchResult } from '@unbent/shared';
 import * as api from '../notes-api.js';
 import { useAutosave } from '../useAutosave.js';
 import { Editor } from './Editor.js';
 import { Preview } from './Preview.js';
 import { TagInput } from './TagInput.js';
+import { SearchResults } from './SearchResults.js';
 
 function formatWhen(ms: number): string {
   const diff = Date.now() - ms;
@@ -37,6 +38,8 @@ export function Notes() {
   const [showPreview, setShowPreview] = useState(true);
   const [allTags, setAllTags] = useState<Array<{ name: string; count: number }>>([]);
   const [activeTag, setActiveTag] = useState<string | null>(null);
+  const [query, setQuery] = useState('');
+  const [results, setResults] = useState<SearchResult[] | null>(null);
 
   const refreshList = useCallback(async () => {
     try {
@@ -74,6 +77,29 @@ export function Notes() {
       cancelled = true;
     };
   }, [selectedId]);
+
+  // Debounced search. A null result set means "not searching", which is distinct from an
+  // empty array meaning "searched and found nothing".
+  useEffect(() => {
+    const q = query.trim();
+    if (q === '') {
+      setResults(null);
+      return;
+    }
+
+    let cancelled = false;
+    const timer = setTimeout(() => {
+      api
+        .searchNotes(q)
+        .then((r) => !cancelled && setResults(r))
+        .catch((err: Error) => !cancelled && setLoadError(err.message));
+    }, 180);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [query]);
 
   const save = useCallback(
     async (value: { title: string; body: string; tags: string[] }) => {
@@ -138,7 +164,9 @@ export function Notes() {
     <div className="notes">
       <aside className="sidebar">
         <div className="sidebar-head">
-          <span className="count">{list.length} notes</span>
+          <span className="count">
+            {results === null ? `${list.length} notes` : `${results.length} matches`}
+          </span>
           <button type="button" className="primary" onClick={() => void newNote()}>
             New
           </button>
@@ -146,7 +174,15 @@ export function Notes() {
 
         {loadError && <p className="bad small">{loadError}</p>}
 
-        {allTags.length > 0 && (
+        <input
+          className="search-field"
+          type="search"
+          value={query}
+          placeholder="Search notes…"
+          onChange={(e) => setQuery(e.target.value)}
+        />
+
+        {results === null && allTags.length > 0 && (
           <div className="tag-filter">
             <button
               type="button"
@@ -170,23 +206,32 @@ export function Notes() {
         )}
 
         <ul className="note-list">
-          {list.map((n) => (
-            <li key={n.id}>
-              <button
-                type="button"
-                className={n.id === selectedId ? 'note-item active' : 'note-item'}
-                onClick={() => void select(n.id)}
-              >
-                <span className="note-title">{n.title || 'Untitled'}</span>
-                <span className="note-meta">{formatWhen(n.updatedAt)}</span>
-                {n.excerpt && <span className="note-excerpt">{n.excerpt}</span>}
-                {n.tags.length > 0 && (
-                  <span className="note-tags">{n.tags.map((t) => `#${t}`).join(' ')}</span>
-                )}
-              </button>
-            </li>
-          ))}
-          {list.length === 0 && !loadError && (
+          {results !== null && (
+            <SearchResults
+              results={results}
+              selectedId={selectedId}
+              onSelect={(id) => void select(id)}
+            />
+          )}
+
+          {results === null &&
+            list.map((n) => (
+              <li key={n.id}>
+                <button
+                  type="button"
+                  className={n.id === selectedId ? 'note-item active' : 'note-item'}
+                  onClick={() => void select(n.id)}
+                >
+                  <span className="note-title">{n.title || 'Untitled'}</span>
+                  <span className="note-meta">{formatWhen(n.updatedAt)}</span>
+                  {n.excerpt && <span className="note-excerpt">{n.excerpt}</span>}
+                  {n.tags.length > 0 && (
+                    <span className="note-tags">{n.tags.map((t) => `#${t}`).join(' ')}</span>
+                  )}
+                </button>
+              </li>
+            ))}
+          {results === null && list.length === 0 && !loadError && (
             <li className="muted small empty">
               {activeTag ? `No notes tagged ${activeTag}.` : 'No notes yet.'}
             </li>

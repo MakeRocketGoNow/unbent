@@ -1,5 +1,5 @@
 import { ScopedRepo } from './repo.js';
-import type { Note, NoteSummary } from '@unbent/shared';
+import type { Note, NoteSummary, SearchResult } from '@unbent/shared';
 
 interface NoteRow {
   id: string;
@@ -33,6 +33,32 @@ function excerptOf(body: string, max = 140): string {
     .find((l) => l.length > 0);
   if (!line) return '';
   return line.length > max ? `${line.slice(0, max - 1)}…` : line;
+}
+
+/**
+ * Turns arbitrary user input into a valid FTS5 MATCH expression.
+ *
+ * FTS5 query syntax is a real grammar: a stray quote, a bare `*`, or a reserved word like
+ * `AND` raises a SQL error rather than returning nothing. Users type search boxes, not
+ * query languages, so every term is quoted as a literal phrase and the last one gets a
+ * prefix `*` so results appear while typing.
+ */
+export function toFtsQuery(raw: string): string {
+  const terms = raw
+    .replace(/["*()]/g, ' ')
+    .split(/\s+/)
+    .map((t) => t.trim())
+    .filter((t) => t.length > 0);
+
+  if (terms.length === 0) return '';
+
+  return terms
+    .map((term, i) => {
+      const quoted = `"${term}"`;
+      // Prefix-match only the final term: mid-query terms are complete words.
+      return i === terms.length - 1 ? `${quoted}*` : quoted;
+    })
+    .join(' AND ');
 }
 
 function splitTags(joined: string | null): string[] {
@@ -206,6 +232,39 @@ export class NotesRepo extends ScopedRepo {
       .bind(Date.now(), id, this.userId)
       .run();
     return res.meta.changes > 0;
+  }
+
+  /**
+   * Full-text search, newest-relevant first.
+   *
+   * notes_fts has no user_id — it indexes only title and body — so the join back to notes
+   * is what scopes the result, and dropping that predicate would leak every user's notes.
+   */
+  async search(rawQuery: string, limit: number): Promise<SearchResult[]> {
+    const query = toFtsQuery(rawQuery);
+    if (!query) return [];
+
+    const { results } = await this.db
+      .prepare(
+        `SELECT n.id, n.title, n.updated_at,
+                snippet(notes_fts, 1, '<<', '>>', '…', 24) AS snippet
+           FROM notes_fts
+           JOIN notes n ON n.rowid = notes_fts.rowid
+          WHERE notes_fts MATCH ?1
+            AND n.user_id = ?2
+            AND n.deleted_at IS NULL
+          ORDER BY bm25(notes_fts, 10.0, 1.0)
+          LIMIT ?3`,
+      )
+      .bind(query, this.userId, limit)
+      .all<{ id: string; title: string; updated_at: number; snippet: string }>();
+
+    return results.map((r) => ({
+      id: r.id,
+      title: r.title,
+      updatedAt: r.updated_at,
+      snippet: r.snippet,
+    }));
   }
 
   /** Every tag this user has in use, with note counts, for the sidebar. */

@@ -1,4 +1,4 @@
-import type { Note, NoteSummary } from '@unbent/shared';
+import type { Note, NoteSummary, SearchResult } from '@unbent/shared';
 
 /**
  * Thin fetch wrappers over the notes API. Same-origin, so cookies travel automatically.
@@ -97,4 +97,11 @@ export async function uploadFile(noteId: string, file: File): Promise<UploadedFi
     throw new Error(detail ? JSON.parse(detail).error ?? detail : `${res.status}`);
   }
   return res.json() as Promise<UploadedFile>;
+}
+
+export async function searchNotes(q: string): Promise<SearchResult[]> {
+  const { results } = await json<{ results: SearchResult[] }>(
+    await fetch(`/api/search?q=${encodeURIComponent(q)}`),
+  );
+  return results;
 }

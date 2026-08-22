@@ -474,3 +474,24 @@ h1 {
 }
 
 .tag-suggestions button:hover { background: color-mix(in srgb, var(--fg) 7%, transparent); }
+
+.search-field {
+  width: 100%;
+  padding: 0.4rem 0.6rem;
+  font: inherit;
+  font-size: 0.85rem;
+  color: var(--fg);
+  background: color-mix(in srgb, var(--fg) 4%, transparent);
+  border: 1px solid var(--border);
+  border-radius: 0.4rem;
+}
+
+.search-field:focus { outline: none; border-color: var(--accent); }
+.search-field::placeholder { color: var(--muted); }
+
+.note-excerpt mark {
+  padding: 0 0.1em;
+  color: inherit;
+  background: color-mix(in srgb, var(--accent) 28%, transparent);
+  border-radius: 0.15rem;
+}
