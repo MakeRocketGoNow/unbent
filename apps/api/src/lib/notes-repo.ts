@@ -235,6 +235,66 @@ export class NotesRepo extends ScopedRepo {
   }
 
   /**
+   * Creates a note from an import, or returns the existing one with the same content hash.
+   *
+   * Idempotency is what makes a large import resumable. A 3GB file takes tens of minutes
+   * and will be interrupted; re-running must not duplicate the thousands of notes that
+   * already landed. The hash covers title and body, so re-importing an unchanged export is
+   * a no-op while a genuinely edited note still comes through as new.
+   */
+  async importNote(input: {
+    title: string;
+    body: string;
+    tags: string[];
+    createdAt: number;
+    updatedAt: number;
+    contentHash: string;
+    sourceEnex?: string;
+  }): Promise<{ id: string; created: boolean }> {
+    const existing = await this.db
+      .prepare(
+        `SELECT id FROM notes
+          WHERE user_id = ?1 AND content_hash = ?2 AND deleted_at IS NULL
+          LIMIT 1`,
+      )
+      .bind(this.userId, input.contentHash)
+      .first<{ id: string }>();
+
+    if (existing) return { id: existing.id, created: false };
+
+    const id = crypto.randomUUID();
+    await this.db
+      .prepare(
+        `INSERT INTO notes
+           (id, user_id, title, body, created_at, updated_at, content_hash, source_enex)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)`,
+      )
+      .bind(
+        id,
+        this.userId,
+        input.title,
+        input.body,
+        input.createdAt,
+        input.updatedAt,
+        input.contentHash,
+        input.sourceEnex ?? null,
+      )
+      .run();
+
+    if (input.tags.length > 0) await this.setTags(id, input.tags);
+
+    return { id, created: true };
+  }
+
+  /** Replaces a note's body after its attachment links are known. */
+  async setBody(id: string, body: string): Promise<void> {
+    await this.db
+      .prepare(`UPDATE notes SET body = ?1 WHERE id = ?2 AND user_id = ?3`)
+      .bind(body, id, this.userId)
+      .run();
+  }
+
+  /**
    * Full-text search, newest-relevant first.
    *
    * notes_fts has no user_id — it indexes only title and body — so the join back to notes

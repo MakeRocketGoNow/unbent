@@ -9,6 +9,7 @@ import { exportRoutes } from './routes/export.js';
 import { attachments } from './routes/attachments.js';
 import { admin } from './routes/admin.js';
 import { search } from './routes/search.js';
+import { importRoutes } from './routes/import.js';
 
 const app = new Hono<AppEnv>();
 
@@ -31,7 +32,8 @@ const routes = app
   .route('/api', exportRoutes)
   .route('/api', attachments)
   .route('/api', admin)
-  .route('/api', search);
+  .route('/api', search)
+  .route('/api', importRoutes);
 
 /** Consumed by the SPA through `hc<AppType>()` for end-to-end types with no codegen. */
 export type AppType = typeof routes;

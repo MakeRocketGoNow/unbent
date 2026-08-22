@@ -18,6 +18,8 @@ export interface NoteFrontmatter {
   created: Date;
   updated: Date;
   tags: string[];
+  /** Original URL for a clipped or bookmarked note. Omitted when absent. */
+  source?: string;
 }
 
 export interface ParsedNote extends NoteFrontmatter {
@@ -70,6 +72,8 @@ export function serialize(note: ParsedNote): string {
       created: toIso(note.created),
       updated: toIso(note.updated),
       tags: note.tags,
+      // Omitted rather than emitted empty: most notes have no source.
+      ...(note.source ? { source: note.source } : {}),
     },
     {
       lineWidth: 0, // never fold long titles onto a second line
@@ -125,6 +129,7 @@ export function parse(source: string): ParsedNote {
     created: parseDate(raw['created'], 'created'),
     updated: parseDate(raw['updated'], 'updated'),
     tags,
+    ...(typeof raw['source'] === 'string' && raw['source'] ? { source: raw['source'] } : {}),
     // serialize() writes exactly one blank line after the fence; strip it back off.
     body: (rest ?? '').replace(/^\r?\n/, ''),
   };

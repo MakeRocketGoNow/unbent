@@ -119,6 +119,25 @@ describe('round-trip', () => {
   });
 });
 
+describe('source url', () => {
+  it('round-trips a source url', () => {
+    const withSource = { ...base, source: 'https://example.com/article?a=1&b=2' };
+    const out = parse(serialize(withSource));
+    expect(out.source).toBe('https://example.com/article?a=1&b=2');
+  });
+
+  it('omits the field entirely when there is no source', () => {
+    const out = serialize(base);
+    expect(out).not.toContain('source:');
+    expect(parse(out).source).toBeUndefined();
+  });
+
+  it('handles a url containing yaml-significant characters', () => {
+    const withSource = { ...base, source: 'https://x.test/a:b#c' };
+    expect(parse(serialize(withSource)).source).toBe('https://x.test/a:b#c');
+  });
+});
+
 describe('serialize', () => {
   it('emits timestamps without milliseconds', () => {
     const out = serialize(base);

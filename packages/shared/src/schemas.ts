@@ -61,6 +61,8 @@ export const importNoteSchema = z.object({
   updatedAt: z.number().int().nonnegative(),
   contentHash: z.string().length(64),
   sourceEnex: z.string().max(255).optional(),
+  /** Evernote note-attributes/source-url, kept for bookmark-style notes. */
+  sourceUrl: z.string().max(2000).optional(),
 });
 
 export type CreateNoteInput = z.infer<typeof createNoteSchema>;
