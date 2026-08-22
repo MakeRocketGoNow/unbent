@@ -182,6 +182,81 @@ describe('note CRUD', () => {
     expect(items.map((i: { id: string }) => i.id)).toEqual([tagged.id]);
   });
 
+  /**
+   * The list is paginated, so a count taken from a page would report the page size — an
+   * account with hundreds of notes showed "50 notes" until the total was reported
+   * separately.
+   */
+  it('reports the true total, not the page size', async () => {
+    const actor = await signUp(`count-${Date.now()}@example.test`, 'count-pass-1234', 'C');
+    for (let i = 0; i < 12; i += 1) {
+      await createNote(actor, { title: `Note ${i}`, body: 'x' });
+    }
+
+    const page = await fetch(`${BASE}/api/notes?limit=5`, asUser(actor)).then((r) => r.json());
+    expect(page.items).toHaveLength(5);
+    expect(page.total).toBe(12);
+    expect(page.cursor).toBeTruthy();
+  });
+
+  it('pages through every note with the cursor', async () => {
+    const actor = await signUp(`paging-${Date.now()}@example.test`, 'paging-pass-123', 'P');
+    for (let i = 0; i < 12; i += 1) {
+      await createNote(actor, { title: `Paged ${i}`, body: 'x' });
+    }
+
+    const seen = new Set<string>();
+    let cursor: string | null = null;
+    for (let guard = 0; guard < 10; guard += 1) {
+      const url = `${BASE}/api/notes?limit=5${cursor ? `&cursor=${cursor}` : ''}`;
+      const page = await fetch(url, asUser(actor)).then((r) => r.json());
+      for (const item of page.items) seen.add(item.id);
+      cursor = page.cursor;
+      if (!cursor) break;
+    }
+
+    // Every note reachable, none duplicated across pages.
+    expect(seen.size).toBe(12);
+    expect(cursor).toBeNull();
+  });
+
+  it('counts within a tag filter', async () => {
+    const actor = await signUp(`tagcount-${Date.now()}@example.test`, 'tagcount-pass-1', 'T');
+    const tag = `counted-${Date.now()}`;
+    for (let i = 0; i < 4; i += 1) {
+      await createNote(actor, { title: `Tagged ${i}`, body: 'x', tags: [tag] });
+    }
+    await createNote(actor, { title: 'Untagged', body: 'x' });
+
+    const page = await fetch(`${BASE}/api/notes?tag=${tag}&limit=2`, asUser(actor)).then((r) =>
+      r.json(),
+    );
+    expect(page.items).toHaveLength(2);
+    expect(page.total).toBe(4);
+  });
+
+  it('excludes soft-deleted notes from the total', async () => {
+    const actor = await signUp(`delcount-${Date.now()}@example.test`, 'delcount-pass-1', 'D');
+    const gone = await createNote(actor, { title: 'Goes', body: 'x' });
+    await createNote(actor, { title: 'Stays', body: 'x' });
+
+    await fetch(`${BASE}/api/notes/${gone.id}`, {
+      method: 'DELETE',
+      headers: { Cookie: actor.cookie, Origin: ORIGIN },
+    });
+
+    const page = await fetch(`${BASE}/api/notes`, asUser(actor)).then((r) => r.json());
+    expect(page.total).toBe(1);
+  });
+
+  it('does not count another user notes', async () => {
+    const solo = await signUp(`solo-${Date.now()}@example.test`, 'solo-pass-12345', 'S');
+    await createNote(alice, { title: 'Alice only', body: 'x' });
+
+    const page = await fetch(`${BASE}/api/notes`, asUser(solo)).then((r) => r.json());
+    expect(page.total).toBe(0);
+  });
+
   it('normalizes duplicate and whitespace-only tags', async () => {
     const n = await createNote(alice, { title: 'Tag hygiene', body: 'x' });
     const patch = async (tags: string[]) =>

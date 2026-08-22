@@ -636,3 +636,18 @@ h1 {
   align-items: baseline;
   width: 100%;
 }
+
+.load-more {
+  width: 100%;
+  padding: 0.55rem;
+  font: inherit;
+  font-size: 0.82rem;
+  color: var(--accent);
+  background: none;
+  border: 1px dashed var(--border);
+  border-radius: 0.45rem;
+  cursor: pointer;
+}
+
+.load-more:hover:not(:disabled) { border-color: var(--accent); }
+.load-more:disabled { opacity: 0.6; cursor: default; }

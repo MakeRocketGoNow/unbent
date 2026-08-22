@@ -118,6 +118,28 @@ export class NotesRepo extends ScopedRepo {
     }));
   }
 
+  /**
+   * Total live notes, optionally within a tag.
+   *
+   * Reported separately from `list` because the list is paginated: counting what a page
+   * returned would show "50 notes" for an account holding hundreds.
+   */
+  async count(tag?: string): Promise<number> {
+    const sql = tag
+      ? `SELECT COUNT(*) AS n FROM notes n
+          WHERE n.user_id = ?1 AND n.deleted_at IS NULL
+            AND EXISTS (SELECT 1 FROM note_tags nt JOIN tags t ON t.id = nt.tag_id
+                         WHERE nt.note_id = n.id AND t.name = ?2 AND t.user_id = ?1)`
+      : `SELECT COUNT(*) AS n FROM notes WHERE user_id = ?1 AND deleted_at IS NULL`;
+
+    const row = await (tag
+      ? this.db.prepare(sql).bind(this.userId, tag)
+      : this.db.prepare(sql).bind(this.userId)
+    ).first<{ n: number }>();
+
+    return row?.n ?? 0;
+  }
+
   /** Scoped by user_id despite `id` being the primary key. Never returns another user's note. */
   async get(id: string): Promise<Note | null> {
     const row = await this.db

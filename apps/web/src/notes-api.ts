@@ -18,14 +18,22 @@ async function json<T>(res: Response): Promise<T> {
 
 const jsonHeaders = { 'Content-Type': 'application/json' };
 
-export async function listNotes(opts: { tag?: string } = {}): Promise<NoteSummary[]> {
+export interface NotePage {
+  items: NoteSummary[];
+  /** Pass back as `cursor` to fetch the next page; null when there are no more. */
+  cursor: string | null;
+  /** Live notes matching the filter. Only returned for the first page. */
+  total: number | null;
+}
+
+export async function listNotes(
+  opts: { tag?: string; cursor?: string } = {},
+): Promise<NotePage> {
   const params = new URLSearchParams();
   if (opts.tag) params.set('tag', opts.tag);
+  if (opts.cursor) params.set('cursor', opts.cursor);
   const qs = params.toString();
-  const { items } = await json<{ items: NoteSummary[] }>(
-    await fetch(`/api/notes${qs ? `?${qs}` : ''}`),
-  );
-  return items;
+  return json<NotePage>(await fetch(`/api/notes${qs ? `?${qs}` : ''}`));
 }
 
 export async function getNote(id: string): Promise<Note> {

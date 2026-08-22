@@ -38,21 +38,48 @@ export function Notes() {
   const [showPreview, setShowPreview] = useState(true);
   const [allTags, setAllTags] = useState<Array<{ name: string; count: number }>>([]);
   const [activeTag, setActiveTag] = useState<string | null>(null);
+  const [cursor, setCursor] = useState<string | null>(null);
+  const [total, setTotal] = useState<number | null>(null);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<SearchResult[] | null>(null);
 
   const refreshList = useCallback(async () => {
     try {
-      const [notes, tags] = await Promise.all([
+      const [page, tags] = await Promise.all([
         api.listNotes(activeTag ? { tag: activeTag } : {}),
         api.listTags(),
       ]);
-      setList(notes);
+      setList(page.items);
+      setCursor(page.cursor);
+      setTotal(page.total);
       setAllTags(tags);
     } catch (err) {
       setLoadError((err as Error).message);
     }
   }, [activeTag]);
+
+  /** Appends the next page. Without this the list stops at the server's page size. */
+  const loadMore = useCallback(async () => {
+    if (!cursor || loadingMore) return;
+    setLoadingMore(true);
+    try {
+      const page = await api.listNotes({
+        ...(activeTag ? { tag: activeTag } : {}),
+        cursor,
+      });
+      // Guard against a note arriving twice if it was edited between pages.
+      setList((prev) => {
+        const seen = new Set(prev.map((n) => n.id));
+        return [...prev, ...page.items.filter((n) => !seen.has(n.id))];
+      });
+      setCursor(page.cursor);
+    } catch (err) {
+      setLoadError((err as Error).message);
+    } finally {
+      setLoadingMore(false);
+    }
+  }, [activeTag, cursor, loadingMore]);
 
   useEffect(() => {
     void refreshList();
@@ -165,7 +192,11 @@ export function Notes() {
       <aside className="sidebar">
         <div className="sidebar-head">
           <span className="count">
-            {results === null ? `${list.length} notes` : `${results.length} matches`}
+            {results !== null
+              ? `${results.length} matches`
+              : total !== null && total > list.length
+                ? `${list.length} of ${total} notes`
+                : `${list.length} notes`}
           </span>
           <button type="button" className="primary" onClick={() => void newNote()}>
             New
@@ -231,6 +262,19 @@ export function Notes() {
                 </button>
               </li>
             ))}
+          {results === null && cursor !== null && (
+            <li>
+              <button
+                type="button"
+                className="load-more"
+                disabled={loadingMore}
+                onClick={() => void loadMore()}
+              >
+                {loadingMore ? 'Loading…' : 'Load more'}
+              </button>
+            </li>
+          )}
+
           {results === null && list.length === 0 && !loadError && (
             <li className="muted small empty">
               {activeTag ? `No notes tagged ${activeTag}.` : 'No notes yet.'}
