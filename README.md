@@ -65,7 +65,9 @@ normalizes `_italic_` to `*italic*`. Here the text never leaves the buffer, so a
 note is byte-identical to what was typed — which is what makes the export guarantee real.
 
 A toolbar and the usual shortcuts (⌘B, ⌘I, ⌘K, ⌘⌥1) apply formatting as ordinary text
-edits, so every action is undoable and nothing is rewritten behind your back.
+edits, so every action is undoable and nothing is rewritten behind your back. Tab and
+Shift-Tab indent and outdent list items; outside a list Tab moves focus as usual, so the
+editor is never a keyboard trap.
 
 Rendering uses GFM (tables, task lists, strikethrough, autolinks) plus soft line breaks:
 a single newline is a line break, not a space. CommonMark folds lone newlines into spaces,
@@ -101,7 +103,9 @@ normalizes `_italic_` to `*italic*`. Here the text never leaves the buffer, so a
 note is byte-identical to what was typed — which is what makes the export guarantee real.
 
 A toolbar and the usual shortcuts (⌘B, ⌘I, ⌘K, ⌘⌥1) apply formatting as ordinary text
-edits, so every action is undoable and nothing is rewritten behind your back.
+edits, so every action is undoable and nothing is rewritten behind your back. Tab and
+Shift-Tab indent and outdent list items; outside a list Tab moves focus as usual, so the
+editor is never a keyboard trap.
 
 Rendering uses GFM (tables, task lists, strikethrough, autolinks) plus soft line breaks:
 a single newline is a line break, not a space. CommonMark folds lone newlines into spaces,

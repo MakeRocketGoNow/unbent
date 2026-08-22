@@ -1,4 +1,7 @@
 import { EditorSelection, EditorState, type StateCommand } from '@codemirror/state';
+import { markdown as markdownLang } from '@codemirror/lang-markdown';
+import { GFM } from '@lezer/markdown';
+import { syntaxTree } from '@codemirror/language';
 import { describe, expect, it } from 'vitest';
 import * as cmd from './markdown-commands.js';
 
@@ -156,5 +159,118 @@ describe('document fidelity', () => {
     const result = run(cmd.toggleBold, doc, from, to);
     expect(result.doc).toBe(`${line}\n\n**plain** text`);
     expect(result.doc.startsWith(line)).toBe(true);
+  });
+});
+
+/**
+ * List indentation.
+ *
+ * The indent width must match the parent's marker rather than a fixed size: two spaces
+ * nests under `- `, but an item under `1. ` needs three. A wrong width does not error —
+ * the line stays a sibling, so the key appears to do nothing.
+ */
+describe('indentList', () => {
+  it('indents a bullet under the item above it', () => {
+    const doc = '- one\n- two';
+    expect(run(cmd.indentList, doc, doc.indexOf('- two')).doc).toBe('- one\n  - two');
+  });
+
+  it('indents three spaces under an ordered item', () => {
+    const doc = '1. one\n1. two';
+    expect(run(cmd.indentList, doc, doc.indexOf('1. two')).doc).toBe('1. one\n   1. two');
+  });
+
+  it('indents relative to a parent that is itself indented', () => {
+    const doc = '- one\n  - two\n  - three';
+    expect(run(cmd.indentList, doc, doc.lastIndexOf('  - three')).doc).toBe(
+      '- one\n  - two\n    - three',
+    );
+  });
+
+  it('indents task list items', () => {
+    const doc = '- [ ] one\n- [ ] two';
+    expect(run(cmd.indentList, doc, doc.indexOf('- [ ] two')).doc).toBe(
+      '- [ ] one\n  - [ ] two',
+    );
+  });
+
+  /** The first item has no parent; indenting it would orphan the list. */
+  it('refuses to indent the first item of a list', () => {
+    const doc = '- only';
+    expect(run(cmd.indentList, doc, 2).doc).toBe('- only');
+  });
+
+  it('does nothing outside a list', () => {
+    const doc = 'plain paragraph';
+    expect(run(cmd.indentList, doc, 4).doc).toBe('plain paragraph');
+  });
+
+  it('indents every selected item', () => {
+    const doc = '- one\n- two\n- three';
+    const result = run(cmd.indentList, doc, doc.indexOf('- two'), doc.length);
+    expect(result.doc).toBe('- one\n  - two\n  - three');
+  });
+});
+
+describe('outdentList', () => {
+  it('outdents a nested bullet', () => {
+    const doc = '- one\n  - two';
+    expect(run(cmd.outdentList, doc, doc.indexOf('  - two') + 2).doc).toBe('- one\n- two');
+  });
+
+  it('outdents three spaces under an ordered parent', () => {
+    const doc = '1. one\n   1. two';
+    expect(run(cmd.outdentList, doc, doc.indexOf('   1. two') + 3).doc).toBe('1. one\n1. two');
+  });
+
+  it('does nothing to a top-level item', () => {
+    const doc = '- one\n- two';
+    expect(run(cmd.outdentList, doc, doc.indexOf('- two')).doc).toBe('- one\n- two');
+  });
+
+  /** Outdent must be the exact inverse of indent, at any nesting width. */
+  it.each([
+    '- one\n- two',
+    '1. one\n1. two',
+    '- [ ] one\n- [ ] two',
+  ])('round-trips %j', (doc) => {
+    const pos = doc.lastIndexOf('\n') + 1;
+    const indented = run(cmd.indentList, doc, pos + 2).doc;
+    expect(indented).not.toBe(doc);
+    // Cursor moves with the inserted indent.
+    const shift = indented.length - doc.length;
+    expect(run(cmd.outdentList, indented, pos + 2 + shift).doc).toBe(doc);
+  });
+});
+
+/**
+ * The indent must actually nest in the parser, not merely add spaces.
+ *
+ * A wrong width leaves the item a sibling with stray indentation, which looks correct in
+ * the editor but renders and exports as a flat list.
+ */
+describe('indent produces real nesting', () => {
+  function nestingDepth(doc: string): number {
+    const state = EditorState.create({
+      doc,
+      extensions: [markdownLang({ extensions: [GFM] })],
+    });
+    let depth = 0;
+    syntaxTree(state).iterate({
+      enter(n) {
+        if (n.name === 'BulletList' || n.name === 'OrderedList') depth += 1;
+      },
+    });
+    return depth;
+  }
+
+  it.each([
+    ['bullet', '- one\n- two'],
+    ['ordered', '1. one\n1. two'],
+    ['task', '- [ ] one\n- [ ] two'],
+  ])('%s list nests after indenting', (_label, doc) => {
+    expect(nestingDepth(doc)).toBe(1);
+    const indented = run(cmd.indentList, doc, doc.lastIndexOf('\n') + 3).doc;
+    expect(nestingDepth(indented)).toBe(2);
   });
 });

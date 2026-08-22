@@ -103,6 +103,118 @@ function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
+/** A list item's leading whitespace and marker, e.g. `  - ` or `1. `. */
+const LIST_ITEM = /^(\s*)([-*+]|\d+[.)])(\s+)(\[[ xX]\]\s+)?/;
+
+interface ListLine {
+  number: number;
+  from: number;
+  text: string;
+  indent: string;
+  marker: string;
+}
+
+/** Parses a line as a list item, or returns null when it is not one. */
+function asListItem(text: string, number: number, from: number): ListLine | null {
+  const m = LIST_ITEM.exec(text);
+  if (!m) return null;
+  return { number, from, text, indent: m[1] ?? '', marker: m[2] ?? '' };
+}
+
+/** Every line touched by the selection. */
+function selectedLines(state: Parameters<StateCommand>[0]['state']) {
+  const numbers = new Set<number>();
+  for (const range of state.selection.ranges) {
+    for (let pos = range.from; pos <= range.to; ) {
+      const line = state.doc.lineAt(pos);
+      numbers.add(line.number);
+      pos = line.to + 1;
+    }
+  }
+  return [...numbers].sort((a, b) => a - b).map((n) => state.doc.line(n));
+}
+
+/**
+ * Indents list items under the item above them.
+ *
+ * The indent width has to match the parent's marker, not a fixed size: a bullet nests
+ * under `- ` with two spaces, but an item under `1. ` needs three. Getting this wrong does
+ * not error — the line simply stays a sibling, which looks like the key did nothing.
+ */
+export const indentList: StateCommand = ({ state, dispatch }) => {
+  const lines = selectedLines(state);
+  const items = lines
+    .map((l) => asListItem(l.text, l.number, l.from))
+    .filter((x): x is ListLine => x !== null);
+
+  if (items.length === 0) return false;
+
+  const changes: ChangeSpec[] = [];
+  for (const item of items) {
+    // Find the nearest preceding line at the same or shallower depth: that is the parent.
+    let parent: ListLine | null = null;
+    for (let n = item.number - 1; n >= 1; n -= 1) {
+      const prev = state.doc.line(n);
+      if (prev.text.trim() === '') continue;
+      const prevItem = asListItem(prev.text, n, prev.from);
+      if (!prevItem) break;
+      if (prevItem.indent.length <= item.indent.length) {
+        parent = prevItem;
+        break;
+      }
+    }
+
+    // The first item of a list has nothing to nest under; indenting it would orphan it.
+    if (!parent) continue;
+
+    const width = parent.marker.length + 1;
+    changes.push({ from: item.from, insert: ' '.repeat(width) });
+  }
+
+  if (changes.length === 0) return false;
+  dispatch(state.update({ changes, scrollIntoView: true, userEvent: 'input.indent' }));
+  return true;
+};
+
+/** Outdents list items, removing one level of nesting. */
+export const outdentList: StateCommand = ({ state, dispatch }) => {
+  const lines = selectedLines(state);
+  const items = lines
+    .map((l) => asListItem(l.text, l.number, l.from))
+    .filter((x): x is ListLine => x !== null && x.indent.length > 0);
+
+  if (items.length === 0) return false;
+
+  const changes: ChangeSpec[] = [];
+  for (const item of items) {
+    /**
+     * Remove exactly one level rather than a fixed width.
+     *
+     * Levels are not uniformly sized — a bullet under `1. ` is indented three spaces while
+     * one under `- ` is two — so the amount removed is measured from the nearest shallower
+     * ancestor, keeping outdent the exact inverse of indent.
+     */
+    let target = 0;
+    for (let n = item.number - 1; n >= 1; n -= 1) {
+      const prev = state.doc.line(n);
+      if (prev.text.trim() === '') continue;
+      const prevItem = asListItem(prev.text, n, prev.from);
+      if (!prevItem) break;
+      if (prevItem.indent.length < item.indent.length) {
+        target = prevItem.indent.length;
+        break;
+      }
+    }
+
+    const remove = item.indent.length - target;
+    if (remove > 0) changes.push({ from: item.from, to: item.from + remove });
+  }
+
+  if (changes.length === 0) return false;
+  dispatch(state.update({ changes, scrollIntoView: true, userEvent: 'delete.dedent' }));
+  return true;
+};
+
 /** Inserts a link, using the selection as the text when there is one. */
 export const insertLink: StateCommand = ({ state, dispatch }) => {
   const range = state.selection.main;
@@ -132,8 +244,21 @@ export const toggleQuote = toggleLinePrefix('> ');
 export const toggleBullet = toggleLinePrefix('- ');
 export const toggleTask = toggleLinePrefix('- [ ] ');
 
+/**
+ * Tab indents a list item, and otherwise does nothing.
+ *
+ * Deliberately narrow. Tab is how keyboard users move focus out of a control, so an editor
+ * that swallows it universally becomes a trap. Returning false when the cursor is not in a
+ * list lets the browser move focus as usual, while Escape-then-Tab remains available as
+ * the conventional escape hatch either way.
+ */
+const tabIndent: StateCommand = (target) => indentList(target);
+const shiftTabOutdent: StateCommand = (target) => outdentList(target);
+
 /** Shortcuts matching what people already know from other editors. */
 export const markdownKeymap: KeyBinding[] = [
+  { key: 'Tab', run: tabIndent },
+  { key: 'Shift-Tab', run: shiftTabOutdent },
   { key: 'Mod-b', run: toggleBold, preventDefault: true },
   { key: 'Mod-i', run: toggleItalic, preventDefault: true },
   { key: 'Mod-e', run: toggleCode, preventDefault: true },
