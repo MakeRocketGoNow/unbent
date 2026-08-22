@@ -182,6 +182,57 @@ describe('note CRUD', () => {
     expect(items.map((i: { id: string }) => i.id)).toEqual([tagged.id]);
   });
 
+  it('normalizes duplicate and whitespace-only tags', async () => {
+    const n = await createNote(alice, { title: 'Tag hygiene', body: 'x' });
+    const patch = async (tags: string[]) =>
+      fetch(`${BASE}/api/notes/${n.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', Cookie: alice.cookie, Origin: ORIGIN },
+        body: JSON.stringify({ tags }),
+      }).then((r) => r.json());
+
+    expect((await patch(['dup', 'dup', 'dup'])).tags).toEqual(['dup']);
+    expect((await patch([' padded '])).tags).toEqual(['padded']);
+  });
+
+  it('reuses one tag row across notes so counts are accurate', async () => {
+    const tag = `shared-${Date.now()}`;
+    await createNote(alice, { title: 'One', body: 'x', tags: [tag] });
+    await createNote(alice, { title: 'Two', body: 'x', tags: [tag] });
+
+    const { tags } = await fetch(`${BASE}/api/tags`, asUser(alice)).then((r) => r.json());
+    const entry = tags.find((t: { name: string }) => t.name === tag);
+    expect(entry.count).toBe(2);
+  });
+
+  it('drops a tag from the list once no note uses it', async () => {
+    const tag = `orphan-${Date.now()}`;
+    const n = await createNote(alice, { title: 'Temp', body: 'x', tags: [tag] });
+
+    await fetch(`${BASE}/api/notes/${n.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', Cookie: alice.cookie, Origin: ORIGIN },
+      body: JSON.stringify({ tags: [] }),
+    });
+
+    const { tags } = await fetch(`${BASE}/api/tags`, asUser(alice)).then((r) => r.json());
+    expect(tags.map((t: { name: string }) => t.name)).not.toContain(tag);
+  });
+
+  it('excludes soft-deleted notes from tag counts', async () => {
+    const tag = `counted-${Date.now()}`;
+    await createNote(alice, { title: 'Stays', body: 'x', tags: [tag] });
+    const gone = await createNote(alice, { title: 'Goes', body: 'x', tags: [tag] });
+
+    await fetch(`${BASE}/api/notes/${gone.id}`, {
+      method: 'DELETE',
+      headers: { Cookie: alice.cookie, Origin: ORIGIN },
+    });
+
+    const { tags } = await fetch(`${BASE}/api/tags`, asUser(alice)).then((r) => r.json());
+    expect(tags.find((t: { name: string }) => t.name === tag).count).toBe(1);
+  });
+
   it('rejects a body over the D1 row limit', async () => {
     const res = await fetch(`${BASE}/api/notes`, {
       method: 'POST',

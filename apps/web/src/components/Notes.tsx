@@ -4,6 +4,7 @@ import * as api from '../notes-api.js';
 import { useAutosave } from '../useAutosave.js';
 import { Editor } from './Editor.js';
 import { Preview } from './Preview.js';
+import { TagInput } from './TagInput.js';
 
 function formatWhen(ms: number): string {
   const diff = Date.now() - ms;
@@ -27,17 +28,28 @@ export function Notes() {
   const [list, setList] = useState<NoteSummary[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [note, setNote] = useState<Note | null>(null);
-  const [draft, setDraft] = useState<{ title: string; body: string }>({ title: '', body: '' });
+  const [draft, setDraft] = useState<{ title: string; body: string; tags: string[] }>({
+    title: '',
+    body: '',
+    tags: [],
+  });
   const [loadError, setLoadError] = useState<string | null>(null);
   const [showPreview, setShowPreview] = useState(true);
+  const [allTags, setAllTags] = useState<Array<{ name: string; count: number }>>([]);
+  const [activeTag, setActiveTag] = useState<string | null>(null);
 
   const refreshList = useCallback(async () => {
     try {
-      setList(await api.listNotes());
+      const [notes, tags] = await Promise.all([
+        api.listNotes(activeTag ? { tag: activeTag } : {}),
+        api.listTags(),
+      ]);
+      setList(notes);
+      setAllTags(tags);
     } catch (err) {
       setLoadError((err as Error).message);
     }
-  }, []);
+  }, [activeTag]);
 
   useEffect(() => {
     void refreshList();
@@ -55,7 +67,7 @@ export function Notes() {
       .then((n) => {
         if (cancelled) return;
         setNote(n);
-        setDraft({ title: n.title, body: n.body });
+        setDraft({ title: n.title, body: n.body, tags: n.tags });
       })
       .catch((err: Error) => !cancelled && setLoadError(err.message));
     return () => {
@@ -64,9 +76,11 @@ export function Notes() {
   }, [selectedId]);
 
   const save = useCallback(
-    async (value: { title: string; body: string }) => {
+    async (value: { title: string; body: string; tags: string[] }) => {
       if (!selectedId) return;
       const updated = await api.updateNote(selectedId, value);
+      // A tag edit can create or empty a tag, so the sidebar counts move with it.
+      void api.listTags().then(setAllTags).catch(() => undefined);
       // Reflect the new updated_at and ordering without refetching the body.
       setList((prev) =>
         [
@@ -90,7 +104,13 @@ export function Notes() {
   async function newNote() {
     await flush();
     try {
-      const created = await api.createNote({ title: 'Untitled', body: '' });
+      // Carry the active filter onto the new note, otherwise it is created and then
+      // immediately filtered out of the list the user is looking at.
+      const created = await api.createNote({
+        title: 'Untitled',
+        body: '',
+        tags: activeTag ? [activeTag] : [],
+      });
       await refreshList();
       setSelectedId(created.id);
     } catch (err) {
@@ -126,6 +146,29 @@ export function Notes() {
 
         {loadError && <p className="bad small">{loadError}</p>}
 
+        {allTags.length > 0 && (
+          <div className="tag-filter">
+            <button
+              type="button"
+              className={activeTag === null ? 'tag-filter-item active' : 'tag-filter-item'}
+              onClick={() => setActiveTag(null)}
+            >
+              All
+            </button>
+            {allTags.map((t) => (
+              <button
+                key={t.name}
+                type="button"
+                className={activeTag === t.name ? 'tag-filter-item active' : 'tag-filter-item'}
+                onClick={() => setActiveTag(activeTag === t.name ? null : t.name)}
+              >
+                {t.name}
+                <span className="tag-count">{t.count}</span>
+              </button>
+            ))}
+          </div>
+        )}
+
         <ul className="note-list">
           {list.map((n) => (
             <li key={n.id}>
@@ -144,7 +187,9 @@ export function Notes() {
             </li>
           ))}
           {list.length === 0 && !loadError && (
-            <li className="muted small empty">No notes yet.</li>
+            <li className="muted small empty">
+              {activeTag ? `No notes tagged ${activeTag}.` : 'No notes yet.'}
+            </li>
           )}
         </ul>
       </aside>
@@ -172,6 +217,14 @@ export function Notes() {
                   Delete
                 </button>
               </div>
+            </div>
+
+            <div className="tag-row">
+              <TagInput
+                tags={draft.tags}
+                suggestions={allTags.map((t) => t.name)}
+                onChange={(tags) => setDraft((d) => ({ ...d, tags }))}
+              />
             </div>
 
             <div className={showPreview ? 'panes split' : 'panes'}>
