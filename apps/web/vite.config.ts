@@ -38,18 +38,6 @@ export default defineConfig({
   },
   worker: {
     format: 'es',
-    resolve: {
-      /**
-       * Resolve the `worker` export condition inside Web Workers.
-       *
-       * decode-named-character-reference — pulled in by the markdown pipeline — ships a
-       * browser build that decodes entities with `document.createElement`. A Web Worker
-       * has no document, so without this the import worker dies on load with
-       * "document is not defined". The package already publishes a DOM-free build behind
-       * the `worker` condition; this is what selects it.
-       */
-      conditions: ['worker', 'browser', 'module', 'default'],
-    },
   },
   server: {
     port: 5173,
