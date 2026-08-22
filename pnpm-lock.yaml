@@ -33,6 +33,9 @@ importers:
       '@cloudflare/workers-types':
         specifier: ^5.20260820.1
         version: 5.20260821.1
+      '@zip.js/zip.js':
+        specifier: ^2.8.55
+        version: 2.8.55
       typescript:
         specifier: ^5.7.3
         version: 5.9.3
@@ -1384,6 +1387,10 @@ packages:
 
   '@vitest/utils@2.1.9':
     resolution: {integrity: sha512-v0psaMSkNJ3A2NMrUEHFRzJtDPFn+/VWZ5WxImB21T9fjucJRmS7xCS3ppEnARb9y11OAzaD+P2Ps+b+BGX5iQ==}
+
+  '@zip.js/zip.js@2.8.55':
+    resolution: {integrity: sha512-MxnikN49/iB2AQOSUBjxlGYLsbEblCsZ5S84tmt+hcBlYCQQKG0qKO7UNX0AzFS8a5KlS8cyvwjZV3nNTF6WuQ==}
+    engines: {bun: '>=0.7.0', deno: '>=1.0.0', node: '>=18.0.0'}
 
   assertion-error@2.0.1:
     resolution: {integrity: sha512-Izi8RQcffqCeNVgFigKli1ssklIbpHnCYc6AknXGYoB6grJqyeby7jv12JUQgmTAnIDnbck1uxksT4dzN3PWBA==}
@@ -3272,6 +3279,8 @@ snapshots:
       '@vitest/pretty-format': 2.1.9
       loupe: 3.2.1
       tinyrainbow: 1.2.0
+
+  '@zip.js/zip.js@2.8.55': {}
 
   assertion-error@2.0.1: {}
 

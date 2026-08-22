@@ -26,6 +26,11 @@ export function App() {
       <header className="topbar">
         <h1>Unbent</h1>
         <div className="account">
+          {/* A plain link, not fetch+blob: the response streams, and letting the browser
+              handle it means a large export never lands in a JS buffer. */}
+          <a className="link" href="/api/export" download>
+            Export
+          </a>
           <span className="muted">{session.user.email}</span>
           <button type="button" className="link" onClick={() => void signOut()}>
             Sign out

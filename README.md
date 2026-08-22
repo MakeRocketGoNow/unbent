@@ -59,7 +59,20 @@ constructor argument — route handlers never touch `env.DB` directly, so an uns
 not expressible. `apps/api/test/isolation.test.ts` asserts this and grows with every phase
 that adds a route touching user data.
 
-## Backups
+## Backups and export
 
-`wrangler d1 export` is broken on databases containing FTS5 tables — it fails and leaves the
-database wedged. Do not run it. The zip export at `/api/export` is the backup mechanism.
+`GET /api/export` streams a zip of the whole account as a plain folder tree:
+
+```
+first-note-2382e420/note.md
+untitled-e080eb5b/note.md
+```
+
+Each `note.md` is markdown with YAML frontmatter (id, title, created, updated, tags). The
+directory name is a slug plus an id fragment, so two notes with the same title do not
+collide. Standard `unzip` reads it; no part of this app is needed to get your notes back.
+
+This is the backup mechanism, not a convenience feature: `wrangler d1 export` fails on any
+database containing an FTS5 table and leaves the database wedged in a "processing export"
+state ([workers-sdk#9519](https://github.com/cloudflare/workers-sdk/issues/9519)). Do not
+run it.
