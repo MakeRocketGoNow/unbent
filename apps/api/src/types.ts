@@ -1,4 +1,5 @@
 import type { NotesRepo } from './lib/notes-repo.js';
+import type { AttachmentsRepo } from './lib/attachments-repo.js';
 
 /** Bindings declared in wrangler.toml, plus secrets supplied via `wrangler secret`. */
 export interface Env {
@@ -29,6 +30,7 @@ export interface Variables {
   user?: SessionUser;
   /** Set by withRepos; already bound to the authenticated user. */
   notes: NotesRepo;
+  attachments: AttachmentsRepo;
 }
 
 export type AppEnv = { Bindings: Env; Variables: Variables };

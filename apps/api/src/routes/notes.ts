@@ -47,6 +47,12 @@ export const notes = new Hono<AppEnv>()
     return c.json(note);
   })
 
+  /**
+   * Soft delete — trash, not destroy. Attachments are deliberately left in R2: this note
+   * is restorable, and deleting its blobs here would make a restore produce a note full of
+   * dead links. Reclaiming that storage belongs to a purge of the trash, which does not
+   * exist yet; see the orphaned-blob note in README.
+   */
   .delete('/notes/:id', async (c) => {
     const ok = await c.get('notes').remove(c.req.param('id'));
     if (!ok) return c.json({ error: 'Not found' }, 404);

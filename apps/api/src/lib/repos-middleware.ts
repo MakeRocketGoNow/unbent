@@ -1,5 +1,6 @@
 import { createMiddleware } from 'hono/factory';
 import { NotesRepo } from './notes-repo.js';
+import { AttachmentsRepo } from './attachments-repo.js';
 import type { AppEnv } from '../types.js';
 
 /**
@@ -15,5 +16,6 @@ export const withRepos = createMiddleware<AppEnv>(async (c, next) => {
   if (!userId) throw new Error('withRepos requires an authenticated session');
 
   c.set('notes', new NotesRepo(c.env.DB, userId));
+  c.set('attachments', new AttachmentsRepo(c.env.DB, userId));
   await next();
 });

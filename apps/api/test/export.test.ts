@@ -150,6 +150,33 @@ describe('export', () => {
     expect(parse([...files.values()][0]!).id).toBe(keep.id);
   });
 
+  it('includes attachments alongside note.md', async () => {
+    const actor = await signUp(`exp-att-${Date.now()}@example.test`, 'att-password-1234', 'A');
+    const note = await createNote(actor, { title: 'With files', body: '![x](files/pic.png)' });
+
+    await fetch(`${BASE}/api/notes/${note.id}/files`, {
+      method: 'PUT',
+      headers: {
+        Cookie: actor.cookie,
+        Origin: ORIGIN,
+        'X-Filename': 'pic.png',
+        'Content-Type': 'image/png',
+      },
+      body: 'PNGDATA',
+    });
+
+    const files = await fetchExport(actor);
+    const names = [...files.keys()].sort();
+    expect(names).toHaveLength(2);
+    expect(names[0]).toMatch(/^with-files-[0-9a-f]{8}\/files\/pic\.png$/);
+    expect(names[1]).toMatch(/^with-files-[0-9a-f]{8}\/note\.md$/);
+
+    // The attachment bytes survive, and the markdown link stays relative so the exported
+    // folder works without this app.
+    expect(files.get(names[0]!)).toBe('PNGDATA');
+    expect(parse(files.get(names[1]!)!).body).toBe('![x](files/pic.png)');
+  });
+
   it('requires a session', async () => {
     const res = await fetch(`${BASE}/api/export`, { headers: { Origin: ORIGIN } });
     expect(res.status).toBe(401);

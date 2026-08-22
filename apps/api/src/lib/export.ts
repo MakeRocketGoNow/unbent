@@ -1,6 +1,7 @@
 import { ZipWriter } from '@zip.js/zip.js';
 import { serialize } from '@unbent/shared';
 import type { NotesRepo } from './notes-repo.js';
+import type { AttachmentsRepo } from './attachments-repo.js';
 
 /**
  * Streaming folder-tree export — the backup mechanism.
@@ -42,6 +43,8 @@ const PAGE = 100;
 
 export interface ExportDeps {
   notes: NotesRepo;
+  attachments: AttachmentsRepo;
+  blobs: R2Bucket;
 }
 
 /**
@@ -50,11 +53,11 @@ export interface ExportDeps {
  * The caller must return this as a Response body immediately rather than awaiting it —
  * the work is driven by consumption, and buffering would defeat the whole design.
  */
-export function exportZipStream({ notes }: ExportDeps): ReadableStream<Uint8Array> {
+export function exportZipStream(deps: ExportDeps): ReadableStream<Uint8Array> {
   const { readable, writable } = new TransformStream<Uint8Array, Uint8Array>();
 
   // Deliberately not awaited: the promise resolves only as the consumer pulls bytes.
-  void writeArchive(writable, notes).catch((err) => {
+  void writeArchive(writable, deps).catch((err) => {
     console.error('Export failed mid-stream:', err);
     // The response has already begun, so the only signal available is an aborted body.
     void writable.abort(err);
@@ -65,7 +68,7 @@ export function exportZipStream({ notes }: ExportDeps): ReadableStream<Uint8Arra
 
 async function writeArchive(
   writable: WritableStream<Uint8Array>,
-  notes: NotesRepo,
+  { notes, attachments, blobs }: ExportDeps,
 ): Promise<void> {
   const zip = new ZipWriter(writable, { bufferedWrite: false });
 
@@ -90,9 +93,23 @@ async function writeArchive(
         body: note.body,
       });
 
-      // Markdown compresses well; attachments (added in a later phase) will not.
+      // Markdown compresses well.
       await zip.add(`${dir}/note.md`, new Blob([markdown]).stream(), { level: 6 });
       count += 1;
+
+      // Attachments stream straight from R2 into the archive — never buffered, so a note
+      // with a 90MB video does not blow the Worker's 128MB ceiling. Stored uncompressed:
+      // images, PDFs, and video are already compressed, so deflating them burns CPU for
+      // roughly nothing.
+      for (const file of await attachments.listForNote(note.id)) {
+        const row = await attachments.resolve(note.id, file.filename);
+        if (!row) continue;
+
+        const object = await blobs.get(row.r2_key);
+        if (!object?.body) continue;
+
+        await zip.add(`${dir}/files/${file.filename}`, object.body, { level: 0 });
+      }
     }
 
     if (page.length < PAGE) break;

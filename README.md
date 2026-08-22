@@ -51,6 +51,14 @@ is simply not offered, so local development works with none of them set.
 Sessions are cookie-based and same-origin. Better Auth enforces CSRF by requiring a trusted
 `Origin`, so API clients outside the browser must send one.
 
+## Known gaps
+
+- **Trash is never purged.** Note deletion is a soft delete, and the note's attachments
+  stay in R2 so a restore is not left with dead links. Nothing reclaims that storage yet;
+  a trash purge needs to delete the rows and their blobs together.
+- **Deleting a user orphans blobs.** The D1 rows cascade, but R2 has no foreign keys, so
+  the objects under `users/{id}/` remain. Account deletion needs an explicit prefix sweep.
+
 ## Tenant isolation
 
 D1 has no row-level security, so isolation is application code and nothing else. Data access

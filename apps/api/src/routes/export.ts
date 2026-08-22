@@ -13,12 +13,19 @@ export const exportRoutes = new Hono<AppEnv>().get(
 
     // Returned immediately, before any note is read: the archive is produced as the
     // client consumes it, so nothing is ever held in the Worker's 128MB of memory.
-    return new Response(exportZipStream({ notes: c.get('notes') }), {
-      headers: {
-        'Content-Type': 'application/zip',
-        'Content-Disposition': `attachment; filename="unbent-export-${stamp}.zip"`,
-        'Cache-Control': 'no-store',
+    return new Response(
+      exportZipStream({
+        notes: c.get('notes'),
+        attachments: c.get('attachments'),
+        blobs: c.env.BLOBS,
+      }),
+      {
+        headers: {
+          'Content-Type': 'application/zip',
+          'Content-Disposition': `attachment; filename="unbent-export-${stamp}.zip"`,
+          'Cache-Control': 'no-store',
+        },
       },
-    });
+    );
   },
 );
