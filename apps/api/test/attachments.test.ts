@@ -319,3 +319,120 @@ describe('orphaned blob gc', () => {
     expect(res.status).toBe(401);
   });
 });
+
+/**
+ * Destructive maintenance. These delete real data, so the confirmation gate and the
+ * cross-tenant scoping matter more here than anywhere else in the API.
+ */
+describe('purge', () => {
+  async function purge(actor: Actor, query: string): Promise<Response> {
+    return fetch(`${BASE}/api/admin/purge-notes${query}`, {
+      method: 'POST',
+      headers: { Cookie: actor.cookie, Origin: ORIGIN },
+    });
+  }
+
+  it('refuses without the confirmation token', async () => {
+    const actor = await signUp(`purge-guard-${Date.now()}@example.test`, 'purge-pass-1234', 'P');
+    const note = await createNote(actor, 'Survives');
+
+    expect((await purge(actor, '?scope=all')).status).toBe(400);
+    expect((await purge(actor, '?scope=all&confirm=yes')).status).toBe(400);
+
+    // Still there: a rejected purge must not have deleted anything.
+    const res = await fetch(`${BASE}/api/notes/${note.id}`, {
+      headers: { Cookie: actor.cookie, Origin: ORIGIN },
+    });
+    expect(res.status).toBe(200);
+  });
+
+  it('empties the trash without touching live notes', async () => {
+    const actor = await signUp(`purge-trash-${Date.now()}@example.test`, 'purge-pass-1234', 'P');
+    const keep = await createNote(actor, 'Keep');
+    const drop = await createNote(actor, 'Drop');
+    await upload(actor, drop.id, 'doomed.txt', 'bye');
+
+    await fetch(`${BASE}/api/notes/${drop.id}`, {
+      method: 'DELETE',
+      headers: { Cookie: actor.cookie, Origin: ORIGIN },
+    });
+
+    const body = await (await purge(actor, '?scope=trashed&confirm=DELETE')).json();
+    expect(body.notesDeleted).toBe(1);
+    expect(body.filesDeleted).toBe(1);
+
+    expect(
+      (await fetch(`${BASE}/api/notes/${keep.id}`, {
+        headers: { Cookie: actor.cookie, Origin: ORIGIN },
+      })).status,
+    ).toBe(200);
+  });
+
+  it('wipes every note and its attachments with scope=all', async () => {
+    const actor = await signUp(`purge-all-${Date.now()}@example.test`, 'purge-pass-1234', 'P');
+    const a = await createNote(actor, 'One');
+    await createNote(actor, 'Two');
+    await upload(actor, a.id, 'file.txt', 'data');
+
+    const body = await (await purge(actor, '?scope=all&confirm=DELETE')).json();
+    expect(body.notesDeleted).toBe(2);
+    expect(body.filesDeleted).toBe(1);
+
+    const { items } = await fetch(`${BASE}/api/notes?limit=100`, {
+      headers: { Cookie: actor.cookie, Origin: ORIGIN },
+    }).then((r) => r.json());
+    expect(items).toEqual([]);
+
+    // The blob is gone from R2 too, not merely unreferenced.
+    const gc = await fetch(`${BASE}/api/admin/gc-blobs`, {
+      method: 'POST',
+      headers: { Cookie: actor.cookie, Origin: ORIGIN },
+    }).then((r) => r.json());
+    expect(gc.stored).toBe(0);
+  });
+
+  it('drops tags that no longer have notes', async () => {
+    const actor = await signUp(`purge-tags-${Date.now()}@example.test`, 'purge-pass-1234', 'P');
+    await fetch(`${BASE}/api/notes`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Cookie: actor.cookie, Origin: ORIGIN },
+      body: JSON.stringify({ title: 'Tagged', body: 'x', tags: ['gone-after-purge'] }),
+    });
+
+    await purge(actor, '?scope=all&confirm=DELETE');
+
+    const { tags } = await fetch(`${BASE}/api/tags`, {
+      headers: { Cookie: actor.cookie, Origin: ORIGIN },
+    }).then((r) => r.json());
+    expect(tags).toEqual([]);
+  });
+
+  it('never reaches another user notes', async () => {
+    const victim = await signUp(`purge-victim-${Date.now()}@example.test`, 'purge-pass-1234', 'V');
+    const victimNote = await createNote(victim, 'Not yours');
+    await upload(victim, victimNote.id, 'safe.txt', 'safe');
+
+    const attacker = await signUp(`purge-attacker-${Date.now()}@example.test`, 'purge-pass-1234', 'A');
+    const body = await (await purge(attacker, '?scope=all&confirm=DELETE')).json();
+    expect(body.notesDeleted).toBe(0);
+
+    expect(
+      (await fetch(`${BASE}/api/notes/${victimNote.id}`, {
+        headers: { Cookie: victim.cookie, Origin: ORIGIN },
+      })).status,
+    ).toBe(200);
+    expect(
+      (await fetch(`${BASE}/api/notes/${victimNote.id}/files/safe.txt`, {
+        headers: { Cookie: victim.cookie, Origin: ORIGIN },
+      })).status,
+    ).toBe(200);
+  });
+
+  it('requires a session', async () => {
+    const res = await fetch(`${BASE}/api/admin/purge-notes?scope=all&confirm=DELETE`, {
+      method: 'POST',
+      headers: { Origin: ORIGIN },
+    });
+    expect(res.status).toBe(401);
+  });
+});

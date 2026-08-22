@@ -573,3 +573,39 @@ h1 {
 .failures summary { cursor: pointer; color: var(--muted); }
 .failures ul { max-height: 12rem; overflow-y: auto; margin: 0.5rem 0 0; padding-left: 1.2rem; }
 .failures li { margin-bottom: 0.25rem; color: var(--muted); }
+
+/* Maintenance */
+.danger-zone {
+  width: 100%;
+  padding-top: 0.9rem;
+  border-top: 1px solid var(--border);
+}
+
+.danger-zone h3 {
+  margin: 0 0 0.5rem;
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+}
+
+.danger-actions { display: flex; flex-wrap: wrap; gap: 1.2rem; }
+
+.danger-confirm {
+  max-width: 40rem;
+  margin-top: 0.9rem;
+  padding: 0.9rem;
+  border: 1px solid var(--bad);
+  border-radius: 0.45rem;
+}
+
+.danger-confirm p { margin: 0 0 0.7rem; }
+
+.danger-confirm-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  align-items: center;
+}
+
+.danger-confirm-row .search-field { width: 10rem; }

@@ -71,6 +71,25 @@ To rebuild the index from scratch: `INSERT INTO notes_fts(notes_fts) VALUES('reb
 current state into `.wrangler/backups/` first. Use it instead of removing the state
 directory by hand — that has no undo and has already cost one set of local notes.
 
+## Deleting notes
+
+Note deletion in the app is a soft delete — the note goes to trash and its attachments stay
+in R2 so a restore is not left with dead links. To reclaim that storage, the Import panel
+has a Maintenance section:
+
+- **Empty trash** — permanently deletes soft-deleted notes and their files.
+- **Sweep orphaned files** — removes R2 objects with no attachment row.
+- **Delete all notes** — wipes every note and attachment in the account. Requires typing
+  `DELETE`, since it is irreversible and export is the only way back.
+
+The API equivalents are `POST /api/admin/purge-notes?scope=trashed|all&confirm=DELETE` and
+`POST /api/admin/gc-blobs?apply=1`. Both are scoped to the caller's own data.
+
+For local development, `pnpm --filter @unbent/api reset:local` clears D1 and R2 entirely and
+rebuilds the schema, backing up D1 first. Use that rather than the in-app sweep to clear
+fixtures left by deleted test users — the scoped sweep cannot reach another account's
+prefix by design.
+
 ## Blob garbage collection
 
 R2 has no foreign keys, so objects can outlive their metadata — a crash between the upload

@@ -13,7 +13,8 @@
     "test": "vitest run",
     "posttest": "./scripts/purge-test-data.sh",
     "purge-test-data": "./scripts/purge-test-data.sh",
-    "db:reset": "./scripts/reset-local-db.sh"
+    "db:reset": "./scripts/reset-local-db.sh",
+    "reset:local": "./scripts/reset-local.sh"
   },
   "dependencies": {
     "@hono/zod-validator": "^0.9.0",

@@ -105,3 +105,34 @@ export async function searchNotes(q: string): Promise<SearchResult[]> {
   );
   return results;
 }
+
+export interface PurgeResult {
+  scope: 'trashed' | 'all';
+  notesDeleted: number;
+  filesDeleted: number;
+}
+
+/**
+ * Permanently deletes notes and their attachments. Irreversible — the confirmation token
+ * is required by the server, so this cannot fire from a stray call.
+ */
+export async function purgeNotes(scope: 'trashed' | 'all'): Promise<PurgeResult> {
+  return json<PurgeResult>(
+    await fetch(`/api/admin/purge-notes?scope=${scope}&confirm=DELETE`, { method: 'POST' }),
+  );
+}
+
+export interface GcResult {
+  stored: number;
+  referenced: number;
+  orphaned: number;
+  deleted: number;
+  dryRun: boolean;
+}
+
+/** Sweeps R2 objects with no attachment row. Dry run unless `apply` is true. */
+export async function gcBlobs(apply: boolean): Promise<GcResult> {
+  return json<GcResult>(
+    await fetch(`/api/admin/gc-blobs${apply ? '?apply=1' : ''}`, { method: 'POST' }),
+  );
+}

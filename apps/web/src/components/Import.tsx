@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ImportFailure, ImportProgress } from '@unbent/enex';
 import type { ImportEvent, ImportRequest } from '../import-worker.js';
+import { DangerZone } from './DangerZone.js';
 
 interface ImportProps {
   onClose: () => void;
@@ -185,6 +186,9 @@ export function Import({ onClose, onImported }: ImportProps) {
       )}
 
       {status === 'error' && <p className="bad small">{error}</p>}
+
+      {/* Placed here because resetting is what you want right after a trial import. */}
+      {status !== 'running' && <DangerZone onChanged={onImported} />}
 
       {failures.length > 0 && (
         <details className="failures">

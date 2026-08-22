@@ -327,6 +327,61 @@ export class NotesRepo extends ScopedRepo {
     }));
   }
 
+  /**
+   * Permanently removes notes, with their tags and attachment rows.
+   *
+   * Distinct from `remove`, which is a soft delete the user can undo. This is the
+   * irreversible one, so it returns the R2 keys it orphaned rather than deleting blobs
+   * itself — the caller sweeps them, and a failure there leaves recoverable garbage
+   * rather than a half-deleted note.
+   *
+   * `scope: 'trashed'` empties the trash; `scope: 'all'` wipes the account's notes.
+   */
+  async purge(scope: 'trashed' | 'all'): Promise<{ notes: number; keys: string[] }> {
+    const where =
+      scope === 'trashed' ? 'user_id = ?1 AND deleted_at IS NOT NULL' : 'user_id = ?1';
+
+    const { results: keyRows } = await this.db
+      .prepare(
+        `SELECT a.r2_key FROM attachments a
+           JOIN notes n ON n.id = a.note_id
+          WHERE n.${where} AND a.user_id = ?1`,
+      )
+      .bind(this.userId)
+      .all<{ r2_key: string }>();
+
+    const { results: idRows } = await this.db
+      .prepare(`SELECT id FROM notes WHERE ${where}`)
+      .bind(this.userId)
+      .all<{ id: string }>();
+
+    if (idRows.length === 0) return { notes: 0, keys: [] };
+
+    // Delete in batches: D1 caps bound parameters at 100 per statement, and note_tags and
+    // attachments cascade from notes so only the notes need naming.
+    const ids = idRows.map((r) => r.id);
+    for (let i = 0; i < ids.length; i += 99) {
+      const batch = ids.slice(i, i + 99);
+      const placeholders = batch.map((_, j) => `?${j + 2}`).join(', ');
+      await this.db
+        .prepare(`DELETE FROM notes WHERE user_id = ?1 AND id IN (${placeholders})`)
+        .bind(this.userId, ...batch)
+        .run();
+    }
+
+    // Tag rows are per-user and survive their notes; drop the ones nothing references.
+    await this.db
+      .prepare(
+        `DELETE FROM tags
+          WHERE user_id = ?1
+            AND id NOT IN (SELECT tag_id FROM note_tags)`,
+      )
+      .bind(this.userId)
+      .run();
+
+    return { notes: ids.length, keys: keyRows.map((r) => r.r2_key) };
+  }
+
   /** Every tag this user has in use, with note counts, for the sidebar. */
   async listTags(): Promise<Array<{ name: string; count: number }>> {
     const { results } = await this.db
