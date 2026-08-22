@@ -126,6 +126,56 @@ describe('reveal scope', () => {
   });
 });
 
+/**
+ * Every line must keep a top-level text node.
+ *
+ * A mark decoration wraps its range in a span; when the range covers the whole line, the
+ * line is left with no bare text node. Vertical cursor movement measures against text
+ * nodes, so such a line becomes unreachable — arrow-down jumps straight over it, skipping
+ * two lines in one press when two of them sit together.
+ */
+describe('line structure', () => {
+  function topLevelText(v: EditorView, lineNumber: number): boolean {
+    const line = v.dom.querySelectorAll('.cm-line')[lineNumber - 1];
+    return [...(line?.childNodes ?? [])].some(
+      (n) => n.nodeType === Node.TEXT_NODE && (n.textContent ?? '').trim().length > 0,
+    );
+  }
+
+  function lineClass(v: EditorView, lineNumber: number): string {
+    const line = v.dom.querySelectorAll('.cm-line')[lineNumber - 1] as HTMLElement | undefined;
+    return (line?.className ?? '').replace('cm-line', '').trim();
+  }
+
+  it.each([
+    ['emphasis', '_italic_', 'cm-md-em'],
+    ['strong', '**bold**', 'cm-md-strong'],
+    ['strikethrough', '~~gone~~', 'cm-md-strike'],
+  ])('keeps a text node when %s spans the whole line', (_label, marked, cls) => {
+    const doc = `plain\n${marked}\nplain`;
+    const v = mount(doc, doc.length);
+    expect(topLevelText(v, 2)).toBe(true);
+    // Styled via a line decoration rather than a wrapping span.
+    expect(lineClass(v, 2)).toContain(cls);
+  });
+
+  it('still uses an inline span for a partial mark', () => {
+    const doc = 'a **bold** word';
+    const v = mount(doc, 0);
+    expect(topLevelText(v, 1)).toBe(true);
+    expect(lineClass(v, 1)).toBe('');
+    expect(v.dom.querySelector('.cm-md-strong')?.tagName).toBe('SPAN');
+  });
+
+  it('keeps a text node on every line of a mixed document', () => {
+    const doc = '# H1\n## H2\n\n_italic_\n**bold**\n\n- List 1\nTest';
+    const v = mount(doc, doc.length);
+    for (const n of [1, 2, 4, 5, 7, 8]) {
+      expect(topLevelText(v, n)).toBe(true);
+    }
+  });
+});
+
 /** The whole reason for this editor: the document is never rewritten. */
 describe('document fidelity', () => {
   it.each([
