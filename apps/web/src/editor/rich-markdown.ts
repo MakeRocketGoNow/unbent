@@ -52,6 +52,16 @@ const MARK_NODES = new Set([
   'QuoteMark',
 ]);
 
+/**
+ * Block marks are separated from their content by a space that the mark node excludes.
+ *
+ * Hiding only `#` leaves that space visible, indenting every heading by one character —
+ * and at heading font sizes the gap is obvious against the paragraphs around it. These
+ * node types get the following whitespace hidden along with the mark. Inline marks like
+ * `**` are not in this set: the space after them is real content.
+ */
+const MARKS_WITH_TRAILING_SPACE = new Set(['HeaderMark', 'QuoteMark']);
+
 const hiddenMark = Decoration.mark({ class: 'cm-md-hidden' });
 const listBullet = Decoration.mark({ class: 'cm-md-bullet' });
 
@@ -219,7 +229,14 @@ function buildDecorations(view: EditorView, options: RichMarkdownOptions): Decor
         if (MARK_NODES.has(node.name)) {
           const scope = node.node.parent ?? node;
           if (!selectionTouches(state, scope.from, scope.to)) {
-            marks.push(hiddenMark.range(node.from, node.to));
+            let end = node.to;
+            if (MARKS_WITH_TRAILING_SPACE.has(node.name)) {
+              // Consume the separating whitespace so the content aligns with body text.
+              while (end < state.doc.length && /[ \t]/.test(state.doc.sliceString(end, end + 1))) {
+                end += 1;
+              }
+            }
+            marks.push(hiddenMark.range(node.from, end));
           }
         }
       },
