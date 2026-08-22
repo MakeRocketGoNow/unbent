@@ -15,12 +15,13 @@
     "hast-util-to-mdast": "^10.1.2",
     "mdast-util-gfm": "^3.1.0",
     "mdast-util-to-markdown": "^2.1.2",
+    "pdfjs-dist": "^6.2.108",
     "saxes": "^6.0.0",
     "unist-util-visit": "^5.0.0"
   },
   "devDependencies": {
     "@types/node": "^26.2.0",
     "typescript": "^5.7.3",
-    "vitest": "^2.1.8"
+    "vitest": "^2.1.9"
   }
 }

@@ -138,6 +138,35 @@ export class AttachmentsRepo extends ScopedRepo {
   }
 
   /**
+   * Stores text extracted from an attachment, for search.
+   *
+   * Kept out of notes.body: OCR output is thousands of characters of noisy text that
+   * would be unpleasant to edit around and would bloat every export. Indexed separately
+   * so a hit can name the file it matched.
+   */
+  async recordText(input: {
+    attachmentId: string;
+    noteId: string;
+    filename: string;
+    text: string;
+  }): Promise<void> {
+    await this.db
+      .prepare(
+        `INSERT INTO attachment_text (attachment_id, note_id, user_id, filename, text, created_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+         ON CONFLICT(attachment_id) DO UPDATE SET text = excluded.text`,
+      )
+      .bind(input.attachmentId, input.noteId, this.userId, input.filename, input.text, Date.now())
+      .run();
+  }
+
+  /** Attachment id for a filename within a note, scoped to this user. */
+  async idFor(noteId: string, filename: string): Promise<string | null> {
+    const row = await this.resolve(noteId, filename);
+    return row?.id ?? null;
+  }
+
+  /**
    * Every key under a note, for cleanup. Scoped so it cannot enumerate another user's.
    *
    * Not called on note deletion: that is a soft delete and the note is restorable, so its

@@ -1,5 +1,6 @@
 import { enmlToMarkdown } from './enml-to-markdown.js';
 import { parseEnexStream } from './parse.js';
+import { extractPdfText, isExtractable } from './pdf-text.js';
 import type { EnexNote } from './types.js';
 
 /**
@@ -16,6 +17,8 @@ export interface ImportProgress {
   skipped: number;
   failed: number;
   filesUploaded: number;
+  /** Attachments whose embedded text was extracted and indexed. */
+  filesIndexed: number;
   bytesRead: number;
   currentTitle: string;
 }
@@ -46,11 +49,21 @@ export interface ImportClient {
 
   /** Rewrites the body once real attachment filenames are known. */
   updateBody?: (noteId: string, body: string) => Promise<void>;
+
+  /** Stores text extracted from an attachment so search can reach it. */
+  saveFileText?: (noteId: string, filename: string, text: string) => Promise<void>;
 }
 
 export interface ImportOptions {
   /** Applied to every note, so the Evernote notebook survives as a tag. */
   notebookTag?: string;
+  /**
+   * Pull the text layer out of PDFs so scanned notes are searchable.
+   *
+   * Most notes in a real export are a scan with an empty body; without this they arrive
+   * as title-only stubs. Costs roughly a second per PDF.
+   */
+  extractText?: boolean;
   signal?: AbortSignal;
   onProgress?: (progress: ImportProgress) => void;
   onFailure?: (failure: ImportFailure) => void;
@@ -86,6 +99,7 @@ export async function importEnex(
     skipped: 0,
     failed: 0,
     filesUploaded: 0,
+    filesIndexed: 0,
     bytesRead: 0,
     currentTitle: '',
   };
@@ -105,7 +119,7 @@ export async function importEnex(
       progress.currentTitle = note.title || 'Untitled';
 
       try {
-        await importOne(note, notebookTag, client, progress, file.name);
+        await importOne(note, notebookTag, client, progress, file.name, options);
       } catch (err) {
         if (options.signal?.aborted) return;
         progress.failed += 1;
@@ -129,6 +143,7 @@ async function importOne(
   client: ImportClient,
   progress: ImportProgress,
   sourceEnex: string,
+  options: ImportOptions,
 ): Promise<void> {
   const { markdown, usedMd5 } = enmlToMarkdown(note.enml, note.resources);
   const body = withSourceLink(markdown, note.sourceUrl);
@@ -181,6 +196,22 @@ async function importOne(
       renames.set(resource.filename, uploaded.filename);
     }
     if (!usedMd5.has(resource.md5)) unreferenced.push(uploaded.filename);
+
+    /**
+     * Index the text already embedded in the file.
+     *
+     * Evernote OCR'd scanned attachments and left the layer in place, so this is
+     * extraction rather than OCR. Roughly a fifth of real scans yield noise instead of
+     * language; those are dropped rather than indexed, so a failed scan does not pollute
+     * search with character soup.
+     */
+    if (options.extractText && client.saveFileText && isExtractable(resource.mime)) {
+      const extracted = await extractPdfText(resource.bytes);
+      if (extracted.quality.usable) {
+        await client.saveFileText(result.id, uploaded.filename, extracted.text);
+        progress.filesIndexed += 1;
+      }
+    }
   }
 
   if (renames.size === 0 && unreferenced.length === 0) return;

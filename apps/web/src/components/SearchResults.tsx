@@ -43,6 +43,9 @@ export function SearchResults({ results, selectedId, onSelect }: SearchResultsPr
             onClick={() => onSelect(r.id)}
           >
             <span className="note-title">{r.title || 'Untitled'}</span>
+            {/* Naming the file makes an otherwise puzzling hit explicable: the note body
+                may not contain the search term at all. */}
+            {r.matchedFile && <span className="matched-file">in {r.matchedFile}</span>}
             <Snippet text={r.snippet} />
           </button>
         </li>

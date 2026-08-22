@@ -65,6 +65,21 @@ of those tests fail.
 
 To rebuild the index from scratch: `INSERT INTO notes_fts(notes_fts) VALUES('rebuild');`
 
+### Searching inside PDFs
+
+Most notes in a real Evernote export are a scanned PDF with an empty body — in one notebook,
+90 of 108 sampled notes had zero body text. Searching note text alone would never find them.
+
+Evernote already ran OCR on those scans and embedded the text layer, so the import extracts
+it with pdf.js rather than re-OCRing: about 80% of real scans yield usable text, median ~8k
+characters. It lands in `attachment_text`, indexed by its own FTS5 table, and search unions
+both indexes — note matches rank above attachment matches, and a hit from a file reports
+which file it came from.
+
+Roughly a fifth of scans produce character noise instead of language (`> CO 5 I > — O —`).
+Those are filtered out rather than indexed. Much of the usable text is letter-spaced
+(`H a r b o r v i e w`), which is rejoined so the word is actually findable.
+
 ## Local database
 
 `pnpm --filter @unbent/api db:reset` rebuilds the local D1 from migrations, copying the

@@ -95,4 +95,6 @@ export interface SearchResult {
   title: string;
   updatedAt: number;
   snippet: string;
+  /** Set when the match came from an attachment's extracted text rather than the note. */
+  matchedFile?: string;
 }

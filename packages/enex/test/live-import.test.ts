@@ -48,6 +48,17 @@ function liveClient(cookie: string): ImportClient {
       if (!res.ok) throw new Error(`upload ${res.status}: ${await res.text()}`);
       return res.json() as Promise<{ filename: string }>;
     },
+    saveFileText: async (noteId, filename, text) => {
+      const res = await fetch(
+        `${BASE}/api/notes/${noteId}/files/${encodeURIComponent(filename)}/text`,
+        {
+          method: 'PUT',
+          headers: { ...headers, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ text }),
+        },
+      );
+      if (!res.ok) throw new Error(`saveFileText ${res.status}: ${await res.text()}`);
+    },
     updateBody: async (noteId, body) => {
       const res = await fetch(`${BASE}/api/notes/${noteId}`, {
         method: 'PATCH',
@@ -127,6 +138,30 @@ describe.skipIf(!enabled)('live import', () => {
     }
     expect(checked).toBeGreaterThan(0);
   }, 300_000);
+
+  /**
+   * The reason this feature exists: most notes in the real corpus are a scan with an empty
+   * body, so searching note text alone would never find them.
+   */
+  it('makes text inside scanned PDFs searchable', async () => {
+    const cookie = await signUp();
+    const client = liveClient(cookie);
+
+    const progress = await importEnex(fileHandle('Appliance Manuals.enex'), client, {
+      extractText: true,
+    });
+
+    expect(progress.filesIndexed).toBeGreaterThan(0);
+
+    // A word that appears only inside a scanned PDF, never in any note body.
+    const { results } = await fetch(`${BASE}/api/search?q=pharmacy`, {
+      headers: { Cookie: cookie, Origin: ORIGIN },
+    }).then((r) => r.json());
+
+    expect(results.length).toBeGreaterThan(0);
+    // The hit names the file it matched, so the result is explicable.
+    expect(results.some((r: { matchedFile?: string }) => r.matchedFile)).toBe(true);
+  }, 600_000);
 
   it('is idempotent when re-run', async () => {
     const cookie = await signUp();

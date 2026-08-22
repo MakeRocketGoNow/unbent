@@ -234,6 +234,99 @@ describe('index maintenance', () => {
   });
 });
 
+/**
+ * Attachment text participates in search, so it needs the same scoping guarantees as note
+ * text — and its own cross-tenant case, since it joins through a different table.
+ */
+describe('attachment text', () => {
+  async function noteWithText(actor: Actor, token: string): Promise<{ id: string }> {
+    const note = await createNote(actor, { title: 'Scanned', body: '' });
+
+    await fetch(`${BASE}/api/notes/${note.id}/files`, {
+      method: 'PUT',
+      headers: {
+        Cookie: actor.cookie,
+        Origin: ORIGIN,
+        'X-Filename': 'scan.pdf',
+        'Content-Type': 'application/pdf',
+      },
+      body: 'PDFBYTES',
+    });
+
+    const res = await fetch(`${BASE}/api/notes/${note.id}/files/scan.pdf/text`, {
+      method: 'PUT',
+      headers: { Cookie: actor.cookie, Origin: ORIGIN, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text: `extracted contents mentioning ${token}` }),
+    });
+    expect(res.status).toBe(204);
+    return note;
+  }
+
+  it('finds a note by text that exists only inside its attachment', async () => {
+    const token = `onlyinpdf${Date.now()}`;
+    const note = await noteWithText(alice, token);
+
+    const hits = await find(alice, token);
+    expect(hits.map((h) => h.id)).toContain(note.id);
+    // The result names the file, so the match is explicable.
+    expect(hits[0]!.matchedFile).toBe('scan.pdf');
+  });
+
+  it('does not leak attachment text across users', async () => {
+    const token = `secretpdf${Date.now()}`;
+    await noteWithText(alice, token);
+    expect(await find(bob, token)).toEqual([]);
+  });
+
+  it('rejects saving text for another user note', async () => {
+    const note = await noteWithText(alice, `x${Date.now()}`);
+    const res = await fetch(`${BASE}/api/notes/${note.id}/files/scan.pdf/text`, {
+      method: 'PUT',
+      headers: { Cookie: bob.cookie, Origin: ORIGIN, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text: 'injected' }),
+    });
+    expect(res.status).toBe(404);
+  });
+
+  it('drops attachment text when the note is purged', async () => {
+    const token = `purged${Date.now()}`;
+    await noteWithText(alice, token);
+    expect((await find(alice, token)).length).toBe(1);
+
+    await fetch(`${BASE}/api/notes`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Cookie: alice.cookie, Origin: ORIGIN },
+      body: JSON.stringify({ title: 'keeper', body: 'keeper' }),
+    });
+
+    // Soft delete then purge, which is how the trash is emptied.
+    const { items } = await fetch(`${BASE}/api/notes?limit=100`, {
+      headers: { Cookie: alice.cookie, Origin: ORIGIN },
+    }).then((r) => r.json());
+    const scanned = items.find((i: { title: string }) => i.title === 'Scanned');
+    await fetch(`${BASE}/api/notes/${scanned.id}`, {
+      method: 'DELETE',
+      headers: { Cookie: alice.cookie, Origin: ORIGIN },
+    });
+    await fetch(`${BASE}/api/admin/purge-notes?scope=trashed&confirm=DELETE`, {
+      method: 'POST',
+      headers: { Cookie: alice.cookie, Origin: ORIGIN },
+    });
+
+    expect(await find(alice, token)).toEqual([]);
+  });
+
+  it('prefers a note-body match over an attachment match', async () => {
+    const token = `bothplaces${Date.now()}`;
+    await noteWithText(alice, token);
+    const direct = await createNote(alice, { title: 'Direct', body: `body has ${token}` });
+
+    const hits = await find(alice, token);
+    expect(hits[0]!.id).toBe(direct.id);
+    expect(hits[0]!.matchedFile).toBeUndefined();
+  });
+});
+
 describe('cross-tenant access', () => {
   it('never returns another user notes', async () => {
     expect(await find(bob, 'Rampage')).toEqual([]);

@@ -106,6 +106,36 @@ export const attachments = new Hono<AppEnv>()
     return new Response(object.body, { headers });
   })
 
+  /**
+   * Stores text extracted from an attachment, for search.
+   *
+   * A separate call rather than part of the upload because extraction happens on the
+   * client after the bytes are already sent, and because it is optional — an attachment
+   * with no usable text simply never gets one.
+   */
+  .put('/notes/:id/files/:filename/text', async (c) => {
+    const noteId = c.req.param('id');
+    const filename = decodeURIComponent(c.req.param('filename'));
+
+    const attachmentId = await c.get('attachments').idFor(noteId, filename);
+    if (!attachmentId) return c.json({ error: 'Not found' }, 404);
+
+    const { text } = await c.req.json<{ text?: string }>();
+    if (typeof text !== 'string' || text.length === 0) {
+      return c.json({ error: 'text required' }, 400);
+    }
+
+    await c.get('attachments').recordText({
+      attachmentId,
+      noteId,
+      filename,
+      // D1 caps a row at 2MB; long scans are truncated rather than rejected.
+      text: text.slice(0, 500_000),
+    });
+
+    return c.body(null, 204);
+  })
+
   .delete('/notes/:id/files/:filename', async (c) => {
     const filename = decodeURIComponent(c.req.param('filename'));
     const key = await c.get('attachments').remove(c.req.param('id'), filename);

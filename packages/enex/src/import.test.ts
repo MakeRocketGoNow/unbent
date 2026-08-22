@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { describe, expect, it, vi } from 'vitest';
 import { importEnex, type ImportClient } from './import.js';
 
@@ -302,4 +303,83 @@ describe('failures', () => {
     expect(progress.failed).toBe(0);
     expect(progress.processed).toBe(1);
   });
+});
+
+/**
+ * Text extraction during import.
+ *
+ * Most notes in a real export are a scanned PDF with an empty body, so without this they
+ * arrive as title-only stubs that search cannot reach.
+ */
+describe('attachment text extraction', () => {
+  const pdfBase64 = readFileSync(
+    new URL('../test/fixtures/scan-good.b64.txt', import.meta.url),
+    'utf8',
+  ).trim();
+
+  function pdfNote(title: string): string {
+    // The md5 does not need to match: an unreferenced resource is still uploaded.
+    return note({
+      title,
+      content: '<div></div>',
+      resources: [{ base64: pdfBase64, mime: 'application/pdf', filename: 'scan.pdf' }],
+    });
+  }
+
+  it('extracts and saves text when enabled', async () => {
+    const saved: Array<{ filename: string; text: string }> = [];
+    const { client } = fakeClient({
+      saveFileText: async (_noteId, filename, text) => {
+        saved.push({ filename, text });
+      },
+    });
+
+    const progress = await importEnex(enexFile('Scans.enex', [pdfNote('Scan')]), client, {
+      extractText: true,
+    });
+
+    expect(progress.filesIndexed).toBe(1);
+    expect(saved).toHaveLength(1);
+    expect(saved[0]!.filename).toBe('scan.pdf');
+    // Real content from the scan, which is the whole point.
+    expect(saved[0]!.text).toContain('Northfield');
+  }, 60_000);
+
+  it('does not extract when disabled', async () => {
+    const saved: string[] = [];
+    const { client } = fakeClient({
+      saveFileText: async (_n, f) => {
+        saved.push(f);
+      },
+    });
+
+    const progress = await importEnex(enexFile('Scans.enex', [pdfNote('Scan')]), client);
+
+    expect(progress.filesIndexed).toBe(0);
+    expect(saved).toEqual([]);
+  }, 60_000);
+
+  it('still uploads the file when its text is unusable', async () => {
+    const saved: string[] = [];
+    const { client, files } = fakeClient({
+      saveFileText: async (_n, f) => {
+        saved.push(f);
+      },
+    });
+
+    // A text file is not extractable, so no text is saved but the upload still happens.
+    const file = enexFile('Mixed.enex', [
+      note({
+        title: 'Plain',
+        content: '<div>x</div>',
+        resources: [{ base64: 'aGVsbG8=', mime: 'text/plain', filename: 'note.txt' }],
+      }),
+    ]);
+
+    const progress = await importEnex(file, client, { extractText: true });
+
+    expect(files).toHaveLength(1);
+    expect(progress.filesIndexed).toBe(0);
+    expect(saved).toEqual([]);
+  }, 60_000);
 });

@@ -12,7 +12,9 @@ import { importEnex, type ImportFailure, type ImportProgress } from '@unbent/ene
  * jar but does not send them by default.
  */
 
-export type ImportRequest = { type: 'start'; file: File } | { type: 'abort' };
+export type ImportRequest =
+  | { type: 'start'; file: File; extractText: boolean }
+  | { type: 'abort' };
 
 export type ImportEvent =
   | { type: 'progress'; progress: ImportProgress }
@@ -39,7 +41,7 @@ self.onmessage = async (event: MessageEvent<ImportRequest>) => {
     return;
   }
 
-  const { file } = event.data;
+  const { file, extractText } = event.data;
   controller = new AbortController();
 
   try {
@@ -76,8 +78,17 @@ self.onmessage = async (event: MessageEvent<ImportRequest>) => {
             body: JSON.stringify({ body }),
           });
         },
+
+        saveFileText: async (noteId, filename, text) => {
+          await api(`/api/notes/${noteId}/files/${encodeURIComponent(filename)}/text`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ text }),
+          });
+        },
       },
       {
+        extractText,
         signal: controller.signal,
         onProgress: (progress) => post({ type: 'progress', progress }),
         onFailure: (failure) => post({ type: 'failure', failure }),

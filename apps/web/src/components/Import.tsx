@@ -25,6 +25,7 @@ export function Import({ onClose, onImported }: ImportProps) {
   const [failures, setFailures] = useState<ImportFailure[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [elapsed, setElapsed] = useState(0);
+  const [extractText, setExtractText] = useState(true);
 
   const worker = useRef<Worker | null>(null);
   const startedAt = useRef(0);
@@ -81,9 +82,9 @@ export function Import({ onClose, onImported }: ImportProps) {
       setStatus('error');
     };
 
-    const request: ImportRequest = { type: 'start', file };
+    const request: ImportRequest = { type: 'start', file, extractText };
     w.postMessage(request);
-  }, [file, onImported]);
+  }, [file, extractText, onImported]);
 
   function stop() {
     worker.current?.postMessage({ type: 'abort' } satisfies ImportRequest);
@@ -123,6 +124,19 @@ export function Import({ onClose, onImported }: ImportProps) {
             </p>
           )}
 
+          <label className="checkbox-row">
+            <input
+              type="checkbox"
+              checked={extractText}
+              onChange={(e) => setExtractText(e.target.checked)}
+            />
+            <span className="small">
+              Search inside PDFs — reads the text Evernote already OCR'd into scanned
+              attachments. Most scanned notes have no body text, so without this they are
+              only findable by title. Adds roughly a second per PDF.
+            </span>
+          </label>
+
           <button type="button" className="primary" disabled={!file} onClick={start}>
             Start import
           </button>
@@ -147,6 +161,10 @@ export function Import({ onClose, onImported }: ImportProps) {
             <div>
               <dt>Files</dt>
               <dd>{progress.filesUploaded.toLocaleString()}</dd>
+            </div>
+            <div>
+              <dt>Indexed</dt>
+              <dd>{progress.filesIndexed.toLocaleString()}</dd>
             </div>
             <div>
               <dt>Failed</dt>

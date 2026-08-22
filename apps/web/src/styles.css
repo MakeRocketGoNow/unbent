@@ -609,3 +609,22 @@ h1 {
 }
 
 .danger-confirm-row .search-field { width: 10rem; }
+
+.checkbox-row {
+  display: flex;
+  gap: 0.55rem;
+  align-items: flex-start;
+  max-width: 46rem;
+  cursor: pointer;
+}
+
+.checkbox-row input { margin-top: 0.2rem; }
+.checkbox-row span { color: var(--muted); }
+
+.matched-file {
+  font-size: 0.7rem;
+  color: var(--accent);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
