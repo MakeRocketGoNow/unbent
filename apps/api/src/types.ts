@@ -1,3 +1,5 @@
+import type { NotesRepo } from './lib/notes-repo.js';
+
 /** Bindings declared in wrangler.toml, plus secrets supplied via `wrangler secret`. */
 export interface Env {
   DB: D1Database;
@@ -25,6 +27,8 @@ export interface Variables {
   /** Set by sessionMiddleware when a valid session exists. */
   userId?: string;
   user?: SessionUser;
+  /** Set by withRepos; already bound to the authenticated user. */
+  notes: NotesRepo;
 }
 
 export type AppEnv = { Bindings: Env; Variables: Variables };

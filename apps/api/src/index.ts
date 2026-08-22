@@ -4,6 +4,7 @@ import type { AppEnv } from './types.js';
 import { sessionMiddleware } from './lib/session.js';
 import { health } from './routes/health.js';
 import { authRoutes } from './routes/auth.js';
+import { notes } from './routes/notes.js';
 
 const app = new Hono<AppEnv>();
 
@@ -19,7 +20,10 @@ app.onError((err, c) => {
 
 app.notFound((c) => c.json({ error: 'Not found' }, 404));
 
-const routes = app.route('/api', health).route('/api', authRoutes);
+const routes = app
+  .route('/api', health)
+  .route('/api', authRoutes)
+  .route('/api', notes);
 
 /** Consumed by the SPA through `hc<AppType>()` for end-to-end types with no codegen. */
 export type AppType = typeof routes;

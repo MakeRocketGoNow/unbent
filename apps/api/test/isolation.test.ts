@@ -96,16 +96,179 @@ describe('public routes', () => {
   });
 });
 
+async function createNote(
+  actor: Actor,
+  body: { title?: string; body?: string; tags?: string[] },
+): Promise<{ id: string }> {
+  const res = await fetch(`${BASE}/api/notes`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Cookie: actor.cookie, Origin: ORIGIN },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error(`create failed: ${res.status} ${await res.text()}`);
+  return res.json();
+}
+
+describe('note CRUD', () => {
+  it('round-trips a note', async () => {
+    const created = await createNote(alice, {
+      title: 'Round trip',
+      body: '# Hello\n\nBody text.',
+      tags: ['work', 'planning'],
+    });
+
+    const res = await fetch(`${BASE}/api/notes/${created.id}`, asUser(alice));
+    const note = await res.json();
+    expect(note.title).toBe('Round trip');
+    expect(note.body).toBe('# Hello\n\nBody text.');
+    expect(note.tags.sort()).toEqual(['planning', 'work']);
+  });
+
+  it('lists newest first and excerpts the body', async () => {
+    await createNote(alice, { title: 'Older', body: 'first' });
+    const newer = await createNote(alice, { title: 'Newer', body: '## Heading\n\nreal text' });
+
+    const { items } = await fetch(`${BASE}/api/notes`, asUser(alice)).then((r) => r.json());
+    expect(items[0].id).toBe(newer.id);
+    // The excerpt strips heading syntax and uses the first non-empty line.
+    expect(items[0].excerpt).toBe('Heading');
+  });
+
+  it('patches title, body, and tags independently', async () => {
+    const n = await createNote(alice, { title: 'Before', body: 'b', tags: ['x'] });
+
+    const patch = async (payload: object) =>
+      fetch(`${BASE}/api/notes/${n.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', Cookie: alice.cookie, Origin: ORIGIN },
+        body: JSON.stringify(payload),
+      }).then((r) => r.json());
+
+    expect((await patch({ title: 'After' })).title).toBe('After');
+    expect((await patch({ title: 'After' })).tags).toEqual(['x']);
+    expect((await patch({ tags: ['y', 'z'] })).tags.sort()).toEqual(['y', 'z']);
+    expect((await patch({ tags: [] })).tags).toEqual([]);
+  });
+
+  it('soft-deletes so the note leaves the list and 404s', async () => {
+    const n = await createNote(alice, { title: 'Doomed', body: 'x' });
+
+    const del = await fetch(`${BASE}/api/notes/${n.id}`, {
+      method: 'DELETE',
+      headers: { Cookie: alice.cookie, Origin: ORIGIN },
+    });
+    expect(del.status).toBe(204);
+
+    expect((await fetch(`${BASE}/api/notes/${n.id}`, asUser(alice))).status).toBe(404);
+
+    const { items } = await fetch(`${BASE}/api/notes`, asUser(alice)).then((r) => r.json());
+    expect(items.map((i: { id: string }) => i.id)).not.toContain(n.id);
+  });
+
+  it('filters by tag', async () => {
+    const tag = `filter-${Date.now()}`;
+    const tagged = await createNote(alice, { title: 'Tagged', body: 'x', tags: [tag] });
+    await createNote(alice, { title: 'Untagged', body: 'x' });
+
+    const { items } = await fetch(`${BASE}/api/notes?tag=${tag}`, asUser(alice)).then((r) =>
+      r.json(),
+    );
+    expect(items.map((i: { id: string }) => i.id)).toEqual([tagged.id]);
+  });
+
+  it('rejects a body over the D1 row limit', async () => {
+    const res = await fetch(`${BASE}/api/notes`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Cookie: alice.cookie, Origin: ORIGIN },
+      body: JSON.stringify({ title: 'Huge', body: 'x'.repeat(2_000_000) }),
+    });
+    expect(res.status).toBe(400);
+  });
+});
+
+describe('unauthenticated access', () => {
+  const cases: Array<[string, string, RequestInit]> = [
+    ['GET', '/api/notes', {}],
+    ['POST', '/api/notes', { method: 'POST', body: '{}' }],
+    ['GET', '/api/notes/whatever', {}],
+    ['PATCH', '/api/notes/whatever', { method: 'PATCH', body: '{}' }],
+    ['DELETE', '/api/notes/whatever', { method: 'DELETE' }],
+    ['GET', '/api/tags', {}],
+  ];
+
+  it.each(cases)('%s %s requires a session', async (_m, path, init) => {
+    const res = await fetch(`${BASE}${path}`, {
+      ...init,
+      headers: { 'Content-Type': 'application/json', Origin: ORIGIN },
+    });
+    expect(res.status).toBe(401);
+  });
+});
+
 /**
- * Phase 2+ extends this block: every route added that reads or writes user data gets a
- * case here asserting the other actor receives 404.
+ * The suite that matters. D1 has no row-level security, so every route touching user data
+ * gets a case here proving the other actor cannot reach it. 404 rather than 403 throughout:
+ * a 403 would confirm the id exists.
  */
 describe('cross-tenant access', () => {
-  it.todo('notes: bob cannot GET alice note by id');
-  it.todo('notes: bob cannot PATCH alice note by id');
-  it.todo('notes: bob cannot DELETE alice note by id');
-  it.todo('attachments: bob cannot fetch a blob under alice note id');
+  let aliceNote: { id: string };
+
+  beforeAll(async () => {
+    aliceNote = await createNote(alice, {
+      title: 'Alice private',
+      body: 'secret',
+      tags: ['alice-only'],
+    });
+  });
+
+  it('bob cannot GET an alice note by id', async () => {
+    const res = await fetch(`${BASE}/api/notes/${aliceNote.id}`, asUser(bob));
+    expect(res.status).toBe(404);
+  });
+
+  it('bob cannot PATCH an alice note by id', async () => {
+    const res = await fetch(`${BASE}/api/notes/${aliceNote.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', Cookie: bob.cookie, Origin: ORIGIN },
+      body: JSON.stringify({ title: 'pwned' }),
+    });
+    expect(res.status).toBe(404);
+
+    // And the note is genuinely untouched, not merely reported as missing.
+    const still = await fetch(`${BASE}/api/notes/${aliceNote.id}`, asUser(alice)).then((r) =>
+      r.json(),
+    );
+    expect(still.title).toBe('Alice private');
+  });
+
+  it('bob cannot DELETE an alice note by id', async () => {
+    const res = await fetch(`${BASE}/api/notes/${aliceNote.id}`, {
+      method: 'DELETE',
+      headers: { Cookie: bob.cookie, Origin: ORIGIN },
+    });
+    expect(res.status).toBe(404);
+    expect((await fetch(`${BASE}/api/notes/${aliceNote.id}`, asUser(alice))).status).toBe(200);
+  });
+
+  it('alice notes never appear in a bob list', async () => {
+    const { items } = await fetch(`${BASE}/api/notes?limit=100`, asUser(bob)).then((r) => r.json());
+    expect(items.map((i: { id: string }) => i.id)).not.toContain(aliceNote.id);
+  });
+
+  it('alice tags never appear in bob tags', async () => {
+    const { tags } = await fetch(`${BASE}/api/tags`, asUser(bob)).then((r) => r.json());
+    expect(tags.map((t: { name: string }) => t.name)).not.toContain('alice-only');
+  });
+
+  it('a bob tag filter cannot surface an alice note', async () => {
+    const { items } = await fetch(`${BASE}/api/notes?tag=alice-only`, asUser(bob)).then((r) =>
+      r.json(),
+    );
+    expect(items).toEqual([]);
+  });
+
+  it.todo('attachments: bob cannot fetch a blob under an alice note id');
   it.todo('search: alice notes never appear in bob results');
-  it.todo('export: bob zip contains no alice notes');
+  it.todo('export: a bob zip contains no alice notes');
   it.todo('import: bob cannot write into an alice note id');
 });
