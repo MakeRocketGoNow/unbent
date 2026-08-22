@@ -10,6 +10,8 @@ interface EditorProps {
   noteId: string;
   initialValue: string;
   onChange: (value: string) => void;
+  /** Uploads a dropped or pasted file and resolves to its relative markdown path. */
+  onUpload?: (file: File) => Promise<string>;
 }
 
 /**
@@ -19,10 +21,12 @@ interface EditorProps {
  * CodeMirror's own transaction handling and drop the cursor. The view owns the document,
  * and `onChange` reports upward for autosave. Remounting on noteId is what switches notes.
  */
-export function Editor({ noteId, initialValue, onChange }: EditorProps) {
+export function Editor({ noteId, initialValue, onChange, onUpload }: EditorProps) {
   const host = useRef<HTMLDivElement>(null);
   const onChangeRef = useRef(onChange);
   onChangeRef.current = onChange;
+  const onUploadRef = useRef(onUpload);
+  onUploadRef.current = onUpload;
 
   useEffect(() => {
     if (!host.current) return;
@@ -38,6 +42,29 @@ export function Editor({ noteId, initialValue, onChange }: EditorProps) {
           cmPlaceholder('Start writing…'),
           EditorView.updateListener.of((update) => {
             if (update.docChanged) onChangeRef.current(update.state.doc.toString());
+          }),
+          EditorView.domEventHandlers({
+            drop(event, view) {
+              const files = [...(event.dataTransfer?.files ?? [])];
+              if (files.length === 0) return false;
+              event.preventDefault();
+              // Insert where the file was dropped, not where the cursor happened to be.
+              const at = view.posAtCoords({ x: event.clientX, y: event.clientY });
+              void insertUploads(view, files, at ?? view.state.selection.main.head);
+              return true;
+            },
+            dragover(event) {
+              // Without this the browser navigates away to the dropped file.
+              if (event.dataTransfer?.types.includes('Files')) event.preventDefault();
+              return false;
+            },
+            paste(event, view) {
+              const files = [...(event.clipboardData?.files ?? [])];
+              if (files.length === 0) return false;
+              event.preventDefault();
+              void insertUploads(view, files, view.state.selection.main.head);
+              return true;
+            },
           }),
           EditorView.theme({
             '&': { height: '100%', fontSize: '15px' },
@@ -62,4 +89,39 @@ export function Editor({ noteId, initialValue, onChange }: EditorProps) {
   }, [noteId]);
 
   return <div ref={host} className="editor-host" />;
+
+  /**
+   * Uploads files and replaces a placeholder with the real link when each finishes.
+   *
+   * The placeholder matters: uploads are slow enough that a user keeps typing, and
+   * inserting at a remembered offset afterwards would land in the wrong place. Replacing a
+   * unique marker is position-independent.
+   */
+  async function insertUploads(view: EditorView, files: File[], at: number) {
+    const upload = onUploadRef.current;
+    if (!upload) return;
+
+    for (const file of files) {
+      const token = `![uploading ${file.name}…](#upload-${crypto.randomUUID().slice(0, 8)})`;
+      view.dispatch({ changes: { from: at, insert: `${token}\n` } });
+
+      try {
+        const path = await upload(file);
+        const isImage = file.type.startsWith('image/');
+        const link = isImage ? `![${file.name}](${path})` : `[${file.name}](${path})`;
+        replaceToken(view, token, link);
+      } catch (err) {
+        replaceToken(view, token, `<!-- upload failed: ${(err as Error).message} -->`);
+      }
+    }
+  }
+
+  function replaceToken(view: EditorView, token: string, replacement: string) {
+    const doc = view.state.doc.toString();
+    const index = doc.indexOf(token);
+    if (index === -1) return; // the user deleted the placeholder mid-upload
+    view.dispatch({
+      changes: { from: index, to: index + token.length, insert: replacement },
+    });
+  }
 }

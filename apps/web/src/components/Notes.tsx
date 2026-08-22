@@ -180,6 +180,7 @@ export function Notes() {
                   noteId={note.id}
                   initialValue={note.body}
                   onChange={(body) => setDraft((d) => ({ ...d, body }))}
+                  onUpload={async (file) => (await api.uploadFile(note.id, file)).path}
                 />
               </div>
               {showPreview && (

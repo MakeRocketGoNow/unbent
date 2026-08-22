@@ -70,3 +70,31 @@ export async function listTags(): Promise<Array<{ name: string; count: number }>
   );
   return tags;
 }
+
+export interface UploadedFile {
+  filename: string;
+  contentType: string;
+  size: number;
+  /** Relative path to insert into the markdown, e.g. `files/diagram.png`. */
+  path: string;
+}
+
+/**
+ * Uploads one file to a note. The body is sent as a raw stream rather than multipart so
+ * the Worker can pipe it straight into R2 without buffering.
+ */
+export async function uploadFile(noteId: string, file: File): Promise<UploadedFile> {
+  const res = await fetch(`/api/notes/${noteId}/files`, {
+    method: 'PUT',
+    headers: {
+      'X-Filename': encodeURIComponent(file.name),
+      'Content-Type': file.type || 'application/octet-stream',
+    },
+    body: file,
+  });
+  if (!res.ok) {
+    const detail = await res.text().catch(() => '');
+    throw new Error(detail ? JSON.parse(detail).error ?? detail : `${res.status}`);
+  }
+  return res.json() as Promise<UploadedFile>;
+}
