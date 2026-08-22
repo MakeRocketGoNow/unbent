@@ -80,6 +80,11 @@ Roughly a fifth of scans produce character noise instead of language (`> CO 5 I 
 Those are filtered out rather than indexed. Much of the usable text is letter-spaced
 (`H a r b o r v i e w`), which is rejoined so the word is actually findable.
 
+**Backfill.** Import is idempotent on content hash, so notes imported before extraction
+existed cannot be fixed by re-importing — they are skipped along with their attachments.
+"Index existing PDFs" in the Import panel walks the gap instead, extracting text for any
+attachment that does not have it yet.
+
 ## Local database
 
 `pnpm --filter @unbent/api db:reset` rebuilds the local D1 from migrations, copying the

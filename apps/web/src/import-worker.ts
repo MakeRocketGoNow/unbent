@@ -1,5 +1,10 @@
 /// <reference lib="webworker" />
-import { importEnex, type ImportFailure, type ImportProgress } from '@unbent/enex';
+import {
+  extractPdfText,
+  importEnex,
+  type ImportFailure,
+  type ImportProgress,
+} from '@unbent/enex';
 
 /**
  * Runs an ENEX import off the main thread.
@@ -14,9 +19,14 @@ import { importEnex, type ImportFailure, type ImportProgress } from '@unbent/ene
 
 export type ImportRequest =
   | { type: 'start'; file: File; extractText: boolean }
+  | { type: 'backfill' }
   | { type: 'abort' };
 
+export type BackfillProgress = { done: number; indexed: number; total: number };
+
 export type ImportEvent =
+  | { type: 'backfill-progress'; progress: BackfillProgress }
+  | { type: 'backfill-done'; progress: BackfillProgress }
   | { type: 'progress'; progress: ImportProgress }
   | { type: 'failure'; failure: ImportFailure }
   | { type: 'done'; progress: ImportProgress }
@@ -38,6 +48,11 @@ async function api(path: string, init: RequestInit): Promise<Response> {
 self.onmessage = async (event: MessageEvent<ImportRequest>) => {
   if (event.data.type === 'abort') {
     controller?.abort();
+    return;
+  }
+
+  if (event.data.type === 'backfill') {
+    await runBackfill();
     return;
   }
 
@@ -102,3 +117,81 @@ self.onmessage = async (event: MessageEvent<ImportRequest>) => {
     controller = null;
   }
 };
+
+/**
+ * Extracts text for attachments that do not have it yet.
+ *
+ * Needed because import is idempotent on content hash: notes imported before extraction
+ * existed cannot be fixed by re-importing, since they are skipped along with their
+ * attachments. This walks the gap instead.
+ */
+async function runBackfill(): Promise<void> {
+  controller = new AbortController();
+  const progress: BackfillProgress = { done: 0, indexed: 0, total: 0 };
+
+  try {
+    for (;;) {
+      if (controller.signal.aborted) break;
+
+      const res = await api('/api/attachments/pending-text?limit=25', { method: 'GET' });
+      const { pending, remaining } = (await res.json()) as {
+        pending: Array<{ noteId: string; filename: string }>;
+        remaining: number;
+      };
+
+      if (progress.total === 0) progress.total = remaining;
+      if (pending.length === 0) break;
+
+      for (const item of pending) {
+        if (controller.signal.aborted) break;
+
+        try {
+          const blob = await api(
+            `/api/notes/${item.noteId}/files/${encodeURIComponent(item.filename)}`,
+            { method: 'GET' },
+          );
+          const bytes = new Uint8Array(await blob.arrayBuffer());
+          const extracted = await extractPdfText(bytes);
+
+          if (extracted.quality.usable) {
+            await api(
+              `/api/notes/${item.noteId}/files/${encodeURIComponent(item.filename)}/text`,
+              {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ text: extracted.text }),
+              },
+            );
+            progress.indexed += 1;
+          } else {
+            /**
+             * Record that extraction was tried and yielded nothing usable.
+             *
+             * Without this the same failing scans reappear on every pass and the backfill
+             * never terminates. The server stores an empty row, so it can never match.
+             */
+            await api(
+              `/api/notes/${item.noteId}/files/${encodeURIComponent(item.filename)}/text`,
+              {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ unusable: true }),
+              },
+            );
+          }
+        } catch {
+          // A single unreadable file must not stop the pass.
+        }
+
+        progress.done += 1;
+        post({ type: 'backfill-progress', progress: { ...progress } });
+      }
+    }
+
+    post({ type: 'backfill-done', progress });
+  } catch (err) {
+    post({ type: 'error', message: (err as Error).message });
+  } finally {
+    controller = null;
+  }
+}

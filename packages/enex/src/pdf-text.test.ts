@@ -21,6 +21,21 @@ describe('isExtractable', () => {
   });
 });
 
+/**
+ * pdf.js resolves GlobalWorkerOptions.workerSrc before deciding whether to spawn a worker
+ * and throws when it is blank — in the browser, even on the legacy build. Node tolerates a
+ * blank value, which is why a version that failed on every real file passed these tests.
+ * Asserting the setting directly is the part that transfers.
+ */
+describe('worker configuration', () => {
+  it('sets a non-empty workerSrc', async () => {
+    // Extraction triggers the lazy load that configures it.
+    await extractPdfText(new Uint8Array(0));
+    const lib = await import('pdfjs-dist/legacy/build/pdf.mjs');
+    expect(lib.GlobalWorkerOptions.workerSrc).toBeTruthy();
+  }, 30_000);
+});
+
 describe('extractPdfText', () => {
   it('extracts usable text from a scan with good OCR', async () => {
     const result = await extractPdfText(fixture('scan-good.pdf'));

@@ -316,6 +316,102 @@ describe('attachment text', () => {
     expect(await find(alice, token)).toEqual([]);
   });
 
+  /**
+   * Prefix search must reach attachment text too.
+   *
+   * Typing "phar" should find a PDF containing "pharmacy" — the search box matches
+   * prefixes as you type, and an index that only answered whole words would look broken.
+   */
+  it('matches attachment text by prefix', async () => {
+    const token = `pharmacology${Date.now()}`;
+    const note = await noteWithText(alice, token);
+
+    const prefix = token.slice(0, 6);
+    const hits = await find(alice, prefix);
+    expect(hits.map((h) => h.id)).toContain(note.id);
+  });
+
+  /**
+   * The gap that shipped: import is idempotent on content hash, so notes imported before
+   * extraction existed cannot be fixed by re-importing — they are skipped along with their
+   * attachments. Backfill is the only way to reach them.
+   */
+  it('reports attachments still needing text', async () => {
+    const actor = await signUp(`pending-${Date.now()}@example.test`, 'pending-pass-123', 'P');
+    const note = await createNote(actor, { title: 'Scanned', body: '' });
+
+    await fetch(`${BASE}/api/notes/${note.id}/files`, {
+      method: 'PUT',
+      headers: {
+        Cookie: actor.cookie,
+        Origin: ORIGIN,
+        'X-Filename': 'scan.pdf',
+        'Content-Type': 'application/pdf',
+      },
+      body: 'PDFBYTES',
+    });
+
+    const before = await fetch(`${BASE}/api/attachments/pending-text`, {
+      headers: { Cookie: actor.cookie, Origin: ORIGIN },
+    }).then((r) => r.json());
+    expect(before.remaining).toBe(1);
+    expect(before.pending[0].filename).toBe('scan.pdf');
+
+    await fetch(`${BASE}/api/notes/${note.id}/files/scan.pdf/text`, {
+      method: 'PUT',
+      headers: { Cookie: actor.cookie, Origin: ORIGIN, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text: 'now indexed' }),
+    });
+
+    const after = await fetch(`${BASE}/api/attachments/pending-text`, {
+      headers: { Cookie: actor.cookie, Origin: ORIGIN },
+    }).then((r) => r.json());
+    expect(after.remaining).toBe(0);
+    expect(after.pending).toEqual([]);
+  });
+
+  it('stops re-offering an attachment whose text was unusable', async () => {
+    const actor = await signUp(`unusable-${Date.now()}@example.test`, 'unusable-pass-1', 'U');
+    const note = await createNote(actor, { title: 'Bad scan', body: '' });
+
+    await fetch(`${BASE}/api/notes/${note.id}/files`, {
+      method: 'PUT',
+      headers: {
+        Cookie: actor.cookie,
+        Origin: ORIGIN,
+        'X-Filename': 'bad.pdf',
+        'Content-Type': 'application/pdf',
+      },
+      body: 'PDFBYTES',
+    });
+
+    // A failed extraction records an empty row so the backfill terminates.
+    await fetch(`${BASE}/api/notes/${note.id}/files/bad.pdf/text`, {
+      method: 'PUT',
+      headers: { Cookie: actor.cookie, Origin: ORIGIN, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ unusable: true }),
+    });
+
+    const after = await fetch(`${BASE}/api/attachments/pending-text`, {
+      headers: { Cookie: actor.cookie, Origin: ORIGIN },
+    }).then((r) => r.json());
+    expect(after.remaining).toBe(0);
+
+    // An empty row can never match. Search a token that appears nowhere else, since the
+    // note's own title would legitimately match on its words.
+    expect(await find(actor, `nothinginhere${Date.now()}`)).toEqual([]);
+  });
+
+  it('does not offer another user attachments for backfill', async () => {
+    await noteWithText(alice, `mine${Date.now()}`);
+    const res = await fetch(`${BASE}/api/attachments/pending-text`, {
+      headers: { Cookie: bob.cookie, Origin: ORIGIN },
+    }).then((r) => r.json());
+    expect(res.pending.every((p: { noteId: string }) => p.noteId)).toBe(true);
+    // Bob has no PDFs of his own, so nothing is offered.
+    expect(res.extractable).toBe(0);
+  });
+
   it('prefers a note-body match over an attachment match', async () => {
     const token = `bothplaces${Date.now()}`;
     await noteWithText(alice, token);

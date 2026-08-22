@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ImportFailure, ImportProgress } from '@unbent/enex';
-import type { ImportEvent, ImportRequest } from '../import-worker.js';
+import type { BackfillProgress, ImportEvent, ImportRequest } from '../import-worker.js';
 import { DangerZone } from './DangerZone.js';
 
 interface ImportProps {
@@ -26,6 +26,8 @@ export function Import({ onClose, onImported }: ImportProps) {
   const [error, setError] = useState<string | null>(null);
   const [elapsed, setElapsed] = useState(0);
   const [extractText, setExtractText] = useState(true);
+  const [backfill, setBackfill] = useState<BackfillProgress | null>(null);
+  const [backfillDone, setBackfillDone] = useState(false);
 
   const worker = useRef<Worker | null>(null);
   const startedAt = useRef(0);
@@ -56,7 +58,16 @@ export function Import({ onClose, onImported }: ImportProps) {
 
     w.onmessage = (event: MessageEvent<ImportEvent>) => {
       const data = event.data;
-      if (data.type === 'progress') {
+      if (data.type === 'backfill-progress') {
+        setBackfill(data.progress);
+      } else if (data.type === 'backfill-done') {
+        setBackfill(data.progress);
+        setBackfillDone(true);
+        setStatus('idle');
+        onImported();
+        w.terminate();
+        worker.current = null;
+      } else if (data.type === 'progress') {
         setProgress(data.progress);
       } else if (data.type === 'failure') {
         // Cap the retained list: a bad file could otherwise produce thousands of entries
@@ -85,6 +96,34 @@ export function Import({ onClose, onImported }: ImportProps) {
     const request: ImportRequest = { type: 'start', file, extractText };
     w.postMessage(request);
   }, [file, extractText, onImported]);
+
+  const startBackfill = useCallback(() => {
+    setBackfill({ done: 0, indexed: 0, total: 0 });
+    setBackfillDone(false);
+    setError(null);
+
+    const w = new Worker(new URL('../import-worker.ts', import.meta.url), { type: 'module' });
+    worker.current = w;
+
+    w.onmessage = (event: MessageEvent<ImportEvent>) => {
+      const data = event.data;
+      if (data.type === 'backfill-progress') {
+        setBackfill(data.progress);
+      } else if (data.type === 'backfill-done') {
+        setBackfill(data.progress);
+        setBackfillDone(true);
+        onImported();
+        w.terminate();
+        worker.current = null;
+      } else if (data.type === 'error') {
+        setError(data.message);
+        w.terminate();
+        worker.current = null;
+      }
+    };
+
+    w.postMessage({ type: 'backfill' } satisfies ImportRequest);
+  }, [onImported]);
 
   function stop() {
     worker.current?.postMessage({ type: 'abort' } satisfies ImportRequest);
@@ -204,6 +243,26 @@ export function Import({ onClose, onImported }: ImportProps) {
       )}
 
       {status === 'error' && <p className="bad small">{error}</p>}
+
+      {status === 'idle' && (
+        <div className="backfill-row">
+          <button
+            type="button"
+            className="link"
+            disabled={backfill !== null && !backfillDone}
+            onClick={startBackfill}
+          >
+            Index existing PDFs
+          </button>
+          <span className="muted small">
+            {backfill === null
+              ? 'For notes imported before PDF search existed.'
+              : backfillDone
+                ? `Done. Indexed ${backfill.indexed} of ${backfill.done} PDFs.`
+                : `Indexing… ${backfill.done}${backfill.total ? ` / ${backfill.total}` : ''}`}
+          </span>
+        </div>
+      )}
 
       {/* Placed here because resetting is what you want right after a trial import. */}
       {status !== 'running' && <DangerZone onChanged={onImported} />}

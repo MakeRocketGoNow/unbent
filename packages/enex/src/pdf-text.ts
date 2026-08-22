@@ -24,17 +24,33 @@ type PdfModule = typeof import('pdfjs-dist');
 let pdfjs: PdfModule | null = null;
 
 async function loadPdfjs(): Promise<PdfModule> {
-  if (!pdfjs) {
-    /**
-     * The legacy build runs without a separate worker script.
-     *
-     * Extraction already happens inside a Web Worker during import, so spawning a nested
-     * one buys nothing — but the standard build insists on resolving `workerSrc` and
-     * fails when it is blank. The legacy build is bundled for exactly this case and
-     * resolves identically in the browser and in Node.
-     */
-    pdfjs = (await import('pdfjs-dist/legacy/build/pdf.mjs')) as unknown as PdfModule;
+  if (pdfjs) return pdfjs;
+
+  const lib = (await import('pdfjs-dist/legacy/build/pdf.mjs')) as unknown as PdfModule;
+
+  /**
+   * Give pdf.js a worker URL even though the work happens in-process.
+   *
+   * pdf.js resolves `workerSrc` before deciding whether to spawn a worker, and throws
+   * "No GlobalWorkerOptions.workerSrc specified" when it is blank — in the browser, even
+   * on the legacy build. Node tolerates a blank value, which is exactly why this was
+   * missed: extraction passed in tests and failed on every real file.
+   *
+   * The URL is resolved through the bundler so it points at the copy that ships with the
+   * app rather than a path relative to this source file.
+   */
+  if (!lib.GlobalWorkerOptions.workerSrc) {
+    try {
+      lib.GlobalWorkerOptions.workerSrc = (
+        await import('pdfjs-dist/legacy/build/pdf.worker.min.mjs?url')
+      ).default;
+    } catch {
+      // Node has no bundler to resolve `?url`; a non-empty value is enough there.
+      lib.GlobalWorkerOptions.workerSrc = 'pdf.worker.mjs';
+    }
   }
+
+  pdfjs = lib;
   return pdfjs;
 }
 

@@ -120,8 +120,19 @@ export const attachments = new Hono<AppEnv>()
     const attachmentId = await c.get('attachments').idFor(noteId, filename);
     if (!attachmentId) return c.json({ error: 'Not found' }, 404);
 
-    const { text } = await c.req.json<{ text?: string }>();
-    if (typeof text !== 'string' || text.length === 0) {
+    const body = await c.req.json<{ text?: string; unusable?: boolean }>();
+
+    /**
+     * `unusable: true` records that extraction was attempted and produced nothing worth
+     * indexing. The row exists so a backfill pass does not retry the same failing scan
+     * forever, but it holds no text, so it can never match a search.
+     */
+    if (body.unusable) {
+      await c.get('attachments').recordText({ attachmentId, noteId, filename, text: '' });
+      return c.body(null, 204);
+    }
+
+    if (typeof body.text !== 'string' || body.text.length === 0) {
       return c.json({ error: 'text required' }, 400);
     }
 
@@ -130,10 +141,30 @@ export const attachments = new Hono<AppEnv>()
       noteId,
       filename,
       // D1 caps a row at 2MB; long scans are truncated rather than rejected.
-      text: text.slice(0, 500_000),
+      text: body.text.slice(0, 500_000),
     });
 
     return c.body(null, 204);
+  })
+
+  /**
+   * Lists attachments that still need text extracted, with their bytes fetchable.
+   *
+   * Backfill runs on the client because that is where the PDF library lives — the same
+   * extraction the import uses. The server only says which files still need it.
+   */
+  .get('/attachments/pending-text', requireAuth, withRepos, async (c) => {
+    const limit = Math.min(Number(c.req.query('limit') ?? '25'), 100);
+    const [pending, coverage] = await Promise.all([
+      c.get('attachments').needingText(limit),
+      c.get('attachments').textCoverage(),
+    ]);
+
+    return c.json({
+      pending: pending.map((p) => ({ noteId: p.noteId, filename: p.filename })),
+      remaining: coverage.extractable - coverage.indexed,
+      ...coverage,
+    });
   })
 
   .delete('/notes/:id/files/:filename', async (c) => {

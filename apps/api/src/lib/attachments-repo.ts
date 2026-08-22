@@ -160,6 +160,60 @@ export class AttachmentsRepo extends ScopedRepo {
       .run();
   }
 
+  /**
+   * Attachments that could carry searchable text but have none stored yet.
+   *
+   * Drives backfill for notes imported before extraction existed, and for any upload where
+   * extraction failed. Re-importing cannot fix those: import is idempotent on content
+   * hash, so an already-imported note is skipped along with its attachments.
+   */
+  async needingText(limit: number): Promise<
+    Array<{ id: string; noteId: string; filename: string; r2Key: string }>
+  > {
+    const { results } = await this.db
+      .prepare(
+        `SELECT a.id, a.note_id, a.filename, a.r2_key
+           FROM attachments a
+           JOIN notes n ON n.id = a.note_id
+           LEFT JOIN attachment_text at ON at.attachment_id = a.id
+          WHERE a.user_id = ?1
+            AND n.user_id = ?1
+            AND n.deleted_at IS NULL
+            AND a.content_type = 'application/pdf'
+            AND at.attachment_id IS NULL
+          ORDER BY a.created_at
+          LIMIT ?2`,
+      )
+      .bind(this.userId, limit)
+      .all<{ id: string; note_id: string; filename: string; r2_key: string }>();
+
+    return results.map((r) => ({
+      id: r.id,
+      noteId: r.note_id,
+      filename: r.filename,
+      r2Key: r.r2_key,
+    }));
+  }
+
+  /** Counts of extractable attachments and how many already have text. */
+  async textCoverage(): Promise<{ extractable: number; indexed: number }> {
+    const row = await this.db
+      .prepare(
+        `SELECT
+           COUNT(*) AS extractable,
+           SUM(CASE WHEN at.attachment_id IS NOT NULL THEN 1 ELSE 0 END) AS indexed
+         FROM attachments a
+         JOIN notes n ON n.id = a.note_id
+         LEFT JOIN attachment_text at ON at.attachment_id = a.id
+        WHERE a.user_id = ?1 AND n.user_id = ?1 AND n.deleted_at IS NULL
+          AND a.content_type = 'application/pdf'`,
+      )
+      .bind(this.userId)
+      .first<{ extractable: number; indexed: number | null }>();
+
+    return { extractable: row?.extractable ?? 0, indexed: row?.indexed ?? 0 };
+  }
+
   /** Attachment id for a filename within a note, scoped to this user. */
   async idFor(noteId: string, filename: string): Promise<string | null> {
     const row = await this.resolve(noteId, filename);
