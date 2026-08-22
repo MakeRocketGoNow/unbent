@@ -51,6 +51,22 @@ is simply not offered, so local development works with none of them set.
 Sessions are cookie-based and same-origin. Better Auth enforces CSRF by requiring a trusted
 `Origin`, so API clients outside the browser must send one.
 
+## Editing
+
+CodeMirror 6 editing markdown, with a rich mode that styles the source in place — bold
+looks bold, headings are sized, task lists get real checkboxes, and attachment images
+render inline. Syntax characters hide unless the cursor is inside the node they belong to,
+so reading stays clean and editing stays direct.
+
+This is deliberately not a WYSIWYG editor. A WYSIWYG parses markdown into its own document
+model and re-serializes on save, which rewrites text it was never asked to touch: TipTap 3
+turns `](<files/My File.pdf>)` into a broken link, escapes underscores in filenames, and
+normalizes `_italic_` to `*italic*`. Here the text never leaves the buffer, so a stored
+note is byte-identical to what was typed — which is what makes the export guarantee real.
+
+A toolbar and the usual shortcuts (⌘B, ⌘I, ⌘K, ⌘⌥1) apply formatting as ordinary text
+edits, so every action is undoable and nothing is rewritten behind your back.
+
 ## Search
 
 FTS5 over note titles and bodies, weighted 10:1 toward titles. The index is
@@ -65,7 +81,23 @@ of those tests fail.
 
 To rebuild the index from scratch: `INSERT INTO notes_fts(notes_fts) VALUES('rebuild');`
 
-### Searching inside PDFs
+### Editing
+
+CodeMirror 6 editing markdown, with a rich mode that styles the source in place — bold
+looks bold, headings are sized, task lists get real checkboxes, and attachment images
+render inline. Syntax characters hide unless the cursor is inside the node they belong to,
+so reading stays clean and editing stays direct.
+
+This is deliberately not a WYSIWYG editor. A WYSIWYG parses markdown into its own document
+model and re-serializes on save, which rewrites text it was never asked to touch: TipTap 3
+turns `](<files/My File.pdf>)` into a broken link, escapes underscores in filenames, and
+normalizes `_italic_` to `*italic*`. Here the text never leaves the buffer, so a stored
+note is byte-identical to what was typed — which is what makes the export guarantee real.
+
+A toolbar and the usual shortcuts (⌘B, ⌘I, ⌘K, ⌘⌥1) apply formatting as ordinary text
+edits, so every action is undoable and nothing is rewritten behind your back.
+
+## Searching inside PDFs
 
 Most notes in a real Evernote export are a scanned PDF with an empty body — in one notebook,
 90 of 108 sampled notes had zero body text. Searching note text alone would never find them.

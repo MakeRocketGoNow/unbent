@@ -57,6 +57,9 @@ importers:
       '@codemirror/lang-markdown':
         specifier: ^6.5.2
         version: 6.5.2
+      '@codemirror/language':
+        specifier: ^6.12.4
+        version: 6.12.4
       '@codemirror/language-data':
         specifier: ^6.5.2
         version: 6.5.2
@@ -66,6 +69,9 @@ importers:
       '@codemirror/view':
         specifier: ^6.43.9
         version: 6.43.9
+      '@lezer/markdown':
+        specifier: ^1.7.2
+        version: 1.7.2
       '@unbent/api':
         specifier: workspace:*
         version: link:../api
@@ -127,6 +133,9 @@ importers:
       vite:
         specifier: ^6.0.7
         version: 6.4.3(@types/node@26.2.0)(tsx@4.23.12)(yaml@2.9.0)
+      vitest:
+        specifier: ^2.1.8
+        version: 2.1.9(@types/node@26.2.0)
 
   packages/enex:
     dependencies:

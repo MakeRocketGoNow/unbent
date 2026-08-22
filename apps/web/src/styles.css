@@ -651,3 +651,37 @@ h1 {
 
 .load-more:hover:not(:disabled) { border-color: var(--accent); }
 .load-more:disabled { opacity: 0.6; cursor: default; }
+
+/* Formatting toolbar */
+.editor-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.15rem;
+  padding: 0.4rem 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.tb-btn {
+  min-width: 1.9rem;
+  height: 1.75rem;
+  padding: 0 0.4rem;
+  font: inherit;
+  font-size: 0.82rem;
+  line-height: 1;
+  color: var(--muted);
+  background: none;
+  border: none;
+  border-radius: 0.3rem;
+  cursor: pointer;
+}
+
+.tb-btn:hover:not(:disabled) {
+  color: var(--fg);
+  background: color-mix(in srgb, var(--fg) 7%, transparent);
+}
+
+.tb-btn:disabled { opacity: 0.4; cursor: default; }
+
+.tb-bold { font-weight: 700; }
+.tb-italic { font-style: italic; font-family: Georgia, serif; }
+.tb-strike { text-decoration: line-through; }

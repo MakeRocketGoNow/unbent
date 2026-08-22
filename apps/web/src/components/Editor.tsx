@@ -3,7 +3,10 @@ import { EditorView, keymap, placeholder as cmPlaceholder } from '@codemirror/vi
 import { EditorState } from '@codemirror/state';
 import { defaultKeymap, history, historyKeymap } from '@codemirror/commands';
 import { markdown } from '@codemirror/lang-markdown';
+import { GFM } from '@lezer/markdown';
 import { languages } from '@codemirror/language-data';
+import { richMarkdown } from '../editor/rich-markdown.js';
+import { markdownKeymap } from '../editor/markdown-commands.js';
 
 interface EditorProps {
   /** Changes to this remount the editor; it is not a controlled value. */
@@ -12,6 +15,10 @@ interface EditorProps {
   onChange: (value: string) => void;
   /** Uploads a dropped or pasted file and resolves to its relative markdown path. */
   onUpload?: (file: File) => Promise<string>;
+  /** Style markdown inline instead of showing plain source. */
+  rich?: boolean;
+  /** Receives the view so a toolbar can act on it. */
+  onViewReady?: (view: EditorView | null) => void;
 }
 
 /**
@@ -21,12 +28,21 @@ interface EditorProps {
  * CodeMirror's own transaction handling and drop the cursor. The view owns the document,
  * and `onChange` reports upward for autosave. Remounting on noteId is what switches notes.
  */
-export function Editor({ noteId, initialValue, onChange, onUpload }: EditorProps) {
+export function Editor({
+  noteId,
+  initialValue,
+  onChange,
+  onUpload,
+  rich = false,
+  onViewReady,
+}: EditorProps) {
   const host = useRef<HTMLDivElement>(null);
   const onChangeRef = useRef(onChange);
   onChangeRef.current = onChange;
   const onUploadRef = useRef(onUpload);
   onUploadRef.current = onUpload;
+  const onViewReadyRef = useRef(onViewReady);
+  onViewReadyRef.current = onViewReady;
 
   useEffect(() => {
     if (!host.current) return;
@@ -36,8 +52,19 @@ export function Editor({ noteId, initialValue, onChange, onUpload }: EditorProps
         doc: initialValue,
         extensions: [
           history(),
-          keymap.of([...defaultKeymap, ...historyKeymap]),
-          markdown({ codeLanguages: languages }),
+          // Markdown shortcuts come first so Mod-b and Mod-i win over any default binding.
+          keymap.of([...markdownKeymap, ...defaultKeymap, ...historyKeymap]),
+          // GFM parses task lists, tables, and strikethrough, which plain CommonMark
+          // would leave as literal text — `[x]` otherwise reads as a link.
+          markdown({ codeLanguages: languages, extensions: [GFM] }),
+          ...(rich
+            ? [
+                richMarkdown({
+                  resolveAttachment: (filename) =>
+                    `/api/notes/${encodeURIComponent(noteId)}/files/${encodeURIComponent(filename)}`,
+                }),
+              ]
+            : []),
           EditorView.lineWrapping,
           cmPlaceholder('Start writing…'),
           EditorView.updateListener.of((update) => {
@@ -82,11 +109,16 @@ export function Editor({ noteId, initialValue, onChange, onUpload }: EditorProps
     });
 
     view.focus();
-    return () => view.destroy();
+    onViewReadyRef.current?.(view);
+
+    return () => {
+      onViewReadyRef.current?.(null);
+      view.destroy();
+    };
     // initialValue is intentionally not a dependency: the view owns the document after
     // mount, and re-running on every keystroke would rebuild the editor.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [noteId]);
+  }, [noteId, rich]);
 
   return <div ref={host} className="editor-host" />;
 

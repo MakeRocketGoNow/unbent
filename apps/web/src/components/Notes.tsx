@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import type { EditorView } from '@codemirror/view';
 import type { Note, NoteSummary, SearchResult } from '@unbent/shared';
 import * as api from '../notes-api.js';
 import { useAutosave } from '../useAutosave.js';
@@ -6,6 +7,7 @@ import { Editor } from './Editor.js';
 import { Preview } from './Preview.js';
 import { TagInput } from './TagInput.js';
 import { SearchResults } from './SearchResults.js';
+import { EditorToolbar } from './EditorToolbar.js';
 
 function formatWhen(ms: number): string {
   const diff = Date.now() - ms;
@@ -36,6 +38,11 @@ export function Notes() {
   });
   const [loadError, setLoadError] = useState<string | null>(null);
   const [showPreview, setShowPreview] = useState(true);
+  // Persisted: which editing mode you prefer should survive a reload.
+  const [richEditor, setRichEditor] = useState(
+    () => localStorage.getItem('unbent.richEditor') !== 'false',
+  );
+  const [editorView, setEditorView] = useState<EditorView | null>(null);
   const [allTags, setAllTags] = useState<Array<{ name: string; count: number }>>([]);
   const [activeTag, setActiveTag] = useState<string | null>(null);
   const [cursor, setCursor] = useState<string | null>(null);
@@ -299,6 +306,18 @@ export function Notes() {
                 <span className={saveState === 'error' ? 'bad small' : 'muted small'}>
                   {SAVE_LABEL[saveState]}
                 </span>
+                <button
+                  type="button"
+                  className="link"
+                  onClick={() =>
+                    setRichEditor((r) => {
+                      localStorage.setItem('unbent.richEditor', String(!r));
+                      return !r;
+                    })
+                  }
+                >
+                  {richEditor ? 'Plain source' : 'Rich text'}
+                </button>
                 <button type="button" className="link" onClick={() => setShowPreview((p) => !p)}>
                   {showPreview ? 'Hide preview' : 'Show preview'}
                 </button>
@@ -316,6 +335,8 @@ export function Notes() {
               />
             </div>
 
+            <EditorToolbar view={editorView} />
+
             <div className={showPreview ? 'panes split' : 'panes'}>
               <div className="pane">
                 <Editor
@@ -323,6 +344,8 @@ export function Notes() {
                   initialValue={note.body}
                   onChange={(body) => setDraft((d) => ({ ...d, body }))}
                   onUpload={async (file) => (await api.uploadFile(note.id, file)).path}
+                  rich={richEditor}
+                  onViewReady={setEditorView}
                 />
               </div>
               {showPreview && (
