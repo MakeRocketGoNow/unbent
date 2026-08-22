@@ -1,0 +1,22 @@
+name = "unbent-api"
+main = "src/index.ts"
+compatibility_date = "2026-08-01"
+# Better Auth reaches for node crypto; the Worker needs the node compat layer.
+compatibility_flags = ["nodejs_compat"]
+
+[observability]
+enabled = true
+
+[[d1_databases]]
+binding = "DB"
+database_name = "unbent"
+database_id = "PLACEHOLDER_RUN_WRANGLER_D1_CREATE"
+migrations_dir = "migrations"
+
+[[r2_buckets]]
+binding = "BLOBS"
+bucket_name = "unbent-blobs"
+
+[vars]
+# Overridden per-environment; the SPA origin for OAuth redirects and cookie scope.
+APP_URL = "http://localhost:5173"

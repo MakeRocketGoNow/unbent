@@ -1,0 +1,22 @@
+import { Hono } from 'hono';
+import { logger } from 'hono/logger';
+import type { AppEnv } from './types.js';
+import { health } from './routes/health.js';
+
+const app = new Hono<AppEnv>();
+
+app.use('*', logger());
+
+app.onError((err, c) => {
+  console.error('Unhandled error:', err);
+  return c.json({ error: 'Internal error' }, 500);
+});
+
+app.notFound((c) => c.json({ error: 'Not found' }, 404));
+
+const routes = app.route('/api', health);
+
+/** Consumed by the SPA through `hc<AppType>()` for end-to-end types with no codegen. */
+export type AppType = typeof routes;
+
+export default app;
