@@ -13,7 +13,10 @@ function createAuth(env: Env) {
     database: env.DB,
     baseURL: env.APP_URL,
     secret: env.BETTER_AUTH_SECRET,
-    emailAndPassword: { enabled: false },
+    // OAuth only in normal operation. The isolation suite needs to mint sessions without
+    // a live OAuth provider, so ALLOW_TEST_CREDENTIALS enables password sign-up strictly
+    // for local runs; it is never set in deployed environments.
+    emailAndPassword: { enabled: env.ALLOW_TEST_CREDENTIALS === '1' },
     socialProviders: {
       ...(env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET
         ? {

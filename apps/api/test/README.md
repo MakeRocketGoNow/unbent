@@ -1,7 +1,7 @@
 # API tests
 
 The isolation suite runs against a live Worker rather than a mock, because the thing under
-test is the real D1 query path — a mock would happily return whatever the mock was told to.
+test is the real D1 query path — a mock would happily return whatever it was told to.
 
 ```bash
 # terminal 1
@@ -11,12 +11,12 @@ pnpm --filter @unbent/api dev
 pnpm --filter @unbent/api test
 ```
 
-The suite signs up its own actors through the email/password provider, which is disabled in
-`src/auth.ts` by default. Enable it for the run:
+The suite signs up its own actors through the email/password provider, which is enabled only
+when `ALLOW_TEST_CREDENTIALS=1` is present in `.dev.vars`. Deployed environments never set
+it, so production is OAuth-only.
 
-```bash
-sed -i '' 's|emailAndPassword: { enabled: false }|emailAndPassword: { enabled: true }|' src/auth.ts
-```
+Requests carry an `Origin` header because Better Auth enforces CSRF against a trusted
+origin; a client that omits it gets a 403.
 
-Once OAuth credentials are configured in `.dev.vars`, replace the sign-up helper with a
-session minted directly against D1 so the suite no longer needs a password provider.
+Note: `wrangler dev` hot-reloads source but **not** `.dev.vars`. After changing an env var,
+restart the dev server or the Worker keeps serving the old configuration.

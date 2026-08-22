@@ -16,3 +16,7 @@ BETTER_AUTH_SECRET=replace-me
 #   Authorization callback URL: http://localhost:8787/api/auth/callback/github
 # GITHUB_CLIENT_ID=
 # GITHUB_CLIENT_SECRET=
+
+# Enables password sign-up so the isolation suite can mint sessions without a live OAuth
+# provider. Local development only — never set this in a deployed environment.
+ALLOW_TEST_CREDENTIALS=1
