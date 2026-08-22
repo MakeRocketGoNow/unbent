@@ -8,6 +8,7 @@
 import { unified } from 'unified';
 import remarkParse from 'remark-parse';
 import remarkGfm from 'remark-gfm';
+import remarkBreaks from 'remark-breaks';
 import remarkRehype from 'remark-rehype';
 import rehypeSanitize, { defaultSchema } from 'rehype-sanitize';
 import rehypeStringify from 'rehype-stringify';
@@ -66,6 +67,18 @@ export function renderMarkdown(markdown: string, opts: { noteId: string }): stri
   return unified()
     .use(remarkParse)
     .use(remarkGfm)
+    /**
+     * Treat a single newline as a line break.
+     *
+     * CommonMark folds a lone newline into a space, so a note written as separate lines
+     * renders as one run-on paragraph — surprising in a notes app, where people press
+     * Enter expecting a new line rather than a new paragraph. This is what chat apps and
+     * GitHub comments do; note that it is not part of GFM itself, which covers tables,
+     * task lists, strikethrough, and autolinks.
+     *
+     * Runs after remark-gfm so GFM's own block constructs are parsed first.
+     */
+    .use(remarkBreaks)
     .use(remarkResolveAttachments, { noteId: opts.noteId })
     .use(remarkRehype, { allowDangerousHtml: false })
     .use(rehypeSanitize, schema)

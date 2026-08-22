@@ -82,6 +82,57 @@ describe('sanitization', () => {
   });
 });
 
+/**
+ * A lone newline is a line break, not a space.
+ *
+ * CommonMark folds soft breaks into spaces, which turns a note written as separate lines
+ * into one run-on paragraph. People press Enter in a notes app expecting a new line.
+ */
+describe('soft line breaks', () => {
+  it('renders a single newline as a break', () => {
+    const out = render('line one\nline two');
+    expect(out).toContain('<br>');
+    expect(out).toContain('line one');
+    expect(out).toContain('line two');
+  });
+
+  it('still renders a blank line as a new paragraph', () => {
+    const out = render('para one\n\npara two');
+    expect(out.match(/<p>/g)).toHaveLength(2);
+  });
+
+  it('keeps trailing-space and backslash breaks working', () => {
+    expect(render('a  \nb')).toContain('<br>');
+    expect(render('a\\\nb')).toContain('<br>');
+  });
+
+  /** A break inside a list item must not split the item into two. */
+  it('does not break list structure', () => {
+    const out = render('- item one\n- item two');
+    expect(out.match(/<li>/g)).toHaveLength(2);
+    expect(out).toContain('<ul>');
+  });
+
+  it('does not insert breaks inside a code block', () => {
+    const out = render('```\nconst a = 1;\nconst b = 2;\n```');
+    expect(out).toContain('<code>');
+    expect(out).not.toContain('<br>');
+  });
+
+  it('does not break table rows', () => {
+    const out = render('| a | b |\n| - | - |\n| 1 | 2 |');
+    expect(out).toContain('<table>');
+    expect(out).not.toContain('<br>');
+  });
+
+  /** The imported corpus separates paragraphs with blank lines; nothing should change. */
+  it('leaves blank-line-separated content unchanged', () => {
+    const out = render('Garden plan for the spring.\n\nAvery Okonkwo\n\nRiverside');
+    expect(out.match(/<p>/g)).toHaveLength(3);
+    expect(out).not.toContain('<br>');
+  });
+});
+
 describe('gfm', () => {
   it('renders tables', () => {
     const out = render('| a | b |\n| - | - |\n| 1 | 2 |');

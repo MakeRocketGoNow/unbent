@@ -67,6 +67,12 @@ note is byte-identical to what was typed — which is what makes the export guar
 A toolbar and the usual shortcuts (⌘B, ⌘I, ⌘K, ⌘⌥1) apply formatting as ordinary text
 edits, so every action is undoable and nothing is rewritten behind your back.
 
+Rendering uses GFM (tables, task lists, strikethrough, autolinks) plus soft line breaks:
+a single newline is a line break, not a space. CommonMark folds lone newlines into spaces,
+which turns a note written as separate lines into one run-on paragraph — pressing Enter in
+a notes app should start a new line. Soft breaks are not part of GFM itself; they are a
+separate remark plugin.
+
 ## Search
 
 FTS5 over note titles and bodies, weighted 10:1 toward titles. The index is
@@ -96,6 +102,12 @@ note is byte-identical to what was typed — which is what makes the export guar
 
 A toolbar and the usual shortcuts (⌘B, ⌘I, ⌘K, ⌘⌥1) apply formatting as ordinary text
 edits, so every action is undoable and nothing is rewritten behind your back.
+
+Rendering uses GFM (tables, task lists, strikethrough, autolinks) plus soft line breaks:
+a single newline is a line break, not a space. CommonMark folds lone newlines into spaces,
+which turns a note written as separate lines into one run-on paragraph — pressing Enter in
+a notes app should start a new line. Soft breaks are not part of GFM itself; they are a
+separate remark plugin.
 
 ## Searching inside PDFs
 
