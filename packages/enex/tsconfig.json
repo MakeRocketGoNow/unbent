@@ -3,8 +3,16 @@
   "compilerOptions": {
     "rootDir": "src",
     "outDir": "dist",
-    "lib": ["ES2022", "DOM"],
-    "types": ["vitest/globals"]
+    "lib": [
+      "ES2022",
+      "DOM"
+    ],
+    "types": [
+      "vitest/globals",
+      "node"
+    ]
   },
-  "include": ["src"]
+  "include": [
+    "src"
+  ]
 }
