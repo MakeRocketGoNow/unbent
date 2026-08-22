@@ -117,15 +117,19 @@ describe('importEnex', () => {
   });
 
   it('preserves evernote timestamps', async () => {
-    const created = vi.fn(async () => ({ id: 'n1', created: true }));
-    const { client } = fakeClient({ createNote: created });
+    let captured: { createdAt: number; updatedAt: number } | undefined;
+    const { client } = fakeClient({
+      createNote: async (input) => {
+        captured = input;
+        return { id: 'n1', created: true };
+      },
+    });
     const file = enexFile('N.enex', [
       note({ title: 'Old', content: '<div>x</div>', created: '20170105T161432Z' }),
     ]);
 
     await importEnex(file, client);
-    const arg = created.mock.calls[0]![0] as { createdAt: number };
-    expect(new Date(arg.createdAt).toISOString()).toBe('2017-01-05T16:14:32.000Z');
+    expect(new Date(captured!.createdAt).toISOString()).toBe('2017-01-05T16:14:32.000Z');
   });
 
   it('prepends a source url for bookmark notes', async () => {

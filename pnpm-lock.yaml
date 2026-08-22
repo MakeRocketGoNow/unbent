@@ -69,6 +69,9 @@ importers:
       '@unbent/api':
         specifier: workspace:*
         version: link:../api
+      '@unbent/enex':
+        specifier: workspace:*
+        version: link:../../packages/enex
       '@unbent/shared':
         specifier: workspace:*
         version: link:../../packages/shared
