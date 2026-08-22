@@ -73,3 +73,82 @@ h1 {
 .good { color: var(--good); }
 .bad { color: var(--bad); }
 .muted { color: var(--muted); }
+
+.centered {
+  display: flex;
+  min-height: 70vh;
+  align-items: center;
+  justify-content: center;
+}
+
+.login {
+  width: 100%;
+  max-width: 22rem;
+  text-align: center;
+}
+
+.login h1 {
+  margin-bottom: 0.25rem;
+}
+
+.login-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  margin-top: 2rem;
+}
+
+.provider {
+  padding: 0.7rem 1rem;
+  font: inherit;
+  font-weight: 500;
+  color: var(--fg);
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.provider:hover:not(:disabled) {
+  border-color: var(--accent);
+}
+
+.provider:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.topbar {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+  padding-bottom: 1rem;
+  margin-bottom: 1.5rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.topbar h1 {
+  font-size: 1.35rem;
+}
+
+.account {
+  display: flex;
+  align-items: baseline;
+  gap: 0.9rem;
+  font-size: 0.9rem;
+}
+
+.link {
+  padding: 0;
+  font: inherit;
+  color: var(--accent);
+  background: none;
+  border: none;
+  cursor: pointer;
+}
+
+.link:hover {
+  text-decoration: underline;
+}

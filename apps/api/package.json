@@ -9,17 +9,20 @@
     "typecheck": "tsc --noEmit",
     "migrate:local": "wrangler d1 migrations apply unbent --local",
     "migrate:remote": "wrangler d1 migrations apply unbent --remote",
-    "cf-typegen": "wrangler types"
+    "cf-typegen": "wrangler types",
+    "test": "vitest run"
   },
   "dependencies": {
+    "@hono/zod-validator": "^0.9.0",
     "@unbent/shared": "workspace:*",
-    "hono": "^4.6.14",
-    "@hono/zod-validator": "^0.4.2",
-    "zod": "^3.24.1"
+    "better-auth": "^1.7.1",
+    "hono": "^4.11.2",
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^5.20260820.1",
     "typescript": "^5.7.3",
+    "vitest": "^2.1.8",
     "wrangler": "^4.0.0"
   },
   "exports": {

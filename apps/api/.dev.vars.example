@@ -1,0 +1,18 @@
+# Copy to .dev.vars for local development. .dev.vars is gitignored.
+
+# openssl rand -base64 32
+BETTER_AUTH_SECRET=replace-me
+
+# OAuth providers are optional in dev: a provider with no credentials is simply not
+# offered, and the sign-in endpoint returns PROVIDER_NOT_FOUND. Configure at least one to
+# exercise the real login flow.
+#
+# Google:  https://console.cloud.google.com/apis/credentials
+#   Authorized redirect URI: http://localhost:8787/api/auth/callback/google
+# GOOGLE_CLIENT_ID=
+# GOOGLE_CLIENT_SECRET=
+#
+# GitHub:  https://github.com/settings/developers
+#   Authorization callback URL: http://localhost:8787/api/auth/callback/github
+# GITHUB_CLIENT_ID=
+# GITHUB_CLIENT_SECRET=

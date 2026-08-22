@@ -35,12 +35,29 @@ packages/enex    ENEX -> Markdown, runtime-agnostic
 
 ```bash
 pnpm install
+cp apps/api/.dev.vars.example apps/api/.dev.vars   # then set BETTER_AUTH_SECRET
 pnpm migrate:local
 pnpm dev
 ```
 
 The SPA runs on :5173 and proxies `/api/*` to the Worker on :8787, so sessions are same-origin
 and there is no CORS in development.
+
+## Auth
+
+Better Auth with OAuth only — Google and GitHub. A provider without configured credentials
+is simply not offered, so local development works with none of them set.
+
+Sessions are cookie-based and same-origin. Better Auth enforces CSRF by requiring a trusted
+`Origin`, so API clients outside the browser must send one.
+
+## Tenant isolation
+
+D1 has no row-level security, so isolation is application code and nothing else. Data access
+goes through the scoped repos in `apps/api/src/lib/repo.ts`, which take the user id as a
+constructor argument — route handlers never touch `env.DB` directly, so an unscoped query is
+not expressible. `apps/api/test/isolation.test.ts` asserts this and grows with every phase
+that adds a route touching user data.
 
 ## Backups
 
