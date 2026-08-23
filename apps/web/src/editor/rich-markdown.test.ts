@@ -135,6 +135,43 @@ describe('reveal scope', () => {
  * two lines in one press when two of them sit together.
  */
 describe('line structure', () => {
+  /**
+   * Hidden syntax must stay in the layout tree.
+   *
+   * `display: none` removes an element from layout, and CodeMirror derives cursor
+   * positions from rendered geometry — with it, coordsAtPos returned null for every line
+   * beginning with a hidden mark and arrow keys could not land on them. A line hidden at
+   * both ends, like `**bold**` alone, had no measurable position anywhere.
+   *
+   * jsdom reports no geometry at all, so this asserts the styling rule rather than the
+   * measurement: it is the property that made the lines unreachable.
+   */
+  it('hides syntax without display:none', () => {
+    const v = mount('**bold**\n\nplain', 12);
+    const hidden = v.dom.querySelector('.cm-md-hidden');
+    expect(hidden).toBeTruthy();
+
+    const rules: string[] = [];
+    for (const sheet of Array.from(document.styleSheets)) {
+      try {
+        for (const rule of Array.from(sheet.cssRules)) {
+          if ('selectorText' in rule && String(rule.selectorText).includes('cm-md-hidden')) {
+            rules.push(rule.cssText);
+          }
+        }
+      } catch {
+        // Cross-origin sheets are not readable and are irrelevant here.
+      }
+    }
+
+    expect(rules.length).toBeGreaterThan(0);
+    for (const rule of rules) {
+      expect(rule).not.toContain('display: none');
+      expect(rule).toContain('font-size: 0');
+    }
+  });
+
+
   function topLevelText(v: EditorView, lineNumber: number): boolean {
     const line = v.dom.querySelectorAll('.cm-line')[lineNumber - 1];
     return [...(line?.childNodes ?? [])].some(

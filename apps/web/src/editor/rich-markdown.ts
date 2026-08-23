@@ -300,7 +300,22 @@ export function richMarkdown(options: RichMarkdownOptions = {}): Extension {
     ),
 
     EditorView.theme({
-      '.cm-md-hidden': { display: 'none' },
+      /**
+       * Hide syntax without removing it from layout.
+       *
+       * `display: none` takes the element out of the layout tree, and CodeMirror measures
+       * cursor positions from rendered geometry — `coordsAtPos` returned null for every
+       * line starting with a hidden mark, so arrow keys could not land on them. A line
+       * hidden at both ends (`**bold**` alone) had no measurable position at all.
+       *
+       * Zero-width font keeps the element in the layout tree with no visible size, so the
+       * text is invisible but every position stays measurable.
+       */
+      '.cm-md-hidden': {
+        fontSize: '0',
+        // Inherited line-height would still reserve vertical space at font-size 0.
+        lineHeight: '0',
+      },
 
       '.cm-md-h1': { fontSize: '1.6em', fontWeight: '600', lineHeight: '1.35' },
       '.cm-md-h2': { fontSize: '1.35em', fontWeight: '600', lineHeight: '1.35' },
