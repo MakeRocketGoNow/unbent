@@ -20,3 +20,18 @@ bucket_name = "unbent-blobs"
 [vars]
 # Overridden per-environment; the SPA origin for OAuth redirects and cookie scope.
 APP_URL = "http://localhost:5173"
+
+# The SPA is served by this same Worker, so "same-origin" is structural rather than a
+# routing rule that has to be kept correct in a dashboard. Session cookies and OAuth
+# callbacks then need no CORS or SameSite workarounds.
+[assets]
+directory = "../web/dist"
+binding = "ASSETS"
+# Real paths (/notes/:id, /trash) have no matching asset, so an unmatched path must
+# serve index.html and let the router resolve it.
+not_found_handling = "single-page-application"
+# Scopes the Worker to the API, which is what lets the SPA fallback reach everything else.
+# Verified by removing it: /notes/:id and /trash then return Hono's JSON 404 instead of
+# index.html, because a Worker with a catch-all notFound() answers every path itself and
+# not_found_handling never gets a chance to fire. The API is unaffected either way.
+run_worker_first = ["/api/*"]
