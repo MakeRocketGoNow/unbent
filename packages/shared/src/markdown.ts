@@ -18,6 +18,23 @@ import { visit } from 'unist-util-visit';
 export const ATTACHMENT_PREFIX = 'files/';
 
 /**
+ * Build a markdown link or image for an attachment path.
+ *
+ * CommonMark destinations cannot contain whitespace unless wrapped in angle brackets.
+ * Dropped files keep their original names, so a PDF like `Treatment Plan.pdf` must become
+ * `[Treatment Plan.pdf](<files/Treatment Plan.pdf>)` — without the brackets the preview
+ * shows the raw markdown instead of a link, and PDFs never get an inline viewer.
+ */
+export function formatAttachmentMarkdown(
+  label: string,
+  path: string,
+  opts: { image?: boolean } = {},
+): string {
+  const dest = /\s/.test(path) ? `<${path}>` : path;
+  return `${opts.image ? '!' : ''}[${label}](${dest})`;
+}
+
+/**
  * Rewrites relative attachment paths to API URLs at render time.
  *
  * The markdown stored in D1 is never mutated — `files/diagram.png` stays relative on disk

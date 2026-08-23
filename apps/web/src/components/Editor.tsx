@@ -5,6 +5,7 @@ import { defaultKeymap, history, historyKeymap } from '@codemirror/commands';
 import { markdown } from '@codemirror/lang-markdown';
 import { GFM } from '@lezer/markdown';
 import { languages } from '@codemirror/language-data';
+import { formatAttachmentMarkdown } from '@unbent/shared';
 import { richMarkdown } from '../editor/rich-markdown.js';
 import { markdownKeymap } from '../editor/markdown-commands.js';
 
@@ -139,8 +140,9 @@ export function Editor({
 
       try {
         const path = await upload(file);
-        const isImage = file.type.startsWith('image/');
-        const link = isImage ? `![${file.name}](${path})` : `[${file.name}](${path})`;
+        const link = formatAttachmentMarkdown(file.name, path, {
+          image: file.type.startsWith('image/'),
+        });
         replaceToken(view, token, link);
       } catch (err) {
         replaceToken(view, token, `<!-- upload failed: ${(err as Error).message} -->`);

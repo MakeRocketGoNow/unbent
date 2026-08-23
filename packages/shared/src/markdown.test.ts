@@ -1,8 +1,37 @@
 import { describe, expect, it } from 'vitest';
-import { renderMarkdown } from './markdown.js';
+import { formatAttachmentMarkdown, renderMarkdown } from './markdown.js';
 
 const NOTE = 'note-123';
 const render = (md: string) => renderMarkdown(md, { noteId: NOTE });
+
+describe('formatAttachmentMarkdown', () => {
+  it('leaves a simple path unbracketed', () => {
+    expect(formatAttachmentMarkdown('Scan.pdf', 'files/Scan.pdf')).toBe(
+      '[Scan.pdf](files/Scan.pdf)',
+    );
+  });
+
+  it('wraps destinations that contain spaces', () => {
+    expect(formatAttachmentMarkdown('Treatment Plan.pdf', 'files/Treatment Plan.pdf')).toBe(
+      '[Treatment Plan.pdf](<files/Treatment Plan.pdf>)',
+    );
+  });
+
+  it('prefixes images with !', () => {
+    expect(formatAttachmentMarkdown('photo.png', 'files/my photo.png', { image: true })).toBe(
+      '![photo.png](<files/my photo.png>)',
+    );
+  });
+
+  /** Without brackets the whole line is literal text — no link, no PDF viewer. */
+  it('produces markdown the renderer can turn into a PDF embed', () => {
+    const md = formatAttachmentMarkdown(
+      'Principal Software Engineer in Remote _ Careers at US Remote.pdf',
+      'files/Principal Software Engineer in Remote _ Careers at US Remote.pdf',
+    );
+    expect(render(md)).toContain('unbent-pdf');
+  });
+});
 
 describe('attachment resolution', () => {
   it('rewrites relative image paths to the API', () => {
