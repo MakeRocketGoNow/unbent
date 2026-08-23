@@ -25,6 +25,7 @@ export const importRoutes = new Hono<AppEnv>().post(
       title: input.title,
       body: input.body,
       tags: input.tags,
+      notebook: input.notebook,
       createdAt: input.createdAt,
       updatedAt: input.updatedAt,
       contentHash: input.contentHash,

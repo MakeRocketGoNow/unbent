@@ -30,7 +30,7 @@ async function signUp(email: string, password: string, name: string): Promise<Ac
 
 async function createNote(
   actor: Actor,
-  body: { title?: string; body?: string; tags?: string[] },
+  body: { title?: string; body?: string; tags?: string[]; notebook?: string | null },
 ): Promise<{ id: string }> {
   const res = await fetch(`${BASE}/api/notes`, {
     method: 'POST',
@@ -94,6 +94,7 @@ describe('export', () => {
       title: 'Q3: budget & "planning"',
       body: '# Heading\n\nBody with **markdown**.\n\n---\n\nAfter a rule.\n',
       tags: ['work', 'two words'],
+      notebook: 'Work Notes',
     });
 
     const entry = [...(await fetchExport(bob)).entries()][0];
@@ -103,6 +104,7 @@ describe('export', () => {
     expect(note.id).toBe(created.id);
     expect(note.title).toBe('Q3: budget & "planning"');
     expect(note.tags.sort()).toEqual(['two words', 'work']);
+    expect(note.notebook).toBe('Work Notes');
     expect(note.body).toBe('# Heading\n\nBody with **markdown**.\n\n---\n\nAfter a rule.\n');
     expect(note.created.getTime()).toBeGreaterThan(0);
     expect(note.updated.getTime()).toBeGreaterThanOrEqual(note.created.getTime());

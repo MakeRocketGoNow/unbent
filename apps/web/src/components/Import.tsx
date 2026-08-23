@@ -146,8 +146,8 @@ export function Import({ onClose, onImported }: ImportProps) {
       {status === 'idle' && (
         <>
           <p className="muted small">
-            Select one <code>.enex</code> file. Notes are tagged with the file name so
-            notebooks survive the move. Re-running an import skips notes that already
+            Select one <code>.enex</code> file. The file name becomes each note&apos;s
+            notebook so notebooks survive the move. Re-running an import skips notes that already
             landed, so an interrupted run is safe to repeat.
           </p>
 

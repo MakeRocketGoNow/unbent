@@ -21,14 +21,15 @@ export const notes = new Hono<AppEnv>()
   .use('/notes', requireAuth, withRepos)
 
   .get('/notes', zValidator('query', listNotesQuerySchema), async (c) => {
-    const { cursor, limit, tag } = c.req.valid('query');
+    const { cursor, limit, tag, notebook } = c.req.valid('query');
     const repo = c.get('notes');
+    const filter = { tag, notebook };
 
     const [items, total] = await Promise.all([
-      repo.list({ limit, cursor, tag }),
+      repo.list({ limit, cursor, tag, notebook }),
       // Only counted on the first page: a paging client already knows the total, and this
       // is a second query on a hot path.
-      cursor ? Promise.resolve<number | null>(null) : repo.count(tag),
+      cursor ? Promise.resolve<number | null>(null) : repo.count(filter),
     ]);
 
     // Keyset cursor: the oldest updated_at in this page. Only offered on a full page.
@@ -68,4 +69,8 @@ export const notes = new Hono<AppEnv>()
 
   .get('/tags', requireAuth, withRepos, async (c) => {
     return c.json({ tags: await c.get('notes').listTags() });
+  })
+
+  .get('/notebooks', requireAuth, withRepos, async (c) => {
+    return c.json({ notebooks: await c.get('notes').listNotebooks() });
   });

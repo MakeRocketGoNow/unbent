@@ -90,6 +90,7 @@ async function writeArchive(
         created: new Date(note.createdAt),
         updated: new Date(note.updatedAt),
         tags: note.tags,
+        ...(note.notebook ? { notebook: note.notebook } : {}),
         body: note.body,
       });
 

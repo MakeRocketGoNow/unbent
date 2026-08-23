@@ -360,6 +360,49 @@ h1 {
   .preview-pane { border-left: none; padding-left: 0; border-top: 1px solid var(--border); }
 }
 
+/* Notebook scope — same tier as search, not tag pills */
+.notebook-scope-wrap {
+  position: relative;
+}
+
+.notebook-scope-wrap::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  right: 0.65rem;
+  width: 0.4rem;
+  height: 0.4rem;
+  border-right: 1.5px solid var(--muted);
+  border-bottom: 1.5px solid var(--muted);
+  transform: translateY(-65%) rotate(45deg);
+  pointer-events: none;
+}
+
+.notebook-scope {
+  width: 100%;
+  padding: 0.4rem 2rem 0.4rem 0.6rem;
+  font: inherit;
+  font-size: 0.85rem;
+  color: var(--fg);
+  background: color-mix(in srgb, var(--fg) 4%, transparent);
+  border: 1px solid var(--border);
+  border-radius: 0.4rem;
+  cursor: pointer;
+  appearance: none;
+}
+
+.notebook-scope:hover { border-color: color-mix(in srgb, var(--accent) 50%, var(--border)); }
+
+.notebook-scope:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.filters-end {
+  padding-bottom: 0.6rem;
+  border-bottom: 1px solid var(--border);
+}
+
 /* Tags */
 .tag-filter {
   display: flex;

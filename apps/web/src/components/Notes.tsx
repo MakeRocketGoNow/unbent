@@ -44,27 +44,39 @@ export function Notes() {
   );
   const [editorView, setEditorView] = useState<EditorView | null>(null);
   const [allTags, setAllTags] = useState<Array<{ name: string; count: number }>>([]);
+  const [allNotebooks, setAllNotebooks] = useState<Array<{ name: string; count: number }>>([]);
   const [activeTag, setActiveTag] = useState<string | null>(null);
+  const [activeNotebook, setActiveNotebook] = useState<string | null>(null);
   const [cursor, setCursor] = useState<string | null>(null);
   const [total, setTotal] = useState<number | null>(null);
   const [loadingMore, setLoadingMore] = useState(false);
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<SearchResult[] | null>(null);
 
+  const listFilter = useCallback(
+    () => ({
+      ...(activeNotebook ? { notebook: activeNotebook } : {}),
+      ...(activeTag ? { tag: activeTag } : {}),
+    }),
+    [activeNotebook, activeTag],
+  );
+
   const refreshList = useCallback(async () => {
     try {
-      const [page, tags] = await Promise.all([
-        api.listNotes(activeTag ? { tag: activeTag } : {}),
+      const [page, tags, notebooks] = await Promise.all([
+        api.listNotes(listFilter()),
         api.listTags(),
+        api.listNotebooks(),
       ]);
       setList(page.items);
       setCursor(page.cursor);
       setTotal(page.total);
       setAllTags(tags);
+      setAllNotebooks(notebooks);
     } catch (err) {
       setLoadError((err as Error).message);
     }
-  }, [activeTag]);
+  }, [listFilter]);
 
   /** Appends the next page. Without this the list stops at the server's page size. */
   const loadMore = useCallback(async () => {
@@ -72,7 +84,7 @@ export function Notes() {
     setLoadingMore(true);
     try {
       const page = await api.listNotes({
-        ...(activeTag ? { tag: activeTag } : {}),
+        ...listFilter(),
         cursor,
       });
       // Guard against a note arriving twice if it was edited between pages.
@@ -86,7 +98,7 @@ export function Notes() {
     } finally {
       setLoadingMore(false);
     }
-  }, [activeTag, cursor, loadingMore]);
+  }, [listFilter, cursor, loadingMore]);
 
   useEffect(() => {
     void refreshList();
@@ -170,6 +182,7 @@ export function Notes() {
         title: 'Untitled',
         body: '',
         tags: activeTag ? [activeTag] : [],
+        notebook: activeNotebook,
       });
       await refreshList();
       setSelectedId(created.id);
@@ -220,15 +233,26 @@ export function Notes() {
           onChange={(e) => setQuery(e.target.value)}
         />
 
+        {results === null && allNotebooks.length > 0 && (
+          <div className={`notebook-scope-wrap${allTags.length === 0 ? ' filters-end' : ''}`}>
+            <select
+              className="notebook-scope"
+              value={activeNotebook ?? ''}
+              onChange={(e) => setActiveNotebook(e.target.value || null)}
+              aria-label="Notebook"
+            >
+              <option value="">All notebooks</option>
+              {allNotebooks.map((nb) => (
+                <option key={nb.name} value={nb.name}>
+                  {nb.name} ({nb.count})
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
+
         {results === null && allTags.length > 0 && (
           <div className="tag-filter">
-            <button
-              type="button"
-              className={activeTag === null ? 'tag-filter-item active' : 'tag-filter-item'}
-              onClick={() => setActiveTag(null)}
-            >
-              All
-            </button>
             {allTags.map((t) => (
               <button
                 key={t.name}
@@ -284,7 +308,11 @@ export function Notes() {
 
           {results === null && list.length === 0 && !loadError && (
             <li className="muted small empty">
-              {activeTag ? `No notes tagged ${activeTag}.` : 'No notes yet.'}
+              {activeTag
+                ? `No notes tagged ${activeTag}.`
+                : activeNotebook
+                  ? `No notes in ${activeNotebook}.`
+                  : 'No notes yet.'}
             </li>
           )}
         </ul>

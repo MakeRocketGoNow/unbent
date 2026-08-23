@@ -22,6 +22,7 @@ function expectRoundTrip(note: ParsedNote): void {
   expect(out.created.getTime()).toBe(note.created.getTime());
   expect(out.updated.getTime()).toBe(note.updated.getTime());
   expect(out.tags).toEqual(note.tags);
+  expect(out.notebook).toBe(note.notebook);
   expect(out.body).toBe(note.body);
 }
 
@@ -116,6 +117,20 @@ describe('round-trip', () => {
       created: new Date('1970-01-01T00:00:01Z'),
       updated: new Date('2038-01-19T03:14:07Z'),
     });
+  });
+});
+
+describe('notebook', () => {
+  it('round-trips a notebook name', () => {
+    const withNotebook = { ...base, notebook: 'Appliance Manuals' };
+    const out = parse(serialize(withNotebook));
+    expect(out.notebook).toBe('Appliance Manuals');
+  });
+
+  it('omits the field entirely when there is no notebook', () => {
+    const out = serialize(base);
+    expect(out).not.toContain('notebook:');
+    expect(parse(out).notebook).toBeUndefined();
   });
 });
 

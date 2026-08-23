@@ -27,10 +27,11 @@ export interface NotePage {
 }
 
 export async function listNotes(
-  opts: { tag?: string; cursor?: string } = {},
+  opts: { tag?: string; notebook?: string; cursor?: string } = {},
 ): Promise<NotePage> {
   const params = new URLSearchParams();
   if (opts.tag) params.set('tag', opts.tag);
+  if (opts.notebook) params.set('notebook', opts.notebook);
   if (opts.cursor) params.set('cursor', opts.cursor);
   const qs = params.toString();
   return json<NotePage>(await fetch(`/api/notes${qs ? `?${qs}` : ''}`));
@@ -44,6 +45,7 @@ export async function createNote(input: {
   title?: string;
   body?: string;
   tags?: string[];
+  notebook?: string | null;
 }): Promise<Note> {
   return json<Note>(
     await fetch('/api/notes', {
@@ -56,7 +58,7 @@ export async function createNote(input: {
 
 export async function updateNote(
   id: string,
-  patch: { title?: string; body?: string; tags?: string[] },
+  patch: { title?: string; body?: string; tags?: string[]; notebook?: string | null },
 ): Promise<Note> {
   return json<Note>(
     await fetch(`/api/notes/${id}`, {
@@ -77,6 +79,13 @@ export async function listTags(): Promise<Array<{ name: string; count: number }>
     await fetch('/api/tags'),
   );
   return tags;
+}
+
+export async function listNotebooks(): Promise<Array<{ name: string; count: number }>> {
+  const { notebooks } = await json<{ notebooks: Array<{ name: string; count: number }> }>(
+    await fetch('/api/notebooks'),
+  );
+  return notebooks;
 }
 
 export interface UploadedFile {

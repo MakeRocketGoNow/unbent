@@ -93,8 +93,8 @@ describe.skipIf(!enabled)('live import', () => {
     }).then((r) => r.json());
     expect(items).toHaveLength(16);
 
-    // The notebook name became a tag on every note.
-    expect(items.every((n: { tags: string[] }) => n.tags.includes('Quotes'))).toBe(true);
+    // The notebook name is stored on every note.
+    expect(items.every((n: { notebook: string }) => n.notebook === 'Quotes')).toBe(true);
 
     // Imported text is in the search index, which the triggers had to pick up.
     const { results } = await fetch(`${BASE}/api/search?q=happiness`, {

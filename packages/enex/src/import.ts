@@ -33,6 +33,7 @@ export interface ImportClient {
     title: string;
     body: string;
     tags: string[];
+    notebook?: string;
     createdAt: number;
     updatedAt: number;
     contentHash: string;
@@ -55,7 +56,7 @@ export interface ImportClient {
 }
 
 export interface ImportOptions {
-  /** Applied to every note, so the Evernote notebook survives as a tag. */
+  /** Applied to every note as the notebook column, not a tag. */
   notebookTag?: string;
   /**
    * Pull the text layer out of PDFs so scanned notes are searchable.
@@ -148,13 +149,14 @@ async function importOne(
   const { markdown, usedMd5 } = enmlToMarkdown(note.enml, note.resources);
   const body = withSourceLink(markdown, note.sourceUrl);
 
-  const tags = [...new Set([...note.tags, notebookTag].filter((t) => t.trim().length > 0))];
+  const tags = [...new Set(note.tags.filter((t) => t.trim().length > 0))];
   const created = note.created?.getTime() ?? Date.now();
 
   const result = await client.createNote({
     title: note.title || 'Untitled',
     body,
     tags,
+    notebook: notebookTag || undefined,
     createdAt: created,
     updatedAt: note.updated?.getTime() ?? created,
     contentHash: await contentHash(note.title, body),

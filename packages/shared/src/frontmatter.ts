@@ -18,6 +18,8 @@ export interface NoteFrontmatter {
   created: Date;
   updated: Date;
   tags: string[];
+  /** Evernote-style notebook name. Omitted when absent. */
+  notebook?: string;
   /** Original URL for a clipped or bookmarked note. Omitted when absent. */
   source?: string;
 }
@@ -72,6 +74,7 @@ export function serialize(note: ParsedNote): string {
       created: toIso(note.created),
       updated: toIso(note.updated),
       tags: note.tags,
+      ...(note.notebook ? { notebook: note.notebook } : {}),
       // Omitted rather than emitted empty: most notes have no source.
       ...(note.source ? { source: note.source } : {}),
     },
@@ -129,6 +132,9 @@ export function parse(source: string): ParsedNote {
     created: parseDate(raw['created'], 'created'),
     updated: parseDate(raw['updated'], 'updated'),
     tags,
+    ...(typeof raw['notebook'] === 'string' && raw['notebook']
+      ? { notebook: raw['notebook'] }
+      : {}),
     ...(typeof raw['source'] === 'string' && raw['source'] ? { source: raw['source'] } : {}),
     // serialize() writes exactly one blank line after the fence; strip it back off.
     body: (rest ?? '').replace(/^\r?\n/, ''),

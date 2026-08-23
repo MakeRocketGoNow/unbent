@@ -99,22 +99,27 @@ describe('importEnex', () => {
     expect(notes[1]!.body).toContain('# Heading');
   });
 
-  it('adds the notebook name as a tag alongside evernote tags', async () => {
+  it('stores the notebook name separately from evernote tags', async () => {
     const { client, notes } = fakeClient();
     const file = enexFile('Appliance Manuals.enex', [
       note({ title: 'Visit', content: '<div>x</div>', tags: ['Doctor Visit', 'Medical'] }),
     ]);
 
     await importEnex(file, client);
-    expect(notes[0]!.tags.sort()).toEqual(['Doctor Visit', 'Medical', 'Appliance Manuals']);
+    expect(notes[0]!.tags.sort()).toEqual(['Doctor Visit', 'Medical']);
+    expect(client.createNote).toHaveBeenCalledWith(
+      expect.objectContaining({ notebook: 'Appliance Manuals' }),
+    );
   });
 
   it('accepts an explicit notebook tag over the filename', async () => {
-    const { client, notes } = fakeClient();
+    const { client } = fakeClient();
     const file = enexFile('weird-export-name.enex', [note({ title: 'x', content: '<div>x</div>' })]);
 
     await importEnex(file, client, { notebookTag: 'Recipes' });
-    expect(notes[0]!.tags).toContain('Recipes');
+    expect(client.createNote).toHaveBeenCalledWith(
+      expect.objectContaining({ notebook: 'Recipes', tags: [] }),
+    );
   });
 
   it('preserves evernote timestamps', async () => {

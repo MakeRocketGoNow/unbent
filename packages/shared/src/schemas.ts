@@ -24,24 +24,29 @@ export const filenameSchema = z
 
 export const tagNameSchema = z.string().trim().min(1).max(MAX_TAG_LENGTH);
 
+export const notebookNameSchema = z.string().trim().min(1).max(MAX_TAG_LENGTH);
+
 export const noteIdSchema = z.string().uuid();
 
 export const createNoteSchema = z.object({
   title: z.string().max(MAX_TITLE_LENGTH).default(''),
   body: z.string().max(MAX_BODY_BYTES).default(''),
   tags: z.array(tagNameSchema).max(100).default([]),
+  notebook: notebookNameSchema.nullable().optional(),
 });
 
 export const updateNoteSchema = z.object({
   title: z.string().max(MAX_TITLE_LENGTH).optional(),
   body: z.string().max(MAX_BODY_BYTES).optional(),
   tags: z.array(tagNameSchema).max(100).optional(),
+  notebook: notebookNameSchema.nullable().optional(),
 });
 
 export const listNotesQuerySchema = z.object({
   cursor: z.string().optional(),
   limit: z.coerce.number().int().min(1).max(100).default(50),
   tag: z.string().optional(),
+  notebook: z.string().optional(),
 });
 
 export const searchQuerySchema = z.object({
@@ -57,6 +62,7 @@ export const importNoteSchema = z.object({
   title: z.string().max(MAX_TITLE_LENGTH).default(''),
   body: z.string().max(MAX_BODY_BYTES).default(''),
   tags: z.array(tagNameSchema).max(100).default([]),
+  notebook: notebookNameSchema.optional(),
   createdAt: z.number().int().nonnegative(),
   updatedAt: z.number().int().nonnegative(),
   contentHash: z.string().length(64),
@@ -77,6 +83,7 @@ export interface NoteSummary {
   updatedAt: number;
   createdAt: number;
   tags: string[];
+  notebook?: string | null;
   excerpt?: string;
 }
 

@@ -7,6 +7,7 @@ interface NoteRow {
   body: string;
   created_at: number;
   updated_at: number;
+  notebook: string | null;
 }
 
 interface SummaryRow {
@@ -15,6 +16,7 @@ interface SummaryRow {
   body: string;
   created_at: number;
   updated_at: number;
+  notebook: string | null;
   tags: string | null;
 }
 
@@ -75,8 +77,13 @@ function splitTags(joined: string | null): string[] {
  */
 export class NotesRepo extends ScopedRepo {
   /** Newest first, with tags. Keyset pagination on updated_at keeps deep pages cheap. */
-  async list(opts: { limit: number; cursor?: string; tag?: string }): Promise<NoteSummary[]> {
-    const { limit, cursor, tag } = opts;
+  async list(opts: {
+    limit: number;
+    cursor?: string;
+    tag?: string;
+    notebook?: string;
+  }): Promise<NoteSummary[]> {
+    const { limit, cursor, tag, notebook } = opts;
 
     const conditions = ['n.user_id = ?1', 'n.deleted_at IS NULL'];
     const binds: unknown[] = [this.userId];
@@ -84,6 +91,10 @@ export class NotesRepo extends ScopedRepo {
     if (cursor) {
       binds.push(Number(cursor));
       conditions.push(`n.updated_at < ?${binds.length}`);
+    }
+    if (notebook) {
+      binds.push(notebook);
+      conditions.push(`n.notebook = ?${binds.length}`);
     }
     if (tag) {
       binds.push(tag, this.userId);
@@ -96,7 +107,7 @@ export class NotesRepo extends ScopedRepo {
 
     const { results } = await this.db
       .prepare(
-        `SELECT n.id, n.title, n.body, n.created_at, n.updated_at,
+        `SELECT n.id, n.title, n.body, n.created_at, n.updated_at, n.notebook,
                 (SELECT group_concat(t.name, char(31)) FROM note_tags nt
                    JOIN tags t ON t.id = nt.tag_id
                   WHERE nt.note_id = n.id) AS tags
@@ -114,28 +125,37 @@ export class NotesRepo extends ScopedRepo {
       createdAt: r.created_at,
       updatedAt: r.updated_at,
       tags: splitTags(r.tags),
+      notebook: r.notebook,
       excerpt: excerptOf(r.body),
     }));
   }
 
   /**
-   * Total live notes, optionally within a tag.
+   * Total live notes, optionally within a notebook and/or tag.
    *
    * Reported separately from `list` because the list is paginated: counting what a page
    * returned would show "50 notes" for an account holding hundreds.
    */
-  async count(tag?: string): Promise<number> {
-    const sql = tag
-      ? `SELECT COUNT(*) AS n FROM notes n
-          WHERE n.user_id = ?1 AND n.deleted_at IS NULL
-            AND EXISTS (SELECT 1 FROM note_tags nt JOIN tags t ON t.id = nt.tag_id
-                         WHERE nt.note_id = n.id AND t.name = ?2 AND t.user_id = ?1)`
-      : `SELECT COUNT(*) AS n FROM notes WHERE user_id = ?1 AND deleted_at IS NULL`;
+  async count(opts?: { tag?: string; notebook?: string }): Promise<number> {
+    const conditions = ['n.user_id = ?1', 'n.deleted_at IS NULL'];
+    const binds: unknown[] = [this.userId];
 
-    const row = await (tag
-      ? this.db.prepare(sql).bind(this.userId, tag)
-      : this.db.prepare(sql).bind(this.userId)
-    ).first<{ n: number }>();
+    if (opts?.notebook) {
+      binds.push(opts.notebook);
+      conditions.push(`n.notebook = ?${binds.length}`);
+    }
+    if (opts?.tag) {
+      binds.push(opts.tag, this.userId);
+      conditions.push(
+        `EXISTS (SELECT 1 FROM note_tags nt JOIN tags t ON t.id = nt.tag_id
+                 WHERE nt.note_id = n.id AND t.name = ?${binds.length - 1} AND t.user_id = ?${binds.length})`,
+      );
+    }
+
+    const row = await this.db
+      .prepare(`SELECT COUNT(*) AS n FROM notes n WHERE ${conditions.join(' AND ')}`)
+      .bind(...binds)
+      .first<{ n: number }>();
 
     return row?.n ?? 0;
   }
@@ -144,7 +164,7 @@ export class NotesRepo extends ScopedRepo {
   async get(id: string): Promise<Note | null> {
     const row = await this.db
       .prepare(
-        `SELECT id, title, body, created_at, updated_at
+        `SELECT id, title, body, created_at, updated_at, notebook
            FROM notes
           WHERE id = ?1 AND user_id = ?2 AND deleted_at IS NULL`,
       )
@@ -167,17 +187,24 @@ export class NotesRepo extends ScopedRepo {
       createdAt: row.created_at,
       updatedAt: row.updated_at,
       tags: results.map((t) => t.name),
+      notebook: row.notebook,
     };
   }
 
-  async create(input: { id: string; title: string; body: string; tags: string[] }): Promise<Note> {
+  async create(input: {
+    id: string;
+    title: string;
+    body: string;
+    tags: string[];
+    notebook?: string | null;
+  }): Promise<Note> {
     const now = Date.now();
     await this.db
       .prepare(
-        `INSERT INTO notes (id, user_id, title, body, created_at, updated_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?5)`,
+        `INSERT INTO notes (id, user_id, title, body, created_at, updated_at, notebook)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?5, ?6)`,
       )
-      .bind(input.id, this.userId, input.title, input.body, now)
+      .bind(input.id, this.userId, input.title, input.body, now, input.notebook ?? null)
       .run();
 
     if (input.tags.length > 0) await this.setTags(input.id, input.tags);
@@ -189,13 +216,14 @@ export class NotesRepo extends ScopedRepo {
       createdAt: now,
       updatedAt: now,
       tags: input.tags,
+      notebook: input.notebook ?? null,
     };
   }
 
   /** Returns null when the note does not exist *or* belongs to someone else. */
   async update(
     id: string,
-    patch: { title?: string; body?: string; tags?: string[] },
+    patch: { title?: string; body?: string; tags?: string[]; notebook?: string | null },
   ): Promise<Note | null> {
     const sets: string[] = [];
     const binds: unknown[] = [];
@@ -207,6 +235,10 @@ export class NotesRepo extends ScopedRepo {
     if (patch.body !== undefined) {
       binds.push(patch.body);
       sets.push(`body = ?${binds.length}`);
+    }
+    if (patch.notebook !== undefined) {
+      binds.push(patch.notebook);
+      sets.push(`notebook = ?${binds.length}`);
     }
 
     if (sets.length > 0) {
@@ -268,6 +300,7 @@ export class NotesRepo extends ScopedRepo {
     title: string;
     body: string;
     tags: string[];
+    notebook?: string;
     createdAt: number;
     updatedAt: number;
     contentHash: string;
@@ -288,8 +321,8 @@ export class NotesRepo extends ScopedRepo {
     await this.db
       .prepare(
         `INSERT INTO notes
-           (id, user_id, title, body, created_at, updated_at, content_hash, source_enex)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)`,
+           (id, user_id, title, body, created_at, updated_at, content_hash, source_enex, notebook)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)`,
       )
       .bind(
         id,
@@ -300,6 +333,7 @@ export class NotesRepo extends ScopedRepo {
         input.updatedAt,
         input.contentHash,
         input.sourceEnex ?? null,
+        input.notebook ?? null,
       )
       .run();
 
@@ -452,6 +486,21 @@ export class NotesRepo extends ScopedRepo {
           WHERE t.user_id = ?1
           GROUP BY t.id, t.name
           ORDER BY t.name`,
+      )
+      .bind(this.userId)
+      .all<{ name: string; count: number }>();
+    return results;
+  }
+
+  /** Every notebook this user has in use, with note counts, for the sidebar scope selector. */
+  async listNotebooks(): Promise<Array<{ name: string; count: number }>> {
+    const { results } = await this.db
+      .prepare(
+        `SELECT notebook AS name, COUNT(*) AS count
+           FROM notes
+          WHERE user_id = ?1 AND deleted_at IS NULL AND notebook IS NOT NULL
+          GROUP BY notebook
+          ORDER BY notebook`,
       )
       .bind(this.userId)
       .all<{ name: string; count: number }>();

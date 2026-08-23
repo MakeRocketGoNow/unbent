@@ -104,7 +104,7 @@ describe('public routes', () => {
 
 async function createNote(
   actor: Actor,
-  body: { title?: string; body?: string; tags?: string[] },
+  body: { title?: string; body?: string; tags?: string[]; notebook?: string | null },
 ): Promise<{ id: string }> {
   const res = await fetch(`${BASE}/api/notes`, {
     method: 'POST',
@@ -180,6 +180,70 @@ describe('note CRUD', () => {
       r.json(),
     );
     expect(items.map((i: { id: string }) => i.id)).toEqual([tagged.id]);
+  });
+
+  it('filters by notebook', async () => {
+    const notebook = `nb-${Date.now()}`;
+    const inNotebook = await createNote(alice, {
+      title: 'In notebook',
+      body: 'x',
+      notebook,
+    });
+    await createNote(alice, { title: 'No notebook', body: 'x' });
+
+    const { items } = await fetch(
+      `${BASE}/api/notes?notebook=${encodeURIComponent(notebook)}`,
+      asUser(alice),
+    ).then((r) => r.json());
+    expect(items.map((i: { id: string }) => i.id)).toEqual([inNotebook.id]);
+  });
+
+  it('filters by notebook and tag together', async () => {
+    const notebook = `nb-both-${Date.now()}`;
+    const tag = `tag-both-${Date.now()}`;
+    const match = await createNote(alice, {
+      title: 'Both',
+      body: 'x',
+      notebook,
+      tags: [tag],
+    });
+    await createNote(alice, { title: 'Notebook only', body: 'x', notebook });
+    await createNote(alice, { title: 'Tag only', body: 'x', tags: [tag] });
+
+    const { items } = await fetch(
+      `${BASE}/api/notes?notebook=${encodeURIComponent(notebook)}&tag=${tag}`,
+      asUser(alice),
+    ).then((r) => r.json());
+    expect(items.map((i: { id: string }) => i.id)).toEqual([match.id]);
+  });
+
+  it('counts within a notebook filter', async () => {
+    const actor = await signUp(`nbcount-${Date.now()}@example.test`, 'nbcount-pass-1', 'N');
+    const notebook = `counted-nb-${Date.now()}`;
+    for (let i = 0; i < 3; i += 1) {
+      await createNote(actor, { title: `In ${i}`, body: 'x', notebook });
+    }
+    await createNote(actor, { title: 'Outside', body: 'x' });
+
+    const page = await fetch(
+      `${BASE}/api/notes?notebook=${encodeURIComponent(notebook)}&limit=2`,
+      asUser(actor),
+    ).then((r) => r.json());
+    expect(page.items).toHaveLength(2);
+    expect(page.total).toBe(3);
+  });
+
+  it('lists notebooks with counts', async () => {
+    const actor = await signUp(`nblist-${Date.now()}@example.test`, 'nblist-pass-123', 'L');
+    const notebook = `listed-${Date.now()}`;
+    await createNote(actor, { title: 'One', body: 'x', notebook });
+    await createNote(actor, { title: 'Two', body: 'x', notebook });
+
+    const { notebooks } = await fetch(`${BASE}/api/notebooks`, asUser(actor)).then((r) =>
+      r.json(),
+    );
+    const entry = notebooks.find((n: { name: string }) => n.name === notebook);
+    expect(entry?.count).toBe(2);
   });
 
   /**
@@ -326,6 +390,7 @@ describe('unauthenticated access', () => {
     ['PATCH', '/api/notes/whatever', { method: 'PATCH', body: '{}' }],
     ['DELETE', '/api/notes/whatever', { method: 'DELETE' }],
     ['GET', '/api/tags', {}],
+    ['GET', '/api/notebooks', {}],
   ];
 
   it.each(cases)('%s %s requires a session', async (_m, path, init) => {
@@ -350,6 +415,7 @@ describe('cross-tenant access', () => {
       title: 'Alice private',
       body: 'secret',
       tags: ['alice-only'],
+      notebook: 'Alice Notebook',
     });
   });
 
@@ -396,6 +462,19 @@ describe('cross-tenant access', () => {
     const { items } = await fetch(`${BASE}/api/notes?tag=alice-only`, asUser(bob)).then((r) =>
       r.json(),
     );
+    expect(items).toEqual([]);
+  });
+
+  it('alice notebooks never appear in bob notebooks', async () => {
+    const { notebooks } = await fetch(`${BASE}/api/notebooks`, asUser(bob)).then((r) => r.json());
+    expect(notebooks.map((n: { name: string }) => n.name)).not.toContain('Alice Notebook');
+  });
+
+  it('a bob notebook filter cannot surface an alice note', async () => {
+    const { items } = await fetch(
+      `${BASE}/api/notes?notebook=${encodeURIComponent('Alice Notebook')}`,
+      asUser(bob),
+    ).then((r) => r.json());
     expect(items).toEqual([]);
   });
 
