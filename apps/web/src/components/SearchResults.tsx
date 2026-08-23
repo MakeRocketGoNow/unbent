@@ -1,9 +1,8 @@
+import { Link } from '@tanstack/react-router';
 import type { SearchResult } from '@unbent/shared';
 
 interface SearchResultsProps {
   results: SearchResult[];
-  selectedId: string | null;
-  onSelect: (id: string) => void;
 }
 
 /**
@@ -28,7 +27,7 @@ function Snippet({ text }: { text: string }) {
   );
 }
 
-export function SearchResults({ results, selectedId, onSelect }: SearchResultsProps) {
+export function SearchResults({ results }: SearchResultsProps) {
   if (results.length === 0) {
     return <li className="muted small empty">No matches.</li>;
   }
@@ -37,17 +36,21 @@ export function SearchResults({ results, selectedId, onSelect }: SearchResultsPr
     <>
       {results.map((r) => (
         <li key={r.id}>
-          <button
-            type="button"
-            className={r.id === selectedId ? 'note-item active' : 'note-item'}
-            onClick={() => onSelect(r.id)}
+          <Link
+            to="/notes/$noteId"
+            params={{ noteId: r.id }}
+            // Keeps the query in the URL, so going Back returns to these results rather
+            // than to an unsearched list.
+            search={(prev) => prev}
+            className="note-item"
+            activeProps={{ className: 'note-item active' }}
           >
             <span className="note-title">{r.title || 'Untitled'}</span>
             {/* Naming the file makes an otherwise puzzling hit explicable: the note body
                 may not contain the search term at all. */}
             {r.matchedFile && <span className="matched-file">in {r.matchedFile}</span>}
             <Snippet text={r.snippet} />
-          </button>
+          </Link>
         </li>
       ))}
     </>

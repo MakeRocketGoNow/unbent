@@ -1,0 +1,96 @@
+import { queryOptions, infiniteQueryOptions } from '@tanstack/react-query';
+import * as api from './notes-api.js';
+
+/**
+ * Query definitions, colocated with their keys.
+ *
+ * Keys are defined once here rather than written at each call site, because an
+ * invalidation only works if it names exactly the same key the query was stored under —
+ * a mismatch fails silently, leaving stale data on screen with nothing to debug.
+ *
+ * Every key that varies by filter takes the filter as a structured object. React Query
+ * hashes keys deterministically regardless of property order, so `{ notebook, tag }` and
+ * `{ tag, notebook }` are the same entry.
+ */
+
+export interface NoteFilter {
+  notebook?: string;
+  tag?: string;
+}
+
+export const keys = {
+  notes: (filter: NoteFilter) => ['notes', filter] as const,
+  note: (id: string) => ['note', id] as const,
+  tags: () => ['tags'] as const,
+  notebooks: () => ['notebooks'] as const,
+  trash: () => ['trash'] as const,
+  trashCount: () => ['trash', 'count'] as const,
+  search: (q: string) => ['search', q] as const,
+};
+
+/** Live notes matching a filter, paged. */
+export const notesQuery = (filter: NoteFilter) =>
+  infiniteQueryOptions({
+    queryKey: keys.notes(filter),
+    queryFn: ({ pageParam }) =>
+      api.listNotes({ ...filter, ...(pageParam ? { cursor: pageParam } : {}) }),
+    initialPageParam: '' as string,
+    getNextPageParam: (last) => last.cursor ?? undefined,
+  });
+
+/** Trashed notes. Deliberately unfiltered: see the trash view in Notes. */
+export const trashQuery = () =>
+  infiniteQueryOptions({
+    queryKey: keys.trash(),
+    queryFn: ({ pageParam }) =>
+      api.listNotes({ trashed: true, ...(pageParam ? { cursor: pageParam } : {}) }),
+    initialPageParam: '' as string,
+    getNextPageParam: (last) => last.cursor ?? undefined,
+  });
+
+/**
+ * How many notes are in the trash.
+ *
+ * Fetched even when not viewing the trash so the toggle can show a count — the trash is
+ * then discoverable rather than something the user has to guess at. Only the total is
+ * used, so this asks for a single row.
+ */
+export const trashCountQuery = () =>
+  queryOptions({
+    queryKey: keys.trashCount(),
+    queryFn: () => api.listNotes({ trashed: true, limit: 1 }),
+    select: (page) => page.total ?? 0,
+  });
+
+/**
+ * One note, by id.
+ *
+ * `retry: false` because a 404 here is an expected outcome, not a transient fault: note
+ * ids arrive from shared links and reloads long after the note was deleted. Retrying
+ * would delay the explanation the workspace shows.
+ */
+export const noteQuery = (id: string) =>
+  queryOptions({
+    queryKey: keys.note(id),
+    queryFn: () => api.getNote(id),
+    retry: false,
+  });
+
+export const tagsQuery = () =>
+  queryOptions({ queryKey: keys.tags(), queryFn: () => api.listTags() });
+
+export const notebooksQuery = () =>
+  queryOptions({ queryKey: keys.notebooks(), queryFn: () => api.listNotebooks() });
+
+/**
+ * Full-text search.
+ *
+ * Enabled only for a non-empty query, so clearing the box returns to the plain list
+ * rather than searching for nothing. Callers debounce the term before it reaches here.
+ */
+export const searchQuery = (q: string) =>
+  queryOptions({
+    queryKey: keys.search(q),
+    queryFn: () => api.searchNotes(q),
+    enabled: q.trim() !== '',
+  });

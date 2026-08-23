@@ -8,10 +8,36 @@ import type { Note, NoteSummary, SearchResult } from '@unbent/shared';
  * types are the contract either way.
  */
 
+/**
+ * An API call that returned a non-2xx status.
+ *
+ * Carries the status as a number so callers can branch on it. The previous shape put the
+ * status only in the message, which left the 404 check reading
+ * `err.message.startsWith('404')` — a body beginning with a digit or a reworded message
+ * would have silently changed which branch ran.
+ */
+export class ApiError extends Error {
+  constructor(
+    readonly status: number,
+    message: string,
+  ) {
+    super(message);
+    this.name = 'ApiError';
+  }
+}
+
+/** True when `err` is an ApiError with the given status. */
+export function isStatus(err: unknown, status: number): boolean {
+  return err instanceof ApiError && err.status === status;
+}
+
 async function json<T>(res: Response): Promise<T> {
   if (!res.ok) {
     const detail = await res.text().catch(() => '');
-    throw new Error(`${res.status} ${res.statusText}${detail ? `: ${detail}` : ''}`);
+    throw new ApiError(
+      res.status,
+      `${res.status} ${res.statusText}${detail ? `: ${detail}` : ''}`,
+    );
   }
   return res.json() as Promise<T>;
 }

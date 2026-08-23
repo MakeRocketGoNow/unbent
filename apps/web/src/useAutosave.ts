@@ -13,9 +13,9 @@ export type SaveState = 'idle' | 'dirty' | 'saving' | 'saved' | 'error';
 export function useAutosave<T>(
   value: T,
   save: (value: T) => Promise<void>,
-  opts: { delay?: number; enabled?: boolean } = {},
+  opts: { delay?: number; enabled?: boolean; resetKey?: string } = {},
 ) {
-  const { delay = 800, enabled = true } = opts;
+  const { delay = 800, enabled = true, resetKey } = opts;
 
   const [state, setState] = useState<SaveState>('idle');
   const [error, setError] = useState<string | null>(null);
@@ -25,8 +25,21 @@ export function useAutosave<T>(
   const saveRef = useRef(save);
   saveRef.current = save;
 
-  // Skip the save that would otherwise fire from the initial render.
-  const primed = useRef(false);
+  /**
+   * The last value that must not be saved: the baseline the caller handed us.
+   *
+   * Render-order guards do not work here. The workspace mounts with an empty draft and
+   * seeds it from the loaded note one render later, so "skip the first render" is spent
+   * on the empty draft and the seeded value looks like an edit — which wrote every note
+   * that was merely opened, rewriting `updated_at` and destroying the real modification
+   * dates carried over from Evernote.
+   *
+   * Comparing against the baseline instead means only a value that differs from what was
+   * seeded counts as an edit, whatever order the renders arrive in. `resetKey` (the note
+   * id) re-arms it, so switching notes re-baselines rather than saving the outgoing note
+   * over the incoming one.
+   */
+  const baseline = useRef<{ key: string | undefined; value: T } | null>(null);
 
   const flush = useCallback(async () => {
     if (timer.current) {
@@ -52,10 +65,14 @@ export function useAutosave<T>(
 
   useEffect(() => {
     if (!enabled) return;
-    if (!primed.current) {
-      primed.current = true;
+
+    // First value for this note, or a note change: this is the baseline, not an edit.
+    if (!baseline.current || baseline.current.key !== resetKey) {
+      baseline.current = { key: resetKey, value };
       return;
     }
+    // Re-seeding the same note with the same content (a refetch) is not an edit either.
+    if (Object.is(baseline.current.value, value)) return;
 
     pending.current = value;
     setState('dirty');
@@ -66,7 +83,7 @@ export function useAutosave<T>(
     return () => {
       if (timer.current) clearTimeout(timer.current);
     };
-  }, [value, delay, enabled, flush]);
+  }, [value, delay, enabled, flush, resetKey]);
 
   // Flush on tab hide and on unmount so switching notes never drops the last edit.
   useEffect(() => {

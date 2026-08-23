@@ -149,8 +149,33 @@ h1 {
   cursor: pointer;
 }
 
+/*
+ * Controls that became links.
+ *
+ * Note entries, the trash toggle, the topbar actions and the wordmark are anchors now
+ * that each has a real URL — so middle-click and copy-link-address work. They were
+ * <button>s before, which carry no underline, so the browser default has to be turned
+ * off here or every note in the sidebar renders underlined.
+ */
+.note-item,
+.trash-toggle,
+.link,
+.plain {
+  text-decoration: none;
+}
+
+/* Preserved from when .link was a button: underline on hover only. */
 .link:hover {
   text-decoration: underline;
+}
+
+.plain {
+  color: inherit;
+}
+
+/* The active route, marked by the router rather than by comparing ids in the component. */
+.link.active {
+  font-weight: 600;
 }
 
 /* Notes workspace */

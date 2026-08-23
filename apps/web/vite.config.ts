@@ -1,6 +1,7 @@
 import { createRequire } from 'node:module';
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
+import { tanstackRouter } from '@tanstack/router-plugin/vite';
 
 /**
  * Absolute path to the DOM-free build of decode-named-character-reference.
@@ -14,7 +15,12 @@ const decodeEntitiesNodeBuild = require
   .replace(/index\.dom\.js$/, 'index.js');
 
 export default defineConfig({
-  plugins: [react()],
+  plugins: [
+    // Must precede react(): the plugin generates routeTree.gen.ts from src/routes, and
+    // the React plugin has to see the generated file rather than race it.
+    tanstackRouter({ target: 'react', autoCodeSplitting: true }),
+    react(),
+  ],
   resolve: {
     // better-auth/react is a linked workspace dependency with its own nested react
     // symlink, which Vite would otherwise pre-bundle into a second React instance —
@@ -43,8 +49,8 @@ export default defineConfig({
     port: 5173,
     proxy: {
       // Proxying keeps the API same-origin in development, so session cookies work
-      // without CORS or SameSite workarounds. In production Pages routes /api to the
-      // Worker, which is the same origin for real.
+      // without CORS or SameSite workarounds. In production the API Worker serves the
+      // built SPA itself, so the same origin is structural rather than arranged.
       '/api': {
         target: 'http://127.0.0.1:8787',
         changeOrigin: false,
