@@ -162,3 +162,46 @@ describe('structure', () => {
     expect(render('').trim()).toBe('');
   });
 });
+
+/**
+ * The marker that turns an attachment link into an inline viewer.
+ *
+ * The security property under test is that only this pipeline can produce it. If note
+ * content could forge the class, imported ENML — which is untrusted — could make arbitrary
+ * links render as embedded documents.
+ */
+describe('pdf embed marker', () => {
+  it('marks a PDF attachment link', () => {
+    const out = render('[Scan.pdf](files/Scan.pdf)');
+    expect(out).toContain('unbent-pdf');
+  });
+
+  it('marks a PDF whose name needs encoding', () => {
+    expect(render('[T.pdf](<files/Treatment Plan.pdf>)')).toContain('unbent-pdf');
+  });
+
+  it('ignores case in the extension', () => {
+    expect(render('[S.PDF](files/S.PDF)')).toContain('unbent-pdf');
+  });
+
+  it('does not mark other attachment types', () => {
+    expect(render('[photo](files/photo.png)')).not.toContain('unbent-pdf');
+    expect(render('[sheet](files/data.csv)')).not.toContain('unbent-pdf');
+  });
+
+  it('does not mark an external PDF link', () => {
+    // Only same-note attachments are proxied and ownership-checked; an arbitrary remote
+    // URL must never be fetched and rendered as though it were the user's own file.
+    expect(render('[remote](https://evil.test/x.pdf)')).not.toContain('unbent-pdf');
+  });
+
+  it('cannot be forged by an author-supplied class', () => {
+    const out = render('<a class="unbent-pdf" href="https://evil.test/x">click</a>');
+    expect(out).not.toContain('unbent-pdf');
+  });
+
+  it('cannot be forged on an inline HTML link to a real attachment', () => {
+    const out = render('<a class="unbent-pdf" href="files/note.txt">click</a>');
+    expect(out).not.toContain('unbent-pdf');
+  });
+});

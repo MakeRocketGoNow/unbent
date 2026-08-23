@@ -52,6 +52,55 @@ export function remarkResolveAttachments(opts: { noteId: string }) {
   };
 }
 
+/**
+ * Marker the renderer turns into an inline PDF viewer.
+ *
+ * Deliberately a class on an ordinary link rather than an embed element. Emitting an
+ * `<iframe>` here would mean teaching rehype-sanitize to permit iframes, and a sanitizer
+ * that permits them permits *any* note content to author one — including imported ENML,
+ * which is untrusted. Instead this stage marks a link it built itself, and the viewer is
+ * mounted client-side from the marked anchor's href.
+ */
+export const PDF_EMBED_CLASS = 'unbent-pdf';
+
+/** Attachment links pointing at a PDF, by extension on the resolved path. */
+const PDF_PATH = /\.pdf$/i;
+
+interface HastNode {
+  type: string;
+  tagName?: string;
+  properties?: Record<string, unknown>;
+}
+
+/**
+ * Flags resolved attachment links that point at a PDF.
+ *
+ * Runs after sanitization, so any class an author wrote is already stripped and the marker
+ * cannot be forged from note content. It only inspects URLs this pipeline produced — the
+ * `/api/notes/` prefix is written by `remarkResolveAttachments`, never by the author.
+ */
+export function rehypeMarkPdfEmbeds() {
+  return (tree: unknown) => {
+    visit(tree as never, (node: HastNode) => {
+      if (node.type !== 'element' || node.tagName !== 'a') return;
+
+      const href = node.properties?.['href'];
+      if (typeof href !== 'string' || !href.startsWith('/api/notes/')) return;
+
+      let path = href.split('?')[0] ?? '';
+      try {
+        path = decodeURIComponent(path);
+      } catch {
+        // A malformed escape means the link is not one we produced; leave it alone.
+        return;
+      }
+      if (!PDF_PATH.test(path)) return;
+
+      node.properties = { ...node.properties, className: [PDF_EMBED_CLASS] };
+    });
+  };
+}
+
 /** Permits the classes remark-gfm emits for task lists, which the default schema drops. */
 const schema = {
   ...defaultSchema,
@@ -99,6 +148,8 @@ export function renderMarkdown(markdown: string, opts: { noteId: string }): stri
     .use(remarkResolveAttachments, { noteId: opts.noteId })
     .use(remarkRehype, { allowDangerousHtml: false })
     .use(rehypeSanitize, schema)
+    // After sanitize, so a forged marker in the source is already gone.
+    .use(rehypeMarkPdfEmbeds)
     .use(rehypeStringify)
     .processSync(markdown)
     .toString();
