@@ -1,5 +1,5 @@
 import { ScopedRepo } from './repo.js';
-import type { Note, NoteSummary, SearchResult } from '@unbent/shared';
+import { UNFILED, type Note, type NoteSummary, type SearchResult } from '@unbent/shared';
 
 interface NoteRow {
   id: string;
@@ -99,9 +99,15 @@ export class NotesRepo extends ScopedRepo {
       // Trash is ordered by when it was deleted, so it pages on that column too.
       conditions.push(trashed ? `n.deleted_at < ?${binds.length}` : `n.updated_at < ?${binds.length}`);
     }
-    if (notebook) {
+    if (notebook === UNFILED) {
+      conditions.push('n.notebook_id IS NULL');
+    } else if (notebook) {
       binds.push(notebook);
-      conditions.push(`n.notebook = ?${binds.length}`);
+      // Matched by name, case-insensitively, so a URL filter written in any case works.
+      conditions.push(
+        `n.notebook_id = (SELECT id FROM notebooks
+                           WHERE user_id = ?1 AND name = ?${binds.length} COLLATE NOCASE)`,
+      );
     }
     if (tag) {
       binds.push(tag, this.userId);
@@ -114,11 +120,13 @@ export class NotesRepo extends ScopedRepo {
 
     const { results } = await this.db
       .prepare(
-        `SELECT n.id, n.title, n.body, n.created_at, n.updated_at, n.deleted_at, n.notebook,
+        `SELECT n.id, n.title, n.body, n.created_at, n.updated_at, n.deleted_at,
+                nb.name AS notebook,
                 (SELECT group_concat(t.name, char(31)) FROM note_tags nt
                    JOIN tags t ON t.id = nt.tag_id
                   WHERE nt.note_id = n.id) AS tags
            FROM notes n
+           LEFT JOIN notebooks nb ON nb.id = n.notebook_id
           WHERE ${conditions.join(' AND ')}
           ORDER BY ${trashed ? 'n.deleted_at' : 'n.updated_at'} DESC
           LIMIT ?${binds.length}`,
@@ -151,9 +159,14 @@ export class NotesRepo extends ScopedRepo {
     ];
     const binds: unknown[] = [this.userId];
 
-    if (opts?.notebook) {
+    if (opts?.notebook === UNFILED) {
+      conditions.push('n.notebook_id IS NULL');
+    } else if (opts?.notebook) {
       binds.push(opts.notebook);
-      conditions.push(`n.notebook = ?${binds.length}`);
+      conditions.push(
+        `n.notebook_id = (SELECT id FROM notebooks
+                           WHERE user_id = ?1 AND name = ?${binds.length} COLLATE NOCASE)`,
+      );
     }
     if (opts?.tag) {
       binds.push(opts.tag, this.userId);
@@ -175,9 +188,10 @@ export class NotesRepo extends ScopedRepo {
   async get(id: string): Promise<Note | null> {
     const row = await this.db
       .prepare(
-        `SELECT id, title, body, created_at, updated_at, notebook
-           FROM notes
-          WHERE id = ?1 AND user_id = ?2 AND deleted_at IS NULL`,
+        `SELECT n.id, n.title, n.body, n.created_at, n.updated_at, nb.name AS notebook
+           FROM notes n
+           LEFT JOIN notebooks nb ON nb.id = n.notebook_id
+          WHERE n.id = ?1 AND n.user_id = ?2 AND n.deleted_at IS NULL`,
       )
       .bind(id, this.userId)
       .first<NoteRow>();
@@ -210,12 +224,13 @@ export class NotesRepo extends ScopedRepo {
     notebook?: string | null;
   }): Promise<Note> {
     const now = Date.now();
+    const notebookId = await this.resolveNotebook(input.notebook);
     await this.db
       .prepare(
-        `INSERT INTO notes (id, user_id, title, body, created_at, updated_at, notebook)
+        `INSERT INTO notes (id, user_id, title, body, created_at, updated_at, notebook_id)
          VALUES (?1, ?2, ?3, ?4, ?5, ?5, ?6)`,
       )
-      .bind(input.id, this.userId, input.title, input.body, now, input.notebook ?? null)
+      .bind(input.id, this.userId, input.title, input.body, now, notebookId)
       .run();
 
     if (input.tags.length > 0) await this.setTags(input.id, input.tags);
@@ -248,8 +263,8 @@ export class NotesRepo extends ScopedRepo {
       sets.push(`body = ?${binds.length}`);
     }
     if (patch.notebook !== undefined) {
-      binds.push(patch.notebook);
-      sets.push(`notebook = ?${binds.length}`);
+      binds.push(await this.resolveNotebook(patch.notebook));
+      sets.push(`notebook_id = ?${binds.length}`);
     }
 
     if (sets.length > 0) {
@@ -365,10 +380,11 @@ export class NotesRepo extends ScopedRepo {
     if (existing) return { id: existing.id, created: false };
 
     const id = crypto.randomUUID();
+    const notebookId = await this.resolveNotebook(input.notebook);
     await this.db
       .prepare(
         `INSERT INTO notes
-           (id, user_id, title, body, created_at, updated_at, content_hash, source_enex, notebook)
+           (id, user_id, title, body, created_at, updated_at, content_hash, source_enex, notebook_id)
          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)`,
       )
       .bind(
@@ -380,7 +396,7 @@ export class NotesRepo extends ScopedRepo {
         input.updatedAt,
         input.contentHash,
         input.sourceEnex ?? null,
-        input.notebook ?? null,
+        notebookId,
       )
       .run();
 
@@ -535,22 +551,25 @@ export class NotesRepo extends ScopedRepo {
           ORDER BY t.name`,
       )
       .bind(this.userId)
-      .all<{ name: string; count: number }>();
+      .all<{ id: string; name: string; count: number }>();
     return results;
   }
 
   /** Every notebook this user has in use, with note counts, for the sidebar scope selector. */
-  async listNotebooks(): Promise<Array<{ name: string; count: number }>> {
+  async listNotebooks(): Promise<Array<{ id: string; name: string; count: number }>> {
     const { results } = await this.db
       .prepare(
-        `SELECT notebook AS name, COUNT(*) AS count
-           FROM notes
-          WHERE user_id = ?1 AND deleted_at IS NULL AND notebook IS NOT NULL
-          GROUP BY notebook
-          ORDER BY notebook`,
+        `SELECT nb.id, nb.name,
+                COUNT(n.id) AS count
+           FROM notebooks nb
+           LEFT JOIN notes n
+             ON n.notebook_id = nb.id AND n.deleted_at IS NULL AND n.user_id = ?1
+          WHERE nb.user_id = ?1
+          GROUP BY nb.id, nb.name
+          ORDER BY nb.name COLLATE NOCASE`,
       )
       .bind(this.userId)
-      .all<{ name: string; count: number }>();
+      .all<{ id: string; name: string; count: number }>();
     return results;
   }
 
@@ -560,6 +579,110 @@ export class NotesRepo extends ScopedRepo {
    * D1 has no interactive transactions, so this uses batch() for atomicity. Tag rows are
    * per-user, so two users using "work" get separate rows and never observe each other's.
    */
+  /**
+   * Maps a notebook name to its id, creating the notebook if it is new.
+   *
+   * Get-or-create rather than reject: filing a note into a notebook that does not exist yet
+   * is the ordinary way notebooks come into being, both from the editor and from an import.
+   * The lookup is case-insensitive and runs after the insert, so a name differing only in
+   * case resolves to the notebook that already exists rather than failing on the unique
+   * constraint.
+   */
+  private async resolveNotebook(name: string | null | undefined): Promise<string | null> {
+    const trimmed = name?.trim();
+    if (!trimmed) return null;
+
+    await this.db
+      .prepare(
+        `INSERT INTO notebooks (id, user_id, name, created_at) VALUES (?1, ?2, ?3, ?4)
+         ON CONFLICT(user_id, name) DO NOTHING`,
+      )
+      .bind(crypto.randomUUID(), this.userId, trimmed, Date.now())
+      .run();
+
+    const row = await this.db
+      .prepare(`SELECT id FROM notebooks WHERE user_id = ?1 AND name = ?2 COLLATE NOCASE`)
+      .bind(this.userId, trimmed)
+      .first<{ id: string }>();
+
+    return row?.id ?? null;
+  }
+
+  /** Creates an empty notebook. Returns null when the name is already taken. */
+  async createNotebook(name: string): Promise<{ id: string; name: string } | null> {
+    const trimmed = name.trim();
+    if (!trimmed) return null;
+
+    const res = await this.db
+      .prepare(
+        `INSERT INTO notebooks (id, user_id, name, created_at) VALUES (?1, ?2, ?3, ?4)
+         ON CONFLICT(user_id, name) DO NOTHING`,
+      )
+      .bind(crypto.randomUUID(), this.userId, trimmed, Date.now())
+      .run();
+
+    // No row inserted means the name already exists, case-insensitively.
+    if (res.meta.changes === 0) return null;
+
+    const row = await this.db
+      .prepare(`SELECT id, name FROM notebooks WHERE user_id = ?1 AND name = ?2 COLLATE NOCASE`)
+      .bind(this.userId, trimmed)
+      .first<{ id: string; name: string }>();
+
+    return row ?? null;
+  }
+
+  /**
+   * Renames a notebook. Returns 'conflict' when another notebook already has the name.
+   *
+   * Every note follows automatically because they reference the id — the rename is a single
+   * row update, which is the point of the notebook being an entity at all.
+   */
+  async renameNotebook(id: string, name: string): Promise<'ok' | 'conflict' | 'missing'> {
+    const trimmed = name.trim();
+    if (!trimmed) return 'missing';
+
+    const clash = await this.db
+      .prepare(
+        `SELECT 1 FROM notebooks
+          WHERE user_id = ?1 AND name = ?2 COLLATE NOCASE AND id <> ?3`,
+      )
+      .bind(this.userId, trimmed, id)
+      .first();
+    if (clash) return 'conflict';
+
+    const res = await this.db
+      .prepare(`UPDATE notebooks SET name = ?1 WHERE id = ?2 AND user_id = ?3`)
+      .bind(trimmed, id, this.userId)
+      .run();
+
+    return res.meta.changes > 0 ? 'ok' : 'missing';
+  }
+
+  /**
+   * Deletes a notebook. Its notes survive, unfiled.
+   *
+   * The notes are unfiled explicitly rather than relying on `ON DELETE SET NULL`, because
+   * D1 does not guarantee foreign key enforcement is on for a given connection. Batched so
+   * a note can never be left pointing at a notebook row that is gone.
+   */
+  async deleteNotebook(id: string): Promise<boolean> {
+    const owned = await this.db
+      .prepare(`SELECT 1 FROM notebooks WHERE id = ?1 AND user_id = ?2`)
+      .bind(id, this.userId)
+      .first();
+    if (!owned) return false;
+
+    await this.db.batch([
+      this.db
+        .prepare(`UPDATE notes SET notebook_id = NULL WHERE notebook_id = ?1 AND user_id = ?2`)
+        .bind(id, this.userId),
+      this.db.prepare(`DELETE FROM notebooks WHERE id = ?1 AND user_id = ?2`).bind(id, this.userId),
+    ]);
+
+    return true;
+  }
+
   private async setTags(noteId: string, tags: string[]): Promise<void> {
     const unique = [...new Set(tags.map((t) => t.trim()).filter((t) => t.length > 0))];
 

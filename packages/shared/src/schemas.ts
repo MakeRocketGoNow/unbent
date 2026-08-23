@@ -26,6 +26,14 @@ export const tagNameSchema = z.string().trim().min(1).max(MAX_TAG_LENGTH);
 
 export const notebookNameSchema = z.string().trim().min(1).max(MAX_TAG_LENGTH);
 
+/**
+ * Notebook filter value meaning "notes in no notebook".
+ *
+ * Shared so the client dropdown, the URL query param, and the repo predicate cannot drift
+ * apart. Bracketed to stay clear of names a user would plausibly type.
+ */
+export const UNFILED = '[unfiled]';
+
 export const noteIdSchema = z.string().uuid();
 
 export const createNoteSchema = z.object({

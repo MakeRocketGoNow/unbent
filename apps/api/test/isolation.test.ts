@@ -490,6 +490,133 @@ describe('trash', () => {
   });
 });
 
+/**
+ * Notebooks as an entity.
+ *
+ * The behaviours here are the ones that were impossible when a notebook was a string on
+ * each note: existing while empty, being renamed, and being deleted without taking its
+ * notes with it.
+ */
+describe('notebooks', () => {
+  async function listNotebooks(actor: Actor) {
+    const res = await fetch(`${BASE}/api/notebooks`, asUser(actor));
+    return (await res.json()).notebooks as Array<{ id: string; name: string; count: number }>;
+  }
+
+  it('creates an empty notebook that still lists with a zero count', async () => {
+    const name = `Empty ${Date.now()}`;
+    const res = await fetch(`${BASE}/api/notebooks`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...asUser(alice).headers },
+      body: JSON.stringify({ name }),
+    });
+    expect(res.status).toBe(201);
+
+    // The headline bug: a notebook with no notes used to be invisible.
+    const found = (await listNotebooks(alice)).find((n) => n.name === name);
+    expect(found?.count).toBe(0);
+  });
+
+  it('survives its last note being trashed', async () => {
+    const name = `Outlives ${Date.now()}`;
+    const note = await createNote(alice, { title: 'only note', body: 'x', notebook: name });
+    await fetch(`${BASE}/api/notes/${note.id}`, { method: 'DELETE', ...asUser(alice) });
+
+    const found = (await listNotebooks(alice)).find((n) => n.name === name);
+    expect(found).toBeDefined();
+    expect(found?.count).toBe(0);
+  });
+
+  it('rejects a name that differs only in case', async () => {
+    const name = `Case ${Date.now()}`;
+    const first = await fetch(`${BASE}/api/notebooks`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...asUser(alice).headers },
+      body: JSON.stringify({ name }),
+    });
+    expect(first.status).toBe(201);
+
+    const second = await fetch(`${BASE}/api/notebooks`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...asUser(alice).headers },
+      body: JSON.stringify({ name: name.toLowerCase() }),
+    });
+    expect(second.status).toBe(409);
+  });
+
+  it('files a note into the existing notebook when the case differs', async () => {
+    const name = `Reuse ${Date.now()}`;
+    await createNote(alice, { title: 'a', body: 'x', notebook: name });
+    await createNote(alice, { title: 'b', body: 'x', notebook: name.toLowerCase() });
+
+    const matching = (await listNotebooks(alice)).filter(
+      (n) => n.name.toLowerCase() === name.toLowerCase(),
+    );
+    // One notebook holding both notes, not two notebooks holding one each.
+    expect(matching).toHaveLength(1);
+    expect(matching[0]!.count).toBe(2);
+  });
+
+  it('renames a notebook and every note follows', async () => {
+    const before = `Before ${Date.now()}`;
+    const after = `After ${Date.now()}`;
+    await createNote(alice, { title: 'follows', body: 'x', notebook: before });
+    const nb = (await listNotebooks(alice)).find((n) => n.name === before)!;
+
+    const res = await fetch(`${BASE}/api/notebooks/${nb.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', ...asUser(alice).headers },
+      body: JSON.stringify({ name: after }),
+    });
+    expect(res.status).toBe(200);
+
+    const listed = await fetch(
+      `${BASE}/api/notes?notebook=${encodeURIComponent(after)}`,
+      asUser(alice),
+    ).then((r) => r.json());
+    expect(listed.items.some((n: { title: string }) => n.title === 'follows')).toBe(true);
+  });
+
+  it('unfiles notes rather than deleting them', async () => {
+    const name = `Doomed ${Date.now()}`;
+    const a = await createNote(alice, { title: 'survivor a', body: 'x', notebook: name });
+    const b = await createNote(alice, { title: 'survivor b', body: 'x', notebook: name });
+    const nb = (await listNotebooks(alice)).find((n) => n.name === name)!;
+
+    const res = await fetch(`${BASE}/api/notebooks/${nb.id}`, {
+      method: 'DELETE',
+      ...asUser(alice),
+    });
+    expect(res.status).toBe(204);
+
+    // Deleting an organisational label must never destroy what it organised.
+    for (const id of [a.id, b.id]) {
+      const note = await fetch(`${BASE}/api/notes/${id}`, asUser(alice));
+      expect(note.status).toBe(200);
+      expect((await note.json()).notebook).toBeNull();
+    }
+    expect((await listNotebooks(alice)).some((n) => n.name === name)).toBe(false);
+  });
+
+  it("does not expose or accept changes to another user's notebooks", async () => {
+    const name = `Alice only ${Date.now()}`;
+    await createNote(alice, { title: 'hers', body: 'x', notebook: name });
+    const nb = (await listNotebooks(alice)).find((n) => n.name === name)!;
+
+    expect((await listNotebooks(bob)).some((n) => n.id === nb.id)).toBe(false);
+
+    const rename = await fetch(`${BASE}/api/notebooks/${nb.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', ...asUser(bob).headers },
+      body: JSON.stringify({ name: 'stolen' }),
+    });
+    expect(rename.status).toBe(404);
+
+    const del = await fetch(`${BASE}/api/notebooks/${nb.id}`, { method: 'DELETE', ...asUser(bob) });
+    expect(del.status).toBe(404);
+  });
+});
+
 describe('unauthenticated access', () => {
   const cases: Array<[string, string, RequestInit]> = [
     ['GET', '/api/notes', {}],

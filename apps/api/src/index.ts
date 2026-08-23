@@ -5,6 +5,7 @@ import { sessionMiddleware } from './lib/session.js';
 import { health } from './routes/health.js';
 import { authRoutes } from './routes/auth.js';
 import { notes } from './routes/notes.js';
+import { notebooks } from './routes/notebooks.js';
 import { exportRoutes } from './routes/export.js';
 import { attachments } from './routes/attachments.js';
 import { admin } from './routes/admin.js';
@@ -29,6 +30,7 @@ const routes = app
   .route('/api', health)
   .route('/api', authRoutes)
   .route('/api', notes)
+  .route('/api', notebooks)
   .route('/api', exportRoutes)
   .route('/api', attachments)
   .route('/api', admin)

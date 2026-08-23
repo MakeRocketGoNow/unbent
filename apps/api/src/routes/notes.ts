@@ -104,7 +104,4 @@ export const notes = new Hono<AppEnv>()
   .get('/tags', requireAuth, withRepos, async (c) => {
     return c.json({ tags: await c.get('notes').listTags() });
   })
-
-  .get('/notebooks', requireAuth, withRepos, async (c) => {
-    return c.json({ notebooks: await c.get('notes').listNotebooks() });
-  });
+;

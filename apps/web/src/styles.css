@@ -834,3 +834,65 @@ h1 {
   gap: 0.75rem;
   padding: 0 0.6rem 0.5rem;
 }
+
+/* Notebook management, inside the settings panel. */
+.notebook-admin {
+  list-style: none;
+  margin: 0.5rem 0;
+  padding: 0;
+}
+
+.notebook-admin li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.35rem 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.notebook-admin-name {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex: 1;
+  padding: 0.2rem 0;
+  font: inherit;
+  font-size: 0.9rem;
+  text-align: left;
+  color: inherit;
+  background: none;
+  border: 0;
+  cursor: pointer;
+}
+
+.notebook-admin-name:hover {
+  color: var(--accent);
+}
+
+.notebook-admin-new {
+  display: flex;
+  gap: 0.5rem;
+  margin: 0.75rem 0 0.5rem;
+}
+
+.notebook-admin-new .search-field {
+  flex: 1;
+}
+
+/* Notebook picker in the note header, beside the tags. */
+.note-notebook {
+  flex-shrink: 0;
+  padding: 0.2rem 0.4rem;
+  font: inherit;
+  font-size: 0.8rem;
+  color: inherit;
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 0.35rem;
+  cursor: pointer;
+}
+
+.note-notebook:hover {
+  border-color: color-mix(in srgb, var(--accent) 50%, var(--border));
+}

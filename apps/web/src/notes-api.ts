@@ -100,11 +100,42 @@ export async function listTags(): Promise<Array<{ name: string; count: number }>
   return tags;
 }
 
-export async function listNotebooks(): Promise<Array<{ name: string; count: number }>> {
-  const { notebooks } = await json<{ notebooks: Array<{ name: string; count: number }> }>(
-    await fetch('/api/notebooks'),
-  );
+export interface Notebook {
+  id: string;
+  name: string;
+  count: number;
+}
+
+export async function listNotebooks(): Promise<Notebook[]> {
+  const { notebooks } = await json<{ notebooks: Notebook[] }>(await fetch('/api/notebooks'));
   return notebooks;
+}
+
+/** Creates an empty notebook. Throws with a readable message when the name is taken. */
+export async function createNotebook(name: string): Promise<{ id: string; name: string }> {
+  const res = await fetch('/api/notebooks', {
+    method: 'POST',
+    headers: jsonHeaders,
+    body: JSON.stringify({ name }),
+  });
+  if (res.status === 409) throw new Error('A notebook with that name already exists.');
+  return json(res);
+}
+
+export async function renameNotebook(id: string, name: string): Promise<void> {
+  const res = await fetch(`/api/notebooks/${id}`, {
+    method: 'PATCH',
+    headers: jsonHeaders,
+    body: JSON.stringify({ name }),
+  });
+  if (res.status === 409) throw new Error('A notebook with that name already exists.');
+  await json(res);
+}
+
+/** Deletes a notebook. Its notes survive, unfiled. */
+export async function deleteNotebook(id: string): Promise<void> {
+  const res = await fetch(`/api/notebooks/${id}`, { method: 'DELETE' });
+  if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
 }
 
 export interface UploadedFile {

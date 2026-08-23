@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { EditorView } from '@codemirror/view';
-import type { Note, NoteSummary, SearchResult } from '@unbent/shared';
+import { UNFILED, type Note, type NoteSummary, type SearchResult } from '@unbent/shared';
 import * as api from '../notes-api.js';
 import { useUrlState } from '../use-url-state.js';
 import { useAutosave } from '../useAutosave.js';
@@ -58,10 +58,16 @@ export function Notes({ refreshSignal = 0 }: NotesProps) {
   const [noteError, setNoteError] = useState<{ kind: 'missing' | 'failed'; message: string } | null>(
     null,
   );
-  const [draft, setDraft] = useState<{ title: string; body: string; tags: string[] }>({
+  const [draft, setDraft] = useState<{
+    title: string;
+    body: string;
+    tags: string[];
+    notebook: string | null;
+  }>({
     title: '',
     body: '',
     tags: [],
+    notebook: null,
   });
   const [loadError, setLoadError] = useState<string | null>(null);
   const [showPreview, setShowPreview] = useState(true);
@@ -71,7 +77,7 @@ export function Notes({ refreshSignal = 0 }: NotesProps) {
   );
   const [editorView, setEditorView] = useState<EditorView | null>(null);
   const [allTags, setAllTags] = useState<Array<{ name: string; count: number }>>([]);
-  const [allNotebooks, setAllNotebooks] = useState<Array<{ name: string; count: number }>>([]);
+  const [allNotebooks, setAllNotebooks] = useState<api.Notebook[]>([]);
   const [cursor, setCursor] = useState<string | null>(null);
   const [total, setTotal] = useState<number | null>(null);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -171,7 +177,7 @@ export function Notes({ refreshSignal = 0 }: NotesProps) {
       .then((n) => {
         if (cancelled) return;
         setNote(n);
-        setDraft({ title: n.title, body: n.body, tags: n.tags });
+        setDraft({ title: n.title, body: n.body, tags: n.tags, notebook: n.notebook ?? null });
       })
       .catch((err: Error) => {
         if (cancelled) return;
@@ -211,11 +217,12 @@ export function Notes({ refreshSignal = 0 }: NotesProps) {
   }, [query]);
 
   const save = useCallback(
-    async (value: { title: string; body: string; tags: string[] }) => {
+    async (value: { title: string; body: string; tags: string[]; notebook: string | null }) => {
       if (!selectedId) return;
       const updated = await api.updateNote(selectedId, value);
-      // A tag edit can create or empty a tag, so the sidebar counts move with it.
+      // A tag or notebook edit changes the sidebar counts, so both are refetched.
       void api.listTags().then(setAllTags).catch(() => undefined);
+      void api.listNotebooks().then(setAllNotebooks).catch(() => undefined);
       // Reflect the new updated_at and ordering without refetching the body.
       setList((prev) =>
         [
@@ -361,10 +368,12 @@ export function Notes({ refreshSignal = 0 }: NotesProps) {
             >
               <option value="">All notebooks</option>
               {allNotebooks.map((nb) => (
-                <option key={nb.name} value={nb.name}>
+                <option key={nb.id} value={nb.name}>
                   {nb.name} ({nb.count})
                 </option>
               ))}
+              {/* Reachable only once a notebook is deleted, which unfiles its notes. */}
+              <option value={UNFILED}>Unfiled</option>
             </select>
           </div>
         )}
@@ -448,9 +457,11 @@ export function Notes({ refreshSignal = 0 }: NotesProps) {
                 ? 'Trash is empty.'
                 : activeTag
                   ? `No notes tagged ${activeTag}.`
-                  : activeNotebook
-                    ? `No notes in ${activeNotebook}.`
-                    : 'No notes yet.'}
+                  : activeNotebook === UNFILED
+                    ? 'No unfiled notes.'
+                    : activeNotebook
+                      ? `No notes in ${activeNotebook}.`
+                      : 'No notes yet.'}
             </li>
           )}
         </ul>
@@ -509,6 +520,22 @@ export function Notes({ refreshSignal = 0 }: NotesProps) {
             </div>
 
             <div className="tag-row">
+              {/* Filing a note by picking from the notebooks that exist, rather than
+                  retyping a name — which is how case-variant duplicates used to appear. */}
+              <select
+                className="note-notebook"
+                value={draft.notebook ?? ''}
+                aria-label="Notebook"
+                onChange={(e) => setDraft((d) => ({ ...d, notebook: e.target.value || null }))}
+              >
+                <option value="">Unfiled</option>
+                {allNotebooks.map((nb) => (
+                  <option key={nb.id} value={nb.name}>
+                    {nb.name}
+                  </option>
+                ))}
+              </select>
+
               <TagInput
                 tags={draft.tags}
                 suggestions={allTags.map((t) => t.name)}
