@@ -160,40 +160,41 @@ export async function parseEnexStream(
     }
   });
 
+  let bytesRead = 0;
+
+  /**
+   * Count bytes before decoding, not characters after.
+   *
+   * `TextDecoderStream` yields strings, so measuring the decoded chunk counts UTF-16 code
+   * units — which disagrees with the `File.size` the UI shows progress against as soon as
+   * a file contains any non-ASCII text. Tapping the byte stream on the way past keeps the
+   * two in the same unit.
+   */
+  const counted = stream.pipeThrough(
+    new TransformStream<Uint8Array, Uint8Array>({
+      transform(chunk, controller) {
+        bytesRead += chunk.byteLength;
+        controller.enqueue(chunk);
+      },
+    }),
+  );
   // TextDecoderStream's writable is typed as BufferSource, which is wider than the
   // Uint8Array stream we hold; the cast reconciles the two without weakening the input.
-  const decoded = stream.pipeThrough(
+  const decoded = counted.pipeThrough(
     new TextDecoderStream() as unknown as ReadableWritablePair<string, Uint8Array>,
   );
   const reader = decoded.getReader();
-  let bytesRead = 0;
 
-  try {
-    for (;;) {
-      const { done, value } = await reader.read();
-      if (done) break;
-
-      bytesRead += value.length;
-      parser.write(value);
-
-      // Drain outside the SAX callbacks: handlers are synchronous, so awaiting an upload
-      // has to happen here, between chunks.
-      while (ready.length > 0) {
-        const next = ready.shift()!;
-        try {
-          await callbacks.onNote(next);
-          notes += 1;
-        } catch (err) {
-          errors += 1;
-          callbacks.onError?.(`${next.title || 'untitled'}: ${(err as Error).message}`);
-        }
-      }
-
-      callbacks.onProgress?.(bytesRead);
-    }
-
-    parser.close();
-
+  /**
+   * Processes every note the parser has completed so far.
+   *
+   * Progress is reported after *each* note rather than once per chunk. A chunk is
+   * 64KB–512KB of ENEX, which can hold many notes, and the uploads inside `onNote` are the
+   * slow part — so a per-chunk update leaves the UI frozen for the entire time real work is
+   * happening, which reads as a hang. This is the difference between a progress bar that
+   * moves and one that appears stuck at its first value.
+   */
+  async function drain(): Promise<void> {
     while (ready.length > 0) {
       const next = ready.shift()!;
       try {
@@ -203,7 +204,27 @@ export async function parseEnexStream(
         errors += 1;
         callbacks.onError?.(`${next.title || 'untitled'}: ${(err as Error).message}`);
       }
+      callbacks.onProgress?.(bytesRead);
     }
+  }
+
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      parser.write(value);
+
+      // Drain outside the SAX callbacks: handlers are synchronous, so awaiting an upload
+      // has to happen here, between chunks.
+      await drain();
+
+      callbacks.onProgress?.(bytesRead);
+    }
+
+    parser.close();
+    await drain();
+    callbacks.onProgress?.(bytesRead);
   } finally {
     reader.releaseLock();
   }
