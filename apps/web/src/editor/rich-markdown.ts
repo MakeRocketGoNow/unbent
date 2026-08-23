@@ -62,17 +62,6 @@ const MARK_NODES = new Set([
  */
 const MARKS_WITH_TRAILING_SPACE = new Set(['HeaderMark', 'QuoteMark']);
 
-/**
- * Line-level equivalents of the inline styles, applied when a mark covers a whole line.
- * See the comment at the use site for why the distinction matters.
- */
-const WHOLE_LINE_STYLES: Record<string, Decoration> = {
-  StrongEmphasis: Decoration.line({ class: 'cm-md-strong' }),
-  Emphasis: Decoration.line({ class: 'cm-md-em' }),
-  Strikethrough: Decoration.line({ class: 'cm-md-strike' }),
-  InlineCode: Decoration.line({ class: 'cm-md-code-line' }),
-};
-
 const hiddenMark = Decoration.mark({ class: 'cm-md-hidden' });
 const listBullet = Decoration.mark({ class: 'cm-md-bullet' });
 
@@ -226,24 +215,6 @@ function buildDecorations(view: EditorView, options: RichMarkdownOptions): Decor
 
         const inline = INLINE_STYLES[node.name];
         if (inline && node.to > node.from) {
-          /**
-           * Style a whole-line mark with a line decoration instead of a mark decoration.
-           *
-           * A mark decoration wraps its range in a span. When the range covers the entire
-           * line, that leaves the line with no top-level text node — every other line has
-           * one — and vertical cursor movement measures against text nodes, so the line
-           * becomes unreachable: arrow-down jumps straight past it. A line decoration adds
-           * the class to the line element and leaves the text where the browser expects it.
-           */
-          const line = state.doc.lineAt(node.from);
-          const spansWholeLine = node.from === line.from && node.to === line.to;
-          const lineStyle = spansWholeLine ? WHOLE_LINE_STYLES[node.name] : undefined;
-
-          if (lineStyle) {
-            marks.push(lineStyle.range(line.from));
-            return;
-          }
-
           marks.push(inline.range(node.from, node.to));
           return;
         }
@@ -327,12 +298,6 @@ export function richMarkdown(options: RichMarkdownOptions = {}): Extension {
       '.cm-md-strong': { fontWeight: '700' },
       '.cm-md-em': { fontStyle: 'italic' },
       '.cm-md-strike': { textDecoration: 'line-through', opacity: '0.7' },
-
-      // Line-level inline code: no background pill, which would fill the whole line.
-      '.cm-md-code-line': {
-        fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
-        fontSize: '0.9em',
-      },
 
       '.cm-md-code': {
         fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
