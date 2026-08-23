@@ -16,6 +16,12 @@ export function Login() {
     setPending(provider);
     setError(null);
     try {
+      /**
+       * Returns to the bare app root, so a deep link followed while signed out loses its
+       * query string. Preserving it means passing the current URL through OAuth and
+       * widening the server's trusted-redirect allowlist — a security-sensitive change
+       * kept separate from URL state. With a live session the case is rare.
+       */
       await signIn.social({ provider, callbackURL: '/' });
     } catch (err) {
       // A provider with no configured credentials fails here rather than redirecting.

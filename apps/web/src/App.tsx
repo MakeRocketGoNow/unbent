@@ -7,7 +7,7 @@ import { Import } from './components/Import.js';
 export function App() {
   const { data: session, isPending } = useSession();
   const [showImport, setShowImport] = useState(false);
-  // Bumping this remounts Notes so it refetches after an import.
+  // Bumping this tells Notes to refetch after an import.
   const [refreshKey, setRefreshKey] = useState(0);
 
   if (isPending) {
@@ -40,7 +40,14 @@ export function App() {
             Export
           </a>
           <span className="muted">{session.user.email}</span>
-          <button type="button" className="link" onClick={() => void signOut()}>
+          {/* Clearing the URL is the one history call outside use-url-state.ts: it runs
+              after the component tree is gone, and leaving a note id in the address bar
+              would expose it to the next person and reapply it on the next sign-in. */}
+          <button
+            type="button"
+            className="link"
+            onClick={() => void signOut().then(() => window.history.replaceState(null, '', '/'))}
+          >
             Sign out
           </button>
         </div>
@@ -53,7 +60,7 @@ export function App() {
         />
       )}
 
-      <Notes key={refreshKey} />
+      <Notes refreshSignal={refreshKey} />
     </main>
   );
 }

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import type { EditorView } from '@codemirror/view';
 import type { Note, NoteSummary, SearchResult } from '@unbent/shared';
 import * as api from '../notes-api.js';
+import { useUrlState } from '../use-url-state.js';
 import { useAutosave } from '../useAutosave.js';
 import { Editor } from './Editor.js';
 import { Preview } from './Preview.js';
@@ -27,10 +28,30 @@ const SAVE_LABEL: Record<string, string> = {
   error: 'Save failed',
 };
 
-export function Notes() {
+interface NotesProps {
+  /**
+   * Bumped by the parent after an import to trigger a refetch.
+   *
+   * A prop rather than a `key` remount: selection and filters now live in the URL, so a
+   * remount would no longer clear them and a pre-import note id would survive and re-fail.
+   */
+  refreshSignal?: number;
+}
+
+export function Notes({ refreshSignal = 0 }: NotesProps) {
+  /**
+   * Notebook, tag, open note, and search query live in the URL so a reload restores the
+   * exact view, and a note can be linked to. See use-url-state.ts.
+   */
+  const { notebook: activeNotebook, tag: activeTag, note: selectedId, q: query, set } =
+    useUrlState();
+
   const [list, setList] = useState<NoteSummary[]>([]);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
   const [note, setNote] = useState<Note | null>(null);
+  /** Set when the note named in the URL cannot be loaded; see the load effect below. */
+  const [noteError, setNoteError] = useState<{ kind: 'missing' | 'failed'; message: string } | null>(
+    null,
+  );
   const [draft, setDraft] = useState<{ title: string; body: string; tags: string[] }>({
     title: '',
     body: '',
@@ -45,13 +66,12 @@ export function Notes() {
   const [editorView, setEditorView] = useState<EditorView | null>(null);
   const [allTags, setAllTags] = useState<Array<{ name: string; count: number }>>([]);
   const [allNotebooks, setAllNotebooks] = useState<Array<{ name: string; count: number }>>([]);
-  const [activeTag, setActiveTag] = useState<string | null>(null);
-  const [activeNotebook, setActiveNotebook] = useState<string | null>(null);
   const [cursor, setCursor] = useState<string | null>(null);
   const [total, setTotal] = useState<number | null>(null);
   const [loadingMore, setLoadingMore] = useState(false);
-  const [query, setQuery] = useState('');
   const [results, setResults] = useState<SearchResult[] | null>(null);
+  /** Bumped by the Retry button to re-run the load effect for the same note id. */
+  const [retryCount, setRetryCount] = useState(0);
 
   const listFilter = useCallback(
     () => ({
@@ -104,8 +124,26 @@ export function Notes() {
     void refreshList();
   }, [refreshList]);
 
-  // Load the selected note's full body.
+  // An import changes note and notebook counts; refetch without disturbing the URL so the
+  // user keeps their place.
   useEffect(() => {
+    if (refreshSignal > 0) void refreshList();
+    // refreshList is intentionally excluded: this fires on the signal, not on filter
+    // changes, which the effect above already covers.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [refreshSignal]);
+
+  /**
+   * Loads the note named in the URL.
+   *
+   * A note id can arrive from a shared link or a reload long after the note was deleted,
+   * so a failure here is expected rather than exceptional. The id deliberately stays in
+   * the URL so the link remains copyable and retryable; the workspace explains what
+   * happened instead. A 404 and a transport failure need different words and different
+   * recovery, so they are distinguished.
+   */
+  useEffect(() => {
+    setNoteError(null);
     if (!selectedId) {
       setNote(null);
       return;
@@ -118,11 +156,19 @@ export function Notes() {
         setNote(n);
         setDraft({ title: n.title, body: n.body, tags: n.tags });
       })
-      .catch((err: Error) => !cancelled && setLoadError(err.message));
+      .catch((err: Error) => {
+        if (cancelled) return;
+        setNote(null);
+        setNoteError(
+          err.message.startsWith('404')
+            ? { kind: 'missing', message: "That note doesn't exist, or was deleted." }
+            : { kind: 'failed', message: `Couldn't load that note. ${err.message}` },
+        );
+      });
     return () => {
       cancelled = true;
     };
-  }, [selectedId]);
+  }, [selectedId, retryCount]);
 
   // Debounced search. A null result set means "not searching", which is distinct from an
   // empty array meaning "searched and found nothing".
@@ -185,7 +231,7 @@ export function Notes() {
         notebook: activeNotebook,
       });
       await refreshList();
-      setSelectedId(created.id);
+      set({ note: created.id });
     } catch (err) {
       setLoadError((err as Error).message);
     }
@@ -194,7 +240,7 @@ export function Notes() {
   async function removeNote(id: string) {
     try {
       await api.deleteNote(id);
-      if (selectedId === id) setSelectedId(null);
+      if (selectedId === id) set({ note: null });
       await refreshList();
     } catch (err) {
       setLoadError((err as Error).message);
@@ -204,7 +250,7 @@ export function Notes() {
   async function select(id: string) {
     // Flush before switching so the last edit is never dropped.
     await flush();
-    setSelectedId(id);
+    set({ note: id });
   }
 
   return (
@@ -230,7 +276,9 @@ export function Notes() {
           type="search"
           value={query}
           placeholder="Search notes…"
-          onChange={(e) => setQuery(e.target.value)}
+          // replace, not push: the query updates per keystroke, and pushing would make
+          // Back crawl out of a search one character at a time.
+          onChange={(e) => set({ q: e.target.value }, { replace: true })}
         />
 
         {results === null && allNotebooks.length > 0 && (
@@ -238,7 +286,9 @@ export function Notes() {
             <select
               className="notebook-scope"
               value={activeNotebook ?? ''}
-              onChange={(e) => setActiveNotebook(e.target.value || null)}
+              // Clearing the tag matters: tags cross notebook boundaries, so keeping one
+              // selected here routinely yields an empty list with no visible cause.
+              onChange={(e) => set({ notebook: e.target.value || null, tag: null })}
               aria-label="Notebook"
             >
               <option value="">All notebooks</option>
@@ -258,7 +308,7 @@ export function Notes() {
                 key={t.name}
                 type="button"
                 className={activeTag === t.name ? 'tag-filter-item active' : 'tag-filter-item'}
-                onClick={() => setActiveTag(activeTag === t.name ? null : t.name)}
+                onClick={() => set({ tag: activeTag === t.name ? null : t.name })}
               >
                 {t.name}
                 <span className="tag-count">{t.count}</span>
@@ -319,7 +369,22 @@ export function Notes() {
       </aside>
 
       <section className="workspace">
-        {!note && <p className="muted placeholder">Select a note, or create one.</p>}
+        {!note && noteError && (
+          <div className="workspace-error">
+            <p className={noteError.kind === 'missing' ? 'muted' : 'bad'}>{noteError.message}</p>
+            {noteError.kind === 'missing' ? (
+              <button type="button" className="link" onClick={() => set({ note: null })}>
+                Clear
+              </button>
+            ) : (
+              <button type="button" className="link" onClick={() => setRetryCount((n) => n + 1)}>
+                Retry
+              </button>
+            )}
+          </div>
+        )}
+
+        {!note && !noteError && <p className="muted placeholder">Select a note, or create one.</p>}
 
         {note && (
           <>

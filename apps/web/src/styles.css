@@ -728,3 +728,13 @@ h1 {
 .tb-bold { font-weight: 700; }
 .tb-italic { font-style: italic; font-family: Georgia, serif; }
 .tb-strike { text-decoration: line-through; }
+
+/* Stale or unreachable note: the id stays in the URL, so explain rather than blank out. */
+.workspace-error {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 3rem 1rem;
+  text-align: center;
+}
