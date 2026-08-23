@@ -2,7 +2,9 @@
  * Attachment upload, serving, and isolation.
  *
  * The security-critical cases here are traversal (a filename must never escape its note's
- * R2 prefix) and cross-tenant reads (a note id from a URL is never trusted on its own).
+ * R2 prefix), cross-tenant reads (a note id from a URL is never trusted on its own), and
+ * content-type downgrade (an uploaded type is never echoed back if a browser would execute
+ * it).
  */
 import { beforeAll, describe, expect, it } from 'vitest';
 
@@ -101,6 +103,86 @@ describe('upload and serve', () => {
     expect(get.headers.get('cache-control')).toContain('private');
     expect(get.headers.get('x-content-type-options')).toBe('nosniff');
     expect(get.headers.get('etag')).toBeTruthy();
+  });
+
+  /**
+   * A file's declared type is attacker-controlled — a request header on upload, or an ENEX
+   * `<mime>` field on import. Echoing it back means a file uploaded as `text/html` becomes
+   * a same-origin document: its scripts can read the app's DOM and call the API with the
+   * user's session. These assert the response, not the stored metadata.
+   */
+  describe('content-type downgrade', () => {
+    // Its own note: these upload several files, and a shared note would break the
+    // exact-listing assertion elsewhere in this file.
+    let note: { id: string };
+
+    beforeAll(async () => {
+      note = await createNote(alice, 'Content-type probes');
+    }, 30_000);
+
+    it('never serves an uploaded HTML file as HTML', async () => {
+      const html = '<html><body><script>alert(1)</script></body></html>';
+      const put = await upload(alice, note.id, 'evil.html', html, 'text/html');
+      expect(put.status).toBe(201);
+
+      const get = await fetch(`${BASE}/api/notes/${note.id}/files/evil.html`, {
+        headers: { Cookie: alice.cookie, Origin: ORIGIN },
+      });
+
+      expect(get.headers.get('content-type')).toBe('application/octet-stream');
+      expect(get.headers.get('content-disposition')).toContain('attachment');
+      // The bytes are still returned intact — this is about how they are labelled.
+      expect(await get.text()).toBe(html);
+    });
+
+    it('is not fooled by a charset parameter', async () => {
+      await upload(alice, note.id, 'charset.html', '<b>hi</b>', 'text/html; charset=utf-8');
+
+      const get = await fetch(`${BASE}/api/notes/${note.id}/files/charset.html`, {
+        headers: { Cookie: alice.cookie, Origin: ORIGIN },
+      });
+      expect(get.headers.get('content-type')).toBe('application/octet-stream');
+    });
+
+    it('is not fooled by casing', async () => {
+      await upload(alice, note.id, 'upper.html', '<b>hi</b>', 'TEXT/HTML');
+
+      const get = await fetch(`${BASE}/api/notes/${note.id}/files/upper.html`, {
+        headers: { Cookie: alice.cookie, Origin: ORIGIN },
+      });
+      expect(get.headers.get('content-type')).toBe('application/octet-stream');
+    });
+
+    it('downgrades SVG, which browsers script despite it being an image', async () => {
+      const svg = '<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>';
+      await upload(alice, note.id, 'evil.svg', svg, 'image/svg+xml');
+
+      const get = await fetch(`${BASE}/api/notes/${note.id}/files/evil.svg`, {
+        headers: { Cookie: alice.cookie, Origin: ORIGIN },
+      });
+      expect(get.headers.get('content-type')).toBe('application/octet-stream');
+      expect(get.headers.get('content-disposition')).toContain('attachment');
+    });
+
+    it('still serves a PDF inline, so preview keeps working', async () => {
+      // %PDF header; the corpus is overwhelmingly PDFs and they must not regress.
+      await upload(alice, note.id, 'doc.pdf', '%PDF-1.4 fake', 'application/pdf');
+
+      const get = await fetch(`${BASE}/api/notes/${note.id}/files/doc.pdf`, {
+        headers: { Cookie: alice.cookie, Origin: ORIGIN },
+      });
+      expect(get.headers.get('content-type')).toBe('application/pdf');
+      expect(get.headers.get('content-disposition')).toContain('inline');
+    });
+
+    it('sends a sandboxing CSP on every attachment response', async () => {
+      // A PDF: the safe path, to prove the CSP is not only sent on downgraded responses.
+      const get = await fetch(`${BASE}/api/notes/${note.id}/files/doc.pdf`, {
+        headers: { Cookie: alice.cookie, Origin: ORIGIN },
+      });
+      // Independent of the allowlist: denies an origin and script even if a type slips in.
+      expect(get.headers.get('content-security-policy')).toContain('sandbox');
+    });
   });
 
   it('honors If-None-Match with a 304', async () => {

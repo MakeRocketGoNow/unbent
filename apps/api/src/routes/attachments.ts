@@ -1,5 +1,12 @@
 import { Hono } from 'hono';
-import { MAX_ATTACHMENT_BYTES, filenameSchema } from '@unbent/shared';
+import {
+  FALLBACK_CONTENT_TYPE,
+  MAX_ATTACHMENT_BYTES,
+  filenameSchema,
+  normalizeContentType,
+  serveContentType,
+  serveDisposition,
+} from '@unbent/shared';
 import { requireAuth } from '../lib/session.js';
 import { withRepos } from '../lib/repos-middleware.js';
 import type { AppEnv } from '../types.js';
@@ -58,7 +65,17 @@ export const attachments = new Hono<AppEnv>()
     const filename = await repo.availableFilename(noteId, parsed.data);
     const id = crypto.randomUUID();
     const key = repo.buildKey(noteId, id, filename);
-    const contentType = c.req.header('Content-Type') ?? 'application/octet-stream';
+    /**
+     * Record the declared type, normalized.
+     *
+     * Kept rather than verified: the search backfill filters on `application/pdf`, and the
+     * export needs real types for the files it writes. What makes this safe is that nothing
+     * is *served* from it unchecked — see the GET handler, which decides the response type
+     * independently. Parameters are stripped here so a stored value like
+     * `text/html; charset=utf-8` cannot later differ from what the allowlist compares.
+     */
+    const contentType =
+      normalizeContentType(c.req.header('Content-Type')) || FALLBACK_CONTENT_TYPE;
 
     const object = await c.env.BLOBS.put(key, c.req.raw.body, {
       httpMetadata: { contentType },
@@ -96,9 +113,33 @@ export const attachments = new Hono<AppEnv>()
     headers.set('etag', object.httpEtag);
     // The key embeds an immutable attachment id, so the bytes at this URL never change.
     headers.set('Cache-Control', 'private, max-age=31536000, immutable');
-    // Never let a stored file be interpreted as markup in our own origin.
     headers.set('X-Content-Type-Options', 'nosniff');
-    headers.set('Content-Disposition', `inline; filename="${encodeURIComponent(filename)}"`);
+
+    /**
+     * Serve a safe type rather than the one the uploader declared.
+     *
+     * `writeHttpMetadata` restores whatever was stored on the R2 object, which came from a
+     * client header or an ENEX `<mime>` field — neither verified against the bytes. Echoing
+     * it means a file uploaded as `text/html` runs as a same-origin document with access to
+     * the session. Anything not known-inert is downgraded to a binary type and marked
+     * `attachment`, so the browser saves it instead of executing it.
+     */
+    headers.set('Content-Type', serveContentType(row.content_type));
+    const disposition = serveDisposition(row.content_type);
+    headers.set(
+      'Content-Disposition',
+      `${disposition}; filename="${encodeURIComponent(filename)}"`,
+    );
+
+    /**
+     * A second, independent barrier.
+     *
+     * If a type is ever added to the allowlist that turns out to be scriptable, this CSP
+     * still denies the document an origin, script execution, and subresource loads. The
+     * allowlist should be sufficient on its own; this is what makes a mistake in it
+     * non-catastrophic.
+     */
+    headers.set('Content-Security-Policy', "sandbox; default-src 'none'");
 
     // A conditional hit returns metadata with no body: that is a 304, not an empty 200.
     if (!('body' in object) || !object.body) return new Response(null, { status: 304, headers });
