@@ -792,3 +792,12 @@ h1 {
 .pdf-preview p {
   margin: 0.5rem 0.6rem;
 }
+
+/* Finished import: the summary stays until dismissed, with the next action beside it. */
+.import-finished {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+}

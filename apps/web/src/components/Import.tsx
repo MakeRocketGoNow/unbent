@@ -129,10 +129,35 @@ export function Import({ onClose, onImported }: ImportProps) {
     worker.current?.postMessage({ type: 'abort' } satisfies ImportRequest);
   }
 
+  /**
+   * Clears a finished run so another file can be picked.
+   *
+   * The summary stays on screen until this is pressed. A small import finishes in well
+   * under a second, and previously the only way back to the file picker was closing and
+   * reopening the panel — which threw away the result before it could be read.
+   */
+  function reset() {
+    setFile(null);
+    setProgress(null);
+    setFailures([]);
+    setError(null);
+    setElapsed(0);
+    setStatus('idle');
+  }
+
+  /**
+   * Progress bar fill.
+   *
+   * Pinned to 100% once the run finishes: the last bytes are read before the final notes
+   * finish uploading, so a byte-based bar can otherwise sit at 99% on a completed import
+   * and read as stalled.
+   */
   const pct =
-    file && progress && file.size > 0
-      ? Math.min(100, Math.round((progress.bytesRead / file.size) * 100))
-      : 0;
+    status === 'done'
+      ? 100
+      : file && progress && file.size > 0
+        ? Math.min(100, Math.round((progress.bytesRead / file.size) * 100))
+        : 0;
 
   return (
     <div className="import-panel">
@@ -233,16 +258,32 @@ export function Import({ onClose, onImported }: ImportProps) {
       )}
 
       {status === 'done' && (
-        <p className="good small">
-          Finished. {progress?.created.toLocaleString()} notes imported
-          {progress && progress.skipped > 0
-            ? `, ${progress.skipped.toLocaleString()} already present`
-            : ''}
-          .
-        </p>
+        <div className="import-finished">
+          <p className="good small">
+            Finished in {Math.max(1, Math.round(elapsed / 1000))}s.{' '}
+            {progress?.created.toLocaleString()} notes imported
+            {progress && progress.skipped > 0
+              ? `, ${progress.skipped.toLocaleString()} already present`
+              : ''}
+            {progress && progress.filesUploaded > 0
+              ? `, ${progress.filesUploaded.toLocaleString()} files`
+              : ''}
+            .
+          </p>
+          <button type="button" className="link" onClick={reset}>
+            Import another file
+          </button>
+        </div>
       )}
 
-      {status === 'error' && <p className="bad small">{error}</p>}
+      {status === 'error' && (
+        <div className="import-finished">
+          <p className="bad small">{error}</p>
+          <button type="button" className="link" onClick={reset}>
+            Try another file
+          </button>
+        </div>
+      )}
 
       {status === 'idle' && (
         <div className="backfill-row">
