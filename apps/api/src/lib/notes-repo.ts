@@ -16,6 +16,7 @@ interface SummaryRow {
   body: string;
   created_at: number;
   updated_at: number;
+  deleted_at: number | null;
   notebook: string | null;
   tags: string | null;
 }
@@ -82,15 +83,21 @@ export class NotesRepo extends ScopedRepo {
     cursor?: string;
     tag?: string;
     notebook?: string;
+    /** List trashed notes instead of live ones. */
+    trashed?: boolean;
   }): Promise<NoteSummary[]> {
-    const { limit, cursor, tag, notebook } = opts;
+    const { limit, cursor, tag, notebook, trashed } = opts;
 
-    const conditions = ['n.user_id = ?1', 'n.deleted_at IS NULL'];
+    const conditions = [
+      'n.user_id = ?1',
+      trashed ? 'n.deleted_at IS NOT NULL' : 'n.deleted_at IS NULL',
+    ];
     const binds: unknown[] = [this.userId];
 
     if (cursor) {
       binds.push(Number(cursor));
-      conditions.push(`n.updated_at < ?${binds.length}`);
+      // Trash is ordered by when it was deleted, so it pages on that column too.
+      conditions.push(trashed ? `n.deleted_at < ?${binds.length}` : `n.updated_at < ?${binds.length}`);
     }
     if (notebook) {
       binds.push(notebook);
@@ -107,13 +114,13 @@ export class NotesRepo extends ScopedRepo {
 
     const { results } = await this.db
       .prepare(
-        `SELECT n.id, n.title, n.body, n.created_at, n.updated_at, n.notebook,
+        `SELECT n.id, n.title, n.body, n.created_at, n.updated_at, n.deleted_at, n.notebook,
                 (SELECT group_concat(t.name, char(31)) FROM note_tags nt
                    JOIN tags t ON t.id = nt.tag_id
                   WHERE nt.note_id = n.id) AS tags
            FROM notes n
           WHERE ${conditions.join(' AND ')}
-          ORDER BY n.updated_at DESC
+          ORDER BY ${trashed ? 'n.deleted_at' : 'n.updated_at'} DESC
           LIMIT ?${binds.length}`,
       )
       .bind(...binds)
@@ -127,6 +134,7 @@ export class NotesRepo extends ScopedRepo {
       tags: splitTags(r.tags),
       notebook: r.notebook,
       excerpt: excerptOf(r.body),
+      deletedAt: r.deleted_at ?? undefined,
     }));
   }
 
@@ -136,8 +144,11 @@ export class NotesRepo extends ScopedRepo {
    * Reported separately from `list` because the list is paginated: counting what a page
    * returned would show "50 notes" for an account holding hundreds.
    */
-  async count(opts?: { tag?: string; notebook?: string }): Promise<number> {
-    const conditions = ['n.user_id = ?1', 'n.deleted_at IS NULL'];
+  async count(opts?: { tag?: string; notebook?: string; trashed?: boolean }): Promise<number> {
+    const conditions = [
+      'n.user_id = ?1',
+      opts?.trashed ? 'n.deleted_at IS NOT NULL' : 'n.deleted_at IS NULL',
+    ];
     const binds: unknown[] = [this.userId];
 
     if (opts?.notebook) {
@@ -286,6 +297,42 @@ export class NotesRepo extends ScopedRepo {
       .bind(Date.now(), id, this.userId)
       .run();
     return res.meta.changes > 0;
+  }
+
+  /**
+   * Restores a trashed note. Returns false when it is not this user's, or not in the trash.
+   *
+   * `updated_at` is deliberately left alone: restoring is not an edit, and bumping it would
+   * reorder the note to the top of the list as though it had just been written.
+   */
+  async restore(id: string): Promise<boolean> {
+    const res = await this.db
+      .prepare(
+        `UPDATE notes SET deleted_at = NULL
+          WHERE id = ?1 AND user_id = ?2 AND deleted_at IS NOT NULL`,
+      )
+      .bind(id, this.userId)
+      .run();
+    return res.meta.changes > 0;
+  }
+
+  /** Permanently deletes one trashed note, returning its R2 keys so the blobs can go too. */
+  async purgeOne(id: string): Promise<{ deleted: boolean; keys: string[] }> {
+    const { results } = await this.db
+      .prepare(
+        `SELECT a.r2_key FROM attachments a
+           JOIN notes n ON n.id = a.note_id
+          WHERE n.id = ?1 AND n.user_id = ?2 AND n.deleted_at IS NOT NULL`,
+      )
+      .bind(id, this.userId)
+      .all<{ r2_key: string }>();
+
+    const res = await this.db
+      .prepare(`DELETE FROM notes WHERE id = ?1 AND user_id = ?2 AND deleted_at IS NOT NULL`)
+      .bind(id, this.userId)
+      .run();
+
+    return { deleted: res.meta.changes > 0, keys: results.map((r) => r.r2_key) };
   }
 
   /**

@@ -20,6 +20,7 @@ describe('parse', () => {
       tag: 'Doctor Visit',
       note: 'abc123',
       q: 'phar',
+      trash: false,
     });
   });
 
@@ -43,6 +44,14 @@ describe('parse', () => {
 
   it('ignores params it does not own', () => {
     expect(parse('?import=1&tag=x').tag).toBe('x');
+  });
+
+  it('reads the trash flag', () => {
+    expect(parse('?trash=1').trash).toBe(true);
+    expect(parse('').trash).toBe(false);
+    // Only "1" counts, so a stray value cannot silently switch the view.
+    expect(parse('?trash=0').trash).toBe(false);
+    expect(parse('?trash=yes').trash).toBe(false);
   });
 });
 
@@ -77,6 +86,12 @@ describe('nextUrl', () => {
     const url = nextUrl({ tag: 'new' }, '/', '?import=1&tag=old');
 
     expect(new URLSearchParams(url.slice(url.indexOf('?'))).get('import')).toBe('1');
+  });
+
+  it('writes the trash flag as 1 and omits it when false', () => {
+    expect(nextUrl({ trash: true }, '/', '')).toBe('/?trash=1');
+    // false means "not set", so leaving the trash returns to a clean URL.
+    expect(nextUrl({ trash: false }, '/', '?trash=1')).toBe('/');
   });
 
   it('leaves keys absent from the patch untouched', () => {

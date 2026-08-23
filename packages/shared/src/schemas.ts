@@ -47,6 +47,11 @@ export const listNotesQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).default(50),
   tag: z.string().optional(),
   notebook: z.string().optional(),
+  /** List trashed notes instead of live ones. Any value but "1" is treated as false. */
+  trashed: z
+    .string()
+    .optional()
+    .transform((v) => v === '1'),
 });
 
 export const searchQuerySchema = z.object({
@@ -85,6 +90,8 @@ export interface NoteSummary {
   tags: string[];
   notebook?: string | null;
   excerpt?: string;
+  /** When this note was trashed. Only present on notes listed from the trash. */
+  deletedAt?: number;
 }
 
 export interface Note extends NoteSummary {

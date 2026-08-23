@@ -22,6 +22,8 @@ export interface UrlState {
   note: string | null;
   /** Search query. Empty string means "not searching". */
   q: string;
+  /** Viewing the trash instead of live notes. */
+  trash: boolean;
 }
 
 export interface SetOptions {
@@ -35,7 +37,7 @@ export interface SetOptions {
 }
 
 /** Params this module owns. Anything else in the query string is preserved untouched. */
-const KEYS = ['notebook', 'tag', 'note', 'q'] as const;
+const KEYS = ['notebook', 'tag', 'note', 'q', 'trash'] as const;
 
 export function parse(search: string): UrlState {
   const params = new URLSearchParams(search);
@@ -44,6 +46,7 @@ export function parse(search: string): UrlState {
     tag: params.get('tag') || null,
     note: params.get('note') || null,
     q: params.get('q') ?? '',
+    trash: params.get('trash') === '1',
   };
 }
 
@@ -80,7 +83,7 @@ function emit(): void {
  * forever. The cache is keyed on the raw search string.
  */
 let cachedSearch: string | null = null;
-let cachedState: UrlState = { notebook: null, tag: null, note: null, q: '' };
+let cachedState: UrlState = { notebook: null, tag: null, note: null, q: '', trash: false };
 
 function getSnapshot(): UrlState {
   const search = window.location.search;
@@ -107,9 +110,14 @@ export function nextUrl(
   for (const key of KEYS) {
     if (!(key in patch)) continue;
     const value = patch[key];
-    // Null and '' both mean "not set". Writing them would leave `?tag=&q=` in the bar.
-    if (value === null || value === undefined || value === '') params.delete(key);
-    else params.set(key, value);
+    // Null, '', and false all mean "not set". Writing them would leave `?tag=&q=` behind.
+    if (value === null || value === undefined || value === '' || value === false) {
+      params.delete(key);
+    } else if (value === true) {
+      params.set(key, '1');
+    } else {
+      params.set(key, value);
+    }
   }
 
   const query = params.toString();

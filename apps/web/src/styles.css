@@ -801,3 +801,36 @@ h1 {
   gap: 1rem;
   flex-wrap: wrap;
 }
+
+/* Trash: a peer of the notebook scope, not another filter pill. */
+.trash-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  width: 100%;
+  padding: 0.4rem 0.6rem;
+  margin-bottom: 0.5rem;
+  font: inherit;
+  font-size: 0.85rem;
+  text-align: left;
+  color: inherit;
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 0.4rem;
+  cursor: pointer;
+}
+
+.trash-toggle:hover {
+  border-color: color-mix(in srgb, var(--accent) 50%, var(--border));
+}
+
+.trash-toggle.active {
+  background: color-mix(in srgb, currentColor 6%, transparent);
+  font-weight: 600;
+}
+
+.trash-actions {
+  display: flex;
+  gap: 0.75rem;
+  padding: 0 0.6rem 0.5rem;
+}

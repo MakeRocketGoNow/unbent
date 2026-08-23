@@ -58,7 +58,18 @@ export function DangerZone({ onChanged }: DangerZoneProps) {
       <h3>Maintenance</h3>
 
       <div className="danger-actions">
-        <button type="button" className="link" disabled={busy} onClick={() => void purge('trashed')}>
+        <button
+          type="button"
+          className="link"
+          disabled={busy}
+          onClick={() => {
+            // Confirmed because it destroys every trashed note at once. The trash view is
+            // where individual notes can be reviewed and restored first.
+            if (confirm('Permanently delete every note in the trash, and their attachments?')) {
+              void purge('trashed');
+            }
+          }}
+        >
           Empty trash
         </button>
         <button type="button" className="link" disabled={busy} onClick={() => void sweep()}>

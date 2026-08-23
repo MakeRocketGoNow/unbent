@@ -27,12 +27,20 @@ export interface NotePage {
 }
 
 export async function listNotes(
-  opts: { tag?: string; notebook?: string; cursor?: string } = {},
+  opts: {
+    tag?: string;
+    notebook?: string;
+    cursor?: string;
+    trashed?: boolean;
+    limit?: number;
+  } = {},
 ): Promise<NotePage> {
   const params = new URLSearchParams();
   if (opts.tag) params.set('tag', opts.tag);
   if (opts.notebook) params.set('notebook', opts.notebook);
   if (opts.cursor) params.set('cursor', opts.cursor);
+  if (opts.trashed) params.set('trashed', '1');
+  if (opts.limit) params.set('limit', String(opts.limit));
   const qs = params.toString();
   return json<NotePage>(await fetch(`/api/notes${qs ? `?${qs}` : ''}`));
 }
@@ -71,6 +79,17 @@ export async function updateNote(
 
 export async function deleteNote(id: string): Promise<void> {
   const res = await fetch(`/api/notes/${id}`, { method: 'DELETE' });
+  if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+}
+
+/** Restores a trashed note. */
+export async function restoreNote(id: string): Promise<Note> {
+  return json<Note>(await fetch(`/api/notes/${id}/restore`, { method: 'POST' }));
+}
+
+/** Permanently deletes one trashed note and its attachments. Irreversible. */
+export async function deleteNotePermanently(id: string): Promise<void> {
+  const res = await fetch(`/api/notes/${id}/permanent`, { method: 'DELETE' });
   if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
 }
 

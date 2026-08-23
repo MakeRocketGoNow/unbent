@@ -382,6 +382,114 @@ describe('note CRUD', () => {
   });
 });
 
+/**
+ * Trash: listing, restore, and permanent delete.
+ *
+ * The safety property is that `DELETE /notes/:id` is reversible and only
+ * `/notes/:id/permanent` destroys anything — and the latter refuses to touch a live note,
+ * so a stray call cannot destroy work that was never deleted.
+ */
+describe('trash', () => {
+  it('hides a deleted note from the normal list but keeps it in the trash', async () => {
+    const note = await createNote(alice, { title: 'To be trashed', body: 'x' });
+    await fetch(`${BASE}/api/notes/${note.id}`, { method: 'DELETE', ...asUser(alice) });
+
+    const live = await fetch(`${BASE}/api/notes`, asUser(alice)).then((r) => r.json());
+    expect(live.items.some((n: { id: string }) => n.id === note.id)).toBe(false);
+
+    const trash = await fetch(`${BASE}/api/notes?trashed=1`, asUser(alice)).then((r) => r.json());
+    expect(trash.items.some((n: { id: string }) => n.id === note.id)).toBe(true);
+  });
+
+  it('reports when a trashed note was deleted', async () => {
+    const note = await createNote(alice, { title: 'Timestamped', body: 'x' });
+    await fetch(`${BASE}/api/notes/${note.id}`, { method: 'DELETE', ...asUser(alice) });
+
+    const trash = await fetch(`${BASE}/api/notes?trashed=1`, asUser(alice)).then((r) => r.json());
+    const found = trash.items.find((n: { id: string }) => n.id === note.id);
+    expect(found.deletedAt).toBeGreaterThan(0);
+  });
+
+  it('restores a note back into the live list', async () => {
+    const note = await createNote(alice, { title: 'Comes back', body: 'x' });
+    await fetch(`${BASE}/api/notes/${note.id}`, { method: 'DELETE', ...asUser(alice) });
+
+    const res = await fetch(`${BASE}/api/notes/${note.id}/restore`, {
+      method: 'POST',
+      ...asUser(alice),
+    });
+    expect(res.status).toBe(200);
+
+    const live = await fetch(`${BASE}/api/notes`, asUser(alice)).then((r) => r.json());
+    expect(live.items.some((n: { id: string }) => n.id === note.id)).toBe(true);
+
+    const trash = await fetch(`${BASE}/api/notes?trashed=1`, asUser(alice)).then((r) => r.json());
+    expect(trash.items.some((n: { id: string }) => n.id === note.id)).toBe(false);
+  });
+
+  it('refuses to restore a note that was never deleted', async () => {
+    const note = await createNote(alice, { title: 'Never deleted', body: 'x' });
+    const res = await fetch(`${BASE}/api/notes/${note.id}/restore`, {
+      method: 'POST',
+      ...asUser(alice),
+    });
+    expect(res.status).toBe(404);
+  });
+
+  it('refuses to permanently delete a live note', async () => {
+    const note = await createNote(alice, { title: 'Still live', body: 'x' });
+
+    const res = await fetch(`${BASE}/api/notes/${note.id}/permanent`, {
+      method: 'DELETE',
+      ...asUser(alice),
+    });
+    // The two-step delete is the safety property: permanent deletion only ever acts on
+    // something already in the trash.
+    expect(res.status).toBe(404);
+
+    const still = await fetch(`${BASE}/api/notes/${note.id}`, asUser(alice));
+    expect(still.status).toBe(200);
+  });
+
+  it('permanently deletes a trashed note', async () => {
+    const note = await createNote(alice, { title: 'Gone for good', body: 'x' });
+    await fetch(`${BASE}/api/notes/${note.id}`, { method: 'DELETE', ...asUser(alice) });
+
+    const res = await fetch(`${BASE}/api/notes/${note.id}/permanent`, {
+      method: 'DELETE',
+      ...asUser(alice),
+    });
+    expect(res.status).toBe(204);
+
+    const trash = await fetch(`${BASE}/api/notes?trashed=1`, asUser(alice)).then((r) => r.json());
+    expect(trash.items.some((n: { id: string }) => n.id === note.id)).toBe(false);
+
+    const gone = await fetch(`${BASE}/api/notes/${note.id}`, asUser(alice));
+    expect(gone.status).toBe(404);
+  });
+
+  it("does not expose another user's trash", async () => {
+    const note = await createNote(alice, { title: "Alice's trashed note", body: 'x' });
+    await fetch(`${BASE}/api/notes/${note.id}`, { method: 'DELETE', ...asUser(alice) });
+
+    const bobTrash = await fetch(`${BASE}/api/notes?trashed=1`, asUser(bob)).then((r) => r.json());
+    expect(bobTrash.items.some((n: { id: string }) => n.id === note.id)).toBe(false);
+
+    // And bob cannot act on it by id.
+    const restore = await fetch(`${BASE}/api/notes/${note.id}/restore`, {
+      method: 'POST',
+      ...asUser(bob),
+    });
+    expect(restore.status).toBe(404);
+
+    const purge = await fetch(`${BASE}/api/notes/${note.id}/permanent`, {
+      method: 'DELETE',
+      ...asUser(bob),
+    });
+    expect(purge.status).toBe(404);
+  });
+});
+
 describe('unauthenticated access', () => {
   const cases: Array<[string, string, RequestInit]> = [
     ['GET', '/api/notes', {}],

@@ -21,19 +21,28 @@ export const notes = new Hono<AppEnv>()
   .use('/notes', requireAuth, withRepos)
 
   .get('/notes', zValidator('query', listNotesQuerySchema), async (c) => {
-    const { cursor, limit, tag, notebook } = c.req.valid('query');
+    const { cursor, limit, tag, notebook, trashed } = c.req.valid('query');
     const repo = c.get('notes');
-    const filter = { tag, notebook };
+    const filter = { tag, notebook, trashed };
 
     const [items, total] = await Promise.all([
-      repo.list({ limit, cursor, tag, notebook }),
+      repo.list({ limit, cursor, tag, notebook, trashed }),
       // Only counted on the first page: a paging client already knows the total, and this
       // is a second query on a hot path.
       cursor ? Promise.resolve<number | null>(null) : repo.count(filter),
     ]);
 
-    // Keyset cursor: the oldest updated_at in this page. Only offered on a full page.
-    const next = items.length === limit ? String(items[items.length - 1]?.updatedAt) : null;
+    /**
+     * Keyset cursor: the last row's sort key. Only offered on a full page.
+     *
+     * The trash is ordered by `deleted_at`, so it must page on that column — using
+     * `updated_at` there would skip or repeat notes.
+     */
+    const lastRow = items[items.length - 1];
+    const next =
+      items.length === limit && lastRow
+        ? String(trashed ? (lastRow.deletedAt ?? lastRow.updatedAt) : lastRow.updatedAt)
+        : null;
     return c.json({ items, cursor: next, total });
   })
 
@@ -64,6 +73,31 @@ export const notes = new Hono<AppEnv>()
   .delete('/notes/:id', async (c) => {
     const ok = await c.get('notes').remove(c.req.param('id'));
     if (!ok) return c.json({ error: 'Not found' }, 404);
+    return c.body(null, 204);
+  })
+
+  /** Restores a trashed note. 404 when it is not this user's, or was never trashed. */
+  .post('/notes/:id/restore', async (c) => {
+    const ok = await c.get('notes').restore(c.req.param('id'));
+    if (!ok) return c.json({ error: 'Not found' }, 404);
+    const note = await c.get('notes').get(c.req.param('id'));
+    return c.json(note);
+  })
+
+  /**
+   * Permanently deletes one trashed note and its blobs.
+   *
+   * Only ever acts on a note already in the trash, so a stray call cannot destroy live
+   * work — the two-step delete is the safety property, not the confirmation dialog.
+   */
+  .delete('/notes/:id/permanent', async (c) => {
+    const { deleted, keys } = await c.get('notes').purgeOne(c.req.param('id'));
+    if (!deleted) return c.json({ error: 'Not found' }, 404);
+
+    // Blobs after rows: a failure here leaves orphans the sweep reclaims, while the
+    // reverse would leave a note pointing at objects that no longer exist.
+    for (const key of keys) await c.env.BLOBS.delete(key);
+
     return c.body(null, 204);
   })
 

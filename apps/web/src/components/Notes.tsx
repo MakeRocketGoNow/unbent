@@ -43,8 +43,14 @@ export function Notes({ refreshSignal = 0 }: NotesProps) {
    * Notebook, tag, open note, and search query live in the URL so a reload restores the
    * exact view, and a note can be linked to. See use-url-state.ts.
    */
-  const { notebook: activeNotebook, tag: activeTag, note: selectedId, q: query, set } =
-    useUrlState();
+  const {
+    notebook: activeNotebook,
+    tag: activeTag,
+    note: selectedId,
+    q: query,
+    trash: viewingTrash,
+    set,
+  } = useUrlState();
 
   const [list, setList] = useState<NoteSummary[]>([]);
   const [note, setNote] = useState<Note | null>(null);
@@ -72,27 +78,38 @@ export function Notes({ refreshSignal = 0 }: NotesProps) {
   const [results, setResults] = useState<SearchResult[] | null>(null);
   /** Bumped by the Retry button to re-run the load effect for the same note id. */
   const [retryCount, setRetryCount] = useState(0);
+  /** Notes in the trash. Drives the toggle's badge, so it is fetched even when not viewing it. */
+  const [trashCount, setTrashCount] = useState(0);
 
   const listFilter = useCallback(
-    () => ({
-      ...(activeNotebook ? { notebook: activeNotebook } : {}),
-      ...(activeTag ? { tag: activeTag } : {}),
-    }),
-    [activeNotebook, activeTag],
+    () =>
+      viewingTrash
+        ? // Trash ignores notebook and tag filters: it is a flat view of what was deleted,
+          // and a filter that hid a note the user is looking for would defeat the point.
+          { trashed: true }
+        : {
+            ...(activeNotebook ? { notebook: activeNotebook } : {}),
+            ...(activeTag ? { tag: activeTag } : {}),
+          },
+    [activeNotebook, activeTag, viewingTrash],
   );
 
   const refreshList = useCallback(async () => {
     try {
-      const [page, tags, notebooks] = await Promise.all([
+      const [page, tags, notebooks, trashPage] = await Promise.all([
         api.listNotes(listFilter()),
         api.listTags(),
         api.listNotebooks(),
+        // Fetched even when not viewing the trash, so the toggle can show a count and the
+        // trash is discoverable rather than hidden behind a guess.
+        api.listNotes({ trashed: true, limit: 1 }),
       ]);
       setList(page.items);
       setCursor(page.cursor);
       setTotal(page.total);
       setAllTags(tags);
       setAllNotebooks(notebooks);
+      setTrashCount(trashPage.total ?? 0);
     } catch (err) {
       setLoadError((err as Error).message);
     }
@@ -217,7 +234,11 @@ export function Notes({ refreshSignal = 0 }: NotesProps) {
     [selectedId],
   );
 
-  const { state: saveState, flush } = useAutosave(draft, save, { enabled: note !== null });
+  const { state: saveState, flush } = useAutosave(draft, save, {
+    // Never autosave while viewing the trash: a note in the bin is a record of what was
+    // deleted, and writing to it would be editing something the user believes is gone.
+    enabled: note !== null && !viewingTrash,
+  });
 
   async function newNote() {
     await flush();
@@ -247,6 +268,34 @@ export function Notes({ refreshSignal = 0 }: NotesProps) {
     }
   }
 
+  /** Puts a trashed note back. The list refreshes, so it leaves the trash view. */
+  async function restore(id: string) {
+    try {
+      await api.restoreNote(id);
+      if (selectedId === id) set({ note: null });
+      await refreshList();
+    } catch (err) {
+      setLoadError((err as Error).message);
+    }
+  }
+
+  /**
+   * Destroys one trashed note for good.
+   *
+   * Confirmed because it is the only irreversible action reachable from the note list —
+   * the ordinary Delete is a move to trash, which this view exists to undo.
+   */
+  async function destroy(id: string, title: string) {
+    if (!confirm(`Permanently delete "${title || 'Untitled'}" and its attachments?`)) return;
+    try {
+      await api.deleteNotePermanently(id);
+      if (selectedId === id) set({ note: null });
+      await refreshList();
+    } catch (err) {
+      setLoadError((err as Error).message);
+    }
+  }
+
   async function select(id: string) {
     // Flush before switching so the last edit is never dropped.
     await flush();
@@ -258,19 +307,24 @@ export function Notes({ refreshSignal = 0 }: NotesProps) {
       <aside className="sidebar">
         <div className="sidebar-head">
           <span className="count">
-            {results !== null
-              ? `${results.length} matches`
-              : total !== null && total > list.length
-                ? `${list.length} of ${total} notes`
-                : `${list.length} notes`}
+            {viewingTrash
+              ? `${total ?? list.length} in trash`
+              : results !== null
+                ? `${results.length} matches`
+                : total !== null && total > list.length
+                  ? `${list.length} of ${total} notes`
+                  : `${list.length} notes`}
           </span>
-          <button type="button" className="primary" onClick={() => void newNote()}>
-            New
-          </button>
+          {!viewingTrash && (
+            <button type="button" className="primary" onClick={() => void newNote()}>
+              New
+            </button>
+          )}
         </div>
 
         {loadError && <p className="bad small">{loadError}</p>}
 
+        {!viewingTrash && (
         <input
           className="search-field"
           type="search"
@@ -280,8 +334,22 @@ export function Notes({ refreshSignal = 0 }: NotesProps) {
           // Back crawl out of a search one character at a time.
           onChange={(e) => set({ q: e.target.value }, { replace: true })}
         />
+        )}
 
-        {results === null && allNotebooks.length > 0 && (
+        {/* The trash is only offered once something is in it: an always-visible empty
+            bin is noise, and its absence is itself information. */}
+        {(trashCount > 0 || viewingTrash) && (
+          <button
+            type="button"
+            className={viewingTrash ? 'trash-toggle active' : 'trash-toggle'}
+            onClick={() => set({ trash: !viewingTrash, note: null, q: '' })}
+          >
+            {viewingTrash ? '← Back to notes' : 'Trash'}
+            {!viewingTrash && <span className="tag-count">{trashCount}</span>}
+          </button>
+        )}
+
+        {!viewingTrash && results === null && allNotebooks.length > 0 && (
           <div className={`notebook-scope-wrap${allTags.length === 0 ? ' filters-end' : ''}`}>
             <select
               className="notebook-scope"
@@ -301,7 +369,7 @@ export function Notes({ refreshSignal = 0 }: NotesProps) {
           </div>
         )}
 
-        {results === null && allTags.length > 0 && (
+        {!viewingTrash && results === null && allTags.length > 0 && (
           <div className="tag-filter">
             {allTags.map((t) => (
               <button
@@ -335,12 +403,30 @@ export function Notes({ refreshSignal = 0 }: NotesProps) {
                   onClick={() => void select(n.id)}
                 >
                   <span className="note-title">{n.title || 'Untitled'}</span>
-                  <span className="note-meta">{formatWhen(n.updatedAt)}</span>
+                  <span className="note-meta">
+                    {viewingTrash && n.deletedAt
+                      ? `Deleted ${formatWhen(n.deletedAt)}`
+                      : formatWhen(n.updatedAt)}
+                  </span>
                   {n.excerpt && <span className="note-excerpt">{n.excerpt}</span>}
                   {n.tags.length > 0 && (
                     <span className="note-tags">{n.tags.map((t) => `#${t}`).join(' ')}</span>
                   )}
                 </button>
+                {viewingTrash && (
+                  <div className="trash-actions">
+                    <button type="button" className="link" onClick={() => void restore(n.id)}>
+                      Restore
+                    </button>
+                    <button
+                      type="button"
+                      className="link danger"
+                      onClick={() => void destroy(n.id, n.title)}
+                    >
+                      Delete forever
+                    </button>
+                  </div>
+                )}
               </li>
             ))}
           {results === null && cursor !== null && (
@@ -358,11 +444,13 @@ export function Notes({ refreshSignal = 0 }: NotesProps) {
 
           {results === null && list.length === 0 && !loadError && (
             <li className="muted small empty">
-              {activeTag
-                ? `No notes tagged ${activeTag}.`
-                : activeNotebook
-                  ? `No notes in ${activeNotebook}.`
-                  : 'No notes yet.'}
+              {viewingTrash
+                ? 'Trash is empty.'
+                : activeTag
+                  ? `No notes tagged ${activeTag}.`
+                  : activeNotebook
+                    ? `No notes in ${activeNotebook}.`
+                    : 'No notes yet.'}
             </li>
           )}
         </ul>
