@@ -13,12 +13,15 @@ should never depend on it being hard.
 
 ## Stack
 
-- **Cloudflare Pages** — SPA hosting
-- **Cloudflare Workers** + Hono — API
+- **Cloudflare Workers** + Hono — API, and static-asset hosting for the SPA
+- **TanStack Router + Query** — real routes, typed search params, cached loaders
 - **Cloudflare D1** (SQLite) — note text, metadata, FTS5 full-text search
 - **Cloudflare R2** — attachment blobs
 - **Better Auth** — OAuth (Google, GitHub)
 - **Vite + React + CodeMirror 6** — Markdown editor with live preview
+
+One Worker serves both the built SPA and `/api`, so the two are genuinely same-origin and
+the session cookie needs no CORS or `SameSite` workarounds.
 
 Workers Paid ($5/mo) is required: the free tier's 10ms CPU limit cannot run import or export.
 

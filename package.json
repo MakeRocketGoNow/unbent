@@ -10,6 +10,7 @@
     "dev:api": "pnpm --filter @unbent/api dev",
     "dev:web": "pnpm --filter @unbent/web dev",
     "build": "pnpm --filter @unbent/web build",
+    "deploy": "pnpm build && pnpm --filter @unbent/api deploy",
     "typecheck": "pnpm -r typecheck",
     "test": "pnpm -r test",
     "migrate:local": "pnpm --filter @unbent/api migrate:local",
