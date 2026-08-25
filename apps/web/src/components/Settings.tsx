@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import * as api from '../notes-api.js';
+import { Confirm } from './Confirm.js';
 
 interface SettingsProps {
   onClose: () => void;
@@ -19,7 +20,7 @@ export function Settings({ onClose, onChanged }: SettingsProps) {
   const [newName, setNewName] = useState('');
   /** Id of the notebook being renamed, with its in-progress value. */
   const [editing, setEditing] = useState<{ id: string; value: string } | null>(null);
-  /** Notebook awaiting an explicit delete choice — replaces browser `confirm()`. */
+  /** Notebook awaiting an explicit delete choice. */
   const [pendingDelete, setPendingDelete] = useState<api.Notebook | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -147,44 +148,40 @@ export function Settings({ onClose, onChanged }: SettingsProps) {
       </ul>
 
       {pendingDelete && (
-        <div className="notebook-delete-confirm" role="group" aria-label="Confirm delete notebook">
-          <p>
-            Delete the notebook <strong>{pendingDelete.name}</strong>?
-          </p>
-          <p className="small">
-            {noteLabel
+        <Confirm
+          label="Confirm delete notebook"
+          question={
+            <>
+              Delete the notebook <strong>{pendingDelete.name}</strong>?
+            </>
+          }
+          detail={
+            noteLabel
               ? `Its ${noteLabel} will become unfiled, not deleted.`
-              : 'It has no notes.'}
-          </p>
-          <div className="notebook-delete-actions">
-            <button
-              type="button"
-              className="primary"
-              disabled={busy}
-              onClick={() => confirmDelete(false)}
-            >
-              {busy ? 'Deleting…' : 'Delete notebook'}
-            </button>
-            <button
-              type="button"
-              className="link"
-              disabled={busy}
-              onClick={() => setPendingDelete(null)}
-            >
-              Cancel
-            </button>
-          </div>
-          {noteLabel && (
-            <button
-              type="button"
-              className="link danger small notebook-delete-cascade"
-              disabled={busy}
-              onClick={() => confirmDelete(true)}
-            >
-              Delete notebook and move {noteLabel} to Trash
-            </button>
-          )}
-        </div>
+              : 'It has no notes.'
+          }
+          busy={busy}
+          onCancel={() => setPendingDelete(null)}
+          // Order carries the emphasis: keeping the notes is offered first and reads as
+          // the button, so the cascade has to be reached for deliberately.
+          actions={[
+            {
+              label: 'Delete notebook',
+              busyLabel: 'Deleting…',
+              tone: 'primary',
+              onConfirm: () => confirmDelete(false),
+            },
+            ...(noteLabel
+              ? [
+                  {
+                    label: `Delete notebook and move ${noteLabel} to Trash`,
+                    tone: 'danger' as const,
+                    onConfirm: () => confirmDelete(true),
+                  },
+                ]
+              : []),
+          ]}
+        />
       )}
 
       <div className="notebook-admin-new">
