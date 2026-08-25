@@ -35,6 +35,58 @@ export function formatAttachmentMarkdown(
 }
 
 /**
+ * Decode a path segment the way the renderer does: percent-decoding when valid,
+ * otherwise leaving the literal alone (a lone `%` is not encoding).
+ */
+function decodePathSegment(segment: string): string {
+  try {
+    return decodeURIComponent(segment);
+  } catch {
+    return segment;
+  }
+}
+
+/**
+ * Filenames pointed at by relative `files/…` image or link destinations in markdown.
+ *
+ * Used to mark attachments that are still stored but no longer referenced in the body —
+ * removing a link does not delete the file.
+ */
+export function attachmentFilenamesInMarkdown(markdown: string): Set<string> {
+  const names = new Set<string>();
+  // Covers `[…](files/x)`, `[…](<files/x y>)`, and image forms with a leading `!`.
+  const re = /!\[[^\]]*]\(\s*<?files\/([^)\n>]+)>?\s*\)|\[[^\]]*]\(\s*<?files\/([^)\n>]+)>?\s*\)/g;
+  for (const match of markdown.matchAll(re)) {
+    const raw = (match[1] ?? match[2] ?? '').trim();
+    if (!raw) continue;
+    names.add(decodePathSegment(raw));
+  }
+  return names;
+}
+
+/** Escape a string for use inside a RegExp character class / pattern. */
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/**
+ * Removes markdown image/link nodes whose destination is `files/<filename>`.
+ *
+ * Handles both raw and percent-encoded destinations, and angle-bracket destinations
+ * used when the path contains spaces. Leaves surrounding text intact.
+ */
+export function removeAttachmentLinks(markdown: string, filename: string): string {
+  const variants = new Set([filename, encodeURIComponent(filename)]);
+  let out = markdown;
+  for (const name of variants) {
+    const dest = escapeRegExp(`${ATTACHMENT_PREFIX}${name}`);
+    out = out.replace(new RegExp(`!?\\[[^\\]]*\\]\\(\\s*<?${dest}>?\\s*\\)`, 'g'), '');
+  }
+  // Collapse runs of blank lines left behind by a removed-only paragraph.
+  return out.replace(/\n{3,}/g, '\n\n');
+}
+
+/**
  * Rewrites relative attachment paths to API URLs at render time.
  *
  * The markdown stored in D1 is never mutated — `files/diagram.png` stays relative on disk

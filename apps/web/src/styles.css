@@ -463,6 +463,82 @@ h1 {
 
 .tag-row { padding: 0.5rem 0 0.25rem; }
 
+/* Attachment inventory for the open note */
+.attachments {
+  margin: 0.35rem 0 0.15rem;
+  padding: 0.45rem 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.attachments summary {
+  cursor: pointer;
+  font-size: 0.78rem;
+  color: var(--muted);
+  user-select: none;
+}
+
+.attachments-warn { color: var(--bad); }
+
+.attachments-list {
+  list-style: none;
+  margin: 0.45rem 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.attachments-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  min-width: 0;
+  padding: 0.35rem 0.5rem;
+  border-radius: 0.3rem;
+}
+
+.attachments-row.unlinked {
+  background: color-mix(in srgb, var(--bad) 9%, transparent);
+  box-shadow: inset 3px 0 0 var(--bad);
+}
+
+.attachments-info {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  min-width: 0;
+}
+
+.attachments-name {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.85rem;
+}
+
+.attachments-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.45rem;
+}
+
+.attachments-status {
+  color: var(--bad);
+  font-weight: 600;
+}
+
+.attachments-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-shrink: 0;
+}
+
+.attachments-error { margin: 0.35rem 0 0; }
+
 .tag-input {
   display: flex;
   flex-wrap: wrap;

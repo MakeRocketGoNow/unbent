@@ -149,7 +149,8 @@ in R2 so a restore is not left with dead links. To reclaim that storage, the Imp
 has a Maintenance section:
 
 - **Empty trash** — permanently deletes soft-deleted notes and their files.
-- **Sweep orphaned files** — removes R2 objects with no attachment row.
+- **Sweep orphaned files** — removes R2 objects with no attachment row. Files you
+  unlinked from a note still have a row; delete those from the note’s Attachments list.
 - **Delete all notes** — wipes every note and attachment in the account. Requires typing
   `DELETE`, since it is irreversible and export is the only way back.
 

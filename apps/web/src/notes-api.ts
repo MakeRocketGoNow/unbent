@@ -1,4 +1,4 @@
-import type { Note, NoteSummary, SearchResult } from '@unbent/shared';
+import type { AttachmentInfo, Note, NoteSummary, SearchResult } from '@unbent/shared';
 
 /**
  * Thin fetch wrappers over the notes API. Same-origin, so cookies travel automatically.
@@ -199,6 +199,32 @@ export async function uploadFile(noteId: string, file: File): Promise<UploadedFi
     throw new Error(detail ? JSON.parse(detail).error ?? detail : `${res.status}`);
   }
   return res.json() as Promise<UploadedFile>;
+}
+
+/** Attachment metadata for one note — includes files no longer linked in the body. */
+export async function listAttachments(noteId: string): Promise<AttachmentInfo[]> {
+  const { files } = await json<{ files: AttachmentInfo[] }>(
+    await fetch(`/api/notes/${noteId}/files`),
+  );
+  return files;
+}
+
+/**
+ * Permanently deletes one attachment: D1 row and R2 object.
+ * Does not rewrite the note body — callers strip links when needed.
+ */
+export async function deleteAttachment(noteId: string, filename: string): Promise<void> {
+  const res = await fetch(
+    `/api/notes/${noteId}/files/${encodeURIComponent(filename)}`,
+    { method: 'DELETE' },
+  );
+  if (!res.ok) {
+    const detail = await res.text().catch(() => '');
+    throw new ApiError(
+      res.status,
+      `${res.status} ${res.statusText}${detail ? `: ${detail}` : ''}`,
+    );
+  }
 }
 
 export async function searchNotes(q: string): Promise<SearchResult[]> {

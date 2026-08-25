@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { formatAttachmentMarkdown, renderMarkdown } from './markdown.js';
+import {
+  attachmentFilenamesInMarkdown,
+  formatAttachmentMarkdown,
+  removeAttachmentLinks,
+  renderMarkdown,
+} from './markdown.js';
 
 const NOTE = 'note-123';
 const render = (md: string) => renderMarkdown(md, { noteId: NOTE });
@@ -30,6 +35,39 @@ describe('formatAttachmentMarkdown', () => {
       'files/Principal Software Engineer in Remote _ Careers at US Remote.pdf',
     );
     expect(render(md)).toContain('unbent-pdf');
+  });
+});
+
+describe('attachmentFilenamesInMarkdown', () => {
+  it('collects link and image destinations', () => {
+    const md = 'See [a](files/a.pdf) and ![b](files/b.png).';
+    expect([...attachmentFilenamesInMarkdown(md)].sort()).toEqual(['a.pdf', 'b.png']);
+  });
+
+  it('decodes percent-encoded and angle-bracket destinations', () => {
+    const md = '[x](<files/my photo.png>) ![y](files/caf%C3%A9.png)';
+    expect(attachmentFilenamesInMarkdown(md)).toEqual(
+      new Set(['my photo.png', 'café.png']),
+    );
+  });
+
+  it('ignores absolute and non-attachment URLs', () => {
+    expect(attachmentFilenamesInMarkdown('[x](https://example.com/files/x.pdf)')).toEqual(
+      new Set(),
+    );
+  });
+});
+
+describe('removeAttachmentLinks', () => {
+  it('removes the matching link and leaves neighbors', () => {
+    const md = 'Before [keep](files/keep.pdf) [gone](files/gone.pdf) after';
+    expect(removeAttachmentLinks(md, 'gone.pdf')).toBe(
+      'Before [keep](files/keep.pdf)  after',
+    );
+  });
+
+  it('removes angle-bracket and image forms', () => {
+    expect(removeAttachmentLinks('![x](<files/my photo.png>)', 'my photo.png')).toBe('');
   });
 });
 

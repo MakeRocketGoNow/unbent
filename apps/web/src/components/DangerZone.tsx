@@ -72,7 +72,13 @@ export function DangerZone({ onChanged }: DangerZoneProps) {
         >
           Empty trash
         </button>
-        <button type="button" className="link" disabled={busy} onClick={() => void sweep()}>
+        <button
+          type="button"
+          className="link"
+          disabled={busy}
+          title="Removes storage objects with no attachment record. Files you unlinked from a note still have a record — delete them from the note’s Attachments list."
+          onClick={() => void sweep()}
+        >
           Sweep orphaned files
         </button>
         <button

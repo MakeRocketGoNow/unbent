@@ -21,6 +21,7 @@ export interface NoteFilter {
 export const keys = {
   notes: (filter: NoteFilter) => ['notes', filter] as const,
   note: (id: string) => ['note', id] as const,
+  attachments: (noteId: string) => ['attachments', noteId] as const,
   tags: () => ['tags'] as const,
   notebooks: () => ['notebooks'] as const,
   trash: () => ['trash'] as const,
@@ -74,6 +75,16 @@ export const noteQuery = (id: string) =>
     queryKey: keys.note(id),
     queryFn: () => api.getNote(id),
     retry: false,
+  });
+
+/**
+ * Files stored on a note. Independent of whether the markdown still links them —
+ * that is what the attachments panel exists to surface.
+ */
+export const attachmentsQuery = (noteId: string) =>
+  queryOptions({
+    queryKey: keys.attachments(noteId),
+    queryFn: () => api.listAttachments(noteId),
   });
 
 export const tagsQuery = () =>

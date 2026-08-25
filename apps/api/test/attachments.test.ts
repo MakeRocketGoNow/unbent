@@ -175,6 +175,13 @@ describe('upload and serve', () => {
       expect(get.headers.get('content-disposition')).toContain('inline');
     });
 
+    it('forces a download when ?download=1, including for PDFs', async () => {
+      const get = await fetch(`${BASE}/api/notes/${note.id}/files/doc.pdf?download=1`, {
+        headers: { Cookie: alice.cookie, Origin: ORIGIN },
+      });
+      expect(get.headers.get('content-disposition')).toContain('attachment');
+    });
+
     it('sends a sandboxing CSP on every attachment response', async () => {
       // A PDF: the safe path, to prove the CSP is not only sent on downgraded responses.
       const get = await fetch(`${BASE}/api/notes/${note.id}/files/doc.pdf`, {

@@ -10,6 +10,7 @@ import { Editor } from './Editor.js';
 import { Preview } from './Preview.js';
 import { TagInput } from './TagInput.js';
 import { EditorToolbar } from './EditorToolbar.js';
+import { Attachments } from './Attachments.js';
 
 const SAVE_LABEL: Record<string, string> = {
   idle: '',
@@ -40,6 +41,12 @@ export function Workspace({ noteId, readOnly = false }: WorkspaceProps) {
   }>({ title: '', body: '', tags: [], notebook: null });
   /** Which note `draft` was seeded from; guards autosave against a not-yet-seeded draft. */
   const [draftFor, setDraftFor] = useState<string | null>(null);
+  /**
+   * Editor is uncontrolled. After deleting a still-linked attachment we rewrite the
+   * draft and remount with that text; otherwise the open note's saved body is the seed.
+   */
+  const [editorRevision, setEditorRevision] = useState(0);
+  const [editorOverride, setEditorOverride] = useState<string | null>(null);
 
   const [showPreview, setShowPreview] = useState(true);
   // Persisted: which editing mode you prefer should survive a reload.
@@ -54,6 +61,7 @@ export function Workspace({ noteId, readOnly = false }: WorkspaceProps) {
     if (!note) return;
     setDraft({ title: note.title, body: note.body, tags: note.tags, notebook: note.notebook ?? null });
     setDraftFor(note.id);
+    setEditorOverride(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [noteId, note !== undefined]);
 
@@ -81,6 +89,12 @@ export function Workspace({ noteId, readOnly = false }: WorkspaceProps) {
     await queryClient.invalidateQueries({ queryKey: ['notes'] });
     void queryClient.invalidateQueries({ queryKey: ['trash'] });
     void navigate({ to: '/notes', search: (p) => p });
+  }
+
+  function rewriteBody(nextBody: string) {
+    setDraft((d) => ({ ...d, body: nextBody }));
+    setEditorOverride(nextBody);
+    setEditorRevision((n) => n + 1);
   }
 
   /**
@@ -187,15 +201,29 @@ export function Workspace({ noteId, readOnly = false }: WorkspaceProps) {
         />
       </div>
 
+      {!readOnly && (
+        <Attachments
+          noteId={note.id}
+          body={draft.body}
+          editorView={editorView}
+          onBodyRewrite={rewriteBody}
+        />
+      )}
+
       <EditorToolbar view={editorView} />
 
       <div className={showPreview ? 'panes split' : 'panes'}>
         <div className="pane">
           <Editor
+            key={`${note.id}-${editorRevision}`}
             noteId={note.id}
-            initialValue={note.body}
+            initialValue={editorOverride ?? note.body}
             onChange={(body) => setDraft((d) => ({ ...d, body }))}
-            onUpload={async (file) => (await api.uploadFile(note.id, file)).path}
+            onUpload={async (file) => {
+              const uploaded = await api.uploadFile(note.id, file);
+              void queryClient.invalidateQueries({ queryKey: keys.attachments(note.id) });
+              return uploaded.path;
+            }}
             rich={richEditor}
             onViewReady={setEditorView}
           />

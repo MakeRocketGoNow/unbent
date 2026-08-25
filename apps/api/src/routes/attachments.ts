@@ -125,7 +125,9 @@ export const attachments = new Hono<AppEnv>()
      * `attachment`, so the browser saves it instead of executing it.
      */
     headers.set('Content-Type', serveContentType(row.content_type));
-    const disposition = serveDisposition(row.content_type);
+    // `?download=1` forces a save — needed for PDFs, which are otherwise inline for preview.
+    const disposition =
+      c.req.query('download') === '1' ? 'attachment' : serveDisposition(row.content_type);
     headers.set(
       'Content-Disposition',
       `${disposition}; filename="${encodeURIComponent(filename)}"`,
