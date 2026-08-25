@@ -117,7 +117,10 @@ export function TrashLayout({ children }: { children: React.ReactNode }) {
 
         {empty.error && <p className="bad small">{empty.error}</p>}
 
-        <Link to="/notes" className="trash-toggle active">
+        {/* The way out is the topbar, which marks Trash active while you are here — the
+            same link that got you in. A second one in the sidebar was the old toggle's
+            leftover, from when there was nothing in the chrome to go back to. */}
+        <Link to="/notes" className="trash-back">
           ← Back to notes
         </Link>
 

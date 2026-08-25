@@ -4,7 +4,7 @@ import { useQuery, useInfiniteQuery, useQueryClient } from '@tanstack/react-quer
 import { UNFILED } from '@unbent/shared';
 import * as api from '../notes-api.js';
 import { Route } from '../routes/notes.js';
-import { notesQuery, tagsQuery, notebooksQuery, trashCountQuery, searchQuery, keys } from '../queries.js';
+import { notesQuery, tagsQuery, notebooksQuery, searchQuery, keys } from '../queries.js';
 import { NoteListItem } from './NoteListItem.js';
 import { SearchResults } from './SearchResults.js';
 
@@ -19,7 +19,6 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
   const list = useInfiniteQuery(notesQuery(filter));
   const tags = useQuery(tagsQuery());
   const notebooks = useQuery(notebooksQuery());
-  const trashCount = useQuery(trashCountQuery());
 
   /**
    * The search term, debounced.
@@ -94,18 +93,6 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
             })
           }
         />
-
-        {/*
-            Always offered, empty or not. Navigation is a map, and one that redraws itself
-            teaches no stable habit — you cannot learn that the trash is here if "here" is
-            usually blank space. Worse, the moment you most need it, having just deleted
-            something, used to be the first moment the link had ever appeared. The count
-            is what stays conditional.
-        */}
-        <Link to="/trash" className="trash-toggle">
-          Trash
-          {(trashCount.data ?? 0) > 0 && <span className="tag-count">{trashCount.data}</span>}
-        </Link>
 
         {/*
             A notebook that no longer exists is syntactically valid, so validateSearch
