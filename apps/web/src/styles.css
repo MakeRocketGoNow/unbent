@@ -1023,3 +1023,52 @@ h1 {
 .note-notebook:hover {
   border-color: color-mix(in srgb, var(--accent) 50%, var(--border));
 }
+
+/*
+ * Inline confirmation.
+ *
+ * Consolidates .danger-confirm and .notebook-delete-confirm, which had drifted into two
+ * near-identical rule sets for the same idea. Inline rather than a dialog on purpose:
+ * every confirmation here is about a specific thing on screen — a named notebook, a
+ * counted trash — and covering that thing forces its details into the prompt text.
+ */
+.confirm {
+  max-width: 40rem;
+  margin: 0.75rem 0 0.25rem;
+  padding: 0.9rem;
+  border: 1px solid var(--bad);
+  border-radius: 0.45rem;
+}
+
+.confirm p {
+  margin: 0 0 0.45rem;
+}
+
+.confirm-token {
+  width: 10rem;
+  margin-top: 0.35rem;
+}
+
+.confirm-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: center;
+  margin-top: 0.7rem;
+}
+
+/* The demoted destructive option: its own line, well clear of the primary. */
+.confirm-secondary {
+  display: block;
+  margin-top: 0.85rem;
+}
+
+/*
+ * A destructive primary: filled like .primary, but in the warning colour. For confirms
+ * where destroying is itself the intended outcome — emptying the trash — as opposed to
+ * the notebook case, where the primary is the option that keeps your notes.
+ */
+.primary.danger {
+  color: var(--bg);
+  background: var(--bad);
+}
