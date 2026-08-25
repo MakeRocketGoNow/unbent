@@ -1,8 +1,11 @@
+import { useState } from 'react';
 import { Link, useNavigate, useParams } from '@tanstack/react-router';
 import { useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
 import * as api from '../notes-api.js';
 import { trashQuery } from '../queries.js';
 import { NoteListItem } from './NoteListItem.js';
+import { Confirm } from './Confirm.js';
+import { useMaintenance } from './use-maintenance.js';
 
 /**
  * The trash sidebar.
@@ -16,6 +19,9 @@ export function TrashLayout({ children }: { children: React.ReactNode }) {
   const list = useInfiniteQuery(trashQuery());
   // Undefined unless a trashed note is open; used to leave the view when it disappears.
   const open = useParams({ from: '/trash/$noteId', shouldThrow: false })?.noteId;
+  /** Note awaiting an explicit "delete forever", or 'all' for emptying the trash. */
+  const [pending, setPending] = useState<{ id: string; title: string } | 'all' | null>(null);
+  const empty = useMaintenance();
 
   const notes = list.data?.pages.flatMap((p) => p.items) ?? [];
   const total = list.data?.pages[0]?.total ?? notes.length;
@@ -38,9 +44,9 @@ export function TrashLayout({ children }: { children: React.ReactNode }) {
    * Confirmed because it is the only irreversible action reachable from the note list —
    * the ordinary Delete is a move to trash, which this view exists to undo.
    */
-  async function destroy(id: string, title: string) {
-    if (!confirm(`Permanently delete "${title || 'Untitled'}" and its attachments?`)) return;
+  async function destroy(id: string) {
     await api.deleteNotePermanently(id);
+    setPending(null);
     await afterRemoval(id);
   }
 
@@ -49,7 +55,67 @@ export function TrashLayout({ children }: { children: React.ReactNode }) {
       <aside className="sidebar">
         <div className="sidebar-head">
           <span className="count">{total} in trash</span>
+          {/* Offered here as well as on the maintenance page: this is the one place you
+              can see what you are about to destroy, and restore something instead. */}
+          {total > 0 && (
+            <button
+              type="button"
+              className="link danger small"
+              disabled={empty.busy}
+              onClick={() => setPending('all')}
+            >
+              Empty trash
+            </button>
+          )}
         </div>
+
+        {pending === 'all' && (
+          <Confirm
+            label="Confirm empty trash"
+            question={`Permanently delete all ${total} note${total === 1 ? '' : 's'} and their attachments?`}
+            detail="This cannot be undone. Restore anything you want to keep first."
+            busy={empty.busy}
+            onCancel={() => setPending(null)}
+            actions={[
+              {
+                label: 'Empty trash',
+                busyLabel: 'Deleting…',
+                tone: 'danger',
+                onConfirm: () =>
+                  empty.run(async () => {
+                    const r = await api.purgeNotes('trashed');
+                    setPending(null);
+                    if (open) void navigate({ to: '/trash' });
+                    return `Deleted ${r.notesDeleted} note${r.notesDeleted === 1 ? '' : 's'}.`;
+                  }),
+              },
+            ]}
+          />
+        )}
+
+        {/* Rendered at the top of the sidebar rather than inside the row: a list item is
+            too narrow to hold a question and two buttons, and the note is named here. */}
+        {pending && pending !== 'all' && (
+          <Confirm
+            label="Confirm delete note forever"
+            question={
+              <>
+                Permanently delete <strong>{pending.title || 'Untitled'}</strong>?
+              </>
+            }
+            detail="Its attachments go too. This cannot be undone."
+            onCancel={() => setPending(null)}
+            actions={[
+              {
+                label: 'Delete forever',
+                tone: 'danger',
+                onConfirm: () => void destroy(pending.id),
+              },
+            ]}
+          />
+        )}
+
+        {empty.error && <p className="bad small">{empty.error}</p>}
 
         <Link to="/notes" className="trash-toggle active">
           ← Back to notes
@@ -71,7 +137,7 @@ export function TrashLayout({ children }: { children: React.ReactNode }) {
                   <button
                     type="button"
                     className="link danger"
-                    onClick={() => void destroy(n.id, n.title)}
+                    onClick={() => setPending({ id: n.id, title: n.title })}
                   >
                     Delete forever
                   </button>

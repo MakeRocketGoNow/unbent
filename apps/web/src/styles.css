@@ -640,8 +640,13 @@ h1 {
   border-radius: 0.15rem;
 }
 
-/* Import panel */
-.import-panel {
+/*
+ * The panel every settings page sits in.
+ *
+ * Named for the import when that was the only one; it now holds notebooks, export and
+ * maintenance too.
+ */
+.panel {
   display: flex;
   flex-direction: column;
   gap: 0.9rem;
@@ -653,17 +658,17 @@ h1 {
   background: color-mix(in srgb, var(--fg) 3%, transparent);
 }
 
-.import-head {
+.panel-head {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
   width: 100%;
 }
 
-.import-head h2 { margin: 0; font-size: 1.05rem; }
+.panel-head h2 { margin: 0; font-size: 1.05rem; }
 
-.import-panel p { margin: 0; max-width: 46rem; }
-.import-panel code {
+.panel p { margin: 0; max-width: 46rem; }
+.panel code {
   padding: 0.05em 0.3em;
   font-size: 0.9em;
   background: color-mix(in srgb, var(--fg) 8%, transparent);
@@ -717,42 +722,6 @@ h1 {
 .failures summary { cursor: pointer; color: var(--muted); }
 .failures ul { max-height: 12rem; overflow-y: auto; margin: 0.5rem 0 0; padding-left: 1.2rem; }
 .failures li { margin-bottom: 0.25rem; color: var(--muted); }
-
-/* Maintenance */
-.danger-zone {
-  width: 100%;
-  padding-top: 0.9rem;
-  border-top: 1px solid var(--border);
-}
-
-.danger-zone h3 {
-  margin: 0 0 0.5rem;
-  font-size: 0.7rem;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--muted);
-}
-
-.danger-actions { display: flex; flex-wrap: wrap; gap: 1.2rem; }
-
-.danger-confirm {
-  max-width: 40rem;
-  margin-top: 0.9rem;
-  padding: 0.9rem;
-  border: 1px solid var(--bad);
-  border-radius: 0.45rem;
-}
-
-.danger-confirm p { margin: 0 0 0.7rem; }
-
-.danger-confirm-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.6rem;
-  align-items: center;
-}
-
-.danger-confirm-row .search-field { width: 10rem; }
 
 .checkbox-row {
   display: flex;
@@ -981,32 +950,6 @@ h1 {
   flex: 1;
 }
 
-/* Confirm delete in place — primary keeps notes; cascade is a secondary link. */
-.notebook-delete-confirm {
-  max-width: 40rem;
-  margin: 0.75rem 0 0.25rem;
-  padding: 0.9rem;
-  border: 1px solid var(--bad);
-  border-radius: 0.45rem;
-}
-
-.notebook-delete-confirm p {
-  margin: 0 0 0.45rem;
-}
-
-.notebook-delete-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.75rem;
-  align-items: center;
-  margin-top: 0.7rem;
-}
-
-.notebook-delete-cascade {
-  display: block;
-  margin-top: 0.85rem;
-}
-
 /* Notebook picker in the note header, beside the tags. */
 .note-notebook {
   flex-shrink: 0;
@@ -1071,4 +1014,94 @@ h1 {
 .primary.danger {
   color: var(--bg);
   background: var(--bad);
+}
+
+/*
+ * The settings section.
+ *
+ * Notebooks, Import, Export and Maintenance each used to be a separate topbar link, which
+ * made the topbar a list of unrelated verbs — and maintenance never got a link at all,
+ * ending up at the bottom of the import panel. They are all "configure the app", so they
+ * sit behind one entry with a sub-nav of their own.
+ */
+.settings-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 0.9rem;
+}
+
+.settings-head h2 { margin: 0; font-size: 1.15rem; }
+
+.settings-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-bottom: 1.25rem;
+  padding-bottom: 0.9rem;
+  border-bottom: 1px solid var(--border);
+}
+
+/* Shaped like the tag filters — the same "pick one of these" gesture. */
+.settings-nav-item,
+.settings-nav-disabled {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.25rem 0.7rem;
+  font-size: 0.8rem;
+  text-decoration: none;
+  color: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+}
+
+.settings-nav-item:hover { color: var(--fg); border-color: var(--accent); }
+
+.settings-nav-item.active {
+  color: var(--bg);
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+/* Inert during an import: still shown, so the section does not appear to lose pages. */
+.settings-nav-disabled { opacity: 0.45; cursor: default; }
+
+/* One maintenance operation: what it does, then the control that does it. */
+.settings-section {
+  width: 100%;
+  padding-top: 0.9rem;
+  border-top: 1px solid var(--border);
+}
+
+.settings-section h3 {
+  margin: 0 0 0.4rem;
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+}
+
+.settings-section p { margin: 0 0 0.7rem; max-width: 46rem; }
+
+/*
+ * The export link, shaped as a button. It stays an <a href download> so the browser
+ * streams the archive straight to disk — a fetch would buffer a multi-gigabyte zip inside
+ * the Worker — while looking like the deliberate action it is.
+ */
+.export-button {
+  display: inline-block;
+  text-decoration: none;
+}
+
+.export-tree {
+  max-width: 46rem;
+  margin: 0;
+  padding: 0.8rem;
+  overflow-x: auto;
+  font-size: 0.78rem;
+  line-height: 1.5;
+  color: var(--muted);
+  background: color-mix(in srgb, var(--fg) 5%, transparent);
+  border-radius: 0.4rem;
 }

@@ -1,27 +1,19 @@
-import { createFileRoute, useNavigate } from '@tanstack/react-router';
-import { useQueryClient } from '@tanstack/react-query';
-import { Settings } from '../components/Settings.js';
-import { notebooksQuery, keys } from '../queries.js';
+import { createFileRoute, Outlet } from '@tanstack/react-router';
+import { SettingsLayout } from '../components/SettingsLayout.js';
+import { notebooksQuery } from '../queries.js';
 
-/** Notebook management. A route rather than a toggle, so it survives a reload. */
+/**
+ * Everything that configures the app, behind one topbar entry.
+ *
+ * The loader sits on the layout rather than the notebooks child so entering the section
+ * from any page has the notebook list warm — it is the landing child, and the one page
+ * here anyone visits repeatedly.
+ */
 export const Route = createFileRoute('/settings')({
   loader: ({ context: { queryClient } }) => queryClient.ensureQueryData(notebooksQuery()),
-  component: SettingsRoute,
+  component: () => (
+    <SettingsLayout>
+      <Outlet />
+    </SettingsLayout>
+  ),
 });
-
-function SettingsRoute() {
-  const navigate = useNavigate();
-  const queryClient = useQueryClient();
-
-  return (
-    <Settings
-      onClose={() => void navigate({ to: '/notes' })}
-      onChanged={() => {
-        // Renaming or deleting a notebook changes note membership and the sidebar counts,
-        // so both the notebook list and every note list are stale.
-        void queryClient.invalidateQueries({ queryKey: keys.notebooks() });
-        void queryClient.invalidateQueries({ queryKey: ['notes'] });
-      }}
-    />
-  );
-}

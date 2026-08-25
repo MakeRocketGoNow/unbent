@@ -9,6 +9,7 @@ import {
 } from '@unbent/shared';
 import * as api from '../notes-api.js';
 import { attachmentsQuery, keys } from '../queries.js';
+import { Confirm } from './Confirm.js';
 
 interface AttachmentsProps {
   noteId: string;
@@ -51,6 +52,8 @@ export function Attachments({
   const { data: files = [], isLoading, error } = useQuery(attachmentsQuery(noteId));
   const [busy, setBusy] = useState<string | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+  /** Filename awaiting an explicit delete. */
+  const [pending, setPending] = useState<string | null>(null);
 
   const linked = useMemo(() => attachmentFilenamesInMarkdown(body), [body]);
   const unlinkedCount = files.filter((f) => !linked.has(f.filename)).length;
@@ -77,11 +80,7 @@ export function Attachments({
 
   async function remove(filename: string) {
     const stillLinked = linked.has(filename);
-    const message = stillLinked
-      ? `Permanently delete “${filename}”? It is still linked in the note — the link will be removed too.`
-      : `Permanently delete “${filename}”? This cannot be undone.`;
-    if (!confirm(message)) return;
-
+    setPending(null);
     setBusy(filename);
     setDeleteError(null);
     try {
@@ -156,11 +155,33 @@ export function Attachments({
                   type="button"
                   className="link danger"
                   disabled={busy !== null}
-                  onClick={() => void remove(file.filename)}
+                  onClick={() => setPending(file.filename)}
                 >
                   {busy === file.filename ? 'Deleting…' : 'Delete'}
                 </button>
               </div>
+
+              {pending === file.filename && (
+                <Confirm
+                  label="Confirm delete attachment"
+                  question={<>Permanently delete “{file.filename}”?</>}
+                  detail={
+                    isLinked
+                      ? 'It is still linked in this note; the link will be removed too.'
+                      : 'This cannot be undone.'
+                  }
+                  busy={busy === file.filename}
+                  onCancel={() => setPending(null)}
+                  actions={[
+                    {
+                      label: 'Delete file',
+                      busyLabel: 'Deleting…',
+                      tone: 'danger',
+                      onConfirm: () => void remove(file.filename),
+                    },
+                  ]}
+                />
+              )}
             </li>
           );
         })}

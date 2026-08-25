@@ -6,12 +6,16 @@ interface TopbarProps {
 }
 
 /**
- * App chrome: title, panel links, export, and sign-out.
+ * App chrome: title, settings, and sign-out.
  *
- * Notebooks and Import are links rather than toggles now that each has a route, so both
- * survive a reload and can be linked to. `activeProps` marks the current one, and
- * navigating to the same route again is a no-op — closing is what the panel's own Close
- * button does.
+ * Notebooks, Import and Export each used to sit here as their own link, which made the
+ * topbar a list of unrelated verbs and still left maintenance without an entry at all.
+ * They are all ways of configuring the app, so they live behind one Settings link with a
+ * sub-nav of their own. `activeProps` needs no `exact` — prefix matching means every
+ * `/settings/*` page marks this active, which is what we want.
+ *
+ * Trash is deliberately not here. It holds notes, not settings, and belongs beside the
+ * note list it is a subset of.
  */
 export function Topbar({ email, onSignOut }: TopbarProps) {
   return (
@@ -23,16 +27,8 @@ export function Topbar({ email, onSignOut }: TopbarProps) {
       </h1>
       <div className="account">
         <Link to="/settings" className="link" activeProps={{ className: 'link active' }}>
-          Notebooks
+          Settings
         </Link>
-        <Link to="/import" className="link" activeProps={{ className: 'link active' }}>
-          Import
-        </Link>
-        {/* A plain link, not fetch+blob: the response streams, and letting the browser
-            handle it means a large export never lands in a JS buffer. */}
-        <a className="link" href="/api/export" download>
-          Export
-        </a>
         <span className="muted">{email}</span>
         <button type="button" className="link" onClick={onSignOut}>
           Sign out

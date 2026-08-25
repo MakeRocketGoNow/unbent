@@ -1,23 +1,11 @@
-import { createFileRoute, useNavigate } from '@tanstack/react-router';
-import { useQueryClient } from '@tanstack/react-query';
-import { Import } from '../components/Import.js';
+import { createFileRoute, redirect } from '@tanstack/react-router';
 
-/** Evernote import. A route so a long import is not lost to an accidental toggle. */
+/**
+ * Kept as a redirect: `/import` was in the topbar for the app's whole life, so a bookmark
+ * or an open tab should land on the moved page rather than a blank 404.
+ */
 export const Route = createFileRoute('/import')({
-  component: ImportRoute,
+  beforeLoad: () => {
+    throw redirect({ to: '/settings/import', replace: true });
+  },
 });
-
-function ImportRoute() {
-  const navigate = useNavigate();
-  const queryClient = useQueryClient();
-
-  return (
-    <Import
-      onClose={() => void navigate({ to: '/notes' })}
-      onImported={() => {
-        // An import creates notes, notebooks, and tags, so nothing cached is still true.
-        void queryClient.invalidateQueries();
-      }}
-    />
-  );
-}

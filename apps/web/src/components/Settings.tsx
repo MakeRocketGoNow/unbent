@@ -3,7 +3,6 @@ import * as api from '../notes-api.js';
 import { Confirm } from './Confirm.js';
 
 interface SettingsProps {
-  onClose: () => void;
   /** Called after any change, so the note list and sidebar refetch. */
   onChanged: () => void;
 }
@@ -12,10 +11,11 @@ interface SettingsProps {
  * Notebook management.
  *
  * A panel rather than a sidebar menu: creating a notebook has no natural home in a
- * dropdown, and keeping management out of the sidebar leaves the reading surface uncluttered.
- * Follows the same shape as the Import panel so there is one kind of panel in the app.
+ * dropdown, and keeping management out of the sidebar leaves the reading surface
+ * uncluttered. Leaving is the settings section's job now, so there is no Close button —
+ * the section header carries one way out for all four pages.
  */
-export function Settings({ onClose, onChanged }: SettingsProps) {
+export function Settings({ onChanged }: SettingsProps) {
   const [notebooks, setNotebooks] = useState<api.Notebook[]>([]);
   const [newName, setNewName] = useState('');
   /** Id of the notebook being renamed, with its in-progress value. */
@@ -92,12 +92,9 @@ export function Settings({ onClose, onChanged }: SettingsProps) {
       : null;
 
   return (
-    <div className="import-panel">
-      <div className="import-head">
+    <div className="panel">
+      <div className="panel-head">
         <h2>Notebooks</h2>
-        <button type="button" className="link" onClick={onClose}>
-          Close
-        </button>
       </div>
 
       {error && <p className="bad small">{error}</p>}

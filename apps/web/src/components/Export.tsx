@@ -1,0 +1,70 @@
+import { useState } from 'react';
+
+/**
+ * The export page.
+ *
+ * Export used to be a bare topbar link, so a click started a possibly multi-gigabyte
+ * download with no warning and no account of what was in it. It is the only backup this
+ * app has, which makes it worth a page that says so.
+ *
+ * Still an anchor rather than a button: the archive is generated as it downloads, and
+ * letting the browser consume the response is what keeps a corpus larger than the
+ * Worker's 128MB ceiling from ever landing in a JS buffer. An anchor also keeps
+ * Save-Link-As, copy-link and middle-click, and works even if the bundle has failed.
+ */
+export function Export() {
+  const [started, setStarted] = useState(false);
+  // Matches the filename the API stamps, so the example is never a date from the past.
+  const stamp = new Date().toISOString().slice(0, 10);
+
+  return (
+    <div className="panel">
+      <div className="panel-head">
+        <h2>Export everything</h2>
+      </div>
+
+      <p className="muted small">
+        Downloads every note as a zip of folders — one per note, with its attachments
+        beside it. Plain files, readable without this app or any other.
+      </p>
+
+      <pre className="export-tree">
+        {`unbent-export-${stamp}.zip
+└── meeting-notes-a1b2c3d4/
+    ├── note.md          Markdown, with title, dates, tags and notebook up top
+    └── files/           Attachments, under their original names
+        └── agenda.pdf`}
+      </pre>
+
+      <p className="muted small">
+        Each folder is named for its note plus a few characters of the note&apos;s id. The
+        id is not decoration: two notes both called &ldquo;Meeting notes&rdquo; would
+        otherwise collide into one folder and the second would overwrite the first.
+      </p>
+
+      <p className="muted small">
+        Notes in the Trash are not included. Restore anything you want to keep before
+        exporting.
+      </p>
+
+      <a className="primary export-button" href="/api/export" download onClick={() => setStarted(true)}>
+        {started ? 'Download again' : 'Download export'}
+      </a>
+
+      {started && (
+        <p className="muted small">
+          The download is running in your browser. A large library takes a few minutes and
+          will not show a percentage — the archive is built as it downloads, so its final
+          size is not known when it starts. If it stops early the zip will not open; just
+          download it again, since exporting changes nothing on the server.
+        </p>
+      )}
+
+      <p className="muted small">
+        This is the backup. D1&apos;s own export cannot be used — it fails on any database
+        with a full-text search index and leaves the database wedged — so a copy of this
+        zip is the only way back from a bad day.
+      </p>
+    </div>
+  );
+}

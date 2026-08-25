@@ -256,6 +256,8 @@ export interface GcResult {
   orphaned: number;
   deleted: number;
   dryRun: boolean;
+  /** The orphaned keys themselves, capped server-side at 50. */
+  keys: string[];
 }
 
 /** Sweeps R2 objects with no attachment row. Dry run unless `apply` is true. */

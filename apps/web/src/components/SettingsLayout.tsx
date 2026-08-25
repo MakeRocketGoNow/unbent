@@ -1,0 +1,88 @@
+import { createContext, useContext, useMemo, useState, type ReactNode } from 'react';
+import { Link } from '@tanstack/react-router';
+
+interface BusyContext {
+  /** Set while an import is running, so the sub-nav can refuse to unmount it. */
+  importRunning: boolean;
+  setImportRunning: (running: boolean) => void;
+}
+
+const SettingsBusy = createContext<BusyContext>({
+  importRunning: false,
+  setImportRunning: () => {},
+});
+
+/**
+ * Lets the import tell the sub-nav it is mid-run.
+ *
+ * The import lives entirely in the browser, so navigating away unmounts it and terminates
+ * its worker — losing however many thousand notes were left to go. It had a route of its
+ * own for exactly that reason; putting it in a section with siblings hands the same foot
+ * gun back unless the links go inert while it runs.
+ */
+export function useSettingsBusy() {
+  return useContext(SettingsBusy);
+}
+
+const TABS = [
+  { to: '/settings/notebooks', label: 'Notebooks' },
+  { to: '/settings/import', label: 'Import' },
+  { to: '/settings/export', label: 'Export' },
+  { to: '/settings/maintenance', label: 'Maintenance' },
+] as const;
+
+/**
+ * The settings section: one heading, one sub-nav, one outlet.
+ *
+ * These four pages accreted as separate topbar links until the topbar read as a list of
+ * unrelated verbs — and maintenance never got a link at all, ending up buried inside the
+ * import panel. They are all "configure the app", so they belong behind one entry with
+ * their own nav.
+ */
+export function SettingsLayout({ children }: { children: ReactNode }) {
+  const [importRunning, setImportRunning] = useState(false);
+  const busy = useMemo(() => ({ importRunning, setImportRunning }), [importRunning]);
+
+  return (
+    <SettingsBusy.Provider value={busy}>
+      <div className="settings">
+        <div className="settings-head">
+          <h2>Settings</h2>
+          <Link to="/notes" className="link">
+            ← Back to notes
+          </Link>
+        </div>
+
+        <nav className="settings-nav" aria-label="Settings sections">
+          {TABS.map((tab) =>
+            importRunning && tab.to !== '/settings/import' ? (
+              // Inert rather than hidden: the section should not appear to lose pages
+              // mid-import, but a stray click must not cost a long-running import.
+              <span key={tab.to} className="settings-nav-disabled" aria-disabled="true">
+                {tab.label}
+              </span>
+            ) : (
+              <Link
+                key={tab.to}
+                to={tab.to}
+                className="settings-nav-item"
+                activeProps={{ className: 'settings-nav-item active' }}
+              >
+                {tab.label}
+              </Link>
+            ),
+          )}
+        </nav>
+
+        {importRunning && (
+          <p className="muted small">
+            An import is running. The other settings pages are unavailable until it
+            finishes or is stopped, because leaving this page would cancel it.
+          </p>
+        )}
+
+        <div className="settings-body">{children}</div>
+      </div>
+    </SettingsBusy.Provider>
+  );
+}

@@ -26,6 +26,7 @@ export const keys = {
   notebooks: () => ['notebooks'] as const,
   trash: () => ['trash'] as const,
   trashCount: () => ['trash', 'count'] as const,
+  noteCount: () => ['notes', 'count'] as const,
   search: (q: string) => ['search', q] as const,
 };
 
@@ -104,4 +105,18 @@ export const searchQuery = (q: string) =>
     queryKey: keys.search(q),
     queryFn: () => api.searchNotes(q),
     enabled: q.trim() !== '',
+  });
+
+/**
+ * How many live notes exist.
+ *
+ * Sibling of `trashCountQuery`, and asked for the same reason: a destructive button that
+ * names its blast radius before you press it is worth more than the confirm that follows.
+ * Only the total is used, so this asks for a single row.
+ */
+export const noteCountQuery = () =>
+  queryOptions({
+    queryKey: keys.noteCount(),
+    queryFn: () => api.listNotes({ limit: 1 }),
+    select: (page) => page.total ?? 0,
   });

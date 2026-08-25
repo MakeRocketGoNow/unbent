@@ -1,10 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ImportFailure, ImportProgress } from '@unbent/enex';
 import type { BackfillProgress, ImportEvent, ImportRequest } from '../import-worker.js';
-import { DangerZone } from './DangerZone.js';
+import { useSettingsBusy } from './SettingsLayout.js';
 
 interface ImportProps {
-  onClose: () => void;
   /** Called when notes actually landed, so the list can refresh. */
   onImported: () => void;
 }
@@ -31,7 +30,7 @@ function formatBytes(n: number): string {
   return `${(n / 1024 ** 3).toFixed(2)} GB`;
 }
 
-export function Import({ onClose, onImported }: ImportProps) {
+export function Import({ onImported }: ImportProps) {
   const [file, setFile] = useState<File | null>(null);
   const [status, setStatus] = useState<Status>('idle');
   const [progress, setProgress] = useState<ImportProgress | null>(null);
@@ -42,12 +41,20 @@ export function Import({ onClose, onImported }: ImportProps) {
   const [backfill, setBackfill] = useState<BackfillProgress | null>(null);
   const [backfillDone, setBackfillDone] = useState(false);
 
+  const { setImportRunning } = useSettingsBusy();
   const worker = useRef<Worker | null>(null);
   const startedAt = useRef(0);
 
   useEffect(() => {
     return () => worker.current?.terminate();
   }, []);
+
+  // Mirrored into the section rather than set at each transition: the sub-nav has to go
+  // inert for the whole run, and there are five places status changes.
+  useEffect(() => {
+    setImportRunning(status === 'running');
+    return () => setImportRunning(false);
+  }, [status, setImportRunning]);
 
   // A long import needs a clock; without one a slow file is indistinguishable from a hang.
   useEffect(() => {
@@ -179,12 +186,9 @@ export function Import({ onClose, onImported }: ImportProps) {
         : 0;
 
   return (
-    <div className="import-panel">
-      <div className="import-head">
+    <div className="panel">
+      <div className="panel-head">
         <h2>Import from Evernote</h2>
-        <button type="button" className="link" onClick={onClose}>
-          Close
-        </button>
       </div>
 
       {status === 'idle' && (
@@ -323,9 +327,6 @@ export function Import({ onClose, onImported }: ImportProps) {
           </span>
         </div>
       )}
-
-      {/* Placed here because resetting is what you want right after a trial import. */}
-      {status !== 'running' && <DangerZone onChanged={onImported} />}
 
       {failures.length > 0 && (
         <details className="failures">
