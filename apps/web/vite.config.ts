@@ -43,9 +43,23 @@ export default defineConfig({
     },
   },
   optimizeDeps: {
-    // First PDF during import dynamically loads these inside the import worker. Pre-bundling
-    // avoids a mid-import dep-optimize that can tear the worker down with an empty onerror.
-    include: ['pdfjs-dist/legacy/build/pdf.mjs', 'pdfjs-dist/legacy/build/pdf.worker.min.mjs'],
+    /**
+     * The ENEX worker is created only after Start import is clicked, so Vite cannot discover
+     * its dependencies during its initial crawl. Discovering them mid-import makes Vite
+     * optimize them and reload the page, resetting the UI while uploads are in progress.
+     *
+     * Keep this list aligned with runtime package imports in `packages/enex/src`.
+     */
+    include: [
+      '@unbent/enex > hast-util-from-html',
+      '@unbent/enex > hast-util-to-mdast',
+      '@unbent/enex > mdast-util-gfm',
+      '@unbent/enex > mdast-util-to-markdown',
+      '@unbent/enex > saxes',
+      '@unbent/enex > unist-util-visit',
+      'pdfjs-dist/legacy/build/pdf.mjs',
+      'pdfjs-dist/legacy/build/pdf.worker.min.mjs',
+    ],
   },
   worker: {
     format: 'es',

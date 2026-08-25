@@ -1,4 +1,3 @@
-/// <reference path="./pdf-worker-url.d.ts" />
 import { cleanExtractedText, type CleanedText } from './ocr-text.js';
 
 /**
@@ -24,35 +23,19 @@ export interface PdfTextResult extends CleanedText {
 type PdfModule = typeof import('pdfjs-dist');
 let pdfjs: PdfModule | null = null;
 
-/** True when this module is evaluating inside a dedicated Web Worker. */
-function isWorkerScope(): boolean {
-  return typeof self !== 'undefined' && self.constructor?.name === 'DedicatedWorkerGlobalScope';
-}
-
 async function loadPdfjs(): Promise<PdfModule> {
   if (pdfjs) return pdfjs;
 
   const lib = (await import('pdfjs-dist/legacy/build/pdf.mjs')) as unknown as PdfModule;
 
   /**
-   * Configure how pdf.js runs its parse thread.
+   * Give pdf.js its own worker URL.
    *
-   * pdf.js 6 dropped `disableWorker`. A blank `workerSrc` still throws in the browser
-   * before any fallback, which is why Node tests once passed while every real file failed.
-   *
-   * Import already runs inside a Web Worker. Spawning a *nested* Worker from that scope
-   * (via a Vite `?url` workerSrc) is what killed the importer on the first PDF: the parent
-   * worker died with an empty `onerror`, the UI froze after the last attachment-free note,
-   * and a resume skipped the half-imported note forever. Loading the worker script into
-   * *this* scope registers `globalThis.pdfjsWorker`, which makes pdf.js take its in-process
-   * path instead.
+   * Importing the worker script directly into the ENEX worker is not equivalent: pdf.js
+   * then uses the outer worker's message channel for its internal protocol, leaking raw
+   * messages to the React client. A nested worker keeps that protocol isolated.
    */
-  if (isWorkerScope()) {
-    await import('pdfjs-dist/legacy/build/pdf.worker.min.mjs');
-    if (!lib.GlobalWorkerOptions.workerSrc) {
-      lib.GlobalWorkerOptions.workerSrc = 'pdf.worker.mjs';
-    }
-  } else if (!lib.GlobalWorkerOptions.workerSrc) {
+  if (!lib.GlobalWorkerOptions.workerSrc) {
     try {
       lib.GlobalWorkerOptions.workerSrc = (
         await import('pdfjs-dist/legacy/build/pdf.worker.min.mjs?url')
@@ -81,7 +64,8 @@ export async function extractPdfText(bytes: Uint8Array): Promise<PdfTextResult> 
       // them is a large speedup across thousands of scans.
       disableFontFace: true,
       useSystemFonts: false,
-    } as Parameters<typeof lib.getDocument>[0]);    const doc = await task.promise;
+    } as Parameters<typeof lib.getDocument>[0]);
+    const doc = await task.promise;
 
     const pageCount = Math.min(doc.numPages, MAX_PAGES);
     const parts: string[] = [];

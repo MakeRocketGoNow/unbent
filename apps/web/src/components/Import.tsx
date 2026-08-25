@@ -11,6 +11,19 @@ interface ImportProps {
 
 type Status = 'idle' | 'running' | 'done' | 'error';
 
+function initialProgress(): ImportProgress {
+  return {
+    processed: 0,
+    created: 0,
+    skipped: 0,
+    failed: 0,
+    filesUploaded: 0,
+    filesIndexed: 0,
+    bytesRead: 0,
+    currentTitle: 'Starting import…',
+  };
+}
+
 function formatBytes(n: number): string {
   if (n < 1024) return `${n} B`;
   if (n < 1024 ** 2) return `${(n / 1024).toFixed(0)} KB`;
@@ -49,7 +62,9 @@ export function Import({ onClose, onImported }: ImportProps) {
     setStatus('running');
     setFailures([]);
     setError(null);
-    setProgress(null);
+    // Show the running state before the worker module finishes loading. This also keeps a
+    // worker startup failure visible instead of leaving the user on an unchanged form.
+    setProgress(initialProgress());
     startedAt.current = Date.now();
     setElapsed(0);
 
@@ -79,7 +94,7 @@ export function Import({ onClose, onImported }: ImportProps) {
         onImported();
         w.terminate();
         worker.current = null;
-      } else {
+      } else if (data.type === 'error') {
         setError(data.message);
         setStatus('error');
         onImported();
@@ -93,6 +108,8 @@ export function Import({ onClose, onImported }: ImportProps) {
       // worker teardown). Surface something actionable rather than a blank error line.
       setError(event.message || 'Import worker crashed — try again; already-imported notes are skipped.');
       setStatus('error');
+      w.terminate();
+      worker.current = null;
     };
 
     const request: ImportRequest = { type: 'start', file, extractText };
