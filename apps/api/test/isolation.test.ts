@@ -615,6 +615,56 @@ describe('notebooks', () => {
     const del = await fetch(`${BASE}/api/notebooks/${nb.id}`, { method: 'DELETE', ...asUser(bob) });
     expect(del.status).toBe(404);
   });
+
+  /**
+   * Re-import after deleting the notebook must bring the notebook back.
+   *
+   * Import is idempotent on content hash, so a second pass skips the note. Skipping used
+   * to skip notebook resolution too — deleting the notebook (which unfiles notes) then
+   * re-importing left notes unfiled with no notebook row forever.
+   */
+  it('re-import recreates a deleted notebook and refiles unfiled notes', async () => {
+    const name = `Reimport ${Date.now()}`;
+    const contentHash = 'a'.repeat(64);
+    const payload = {
+      title: 'Imported once',
+      body: 'same body',
+      tags: [] as string[],
+      notebook: name,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      contentHash,
+      sourceEnex: `${name}.enex`,
+    };
+
+    const first = await fetch(`${BASE}/api/import/note`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...asUser(alice).headers },
+      body: JSON.stringify(payload),
+    });
+    expect(first.status).toBe(201);
+    const { id } = (await first.json()) as { id: string; created: boolean };
+
+    const nb = (await listNotebooks(alice)).find((n) => n.name === name)!;
+    await fetch(`${BASE}/api/notebooks/${nb.id}`, { method: 'DELETE', ...asUser(alice) });
+    expect((await listNotebooks(alice)).some((n) => n.name === name)).toBe(false);
+    expect((await fetch(`${BASE}/api/notes/${id}`, asUser(alice)).then((r) => r.json())).notebook).toBeNull();
+
+    const second = await fetch(`${BASE}/api/import/note`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...asUser(alice).headers },
+      body: JSON.stringify(payload),
+    });
+    expect(second.status).toBe(200);
+    expect((await second.json()).created).toBe(false);
+
+    const restored = (await listNotebooks(alice)).find((n) => n.name === name);
+    expect(restored).toBeDefined();
+    expect(restored!.count).toBe(1);
+    expect((await fetch(`${BASE}/api/notes/${id}`, asUser(alice)).then((r) => r.json())).notebook).toBe(
+      name,
+    );
+  });
 });
 
 describe('unauthenticated access', () => {

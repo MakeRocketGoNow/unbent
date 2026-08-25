@@ -377,7 +377,27 @@ export class NotesRepo extends ScopedRepo {
       .bind(this.userId, input.contentHash)
       .first<{ id: string }>();
 
-    if (existing) return { id: existing.id, created: false };
+    if (existing) {
+      /**
+       * Still ensure the notebook exists (and re-file if the note is unfiled).
+       *
+       * Deleting a notebook unfiles its notes but leaves them in place. A re-import then
+       * hits this skip path — without resolving the notebook here, the notebook would never
+       * come back and the notes would stay unfiled forever. Manual moves after import are
+       * preserved: only unfiled notes are re-attached.
+       */
+      if (input.notebook) {
+        const notebookId = await this.resolveNotebook(input.notebook);
+        await this.db
+          .prepare(
+            `UPDATE notes SET notebook_id = ?1
+              WHERE id = ?2 AND user_id = ?3 AND notebook_id IS NULL`,
+          )
+          .bind(notebookId, existing.id, this.userId)
+          .run();
+      }
+      return { id: existing.id, created: false };
+    }
 
     const id = crypto.randomUUID();
     const notebookId = await this.resolveNotebook(input.notebook);
