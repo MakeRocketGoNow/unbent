@@ -47,13 +47,28 @@ export const notebooks = new Hono<AppEnv>()
   })
 
   /**
-   * Deletes a notebook. Its notes survive, unfiled.
+   * Deletes a notebook. By default its notes survive, unfiled.
    *
-   * Deleting an organisational label must never destroy what it organised — the notes are
-   * the user's work, the notebook is only a way of grouping them.
+   * `?trashNotes=1` also soft-deletes those notes into the trash — recoverable, not a
+   * permanent wipe. Deleting an organisational label must never permanently destroy what
+   * it organised; the cascade option is trash, not purge.
    */
-  .delete('/notebooks/:id', async (c) => {
-    const ok = await c.get('notes').deleteNotebook(c.req.param('id'));
-    if (!ok) return c.json({ error: 'Not found' }, 404);
-    return c.body(null, 204);
-  });
+  .delete(
+    '/notebooks/:id',
+    zValidator(
+      'query',
+      z.object({
+        trashNotes: z
+          .string()
+          .optional()
+          .transform((v) => v === '1'),
+      }),
+    ),
+    async (c) => {
+      const ok = await c
+        .get('notes')
+        .deleteNotebook(c.req.param('id'), { trashNotes: c.req.valid('query').trashNotes });
+      if (!ok) return c.json({ error: 'Not found' }, 404);
+      return c.body(null, 204);
+    },
+  );

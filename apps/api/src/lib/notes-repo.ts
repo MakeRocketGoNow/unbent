@@ -680,23 +680,37 @@ export class NotesRepo extends ScopedRepo {
   }
 
   /**
-   * Deletes a notebook. Its notes survive, unfiled.
+   * Deletes a notebook.
    *
-   * The notes are unfiled explicitly rather than relying on `ON DELETE SET NULL`, because
-   * D1 does not guarantee foreign key enforcement is on for a given connection. Batched so
-   * a note can never be left pointing at a notebook row that is gone.
+   * Default: notes survive, unfiled. With `trashNotes`, live notes in the notebook are
+   * soft-deleted into the trash (already-trashed ones keep their `deleted_at`) and then
+   * unfiled — restoring later must not point at a notebook that no longer exists.
+   *
+   * Notes are unfiled explicitly rather than relying on `ON DELETE SET NULL`, because D1
+   * does not guarantee foreign key enforcement is on for a given connection. Batched so a
+   * note can never be left pointing at a notebook row that is gone.
    */
-  async deleteNotebook(id: string): Promise<boolean> {
+  async deleteNotebook(id: string, opts?: { trashNotes?: boolean }): Promise<boolean> {
     const owned = await this.db
       .prepare(`SELECT 1 FROM notebooks WHERE id = ?1 AND user_id = ?2`)
       .bind(id, this.userId)
       .first();
     if (!owned) return false;
 
+    const noteUpdate = opts?.trashNotes
+      ? this.db
+          .prepare(
+            `UPDATE notes
+                SET deleted_at = COALESCE(deleted_at, ?1), notebook_id = NULL
+              WHERE notebook_id = ?2 AND user_id = ?3`,
+          )
+          .bind(Date.now(), id, this.userId)
+      : this.db
+          .prepare(`UPDATE notes SET notebook_id = NULL WHERE notebook_id = ?1 AND user_id = ?2`)
+          .bind(id, this.userId);
+
     await this.db.batch([
-      this.db
-        .prepare(`UPDATE notes SET notebook_id = NULL WHERE notebook_id = ?1 AND user_id = ?2`)
-        .bind(id, this.userId),
+      noteUpdate,
       this.db.prepare(`DELETE FROM notebooks WHERE id = ?1 AND user_id = ?2`).bind(id, this.userId),
     ]);
 

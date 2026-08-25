@@ -19,6 +19,8 @@ export function Settings({ onClose, onChanged }: SettingsProps) {
   const [newName, setNewName] = useState('');
   /** Id of the notebook being renamed, with its in-progress value. */
   const [editing, setEditing] = useState<{ id: string; value: string } | null>(null);
+  /** Notebook awaiting an explicit delete choice — replaces browser `confirm()`. */
+  const [pendingDelete, setPendingDelete] = useState<api.Notebook | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -74,15 +76,19 @@ export function Settings({ onClose, onChanged }: SettingsProps) {
     });
   }
 
-  function remove(nb: api.Notebook) {
-    // Name the consequence: the count is the thing the user needs to weigh.
-    const consequence =
-      nb.count > 0
-        ? `Its ${nb.count} note${nb.count === 1 ? '' : 's'} will become unfiled, not deleted.`
-        : 'It has no notes.';
-    if (!confirm(`Delete the notebook "${nb.name}"?\n\n${consequence}`)) return;
-    void run(() => api.deleteNotebook(nb.id));
+  function confirmDelete(trashNotes: boolean) {
+    if (!pendingDelete) return;
+    const id = pendingDelete.id;
+    void run(async () => {
+      await api.deleteNotebook(id, { trashNotes });
+      setPendingDelete(null);
+    });
   }
+
+  const noteLabel =
+    pendingDelete && pendingDelete.count > 0
+      ? `${pendingDelete.count} note${pendingDelete.count === 1 ? '' : 's'}`
+      : null;
 
   return (
     <div className="import-panel">
@@ -127,7 +133,10 @@ export function Settings({ onClose, onChanged }: SettingsProps) {
               type="button"
               className="link danger small"
               disabled={busy}
-              onClick={() => remove(nb)}
+              onClick={() => {
+                setEditing(null);
+                setPendingDelete(nb);
+              }}
             >
               Delete
             </button>
@@ -136,6 +145,47 @@ export function Settings({ onClose, onChanged }: SettingsProps) {
 
         {notebooks.length === 0 && <li className="muted small">No notebooks yet.</li>}
       </ul>
+
+      {pendingDelete && (
+        <div className="notebook-delete-confirm" role="group" aria-label="Confirm delete notebook">
+          <p>
+            Delete the notebook <strong>{pendingDelete.name}</strong>?
+          </p>
+          <p className="small">
+            {noteLabel
+              ? `Its ${noteLabel} will become unfiled, not deleted.`
+              : 'It has no notes.'}
+          </p>
+          <div className="notebook-delete-actions">
+            <button
+              type="button"
+              className="primary"
+              disabled={busy}
+              onClick={() => confirmDelete(false)}
+            >
+              {busy ? 'Deleting…' : 'Delete notebook'}
+            </button>
+            <button
+              type="button"
+              className="link"
+              disabled={busy}
+              onClick={() => setPendingDelete(null)}
+            >
+              Cancel
+            </button>
+          </div>
+          {noteLabel && (
+            <button
+              type="button"
+              className="link danger small notebook-delete-cascade"
+              disabled={busy}
+              onClick={() => confirmDelete(true)}
+            >
+              Delete notebook and move {noteLabel} to Trash
+            </button>
+          )}
+        </div>
+      )}
 
       <div className="notebook-admin-new">
         <input
@@ -152,8 +202,8 @@ export function Settings({ onClose, onChanged }: SettingsProps) {
       </div>
 
       <p className="muted small">
-        Renaming a notebook updates every note in it. Deleting one leaves its notes in place,
-        unfiled.
+        Renaming a notebook updates every note in it. Deleting one leaves its notes unfiled
+        unless you choose to move them to Trash.
       </p>
     </div>
   );

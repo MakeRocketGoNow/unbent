@@ -158,9 +158,18 @@ export async function renameNotebook(id: string, name: string): Promise<void> {
   await json(res);
 }
 
-/** Deletes a notebook. Its notes survive, unfiled. */
-export async function deleteNotebook(id: string): Promise<void> {
-  const res = await fetch(`/api/notebooks/${id}`, { method: 'DELETE' });
+/**
+ * Deletes a notebook. By default its notes survive, unfiled.
+ * Pass `trashNotes: true` to soft-delete those notes into the trash as well.
+ */
+export async function deleteNotebook(
+  id: string,
+  opts?: { trashNotes?: boolean },
+): Promise<void> {
+  const params = new URLSearchParams();
+  if (opts?.trashNotes) params.set('trashNotes', '1');
+  const qs = params.toString();
+  const res = await fetch(`/api/notebooks/${id}${qs ? `?${qs}` : ''}`, { method: 'DELETE' });
   if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
 }
 

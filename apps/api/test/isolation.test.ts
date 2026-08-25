@@ -598,6 +598,36 @@ describe('notebooks', () => {
     expect((await listNotebooks(alice)).some((n) => n.name === name)).toBe(false);
   });
 
+  it('can trash notes while deleting the notebook', async () => {
+    const name = `Cascade ${Date.now()}`;
+    const a = await createNote(alice, { title: 'to trash a', body: 'x', notebook: name });
+    const b = await createNote(alice, { title: 'to trash b', body: 'x', notebook: name });
+    const nb = (await listNotebooks(alice)).find((n) => n.name === name)!;
+
+    const res = await fetch(`${BASE}/api/notebooks/${nb.id}?trashNotes=1`, {
+      method: 'DELETE',
+      ...asUser(alice),
+    });
+    expect(res.status).toBe(204);
+
+    // Soft-deleted: gone from the live list, present in the trash, notebook gone.
+    for (const id of [a.id, b.id]) {
+      expect((await fetch(`${BASE}/api/notes/${id}`, asUser(alice))).status).toBe(404);
+    }
+    const trash = await fetch(`${BASE}/api/notes?trashed=1`, asUser(alice)).then((r) => r.json());
+    expect(trash.items.some((n: { id: string }) => n.id === a.id)).toBe(true);
+    expect(trash.items.some((n: { id: string }) => n.id === b.id)).toBe(true);
+    expect((await listNotebooks(alice)).some((n) => n.name === name)).toBe(false);
+
+    // Restoring leaves the note unfiled — the notebook no longer exists.
+    const restore = await fetch(`${BASE}/api/notes/${a.id}/restore`, {
+      method: 'POST',
+      ...asUser(alice),
+    });
+    expect(restore.status).toBe(200);
+    expect((await restore.json()).notebook).toBeNull();
+  });
+
   it("does not expose or accept changes to another user's notebooks", async () => {
     const name = `Alice only ${Date.now()}`;
     await createNote(alice, { title: 'hers', body: 'x', notebook: name });
