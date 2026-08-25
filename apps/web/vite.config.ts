@@ -42,10 +42,21 @@ export default defineConfig({
       'decode-named-character-reference': decodeEntitiesNodeBuild,
     },
   },
+  optimizeDeps: {
+    // First PDF during import dynamically loads these inside the import worker. Pre-bundling
+    // avoids a mid-import dep-optimize that can tear the worker down with an empty onerror.
+    include: ['pdfjs-dist/legacy/build/pdf.mjs', 'pdfjs-dist/legacy/build/pdf.worker.min.mjs'],
+  },
   worker: {
     format: 'es',
   },
   server: {
+    // Bind on all interfaces so Tailscale (and LAN) can reach the SPA. Default is
+    // localhost-only, which is why `http://100.x.x.x:5173` times out while SSH works.
+    host: true,
+    // Vite blocks unknown Host headers (DNS rebinding guard). MagicDNS names fail
+    // that check unless we allow them; true is fine for a private Tailscale/LAN bind.
+    allowedHosts: true,
     port: 5173,
     proxy: {
       // Proxying keeps the API same-origin in development, so session cookies work

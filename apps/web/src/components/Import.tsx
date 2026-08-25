@@ -89,7 +89,9 @@ export function Import({ onClose, onImported }: ImportProps) {
     };
 
     w.onerror = (event) => {
-      setError(event.message || 'Import worker failed');
+      // Module workers often report an empty message on abrupt death (e.g. nested pdf.js
+      // worker teardown). Surface something actionable rather than a blank error line.
+      setError(event.message || 'Import worker crashed — try again; already-imported notes are skipped.');
       setStatus('error');
     };
 

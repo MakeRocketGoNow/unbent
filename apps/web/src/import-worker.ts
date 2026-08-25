@@ -86,6 +86,12 @@ self.onmessage = async (event: MessageEvent<ImportRequest>) => {
           return res.json() as Promise<{ filename: string }>;
         },
 
+        listFiles: async (noteId) => {
+          const res = await api(`/api/notes/${noteId}/files`, { method: 'GET' });
+          const { files } = (await res.json()) as { files: Array<{ filename: string }> };
+          return files.map((f) => f.filename);
+        },
+
         updateBody: async (noteId, body) => {
           await api(`/api/notes/${noteId}`, {
             method: 'PATCH',

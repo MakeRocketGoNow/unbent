@@ -1,3 +1,4 @@
+/// <reference path="./pdf-worker-url.d.ts" />
 import { cleanExtractedText, type CleanedText } from './ocr-text.js';
 
 /**
@@ -23,23 +24,35 @@ export interface PdfTextResult extends CleanedText {
 type PdfModule = typeof import('pdfjs-dist');
 let pdfjs: PdfModule | null = null;
 
+/** True when this module is evaluating inside a dedicated Web Worker. */
+function isWorkerScope(): boolean {
+  return typeof self !== 'undefined' && self.constructor?.name === 'DedicatedWorkerGlobalScope';
+}
+
 async function loadPdfjs(): Promise<PdfModule> {
   if (pdfjs) return pdfjs;
 
   const lib = (await import('pdfjs-dist/legacy/build/pdf.mjs')) as unknown as PdfModule;
 
   /**
-   * Give pdf.js a worker URL even though the work happens in-process.
+   * Configure how pdf.js runs its parse thread.
    *
-   * pdf.js resolves `workerSrc` before deciding whether to spawn a worker, and throws
-   * "No GlobalWorkerOptions.workerSrc specified" when it is blank — in the browser, even
-   * on the legacy build. Node tolerates a blank value, which is exactly why this was
-   * missed: extraction passed in tests and failed on every real file.
+   * pdf.js 6 dropped `disableWorker`. A blank `workerSrc` still throws in the browser
+   * before any fallback, which is why Node tests once passed while every real file failed.
    *
-   * The URL is resolved through the bundler so it points at the copy that ships with the
-   * app rather than a path relative to this source file.
+   * Import already runs inside a Web Worker. Spawning a *nested* Worker from that scope
+   * (via a Vite `?url` workerSrc) is what killed the importer on the first PDF: the parent
+   * worker died with an empty `onerror`, the UI froze after the last attachment-free note,
+   * and a resume skipped the half-imported note forever. Loading the worker script into
+   * *this* scope registers `globalThis.pdfjsWorker`, which makes pdf.js take its in-process
+   * path instead.
    */
-  if (!lib.GlobalWorkerOptions.workerSrc) {
+  if (isWorkerScope()) {
+    await import('pdfjs-dist/legacy/build/pdf.worker.min.mjs');
+    if (!lib.GlobalWorkerOptions.workerSrc) {
+      lib.GlobalWorkerOptions.workerSrc = 'pdf.worker.mjs';
+    }
+  } else if (!lib.GlobalWorkerOptions.workerSrc) {
     try {
       lib.GlobalWorkerOptions.workerSrc = (
         await import('pdfjs-dist/legacy/build/pdf.worker.min.mjs?url')
@@ -63,14 +76,12 @@ export async function extractPdfText(bytes: Uint8Array): Promise<PdfTextResult> 
       // pdf.js transfers and detaches the buffer it is given; the caller still needs the
       // original bytes to upload, so hand it a copy.
       data: new Uint8Array(bytes),
-      disableWorker: true,
       isEvalSupported: false,
       // Fonts and images are irrelevant when only the text layer is wanted, and skipping
       // them is a large speedup across thousands of scans.
       disableFontFace: true,
       useSystemFonts: false,
-    } as Parameters<typeof lib.getDocument>[0]);
-    const doc = await task.promise;
+    } as Parameters<typeof lib.getDocument>[0]);    const doc = await task.promise;
 
     const pageCount = Math.min(doc.numPages, MAX_PAGES);
     const parts: string[] = [];

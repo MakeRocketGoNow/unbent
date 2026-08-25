@@ -245,6 +245,37 @@ describe('resume', () => {
     expect(files).toHaveLength(1);
     expect(notes).toHaveLength(1);
   });
+
+  it('uploads attachments a prior run missed when the note already exists', async () => {
+    const files: string[] = [];
+    const { client } = fakeClient({
+      createNote: vi.fn(async () => ({ id: 'note-1', created: false })),
+      // First resource landed; second did not (worker died mid-note).
+      listFiles: async () => ['a.txt'],
+      uploadFile: vi.fn(async (_noteId, filename) => {
+        files.push(filename);
+        return { filename };
+      }),
+    });
+
+    const progress = await importEnex(
+      enexFile('N.enex', [
+        note({
+          title: 'Partial',
+          content: '<div></div>',
+          resources: [
+            { base64: HELLO_B64, mime: 'text/plain', filename: 'a.txt' },
+            { base64: HELLO_B64, mime: 'text/plain', filename: 'b.txt' },
+          ],
+        }),
+      ]),
+      client,
+    );
+
+    expect(progress.skipped).toBe(1);
+    expect(progress.created).toBe(0);
+    expect(files).toEqual(['b.txt']);
+  });
 });
 
 describe('failures', () => {

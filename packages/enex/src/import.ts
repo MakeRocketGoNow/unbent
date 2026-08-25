@@ -53,6 +53,14 @@ export interface ImportClient {
 
   /** Stores text extracted from an attachment so search can reach it. */
   saveFileText?: (noteId: string, filename: string, text: string) => Promise<void>;
+
+  /**
+   * Filenames already stored for a note.
+   *
+   * Used when a note was created on a prior run that died mid-upload: re-import must skip
+   * the note (idempotent) but still fill in the missing files.
+   */
+  listFiles?: (noteId: string) => Promise<string[]>;
 }
 
 export interface ImportOptions {
@@ -164,10 +172,18 @@ async function importOne(
     sourceUrl: note.sourceUrl,
   });
 
-  // Already imported: skip the attachments too, which is the expensive half of a resumed
-  // run. This is what makes re-running a 3GB import cheap rather than a full repeat.
+  // Already imported: skip the note, but still fill attachments a prior run may have
+  // missed. Without this, a worker crash mid-PDF leaves a permanent hole — re-import
+  // sees the content hash, returns skipped, and never retries the upload.
   if (!result.created) {
     progress.skipped += 1;
+    if (note.resources.length > 0 && client.listFiles) {
+      const existing = new Set(await client.listFiles(result.id));
+      const missing = note.resources.filter((r) => !existing.has(r.filename));
+      if (missing.length > 0) {
+        await uploadResources(missing, usedMd5, result.id, client, progress, options);
+      }
+    }
     return;
   }
 
@@ -181,16 +197,42 @@ async function importOne(
    * dropping them would lose files the user still considers part of the note. Unreferenced
    * ones are appended as links so they remain reachable.
    */
+  const { renames, unreferenced } = await uploadResources(
+    note.resources,
+    usedMd5,
+    result.id,
+    client,
+    progress,
+    options,
+  );
+
+  if (renames.size === 0 && unreferenced.length === 0) return;
+
+  let finalBody = body;
+  for (const [from, to] of renames) {
+    finalBody = finalBody.split(`files/${from}`).join(`files/${to}`);
+  }
+  if (unreferenced.length > 0) {
+    const links = unreferenced.map((f) => `- [${f}](files/${f})`).join('\n');
+    finalBody = `${finalBody}\n\n## Attachments\n\n${links}\n`.trim();
+  }
+
+  await client.updateBody?.(result.id, finalBody);
+}
+
+async function uploadResources(
+  resources: EnexNote['resources'],
+  usedMd5: Set<string>,
+  noteId: string,
+  client: ImportClient,
+  progress: ImportProgress,
+  options: ImportOptions,
+): Promise<{ renames: Map<string, string>; unreferenced: string[] }> {
   const renames = new Map<string, string>();
   const unreferenced: string[] = [];
 
-  for (const resource of note.resources) {
-    const uploaded = await client.uploadFile(
-      result.id,
-      resource.filename,
-      resource.mime,
-      resource.bytes,
-    );
+  for (const resource of resources) {
+    const uploaded = await client.uploadFile(noteId, resource.filename, resource.mime, resource.bytes);
     progress.filesUploaded += 1;
 
     // The server suffixes collisions, so the stored name may differ from the requested one.
@@ -210,22 +252,11 @@ async function importOne(
     if (options.extractText && client.saveFileText && isExtractable(resource.mime)) {
       const extracted = await extractPdfText(resource.bytes);
       if (extracted.quality.usable) {
-        await client.saveFileText(result.id, uploaded.filename, extracted.text);
+        await client.saveFileText(noteId, uploaded.filename, extracted.text);
         progress.filesIndexed += 1;
       }
     }
   }
 
-  if (renames.size === 0 && unreferenced.length === 0) return;
-
-  let finalBody = body;
-  for (const [from, to] of renames) {
-    finalBody = finalBody.split(`files/${from}`).join(`files/${to}`);
-  }
-  if (unreferenced.length > 0) {
-    const links = unreferenced.map((f) => `- [${f}](files/${f})`).join('\n');
-    finalBody = `${finalBody}\n\n## Attachments\n\n${links}\n`.trim();
-  }
-
-  await client.updateBody?.(result.id, finalBody);
+  return { renames, unreferenced };
 }

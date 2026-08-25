@@ -48,6 +48,14 @@ function liveClient(cookie: string): ImportClient {
       if (!res.ok) throw new Error(`upload ${res.status}: ${await res.text()}`);
       return res.json() as Promise<{ filename: string }>;
     },
+    listFiles: async (noteId) => {
+      const res = await fetch(`${BASE}/api/notes/${noteId}/files`, {
+        headers: { Cookie: cookie, Origin: ORIGIN },
+      });
+      if (!res.ok) throw new Error(`listFiles ${res.status}`);
+      const { files } = (await res.json()) as { files: Array<{ filename: string }> };
+      return files.map((f) => f.filename);
+    },
     saveFileText: async (noteId, filename, text) => {
       const res = await fetch(
         `${BASE}/api/notes/${noteId}/files/${encodeURIComponent(filename)}/text`,
