@@ -16,5 +16,5 @@ export const Route = createFileRoute('/trash/$noteId')({
 
 function TrashedNoteRoute() {
   const { noteId } = Route.useParams();
-  return <Workspace noteId={noteId} readOnly />;
+  return <Workspace noteId={noteId} readOnly backTo="/trash" />;
 }

@@ -180,16 +180,84 @@ h1 {
 
 /* Notes workspace */
 .shell.wide {
-  max-width: 78rem;
+  /* Explicitly none, not merely absent: .shell sets 46rem and this is the same element.
+     The notes grid is the one view whose columns the user sizes, and a cap here would
+     stop a drag short of the edge on a wide monitor. Routes that do want a measured
+     column set their own — see .settings and .panel. */
+  max-width: none;
   padding: 2rem 1.5rem 1rem;
 }
 
 .notes {
   display: grid;
-  grid-template-columns: 19rem 1fr;
-  gap: 1.5rem;
+  /*
+     Three tracks: sidebar, a zero-width drag handle, workspace. The handle is a real grid
+     item so it cannot drift out of alignment with the columns it divides; its hit area
+     comes from a ::before spread across the gap rather than from width.
+
+     The width arrives as an inline custom property from useNotesLayout. The 19rem fallback
+     is what a browser with nothing stored renders, which is exactly the old fixed layout.
+  */
+  grid-template-columns: var(--sidebar-width, 19rem) 0 1fr;
+  /* Halved: the zero-width handle sits between the two columns, so this gap is applied
+     twice and 0.75rem either side restores the original 1.5rem channel. */
+  gap: 0 0.75rem;
+  /* dvh tracks the mobile URL bar; vh assumes it is hidden and pushes content beneath it.
+     A browser too old to parse dvh drops the second declaration and keeps the first. */
   min-height: calc(100vh - 9rem);
+  min-height: calc(100dvh - 9rem);
 }
+
+/* Text selection while dragging a divider reads as a bug rather than a feature. */
+.notes[data-resizing] { user-select: none; }
+
+.resize-handle {
+  /* Zero-width by layout, ~11px by hit area: a 1px target cannot be grabbed, but a wide
+     element would eat the gap and shove both columns sideways. */
+  position: relative;
+  width: 0;
+  padding: 0;
+  border: none;
+  background: none;
+  cursor: col-resize;
+  /* Without this a touch drag scrolls the page instead of resizing. */
+  touch-action: none;
+}
+
+.resize-handle::before {
+  content: '';
+  /*
+     Sticky, not stretched: the grid is as tall as the open note, which on a long one runs
+     to thousands of pixels. A hit area that tall is pointless — only the part under the
+     pointer can ever be grabbed — and it puts a large invisible obstacle over the panes.
+     A viewport-tall strip follows the scroll instead.
+  */
+  position: sticky;
+  top: 0;
+  display: block;
+  height: 100vh;
+  height: 100dvh;
+  /*
+     The handle is a zero-width track with a gap on BOTH sides, so the channel it divides
+     is centred on the handle itself. 11px wide: a 1px target cannot be hit, and anything
+     wider would overhang the columns.
+  */
+  margin-left: -5.5px;
+  width: 11px;
+}
+
+/* The visible line stays the sidebar's own border. The handle only tints it when reached
+   for, so the layout gains an affordance rather than a permanent seam. */
+.resize-handle:hover::before,
+.resize-handle:focus-visible::before,
+.resize-handle[data-dragging]::before {
+  background: color-mix(in srgb, var(--accent) 35%, transparent);
+  border-radius: 999px;
+}
+
+/* The tinted ::before is the focus indicator; a default ring on a zero-width box lands in
+   the wrong place. */
+.resize-handle:focus-visible { outline: none; }
 
 .sidebar {
   display: flex;
@@ -297,6 +365,102 @@ h1 {
   border-bottom: 1px solid var(--border);
 }
 
+/* On a desktop this is transparent — the title row is just the back link and the input
+   sharing the one flex row. It becomes the first of two rows below the breakpoint. */
+.workspace-title-row {
+  display: flex;
+  align-items: center;
+  flex: 1;
+  min-width: 0;
+  gap: 0.25rem;
+}
+
+/* The ⋯ menu. Positioned relative so the list can hang off it. */
+.overflow {
+  position: relative;
+  display: inline-flex;
+}
+
+.overflow-trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 2.75rem;
+  height: 2.75rem;
+  padding: 0;
+  font: inherit;
+  font-size: 1.1rem;
+  line-height: 1;
+  color: var(--muted);
+  background: none;
+  border: none;
+  border-radius: 0.3rem;
+  cursor: pointer;
+}
+
+.overflow-trigger:hover { color: var(--fg); background: color-mix(in srgb, var(--fg) 7%, transparent); }
+
+.overflow-list {
+  position: absolute;
+  top: calc(100% + 0.25rem);
+  /* Anchored to the right edge: the trigger is the last thing in the row, so a
+     left-anchored menu would hang off the side of a narrow screen. */
+  right: 0;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  min-width: 10rem;
+  padding: 0.25rem;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  box-shadow: 0 6px 20px color-mix(in srgb, var(--fg) 12%, transparent);
+}
+
+.overflow-item {
+  padding: 0.6rem 0.7rem;
+  font: inherit;
+  font-size: 0.9rem;
+  text-align: left;
+  color: var(--fg);
+  background: none;
+  border: none;
+  border-radius: 0.35rem;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.overflow-item:hover { background: color-mix(in srgb, var(--fg) 8%, transparent); }
+.overflow-item.danger { color: var(--bad); }
+
+/*
+   Two variants of a control: one for each side of the breakpoint, each hidden at the width
+   it does not belong to.
+
+   These are single-class selectors, so any descendant rule setting `display` on the same
+   element outranks them — `.workspace-actions .link` did exactly that once, and silently
+   un-hid the desktop controls on the phone. The fix belongs in the rule that overreached
+   rather than here; anything styling a control that carries one of these classes needs a
+   `:not()` for the hidden variant.
+*/
+.mobile-only { display: none; }
+
+/* Hidden until the mobile breakpoint, where the sidebar is off screen and this is the
+   only way back to the list. Sized to the 44px touch target, like the toolbar buttons. */
+.workspace-back {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  min-width: 2.75rem;
+  height: 2.75rem;
+  margin-left: -0.6rem;
+  font-size: 1.25rem;
+  color: var(--muted);
+  text-decoration: none;
+}
+
+.workspace-back:hover { color: var(--fg); }
+
 .title-input {
   flex: 1;
   min-width: 0;
@@ -328,9 +492,24 @@ h1 {
   gap: 1.5rem;
   flex: 1;
   min-height: 0;
+  /* Containing block for the hidden editor pane in the mobile preview swap, which is
+     taken out of flow with position:absolute rather than display:none. */
+  position: relative;
 }
 
-.panes.split { grid-template-columns: 1fr 1fr; }
+/*
+   Three tracks again: editor, handle, preview. Percentages rather than calc() on fr units
+   — the percentage form is universally supported and the gap is handled by `gap`, so
+   there is nothing the fr version would buy here.
+*/
+.panes.split {
+  grid-template-columns:
+    minmax(0, calc(var(--editor-fraction, 0.5) * 100%))
+    0
+    minmax(0, 1fr);
+  /* Halved for the same reason as .notes — applied on both sides of the handle. */
+  gap: 0 0.75rem;
+}
 
 .pane {
   min-width: 0;
@@ -342,7 +521,9 @@ h1 {
 .editor-host { height: 100%; }
 
 /* Rendered markdown */
-.preview { padding: 1rem 0; line-height: 1.7; }
+/* The pane can be dragged as wide as the monitor; prose should still stop at a readable
+   measure, the same 46rem the settings pages use. */
+.preview { padding: 1rem 0; line-height: 1.7; max-width: 46rem; }
 .preview > :first-child { margin-top: 0; }
 .preview h1 { font-size: 1.5rem; }
 .preview h2 { font-size: 1.25rem; }
@@ -378,12 +559,7 @@ h1 {
 .preview th, .preview td { padding: 0.4rem 0.7rem; border: 1px solid var(--border); }
 .preview hr { border: none; border-top: 1px solid var(--border); }
 
-@media (max-width: 860px) {
-  .notes { grid-template-columns: 1fr; }
-  .sidebar { border-right: none; padding-right: 0; }
-  .panes.split { grid-template-columns: 1fr; }
-  .preview-pane { border-left: none; padding-left: 0; border-top: 1px solid var(--border); }
-}
+
 
 /* Notebook scope — same tier as search, not tag pills */
 .notebook-scope-wrap {
@@ -649,7 +825,10 @@ h1 {
  * Named for the import when that was the only one; it now holds notebooks, export and
  * maintenance too.
  */
+/* Also formerly capped by .shell.wide; see the note on .settings. */
 .panel {
+  max-width: 78rem;
+  margin-inline: auto;
   display: flex;
   flex-direction: column;
   gap: 0.9rem;
@@ -797,6 +976,25 @@ h1 {
 }
 
 .tb-btn:disabled { opacity: 0.4; cursor: default; }
+
+/*
+   Pushed to the far end of the toolbar, over the editor it acts on.
+
+   `margin-left: auto` rather than a spacer element, so the row still wraps cleanly on a
+   narrow screen — the toggle simply lands at the right of whichever line it falls on.
+*/
+.tb-preview {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Pressed reads as "the preview is open", which is a state, not a hover. */
+.tb-preview[aria-pressed='true'] {
+  color: var(--fg);
+  background: color-mix(in srgb, var(--fg) 8%, transparent);
+}
 
 .tb-bold { font-weight: 700; }
 .tb-italic { font-style: italic; font-family: Georgia, serif; }
@@ -1022,6 +1220,16 @@ h1 {
  * ending up at the bottom of the import panel. They are all "configure the app", so they
  * sit behind one entry with a sub-nav of their own.
  */
+/*
+   The settings section had no width of its own — it inherited the 78rem cap that used to
+   sit on .shell.wide. That cap moved off the shell so the notes grid could use the whole
+   monitor, so the measured column is declared here, where it is actually wanted.
+*/
+.settings {
+  max-width: 78rem;
+  margin: 0 auto;
+}
+
 .settings-head {
   display: flex;
   align-items: baseline;
@@ -1102,4 +1310,127 @@ h1 {
   color: var(--muted);
   background: color-mix(in srgb, var(--fg) 5%, transparent);
   border-radius: 0.4rem;
+}
+
+
+/* ------------------------------------------------------------------------------------
+   Mobile overrides.
+   Last in the file on purpose: these rules override base ones of equal specificity
+   (.tb-btn, .preview-pane, .shell.wide), and equal specificity is settled by source
+   order. Sitting mid-file, the 44px touch targets silently lost to the .tb-btn rule
+   four hundred lines below them.
+   --------------------------------------------------------------------------------- */
+/*
+ * One pane at a time on a phone, driven by the URL rather than by stacking.
+ *
+ * The rule this replaced collapsed .notes to a single column, which put the entire
+ * infinite note list above the workspace — you scrolled past every note you own to reach
+ * the one you had just tapped. The router already encodes the right state machine:
+ * /notes means "the list", /notes/$noteId means "this note". `.note-open` reflects that
+ * onto the grid, so Back, shared links and the browser's own history all keep working
+ * without a second navigation model to maintain.
+ *
+ * Nothing unmounts across the breakpoint. The editor is an uncontrolled CodeMirror view
+ * remounted on `key`, so swapping component trees here would rebuild it and lose the
+ * cursor, scroll position and undo history on every rotation.
+ *
+ * These rules never mention --sidebar-width or --editor-fraction. The drag handles write
+ * those as inline custom properties, and a custom property is inert until a rule consumes
+ * it — which is what stops a width dragged on a desktop from pinning a phone to two
+ * columns. Keep it that way: an inline grid-template-columns would outrank this block.
+ */
+@media (max-width: 860px) {
+  .notes {
+    grid-template-columns: 1fr;
+    min-height: calc(100dvh - 9rem);
+  }
+
+  .sidebar { border-right: none; padding-right: 0; }
+
+  /* There is only ever one column to size here, and no pointer to size it with. */
+  .resize-handle { display: none; }
+
+  .notes.note-open > .sidebar { display: none; }
+  .notes:not(.note-open) > .workspace { display: none; }
+
+  .workspace-back { display: inline-flex; }
+
+  /*
+     The title gets the room; what is left of the controls tucks in beside it.
+
+     The desktop row put the title, three actions and a save indicator side by side with
+     nowrap actions, so the title lost — it truncated to about a dozen characters, which
+     is not enough to tell two dated notes apart.
+  */
+  /* The title takes the full width now, so it can afford to be a touch larger. */
+  .workspace-title-row .title-input { font-size: 1.15rem; }
+
+  /*
+     The actions row now holds only the save state and the ⋯ menu — the preview toggle
+     moved into the toolbar, and the rest is behind the overflow. A row that sparse is
+     mostly dead space above the note, so it overlaps the title line instead: the title
+     sits on its own line, and these sit at its right end.
+  */
+  .workspace-head {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    align-items: center;
+    column-gap: 0.5rem;
+  }
+
+  .workspace-actions {
+    gap: 0.35rem;
+    /* Save state is the only text here and it is status, not a control. */
+    font-size: 0.78rem;
+  }
+
+  /*
+     The remaining inline controls are tap targets, not links in a sentence.
+
+     Scoped to :not(.desktop-only) because `.workspace-actions .link` outranks a bare
+     `.desktop-only` on specificity — without it, this rule hands `display: inline-flex`
+     back to the controls the breakpoint just hid, and they reappear off the edge of the
+     row. Excluding them here keeps the visibility classes plain, with no !important.
+  */
+  .workspace-actions .link:not(.desktop-only) {
+    display: inline-flex;
+    align-items: center;
+    min-height: 2.75rem;
+    padding: 0 0.35rem;
+  }
+
+  .mobile-only { display: inline; }
+  .desktop-only { display: none; }
+  /* The overflow wrapper has to be flex, not inline, or the trigger's height collapses. */
+  .overflow-slot { display: inline-flex; }
+
+  /*
+     Editor first: opening a note should be ready to type. showPreview is persisted and
+     defaults to on, so the preview pane is suppressed here unless the toggle has put the
+     workspace into .mobile-preview — the same one boolean means "split" on a desktop and
+     "swap" on a phone, with no second state variable and no matchMedia.
+  */
+  .panes.split { grid-template-columns: 1fr; gap: 1.5rem; }
+  .panes.split > .preview-pane { display: none; }
+  .panes.split.mobile-preview > .preview-pane { display: block; }
+
+  /*
+     visibility, not display: a CodeMirror view inside a display:none ancestor measures
+     zero height and comes back with a collapsed cursor. Keeping the box laid out and
+     merely invisible sidesteps the whole measurement problem — position:absolute keeps
+     it from occupying the row.
+  */
+  .panes.split.mobile-preview > .pane:not(.preview-pane) {
+    visibility: hidden;
+    position: absolute;
+  }
+
+  .preview-pane { border-left: none; padding-left: 0; }
+
+  /* 44px minimum touch target. The toolbar is the only place in the app below it. */
+  .tb-btn { min-width: 2.75rem; height: 2.75rem; font-size: 0.95rem; }
+  .editor-toolbar { gap: 0.25rem; }
+
+  /* Home-indicator clearance on iPhone; resolves to 0px everywhere else. */
+  .shell.wide { padding-bottom: calc(1rem + env(safe-area-inset-bottom)); }
 }

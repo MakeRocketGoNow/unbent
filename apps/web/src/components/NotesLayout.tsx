@@ -5,6 +5,8 @@ import { UNFILED } from '@unbent/shared';
 import * as api from '../notes-api.js';
 import { Route } from '../routes/notes.js';
 import { notesQuery, tagsQuery, notebooksQuery, searchQuery, keys } from '../queries.js';
+import { useNotesLayout, SIDEBAR_DEFAULT, SIDEBAR_MIN, SIDEBAR_MAX } from '../useNotesLayout.js';
+import { ResizeHandle } from './ResizeHandle.js';
 import { NoteListItem } from './NoteListItem.js';
 import { SearchResults } from './SearchResults.js';
 
@@ -13,6 +15,7 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
   const { notebook, tag, q = '' } = Route.useSearch();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const layout = useNotesLayout('/notes/$noteId');
 
   const filter = { ...(notebook ? { notebook } : {}), ...(tag ? { tag } : {}) };
 
@@ -61,7 +64,7 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <div className="notes">
+    <div className={layout.className} style={layout.style} ref={layout.containerRef}>
       <aside className="sidebar">
         <div className="sidebar-head">
           <span className="count">
@@ -193,6 +196,20 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
           )}
         </ul>
       </aside>
+
+      <ResizeHandle
+        label="Resize sidebar"
+        containerRef={layout.containerRef}
+        // Measured from the grid's left edge, which is where the sidebar track starts.
+        toValue={(clientX, rect) => clientX - rect.left}
+        value={layout.width}
+        min={SIDEBAR_MIN}
+        max={SIDEBAR_MAX}
+        step={16}
+        defaultValue={SIDEBAR_DEFAULT}
+        onResize={layout.onResize}
+        onCommit={layout.onResizeCommit}
+      />
 
       {children}
     </div>

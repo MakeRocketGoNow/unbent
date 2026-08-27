@@ -1,8 +1,10 @@
 import { useState } from 'react';
-import { Link, useNavigate, useParams } from '@tanstack/react-router';
+import { Link, useNavigate } from '@tanstack/react-router';
 import { useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
 import * as api from '../notes-api.js';
 import { trashQuery } from '../queries.js';
+import { useNotesLayout, SIDEBAR_DEFAULT, SIDEBAR_MIN, SIDEBAR_MAX } from '../useNotesLayout.js';
+import { ResizeHandle } from './ResizeHandle.js';
 import { NoteListItem } from './NoteListItem.js';
 import { Confirm } from './Confirm.js';
 import { useMaintenance } from './use-maintenance.js';
@@ -17,8 +19,10 @@ export function TrashLayout({ children }: { children: React.ReactNode }) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const list = useInfiniteQuery(trashQuery());
-  // Undefined unless a trashed note is open; used to leave the view when it disappears.
-  const open = useParams({ from: '/trash/$noteId', shouldThrow: false })?.noteId;
+  // `open` is undefined unless a trashed note is on screen; used both to leave the view
+  // when that note disappears and, on mobile, to decide which pane is showing.
+  const layout = useNotesLayout('/trash/$noteId');
+  const open = layout.open;
   /** Note awaiting an explicit "delete forever", or 'all' for emptying the trash. */
   const [pending, setPending] = useState<{ id: string; title: string } | 'all' | null>(null);
   const empty = useMaintenance();
@@ -51,7 +55,7 @@ export function TrashLayout({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <div className="notes">
+    <div className={layout.className} style={layout.style} ref={layout.containerRef}>
       <aside className="sidebar">
         <div className="sidebar-head">
           <span className="count">{total} in trash</span>
@@ -167,6 +171,19 @@ export function TrashLayout({ children }: { children: React.ReactNode }) {
           )}
         </ul>
       </aside>
+
+      <ResizeHandle
+        label="Resize sidebar"
+        containerRef={layout.containerRef}
+        toValue={(clientX, rect) => clientX - rect.left}
+        value={layout.width}
+        min={SIDEBAR_MIN}
+        max={SIDEBAR_MAX}
+        step={16}
+        defaultValue={SIDEBAR_DEFAULT}
+        onResize={layout.onResize}
+        onCommit={layout.onResizeCommit}
+      />
 
       {children}
     </div>
