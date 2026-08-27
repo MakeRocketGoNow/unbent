@@ -121,6 +121,41 @@ function asListItem(text: string, number: number, from: number): ListLine | null
   return { number, from, text, indent: m[1] ?? '', marker: m[2] ?? '' };
 }
 
+/** The ordinal and delimiter of `1.` / `2)`, or null for a bullet. */
+function asOrdered(marker: string): { ordinal: number; delimiter: string } | null {
+  const m = /^(\d+)([.)])$/.exec(marker);
+  if (!m) return null;
+  return { ordinal: Number(m[1]), delimiter: m[2] ?? '.' };
+}
+
+/**
+ * The ordinal an item should carry at `indent`, given the lines above it.
+ *
+ * A nested list is a new list and starts over at 1 — carrying the parent's count down a
+ * level is what produces `1. 2. 3.` where the third item is a child, which then renders
+ * as `c.` instead of the `a.` that indenting a list is supposed to give you. Scanning
+ * upward stops at the first shallower item, which is the parent: anything above that
+ * belongs to a different list.
+ */
+function ordinalAt(
+  state: Parameters<StateCommand>[0]['state'],
+  lineNumber: number,
+  indent: number,
+): number {
+  for (let n = lineNumber - 1; n >= 1; n -= 1) {
+    const prev = state.doc.line(n);
+    if (prev.text.trim() === '') continue;
+    const item = asListItem(prev.text, n, prev.from);
+    if (!item) break;
+    if (item.indent.length < indent) break;
+    if (item.indent.length === indent) {
+      const ordered = asOrdered(item.marker);
+      return ordered ? ordered.ordinal + 1 : 1;
+    }
+  }
+  return 1;
+}
+
 /** Every line touched by the selection. */
 function selectedLines(state: Parameters<StateCommand>[0]['state']) {
   const numbers = new Set<number>();
@@ -169,6 +204,28 @@ export const indentList: StateCommand = ({ state, dispatch }) => {
 
     const width = parent.marker.length + 1;
     changes.push({ from: item.from, insert: ' '.repeat(width) });
+
+    /**
+     * Restart the numbering at the level being moved into.
+     *
+     * Indenting only shifts the line, so an item that read `3.` stays `3.` as the first
+     * child of its new parent — and since depth decides how the marker is displayed, that
+     * shows up as `c.` where the user expected `a.`. Renumbering here keeps the source
+     * markdown correct too: a nested list genuinely restarts at 1.
+     */
+    const ordered = asOrdered(item.marker);
+    if (ordered) {
+      const indent = item.indent.length + width;
+      const ordinal = ordinalAt(state, item.number, indent);
+      if (ordinal !== ordered.ordinal) {
+        const markerFrom = item.from + item.indent.length;
+        changes.push({
+          from: markerFrom,
+          to: markerFrom + item.marker.length,
+          insert: `${ordinal}${ordered.delimiter}`,
+        });
+      }
+    }
   }
 
   if (changes.length === 0) return false;
@@ -207,7 +264,22 @@ export const outdentList: StateCommand = ({ state, dispatch }) => {
     }
 
     const remove = item.indent.length - target;
-    if (remove > 0) changes.push({ from: item.from, to: item.from + remove });
+    if (remove === 0) continue;
+    changes.push({ from: item.from, to: item.from + remove });
+
+    // Rejoin the numbering of the level it lands in, rather than keeping the child count.
+    const ordered = asOrdered(item.marker);
+    if (ordered) {
+      const ordinal = ordinalAt(state, item.number, target);
+      if (ordinal !== ordered.ordinal) {
+        const markerFrom = item.from + item.indent.length;
+        changes.push({
+          from: markerFrom,
+          to: markerFrom + item.marker.length,
+          insert: `${ordinal}${ordered.delimiter}`,
+        });
+      }
+    }
   }
 
   if (changes.length === 0) return false;

@@ -3,7 +3,7 @@ import { EditorView } from '@codemirror/view';
 import { markdown } from '@codemirror/lang-markdown';
 import { GFM } from '@lezer/markdown';
 import { afterEach, describe, expect, it } from 'vitest';
-import { richMarkdown } from './rich-markdown.js';
+import { orderedMarker, richMarkdown } from './rich-markdown.js';
 
 /**
  * These mount a real EditorView because the behaviour under test is which ranges get
@@ -193,5 +193,63 @@ describe('document fidelity', () => {
   ])('leaves %j byte-identical', (doc) => {
     const v = mount(doc, 0);
     expect(v.state.doc.toString()).toBe(doc);
+  });
+});
+
+describe('ordered list markers', () => {
+  /** The cycle Evernote and word processors use, repeating every three levels. */
+  it.each([
+    [1, 1, '1.'],
+    [3, 1, '3.'],
+    [1, 2, 'a.'],
+    [2, 2, 'b.'],
+    [27, 2, 'aa.'],
+    [1, 3, 'i.'],
+    [4, 3, 'iv.'],
+    [9, 3, 'ix.'],
+    [1, 4, '1.'],
+    [2, 5, 'b.'],
+  ])('renders item %i at depth %i as %s', (ordinal, depth, expected) => {
+    expect(orderedMarker(ordinal, depth, '.')).toBe(expected);
+  });
+
+  it('keeps the delimiter that was typed', () => {
+    expect(orderedMarker(2, 2, ')')).toBe('b)');
+  });
+
+  /** `0.` is legal markdown and has no letter or numeral; the digits stand. */
+  it('leaves a zero ordinal as digits', () => {
+    expect(orderedMarker(0, 2, '.')).toBe('0.');
+  });
+
+  it('shows a nested ordered item as a letter', () => {
+    const v = mount('1. one\n2. two\n   1. three', 0);
+    expect(visibleText(v, 3)).toContain('a.');
+  });
+
+  it('numbers the top level as digits', () => {
+    const v = mount('1. one\n2. two\n   1. three', 0);
+    expect(visibleText(v, 1)).toContain('1.');
+  });
+
+  it('uses roman numerals at the third level', () => {
+    const v = mount('1. one\n   1. two\n      1. three', 0);
+    expect(visibleText(v, 3)).toContain('i.');
+  });
+
+  /**
+   * An ordered list under a bullet is still a first-level ordered list, so it starts the
+   * cycle at digits rather than inheriting the bullet's depth.
+   */
+  it('restarts the cycle for an ordered list nested under a bullet', () => {
+    const v = mount('- one\n  1. two', 0);
+    expect(visibleText(v, 2)).toContain('1.');
+  });
+
+  /** Same rule as `**`: you cannot edit a marker the editor has replaced. */
+  it('reveals the real digits when the cursor is on the marker', () => {
+    const doc = '1. one\n2. two\n   3. three';
+    const v = mount(doc, doc.lastIndexOf('3.') + 1);
+    expect(visibleText(v, 3)).toContain('3.');
   });
 });

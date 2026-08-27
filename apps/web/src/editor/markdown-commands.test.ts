@@ -205,6 +205,31 @@ describe('indentList', () => {
     expect(run(cmd.indentList, doc, 4).doc).toBe('plain paragraph');
   });
 
+  /**
+   * The reason indenting shows `a.` rather than `c.`: a nested list is a new list.
+   *
+   * Without this the moved item keeps the count it had as a sibling, which is both wrong
+   * markdown and the wrong letter once depth decides how the marker is displayed.
+   */
+  it('restarts numbering at 1 when an ordered item is indented', () => {
+    const doc = '1. one\n2. two\n3. three';
+    expect(run(cmd.indentList, doc, doc.indexOf('3. three')).doc).toBe(
+      '1. one\n2. two\n   1. three',
+    );
+  });
+
+  it('continues the nested numbering for a following sibling', () => {
+    const doc = '1. one\n2. two\n   1. three\n4. four';
+    expect(run(cmd.indentList, doc, doc.indexOf('4. four')).doc).toBe(
+      '1. one\n2. two\n   1. three\n   2. four',
+    );
+  });
+
+  it('leaves bullet markers alone', () => {
+    const doc = '- one\n- two';
+    expect(run(cmd.indentList, doc, doc.indexOf('- two')).doc).toBe('- one\n  - two');
+  });
+
   it('indents every selected item', () => {
     const doc = '- one\n- two\n- three';
     const result = run(cmd.indentList, doc, doc.indexOf('- two'), doc.length);
@@ -218,9 +243,10 @@ describe('outdentList', () => {
     expect(run(cmd.outdentList, doc, doc.indexOf('  - two') + 2).doc).toBe('- one\n- two');
   });
 
-  it('outdents three spaces under an ordered parent', () => {
+  /** Rejoining the outer list means taking the next number in it, not keeping the child's. */
+  it('outdents three spaces under an ordered parent and continues its numbering', () => {
     const doc = '1. one\n   1. two';
-    expect(run(cmd.outdentList, doc, doc.indexOf('   1. two') + 3).doc).toBe('1. one\n1. two');
+    expect(run(cmd.outdentList, doc, doc.indexOf('   1. two') + 3).doc).toBe('1. one\n2. two');
   });
 
   it('does nothing to a top-level item', () => {
@@ -228,18 +254,23 @@ describe('outdentList', () => {
     expect(run(cmd.outdentList, doc, doc.indexOf('- two')).doc).toBe('- one\n- two');
   });
 
-  /** Outdent must be the exact inverse of indent, at any nesting width. */
+  /**
+   * Outdent must restore the nesting indent produces, at any nesting width.
+   *
+   * Structure, not bytes: ordered items are renumbered on the way down and back up, so a
+   * list written with lazy `1. 1.` numbering returns as `1. 2.`. That is the same list.
+   */
   it.each([
-    '- one\n- two',
-    '1. one\n1. two',
-    '- [ ] one\n- [ ] two',
-  ])('round-trips %j', (doc) => {
+    ['- one\n- two', '- one\n- two'],
+    ['1. one\n1. two', '1. one\n2. two'],
+    ['- [ ] one\n- [ ] two', '- [ ] one\n- [ ] two'],
+  ])('round-trips %j', (doc, restored) => {
     const pos = doc.lastIndexOf('\n') + 1;
     const indented = run(cmd.indentList, doc, pos + 2).doc;
     expect(indented).not.toBe(doc);
     // Cursor moves with the inserted indent.
     const shift = indented.length - doc.length;
-    expect(run(cmd.outdentList, indented, pos + 2 + shift).doc).toBe(doc);
+    expect(run(cmd.outdentList, indented, pos + 2 + shift).doc).toBe(restored);
   });
 });
 

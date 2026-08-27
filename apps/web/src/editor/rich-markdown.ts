@@ -66,6 +66,108 @@ const hiddenMark = Decoration.mark({ class: 'cm-md-hidden' });
 const listBullet = Decoration.mark({ class: 'cm-md-bullet' });
 
 /**
+ * Ordered-list markers cycle by depth the way Evernote and word processors do:
+ * `1.` → `a.` → `i.` → back to `1.`.
+ *
+ * Markdown has no syntax for an alphabetic or roman list — `a.` in the source is a
+ * paragraph, not a list item — so the cycle is a rendering of the marker, never a rewrite
+ * of it. The buffer keeps ordinary `1.`/`2.` numbering, which means the note still nests,
+ * exports, and renders as a real ordered list everywhere outside this editor.
+ *
+ * Only ordered ancestors count, so a numbered list nested under a bullet restarts the
+ * cycle at numbers rather than inheriting a depth it does not visually look nested by.
+ */
+const ORDERED_STYLES = ['decimal', 'alpha', 'roman'] as const;
+
+const ROMAN_DIGITS: ReadonlyArray<readonly [number, string]> = [
+  [1000, 'm'],
+  [900, 'cm'],
+  [500, 'd'],
+  [400, 'cd'],
+  [100, 'c'],
+  [90, 'xc'],
+  [50, 'l'],
+  [40, 'xl'],
+  [10, 'x'],
+  [9, 'ix'],
+  [5, 'v'],
+  [4, 'iv'],
+  [1, 'i'],
+];
+
+function toRoman(n: number): string {
+  let rest = n;
+  let out = '';
+  for (const [value, numeral] of ROMAN_DIGITS) {
+    while (rest >= value) {
+      out += numeral;
+      rest -= value;
+    }
+  }
+  return out;
+}
+
+/** Spreadsheet-style lettering, so item 27 is `aa` rather than running out at `z`. */
+function toAlpha(n: number): string {
+  let rest = n;
+  let out = '';
+  while (rest > 0) {
+    const digit = (rest - 1) % 26;
+    out = String.fromCharCode(97 + digit) + out;
+    rest = Math.floor((rest - 1) / 26);
+  }
+  return out;
+}
+
+/**
+ * The marker to display for the `n`th item at a given ordered-list depth.
+ *
+ * Zero and negative ordinals have no alphabetic or roman form; markdown allows `0.`, so
+ * they fall back to the digits already in the buffer.
+ */
+export function orderedMarker(ordinal: number, depth: number, delimiter: string): string {
+  const style = ORDERED_STYLES[(depth - 1) % ORDERED_STYLES.length];
+  if (style === 'decimal' || ordinal < 1) return `${ordinal}${delimiter}`;
+  return `${style === 'alpha' ? toAlpha(ordinal) : toRoman(ordinal)}${delimiter}`;
+}
+
+/** How many ordered lists enclose this node; 0 when it is not in one. */
+function orderedDepth(node: { parent: { name: string; parent: unknown } | null }): number {
+  let depth = 0;
+  for (let p = node.parent; p; p = p.parent as typeof p) {
+    if (p.name === 'OrderedList') depth += 1;
+  }
+  return depth;
+}
+
+/**
+ * Displays a converted ordered marker in place of the digits in the buffer.
+ *
+ * A widget rather than CSS: the marker lives in the text, so there is no list element to
+ * hand `list-style-type` to.
+ */
+class OrderedMarkerWidget extends WidgetType {
+  constructor(private readonly label: string) {
+    super();
+  }
+
+  override eq(other: OrderedMarkerWidget): boolean {
+    return other.label === this.label;
+  }
+
+  toDOM(): HTMLElement {
+    const span = document.createElement('span');
+    span.className = 'cm-md-bullet';
+    span.textContent = this.label;
+    return span;
+  }
+
+  override ignoreEvent(): boolean {
+    return false;
+  }
+}
+
+/**
  * A real checkbox in place of `[ ]` / `[x]`.
  *
  * Clicking it edits the underlying text rather than tracking separate state, so the
@@ -198,6 +300,28 @@ function buildDecorations(view: EditorView, options: RichMarkdownOptions): Decor
         }
 
         if (node.name === 'ListMark') {
+          const raw = state.doc.sliceString(node.from, node.to);
+          const ordered = /^(\d+)([.)])$/.exec(raw);
+          const depth = ordered ? orderedDepth(node.node) : 0;
+
+          /**
+           * Show the depth's marker style, but only while the cursor is elsewhere.
+           *
+           * On the active line the real digits come back, for the same reason `**` does:
+           * you cannot edit a marker you cannot see, and typing `2.` over a displayed `b.`
+           * would otherwise look like the editor was fighting you.
+           */
+          if (ordered && depth > 1 && !selectionTouches(state, node.from, node.to)) {
+            const label = orderedMarker(Number(ordered[1]), depth, ordered[2] ?? '.');
+            marks.push(
+              Decoration.replace({ widget: new OrderedMarkerWidget(label) }).range(
+                node.from,
+                node.to,
+              ),
+            );
+            return;
+          }
+
           marks.push(listBullet.range(node.from, node.to));
           return;
         }

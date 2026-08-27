@@ -555,6 +555,30 @@ h1 {
   border-left: 3px solid var(--border);
 }
 
+/*
+  Ordered lists cycle 1. -> a. -> i. by depth, matching the editor and Evernote.
+
+  The markdown source is plain `1.` numbering at every level; depth alone decides how the
+  marker reads, which is why this is list-style-type here and a marker decoration in the
+  editor. Only ordered ancestors shift the cycle, so `ol ol` selectors are what count --
+  an ordered list inside a bullet list starts over at decimal, as it does in the editor.
+
+  Three levels stated explicitly, then repeated: CSS cannot express "cycle every third
+  ancestor", so a fourth level restates decimal and the pattern repeats from there.
+*/
+.preview ol { list-style-type: decimal; }
+.preview ol ol { list-style-type: lower-alpha; }
+.preview ol ol ol { list-style-type: lower-roman; }
+.preview ol ol ol ol { list-style-type: decimal; }
+.preview ol ol ol ol ol { list-style-type: lower-alpha; }
+.preview ol ol ol ol ol ol { list-style-type: lower-roman; }
+
+/*
+  Default UA padding is sized for the widest marker and compounds at each level, so a
+  three-deep list drifts far right of the same list in the editor.
+*/
+.preview ul, .preview ol { padding-left: 1.6rem; }
+
 .preview table { border-collapse: collapse; display: block; overflow-x: auto; }
 .preview th, .preview td { padding: 0.4rem 0.7rem; border: 1px solid var(--border); }
 .preview hr { border: none; border-top: 1px solid var(--border); }

@@ -272,3 +272,33 @@ describe('pdf embed marker', () => {
     expect(out).not.toContain('unbent-pdf');
   });
 });
+
+/**
+ * The preview styles ordered-list markers by nesting depth (`ol ol` -> lower-alpha, and
+ * so on), matching the editor's `1.` -> `a.` -> `i.` cycle. That only works while the
+ * pipeline emits genuinely nested lists: a flattened structure would still read fine as
+ * text but would silently number every level as decimal.
+ */
+describe('nested ordered lists', () => {
+  it('nests an indented ordered list inside its parent item', () => {
+    const html = render('1. one\n2. two\n   1. three');
+    expect(html).toContain('<ol>');
+    // The child list opens before the parent list closes.
+    expect(html.indexOf('<ol>', html.indexOf('three') - 40)).toBeLessThan(
+      html.lastIndexOf('</ol>'),
+    );
+    expect(html.match(/<ol>/g)).toHaveLength(2);
+  });
+
+  it('keeps an ordered list under a bullet out of the ordered nesting chain', () => {
+    // `ol ol` must not match here, so the inner list restarts the cycle at decimal.
+    const html = render('- bullet\n  1. nested');
+    expect(html).toContain('<ul>');
+    expect(html.match(/<ol>/g)).toHaveLength(1);
+  });
+
+  it('nests three ordered levels', () => {
+    const html = render('1. one\n   1. two\n      1. three');
+    expect(html.match(/<ol>/g)).toHaveLength(3);
+  });
+});
