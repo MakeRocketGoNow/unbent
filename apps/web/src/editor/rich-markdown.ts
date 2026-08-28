@@ -439,20 +439,79 @@ function buildDecorations(view: EditorView, options: RichMarkdownOptions): Decor
          * emphasis there is no way to infer the syntax from the rendering.
          */
         if (node.name === 'FencedCode') {
-          const first = state.doc.lineAt(node.from).number;
-          const last = state.doc.lineAt(node.to).number;
+          const firstLine = state.doc.lineAt(node.from);
+          const lastLine = state.doc.lineAt(node.to);
+          const revealed = selectionTouches(state, node.from, node.to);
 
-          for (let n = first; n <= last; n += 1) {
+          /**
+           * Which rows are fences, so they can be hidden rather than shown as backticks.
+           *
+           * Read from the tree rather than assumed to be the first and last line: a block
+           * still being typed has no closing fence yet, and hiding its last line would
+           * swallow a line of real code.
+           */
+          const fenceLines = new Set<number>();
+          for (let child = node.node.firstChild; child; child = child.nextSibling) {
+            if (child.name === 'CodeMark') fenceLines.add(state.doc.lineAt(child.from).number);
+          }
+
+          /**
+           * The language, shown as a corner label instead of literal ```` ```ts ````.
+           *
+           * Typora renders a fenced block as a slab with the language in the corner, and
+           * leaving raw backticks in the text is the thing that made this look unfinished:
+           * an opening fence sat on its own line above a gap, with its closing partner
+           * often scrolled out of view, so the block read as broken rather than as code.
+           */
+          const info = node.node.getChild('CodeInfo');
+          const language = info ? state.doc.sliceString(info.from, info.to).trim() : '';
+
+          /**
+           * The first row that is not a collapsed fence.
+           *
+           * The language label hangs off this one rather than the opening fence: that row
+           * is zero-height with `overflow: hidden` once hidden, which clipped the label
+           * away entirely.
+           */
+          let labelLine = -1;
+          for (let n = firstLine.number; n <= lastLine.number; n += 1) {
+            if (!fenceLines.has(n)) {
+              labelLine = n;
+              break;
+            }
+          }
+
+          for (let n = firstLine.number; n <= lastLine.number; n += 1) {
             const line = state.doc.line(n);
-            const only = first === last;
-            const deco = only
-              ? CODE_BLOCK_ONLY
-              : n === first
-                ? CODE_BLOCK_FIRST
-                : n === last
-                  ? CODE_BLOCK_LAST
-                  : CODE_BLOCK_LINE;
-            marks.push(deco.range(line.from));
+            const isFence = fenceLines.has(n);
+
+            /**
+             * A hidden fence row still occupies a line, so the rounding and padding go on
+             * the first and last *visible* rows — otherwise the slab has a flat edge and a
+             * blank strip where the fence used to be.
+             */
+            const isTop = n === firstLine.number;
+            const isBottom = n === lastLine.number;
+            const classes = ['cm-md-codeblock'];
+            if (isFence && !revealed) classes.push('cm-md-codeblock-fence');
+            if (isTop) classes.push('cm-md-codeblock-first');
+            if (isBottom) classes.push('cm-md-codeblock-last');
+            if (language && n === labelLine && !revealed) classes.push('cm-md-codeblock-labelled');
+
+            marks.push(
+              Decoration.line({
+                class: classes.join(' '),
+                ...(language && n === labelLine && !revealed
+                  ? { attributes: { 'data-language': language } }
+                  : {}),
+              }).range(line.from),
+            );
+
+            // Collapse the fence row itself. The line decoration above still paints the
+            // slab, so the background stays continuous where the backticks were.
+            if (isFence && !revealed && line.to > line.from) {
+              marks.push(hiddenMark.range(line.from, line.to));
+            }
           }
           return;
         }
@@ -587,12 +646,8 @@ function buildDecorations(view: EditorView, options: RichMarkdownOptions): Decor
          */
         if (MARK_NODES.has(node.name)) {
           /**
-           * Fence marks are the exception: they stay visible always.
-           *
-           * `CodeMark` covers both the backticks around inline code and the ``` rows of a
-           * fenced block. Hiding the inline pair is right — the styled span shows what it
-           * is. Hiding the fences would leave a shaded slab whose extent and language are
-           * invisible and unguessable, and the row would collapse to an empty line.
+           * Fence rows are handled by the `FencedCode` branch, which hides the whole line
+           * rather than just the backticks — see there for why.
            */
           if (node.name === 'CodeMark' && node.node.parent?.name === 'FencedCode') return;
 
@@ -681,8 +736,42 @@ export function richMarkdown(options: RichMarkdownOptions = {}): Extension {
         fontSize: '0.9em',
         padding: '0 0.7rem',
       },
-      '.cm-md-codeblock-first': { paddingTop: '0.4rem', borderRadius: '0.35rem 0.35rem 0 0' },
-      '.cm-md-codeblock-last': { paddingBottom: '0.4rem', borderRadius: '0 0 0.35rem 0.35rem' },
+      '.cm-md-codeblock-first': { paddingTop: '0.5rem', borderRadius: '0.35rem 0.35rem 0 0' },
+      '.cm-md-codeblock-last': { paddingBottom: '0.5rem', borderRadius: '0 0 0.35rem 0.35rem' },
+
+      /**
+       * A collapsed fence row.
+       *
+       * The line still exists — the cursor has to be able to land on it, which is why the
+       * text is hidden at zero size rather than removed — but it must not leave a blank
+       * strip inside the slab. Zero height with the background still painted keeps the
+       * block looking continuous.
+       */
+      '.cm-md-codeblock-fence': {
+        height: '0',
+        overflow: 'hidden',
+        paddingTop: '0',
+        paddingBottom: '0',
+      },
+
+      /**
+       * The language, drawn in the corner of the slab rather than as text in the document.
+       *
+       * `::after` on the first row so it needs no widget and cannot be selected or
+       * deleted: it is a rendering of `CodeInfo`, never a second copy of it.
+       */
+      '.cm-md-codeblock-labelled': { position: 'relative' },
+      '.cm-md-codeblock-labelled::after': {
+        content: 'attr(data-language)',
+        position: 'absolute',
+        top: '0.15rem',
+        right: '0.5rem',
+        fontSize: '0.7rem',
+        letterSpacing: '0.03em',
+        textTransform: 'uppercase',
+        opacity: '0.45',
+        pointerEvents: 'none',
+      },
 
       '.cm-md-code': {
         fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',

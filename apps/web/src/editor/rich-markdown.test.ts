@@ -439,20 +439,66 @@ describe('fenced code blocks', () => {
   });
 
   /**
-   * Unlike `**`, a hidden fence cannot be inferred from the rendering: the row would
-   * collapse to an empty line and the language would vanish.
+   * Raw backticks left in the slab read as an artifact rather than as syntax: the opening
+   * fence sits on its own line above a gap, and its closing partner is often scrolled out
+   * of view, so the block looks broken. Typora shows the language in the corner instead.
    */
-  it('keeps the fences visible with the cursor elsewhere', () => {
+  it('hides both fence rows with the cursor elsewhere', () => {
     const full = `${doc}\n\nplain`;
     const v = mount(full, full.length);
+    expect(visibleText(v, 1)).not.toContain('```');
+    expect(visibleText(v, 4)).not.toContain('```');
+  });
+
+  it('hides the info string along with its fence', () => {
+    const full = `${doc}\n\nplain`;
+    const v = mount(full, full.length);
+    expect(visibleText(v, 1)).not.toContain('js');
+  });
+
+  /** The language still has to be visible somewhere, or the block loses information. */
+  it('shows the language as a corner label', () => {
+    const full = `${doc}\n\nplain`;
+    const v = mount(full, full.length);
+    const labelled = v.dom.querySelector('.cm-md-codeblock-labelled');
+    expect(labelled?.getAttribute('data-language')).toBe('js');
+  });
+
+  /**
+   * The label hangs off a row that is actually on screen. Putting it on the opening fence
+   * clipped it away: that row is collapsed to zero height with `overflow: hidden`, so the
+   * language rendered and was then invisible.
+   */
+  it('puts the label on a row that is not collapsed', () => {
+    const full = `${doc}\n\nplain`;
+    const v = mount(full, full.length);
+    const labelled = v.dom.querySelector('.cm-md-codeblock-labelled');
+    expect(labelled?.classList.contains('cm-md-codeblock-fence')).toBe(false);
+  });
+
+  /** Same rule as every other mark: the cursor inside brings the real syntax back. */
+  it('reveals the fences with the cursor inside the block', () => {
+    const v = mount(doc, doc.indexOf('const x') + 2);
     expect(visibleText(v, 1)).toContain('```');
+    expect(visibleText(v, 1)).toContain('js');
     expect(visibleText(v, 4)).toContain('```');
   });
 
-  it('keeps the info string visible', () => {
-    const full = `${doc}\n\nplain`;
-    const v = mount(full, full.length);
-    expect(visibleText(v, 1)).toContain('js');
+  /**
+   * A block being typed has no closing fence yet. Hiding its last line on the assumption
+   * that one exists would swallow a line of real code.
+   */
+  it('does not hide the last line of an unterminated block', () => {
+    const open = '```js\nconst x = 1;';
+    const v = mount(open, 0);
+    expect(visibleText(v, 2)).toContain('const x = 1;');
+  });
+
+  it('hides a fence with no language', () => {
+    const plain = '```\ncode here\n```\n\nafter';
+    const v = mount(plain, plain.length);
+    expect(visibleText(v, 1)).not.toContain('```');
+    expect(visibleText(v, 2)).toContain('code here');
   });
 
   /** Inline code is the other `CodeMark` user, and its backticks must still hide. */
