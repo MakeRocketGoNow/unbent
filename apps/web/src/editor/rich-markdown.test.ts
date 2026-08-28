@@ -358,3 +358,57 @@ describe('inline PDF', () => {
     expect(releasePdf).not.toHaveBeenCalled();
   });
 });
+
+/**
+ * Typora's rule, and what separates this from revealing one span at a time: the cursor
+ * anywhere on a line shows every mark on it, so the text stops shifting under the caret
+ * as it moves across.
+ */
+describe('block-level reveal', () => {
+  const two = 'a **bold** and _italic_ here';
+
+  it('reveals both marks with the cursor in the first', () => {
+    const v = mount(two, 5);
+    expect(visibleText(v, 1)).toBe(two);
+  });
+
+  it('reveals both marks with the cursor in the second', () => {
+    const v = mount(two, two.indexOf('italic') + 1);
+    expect(visibleText(v, 1)).toBe(two);
+  });
+
+  /** Between the two, touching neither span — the old per-node scope hid both here. */
+  it('reveals both marks with the cursor between them', () => {
+    const v = mount(two, two.indexOf('and') + 1);
+    expect(visibleText(v, 1)).toBe(two);
+  });
+
+  it('hides both when the cursor is on another line', () => {
+    const doc = `${two}\n\nplain`;
+    const v = mount(doc, doc.length);
+    expect(visibleText(v, 1)).toBe('a bold and italic here');
+  });
+
+  /**
+   * A list is one node covering every item, so an unclamped walk to the top would reveal
+   * the whole list from a cursor in any single item.
+   */
+  it('reveals only the item the cursor is in', () => {
+    const doc = '- **one**\n- **two**';
+    const v = mount(doc, 4);
+    expect(visibleText(v, 1)).toContain('**one**');
+    expect(visibleText(v, 2)).not.toContain('**');
+  });
+
+  /**
+   * `remark-breaks` makes a single newline a line break, so consecutive lines are one
+   * Paragraph to CommonMark but separate lines on screen. Revealing the whole node would
+   * reflow a line the user is not editing.
+   */
+  it('does not reveal a sibling line of the same paragraph', () => {
+    const doc = '**one** line\n_two_ line';
+    const v = mount(doc, 3);
+    expect(visibleText(v, 1)).toBe('**one** line');
+    expect(visibleText(v, 2)).toBe('two line');
+  });
+});

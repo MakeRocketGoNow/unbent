@@ -337,6 +337,52 @@ function selectionTouches(state: EditorState, from: number, to: number): boolean
   return state.selection.ranges.some((r) => r.from <= to && r.to >= from);
 }
 
+/**
+ * Nodes that end the walk up to a block, below the top level.
+ *
+ * A list is one node covering every item, so stopping at `Document` would reveal the
+ * syntax of a whole list because the cursor sits in one of its items. Typora reveals the
+ * item being edited and leaves its siblings rendered, and these are the boundaries that
+ * produce that: the unit a person thinks of as "the thing I am editing".
+ */
+const BLOCK_BOUNDARIES = new Set(['ListItem', 'TableRow', 'TableHeader']);
+
+/**
+ * The range whose syntax reveals together, for a node the cursor may be in.
+ *
+ * Typora's rule is the block: the cursor anywhere in a paragraph shows that paragraph's
+ * markup at once, while the paragraphs around it stay rendered. Scoping to the emphasis
+ * span instead uncovers one `**` at a time as the cursor crosses it, which reads as the
+ * editor fighting you rather than as text being edited.
+ *
+ * Clamped to the cursor's own line, which is where Unbent departs from Typora and has to.
+ * The shared pipeline renders with `remark-breaks`, so a single newline is a line break
+ * and each line is its own visual unit here — but CommonMark still parses consecutive
+ * lines as one Paragraph. Revealing the whole node would reflow lines the user is not
+ * editing and can see are separate. For a heading, a list item, or a table row, block and
+ * line coincide and the clamp changes nothing; it only bites on the multi-line paragraph,
+ * which is exactly the case where the block is not what a reader sees.
+ */
+function revealScope(
+  state: EditorState,
+  node: { name: string; from: number; to: number; parent: unknown },
+): { from: number; to: number } {
+  type Walkable = { name: string; from: number; to: number; parent: Walkable | null };
+  let current = node as unknown as Walkable;
+
+  while (current.parent && (current.parent as Walkable).name !== 'Document') {
+    if (BLOCK_BOUNDARIES.has(current.name)) break;
+    current = current.parent as Walkable;
+  }
+
+  // Intersect the block with the line holding the mark, never widening past either.
+  const line = state.doc.lineAt(node.from);
+  return {
+    from: Math.max(current.from, line.from),
+    to: Math.min(current.to, line.to),
+  };
+}
+
 /** Attachment links pointing at a PDF, by extension — mirrors the shared pipeline. */
 const PDF_PATH = /\.pdf$/i;
 
@@ -434,7 +480,8 @@ function buildDecorations(view: EditorView, options: RichMarkdownOptions): Decor
            * you cannot edit a marker you cannot see, and typing `2.` over a displayed `b.`
            * would otherwise look like the editor was fighting you.
            */
-          if (ordered && depth > 1 && !selectionTouches(state, node.from, node.to)) {
+          const scope = revealScope(state, node.node);
+          if (ordered && depth > 1 && !selectionTouches(state, scope.from, scope.to)) {
             const label = orderedMarker(Number(ordered[1]), depth, ordered[2] ?? '.');
             marks.push(
               Decoration.replace({ widget: new OrderedMarkerWidget(label) }).range(
@@ -472,9 +519,13 @@ function buildDecorations(view: EditorView, options: RichMarkdownOptions): Decor
          * Hiding it unconditionally would make the markdown uneditable — you could not see
          * what you were deleting. Revealing on cursor entry is what keeps this a text
          * editor rather than a WYSIWYG imitation.
+         *
+         * The unit is the block, not the mark: entering a paragraph shows all of its
+         * markup at once, the way Typora does, rather than uncovering each `**` as the
+         * cursor reaches it.
          */
         if (MARK_NODES.has(node.name)) {
-          const scope = node.node.parent ?? node;
+          const scope = revealScope(state, node.node);
 
           if (!selectionTouches(state, scope.from, scope.to)) {
             let end = node.to;
