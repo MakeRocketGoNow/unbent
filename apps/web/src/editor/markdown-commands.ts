@@ -405,8 +405,16 @@ const shiftTabOutdent: StateCommand = (target) => outdentList(target);
 
 /** Shortcuts matching what people already know from other editors. */
 export const markdownKeymap: KeyBinding[] = [
-  // Before the default Enter binding, which would otherwise just split the line.
-  { key: 'Enter', run: closeCodeFence },
+  /**
+   * Before the default Enter binding, which would otherwise just split the line.
+   *
+   * `shift` as well as `run`: CodeMirror expresses Shift-Enter as a property of the Enter
+   * binding rather than a separate `'Shift-Enter'` key, which is how the default keymap
+   * gives both the same command. Binding only `run` left Shift-Enter falling through to
+   * that default, so it split a fence line instead of closing it — the same keystroke
+   * doing two different things depending on a modifier that means nothing here.
+   */
+  { key: 'Enter', run: closeCodeFence, shift: closeCodeFence },
   { key: 'Tab', run: tabIndent },
   { key: 'Shift-Tab', run: shiftTabOutdent },
   { key: 'Mod-b', run: toggleBold, preventDefault: true },

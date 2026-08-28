@@ -435,7 +435,7 @@ describe('Enter through the real keymap', () => {
     view = undefined;
   });
 
-  function pressEnter(doc: string, at: number): string {
+  function pressEnter(doc: string, at: number, shiftKey = false): string {
     const parent = document.createElement('div');
     document.body.appendChild(parent);
     view = new EditorView({
@@ -451,7 +451,13 @@ describe('Enter through the real keymap', () => {
       parent,
     });
     view.contentDOM.dispatchEvent(
-      new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', bubbles: true, cancelable: true }),
+      new KeyboardEvent('keydown', {
+        key: 'Enter',
+        code: 'Enter',
+        shiftKey,
+        bubbles: true,
+        cancelable: true,
+      }),
     );
     return view.state.doc.toString();
   }
@@ -470,5 +476,23 @@ describe('Enter through the real keymap', () => {
 
   it('does not double-close inside an existing block', () => {
     expect(pressEnter('```ts\nfoo\n```', 5)).toBe('```ts\n\nfoo\n```');
+  });
+
+  /**
+   * CodeMirror expresses Shift-Enter as a property of the Enter binding rather than a
+   * separate key, so binding only `run` leaves Shift-Enter falling through to the default
+   * keymap — which split the fence line instead of closing it. Shift means nothing here,
+   * so the two must not diverge.
+   */
+  it('closes an open fence on Shift-Enter', () => {
+    expect(pressEnter('```ts', 5, true)).toBe('```ts\n\n```');
+  });
+
+  it('still inserts an ordinary newline on Shift-Enter in prose', () => {
+    expect(pressEnter('hello', 5, true)).toBe('hello\n');
+  });
+
+  it('does not double-close inside an existing block on Shift-Enter', () => {
+    expect(pressEnter('```ts\nfoo\n```', 5, true)).toBe('```ts\n\nfoo\n```');
   });
 });
