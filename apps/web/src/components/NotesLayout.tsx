@@ -200,8 +200,16 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
       <ResizeHandle
         label="Resize sidebar"
         containerRef={layout.containerRef}
-        // Measured from the grid's left edge, which is where the sidebar track starts.
-        toValue={(clientX, rect) => clientX - rect.left}
+        /**
+         * Measured from the grid's left edge, less the channel between the two columns.
+         *
+         * The handle does not sit at the sidebar's right edge — the grid puts a gap either
+         * side of the handle track, so the divider renders at `width + gap`. Treating the
+         * pointer position as the width directly therefore set a width that pushed the
+         * handle further right than the cursor, and it trailed the pointer by the gap for
+         * the whole drag.
+         */
+        toValue={(clientX, rect, gap) => clientX - rect.left - gap}
         value={layout.width}
         min={SIDEBAR_MIN}
         max={SIDEBAR_MAX}

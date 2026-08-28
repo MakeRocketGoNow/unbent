@@ -377,7 +377,15 @@ export function Workspace({ noteId, readOnly = false, backTo = '/notes' }: Works
           <ResizeHandle
             label="Resize preview"
             containerRef={panesRef}
-            toValue={(clientX, rect) => (clientX - rect.left) / rect.width}
+            /**
+             * Same channel correction as the sidebar, expressed as a fraction.
+             *
+             * The editor track ends a gap before the handle renders, so the pointer's
+             * position is a gap further right than the fraction it should produce.
+             * Dividing by the row width turns the pixel correction into the 0–1 unit the
+             * split is stored in.
+             */
+            toValue={(clientX, rect, gap) => (clientX - rect.left - gap) / rect.width}
             value={fraction}
             min={EDITOR_MIN}
             max={EDITOR_MAX}

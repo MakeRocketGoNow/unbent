@@ -8,8 +8,13 @@ interface ResizeHandleProps {
   /**
    * Maps a pointer position to a value. Only the caller knows whether a pixel is a
    * sidebar width or a fraction of the pane row, so the handle stays unit-agnostic.
+   *
+   * `gap` is the distance between the container's left edge and the handle's own left
+   * edge, minus the track the caller is sizing — in other words the channel the grid puts
+   * before the handle. A caller sizing a column in pixels has to subtract it, or the
+   * value it computes places the divider a channel further right than the pointer.
    */
-  toValue: (clientX: number, rect: DOMRect) => number;
+  toValue: (clientX: number, rect: DOMRect, gap: number) => number;
   /** Fires on every pointermove — cheap, state only. */
   onResize: (next: number) => void;
   /** Fires on pointer release, arrow keys, and reset — this one is persisted. */
@@ -80,14 +85,35 @@ export function ResizeHandle({
     onCommit(latest.current);
   }
 
+  /** The handle's own element, for measuring where the grid actually placed it. */
+  const self = useRef<HTMLDivElement>(null);
+
+  /**
+   * The channel the grid puts between the sized track and this handle.
+   *
+   * Measured rather than passed in as a constant: the gap is a CSS value that the layout
+   * owns, and a number duplicated in the component would drift the moment the stylesheet
+   * changed. Reading it from the rendered geometry keeps the two in step.
+   */
+  function channelBefore(): number {
+    const container = containerRef.current;
+    const handle = self.current;
+    if (!container || !handle) return 0;
+
+    const previous = handle.previousElementSibling;
+    if (!previous) return 0;
+    return handle.getBoundingClientRect().left - previous.getBoundingClientRect().right;
+  }
+
   function measure(clientX: number): number | null {
     const rect = containerRef.current?.getBoundingClientRect();
     if (!rect) return null;
-    return toValue(clientX, rect);
+    return toValue(clientX, rect, channelBefore());
   }
 
   return (
     <div
+      ref={self}
       role="separator"
       aria-orientation="vertical"
       aria-label={label}
