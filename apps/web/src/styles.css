@@ -1020,6 +1020,20 @@ a.overflow-item { text-decoration: none; }
 .tb-btn:disabled { opacity: 0.4; cursor: default; }
 
 /*
+   The table button's size picker hangs below it.
+
+   Only the placement is here: the picker's own appearance comes from PICKER_CSS, which
+   the component injects, so this copy and the one in the editor's table toolbar cannot
+   look different from each other.
+*/
+.tb-table { position: relative; display: inline-flex; }
+.tb-table .cm-table-picker {
+  position: absolute;
+  top: calc(100% + 0.3rem);
+  left: 0;
+}
+
+/*
    Pushed to the far end of the toolbar, over the editor it acts on.
 
    `margin-left: auto` rather than a spacer element, so the row still wraps cleanly on a

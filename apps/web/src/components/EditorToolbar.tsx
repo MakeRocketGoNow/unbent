@@ -1,6 +1,8 @@
+import { useEffect, useRef, useState } from 'react';
 import type { EditorView } from '@codemirror/view';
 import type { StateCommand } from '@codemirror/state';
 import * as cmd from '../editor/markdown-commands.js';
+import { buildSizePicker, PICKER_CSS } from '../editor/table-size-picker.js';
 
 interface EditorToolbarProps {
   /** Null until the editor mounts. */
@@ -42,10 +44,98 @@ const ACTIONS: Action[] = [
   { label: '•', title: 'Bullet list (⌘⇧8)', run: cmd.toggleBullet },
   { label: '☑', title: 'Task list', run: cmd.toggleTask },
   { label: '🔗', title: 'Link (⌘K)', run: cmd.insertLink },
-  // The way a first table is made: the table toolbar's size picker only appears once the
-  // cursor is already inside one.
-  { label: '▦', title: 'Table (⌘⇧T)', run: cmd.insertTableCommand },
 ];
+
+
+/**
+ * The picker's styles, injected once.
+ *
+ * They live with the module that owns those class names rather than in the global
+ * stylesheet, so the control and its appearance cannot drift apart — and the CodeMirror
+ * copy of the picker gets them from the same string.
+ */
+function usePickerStyles() {
+  useEffect(() => {
+    const id = 'unbent-table-picker-css';
+    if (document.getElementById(id)) return;
+    const style = document.createElement('style');
+    style.id = id;
+    style.textContent = PICKER_CSS;
+    document.head.appendChild(style);
+  }, []);
+}
+
+/**
+ * The table button, which opens the same size picker the table toolbar does.
+ *
+ * Inserting a fixed 2×3 made the same icon mean two different things depending on where it
+ * was clicked — a picker over a table, a silent insert in the formatting bar. Choosing the
+ * size up front is also simply what people expect of a table button.
+ */
+function TableButton({ view }: { view: EditorView | null }) {
+  const [open, setOpen] = useState(false);
+  const host = useRef<HTMLDivElement>(null);
+  const anchor = useRef<HTMLSpanElement>(null);
+  usePickerStyles();
+
+  useEffect(() => {
+    if (!open || !view || !host.current) return;
+
+    const picker = buildSizePicker({
+      // Always a fresh table: this button is how one is made, not how one is resized.
+      current: null,
+      onPick: (rows, columns) => {
+        cmd.insertTableOfSize(rows, columns)({
+          state: view.state,
+          dispatch: (tr) => view.dispatch(tr),
+        });
+        setOpen(false);
+        view.focus();
+      },
+    });
+    host.current.appendChild(picker);
+
+    const onOutside = (event: MouseEvent) => {
+      const target = event.target as Node | null;
+      if (target && anchor.current?.contains(target)) return;
+      setOpen(false);
+    };
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setOpen(false);
+    };
+    document.addEventListener('mousedown', onOutside, true);
+    document.addEventListener('keydown', onKey, true);
+
+    return () => {
+      picker.remove();
+      document.removeEventListener('mousedown', onOutside, true);
+      document.removeEventListener('keydown', onKey, true);
+    };
+  }, [open, view]);
+
+  return (
+    <span className="tb-table" ref={anchor}>
+      <button
+        type="button"
+        className="tb-btn"
+        title="Table (⌘⇧T)"
+        aria-label="Table"
+        aria-expanded={open}
+        aria-haspopup="dialog"
+        disabled={!view}
+        // onMouseDown for the same reason the formatting buttons use it: a click would
+        // blur the editor first and drop the selection the command acts on.
+        onMouseDown={(e) => {
+          e.preventDefault();
+          setOpen((v) => !v);
+        }}
+      >
+        ▦
+      </button>
+      <div ref={host} />
+    </span>
+  );
+}
 
 export function EditorToolbar({ view, preview }: EditorToolbarProps) {
   function apply(run: StateCommand) {
@@ -75,6 +165,8 @@ export function EditorToolbar({ view, preview }: EditorToolbarProps) {
           {action.label}
         </button>
       ))}
+
+      <TableButton view={view} />
 
       {/*
           Pushed to the far end, away from the formatting controls: this acts on the whole

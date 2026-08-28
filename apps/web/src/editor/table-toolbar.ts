@@ -1,5 +1,6 @@
 import { EditorState, StateField, type Extension } from '@codemirror/state';
 import { EditorView, showTooltip, type Tooltip } from '@codemirror/view';
+import { buildSizePicker, PICKER_COLUMNS } from './table-size-picker.js';
 import {
   addColumnAfter,
   addRowAfter,
@@ -98,101 +99,27 @@ const ACTIONS: Action[] = [
   },
 ];
 
-/** Largest grid the size picker offers, matching what fits without scrolling. */
-const PICKER_ROWS = 8;
-const PICKER_COLUMNS = 6;
-
 /**
- * The grid picker: sets the size of the table the cursor is in, or inserts a new one.
+ * The picker, wired to resize the table the cursor is in — or insert one when it is not in
+ * a table at all.
  *
- * Hovering highlights a size and clicking applies it — the interaction every word
- * processor uses for inserting, extended here to resizing, which is what makes it useful
- * on a table that already exists.
- *
- * It opens showing the current dimensions rather than empty. An empty grid gives no sense
- * of what a click will do to a table that is already there; seeded, the user is dragging
- * away from a known starting point, and shrinking reads as a deliberate act rather than a
- * surprise. Truncation drops cells, which one undo restores.
+ * The control itself is shared with the formatting bar's table button, so the same icon
+ * opens the same thing in both places. Only what a click does differs.
  */
 function buildPicker(view: EditorView, close: () => void): HTMLElement {
-  const wrap = document.createElement('div');
-  wrap.className = 'cm-table-picker';
-
-  const grid = document.createElement('div');
-  grid.className = 'cm-table-picker-grid';
-  const label = document.createElement('div');
-  label.className = 'cm-table-picker-label';
-
   const existing = readTable(view.state, view.state.selection.main.head);
-  const current = existing ? tableSize(existing) : null;
 
-  const cells: HTMLElement[] = [];
-  for (let r = 1; r <= PICKER_ROWS; r += 1) {
-    for (let c = 1; c <= PICKER_COLUMNS; c += 1) {
-      const cell = document.createElement('span');
-      cell.className = 'cm-table-picker-cell';
-      cell.dataset['row'] = String(r);
-      cell.dataset['column'] = String(c);
-      grid.appendChild(cell);
-      cells.push(cell);
-    }
-  }
-
-  /**
-   * Paints the grid for a candidate size.
-   *
-   * `shrinking` marks the cells a click would discard, so removing rows looks different
-   * from adding them and is not something the user does without seeing it first.
-   */
-  function highlight(rows: number, columns: number) {
-    for (const cell of cells) {
-      const r = Number(cell.dataset['row']);
-      const c = Number(cell.dataset['column']);
-      const selected = r <= rows && c <= columns;
-      const wasInTable = current !== null && r <= current.rows && c <= current.columns;
-
-      cell.classList.toggle('on', selected);
-      cell.classList.toggle('losing', !selected && wasInTable);
-    }
-
-    if (rows === 0) {
-      label.textContent = current ? `${current.rows} × ${current.columns}` : 'Insert table';
-      return;
-    }
-
-    const shrinking =
-      current !== null && (rows < current.rows || columns < current.columns);
-    label.textContent = `${rows} × ${columns}${shrinking ? ' — trims' : ''}`;
-  }
-
-  grid.addEventListener('mouseover', (event) => {
-    const cell = (event.target as HTMLElement).closest<HTMLElement>('.cm-table-picker-cell');
-    if (cell) highlight(Number(cell.dataset['row']), Number(cell.dataset['column']));
+  return buildSizePicker({
+    current: existing ? tableSize(existing) : null,
+    onPick: (rows, columns) => {
+      resizeOrInsertTable(rows, columns)({
+        state: view.state,
+        dispatch: (tr) => view.dispatch(tr),
+      });
+      close();
+      view.focus();
+    },
   });
-  // Back to the table's real size on the way out, never to an empty grid.
-  grid.addEventListener('mouseleave', () => {
-    if (current) highlight(current.rows, current.columns);
-    else highlight(0, 0);
-  });
-
-  grid.addEventListener('mousedown', (event) => {
-    const cell = (event.target as HTMLElement).closest<HTMLElement>('.cm-table-picker-cell');
-    if (!cell) return;
-    event.preventDefault();
-    const rows = Number(cell.dataset['row']);
-    const columns = Number(cell.dataset['column']);
-    resizeOrInsertTable(rows, columns)({ state: view.state, dispatch: (tr) => view.dispatch(tr) });
-    close();
-    view.focus();
-  });
-
-  // Seeded with what is there, so the picker reads as the table's current shape.
-  if (current) highlight(current.rows, current.columns);
-  else highlight(0, 0);
-
-  wrap.appendChild(grid);
-  wrap.appendChild(label);
-  return wrap;
 }
 
 /**
@@ -353,47 +280,18 @@ const tableToolbarTheme = EditorView.theme({
   },
   '.cm-table-btn-delete:hover': { color: '#c0392b' },
 
+  /**
+   * Only the positioning lives here.
+   *
+   * The picker's own appearance comes from `PICKER_CSS`, which the app's stylesheet
+   * carries so both copies of the control look the same. What differs is where it hangs:
+   * here it drops out of the toolbar button, and in the formatting bar it is placed by
+   * that bar instead.
+   */
   '.cm-table-picker': {
     position: 'absolute',
     top: 'calc(100% + 0.3rem)',
     left: '0',
-    padding: '0.4rem',
-    background: 'var(--bg, #fff)',
-    border: '1px solid color-mix(in srgb, currentColor 15%, transparent)',
-    borderRadius: '0.35rem',
-    boxShadow: '0 2px 8px color-mix(in srgb, currentColor 15%, transparent)',
-    zIndex: '20',
-  },
-  '.cm-table-picker-grid': {
-    display: 'grid',
-    gridTemplateColumns: `repeat(${PICKER_COLUMNS}, 1rem)`,
-    gap: '2px',
-  },
-  '.cm-table-picker-cell': {
-    width: '1rem',
-    height: '1rem',
-    border: '1px solid color-mix(in srgb, currentColor 20%, transparent)',
-    borderRadius: '2px',
-  },
-  '.cm-table-picker-cell.on': {
-    background: 'var(--accent, #2f6f4f)',
-    borderColor: 'var(--accent, #2f6f4f)',
-  },
-  /**
-   * Cells the table currently occupies that a click would discard.
-   *
-   * Shrinking drops data, so it should not look the same as growing. Outlined rather than
-   * filled: these are what is being given up, not what is being chosen.
-   */
-  '.cm-table-picker-cell.losing': {
-    borderColor: '#c0392b',
-    borderStyle: 'dashed',
-  },
-  '.cm-table-picker-label': {
-    paddingTop: '0.35rem',
-    textAlign: 'center',
-    fontSize: '0.75rem',
-    opacity: '0.6',
   },
 });
 
