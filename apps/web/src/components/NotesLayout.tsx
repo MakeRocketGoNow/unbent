@@ -6,6 +6,7 @@ import * as api from '../notes-api.js';
 import { Route } from '../routes/notes.js';
 import { notesQuery, tagsQuery, notebooksQuery, searchQuery, keys } from '../queries.js';
 import { useNotesLayout, SIDEBAR_DEFAULT, SIDEBAR_MIN, SIDEBAR_MAX } from '../useNotesLayout.js';
+import { useMediaQuery, MOBILE_QUERY } from '../useMediaQuery.js';
 import { ResizeHandle } from './ResizeHandle.js';
 import { NoteListItem } from './NoteListItem.js';
 import { SearchResults } from './SearchResults.js';
@@ -16,6 +17,14 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const layout = useNotesLayout('/notes/$noteId');
+  /**
+   * Tags start collapsed on a phone and open everywhere else.
+   *
+   * CSS cannot do this: `<details open>` is an attribute, not a style, so a media query
+   * cannot close it. The initial state is all that is decided here — once the user
+   * toggles it, the element owns its own state and this stops applying.
+   */
+  const isMobile = useMediaQuery(MOBILE_QUERY);
 
   const filter = { ...(notebook ? { notebook } : {}), ...(tag ? { tag } : {}) };
 
@@ -144,24 +153,48 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
         )}
 
         {results === null && (tags.data?.length ?? 0) > 0 && (
-          <div className="tag-filter">
-            {tags.data?.map((t) => (
-              <button
-                key={t.name}
-                type="button"
-                className={tag === t.name ? 'tag-filter-item active' : 'tag-filter-item'}
-                onClick={() =>
-                  void navigate({
-                    to: '/notes',
-                    search: (prev) => ({ ...prev, tag: tag === t.name ? undefined : t.name }),
-                  })
-                }
-              >
-                {t.name}
-                <span className="tag-count">{t.count}</span>
-              </button>
-            ))}
-          </div>
+          /*
+              A disclosure rather than a flat list.
+
+              The tag list is as long as the user has tags — this account has sixteen, and
+              they filled most of a phone screen before a single note was visible. Collapsed
+              it costs one row; the summary carries the active tag so a filter can never be
+              applied invisibly.
+
+              `open` is a default, not a controlled value — `key` re-mounts the element when
+              the breakpoint changes so the new default takes, and between those crossings
+              the element owns its own state and the user's toggle sticks.
+          */
+          <details className="tag-filter-wrap" key={String(isMobile)} open={!isMobile}>
+            <summary>
+              Tags
+              {/* The active tag stays on the row while collapsed, so a filter is never
+                  applied invisibly; otherwise the count says what is hidden. */}
+              {tag ? (
+                <span className="tag-filter-active">{tag}</span>
+              ) : (
+                <span className="tag-filter-summary-count">{tags.data?.length}</span>
+              )}
+            </summary>
+            <div className="tag-filter">
+              {tags.data?.map((t) => (
+                <button
+                  key={t.name}
+                  type="button"
+                  className={tag === t.name ? 'tag-filter-item active' : 'tag-filter-item'}
+                  onClick={() =>
+                    void navigate({
+                      to: '/notes',
+                      search: (prev) => ({ ...prev, tag: tag === t.name ? undefined : t.name }),
+                    })
+                  }
+                >
+                  {t.name}
+                  <span className="tag-count">{t.count}</span>
+                </button>
+              ))}
+            </div>
+          </details>
         )}
 
         <ul className="note-list">

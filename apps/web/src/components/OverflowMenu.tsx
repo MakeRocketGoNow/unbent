@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { Link } from '@tanstack/react-router';
 
 export interface OverflowItem {
   label: ReactNode;
@@ -12,6 +13,14 @@ export interface OverflowItem {
    * in memory. An anchor also keeps Save-Link-As and middle-click working.
    */
   href?: string;
+  /**
+   * Renders the item as a router link to an in-app route.
+   *
+   * Distinct from `href`, which downloads: this navigates, so it must go through the
+   * router rather than reloading the SPA. Middle-click and copy-link-address keep
+   * working, which a button would lose.
+   */
+  to?: string;
   /** Destructive items are tinted and sorted to the bottom by the caller. */
   tone?: 'default' | 'danger';
   /**
@@ -36,7 +45,29 @@ export interface OverflowItem {
  * `role="menu"` reads worse to a screen reader than honest buttons do — Tab moves through
  * them and Enter picks one, which is the behaviour the markup already promises.
  */
-export function OverflowMenu({ label, items }: { label: string; items: OverflowItem[] }) {
+interface OverflowMenuProps {
+  label: string;
+  items: OverflowItem[];
+  /**
+   * The trigger's content. Defaults to the ⋯ glyph.
+   *
+   * The account menu hangs the same machinery off an avatar instead — same dismissal
+   * rules, same item list, different face.
+   */
+  trigger?: ReactNode;
+  /** Extra class on the wrapper, for menus that anchor differently. */
+  className?: string;
+  /** Extra class on the trigger, for one that is not a ⋯-sized square. */
+  triggerClassName?: string;
+}
+
+export function OverflowMenu({
+  label,
+  items,
+  trigger,
+  className,
+  triggerClassName,
+}: OverflowMenuProps) {
   const [open, setOpen] = useState(false);
   const wrap = useRef<HTMLDivElement>(null);
 
@@ -53,7 +84,7 @@ export function OverflowMenu({ label, items }: { label: string; items: OverflowI
 
   return (
     <div
-      className="overflow"
+      className={className ? `overflow ${className}` : 'overflow'}
       ref={wrap}
       onKeyDown={(e) => {
         if (e.key === 'Escape' && open) {
@@ -65,13 +96,15 @@ export function OverflowMenu({ label, items }: { label: string; items: OverflowI
     >
       <button
         type="button"
-        className="overflow-trigger"
+        className={
+          triggerClassName ? `overflow-trigger ${triggerClassName}` : 'overflow-trigger'
+        }
         aria-label={label}
         aria-expanded={open}
         aria-haspopup="true"
         onClick={() => setOpen((o) => !o)}
       >
-        ⋯
+        {trigger ?? '⋯'}
       </button>
 
       {open && (
@@ -85,8 +118,24 @@ export function OverflowMenu({ label, items }: { label: string; items: OverflowI
               .filter(Boolean)
               .join(' ');
 
-            // Anchor and button both sit in the tab order and both activate on Enter, so
-            // the keyboard behaviour the list promises holds either way.
+            // Anchor, link and button all sit in the tab order and all activate on
+            // Enter, so the keyboard behaviour the list promises holds for each.
+            if (item.to !== undefined) {
+              return (
+                <Link
+                  key={i}
+                  className={className}
+                  to={item.to}
+                  onClick={() => {
+                    setOpen(false);
+                    item.onSelect?.();
+                  }}
+                >
+                  {item.label}
+                </Link>
+              );
+            }
+
             return item.href === undefined ? (
               <button
                 key={i}

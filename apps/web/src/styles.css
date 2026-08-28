@@ -735,6 +735,137 @@ a.overflow-item { text-decoration: none; }
 
 .tag-count { opacity: 0.7; font-variant-numeric: tabular-nums; }
 
+/*
+   The tag list, behind a disclosure.
+
+   Open on a desktop, where the sidebar has the room; closed on a phone, where sixteen
+   tags filled the screen before a note was visible. The summary keeps the active tag on
+   screen either way, so a filter is never applied invisibly.
+*/
+.tag-filter-wrap {
+  padding-bottom: 0.6rem;
+  border-bottom: 1px solid var(--border);
+}
+
+/*
+   The row reads as a control, not a heading.
+
+   `display: flex` on a summary suppresses the native disclosure triangle — the browser
+   only draws that marker for `list-item` display — so the first version was the word
+   "Tags" with no affordance at all. The chevron below is drawn explicitly instead, which
+   also lets it rotate rather than swapping glyphs.
+*/
+.tag-filter-wrap > summary {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.3rem 0;
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: var(--muted);
+  cursor: pointer;
+  /* A double-click on a disclosure should not select the label. */
+  user-select: none;
+}
+
+/* Belt and braces: Safari draws its own marker from this pseudo-element regardless. */
+.tag-filter-wrap > summary::-webkit-details-marker { display: none; }
+.tag-filter-wrap > summary::marker { content: ''; }
+
+/* The chevron: a rotated square with two borders, so it needs no glyph or asset. */
+.tag-filter-wrap > summary::after {
+  content: '';
+  width: 0.36rem;
+  height: 0.36rem;
+  /* The count and the active chip both push right, so the chevron only needs to follow
+     whichever is there — and still lands right when neither is. */
+  margin-left: 0.35rem;
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  /* Points right when closed, down when open. */
+  transform: rotate(-45deg) translate(-0.05rem, -0.05rem);
+  transition: transform 0.15s ease;
+}
+
+.tag-filter-wrap[open] > summary::after {
+  transform: rotate(45deg) translate(-0.05rem, -0.05rem);
+}
+
+/* How many tags there are, so a collapsed row says what it is hiding. */
+.tag-filter-summary-count {
+  margin-left: auto;
+  font-size: 0.75rem;
+  font-weight: 400;
+  opacity: 0.75;
+}
+
+
+
+.tag-filter-wrap > summary:hover { color: var(--fg); }
+
+/* Keyboard focus has to land somewhere visible; summary carries no default ring here. */
+.tag-filter-wrap > summary:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 0.25rem;
+}
+
+/* The active tag, shown on the summary so a collapsed list still says what it is doing. */
+.tag-filter-active {
+  margin-left: auto;
+  padding: 0.1rem 0.45rem;
+  font-size: 0.72rem;
+  color: var(--bg);
+  background: var(--accent);
+  border-radius: 999px;
+}
+
+/* The list already had this border; it belongs on the wrapper now. */
+.tag-filter-wrap .tag-filter {
+  padding-top: 0.5rem;
+  padding-bottom: 0;
+  border-bottom: none;
+}
+
+/*
+   Account avatar and its menu.
+
+   Drawn from the address rather than fetched: an initial in a circle costs nothing and
+   tells no one outside this app who is signed in.
+*/
+.avatar-trigger {
+  min-width: 2.75rem;
+  height: 2.75rem;
+}
+
+.avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  line-height: 1;
+  color: var(--bg);
+  background: var(--accent);
+  border-radius: 999px;
+}
+
+/* The address is a label, not a command: it sits at the top of the menu, unclickable. */
+.overflow-email {
+  padding-bottom: 0.5rem;
+  margin-bottom: 0.25rem;
+  font-size: 0.78rem;
+  color: var(--muted);
+  border-bottom: 1px solid var(--border);
+  cursor: default;
+  pointer-events: none;
+  /* Long addresses wrap here rather than stretching the menu off the screen edge. */
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
 /* The same count, inline after a topbar link rather than inside a pill. */
 .topbar-count { margin-left: 0.3rem; }
 
@@ -1513,11 +1644,32 @@ a.overflow-item { text-decoration: none; }
     padding: 0 0.35rem;
   }
 
+  /* The one control in the sidebar that was still under the 44px touch target. */
+  .tag-filter-wrap > summary {
+    min-height: 2.75rem;
+    padding: 0;
+  }
+
   .mobile-only { display: inline; }
   .desktop-only { display: none; }
   /* Block, not the `inline` the generic rule above gives: these are full-width rows in a
      stacked menu, and inline would flatten their padding. */
   .overflow-item.mobile-only { display: block; }
+
+  /* Same reason: the avatar trigger is a flex box, which `inline` would collapse. */
+  .account-menu { display: inline-flex; }
+
+  /*
+     The topbar is now a wordmark and an avatar, so it can sit tight to the top rather
+     than reserving room for a wrapping row of links.
+  */
+  .topbar {
+    align-items: center;
+    padding-bottom: 0.6rem;
+    margin-bottom: 0.9rem;
+  }
+
+  .account { gap: 0.25rem; }
 
   /*
      Editor first: opening a note should be ready to type. showPreview is persisted and
