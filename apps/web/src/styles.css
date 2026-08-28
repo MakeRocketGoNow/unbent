@@ -186,6 +186,21 @@ h1 {
      column set their own — see .settings and .panel. */
   max-width: none;
   padding: 2rem 1.5rem 1rem;
+
+  /*
+     The notes view fills the viewport exactly and never scrolls as a page.
+
+     Every scrolling region below — the note list, the editor, the preview — needs an
+     ancestor chain with a definite height to scroll inside. Without one, each pane simply
+     grows to fit its content and the whole document scrolls instead, which drags the
+     topbar and the formatting bar off screen and leaves the sidebar's own scrollbar
+     inert.
+  */
+  height: 100vh;
+  height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 
 .notes {
@@ -202,10 +217,16 @@ h1 {
   /* Halved: the zero-width handle sits between the two columns, so this gap is applied
      twice and 0.75rem either side restores the original 1.5rem channel. */
   gap: 0 0.75rem;
-  /* dvh tracks the mobile URL bar; vh assumes it is hidden and pushes content beneath it.
-     A browser too old to parse dvh drops the second declaration and keeps the first. */
-  min-height: calc(100vh - 9rem);
-  min-height: calc(100dvh - 9rem);
+  /*
+     Fills the space the topbar leaves, rather than growing past it.
+
+     This was `min-height`, which let the grid become as tall as its tallest child — so a
+     long note list pushed the page taller than the viewport and the whole document
+     scrolled. `min-height: 0` is what actually permits a flex child to be smaller than
+     its content, and is the difference between the panes scrolling and the page doing it.
+  */
+  flex: 1;
+  min-height: 0;
 }
 
 /* Text selection while dragging a divider reads as a bug rather than a feature. */
@@ -227,16 +248,15 @@ h1 {
 .resize-handle::before {
   content: '';
   /*
-     Sticky, not stretched: the grid is as tall as the open note, which on a long one runs
-     to thousands of pixels. A hit area that tall is pointless — only the part under the
-     pointer can ever be grabbed — and it puts a large invisible obstacle over the panes.
-     A viewport-tall strip follows the scroll instead.
+     Full height of the track, which is now the viewport rather than the whole note.
+
+     This used to be a sticky viewport-tall strip, because the grid grew as tall as the
+     open note and a hit area that long put a large invisible obstacle over the panes. The
+     grid is bounded to the viewport now, so the track is already the right height and the
+     stickiness has nothing left to do.
   */
-  position: sticky;
-  top: 0;
   display: block;
-  height: 100vh;
-  height: 100dvh;
+  height: 100%;
   /*
      The handle is a zero-width track with a gap on BOTH sides, so the channel it divides
      is centred on the handle itself. 11px wide: a 1px target cannot be hit, and anything
@@ -266,6 +286,9 @@ h1 {
   min-width: 0;
   border-right: 1px solid var(--border);
   padding-right: 1.25rem;
+  /* Bounded so `.note-list` has a definite height to scroll within; without it the list
+     grows and takes the page with it. */
+  min-height: 0;
 }
 
 .sidebar-head {
@@ -300,7 +323,11 @@ h1 {
   display: flex;
   flex-direction: column;
   gap: 0.15rem;
+  /* The one scrolling part of the sidebar: the count, search, and filters above it stay
+     in place while the notes move. */
   overflow-y: auto;
+  flex: 1;
+  min-height: 0;
 }
 
 .note-item {
@@ -353,6 +380,13 @@ h1 {
   display: flex;
   flex-direction: column;
   min-width: 0;
+  /*
+     Same reason as the sidebar. Everything above the panes — the title, the tag row, the
+     attachments strip, the formatting bar — is chrome for the note being edited, and
+     scrolling it away puts the formatting buttons out of reach exactly when a long note
+     is being worked on.
+  */
+  min-height: 0;
 }
 
 .placeholder { margin-top: 3rem; text-align: center; }
@@ -1398,7 +1432,8 @@ a.overflow-item { text-decoration: none; }
 @media (max-width: 860px) {
   .notes {
     grid-template-columns: 1fr;
-    min-height: calc(100dvh - 9rem);
+    /* The desktop rule already fills the shell and bounds the panes; a min-height here
+       would let the grid grow past the viewport again and take the page with it. */
   }
 
   .sidebar { border-right: none; padding-right: 0; }
