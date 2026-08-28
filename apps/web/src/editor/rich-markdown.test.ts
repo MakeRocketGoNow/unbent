@@ -617,8 +617,22 @@ describe('tables', () => {
     expect(visibleText(v, 2)).toBe('');
   });
 
-  it('reveals the alignment row with the cursor in the table', () => {
+  /**
+   * The one row that stays hidden while the rest of the table is revealed. It carries no
+   * content, the toolbar owns its alignment, and editing it can only break the table.
+   */
+  it('keeps the alignment row collapsed with the cursor elsewhere in the table', () => {
     const v = mount(doc, doc.indexOf('Jan'));
+    expect(lineClasses(v, 2)).toContain('cm-md-table-align');
+    expect(visibleText(v, 2)).toBe('');
+  });
+
+  /**
+   * Text the caret can reach but cannot see is text that can be deleted blind, so the row
+   * the cursor is actually on is always shown.
+   */
+  it('reveals the alignment row when the cursor is on it', () => {
+    const v = mount(doc, doc.indexOf('| ---') + 3);
     expect(lineClasses(v, 2)).not.toContain('cm-md-table-align');
     expect(visibleText(v, 2)).toContain('---');
   });

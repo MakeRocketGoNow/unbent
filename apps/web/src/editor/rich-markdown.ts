@@ -604,19 +604,42 @@ function buildDecorations(view: EditorView, options: RichMarkdownOptions): Decor
          * `TableDelimiter`, and only the alignment row spans its whole line.
          */
         if (node.name === 'Table') {
-          const revealed = selectionTouches(state, node.from, node.to);
-
+          /**
+           * No table-wide reveal flag, unlike the other block constructs.
+           *
+           * A table's rows carry ordinary text that stays styled whether the cursor is in
+           * them or not — there is no syntax to uncover. The one row with syntax, the
+           * alignment row, is judged on its own line below.
+           */
           for (let row = node.node.firstChild; row; row = row.nextSibling) {
             const line = state.doc.lineAt(row.from);
             const isHeader = row.name === 'TableHeader';
 
             /**
-             * The alignment row carries no data — it exists to declare column alignment,
-             * which the rendering shows by aligning the text itself. Hidden like any other
-             * mark, and revealed with the rest of the table when the cursor is inside.
+             * The alignment row stays collapsed even while the rest of the table is
+             * revealed, unlike every other mark here.
+             *
+             * It is the one piece of markdown in a note that must never be edited by hand.
+             * It carries no content — its only job is to declare column alignment, which
+             * the toolbar sets and `renderTable` rewrites — while being what makes GFM
+             * parse the block as a table at all. Editing it cannot improve the table and
+             * can only break it: delete a cell from it and the whole thing silently
+             * reverts to paragraphs of pipes.
+             *
+             * Revealing it with the rest of the table therefore invited the one edit that
+             * has no good outcome, on a row nobody has a reason to touch.
              */
             if (row.name === 'TableDelimiter' && row.from === line.from && row.to === line.to) {
-              if (!revealed) {
+              /**
+               * The exception is the cursor being on the row itself.
+               *
+               * A collapsed line is still a line the caret can be moved onto, and text it
+               * cannot see is text it cannot edit out of. Showing the row it is actually
+               * on keeps the document honest — nothing is ever hidden from the point the
+               * user is working at — without putting it on screen the rest of the time.
+               */
+              const onThisRow = selectionTouches(state, line.from, line.to);
+              if (!onThisRow) {
                 // The line decoration collapses the row; the mark hides its text. Both are
                 // needed — hiding the text alone leaves an empty row inside the table.
                 marks.push(alignRowLine.range(line.from));
