@@ -6,6 +6,7 @@ import {
   alignColumn,
   deleteTable,
   readTable,
+  renderTable,
   resizeOrInsertTable,
   tableSize,
 } from './markdown-commands.js';
@@ -396,6 +397,58 @@ const tableToolbarTheme = EditorView.theme({
   },
 });
 
+
+/**
+ * Re-pads a table's columns when the cursor leaves it.
+ *
+ * The padding is what aligns the columns — the editor is monospace, so equal-width cells
+ * are aligned ones — but it goes stale the moment a cell is typed into. Type a long header
+ * and the rows below still carry the width the old text needed, which is what makes a
+ * table look broken without anything actually being wrong with it.
+ *
+ * Reformatting on the way out rather than on every keystroke is what keeps this usable: a
+ * table that re-pads as you type moves the text under the cursor on every character, and
+ * every one of those edits lands separately on the undo stack.
+ */
+const reformatOnExit = EditorState.transactionFilter.of((tr) => {
+  if (!tr.selection && !tr.docChanged) return tr;
+
+  const before = readTable(tr.startState, tr.startState.selection.main.head);
+  if (!before) return tr;
+
+  // Still inside the same table: nothing to do until the cursor actually leaves.
+  const after = readTable(tr.state, tr.state.selection.main.head);
+  if (after && after.from === tr.changes.mapPos(before.from)) return tr;
+
+  /**
+   * Read the table again from the new state, at the position the old one moved to.
+   *
+   * The table has to be located in the document as it is *after* this transaction — its
+   * own edit may have changed it — and `mapPos` is what carries the old offset across.
+   */
+  const moved = tr.changes.mapPos(before.from);
+  if (moved > tr.state.doc.length) return tr;
+  const table = readTable(tr.state, moved);
+  if (!table) return tr;
+
+  const rendered = renderTable(table);
+  if (tr.state.doc.sliceString(table.from, table.to) === rendered) return tr;
+
+  /**
+   * Appended as a second transaction rather than merged into this one.
+   *
+   * `sequential` makes its offsets apply to the document the first transaction produced,
+   * which is the only frame the table's own positions are valid in.
+   */
+  return [
+    tr,
+    {
+      changes: { from: table.from, to: table.to, insert: rendered },
+      sequential: true,
+    },
+  ];
+});
+
 export function tableTools(): Extension {
-  return [tableToolbarField, tableToolbarTheme];
+  return [tableToolbarField, reformatOnExit, tableToolbarTheme];
 }
