@@ -201,6 +201,21 @@ export async function uploadFile(noteId: string, file: File): Promise<UploadedFi
   return res.json() as Promise<UploadedFile>;
 }
 
+/**
+ * URL that downloads one note as a file.
+ *
+ * A URL rather than a fetch wrapper on purpose: this is meant for an anchor's href, so
+ * the browser streams the response straight to disk. Reading it into JS first would
+ * buffer a note's whole attachment payload in memory — the thing the streaming export was
+ * built to avoid — and would lose Save-Link-As and middle-click besides.
+ *
+ * What arrives is a `.md` for a note with no attachments and a `.zip` of its folder when
+ * it has them; the server decides and names the file in Content-Disposition.
+ */
+export function noteDownloadUrl(noteId: string): string {
+  return `/api/notes/${encodeURIComponent(noteId)}/export`;
+}
+
 /** Attachment metadata for one note — includes files no longer linked in the body. */
 export async function listAttachments(noteId: string): Promise<AttachmentInfo[]> {
   const { files } = await json<{ files: AttachmentInfo[] }>(

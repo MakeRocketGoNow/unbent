@@ -2,9 +2,25 @@ import { useEffect, useRef, useState, type ReactNode } from 'react';
 
 export interface OverflowItem {
   label: ReactNode;
-  onSelect: () => void;
+  /** Omitted for a link item, which navigates instead of running a handler. */
+  onSelect?: () => void;
+  /**
+   * Renders the item as an anchor with `download`.
+   *
+   * A download has to be a real link: the browser must stream the response to disk
+   * itself, and a button that fetched the bytes first would buffer a note's attachments
+   * in memory. An anchor also keeps Save-Link-As and middle-click working.
+   */
+  href?: string;
   /** Destructive items are tinted and sorted to the bottom by the caller. */
   tone?: 'default' | 'danger';
+  /**
+   * Extra class, for an item that belongs to only one side of the breakpoint.
+   *
+   * The workspace promotes some of these controls to buttons in the head on a desktop and
+   * tags its copies here `mobile-only`, so they are not offered twice at that width.
+   */
+  className?: string;
 }
 
 /**
@@ -60,19 +76,44 @@ export function OverflowMenu({ label, items }: { label: string; items: OverflowI
 
       {open && (
         <div className="overflow-list">
-          {items.map((item, i) => (
-            <button
-              key={i}
-              type="button"
-              className={item.tone === 'danger' ? 'overflow-item danger' : 'overflow-item'}
-              onClick={() => {
-                setOpen(false);
-                item.onSelect();
-              }}
-            >
-              {item.label}
-            </button>
-          ))}
+          {items.map((item, i) => {
+            const className = [
+              'overflow-item',
+              item.tone === 'danger' ? 'danger' : '',
+              item.className ?? '',
+            ]
+              .filter(Boolean)
+              .join(' ');
+
+            // Anchor and button both sit in the tab order and both activate on Enter, so
+            // the keyboard behaviour the list promises holds either way.
+            return item.href === undefined ? (
+              <button
+                key={i}
+                type="button"
+                className={className}
+                onClick={() => {
+                  setOpen(false);
+                  item.onSelect?.();
+                }}
+              >
+                {item.label}
+              </button>
+            ) : (
+              <a
+                key={i}
+                className={className}
+                href={item.href}
+                download
+                onClick={() => {
+                  setOpen(false);
+                  item.onSelect?.();
+                }}
+              >
+                {item.label}
+              </a>
+            );
+          })}
         </div>
       )}
     </div>

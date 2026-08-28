@@ -41,14 +41,8 @@ async function createNote(
   return res.json();
 }
 
-/** Downloads the export and unpacks it into a path -> text map. */
-async function fetchExport(actor: Actor): Promise<Map<string, string>> {
-  const res = await fetch(`${BASE}/api/export`, {
-    headers: { Cookie: actor.cookie, Origin: ORIGIN },
-  });
-  if (!res.ok) throw new Error(`export failed: ${res.status}`);
-  expect(res.headers.get('content-type')).toBe('application/zip');
-
+/** Unpacks a zip response body into a path -> text map. */
+async function unzip(res: Response): Promise<Map<string, string>> {
   const reader = new ZipReader(new BlobReader(await res.blob()));
   const out = new Map<string, string>();
   for (const entry of await reader.getEntries()) {
@@ -67,6 +61,43 @@ async function fetchExport(actor: Actor): Promise<Map<string, string>> {
   return out;
 }
 
+/** Downloads the whole-library export and unpacks it. */
+async function fetchExport(actor: Actor): Promise<Map<string, string>> {
+  const res = await fetch(`${BASE}/api/export`, {
+    headers: { Cookie: actor.cookie, Origin: ORIGIN },
+  });
+  if (!res.ok) throw new Error(`export failed: ${res.status}`);
+  expect(res.headers.get('content-type')).toBe('application/zip');
+  return unzip(res);
+}
+
+/** Requests one note's download, following none of the branching itself. */
+function fetchNote(actor: Actor, noteId: string): Promise<Response> {
+  return fetch(`${BASE}/api/notes/${noteId}/export`, {
+    headers: { Cookie: actor.cookie, Origin: ORIGIN },
+  });
+}
+
+async function upload(
+  actor: Actor,
+  noteId: string,
+  filename: string,
+  content: string,
+  contentType = 'text/plain',
+): Promise<void> {
+  const res = await fetch(`${BASE}/api/notes/${noteId}/files`, {
+    method: 'PUT',
+    headers: {
+      Cookie: actor.cookie,
+      Origin: ORIGIN,
+      'X-Filename': encodeURIComponent(filename),
+      'Content-Type': contentType,
+    },
+    body: content,
+  });
+  if (!res.ok) throw new Error(`upload failed: ${res.status} ${await res.text()}`);
+}
+
 let alice: Actor;
 let bob: Actor;
 
@@ -77,13 +108,15 @@ beforeAll(async () => {
 }, 30_000);
 
 describe('export', () => {
-  it('produces one note.md per note, in its own directory', async () => {
+  it('produces one markdown file per note, in its own directory', async () => {
     await createNote(alice, { title: 'First note', body: 'one', tags: ['a'] });
     await createNote(alice, { title: 'Second note', body: 'two' });
 
     const files = [...(await fetchExport(alice)).keys()];
     expect(files).toHaveLength(2);
-    expect(files.every((f) => f.endsWith('/note.md'))).toBe(true);
+    // Named for the note, not a fixed `note.md`: a Finder search for a title has to find
+    // one file, not a thousand identical ones.
+    expect(files.every((f) => /^([a-z0-9-]+)\/\1\.md$/.test(f))).toBe(true);
     expect(files.some((f) => f.startsWith('first-note-'))).toBe(true);
     expect(files.some((f) => f.startsWith('second-note-'))).toBe(true);
   });
@@ -127,7 +160,7 @@ describe('export', () => {
     await createNote(actor, { title: 'Café ☕ / Notes: 2024!', body: 'x' });
 
     const name = [...(await fetchExport(actor)).keys()][0] ?? '';
-    expect(name).toMatch(/^[a-z0-9-]+\/note\.md$/);
+    expect(name).toMatch(/^([a-z0-9-]+)\/\1\.md$/);
     expect(name).toContain('cafe');
   });
 
@@ -152,7 +185,7 @@ describe('export', () => {
     expect(parse([...files.values()][0]!).id).toBe(keep.id);
   });
 
-  it('includes attachments alongside note.md', async () => {
+  it('includes attachments alongside the markdown', async () => {
     const actor = await signUp(`exp-att-${Date.now()}@example.test`, 'att-password-1234', 'A');
     const note = await createNote(actor, { title: 'With files', body: '![x](files/pic.png)' });
 
@@ -171,7 +204,7 @@ describe('export', () => {
     const names = [...files.keys()].sort();
     expect(names).toHaveLength(2);
     expect(names[0]).toMatch(/^with-files-[0-9a-f]{8}\/files\/pic\.png$/);
-    expect(names[1]).toMatch(/^with-files-[0-9a-f]{8}\/note\.md$/);
+    expect(names[1]).toMatch(/^(with-files-[0-9a-f]{8})\/\1\.md$/);
 
     // The attachment bytes survive, and the markdown link stays relative so the exported
     // folder works without this app.
@@ -190,5 +223,130 @@ describe('export', () => {
     const bodies = [...files.values()].map((v) => parse(v).body);
     expect(bodies).not.toContain('Body with **markdown**.');
     expect(bodies.every((b) => b === 'one' || b === 'two')).toBe(true);
+  });
+});
+
+/**
+ * Single-note download.
+ *
+ * The shape is conditional — bare markdown with no attachments, a zip with them — so the
+ * branch itself is the thing under test, along with the property that makes the zip worth
+ * producing: the markdown sits one level above its own `files/`, so the relative `files/…`
+ * links resolve once it is unpacked.
+ *
+ * Unlike the library export this writes at the archive root: the zip is already named for
+ * the note, so a directory inside it would repeat that name for nothing.
+ */
+describe('single-note export', () => {
+  it('serves a bare .md when the note has no attachments', async () => {
+    const actor = await signUp(`one-md-${Date.now()}@example.test`, 'md-password-1234', 'M');
+    const created = await createNote(actor, {
+      title: 'Solo note',
+      body: '# Alone\n\nNo files here.\n',
+      tags: ['solo'],
+    });
+
+    const res = await fetchNote(actor, created.id);
+    expect(res.status).toBe(200);
+    expect(res.headers.get('content-type')).toBe('text/markdown; charset=utf-8');
+    expect(res.headers.get('content-disposition')).toMatch(/solo-note-[0-9a-f]{8}\.md/);
+
+    // Same frontmatter contract as the library export: it parses back to the note.
+    const note = parse(await res.text());
+    expect(note.id).toBe(created.id);
+    expect(note.title).toBe('Solo note');
+    expect(note.tags).toEqual(['solo']);
+    expect(note.body).toBe('# Alone\n\nNo files here.\n');
+  });
+
+  it('serves a zipped folder when the note has attachments', async () => {
+    const actor = await signUp(`one-zip-${Date.now()}@example.test`, 'zip-password-123', 'Z');
+    const created = await createNote(actor, {
+      title: 'With files',
+      body: 'See ![pic](files/pic.png)',
+    });
+    await upload(actor, created.id, 'pic.png', 'PNGDATA', 'image/png');
+
+    const res = await fetchNote(actor, created.id);
+    expect(res.status).toBe(200);
+    expect(res.headers.get('content-type')).toBe('application/zip');
+    expect(res.headers.get('content-disposition')).toMatch(/with-files-[0-9a-f]{8}\.zip/);
+
+    const files = await unzip(res);
+    const names = [...files.keys()].sort();
+    expect(names).toHaveLength(2);
+    expect(names[0]).toBe('files/pic.png');
+    expect(names[1]).toMatch(/^with-files-[0-9a-f]{8}\.md$/);
+    expect(files.get(names[0]!)).toBe('PNGDATA');
+
+    // The link stays relative, which is what makes it resolve against the unpacked
+    // `files/` directory rather than pointing back at this app.
+    expect(parse(files.get(names[1]!)!).body).toBe('See ![pic](files/pic.png)');
+  });
+
+  /**
+   * The reason both paths share one writer: the markdown must sit one level above its own
+   * `files/` in both, or the relative links break. The single-note zip differs only by the
+   * note directory the library export needs to keep notes apart.
+   */
+  it('matches the library layout once the note directory is stripped', async () => {
+    const actor = await signUp(`one-same-${Date.now()}@example.test`, 'same-password-12', 'S');
+    const created = await createNote(actor, { title: 'Same shape', body: '[a](files/a.txt)' });
+    await upload(actor, created.id, 'a.txt', 'AAA');
+
+    const single = [...(await unzip(await fetchNote(actor, created.id))).keys()].sort();
+    const library = [...(await fetchExport(actor)).keys()]
+      .map((n) => n.replace(/^[^/]+\//, ''))
+      .sort();
+    expect(single).toEqual(library);
+  });
+
+  /** No directory wrapping a zip that is already named for the note. */
+  it('writes at the archive root rather than nesting a note directory', async () => {
+    const actor = await signUp(`one-flat-${Date.now()}@example.test`, 'flat-password-12', 'F');
+    const created = await createNote(actor, { title: 'Flat note', body: '![p](files/p.png)' });
+    await upload(actor, created.id, 'p.png', 'PNG', 'image/png');
+
+    const names = [...(await unzip(await fetchNote(actor, created.id))).keys()];
+    expect(names.some((n) => /^flat-note-[0-9a-f]{8}\.md$/.test(n))).toBe(true);
+    // Nothing sits inside a directory named for the note.
+    expect(names.every((n) => !/^flat-note-[0-9a-f]{8}\//.test(n))).toBe(true);
+  });
+
+  it('includes files whose link was removed from the body', async () => {
+    const actor = await signUp(`one-unl-${Date.now()}@example.test`, 'unl-password-123', 'U');
+    // Body never references the upload — the leftover an Attachments panel calls
+    // "not linked". It is still part of the note, so the download must carry it.
+    const created = await createNote(actor, { title: 'Orphan file', body: 'no links' });
+    await upload(actor, created.id, 'stray.txt', 'STRAY');
+
+    const files = await unzip(await fetchNote(actor, created.id));
+    expect([...files.keys()]).toContain('files/stray.txt');
+    expect(files.get('files/stray.txt')).toBe('STRAY');
+  });
+
+  it('404s a trashed note, matching the library export', async () => {
+    const actor = await signUp(`one-del-${Date.now()}@example.test`, 'del-password-1234', 'D');
+    const created = await createNote(actor, { title: 'Doomed', body: 'x' });
+    await fetch(`${BASE}/api/notes/${created.id}`, {
+      method: 'DELETE',
+      headers: { Cookie: actor.cookie, Origin: ORIGIN },
+    });
+
+    expect((await fetchNote(actor, created.id)).status).toBe(404);
+  });
+
+  it('requires a session', async () => {
+    const created = await createNote(alice, { title: 'Private', body: 'x' });
+    const res = await fetch(`${BASE}/api/notes/${created.id}/export`, {
+      headers: { Origin: ORIGIN },
+    });
+    expect(res.status).toBe(401);
+  });
+
+  /** Cross-tenant: a note id alone must not be enough to read someone else's note. */
+  it('404s another user note rather than serving it', async () => {
+    const created = await createNote(alice, { title: 'Alice only', body: 'secret' });
+    expect((await fetchNote(bob, created.id)).status).toBe(404);
   });
 });

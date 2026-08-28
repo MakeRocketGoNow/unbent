@@ -1,5 +1,6 @@
 import { ZipWriter } from '@zip.js/zip.js';
 import { serialize } from '@unbent/shared';
+import type { Note } from '@unbent/shared';
 import type { NotesRepo } from './notes-repo.js';
 import type { AttachmentsRepo } from './attachments-repo.js';
 
@@ -83,34 +84,9 @@ async function writeArchive(
       const note = await notes.get(summary.id);
       if (!note) continue; // deleted between listing and reading
 
-      const dir = noteDirName(note.title, note.id);
-      const markdown = serialize({
-        id: note.id,
-        title: note.title,
-        created: new Date(note.createdAt),
-        updated: new Date(note.updatedAt),
-        tags: note.tags,
-        ...(note.notebook ? { notebook: note.notebook } : {}),
-        body: note.body,
-      });
-
-      // Markdown compresses well.
-      await zip.add(`${dir}/note.md`, new Blob([markdown]).stream(), { level: 6 });
+      // One directory per note; the writer names the markdown inside it the same way.
+      await writeNoteEntry(zip, { attachments, blobs }, note, 'nested');
       count += 1;
-
-      // Attachments stream straight from R2 into the archive — never buffered, so a note
-      // with a 90MB video does not blow the Worker's 128MB ceiling. Stored uncompressed:
-      // images, PDFs, and video are already compressed, so deflating them burns CPU for
-      // roughly nothing.
-      for (const file of await attachments.listForNote(note.id)) {
-        const row = await attachments.resolve(note.id, file.filename);
-        if (!row) continue;
-
-        const object = await blobs.get(row.r2_key);
-        if (!object?.body) continue;
-
-        await zip.add(`${dir}/files/${file.filename}`, object.body, { level: 0 });
-      }
     }
 
     if (page.length < PAGE) break;
@@ -124,4 +100,108 @@ async function writeArchive(
   }
 
   await zip.close();
+}
+
+/**
+ * A note as markdown — frontmatter from its columns, then the body.
+ *
+ * Shared with the single-note route, which serves this same text directly when a note has
+ * no attachments to put beside it. One definition so the two spellings of "a note on
+ * disk" cannot disagree about what frontmatter a note carries.
+ */
+export function noteMarkdown(note: Note): string {
+  return serialize({
+    id: note.id,
+    title: note.title,
+    created: new Date(note.createdAt),
+    updated: new Date(note.updatedAt),
+    tags: note.tags,
+    ...(note.notebook ? { notebook: note.notebook } : {}),
+    body: note.body,
+  });
+}
+
+/** What writing one note's entries needs: its blobs, and where to read them from. */
+type NoteEntryDeps = Pick<ExportDeps, 'attachments' | 'blobs'>;
+
+/**
+ * Writes one note's markdown and its `files/` into an open archive.
+ *
+ * Shared by the whole-library export and the single-note download so the two can never
+ * drift apart on the things that matter: the frontmatter contract `parse` reads back, and
+ * the markdown sitting one level above its own `files/` directory, which is what makes the
+ * relative `files/…` destinations in the body resolve once unpacked.
+ *
+ * `layout` is the only difference between the two callers. The library export is 'nested':
+ * one directory per note, or notes would collide in a single flat archive. A single-note
+ * zip is 'flat' — it is already named for its note, so nesting would just put a folder
+ * inside an identically-named folder.
+ *
+ * The markdown is named for the note rather than a fixed `note.md`: an export of a large
+ * library is a folder tree someone will later search in Finder or Spotlight, and a
+ * thousand identically-named files make those results useless. It duplicates the
+ * directory name, which is the price of every hit being distinguishable.
+ */
+async function writeNoteEntry(
+  zip: ZipWriter<unknown>,
+  { attachments, blobs }: NoteEntryDeps,
+  note: Note,
+  layout: 'nested' | 'flat',
+): Promise<void> {
+  // Names both the note's directory and its markdown, so the two always agree.
+  const base = noteDirName(note.title, note.id);
+  const prefix = layout === 'nested' ? `${base}/` : '';
+
+  // Markdown compresses well.
+  await zip.add(`${prefix}${base}.md`, new Blob([noteMarkdown(note)]).stream(), { level: 6 });
+
+  // Attachments stream straight from R2 into the archive — never buffered, so a note
+  // with a 90MB video does not blow the Worker's 128MB ceiling. Stored uncompressed:
+  // images, PDFs, and video are already compressed, so deflating them burns CPU for
+  // roughly nothing.
+  //
+  // Every stored file is included, not only the ones the body still links. Uploading and
+  // then cutting the link keeps the blob (see the Attachments panel), and those leftovers
+  // are still part of the note — dropping them here would make the download lossy in a
+  // way the library export is not.
+  for (const file of await attachments.listForNote(note.id)) {
+    const row = await attachments.resolve(note.id, file.filename);
+    if (!row) continue;
+
+    const object = await blobs.get(row.r2_key);
+    if (!object?.body) continue;
+
+    await zip.add(`${prefix}files/${file.filename}`, object.body, { level: 0 });
+  }
+}
+
+/**
+ * Returns a stream of a zip holding one note.
+ *
+ * Written at the archive root rather than inside a directory: the zip is already named
+ * for the note, so unpacking it produces a folder of that name either way, and nesting
+ * one more would just be a folder inside an identically-named folder.
+ *
+ * `files/` stays. It is what keeps the relative destinations in the markdown resolving,
+ * and it is the reason an attachment can be called anything at all — including the same
+ * name as the note's own markdown — without one silently overwriting the other.
+ *
+ * Callers hand this straight to a Response rather than awaiting it.
+ */
+export function exportNoteZipStream(
+  deps: NoteEntryDeps,
+  note: Note,
+): ReadableStream<Uint8Array> {
+  const { readable, writable } = new TransformStream<Uint8Array, Uint8Array>();
+
+  void (async () => {
+    const zip = new ZipWriter(writable, { bufferedWrite: false });
+    await writeNoteEntry(zip, deps, note, 'flat');
+    await zip.close();
+  })().catch((err) => {
+    console.error('Note export failed mid-stream:', err);
+    void writable.abort(err);
+  });
+
+  return readable;
 }

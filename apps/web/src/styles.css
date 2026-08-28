@@ -375,6 +375,10 @@ h1 {
   gap: 0.25rem;
 }
 
+/* The wrapper span around the ⋯ menu. Flex, not the span's default inline, or the
+   trigger's height collapses. Present at both widths now that the menu is. */
+.overflow-slot { display: inline-flex; }
+
 /* The ⋯ menu. Positioned relative so the list can hang off it. */
 .overflow {
   position: relative;
@@ -432,6 +436,20 @@ h1 {
 
 .overflow-item:hover { background: color-mix(in srgb, var(--fg) 8%, transparent); }
 .overflow-item.danger { color: var(--bad); }
+/* The anchor variant, used by Download. Undoes the link colour and underline it would
+   otherwise inherit, so it reads as a menu item and not as prose. */
+a.overflow-item { text-decoration: none; }
+
+/*
+   Items promoted to buttons in the workspace head at this width, hidden here so the same
+   control is not offered twice. The menu itself stays: Download lives only in it.
+
+   A single-class `.mobile-only` cannot do this job — `.overflow-item` sets no `display`,
+   so the item is a block by default and `display: none` from a later single-class rule
+   would win, but the mobile branch below re-shows it as `inline`, which would collapse
+   its padding into the row. Hence an explicit pair here and there.
+*/
+.overflow-item.mobile-only { display: none; }
 
 /*
    Two variants of a control: one for each side of the breakpoint, each hidden at the width
@@ -1425,8 +1443,9 @@ h1 {
 
   .mobile-only { display: inline; }
   .desktop-only { display: none; }
-  /* The overflow wrapper has to be flex, not inline, or the trigger's height collapses. */
-  .overflow-slot { display: inline-flex; }
+  /* Block, not the `inline` the generic rule above gives: these are full-width rows in a
+     stacked menu, and inline would flatten their padding. */
+  .overflow-item.mobile-only { display: block; }
 
   /*
      Editor first: opening a note should be ready to type. showPreview is persisted and

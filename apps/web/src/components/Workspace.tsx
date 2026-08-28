@@ -254,13 +254,23 @@ export function Workspace({ noteId, readOnly = false, backTo = '/notes' }: Works
             </button>
           )}
 
-          <span className="mobile-only overflow-slot">
+          {/* The overflow is the only home Download has: it is far too infrequent to
+              earn room in the head next to the save state, at either width. Which is why
+              this renders on a desktop too, holding just Download there while the
+              controls promoted above stay where they are. */}
+          <span className="overflow-slot">
             <OverflowMenu
               label="More actions"
               items={[
+                ...(readOnly
+                  ? []
+                  : [{ label: 'Download', href: api.noteDownloadUrl(noteId) }]),
+                // Duplicated from the promoted buttons above, which are desktop-only:
+                // below the breakpoint this menu is where they live.
                 {
                   label: richEditor ? 'Plain source' : 'Rich text',
                   onSelect: () => setRichEditor((r) => !r),
+                  className: 'mobile-only',
                 },
                 ...(readOnly
                   ? []
@@ -269,6 +279,7 @@ export function Workspace({ noteId, readOnly = false, backTo = '/notes' }: Works
                         label: 'Delete',
                         tone: 'danger' as const,
                         onSelect: () => void removeNote(),
+                        className: 'mobile-only',
                       },
                     ]),
               ]}

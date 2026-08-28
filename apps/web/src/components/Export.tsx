@@ -31,15 +31,23 @@ export function Export() {
       <pre className="export-tree">
         {`unbent-export-${stamp}.zip
 └── meeting-notes-a1b2c3d4/
-    ├── note.md          Markdown, with title, dates, tags and notebook up top
-    └── files/           Attachments, under their original names
+    ├── meeting-notes-a1b2c3d4.md    The note, with title, dates, tags and notebook up top
+    └── files/                       Attachments, under their original names
         └── agenda.pdf`}
       </pre>
 
       <p className="muted small">
         Each folder is named for its note plus a few characters of the note&apos;s id. The
         id is not decoration: two notes both called &ldquo;Meeting notes&rdquo; would
-        otherwise collide into one folder and the second would overwrite the first.
+        otherwise collide into one folder and the second would overwrite the first. The
+        markdown file repeats that name so searching your disk for a note title finds one
+        file rather than a thousand called <code>note.md</code>.
+      </p>
+
+      <p className="muted small">
+        Attachments sit in their own <code>files/</code> folder, which is what the links
+        inside the note point at — and what keeps a file you attached from colliding with
+        the note&apos;s own markdown.
       </p>
 
       <p className="muted small">

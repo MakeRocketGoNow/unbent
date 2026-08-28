@@ -59,7 +59,7 @@ function parseDate(value: unknown, field: string): Date {
 }
 
 /**
- * Render a note as `note.md` — YAML frontmatter followed by the markdown body.
+ * Render a note as its markdown file — YAML frontmatter followed by the body.
  *
  * Timestamps are emitted unquoted so they read as dates in any YAML parser; every other
  * scalar is left to `yaml` to quote as needed.
@@ -90,7 +90,7 @@ export function serialize(note: ParsedNote): string {
 }
 
 /**
- * Parse a `note.md` back into its columns. Throws FrontmatterError when the document has no
+ * Parse an exported note back into its columns. Throws FrontmatterError when it has no
  * frontmatter or is missing required fields — an import should surface that note as failed
  * rather than silently inventing an id or timestamp.
  */
