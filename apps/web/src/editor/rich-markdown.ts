@@ -63,8 +63,23 @@ const MARK_NODES = new Set([
  */
 const MARKS_WITH_TRAILING_SPACE = new Set(['HeaderMark', 'QuoteMark']);
 
+/**
+ * Fenced code gets a line decoration per line rather than one block decoration.
+ *
+ * A ViewPlugin cannot emit block decorations, and the whole point is a background that
+ * spans the run — so each line is marked, with the first and last also flagged so the
+ * corners round and the padding sits at the ends rather than on every line.
+ */
+const CODE_BLOCK_LINE = Decoration.line({ class: 'cm-md-codeblock' });
+const CODE_BLOCK_FIRST = Decoration.line({ class: 'cm-md-codeblock cm-md-codeblock-first' });
+const CODE_BLOCK_LAST = Decoration.line({ class: 'cm-md-codeblock cm-md-codeblock-last' });
+const CODE_BLOCK_ONLY = Decoration.line({
+  class: 'cm-md-codeblock cm-md-codeblock-first cm-md-codeblock-last',
+});
+
 const hiddenMark = Decoration.mark({ class: 'cm-md-hidden' });
 const listBullet = Decoration.mark({ class: 'cm-md-bullet' });
+const linkLabel = Decoration.mark({ class: 'cm-md-link' });
 
 /**
  * Ordered-list markers cycle by depth the way Evernote and word processors do:
@@ -415,6 +430,33 @@ function buildDecorations(view: EditorView, options: RichMarkdownOptions): Decor
       from,
       to,
       enter(node) {
+        /**
+         * A fenced block is one node spanning many lines, unlike a blockquote whose mark
+         * repeats per line, so its background has to be applied line by line.
+         *
+         * The fences themselves stay visible. Hiding them the way `**` is hidden would
+         * leave a styled slab with no indication of where it starts or ends, and unlike
+         * emphasis there is no way to infer the syntax from the rendering.
+         */
+        if (node.name === 'FencedCode') {
+          const first = state.doc.lineAt(node.from).number;
+          const last = state.doc.lineAt(node.to).number;
+
+          for (let n = first; n <= last; n += 1) {
+            const line = state.doc.line(n);
+            const only = first === last;
+            const deco = only
+              ? CODE_BLOCK_ONLY
+              : n === first
+                ? CODE_BLOCK_FIRST
+                : n === last
+                  ? CODE_BLOCK_LAST
+                  : CODE_BLOCK_LINE;
+            marks.push(deco.range(line.from));
+          }
+          return;
+        }
+
         const block = BLOCK_STYLES[node.name];
         if (block) {
           marks.push(block.range(state.doc.lineAt(node.from).from));
@@ -444,14 +486,33 @@ function buildDecorations(view: EditorView, options: RichMarkdownOptions): Decor
         }
 
         if (node.name === 'Link') {
-          const resolve = options.resolveAttachment;
-          if (!resolve) return;
-
           const text = state.doc.sliceString(node.from, node.to);
-          // Same shape as the image branch, minus the `!`. A `[…](…)` that does not match
-          // is a reference link or footnote, which has no attachment to render.
+          // A `[…](…)` that does not match is a reference link or footnote: it has no
+          // inline destination to hide and no attachment to render.
           const match = /^\[([^\]]*)\]\((.+)\)$/.exec(text);
           if (!match) return;
+
+          const label = match[1] ?? '';
+
+          /**
+           * Read as a link: style the label, hide the brackets and destination.
+           *
+           * Same reveal rule as every other mark, so putting the cursor on the line brings
+           * the whole `[text](url)` back to be edited. A label is required — hiding the
+           * destination of `[](…)` would leave nothing on screen at all, and the link
+           * would be impossible to find again without turning off rich text.
+           */
+          const scope = revealScope(state, node.node);
+          if (label && !selectionTouches(state, scope.from, scope.to)) {
+            const labelStart = node.from + 1;
+            const labelEnd = labelStart + label.length;
+            marks.push(hiddenMark.range(node.from, labelStart));
+            marks.push(linkLabel.range(labelStart, labelEnd));
+            marks.push(hiddenMark.range(labelEnd, node.to));
+          }
+
+          const resolve = options.resolveAttachment;
+          if (!resolve) return;
 
           const url = unwrapUrl(match[2]!.trim());
           if (!url.startsWith(ATTACHMENT_PREFIX)) return;
@@ -525,6 +586,16 @@ function buildDecorations(view: EditorView, options: RichMarkdownOptions): Decor
          * cursor reaches it.
          */
         if (MARK_NODES.has(node.name)) {
+          /**
+           * Fence marks are the exception: they stay visible always.
+           *
+           * `CodeMark` covers both the backticks around inline code and the ``` rows of a
+           * fenced block. Hiding the inline pair is right — the styled span shows what it
+           * is. Hiding the fences would leave a shaded slab whose extent and language are
+           * invisible and unguessable, and the row would collapse to an empty line.
+           */
+          if (node.name === 'CodeMark' && node.node.parent?.name === 'FencedCode') return;
+
           const scope = revealScope(state, node.node);
 
           if (!selectionTouches(state, scope.from, scope.to)) {
@@ -597,6 +668,22 @@ export function richMarkdown(options: RichMarkdownOptions = {}): Extension {
       '.cm-md-em': { fontStyle: 'italic' },
       '.cm-md-strike': { textDecoration: 'line-through', opacity: '0.7' },
 
+      /**
+       * The fenced-code background, drawn per line so the run reads as one slab.
+       *
+       * `margin` rather than `padding` on the sides would break the background's
+       * continuity between lines, so the inset is horizontal padding and the rounding is
+       * applied only at the two ends.
+       */
+      '.cm-md-codeblock': {
+        background: 'color-mix(in srgb, currentColor 6%, transparent)',
+        fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+        fontSize: '0.9em',
+        padding: '0 0.7rem',
+      },
+      '.cm-md-codeblock-first': { paddingTop: '0.4rem', borderRadius: '0.35rem 0.35rem 0 0' },
+      '.cm-md-codeblock-last': { paddingBottom: '0.4rem', borderRadius: '0 0 0.35rem 0.35rem' },
+
       '.cm-md-code': {
         fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
         fontSize: '0.9em',
@@ -614,6 +701,16 @@ export function richMarkdown(options: RichMarkdownOptions = {}): Extension {
       '.cm-md-bullet': { color: 'var(--accent)', fontWeight: '600' },
       '.cm-md-task': { verticalAlign: 'middle', margin: '0 0.35em 0 0', cursor: 'pointer' },
       '.cm-md-url': { opacity: '0.5', fontSize: '0.9em' },
+      /**
+       * Underlined rather than only coloured: colour alone is not an accessible way to
+       * mark a link, and the accent is already the list-bullet colour.
+       */
+      '.cm-md-link': {
+        color: 'var(--accent)',
+        textDecoration: 'underline',
+        textUnderlineOffset: '0.15em',
+        cursor: 'pointer',
+      },
       '.cm-md-punct': { opacity: '0.35' },
 
       /**

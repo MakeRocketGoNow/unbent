@@ -61,6 +61,12 @@ function visibleText(v: EditorView, lineNumber: number): string {
   return [...line.childNodes].map(walk).join('');
 }
 
+/** Class list of a rendered line, for decorations applied per line rather than per range. */
+function lineClasses(v: EditorView, lineNumber: number): string {
+  const line = v.dom.querySelectorAll('.cm-line')[lineNumber - 1] as HTMLElement | undefined;
+  return line?.className ?? '';
+}
+
 afterEach(() => {
   view?.destroy();
   view = undefined;
@@ -410,5 +416,87 @@ describe('block-level reveal', () => {
     const v = mount(doc, 3);
     expect(visibleText(v, 1)).toBe('**one** line');
     expect(visibleText(v, 2)).toBe('two line');
+  });
+});
+
+describe('fenced code blocks', () => {
+  const doc = '```js\nconst x = 1;\nconst y = 2;\n```';
+
+  /** Every line of the run carries the background, not just the first. */
+  it('marks every line of the block', () => {
+    const v = mount(doc, doc.length);
+    for (let n = 1; n <= 4; n += 1) {
+      expect(lineClasses(v, n)).toContain('cm-md-codeblock');
+    }
+  });
+
+  it('rounds only the ends', () => {
+    const v = mount(doc, doc.length);
+    expect(lineClasses(v, 1)).toContain('cm-md-codeblock-first');
+    expect(lineClasses(v, 2)).not.toContain('cm-md-codeblock-first');
+    expect(lineClasses(v, 2)).not.toContain('cm-md-codeblock-last');
+    expect(lineClasses(v, 4)).toContain('cm-md-codeblock-last');
+  });
+
+  /**
+   * Unlike `**`, a hidden fence cannot be inferred from the rendering: the row would
+   * collapse to an empty line and the language would vanish.
+   */
+  it('keeps the fences visible with the cursor elsewhere', () => {
+    const full = `${doc}\n\nplain`;
+    const v = mount(full, full.length);
+    expect(visibleText(v, 1)).toContain('```');
+    expect(visibleText(v, 4)).toContain('```');
+  });
+
+  it('keeps the info string visible', () => {
+    const full = `${doc}\n\nplain`;
+    const v = mount(full, full.length);
+    expect(visibleText(v, 1)).toContain('js');
+  });
+
+  /** Inline code is the other `CodeMark` user, and its backticks must still hide. */
+  it('still hides inline code backticks', () => {
+    const v = mount('a `snippet` b\n\nplain', 20);
+    expect(visibleText(v, 1)).toBe('a snippet b');
+  });
+
+  it('does not mark an ordinary paragraph', () => {
+    const v = mount('just text\n\nplain', 0);
+    expect(lineClasses(v, 1)).not.toContain('cm-md-codeblock');
+  });
+});
+
+describe('link rendering', () => {
+  it('shows only the label with the cursor elsewhere', () => {
+    const doc = '[Anthropic](https://anthropic.com)\n\nplain';
+    const v = mount(doc, doc.length);
+    expect(visibleText(v, 1)).toBe('Anthropic');
+  });
+
+  it('reveals the whole link with the cursor on its line', () => {
+    const doc = '[Anthropic](https://anthropic.com)';
+    const v = mount(doc, 3);
+    expect(visibleText(v, 1)).toBe(doc);
+  });
+
+  /** Hiding the destination of an empty label would leave nothing on screen to find. */
+  it('leaves a link with no label alone', () => {
+    const doc = '[](https://anthropic.com)\n\nplain';
+    const v = mount(doc, doc.length);
+    expect(visibleText(v, 1)).toContain('https://anthropic.com');
+  });
+
+  it('never rewrites the document', () => {
+    const doc = '[Anthropic](https://anthropic.com)\n\nplain';
+    const v = mount(doc, doc.length);
+    expect(v.state.doc.toString()).toBe(doc);
+  });
+
+  /** The label is styled, so a reader can tell it is a link and not plain text. */
+  it('styles the label', () => {
+    const doc = '[Anthropic](https://anthropic.com)\n\nplain';
+    const v = mount(doc, doc.length);
+    expect(v.dom.querySelector('.cm-md-link')?.textContent).toBe('Anthropic');
   });
 });
