@@ -213,10 +213,15 @@ h1 {
      The width arrives as an inline custom property from useNotesLayout. The 19rem fallback
      is what a browser with nothing stored renders, which is exactly the old fixed layout.
   */
-  grid-template-columns: var(--sidebar-width, 19rem) 0 1fr;
-  /* Halved: the zero-width handle sits between the two columns, so this gap is applied
-     twice and 0.75rem either side restores the original 1.5rem channel. */
-  gap: 0 0.75rem;
+  grid-template-columns: var(--sidebar-width, 19rem) 1px 1fr;
+  /*
+     Halved, as the gap falls either side of the handle track.
+
+     Narrower than it was: the old 0.75rem existed to give a floating highlight room to
+     sit in without touching either column. The highlight is the divider now, so the
+     channel only needs the breathing space the content actually wants.
+  */
+  gap: 0 1rem;
   /*
      Fills the space the topbar leaves, rather than growing past it.
 
@@ -233,13 +238,20 @@ h1 {
 .notes[data-resizing] { user-select: none; }
 
 .resize-handle {
-  /* Zero-width by layout, ~11px by hit area: a 1px target cannot be grabbed, but a wide
-     element would eat the gap and shove both columns sideways. */
+  /*
+     One pixel wide, and it is the divider line.
+
+     This used to be a zero-width track whose hit area floated in the middle of the gap,
+     which put the grabbable strip about 12px from the border it moves — so the line you
+     aim at and the line that responds were different lines, and the channel had to stay
+     wide enough to hold a highlight that never touched either. The handle draws the
+     border now, so pointer, highlight and divider are all the same pixel.
+  */
   position: relative;
-  width: 0;
+  width: 1px;
   padding: 0;
   border: none;
-  background: none;
+  background: var(--border);
   cursor: col-resize;
   /* Without this a touch drag scrolls the page instead of resizing. */
   touch-action: none;
@@ -258,21 +270,29 @@ h1 {
   display: block;
   height: 100%;
   /*
-     The handle is a zero-width track with a gap on BOTH sides, so the channel it divides
-     is centred on the handle itself. 11px wide: a 1px target cannot be hit, and anything
-     wider would overhang the columns.
+     An invisible strip centred on the 1px line, so a divider that is one pixel wide is
+     still something a pointer can catch. It overhangs into both columns, which is exactly
+     what makes it grabbable — and it paints nothing, so the overhang is never seen.
   */
-  margin-left: -5.5px;
+  position: absolute;
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%);
   width: 11px;
 }
 
-/* The visible line stays the sidebar's own border. The handle only tints it when reached
-   for, so the layout gains an affordance rather than a permanent seam. */
-.resize-handle:hover::before,
-.resize-handle:focus-visible::before,
-.resize-handle[data-dragging]::before {
-  background: color-mix(in srgb, var(--accent) 35%, transparent);
-  border-radius: 999px;
+/*
+   Reaching for the divider thickens and tints the divider.
+
+   The tint used to land on the ::before — a rounded pill floating in the gap, separate
+   from the line it moved. Colouring the handle itself means the thing that lights up is
+   the thing that will move.
+*/
+.resize-handle:hover,
+.resize-handle:focus-visible,
+.resize-handle[data-dragging] {
+  background: color-mix(in srgb, var(--accent) 55%, transparent);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 55%, transparent);
 }
 
 /* The tinted ::before is the focus indicator; a default ring on a zero-width box lands in
@@ -284,8 +304,8 @@ h1 {
   flex-direction: column;
   gap: 0.75rem;
   min-width: 0;
-  border-right: 1px solid var(--border);
-  padding-right: 1.25rem;
+  /* No border-right: the resize handle is the divider, and two lines a gap apart read as
+     a seam rather than as one edge. */
   /* Bounded so `.note-list` has a definite height to scroll within; without it the list
      grows and takes the page with it. */
   min-height: 0;
@@ -557,10 +577,10 @@ a.overflow-item { text-decoration: none; }
 .panes.split {
   grid-template-columns:
     minmax(0, calc(var(--editor-fraction, 0.5) * 100%))
-    0
+    1px
     minmax(0, 1fr);
   /* Halved for the same reason as .notes — applied on both sides of the handle. */
-  gap: 0 0.75rem;
+  gap: 0 1rem;
 }
 
 .pane {
@@ -568,7 +588,9 @@ a.overflow-item { text-decoration: none; }
   overflow-y: auto;
 }
 
-.preview-pane { border-left: 1px solid var(--border); padding-left: 1.5rem; }
+/* No border-left, for the same reason the sidebar has no border-right: the handle
+   between the panes is the divider. */
+.preview-pane { padding-left: 0; }
 
 .editor-host { height: 100%; }
 
@@ -1436,7 +1458,8 @@ a.overflow-item { text-decoration: none; }
        would let the grid grow past the viewport again and take the page with it. */
   }
 
-  .sidebar { border-right: none; padding-right: 0; }
+  /* The desktop rule no longer sets either, now the handle draws the divider. */
+  .sidebar { padding-right: 0; }
 
   /* There is only ever one column to size here, and no pointer to size it with. */
   .resize-handle { display: none; }
@@ -1517,7 +1540,7 @@ a.overflow-item { text-decoration: none; }
     position: absolute;
   }
 
-  .preview-pane { border-left: none; padding-left: 0; }
+  .preview-pane { padding-left: 0; }
 
   /* 44px minimum touch target. The toolbar is the only place in the app below it. */
   .tb-btn { min-width: 2.75rem; height: 2.75rem; font-size: 0.95rem; }
