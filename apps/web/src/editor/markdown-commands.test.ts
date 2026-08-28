@@ -495,4 +495,26 @@ describe('Enter through the real keymap', () => {
   it('does not double-close inside an existing block on Shift-Enter', () => {
     expect(pressEnter('```ts\nfoo\n```', 5, true)).toBe('```ts\n\nfoo\n```');
   });
+
+  /**
+   * Pressing Enter at the end of a closing fence is the obvious way to carry on writing
+   * below a block. A closing fence is textually identical to an opening one, so without
+   * asking the tree which it is, this added a second fence — which then opened a block
+   * that swallowed everything typed after it.
+   */
+  it('does not add a fence when Enter is pressed on a closing fence', () => {
+    const doc = '```js\nfoo\n```';
+    expect(pressEnter(doc, doc.length)).toBe('```js\nfoo\n```\n');
+  });
+
+  it('does not add a fence on Shift-Enter on a closing fence', () => {
+    const doc = '```js\nfoo\n```';
+    expect(pressEnter(doc, doc.length, true)).toBe('```js\nfoo\n```\n');
+  });
+
+  /** The same line inside a list item, where the fence is indented. */
+  it('does not add a fence on an indented closing fence', () => {
+    const doc = '- item\n  ```ts\n  foo\n  ```';
+    expect(pressEnter(doc, doc.length)).toBe('- item\n  ```ts\n  foo\n  ```\n  ');
+  });
 });

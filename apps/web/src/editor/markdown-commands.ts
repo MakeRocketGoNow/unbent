@@ -1,5 +1,6 @@
-import type { ChangeSpec, StateCommand } from '@codemirror/state';
+import type { ChangeSpec, EditorState, StateCommand } from '@codemirror/state';
 import type { KeyBinding } from '@codemirror/view';
+import { syntaxTree } from '@codemirror/language';
 
 /**
  * Markdown editing commands.
@@ -364,6 +365,17 @@ export const closeCodeFence: StateCommand = ({ state, dispatch }) => {
   // in it. Reject a line like ```` ```a`b ```` that is not an opening fence at all.
   if (fence.startsWith('~') ? false : info.includes('`')) return false;
 
+  /**
+   * A closing fence is the same three characters as an opening one, so the text alone
+   * cannot tell them apart.
+   *
+   * Without this, pressing Enter at the end of a block's closing fence — the obvious way
+   * to carry on writing below it — saw a fence-shaped line with nothing closing it after
+   * and helpfully added another. That stray fence then opened a block that swallowed
+   * everything the user typed next.
+   */
+  if (!isOpeningFence(state, line.from)) return false;
+
   if (hasClosingFence(state.doc, line.number, fence)) return false;
 
   const insert = `\n${indent}\n${indent}${fence}`;
@@ -378,6 +390,28 @@ export const closeCodeFence: StateCommand = ({ state, dispatch }) => {
   );
   return true;
 };
+
+/**
+ * Whether the fence on this line opens its block rather than closing one.
+ *
+ * Asked of the syntax tree, which is the only thing that knows: the opening fence is the
+ * first `CodeMark` child of the `FencedCode` node, and a closing fence is a later one.
+ * `resolveInner` is used rather than walking the tree by hand so a block nested inside a
+ * list item resolves the same way a top-level one does.
+ */
+function isOpeningFence(state: EditorState, lineFrom: number): boolean {
+  const node = syntaxTree(state).resolveInner(lineFrom, 1);
+
+  for (let scope: typeof node | null = node; scope; scope = scope.parent) {
+    if (scope.name !== 'FencedCode') continue;
+    const first = scope.firstChild;
+    if (!first || first.name !== 'CodeMark') return false;
+    return state.doc.lineAt(first.from).number === state.doc.lineAt(lineFrom).number;
+  }
+
+  // No enclosing fenced block yet — the fence is the one being typed right now.
+  return true;
+}
 
 /**
  * Whether a fence opened on `openLine` is already closed further down.
