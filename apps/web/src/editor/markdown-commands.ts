@@ -324,11 +324,89 @@ export const toggleTask = toggleLinePrefix('- [ ] ');
  * list lets the browser move focus as usual, while Escape-then-Tab remains available as
  * the conventional escape hatch either way.
  */
+
+/**
+ * Opening fence rows, capturing the indent, the fence characters, and the language.
+ *
+ * Backticks and tildes are both CommonMark fences, and a fence may be indented — inside a
+ * list item, most often. The closing fence has to repeat the same character and be at
+ * least as long, so both are carried over rather than assumed to be three backticks.
+ */
+const FENCE_LINE = /^(\s*)(`{3,}|~{3,})([^`]*)$/;
+
+/**
+ * Closes a fenced code block when Enter is pressed on its opening line.
+ *
+ * Typing ``` and pressing Enter almost always means "start a code block", and writing the
+ * closing fence by hand is a step nobody wants. This inserts the blank line and the
+ * closing fence together, leaving the cursor between them ready to type.
+ *
+ * Only fires when the fence is not already closed. The syntax tree cannot answer that
+ * question: an unterminated fence swallows the rest of the document, claiming a later
+ * block's opening fence as its own closing mark, so a node with two `CodeMark`s may still
+ * be one the user is in the middle of opening. The check is textual instead — scan forward
+ * for a line that would close this fence — which is what CommonMark itself does.
+ */
+export const closeCodeFence: StateCommand = ({ state, dispatch }) => {
+  const range = state.selection.main;
+  // A selection is a replacement, not a fence being opened.
+  if (!range.empty) return false;
+
+  const line = state.doc.lineAt(range.head);
+  // Only at the very end of the line: pressing Enter mid-line is a split, not an open.
+  if (range.head !== line.to) return false;
+
+  const match = FENCE_LINE.exec(line.text);
+  if (!match) return false;
+
+  const [, indent = '', fence = '', info = ''] = match;
+  // An info string cannot contain the fence character, and a tilde fence allows backticks
+  // in it. Reject a line like ```` ```a`b ```` that is not an opening fence at all.
+  if (fence.startsWith('~') ? false : info.includes('`')) return false;
+
+  if (hasClosingFence(state.doc, line.number, fence)) return false;
+
+  const insert = `\n${indent}\n${indent}${fence}`;
+  dispatch(
+    state.update({
+      changes: { from: line.to, insert },
+      // Land on the blank line between the fences, after any indent.
+      selection: { anchor: line.to + 1 + indent.length },
+      scrollIntoView: true,
+      userEvent: 'input',
+    }),
+  );
+  return true;
+};
+
+/**
+ * Whether a fence opened on `openLine` is already closed further down.
+ *
+ * A closing fence is a line of at least as many of the same character, with nothing after
+ * it but whitespace. Scanning stops at the first one found; everything before it is
+ * content, including lines that look like fences of the other character.
+ */
+function hasClosingFence(
+  doc: { lines: number; line: (n: number) => { text: string } },
+  openLine: number,
+  fence: string,
+): boolean {
+  const char = fence[0]!;
+  const closing = new RegExp(`^\\s*\\${char}{${fence.length},}\\s*$`);
+
+  for (let n = openLine + 1; n <= doc.lines; n += 1) {
+    if (closing.test(doc.line(n).text)) return true;
+  }
+  return false;
+}
+
 const tabIndent: StateCommand = (target) => indentList(target);
 const shiftTabOutdent: StateCommand = (target) => outdentList(target);
 
 /** Shortcuts matching what people already know from other editors. */
 export const markdownKeymap: KeyBinding[] = [
+  // Before the default Enter binding, which would otherwise just split the line.
+  { key: 'Enter', run: closeCodeFence },
   { key: 'Tab', run: tabIndent },
   { key: 'Shift-Tab', run: shiftTabOutdent },
   { key: 'Mod-b', run: toggleBold, preventDefault: true },

@@ -1,8 +1,10 @@
 import { EditorSelection, EditorState, type StateCommand } from '@codemirror/state';
+import { EditorView, keymap } from '@codemirror/view';
+import { defaultKeymap, history, historyKeymap } from '@codemirror/commands';
 import { markdown as markdownLang } from '@codemirror/lang-markdown';
 import { GFM } from '@lezer/markdown';
 import { syntaxTree } from '@codemirror/language';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 import * as cmd from './markdown-commands.js';
 
 /** Applies a command to `doc` with the given selection and returns the resulting text. */
@@ -303,5 +305,170 @@ describe('indent produces real nesting', () => {
     expect(nestingDepth(doc)).toBe(1);
     const indented = run(cmd.indentList, doc, doc.lastIndexOf('\n') + 3).doc;
     expect(nestingDepth(indented)).toBe(2);
+  });
+});
+
+describe('closeCodeFence', () => {
+  /** Returns whether the command handled the key, alongside the resulting document. */
+  function press(doc: string, at: number) {
+    let handled = false;
+    let next = EditorState.create({ doc, selection: EditorSelection.single(at) });
+    handled = cmd.closeCodeFence({
+      state: next,
+      dispatch: (tr) => {
+        next = tr.state;
+      },
+    });
+    return { handled, doc: next.doc.toString(), cursor: next.selection.main.head };
+  }
+
+  it('closes a bare fence', () => {
+    const r = press('```', 3);
+    expect(r.handled).toBe(true);
+    expect(r.doc).toBe('```\n\n```');
+  });
+
+  it('closes a fence with a language', () => {
+    const r = press('```ts', 5);
+    expect(r.doc).toBe('```ts\n\n```');
+  });
+
+  /** The cursor must land ready to type, between the two fences. */
+  it('leaves the cursor on the blank line', () => {
+    const r = press('```ts', 5);
+    expect(r.cursor).toBe(6);
+  });
+
+  it('carries the indent of a fence inside a list item', () => {
+    const doc = '- item\n  ```ts';
+    const r = press(doc, doc.length);
+    expect(r.doc).toBe('- item\n  ```ts\n  \n  ```');
+  });
+
+  /** A closing fence must repeat the opening character and length. */
+  it('matches a tilde fence', () => {
+    const r = press('~~~ts', 5);
+    expect(r.doc).toBe('~~~ts\n\n~~~');
+  });
+
+  it('matches a longer fence', () => {
+    const r = press('````ts', 6);
+    expect(r.doc).toBe('````ts\n\n````');
+  });
+
+  /**
+   * The syntax tree cannot answer whether a fence is closed: an unterminated one swallows
+   * the rest of the document and claims a later block's opening fence as its own closing
+   * mark. The check is textual, the way CommonMark decides it.
+   */
+  it('does not close a fence that already has a closing fence', () => {
+    const doc = '```ts\nfoo\n```';
+    const r = press(doc, 5);
+    expect(r.handled).toBe(false);
+    expect(r.doc).toBe(doc);
+  });
+
+  it('ignores a closing fence of the other character', () => {
+    const doc = '```ts\nfoo\n~~~';
+    const r = press(doc, 5);
+    expect(r.doc).toBe('```ts\n\n```\nfoo\n~~~');
+  });
+
+  /**
+   * A shorter run does not close a longer fence, so the block is still open and gets a
+   * matching four-backtick close. Confirmed against the shared pipeline, which renders
+   * ```` ````ts\nfoo\n```\nbar\n```` ```` as one block containing the shorter run.
+   */
+  it('ignores a shorter closing run', () => {
+    const doc = '````ts\nfoo\n```';
+    const r = press(doc, 6);
+    expect(r.handled).toBe(true);
+    expect(r.doc).toBe('````ts\n\n````\nfoo\n```');
+  });
+
+  it('does nothing mid-line', () => {
+    const r = press('```ts', 2);
+    expect(r.handled).toBe(false);
+    expect(r.doc).toBe('```ts');
+  });
+
+  it('does nothing on an ordinary line', () => {
+    const r = press('just text', 9);
+    expect(r.handled).toBe(false);
+  });
+
+  it('does nothing on inline code', () => {
+    const doc = 'a `snippet` b';
+    const r = press(doc, doc.length);
+    expect(r.handled).toBe(false);
+  });
+
+  /** A selection is a replacement, not a fence being opened. */
+  it('does nothing with a selection', () => {
+    let state = EditorState.create({ doc: '```ts', selection: EditorSelection.single(0, 5) });
+    const handled = cmd.closeCodeFence({
+      state,
+      dispatch: (tr) => {
+        state = tr.state;
+      },
+    });
+    expect(handled).toBe(false);
+  });
+
+  /** An info string cannot contain the fence character. */
+  it('does nothing when backticks follow the fence', () => {
+    const r = press('```a`b', 6);
+    expect(r.handled).toBe(false);
+  });
+});
+
+/**
+ * Enter is the one binding that competes with a default command, so it is exercised
+ * through the real keymap rather than by calling the command directly: the risk is not
+ * that closing a fence fails, it is that ordinary newlines stop working.
+ */
+describe('Enter through the real keymap', () => {
+  let view: EditorView | undefined;
+
+  afterEach(() => {
+    view?.destroy();
+    view = undefined;
+  });
+
+  function pressEnter(doc: string, at: number): string {
+    const parent = document.createElement('div');
+    document.body.appendChild(parent);
+    view = new EditorView({
+      state: EditorState.create({
+        doc,
+        selection: EditorSelection.cursor(at),
+        extensions: [
+          history(),
+          keymap.of([...cmd.markdownKeymap, ...defaultKeymap, ...historyKeymap]),
+          markdownLang({ extensions: [GFM] }),
+        ],
+      }),
+      parent,
+    });
+    view.contentDOM.dispatchEvent(
+      new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', bubbles: true, cancelable: true }),
+    );
+    return view.state.doc.toString();
+  }
+
+  it('closes an open fence', () => {
+    expect(pressEnter('```ts', 5)).toBe('```ts\n\n```');
+  });
+
+  it('still inserts an ordinary newline in prose', () => {
+    expect(pressEnter('hello', 5)).toBe('hello\n');
+  });
+
+  it('still splits a line mid-word', () => {
+    expect(pressEnter('hello', 2)).toBe('he\nllo');
+  });
+
+  it('does not double-close inside an existing block', () => {
+    expect(pressEnter('```ts\nfoo\n```', 5)).toBe('```ts\n\nfoo\n```');
   });
 });
