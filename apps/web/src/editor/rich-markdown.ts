@@ -78,8 +78,29 @@ const CODE_BLOCK_ONLY = Decoration.line({
 });
 
 const hiddenMark = Decoration.mark({ class: 'cm-md-hidden' });
+/** The alignment row hides as a collapsed line rather than as zero-width text. */
+const hiddenAlignRow = Decoration.mark({ class: 'cm-md-hidden' });
 const listBullet = Decoration.mark({ class: 'cm-md-bullet' });
 const linkLabel = Decoration.mark({ class: 'cm-md-link' });
+
+/**
+ * Table decorations.
+ *
+ * A real `<table>` is not on offer here: CodeMirror lays out every line independently, so
+ * making a cell in one row share a column with the row above needs either a widget
+ * replacing the whole block — which takes the text, and the cursor, out of the document —
+ * or per-cell width measurement that fights line wrapping and reruns on every keystroke.
+ *
+ * The editor is monospace, which is the whole reason the pipe format exists: when cells are
+ * padded to equal width the columns line up on their own. So the rendering styles what is
+ * there — header in bold, separators dimmed, the alignment row hidden — and `formatTable`
+ * in the commands module does the aligning as a real edit the user can undo.
+ */
+const tableHeaderCell = Decoration.mark({ class: 'cm-md-th' });
+const tablePipe = Decoration.mark({ class: 'cm-md-table-pipe' });
+const tableRowLine = Decoration.line({ class: 'cm-md-table-row' });
+const tableHeaderLine = Decoration.line({ class: 'cm-md-table-row cm-md-table-head' });
+const alignRowLine = Decoration.line({ class: 'cm-md-table-align' });
 
 /**
  * Ordered-list markers cycle by depth the way Evernote and word processors do:
@@ -575,6 +596,49 @@ function buildDecorations(view: EditorView, options: RichMarkdownOptions): Decor
           return;
         }
 
+        /**
+         * Table rows, headers, and the alignment row.
+         *
+         * Handled from the `Table` node rather than by matching each child as the iteration
+         * reaches it, so the alignment row can be told apart from a cell separator: both are
+         * `TableDelimiter`, and only the alignment row spans its whole line.
+         */
+        if (node.name === 'Table') {
+          const revealed = selectionTouches(state, node.from, node.to);
+
+          for (let row = node.node.firstChild; row; row = row.nextSibling) {
+            const line = state.doc.lineAt(row.from);
+            const isHeader = row.name === 'TableHeader';
+
+            /**
+             * The alignment row carries no data — it exists to declare column alignment,
+             * which the rendering shows by aligning the text itself. Hidden like any other
+             * mark, and revealed with the rest of the table when the cursor is inside.
+             */
+            if (row.name === 'TableDelimiter' && row.from === line.from && row.to === line.to) {
+              if (!revealed) {
+                // The line decoration collapses the row; the mark hides its text. Both are
+                // needed — hiding the text alone leaves an empty row inside the table.
+                marks.push(alignRowLine.range(line.from));
+                if (line.to > line.from) marks.push(hiddenAlignRow.range(line.from, line.to));
+              }
+              continue;
+            }
+
+            if (row.name !== 'TableHeader' && row.name !== 'TableRow') continue;
+            marks.push((isHeader ? tableHeaderLine : tableRowLine).range(line.from));
+
+            for (let cell = row.firstChild; cell; cell = cell.nextSibling) {
+              if (cell.name === 'TableDelimiter') {
+                marks.push(tablePipe.range(cell.from, cell.to));
+              } else if (cell.name === 'TableCell' && isHeader && cell.to > cell.from) {
+                marks.push(tableHeaderCell.range(cell.from, cell.to));
+              }
+            }
+          }
+          return;
+        }
+
         if (node.name === 'Link') {
           const text = state.doc.sliceString(node.from, node.to);
           // A `[…](…)` that does not match is a reference link or footnote: it has no
@@ -816,6 +880,31 @@ export function richMarkdown(options: RichMarkdownOptions = {}): Extension {
         paddingLeft: '0.9rem',
         borderLeft: '3px solid color-mix(in srgb, currentColor 25%, transparent)',
         opacity: '0.85',
+      },
+
+      /**
+       * Tables.
+       *
+       * The columns line up because the editor is monospace and `formatTable` pads the
+       * cells, not because anything here does layout — see the note by the decorations.
+       * These only style what the padding already aligned.
+       */
+      '.cm-md-table-row': {
+        background: 'color-mix(in srgb, currentColor 4%, transparent)',
+      },
+      '.cm-md-table-head': {
+        background: 'color-mix(in srgb, currentColor 8%, transparent)',
+      },
+      '.cm-md-th': { fontWeight: '700' },
+      // Dimmed rather than hidden: the pipes are what make the columns readable as columns.
+      '.cm-md-table-pipe': { opacity: '0.25' },
+
+      /** Collapsed like a code fence: the row exists for the cursor, but shows nothing. */
+      '.cm-md-table-align': {
+        height: '0',
+        overflow: 'hidden',
+        paddingTop: '0',
+        paddingBottom: '0',
       },
 
       '.cm-md-bullet': { color: 'var(--accent)', fontWeight: '600' },

@@ -434,6 +434,263 @@ function hasClosingFence(
   return false;
 }
 
+
+/**
+ * Splits a pipe-table row into its cells.
+ *
+ * The leading and trailing pipes are optional in GFM, and a `\|` escape is a literal pipe
+ * inside a cell rather than a separator, so this cannot be a plain `split('|')`.
+ */
+function splitRow(text: string): string[] {
+  const cells: string[] = [];
+  let cell = '';
+
+  for (let i = 0; i < text.length; i += 1) {
+    const ch = text[i]!;
+    if (ch === '\\' && text[i + 1] === '|') {
+      cell += '\\|';
+      i += 1;
+      continue;
+    }
+    if (ch === '|') {
+      cells.push(cell);
+      cell = '';
+      continue;
+    }
+    cell += ch;
+  }
+  cells.push(cell);
+
+  // Drop the empty strings either side of the outer pipes, when they are present.
+  if (cells.length && cells[0]!.trim() === '') cells.shift();
+  if (cells.length && cells[cells.length - 1]!.trim() === '') cells.pop();
+  return cells.map((c) => c.trim());
+}
+
+/** Alignment declared by one cell of the delimiter row: `:--`, `--:`, `:-:`, or none. */
+type Align = 'left' | 'right' | 'center' | null;
+
+function parseAlign(cell: string): Align {
+  const left = cell.startsWith(':');
+  const right = cell.endsWith(':');
+  if (left && right) return 'center';
+  if (right) return 'right';
+  if (left) return 'left';
+  return null;
+}
+
+/** A delimiter cell is only dashes, optionally colon-bounded. */
+const DELIMITER_CELL = /^:?-+:?$/;
+
+function isDelimiterRow(text: string): boolean {
+  const cells = splitRow(text);
+  return cells.length > 0 && cells.every((c) => DELIMITER_CELL.test(c));
+}
+
+/** Pads `text` to `width`, placing it according to the column's declared alignment. */
+function padCell(text: string, width: number, align: Align): string {
+  const slack = Math.max(0, width - [...text].length);
+  if (align === 'right') return ' '.repeat(slack) + text;
+  if (align === 'center') {
+    const left = Math.floor(slack / 2);
+    return ' '.repeat(left) + text + ' '.repeat(slack - left);
+  }
+  return text + ' '.repeat(slack);
+}
+
+/**
+ * Rewrites the table under the cursor so its columns line up.
+ *
+ * The editor is monospace, so equal-width cells are aligned columns — which is what the
+ * pipe format was designed for and why a table typed by hand is readable at all. This is
+ * an ordinary edit rather than a rendering trick: the alignment is in the file, so it
+ * survives export and reads the same in any other editor.
+ *
+ * Cell contents are never altered, only the padding around them, and the column count is
+ * taken from the widest row so a short row gains the cells it is missing rather than
+ * silently losing data.
+ */
+export const formatTable: StateCommand = ({ state, dispatch }) => {
+  const cursorLine = state.doc.lineAt(state.selection.main.head);
+
+  // Walk out to the full extent of the table, which the cursor may be anywhere inside.
+  let first = cursorLine.number;
+  let last = cursorLine.number;
+  const looksLikeRow = (n: number) => state.doc.line(n).text.includes('|');
+
+  if (!looksLikeRow(cursorLine.number)) return false;
+  while (first > 1 && looksLikeRow(first - 1)) first -= 1;
+  while (last < state.doc.lines && looksLikeRow(last + 1)) last += 1;
+
+  const lines: string[] = [];
+  for (let n = first; n <= last; n += 1) lines.push(state.doc.line(n).text);
+
+  // A table is a header, a delimiter row, and any number of body rows.
+  if (lines.length < 2 || !isDelimiterRow(lines[1] ?? '')) return false;
+
+  const indent = /^\s*/.exec(lines[0] ?? '')?.[0] ?? '';
+  const rows = lines.map(splitRow);
+  const aligns = (rows[1] ?? []).map(parseAlign);
+  const columns = Math.max(...rows.map((r) => r.length));
+
+  const widths: number[] = [];
+  for (let c = 0; c < columns; c += 1) {
+    let width = 3; // a delimiter cell needs `---` at minimum
+    rows.forEach((row, index) => {
+      if (index === 1) return; // the delimiter row is rebuilt, not measured
+      width = Math.max(width, [...(row[c] ?? '')].length);
+    });
+    widths.push(width);
+  }
+
+  const rendered = rows.map((row, index) => {
+    if (index === 1) {
+      const cells = widths.map((width, c) => {
+        const align = aligns[c] ?? null;
+        const dashes = '-'.repeat(Math.max(1, width - (align === 'center' ? 2 : align ? 1 : 0)));
+        if (align === 'center') return `:${dashes}:`;
+        if (align === 'right') return `${dashes}:`;
+        if (align === 'left') return `:${dashes}`;
+        return dashes;
+      });
+      return `${indent}| ${cells.join(' | ')} |`;
+    }
+    const cells = widths.map((width, c) => padCell(row[c] ?? '', width, aligns[c] ?? null));
+    return `${indent}| ${cells.join(' | ')} |`;
+  });
+
+  const next = rendered.join('\n');
+  const from = state.doc.line(first).from;
+  const to = state.doc.line(last).to;
+  if (state.doc.sliceString(from, to) === next) return false;
+
+  dispatch(
+    state.update({
+      changes: { from, to, insert: next },
+      selection: { anchor: Math.min(state.selection.main.head, from + next.length) },
+      scrollIntoView: true,
+    }),
+  );
+  return true;
+};
+
+
+/**
+ * Moves to the next cell of a table, formatting the table on the way.
+ *
+ * Tab between cells is what every table editor does, and it is the natural moment to
+ * re-align: the row has just been finished. Returns false anywhere outside a table so Tab
+ * falls through to list indenting, which is what it does everywhere else.
+ *
+ * At the last cell of the last row this adds a new row rather than escaping the table,
+ * matching a spreadsheet — leaving is what the arrow keys and the mouse are for.
+ */
+export const tableNextCell: StateCommand = ({ state, dispatch }) => {
+  const head = state.selection.main.head;
+  const line = state.doc.lineAt(head);
+  if (!line.text.includes('|')) return false;
+
+  // Only inside a real table: a lone pipe in prose is not one.
+  const next = line.number < state.doc.lines ? state.doc.line(line.number + 1).text : '';
+  const prev = line.number > 1 ? state.doc.line(line.number - 1).text : '';
+  const inTable =
+    isDelimiterRow(next) || isDelimiterRow(prev) || isDelimiterRow(line.text) || hasDelimiterAbove(state, line.number);
+  if (!inTable) return false;
+
+  /**
+   * Which cell the cursor is in, counted before formatting.
+   *
+   * Formatting rewrites the whole table, so a character offset taken beforehand means
+   * nothing afterwards — the cursor has to be re-derived from the cell index rather than
+   * carried across as a position. This counts the separators to the cursor's left.
+   */
+  const cellIndex = countCellsBefore(line.text, head - line.from);
+
+  /**
+   * Formatting runs first so the offsets below are the ones the user will see, but its
+   * transaction is captured rather than dispatched.
+   *
+   * Both the reformat and the cursor move have to reach the editor as a single
+   * transaction. Dispatching a selection-only update built from the formatted state
+   * against the editor's current state silently drops the text changes — the offsets are
+   * interpreted, the edits are not — so Tab appeared to do nothing at all.
+   */
+  let working = state;
+  let changes: ChangeSpec | null = null;
+  formatTable({
+    state,
+    dispatch: (tr) => {
+      working = tr.state;
+      changes = tr.changes;
+    },
+  });
+
+  const formattedLine = working.doc.line(Math.min(line.number, working.doc.lines));
+  const pipes = pipePositions(formattedLine.text).map((at) => at + formattedLine.from);
+
+  /**
+   * The pipe opening the cell after the cursor's own.
+   *
+   * `pipes[cellIndex + 1]` because a row starts with a leading pipe: cell 0 sits between
+   * pipes 0 and 1, so the cell after it opens at pipe 1 + its index.
+   */
+  const target = pipes[cellIndex + 1];
+  const anchor =
+    target !== undefined && target + 2 <= formattedLine.to
+      ? target + 2
+      : nextRowStart(working, formattedLine.number);
+
+  dispatch(
+    state.update({
+      ...(changes ? { changes } : {}),
+      selection: { anchor },
+      scrollIntoView: true,
+    }),
+  );
+  return true;
+};
+
+
+/** Byte offsets of the unescaped `|` characters in a row. */
+function pipePositions(text: string): number[] {
+  const out: number[] = [];
+  for (let i = 0; i < text.length; i += 1) {
+    if (text[i] === '|' && text[i - 1] !== '\\') out.push(i);
+  }
+  return out;
+}
+
+/**
+ * How many cells begin before `offset` in a row, which survives a reformat when a raw
+ * character position does not.
+ */
+function countCellsBefore(text: string, offset: number): number {
+  return pipePositions(text).filter((at) => at < offset).length - 1;
+}
+
+/** Whether a delimiter row sits somewhere above this line without prose in between. */
+function hasDelimiterAbove(state: EditorState, lineNumber: number): boolean {
+  for (let n = lineNumber - 1; n >= 1; n -= 1) {
+    const text = state.doc.line(n).text;
+    if (!text.includes('|')) return false;
+    if (isDelimiterRow(text)) return true;
+  }
+  return false;
+}
+
+/**
+ * The first cell of the row below, adding one when the cursor is in the last row.
+ *
+ * Tab off the end of a table should extend it, the way it does in a spreadsheet.
+ */
+function nextRowStart(state: EditorState, lineNumber: number): number {
+  if (lineNumber < state.doc.lines) {
+    const below = state.doc.line(lineNumber + 1);
+    if (below.text.includes('|')) return Math.min(below.from + 2, below.to);
+  }
+  return state.doc.line(lineNumber).to;
+}
+
 const tabIndent: StateCommand = (target) => indentList(target);
 const shiftTabOutdent: StateCommand = (target) => outdentList(target);
 
@@ -449,6 +706,9 @@ export const markdownKeymap: KeyBinding[] = [
    * doing two different things depending on a modifier that means nothing here.
    */
   { key: 'Enter', run: closeCodeFence, shift: closeCodeFence },
+  // Before list indenting: inside a table Tab moves between cells, and `tableNextCell`
+  // returns false everywhere else so Tab keeps its usual meaning.
+  { key: 'Tab', run: tableNextCell },
   { key: 'Tab', run: tabIndent },
   { key: 'Shift-Tab', run: shiftTabOutdent },
   { key: 'Mod-b', run: toggleBold, preventDefault: true },
@@ -461,4 +721,5 @@ export const markdownKeymap: KeyBinding[] = [
   { key: 'Mod-Alt-3', run: toggleH3, preventDefault: true },
   { key: 'Mod-Shift-9', run: toggleQuote, preventDefault: true },
   { key: 'Mod-Shift-8', run: toggleBullet, preventDefault: true },
+  { key: 'Mod-Shift-f', run: formatTable, preventDefault: true },
 ];

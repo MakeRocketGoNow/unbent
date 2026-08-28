@@ -518,3 +518,168 @@ describe('Enter through the real keymap', () => {
     expect(pressEnter(doc, doc.length)).toBe('- item\n  ```ts\n  foo\n  ```\n  ');
   });
 });
+
+describe('formatTable', () => {
+  function fmt(doc: string, at: number) {
+    let state = EditorState.create({ doc, selection: EditorSelection.single(at) });
+    const handled = cmd.formatTable({
+      state,
+      dispatch: (tr) => {
+        state = tr.state;
+      },
+    });
+    return { handled, out: state.doc.toString() };
+  }
+
+  it('pads cells so columns line up', () => {
+    const r = fmt('|Month|Savings|\n|-|-|\n|January|$250|', 3);
+    expect(r.out).toBe(
+      '| Month   | Savings |\n| ------- | ------- |\n| January | $250    |',
+    );
+  });
+
+  /** Monospace plus equal-width cells is what makes the columns readable. */
+  it('gives every row the same width', () => {
+    const r = fmt('|A|B|\n|-|-|\n|xx|y|\n|z|wwww|', 2);
+    const widths = r.out.split('\n').map((l) => l.length);
+    expect(new Set(widths).size).toBe(1);
+  });
+
+  it('keeps alignment markers and pushes right-aligned text right', () => {
+    const r = fmt('| A | B |\n| :-- | --: |\n| x | 1 |\n| longer | 22 |', 3);
+    expect(r.out).toBe('| A      |   B |\n| :----- | --: |\n| x      |   1 |\n| longer |  22 |');
+  });
+
+  it('centres a centred column', () => {
+    const r = fmt('| A |\n| :-: |\n| xxxx |\n| y |', 3);
+    expect(r.out).toBe('|  A   |\n| :--: |\n| xxxx |\n|  y   |');
+  });
+
+  /** A short row must gain cells, never have its data dropped. */
+  it('pads a row that is missing cells', () => {
+    const r = fmt('| A | B | C |\n| - | - | - |\n| x |', 3);
+    expect(r.out).toBe('| A   | B   | C   |\n| --- | --- | --- |\n| x   |     |     |');
+  });
+
+  /** An escaped pipe is content, not a separator. */
+  it('does not split on an escaped pipe', () => {
+    const r = fmt('| A | B |\n| - | - |\n| a \\| b | c |', 3);
+    expect(r.out).toContain('a \\| b');
+    expect(r.out.split('\n')[2]).toBe('| a \\| b | c   |');
+  });
+
+  it('preserves the indent of a table inside a list item', () => {
+    const r = fmt('- item\n  |A|B|\n  |-|-|\n  |x|y|', 10);
+    expect(r.out).toBe('- item\n  | A   | B   |\n  | --- | --- |\n  | x   | y   |');
+  });
+
+  /** Running it twice must not keep growing the padding. */
+  it('is idempotent', () => {
+    const once = fmt('|Month|Savings|\n|-|-|\n|January|$250|', 3).out;
+    const twice = fmt(once, 3);
+    expect(twice.handled).toBe(false);
+    expect(twice.out).toBe(once);
+  });
+
+  it('does nothing without a delimiter row', () => {
+    const r = fmt('| just | pipes |\n| more | text |', 3);
+    expect(r.handled).toBe(false);
+  });
+
+  it('does nothing in ordinary prose', () => {
+    expect(fmt('no table here', 3).handled).toBe(false);
+  });
+});
+
+describe('tableNextCell', () => {
+  function tab(doc: string, at: number) {
+    let state = EditorState.create({ doc, selection: EditorSelection.single(at) });
+    const handled = cmd.tableNextCell({
+      state,
+      dispatch: (tr) => {
+        state = tr.state;
+      },
+    });
+    return { handled, out: state.doc.toString(), cursor: state.selection.main.head };
+  }
+
+  /**
+   * Asserted on the character landed on rather than an offset: formatting rewrites the
+   * table, so a position taken before it means nothing after.
+   */
+  it('moves to the next cell', () => {
+    const doc = '| A | B |\n| - | - |\n| x | y |';
+    const r = tab(doc, doc.indexOf('x'));
+    expect(r.out[r.cursor]).toBe('y');
+  });
+
+  it('formats the table on the way', () => {
+    const r = tab('|A|B|\n|-|-|\n|xx|y|', 2);
+    expect(r.out).toBe('| A   | B   |\n| --- | --- |\n| xx  | y   |');
+  });
+
+  /** Tab off the last cell extends the table, the way a spreadsheet does. */
+  it('moves into the row below from the last cell', () => {
+    const doc = '| A | B |\n| - | - |\n| x | y |\n| z | w |';
+    const r = tab(doc, doc.indexOf('y'));
+    expect(r.out[r.cursor]).toBe('z');
+  });
+
+  it('does nothing in prose so Tab still indents lists', () => {
+    expect(tab('- item', 6).handled).toBe(false);
+  });
+
+  /** A lone pipe in a sentence is not a table. */
+  it('does nothing on a stray pipe', () => {
+    expect(tab('a | b', 3).handled).toBe(false);
+  });
+
+  /**
+   * Driven through the real keymap, because calling the command directly hid a bug the
+   * editor showed immediately: the reformat and the cursor move have to arrive as one
+   * transaction, and dispatching a selection built from the formatted state against the
+   * editor's own state dropped the edits, so Tab appeared to do nothing.
+   */
+  describe('through the real keymap', () => {
+    let view: EditorView | undefined;
+
+    afterEach(() => {
+      view?.destroy();
+      view = undefined;
+    });
+
+    function pressTab(doc: string, at: number): { doc: string; cursorChar: string } {
+      const parent = document.createElement('div');
+      document.body.appendChild(parent);
+      view = new EditorView({
+        state: EditorState.create({
+          doc,
+          selection: EditorSelection.cursor(at),
+          extensions: [
+            history(),
+            keymap.of([...cmd.markdownKeymap, ...defaultKeymap, ...historyKeymap]),
+            markdownLang({ extensions: [GFM] }),
+          ],
+        }),
+        parent,
+      });
+      view.contentDOM.dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'Tab', code: 'Tab', bubbles: true, cancelable: true }),
+      );
+      const out = view.state.doc.toString();
+      return { doc: out, cursorChar: out[view.state.selection.main.head] ?? '' };
+    }
+
+    it('formats the table and advances', () => {
+      const doc = '|Month|Savings|\n|-|-|\n|January|$250|';
+      const r = pressTab(doc, doc.indexOf('January'));
+      expect(r.doc).toBe('| Month   | Savings |\n| ------- | ------- |\n| January | $250    |');
+      expect(r.cursorChar).toBe('$');
+    });
+
+    it('still indents a list', () => {
+      const doc = '- one\n- two';
+      expect(pressTab(doc, doc.length).doc).toBe('- one\n  - two');
+    });
+  });
+});

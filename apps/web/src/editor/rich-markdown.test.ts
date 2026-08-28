@@ -598,3 +598,53 @@ describe('link rendering', () => {
     expect(v.dom.querySelector('.cm-md-link')?.textContent).toBe('Anthropic');
   });
 });
+
+describe('tables', () => {
+  const doc = '| Month | Savings |\n| --- | ---: |\n| Jan | $250 |';
+  const away = `${doc}\n\nplain`;
+
+  it('marks header and body rows', () => {
+    const v = mount(away, away.length);
+    expect(lineClasses(v, 1)).toContain('cm-md-table-head');
+    expect(lineClasses(v, 3)).toContain('cm-md-table-row');
+    expect(lineClasses(v, 3)).not.toContain('cm-md-table-head');
+  });
+
+  /** The alignment row declares alignment; the padding already shows it. */
+  it('collapses the alignment row', () => {
+    const v = mount(away, away.length);
+    expect(lineClasses(v, 2)).toContain('cm-md-table-align');
+    expect(visibleText(v, 2)).toBe('');
+  });
+
+  it('reveals the alignment row with the cursor in the table', () => {
+    const v = mount(doc, doc.indexOf('Jan'));
+    expect(lineClasses(v, 2)).not.toContain('cm-md-table-align');
+    expect(visibleText(v, 2)).toContain('---');
+  });
+
+  it('bolds the header cells', () => {
+    const v = mount(away, away.length);
+    const cells = [...v.dom.querySelectorAll('.cm-md-th')].map((el) => el.textContent);
+    expect(cells).toEqual(['Month', 'Savings']);
+  });
+
+  /** Dimmed rather than hidden: the pipes are what make the columns read as columns. */
+  it('keeps the separators visible', () => {
+    const v = mount(away, away.length);
+    expect(visibleText(v, 1)).toContain('|');
+    expect(v.dom.querySelector('.cm-md-table-pipe')).not.toBeNull();
+  });
+
+  it('never rewrites the document', () => {
+    const v = mount(away, away.length);
+    expect(v.state.doc.toString()).toBe(away);
+  });
+
+  /** A table still being typed is a paragraph until it parses; nothing should be styled. */
+  it('does not style an incomplete table', () => {
+    const partial = '| Month | Savings |\n| --- |';
+    const v = mount(partial, 0);
+    expect(lineClasses(v, 1)).not.toContain('cm-md-table');
+  });
+});
