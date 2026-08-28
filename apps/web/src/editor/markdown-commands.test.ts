@@ -683,3 +683,130 @@ describe('tableNextCell', () => {
     });
   });
 });
+
+describe('table structure', () => {
+  const T = '| Month | Savings |\n| --- | --- |\n| Jan | $250 |\n| Feb | $80 |';
+
+  function run(command: StateCommand, doc: string, at: number) {
+    let state = EditorState.create({ doc, selection: EditorSelection.single(at) });
+    const handled = command({
+      state,
+      dispatch: (tr) => {
+        state = tr.state;
+      },
+    });
+    const out = state.doc.toString();
+    return { handled, out, cursorChar: out[state.selection.main.head] ?? '' };
+  }
+
+  it('adds a column after the cursor', () => {
+    const r = run(cmd.addColumnAfter, T, T.indexOf('Month'));
+    expect(r.out).toBe(
+      '| Month |     | Savings |\n| ----- | --- | ------- |\n' +
+        '| Jan   |     | $250    |\n| Feb   |     | $80     |',
+    );
+  });
+
+  it('adds a column before the cursor', () => {
+    const r = run(cmd.addColumnBefore, T, T.indexOf('Savings'));
+    expect(r.out.split('\n')[0]).toBe('| Month |     | Savings |');
+  });
+
+  it('adds a row below the cursor', () => {
+    const r = run(cmd.addRowAfter, T, T.indexOf('Jan'));
+    expect(r.out.split('\n')[3]).toBe('|       |         |');
+  });
+
+  it('deletes the cursor column', () => {
+    const r = run(cmd.deleteColumn, T, T.indexOf('Savings'));
+    expect(r.out).toBe('| Month |\n| ----- |\n| Jan   |\n| Feb   |');
+  });
+
+  it('deletes the cursor row', () => {
+    const r = run(cmd.deleteRow, T, T.indexOf('Jan'));
+    expect(r.out).toBe('| Month | Savings |\n| ----- | ------- |\n| Feb   | $80     |');
+  });
+
+  /** A table with no columns renders as bare pipes, so the last one stays. */
+  it('refuses to delete the only column', () => {
+    const one = '| A |\n| - |\n| x |';
+    expect(run(cmd.deleteColumn, one, one.indexOf('A')).handled).toBe(false);
+  });
+
+  /**
+   * Deleting the header would silently promote the first body row into one, which is a
+   * data change disguised as a structural edit.
+   */
+  it('refuses to delete the header row', () => {
+    expect(run(cmd.deleteRow, T, T.indexOf('Month')).handled).toBe(false);
+  });
+
+  it('refuses to delete the last body row', () => {
+    const one = '| A |\n| - |\n| x |';
+    expect(run(cmd.deleteRow, one, one.indexOf('x')).handled).toBe(false);
+  });
+
+  /** Alignment has to re-pad the values, not just rewrite the delimiter. */
+  it('aligns a column right and repads it', () => {
+    const r = run(cmd.alignColumn('right'), T, T.indexOf('Savings'));
+    expect(r.out).toBe(
+      '| Month | Savings |\n| ----- | ------: |\n| Jan   |    $250 |\n| Feb   |     $80 |',
+    );
+  });
+
+  it('centres a column', () => {
+    const r = run(cmd.alignColumn('center'), T, T.indexOf('Savings'));
+    expect(r.out.split('\n')[1]).toBe('| ----- | :-----: |');
+  });
+
+  it('deletes the whole table', () => {
+    const r = run(cmd.deleteTable, `${T}\n\nafter`, T.indexOf('Jan'));
+    expect(r.out).toBe('\nafter');
+  });
+
+  /** Structural edits must keep the cursor in its cell, not at a stale offset. */
+  it('keeps the cursor in the cell it was in', () => {
+    const r = run(cmd.addRowAfter, T, T.indexOf('$250'));
+    expect(r.handled).toBe(true);
+    // The new row is empty, so the cursor lands at its first cell.
+    expect(r.out.split('\n')[3]).toBe('|       |         |');
+  });
+
+  it('does nothing outside a table', () => {
+    expect(run(cmd.addColumnAfter, 'just prose', 3).handled).toBe(false);
+    expect(run(cmd.deleteTable, 'just prose', 3).handled).toBe(false);
+  });
+
+  describe('buildTable', () => {
+    it('builds a header plus the requested body rows', () => {
+      expect(cmd.buildTable(2, 3)).toBe(
+        '|     |     |     |\n| --- | --- | --- |\n|     |     |     |\n|     |     |     |',
+      );
+    });
+
+    it('carries an indent', () => {
+      expect(cmd.buildTable(1, 1, '  ').split('\n')[0]).toBe('  |     |');
+    });
+  });
+
+  describe('insertTableCommand', () => {
+    it('inserts a starter table on a blank line', () => {
+      const r = run(cmd.insertTableCommand, '', 0);
+      expect(r.out.split('\n').length).toBe(5);
+      expect(r.out.split('\n')[1]).toBe('| --- | --- | --- |');
+    });
+
+    /** A table written mid-sentence parses as a paragraph, so it must open a line. */
+    it('opens a new line when the cursor is in text', () => {
+      const r = run(cmd.insertTableCommand, 'some prose', 10);
+      expect(r.out.startsWith('some prose\n|')).toBe(true);
+    });
+
+    it('leaves the cursor in the first header cell', () => {
+      const r = run(cmd.insertTableCommand, '', 0);
+      // The cell is blank, so the character there is the padding before the next pipe.
+      expect(r.out.slice(0, 2)).toBe('| ');
+      expect(r.cursorChar).toBe(' ');
+    });
+  });
+});

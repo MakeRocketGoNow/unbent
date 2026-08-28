@@ -42,6 +42,9 @@ const ACTIONS: Action[] = [
   { label: '•', title: 'Bullet list (⌘⇧8)', run: cmd.toggleBullet },
   { label: '☑', title: 'Task list', run: cmd.toggleTask },
   { label: '🔗', title: 'Link (⌘K)', run: cmd.insertLink },
+  // The way a first table is made: the table toolbar's size picker only appears once the
+  // cursor is already inside one.
+  { label: '▦', title: 'Table (⌘⇧T)', run: cmd.insertTableCommand },
 ];
 
 export function EditorToolbar({ view, preview }: EditorToolbarProps) {

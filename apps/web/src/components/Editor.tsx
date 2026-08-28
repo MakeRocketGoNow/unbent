@@ -8,6 +8,7 @@ import { languages } from '@codemirror/language-data';
 import { formatAttachmentMarkdown } from '@unbent/shared';
 import { richMarkdown } from '../editor/rich-markdown.js';
 import { markdownKeymap } from '../editor/markdown-commands.js';
+import { tableTools } from '../editor/table-toolbar.js';
 
 interface EditorProps {
   /** Changes to this remount the editor; it is not a controlled value. */
@@ -58,6 +59,9 @@ export function Editor({
           // GFM parses task lists, tables, and strikethrough, which plain CommonMark
           // would leave as literal text — `[x]` otherwise reads as a link.
           markdown({ codeLanguages: languages, extensions: [GFM] }),
+          // Structural table editing, which is what markdown tables are worst at by hand.
+          // Only in rich mode: in plain source the point is to see the pipes.
+          ...(rich ? [tableTools()] : []),
           ...(rich
             ? [
                 richMarkdown({

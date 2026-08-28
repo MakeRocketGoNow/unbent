@@ -510,70 +510,342 @@ function padCell(text: string, width: number, align: Align): string {
  * taken from the widest row so a short row gains the cells it is missing rather than
  * silently losing data.
  */
-export const formatTable: StateCommand = ({ state, dispatch }) => {
-  const cursorLine = state.doc.lineAt(state.selection.main.head);
+/**
+ * A table read out of the document: its extent, its cells, and its column alignments.
+ *
+ * The header and body are kept as one `rows` array with the delimiter row removed, because
+ * every structural operation — adding a column, deleting a row — has to treat the header
+ * as just another row. Alignment lives in `aligns` instead, one entry per column.
+ */
+export interface TableModel {
+  /** Document offsets of the whole table, delimiter row included. */
+  from: number;
+  to: number;
+  /** First and last line numbers, for mapping the cursor back afterwards. */
+  firstLine: number;
+  lastLine: number;
+  /** Leading whitespace, so a table inside a list item keeps its indent. */
+  indent: string;
+  /** Header first, then body. The delimiter row is not here — see `aligns`. */
+  rows: string[][];
+  aligns: Align[];
+}
 
-  // Walk out to the full extent of the table, which the cursor may be anywhere inside.
+/**
+ * Reads the table containing `pos`, or null when there is not one there.
+ *
+ * A table is a header line, a delimiter row, and any number of body rows. The delimiter
+ * row is what distinguishes a table from prose that happens to contain a pipe, so its
+ * absence is the check that rejects everything else.
+ */
+export function readTable(state: EditorState, pos: number): TableModel | null {
+  const cursorLine = state.doc.lineAt(pos);
+  const looksLikeRow = (n: number) => state.doc.line(n).text.includes('|');
+  if (!looksLikeRow(cursorLine.number)) return null;
+
   let first = cursorLine.number;
   let last = cursorLine.number;
-  const looksLikeRow = (n: number) => state.doc.line(n).text.includes('|');
-
-  if (!looksLikeRow(cursorLine.number)) return false;
   while (first > 1 && looksLikeRow(first - 1)) first -= 1;
   while (last < state.doc.lines && looksLikeRow(last + 1)) last += 1;
 
   const lines: string[] = [];
   for (let n = first; n <= last; n += 1) lines.push(state.doc.line(n).text);
+  if (lines.length < 2 || !isDelimiterRow(lines[1] ?? '')) return null;
 
-  // A table is a header, a delimiter row, and any number of body rows.
-  if (lines.length < 2 || !isDelimiterRow(lines[1] ?? '')) return false;
+  const parsed = lines.map(splitRow);
+  const aligns = (parsed[1] ?? []).map(parseAlign);
+  // Drop the delimiter row; it is rebuilt from `aligns` on the way out.
+  const rows = parsed.filter((_, index) => index !== 1);
+  const columns = Math.max(...rows.map((r) => r.length), aligns.length);
 
-  const indent = /^\s*/.exec(lines[0] ?? '')?.[0] ?? '';
-  const rows = lines.map(splitRow);
-  const aligns = (rows[1] ?? []).map(parseAlign);
-  const columns = Math.max(...rows.map((r) => r.length));
+  return {
+    from: state.doc.line(first).from,
+    to: state.doc.line(last).to,
+    firstLine: first,
+    lastLine: last,
+    indent: /^\s*/.exec(lines[0] ?? '')?.[0] ?? '',
+    // Square the grid so every operation can index without checking for holes.
+    rows: rows.map((row) => Array.from({ length: columns }, (_, c) => row[c] ?? '')),
+    aligns: Array.from({ length: columns }, (_, c) => aligns[c] ?? null),
+  };
+}
+
+/**
+ * Renders a table back to markdown with its columns padded to equal width.
+ *
+ * The editor is monospace, so equal-width cells are aligned columns — that is what the
+ * pipe format was designed for and why a table typed by hand is readable at all.
+ */
+export function renderTable(table: TableModel): string {
+  const columns = table.aligns.length;
 
   const widths: number[] = [];
   for (let c = 0; c < columns; c += 1) {
-    let width = 3; // a delimiter cell needs `---` at minimum
-    rows.forEach((row, index) => {
-      if (index === 1) return; // the delimiter row is rebuilt, not measured
-      width = Math.max(width, [...(row[c] ?? '')].length);
-    });
+    // A delimiter cell needs `---` at minimum, so no column is narrower than that.
+    let width = 3;
+    for (const row of table.rows) width = Math.max(width, [...(row[c] ?? '')].length);
     widths.push(width);
   }
 
-  const rendered = rows.map((row, index) => {
-    if (index === 1) {
-      const cells = widths.map((width, c) => {
-        const align = aligns[c] ?? null;
-        const dashes = '-'.repeat(Math.max(1, width - (align === 'center' ? 2 : align ? 1 : 0)));
-        if (align === 'center') return `:${dashes}:`;
-        if (align === 'right') return `${dashes}:`;
-        if (align === 'left') return `:${dashes}`;
-        return dashes;
-      });
-      return `${indent}| ${cells.join(' | ')} |`;
-    }
-    const cells = widths.map((width, c) => padCell(row[c] ?? '', width, aligns[c] ?? null));
-    return `${indent}| ${cells.join(' | ')} |`;
+  const delimiter = widths.map((width, c) => {
+    const align = table.aligns[c] ?? null;
+    const dashes = '-'.repeat(Math.max(1, width - (align === 'center' ? 2 : align ? 1 : 0)));
+    if (align === 'center') return `:${dashes}:`;
+    if (align === 'right') return `${dashes}:`;
+    if (align === 'left') return `:${dashes}`;
+    return dashes;
   });
 
-  const next = rendered.join('\n');
-  const from = state.doc.line(first).from;
-  const to = state.doc.line(last).to;
-  if (state.doc.sliceString(from, to) === next) return false;
+  const line = (cells: string[]) => `${table.indent}| ${cells.join(' | ')} |`;
+  const body = table.rows.map((row) =>
+    line(widths.map((width, c) => padCell(row[c] ?? '', width, table.aligns[c] ?? null))),
+  );
+
+  // Header, delimiter, then the rest — the delimiter always sits second.
+  return [body[0] ?? line(widths.map(() => '')), line(delimiter), ...body.slice(1)].join('\n');
+}
+
+export const formatTable: StateCommand = ({ state, dispatch }) => {
+  const table = readTable(state, state.selection.main.head);
+  if (!table) return false;
+
+  const next = renderTable(table);
+  if (state.doc.sliceString(table.from, table.to) === next) return false;
 
   dispatch(
     state.update({
-      changes: { from, to, insert: next },
-      selection: { anchor: Math.min(state.selection.main.head, from + next.length) },
+      changes: { from: table.from, to: table.to, insert: next },
+      selection: { anchor: Math.min(state.selection.main.head, table.from + next.length) },
       scrollIntoView: true,
     }),
   );
   return true;
 };
 
+
+
+/**
+ * Where the cursor sits inside a table, as a grid coordinate.
+ *
+ * Row and column survive a reformat; a character offset does not, because rewriting the
+ * table moves every position in it.
+ */
+export interface CellRef {
+  row: number;
+  column: number;
+}
+
+/** The cell containing `pos`, or null when `pos` is not inside `table`. */
+export function cellAt(state: EditorState, table: TableModel, pos: number): CellRef | null {
+  const line = state.doc.lineAt(pos);
+  if (line.number < table.firstLine || line.number > table.lastLine) return null;
+
+  // The delimiter row is not in `rows`, so lines below it shift up by one.
+  const delimiterLine = table.firstLine + 1;
+  if (line.number === delimiterLine) return null;
+  const row = line.number < delimiterLine ? 0 : line.number - table.firstLine - 1;
+
+  return { row, column: Math.max(0, countCellsBefore(line.text, pos - line.from)) };
+}
+
+/**
+ * The document offset of a cell's first character, for placing the cursor after an edit.
+ *
+ * Derived from the rendered text rather than tracked through the change, because a
+ * structural edit rewrites the whole table and no original position survives it.
+ */
+export function cellOffset(rendered: string, from: number, cell: CellRef): number {
+  const lines = rendered.split('\n');
+  // Map the model row back onto a rendered line, skipping the delimiter row.
+  const lineIndex = cell.row === 0 ? 0 : cell.row + 1;
+  const line = lines[Math.min(lineIndex, lines.length - 1)] ?? '';
+
+  let offset = 0;
+  for (let i = 0; i < Math.min(lineIndex, lines.length); i += 1) {
+    offset += (lines[i] ?? '').length + 1;
+  }
+
+  const pipes = pipePositions(line);
+  // Cell `n` opens two characters after pipe `n` — the pipe and the padding space.
+  const at = pipes[cell.column];
+  return from + offset + (at === undefined ? line.length : Math.min(at + 2, line.length));
+}
+
+/**
+ * Rewrites the table under the cursor, keeping the cursor in the same cell.
+ *
+ * Every structural operation goes through here so they all share the one hard part: a
+ * table edit rewrites the entire block, so the cursor has to be re-derived from its grid
+ * position rather than carried across as an offset.
+ */
+function editTable(
+  state: EditorState,
+  dispatch: (tr: import('@codemirror/state').Transaction) => void,
+  change: (table: TableModel, cell: CellRef) => CellRef | null,
+): boolean {
+  const head = state.selection.main.head;
+  const table = readTable(state, head);
+  if (!table) return false;
+
+  const cell = cellAt(state, table, head) ?? { row: 0, column: 0 };
+  const next = change(table, cell);
+  if (!next) return false;
+
+  const rendered = renderTable(table);
+  dispatch(
+    state.update({
+      changes: { from: table.from, to: table.to, insert: rendered },
+      selection: { anchor: cellOffset(rendered, table.from, next) },
+      scrollIntoView: true,
+    }),
+  );
+  return true;
+}
+
+/** Inserts a column at `index`, giving every row — header included — an empty cell. */
+export function insertColumn(table: TableModel, index: number): void {
+  for (const row of table.rows) row.splice(index, 0, '');
+  table.aligns.splice(index, 0, null);
+}
+
+/** Removes column `index`. */
+export function removeColumn(table: TableModel, index: number): void {
+  for (const row of table.rows) row.splice(index, 1);
+  table.aligns.splice(index, 1);
+}
+
+/** Inserts an empty row at `index`. Index 0 is the header, which cannot be displaced. */
+export function insertRow(table: TableModel, index: number): void {
+  table.rows.splice(index, 0, table.aligns.map(() => ''));
+}
+
+export const addColumnAfter: StateCommand = ({ state, dispatch }) =>
+  editTable(state, dispatch, (table, cell) => {
+    insertColumn(table, cell.column + 1);
+    return { row: cell.row, column: cell.column + 1 };
+  });
+
+export const addColumnBefore: StateCommand = ({ state, dispatch }) =>
+  editTable(state, dispatch, (table, cell) => {
+    insertColumn(table, cell.column);
+    return cell;
+  });
+
+/**
+ * Deletes the cursor's column, unless it is the only one.
+ *
+ * A table with no columns is not a table — it renders as a run of bare pipes — so the last
+ * column stays and the user deletes the table instead.
+ */
+export const deleteColumn: StateCommand = ({ state, dispatch }) =>
+  editTable(state, dispatch, (table, cell) => {
+    if (table.aligns.length <= 1) return null;
+    removeColumn(table, cell.column);
+    return { row: cell.row, column: Math.max(0, cell.column - 1) };
+  });
+
+export const addRowAfter: StateCommand = ({ state, dispatch }) =>
+  editTable(state, dispatch, (table, cell) => {
+    insertRow(table, cell.row + 1);
+    return { row: cell.row + 1, column: 0 };
+  });
+
+export const addRowBefore: StateCommand = ({ state, dispatch }) =>
+  editTable(state, dispatch, (table, cell) => {
+    // Above the header would put a body row where the header must be.
+    const at = Math.max(1, cell.row);
+    insertRow(table, at);
+    return { row: at, column: 0 };
+  });
+
+/**
+ * Deletes the cursor's row.
+ *
+ * The header is not deletable: a table without one has no delimiter row to describe, and
+ * removing it would silently promote the first body row into a header.
+ */
+export const deleteRow: StateCommand = ({ state, dispatch }) =>
+  editTable(state, dispatch, (table, cell) => {
+    if (cell.row === 0 || table.rows.length <= 2) return null;
+    table.rows.splice(cell.row, 1);
+    return { row: Math.max(1, cell.row - 1), column: cell.column };
+  });
+
+/** Sets the alignment of the cursor's column. */
+export function alignColumn(align: Align): StateCommand {
+  return ({ state, dispatch }) =>
+    editTable(state, dispatch, (table, cell) => {
+      if (table.aligns[cell.column] === align) return null;
+      table.aligns[cell.column] = align;
+      return cell;
+    });
+}
+
+/** Removes the whole table, leaving the surrounding text joined up. */
+export const deleteTable: StateCommand = ({ state, dispatch }) => {
+  const table = readTable(state, state.selection.main.head);
+  if (!table) return false;
+
+  // Take the newline that followed the table too, so no blank line is left behind.
+  const to = Math.min(state.doc.length, table.to + 1);
+  dispatch(
+    state.update({
+      changes: { from: table.from, to },
+      selection: { anchor: table.from },
+      scrollIntoView: true,
+    }),
+  );
+  return true;
+};
+
+/**
+ * Builds an empty table of the given size, ready to type into.
+ *
+ * Written as text like everything else here, so an inserted table is an ordinary edit the
+ * user can undo in one step.
+ */
+export function buildTable(rows: number, columns: number, indent = ''): string {
+  const model: TableModel = {
+    from: 0,
+    to: 0,
+    firstLine: 0,
+    lastLine: 0,
+    indent,
+    // One header row plus `rows` body rows.
+    rows: Array.from({ length: rows + 1 }, () => Array.from({ length: columns }, () => '')),
+    aligns: Array.from({ length: columns }, () => null),
+  };
+  return renderTable(model);
+}
+
+
+/**
+ * Inserts a starter table at the cursor.
+ *
+ * The toolbar's size picker only exists once the cursor is inside a table, so it cannot be
+ * how the first one is made. This is the way in — a 2×3 to type over, which is the size
+ * most tables start at.
+ */
+export const insertTableCommand: StateCommand = ({ state, dispatch }) => {
+  const line = state.doc.lineAt(state.selection.main.head);
+  const indent = /^\s*/.exec(line.text)?.[0] ?? '';
+  const table = buildTable(2, 3, indent);
+
+  // A table has to begin a line; one written mid-sentence parses as a paragraph.
+  const onBlankLine = line.text.trim() === '';
+  const from = onBlankLine ? line.from : line.to;
+  const insert = onBlankLine ? `${table}\n` : `\n${table}\n`;
+
+  dispatch(
+    state.update({
+      changes: { from, to: onBlankLine ? line.to : from, insert },
+      // Land in the first header cell, past the indent and the leading `| `.
+      selection: { anchor: from + (onBlankLine ? 0 : 1) + indent.length + 2 },
+      scrollIntoView: true,
+    }),
+  );
+  return true;
+};
 
 /**
  * Moves to the next cell of a table, formatting the table on the way.
@@ -722,4 +994,5 @@ export const markdownKeymap: KeyBinding[] = [
   { key: 'Mod-Shift-9', run: toggleQuote, preventDefault: true },
   { key: 'Mod-Shift-8', run: toggleBullet, preventDefault: true },
   { key: 'Mod-Shift-f', run: formatTable, preventDefault: true },
+  { key: 'Mod-Shift-t', run: insertTableCommand, preventDefault: true },
 ];
