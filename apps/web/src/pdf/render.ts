@@ -103,15 +103,88 @@ export async function loadPdf(url: string, signal?: AbortSignal): Promise<Loaded
       canvas.style.width = `${Math.floor(viewport.width)}px`;
       canvas.style.height = `${Math.floor(viewport.height)}px`;
 
-      const ctx = canvas.getContext('2d');
-      if (!ctx) throw new Error('Canvas 2D context unavailable');
-      ctx.scale(dpr, dpr);
-
-      await page.render({ canvas, canvasContext: ctx, viewport }).promise;
+      /**
+       * `canvas` alone, and the device-pixel scale as a `transform`.
+       *
+       * pdf.js 6 treats `canvas` and `canvasContext` as alternatives, and when both are
+       * given it keeps the canvas and drops the context outright
+       * (`_canvasContext = params.canvas ? null : params.canvasContext`). It then fetches
+       * its own context with `{ alpha: false }`. So a `ctx.scale(dpr, dpr)` applied to a
+       * context passed in here was being silently discarded: pages drew at 1x into a
+       * canvas sized for 2x, filling a quarter of it and leaving the rest blank.
+       *
+       * `transform` is where pdf.js wants that scale, and it survives because pdf.js
+       * applies it to the context it built itself.
+       */
+      await page.render({
+        canvas,
+        viewport,
+        // `undefined` rather than `null` at 1x: pdf.js defaults the parameter to null
+        // itself, and its published type does not admit null from a caller.
+        transform: dpr === 1 ? undefined : [dpr, 0, 0, dpr, 0, 0],
+      }).promise;
     },
 
     destroy() {
       void task.destroy();
     },
   };
+}
+
+/**
+ * Shared, reference-counted documents for callers that mount and unmount repeatedly.
+ *
+ * `loadPdf` gives each caller its own copy, which is right for the preview pane: one
+ * component owns one document for as long as it is on screen. The editor is the opposite
+ * case. Its decorations are rebuilt on every keystroke, selection move, and scroll, and a
+ * widget scrolled out of the viewport is destroyed outright — so an unshared document
+ * would re-download and re-parse the same file on every pass over a note holding nine of
+ * them.
+ *
+ * Keyed by URL because that is what identifies an attachment. Entries are dropped when the
+ * last holder releases, so switching notes does not accumulate parsed documents.
+ */
+interface CacheEntry {
+  doc: Promise<LoadedPdf>;
+  holders: number;
+}
+
+const shared = new Map<string, CacheEntry>();
+
+/** A shared document, opened on first use. Every call must be matched by `releasePdf`. */
+export function acquirePdf(url: string): Promise<LoadedPdf> {
+  const existing = shared.get(url);
+  if (existing) {
+    existing.holders += 1;
+    return existing.doc;
+  }
+
+  const entry: CacheEntry = {
+    holders: 1,
+    doc: loadPdf(url).catch((err: unknown) => {
+      // A failed open must not be cached, or one transient error would make the
+      // attachment permanently unrenderable for the rest of the session.
+      shared.delete(url);
+      throw err;
+    }),
+  };
+  shared.set(url, entry);
+  return entry.doc;
+}
+
+/** Drops one holder, destroying the document when the last one lets go. */
+export function releasePdf(url: string): void {
+  const entry = shared.get(url);
+  if (!entry) return;
+
+  entry.holders -= 1;
+  if (entry.holders > 0) return;
+
+  shared.delete(url);
+  // The open may still be in flight; destroy once it settles, and swallow a rejection
+  // that `acquirePdf`'s caller has already been handed.
+  void entry.doc.then(
+    (doc) => doc.destroy(),
+    () => {},
+  );
 }

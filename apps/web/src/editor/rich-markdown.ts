@@ -9,6 +9,7 @@ import {
   WidgetType,
 } from '@codemirror/view';
 import { ATTACHMENT_PREFIX } from '@unbent/shared';
+import { acquirePdf, releasePdf } from '../pdf/render.js';
 
 /**
  * Rich markdown rendering inside CodeMirror.
@@ -246,9 +247,106 @@ class ImageWidget extends WidgetType {
   }
 }
 
+/** Width the inline page is rasterized at. Narrower than the preview pane's viewer. */
+const EDITOR_PDF_WIDTH = 420;
+
+/**
+ * First page of an attached PDF, drawn under the link that references it.
+ *
+ * Appended after the markdown rather than replacing it, for the same reason `ImageWidget`
+ * is: the link text is frequently the only title a scanned note has, and a replaced link
+ * would be the one thing in the document the cursor could not reach. The rendering is
+ * quieter than the preview pane's viewer — one page, no chrome, no page count — because
+ * here it sits among text being written rather than in a pane being read.
+ *
+ * The document is shared through `acquirePdf`, so scrolling a widget out of the viewport
+ * and back does not re-parse the file.
+ */
+class PdfWidget extends WidgetType {
+  constructor(private readonly url: string) {
+    super();
+  }
+
+  /**
+   * Identity is the URL alone.
+   *
+   * CodeMirror reuses the existing DOM when this returns true, which is what stops a
+   * keystroke anywhere in the note from throwing away a rasterized page and drawing it
+   * again. Nothing else about the widget affects what is painted.
+   */
+  override eq(other: PdfWidget): boolean {
+    return other.url === this.url;
+  }
+
+  toDOM(): HTMLElement {
+    const wrap = document.createElement('span');
+    wrap.className = 'cm-md-pdf';
+
+    const canvas = document.createElement('canvas');
+    canvas.className = 'cm-md-pdf-canvas';
+    wrap.appendChild(canvas);
+
+    const status = document.createElement('span');
+    status.className = 'cm-md-pdf-status';
+    status.textContent = 'Rendering…';
+    wrap.appendChild(status);
+
+    acquirePdf(this.url)
+      .then(async (doc) => {
+        // `destroy` ran while the open was in flight: the release is already booked, so
+        // stop before drawing into a canvas no longer in the document.
+        if (!wrap.isConnected) return;
+        await doc.renderPage(1, canvas, EDITOR_PDF_WIDTH);
+        if (!wrap.isConnected) return;
+        status.remove();
+        if (doc.pageCount > 1) {
+          const more = document.createElement('span');
+          more.className = 'cm-md-pdf-more';
+          more.textContent = `+${doc.pageCount - 1} more page${doc.pageCount > 2 ? 's' : ''}`;
+          wrap.appendChild(more);
+        }
+      })
+      .catch(() => {
+        // A PDF that will not open should leave the link readable, not an error banner
+        // wedged into the middle of the text.
+        wrap.remove();
+      });
+
+    return wrap;
+  }
+
+  /**
+   * Balances the `acquirePdf` in `toDOM`.
+   *
+   * CodeMirror calls this when the widget leaves the document — scrolled out of the
+   * viewport, or its line deleted — which is exactly when the shared document should lose
+   * a holder.
+   */
+  override destroy(): void {
+    releasePdf(this.url);
+  }
+
+  /** Clicks belong to the editor, not the widget. */
+  override ignoreEvent(): boolean {
+    return false;
+  }
+}
+
 /** True when any cursor or selection touches this range. */
 function selectionTouches(state: EditorState, from: number, to: number): boolean {
   return state.selection.ranges.some((r) => r.from <= to && r.to >= from);
+}
+
+/** Attachment links pointing at a PDF, by extension — mirrors the shared pipeline. */
+const PDF_PATH = /\.pdf$/i;
+
+/** Percent-decodes when valid, leaving a literal `%` alone rather than throwing. */
+function decodePath(value: string): string {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
 }
 
 /** Strips the angle brackets CommonMark uses around URLs containing spaces. */
@@ -295,6 +393,31 @@ function buildDecorations(view: EditorView, options: RichMarkdownOptions): Decor
               widget: new ImageWidget(resolve(url.slice(ATTACHMENT_PREFIX.length)), match[1] ?? ''),
               side: 1,
             }).range(node.to),
+          );
+          return;
+        }
+
+        if (node.name === 'Link') {
+          const resolve = options.resolveAttachment;
+          if (!resolve) return;
+
+          const text = state.doc.sliceString(node.from, node.to);
+          // Same shape as the image branch, minus the `!`. A `[…](…)` that does not match
+          // is a reference link or footnote, which has no attachment to render.
+          const match = /^\[([^\]]*)\]\((.+)\)$/.exec(text);
+          if (!match) return;
+
+          const url = unwrapUrl(match[2]!.trim());
+          if (!url.startsWith(ATTACHMENT_PREFIX)) return;
+
+          const filename = url.slice(ATTACHMENT_PREFIX.length);
+          // Extension on the path, matching how the shared pipeline decides the same
+          // thing for the preview pane — the two must agree or a note renders differently
+          // in each.
+          if (!PDF_PATH.test(decodePath(filename).split('?')[0] ?? '')) return;
+
+          marks.push(
+            Decoration.widget({ widget: new PdfWidget(resolve(filename)), side: 1 }).range(node.to),
           );
           return;
         }
@@ -441,6 +564,31 @@ export function richMarkdown(options: RichMarkdownOptions = {}): Extension {
       '.cm-md-task': { verticalAlign: 'middle', margin: '0 0.35em 0 0', cursor: 'pointer' },
       '.cm-md-url': { opacity: '0.5', fontSize: '0.9em' },
       '.cm-md-punct': { opacity: '0.35' },
+
+      /**
+       * The inline PDF page.
+       *
+       * `display: block` on an inline widget so the page sits under its link rather than
+       * beside it, matching how the image widget breaks the line. The canvas gets its
+       * pixel size from the renderer, so only the ceiling is set here.
+       */
+      '.cm-md-pdf': { display: 'block', padding: '0.35rem 0 0.6rem' },
+      '.cm-md-pdf-canvas': {
+        display: 'block',
+        maxWidth: 'min(100%, 26rem)',
+        borderRadius: '0.35rem',
+        border: '1px solid color-mix(in srgb, currentColor 15%, transparent)',
+        // A scan is nearly always on white; on a dark theme an unbacked canvas shows the
+        // editor through the page margins.
+        background: '#fff',
+      },
+      '.cm-md-pdf-status': { fontSize: '0.85em', opacity: '0.6' },
+      '.cm-md-pdf-more': {
+        display: 'block',
+        fontSize: '0.85em',
+        opacity: '0.6',
+        paddingTop: '0.25rem',
+      },
 
       '.cm-md-image': { display: 'block', padding: '0.35rem 0 0.6rem' },
       '.cm-md-image img': {

@@ -2,8 +2,22 @@ import { EditorState, EditorSelection } from '@codemirror/state';
 import { EditorView } from '@codemirror/view';
 import { markdown } from '@codemirror/lang-markdown';
 import { GFM } from '@lezer/markdown';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { orderedMarker, richMarkdown } from './rich-markdown.js';
+
+/**
+ * pdf.js never runs here: jsdom has no canvas rasterizer, and the widget's contract with
+ * it is narrow enough to state directly. What these tests are about is which links get a
+ * widget at all, and that acquire/release stay balanced.
+ */
+const renderPage = vi.fn(async () => {});
+const acquirePdf = vi.fn(async (_url: string) => ({ pageCount: 1, renderPage, destroy: () => {} }));
+const releasePdf = vi.fn((_url: string) => {});
+
+vi.mock('../pdf/render.js', () => ({
+  acquirePdf: (url: string) => acquirePdf(url),
+  releasePdf: (url: string) => releasePdf(url),
+}));
 
 /**
  * These mount a real EditorView because the behaviour under test is which ranges get
@@ -251,5 +265,96 @@ describe('ordered list markers', () => {
     const doc = '1. one\n2. two\n   3. three';
     const v = mount(doc, doc.lastIndexOf('3.') + 1);
     expect(visibleText(v, 3)).toContain('3.');
+  });
+});
+
+describe('inline PDF', () => {
+  /** Mounts with attachment resolution on; the shared `mount` deliberately has none. */
+  function mountWithAttachments(doc: string, cursor = 0): EditorView {
+    const parent = document.createElement('div');
+    document.body.appendChild(parent);
+    view = new EditorView({
+      state: EditorState.create({
+        doc,
+        selection: EditorSelection.cursor(cursor),
+        extensions: [
+          markdown({ extensions: [GFM] }),
+          richMarkdown({ resolveAttachment: (name) => `/api/notes/n1/files/${name}` }),
+        ],
+      }),
+      parent,
+    });
+    return view;
+  }
+
+  beforeEach(() => {
+    acquirePdf.mockClear();
+    releasePdf.mockClear();
+  });
+
+  it('renders a PDF attachment link', () => {
+    mountWithAttachments('[report](files/report.pdf)');
+    expect(acquirePdf).toHaveBeenCalledWith('/api/notes/n1/files/report.pdf');
+  });
+
+  /**
+   * The angle-bracket form is what `formatAttachmentMarkdown` writes for any filename
+   * containing a space, which is most of a real Evernote export.
+   */
+  it('renders a bracketed destination containing spaces', () => {
+    mountWithAttachments('[Treatment Plan.pdf](<files/Treatment Plan.pdf>)');
+    expect(acquirePdf).toHaveBeenCalledWith('/api/notes/n1/files/Treatment Plan.pdf');
+  });
+
+  it('renders a percent-encoded destination', () => {
+    mountWithAttachments('[scan](files/my%20scan.pdf)');
+    expect(acquirePdf).toHaveBeenCalledWith('/api/notes/n1/files/my%20scan.pdf');
+  });
+
+  /** The link text is the caption, so it must survive alongside the rendered page. */
+  it('leaves the markdown link visible', () => {
+    const v = mountWithAttachments('[report](files/report.pdf)');
+    expect(v.state.doc.toString()).toBe('[report](files/report.pdf)');
+    expect(visibleText(v, 1)).toContain('report');
+  });
+
+  it.each([
+    ['an external URL', '[docs](https://example.com/a.pdf)'],
+    ['a non-PDF attachment', '[sheet](files/budget.xlsx)'],
+    ['an image', '![pic](files/photo.png)'],
+  ])('does not render %s', (_label, doc) => {
+    mountWithAttachments(doc);
+    expect(acquirePdf).not.toHaveBeenCalled();
+  });
+
+  /** Without a resolver there is no URL to fetch, so nothing should be attempted. */
+  it('renders nothing when no resolver is configured', () => {
+    mount('[report](files/report.pdf)', 0);
+    expect(acquirePdf).not.toHaveBeenCalled();
+  });
+
+  /**
+   * The widget holds a reference-counted document. Leaving it acquired after the editor
+   * goes away would keep a parsed PDF alive for the rest of the session.
+   */
+  it('releases the document when the editor is destroyed', () => {
+    const v = mountWithAttachments('[report](files/report.pdf)');
+    v.destroy();
+    view = undefined;
+    expect(releasePdf).toHaveBeenCalledWith('/api/notes/n1/files/report.pdf');
+  });
+
+  /**
+   * Typing elsewhere rebuilds every decoration. `eq` on the URL is what makes CodeMirror
+   * reuse the existing DOM instead of tearing the canvas down and rasterizing again.
+   */
+  it('does not reacquire when an unrelated edit rebuilds decorations', () => {
+    const v = mountWithAttachments('[report](files/report.pdf)\n\ntext');
+    expect(acquirePdf).toHaveBeenCalledTimes(1);
+
+    v.dispatch({ changes: { from: v.state.doc.length, insert: '!' } });
+
+    expect(acquirePdf).toHaveBeenCalledTimes(1);
+    expect(releasePdf).not.toHaveBeenCalled();
   });
 });
