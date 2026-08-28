@@ -444,6 +444,25 @@ function buildDecorations(view: EditorView, options: RichMarkdownOptions): Decor
           const revealed = selectionTouches(state, node.from, node.to);
 
           /**
+           * A fence row with the cursor on it is left as plain text — no slab, no hiding.
+           *
+           * Typing ``` opens a `FencedCode` node immediately, on the very keystroke, so
+           * painting the slab as soon as the node exists wrapped three backticks the user
+           * was still typing in a grey bar. Typora leaves that line looking like the text
+           * it is and only draws the block once the caret moves off, which reads as the
+           * block forming rather than as the editor jumping ahead.
+           *
+           * Judged per row rather than per block: the cursor sitting on the opening fence
+           * should not also strip the slab from code rows further down.
+           */
+          const cursorLines = new Set<number>();
+          for (const range of state.selection.ranges) {
+            const from = state.doc.lineAt(range.from).number;
+            const to = state.doc.lineAt(range.to).number;
+            for (let n = from; n <= to; n += 1) cursorLines.add(n);
+          }
+
+          /**
            * Which rows are fences, so they can be hidden rather than shown as backticks.
            *
            * Read from the tree rather than assumed to be the first and last line: a block
@@ -454,6 +473,8 @@ function buildDecorations(view: EditorView, options: RichMarkdownOptions): Decor
           for (let child = node.node.firstChild; child; child = child.nextSibling) {
             if (child.name === 'CodeMark') fenceLines.add(state.doc.lineAt(child.from).number);
           }
+          /** Two fence rows means the block is terminated rather than still being typed. */
+          const closed = fenceLines.size > 1;
 
           /**
            * The language, shown as a corner label instead of literal ```` ```ts ````.
@@ -484,6 +505,16 @@ function buildDecorations(view: EditorView, options: RichMarkdownOptions): Decor
           for (let n = firstLine.number; n <= lastLine.number; n += 1) {
             const line = state.doc.line(n);
             const isFence = fenceLines.has(n);
+
+            /**
+             * The fence still being typed stays plain text: no slab, no collapse.
+             *
+             * Only while the block is unterminated. Once a closing fence exists the block
+             * is formed, and putting the caret back on either fence should reveal its
+             * backticks inside the slab like any other reveal — skipping the row there
+             * left the closing fence hanging outside a block with an unrounded edge.
+             */
+            if (isFence && cursorLines.has(n) && !closed) continue;
 
             /**
              * A hidden fence row still occupies a line, so the rounding and padding go on

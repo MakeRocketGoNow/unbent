@@ -421,17 +421,19 @@ describe('block-level reveal', () => {
 
 describe('fenced code blocks', () => {
   const doc = '```js\nconst x = 1;\nconst y = 2;\n```';
+  /** The block plus somewhere outside it to park the cursor. */
+  const away = `${doc}\n\nplain`;
 
   /** Every line of the run carries the background, not just the first. */
   it('marks every line of the block', () => {
-    const v = mount(doc, doc.length);
+    const v = mount(away, away.length);
     for (let n = 1; n <= 4; n += 1) {
       expect(lineClasses(v, n)).toContain('cm-md-codeblock');
     }
   });
 
   it('rounds only the ends', () => {
-    const v = mount(doc, doc.length);
+    const v = mount(away, away.length);
     expect(lineClasses(v, 1)).toContain('cm-md-codeblock-first');
     expect(lineClasses(v, 2)).not.toContain('cm-md-codeblock-first');
     expect(lineClasses(v, 2)).not.toContain('cm-md-codeblock-last');
@@ -492,6 +494,56 @@ describe('fenced code blocks', () => {
     const open = '```js\nconst x = 1;';
     const v = mount(open, 0);
     expect(visibleText(v, 2)).toContain('const x = 1;');
+  });
+
+  /**
+   * Typing ``` opens a `FencedCode` node on that keystroke, so painting the slab as soon
+   * as the node exists wrapped backticks the user was mid-way through typing.
+   */
+  it('leaves a just-typed fence as plain text', () => {
+    const v = mount('```', 3);
+    expect(lineClasses(v, 1)).not.toContain('cm-md-codeblock');
+    expect(visibleText(v, 1)).toBe('```');
+  });
+
+  it('leaves a fence being given a language as plain text', () => {
+    const v = mount('```ts', 5);
+    expect(lineClasses(v, 1)).not.toContain('cm-md-codeblock');
+    expect(visibleText(v, 1)).toBe('```ts');
+  });
+
+  /**
+   * Moving off the fence is what forms the block, the way Typora does it. The backticks
+   * are still shown here because the cursor is inside the block — the ordinary reveal
+   * rule — but the slab is now drawn, which is the change from a bare line of text.
+   */
+  it('draws the slab once the cursor leaves the fence row', () => {
+    const doc2 = '```ts\nfoo';
+    const v = mount(doc2, doc2.length);
+    expect(lineClasses(v, 1)).toContain('cm-md-codeblock');
+    expect(lineClasses(v, 2)).toContain('cm-md-codeblock');
+  });
+
+  /**
+   * Per row, not per block: while a block is still being written, a cursor on its opening
+   * fence must not strip the slab from the code already typed below it.
+   */
+  it('keeps the slab on code rows while typing an unterminated fence', () => {
+    const v = mount('```ts\nconst x = 1;', 2);
+    expect(lineClasses(v, 1)).not.toContain('cm-md-codeblock');
+    expect(lineClasses(v, 2)).toContain('cm-md-codeblock');
+  });
+
+  /**
+   * Once the block is closed it is formed, so the caret on a fence reveals its backticks
+   * inside the slab rather than dropping the row out of the block — which left the
+   * closing fence hanging below an unrounded edge.
+   */
+  it('keeps a closed block whole with the cursor on its closing fence', () => {
+    const v = mount(doc, doc.length);
+    expect(lineClasses(v, 4)).toContain('cm-md-codeblock');
+    expect(lineClasses(v, 4)).toContain('cm-md-codeblock-last');
+    expect(visibleText(v, 4)).toContain('```');
   });
 
   it('hides a fence with no language', () => {
