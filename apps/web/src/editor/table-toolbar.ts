@@ -4,9 +4,10 @@ import {
   addColumnAfter,
   addRowAfter,
   alignColumn,
-  buildTable,
   deleteTable,
   readTable,
+  resizeOrInsertTable,
+  tableSize,
 } from './markdown-commands.js';
 
 /**
@@ -101,10 +102,16 @@ const PICKER_ROWS = 8;
 const PICKER_COLUMNS = 6;
 
 /**
- * The grid picker for inserting a table of a chosen size.
+ * The grid picker: sets the size of the table the cursor is in, or inserts a new one.
  *
- * Hovering highlights the size, clicking inserts it — the interaction every word processor
- * uses, and far quicker than counting pipes.
+ * Hovering highlights a size and clicking applies it — the interaction every word
+ * processor uses for inserting, extended here to resizing, which is what makes it useful
+ * on a table that already exists.
+ *
+ * It opens showing the current dimensions rather than empty. An empty grid gives no sense
+ * of what a click will do to a table that is already there; seeded, the user is dragging
+ * away from a known starting point, and shrinking reads as a deliberate act rather than a
+ * surprise. Truncation drops cells, which one undo restores.
  */
 function buildPicker(view: EditorView, close: () => void): HTMLElement {
   const wrap = document.createElement('div');
@@ -114,7 +121,9 @@ function buildPicker(view: EditorView, close: () => void): HTMLElement {
   grid.className = 'cm-table-picker-grid';
   const label = document.createElement('div');
   label.className = 'cm-table-picker-label';
-  label.textContent = 'Insert table';
+
+  const existing = readTable(view.state, view.state.selection.main.head);
+  const current = existing ? tableSize(existing) : null;
 
   const cells: HTMLElement[] = [];
   for (let r = 1; r <= PICKER_ROWS; r += 1) {
@@ -128,58 +137,61 @@ function buildPicker(view: EditorView, close: () => void): HTMLElement {
     }
   }
 
+  /**
+   * Paints the grid for a candidate size.
+   *
+   * `shrinking` marks the cells a click would discard, so removing rows looks different
+   * from adding them and is not something the user does without seeing it first.
+   */
   function highlight(rows: number, columns: number) {
     for (const cell of cells) {
       const r = Number(cell.dataset['row']);
       const c = Number(cell.dataset['column']);
-      cell.classList.toggle('on', r <= rows && c <= columns);
+      const selected = r <= rows && c <= columns;
+      const wasInTable = current !== null && r <= current.rows && c <= current.columns;
+
+      cell.classList.toggle('on', selected);
+      cell.classList.toggle('losing', !selected && wasInTable);
     }
-    label.textContent = `${rows} × ${columns}`;
+
+    if (rows === 0) {
+      label.textContent = current ? `${current.rows} × ${current.columns}` : 'Insert table';
+      return;
+    }
+
+    const shrinking =
+      current !== null && (rows < current.rows || columns < current.columns);
+    label.textContent = `${rows} × ${columns}${shrinking ? ' — trims' : ''}`;
   }
 
   grid.addEventListener('mouseover', (event) => {
     const cell = (event.target as HTMLElement).closest<HTMLElement>('.cm-table-picker-cell');
     if (cell) highlight(Number(cell.dataset['row']), Number(cell.dataset['column']));
   });
-  grid.addEventListener('mouseleave', () => highlight(0, 0));
+  // Back to the table's real size on the way out, never to an empty grid.
+  grid.addEventListener('mouseleave', () => {
+    if (current) highlight(current.rows, current.columns);
+    else highlight(0, 0);
+  });
 
   grid.addEventListener('mousedown', (event) => {
     const cell = (event.target as HTMLElement).closest<HTMLElement>('.cm-table-picker-cell');
     if (!cell) return;
     event.preventDefault();
-    insertTable(view, Number(cell.dataset['row']), Number(cell.dataset['column']));
+    const rows = Number(cell.dataset['row']);
+    const columns = Number(cell.dataset['column']);
+    resizeOrInsertTable(rows, columns)({ state: view.state, dispatch: (tr) => view.dispatch(tr) });
     close();
+    view.focus();
   });
+
+  // Seeded with what is there, so the picker reads as the table's current shape.
+  if (current) highlight(current.rows, current.columns);
+  else highlight(0, 0);
 
   wrap.appendChild(grid);
   wrap.appendChild(label);
   return wrap;
-}
-
-/**
- * Inserts a table at the cursor, on its own blank line.
- *
- * A table has to start a line — one written mid-sentence is parsed as a paragraph — so
- * this opens a line first when the cursor is not already on an empty one.
- */
-export function insertTable(view: EditorView, rows: number, columns: number): void {
-  const { state } = view;
-  const line = state.doc.lineAt(state.selection.main.head);
-  const indent = /^\s*/.exec(line.text)?.[0] ?? '';
-  const table = buildTable(rows, columns, indent);
-
-  const onBlankLine = line.text.trim() === '';
-  const prefix = onBlankLine ? '' : '\n';
-  const at = onBlankLine ? line.from : line.to;
-
-  const insert = `${prefix}${table}\n`;
-  view.dispatch({
-    changes: { from: at, to: onBlankLine ? line.to : at, insert },
-    // Land in the first header cell, which is two characters past the leading pipe.
-    selection: { anchor: at + prefix.length + indent.length + 2 },
-    scrollIntoView: true,
-  });
-  view.focus();
 }
 
 /**
@@ -365,6 +377,16 @@ const tableToolbarTheme = EditorView.theme({
   '.cm-table-picker-cell.on': {
     background: 'var(--accent, #2f6f4f)',
     borderColor: 'var(--accent, #2f6f4f)',
+  },
+  /**
+   * Cells the table currently occupies that a click would discard.
+   *
+   * Shrinking drops data, so it should not look the same as growing. Outlined rather than
+   * filled: these are what is being given up, not what is being chosen.
+   */
+  '.cm-table-picker-cell.losing': {
+    borderColor: '#c0392b',
+    borderStyle: 'dashed',
   },
   '.cm-table-picker-label': {
     paddingTop: '0.35rem',

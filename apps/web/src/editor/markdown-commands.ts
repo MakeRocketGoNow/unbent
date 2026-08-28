@@ -819,6 +819,100 @@ export function buildTable(rows: number, columns: number, indent = ''): string {
 }
 
 
+
+/**
+ * Resizes a table to `rows` body rows and `columns` columns.
+ *
+ * Truncating drops cells, which is why the picker showing the current size matters: the
+ * user is dragging away from a known starting point rather than guessing. The edit is an
+ * ordinary one, so an accidental shrink is a single undo away.
+ *
+ * Rows are counted excluding the header, matching how the picker presents them — a 3×2
+ * table has a header and three rows of data.
+ */
+export function resizeTable(table: TableModel, rows: number, columns: number): void {
+  const width = Math.max(1, columns);
+  const height = Math.max(1, rows);
+
+  for (const row of table.rows) {
+    if (row.length > width) row.length = width;
+    while (row.length < width) row.push('');
+  }
+  table.aligns.length = Math.min(table.aligns.length, width);
+  while (table.aligns.length < width) table.aligns.push(null);
+
+  // `rows` counts body rows; `table.rows` includes the header at index 0.
+  const target = height + 1;
+  if (table.rows.length > target) table.rows.length = target;
+  while (table.rows.length < target) table.rows.push(table.aligns.map(() => ''));
+}
+
+/** The size of a table as the picker presents it: body rows, then columns. */
+export function tableSize(table: TableModel): { rows: number; columns: number } {
+  return { rows: Math.max(1, table.rows.length - 1), columns: table.aligns.length };
+}
+
+/**
+ * Resizes the table under the cursor, or inserts one when there is none.
+ *
+ * One command for both so the picker has a single entry point: whether it is creating or
+ * reshaping is a detail of where the cursor happens to be.
+ */
+export function resizeOrInsertTable(rows: number, columns: number): StateCommand {
+  return ({ state, dispatch }) => {
+    const table = readTable(state, state.selection.main.head);
+
+    if (!table) {
+      return insertTableOfSize(rows, columns)({ state, dispatch });
+    }
+
+    const before = renderTable(table);
+    resizeTable(table, rows, columns);
+    const rendered = renderTable(table);
+    if (rendered === before) return false;
+
+    // Clamp the cursor into the table that now exists — it may have just shrunk past it.
+    const cell = cellAt(state, table, state.selection.main.head) ?? { row: 0, column: 0 };
+    const clamped = {
+      row: Math.min(cell.row, table.rows.length - 1),
+      column: Math.min(cell.column, table.aligns.length - 1),
+    };
+
+    dispatch(
+      state.update({
+        changes: { from: table.from, to: table.to, insert: rendered },
+        selection: { anchor: cellOffset(rendered, table.from, clamped) },
+        scrollIntoView: true,
+      }),
+    );
+    return true;
+  };
+}
+
+/** Inserts an empty table of the given size at the cursor. */
+export function insertTableOfSize(rows: number, columns: number): StateCommand {
+  return ({ state, dispatch }) => {
+    const line = state.doc.lineAt(state.selection.main.head);
+    const indent = /^\s*/.exec(line.text)?.[0] ?? '';
+    const table = buildTable(rows, columns, indent);
+
+    // A table has to begin a line; one written mid-sentence parses as a paragraph.
+    const onBlankLine = line.text.trim() === '';
+    const from = onBlankLine ? line.from : line.to;
+    const insert = onBlankLine ? `${table}\n` : `\n${table}\n`;
+
+    dispatch(
+      state.update({
+        changes: { from, to: onBlankLine ? line.to : from, insert },
+        // Land in the first header cell, past the indent and the leading `| `.
+        selection: { anchor: from + (onBlankLine ? 0 : 1) + indent.length + 2 },
+        scrollIntoView: true,
+      }),
+    );
+    return true;
+  };
+}
+
 /**
  * Inserts a starter table at the cursor.
  *
@@ -826,26 +920,7 @@ export function buildTable(rows: number, columns: number, indent = ''): string {
  * how the first one is made. This is the way in — a 2×3 to type over, which is the size
  * most tables start at.
  */
-export const insertTableCommand: StateCommand = ({ state, dispatch }) => {
-  const line = state.doc.lineAt(state.selection.main.head);
-  const indent = /^\s*/.exec(line.text)?.[0] ?? '';
-  const table = buildTable(2, 3, indent);
-
-  // A table has to begin a line; one written mid-sentence parses as a paragraph.
-  const onBlankLine = line.text.trim() === '';
-  const from = onBlankLine ? line.from : line.to;
-  const insert = onBlankLine ? `${table}\n` : `\n${table}\n`;
-
-  dispatch(
-    state.update({
-      changes: { from, to: onBlankLine ? line.to : from, insert },
-      // Land in the first header cell, past the indent and the leading `| `.
-      selection: { anchor: from + (onBlankLine ? 0 : 1) + indent.length + 2 },
-      scrollIntoView: true,
-    }),
-  );
-  return true;
-};
+export const insertTableCommand: StateCommand = insertTableOfSize(2, 3);
 
 /**
  * Moves to the next cell of a table, formatting the table on the way.

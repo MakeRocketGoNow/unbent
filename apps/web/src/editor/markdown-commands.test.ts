@@ -810,3 +810,75 @@ describe('table structure', () => {
     });
   });
 });
+
+describe('table resize', () => {
+  const T = '| Month | Savings |\n| --- | --- |\n| Jan | $250 |\n| Feb | $80 |\n| Mar | $420 |';
+
+  function run(command: StateCommand, doc: string, at: number) {
+    let state = EditorState.create({ doc, selection: EditorSelection.single(at) });
+    const handled = command({
+      state,
+      dispatch: (tr) => {
+        state = tr.state;
+      },
+    });
+    return { handled, out: state.doc.toString(), cursor: state.selection.main.head };
+  }
+
+  /** Body rows, excluding the header — the way the picker counts them. */
+  it('reports the size the picker shows', () => {
+    const table = cmd.readTable(EditorState.create({ doc: T }), 3);
+    expect(cmd.tableSize(table!)).toEqual({ rows: 3, columns: 2 });
+  });
+
+  it('grows to the requested size', () => {
+    const r = run(cmd.resizeOrInsertTable(4, 3), T, T.indexOf('Jan'));
+    expect(r.out.split('\n')).toEqual([
+      '| Month | Savings |     |',
+      '| ----- | ------- | --- |',
+      '| Jan   | $250    |     |',
+      '| Feb   | $80     |     |',
+      '| Mar   | $420    |     |',
+      '|       |         |     |',
+    ]);
+  });
+
+  /** Shrinking drops cells. The picker shows what will go, and undo brings it back. */
+  it('truncates when shrunk', () => {
+    const r = run(cmd.resizeOrInsertTable(2, 1), T, T.indexOf('Jan'));
+    expect(r.out).toBe('| Month |\n| ----- |\n| Jan   |\n| Feb   |');
+  });
+
+  /**
+   * The cursor may be standing in a cell the resize removes, and a stale offset would
+   * land it outside the table or past the end of the document.
+   */
+  it('clamps the cursor into the table that remains', () => {
+    const r = run(cmd.resizeOrInsertTable(1, 1), T, T.indexOf('$420'));
+    expect(r.handled).toBe(true);
+    expect(r.out).toBe('| Month |\n| ----- |\n| Jan   |');
+    expect(r.cursor).toBeLessThanOrEqual(r.out.length);
+  });
+
+  it('keeps a column of alignment when only rows change', () => {
+    const aligned = '| A | B |\n| :-- | --: |\n| x | 1 |';
+    const r = run(cmd.resizeOrInsertTable(2, 2), aligned, aligned.indexOf('x'));
+    expect(r.out.split('\n')[1]).toBe('| :-- | --: |');
+  });
+
+  it('inserts a table when the cursor is not in one', () => {
+    const r = run(cmd.resizeOrInsertTable(2, 2), 'prose', 5);
+    expect(r.out).toBe('prose\n|     |     |\n| --- | --- |\n|     |     |\n|     |     |\n');
+  });
+
+  /** Choosing the size it already is should not push an edit onto the undo stack. */
+  it('does nothing when the size is unchanged', () => {
+    expect(run(cmd.resizeOrInsertTable(3, 2), T, T.indexOf('Jan')).handled).toBe(false);
+  });
+
+  /** A table needs at least one row and column to still parse as one. */
+  it('never shrinks below one row and one column', () => {
+    const r = run(cmd.resizeOrInsertTable(0, 0), T, T.indexOf('Jan'));
+    expect(r.out).toBe('| Month |\n| ----- |\n| Jan   |');
+  });
+});
