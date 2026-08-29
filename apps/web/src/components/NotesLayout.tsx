@@ -43,7 +43,7 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
     const timer = setTimeout(() => setDebounced(q), 180);
     return () => clearTimeout(timer);
   }, [q]);
-  const search = useQuery(searchQuery(debounced));
+  const search = useQuery(searchQuery(debounced, filter));
 
   /** Null means "not searching", which is distinct from searching and finding nothing. */
   const results = debounced.trim() === '' ? null : (search.data ?? null);

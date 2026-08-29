@@ -64,6 +64,47 @@ export function toFtsQuery(raw: string): string {
     .join(' AND ');
 }
 
+/**
+ * SQL conditions for the `notebook` and `tag` filters, shared by `list` and `search`.
+ *
+ * Both call sites need identical semantics — a filter has to mean the same thing whether
+ * or not a query is also typed — so the clauses live here rather than being written twice.
+ *
+ * Binds are positional: parameters are appended to the caller's array and the placeholder
+ * index is taken from its length. The user id is bound explicitly rather than assumed to
+ * be `?1`, because it is only in `list` and `count` that it happens to land there —
+ * `search` binds the FTS query first, and reusing `?1` there silently compared `user_id`
+ * against the search text and matched nothing.
+ */
+function filterConditions(
+  opts: { tag?: string | undefined; notebook?: string | undefined },
+  binds: unknown[],
+  userId: string,
+): string[] {
+  const conditions: string[] = [];
+
+  if (opts.notebook === UNFILED) {
+    conditions.push('n.notebook_id IS NULL');
+  } else if (opts.notebook) {
+    binds.push(userId, opts.notebook);
+    // Matched by name, case-insensitively, so a URL filter written in any case works.
+    conditions.push(
+      `n.notebook_id = (SELECT id FROM notebooks
+                         WHERE user_id = ?${binds.length - 1} AND name = ?${binds.length} COLLATE NOCASE)`,
+    );
+  }
+
+  if (opts.tag) {
+    binds.push(opts.tag, userId);
+    conditions.push(
+      `EXISTS (SELECT 1 FROM note_tags nt2 JOIN tags t2 ON t2.id = nt2.tag_id
+               WHERE nt2.note_id = n.id AND t2.name = ?${binds.length - 1} AND t2.user_id = ?${binds.length})`,
+    );
+  }
+
+  return conditions;
+}
+
 function splitTags(joined: string | null): string[] {
   if (!joined) return [];
   return joined.split(TAG_SEP).filter((t) => t.length > 0);
@@ -99,23 +140,7 @@ export class NotesRepo extends ScopedRepo {
       // Trash is ordered by when it was deleted, so it pages on that column too.
       conditions.push(trashed ? `n.deleted_at < ?${binds.length}` : `n.updated_at < ?${binds.length}`);
     }
-    if (notebook === UNFILED) {
-      conditions.push('n.notebook_id IS NULL');
-    } else if (notebook) {
-      binds.push(notebook);
-      // Matched by name, case-insensitively, so a URL filter written in any case works.
-      conditions.push(
-        `n.notebook_id = (SELECT id FROM notebooks
-                           WHERE user_id = ?1 AND name = ?${binds.length} COLLATE NOCASE)`,
-      );
-    }
-    if (tag) {
-      binds.push(tag, this.userId);
-      conditions.push(
-        `EXISTS (SELECT 1 FROM note_tags nt2 JOIN tags t2 ON t2.id = nt2.tag_id
-                 WHERE nt2.note_id = n.id AND t2.name = ?${binds.length - 1} AND t2.user_id = ?${binds.length})`,
-      );
-    }
+    conditions.push(...filterConditions({ tag, notebook }, binds, this.userId));
     binds.push(limit);
 
     const { results } = await this.db
@@ -159,22 +184,9 @@ export class NotesRepo extends ScopedRepo {
     ];
     const binds: unknown[] = [this.userId];
 
-    if (opts?.notebook === UNFILED) {
-      conditions.push('n.notebook_id IS NULL');
-    } else if (opts?.notebook) {
-      binds.push(opts.notebook);
-      conditions.push(
-        `n.notebook_id = (SELECT id FROM notebooks
-                           WHERE user_id = ?1 AND name = ?${binds.length} COLLATE NOCASE)`,
-      );
-    }
-    if (opts?.tag) {
-      binds.push(opts.tag, this.userId);
-      conditions.push(
-        `EXISTS (SELECT 1 FROM note_tags nt JOIN tags t ON t.id = nt.tag_id
-                 WHERE nt.note_id = n.id AND t.name = ?${binds.length - 1} AND t.user_id = ?${binds.length})`,
-      );
-    }
+    conditions.push(
+      ...filterConditions({ tag: opts?.tag, notebook: opts?.notebook }, binds, this.userId),
+    );
 
     const row = await this.db
       .prepare(`SELECT COUNT(*) AS n FROM notes n WHERE ${conditions.join(' AND ')}`)
@@ -439,9 +451,22 @@ export class NotesRepo extends ScopedRepo {
    * notes_fts has no user_id — it indexes only title and body — so the join back to notes
    * is what scopes the result, and dropping that predicate would leak every user's notes.
    */
-  async search(rawQuery: string, limit: number): Promise<SearchResult[]> {
+  async search(
+    rawQuery: string,
+    limit: number,
+    filters: { tag?: string | undefined; notebook?: string | undefined } = {},
+  ): Promise<SearchResult[]> {
     const query = toFtsQuery(rawQuery);
     if (!query) return [];
+
+    /**
+     * The filters bind after the three fixed parameters, and the same clauses are spliced
+     * into both CTEs — each joins `notes n` on its own, so a filter applied to only one
+     * would let the other leak notes from outside the current scope.
+     */
+    const binds: unknown[] = [query, this.userId, limit];
+    const scope = filterConditions(filters, binds, this.userId);
+    const scoped = scope.length > 0 ? `AND ${scope.join(' AND ')}` : '';
 
     /**
      * Two indexes, one result set.
@@ -465,6 +490,7 @@ export class NotesRepo extends ScopedRepo {
              FROM notes_fts
              JOIN notes n ON n.rowid = notes_fts.rowid
             WHERE notes_fts MATCH ?1 AND n.user_id = ?2 AND n.deleted_at IS NULL
+              ${scoped}
          ),
          file_hits AS (
            SELECT n.id, n.title, n.updated_at,
@@ -477,6 +503,7 @@ export class NotesRepo extends ScopedRepo {
              JOIN notes n ON n.id = at.note_id
             WHERE attachment_text_fts MATCH ?1 AND at.user_id = ?2
               AND n.user_id = ?2 AND n.deleted_at IS NULL
+              ${scoped}
          ),
          combined AS (SELECT * FROM note_hits UNION ALL SELECT * FROM file_hits)
          SELECT id, title, updated_at, snippet, matched_file, MIN(tier) AS tier, MIN(rank) AS rank
@@ -485,7 +512,7 @@ export class NotesRepo extends ScopedRepo {
           ORDER BY tier, rank
           LIMIT ?3`,
       )
-      .bind(query, this.userId, limit)
+      .bind(...binds)
       .all<{
         id: string;
         title: string;

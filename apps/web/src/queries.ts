@@ -27,7 +27,7 @@ export const keys = {
   trash: () => ['trash'] as const,
   trashCount: () => ['trash', 'count'] as const,
   noteCount: () => ['notes', 'count'] as const,
-  search: (q: string) => ['search', q] as const,
+  search: (q: string, filter: NoteFilter = {}) => ['search', q, filter] as const,
 };
 
 /** Live notes matching a filter, paged. */
@@ -100,10 +100,16 @@ export const notebooksQuery = () =>
  * Enabled only for a non-empty query, so clearing the box returns to the plain list
  * rather than searching for nothing. Callers debounce the term before it reaches here.
  */
-export const searchQuery = (q: string) =>
+/**
+ * Search scoped to the filters already applied to the list.
+ *
+ * The filter is part of the cache key: the same words inside two different notebooks are
+ * two different result sets, and sharing one entry between them would serve the wrong one.
+ */
+export const searchQuery = (q: string, filter: NoteFilter = {}) =>
   queryOptions({
-    queryKey: keys.search(q),
-    queryFn: () => api.searchNotes(q),
+    queryKey: keys.search(q, filter),
+    queryFn: () => api.searchNotes(q, filter),
     enabled: q.trim() !== '',
   });
 

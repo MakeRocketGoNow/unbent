@@ -30,7 +30,7 @@ async function signUp(email: string, password: string, name: string): Promise<Ac
 
 async function createNote(
   actor: Actor,
-  input: { title: string; body: string; tags?: string[] },
+  input: { title: string; body: string; tags?: string[]; notebook?: string },
 ): Promise<{ id: string }> {
   const res = await fetch(`${BASE}/api/notes`, {
     method: 'POST',
@@ -41,8 +41,11 @@ async function createNote(
   return res.json();
 }
 
-async function find(actor: Actor, q: string) {
-  const res = await fetch(`${BASE}/api/search?q=${encodeURIComponent(q)}`, {
+async function find(actor: Actor, q: string, filter: { tag?: string; notebook?: string } = {}) {
+  const params = new URLSearchParams({ q });
+  if (filter.tag) params.set('tag', filter.tag);
+  if (filter.notebook) params.set('notebook', filter.notebook);
+  const res = await fetch(`${BASE}/api/search?${params.toString()}`, {
     headers: { Cookie: actor.cookie, Origin: ORIGIN },
   });
   if (!res.ok) throw new Error(`search failed: ${res.status} ${await res.text()}`);
@@ -239,8 +242,16 @@ describe('index maintenance', () => {
  * text — and its own cross-tenant case, since it joins through a different table.
  */
 describe('attachment text', () => {
-  async function noteWithText(actor: Actor, token: string): Promise<{ id: string }> {
-    const note = await createNote(actor, { title: 'Scanned', body: '' });
+  async function noteWithText(
+    actor: Actor,
+    token: string,
+    notebook?: string,
+  ): Promise<{ id: string }> {
+    const note = await createNote(actor, {
+      title: 'Scanned',
+      body: '',
+      ...(notebook ? { notebook } : {}),
+    });
 
     await fetch(`${BASE}/api/notes/${note.id}/files`, {
       method: 'PUT',
@@ -412,6 +423,21 @@ describe('attachment text', () => {
     expect(res.extractable).toBe(0);
   });
 
+  it('scopes an attachment hit to the notebook filter', async () => {
+    // The filter has to reach both CTEs. Applied to only the note side, a PDF match would
+    // still surface notes from outside the selected notebook.
+    const token = `filescope${Date.now()}`;
+    const notebook = `Files ${Date.now()}`;
+    const inside = await noteWithText(alice, token, notebook);
+    await noteWithText(alice, token);
+
+    expect(await find(alice, token)).toHaveLength(2);
+
+    const scoped = await find(alice, token, { notebook });
+    expect(scoped.map((h) => h.id)).toEqual([inside.id]);
+    expect(scoped[0]!.matchedFile).toBe('scan.pdf');
+  });
+
   it('prefers a note-body match over an attachment match', async () => {
     const token = `bothplaces${Date.now()}`;
     await noteWithText(alice, token);
@@ -420,6 +446,70 @@ describe('attachment text', () => {
     const hits = await find(alice, token);
     expect(hits[0]!.id).toBe(direct.id);
     expect(hits[0]!.matchedFile).toBeUndefined();
+  });
+});
+
+/**
+ * Search scoped by the list's own filters.
+ *
+ * The bug these cover: search used to ignore `tag` and `notebook` entirely, so typing a
+ * query silently threw away the notebook the user had selected and answered a question
+ * they had not asked.
+ */
+describe('scoped search', () => {
+  it('limits results to a notebook', async () => {
+    const token = `nbscope${Date.now()}`;
+    const notebook = `Scoped ${Date.now()}`;
+    const inside = await createNote(alice, { title: 'Inside', body: token, notebook });
+    await createNote(alice, { title: 'Outside', body: token });
+
+    expect((await find(alice, token)).map((h) => h.id).sort()).toHaveLength(2);
+
+    const scoped = await find(alice, token, { notebook });
+    expect(scoped.map((h) => h.id)).toEqual([inside.id]);
+  });
+
+  it('matches a notebook name case-insensitively, as the list does', async () => {
+    const token = `nbcase${Date.now()}`;
+    const notebook = `MixedCase ${Date.now()}`;
+    await createNote(alice, { title: 'Inside', body: token, notebook });
+
+    const scoped = await find(alice, token, { notebook: notebook.toUpperCase() });
+    expect(scoped).toHaveLength(1);
+  });
+
+  it('limits results to a tag', async () => {
+    const token = `tagscope${Date.now()}`;
+    const tag = `scoped${Date.now()}`;
+    const tagged = await createNote(alice, { title: 'Tagged', body: token, tags: [tag] });
+    await createNote(alice, { title: 'Untagged', body: token });
+
+    const scoped = await find(alice, token, { tag });
+    expect(scoped.map((h) => h.id)).toEqual([tagged.id]);
+  });
+
+  it('applies tag and notebook together', async () => {
+    const token = `bothscope${Date.now()}`;
+    const notebook = `Both ${Date.now()}`;
+    const tag = `both${Date.now()}`;
+    const both = await createNote(alice, {
+      title: 'Both',
+      body: token,
+      tags: [tag],
+      notebook,
+    });
+    await createNote(alice, { title: 'Notebook only', body: token, notebook });
+    await createNote(alice, { title: 'Tag only', body: token, tags: [tag] });
+
+    const scoped = await find(alice, token, { tag, notebook });
+    expect(scoped.map((h) => h.id)).toEqual([both.id]);
+  });
+
+  it('returns nothing when the filter excludes every match', async () => {
+    const token = `noneleft${Date.now()}`;
+    await createNote(alice, { title: 'Unfiled', body: token });
+
+    expect(await find(alice, token, { notebook: `Empty ${Date.now()}` })).toEqual([]);
   });
 });
 

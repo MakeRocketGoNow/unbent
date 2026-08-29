@@ -242,9 +242,15 @@ export async function deleteAttachment(noteId: string, filename: string): Promis
   }
 }
 
-export async function searchNotes(q: string): Promise<SearchResult[]> {
+export async function searchNotes(
+  q: string,
+  filter: { tag?: string; notebook?: string } = {},
+): Promise<SearchResult[]> {
+  const params = new URLSearchParams({ q });
+  if (filter.tag) params.set('tag', filter.tag);
+  if (filter.notebook) params.set('notebook', filter.notebook);
   const { results } = await json<{ results: SearchResult[] }>(
-    await fetch(`/api/search?q=${encodeURIComponent(q)}`),
+    await fetch(`/api/search?${params.toString()}`),
   );
   return results;
 }

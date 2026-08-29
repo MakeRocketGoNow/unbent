@@ -62,9 +62,19 @@ export const listNotesQuerySchema = z.object({
     .transform((v) => v === '1'),
 });
 
+/**
+ * Search takes the same `tag` and `notebook` filters as the note list.
+ *
+ * Searching is a narrowing of the current view, not an escape from it: with a notebook
+ * selected, "insurance" means "insurance in this notebook". Without these the filters
+ * would silently drop the moment the user typed, which is the opposite of what selecting
+ * a notebook implies.
+ */
 export const searchQuerySchema = z.object({
   q: z.string().min(1).max(500),
   limit: z.coerce.number().int().min(1).max(100).default(50),
+  tag: z.string().optional(),
+  notebook: z.string().optional(),
 });
 
 /**
