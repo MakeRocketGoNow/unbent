@@ -7,6 +7,7 @@ import { isStatus } from '../notes-api.js';
 import { useAutosave } from '../useAutosave.js';
 import { usePersistentState, clamp } from '../usePersistentState.js';
 import { useMediaQuery, MOBILE_QUERY } from '../useMediaQuery.js';
+import { useKeyboardInset } from '../useKeyboardInset.js';
 import { noteQuery, notebooksQuery, tagsQuery, keys } from '../queries.js';
 import { Editor } from './Editor.js';
 import { Preview } from './Preview.js';
@@ -106,6 +107,37 @@ export function Workspace({ noteId, readOnly = false, backTo = '/notes' }: Works
    * name have to describe the right one. Layout stays entirely in CSS.
    */
   const isMobile = useMediaQuery(MOBILE_QUERY);
+
+  /**
+   * Whether the editor holds the caret, and how tall the keyboard is.
+   *
+   * Together these dock the formatting toolbar above the keyboard on a phone rather than
+   * parking it above the document: twelve 44px controls cannot fit one row at 375px, so
+   * it wrapped to two and cost 106px of every screen — permanently, whether or not
+   * anything was being typed.
+   *
+   * Focus is tracked from the view the workspace already holds, so `Editor` needs no new
+   * prop and its uncontrolled CodeMirror instance is untouched.
+   */
+  const [editorFocused, setEditorFocused] = useState(false);
+  const keyboardInset = useKeyboardInset();
+
+  useEffect(() => {
+    if (!editorView) return;
+    const dom = editorView.contentDOM;
+    const onFocus = () => setEditorFocused(true);
+    // A tap on a toolbar button blurs the editor for an instant; the buttons already
+    // preventDefault on mousedown to keep the selection, and this keeps the bar from
+    // flickering out from under the finger on the way.
+    const onBlur = () => setEditorFocused(false);
+    dom.addEventListener('focus', onFocus);
+    dom.addEventListener('blur', onBlur);
+    setEditorFocused(dom === document.activeElement);
+    return () => {
+      dom.removeEventListener('focus', onFocus);
+      dom.removeEventListener('blur', onBlur);
+    };
+  }, [editorView]);
   // A different note starts on its text again, not on whatever the last one was showing.
   useEffect(() => setMobilePreview(false), [noteId]);
 
@@ -288,7 +320,30 @@ export function Workspace({ noteId, readOnly = false, backTo = '/notes' }: Works
         </div>
       </div>
 
-      <div className="tag-row">
+      {/*
+          The note's filing, collapsed to one line on a phone.
+
+          A notebook picker and a tag field are two full rows of controls — 69px — sitting
+          permanently between the title and the first line of the note. They are read far
+          more often than they are changed, so the summary states them and a tap opens the
+          controls. Not moved into the overflow menu: this is what the note *is*, and in an
+          archive this size tags are how anything gets found again.
+
+          Open above the breakpoint, where the row costs nothing. See the sidebar's tag
+          filter for the same pattern and the reason `key` is needed.
+      */}
+      <details className="tag-row-wrap" key={String(isMobile)} open={!isMobile}>
+        <summary>
+          <span className="tag-row-summary">
+            <span className="tag-row-summary-book">{draft.notebook ?? 'Unfiled'}</span>
+            {draft.tags.length > 0 && (
+              <span className="tag-row-summary-tags">
+                {draft.tags.map((t) => `#${t}`).join(' ')}
+              </span>
+            )}
+          </span>
+        </summary>
+        <div className="tag-row">
         {/* Filing a note by picking from the notebooks that exist, rather than
             retyping a name — which is how case-variant duplicates used to appear. */}
         <select
@@ -311,7 +366,8 @@ export function Workspace({ noteId, readOnly = false, backTo = '/notes' }: Works
           suggestions={tags.data?.map((t) => t.name) ?? []}
           onChange={(next) => setDraft((d) => ({ ...d, tags: next }))}
         />
-      </div>
+        </div>
+      </details>
 
       {!readOnly && (
         <Attachments
@@ -330,6 +386,10 @@ export function Workspace({ noteId, readOnly = false, backTo = '/notes' }: Works
       */}
       <EditorToolbar
         view={editorView}
+        // Docked above the keyboard on a phone while the editor has the caret; a plain
+        // row above the document at every other width.
+        docked={isMobile && editorFocused}
+        keyboardInset={keyboardInset}
         preview={{
           // What is actually on screen, which is not the same question at each width: a
           // phone shows one pane at a time, so a persisted showPreview=true still leaves

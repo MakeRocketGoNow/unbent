@@ -14,6 +14,15 @@ interface EditorToolbarProps {
    * below it, and because a row that already spans the editor's width has the one piece of
    * layout it needs: somewhere to push a control to the far end.
    */
+  /**
+   * Pin the bar above the on-screen keyboard instead of leaving it above the document.
+   *
+   * Set only on a phone with the editor focused. The controls are worth their space while
+   * typing and worth none of it while reading, which is the whole reason for moving them.
+   */
+  docked?: boolean;
+  /** How far up from the bottom the keyboard pushes it; see `useKeyboardInset`. */
+  keyboardInset?: number;
   preview: {
     /** Whether the preview is currently on screen at this width. */
     shown: boolean;
@@ -137,7 +146,12 @@ function TableButton({ view }: { view: EditorView | null }) {
   );
 }
 
-export function EditorToolbar({ view, preview }: EditorToolbarProps) {
+export function EditorToolbar({
+  view,
+  preview,
+  docked = false,
+  keyboardInset = 0,
+}: EditorToolbarProps) {
   function apply(run: StateCommand) {
     if (!view) return;
     run({ state: view.state, dispatch: view.dispatch });
@@ -146,7 +160,12 @@ export function EditorToolbar({ view, preview }: EditorToolbarProps) {
   }
 
   return (
-    <div className="editor-toolbar" role="toolbar" aria-label="Formatting">
+    <div
+      className={docked ? 'editor-toolbar docked' : 'editor-toolbar'}
+      role="toolbar"
+      aria-label="Formatting"
+      style={docked ? { bottom: `${keyboardInset}px` } : undefined}
+    >
       {ACTIONS.map((action) => (
         <button
           key={action.title}

@@ -871,6 +871,42 @@ a.overflow-item { text-decoration: none; }
 
 .tag-row { padding: 0.5rem 0 0.25rem; }
 
+/*
+   The note's filing, behind a disclosure on a phone.
+
+   Open and marker-less above the breakpoint, where it is simply the row it always was —
+   the summary only becomes a control at the width where the row costs too much.
+*/
+.tag-row-wrap > summary {
+  display: none;
+}
+
+/* The bar docked above the keyboard: one scrolling row rather than two wrapped ones. */
+.editor-toolbar.docked {
+  position: fixed;
+  left: 0;
+  right: 0;
+  z-index: 30;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  /* The row scrolls; the buttons must not be squeezed to fit it. */
+  padding: 0.4rem 0.75rem calc(0.4rem + env(safe-area-inset-bottom));
+  background: var(--bg);
+  border-top: 1px solid var(--border);
+  border-bottom: none;
+  /* A hairline above the keyboard reads as a seam; a shadow reads as a layer. */
+  box-shadow: 0 -4px 12px color-mix(in srgb, var(--fg) 8%, transparent);
+  /* Momentum scrolling without a visible bar over the controls. */
+  scrollbar-width: none;
+}
+
+.editor-toolbar.docked::-webkit-scrollbar { display: none; }
+
+.editor-toolbar.docked .tb-btn { flex: 0 0 auto; }
+
+/* Pushed to the end of the scroll rather than pinned, so it cannot cover a control. */
+.editor-toolbar.docked .tb-preview { margin-left: 0.5rem; }
+
 /* Attachment inventory for the open note */
 .attachments {
   margin: 0.35rem 0 0.15rem;
@@ -1649,6 +1685,93 @@ a.overflow-item { text-decoration: none; }
     min-height: 2.75rem;
     padding: 0;
   }
+
+  /*
+     Reclaimed whitespace: 2rem of padding above the wordmark is a desktop luxury. The
+     note view spends 43% of a phone screen on chrome before its first character, and this
+     is the cheapest quarter of it.
+  */
+  .shell.wide { padding-top: 0.5rem; }
+
+  /*
+     The notebook and tag controls, collapsed to a line that states them.
+
+     Same disclosure as the sidebar's tag filter, including the chevron, because it is the
+     same gesture — and the summary carries the values so nothing is hidden, only folded.
+  */
+  .tag-row-wrap {
+    padding-bottom: 0;
+    border-bottom: 1px solid var(--border);
+  }
+
+  /* Collapsed, the controls contribute nothing; open, they get their normal padding. */
+  .tag-row-wrap[open] { padding-bottom: 0.35rem; }
+
+  .tag-row-wrap > summary {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    min-height: 2.25rem;
+    font-size: 0.8rem;
+    color: var(--muted);
+    cursor: pointer;
+    user-select: none;
+  }
+
+  .tag-row-wrap > summary::-webkit-details-marker { display: none; }
+  .tag-row-wrap > summary::marker { content: ''; }
+
+  .tag-row-wrap > summary::after {
+    content: '';
+    width: 0.36rem;
+    height: 0.36rem;
+    margin-left: 0.35rem;
+    border-right: 1.5px solid currentColor;
+    border-bottom: 1.5px solid currentColor;
+    transform: rotate(-45deg) translate(-0.05rem, -0.05rem);
+    transition: transform 0.15s ease;
+  }
+
+  .tag-row-wrap[open] > summary::after {
+    transform: rotate(45deg) translate(-0.05rem, -0.05rem);
+  }
+
+  .tag-row-wrap > summary:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+    border-radius: 0.25rem;
+  }
+
+  /* The notebook name, then the tags, truncating together rather than wrapping. */
+  .tag-row-summary {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    min-width: 0;
+    margin-right: auto;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+
+  /* Never shrinks below its own text: the notebook is the identifying half. */
+  .tag-row-summary-book { flex: 0 0 auto; }
+
+  .tag-row-summary-tags {
+    color: var(--accent);
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  /*
+     Room for the docked bar, so the last lines of a note are not left under it.
+
+     Keyed off the workspace rather than the panes: the toolbar is a sibling of `.panes`,
+     so a descendant `:has()` there would never match. Only the pane scrolls, so that is
+     where the padding belongs.
+  */
+  .workspace:has(.editor-toolbar.docked) .pane { padding-bottom: 3.5rem; }
 
   .mobile-only { display: inline; }
   .desktop-only { display: none; }
