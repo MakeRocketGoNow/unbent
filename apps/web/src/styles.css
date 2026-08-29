@@ -1595,6 +1595,14 @@ a.overflow-item { text-decoration: none; }
   list-style: none;
   margin: 0.5rem 0;
   padding: 0;
+  /*
+   * `.panel` is a flex column with `align-items: flex-start`, which shrink-wraps its
+   * children to their content. Left to that, the list is only as wide as its longest
+   * notebook name and the row's right edge lands mid-panel, so the actions cannot align
+   * to anything. Stretching opts this one child out of that without touching the panels
+   * that rely on it.
+   */
+  align-self: stretch;
 }
 
 .notebook-admin li {
@@ -1623,6 +1631,22 @@ a.overflow-item { text-decoration: none; }
 
 .notebook-admin-name:hover {
   color: var(--accent);
+}
+
+/*
+ * Actions sit at the right edge, not trailing the name.
+ *
+ * `margin-left: auto` rather than relying on the row's `space-between`: the name button
+ * sizes to its text, so with three children the actions ended up bunched against a short
+ * notebook name instead of aligned down the right. Pushing the group explicitly keeps
+ * Export and Delete in the same column whatever the names happen to be.
+ */
+.notebook-admin-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-left: auto;
+  flex-shrink: 0;
 }
 
 .notebook-admin-new {
