@@ -775,6 +775,9 @@ a.overflow-item { text-decoration: none; }
 /* The chevron: a rotated square with two borders, so it needs no glyph or asset. */
 .tag-filter-wrap > summary::after {
   content: '';
+  /* Never shrinks — see the note on the note-filing chevron. A long active tag name would
+     otherwise squeeze this on one axis and turn it into a checkmark. */
+  flex: 0 0 auto;
   width: 0.36rem;
   height: 0.36rem;
   /* The count and the active chip both push right, so the chevron only needs to follow
@@ -813,6 +816,10 @@ a.overflow-item { text-decoration: none; }
 /* The active tag, shown on the summary so a collapsed list still says what it is doing. */
 .tag-filter-active {
   margin-left: auto;
+  /* Truncates rather than pushing the chevron off the row. */
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
   padding: 0.1rem 0.45rem;
   font-size: 0.72rem;
   color: var(--bg);
@@ -1830,6 +1837,14 @@ a.overflow-item { text-decoration: none; }
 
   .tag-row-wrap > summary::after {
     content: '';
+    /*
+       Never shrinks.
+
+       It is a flex item, and without this a long tag list squeezed it from 5.76px to
+       3.19px wide while its height stayed put — a rotated box with only a right and a
+       bottom border, narrowed on one axis, reads as a checkmark rather than a chevron.
+    */
+    flex: 0 0 auto;
     width: 0.36rem;
     height: 0.36rem;
     margin-left: 0.35rem;
@@ -1850,10 +1865,12 @@ a.overflow-item { text-decoration: none; }
   }
 
   /* The notebook name, then the tags, truncating together rather than wrapping. */
+  /* The half that yields: it truncates so the chevron beside it never has to. */
   .tag-row-summary {
     display: flex;
     align-items: center;
     gap: 0.5rem;
+    flex: 1 1 auto;
     min-width: 0;
     margin-right: auto;
     overflow: hidden;
