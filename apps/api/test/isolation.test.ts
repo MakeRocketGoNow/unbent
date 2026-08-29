@@ -362,6 +362,99 @@ describe('note CRUD', () => {
     expect(res.status).toBe(400);
   });
 
+  /**
+   * Notes with real historical dates, planted through the import endpoint because it is
+   * the only path that accepts an explicit `createdAt` — a created note is always "now".
+   */
+  async function importDated(actor: Actor, title: string, day: string): Promise<string> {
+    const at = Date.parse(`${day}T12:00:00Z`);
+    const res = await fetch(`${BASE}/api/import/note`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Cookie: actor.cookie, Origin: ORIGIN },
+      body: JSON.stringify({
+        title,
+        body: 'x',
+        createdAt: at,
+        updatedAt: at,
+        contentHash: `${day}${title}`.padEnd(64, '0').slice(0, 64),
+      }),
+    });
+    if (!res.ok) throw new Error(`import failed: ${res.status} ${await res.text()}`);
+    return (await res.json()).id;
+  }
+
+  it('filters to a date range, including both end days', async () => {
+    const actor = await signUp(`daterange-${Date.now()}@example.test`, 'daterange-pass', 'D');
+    await importDated(actor, 'Before', '2022-12-31');
+    const first = await importDated(actor, 'On the first day', '2023-01-01');
+    const middle = await importDated(actor, 'Middle', '2023-06-15');
+    const last = await importDated(actor, 'On the last day', '2023-12-31');
+    await importDated(actor, 'After', '2024-01-01');
+
+    const { items, total } = await fetch(
+      `${BASE}/api/notes?sort=created&from=2023-01-01&to=2023-12-31`,
+      asUser(actor),
+    ).then((r) => r.json());
+
+    // Both boundary days are inside the range: an exclusive upper bound would silently
+    // drop everything filed on 31 December.
+    expect(items.map((i: { id: string }) => i.id).sort()).toEqual([first, middle, last].sort());
+    // The count reflects the range too, or the header contradicts the rows beneath it.
+    expect(total).toBe(3);
+  });
+
+  it('accepts an open-ended range', async () => {
+    const actor = await signUp(`openrange-${Date.now()}@example.test`, 'openrange-pass', 'O');
+    await importDated(actor, 'Old', '2019-05-05');
+    const recent = await importDated(actor, 'Recent', '2023-05-05');
+
+    const onlyFrom = await fetch(`${BASE}/api/notes?sort=created&from=2020-01-01`, asUser(actor)).then(
+      (r) => r.json(),
+    );
+    expect(onlyFrom.items.map((i: { id: string }) => i.id)).toEqual([recent]);
+
+    const onlyTo = await fetch(`${BASE}/api/notes?sort=created&to=2020-01-01`, asUser(actor)).then(
+      (r) => r.json(),
+    );
+    expect(onlyTo.items).toHaveLength(1);
+  });
+
+  it('rejects a malformed date', async () => {
+    const res = await fetch(`${BASE}/api/notes?from=last-tuesday`, asUser(alice));
+    expect(res.status).toBe(400);
+  });
+
+  it('narrows search by the same range', async () => {
+    const actor = await signUp(`searchrange-${Date.now()}@example.test`, 'searchrange-pw', 'S');
+    const token = `rangetoken${Date.now()}`;
+    const at = Date.parse('2021-03-03T12:00:00Z');
+    for (const [title, when] of [
+      ['Old hit', at],
+      ['New hit', Date.parse('2024-03-03T12:00:00Z')],
+    ] as const) {
+      await fetch(`${BASE}/api/import/note`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Cookie: actor.cookie, Origin: ORIGIN },
+        body: JSON.stringify({
+          title,
+          body: token,
+          createdAt: when,
+          updatedAt: when,
+          contentHash: `${title}${when}`.padEnd(64, '0').slice(0, 64),
+        }),
+      });
+    }
+
+    const all = await fetch(`${BASE}/api/search?q=${token}`, asUser(actor)).then((r) => r.json());
+    expect(all.results).toHaveLength(2);
+
+    const ranged = await fetch(
+      `${BASE}/api/search?q=${token}&from=2020-01-01&to=2022-01-01`,
+      asUser(actor),
+    ).then((r) => r.json());
+    expect(ranged.results.map((r: { title: string }) => r.title)).toEqual(['Old hit']);
+  });
+
   it('counts within a tag filter', async () => {
     const actor = await signUp(`tagcount-${Date.now()}@example.test`, 'tagcount-pass-1', 'T');
     const tag = `counted-${Date.now()}`;

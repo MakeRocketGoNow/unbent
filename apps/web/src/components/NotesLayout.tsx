@@ -13,7 +13,7 @@ import { SearchResults } from './SearchResults.js';
 
 /** Sidebar plus the routed workspace. Filters come from the URL; nothing here is mirrored into state. */
 export function NotesLayout({ children }: { children: React.ReactNode }) {
-  const { notebook, tag, q = '', sort, order } = Route.useSearch();
+  const { notebook, tag, q = '', sort, order, from, to } = Route.useSearch();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const layout = useNotesLayout('/notes/$noteId');
@@ -26,7 +26,12 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
    */
   const isMobile = useMediaQuery(MOBILE_QUERY);
 
-  const filter = { ...(notebook ? { notebook } : {}), ...(tag ? { tag } : {}) };
+  const filter = {
+    ...(notebook ? { notebook } : {}),
+    ...(tag ? { tag } : {}),
+    ...(from ? { from } : {}),
+    ...(to ? { to } : {}),
+  };
   const ordering = { ...(sort ? { sort } : {}), ...(order ? { order } : {}) };
 
   const list = useInfiniteQuery(notesQuery(filter, ordering));
@@ -192,6 +197,56 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
             </select>
           </div>
         )}
+
+        {/*
+          * Shown while searching too: a date range narrows which notes match, which is a
+          * question worth asking of search results, unlike sort which would discard their
+          * relevance ranking.
+          */}
+        <div className="date-range">
+          <label>
+            <span className="small">From</span>
+            <input
+              type="date"
+              value={from ?? ''}
+              max={to ?? undefined}
+              onChange={(e) =>
+                void navigate({
+                  to: '/notes',
+                  search: (prev) => ({ ...prev, from: e.target.value || undefined }),
+                })
+              }
+            />
+          </label>
+          <label>
+            <span className="small">To</span>
+            <input
+              type="date"
+              value={to ?? ''}
+              min={from ?? undefined}
+              onChange={(e) =>
+                void navigate({
+                  to: '/notes',
+                  search: (prev) => ({ ...prev, to: e.target.value || undefined }),
+                })
+              }
+            />
+          </label>
+          {(from || to) && (
+            <button
+              type="button"
+              className="link-button small"
+              onClick={() =>
+                void navigate({
+                  to: '/notes',
+                  search: (prev) => ({ ...prev, from: undefined, to: undefined }),
+                })
+              }
+            >
+              Clear
+            </button>
+          )}
+        </div>
 
         {results === null && (tags.data?.length ?? 0) > 0 && (
           /*

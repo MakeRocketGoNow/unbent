@@ -17,6 +17,9 @@ import * as api from './notes-api.js';
 export interface NoteFilter {
   notebook?: string;
   tag?: string;
+  /** Inclusive `YYYY-MM-DD` bounds. A range narrows membership, so it is a filter. */
+  from?: string;
+  to?: string;
 }
 
 /**

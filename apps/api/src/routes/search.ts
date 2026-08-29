@@ -11,7 +11,9 @@ export const search = new Hono<AppEnv>().get(
   withRepos,
   zValidator('query', searchQuerySchema),
   async (c) => {
-    const { q, limit, tag, notebook } = c.req.valid('query');
-    return c.json({ results: await c.get('notes').search(q, limit, { tag, notebook }) });
+    const { q, limit, tag, notebook, from, to } = c.req.valid('query');
+    return c.json({
+      results: await c.get('notes').search(q, limit, { tag, notebook, from, to }),
+    });
   },
 );

@@ -1,5 +1,7 @@
 import { ScopedRepo } from './repo.js';
 import {
+  endOfDay,
+  startOfDay,
   UNFILED,
   type Note,
   type NoteSort,
@@ -83,11 +85,35 @@ export function toFtsQuery(raw: string): string {
  * against the search text and matched nothing.
  */
 function filterConditions(
-  opts: { tag?: string | undefined; notebook?: string | undefined },
+  opts: {
+    tag?: string | undefined;
+    notebook?: string | undefined;
+    from?: string | undefined;
+    to?: string | undefined;
+    /** Column the date range applies to. */
+    dateColumn?: string;
+  },
   binds: unknown[],
   userId: string,
 ): string[] {
   const conditions: string[] = [];
+
+  /**
+   * The range filters whichever column the caller is ordering by, so "oldest first" and
+   * "everything before 2020" agree about which date they mean. Search has no sort, so it
+   * passes `created_at`: for an archive, "filed in 2023" is the question being asked.
+   *
+   * Both ends are inclusive — see `endOfDay`.
+   */
+  const dateColumn = opts.dateColumn ?? 'n.created_at';
+  if (opts.from) {
+    binds.push(startOfDay(opts.from));
+    conditions.push(`${dateColumn} >= ?${binds.length}`);
+  }
+  if (opts.to) {
+    binds.push(endOfDay(opts.to));
+    conditions.push(`${dateColumn} <= ?${binds.length}`);
+  }
 
   if (opts.notebook === UNFILED) {
     conditions.push('n.notebook_id IS NULL');
@@ -201,10 +227,12 @@ export class NotesRepo extends ScopedRepo {
     notebook?: string;
     sort?: NoteSort;
     order?: 'asc' | 'desc';
+    from?: string;
+    to?: string;
     /** List trashed notes instead of live ones. */
     trashed?: boolean;
   }): Promise<NoteSummary[]> {
-    const { limit, cursor, tag, notebook, trashed } = opts;
+    const { limit, cursor, tag, notebook, trashed, from, to } = opts;
     const sort = opts.sort ?? 'updated';
     // Trash has one meaningful order — most recently deleted first — so it ignores both.
     const spec = trashed ? TRASH_SORT : SORTS[sort];
@@ -236,7 +264,10 @@ export class NotesRepo extends ScopedRepo {
           ` OR (${spec.column}${collate} = ${keyBind} AND n.id ${op} ${idBind}))`,
       );
     }
-    conditions.push(...filterConditions({ tag, notebook }, binds, this.userId));
+    conditions.push(
+      // The range applies to the column being sorted, so the filter and the order agree.
+      ...filterConditions({ tag, notebook, from, to, dateColumn: spec.column }, binds, this.userId),
+    );
     binds.push(limit);
 
     const direction = descending ? 'DESC' : 'ASC';
@@ -275,7 +306,14 @@ export class NotesRepo extends ScopedRepo {
    * Reported separately from `list` because the list is paginated: counting what a page
    * returned would show "50 notes" for an account holding hundreds.
    */
-  async count(opts?: { tag?: string; notebook?: string; trashed?: boolean }): Promise<number> {
+  async count(opts?: {
+    tag?: string;
+    notebook?: string;
+    trashed?: boolean;
+    from?: string;
+    to?: string;
+    sort?: NoteSort;
+  }): Promise<number> {
     const conditions = [
       'n.user_id = ?1',
       opts?.trashed ? 'n.deleted_at IS NOT NULL' : 'n.deleted_at IS NULL',
@@ -283,7 +321,17 @@ export class NotesRepo extends ScopedRepo {
     const binds: unknown[] = [this.userId];
 
     conditions.push(
-      ...filterConditions({ tag: opts?.tag, notebook: opts?.notebook }, binds, this.userId),
+      ...filterConditions(
+        {
+          tag: opts?.tag,
+          notebook: opts?.notebook,
+          from: opts?.from,
+          to: opts?.to,
+          dateColumn: opts?.trashed ? TRASH_SORT.column : SORTS[opts?.sort ?? 'updated'].column,
+        },
+        binds,
+        this.userId,
+      ),
     );
 
     const row = await this.db
@@ -552,7 +600,12 @@ export class NotesRepo extends ScopedRepo {
   async search(
     rawQuery: string,
     limit: number,
-    filters: { tag?: string | undefined; notebook?: string | undefined } = {},
+    filters: {
+      tag?: string | undefined;
+      notebook?: string | undefined;
+      from?: string | undefined;
+      to?: string | undefined;
+    } = {},
   ): Promise<SearchResult[]> {
     const query = toFtsQuery(rawQuery);
     if (!query) return [];

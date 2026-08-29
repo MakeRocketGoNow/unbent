@@ -61,6 +61,8 @@ export async function listNotes(
     limit?: number;
     sort?: NoteSort;
     order?: 'asc' | 'desc';
+    from?: string;
+    to?: string;
   } = {},
 ): Promise<NotePage> {
   const params = new URLSearchParams();
@@ -69,6 +71,8 @@ export async function listNotes(
   if (opts.cursor) params.set('cursor', opts.cursor);
   if (opts.sort) params.set('sort', opts.sort);
   if (opts.order) params.set('order', opts.order);
+  if (opts.from) params.set('from', opts.from);
+  if (opts.to) params.set('to', opts.to);
   if (opts.trashed) params.set('trashed', '1');
   if (opts.limit) params.set('limit', String(opts.limit));
   const qs = params.toString();
@@ -248,11 +252,13 @@ export async function deleteAttachment(noteId: string, filename: string): Promis
 
 export async function searchNotes(
   q: string,
-  filter: { tag?: string; notebook?: string } = {},
+  filter: { tag?: string; notebook?: string; from?: string; to?: string } = {},
 ): Promise<SearchResult[]> {
   const params = new URLSearchParams({ q });
   if (filter.tag) params.set('tag', filter.tag);
   if (filter.notebook) params.set('notebook', filter.notebook);
+  if (filter.from) params.set('from', filter.from);
+  if (filter.to) params.set('to', filter.to);
   const { results } = await json<{ results: SearchResult[] }>(
     await fetch(`/api/search?${params.toString()}`),
   );

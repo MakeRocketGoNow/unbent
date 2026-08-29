@@ -697,6 +697,58 @@ a.overflow-item { text-decoration: none; }
   border-color: var(--accent);
 }
 
+/*
+ * Date range — the same tier as the notebook and sort controls.
+ *
+ * Two inputs side by side rather than a single "period" control: an archive question is
+ * usually open at one end ("anything before 2020"), which a preset list cannot express.
+ */
+.date-range {
+  display: flex;
+  align-items: flex-end;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+}
+
+.date-range label {
+  display: flex;
+  flex: 1 1 0;
+  min-width: 0;
+  flex-direction: column;
+  gap: 0.15rem;
+  color: var(--muted);
+}
+
+.date-range input {
+  width: 100%;
+  min-width: 0;
+  padding: 0.4rem 0.5rem;
+  font: inherit;
+  font-size: 0.85rem;
+  color: var(--fg);
+  background: color-mix(in srgb, var(--fg) 4%, transparent);
+  border: 1px solid var(--border);
+  border-radius: 0.4rem;
+}
+
+.date-range input:hover { border-color: color-mix(in srgb, var(--accent) 50%, var(--border)); }
+
+.date-range input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.link-button {
+  padding: 0.4rem 0.2rem;
+  color: var(--muted);
+  background: none;
+  border: none;
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+.link-button:hover { color: var(--fg); }
+
 .filters-end {
   padding-bottom: 0.6rem;
   border-bottom: 1px solid var(--border);

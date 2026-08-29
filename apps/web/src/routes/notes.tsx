@@ -1,6 +1,6 @@
 import { createFileRoute, Outlet } from '@tanstack/react-router';
 import { z } from 'zod';
-import { NOTE_SORTS, UNFILED } from '@unbent/shared';
+import { NOTE_SORTS, UNFILED, dateOnlySchema } from '@unbent/shared';
 import { NotesLayout } from '../components/NotesLayout.js';
 import { notesQuery, tagsQuery, notebooksQuery, trashCountQuery } from '../queries.js';
 
@@ -27,6 +27,9 @@ const filters = z.object({
    */
   sort: z.enum(NOTE_SORTS).optional().catch(undefined),
   order: z.enum(['asc', 'desc']).optional().catch(undefined),
+  /** Inclusive `YYYY-MM-DD` bounds, filtering the column the sort uses. */
+  from: dateOnlySchema.optional().catch(undefined),
+  to: dateOnlySchema.optional().catch(undefined),
 });
 
 export const Route = createFileRoute('/notes')({
@@ -38,11 +41,15 @@ export const Route = createFileRoute('/notes')({
     tag: search.tag,
     sort: search.sort,
     order: search.order,
+    from: search.from,
+    to: search.to,
   }),
   loader: ({ context: { queryClient }, deps }) => {
     const filter = {
       ...(deps.notebook ? { notebook: deps.notebook } : {}),
       ...(deps.tag ? { tag: deps.tag } : {}),
+      ...(deps.from ? { from: deps.from } : {}),
+      ...(deps.to ? { to: deps.to } : {}),
     };
     const ordering = {
       ...(deps.sort ? { sort: deps.sort } : {}),
