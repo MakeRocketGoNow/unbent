@@ -297,7 +297,9 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
           {results !== null && <SearchResults results={results} />}
 
           {results === null &&
-            notes.map((n) => <NoteListItem key={n.id} note={n} to="/notes/$noteId" />)}
+            notes.map((n) => (
+              <NoteListItem key={n.id} note={n} to="/notes/$noteId" sort={sort ?? 'updated'} />
+            ))}
 
           {results === null && list.hasNextPage && (
             <li>
