@@ -96,7 +96,10 @@ async function writeArchive(
   // A zip with no entries is still a valid zip; an empty account exports an empty archive
   // rather than an error.
   if (count === 0) {
-    await zip.add('README.txt', new Blob(['No notes to export.\n']).stream(), { level: 0 });
+    await zip.add('README.txt', new Blob(['No notes to export.\n']).stream(), {
+      level: 0,
+      zip64: false,
+    });
   }
 
   await zip.close();
@@ -152,8 +155,25 @@ async function writeNoteEntry(
   const base = noteDirName(note.title, note.id);
   const prefix = layout === 'nested' ? `${base}/` : '';
 
+  /*
+     `zip64: false` on every entry, and it is not an optimisation.
+
+     Entries are added as streams, so their length is not known when the local header is
+     written. zip.js handles that by reserving Zip64 space — `ffffffff` size placeholders
+     and extract version 45 — even for a one-kilobyte note. Command-line unzip copes;
+     macOS Archive Utility refuses the whole archive with "Error 79 - Inappropriate file
+     type or format", which is what a double-click in Finder produces. Forcing 32-bit
+     fields writes version 20 headers that it accepts.
+
+     The sizes still arrive in the trailing data descriptor, so streaming is unaffected —
+     this only caps an entry at 4GB, which is already far beyond what a Worker response
+     can carry.
+  */
   // Markdown compresses well.
-  await zip.add(`${prefix}${base}.md`, new Blob([noteMarkdown(note)]).stream(), { level: 6 });
+  await zip.add(`${prefix}${base}.md`, new Blob([noteMarkdown(note)]).stream(), {
+    level: 6,
+    zip64: false,
+  });
 
   // Attachments stream straight from R2 into the archive — never buffered, so a note
   // with a 90MB video does not blow the Worker's 128MB ceiling. Stored uncompressed:
@@ -171,7 +191,7 @@ async function writeNoteEntry(
     const object = await blobs.get(row.r2_key);
     if (!object?.body) continue;
 
-    await zip.add(`${prefix}files/${file.filename}`, object.body, { level: 0 });
+    await zip.add(`${prefix}files/${file.filename}`, object.body, { level: 0, zip64: false });
   }
 }
 

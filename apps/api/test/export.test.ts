@@ -285,6 +285,51 @@ describe('single-note export', () => {
   });
 
   /**
+   * Archive Utility is the extractor a download actually meets.
+   *
+   * Entries are streamed, so their length is unknown when the local header is written, and
+   * zip.js answers that by reserving Zip64 space — `0xffffffff` size placeholders and
+   * extract version 45 — even for a one-kilobyte note. Command-line unzip reads it; macOS
+   * Archive Utility refuses the whole archive with "Error 79 - Inappropriate file type or
+   * format", so a double-click in Finder produced nothing at all.
+   *
+   * The bytes are asserted rather than the round-trip because `unzip()` above uses zip.js
+   * to read, which accepts its own Zip64 output happily — the regression is invisible to
+   * every other test in this file.
+   */
+  it('writes headers a plain zip reader accepts, without Zip64', async () => {
+    const actor = await signUp(`one-z64-${Date.now()}@example.test`, 'zip64-password-1', 'Z');
+    const created = await createNote(actor, { title: 'Header check', body: '![p](files/p.png)' });
+    await upload(actor, created.id, 'p.png', 'PNGDATA', 'image/png');
+
+    const bytes = new Uint8Array(await (await fetchNote(actor, created.id)).arrayBuffer());
+    const view = new DataView(bytes.buffer);
+
+    // Local file header: "PK\x03\x04", then the version needed to extract.
+    expect(bytes[0]).toBe(0x50);
+    expect(bytes[1]).toBe(0x4b);
+    // 20 is "2.0 — deflate"; 45 is "4.5 — Zip64", which is what Archive Utility rejects.
+    expect(view.getUint16(4, true)).toBeLessThanOrEqual(20);
+
+    // No Zip64 end-of-central-directory locator ("PK\x06\x07") before the EOCD record.
+    let eocd = -1;
+    for (let i = bytes.length - 22; i >= 0; i--) {
+      if (bytes[i] === 0x50 && bytes[i + 1] === 0x4b && bytes[i + 2] === 0x05 && bytes[i + 3] === 0x06) {
+        eocd = i;
+        break;
+      }
+    }
+    expect(eocd).toBeGreaterThanOrEqual(0);
+    const locator =
+      eocd >= 20 &&
+      bytes[eocd - 20] === 0x50 &&
+      bytes[eocd - 19] === 0x4b &&
+      bytes[eocd - 18] === 0x06 &&
+      bytes[eocd - 17] === 0x07;
+    expect(locator).toBe(false);
+  });
+
+  /**
    * The reason both paths share one writer: the markdown must sit one level above its own
    * `files/` in both, or the relative links break. The single-note zip differs only by the
    * note directory the library export needs to keep notes apart.
