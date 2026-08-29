@@ -1026,38 +1026,69 @@ a.overflow-item { text-decoration: none; }
    ones; focused it becomes a field. The input stays on top throughout, so the hint and the
    target are the same thing rather than a label next to a box.
 */
+/*
+   The wrapper owns the box, and the box never moves.
+
+   The first version swapped the input between `position: absolute` and `static` on focus,
+   which re-flowed it past the hidden hint — it jumped to the right and changed width in
+   the same frame. Now the input is absolutely positioned over the wrapper at every state
+   and only the wrapper's width animates, so the field opens exactly where the "+ Add tag"
+   chip was standing.
+*/
 .tag-entry {
   position: relative;
   display: inline-flex;
   align-items: center;
+  /*
+     Both ends of the transition are explicit lengths. `width: auto` does not animate, so
+     shrink-to-fit here would make the box snap open instead of growing out of the chip —
+     5.5rem is the hint's own width, measured, and the label is centred in it either way.
+  */
+  width: 5.5rem;
+  min-height: 1.55rem;
+  border: 1px dashed var(--border);
+  border-radius: 999px;
+  transition: width 0.16s ease, border-color 0.16s ease, background-color 0.16s ease;
+}
+
+.tag-entry:hover { border-color: var(--accent); }
+
+/* Focused: the same box, wider, with a solid edge. Nothing else moves. */
+.tag-entry.active {
+  width: 9rem;
+  background: var(--bg);
+  border-style: solid;
+  border-color: var(--accent);
 }
 
 .tag-add-hint {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 0.25rem;
+  width: 100%;
   padding: 0.15rem 0.55rem;
   font-size: 0.75rem;
   color: var(--muted);
-  border: 1px dashed var(--border);
-  border-radius: 999px;
   white-space: nowrap;
   /* The input above it takes the clicks; this is only the picture. */
   pointer-events: none;
+  transition: opacity 0.12s ease;
 }
 
-.tag-entry:hover .tag-add-hint {
-  color: var(--accent);
-  border-color: var(--accent);
-}
+.tag-entry:hover .tag-add-hint { color: var(--accent); }
 
 .tag-add-plus { font-size: 0.85rem; line-height: 1; }
 
-/* In use: the chip gives way to the field it was standing in for. */
-.tag-entry.active .tag-add-hint { visibility: hidden; }
+/*
+   Opacity rather than visibility, so the label fades as the box grows instead of
+   vanishing a frame before it. It keeps its size either way — the wrapper is measured
+   from it while idle.
+*/
+.tag-entry.active .tag-add-hint { opacity: 0; }
 
 .tag-field {
-  /* Overlays the hint chip, so the whole chip is the click target. */
+  /* Absolute at every state: this is what stops the field from jumping on focus. */
   position: absolute;
   inset: 0;
   width: 100%;
@@ -1068,14 +1099,6 @@ a.overflow-item { text-decoration: none; }
   background: none;
   border: none;
   border-radius: 999px;
-}
-
-/* Focused, it needs its own box — it is no longer borrowing the chip's. */
-.tag-entry.active .tag-field {
-  position: static;
-  min-width: 7rem;
-  border: 1px solid var(--accent);
-  background: var(--bg);
 }
 
 .tag-field:focus { outline: none; }

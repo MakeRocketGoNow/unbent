@@ -68,6 +68,23 @@ describe('TagInput add affordance', () => {
     expect(onChange).toHaveBeenCalledWith(['Dentist']);
   });
 
+  /**
+   * The field must open where the chip was, not jump elsewhere.
+   *
+   * jsdom does no layout, so this cannot assert pixels — it asserts the structural
+   * property the smooth version depends on: the input is positioned by the wrapper at
+   * every state, and only the wrapper's class changes. The first attempt swapped the
+   * input between `absolute` and `static` on focus, which re-flowed it to the right of
+   * the hidden hint; keeping the input's own classes constant is what prevents that.
+   */
+  it('does not restyle the input itself when focus arrives', () => {
+    render(<TagInput tags={[]} suggestions={[]} onChange={() => {}} />);
+    const field = screen.getByLabelText('Add a tag');
+    const before = field.className;
+    fireEvent.focus(field);
+    expect(field.className).toBe(before);
+  });
+
   it('returns to the hint once the field is empty and left', () => {
     const { container } = render(<TagInput tags={[]} suggestions={[]} onChange={() => {}} />);
     const field = screen.getByLabelText('Add a tag');
