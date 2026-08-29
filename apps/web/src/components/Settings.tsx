@@ -127,6 +127,21 @@ export function Settings({ onChanged }: SettingsProps) {
               </button>
             )}
 
+            {/*
+              * "Export this notebook" is a thought people have while looking at a list of
+              * notebooks, so the shortcut lives here — but it is the same filtered export
+              * the note list offers, not a second mechanism. An anchor for the same reason
+              * as every other export link: the zip streams as it downloads.
+              */}
+            <a
+              className="link small"
+              href={api.exportUrl({ notebook: nb.name })}
+              download
+              title={`Download ${nb.name} as a zip`}
+            >
+              Export
+            </a>
+
             <button
               type="button"
               className="link danger small"
