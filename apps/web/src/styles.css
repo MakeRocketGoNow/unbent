@@ -1022,6 +1022,22 @@ a.overflow-item { text-decoration: none; }
   flex-wrap: wrap;
 }
 
+/*
+   The name yields; the actions do not.
+
+   `.attachments-row` wraps so the confirm can take a line of its own, but that also let a
+   long filename claim the full width and push Delete onto a second line — the row grew
+   from 55px to 92px and the actions drifted away from the file they act on. The name
+   already truncates with an ellipsis; this is what makes it do so before the row breaks.
+*/
+.attachments-info {
+  flex: 1 1 0;
+}
+
+.attachments-actions {
+  flex-shrink: 0;
+}
+
 .attachments-row > .confirm {
   /* Its own line, spanning the row. */
   flex: 1 0 100%;
@@ -1579,6 +1595,16 @@ a.overflow-item { text-decoration: none; }
  */
 .confirm {
   max-width: 40rem;
+  /*
+     Never wider than what holds it.
+
+     A confirm names the thing it is about, and an attachment can be called
+     `763101075_1034781015860122_1690131728414798935_n.jpg`. With nowhere to break, that
+     one word set the panel's minimum width — 478px inside a 319px row on a phone, so the
+     box hung 189px past the edge of the screen with its buttons out of reach.
+  */
+  min-width: 0;
+  width: 100%;
   margin: 0.75rem 0 0.25rem;
   padding: 0.9rem;
   border: 1px solid var(--bad);
@@ -1587,6 +1613,14 @@ a.overflow-item { text-decoration: none; }
 
 .confirm p {
   margin: 0 0 0.45rem;
+  /*
+     `anywhere` rather than `break-word`: only the former lets an unbreakable word count
+     toward the element's min-content width, which is what stops the panel being sized by
+     the filename in the first place. A name with no spaces or hyphens wraps mid-word,
+     which for an opaque string of digits is the readable outcome — truncating it would
+     hide the very part that distinguishes one upload from another.
+  */
+  overflow-wrap: anywhere;
 }
 
 .confirm-token {
