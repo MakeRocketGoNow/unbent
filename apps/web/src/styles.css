@@ -869,7 +869,27 @@ a.overflow-item { text-decoration: none; }
 /* The same count, inline after a topbar link rather than inside a pill. */
 .topbar-count { margin-left: 0.3rem; }
 
-.tag-row { padding: 0.5rem 0 0.25rem; }
+/*
+   One rhythm for the note's filing controls.
+
+   These stacked on ad-hoc padding — 9px between the summary and the notebook picker, 3px
+   between the picker and the tags, 14px before the closing border, with the controls
+   themselves 24, 25 and 26px tall. A flex column with a single gap makes the spacing one
+   decision instead of four, and a shared 1.65rem control height puts every row on the
+   same baseline. The block now measures 8/8/9, the last pixel being sub-pixel rounding.
+*/
+.tag-row {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.5rem;
+  /*
+     Top padding is the same 0.5rem as the gap, so the space under the summary matches the
+     space between the controls. Bottom too, so the run to the closing border is identical
+     — the whole block is then one number repeated, which is what makes it read as even.
+  */
+  padding: 0.5rem 0;
+}
 
 /*
    The note's filing, behind a disclosure on a phone.
@@ -988,7 +1008,14 @@ a.overflow-item { text-decoration: none; }
   flex-wrap: wrap;
   align-items: center;
   gap: 0.35rem;
-  min-height: 1.9rem;
+  /*
+     Sized by its chips, not by a floor of its own.
+
+     The old 1.9rem predates the chips having a height; against 1.65rem chips it left two
+     dead pixels above and below the row, which is what made an otherwise even 8px rhythm
+     look uneven. The row is never empty — the "+ Add tag" entry is always present — so
+     there is nothing for a minimum to protect against.
+  */
   cursor: text;
 }
 
@@ -996,6 +1023,7 @@ a.overflow-item { text-decoration: none; }
   display: inline-flex;
   align-items: center;
   gap: 0.3rem;
+  min-height: 1.65rem;
   padding: 0.15rem 0.25rem 0.15rem 0.55rem;
   font-size: 0.75rem;
   color: var(--accent);
@@ -1045,7 +1073,7 @@ a.overflow-item { text-decoration: none; }
      5.5rem is the hint's own width, measured, and the label is centred in it either way.
   */
   width: 5.5rem;
-  min-height: 1.55rem;
+  min-height: 1.65rem;
   border: 1px dashed var(--border);
   border-radius: 999px;
   transition: width 0.16s ease, border-color 0.16s ease, background-color 0.16s ease;
@@ -1500,6 +1528,8 @@ a.overflow-item { text-decoration: none; }
 /* Notebook picker in the note header, beside the tags. */
 .note-notebook {
   flex-shrink: 0;
+  /* Matches .tag-chip and .tag-entry, so the two rows read as one control group. */
+  min-height: 1.65rem;
   padding: 0.2rem 0.4rem;
   font: inherit;
   font-size: 0.8rem;
@@ -1776,14 +1806,19 @@ a.overflow-item { text-decoration: none; }
     border-bottom: 1px solid var(--border);
   }
 
-  /* Collapsed, the controls contribute nothing; open, they get their normal padding. */
-  .tag-row-wrap[open] { padding-bottom: 0.35rem; }
+  /* Collapsed, the controls contribute nothing. Open, `.tag-row` already carries the
+     0.5rem below the last control, so adding more here made the gap before the border
+     half again as large as every gap above it. */
+  .tag-row-wrap[open] { padding-bottom: 0; }
 
   .tag-row-wrap > summary {
     display: flex;
     align-items: center;
     gap: 0.4rem;
+    /* A fixed box rather than whatever the text's leading produces, so the gap below it
+       is `.tag-row`'s padding alone and matches every other gap in the block. */
     min-height: 2.25rem;
+    line-height: 1;
     font-size: 0.8rem;
     color: var(--muted);
     cursor: pointer;
