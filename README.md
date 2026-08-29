@@ -246,6 +246,14 @@ Each `note.md` is markdown with YAML frontmatter (id, title, created, updated, t
 directory name is a slug plus an id fragment, so two notes with the same title do not
 collide. Standard `unzip` reads it; no part of this app is needed to get your notes back.
 
+`/api/export` also takes the note list's `tag`, `notebook`, `from`, and `to`, so an export
+can be a slice rather than the whole library — a year of records for a doctor, the receipts
+an accountant asked for. The enumeration goes through the same `notes.list` as the list
+itself, so a filter cannot mean one thing on screen and another in the zip. There is no
+`sort` (a directory tree has no order worth choosing) and no `limit` (a partial backup is a
+trap); `sort` is accepted only to say which column a date range applies to. The filename
+carries the scope, since several slices land in one downloads folder on the same day.
+
 This is the backup mechanism, not a convenience feature: `wrangler d1 export` fails on any
 database containing an FTS5 table and leaves the database wedged in a "processing export"
 state ([workers-sdk#9519](https://github.com/cloudflare/workers-sdk/issues/9519)). Do not
