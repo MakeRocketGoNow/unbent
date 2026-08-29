@@ -1010,6 +1010,24 @@ a.overflow-item { text-decoration: none; }
 
 .attachments-error { margin: 0.35rem 0 0; }
 
+/*
+   The confirm gets the whole row, not the gap beside the filename.
+
+   `.attachments-row` is a flex row, so a confirm rendered inside it became a flex item
+   next to the file info — 166px of a 375px screen, which wrapped "Permanently delete
+   <filename>?" onto four lines and made the panel 282px tall. Wrapping the row's contents
+   lets the confirm sit under them at full width instead.
+*/
+.attachments-row {
+  flex-wrap: wrap;
+}
+
+.attachments-row > .confirm {
+  /* Its own line, spanning the row. */
+  flex: 1 0 100%;
+  margin-top: 0.5rem;
+}
+
 .tag-input {
   display: flex;
   flex-wrap: wrap;
@@ -1788,6 +1806,22 @@ a.overflow-item { text-decoration: none; }
     min-height: 2.75rem;
     padding: 0 0.35rem;
   }
+
+  /*
+     Confirmation buttons are tap targets like any other, and these end an irreversible
+     action — 33px for "Delete file" and 26px for "Cancel" is not enough to be sure which
+     one a thumb landed on.
+  */
+  .confirm-actions button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 2.75rem;
+    padding-inline: 0.9rem;
+  }
+
+  /* The demoted destructive link keeps its own line, so it only needs the height. */
+  .confirm-actions .confirm-secondary { padding-inline: 0; }
 
   /* The one control in the sidebar that was still under the 44px touch target. */
   .tag-filter-wrap > summary {
