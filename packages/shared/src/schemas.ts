@@ -50,11 +50,27 @@ export const updateNoteSchema = z.object({
   notebook: notebookNameSchema.nullable().optional(),
 });
 
+/**
+ * How the note list is ordered.
+ *
+ * `updated` is the default because a notes app is usually a worklist. The others matter
+ * for an archive: filing by when a document was received (`created`) or finding one by
+ * name (`title`) are both ordinary questions that recency cannot answer.
+ */
+export const NOTE_SORTS = ['updated', 'created', 'title'] as const;
+export type NoteSort = (typeof NOTE_SORTS)[number];
+
+export const noteSortSchema = z.enum(NOTE_SORTS).default('updated');
+/** Ascending is meaningful for every sort: oldest first, or A–Z. */
+export const noteOrderSchema = z.enum(['asc', 'desc']).default('desc');
+
 export const listNotesQuerySchema = z.object({
   cursor: z.string().optional(),
   limit: z.coerce.number().int().min(1).max(100).default(50),
   tag: z.string().optional(),
   notebook: z.string().optional(),
+  sort: noteSortSchema,
+  order: noteOrderSchema,
   /** List trashed notes instead of live ones. Any value but "1" is treated as false. */
   trashed: z
     .string()

@@ -5,6 +5,7 @@ import {
   listNotesQuerySchema,
   updateNoteSchema,
 } from '@unbent/shared';
+import { nextCursor } from '../lib/notes-repo.js';
 import { requireAuth } from '../lib/session.js';
 import { withRepos } from '../lib/repos-middleware.js';
 import type { AppEnv } from '../types.js';
@@ -21,29 +22,20 @@ export const notes = new Hono<AppEnv>()
   .use('/notes', requireAuth, withRepos)
 
   .get('/notes', zValidator('query', listNotesQuerySchema), async (c) => {
-    const { cursor, limit, tag, notebook, trashed } = c.req.valid('query');
+    const { cursor, limit, tag, notebook, trashed, sort, order } = c.req.valid('query');
     const repo = c.get('notes');
     const filter = { tag, notebook, trashed };
 
     const [items, total] = await Promise.all([
-      repo.list({ limit, cursor, tag, notebook, trashed }),
+      repo.list({ limit, cursor, tag, notebook, trashed, sort, order }),
       // Only counted on the first page: a paging client already knows the total, and this
       // is a second query on a hot path.
       cursor ? Promise.resolve<number | null>(null) : repo.count(filter),
     ]);
 
-    /**
-     * Keyset cursor: the last row's sort key. Only offered on a full page.
-     *
-     * The trash is ordered by `deleted_at`, so it must page on that column — using
-     * `updated_at` there would skip or repeat notes.
-     */
-    const lastRow = items[items.length - 1];
-    const next =
-      items.length === limit && lastRow
-        ? String(trashed ? (lastRow.deletedAt ?? lastRow.updatedAt) : lastRow.updatedAt)
-        : null;
-    return c.json({ items, cursor: next, total });
+    // The cursor is derived from the sort that produced the page, so the two cannot
+    // disagree; see `nextCursor`.
+    return c.json({ items, cursor: nextCursor(items, { limit, sort, trashed }), total });
   })
 
   .post('/notes', zValidator('json', createNoteSchema), async (c) => {

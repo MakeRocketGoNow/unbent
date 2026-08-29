@@ -1,4 +1,5 @@
 import { queryOptions, infiniteQueryOptions } from '@tanstack/react-query';
+import type { NoteSort } from '@unbent/shared';
 import * as api from './notes-api.js';
 
 /**
@@ -18,8 +19,20 @@ export interface NoteFilter {
   tag?: string;
 }
 
+/**
+ * Ordering for the note list.
+ *
+ * Kept out of `NoteFilter` because it is not a filter: it changes the order of a result
+ * set, not its membership, and search results are ranked by relevance rather than sorted.
+ */
+export interface NoteOrdering {
+  sort?: NoteSort;
+  order?: 'asc' | 'desc';
+}
+
 export const keys = {
-  notes: (filter: NoteFilter) => ['notes', filter] as const,
+  notes: (filter: NoteFilter, ordering: NoteOrdering = {}) =>
+    ['notes', filter, ordering] as const,
   note: (id: string) => ['note', id] as const,
   attachments: (noteId: string) => ['attachments', noteId] as const,
   tags: () => ['tags'] as const,
@@ -31,11 +44,11 @@ export const keys = {
 };
 
 /** Live notes matching a filter, paged. */
-export const notesQuery = (filter: NoteFilter) =>
+export const notesQuery = (filter: NoteFilter, ordering: NoteOrdering = {}) =>
   infiniteQueryOptions({
-    queryKey: keys.notes(filter),
+    queryKey: keys.notes(filter, ordering),
     queryFn: ({ pageParam }) =>
-      api.listNotes({ ...filter, ...(pageParam ? { cursor: pageParam } : {}) }),
+      api.listNotes({ ...filter, ...ordering, ...(pageParam ? { cursor: pageParam } : {}) }),
     initialPageParam: '' as string,
     getNextPageParam: (last) => last.cursor ?? undefined,
   });

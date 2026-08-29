@@ -1,5 +1,11 @@
 import { ScopedRepo } from './repo.js';
-import { UNFILED, type Note, type NoteSummary, type SearchResult } from '@unbent/shared';
+import {
+  UNFILED,
+  type Note,
+  type NoteSort,
+  type NoteSummary,
+  type SearchResult,
+} from '@unbent/shared';
 
 interface NoteRow {
   id: string;
@@ -105,6 +111,71 @@ function filterConditions(
   return conditions;
 }
 
+/**
+ * The sort column and its cursor, in one place.
+ *
+ * Keyset pagination compares against the column it ordered by, so the two must always
+ * agree: ordering by title while paging on `updated_at` skips and repeats rows. Pairing
+ * them here means a new sort cannot be added with a mismatched cursor.
+ *
+ * `title` is compared `COLLATE NOCASE` so paging matches the order the rows came back in;
+ * a binary comparison would put every lowercase title after every uppercase one and drop
+ * rows from the middle of the sequence.
+ */
+const SORTS: Record<
+  NoteSort,
+  { column: string; collate?: string; text?: boolean; keyOf: (row: NoteSummary) => string | number }
+> = {
+  updated: { column: 'n.updated_at', keyOf: (r) => r.updatedAt },
+  created: { column: 'n.created_at', keyOf: (r) => r.createdAt },
+  title: { column: 'n.title', collate: 'COLLATE NOCASE', text: true, keyOf: (r) => r.title },
+};
+
+/** Trash is ordered by when it was deleted, whatever sort the live list is using. */
+const TRASH_SORT = {
+  column: 'n.deleted_at',
+  keyOf: (r: NoteSummary) => r.deletedAt ?? r.updatedAt,
+};
+
+/**
+ * The cursor is the sort key *and* the id of the last row.
+ *
+ * Comparing the sort key alone is only safe when it is unique. Titles are not — an
+ * archive is full of notes called "Receipt" — and a strict `<` on the key would step
+ * over every row sharing the boundary value. Carrying the id makes the comparison a
+ * lexicographic one on `(key, id)`, which is exactly the order the rows came back in.
+ *
+ * The id is appended after a separator that cannot occur in a uuid, so a title containing
+ * the separator still round-trips: only the final segment is the id.
+ */
+const CURSOR_SEP = '\u001F';
+
+function encodeCursor(key: string | number, id: string): string {
+  return `${key}${CURSOR_SEP}${id}`;
+}
+
+function decodeCursor(cursor: string): { key: string; id: string } | null {
+  const at = cursor.lastIndexOf(CURSOR_SEP);
+  if (at === -1) return null;
+  return { key: cursor.slice(0, at), id: cursor.slice(at + 1) };
+}
+
+/**
+ * The cursor for the next page, or null if this page was not full.
+ *
+ * Lives beside `SORTS` rather than in the route so the column that ordered the query is
+ * the column that pages it — the route no longer needs to know how a sort is implemented.
+ */
+export function nextCursor(
+  items: NoteSummary[],
+  opts: { limit: number; sort: NoteSort; trashed?: boolean | undefined },
+): string | null {
+  const last = items[items.length - 1];
+  if (items.length < opts.limit || !last) return null;
+  const spec = opts.trashed ? TRASH_SORT : SORTS[opts.sort];
+  return encodeCursor(spec.keyOf(last), last.id);
+}
+
 function splitTags(joined: string | null): string[] {
   if (!joined) return [];
   return joined.split(TAG_SEP).filter((t) => t.length > 0);
@@ -118,16 +189,27 @@ function splitTags(joined: string | null): string[] {
  * are scoped even when the id is a primary key: an unguessable uuid is not authorization.
  */
 export class NotesRepo extends ScopedRepo {
-  /** Newest first, with tags. Keyset pagination on updated_at keeps deep pages cheap. */
+  /**
+   * A page of notes, ordered by the requested sort. Keyset pagination keeps deep pages
+   * cheap: each page resumes from the last row's sort key rather than counting past
+   * everything before it.
+   */
   async list(opts: {
     limit: number;
     cursor?: string;
     tag?: string;
     notebook?: string;
+    sort?: NoteSort;
+    order?: 'asc' | 'desc';
     /** List trashed notes instead of live ones. */
     trashed?: boolean;
   }): Promise<NoteSummary[]> {
     const { limit, cursor, tag, notebook, trashed } = opts;
+    const sort = opts.sort ?? 'updated';
+    // Trash has one meaningful order — most recently deleted first — so it ignores both.
+    const spec = trashed ? TRASH_SORT : SORTS[sort];
+    const descending = trashed || (opts.order ?? 'desc') === 'desc';
+    const collate = 'collate' in spec && spec.collate ? ` ${spec.collate}` : '';
 
     const conditions = [
       'n.user_id = ?1',
@@ -135,13 +217,29 @@ export class NotesRepo extends ScopedRepo {
     ];
     const binds: unknown[] = [this.userId];
 
-    if (cursor) {
-      binds.push(Number(cursor));
-      // Trash is ordered by when it was deleted, so it pages on that column too.
-      conditions.push(trashed ? `n.deleted_at < ?${binds.length}` : `n.updated_at < ?${binds.length}`);
+    const decoded = cursor ? decodeCursor(cursor) : null;
+    if (decoded) {
+      /**
+       * `(key, id) < (?, ?)` spelled out, because SQLite has no row-value comparison in
+       * this position: strictly past the boundary key, or on it and past that row's id.
+       *
+       * Titles compare as text; the timestamp columns are numbers and must bind as
+       * numbers or SQLite compares them as strings, where '9' sorts after '10'.
+       */
+      const isText = !trashed && 'text' in spec && spec.text === true;
+      const op = descending ? '<' : '>';
+      binds.push(isText ? decoded.key : Number(decoded.key), decoded.id);
+      const keyBind = `?${binds.length - 1}`;
+      const idBind = `?${binds.length}`;
+      conditions.push(
+        `(${spec.column}${collate} ${op} ${keyBind}` +
+          ` OR (${spec.column}${collate} = ${keyBind} AND n.id ${op} ${idBind}))`,
+      );
     }
     conditions.push(...filterConditions({ tag, notebook }, binds, this.userId));
     binds.push(limit);
+
+    const direction = descending ? 'DESC' : 'ASC';
 
     const { results } = await this.db
       .prepare(
@@ -153,7 +251,7 @@ export class NotesRepo extends ScopedRepo {
            FROM notes n
            LEFT JOIN notebooks nb ON nb.id = n.notebook_id
           WHERE ${conditions.join(' AND ')}
-          ORDER BY ${trashed ? 'n.deleted_at' : 'n.updated_at'} DESC
+          ORDER BY ${spec.column}${collate} ${direction}, n.id ${direction}
           LIMIT ?${binds.length}`,
       )
       .bind(...binds)

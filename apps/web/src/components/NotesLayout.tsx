@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate } from '@tanstack/react-router';
 import { useQuery, useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
-import { UNFILED } from '@unbent/shared';
+import { UNFILED, type NoteSort } from '@unbent/shared';
 import * as api from '../notes-api.js';
 import { Route } from '../routes/notes.js';
 import { notesQuery, tagsQuery, notebooksQuery, searchQuery, keys } from '../queries.js';
@@ -13,7 +13,7 @@ import { SearchResults } from './SearchResults.js';
 
 /** Sidebar plus the routed workspace. Filters come from the URL; nothing here is mirrored into state. */
 export function NotesLayout({ children }: { children: React.ReactNode }) {
-  const { notebook, tag, q = '' } = Route.useSearch();
+  const { notebook, tag, q = '', sort, order } = Route.useSearch();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const layout = useNotesLayout('/notes/$noteId');
@@ -27,8 +27,9 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
   const isMobile = useMediaQuery(MOBILE_QUERY);
 
   const filter = { ...(notebook ? { notebook } : {}), ...(tag ? { tag } : {}) };
+  const ordering = { ...(sort ? { sort } : {}), ...(order ? { order } : {}) };
 
-  const list = useInfiniteQuery(notesQuery(filter));
+  const list = useInfiniteQuery(notesQuery(filter, ordering));
   const tags = useQuery(tagsQuery());
   const notebooks = useQuery(notebooksQuery());
 
@@ -135,7 +136,11 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
               onChange={(e) =>
                 void navigate({
                   to: '/notes',
-                  search: { notebook: e.target.value || undefined, tag: undefined, q: q || undefined },
+                  search: (prev) => ({
+                    ...prev,
+                    notebook: e.target.value || undefined,
+                    tag: undefined,
+                  }),
                 })
               }
               aria-label="Notebook"
@@ -148,6 +153,42 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
               ))}
               {/* Reachable only once a notebook is deleted, which unfiles its notes. */}
               <option value={UNFILED}>Unfiled</option>
+            </select>
+          </div>
+        )}
+
+        {/*
+          * Sort is one control rather than a field plus a direction, because the useful
+          * combinations are few and naming them ("Oldest first") is plainer than asking
+          * someone to assemble "created" and "ascending" themselves.
+          *
+          * Hidden while searching: results come back ranked by relevance, and reordering
+          * them by date would throw away the ranking that makes them worth showing.
+          */}
+        {results === null && (
+          <div className="notebook-scope-wrap">
+            <select
+              className="notebook-scope"
+              value={`${sort ?? 'updated'}:${order ?? 'desc'}`}
+              onChange={(e) => {
+                const [nextSort, nextOrder] = e.target.value.split(':') as [NoteSort, 'asc' | 'desc'];
+                void navigate({
+                  to: '/notes',
+                  // The default stays out of the URL so a plain /notes link is clean.
+                  search: (prev) => ({
+                    ...prev,
+                    sort: nextSort === 'updated' ? undefined : nextSort,
+                    order: nextOrder === 'desc' ? undefined : nextOrder,
+                  }),
+                });
+              }}
+              aria-label="Sort notes"
+            >
+              <option value="updated:desc">Recently updated</option>
+              <option value="created:desc">Newest first</option>
+              <option value="created:asc">Oldest first</option>
+              <option value="title:asc">Title A–Z</option>
+              <option value="title:desc">Title Z–A</option>
             </select>
           </div>
         )}

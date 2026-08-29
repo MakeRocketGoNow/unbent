@@ -272,7 +272,7 @@ describe('note CRUD', () => {
     const seen = new Set<string>();
     let cursor: string | null = null;
     for (let guard = 0; guard < 10; guard += 1) {
-      const url = `${BASE}/api/notes?limit=5${cursor ? `&cursor=${cursor}` : ''}`;
+      const url = `${BASE}/api/notes?limit=5${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''}`;
       const page = await fetch(url, asUser(actor)).then((r) => r.json());
       for (const item of page.items) seen.add(item.id);
       cursor = page.cursor;
@@ -282,6 +282,84 @@ describe('note CRUD', () => {
     // Every note reachable, none duplicated across pages.
     expect(seen.size).toBe(12);
     expect(cursor).toBeNull();
+  });
+
+  it('sorts by title, and pages without skipping duplicates', async () => {
+    /**
+     * The case the compound cursor exists for. An archive has many notes sharing a title
+     * ("Receipt"), and a cursor comparing the title alone would step over every row that
+     * shares the boundary title rather than resuming inside the run.
+     */
+    const actor = await signUp(`titlesort-${Date.now()}@example.test`, 'titlesort-pass-1', 'T');
+    for (let i = 0; i < 9; i += 1) {
+      await createNote(actor, { title: 'Receipt', body: `x${i}` });
+    }
+
+    const seen = new Set<string>();
+    let cursor: string | null = null;
+    for (let guard = 0; guard < 10; guard += 1) {
+      const url = `${BASE}/api/notes?sort=title&order=asc&limit=4${
+        cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''
+      }`;
+      const page = await fetch(url, asUser(actor)).then((r) => r.json());
+      for (const item of page.items) seen.add(item.id);
+      cursor = page.cursor;
+      if (!cursor) break;
+    }
+
+    expect(seen.size).toBe(9);
+    expect(cursor).toBeNull();
+  });
+
+  it('orders by title alphabetically, ignoring case', async () => {
+    const actor = await signUp(`alpha-${Date.now()}@example.test`, 'alpha-pass-123', 'A');
+    for (const title of ['banana', 'Apple', 'cherry']) {
+      await createNote(actor, { title, body: 'x' });
+    }
+
+    const { items } = await fetch(`${BASE}/api/notes?sort=title&order=asc`, asUser(actor)).then(
+      (r) => r.json(),
+    );
+    // Case-insensitive: a binary sort would put 'Apple' before both lowercase titles by
+    // accident and 'banana' after 'cherry' in the descending direction.
+    expect(items.map((i: { title: string }) => i.title)).toEqual(['Apple', 'banana', 'cherry']);
+  });
+
+  it('sorts by creation date independently of edits', async () => {
+    const actor = await signUp(`created-${Date.now()}@example.test`, 'created-pass-1', 'C');
+    const first = await createNote(actor, { title: 'First', body: 'x' });
+    const second = await createNote(actor, { title: 'Second', body: 'x' });
+
+    // Touching the older note makes it the most recently updated, but not the newest.
+    await fetch(`${BASE}/api/notes/${first.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', Cookie: actor.cookie, Origin: ORIGIN },
+      body: JSON.stringify({ body: 'edited' }),
+    });
+
+    const byUpdated = await fetch(`${BASE}/api/notes`, asUser(actor)).then((r) => r.json());
+    expect(byUpdated.items[0].id).toBe(first.id);
+
+    const byCreated = await fetch(`${BASE}/api/notes?sort=created`, asUser(actor)).then((r) =>
+      r.json(),
+    );
+    expect(byCreated.items[0].id).toBe(second.id);
+  });
+
+  it('reverses with order=asc', async () => {
+    const actor = await signUp(`ascending-${Date.now()}@example.test`, 'ascend-pass-12', 'A');
+    const older = await createNote(actor, { title: 'Older', body: 'x' });
+    await createNote(actor, { title: 'Newer', body: 'x' });
+
+    const { items } = await fetch(`${BASE}/api/notes?sort=created&order=asc`, asUser(actor)).then(
+      (r) => r.json(),
+    );
+    expect(items[0].id).toBe(older.id);
+  });
+
+  it('rejects a sort it does not implement', async () => {
+    const res = await fetch(`${BASE}/api/notes?sort=havoc`, asUser(alice));
+    expect(res.status).toBe(400);
   });
 
   it('counts within a tag filter', async () => {

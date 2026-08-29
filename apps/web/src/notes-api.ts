@@ -1,4 +1,4 @@
-import type { AttachmentInfo, Note, NoteSummary, SearchResult } from '@unbent/shared';
+import type { AttachmentInfo, Note, NoteSort, NoteSummary, SearchResult } from '@unbent/shared';
 
 /**
  * Thin fetch wrappers over the notes API. Same-origin, so cookies travel automatically.
@@ -59,12 +59,16 @@ export async function listNotes(
     cursor?: string;
     trashed?: boolean;
     limit?: number;
+    sort?: NoteSort;
+    order?: 'asc' | 'desc';
   } = {},
 ): Promise<NotePage> {
   const params = new URLSearchParams();
   if (opts.tag) params.set('tag', opts.tag);
   if (opts.notebook) params.set('notebook', opts.notebook);
   if (opts.cursor) params.set('cursor', opts.cursor);
+  if (opts.sort) params.set('sort', opts.sort);
+  if (opts.order) params.set('order', opts.order);
   if (opts.trashed) params.set('trashed', '1');
   if (opts.limit) params.set('limit', String(opts.limit));
   const qs = params.toString();

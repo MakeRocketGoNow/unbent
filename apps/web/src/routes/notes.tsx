@@ -1,6 +1,6 @@
 import { createFileRoute, Outlet } from '@tanstack/react-router';
 import { z } from 'zod';
-import { UNFILED } from '@unbent/shared';
+import { NOTE_SORTS, UNFILED } from '@unbent/shared';
 import { NotesLayout } from '../components/NotesLayout.js';
 import { notesQuery, tagsQuery, notebooksQuery, trashCountQuery } from '../queries.js';
 
@@ -20,25 +20,40 @@ const name = z.string().trim().min(1).max(100);
 const filters = z.object({
   notebook: z.union([z.literal(UNFILED), name]).optional().catch(undefined),
   tag: name.optional().catch(undefined),
-  q: z.string().max(200).optional().catch(undefined),
+  q: z.string().max(500).optional().catch(undefined),
+  /**
+   * Ordering, left undefined at the default so a plain `/notes` URL stays clean and the
+   * API's own default is the single source of truth for what "no sort" means.
+   */
+  sort: z.enum(NOTE_SORTS).optional().catch(undefined),
+  order: z.enum(['asc', 'desc']).optional().catch(undefined),
 });
 
 export const Route = createFileRoute('/notes')({
   validateSearch: filters,
   // Only the filters affect the list; `q` drives search, which is debounced in the
   // component and must not refetch the list on every keystroke.
-  loaderDeps: ({ search }) => ({ notebook: search.notebook, tag: search.tag }),
+  loaderDeps: ({ search }) => ({
+    notebook: search.notebook,
+    tag: search.tag,
+    sort: search.sort,
+    order: search.order,
+  }),
   loader: ({ context: { queryClient }, deps }) => {
     const filter = {
       ...(deps.notebook ? { notebook: deps.notebook } : {}),
       ...(deps.tag ? { tag: deps.tag } : {}),
+    };
+    const ordering = {
+      ...(deps.sort ? { sort: deps.sort } : {}),
+      ...(deps.order ? { order: deps.order } : {}),
     };
     // Warmed, not awaited except for the list: the sidebar's tag and notebook counts can
     // arrive a moment later without holding up the notes themselves.
     void queryClient.ensureQueryData(tagsQuery());
     void queryClient.ensureQueryData(notebooksQuery());
     void queryClient.ensureQueryData(trashCountQuery());
-    return queryClient.ensureInfiniteQueryData(notesQuery(filter));
+    return queryClient.ensureInfiniteQueryData(notesQuery(filter, ordering));
   },
   component: () => (
     <NotesLayout>
