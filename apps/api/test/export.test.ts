@@ -61,14 +61,28 @@ async function unzip(res: Response): Promise<Map<string, string>> {
   return out;
 }
 
-/** Downloads the whole-library export and unpacks it. */
-async function fetchExport(actor: Actor): Promise<Map<string, string>> {
-  const res = await fetch(`${BASE}/api/export`, {
-    headers: { Cookie: actor.cookie, Origin: ORIGIN },
-  });
+/** Downloads the library export, optionally filtered, and unpacks it. */
+async function fetchExport(
+  actor: Actor,
+  filter: { tag?: string; notebook?: string; from?: string; to?: string } = {},
+): Promise<Map<string, string>> {
+  const res = await rawExport(actor, filter);
   if (!res.ok) throw new Error(`export failed: ${res.status}`);
   expect(res.headers.get('content-type')).toBe('application/zip');
   return unzip(res);
+}
+
+/** The export response itself, for assertions about status and headers. */
+function rawExport(
+  actor: Actor,
+  filter: Record<string, string | undefined> = {},
+): Promise<Response> {
+  const params = new URLSearchParams();
+  for (const [k, v] of Object.entries(filter)) if (v) params.set(k, v);
+  const qs = params.toString();
+  return fetch(`${BASE}/api/export${qs ? `?${qs}` : ''}`, {
+    headers: { Cookie: actor.cookie, Origin: ORIGIN },
+  });
 }
 
 /** Requests one note's download, following none of the branching itself. */
@@ -237,6 +251,104 @@ describe('export', () => {
  * Unlike the library export this writes at the archive root: the zip is already named for
  * the note, so a directory inside it would repeat that name for nothing.
  */
+/**
+ * Filtered export.
+ *
+ * The archive is the note list the user was looking at, so these assert the same filters
+ * mean the same thing here as they do in the list — an export that quietly included more
+ * than the view showed would be worse than one that refused.
+ */
+describe('filtered export', () => {
+  it('exports only the notes in a notebook', async () => {
+    const actor = await signUp(`nbexport-${Date.now()}@example.test`, 'nbexport-pass-1', 'N');
+    const notebook = `Exported ${Date.now()}`;
+    await createNote(actor, { title: 'Inside one', body: 'a', notebook });
+    await createNote(actor, { title: 'Inside two', body: 'b', notebook });
+    await createNote(actor, { title: 'Outside', body: 'c' });
+
+    const entries = await fetchExport(actor, { notebook });
+    const names = [...entries.keys()].join('\n');
+
+    expect(names).toContain('inside-one');
+    expect(names).toContain('inside-two');
+    expect(names).not.toContain('outside');
+  });
+
+  it('exports only the notes carrying a tag', async () => {
+    const actor = await signUp(`tagexport-${Date.now()}@example.test`, 'tagexport-pass', 'T');
+    const tag = `exported${Date.now()}`;
+    await createNote(actor, { title: 'Tagged note', body: 'a', tags: [tag] });
+    await createNote(actor, { title: 'Plain note', body: 'b' });
+
+    const names = [...(await fetchExport(actor, { tag })).keys()].join('\n');
+    expect(names).toContain('tagged-note');
+    expect(names).not.toContain('plain-note');
+  });
+
+  it('names the file after the slice it contains', async () => {
+    const actor = await signUp(`namedexport-${Date.now()}@example.test`, 'named-pass-12', 'F');
+    const notebook = 'Appliance Manuals';
+    await createNote(actor, { title: 'Only', body: 'a', notebook });
+
+    const res = await rawExport(actor, { notebook, from: '2020-01-01' });
+    const disposition = res.headers.get('content-disposition') ?? '';
+    await res.body?.cancel();
+
+    // Several slices land in one downloads folder; the name has to say which is which.
+    expect(disposition).toContain('unbent-medical-history-2020-01-01-to-now');
+  });
+
+  it('keeps the original filename when unfiltered', async () => {
+    const actor = await signUp(`plainname-${Date.now()}@example.test`, 'plainname-pass', 'P');
+    await createNote(actor, { title: 'Anything', body: 'a' });
+
+    const res = await rawExport(actor);
+    expect(res.headers.get('content-disposition')).toContain('unbent-export-');
+    await res.body?.cancel();
+  });
+
+  it('still exports everything when unfiltered', async () => {
+    const actor = await signUp(`allexport-${Date.now()}@example.test`, 'allexport-pass', 'A');
+    await createNote(actor, { title: 'First one', body: 'a', notebook: 'Somewhere' });
+    await createNote(actor, { title: 'Second one', body: 'b' });
+
+    const names = [...(await fetchExport(actor)).keys()].join('\n');
+    expect(names).toContain('first-one');
+    expect(names).toContain('second-one');
+  });
+
+  it('produces a valid empty archive when the filter matches nothing', async () => {
+    const actor = await signUp(`emptyexport-${Date.now()}@example.test`, 'empty-pass-12', 'E');
+    await createNote(actor, { title: 'Unmatched', body: 'a' });
+
+    // A filter that excludes everything is a real thing to ask for by accident; it should
+    // open and say so rather than produce a corrupt file.
+    const entries = await fetchExport(actor, { notebook: `Nothing ${Date.now()}` });
+    expect([...entries.keys()]).toEqual(['README.txt']);
+  });
+
+  it('rejects a malformed date rather than exporting everything', async () => {
+    const actor = await signUp(`badexport-${Date.now()}@example.test`, 'badexport-pass', 'B');
+    await createNote(actor, { title: 'Present', body: 'a' });
+
+    // Silently ignoring an unparseable bound would hand back a wider archive than asked
+    // for, which is the one failure mode an export must not have.
+    const res = await rawExport(actor, { from: 'whenever' });
+    expect(res.status).toBe(400);
+    await res.body?.cancel();
+  });
+
+  it('never exports another user notes through a filter', async () => {
+    const notebook = `Shared name ${Date.now()}`;
+    await createNote(alice, { title: 'Alice private', body: 'a', notebook });
+    await createNote(bob, { title: 'Bob private', body: 'b', notebook });
+
+    const names = [...(await fetchExport(bob, { notebook })).keys()].join('\n');
+    expect(names).toContain('bob-private');
+    expect(names).not.toContain('alice-private');
+  });
+});
+
 describe('single-note export', () => {
   it('serves a bare .md when the note has no attachments', async () => {
     const actor = await signUp(`one-md-${Date.now()}@example.test`, 'md-password-1234', 'M');

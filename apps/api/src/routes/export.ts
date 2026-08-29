@@ -1,4 +1,6 @@
 import { Hono } from 'hono';
+import { zValidator } from '@hono/zod-validator';
+import { exportQuerySchema } from '@unbent/shared';
 import { requireAuth } from '../lib/session.js';
 import { withRepos } from '../lib/repos-middleware.js';
 import {
@@ -6,25 +8,53 @@ import {
   exportZipStream,
   noteDirName,
   noteMarkdown,
+  slugify,
+  type ExportFilter,
 } from '../lib/export.js';
 import type { AppEnv } from '../types.js';
 
+/**
+ * A filename that says what is inside.
+ *
+ * A filtered export is a slice, and several slices land in the same downloads folder on
+ * the same day. Naming them all `unbent-export-2026-08-29.zip` makes the user open each
+ * one to find out which is which, so the scope goes in the name: notebook, then tag, then
+ * the date bounds. Slugified because this ends up in a Content-Disposition header and on
+ * a filesystem.
+ */
+function exportFilename(filter: ExportFilter, stamp: string): string {
+  const scoped = Boolean(filter.notebook || filter.tag || filter.from || filter.to);
+  // An unfiltered export keeps the name it has always had, so existing habits and any
+  // backup script pointing at it are undisturbed.
+  const parts = ['unbent', ...(scoped ? [] : ['export'])];
+  if (filter.notebook) parts.push(slugify(filter.notebook));
+  if (filter.tag) parts.push(slugify(filter.tag));
+  if (filter.from || filter.to) parts.push(`${filter.from ?? 'start'}-to-${filter.to ?? 'now'}`);
+  parts.push(stamp);
+  return `${parts.join('-')}.zip`;
+}
+
 export const exportRoutes = new Hono<AppEnv>()
-  .get('/export', requireAuth, withRepos, (c) => {
+  .get('/export', requireAuth, withRepos, zValidator('query', exportQuerySchema), (c) => {
     const stamp = new Date().toISOString().slice(0, 10);
+    const { tag, notebook, from, to } = c.req.valid('query');
+    const filter = { tag, notebook, from, to };
 
     // Returned immediately, before any note is read: the archive is produced as the
     // client consumes it, so nothing is ever held in the Worker's 128MB of memory.
     return new Response(
-      exportZipStream({
-        notes: c.get('notes'),
-        attachments: c.get('attachments'),
-        blobs: c.env.BLOBS,
-      }),
+      exportZipStream(
+        {
+          notes: c.get('notes'),
+          attachments: c.get('attachments'),
+          blobs: c.env.BLOBS,
+        },
+        filter,
+      ),
       {
         headers: {
           'Content-Type': 'application/zip',
-          'Content-Disposition': `attachment; filename="unbent-export-${stamp}.zip"`,
+          'Content-Disposition': `attachment; filename="${exportFilename(filter, stamp)}"`,
           'Cache-Control': 'no-store',
         },
       },

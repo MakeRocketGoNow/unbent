@@ -1,7 +1,7 @@
 import { ZipWriter } from '@zip.js/zip.js';
 import { serialize } from '@unbent/shared';
 import type { Note } from '@unbent/shared';
-import type { NotesRepo } from './notes-repo.js';
+import { nextCursor, type NotesRepo } from './notes-repo.js';
 import type { AttachmentsRepo } from './attachments-repo.js';
 
 /**
@@ -49,16 +49,32 @@ export interface ExportDeps {
 }
 
 /**
+ * The same filters the note list takes, so an export is the view the user was looking at.
+ *
+ * Deliberately not a sort: the archive is a set of directories on disk, where order is the
+ * filesystem's business, and asking for one would only make the query slower.
+ */
+export interface ExportFilter {
+  tag?: string | undefined;
+  notebook?: string | undefined;
+  from?: string | undefined;
+  to?: string | undefined;
+}
+
+/**
  * Returns a stream of a zip containing one directory per note.
  *
  * The caller must return this as a Response body immediately rather than awaiting it —
  * the work is driven by consumption, and buffering would defeat the whole design.
  */
-export function exportZipStream(deps: ExportDeps): ReadableStream<Uint8Array> {
+export function exportZipStream(
+  deps: ExportDeps,
+  filter: ExportFilter = {},
+): ReadableStream<Uint8Array> {
   const { readable, writable } = new TransformStream<Uint8Array, Uint8Array>();
 
   // Deliberately not awaited: the promise resolves only as the consumer pulls bytes.
-  void writeArchive(writable, deps).catch((err) => {
+  void writeArchive(writable, deps, filter).catch((err) => {
     console.error('Export failed mid-stream:', err);
     // The response has already begun, so the only signal available is an aborted body.
     void writable.abort(err);
@@ -70,6 +86,7 @@ export function exportZipStream(deps: ExportDeps): ReadableStream<Uint8Array> {
 async function writeArchive(
   writable: WritableStream<Uint8Array>,
   { notes, attachments, blobs }: ExportDeps,
+  filter: ExportFilter,
 ): Promise<void> {
   const zip = new ZipWriter(writable, { bufferedWrite: false });
 
@@ -77,7 +94,7 @@ async function writeArchive(
   let count = 0;
 
   for (;;) {
-    const page = await notes.list({ limit: PAGE, cursor });
+    const page = await notes.list({ limit: PAGE, cursor, ...filter });
     if (page.length === 0) break;
 
     for (const summary of page) {
@@ -89,8 +106,11 @@ async function writeArchive(
       count += 1;
     }
 
-    if (page.length < PAGE) break;
-    cursor = String(page[page.length - 1]?.updatedAt);
+    // Asked for rather than rebuilt here: a hand-written cursor is a second copy of the
+    // pagination rule, and the two drift the moment the list learns a new ordering.
+    const next = nextCursor(page, { limit: PAGE, sort: 'updated' });
+    if (!next) break;
+    cursor = next;
   }
 
   // A zip with no entries is still a valid zip; an empty account exports an empty archive

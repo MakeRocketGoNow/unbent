@@ -128,6 +128,19 @@ export const searchQuerySchema = z.object({
 });
 
 /**
+ * Export takes the note list's filters, so an export is the view the user was looking at.
+ *
+ * No `sort` or `limit`: an export is a set of directories on disk, where order is the
+ * filesystem's business, and a partial backup is a trap rather than a feature.
+ */
+export const exportQuerySchema = z.object({
+  tag: z.string().optional(),
+  notebook: z.string().optional(),
+  from: dateOnlySchema.optional(),
+  to: dateOnlySchema.optional(),
+});
+
+/**
  * One note from an ENEX import. `contentHash` makes the endpoint idempotent so an
  * interrupted import can be re-run without duplicating notes.
  */
