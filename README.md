@@ -6,6 +6,14 @@ Notes are Markdown with YAML frontmatter. Attachments are ordinary files. Export
 plain folder tree — one directory per note, containing `note.md` and a `files/` subdirectory —
 that you can read, grep, and back up without this app existing.
 
+The Markdown is the note, not a serialization of one. A note you save is byte-identical to
+what you typed: no reflowed lists, no `_italic_` quietly rewritten to `*italic*`, no escaped
+underscores in a filename. That is the whole promise, and it is what makes the export
+guarantee worth anything — a format the app rewrites behind your back is a format you do not
+actually own.
+
+Editing it should still feel like a word processor. See [Editing](#editing).
+
 ## Why
 
 Evernote's owner gave a lot of people a reason to leave. Leaving should be easy, and staying
@@ -18,7 +26,7 @@ should never depend on it being hard.
 - **Cloudflare D1** (SQLite) — note text, metadata, FTS5 full-text search
 - **Cloudflare R2** — attachment blobs
 - **Better Auth** — OAuth (Google, GitHub)
-- **Vite + React + CodeMirror 6** — Markdown editor with live preview
+- **Vite + React + CodeMirror 6** — Markdown editor, styled in place (see [Editing](#editing))
 
 One Worker serves both the built SPA and `/api`, so the two are genuinely same-origin and
 the session cookie needs no CORS or `SameSite` workarounds.
@@ -56,27 +64,68 @@ Sessions are cookie-based and same-origin. Better Auth enforces CSRF by requirin
 
 ## Editing
 
-CodeMirror 6 editing markdown, with a rich mode that styles the source in place — bold
-looks bold, headings are sized, task lists get real checkboxes, and attachment images
-render inline. Syntax characters hide unless the cursor is inside the node they belong to,
-so reading stays clean and editing stays direct.
+**The goal is WYSIWYG.** Bold looks bold, headings are sized, task lists get real
+checkboxes, attachment images render inline, and tables are edited with buttons rather
+than by hand. Markdown is the storage format, not the interface — nobody should have to
+count pipe characters to add a column.
 
-This is deliberately not a WYSIWYG editor. A WYSIWYG parses markdown into its own document
-model and re-serializes on save, which rewrites text it was never asked to touch: TipTap 3
-turns `](<files/My File.pdf>)` into a broken link, escapes underscores in filenames, and
-normalizes `_italic_` to `*italic*`. Here the text never leaves the buffer, so a stored
-note is byte-identical to what was typed — which is what makes the export guarantee real.
+What we will not do is get there the usual way.
 
-A toolbar and the usual shortcuts (⌘B, ⌘I, ⌘K, ⌘⌥1) apply formatting as ordinary text
-edits, so every action is undoable and nothing is rewritten behind your back. Tab and
-Shift-Tab indent and outdent list items; outside a list Tab moves focus as usual, so the
-editor is never a keyboard trap.
+### Why not a document model
+
+The standard WYSIWYG approach parses Markdown into its own document model, holds that
+model as the source of truth, and re-serializes on save. The round trip is where notes get
+damaged. TipTap 3, run against real notes from this corpus, turns `](<files/My File.pdf>)`
+into a broken link, escapes underscores in filenames, and normalizes `_italic_` to
+`*italic*`. None of those edits were asked for. Each one is a small, silent, permanent
+rewrite of a file the user believes they own.
+
+That is disqualifying here, and not only on aesthetic grounds: a broken attachment link is
+a note whose PDF no longer resolves, and this archive is mostly PDFs.
+
+So the real constraint is narrower than "no WYSIWYG":
+
+> **The document text is the only source of truth, and every edit is an ordinary text edit
+> the user could have typed by hand.**
+
+WYSIWYG *behavior* is entirely compatible with that. WYSIWYG *architecture* — a parallel
+document model that owns the truth — is not.
+
+### How it works instead
+
+CodeMirror 6 edits the Markdown directly, with a rich mode that styles the source in
+place. Syntax characters hide unless the cursor is inside the node they belong to, so
+reading stays clean and editing stays direct. The text never leaves the buffer, so there
+is no parse-and-reserialize step in which it could be rewritten.
+
+Every affordance is built on top of that rather than around it:
+
+- A toolbar and the usual shortcuts (⌘B, ⌘I, ⌘K, ⌘⌥1) apply formatting as text edits.
+- Tab and Shift-Tab indent and outdent list items; outside a list Tab moves focus as
+  usual, so the editor is never a keyboard trap.
+- Tables get a toolbar anchored to the table the cursor is in — insert and delete rows and
+  columns, set column alignment, and a grid size picker for creating one. Restructuring a
+  Markdown table by hand means editing every row plus the delimiter, so the tedious
+  operations get buttons; each one is still a plain edit through
+  `apps/web/src/editor/markdown-commands.ts`, which rewrites the table's text and lets
+  CodeMirror's history record it as a single undo step.
+- Dragging a file in shows a drop cursor at the exact insertion point.
+
+The test for any new editing feature is the same one every time: **can it be expressed as
+an edit to the text, undone with a single ⌘Z, and retyped by hand to the same result?** If
+yes, it belongs, however rich it looks. If it needs a parallel document model, it does
+not, however convenient that would be.
 
 Rendering uses GFM (tables, task lists, strikethrough, autolinks) plus soft line breaks:
 a single newline is a line break, not a space. CommonMark folds lone newlines into spaces,
 which turns a note written as separate lines into one run-on paragraph — pressing Enter in
 a notes app should start a new line. Soft breaks are not part of GFM itself; they are a
 separate remark plugin.
+
+### Still to build
+
+Toward the same goal, under the same constraint: inline image resizing, a link editor that
+does not require selecting the whole `[]()`, and drag-to-reorder for list items.
 
 ## Search
 
@@ -91,30 +140,6 @@ and the damage surfaces later as edited or deleted notes still matching their ol
 of those tests fail.
 
 To rebuild the index from scratch: `INSERT INTO notes_fts(notes_fts) VALUES('rebuild');`
-
-### Editing
-
-CodeMirror 6 editing markdown, with a rich mode that styles the source in place — bold
-looks bold, headings are sized, task lists get real checkboxes, and attachment images
-render inline. Syntax characters hide unless the cursor is inside the node they belong to,
-so reading stays clean and editing stays direct.
-
-This is deliberately not a WYSIWYG editor. A WYSIWYG parses markdown into its own document
-model and re-serializes on save, which rewrites text it was never asked to touch: TipTap 3
-turns `](<files/My File.pdf>)` into a broken link, escapes underscores in filenames, and
-normalizes `_italic_` to `*italic*`. Here the text never leaves the buffer, so a stored
-note is byte-identical to what was typed — which is what makes the export guarantee real.
-
-A toolbar and the usual shortcuts (⌘B, ⌘I, ⌘K, ⌘⌥1) apply formatting as ordinary text
-edits, so every action is undoable and nothing is rewritten behind your back. Tab and
-Shift-Tab indent and outdent list items; outside a list Tab moves focus as usual, so the
-editor is never a keyboard trap.
-
-Rendering uses GFM (tables, task lists, strikethrough, autolinks) plus soft line breaks:
-a single newline is a line break, not a space. CommonMark folds lone newlines into spaces,
-which turns a note written as separate lines into one run-on paragraph — pressing Enter in
-a notes app should start a new line. Soft breaks are not part of GFM itself; they are a
-separate remark plugin.
 
 ## Searching inside PDFs
 
@@ -172,9 +197,6 @@ remove another account's objects.
 
 ## Known gaps
 
-- **Trash is never purged.** Note deletion is a soft delete, and the note's attachments
-  stay in R2 so a restore is not left with dead links. Nothing reclaims that storage yet;
-  a trash purge needs to delete the rows and their blobs together.
 - **Deleting a user strands its blobs.** The D1 rows cascade, but the objects under
   `users/{id}/` remain and the scoped sweep above cannot reach them once the account is
   gone. Account deletion needs to sweep the prefix before removing the user row.
