@@ -250,6 +250,35 @@ export async function deleteAttachment(noteId: string, filename: string): Promis
   }
 }
 
+/**
+ * The URL of the export endpoint for a filter.
+ *
+ * A URL rather than a fetch: the archive is generated as it downloads, so the browser has
+ * to consume the response directly — pulling it into JS would defeat the streaming design
+ * and cap the export at the tab's memory. Built here because assembling outbound API query
+ * strings is this module's job; components deal in filters, not querystrings.
+ */
+export function exportUrl(filter: {
+  tag?: string;
+  notebook?: string;
+  from?: string;
+  to?: string;
+  /**
+   * Carried so the export's date range means the same column the list's did. It orders
+   * nothing — see `exportQuerySchema`.
+   */
+  sort?: NoteSort;
+}): string {
+  const params = new URLSearchParams();
+  if (filter.tag) params.set('tag', filter.tag);
+  if (filter.notebook) params.set('notebook', filter.notebook);
+  if (filter.from) params.set('from', filter.from);
+  if (filter.to) params.set('to', filter.to);
+  if (filter.sort && (filter.from || filter.to)) params.set('sort', filter.sort);
+  const qs = params.toString();
+  return `/api/export${qs ? `?${qs}` : ''}`;
+}
+
 export async function searchNotes(
   q: string,
   filter: { tag?: string; notebook?: string; from?: string; to?: string } = {},

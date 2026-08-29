@@ -37,8 +37,8 @@ function exportFilename(filter: ExportFilter, stamp: string): string {
 export const exportRoutes = new Hono<AppEnv>()
   .get('/export', requireAuth, withRepos, zValidator('query', exportQuerySchema), (c) => {
     const stamp = new Date().toISOString().slice(0, 10);
-    const { tag, notebook, from, to } = c.req.valid('query');
-    const filter = { tag, notebook, from, to };
+    const { tag, notebook, from, to, sort } = c.req.valid('query');
+    const filter = { tag, notebook, from, to, sort };
 
     // Returned immediately, before any note is read: the archive is produced as the
     // client consumes it, so nothing is ever held in the Worker's 128MB of memory.

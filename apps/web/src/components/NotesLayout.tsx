@@ -34,6 +34,12 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
   };
   const ordering = { ...(sort ? { sort } : {}), ...(order ? { order } : {}) };
 
+  /**
+   * The export link is the current filter, serialized. Because the filters already live in
+   * the URL there is no separate state to keep in step — the link is the view.
+   */
+  const isFiltered = Boolean(notebook || tag || from || to);
+
   const list = useInfiniteQuery(notesQuery(filter, ordering));
   const tags = useQuery(tagsQuery());
   const notebooks = useQuery(notebooksQuery());
@@ -247,6 +253,25 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
             </button>
           )}
         </div>
+
+        {/*
+          * Export the current filter.
+          *
+          * Here rather than only in Settings because this is where the scope was chosen:
+          * having filtered to a tag and a year, being sent to another page to describe the
+          * same slice again is the failure mode. Shown only when a filter is active — with
+          * none, this is the whole-library export, which has its own page and a warning
+          * about size that belongs with it.
+          *
+          * An anchor, like the export page's: the archive is generated as it downloads, so
+          * letting the browser consume the response is what keeps a corpus larger than the
+          * Worker's memory from ever landing in a JS buffer.
+          */}
+        {results === null && isFiltered && (
+          <a className="export-filtered small" href={api.exportUrl({ ...filter, sort: sort ?? 'updated' })} download>
+            {total !== null ? `Export these ${total} notes` : 'Export these notes'}
+          </a>
+        )}
 
         {results === null && (tags.data?.length ?? 0) > 0 && (
           /*

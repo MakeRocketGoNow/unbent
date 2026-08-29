@@ -64,7 +64,7 @@ async function unzip(res: Response): Promise<Map<string, string>> {
 /** Downloads the library export, optionally filtered, and unpacks it. */
 async function fetchExport(
   actor: Actor,
-  filter: { tag?: string; notebook?: string; from?: string; to?: string } = {},
+  filter: { tag?: string; notebook?: string; from?: string; to?: string; sort?: string } = {},
 ): Promise<Map<string, string>> {
   const res = await rawExport(actor, filter);
   if (!res.ok) throw new Error(`export failed: ${res.status}`);
@@ -325,6 +325,38 @@ describe('filtered export', () => {
     // open and say so rather than produce a corrupt file.
     const entries = await fetchExport(actor, { notebook: `Nothing ${Date.now()}` });
     expect([...entries.keys()]).toEqual(['README.txt']);
+  });
+
+  it('reads the date range against the column the sort names', async () => {
+    /**
+     * The range filters whichever date the list was ordered by, so an export of "2021"
+     * has to mean the same notes the user was looking at. A note created in 2021 and
+     * edited in 2026 belongs to a `created` range and not to an `updated` one.
+     */
+    const actor = await signUp(`sortrange-${Date.now()}@example.test`, 'sortrange-pass', 'S');
+    const created2021 = Date.parse('2021-06-01T12:00:00Z');
+    await fetch(`${BASE}/api/import/note`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Cookie: actor.cookie, Origin: ORIGIN },
+      body: JSON.stringify({
+        title: 'Filed in 2021 edited later',
+        body: 'x',
+        createdAt: created2021,
+        updatedAt: Date.parse('2026-01-01T12:00:00Z'),
+        contentHash: `sortrange${Date.now()}`.padEnd(64, '0').slice(0, 64),
+      }),
+    });
+
+    const byCreated = [
+      ...(await fetchExport(actor, { from: '2021-01-01', to: '2021-12-31', sort: 'created' })).keys(),
+    ].join('\n');
+    expect(byCreated).toContain('filed-in-2021-edited-later');
+
+    // The same range under the default sort means "updated in 2021", which this is not.
+    const byUpdated = [
+      ...(await fetchExport(actor, { from: '2021-01-01', to: '2021-12-31' })).keys(),
+    ].join('\n');
+    expect(byUpdated).not.toContain('filed-in-2021-edited-later');
   });
 
   it('rejects a malformed date rather than exporting everything', async () => {

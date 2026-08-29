@@ -1,6 +1,6 @@
 import { ZipWriter } from '@zip.js/zip.js';
 import { serialize } from '@unbent/shared';
-import type { Note } from '@unbent/shared';
+import type { Note, NoteSort } from '@unbent/shared';
 import { nextCursor, type NotesRepo } from './notes-repo.js';
 import type { AttachmentsRepo } from './attachments-repo.js';
 
@@ -59,6 +59,11 @@ export interface ExportFilter {
   notebook?: string | undefined;
   from?: string | undefined;
   to?: string | undefined;
+  /**
+   * Not an ordering — the archive is a directory tree. It names the column the date range
+   * applies to, so an export of a range covers the same notes the list did.
+   */
+  sort?: NoteSort | undefined;
 }
 
 /**
@@ -108,7 +113,7 @@ async function writeArchive(
 
     // Asked for rather than rebuilt here: a hand-written cursor is a second copy of the
     // pagination rule, and the two drift the moment the list learns a new ordering.
-    const next = nextCursor(page, { limit: PAGE, sort: 'updated' });
+    const next = nextCursor(page, { limit: PAGE, sort: filter.sort ?? 'updated' });
     if (!next) break;
     cursor = next;
   }

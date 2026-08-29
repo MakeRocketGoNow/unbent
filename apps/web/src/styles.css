@@ -749,6 +749,23 @@ a.overflow-item { text-decoration: none; }
 
 .link-button:hover { color: var(--fg); }
 
+/* Export the current filter — a quiet action, not a call to action */
+.export-filtered {
+  display: block;
+  padding: 0.35rem 0;
+  color: var(--muted);
+  text-decoration: none;
+}
+
+.export-filtered::before {
+  content: '↓ ';
+}
+
+.export-filtered:hover {
+  color: var(--accent);
+  text-decoration: underline;
+}
+
 .filters-end {
   padding-bottom: 0.6rem;
   border-bottom: 1px solid var(--border);

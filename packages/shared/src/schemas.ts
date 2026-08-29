@@ -130,14 +130,17 @@ export const searchQuerySchema = z.object({
 /**
  * Export takes the note list's filters, so an export is the view the user was looking at.
  *
- * No `sort` or `limit`: an export is a set of directories on disk, where order is the
- * filesystem's business, and a partial backup is a trap rather than a feature.
+ * No `limit`: a partial backup is a trap rather than a feature. `sort` is accepted but
+ * does not order anything — a zip of directories has no order worth choosing. It is here
+ * because the date range filters whichever column the sort names, so without it an export
+ * of "2021" would quietly mean a different set of notes than the list showing "2021".
  */
 export const exportQuerySchema = z.object({
   tag: z.string().optional(),
   notebook: z.string().optional(),
   from: dateOnlySchema.optional(),
   to: dateOnlySchema.optional(),
+  sort: noteSortSchema,
 });
 
 /**
