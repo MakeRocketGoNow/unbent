@@ -9,6 +9,7 @@ import { formatAttachmentMarkdown } from '@unbent/shared';
 import { richMarkdown } from '../editor/rich-markdown.js';
 import { markdownKeymap } from '../editor/markdown-commands.js';
 import { tableTools } from '../editor/table-toolbar.js';
+import { fileDropCursor } from '../editor/drop-cursor.js';
 
 interface EditorProps {
   /** Changes to this remount the editor; it is not a controlled value. */
@@ -71,6 +72,9 @@ export function Editor({
               ]
             : []),
           EditorView.lineWrapping,
+          // Draws the insertion point a dragged file will land on. The browser shows one
+          // for dragged text but not for files, so this is the only aim the drop has.
+          fileDropCursor(),
           cmPlaceholder('Start writing…'),
           EditorView.updateListener.of((update) => {
             if (update.docChanged) onChangeRef.current(update.state.doc.toString());
@@ -84,11 +88,6 @@ export function Editor({
               const at = view.posAtCoords({ x: event.clientX, y: event.clientY });
               void insertUploads(view, files, at ?? view.state.selection.main.head);
               return true;
-            },
-            dragover(event) {
-              // Without this the browser navigates away to the dropped file.
-              if (event.dataTransfer?.types.includes('Files')) event.preventDefault();
-              return false;
             },
             paste(event, view) {
               const files = [...(event.clipboardData?.files ?? [])];
