@@ -109,35 +109,14 @@ export function Workspace({ noteId, readOnly = false, backTo = '/notes' }: Works
   const isMobile = useMediaQuery(MOBILE_QUERY);
 
   /**
-   * Whether the editor holds the caret, and how tall the keyboard is.
+   * How much of the viewport the on-screen keyboard covers.
    *
-   * Together these dock the formatting toolbar above the keyboard on a phone rather than
-   * parking it above the document: twelve 44px controls cannot fit one row at 375px, so
-   * it wrapped to two and cost 106px of every screen — permanently, whether or not
-   * anything was being typed.
-   *
-   * Focus is tracked from the view the workspace already holds, so `Editor` needs no new
-   * prop and its uncontrolled CodeMirror instance is untouched.
+   * This is what lets the formatting bar sit above the keyboard on a phone rather than
+   * underneath it. The bar is docked for the whole note view: twelve 44px controls cannot
+   * fit one row at 375px, so left in flow it wrapped to two rows and cost 106px of every
+   * screen whether or not anything was being typed.
    */
-  const [editorFocused, setEditorFocused] = useState(false);
   const keyboardInset = useKeyboardInset();
-
-  useEffect(() => {
-    if (!editorView) return;
-    const dom = editorView.contentDOM;
-    const onFocus = () => setEditorFocused(true);
-    // A tap on a toolbar button blurs the editor for an instant; the buttons already
-    // preventDefault on mousedown to keep the selection, and this keeps the bar from
-    // flickering out from under the finger on the way.
-    const onBlur = () => setEditorFocused(false);
-    dom.addEventListener('focus', onFocus);
-    dom.addEventListener('blur', onBlur);
-    setEditorFocused(dom === document.activeElement);
-    return () => {
-      dom.removeEventListener('focus', onFocus);
-      dom.removeEventListener('blur', onBlur);
-    };
-  }, [editorView]);
   // A different note starts on its text again, not on whatever the last one was showing.
   useEffect(() => setMobilePreview(false), [noteId]);
 
@@ -386,9 +365,18 @@ export function Workspace({ noteId, readOnly = false, backTo = '/notes' }: Works
       */}
       <EditorToolbar
         view={editorView}
-        // Docked above the keyboard on a phone while the editor has the caret; a plain
-        // row above the document at every other width.
-        docked={isMobile && editorFocused}
+        /*
+            Docked for the whole of a phone's note view, not only while the editor holds
+            the caret.
+
+            Keying this on focus made the bar jump: tapping the filing disclosure — or
+            anything else that takes focus off the editor — undocked it mid-interaction,
+            so it dropped out of the bottom of the screen and reappeared underneath a
+            block that had just grown taller. The keyboard inset already handles the only
+            thing focus was standing in for, which is where the bar sits when a keyboard
+            is open, so the bar can simply stay put.
+        */
+        docked={isMobile}
         keyboardInset={keyboardInset}
         preview={{
           // What is actually on screen, which is not the same question at each width: a
