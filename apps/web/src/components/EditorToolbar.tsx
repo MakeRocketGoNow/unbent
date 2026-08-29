@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import type { EditorView } from '@codemirror/view';
 import type { StateCommand } from '@codemirror/state';
 import * as cmd from '../editor/markdown-commands.js';
@@ -36,11 +36,67 @@ interface EditorToolbarProps {
 }
 
 interface Action {
-  label: string;
+  /** A letterform for the type controls, an icon for the ones with no letter. */
+  label: ReactNode;
   title: string;
   run: StateCommand;
   className?: string;
 }
+
+/**
+ * The icons that stand in for the glyphs.
+ *
+ * `☑`, `🔗` and `▦` were literal characters, and they never matched the letterforms
+ * beside them: U+1F517 is an emoji codepoint, so the OS paints it in full colour whatever
+ * `color` says, and the other two came from a fallback font that renders heavier than the
+ * UI face. Drawn as SVG they inherit `currentColor` and the button's size like a letter
+ * does, so the row reads as one set.
+ *
+ * Inline rather than from an icon library: this is four icons in a codebase whose other
+ * controls are letters, and a dependency would still not draw the B, I, S or H1.
+ */
+function ToolbarIcon({ children }: { children: ReactNode }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      width="1.05em"
+      height="1.05em"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      focusable="false"
+    >
+      {children}
+    </svg>
+  );
+}
+
+/** A ticked box, for the task-list command. */
+const TaskIcon = (
+  <ToolbarIcon>
+    <rect x="3" y="3" width="18" height="18" rx="3" />
+    <path d="m8 12 3 3 5-6" />
+  </ToolbarIcon>
+);
+
+/** Two links of a chain, at the angle the emoji used. */
+const LinkIcon = (
+  <ToolbarIcon>
+    <path d="M10.5 13.5a4 4 0 0 0 5.7 0l2.8-2.8a4 4 0 0 0-5.7-5.7l-1.4 1.4" />
+    <path d="M13.5 10.5a4 4 0 0 0-5.7 0l-2.8 2.8a4 4 0 0 0 5.7 5.7l1.4-1.4" />
+  </ToolbarIcon>
+);
+
+/** A grid, for the table command. */
+const TableIcon = (
+  <ToolbarIcon>
+    <rect x="3" y="3" width="18" height="18" rx="2" />
+    <path d="M3 9h18M3 15h18M9 3v18" />
+  </ToolbarIcon>
+);
 
 const ACTIONS: Action[] = [
   { label: 'B', title: 'Bold (⌘B)', run: cmd.toggleBold, className: 'tb-bold' },
@@ -51,8 +107,8 @@ const ACTIONS: Action[] = [
   { label: 'H2', title: 'Heading 2 (⌘⌥2)', run: cmd.toggleH2 },
   { label: '“', title: 'Quote (⌘⇧9)', run: cmd.toggleQuote },
   { label: '•', title: 'Bullet list (⌘⇧8)', run: cmd.toggleBullet },
-  { label: '☑', title: 'Task list', run: cmd.toggleTask },
-  { label: '🔗', title: 'Link (⌘K)', run: cmd.insertLink },
+  { label: TaskIcon, title: 'Task list', run: cmd.toggleTask },
+  { label: LinkIcon, title: 'Link (⌘K)', run: cmd.insertLink },
 ];
 
 
@@ -139,7 +195,7 @@ function TableButton({ view }: { view: EditorView | null }) {
           setOpen((v) => !v);
         }}
       >
-        ▦
+        {TableIcon}
       </button>
       <div ref={host} />
     </span>
