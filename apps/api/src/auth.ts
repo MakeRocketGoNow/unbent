@@ -55,29 +55,21 @@ function createAuth(env: Env) {
           }
         : {}),
     },
-    /**
-     * A year, refreshed daily.
-     *
-     * This is a single-user personal notes archive, not a shared or privileged account:
-     * the thing being protected is a set of notes on hardware the owner controls, and
-     * being signed out of it has a real cost — the app is unusable until an OAuth
-     * round-trip completes, which on a phone away from a desk is the moment note-taking
-     * gets abandoned. A month of expiry bought no security worth that.
-     *
-     * `updateAge` slides the expiry forward at most once a day, so ordinary use keeps a
-     * session alive indefinitely and only a year of genuine absence signs you out.
-     */
     session: {
-      expiresIn: 60 * 60 * 24 * 365,
+      // Thirty days, slid forward at most once a day — so ordinary use keeps a session
+      // alive indefinitely and only a month of genuine absence signs you out.
+      expiresIn: 60 * 60 * 24 * 30,
       updateAge: 60 * 60 * 24,
       /**
        * Serve the session from a signed cookie for five minutes before re-reading D1.
        *
-       * Without this every request that touches auth hits the database, and a failure or
-       * a cold D1 read surfaces as a sign-out rather than a slow request — which is the
-       * most likely explanation for a session that seems to lapse long before its
-       * recorded expiry. The cache is signed with the same secret and is a read-through
-       * optimisation only: revocation still takes effect within `maxAge`.
+       * Without this every request that touches auth hits the database, and a failed or
+       * cold read surfaces as a sign-out rather than a slow request — the most likely
+       * explanation for sessions that lapsed well before their recorded expiry, which in
+       * the local database was always a full thirty days.
+       *
+       * Signed with the same secret, and a read-through cache only: revocation still
+       * takes effect within `maxAge`.
        */
       cookieCache: { enabled: true, maxAge: 5 * 60 },
     },
