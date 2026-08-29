@@ -15,6 +15,15 @@ interface TagInputProps {
  */
 export function TagInput({ tags, suggestions, onChange }: TagInputProps) {
   const [draft, setDraft] = useState('');
+  /**
+   * Whether the field is being used, as opposed to merely present.
+   *
+   * The entry point used to be an unstyled transparent input that only announced itself
+   * through a placeholder — and that placeholder was hidden as soon as the note had one
+   * tag, leaving an invisible target you had to know to click. Idle, it now renders as a
+   * dashed "+ Add tag" chip beside the real ones; focused, it becomes a field.
+   */
+  const [active, setActive] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const available = suggestions
@@ -52,14 +61,26 @@ export function TagInput({ tags, suggestions, onChange }: TagInputProps) {
         </span>
       ))}
 
-      <span className="tag-entry">
+      <span className={active || draft !== '' ? 'tag-entry active' : 'tag-entry'}>
+        {/* Sits behind the input and is hidden once it is in use, so the affordance and
+            the field are the same target rather than two things to tab between. */}
+        <span className="tag-add-hint" aria-hidden="true">
+          <span className="tag-add-plus">+</span>
+          Add tag
+        </span>
         <input
           ref={inputRef}
           className="tag-field"
           value={draft}
-          placeholder={tags.length === 0 ? 'Add tags…' : ''}
+          // The visible label is the hint above; this names the field for screen readers,
+          // which never see it.
+          aria-label="Add a tag"
+          onFocus={() => setActive(true)}
           onChange={(e) => setDraft(e.target.value)}
-          onBlur={() => commit(draft)}
+          onBlur={() => {
+            setActive(false);
+            commit(draft);
+          }}
           onKeyDown={(e) => {
             if (e.key === 'Enter' || e.key === 'Tab' || e.key === ',') {
               if (draft.trim() === '') return;

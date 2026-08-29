@@ -1017,16 +1017,65 @@ a.overflow-item { text-decoration: none; }
 
 .tag-remove:hover { opacity: 1; }
 
-.tag-entry { position: relative; }
+/*
+   The entry point, which has to look like one.
+
+   It was a transparent borderless input whose only hint was a placeholder — and that
+   placeholder was suppressed as soon as the note had a tag, so adding a second one meant
+   knowing to click an invisible strip. Idle it now reads as a dashed chip beside the real
+   ones; focused it becomes a field. The input stays on top throughout, so the hint and the
+   target are the same thing rather than a label next to a box.
+*/
+.tag-entry {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+.tag-add-hint {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.15rem 0.55rem;
+  font-size: 0.75rem;
+  color: var(--muted);
+  border: 1px dashed var(--border);
+  border-radius: 999px;
+  white-space: nowrap;
+  /* The input above it takes the clicks; this is only the picture. */
+  pointer-events: none;
+}
+
+.tag-entry:hover .tag-add-hint {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.tag-add-plus { font-size: 0.85rem; line-height: 1; }
+
+/* In use: the chip gives way to the field it was standing in for. */
+.tag-entry.active .tag-add-hint { visibility: hidden; }
 
 .tag-field {
-  min-width: 8rem;
-  padding: 0.15rem 0;
+  /* Overlays the hint chip, so the whole chip is the click target. */
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  padding: 0.15rem 0.55rem;
   font: inherit;
   font-size: 0.8rem;
   color: var(--fg);
   background: none;
   border: none;
+  border-radius: 999px;
+}
+
+/* Focused, it needs its own box — it is no longer borrowing the chip's. */
+.tag-entry.active .tag-field {
+  position: static;
+  min-width: 7rem;
+  border: 1px solid var(--accent);
+  background: var(--bg);
 }
 
 .tag-field:focus { outline: none; }
