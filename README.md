@@ -141,6 +141,30 @@ of those tests fail.
 
 To rebuild the index from scratch: `INSERT INTO notes_fts(notes_fts) VALUES('rebuild');`
 
+### Filtering and sorting
+
+Search takes the same `tag`, `notebook`, `from`, and `to` filters as the note list, so
+typing a query narrows the current view instead of escaping it — with a notebook selected,
+"insurance" means "insurance in here". The clauses are shared by `list`, `count`, and
+`search` through one helper so a filter cannot come to mean two different things, and they
+apply inside both search CTEs: the note index and the attachment-text index each join
+`notes` separately, so scoping only one would still surface notes from outside the filter.
+
+The list is ordered by `sort` (updated, created, title) and `order`. Search is not: results
+come back ranked by relevance, and reordering them by date discards the ranking that makes
+them worth showing, so the sort control is hidden while searching.
+
+Sorting and keyset pagination have to agree — the cursor compares against the column that
+ordered the query, so `SORTS` in `apps/api/src/lib/notes-repo.ts` pairs each sort with its
+column and its cursor rather than leaving the route to know which is which. The cursor also
+carries the row id, because comparing the sort key alone is only safe when it is unique and
+titles are not: an archive is full of notes called "Receipt", and paging nine identically
+titled notes returns four without the tiebreak.
+
+Date bounds are `YYYY-MM-DD`, inclusive at both ends, read in UTC to match the epoch-ms
+columns. The range filters whichever column the sort uses, so the filter and the order
+always mean the same date; search, having no sort, filters on `created_at`.
+
 ## Searching inside PDFs
 
 Most notes in a real Evernote export are a scanned PDF with an empty body — in one notebook,
