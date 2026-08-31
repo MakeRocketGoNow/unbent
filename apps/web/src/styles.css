@@ -119,13 +119,21 @@ h1 {
   cursor: default;
 }
 
+/*
+   A wordmark and an avatar, at every width.
+
+   Centred rather than baseline-aligned because there is no longer a row of text links to
+   share a baseline with — the avatar is a box, and a box lines up with the wordmark by its
+   middle. The bar can also sit tighter than it did when it had to reserve room for links
+   that might wrap.
+*/
 .topbar {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   justify-content: space-between;
   gap: 1rem;
-  padding-bottom: 1rem;
-  margin-bottom: 1.5rem;
+  padding-bottom: 0.6rem;
+  margin-bottom: 1.2rem;
   border-bottom: 1px solid var(--border);
 }
 
@@ -135,10 +143,14 @@ h1 {
 
 .account {
   display: flex;
-  align-items: baseline;
-  gap: 0.9rem;
+  align-items: center;
+  gap: 0.25rem;
   font-size: 0.9rem;
 }
+
+/* A flex box, which the generic `.mobile-only { display: inline }` would once have
+   collapsed; it is unconditional now, so it simply states its own display. */
+.account-menu { display: inline-flex; }
 
 .link {
   padding: 0;
@@ -927,6 +939,29 @@ a.overflow-item { text-decoration: none; }
 .tag-count { opacity: 0.7; font-variant-numeric: tabular-nums; }
 
 /*
+   Trash, on the sidebar floor.
+
+   Muted and separated by a rule, which is what keeps it from reading as one more filter —
+   the reason it did not work in the filter stack above. There is no active state: /trash
+   replaces this whole sidebar with its own. The border is the seam between "your notes"
+   and "notes you threw away", so it stays even when the count is zero and the link is the
+   only thing below the list.
+*/
+.trash-link {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.6rem 0.7rem 0;
+  margin-top: 0.15rem;
+  font-size: 0.85rem;
+  color: var(--muted);
+  text-decoration: none;
+  border-top: 1px solid var(--border);
+}
+
+.trash-link:hover { color: var(--fg); }
+
+/*
    The tag list, behind a disclosure.
 
    Open on a desktop, where the sidebar has the room; closed on a phone, where sixteen
@@ -1063,9 +1098,6 @@ a.overflow-item { text-decoration: none; }
   white-space: normal;
   overflow-wrap: anywhere;
 }
-
-/* The same count, inline after a topbar link rather than inside a pill. */
-.topbar-count { margin-left: 0.3rem; }
 
 /*
    One rhythm for the note's filing controls.
@@ -1706,10 +1738,18 @@ a.overflow-item { text-decoration: none; }
   border-color: color-mix(in srgb, var(--accent) 50%, var(--border));
 }
 
+/*
+   The row of actions under a trashed note.
+
+   The buttons carry their own padding now, so the gap is tighter than it was for links
+   and the left inset is pulled in by that padding — otherwise the first label sits a
+   half-step right of the note title above it, which reads as a misalignment rather than
+   as a nested control.
+*/
 .trash-actions {
   display: flex;
-  gap: 0.75rem;
-  padding: 0 0.6rem 0.5rem;
+  gap: 0.25rem;
+  padding: 0 0.1rem 0.45rem;
 }
 
 /* Notebook management, inside the settings panel. */
@@ -2186,20 +2226,8 @@ a.overflow-item { text-decoration: none; }
      stacked menu, and inline would flatten their padding. */
   .overflow-item.mobile-only { display: block; }
 
-  /* Same reason: the avatar trigger is a flex box, which `inline` would collapse. */
-  .account-menu { display: inline-flex; }
-
-  /*
-     The topbar is now a wordmark and an avatar, so it can sit tight to the top rather
-     than reserving room for a wrapping row of links.
-  */
-  .topbar {
-    align-items: center;
-    padding-bottom: 0.6rem;
-    margin-bottom: 0.9rem;
-  }
-
-  .account { gap: 0.25rem; }
+  /* A shade tighter still than the base bar, where vertical room is scarcest. */
+  .topbar { margin-bottom: 0.9rem; }
 
   /*
      Editor first: opening a note should be ready to type. showPreview is persisted and

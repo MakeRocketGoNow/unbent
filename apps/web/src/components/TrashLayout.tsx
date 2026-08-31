@@ -7,6 +7,7 @@ import { useNotesLayout, SIDEBAR_DEFAULT, SIDEBAR_MIN, SIDEBAR_MAX } from '../us
 import { ResizeHandle } from './ResizeHandle.js';
 import { NoteListItem } from './NoteListItem.js';
 import { Confirm } from './Confirm.js';
+import { Button } from './Button.js';
 import { useMaintenance } from './use-maintenance.js';
 
 /**
@@ -138,16 +139,19 @@ export function TrashLayout({ children }: { children: React.ReactNode }) {
               to="/trash/$noteId"
               actions={
                 <div className="trash-actions">
-                  <button type="button" className="link" onClick={() => void restore(n.id)}>
+                  {/* Quiet, not outlined: these repeat on every row, and a grid of
+                      bordered buttons would out-shout the notes they act on. */}
+                  <Button variant="quiet" size="small" onClick={() => void restore(n.id)}>
                     Restore
-                  </button>
-                  <button
-                    type="button"
-                    className="link danger"
+                  </Button>
+                  <Button
+                    variant="quiet"
+                    tone="danger"
+                    size="small"
                     onClick={() => setPending({ id: n.id, title: n.title })}
                   >
                     Delete forever
-                  </button>
+                  </Button>
                 </div>
               }
             />
