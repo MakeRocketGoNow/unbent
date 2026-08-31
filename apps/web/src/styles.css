@@ -336,6 +336,128 @@ h1 {
 
 .primary:hover { opacity: 0.9; }
 
+/* ---------------------------------------------------------------------------------
+   Buttons.
+
+   An action is a button and looks like one. This app used to draw actions as
+   `<button class="link">` — a real button wearing a link's clothes, with no padding, no
+   hit area past the text, and an underline on hover promising a navigation that never
+   came. Links go somewhere; buttons change something. Drawing one as the other teaches
+   people to distrust both, so the two now look different on purpose.
+
+   Three weights, because "how loud" and "how dangerous" are separate questions:
+   .btn-primary fills, .btn-secondary outlines, .btn-quiet drops the border for dense rows
+   but keeps the padding and the hover fill that make it feel pressable. .btn-danger is
+   layered onto any of them.
+
+   `.primary` above is the older filled button and still styles the New button and the
+   confirms. It is the same shape and radius as .btn-primary by design — this is one
+   visual language with two spellings, not two systems, and the older one can be retired
+   onto Button without anything moving.
+   --------------------------------------------------------------------------------- */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  padding: 0.35rem 0.75rem;
+  font: inherit;
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: var(--fg);
+  text-decoration: none;
+  background: none;
+  border: 1px solid transparent;
+  border-radius: 0.4rem;
+  cursor: pointer;
+  /* Colour only: no transform or shadow, so a row of these stays still under the cursor. */
+  transition: background-color 0.12s ease, border-color 0.12s ease, color 0.12s ease;
+}
+
+/* The hit area, not the text box. 1.9rem keeps a small button tappable without making a
+   toolbar taller than the row it sits in. */
+.btn-small {
+  padding: 0.25rem 0.55rem;
+  font-size: 0.78rem;
+}
+
+.btn:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+/* Filled: the one thing a view is for. */
+.btn-primary {
+  color: var(--bg);
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.btn-primary:hover:not(:disabled) { opacity: 0.9; }
+
+/* Outlined: a real action that is not the main one. The default, and the common case. */
+.btn-secondary {
+  color: var(--fg);
+  border-color: var(--border);
+}
+
+.btn-secondary:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+/*
+   Borderless until you reach for it.
+
+   For actions inside a dense row — the trash's Restore and Delete forever — where a grid
+   of outlines would out-shout the notes themselves. The hover fill is what separates this
+   from the `.link` styling it replaces: the control has a body, it just isn't drawn until
+   the pointer is on it.
+*/
+.btn-quiet {
+  padding-left: 0.5rem;
+  padding-right: 0.5rem;
+  color: var(--muted);
+}
+
+.btn-quiet:hover:not(:disabled) {
+  color: var(--fg);
+  background: color-mix(in srgb, var(--fg) 8%, transparent);
+}
+
+/*
+   Danger, layered onto any variant.
+
+   The filled case sets its own text colour rather than inheriting --bg: in dark mode
+   --bad is a light salmon, and white-on-salmon is the one combination here that fails
+   contrast. Pinning the text to the page's dark ink keeps the filled danger button
+   readable in both themes.
+*/
+.btn-danger { color: var(--bad); }
+
+.btn-danger.btn-secondary:hover:not(:disabled) {
+  color: var(--bad);
+  border-color: var(--bad);
+  background: color-mix(in srgb, var(--bad) 8%, transparent);
+}
+
+.btn-danger.btn-quiet:hover:not(:disabled) {
+  color: var(--bad);
+  background: color-mix(in srgb, var(--bad) 10%, transparent);
+}
+
+.btn-danger.btn-primary {
+  color: #fff;
+  background: var(--bad);
+  border-color: var(--bad);
+}
+
+@media (prefers-color-scheme: dark) {
+  /* See above: --bad is light here, so the fill takes dark ink instead of white. */
+  .btn-danger.btn-primary { color: #16151a; }
+}
+
+
 .note-list {
   list-style: none;
   margin: 0;
