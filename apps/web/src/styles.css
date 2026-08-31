@@ -1920,9 +1920,31 @@ a.overflow-item { text-decoration: none; }
    sit on .shell.wide. That cap moved off the shell so the notes grid could use the whole
    monitor, so the measured column is declared here, where it is actually wanted.
 */
+/*
+   The settings section scrolls itself.
+
+   `.shell.wide` is the notes view's frame: a viewport-height flex column with
+   `overflow: hidden`, so that the note list and editor can scroll inside it while the page
+   never does. Every signed-in route shares that shell, so settings inherited a clipped box
+   it had no way to scroll — the foot of a long panel (122px of Maintenance on a phone) was
+   simply unreachable, with no page scrollbar to reach it.
+
+   `min-height: 0` is the half that matters: a flex item's floor is its content, so without
+   it this box refuses to shrink under the shell and `overflow-y` never engages.
+
+   `width: 100%` does the same job on the other axis. A flex item is also floored by its
+   content's intrinsic width, and `min-width: 0` alone does not fix that here — an
+   unwrappable child (`.export-tree`) still reported 702px and stretched the whole column
+   past the viewport, where the shell's `overflow: hidden` clipped it mid-sentence rather
+   than scrolling. Pinning the width to the container takes the measurement away from the
+   content.
+*/
 .settings {
+  width: 100%;
   max-width: 78rem;
   margin: 0 auto;
+  min-height: 0;
+  overflow-y: auto;
 }
 
 .settings-head {
@@ -1998,6 +2020,19 @@ a.overflow-item { text-decoration: none; }
 .export-tree {
   max-width: 46rem;
   margin: 0;
+  /*
+     Paired with `overflow-x: auto` below, so the diagram scrolls instead of stretching the
+     page.
+
+     `.panel` is a column flex container with `align-items: flex-start`, which sizes its
+     children to their own content on the cross axis rather than to the panel. For a block
+     of pre-formatted text that means the width of the longest line — 702px here, against a
+     375px phone — which the shell then clipped rather than scrolled. `align-self: stretch`
+     opts this one child back into the panel's width; `min-width: 0` lets it be narrower
+     than its text so the overflow actually has somewhere to go.
+  */
+  align-self: stretch;
+  min-width: 0;
   padding: 0.8rem;
   overflow-x: auto;
   font-size: 0.78rem;
