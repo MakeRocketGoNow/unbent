@@ -3,6 +3,7 @@ import { Link } from '@tanstack/react-router';
 import { useQuery } from '@tanstack/react-query';
 import * as api from '../notes-api.js';
 import { Confirm } from './Confirm.js';
+import { Button } from './Button.js';
 import { useMaintenance } from './use-maintenance.js';
 import { noteCountQuery, trashCountQuery } from '../queries.js';
 
@@ -58,9 +59,32 @@ export function Maintenance() {
           note normally only moves it here, so this is the step that actually frees the
           storage.
         </p>
-        <button
-          type="button"
-          className="primary danger"
+
+        {/*
+            A way to look before you leap, offered before the button rather than only
+            inside the confirm.
+
+            A count is enough to decide on one note and not nearly enough to decide on
+            fifty: the honest reaction to "Empty trash (47 notes)" is "what is in there?",
+            and until now the only answer was to leave the page and come back. The
+            confirm already offered this link, but a confirm only appears once the user
+            has committed to the thing they wanted to check first.
+
+            Deliberately a link to /trash rather than a list of trashed notes inline. The
+            sibling section lists orphaned files because those exist nowhere else in the
+            app; trashed notes already have a view built for them, with restore and
+            per-note actions, and a read-only copy here would be a worse version of a
+            page we already have.
+        */}
+        {trashed > 0 && (
+          <p className="muted small">
+            <Link to="/trash">Review the trash</Link> to restore anything you want to keep.
+          </p>
+        )}
+
+        <Button
+          variant="primary"
+          tone="danger"
           disabled={busy || trashed === 0}
           onClick={() => {
             reset();
@@ -68,7 +92,7 @@ export function Maintenance() {
           }}
         >
           {trashed === 0 ? 'Trash is empty' : `Empty trash (${plural(trashed, 'note')})`}
-        </button>
+        </Button>
 
         {pending === 'trashed' && (
           <Confirm
@@ -107,9 +131,8 @@ export function Maintenance() {
             old single button destroyed first and reported the count afterwards, which is
             no help at all if the number is a surprise.
         */}
-        <button
-          type="button"
-          className="primary"
+        <Button
+          variant="primary"
           disabled={busy}
           onClick={() => {
             reset();
@@ -124,7 +147,7 @@ export function Maintenance() {
           }}
         >
           Check for orphaned files
-        </button>
+        </Button>
 
         {sweep && sweep.orphaned > 0 && (
           <>
@@ -141,9 +164,9 @@ export function Maintenance() {
               </ul>
             </details>
 
-            <button
-              type="button"
-              className="primary danger"
+            <Button
+              variant="primary"
+              tone="danger"
               disabled={busy}
               onClick={() =>
                 void run(async () => {
@@ -154,7 +177,7 @@ export function Maintenance() {
               }
             >
               Delete {plural(sweep.orphaned, 'orphaned file')}
-            </button>
+            </Button>
           </>
         )}
       </section>
@@ -165,10 +188,11 @@ export function Maintenance() {
           Empties the account: every note, trashed or not, and every attachment. Mainly
           useful for repeating a trial import.
         </p>
-        {/* The quietest control here on purpose — nothing else on this page can do as much. */}
-        <button
-          type="button"
-          className="link danger"
+        {/* The quietest control here on purpose — nothing else on this page can do as much.
+            `quiet` is the variant that says so without pretending to be a link. */}
+        <Button
+          variant="quiet"
+          tone="danger"
           disabled={busy}
           onClick={() => {
             reset();
@@ -176,7 +200,7 @@ export function Maintenance() {
           }}
         >
           Delete all notes
-        </button>
+        </Button>
 
         {pending === 'all' && (
           <Confirm

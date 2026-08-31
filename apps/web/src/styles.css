@@ -185,6 +185,35 @@ h1 {
   color: inherit;
 }
 
+/*
+   Links written inside a sentence.
+
+   Every other link in this app carries a class — `.link`, `.trash-link`, `.note-item` —
+   so a bare `<a>` in prose was never styled and fell back to the browser's default blue,
+   which is not a colour this palette contains. There are only a few (the confirms offer
+   "Review the trash" and "Export first"; the trash section offers the same review link
+   before you commit), and each one appeared in stock blue with a permanent underline.
+
+   Scoped to prose containers rather than set on bare `a`, because most links here are
+   classed controls that already say how they look and must not inherit this.
+*/
+.settings-section p a,
+.confirm p a,
+.confirm-detail a,
+.panel > p a {
+  color: var(--accent);
+  text-decoration: underline;
+  /* Offset so the underline clears the descenders in "trash" and "Export". */
+  text-underline-offset: 0.15em;
+}
+
+.settings-section p a:hover,
+.confirm p a:hover,
+.confirm-detail a:hover,
+.panel > p a:hover {
+  color: var(--fg);
+}
+
 /* The active route, marked by the router rather than by comparing ids in the component. */
 .link.active {
   font-weight: 600;
