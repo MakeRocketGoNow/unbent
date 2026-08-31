@@ -3,7 +3,7 @@ import { EditorView } from '@codemirror/view';
 import { markdown } from '@codemirror/lang-markdown';
 import { GFM } from '@lezer/markdown';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { orderedMarker, richMarkdown } from './rich-markdown.js';
+import { orderedMarker, resetExpandedPdfs, richMarkdown } from './rich-markdown.js';
 
 /**
  * pdf.js never runs here: jsdom has no canvas rasterizer, and the widget's contract with
@@ -11,7 +11,9 @@ import { orderedMarker, richMarkdown } from './rich-markdown.js';
  * widget at all, and that acquire/release stay balanced.
  */
 const renderPage = vi.fn(async () => {});
-const acquirePdf = vi.fn(async (_url: string) => ({ pageCount: 1, renderPage, destroy: () => {} }));
+/** Page count the mocked document reports; raised by the tests that need more than one. */
+let pageCount = 1;
+const acquirePdf = vi.fn(async (_url: string) => ({ pageCount, renderPage, destroy: () => {} }));
 const releasePdf = vi.fn((_url: string) => {});
 
 vi.mock('../pdf/render.js', () => ({
@@ -296,7 +298,24 @@ describe('inline PDF', () => {
   beforeEach(() => {
     acquirePdf.mockClear();
     releasePdf.mockClear();
+    renderPage.mockClear();
+    pageCount = 1;
+    resetExpandedPdfs();
   });
+
+  /**
+   * Drains the promise chain behind a widget.
+   *
+   * Opening awaits `acquirePdf` and then draws each page in turn, so a single macrotask
+   * tick lands in the middle of a multi-page expansion. Several passes push past the whole
+   * chain, however many pages the mocked document reports.
+   */
+  const settle = async () => {
+    for (let i = 0; i < 10; i += 1) await new Promise((resolve) => setTimeout(resolve, 0));
+  };
+
+  const moreButton = (v: EditorView) =>
+    v.dom.querySelector<HTMLButtonElement>('.cm-md-pdf-more');
 
   it('renders a PDF attachment link', () => {
     mountWithAttachments('[report](files/report.pdf)');
@@ -362,6 +381,80 @@ describe('inline PDF', () => {
 
     expect(acquirePdf).toHaveBeenCalledTimes(1);
     expect(releasePdf).not.toHaveBeenCalled();
+  });
+
+  /** One page is the whole document: offering to show more would be a lie. */
+  it('offers no expansion for a single-page PDF', async () => {
+    const v = mountWithAttachments('[report](files/report.pdf)');
+    await settle();
+    expect(moreButton(v)).toBeNull();
+  });
+
+  it('counts the pages that are not shown', async () => {
+    pageCount = 3;
+    const v = mountWithAttachments('[report](files/report.pdf)');
+    await settle();
+    expect(moreButton(v)?.textContent).toBe('+2 more pages');
+  });
+
+  it('says "page" when only one is left over', async () => {
+    pageCount = 2;
+    const v = mountWithAttachments('[report](files/report.pdf)');
+    await settle();
+    expect(moreButton(v)?.textContent).toBe('+1 more page');
+  });
+
+  /** The point of the change: the count is the control that draws the rest. */
+  it('renders every remaining page when the count is clicked', async () => {
+    pageCount = 3;
+    const v = mountWithAttachments('[report](files/report.pdf)');
+    await settle();
+    expect(renderPage).toHaveBeenCalledTimes(1);
+
+    moreButton(v)?.click();
+    await settle();
+
+    expect(renderPage).toHaveBeenCalledTimes(3);
+    expect(v.dom.querySelectorAll('.cm-md-pdf-canvas')).toHaveLength(3);
+    expect(moreButton(v)?.textContent).toBe('Showing 3 pages');
+  });
+
+  /**
+   * Clicking again puts the note back the way it was. The canvases stay so a second
+   * expansion never repeats the rasterizing.
+   */
+  it('collapses again without redrawing', async () => {
+    pageCount = 3;
+    const v = mountWithAttachments('[report](files/report.pdf)');
+    await settle();
+
+    moreButton(v)?.click();
+    await settle();
+    moreButton(v)?.click();
+    await settle();
+    expect(moreButton(v)?.textContent).toBe('+2 more pages');
+
+    moreButton(v)?.click();
+    await settle();
+    expect(renderPage).toHaveBeenCalledTimes(3);
+  });
+
+  /**
+   * A widget is destroyed when its line scrolls out of the viewport and rebuilt on the way
+   * back. An expansion that did not survive that would collapse on its own.
+   */
+  it('comes back expanded after the widget is rebuilt', async () => {
+    pageCount = 3;
+    const first = mountWithAttachments('[report](files/report.pdf)');
+    await settle();
+    moreButton(first)?.click();
+    await settle();
+    first.destroy();
+
+    const second = mountWithAttachments('[report](files/report.pdf)');
+    await settle();
+    expect(moreButton(second)?.textContent).toBe('Showing 3 pages');
+    expect(second.dom.querySelectorAll('.cm-md-pdf-canvas')).toHaveLength(3);
   });
 });
 

@@ -9,7 +9,7 @@ import {
   WidgetType,
 } from '@codemirror/view';
 import { ATTACHMENT_PREFIX } from '@unbent/shared';
-import { acquirePdf, releasePdf } from '../pdf/render.js';
+import { acquirePdf, type LoadedPdf, releasePdf } from '../pdf/render.js';
 
 /**
  * Rich markdown rendering inside CodeMirror.
@@ -287,13 +287,43 @@ class ImageWidget extends WidgetType {
 const EDITOR_PDF_WIDTH = 420;
 
 /**
- * First page of an attached PDF, drawn under the link that references it.
+ * Attachments the reader has expanded to every page, keyed by URL.
+ *
+ * Deliberately outside the widget. A `PdfWidget` is destroyed whenever its line scrolls
+ * out of the viewport and rebuilt on the way back, so state held on the instance or in its
+ * DOM would silently collapse an expanded document the moment it left the screen. URL is
+ * the same identity `eq` compares and `acquirePdf` caches under, so a widget rebuilt for
+ * the same attachment comes back expanded.
+ *
+ * Not cleared when a note closes: the set holds a handful of short strings, and reopening
+ * a note you had expanded and finding it collapsed again is the more annoying outcome.
+ */
+const expandedPdfs = new Set<string>();
+
+/**
+ * Forgets every expansion.
+ *
+ * Exists for tests. The set is deliberately module-level so an expansion outlives the
+ * widget that made it, which also means it outlives one test's editor — without this, a
+ * test that expands an attachment decides what the next test sees for the same URL.
+ */
+export function resetExpandedPdfs(): void {
+  expandedPdfs.clear();
+}
+
+/**
+ * Pages of an attached PDF, drawn under the link that references it.
  *
  * Appended after the markdown rather than replacing it, for the same reason `ImageWidget`
  * is: the link text is frequently the only title a scanned note has, and a replaced link
  * would be the one thing in the document the cursor could not reach. The rendering is
- * quieter than the preview pane's viewer — one page, no chrome, no page count — because
- * here it sits among text being written rather than in a pane being read.
+ * quieter than the preview pane's viewer — no chrome, no per-page numbering — because here
+ * it sits among text being written rather than in a pane being read.
+ *
+ * One page is drawn by default; the page-count line below it is a button that draws the
+ * rest. Most notes in a real Evernote export are a single scanned document, so the first
+ * page is usually the whole thing, and rasterizing every page of every attachment in a
+ * note carrying nine of them would cost far more than anyone reads.
  *
  * The document is shared through `acquirePdf`, so scrolling a widget out of the viewport
  * and back does not re-parse the file.
@@ -308,7 +338,9 @@ class PdfWidget extends WidgetType {
    *
    * CodeMirror reuses the existing DOM when this returns true, which is what stops a
    * keystroke anywhere in the note from throwing away a rasterized page and drawing it
-   * again. Nothing else about the widget affects what is painted.
+   * again. Nothing else about the widget affects what is painted — expansion is keyed by
+   * the same URL in `expandedPdfs`, so it survives the rebuild rather than needing to be
+   * compared here.
    */
   override eq(other: PdfWidget): boolean {
     return other.url === this.url;
@@ -318,9 +350,13 @@ class PdfWidget extends WidgetType {
     const wrap = document.createElement('span');
     wrap.className = 'cm-md-pdf';
 
+    const pages = document.createElement('span');
+    pages.className = 'cm-md-pdf-pages';
+    wrap.appendChild(pages);
+
     const canvas = document.createElement('canvas');
     canvas.className = 'cm-md-pdf-canvas';
-    wrap.appendChild(canvas);
+    pages.appendChild(canvas);
 
     const status = document.createElement('span');
     status.className = 'cm-md-pdf-status';
@@ -335,12 +371,7 @@ class PdfWidget extends WidgetType {
         await doc.renderPage(1, canvas, EDITOR_PDF_WIDTH);
         if (!wrap.isConnected) return;
         status.remove();
-        if (doc.pageCount > 1) {
-          const more = document.createElement('span');
-          more.className = 'cm-md-pdf-more';
-          more.textContent = `+${doc.pageCount - 1} more page${doc.pageCount > 2 ? 's' : ''}`;
-          wrap.appendChild(more);
-        }
+        if (doc.pageCount > 1) this.addMore(wrap, pages, doc);
       })
       .catch(() => {
         // A PDF that will not open should leave the link readable, not an error banner
@@ -349,6 +380,82 @@ class PdfWidget extends WidgetType {
       });
 
     return wrap;
+  }
+
+  /**
+   * The line under the first page, and what it does when clicked.
+   *
+   * A real `<button>` rather than a clickable span: this is the only control in the
+   * rendered note, and it has to be reachable by keyboard and announced as something that
+   * acts. `contentEditable = false` keeps CodeMirror from treating its text as document
+   * content the caret can enter.
+   */
+  private addMore(wrap: HTMLElement, pages: HTMLElement, doc: LoadedPdf): void {
+    const more = document.createElement('button');
+    more.type = 'button';
+    more.className = 'cm-md-pdf-more';
+    more.contentEditable = 'false';
+    wrap.appendChild(more);
+
+    const remaining = doc.pageCount - 1;
+    more.textContent = `+${remaining} more page${remaining > 1 ? 's' : ''}`;
+
+    /**
+     * Drawing is one-way and one-shot.
+     *
+     * Once the pages are on screen the button becomes the collapse control, which only
+     * hides them — the canvases stay in the DOM so expanding again is free rather than a
+     * second rasterizing pass over a document that may run to dozens of pages.
+     */
+    let drawn = false;
+
+    const collapse = () => {
+      expandedPdfs.delete(this.url);
+      pages.classList.remove('cm-md-pdf-expanded');
+      more.textContent = `+${remaining} more page${remaining > 1 ? 's' : ''}`;
+    };
+
+    const expand = async () => {
+      expandedPdfs.add(this.url);
+      pages.classList.add('cm-md-pdf-expanded');
+      more.textContent = `Showing ${doc.pageCount} pages`;
+      if (drawn) return;
+      drawn = true;
+
+      for (let n = 2; n <= doc.pageCount; n += 1) {
+        const canvas = document.createElement('canvas');
+        canvas.className = 'cm-md-pdf-canvas';
+        pages.appendChild(canvas);
+        try {
+          await doc.renderPage(n, canvas, EDITOR_PDF_WIDTH);
+        } catch {
+          // One unrenderable page should not leave a blank canvas wedged between the
+          // pages around it.
+          canvas.remove();
+        }
+        // Scrolled out of the viewport mid-draw: the widget is gone and the remaining
+        // pages would be drawn into nothing.
+        if (!wrap.isConnected) return;
+      }
+    };
+
+    more.addEventListener('mousedown', (event) => {
+      // The editor would otherwise move the caret to the click, which both scrolls the
+      // note and steals the focus this button needs to stay keyboard-operable.
+      event.preventDefault();
+      event.stopPropagation();
+    });
+
+    more.addEventListener('click', (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      if (expandedPdfs.has(this.url)) collapse();
+      else void expand();
+    });
+
+    // Rebuilt after a scroll for an attachment that was already open: draw straight to
+    // the state the reader left it in, with no second click.
+    if (expandedPdfs.has(this.url)) void expand();
   }
 
   /**
@@ -362,7 +469,12 @@ class PdfWidget extends WidgetType {
     releasePdf(this.url);
   }
 
-  /** Clicks belong to the editor, not the widget. */
+  /**
+   * Clicks belong to the editor, not the widget.
+   *
+   * The one exception is the expand button, which stops its own events above; everything
+   * else here is a rendered page that should behave like the rest of the note.
+   */
   override ignoreEvent(): boolean {
     return false;
   }
@@ -953,6 +1065,18 @@ export function richMarkdown(options: RichMarkdownOptions = {}): Extension {
        * pixel size from the renderer, so only the ceiling is set here.
        */
       '.cm-md-pdf': { display: 'block', padding: '0.35rem 0 0.6rem' },
+      /**
+       * The page stack.
+       *
+       * Pages after the first are hidden with CSS rather than removed, so collapsing and
+       * expanding again costs nothing after the one rasterizing pass.
+       */
+      '.cm-md-pdf-pages': { display: 'block' },
+      '.cm-md-pdf-pages > .cm-md-pdf-canvas ~ .cm-md-pdf-canvas': { display: 'none' },
+      '.cm-md-pdf-expanded > .cm-md-pdf-canvas ~ .cm-md-pdf-canvas': {
+        display: 'block',
+        marginTop: '0.4rem',
+      },
       '.cm-md-pdf-canvas': {
         display: 'block',
         maxWidth: 'min(100%, 26rem)',
@@ -963,12 +1087,29 @@ export function richMarkdown(options: RichMarkdownOptions = {}): Extension {
         background: '#fff',
       },
       '.cm-md-pdf-status': { fontSize: '0.85em', opacity: '0.6' },
+      /**
+       * The expand control, styled as the quiet caption it replaced.
+       *
+       * A button carries a platform look that would be far louder than anything else in a
+       * rendered note, so the browser's own chrome is stripped back off — but it stays a
+       * button for the keyboard and the screen reader.
+       */
       '.cm-md-pdf-more': {
         display: 'block',
+        font: 'inherit',
         fontSize: '0.85em',
         opacity: '0.6',
-        paddingTop: '0.25rem',
+        padding: '0.25rem 0 0',
+        margin: '0',
+        border: 'none',
+        background: 'none',
+        color: 'inherit',
+        textAlign: 'left',
+        textDecoration: 'underline',
+        textUnderlineOffset: '0.15em',
+        cursor: 'pointer',
       },
+      '.cm-md-pdf-more:hover': { opacity: '0.85' },
 
       '.cm-md-image': { display: 'block', padding: '0.35rem 0 0.6rem' },
       '.cm-md-image img': {
