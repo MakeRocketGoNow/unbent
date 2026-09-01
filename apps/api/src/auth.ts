@@ -1,5 +1,6 @@
 import { betterAuth } from 'better-auth';
 import { APIError } from 'better-auth/api';
+import { bearer, deviceAuthorization } from 'better-auth/plugins';
 import type { Env } from './types.js';
 
 /**
@@ -37,11 +38,30 @@ function baseURLFor(env: Env) {
 }
 
 /**
+ * What this module actually uses of a Better Auth instance: the catch-all request handler
+ * mounted at /api/auth/*, and the session lookup sessionMiddleware performs.
+ *
+ * Declared explicitly because the plugins below make the inferred return type reference
+ * better-call, a transitive dependency this package does not depend on directly, which
+ * TypeScript rejects as unportable (TS2742). Naming the surface we rely on is better than
+ * pinning someone else's dependency to satisfy a type it only mentions in passing — and it
+ * fails loudly if a future caller reaches for something not listed here.
+ */
+interface AuthInstance {
+  handler: (request: Request) => Promise<Response>;
+  api: {
+    getSession: (context: { headers: Headers }) => Promise<{
+      user?: { id: string; email: string; name: string; image?: string | null };
+    } | null>;
+  };
+}
+
+/**
  * Better Auth must be constructed per-request: on Workers the D1 binding only exists on
  * `env`, which is not available at module scope. Instances are cheap, but we memoize per
  * Env object so repeated middleware calls within one request reuse the same instance.
  */
-function createAuth(env: Env) {
+function createAuth(env: Env): AuthInstance {
   return betterAuth({
     // Better Auth v1.5+ accepts a D1 binding directly and picks its own dialect.
     // D1 has no interactive transactions; Better Auth falls back to batch() for atomicity.
@@ -117,6 +137,29 @@ function createAuth(env: Env) {
       // cookie is sufficient and avoids SameSite=None.
       useSecureCookies: !env.APP_URL.startsWith('http://localhost'),
     },
+    plugins: [
+      /**
+       * Lets a CLI sign in without ever handling a credential: it prints a short code,
+       * the user approves it in a browser already signed in here, and the CLI collects an
+       * ordinary session. Nothing is typed into or stored by the CLI.
+       *
+       * Approval requires a real session, so the sign-up allowlist above governs this
+       * path too — a device cannot be authorized by someone who could not sign in.
+       *
+       * Defaults are the plugin's: a 30-minute code and 5-second polling. Both suit a
+       * migration the user starts and then watches.
+       */
+      deviceAuthorization(),
+      /**
+       * Accepts `Authorization: Bearer <token>` as an alternative to the session cookie.
+       *
+       * The device flow issues a normal session; without this the CLI would have to
+       * store and replay a cookie, which is the browser's mechanism rather than an HTTP
+       * client's. Everything downstream is unchanged either way — sessionMiddleware still
+       * resolves a user and `requireAuth` still guards the same routes.
+       */
+      bearer(),
+    ],
   });
 }
 
