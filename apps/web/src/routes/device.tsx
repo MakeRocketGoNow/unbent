@@ -1,4 +1,4 @@
-import { createFileRoute } from '@tanstack/react-router';
+import { createFileRoute, Link } from '@tanstack/react-router';
 import { z } from 'zod';
 import { useCallback, useEffect, useState } from 'react';
 import { Button } from '../components/Button.js';
@@ -93,6 +93,13 @@ function DevicePage() {
             ? 'You can return to the terminal — it picks this up within a few seconds. Signing out everywhere also signs out this device.'
             : 'Nothing was granted. If you did not start this, no further action is needed.'}
         </p>
+        {/* A way off this page. Without it the browser sits on /device?user_code=… after
+            approving, and going back to the app later — or restoring the tab — reopens a
+            code that is by then used or expired, which reads as sign-in dumping you on a
+            broken page rather than as a stale URL. */}
+        <Link to="/notes" className="link">
+          Go to your notes
+        </Link>
       </div>
     );
   }

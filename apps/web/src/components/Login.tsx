@@ -9,6 +9,27 @@ const PROVIDERS: Array<{ id: Provider; label: string }> = [
   { id: 'github', label: 'Continue with GitHub' },
 ];
 
+/** Where the app lands when the current URL is not somewhere worth returning to. */
+const HOME = '/notes';
+
+/**
+ * Where to come back to after signing in.
+ *
+ * Deep links keep their query string, which is what lets a device approval survive a
+ * sign-in. `/device` without a code does not: there is nothing there to act on, and a code
+ * that has since been used or has expired renders an error that looks like the sign-in
+ * failed rather than like a stale link.
+ */
+export function returnTo(href: string): string {
+  const [path, query = ''] = href.split('?');
+  if (path !== '/device') return href;
+  // Matched rather than parsed with the browser's query-string API, which
+  // `url-boundary.test.ts` reserves for outbound API queries so that browser URL handling
+  // stays the router's business.
+  const hasCode = /(^|&)user_code=[^&]/.test(query);
+  return hasCode ? href : HOME;
+}
+
 export function Login() {
   const [pending, setPending] = useState<Provider | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -32,8 +53,13 @@ export function Login() {
        * The device flow is what made this matter. `/device?user_code=ABCD1234` opened
        * while signed out sent the user to `/notes` with the code silently dropped, and the
        * CLI waiting on an approval page they had no way back to.
+       *
+       * A bare `/device` is the exception, and returns to the notes instead. Without a
+       * code there is nothing to approve, so landing there after signing in is a dead end
+       * — and since a code is single-use and expires in 30 minutes, a stale one is worse
+       * than a dead end: it shows an error that reads as sign-in being broken.
        */
-      await signIn.social({ provider, callbackURL: href });
+      await signIn.social({ provider, callbackURL: returnTo(href) });
     } catch (err) {
       // A provider with no configured credentials fails here rather than redirecting.
       setError((err as Error).message || 'Sign-in failed');
