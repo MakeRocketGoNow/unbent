@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Link, useNavigate } from '@tanstack/react-router';
 import { useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
 import * as api from '../notes-api.js';
-import { trashQuery } from '../queries.js';
+import { trashQuery, invalidateNoteMembership } from '../queries.js';
 import { useNotesLayout, SIDEBAR_DEFAULT, SIDEBAR_MIN, SIDEBAR_MAX } from '../useNotesLayout.js';
 import { ResizeHandle } from './ResizeHandle.js';
 import { NoteListItem } from './NoteListItem.js';
@@ -35,6 +35,9 @@ export function TrashLayout({ children }: { children: React.ReactNode }) {
   async function afterRemoval(id: string) {
     await queryClient.invalidateQueries({ queryKey: ['trash'] });
     void queryClient.invalidateQueries({ queryKey: ['notes'] });
+    // Restoring files a note back into its notebook and tags; destroying it takes those
+    // counts down for good. Both move the sidebar.
+    invalidateNoteMembership(queryClient);
     if (open === id) void navigate({ to: '/trash' });
   }
 

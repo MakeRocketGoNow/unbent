@@ -1,4 +1,4 @@
-import { queryOptions, infiniteQueryOptions } from '@tanstack/react-query';
+import { queryOptions, infiniteQueryOptions, type QueryClient } from '@tanstack/react-query';
 import type { NoteSort } from '@unbent/shared';
 import * as api from './notes-api.js';
 
@@ -122,6 +122,24 @@ export const notebooksQuery = () =>
  * The filter is part of the cache key: the same words inside two different notebooks are
  * two different result sets, and sharing one entry between them would serve the wrong one.
  */
+/**
+ * Refetches everything a note's arrival or departure changes.
+ *
+ * A note moving between the live list and the trash — created, trashed, restored, or
+ * destroyed — silently changes the sidebar: the notebook it was filed in loses a note
+ * from its count, its tags lose one from theirs, and the "Unfiled" option appears or
+ * disappears with the last unfiled note. None of that is derivable from the note list
+ * alone, so each of these was previously left stale until something else happened to
+ * refetch it.
+ *
+ * Callers pass whichever of the two list keys they need to await; the counts are
+ * fire-and-forget, since nothing renders differently while they are in flight.
+ */
+export function invalidateNoteMembership(queryClient: QueryClient) {
+  void queryClient.invalidateQueries({ queryKey: keys.tags() });
+  void queryClient.invalidateQueries({ queryKey: keys.notebooks() });
+}
+
 export const searchQuery = (q: string, filter: NoteFilter = {}) =>
   queryOptions({
     queryKey: keys.search(q, filter),

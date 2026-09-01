@@ -8,7 +8,13 @@ import { useAutosave } from '../useAutosave.js';
 import { usePersistentState, clamp } from '../usePersistentState.js';
 import { useMediaQuery, MOBILE_QUERY } from '../useMediaQuery.js';
 import { useKeyboardInset } from '../useKeyboardInset.js';
-import { noteQuery, notebooksQuery, tagsQuery, keys } from '../queries.js';
+import {
+  noteQuery,
+  notebooksQuery,
+  tagsQuery,
+  keys,
+  invalidateNoteMembership,
+} from '../queries.js';
 import { Editor } from './Editor.js';
 import { Preview } from './Preview.js';
 import { TagInput } from './TagInput.js';
@@ -142,8 +148,7 @@ export function Workspace({ noteId, readOnly = false, backTo = '/notes' }: Works
     // A tag or notebook edit changes the sidebar counts, and the title and ordering
     // change the list, so both are refetched rather than patched by hand.
     void queryClient.invalidateQueries({ queryKey: ['notes'] });
-    void queryClient.invalidateQueries({ queryKey: keys.tags() });
-    void queryClient.invalidateQueries({ queryKey: keys.notebooks() });
+    invalidateNoteMembership(queryClient);
   }
 
   const { state: saveState } = useAutosave(draft, save, {
@@ -159,6 +164,7 @@ export function Workspace({ noteId, readOnly = false, backTo = '/notes' }: Works
     await api.deleteNote(noteId);
     await queryClient.invalidateQueries({ queryKey: ['notes'] });
     void queryClient.invalidateQueries({ queryKey: ['trash'] });
+    invalidateNoteMembership(queryClient);
     void navigate({ to: '/notes', search: (p) => p });
   }
 

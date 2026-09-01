@@ -10,7 +10,7 @@ import {
   notebooksQuery,
   searchQuery,
   trashCountQuery,
-  keys,
+  invalidateNoteMembership,
 } from '../queries.js';
 import { useNotesLayout, SIDEBAR_DEFAULT, SIDEBAR_MIN, SIDEBAR_MAX } from '../useNotesLayout.js';
 import { useMediaQuery, MOBILE_QUERY } from '../useMediaQuery.js';
@@ -86,7 +86,7 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
         notebook: notebook === UNFILED ? null : (notebook ?? null),
       });
       await queryClient.invalidateQueries({ queryKey: ['notes'] });
-      void queryClient.invalidateQueries({ queryKey: keys.notebooks() });
+      invalidateNoteMembership(queryClient);
       void navigate({ to: '/notes/$noteId', params: { noteId: created.id }, search: (p) => p });
     } catch (err) {
       console.error(err);

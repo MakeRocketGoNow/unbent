@@ -703,6 +703,24 @@ describe('notebooks', () => {
     // Trashing takes it back out: the option should disappear again with the note.
     await fetch(`${BASE}/api/notes/${note.id}`, { method: 'DELETE', ...asUser(alice) });
     expect(await unfiledCount()).toBe(before);
+
+    // And restoring brings it back, so the option returns with the note.
+    await fetch(`${BASE}/api/notes/${note.id}/restore`, { method: 'POST', ...asUser(alice) });
+    expect(await unfiledCount()).toBe(before + 1);
+  });
+
+  it('drops a trashed note from its notebook count', async () => {
+    const name = `Counted ${Date.now()}`;
+    const note = await createNote(alice, { title: 'filed', body: 'x', notebook: name });
+    expect((await listNotebooks(alice)).find((n) => n.name === name)?.count).toBe(1);
+
+    // The notebook outlives the note, at zero — see 'survives its last note being
+    // trashed'. What matters here is that the count follows the note out.
+    await fetch(`${BASE}/api/notes/${note.id}`, { method: 'DELETE', ...asUser(alice) });
+    expect((await listNotebooks(alice)).find((n) => n.name === name)?.count).toBe(0);
+
+    await fetch(`${BASE}/api/notes/${note.id}/restore`, { method: 'POST', ...asUser(alice) });
+    expect((await listNotebooks(alice)).find((n) => n.name === name)?.count).toBe(1);
   });
 
   it('survives its last note being trashed', async () => {
