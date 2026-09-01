@@ -58,6 +58,51 @@ pnpm dev
 The SPA runs on :5173 and proxies `/api/*` to the Worker on :8787, so sessions are same-origin
 and there is no CORS in development.
 
+## Deployment
+
+Production lives at `https://unbent.app` under the `production` environment in
+`apps/api/wrangler.toml`. It is a named environment rather than edited top-level values so
+that `wrangler dev` cannot pick up production settings, and a deploy cannot ship a
+localhost `APP_URL` — `auth.ts` keys secure cookies off that string, so a wrong value
+breaks every session and only shows up after the deploy.
+
+First time, in order:
+
+```bash
+wrangler login
+wrangler d1 create unbent          # paste the id into [[env.production.d1_databases]]
+wrangler r2 bucket create unbent-blobs
+pnpm migrate:remote
+```
+
+Then the secrets. `--env production` is required on every one: secrets are per-environment,
+and one set without it lands on a Worker that is not the one serving the site.
+
+```bash
+cd apps/api
+wrangler secret put BETTER_AUTH_SECRET --env production    # openssl rand -base64 32
+wrangler secret put GOOGLE_CLIENT_ID --env production
+wrangler secret put GOOGLE_CLIENT_SECRET --env production
+wrangler secret put ALLOWED_EMAILS --env production        # comma-separated
+```
+
+`ALLOWED_EMAILS` is what keeps a public URL from becoming a free notes host: sign-in is
+OAuth only, so without it anyone with a Google or GitHub account can create an account.
+It is a secret rather than a var only to keep the address list out of the repo.
+
+OAuth callbacks have to be registered against the real origin before anyone can sign in,
+including you:
+
+- Google: `https://unbent.app/api/auth/callback/google`
+- GitHub: `https://unbent.app/api/auth/callback/github`
+
+Then deploy. `custom_domain = true` means Cloudflare creates and manages the DNS record and
+certificate, so there is nothing to add by hand:
+
+```bash
+pnpm deploy
+```
+
 ## Auth
 
 Better Auth with OAuth only — Google and GitHub. A provider without configured credentials

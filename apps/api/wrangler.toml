@@ -35,3 +35,44 @@ not_found_handling = "single-page-application"
 # index.html, because a Worker with a catch-all notFound() answers every path itself and
 # not_found_handling never gets a chance to fire. The API is unaffected either way.
 run_worker_first = ["/api/*"]
+
+# Production.
+#
+# A named environment rather than edited top-level values, so `wrangler dev` keeps using
+# the localhost settings above and deploying can never silently pick up a dev APP_URL —
+# `auth.ts` keys secure cookies off that string, so getting it wrong breaks every session
+# in a way that only shows up after deploy.
+#
+# Deploy with: pnpm build && wrangler deploy --env production
+[env.production]
+name = "unbent-api"
+
+[[env.production.d1_databases]]
+binding = "DB"
+database_name = "unbent"
+# Replace with the id from `wrangler d1 create unbent`.
+database_id = "PLACEHOLDER_RUN_WRANGLER_D1_CREATE"
+migrations_dir = "migrations"
+
+[[env.production.r2_buckets]]
+binding = "BLOBS"
+bucket_name = "unbent-blobs"
+
+[env.production.vars]
+APP_URL = "https://unbent.app"
+
+# The apex serves both the SPA and /api, keeping them same-origin in production exactly as
+# they are in dev. `custom_domain` makes Cloudflare create and manage the DNS record and
+# certificate, so there is no separate record to keep in step with this file.
+[[env.production.routes]]
+pattern = "unbent.app"
+custom_domain = true
+
+[env.production.assets]
+directory = "../web/dist"
+binding = "ASSETS"
+not_found_handling = "single-page-application"
+run_worker_first = ["/api/*"]
+
+[env.production.observability]
+enabled = true

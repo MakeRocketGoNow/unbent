@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "wrangler dev",
-    "deploy": "wrangler deploy",
+    "deploy": "wrangler deploy --env production",
     "typecheck": "tsc --noEmit",
     "migrate:local": "wrangler d1 migrations apply unbent --local",
     "migrate:remote": "wrangler d1 migrations apply unbent --remote",
