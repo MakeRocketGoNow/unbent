@@ -16,7 +16,7 @@ needs a URL. There is deliberately no default: a guessed instance means a forgot
 send a migration to a server you did not choose, and that failure is silent, because
 uploading to the wrong Unbent still succeeds.
 
-Change it later with `unbent-migrate set-url <url>`, or by editing the file
+Change it later with `unbent-migrate set-url https://unbent.app`, or by editing the file
 `unbent-migrate show-config` prints — it is plain JSON, mode 0644, and separate from
 `credentials.json` so that changing a URL never means opening a file with a token in it.
 `--url` overrides it for a single command, and `$UNBENT_URL` for a shell session.

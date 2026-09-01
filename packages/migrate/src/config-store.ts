@@ -30,7 +30,7 @@ export function configPath(): string {
 /**
  * Normalizes to an origin, and rejects anything that is not a real http(s) URL.
  *
- * A bare host is accepted and assumed https: someone typing `notes.example.com` means the
+ * A bare host is accepted and assumed https: someone typing `unbent.app` means the
  * site, and failing them over a missing scheme would be pedantry. Anything else throws,
  * because a URL that parses into something unexpected is worse than one that does not
  * parse at all — it fails later, against the wrong server.

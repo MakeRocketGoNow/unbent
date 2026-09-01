@@ -110,13 +110,13 @@ async function resolveUrl(args: Args): Promise<string> {
 
   if (!process.stdin.isTTY) {
     throw new Error(
-      'No Unbent instance configured. Run `unbent-migrate set-url <url>`, ' +
+      'No Unbent instance configured. Run `unbent-migrate set-url https://unbent.app`, ' +
         'or pass --url.',
     );
   }
 
   process.stdout.write(
-    '\nWhich Unbent instance? (for example https://notes.example.com)\n',
+    '\nWhich Unbent instance? (for example https://unbent.app)\n',
   );
   const rl = createInterface({ input: process.stdin, output: process.stdout });
   try {
