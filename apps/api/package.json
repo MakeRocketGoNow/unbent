@@ -8,7 +8,7 @@
     "deploy": "wrangler deploy --env production",
     "typecheck": "tsc --noEmit",
     "migrate:local": "wrangler d1 migrations apply unbent --local",
-    "migrate:remote": "wrangler d1 migrations apply unbent --remote",
+    "migrate:remote": "wrangler d1 migrations apply unbent --remote --env production",
     "cf-typegen": "wrangler types",
     "test": "vitest run",
     "posttest": "./scripts/purge-test-data.sh",
