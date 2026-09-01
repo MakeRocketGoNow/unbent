@@ -137,7 +137,7 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
           notebook &&
           notebook !== UNFILED &&
           notebooks.isSuccess &&
-          !notebooks.data.some((nb) => nb.name === notebook) && (
+          !notebooks.data.notebooks.some((nb) => nb.name === notebook) && (
             <p className="bad small">
               No notebook named “{notebook}”.{' '}
               <Link to="/notes" search={(prev) => ({ ...prev, notebook: undefined })}>
@@ -146,7 +146,7 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
             </p>
           )}
 
-        {results === null && (notebooks.data?.length ?? 0) > 0 && (
+        {results === null && (notebooks.data?.notebooks.length ?? 0) > 0 && (
           <div className={`notebook-scope-wrap${(tags.data?.length ?? 0) === 0 ? ' filters-end' : ''}`}>
             <select
               className="notebook-scope"
@@ -166,13 +166,21 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
               aria-label="Notebook"
             >
               <option value="">All notebooks</option>
-              {notebooks.data?.map((nb) => (
+              {notebooks.data?.notebooks.map((nb) => (
                 <option key={nb.id} value={nb.name}>
                   {nb.name} ({nb.count})
                 </option>
               ))}
-              {/* Reachable only once a notebook is deleted, which unfiles its notes. */}
-              <option value={UNFILED}>Unfiled</option>
+              {/*
+                  Offered only when there is something to see. Unfiled notes appear once a
+                  notebook is deleted, or a note is filed nowhere; with none of either, the
+                  option leads to a guaranteed empty list. It stays rendered while it is the
+                  active filter so the select never falls back to showing "All notebooks"
+                  over a URL that says otherwise.
+              */}
+              {((notebooks.data?.unfiled ?? 0) > 0 || notebook === UNFILED) && (
+                <option value={UNFILED}>Unfiled ({notebooks.data?.unfiled ?? 0})</option>
+              )}
             </select>
           </div>
         )}

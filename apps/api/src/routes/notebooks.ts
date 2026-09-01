@@ -23,8 +23,17 @@ export const notebooks = new Hono<AppEnv>()
   .use('/notebooks', requireAuth, withRepos)
   .use('/notebooks/*', requireAuth, withRepos)
 
+  /**
+   * `unfiled` rides along because notes in no notebook have no row to be counted in, and
+   * the scope selector hides its "Unfiled" option when that count is zero.
+   */
   .get('/notebooks', async (c) => {
-    return c.json({ notebooks: await c.get('notes').listNotebooks() });
+    const repo = c.get('notes');
+    const [notebooks, unfiled] = await Promise.all([
+      repo.listNotebooks(),
+      repo.countUnfiledNotes(),
+    ]);
+    return c.json({ notebooks, unfiled });
   })
 
   /** Creates an empty notebook. 409 when the name is taken, case-insensitively. */

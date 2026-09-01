@@ -140,9 +140,14 @@ export interface Notebook {
   count: number;
 }
 
-export async function listNotebooks(): Promise<Notebook[]> {
-  const { notebooks } = await json<{ notebooks: Notebook[] }>(await fetch('/api/notebooks'));
-  return notebooks;
+/** The notebook list plus how many notes sit outside every notebook. */
+export interface NotebookList {
+  notebooks: Notebook[];
+  unfiled: number;
+}
+
+export async function listNotebooks(): Promise<NotebookList> {
+  return json<NotebookList>(await fetch('/api/notebooks'));
 }
 
 /** Creates an empty notebook. Throws with a readable message when the name is taken. */

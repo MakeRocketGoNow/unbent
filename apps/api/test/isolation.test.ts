@@ -688,6 +688,23 @@ describe('notebooks', () => {
     expect(found?.count).toBe(0);
   });
 
+  it('counts unfiled notes alongside the notebooks', async () => {
+    // A delta rather than an absolute: other tests in this file leave notes of their own,
+    // and the count the UI cares about is only ever "is there anything here".
+    async function unfiledCount() {
+      const res = await fetch(`${BASE}/api/notebooks`, asUser(alice));
+      return (await res.json()).unfiled as number;
+    }
+
+    const before = await unfiledCount();
+    const note = await createNote(alice, { title: 'loose', body: 'x' });
+    expect(await unfiledCount()).toBe(before + 1);
+
+    // Trashing takes it back out: the option should disappear again with the note.
+    await fetch(`${BASE}/api/notes/${note.id}`, { method: 'DELETE', ...asUser(alice) });
+    expect(await unfiledCount()).toBe(before);
+  });
+
   it('survives its last note being trashed', async () => {
     const name = `Outlives ${Date.now()}`;
     const note = await createNote(alice, { title: 'only note', body: 'x', notebook: name });

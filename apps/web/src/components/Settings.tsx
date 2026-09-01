@@ -27,7 +27,7 @@ export function Settings({ onChanged }: SettingsProps) {
 
   const refresh = useCallback(async () => {
     try {
-      setNotebooks(await api.listNotebooks());
+      setNotebooks((await api.listNotebooks()).notebooks);
     } catch (err) {
       setError((err as Error).message);
     }

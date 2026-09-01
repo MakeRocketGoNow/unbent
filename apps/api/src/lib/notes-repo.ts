@@ -753,6 +753,24 @@ export class NotesRepo extends ScopedRepo {
     return results;
   }
 
+  /**
+   * How many of this user's notes sit in no notebook.
+   *
+   * Counted separately from `listNotebooks` because unfiled notes belong to no row there:
+   * the scope selector needs the number to decide whether "Unfiled" is worth offering.
+   */
+  async countUnfiledNotes(): Promise<number> {
+    const row = await this.db
+      .prepare(
+        `SELECT COUNT(*) AS count
+           FROM notes
+          WHERE user_id = ?1 AND notebook_id IS NULL AND deleted_at IS NULL`,
+      )
+      .bind(this.userId)
+      .first<{ count: number }>();
+    return row?.count ?? 0;
+  }
+
   /** Every notebook this user has in use, with note counts, for the sidebar scope selector. */
   async listNotebooks(): Promise<Array<{ id: string; name: string; count: number }>> {
     const { results } = await this.db

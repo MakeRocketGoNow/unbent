@@ -333,7 +333,7 @@ export function Workspace({ noteId, readOnly = false, backTo = '/notes' }: Works
           onChange={(e) => setDraft((d) => ({ ...d, notebook: e.target.value || null }))}
         >
           <option value="">Unfiled</option>
-          {notebooks.data?.map((nb) => (
+          {notebooks.data?.notebooks.map((nb) => (
             <option key={nb.id} value={nb.name}>
               {nb.name}
             </option>
