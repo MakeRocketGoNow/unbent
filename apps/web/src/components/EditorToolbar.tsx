@@ -244,31 +244,44 @@ export function EditorToolbar({
       aria-label="Formatting"
       style={docked ? { bottom: `${keyboardInset}px` } : undefined}
     >
-      {ACTIONS.map((action) => (
-        <button
-          key={action.title}
-          type="button"
-          className={`tb-btn ${action.className ?? ''}`}
-          title={action.title}
-          aria-label={action.title}
-          disabled={!view || !editing}
-          // onMouseDown, not onClick: a click would blur the editor first and drop the
-          // selection the command is meant to act on.
-          onMouseDown={(e) => {
-            e.preventDefault();
-            apply(action.run);
-          }}
-        >
-          {action.label}
-        </button>
-      ))}
+      {/*
+          The formatting run, and the only part of the bar that scrolls.
 
-      {editing && <TableButton view={view} />}
+          Eleven 44px touch targets do not fit a phone's width and never did — the bar has
+          always scrolled here. That is fine for formatting, which you dip into and can
+          swipe for. It is not fine for the view switcher, which answers "where am I", so
+          that sits outside this box and stays put. Splitting them is what lets each
+          behave the way its job requires.
+      */}
+      <div className="tb-scroll">
+        {ACTIONS.map((action) => (
+          <button
+            key={action.title}
+            type="button"
+            className={`tb-btn ${action.className ?? ''}`}
+            title={action.title}
+            aria-label={action.title}
+            disabled={!view || !editing}
+            // onMouseDown, not onClick: a click would blur the editor first and drop the
+            // selection the command is meant to act on.
+            onMouseDown={(e) => {
+              e.preventDefault();
+              apply(action.run);
+            }}
+          >
+            {action.label}
+          </button>
+        ))}
+
+        {editing && <TableButton view={view} />}
+      </div>
 
       {/*
           Pushed to the far end, away from the formatting controls: these act on the whole
           pane rather than on the selection, and sitting in the same run as B/I/S implied
           they were more formatting commands.
+
+          Outside the scroller on purpose — see the comment above it.
       */}
       <div className="tb-views">
         {noteView.split && noteView.current === 'source' && (
