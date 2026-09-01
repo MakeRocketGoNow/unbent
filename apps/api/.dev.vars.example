@@ -26,3 +26,9 @@ BETTER_AUTH_SECRET=replace-me
 # Enables password sign-up so the isolation suite can mint sessions without a live OAuth
 # provider. Local development only — never set this in a deployed environment.
 ALLOW_TEST_CREDENTIALS=1
+
+# Comma-separated emails allowed to create an account. Empty or unset means anyone can
+# sign up, which is what local development and the test suite want — the suite signs up
+# throwaway actors and would fail against an allowlist. Deployed instances set this so a
+# public URL does not become a free notes host for anyone who finds it.
+# ALLOWED_EMAILS=you@example.com

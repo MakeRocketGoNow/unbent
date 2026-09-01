@@ -1,5 +1,20 @@
 import { betterAuth } from 'better-auth';
+import { APIError } from 'better-auth/api';
 import type { Env } from './types.js';
+
+/**
+ * Emails permitted to create an account, lowercased.
+ *
+ * Empty means unrestricted, which is what local development wants. Deployed, this is set
+ * so that a public URL does not turn into a free notes host for anyone who finds it:
+ * OAuth alone would happily sign up any Google or GitHub account in the world.
+ */
+function allowedEmails(env: Env): string[] {
+  return (env.ALLOWED_EMAILS ?? '')
+    .split(',')
+    .map((e) => e.trim().toLowerCase())
+    .filter(Boolean);
+}
 
 /**
  * Local APP_URL is always http://localhost:5173, but the SPA may be reached over
@@ -54,6 +69,30 @@ function createAuth(env: Env) {
             },
           }
         : {}),
+    },
+    /**
+     * The allowlist gate.
+     *
+     * Hooked on user *creation* rather than sign-in, so it costs nothing on the ordinary
+     * path: existing users never touch it, and an account that was never created cannot
+     * sign in. Throwing beats returning `false`, which Better Auth turns into a null
+     * create the caller reports as a generic failure — this way the visitor is told they
+     * are not on the list rather than seeing something that looks like a bug.
+     */
+    databaseHooks: {
+      user: {
+        create: {
+          before: async (user: { email?: string }) => {
+            const allowed = allowedEmails(env);
+            if (allowed.length === 0) return;
+            const email = user.email?.toLowerCase();
+            if (email && allowed.includes(email)) return;
+            throw new APIError('FORBIDDEN', {
+              message: 'This Unbent instance is not open for sign-ups.',
+            });
+          },
+        },
+      },
     },
     session: {
       // Thirty days, slid forward at most once a day — so ordinary use keeps a session

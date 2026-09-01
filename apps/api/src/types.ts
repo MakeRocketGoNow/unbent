@@ -14,6 +14,11 @@ export interface Env {
   GITHUB_CLIENT_SECRET?: string;
   /** '1' enables password auth so the isolation suite can mint sessions. Local only. */
   ALLOW_TEST_CREDENTIALS?: string;
+  /**
+   * Comma-separated emails allowed to create an account. Unset or empty means anyone
+   * can sign up, which is fine locally but not for a deployed instance.
+   */
+  ALLOWED_EMAILS?: string;
 }
 
 export interface SessionUser {
