@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useLocation } from '@tanstack/react-router';
 import { signIn } from '../auth-client.js';
 
 type Provider = 'google' | 'github';
@@ -11,18 +12,28 @@ const PROVIDERS: Array<{ id: Provider; label: string }> = [
 export function Login() {
   const [pending, setPending] = useState<Provider | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // Through the router rather than `window.location`, which `url-boundary.test.ts` forbids
+  // so that navigation stays the router's business. `href` is the path and query together.
+  const { href } = useLocation();
 
   async function start(provider: Provider) {
     setPending(provider);
     setError(null);
     try {
       /**
-       * Returns to the bare app root, so a deep link followed while signed out loses its
-       * query string. Preserving it means passing the current URL through OAuth and
-       * widening the server's trusted-redirect allowlist — a security-sensitive change
-       * kept separate from URL state. With a live session the case is rare.
+       * Come back to the page that was asked for, query string included.
+       *
+       * This used to always return to `/`, on the reasoning that preserving the URL meant
+       * widening the server's trusted-redirect allowlist. It does not: Better Auth
+       * validates `callbackURL` with `allowRelativePaths`, so a same-origin path needs no
+       * allowlist entry, and building one here from `pathname + search` can never produce
+       * an absolute URL pointing somewhere else.
+       *
+       * The device flow is what made this matter. `/device?user_code=ABCD1234` opened
+       * while signed out sent the user to `/notes` with the code silently dropped, and the
+       * CLI waiting on an approval page they had no way back to.
        */
-      await signIn.social({ provider, callbackURL: '/' });
+      await signIn.social({ provider, callbackURL: href });
     } catch (err) {
       // A provider with no configured credentials fails here rather than redirecting.
       setError((err as Error).message || 'Sign-in failed');
