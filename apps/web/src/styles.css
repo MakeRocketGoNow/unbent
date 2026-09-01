@@ -1563,6 +1563,59 @@ a.overflow-item { text-decoration: none; }
 .failures ul { max-height: 12rem; overflow-y: auto; margin: 0.5rem 0 0; padding-left: 1.2rem; }
 .failures li { margin-bottom: 0.25rem; color: var(--muted); }
 
+/* The device page is a single decision with nothing else on it, so the panel is narrow and
+   centred rather than taking the full settings width. */
+.device-panel {
+  /* `width` as well as `max-width`: .panel is a flex column with `align-items:
+     flex-start`, so without an explicit width the box takes its content's width and the
+     30rem cap does nothing to stop it overflowing a narrow viewport. */
+  width: 100%;
+  max-width: 30rem;
+  margin-top: 3rem;
+}
+
+.device-form {
+  display: flex;
+  gap: 0.5rem;
+  width: 100%;
+  align-items: center;
+}
+
+.device-input {
+  flex: 1;
+  min-width: 0;
+  padding: 0.45rem 0.6rem;
+  font: inherit;
+  /* Monospace with generous tracking: this is a string being compared character by
+     character against another screen, where O/0 and I/1 have to be told apart. */
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--fg);
+  background: color-mix(in srgb, var(--fg) 4%, transparent);
+  border: 1px solid var(--border);
+  border-radius: 0.4rem;
+}
+
+.device-input:hover { border-color: color-mix(in srgb, var(--accent) 50%, var(--border)); }
+.device-input:focus { outline: none; border-color: var(--accent); }
+
+/* The claimed code, echoed for comparison against the terminal. Large because comparing
+   two strings across two screens is the whole task at this moment. */
+.device-code {
+  width: 100%;
+  margin: 0;
+  padding: 0.6rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 1.5rem;
+  letter-spacing: 0.2em;
+  text-align: center;
+  background: color-mix(in srgb, var(--fg) 4%, transparent);
+  border-radius: 0.4rem;
+}
+
+.device-actions { display: flex; gap: 0.6rem; }
+
 /* Collapsed by default: the answer is only needed once, and open by default would push
    the file picker — the thing a returning user wants — below the fold. */
 .enex-help { width: 100%; max-width: 46rem; }
