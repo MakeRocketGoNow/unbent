@@ -4,7 +4,9 @@
   "private": true,
   "type": "module",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./enml": "./src/enml-to-markdown.ts",
+    "./note-body": "./src/note-body.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",

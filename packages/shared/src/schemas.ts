@@ -10,6 +10,16 @@ export const MAX_BODY_BYTES = 1_800_000;
 /** Cloudflare caps request bodies at 100MB; leave headroom for headers and metadata. */
 export const MAX_ATTACHMENT_BYTES = 95 * 1024 * 1024;
 
+/**
+ * ENML accepted for server-side conversion.
+ *
+ * Larger than MAX_BODY_BYTES because ENML is markup around the same text — a note whose
+ * Markdown fits comfortably can carry several times that in tags and inline styling. The
+ * converted result is still checked against MAX_BODY_BYTES, so this only decides how much
+ * markup is worth attempting rather than what may be stored.
+ */
+export const MAX_ENML_BYTES = 8 * 1024 * 1024;
+
 export const MAX_TITLE_LENGTH = 500;
 export const MAX_TAG_LENGTH = 100;
 
@@ -159,6 +169,43 @@ export const importNoteSchema = z.object({
   /** Evernote note-attributes/source-url, kept for bookmark-style notes. */
   sourceUrl: z.string().max(2000).optional(),
 });
+
+/**
+ * One note from a sync-based import, still in Evernote's own markup.
+ *
+ * The ENEX path converts ENML to Markdown on the client, because the browser is already
+ * holding the file and conversion there costs the server nothing. A syncing client has no
+ * such converter — it would have to reimplement `enmlToMarkdown` in its own language, and
+ * the second implementation would drift from the first. So it posts ENML and the server
+ * converts, keeping one definition of what Evernote's markup means.
+ *
+ * Resources are metadata only. The converter needs `md5` to rewrite `<en-media hash>` into
+ * a `files/` link, and the filename to point at, but not the bytes — those are far larger
+ * than the note and go through the normal attachment route afterwards.
+ */
+export const importEnmlSchema = z.object({
+  title: z.string().max(MAX_TITLE_LENGTH).default(''),
+  enml: z.string().max(MAX_ENML_BYTES).default(''),
+  tags: z.array(tagNameSchema).max(100).default([]),
+  notebook: notebookNameSchema.optional(),
+  createdAt: z.number().int().nonnegative(),
+  updatedAt: z.number().int().nonnegative(),
+  sourceEnex: z.string().max(255).optional(),
+  sourceUrl: z.string().max(2000).optional(),
+  resources: z
+    .array(
+      z.object({
+        /** Lowercase hex md5 of the decoded bytes — what `<en-media hash>` refers to. */
+        md5: z.string().regex(/^[0-9a-f]{32}$/),
+        filename: z.string().min(1).max(255),
+        mime: z.string().max(255),
+      }),
+    )
+    .max(200)
+    .default([]),
+});
+
+export type ImportEnmlInput = z.infer<typeof importEnmlSchema>;
 
 export type CreateNoteInput = z.infer<typeof createNoteSchema>;
 export type UpdateNoteInput = z.infer<typeof updateNoteSchema>;

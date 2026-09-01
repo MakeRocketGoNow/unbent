@@ -1,6 +1,7 @@
 import { enmlToMarkdown } from './enml-to-markdown.js';
 import { parseEnexStream } from './parse.js';
 import { extractPdfText, isExtractable } from './pdf-text.js';
+import { contentHash, withSourceLink } from './note-body.js';
 import type { EnexNote } from './types.js';
 
 /**
@@ -78,24 +79,7 @@ export interface ImportOptions {
   onFailure?: (failure: ImportFailure) => void;
 }
 
-/** sha256 of title and body — the server's idempotency key. */
-export async function contentHash(title: string, body: string): Promise<string> {
-  const data = new TextEncoder().encode(`${title}\n${body}`);
-  const digest = await crypto.subtle.digest('SHA-256', data);
-  return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join('');
-}
-
-/**
- * Prepends the source URL to a bookmark note's body.
- *
- * Kept in frontmatter by the server, but for a Pocket or Raindrop note the URL is the
- * substance of the note, so it also belongs where it can be clicked.
- */
-function withSourceLink(body: string, sourceUrl?: string): string {
-  if (!sourceUrl) return body;
-  if (body.includes(sourceUrl)) return body; // clipper often already included it
-  return `<${sourceUrl}>\n\n${body}`.trim();
-}
+export { contentHash, withSourceLink } from './note-body.js';
 
 export async function importEnex(
   file: { name: string; stream: () => ReadableStream<Uint8Array> },
