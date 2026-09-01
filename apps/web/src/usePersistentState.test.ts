@@ -41,15 +41,35 @@ describe('usePersistentState', () => {
   });
 
   /**
-   * `richEditor` predates this hook and was written as the bare string "false" by hand.
-   * That is accidentally valid JSON, which is the only reason the key did not need
-   * migrating. Pinned so that a later change to the encoding cannot silently reset
-   * everyone's editor mode without failing here first.
+   * A bare `false` is what the hand-rolled `richEditor` toggle wrote before this hook
+   * existed. That key is gone — the three-view switcher replaced it — but the encoding is
+   * still what the hook writes for a boolean, so this pins that a stored bare literal
+   * reads back rather than falling through to the default.
    */
-  it('reads the pre-hook richEditor value', () => {
-    localStorage.setItem('unbent.richEditor', 'false');
-    const { result } = renderHook(() => usePersistentState('richEditor', true));
+  it('reads a bare boolean literal', () => {
+    localStorage.setItem('unbent.splitPreview', 'false');
+    const { result } = renderHook(() => usePersistentState('splitPreview', true));
     expect(result.current[0]).toBe(false);
+  });
+
+  /**
+   * The note view persists only the two views you write in.
+   *
+   * `preview` is somewhere you go to read what you just wrote, never the state a note
+   * should open in — a stored one meant every note opened onto a pane you cannot type
+   * into. The parser is what enforces that, so it is pinned here: a stored `preview`
+   * falls back to the editing default rather than being restored.
+   */
+  it('does not restore the preview view', () => {
+    const parse = (raw: unknown) => (raw === 'rich' || raw === 'source' ? raw : undefined);
+
+    localStorage.setItem('unbent.noteView', '"preview"');
+    const { result } = renderHook(() => usePersistentState('noteView', 'rich', parse));
+    expect(result.current[0]).toBe('rich');
+
+    localStorage.setItem('unbent.noteView', '"source"');
+    const { result: kept } = renderHook(() => usePersistentState('noteView', 'rich', parse));
+    expect(kept.current[0]).toBe('source');
   });
 
   it('rejects a value the parser refuses', () => {

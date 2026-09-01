@@ -4,16 +4,19 @@ import type { StateCommand } from '@codemirror/state';
 import * as cmd from '../editor/markdown-commands.js';
 import { buildSizePicker, PICKER_CSS } from '../editor/table-size-picker.js';
 
+/**
+ * The three ways to look at a note, and the one modifier that applies to one of them.
+ *
+ * They are exclusive because they are the same content rendered three ways, not three
+ * things that could sensibly be on screen at once. Modelling them as one value rather
+ * than as two booleans is what removed the state this component used to have to explain:
+ * a "rich" that was also "previewing" had no meaning, but two booleans could express it.
+ */
+export type NoteView = 'rich' | 'source' | 'preview';
+
 interface EditorToolbarProps {
   /** Null until the editor mounts. */
   view: EditorView | null;
-  /**
-   * The preview toggle, shown at the right edge of the row.
-   *
-   * It lives here rather than in the workspace head because it acts on the panes directly
-   * below it, and because a row that already spans the editor's width has the one piece of
-   * layout it needs: somewhere to push a control to the far end.
-   */
   /**
    * Pin the bar above the on-screen keyboard instead of leaving it above the document.
    *
@@ -23,15 +26,26 @@ interface EditorToolbarProps {
   docked?: boolean;
   /** How far up from the bottom the keyboard pushes it; see `useKeyboardInset`. */
   keyboardInset?: number;
-  preview: {
-    /** Whether the preview is currently on screen at this width. */
-    shown: boolean;
+  /**
+   * The view switcher, shown at the right edge of the row.
+   *
+   * It lives here rather than in the workspace head because every one of these acts on the
+   * panes directly below it, and because a row that already spans the editor's width has
+   * the one piece of layout it needs: somewhere to push a control to the far end. The head
+   * is for the note as an object — what it is called, and what can be done to it.
+   */
+  noteView: {
+    current: NoteView;
+    onChange: (next: NoteView) => void;
     /**
-     * Which job the button has here. 'split' adds or removes a second pane; 'pane' swaps
-     * which single pane is showing. Only the wording differs — the caller decides both.
+     * Show the source pane and the rendered pane side by side.
+     *
+     * A modifier on `source` rather than a fourth view: it is two renderings of one
+     * document, which is only a coherent thing to ask for when one of them is the source.
+     * Undefined where it cannot apply — on a phone, which has room for one pane — and the
+     * control is then not rendered at all rather than rendered inert.
      */
-    label: 'split' | 'pane';
-    onToggle: () => void;
+    split?: { on: boolean; onToggle: () => void };
   };
 }
 
@@ -204,7 +218,7 @@ function TableButton({ view }: { view: EditorView | null }) {
 
 export function EditorToolbar({
   view,
-  preview,
+  noteView,
   docked = false,
   keyboardInset = 0,
 }: EditorToolbarProps) {
@@ -214,6 +228,14 @@ export function EditorToolbar({
     // Formatting should never cost the user their place in the document.
     view.focus();
   }
+
+  /*
+     Formatting acts on a selection in a text editor, so it has nothing to act on in the
+     rendered view. Disabled rather than removed: a row that loses two thirds of its
+     controls when you switch views reads as a different toolbar, and the buttons coming
+     back in different places is worse than their being briefly greyed.
+  */
+  const editing = noteView.current !== 'preview';
 
   return (
     <div
@@ -229,7 +251,7 @@ export function EditorToolbar({
           className={`tb-btn ${action.className ?? ''}`}
           title={action.title}
           aria-label={action.title}
-          disabled={!view}
+          disabled={!view || !editing}
           // onMouseDown, not onClick: a click would blur the editor first and drop the
           // selection the command is meant to act on.
           onMouseDown={(e) => {
@@ -241,49 +263,78 @@ export function EditorToolbar({
         </button>
       ))}
 
-      <TableButton view={view} />
+      {editing && <TableButton view={view} />}
 
       {/*
-          Pushed to the far end, away from the formatting controls: this acts on the whole
+          Pushed to the far end, away from the formatting controls: these act on the whole
           pane rather than on the selection, and sitting in the same run as B/I/S implied
-          it was another formatting command.
-
-          `aria-pressed` rather than a changing label — the icon carries the state
-          visually, and a toggle button is what this is. The title differs by width
-          because the meaning does: with room for both panes it adds or removes the
-          second one, and on a phone it swaps which single pane is showing.
+          they were more formatting commands.
       */}
-      <button
-        type="button"
-        className="tb-btn tb-preview"
-        title={previewLabel(preview)}
-        aria-label={previewLabel(preview)}
-        aria-pressed={preview.shown}
-        onMouseDown={(e) => {
-          e.preventDefault();
-          preview.onToggle();
-        }}
-      >
-        <PreviewIcon shown={preview.shown} />
-      </button>
+      <div className="tb-views">
+        {noteView.split && noteView.current === 'source' && (
+          /*
+              Only in source, because that is the only view it means anything in, and only
+              at a width with room for two panes. Rendering it where it cannot apply would
+              make people wonder what it does there.
+          */
+          <button
+            type="button"
+            className="tb-btn tb-split"
+            title={noteView.split.on ? 'Hide the preview beside the source' : 'Show a preview beside the source'}
+            aria-label="Preview beside source"
+            aria-pressed={noteView.split.on}
+            onMouseDown={(e) => {
+              e.preventDefault();
+              noteView.split?.onToggle();
+            }}
+          >
+            <SplitIcon />
+          </button>
+        )}
+
+        {/*
+            A radio group, not three toggles: exactly one is always on, which is what
+            `radio` means and what a set of `aria-pressed` buttons would fail to say. The
+            labels are words because there is no icon anyone reads as "plain source" —
+            `</>` is already the inline-code button three positions to the left.
+        */}
+        <div className="tb-segmented" role="radiogroup" aria-label="View">
+          {VIEWS.map(({ value, label, title }) => (
+            <button
+              key={value}
+              type="button"
+              className="tb-seg"
+              role="radio"
+              aria-checked={noteView.current === value}
+              title={title}
+              onMouseDown={(e) => {
+                e.preventDefault();
+                noteView.onChange(value);
+              }}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      </div>
     </div>
   );
 }
 
-/** Says what the next press does, which differs by width — see the `label` prop. */
-function previewLabel({ shown, label }: { shown: boolean; label: 'split' | 'pane' }): string {
-  if (label === 'pane') return shown ? 'Back to editor' : 'Preview';
-  return shown ? 'Hide preview' : 'Show preview';
-}
+const VIEWS: { value: NoteView; label: string; title: string }[] = [
+  { value: 'rich', label: 'Rich', title: 'Rich text' },
+  { value: 'source', label: 'Source', title: 'Plain source' },
+  { value: 'preview', label: 'Preview', title: 'Rendered preview' },
+];
 
 /**
- * An eye, struck through when the preview is hidden.
+ * Two panes side by side.
  *
- * Inline rather than from an icon set: this is the only true icon in the app, and the
- * rest of the toolbar is letterforms. `currentColor` and no explicit size so it inherits
- * the button's colour and the surrounding font-size like the text buttons do.
+ * Inline for the same reason as the toolbar's other icons: the rest of this row is
+ * letterforms, and `currentColor` with no explicit size makes it inherit the button's
+ * colour and the surrounding font-size the way a letter does.
  */
-function PreviewIcon({ shown }: { shown: boolean }) {
+function SplitIcon() {
   return (
     <svg
       viewBox="0 0 24 24"
@@ -297,9 +348,8 @@ function PreviewIcon({ shown }: { shown: boolean }) {
       aria-hidden="true"
       focusable="false"
     >
-      <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z" />
-      <circle cx="12" cy="12" r="3" />
-      {!shown && <path d="M4 20 20 4" />}
+      <rect x="3" y="4" width="18" height="16" rx="2" />
+      <path d="M12 4v16" />
     </svg>
   );
 }

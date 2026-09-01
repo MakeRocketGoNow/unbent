@@ -12,7 +12,7 @@ import { noteQuery, notebooksQuery, tagsQuery, keys } from '../queries.js';
 import { Editor } from './Editor.js';
 import { Preview } from './Preview.js';
 import { TagInput } from './TagInput.js';
-import { EditorToolbar } from './EditorToolbar.js';
+import { EditorToolbar, type NoteView } from './EditorToolbar.js';
 import { Attachments } from './Attachments.js';
 import { ResizeHandle } from './ResizeHandle.js';
 import { OverflowMenu } from './OverflowMenu.js';
@@ -61,14 +61,33 @@ export function Workspace({ noteId, readOnly = false, backTo = '/notes' }: Works
   const [editorOverride, setEditorOverride] = useState<string | null>(null);
 
   /**
-   * Both of these are preferences rather than per-note state, so they survive a reload.
+   * Which of the three views the note is showing.
    *
-   * `richEditor` was already persisted, by hand, writing the bare string "false". That
-   * happens to be valid JSON and still parses, so the existing key is read rather than
-   * migrated — see the test that pins it.
+   * One value rather than the two booleans this used to be. `showPreview` ("is there a
+   * second pane") and `richEditor` ("which editor") were independent, so they could
+   * express states that had no meaning — a rich editor beside a preview is the same
+   * document rendered twice — and a phone needed a third variable to say which of the two
+   * panes it was actually looking at. Three exclusive views need none of that.
+   *
+   * `preview` is deliberately not restored. It is somewhere you go to read what you just
+   * wrote, never the state you want a note to open in, and persisting it meant every note
+   * you opened landed on a pane you cannot type into. The editing views persist, so the
+   * choice that is a real preference — which editor you write in — survives a reload.
    */
-  const [showPreview, setShowPreview] = usePersistentState('showPreview', true);
-  const [richEditor, setRichEditor] = usePersistentState('richEditor', true);
+  const [noteView, setNoteView] = usePersistentState<NoteView>('noteView', 'rich', (raw) =>
+    raw === 'rich' || raw === 'source' ? raw : undefined,
+  );
+
+  /**
+   * Show the rendered note beside the source rather than instead of it.
+   *
+   * A modifier on the source view, not a fourth view — see `NoteView`. Persisted because
+   * it is a genuine working preference, and device-local because it is really a statement
+   * about how much screen this machine has: a stored `true` from a wide monitor should not
+   * follow the user to a laptop. Off by default; the split is the specialist's layout, and
+   * defaulting it on is what made the preview feel like half the app.
+   */
+  const [splitPreview, setSplitPreview] = usePersistentState('splitPreview', false);
   const [editorView, setEditorView] = useState<EditorView | null>(null);
 
   /**
@@ -90,21 +109,11 @@ export function Workspace({ noteId, readOnly = false, backTo = '/notes' }: Works
   const panesRef = useRef<HTMLDivElement>(null);
 
   /**
-   * Which pane a phone is looking at.
+   * Whether this is a one-pane width.
    *
-   * Deliberately separate from `showPreview`, and deliberately not persisted. The two
-   * mean different things: on a desktop `showPreview` means "show both panes", so reusing
-   * it below the breakpoint made a stored `true` open every note in the preview — the
-   * opposite of the intent, which is that tapping a note is ready to type. This resets to
-   * the editor on every note, which is the right default for a device you write on
-   * briefly and read on often.
-   */
-  const [mobilePreview, setMobilePreview] = useState(false);
-  /**
-   * Only for labelling the preview toggle, never for choosing what to render.
-   *
-   * The two widths give the same button different jobs, so the icon and its accessible
-   * name have to describe the right one. Layout stays entirely in CSS.
+   * Used for two things only: docking the toolbar, and withholding the split-preview
+   * control where there is no room for a second pane. Which view is showing is the same
+   * question at every width now, so this no longer decides what renders.
    */
   const isMobile = useMediaQuery(MOBILE_QUERY);
 
@@ -117,9 +126,6 @@ export function Workspace({ noteId, readOnly = false, backTo = '/notes' }: Works
    * screen whether or not anything was being typed.
    */
   const keyboardInset = useKeyboardInset();
-  // A different note starts on its text again, not on whatever the last one was showing.
-  useEffect(() => setMobilePreview(false), [noteId]);
-
   // Seed the draft when a different note loads. Keyed on id, not on the note object,
   // so a background refetch never discards what is being typed.
   useEffect(() => {
@@ -204,15 +210,26 @@ export function Workspace({ noteId, readOnly = false, backTo = '/notes' }: Works
     );
   }
 
+  /*
+     What the chosen view means for the panes.
+
+     Two derived booleans rather than three branches at each use: the rendered pane is on
+     in `preview` and in a split `source`, and the second track only exists in the latter.
+     `isMobile` gates the split because the pane row has no room for two below the
+     breakpoint — the preference stays set, it simply does not apply here.
+  */
+  const showSplit = noteView === 'source' && splitPreview && !isMobile;
+  const showPreviewPane = noteView === 'preview' || showSplit;
+
   return (
     <section className="workspace">
       {/*
           Two rows on a phone, one on a desktop.
 
           The single flex row squeezed the title to a few characters — "2026-03-25 - P" —
-          because three actions sat beside it with `white-space: nowrap`. A note's title is
+          because the actions sat beside it with `white-space: nowrap`. A note's title is
           the thing you need to confirm you opened the right note, so below the breakpoint
-          it gets the full width and the controls drop underneath it.
+          it gets the full width and what is left of the controls sits at its right end.
       */}
       <div className="workspace-head">
         <div className="workspace-title-row">
@@ -247,55 +264,39 @@ export function Workspace({ noteId, readOnly = false, backTo = '/notes' }: Works
             {readOnly ? 'In trash' : SAVE_LABEL[saveState]}
           </span>
 
-          {/* Editing mode is a desktop-frequent, mobile-rare control: on a phone it moves
-              into the overflow rather than taking room in the head. */}
-          <button
-            type="button"
-            className="link desktop-only"
-            onClick={() => setRichEditor((r) => !r)}
-          >
-            {richEditor ? 'Plain source' : 'Rich text'}
-          </button>
+          {/*
+              Everything that acts on the note as an object, at every width.
 
-          {/* Delete is one tap from the title on a phone and reads as destructive at a
-              glance; behind the overflow it takes a deliberate second tap. */}
+              These used to be promoted to buttons here on a desktop and duplicated into
+              the menu on a phone, which meant declaring each one twice and letting the
+              head's contents change at the breakpoint. Grouping by what an action acts on
+              rather than by how often it is used settles it without a width: the views
+              moved to the toolbar, over the panes they change, and what is left is the
+              note itself — so the head needs no buttons at all.
+
+              Delete sits behind the ⋯ rather than beside the title on purpose. It is one
+              of two irreversible things in the app, and a destructive control a single
+              click from the title, a few pixels from the menu it now shares, is a misclick
+              waiting to happen. Opening a menu to reach it is the deliberate second step
+              that a confirmation dialog alone was carrying.
+          */}
+          {/* A trashed note has neither action, and a ⋯ that opens an empty box is worse
+              than no ⋯ — so the trigger goes with its contents. */}
           {!readOnly && (
-            <button type="button" className="link danger desktop-only" onClick={() => void removeNote()}>
-              Delete
-            </button>
+            <span className="overflow-slot">
+              <OverflowMenu
+                label="More actions"
+                items={[
+                  { label: 'Download', href: api.noteDownloadUrl(noteId) },
+                  {
+                    label: 'Delete',
+                    tone: 'danger' as const,
+                    onSelect: () => void removeNote(),
+                  },
+                ]}
+              />
+            </span>
           )}
-
-          {/* The overflow is the only home Download has: it is far too infrequent to
-              earn room in the head next to the save state, at either width. Which is why
-              this renders on a desktop too, holding just Download there while the
-              controls promoted above stay where they are. */}
-          <span className="overflow-slot">
-            <OverflowMenu
-              label="More actions"
-              items={[
-                ...(readOnly
-                  ? []
-                  : [{ label: 'Download', href: api.noteDownloadUrl(noteId) }]),
-                // Duplicated from the promoted buttons above, which are desktop-only:
-                // below the breakpoint this menu is where they live.
-                {
-                  label: richEditor ? 'Plain source' : 'Rich text',
-                  onSelect: () => setRichEditor((r) => !r),
-                  className: 'mobile-only',
-                },
-                ...(readOnly
-                  ? []
-                  : [
-                      {
-                        label: 'Delete',
-                        tone: 'danger' as const,
-                        onSelect: () => void removeNote(),
-                        className: 'mobile-only',
-                      },
-                    ]),
-              ]}
-            />
-          </span>
         </div>
       </div>
 
@@ -357,12 +358,6 @@ export function Workspace({ noteId, readOnly = false, backTo = '/notes' }: Works
         />
       )}
 
-      {/*
-          One handler for both widths. `showPreview` is the persisted desktop preference —
-          does the second pane exist — and `mobilePreview` is which single pane a phone is
-          looking at. Below the breakpoint the button has to move both: turning the preview
-          on from a hidden state should land on it rather than toggling an invisible pane.
-      */}
       <EditorToolbar
         view={editorView}
         /*
@@ -378,35 +373,47 @@ export function Workspace({ noteId, readOnly = false, backTo = '/notes' }: Works
         */
         docked={isMobile}
         keyboardInset={keyboardInset}
-        preview={{
-          // What is actually on screen, which is not the same question at each width: a
-          // phone shows one pane at a time, so a persisted showPreview=true still leaves
-          // it on the editor until the toggle says otherwise.
-          shown: isMobile ? showPreview && mobilePreview : showPreview,
-          label: isMobile ? 'pane' : 'split',
-          onToggle: () => {
-            if (isMobile) {
-              // Swap panes. The pane has to exist to be swapped to, so a preview turned
-              // off on a desktop is turned back on here rather than doing nothing.
-              if (!showPreview) setShowPreview(true);
-              setMobilePreview((p) => !p);
-            } else {
-              setShowPreview((p) => !p);
-            }
-          },
+        noteView={{
+          current: noteView,
+          onChange: setNoteView,
+          // Withheld on a phone, where there is no room for a second pane. The preference
+          // itself is left alone rather than forced off: a phone should not silently
+          // rewrite what the same account chose on a desktop.
+          split: isMobile
+            ? undefined
+            : { on: splitPreview, onToggle: () => setSplitPreview((v) => !v) },
         }}
       />
 
-      {/* `mobile-preview` is inert above the breakpoint, where `split` already shows both
-          panes; below it, it is what swaps the editor out for the preview. */}
+      {/*
+          One pane, or two when the source view has its preview beside it.
+
+          `split` is the only modifier left here. What used to also need a `mobile-preview`
+          class — a phone showing the second pane instead of the first — is now just
+          `noteView === 'preview'`, which renders one pane at every width and needs no CSS
+          to swap anything.
+      */}
       <div
-        className={
-          showPreview ? `panes split${mobilePreview ? ' mobile-preview' : ''}` : 'panes'
-        }
+        className={[
+          'panes',
+          showSplit ? 'split' : '',
+          // Hides the editor box without unmounting it; see the pane comment below.
+          noteView === 'preview' ? 'reading' : '',
+        ]
+          .filter(Boolean)
+          .join(' ')}
         style={{ '--editor-fraction': fraction } as React.CSSProperties}
         ref={panesRef}
       >
-        <div className="pane">
+        {/*
+            Mounted in every view, including preview.
+
+            Not conditional, because this is an uncontrolled CodeMirror view: unmounting it
+            to show the preview and remounting it on the way back would throw away the undo
+            history and the cursor, so switching views twice would cost you your place. The
+            preview view hides the box in CSS instead — see `.panes.reading`.
+        */}
+        <div className="pane editor-pane">
           <Editor
             key={`${note.id}-${editorRevision}`}
             noteId={note.id}
@@ -417,11 +424,11 @@ export function Workspace({ noteId, readOnly = false, backTo = '/notes' }: Works
               void queryClient.invalidateQueries({ queryKey: keys.attachments(note.id) });
               return uploaded.path;
             }}
-            rich={richEditor}
+            rich={noteView === 'rich'}
             onViewReady={setEditorView}
           />
         </div>
-        {showPreview && (
+        {showSplit && (
           <ResizeHandle
             label="Resize preview"
             containerRef={panesRef}
@@ -447,7 +454,7 @@ export function Workspace({ noteId, readOnly = false, backTo = '/notes' }: Works
             onCommit={(next) => setStoredFraction(clamp(next, EDITOR_MIN, EDITOR_MAX))}
           />
         )}
-        {showPreview && (
+        {showPreviewPane && (
           <div className="pane preview-pane">
             <Preview markdown={draft.body} noteId={note.id} />
           </div>

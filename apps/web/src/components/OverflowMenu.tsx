@@ -23,12 +23,7 @@ export interface OverflowItem {
   to?: string;
   /** Destructive items are tinted and sorted to the bottom by the caller. */
   tone?: 'default' | 'danger';
-  /**
-   * Extra class, for an item that belongs to only one side of the breakpoint.
-   *
-   * The workspace promotes some of these controls to buttons in the head on a desktop and
-   * tags its copies here `mobile-only`, so they are not offered twice at that width.
-   */
+  /** Extra class, for an item needing placement or emphasis beyond `tone`. */
   className?: string;
 }
 

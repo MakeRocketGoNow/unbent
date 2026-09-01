@@ -148,8 +148,7 @@ h1 {
   font-size: 0.9rem;
 }
 
-/* A flex box, which the generic `.mobile-only { display: inline }` would once have
-   collapsed; it is unconditional now, so it simply states its own display. */
+/* A flex box, or the trigger's height collapses. */
 .account-menu { display: inline-flex; }
 
 .link {
@@ -593,7 +592,7 @@ h1 {
 }
 
 /* The wrapper span around the ⋯ menu. Flex, not the span's default inline, or the
-   trigger's height collapses. Present at both widths now that the menu is. */
+   trigger's height collapses. */
 .overflow-slot { display: inline-flex; }
 
 /* The ⋯ menu. Positioned relative so the list can hang off it. */
@@ -656,29 +655,6 @@ h1 {
 /* The anchor variant, used by Download. Undoes the link colour and underline it would
    otherwise inherit, so it reads as a menu item and not as prose. */
 a.overflow-item { text-decoration: none; }
-
-/*
-   Items promoted to buttons in the workspace head at this width, hidden here so the same
-   control is not offered twice. The menu itself stays: Download lives only in it.
-
-   A single-class `.mobile-only` cannot do this job — `.overflow-item` sets no `display`,
-   so the item is a block by default and `display: none` from a later single-class rule
-   would win, but the mobile branch below re-shows it as `inline`, which would collapse
-   its padding into the row. Hence an explicit pair here and there.
-*/
-.overflow-item.mobile-only { display: none; }
-
-/*
-   Two variants of a control: one for each side of the breakpoint, each hidden at the width
-   it does not belong to.
-
-   These are single-class selectors, so any descendant rule setting `display` on the same
-   element outranks them — `.workspace-actions .link` did exactly that once, and silently
-   un-hid the desktop controls on the phone. The fix belongs in the rule that overreached
-   rather than here; anything styling a control that carries one of these classes needs a
-   `:not()` for the hidden variant.
-*/
-.mobile-only { display: none; }
 
 /* Hidden until the mobile breakpoint, where the sidebar is off screen and this is the
    only way back to the list. Sized to the 44px touch target, like the toolbar buttons. */
@@ -744,6 +720,20 @@ a.overflow-item { text-decoration: none; }
     minmax(0, 1fr);
   /* Halved for the same reason as .notes — applied on both sides of the handle. */
   gap: 0 1rem;
+}
+
+/*
+   The preview view: the rendered pane alone.
+
+   visibility, not display: a CodeMirror view inside a display:none ancestor measures zero
+   height and comes back with a collapsed cursor and a lost scroll position. Keeping the
+   box laid out and merely invisible sidesteps the measurement problem entirely, and
+   position:absolute keeps it from occupying a row of its own. The same trick the mobile
+   pane swap used, now the one place it is needed.
+*/
+.panes.reading > .editor-pane {
+  visibility: hidden;
+  position: absolute;
 }
 
 .pane {
@@ -1715,22 +1705,69 @@ a.overflow-item { text-decoration: none; }
 }
 
 /*
-   Pushed to the far end of the toolbar, over the editor it acts on.
+   Pushed to the far end of the toolbar, over the panes these act on.
 
    `margin-left: auto` rather than a spacer element, so the row still wraps cleanly on a
-   narrow screen — the toggle simply lands at the right of whichever line it falls on.
+   narrow screen — the cluster simply lands at the right of whichever line it falls on.
 */
-.tb-preview {
+.tb-views {
   margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.tb-split {
   display: inline-flex;
   align-items: center;
   justify-content: center;
 }
 
-/* Pressed reads as "the preview is open", which is a state, not a hover. */
-.tb-preview[aria-pressed='true'] {
+/* Pressed reads as "the preview is beside the source", which is a state, not a hover. */
+.tb-split[aria-pressed='true'] {
   color: var(--fg);
   background: color-mix(in srgb, var(--fg) 8%, transparent);
+}
+
+/*
+   The view switcher: one track, three segments, exactly one filled.
+
+   Drawn as a single bordered track rather than three separate buttons because that is
+   what says "pick one of these" — three loose buttons read as three commands, which is
+   the reading the old pair of toggles invited.
+*/
+.tb-segmented {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.1rem;
+  gap: 0.1rem;
+  border: 1px solid var(--border);
+  border-radius: 0.4rem;
+}
+
+.tb-seg {
+  padding: 0.15rem 0.5rem;
+  font: inherit;
+  font-size: 0.78rem;
+  line-height: 1.5;
+  color: var(--muted);
+  background: none;
+  border: none;
+  border-radius: 0.3rem;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.tb-seg:hover { color: var(--fg); }
+
+/*
+   The selected segment. A filled chip rather than a colour change alone: colour is the
+   one signal that does not survive a monochrome display or the commoner colour
+   deficiencies, and this control has no other affordance saying which of three is on.
+*/
+.tb-seg[aria-checked='true'] {
+  color: var(--fg);
+  background: color-mix(in srgb, var(--fg) 9%, transparent);
 }
 
 .tb-bold { font-weight: 700; }
@@ -2211,21 +2248,6 @@ a.overflow-item { text-decoration: none; }
   }
 
   /*
-     The remaining inline controls are tap targets, not links in a sentence.
-
-     Scoped to :not(.desktop-only) because `.workspace-actions .link` outranks a bare
-     `.desktop-only` on specificity — without it, this rule hands `display: inline-flex`
-     back to the controls the breakpoint just hid, and they reappear off the edge of the
-     row. Excluding them here keeps the visibility classes plain, with no !important.
-  */
-  .workspace-actions .link:not(.desktop-only) {
-    display: inline-flex;
-    align-items: center;
-    min-height: 2.75rem;
-    padding: 0 0.35rem;
-  }
-
-  /*
      Confirmation buttons are tap targets like any other, and these end an irreversible
      action — 33px for "Delete file" and 26px for "Cancel" is not enough to be sure which
      one a thumb landed on.
@@ -2349,35 +2371,8 @@ a.overflow-item { text-decoration: none; }
   */
   .workspace:has(.editor-toolbar.docked) .pane { padding-bottom: 3.5rem; }
 
-  .mobile-only { display: inline; }
-  .desktop-only { display: none; }
-  /* Block, not the `inline` the generic rule above gives: these are full-width rows in a
-     stacked menu, and inline would flatten their padding. */
-  .overflow-item.mobile-only { display: block; }
-
   /* A shade tighter still than the base bar, where vertical room is scarcest. */
   .topbar { margin-bottom: 0.9rem; }
-
-  /*
-     Editor first: opening a note should be ready to type. showPreview is persisted and
-     defaults to on, so the preview pane is suppressed here unless the toggle has put the
-     workspace into .mobile-preview — the same one boolean means "split" on a desktop and
-     "swap" on a phone, with no second state variable and no matchMedia.
-  */
-  .panes.split { grid-template-columns: 1fr; gap: 1.5rem; }
-  .panes.split > .preview-pane { display: none; }
-  .panes.split.mobile-preview > .preview-pane { display: block; }
-
-  /*
-     visibility, not display: a CodeMirror view inside a display:none ancestor measures
-     zero height and comes back with a collapsed cursor. Keeping the box laid out and
-     merely invisible sidesteps the whole measurement problem — position:absolute keeps
-     it from occupying the row.
-  */
-  .panes.split.mobile-preview > .pane:not(.preview-pane) {
-    visibility: hidden;
-    position: absolute;
-  }
 
   .preview-pane { padding-left: 0; }
 
