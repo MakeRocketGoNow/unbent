@@ -1,0 +1,26 @@
+{
+  "name": "@unbent/migrate",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "unbent-migrate": "./src/cli.ts"
+  },
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "start": "tsx src/cli.ts"
+  },
+  "dependencies": {
+    "@unbent/enex": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^26.2.0",
+    "tsx": "^4.23.12",
+    "typescript": "^5.7.3",
+    "vitest": "^2.1.9"
+  }
+}

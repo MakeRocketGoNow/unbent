@@ -1,0 +1,12 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": "src",
+    "outDir": "dist",
+    // DOM alongside Node: @unbent/enex is written against web standards (ReadableStream,
+    // fetch, crypto.subtle) which Node implements but whose types live in the DOM lib.
+    "lib": ["ES2022", "DOM"],
+    "types": ["node", "vitest/globals"]
+  },
+  "include": ["src"]
+}
