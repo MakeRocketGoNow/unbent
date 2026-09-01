@@ -73,13 +73,26 @@ downloads a different version instead.
 
 First time, in order:
 
+R2 is opt-in per account and cannot be enabled from the CLI — turn it on in the dashboard
+first, or the bucket command fails with code 10042.
+
 ```bash
 cd apps/api
 pnpm exec wrangler login
 pnpm exec wrangler d1 create unbent   # paste the id into [[env.production.d1_databases]]
 pnpm exec wrangler r2 bucket create unbent-blobs
-pnpm migrate:remote                   # from the repo root
 ```
+
+Then, from the repo root:
+
+```bash
+pnpm migrate:remote
+pnpm release
+```
+
+`release` rather than `deploy` because `deploy` is a built-in pnpm command and shadows any
+script of that name. The first deploy has to happen here, before the secrets below: they
+attach to a Worker, and `wrangler secret put` fails until one exists.
 
 Then the secrets. `--env production` is required on every one: secrets are per-environment,
 and one set without it lands on a Worker that is not the one serving the site.
@@ -102,11 +115,12 @@ including you:
 - Google: `https://unbent.app/api/auth/callback/google`
 - GitHub: `https://unbent.app/api/auth/callback/github`
 
-Then deploy. `custom_domain = true` means Cloudflare creates and manages the DNS record and
-certificate, so there is nothing to add by hand:
+Then deploy again so the Worker picks up the secrets. `custom_domain = true` means
+Cloudflare creates and manages the DNS record and certificate, so there is nothing to add
+by hand:
 
 ```bash
-pnpm deploy
+pnpm release
 ```
 
 ## Auth
