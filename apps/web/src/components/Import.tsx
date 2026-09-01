@@ -199,6 +199,43 @@ export function Import({ onImported }: ImportProps) {
             landed, so an interrupted run is safe to repeat.
           </p>
 
+          {/* Parsing happens here in the browser, not on the server: a multi-GB file is
+              minutes of local CPU with no server-side progress to fall back on. Saying so
+              up front is what stops a slow import reading as a hung one. */}
+          <p className="muted small">
+            Large files are parsed on this machine, so a multi-gigabyte export can take
+            several minutes and the tab needs to stay open. If it does get interrupted, start
+            the same file again — nothing duplicates.
+          </p>
+
+          {/* Evernote has no export API, so the .enex has to be produced by hand before
+              this page is any use at all. Someone arriving here without one has nowhere
+              to go, which made the whole feature undiscoverable for the person it is for. */}
+          <details className="enex-help">
+            <summary className="small">How do I get an .enex file?</summary>
+            <div className="small">
+              <p>
+                <strong>From Evernote desktop.</strong> Select the notes or a notebook, then
+                File → Export notes. Choose ENEX. The desktop app is the only place Evernote
+                offers this; the web client cannot.
+              </p>
+              <p>
+                <strong>For a whole account.</strong> Exporting tens of thousands of notes by
+                hand is unreliable, and the desktop app tends to give up partway.{' '}
+                <a
+                  href="https://github.com/vzhd1701/evernote-backup"
+                  target="_blank"
+                  rel="noreferrer noopener"
+                  className="link"
+                >
+                  evernote-backup
+                </a>{' '}
+                syncs the account and writes one .enex per notebook. Import them one at a
+                time here.
+              </p>
+            </div>
+          </details>
+
           <input
             type="file"
             accept=".enex,application/xml,text/xml"
@@ -333,6 +370,12 @@ export function Import({ onImported }: ImportProps) {
           <summary className="small">
             {failures.length} note{failures.length === 1 ? '' : 's'} failed
           </summary>
+          {/* The retry is free — importNote is idempotent per note — but nothing said so,
+              so a run ending with failures looked like data lost rather than data to retry. */}
+          <p className="small muted">
+            Importing the same file again retries just these; everything that already landed
+            is skipped.
+          </p>
           <ul className="small">
             {failures.map((f, i) => (
               <li key={i}>

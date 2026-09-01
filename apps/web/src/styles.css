@@ -1563,6 +1563,18 @@ a.overflow-item { text-decoration: none; }
 .failures ul { max-height: 12rem; overflow-y: auto; margin: 0.5rem 0 0; padding-left: 1.2rem; }
 .failures li { margin-bottom: 0.25rem; color: var(--muted); }
 
+/* Collapsed by default: the answer is only needed once, and open by default would push
+   the file picker — the thing a returning user wants — below the fold. */
+.enex-help { width: 100%; max-width: 46rem; }
+.enex-help summary { cursor: pointer; color: var(--muted); }
+.enex-help summary:hover { color: var(--fg); }
+.enex-help > div { margin: 0.5rem 0 0; }
+.enex-help p { margin: 0 0 0.5rem; color: var(--muted); }
+.enex-help p:last-child { margin-bottom: 0; }
+/* Underlined because this one sits mid-sentence in muted body text, where the link colour
+   alone is too quiet for the only thing on the page a user has to go and fetch. */
+.enex-help a { text-decoration: underline; }
+
 .checkbox-row {
   display: flex;
   gap: 0.55rem;
