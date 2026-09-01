@@ -7,11 +7,19 @@ a whole account's worth of exports, run unattended, resumed after an interruptio
 dragging dozens of multi-gigabyte files through a file picker.
 
 ```bash
-unbent-migrate login --url https://notes.example
-unbent-migrate import ~/evernote/*.enex --url https://notes.example
+unbent-migrate login
+unbent-migrate import ~/evernote/*.enex
 ```
 
-`--url` defaults to `$UNBENT_URL`, then `http://localhost:5173`.
+The first command asks which instance to use and remembers the answer, so nothing after it
+needs a URL. There is deliberately no default: a guessed instance means a forgotten flag can
+send a migration to a server you did not choose, and that failure is silent, because
+uploading to the wrong Unbent still succeeds.
+
+Change it later with `unbent-migrate set-url <url>`, or by editing the file
+`unbent-migrate show-config` prints — it is plain JSON, mode 0644, and separate from
+`credentials.json` so that changing a URL never means opening a file with a token in it.
+`--url` overrides it for a single command, and `$UNBENT_URL` for a shell session.
 
 ## Signing in
 

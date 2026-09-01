@@ -6,6 +6,8 @@ import { importEnex, type ImportFailure, type ImportProgress } from '@unbent/ene
 import { requestDeviceCode, waitForToken } from './auth.js';
 import { ApiError, checkToken, createClient } from './client.js';
 import { clearAll, clearToken, readToken, writeToken } from './token-store.js';
+import { configPath, normalizeUrl, readUrl, writeUrl } from './config-store.js';
+import { createInterface } from 'node:readline/promises';
 
 /**
  * `unbent-migrate` — import an Evernote export from the command line.
@@ -16,8 +18,6 @@ import { clearAll, clearToken, readToken, writeToken } from './token-store.js';
  * dozens of multi-gigabyte files through a file picker is the worst part of the job.
  */
 
-const DEFAULT_URL = 'http://localhost:5173';
-
 function usage(): string {
   return `unbent-migrate — import Evernote .enex files into Unbent
 
@@ -25,12 +25,18 @@ Usage:
   unbent-migrate import <file.enex...> [options]
   unbent-migrate login [options]
   unbent-migrate logout [--all]
+  unbent-migrate set-url <url>
+  unbent-migrate show-config
 
 Options:
-  --url <url>       Unbent instance (default: ${DEFAULT_URL}, or $UNBENT_URL)
+  --url <url>       Use this instance for one command, without storing it
   --notebook <name> File the notes under this notebook, overriding the filename
   --no-text         Skip PDF text extraction (faster; scans stay title-only)
   -h, --help        Show this
+
+The instance is asked for once and remembered, so ordinary commands need no --url.
+Change it later with \`set-url\`, by editing the config file \`show-config\` prints,
+or per-command with \`--url\`. $UNBENT_URL overrides the stored value.
 
 Re-running the same file is safe: notes that already landed are skipped.
 `;
@@ -39,7 +45,8 @@ Re-running the same file is safe: notes that already landed are skipped.
 interface Args {
   command: string;
   files: string[];
-  url: string;
+  /** Only set by --url or $UNBENT_URL; otherwise resolved from config, or asked for. */
+  url?: string;
   notebook?: string;
   extractText: boolean;
   all: boolean;
@@ -49,7 +56,7 @@ function parseArgs(argv: string[]): Args {
   const args: Args = {
     command: '',
     files: [],
-    url: process.env['UNBENT_URL'] ?? DEFAULT_URL,
+    url: process.env['UNBENT_URL'],
     extractText: true,
     all: false,
   };
@@ -85,6 +92,41 @@ function formatBytes(n: number): string {
   if (n < 1024 ** 2) return `${(n / 1024).toFixed(0)} KB`;
   if (n < 1024 ** 3) return `${(n / 1024 ** 2).toFixed(1)} MB`;
   return `${(n / 1024 ** 3).toFixed(2)} GB`;
+}
+
+/**
+ * Which instance to talk to.
+ *
+ * Order: an explicit --url or $UNBENT_URL, then whatever this machine was pointed at
+ * before, then ask. There is deliberately no fallback — a guessed instance would let a
+ * mistyped or forgotten flag send someone's notes to a server they did not choose, and
+ * that failure is silent, because uploading to the wrong Unbent still succeeds.
+ */
+async function resolveUrl(args: Args): Promise<string> {
+  if (args.url) return normalizeUrl(args.url);
+
+  const stored = await readUrl();
+  if (stored) return stored;
+
+  if (!process.stdin.isTTY) {
+    throw new Error(
+      'No Unbent instance configured. Run `unbent-migrate set-url <url>`, ' +
+        'or pass --url.',
+    );
+  }
+
+  process.stdout.write(
+    '\nWhich Unbent instance? (for example https://notes.example.com)\n',
+  );
+  const rl = createInterface({ input: process.stdin, output: process.stdout });
+  try {
+    const answer = await rl.question('  URL: ');
+    const url = await writeUrl(answer);
+    process.stdout.write(`  Saved to ${configPath()}\n\n`);
+    return url;
+  } finally {
+    rl.close();
+  }
 }
 
 /**
@@ -125,8 +167,9 @@ async function runImport(args: Args): Promise<number> {
     return 1;
   }
 
-  const token = await ensureToken(args.url);
-  const client = createClient(args.url, token);
+  const url = await resolveUrl(args);
+  const token = await ensureToken(url);
+  const client = createClient(url, token);
   const failures: ImportFailure[] = [];
   let exitCode = 0;
 
@@ -206,13 +249,35 @@ async function main(): Promise<number> {
     case 'import':
       return runImport(args);
     case 'login':
-      await login(args.url);
+      await login(await resolveUrl(args));
       return 0;
     case 'logout':
-      if (args.all) await clearAll();
-      else await clearToken(args.url);
+      if (args.all) {
+        await clearAll();
+      } else {
+        // Reads the stored URL rather than asking: signing out of an instance you have
+        // not configured is a no-op, and prompting for one would be theatre.
+        const url = args.url ?? (await readUrl());
+        if (url) await clearToken(url);
+      }
       process.stdout.write('Signed out locally. Revoke the session in Unbent to be certain.\n');
       return 0;
+    case 'set-url': {
+      const value = args.files[0];
+      if (!value) {
+        process.stderr.write('Usage: unbent-migrate set-url <url>\n');
+        return 1;
+      }
+      const url = await writeUrl(value);
+      process.stdout.write(`Instance set to ${url}\n${configPath()}\n`);
+      return 0;
+    }
+    case 'show-config': {
+      const url = await readUrl();
+      process.stdout.write(`${configPath()}\n`);
+      process.stdout.write(url ? `  url: ${url}\n` : '  (no instance set yet)\n');
+      return 0;
+    }
     case 'help':
     case '':
       process.stdout.write(usage());
