@@ -66,13 +66,19 @@ that `wrangler dev` cannot pick up production settings, and a deploy cannot ship
 localhost `APP_URL` — `auth.ts` keys secure cookies off that string, so a wrong value
 breaks every session and only shows up after the deploy.
 
+Wrangler is a devDependency of `apps/api`, not a global install — the lockfile pins the
+version the config is known to work with, and a global copy would silently override it.
+`pnpm exec` from that directory runs the pinned one; `npx` from the repo root does not, and
+downloads a different version instead.
+
 First time, in order:
 
 ```bash
-wrangler login
-wrangler d1 create unbent          # paste the id into [[env.production.d1_databases]]
-wrangler r2 bucket create unbent-blobs
-pnpm migrate:remote
+cd apps/api
+pnpm exec wrangler login
+pnpm exec wrangler d1 create unbent   # paste the id into [[env.production.d1_databases]]
+pnpm exec wrangler r2 bucket create unbent-blobs
+pnpm migrate:remote                   # from the repo root
 ```
 
 Then the secrets. `--env production` is required on every one: secrets are per-environment,
@@ -80,10 +86,10 @@ and one set without it lands on a Worker that is not the one serving the site.
 
 ```bash
 cd apps/api
-wrangler secret put BETTER_AUTH_SECRET --env production    # openssl rand -base64 32
-wrangler secret put GOOGLE_CLIENT_ID --env production
-wrangler secret put GOOGLE_CLIENT_SECRET --env production
-wrangler secret put ALLOWED_EMAILS --env production        # comma-separated
+pnpm exec wrangler secret put BETTER_AUTH_SECRET --env production   # openssl rand -base64 32
+pnpm exec wrangler secret put GOOGLE_CLIENT_ID --env production
+pnpm exec wrangler secret put GOOGLE_CLIENT_SECRET --env production
+pnpm exec wrangler secret put ALLOWED_EMAILS --env production       # comma-separated
 ```
 
 `ALLOWED_EMAILS` is what keeps a public URL from becoming a free notes host: sign-in is
