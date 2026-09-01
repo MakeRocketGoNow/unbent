@@ -10,6 +10,9 @@ enabled = true
 [[d1_databases]]
 binding = "DB"
 database_name = "unbent"
+# Still a placeholder, and correctly so: development runs `--local`, against the SQLite
+# file under .wrangler, and never reaches a remote database. The real id lives in
+# [[env.production.d1_databases]] below, where a deploy actually needs it.
 database_id = "PLACEHOLDER_RUN_WRANGLER_D1_CREATE"
 migrations_dir = "migrations"
 
@@ -50,8 +53,7 @@ name = "unbent-api"
 [[env.production.d1_databases]]
 binding = "DB"
 database_name = "unbent"
-# Replace with the id from `wrangler d1 create unbent`.
-database_id = "PLACEHOLDER_RUN_WRANGLER_D1_CREATE"
+database_id = "40559d4d-f327-45d0-99f6-0e560b32200c"
 migrations_dir = "migrations"
 
 [[env.production.r2_buckets]]
