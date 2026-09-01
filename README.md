@@ -31,7 +31,11 @@ should never depend on it being hard.
 One Worker serves both the built SPA and `/api`, so the two are genuinely same-origin and
 the session cookie needs no CORS or `SameSite` workarounds.
 
-Workers Paid ($5/mo) is required: the free tier's 10ms CPU limit cannot run import or export.
+Workers Paid ($5/mo) is wanted for the free tier's 100k requests/day, not for CPU. Import
+posts one note at a time (plus one request per attachment), so a large migration can
+exhaust a day's free quota on its own. CPU is not the constraint at either end: ENEX
+parsing runs in a browser Web Worker rather than on Workers, and export streams the zip as
+the client consumes it.
 
 ## Layout
 
