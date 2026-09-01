@@ -31,11 +31,26 @@ should never depend on it being hard.
 One Worker serves both the built SPA and `/api`, so the two are genuinely same-origin and
 the session cookie needs no CORS or `SameSite` workarounds.
 
-Workers Paid ($5/mo) is wanted for the free tier's 100k requests/day, not for CPU. Import
-posts one note at a time (plus one request per attachment), so a large migration can
-exhaust a day's free quota on its own. CPU is not the constraint at either end: ENEX
-parsing runs in a browser Web Worker rather than on Workers, and export streams the zip as
-the client consumes it.
+The free tier is enough, including for the initial migration. Measured against a real
+13,158-note Evernote account with 4,084 attachments:
+
+| Limit | Full import | Free tier |
+| --- | --- | --- |
+| Worker requests | ~17,200 | 100,000/day |
+| D1 rows written | ~43,400 | 100,000/day |
+| R2 storage | 2.6 GB | 10 GB |
+
+Import posts one note per request, plus one per attachment. That is deliberate rather than
+unoptimized: per-note requests are what let an interrupted import resume without any
+server-side progress tracking, and a re-run costs one request and *zero* D1 writes per note
+that already landed, because the content-hash lookup short-circuits before any insert.
+
+The tightest of these is D1 rows written per day, at roughly 2.3x headroom — so the thing
+to avoid is importing a whole account twice in the same day. Nothing here needs Workers
+Paid; take it for the higher ceilings if the instance grows, not to get started.
+
+CPU is not a constraint at either end: ENEX parsing runs in a browser Web Worker rather
+than on Workers, and export streams the zip as the client consumes it.
 
 ## Layout
 
