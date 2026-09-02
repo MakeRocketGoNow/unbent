@@ -23,7 +23,7 @@
     <string name="sign_in_switch_in">I already have an account</string>
     <string name="sign_in_or">or</string>
     <string name="sign_in_none">This Unbent has no sign-in method configured.</string>
-    <string name="sign_in_unreachable">Couldn\'t reach %1$s.</string>
+    <string name="sign_in_unreachable">Couldn\'t get the sign-in options from %1$s.</string>
     <string name="sign_in_instance">Signing in to %1$s</string>
     <string name="change">Change</string>
     <string name="cancel">Cancel</string>
