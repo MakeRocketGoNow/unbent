@@ -56,6 +56,13 @@ android {
             // A separate id so a debug build can sit beside a release install, each with
             // its own share-sheet entry and its own stored token.
             applicationIdSuffix = ".debug"
+            /*
+             * And a separate name, because the two are otherwise indistinguishable. Two
+             * identical icons in the launcher, and two identical entries in every share
+             * sheet, is a coin flip over which install — and which stored session — the
+             * thing you just shared went to.
+             */
+            resValue("string", "app_name", "Unbent (debug)")
             // Lets a debug build talk to http://10.0.2.2:5173 from the emulator.
             // Release stays cleartext-free; see network_security_config.xml.
             manifestPlaceholders["usesCleartextTraffic"] = "true"
