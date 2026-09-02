@@ -127,7 +127,7 @@ export const notebooksQuery = () =>
  *
  * A note moving between the live list and the trash — created, trashed, restored, or
  * destroyed — silently changes the sidebar: the notebook it was filed in loses a note
- * from its count, its tags lose one from theirs, and the "Unfiled" option appears or
+ * from its count, its tags lose one from theirs, and the "Inbox" option appears or
  * disappears with the last unfiled note. None of that is derivable from the note list
  * alone, so each of these was previously left stale until something else happened to
  * refetch it.

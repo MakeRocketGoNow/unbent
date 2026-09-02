@@ -1,0 +1,3 @@
+# The Gradle wrapper's Windows launcher is generated with CRLF and has to keep them;
+# normalizing it to LF makes it unusable on the platform it exists for.
+*.bat text eol=crlf

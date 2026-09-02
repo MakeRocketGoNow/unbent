@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:fillViewport="true">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="24dp">
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/instance_label"
+            android:textAppearance="?attr/textAppearanceLabelLarge" />
+
+        <EditText
+            android:id="@+id/instance"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:minHeight="48dp"
+            android:inputType="textUri"
+            android:autofillHints="url"
+            android:importantForAutofill="no"
+            android:hint="@string/instance_label" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/saveButton"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:minHeight="48dp"
+            android:layout_marginTop="8dp"
+            android:text="@string/save" />
+
+        <TextView
+            android:id="@+id/status"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="32dp"
+            android:textAppearance="?attr/textAppearanceBodyLarge" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/authButton"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:minHeight="48dp"
+            android:layout_marginTop="8dp"
+            android:text="@string/sign_out" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/openButton"
+            style="?attr/materialButtonOutlinedStyle"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:minHeight="48dp"
+            android:layout_marginTop="8dp"
+            android:text="@string/open_unbent" />
+    </LinearLayout>
+</ScrollView>

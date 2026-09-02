@@ -1,0 +1,58 @@
+name: Web and API
+
+# Path-filtered so an Android-only change does not redeploy the Worker, and vice versa.
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'apps/web/**'
+      - 'apps/api/**'
+      - 'packages/**'
+      - 'package.json'
+      - 'pnpm-lock.yaml'
+      - '.github/workflows/web.yml'
+  pull_request:
+    paths:
+      - 'apps/web/**'
+      - 'apps/api/**'
+      - 'packages/**'
+      - 'package.json'
+      - 'pnpm-lock.yaml'
+      - '.github/workflows/web.yml'
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm typecheck
+      # The API suite drives a live wrangler dev with real D1 and R2 and is not runnable
+      # here; the web suite is self-contained. See apps/api/test/README.md.
+      - run: pnpm --filter @unbent/web test
+      - run: pnpm build
+
+  deploy:
+    needs: check
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+      - name: Deploy Worker
+        working-directory: apps/api
+        run: pnpm exec wrangler deploy --env production
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}

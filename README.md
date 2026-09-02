@@ -57,9 +57,13 @@ than on Workers, and export streams the zip as the client consumes it.
 ```
 apps/web       Vite + React SPA
 apps/api       Hono API on Workers
+apps/android   Kotlin share-sheet app + web shell
 packages/shared  zod schemas, frontmatter codec, remark plugins
 packages/enex    ENEX -> Markdown, runtime-agnostic
 ```
+
+`apps/android` is a Gradle project, not a pnpm workspace package: `pnpm -r` skips it, and it
+is built with its own wrapper. See [Android app](#android-app).
 
 ## Development
 
@@ -303,11 +307,78 @@ and the metadata insert, or a user row cascading away its attachment rows. `POST
 `?apply=1` to delete. It is scoped to `users/{caller}/` by design, so it can never see or
 remove another account's objects.
 
+## Android app
+
+Capturing a photo or a PDF from the phone share sheet, plus an icon that opens the site.
+
+```
+cd apps/android
+./gradlew test              # unit tests, no device needed
+./gradlew installDebug      # build and install on a running emulator or device
+```
+
+The build needs a `local.properties` naming the SDK, which Android Studio writes for you:
+
+```
+sdk.dir=/Users/you/Library/Android/sdk
+```
+
+**How it signs in.** The same device flow the migrate CLI uses (RFC 8628): the app shows a
+code, opens the approval page in a Custom Tab, and the user approves it in a browser already
+signed in. No password is ever typed into the app. The resulting session token is stored per
+origin in app-private preferences, and sends as `Authorization: Bearer`.
+
+**How a capture works.** The share activity copies the shared files into the app's cache —
+the URI permission dies with the activity, so this cannot wait — and enqueues a WorkManager
+job. That job creates one note and streams each file to
+`PUT /api/notes/:id/files?link=1`. The `link=1` flag is what makes the server append the
+markdown link to the note body, since a share sheet has no cursor and no copy of the body.
+Several files shared together become one note. Captures land unfiled, which the UI calls the
+Inbox. HEIC images are transcoded to JPEG on the phone, because the server's inline-safe
+allowlist excludes HEIC and browsers other than Safari cannot render it.
+
+**Pointing it at a dev server.** Open the app's settings (long-press the icon, or the
+Settings screen) and set the address to `http://10.0.2.2:5173` from an emulator. Cleartext
+is permitted for loopback addresses in debug builds only; see `network_security_config.xml`.
+
+**Full-screen depends on `assetlinks.json`.** The icon opens a Trusted Web Activity — Chrome
+rendering unbent.app with Chrome's cookies, which is what lets Google OAuth work (it refuses
+to run in a WebView). The address bar disappears only when
+`https://unbent.app/.well-known/assetlinks.json` lists the signing certificate of the
+installed build. That file is served from `apps/web/public/`, and currently lists the debug
+keystore only. Add the release fingerprint before distributing a release build:
+
+```
+keytool -list -v -keystore /path/to/release.jks -alias unbent | grep SHA256
+```
+
+**Release signing.** The keystore lives outside the repo. Point at it from
+`apps/android/local.properties`:
+
+```
+unbent.keystore.path=/Users/you/.config/unbent/release.jks
+unbent.keystore.password=…
+unbent.key.alias=unbent
+unbent.key.password=…
+```
+
+Absent those, `assembleRelease` still builds, just unsigned. CI reads the same values from
+`UNBENT_KEYSTORE_PATH` and friends.
+
 ## Known gaps
 
 - **Deleting a user strands its blobs.** The D1 rows cascade, but the objects under
   `users/{id}/` remain and the scoped sweep above cannot reach them once the account is
   gone. Account deletion needs to sweep the prefix before removing the user row.
+
+- **A PDF captured from the phone is not searchable until the backfill runs.** Text
+  extraction happens in the browser (pdfjs), and only when someone presses the button in
+  Settings -> Import. A PDF shared from Android is queued by
+  `GET /api/attachments/pending-text` but stays unindexed until then. Running the backfill
+  automatically on app open would close this.
+
+- **iOS has no share extension yet.** Safari does not implement Web Share Target, so an iOS
+  capture needs a real share extension and a paid Apple Developer account.
 
 ## Tenant isolation
 

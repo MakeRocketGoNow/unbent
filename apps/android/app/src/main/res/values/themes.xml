@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources xmlns:tools="http://schemas.android.com/tools">
+    <style name="Theme.Unbent" parent="Theme.Material3.DayNight.NoActionBar">
+        <item name="android:statusBarColor">?attr/colorSurface</item>
+        <item name="android:navigationBarColor">?attr/colorSurface</item>
+    </style>
+
+    <!--
+        The share activity draws nothing: it stages files and finishes. A transparent,
+        non-animated theme means the share sheet collapses straight back to the host app
+        instead of flashing an empty screen.
+    -->
+    <style name="Theme.Unbent.Transparent" parent="Theme.Unbent">
+        <item name="android:windowBackground">@android:color/transparent</item>
+        <item name="android:windowIsTranslucent">true</item>
+        <item name="android:windowNoTitle">true</item>
+        <item name="android:windowAnimationStyle">@null</item>
+        <item name="android:backgroundDimEnabled">false</item>
+    </style>
+</resources>

@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    targetPackage is substituted at build time rather than written literally: the debug
+    build id carries a `.debug` suffix, and a hardcoded package makes the shortcut resolve
+    to nothing there.
+-->
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <shortcut
+        android:shortcutId="settings"
+        android:enabled="true"
+        android:shortcutShortLabel="@string/shortcut_settings_short"
+        android:shortcutLongLabel="@string/shortcut_settings_long">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:targetPackage="${applicationId}"
+            android:targetClass="app.unbent.android.ui.SettingsActivity" />
+    </shortcut>
+</shortcuts>

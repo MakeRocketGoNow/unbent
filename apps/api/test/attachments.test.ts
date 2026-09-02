@@ -44,8 +44,9 @@ async function upload(
   filename: string,
   content: string | Uint8Array,
   contentType = 'text/plain',
+  opts: { link?: boolean } = {},
 ): Promise<Response> {
-  return fetch(`${BASE}/api/notes/${noteId}/files`, {
+  return fetch(`${BASE}/api/notes/${noteId}/files${opts.link ? '?link=1' : ''}`, {
     method: 'PUT',
     headers: {
       Cookie: actor.cookie,
@@ -55,6 +56,14 @@ async function upload(
     },
     body: content,
   });
+}
+
+async function noteBody(actor: Actor, noteId: string): Promise<string> {
+  const res = await fetch(`${BASE}/api/notes/${noteId}`, {
+    headers: { Cookie: actor.cookie, Origin: ORIGIN },
+  });
+  if (!res.ok) throw new Error(`get note failed: ${res.status}`);
+  return ((await res.json()) as { body: string }).body;
 }
 
 let alice: Actor;
@@ -252,6 +261,85 @@ describe('upload and serve', () => {
 });
 
 /** A filename must never be able to address anything outside its own note prefix. */
+/**
+ * `?link=1` — the server writes the markdown link the uploader cannot.
+ *
+ * The browser editor inserts its own link at the cursor and never sends this flag. A phone
+ * share sheet has no cursor and no copy of the body, so without the flag its uploads would
+ * be stored but invisible in the note. These pin the two halves that matter: the link is
+ * appended for clients that ask, and nothing changes for the editor that does not.
+ */
+describe('linking an upload into the body', () => {
+  let note: { id: string };
+
+  beforeAll(async () => {
+    note = await createNote(alice, 'Linked uploads');
+  }, 30_000);
+
+  it('appends an image as an embed and a document as a plain link', async () => {
+    const png = new Uint8Array([0x89, 0x50, 0x4e, 0x47]);
+    expect((await upload(alice, note.id, 'photo.png', png, 'image/png', { link: true })).status)
+      .toBe(201);
+    expect(await noteBody(alice, note.id)).toBe('![photo.png](files/photo.png)');
+
+    expect(
+      (await upload(alice, note.id, 'report.pdf', '%PDF-1.4', 'application/pdf', { link: true }))
+        .status,
+    ).toBe(201);
+
+    // Blank line between, so the two are separate markdown blocks rather than one paragraph.
+    expect(await noteBody(alice, note.id)).toBe(
+      '![photo.png](files/photo.png)\n\n[report.pdf](files/report.pdf)',
+    );
+  });
+
+  it('links the stored filename, not the requested one, when a name collides', async () => {
+    const target = await createNote(alice, 'Colliding names');
+    await upload(alice, target.id, 'scan.pdf', 'first', 'application/pdf', { link: true });
+    await upload(alice, target.id, 'scan.pdf', 'second', 'application/pdf', { link: true });
+
+    // A link to `scan.pdf` twice would point the second at the first file's bytes.
+    expect(await noteBody(alice, target.id)).toBe(
+      '[scan.pdf](files/scan.pdf)\n\n[scan-2.pdf](files/scan-2.pdf)',
+    );
+  });
+
+  it('wraps a destination containing spaces in angle brackets', async () => {
+    const target = await createNote(alice, 'Spaced name');
+    await upload(alice, target.id, 'Treatment Plan.pdf', '%PDF', 'application/pdf', { link: true });
+
+    expect(await noteBody(alice, target.id)).toBe(
+      '[Treatment Plan.pdf](<files/Treatment Plan.pdf>)',
+    );
+  });
+
+  it('leaves the body alone without the flag', async () => {
+    const target = await createNote(alice, 'Unlinked');
+    expect((await upload(alice, target.id, 'quiet.txt', 'no link please')).status).toBe(201);
+    expect(await noteBody(alice, target.id)).toBe('');
+  });
+
+  it('appends after existing content rather than replacing it', async () => {
+    const target = await createNote(alice, 'Has prose');
+    await fetch(`${BASE}/api/notes/${target.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', Cookie: alice.cookie, Origin: ORIGIN },
+      body: JSON.stringify({ body: 'Existing thoughts.' }),
+    });
+
+    await upload(alice, target.id, 'note.txt', 'x', 'text/plain', { link: true });
+    expect(await noteBody(alice, target.id)).toBe(
+      'Existing thoughts.\n\n[note.txt](files/note.txt)',
+    );
+  });
+
+  it("does not touch another user's note", async () => {
+    const res = await upload(bob, note.id, 'intruder.txt', 'x', 'text/plain', { link: true });
+    expect(res.status).toBe(404);
+    expect(await noteBody(alice, note.id)).not.toContain('intruder.txt');
+  });
+});
+
 describe('filename validation', () => {
   const bad = [
     '../../../etc/passwd',

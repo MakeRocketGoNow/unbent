@@ -321,7 +321,7 @@ export function Workspace({ noteId, readOnly = false, backTo = '/notes' }: Works
       <details className="tag-row-wrap" key={String(isMobile)} open={!isMobile}>
         <summary>
           <span className="tag-row-summary">
-            <span className="tag-row-summary-book">{draft.notebook ?? 'Unfiled'}</span>
+            <span className="tag-row-summary-book">{draft.notebook ?? 'Inbox'}</span>
             {draft.tags.length > 0 && (
               <span className="tag-row-summary-tags">
                 {draft.tags.map((t) => `#${t}`).join(' ')}
@@ -339,7 +339,8 @@ export function Workspace({ noteId, readOnly = false, backTo = '/notes' }: Works
           disabled={readOnly}
           onChange={(e) => setDraft((d) => ({ ...d, notebook: e.target.value || null }))}
         >
-          <option value="">Unfiled</option>
+          {/* No notebook. Shown as "Inbox" everywhere in the UI; see NotesLayout. */}
+          <option value="">Inbox</option>
           {notebooks.data?.notebooks.map((nb) => (
             <option key={nb.id} value={nb.name}>
               {nb.name}

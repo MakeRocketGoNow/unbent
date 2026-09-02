@@ -172,14 +172,18 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
                 </option>
               ))}
               {/*
-                  Offered only when there is something to see. Unfiled notes appear once a
-                  notebook is deleted, or a note is filed nowhere; with none of either, the
+                  "Inbox" is the label for having no notebook — the same state the API and
+                  the UNFILED sentinel still call unfiled. One name for one bucket: notes
+                  arrive here from a phone share and from a deleted notebook alike, and both
+                  want the same triage. Renaming the sentinel would churn the API for a word.
+
+                  Offered only when there is something to see; with nothing unfiled the
                   option leads to a guaranteed empty list. It stays rendered while it is the
                   active filter so the select never falls back to showing "All notebooks"
                   over a URL that says otherwise.
               */}
               {((notebooks.data?.unfiled ?? 0) > 0 || notebook === UNFILED) && (
-                <option value={UNFILED}>Unfiled ({notebooks.data?.unfiled ?? 0})</option>
+                <option value={UNFILED}>Inbox ({notebooks.data?.unfiled ?? 0})</option>
               )}
             </select>
           </div>
@@ -361,7 +365,7 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
               {tag
                 ? `No notes tagged ${tag}.`
                 : notebook === UNFILED
-                  ? 'No unfiled notes.'
+                  ? 'Nothing in your inbox.'
                   : notebook
                     ? `No notes in ${notebook}.`
                     : 'No notes yet.'}

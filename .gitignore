@@ -12,3 +12,13 @@ nohup.out
 
 # wrangler generated
 apps/api/worker-configuration.d.ts
+
+# Android (apps/android) — Gradle build output and machine-local config
+apps/android/.gradle/
+apps/android/build/
+apps/android/app/build/
+apps/android/local.properties
+apps/android/.kotlin/
+*.jks
+*.keystore
+.cxx/

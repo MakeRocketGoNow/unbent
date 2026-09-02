@@ -162,6 +162,11 @@ visual. Test both breakpoints when layout is involved.
 `pnpm --filter @unbent/web test` and `npx tsc --noEmit` both need to pass. Don't mutate the
 user's real data to test a control; if you do it by accident, put it back and say so.
 
+`apps/android` is outside the pnpm workspace — `pnpm -r` silently skips it, so nothing above
+verifies it. It is checked with `cd apps/android && ./gradlew test`, which needs no device.
+The UI rules in this file are about the web app; the Android app has almost no UI by design,
+and adding screens to it is a decision to raise rather than make.
+
 ## The local database is disposable — but ask
 
 Wiping local notes during development is fine and has been offered explicitly. **Ask first

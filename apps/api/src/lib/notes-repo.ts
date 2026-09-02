@@ -460,6 +460,32 @@ export class NotesRepo extends ScopedRepo {
     return this.get(id);
   }
 
+  /**
+   * Appends markdown to the end of a note's body, separated by a blank line.
+   *
+   * Exists for clients that upload an attachment but cannot edit the body themselves. The
+   * browser editor inserts its own link at the cursor (see Editor.tsx), but a phone share
+   * sheet has no cursor and no copy of the body — without this, a shared photo would be
+   * stored as an attachment that the note never displays.
+   *
+   * Done as one statement rather than read-modify-write because D1 has no interactive
+   * transactions: two files shared together upload concurrently, and a read-modify-write
+   * would let the second overwrite the first's link. Concatenating in SQL means each
+   * append is atomic and both survive, though their order is then whichever commits first.
+   */
+  async appendToBody(id: string, markdown: string): Promise<boolean> {
+    const res = await this.db
+      .prepare(
+        `UPDATE notes
+            SET body = CASE WHEN body = '' THEN ?1 ELSE body || char(10) || char(10) || ?1 END,
+                updated_at = ?2
+          WHERE id = ?3 AND user_id = ?4 AND deleted_at IS NULL`,
+      )
+      .bind(markdown, Date.now(), id, this.userId)
+      .run();
+    return res.meta.changes > 0;
+  }
+
   /** Soft delete — trash, not destroy. Returns false when the note is not this user's. */
   async remove(id: string): Promise<boolean> {
     const res = await this.db

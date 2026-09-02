@@ -3,6 +3,7 @@ import {
   FALLBACK_CONTENT_TYPE,
   MAX_ATTACHMENT_BYTES,
   filenameSchema,
+  formatAttachmentMarkdown,
   normalizeContentType,
   serveContentType,
   serveDisposition,
@@ -93,8 +94,27 @@ export const attachments = new Hono<AppEnv>()
       r2Key: key,
     });
 
+    const path = `files/${filename}`;
+
+    /**
+     * Opt-in body link, for clients that cannot write the markdown themselves.
+     *
+     * The browser editor inserts its own link at the cursor and does not pass this; a
+     * share sheet on a phone has neither a cursor nor the note body, so the server links
+     * on its behalf. `filename` rather than the requested name: availableFilename may have
+     * suffixed a collision, and a link to the name we did not store points at nothing.
+     */
+    if (c.req.query('link') !== undefined) {
+      await c
+        .get('notes')
+        .appendToBody(
+          noteId,
+          formatAttachmentMarkdown(filename, path, { image: contentType.startsWith('image/') }),
+        );
+    }
+
     // The relative path the editor inserts into the markdown.
-    return c.json({ ...info, path: `files/${filename}` }, 201);
+    return c.json({ ...info, path }, 201);
   })
 
   .get('/notes/:id/files/:filename', async (c) => {

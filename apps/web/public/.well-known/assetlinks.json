@@ -1,0 +1,12 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "app.unbent.android",
+      "sha256_cert_fingerprints": [
+        "0B:2E:80:17:82:11:4F:8F:0F:FF:0E:EF:44:2A:10:5F:81:55:35:4E:5B:81:04:E9:A7:41:18:17:42:39:E1:41"
+      ]
+    }
+  }
+]
