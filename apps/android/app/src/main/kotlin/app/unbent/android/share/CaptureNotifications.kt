@@ -6,7 +6,6 @@ import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import androidx.core.app.NotificationCompat
-import androidx.core.app.NotificationManagerCompat
 import app.unbent.android.R
 import app.unbent.android.ui.MainActivity
 import app.unbent.android.ui.SignInActivity
@@ -15,40 +14,39 @@ import app.unbent.android.ui.SignInActivity
  * The one notification a capture has, from Save to the note it became.
  *
  * A toast cannot be tapped and cannot change its mind, and the sheet that showed it is
- * gone before the upload has started. So a capture's status lives in the shade instead:
+ * gone before the upload has started. So a capture's status lives in the shade:
  * "Saving…" the moment Save is tapped, replaced in place — one id per capture — by
- * "Saved" naming the note, and a tap on that opens the note. The share sheet posts the
- * first and the worker the rest; because they share the id, neither needs to know what
- * the other did.
+ * "Saved" naming the note, which peeks down over whatever is on screen and opens the
+ * note when tapped. The share sheet posts the first and the worker the rest; because
+ * they share the id, neither needs to know what the other did. The sheet still shows a
+ * toast as it closes, for the word on screen at the moment of the tap.
  */
 object CaptureNotifications {
 
-    private const val CHANNEL = "captures"
+    private const val CHANNEL = "capture-status"
 
     fun createChannel(context: Context) {
         val manager = context.getSystemService(NotificationManager::class.java) ?: return
         /*
-         * Default importance: a capture landing deserves the one soft chime a finished
-         * download gets, and no more. At low importance "Saved" arrived in the shade
-         * without a sound, which read as the capture never having finished.
+         * High importance is what lets "Saved" peek down over the screen for a moment:
+         * that peek is the way to the note straight after sharing, without a trip to the
+         * shade. At low importance it arrived in the shade without a sound, which read
+         * as the capture never having finished. "Saving…" is posted silent, so the peek
+         * happens once, when there is a note to open.
          */
         val channel = NotificationChannel(
             CHANNEL,
             context.getString(R.string.channel_captures),
-            NotificationManager.IMPORTANCE_DEFAULT,
+            NotificationManager.IMPORTANCE_HIGH,
         ).apply { description = context.getString(R.string.channel_captures_desc) }
         manager.createNotificationChannel(channel)
-        // The channel this one replaced. A channel's importance is fixed once created,
-        // so raising it meant a new channel and the old one going.
+        /*
+         * The channels this one replaced. A channel's importance is the user's once it
+         * exists, and Android restores a deleted channel's settings if its id returns, so
+         * each raise has been a new id and the old one going.
+         */
         manager.deleteNotificationChannel("uploads")
-    }
-
-    /** Whether the user will see one at all. If not, the caller says what it can another way. */
-    fun enabled(context: Context): Boolean {
-        val compat = NotificationManagerCompat.from(context)
-        if (!compat.areNotificationsEnabled()) return false
-        val channel = compat.getNotificationChannel(CHANNEL) ?: return true
-        return channel.importance != NotificationManager.IMPORTANCE_NONE
+        manager.deleteNotificationChannel("captures")
     }
 
     /** Posted at Save, and again when the worker starts, in case the first was swiped away. */

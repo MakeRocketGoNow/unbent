@@ -141,13 +141,10 @@ class ShareActivity : ComponentActivity() {
             .build()
 
         WorkManager.getInstance(applicationContext).enqueue(request)
-        // The capture's status goes to the shade, where it can turn into "Saved" and be
-        // tapped. A toast is what is left to say when notifications are off.
-        if (CaptureNotifications.enabled(this)) {
-            CaptureNotifications.saving(this, jobId, title)
-        } else {
-            Toast.makeText(this, R.string.saving, Toast.LENGTH_SHORT).show()
-        }
+        // The toast is the word on screen as the sheet closes; the notification is the
+        // one that can turn into "Saved" and be tapped.
+        Toast.makeText(this, R.string.saving, Toast.LENGTH_SHORT).show()
+        CaptureNotifications.saving(this, jobId, title)
         finish()
     }
 
