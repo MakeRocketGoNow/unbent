@@ -180,6 +180,7 @@ private fun CaptureForm(
     var title by rememberSaveable(initialTitle) { mutableStateOf(initialTitle) }
     var notebook by rememberSaveable { mutableStateOf(lastNotebook) }
     var tags by remember { mutableStateOf<List<String>>(emptyList()) }
+    var tagDraft by rememberSaveable { mutableStateOf("") }
     var notebooks by remember { mutableStateOf<List<Notebook>>(emptyList()) }
     var allTags by remember { mutableStateOf<List<Tag>>(emptyList()) }
     var picking by remember { mutableStateOf(false) }
@@ -250,15 +251,24 @@ private fun CaptureForm(
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
     Spacer(Modifier.height(4.dp))
-    TagEditor(tags = tags, suggestions = allTags, onChange = { tags = it })
+    TagEditor(
+        tags = tags,
+        draft = tagDraft,
+        suggestions = allTags,
+        onChange = { tags = it },
+        onDraftChange = { tagDraft = it },
+    )
     Spacer(Modifier.height(20.dp))
 
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End, verticalAlignment = Alignment.CenterVertically) {
         TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) }
         Spacer(Modifier.padding(horizontal = 4.dp))
         // Enabled once the files are safely in the cache: saving before that would enqueue
-        // an upload of files that are not there yet.
-        Button(onClick = { onSave(title.trim(), notebook, tags) }, enabled = staged != null) {
+        // an upload of files that are not there yet. A tag still being typed goes too.
+        Button(
+            onClick = { onSave(title.trim(), notebook, tagsWithDraft(tags, tagDraft)) },
+            enabled = staged != null,
+        ) {
             Text(stringResource(R.string.capture_save))
         }
     }

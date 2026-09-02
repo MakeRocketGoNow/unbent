@@ -371,8 +371,16 @@ private fun FilingRow(notebook: String?, tags: List<String>, onClick: () -> Unit
 private fun FilingSheet(state: NoteState, onDismiss: () -> Unit) {
     val sheet = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     var newNotebook by rememberSaveable { mutableStateOf("") }
+    var tagDraft by rememberSaveable { mutableStateOf("") }
 
-    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheet) {
+    // Every way out — Done, the scrim, a swipe down — keeps a tag that was still being typed.
+    val close = {
+        val tags = tagsWithDraft(state.tags, tagDraft)
+        if (tags != state.tags) state.changeTags(tags)
+        onDismiss()
+    }
+
+    ModalBottomSheet(onDismissRequest = close, sheetState = sheet) {
         Column(
             Modifier
                 .verticalScroll(rememberScrollState())
@@ -412,10 +420,16 @@ private fun FilingSheet(state: NoteState, onDismiss: () -> Unit) {
             Spacer(Modifier.height(20.dp))
             Text(stringResource(R.string.tags_label), style = MaterialTheme.typography.titleMedium)
             Spacer(Modifier.height(4.dp))
-            TagEditor(tags = state.tags, suggestions = state.allTags, onChange = state::changeTags)
+            TagEditor(
+                tags = state.tags,
+                draft = tagDraft,
+                suggestions = state.allTags,
+                onChange = state::changeTags,
+                onDraftChange = { tagDraft = it },
+            )
 
             Spacer(Modifier.height(20.dp))
-            Button(onClick = onDismiss, modifier = Modifier.align(Alignment.End)) {
+            Button(onClick = close, modifier = Modifier.align(Alignment.End)) {
                 Text(stringResource(R.string.done))
             }
         }

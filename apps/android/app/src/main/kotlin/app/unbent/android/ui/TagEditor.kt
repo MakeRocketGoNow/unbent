@@ -17,10 +17,6 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.SuggestionChip
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.ImeAction
@@ -36,22 +32,24 @@ import app.unbent.android.api.Tag
  * same way wherever it is entered. Suggestions matter more than free typing here: an
  * archive's tags are a vocabulary, and "Dentist" typed as "dentist" is a second tag the
  * web's case-variant cleanup later has to fold back in.
+ *
+ * The field's text belongs to the caller, not to this editor, because the caller is the
+ * one with a Save or Done button: a tag still being typed when that button is tapped has
+ * to go with it. See [tagsWithDraft].
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun TagEditor(
     tags: List<String>,
+    /** What has been typed into the field and not yet added. */
+    draft: String,
     suggestions: List<Tag>,
     onChange: (List<String>) -> Unit,
+    onDraftChange: (String) -> Unit,
 ) {
-    var draft by rememberSaveable { mutableStateOf("") }
-
     fun add(raw: String) {
-        val tag = raw.trim()
-        if (tag.isNotEmpty() && tags.none { it.equals(tag, ignoreCase = true) }) {
-            onChange(tags + tag)
-        }
-        draft = ""
+        onChange(tagsWithDraft(tags, raw))
+        onDraftChange("")
     }
 
     Column {
@@ -71,7 +69,7 @@ fun TagEditor(
         }
         OutlinedTextField(
             value = draft,
-            onValueChange = { draft = it },
+            onValueChange = onDraftChange,
             placeholder = { Text(stringResource(R.string.add_tag)) },
             singleLine = true,
             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
@@ -91,4 +89,19 @@ fun TagEditor(
             }
         }
     }
+}
+
+/**
+ * The tags with whatever is still in the field added on.
+ *
+ * The keyboard's Done key adds a typed tag, but nobody owes the field that key. On an
+ * account with no tags yet there are no chips to tap, so typing is the only way in, and
+ * the natural gesture is to type the word and tap Save. A sheet that drops it on the way
+ * out has lost the one piece of filing the person did by hand — and says nothing, since
+ * the note still saves. Every button that leaves a sheet runs its tags through here.
+ */
+fun tagsWithDraft(tags: List<String>, draft: String): List<String> {
+    val tag = draft.trim()
+    if (tag.isEmpty() || tags.any { it.equals(tag, ignoreCase = true) }) return tags
+    return tags + tag
 }
