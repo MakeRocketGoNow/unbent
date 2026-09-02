@@ -45,7 +45,7 @@ android {
         buildConfigField(
             "String",
             "GOOGLE_WEB_CLIENT_ID",
-            "\"${properties["unbent.google.webClientId"] ?: ""}\"",
+            "\"${secret("unbent.google.webClientId", "UNBENT_GOOGLE_WEB_CLIENT_ID") ?: ""}\"",
         )
         manifestPlaceholders["connectScheme"] = "unbent"
     }
