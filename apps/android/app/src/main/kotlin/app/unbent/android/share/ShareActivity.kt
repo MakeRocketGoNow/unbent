@@ -5,7 +5,13 @@ import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.widget.Toast
-import androidx.appcompat.app.AppCompatActivity
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.work.BackoffPolicy
 import androidx.work.Constraints
 import androidx.work.Data
@@ -13,40 +19,43 @@ import androidx.work.NetworkType
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
 import app.unbent.android.Prefs
-import app.unbent.android.ui.SignInActivity
 import app.unbent.android.R
+import app.unbent.android.api.UnbentApi
+import app.unbent.android.ui.CaptureSheet
+import app.unbent.android.ui.SignInActivity
+import app.unbent.android.ui.theme.UnbentTheme
 import java.util.UUID
 import java.util.concurrent.TimeUnit
 import kotlin.concurrent.thread
 
 /**
- * The share-sheet entry point.
+ * The share-sheet entry point: a sheet over the sending app, then a background upload.
  *
- * Draws nothing and finishes as fast as it can: the user is in another app and wants the
- * sheet gone. All this does is copy the shared bytes somewhere durable and enqueue the
- * upload, because the URI permissions granted with a share die with this activity.
+ * The shared bytes are copied into the app's cache the moment this starts, before the
+ * sheet has even drawn, because the URI permissions granted with a share are tied to this
+ * activity and die with it. Everything after that — naming, filing, and the upload itself
+ * — depends on nothing but that copy, so the sending app can go away, and a person who
+ * has to sign in first can leave and come back.
+ *
+ * Save enqueues the upload and leaves. The sheet never waits for bytes to travel: a phone
+ * radio is slow, and the notification says when the note has landed.
  */
-class ShareActivity : AppCompatActivity() {
+class ShareActivity : ComponentActivity() {
+
+    private val jobId = UUID.randomUUID().toString()
+
+    /** The files, once copied. Null until then, which is what keeps Save disabled. */
+    private var staged by mutableStateOf<List<StagedFile>?>(null)
+    private var title by mutableStateOf("")
+    private var signedIn by mutableStateOf(false)
+    private var text = ""
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        handleShare()
-    }
+        enableEdgeToEdge()
 
-    /**
-     * Stage and enqueue, whether or not this phone is connected yet.
-     *
-     * Deliberately not "sign in, then come back and handle the share". That round trip
-     * cannot survive: the sign-in page opens a Custom Tab in another task, and this
-     * activity is `noHistory` and destroyed the moment it goes to the background — so the
-     * shared file was silently dropped and the user had to share it a second time.
-     *
-     * The files are copied to our cache first, so nothing depends on this activity or on
-     * the sending app still being around. The worker holds the job until a session exists.
-     */
-    private fun handleShare() {
         val uris = extractUris(intent)
-        val text = intent.getStringExtra(Intent.EXTRA_TEXT)?.trim().orEmpty()
+        text = intent.getStringExtra(Intent.EXTRA_TEXT)?.trim().orEmpty()
         val subject = intent.getStringExtra(Intent.EXTRA_SUBJECT)
 
         if (uris.isEmpty() && text.isEmpty()) {
@@ -62,67 +71,85 @@ class ShareActivity : AppCompatActivity() {
          */
         val sourceApp = referrer?.host?.let { pkg ->
             runCatching {
-                packageManager.getApplicationLabel(
-                    packageManager.getApplicationInfo(pkg, 0),
-                ).toString()
+                packageManager.getApplicationLabel(packageManager.getApplicationInfo(pkg, 0)).toString()
             }.getOrNull()
         }
 
-        val jobId = UUID.randomUUID().toString()
-        Toast.makeText(this, R.string.saving, Toast.LENGTH_SHORT).show()
-
         /*
-         * Staging touches the disk, so it cannot run on the main thread — but it also must
-         * not be tied to this activity, which finishes immediately below. The work runs
-         * against the application context and enqueues itself when done; nothing here reads
-         * `this` afterwards, so the activity going away mid-copy is harmless.
+         * Staging touches the disk, so it cannot run on the main thread, and it must not be
+         * tied to this activity's lifetime in case the sheet is dismissed mid-copy. It runs
+         * against the application context and reports back to the screen when done.
          */
         val appContext = applicationContext
         thread {
-            val staged = Staging.stageAll(appContext, uris, jobId)
-            val title = Staging.deriveTitle(subject, staged, text, sourceApp)
-
-            val request = OneTimeWorkRequestBuilder<UploadWorker>()
-                .setConstraints(
-                    Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build(),
-                )
-                .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 30, TimeUnit.SECONDS)
-                .setInputData(
-                    Data.Builder()
-                        .putString(UploadWorker.KEY_JOB_ID, jobId)
-                        .putString(UploadWorker.KEY_TITLE, title)
-                        .putString(UploadWorker.KEY_BODY, text)
-                        .putStringArray(
-                            UploadWorker.KEY_FILENAMES,
-                            staged.map { it.filename }.toTypedArray(),
-                        )
-                        .putStringArray(
-                            UploadWorker.KEY_TYPES,
-                            staged.map { it.contentType }.toTypedArray(),
-                        )
-                        .build(),
-                )
-                .build()
-
-            WorkManager.getInstance(appContext).enqueue(request)
+            val files = Staging.stageAll(appContext, uris, jobId)
+            val derived = Staging.deriveTitle(subject, files, text, sourceApp)
+            runOnUiThread {
+                staged = files
+                title = derived
+            }
         }
 
-        /*
-         * Not signed in: open sign-in rather than failing quietly.
-         *
-         * The staging above has already run, so the share is safely on disk and the worker
-         * is waiting for a token — signing in here completes the capture that is already in
-         * flight rather than asking the user to share the same thing twice. Launched from
-         * the activity while it is still foreground, so the system permits it; the worker
-         * deliberately launches nothing itself, since it can run at any time.
-         */
-        if (!Prefs(this).isSignedIn) {
-            startActivity(
-                Intent(this, SignInActivity::class.java)
-                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+        val prefs = Prefs(this)
+        signedIn = prefs.isSignedIn
+
+        setContent {
+            UnbentTheme {
+                val api = remember(signedIn) {
+                    if (signedIn) UnbentApi(prefs.instance, prefs.session?.bearer) else null
+                }
+                CaptureSheet(
+                    api = api,
+                    staged = staged,
+                    hasText = text.isNotEmpty(),
+                    initialTitle = title,
+                    lastNotebook = prefs.lastNotebook,
+                    onSignIn = { startActivity(Intent(this, SignInActivity::class.java)) },
+                    onSave = ::save,
+                    onDismiss = ::cancel,
+                )
+            }
+        }
+    }
+
+    /** Back from sign-in, or from anywhere: the sheet shows the form if there is a session now. */
+    override fun onResume() {
+        super.onResume()
+        signedIn = Prefs(this).isSignedIn
+    }
+
+    private fun save(title: String, notebook: String?, tags: List<String>) {
+        val files = staged ?: return
+        Prefs(this).lastNotebook = notebook
+
+        val request = OneTimeWorkRequestBuilder<UploadWorker>()
+            .setConstraints(
+                Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build(),
             )
-        }
+            .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 30, TimeUnit.SECONDS)
+            .setInputData(
+                Data.Builder()
+                    .putString(UploadWorker.KEY_JOB_ID, jobId)
+                    .putString(UploadWorker.KEY_TITLE, title)
+                    .putString(UploadWorker.KEY_BODY, text)
+                    .putString(UploadWorker.KEY_NOTEBOOK, notebook)
+                    .putStringArray(UploadWorker.KEY_TAGS, tags.toTypedArray())
+                    .putStringArray(UploadWorker.KEY_FILENAMES, files.map { it.filename }.toTypedArray())
+                    .putStringArray(UploadWorker.KEY_TYPES, files.map { it.contentType }.toTypedArray())
+                    .build(),
+            )
+            .build()
 
+        WorkManager.getInstance(applicationContext).enqueue(request)
+        Toast.makeText(this, R.string.saving, Toast.LENGTH_SHORT).show()
+        finish()
+    }
+
+    /** Dismissed without saving: the copied files are not wanted, so they go. */
+    private fun cancel() {
+        val appContext = applicationContext
+        val id = jobId
+        thread { Staging.clear(appContext, id) }
         finish()
     }
 
@@ -148,5 +175,4 @@ class ShareActivity : AppCompatActivity() {
         } else {
             getParcelableArrayListExtra<Uri>(name).orEmpty()
         }
-
 }

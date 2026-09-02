@@ -52,6 +52,20 @@ class Prefs(context: Context) {
 
     val isSignedIn: Boolean get() = session != null
 
+    /**
+     * Where the last capture was filed, offered first by the next one.
+     *
+     * A share sheet is used in runs — five receipts in a row go to the same place — and
+     * the notebook picked last time is the likeliest answer. Per origin like the session,
+     * since a notebook name belongs to one instance's account.
+     */
+    var lastNotebook: String?
+        get() = prefs.getString("lastNotebook:${normalizeOrigin(instance)}", null)
+        set(value) = prefs.edit {
+            val key = "lastNotebook:${normalizeOrigin(instance)}"
+            if (value == null) remove(key) else putString(key, value)
+        }
+
     fun clearSession() {
         session = null
     }

@@ -18,14 +18,13 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.consumeWindowInsets
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
@@ -36,7 +35,6 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.ArrowDropDown
-import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -47,14 +45,11 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.InputChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.SuggestionChip
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -371,25 +366,18 @@ private fun FilingRow(notebook: String?, tags: List<String>, onClick: () -> Unit
 }
 
 /** Notebook and tags in one sheet: the same disclosure the web's phone layout opens. */
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun FilingSheet(state: NoteState, onDismiss: () -> Unit) {
     val sheet = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     var newNotebook by rememberSaveable { mutableStateOf("") }
-    var newTag by rememberSaveable { mutableStateOf("") }
-
-    fun addTag() {
-        val tag = newTag.trim()
-        if (tag.isNotEmpty() && state.tags.none { it.equals(tag, ignoreCase = true) }) {
-            state.changeTags(state.tags + tag)
-        }
-        newTag = ""
-    }
 
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheet) {
         Column(
             Modifier
                 .verticalScroll(rememberScrollState())
+                .navigationBarsPadding()
+                .imePadding()
                 .padding(horizontal = 24.dp)
                 .padding(bottom = 32.dp),
         ) {
@@ -424,71 +412,12 @@ private fun FilingSheet(state: NoteState, onDismiss: () -> Unit) {
             Spacer(Modifier.height(20.dp))
             Text(stringResource(R.string.tags_label), style = MaterialTheme.typography.titleMedium)
             Spacer(Modifier.height(4.dp))
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                for (tag in state.tags) {
-                    InputChip(
-                        selected = false,
-                        onClick = { state.changeTags(state.tags - tag) },
-                        label = { Text(tag) },
-                        trailingIcon = {
-                            Icon(Icons.Default.Close, contentDescription = stringResource(R.string.remove_tag, tag))
-                        },
-                    )
-                }
-            }
-            OutlinedTextField(
-                value = newTag,
-                onValueChange = { newTag = it },
-                placeholder = { Text(stringResource(R.string.add_tag)) },
-                singleLine = true,
-                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
-                keyboardActions = KeyboardActions(onDone = { addTag() }),
-                modifier = Modifier.fillMaxWidth(),
-            )
-            // The tags this account already uses, minus the ones on the note, narrowed by
-            // what has been typed: an archive's tags are a vocabulary, not free text.
-            val suggestions = state.allTags
-                .filter { s -> state.tags.none { it.equals(s.name, ignoreCase = true) } }
-                .filter { newTag.isBlank() || it.name.contains(newTag.trim(), ignoreCase = true) }
-                .take(12)
-            if (suggestions.isNotEmpty()) {
-                Spacer(Modifier.height(8.dp))
-                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    for (s in suggestions) {
-                        SuggestionChip(
-                            onClick = {
-                                state.changeTags(state.tags + s.name)
-                                newTag = ""
-                            },
-                            label = { Text(s.name) },
-                        )
-                    }
-                }
-            }
+            TagEditor(tags = state.tags, suggestions = state.allTags, onChange = state::changeTags)
 
             Spacer(Modifier.height(20.dp))
             Button(onClick = onDismiss, modifier = Modifier.align(Alignment.End)) {
                 Text(stringResource(R.string.done))
             }
-        }
-    }
-}
-
-/** One notebook to pick, with its note count where it has one; the Inbox has none. */
-@Composable
-private fun NotebookChoice(name: String, count: Int?, selected: Boolean, onSelect: () -> Unit) {
-    Row(
-        Modifier.fillMaxWidth().clickable(onClick = onSelect).padding(vertical = 4.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        RadioButton(selected = selected, onClick = onSelect)
-        Text(name, modifier = Modifier.weight(1f))
-        if (count != null) {
-            Text(
-                count.toString(),
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
         }
     }
 }

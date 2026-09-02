@@ -34,6 +34,8 @@ class UploadWorker(context: Context, params: WorkerParameters) : CoroutineWorker
         val body = inputData.getString(KEY_BODY).orEmpty()
         val names = inputData.getStringArray(KEY_FILENAMES).orEmpty()
         val types = inputData.getStringArray(KEY_TYPES).orEmpty()
+        val notebook = inputData.getString(KEY_NOTEBOOK)
+        val tags = inputData.getStringArray(KEY_TAGS).orEmpty().toList()
 
         val prefs = Prefs(applicationContext)
         if (!prefs.isSignedIn) {
@@ -59,7 +61,7 @@ class UploadWorker(context: Context, params: WorkerParameters) : CoroutineWorker
         val dir = Staging.jobDir(applicationContext, jobId)
 
         try {
-            val noteId = api.createNote(title, body).id
+            val noteId = api.createNote(title, body, tags, notebook).id
 
             names.forEachIndexed { i, name ->
                 val file = File(dir, name)
@@ -154,6 +156,9 @@ class UploadWorker(context: Context, params: WorkerParameters) : CoroutineWorker
         const val KEY_BODY = "body"
         const val KEY_FILENAMES = "filenames"
         const val KEY_TYPES = "types"
+        /** Null means the Inbox. */
+        const val KEY_NOTEBOOK = "notebook"
+        const val KEY_TAGS = "tags"
         private const val MAX_ATTEMPTS = 4
 
         /** How long a capture waits for the user to finish connecting. */

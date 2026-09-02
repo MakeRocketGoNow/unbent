@@ -80,6 +80,11 @@
     <string name="signed_in_as">Signed in</string>
     <string name="signed_out">Not signed in</string>
 
+    <string name="capture_title">Save to Unbent</string>
+    <string name="capture_text">Text</string>
+    <string name="capture_sign_in">Sign in to save this to Unbent. What you shared is kept while you do.</string>
+    <string name="capture_save">Save</string>
+    <string name="title_label">Title</string>
     <string name="saving">Saving to Unbent…</string>
     <string name="saved">Saved to Unbent</string>
     <string name="save_failed">Could not save to Unbent</string>
@@ -87,6 +92,18 @@
     <string name="nothing_to_share">Nothing to share</string>
     <string name="channel_uploads">Captures</string>
     <string name="channel_uploads_desc">Progress and results for items shared to Unbent</string>
+    <plurals name="capture_photos">
+        <item quantity="one">%d photo</item>
+        <item quantity="other">%d photos</item>
+    </plurals>
+    <plurals name="capture_pdfs">
+        <item quantity="one">%d PDF</item>
+        <item quantity="other">%d PDFs</item>
+    </plurals>
+    <plurals name="capture_files">
+        <item quantity="one">%d file</item>
+        <item quantity="other">%d files</item>
+    </plurals>
     <plurals name="notes_count">
         <item quantity="one">%d note</item>
         <item quantity="other">%d notes</item>

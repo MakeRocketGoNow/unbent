@@ -59,16 +59,18 @@
         </activity>
 
         <!--
-            The share-sheet entry. Translucent and finishes immediately: it stages the
-            shared files and hands off to a worker, so the sheet dismisses at once rather
-            than holding the user's other app open while bytes upload.
+            The share-sheet entry: a bottom sheet over the sending app, with the title,
+            notebook and tags, and one Save. Translucent so the sheet sits over whatever
+            was being shared from; its own task so it never brings the note list with it.
+            Not `noHistory`: a person who has to sign in first goes away and comes back,
+            and the staged files must still be here when they do.
         -->
         <activity
             android:name=".share.ShareActivity"
             android:exported="true"
             android:excludeFromRecents="true"
-            android:noHistory="true"
             android:taskAffinity=""
+            android:windowSoftInputMode="adjustResize"
             android:theme="@style/Theme.Unbent.Transparent">
             <intent-filter>
                 <action android:name="android.intent.action.SEND" />
