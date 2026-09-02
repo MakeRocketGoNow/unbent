@@ -19,9 +19,9 @@
     </style>
 
     <!--
-        The share activity draws nothing: it stages files and finishes. A transparent,
-        non-animated theme means the share sheet collapses straight back to the host app
-        instead of flashing an empty screen.
+        The share activity is a sheet over whatever app the share came from. Transparent
+        and non-animated so the sending app stays visible behind the sheet's scrim, and
+        so dismissing it collapses straight back rather than through a window animation.
     -->
     <style name="Theme.Unbent.Transparent" parent="Theme.Unbent">
         <item name="android:windowBackground">@android:color/transparent</item>

@@ -186,6 +186,22 @@ class SignInActivity : ComponentActivity() {
         }
     }
 
+    /**
+     * A sign-in screen that finds itself signed in has nothing left to ask.
+     *
+     * It happens: the app opens this screen and finishes itself, the person signs in from
+     * somewhere else — the share sheet's own copy of this screen — and comes back to a
+     * task whose only content is a stale sign-in form. Continuing into the app is what
+     * they expect; a form to fill in again is not.
+     */
+    override fun onResume() {
+        super.onResume()
+        if (!busy && prefs.isSignedIn) {
+            continueToApp()
+            finish()
+        }
+    }
+
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
