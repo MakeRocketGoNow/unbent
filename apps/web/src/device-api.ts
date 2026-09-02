@@ -59,3 +59,19 @@ export const approveDeviceCode = (userCode: string) => decide('approve', userCod
 
 /** Refuses the waiting device. Its next poll gets `access_denied` and it stops. */
 export const denyDeviceCode = (userCode: string) => decide('deny', userCode);
+
+/**
+ * Mints a short-lived token that a native app trades for a session.
+ *
+ * The counterpart to the device-code flow, for a client that *can* be redirected back to.
+ * The phone opens /connect in a Custom Tab carrying the browser's cookies, so this call is
+ * authenticated by whatever provider the user signed in with — the app never sees a
+ * credential, and nothing is typed or read out.
+ */
+export function mintConnectToken(): Promise<string> {
+  return fetch('/api/auth/one-time-token/generate', {
+    credentials: 'include',
+  })
+    .then(json<{ token: string }>)
+    .then((r) => r.token);
+}

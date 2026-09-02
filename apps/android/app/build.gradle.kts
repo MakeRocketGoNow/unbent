@@ -38,6 +38,8 @@ android {
         // The site the app is a shell for. Overridable at runtime in Settings, which is
         // what makes an emulator build usable against a local dev server.
         buildConfigField("String", "DEFAULT_INSTANCE", "\"https://unbent.app\"")
+        buildConfigField("String", "CONNECT_SCHEME", "\"unbent\"")
+        manifestPlaceholders["connectScheme"] = "unbent"
     }
 
     signingConfigs {
@@ -63,6 +65,8 @@ android {
              * thing you just shared went to.
              */
             resValue("string", "app_name", "Unbent (debug)")
+            buildConfigField("String", "CONNECT_SCHEME", "\"unbent-debug\"")
+            manifestPlaceholders["connectScheme"] = "unbent-debug"
             // Lets a debug build talk to http://10.0.2.2:5173 from the emulator.
             // Release stays cleartext-free; see network_security_config.xml.
             manifestPlaceholders["usesCleartextTraffic"] = "true"

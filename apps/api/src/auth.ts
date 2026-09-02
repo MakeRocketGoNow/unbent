@@ -1,6 +1,6 @@
 import { betterAuth } from 'better-auth';
 import { APIError } from 'better-auth/api';
-import { bearer, deviceAuthorization } from 'better-auth/plugins';
+import { bearer, deviceAuthorization, oneTimeToken } from 'better-auth/plugins';
 import type { Env } from './types.js';
 
 /**
@@ -159,6 +159,20 @@ function createAuth(env: Env): AuthInstance {
        * resolves a user and `requireAuth` still guards the same routes.
        */
       bearer(),
+      /**
+       * Lets a signed-in browser hand a session to a native app without the user reading
+       * anything out.
+       *
+       * The phone opens /connect in a Custom Tab, which is already signed in through the
+       * browser's own cookies whatever provider was used to get there — Google, GitHub, or
+       * anything added later. That page mints one of these, and the app redeems it for an
+       * ordinary session. The device-code flow stays for the CLI, which has no browser to
+       * hand anything back to.
+       *
+       * Three minutes is the plugin's default and is right here: the token's whole life is
+       * one redirect back into the app.
+       */
+      oneTimeToken(),
     ],
   });
 }

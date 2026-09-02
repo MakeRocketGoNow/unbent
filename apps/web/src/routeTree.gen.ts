@@ -10,6 +10,7 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as ConnectRouteImport } from './routes/connect'
 import { Route as DeviceRouteImport } from './routes/device'
 import { Route as ImportRouteImport } from './routes/import'
 import { Route as NotesRouteImport } from './routes/notes'
@@ -28,6 +29,11 @@ import { Route as TrashNoteIdRouteImport } from './routes/trash.$noteId'
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ConnectRoute = ConnectRouteImport.update({
+  id: '/connect',
+  path: '/connect',
   getParentRoute: () => rootRouteImport,
 } as any)
 const DeviceRoute = DeviceRouteImport.update({
@@ -103,6 +109,7 @@ const TrashNoteIdRoute = TrashNoteIdRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/connect': typeof ConnectRoute
   '/device': typeof DeviceRoute
   '/import': typeof ImportRoute
   '/notes': typeof NotesRouteWithChildren
@@ -120,6 +127,7 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/connect': typeof ConnectRoute
   '/device': typeof DeviceRoute
   '/import': typeof ImportRoute
   '/notes/$noteId': typeof NotesNoteIdRoute
@@ -135,6 +143,7 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/connect': typeof ConnectRoute
   '/device': typeof DeviceRoute
   '/import': typeof ImportRoute
   '/notes': typeof NotesRouteWithChildren
@@ -154,6 +163,7 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/connect'
     | '/device'
     | '/import'
     | '/notes'
@@ -171,6 +181,7 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/connect'
     | '/device'
     | '/import'
     | '/notes/$noteId'
@@ -185,6 +196,7 @@ export interface FileRouteTypes {
   id:
     | '__root__'
     | '/'
+    | '/connect'
     | '/device'
     | '/import'
     | '/notes'
@@ -203,6 +215,7 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  ConnectRoute: typeof ConnectRoute
   DeviceRoute: typeof DeviceRoute
   ImportRoute: typeof ImportRoute
   NotesRoute: typeof NotesRouteWithChildren
@@ -217,6 +230,13 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/connect': {
+      id: '/connect'
+      path: '/connect'
+      fullPath: '/connect'
+      preLoaderRoute: typeof ConnectRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/device': {
@@ -366,6 +386,7 @@ const TrashRouteWithChildren = TrashRoute._addFileChildren(TrashRouteChildren)
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  ConnectRoute: ConnectRoute,
   DeviceRoute: DeviceRoute,
   ImportRoute: ImportRoute,
   NotesRoute: NotesRouteWithChildren,

@@ -91,10 +91,23 @@
             </intent-filter>
         </activity>
 
+        <!--
+            Exported, because the browser hands the token back by opening this deep link.
+            The scheme carries the build's application id, so a debug install beside a
+            release one cannot intercept the other's connection.
+        -->
         <activity
             android:name=".ui.SignInActivity"
-            android:exported="false"
-            android:label="@string/sign_in_title" />
+            android:exported="true"
+            android:launchMode="singleTask"
+            android:label="@string/sign_in_title">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="${connectScheme}" android:host="connect" />
+            </intent-filter>
+        </activity>
 
         <activity
             android:name=".ui.SettingsActivity"

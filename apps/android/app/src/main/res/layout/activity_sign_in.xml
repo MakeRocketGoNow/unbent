@@ -21,17 +21,6 @@
             android:textAppearance="?attr/textAppearanceBodyLarge"
             android:layout_marginBottom="24dp" />
 
-        <TextView
-            android:id="@+id/code"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:textAppearance="?attr/textAppearanceHeadlineMedium"
-            android:fontFamily="monospace"
-            android:letterSpacing="0.2"
-            android:textIsSelectable="true"
-            android:layout_marginBottom="24dp"
-            />
-
         <com.google.android.material.button.MaterialButton
             android:id="@+id/openButton"
             android:layout_width="match_parent"

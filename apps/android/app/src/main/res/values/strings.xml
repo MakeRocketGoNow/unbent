@@ -1,16 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Unbent</string>
-    <string name="sign_in_title">Sign in to Unbent</string>
+    <string name="sign_in_title">Connect to Unbent</string>
     <string name="settings_title">Unbent settings</string>
     <string name="shortcut_settings_short">Settings</string>
     <string name="shortcut_settings_long">Capture settings</string>
 
-    <string name="sign_in_intro">Approve this phone in Unbent on any signed-in browser.</string>
-    <string name="sign_in_open">Open approval page</string>
-    <string name="sign_in_waiting">Waiting for approval…</string>
-    <string name="sign_in_done">This phone is signed in.</string>
-    <string name="sign_in_denied">Approval was declined.</string>
+    <string name="sign_in_intro">Opening Unbent to connect this phone…</string>
+    <string name="sign_in_open">Try again</string>
+    <string name="sign_in_waiting">Connecting…</string>
+    <string name="sign_in_done">This phone is connected.</string>
+    <string name="sign_in_denied">This phone was not connected.</string>
     <string name="sign_in_expired">The code expired. Try again.</string>
 
     <string name="instance_label">Unbent address</string>
