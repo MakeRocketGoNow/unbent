@@ -95,8 +95,6 @@ android {
     buildFeatures {
         buildConfig = true
         compose = true
-        // Still needed by the settings screen until it moves to Compose.
-        viewBinding = true
     }
 
     compileOptions {
@@ -128,13 +126,14 @@ dependencies {
     implementation(libs.androidx.appcompat)
     implementation(libs.material)
     implementation(libs.androidx.browser)
-    implementation(libs.twa.helper)
     implementation(libs.androidx.work.runtime.ktx)
     implementation(platform(libs.compose.bom))
     implementation(libs.compose.ui)
     implementation(libs.compose.ui.tooling.preview)
     implementation(libs.compose.material3)
     implementation(libs.androidx.activity.compose)
+    implementation(libs.androidx.navigation.compose)
+    implementation(libs.androidx.webkit)
     debugImplementation(libs.compose.ui.tooling)
     implementation(libs.okhttp)
     implementation(libs.kotlinx.serialization.json)

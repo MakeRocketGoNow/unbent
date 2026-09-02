@@ -12,7 +12,8 @@ import app.unbent.android.R
 import app.unbent.android.UnbentApp
 import app.unbent.android.api.ApiException
 import app.unbent.android.api.UnbentApi
-import app.unbent.android.ui.LaunchActivity
+import app.unbent.android.ui.MainActivity
+import app.unbent.android.ui.SignInActivity
 import java.io.File
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -71,7 +72,7 @@ class UploadWorker(context: Context, params: WorkerParameters) : CoroutineWorker
 
             Staging.clear(applicationContext, jobId)
 
-            notify(applicationContext.getString(R.string.saved), openNoteIntent(prefs.instance, noteId))
+            notify(applicationContext.getString(R.string.saved), openNoteIntent(noteId))
             Result.success()
         } catch (e: ApiException) {
             if (e.status == 401) {
@@ -99,22 +100,16 @@ class UploadWorker(context: Context, params: WorkerParameters) : CoroutineWorker
         }
     }
 
-    private fun openNoteIntent(origin: String, noteId: String): PendingIntent {
-        val intent = Intent(applicationContext, LaunchActivity::class.java).apply {
-            action = Intent.ACTION_VIEW
-            putExtra(LaunchActivity.EXTRA_URL, "$origin/notes/$noteId")
-            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
-        }
-        return PendingIntent.getActivity(
+    private fun openNoteIntent(noteId: String): PendingIntent =
+        PendingIntent.getActivity(
             applicationContext,
             noteId.hashCode(),
-            intent,
+            MainActivity.openNote(applicationContext, noteId),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
-    }
 
     private fun signInIntent(): PendingIntent {
-        val intent = Intent(applicationContext, app.unbent.android.ui.SettingsActivity::class.java)
+        val intent = Intent(applicationContext, SignInActivity::class.java)
             .apply { flags = Intent.FLAG_ACTIVITY_NEW_TASK }
         return PendingIntent.getActivity(
             applicationContext,

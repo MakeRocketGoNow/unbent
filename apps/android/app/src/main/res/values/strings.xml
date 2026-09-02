@@ -2,7 +2,7 @@
 <resources>
     <string name="app_name">Unbent</string>
     <string name="sign_in_title">Sign in to Unbent</string>
-    <string name="settings_title">Unbent settings</string>
+    <string name="settings_title">Settings</string>
     <string name="shortcut_settings_short">Settings</string>
     <string name="shortcut_settings_long">Capture settings</string>
 
@@ -30,12 +30,36 @@
     <string name="retry">Try again</string>
     <string name="instance_use">Use this address</string>
 
+    <string name="back">Back</string>
+    <string name="more">More</string>
+    <string name="untitled">Untitled</string>
+    <string name="inbox">Inbox</string>
+    <string name="no_notes">No notes yet.</string>
+    <string name="load_failed">Couldn\'t load. %1$s</string>
+    <string name="note_missing">That note doesn\'t exist, or was deleted.</string>
+    <string name="note_delete">Delete</string>
+    <string name="note_delete_title">Move to the trash?</string>
+    <string name="note_delete_body">“%1$s” goes to the trash. You can restore it from the web app.</string>
+    <string name="note_open_web">Open on the web</string>
+    <string name="save_unsaved">Unsaved</string>
+    <string name="save_saving">Saving…</string>
+    <string name="save_saved">Saved</string>
+    <string name="save_error">Save failed</string>
+    <string name="filing_title">Filing</string>
+    <string name="notebook_label">Notebook</string>
+    <string name="new_notebook">New notebook</string>
+    <string name="tags_label">Tags</string>
+    <string name="add_tag">Add a tag</string>
+    <string name="remove_tag">Remove %1$s</string>
+    <string name="done">Done</string>
+    <string name="add">Add</string>
+    <string name="manage_on_web">Manage on the web</string>
+    <string name="manage_on_web_hint">Import, export, notebooks and the trash live on the site. The browser has its own sign-in.</string>
     <string name="instance_label">Unbent address</string>
     <string name="save">Save</string>
     <string name="sign_out">Sign out</string>
     <string name="signed_in_as">Signed in</string>
     <string name="signed_out">Not signed in</string>
-    <string name="open_unbent">Open Unbent</string>
 
     <string name="saving">Saving to Unbent…</string>
     <string name="saved">Saved to Unbent</string>

@@ -16,9 +16,6 @@
 
         <item name="android:statusBarColor">?attr/colorSurface</item>
         <item name="android:navigationBarColor">?attr/colorSurface</item>
-
-        <!-- The layouts inset themselves for the status bar and gesture pill. -->
-        <item name="android:fitsSystemWindows">true</item>
     </style>
 
     <!--

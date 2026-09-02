@@ -14,7 +14,5 @@
         <item name="colorOnSecondary">@color/unbent_green_dark</item>
 
         <item name="android:statusBarColor">?attr/colorSurface</item>
-        <item name="android:navigationBarColor">?attr/colorSurface</item>
-        <item name="android:fitsSystemWindows">true</item>
-    </style>
+        <item name="android:navigationBarColor">?attr/colorSurface</item>    </style>
 </resources>

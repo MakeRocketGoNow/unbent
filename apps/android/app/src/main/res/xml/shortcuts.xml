@@ -11,8 +11,8 @@
         android:shortcutShortLabel="@string/shortcut_settings_short"
         android:shortcutLongLabel="@string/shortcut_settings_long">
         <intent
-            android:action="android.intent.action.VIEW"
+            android:action="app.unbent.android.SETTINGS"
             android:targetPackage="${applicationId}"
-            android:targetClass="app.unbent.android.ui.SettingsActivity" />
+            android:targetClass="app.unbent.android.ui.MainActivity" />
     </shortcut>
 </shortcuts>

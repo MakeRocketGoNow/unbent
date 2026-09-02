@@ -8,6 +8,7 @@ import android.os.Bundle
 import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
 import androidx.browser.customtabs.CustomTabsIntent
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -57,6 +58,7 @@ class SignInActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        enableEdgeToEdge()
         instance = prefs.instance
         loadConfig()
 
@@ -230,7 +232,7 @@ class SignInActivity : ComponentActivity() {
      */
     private fun continueToApp() {
         if (intent?.getBooleanExtra(EXTRA_THEN_LAUNCH, false) == true) {
-            startActivity(Intent(this, EntryActivity::class.java))
+            startActivity(Intent(this, MainActivity::class.java))
         }
     }
 
