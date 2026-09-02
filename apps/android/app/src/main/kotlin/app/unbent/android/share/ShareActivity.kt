@@ -5,7 +5,6 @@ import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.widget.Toast
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.work.BackoffPolicy
 import androidx.work.Constraints
@@ -29,28 +28,22 @@ import kotlin.concurrent.thread
  */
 class ShareActivity : AppCompatActivity() {
 
-    /**
-     * Registered unconditionally, as the Activity Result API requires — a launcher
-     * registered inside a branch throws when the activity is recreated.
-     */
-    private val signIn = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
-        if (Prefs(this).isSignedIn) handleShare() else finish()
-    }
-
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-
-        if (!Prefs(this).isSignedIn) {
-            // Hold the shared intent across sign-in rather than dropping it: the user
-            // shared something, and losing it because they happened to be signed out is
-            // their file gone for a reason they cannot see.
-            signIn.launch(Intent(this, SignInActivity::class.java))
-            return
-        }
-
         handleShare()
     }
 
+    /**
+     * Stage and enqueue, whether or not this phone is connected yet.
+     *
+     * Deliberately not "sign in, then come back and handle the share". That round trip
+     * cannot survive: the sign-in page opens a Custom Tab in another task, and this
+     * activity is `noHistory` and destroyed the moment it goes to the background — so the
+     * shared file was silently dropped and the user had to share it a second time.
+     *
+     * The files are copied to our cache first, so nothing depends on this activity or on
+     * the sending app still being around. The worker holds the job until a session exists.
+     */
     private fun handleShare() {
         val uris = extractUris(intent)
         val text = intent.getStringExtra(Intent.EXTRA_TEXT)?.trim().orEmpty()
@@ -99,6 +92,15 @@ class ShareActivity : AppCompatActivity() {
                 .build()
 
             WorkManager.getInstance(appContext).enqueue(request)
+
+            // Only after the share is safely staged and queued. Connecting opens a browser
+            // and this activity is already gone by then; the work outlives both.
+            if (!Prefs(appContext).isSignedIn) {
+                appContext.startActivity(
+                    Intent(appContext, SignInActivity::class.java)
+                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+                )
+            }
         }
 
         finish()

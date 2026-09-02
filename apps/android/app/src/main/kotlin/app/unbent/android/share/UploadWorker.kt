@@ -15,6 +15,7 @@ import app.unbent.android.api.UnbentApi
 import app.unbent.android.ui.LaunchActivity
 import java.io.File
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 
 /**
@@ -36,12 +37,26 @@ class UploadWorker(context: Context, params: WorkerParameters) : CoroutineWorker
         val prefs = Prefs(applicationContext)
         val token = prefs.token
         if (token.isNullOrEmpty()) {
-            notify(applicationContext.getString(R.string.sign_in_needed), signInIntent())
-            Staging.clear(applicationContext, jobId)
-            return@withContext Result.failure()
+            /*
+             * Not connected *yet*. A share that arrives before the phone is connected is
+             * held rather than discarded: the user is being sent to the connect page right
+             * now, and their file should be waiting on the other side instead of having to
+             * be shared a second time.
+             *
+             * Waiting here rather than returning `retry` so the upload starts the instant
+             * the token lands — a job in exponential backoff would sit idle for another
+             * interval after the user finished connecting, which reads as the share having
+             * been lost.
+             */
+            val arrived = awaitToken(prefs)
+            if (arrived == null) {
+                Staging.clear(applicationContext, jobId)
+                notify(applicationContext.getString(R.string.sign_in_needed), signInIntent())
+                return@withContext Result.failure()
+            }
         }
 
-        val api = UnbentApi(prefs.instance, token)
+        val api = UnbentApi(prefs.instance, prefs.token ?: return@withContext Result.failure())
         val dir = Staging.jobDir(applicationContext, jobId)
 
         try {
@@ -113,6 +128,23 @@ class UploadWorker(context: Context, params: WorkerParameters) : CoroutineWorker
         )
     }
 
+    /**
+     * Polls for a session while the user connects, up to [CONNECT_WAIT_MS].
+     *
+     * A poll rather than a callback because the token is written by another activity in
+     * this same process, and a broadcast or an observer would be more machinery than a
+     * one-second check for something a person is doing by hand. Returns null on timeout.
+     */
+    private suspend fun awaitToken(prefs: Prefs): String? {
+        val deadline = System.currentTimeMillis() + CONNECT_WAIT_MS
+        while (System.currentTimeMillis() < deadline) {
+            delay(1_000)
+            val token = prefs.token
+            if (!token.isNullOrEmpty()) return token
+        }
+        return null
+    }
+
     private fun notify(text: String, tapAction: PendingIntent?) {
         val manager = applicationContext.getSystemService(NotificationManager::class.java) ?: return
         val notification = NotificationCompat.Builder(applicationContext, UnbentApp.CHANNEL_UPLOADS)
@@ -133,5 +165,8 @@ class UploadWorker(context: Context, params: WorkerParameters) : CoroutineWorker
         const val KEY_FILENAMES = "filenames"
         const val KEY_TYPES = "types"
         private const val MAX_ATTEMPTS = 4
+
+        /** How long a capture waits for the user to finish connecting. */
+        private const val CONNECT_WAIT_MS = 5 * 60 * 1000L
     }
 }
