@@ -359,8 +359,9 @@ who is signed out sign in and come back to find the share still there. Save enqu
 WorkManager job that creates one note, filed and tagged as the sheet said, and streams
 each file to `PUT /api/notes/:id/files?link=1`. The `link=1` flag is what makes the server
 append the markdown link to the note body, since the sheet has no cursor and no copy of
-the body. Several files shared together become one note, and the notification opens it in
-the app. HEIC images are transcoded to JPEG on the phone, because the server's inline-safe
+the body. Several files shared together become one note. The capture's progress is a
+notification rather than a toast, because a toast cannot change or be tapped: "Saving" the
+moment Save is tapped, then "Saved" naming the note, which opens it in the app. HEIC images are transcoded to JPEG on the phone, because the server's inline-safe
 allowlist excludes HEIC and browsers other than Safari cannot render it.
 
 **Pointing it at a dev server.** On the sign-in screen, Change the address to

@@ -90,8 +90,8 @@
     <string name="save_failed">Could not save to Unbent</string>
     <string name="sign_in_needed">Sign in to Unbent, then share again</string>
     <string name="nothing_to_share">Nothing to share</string>
-    <string name="channel_uploads">Captures</string>
-    <string name="channel_uploads_desc">Progress and results for items shared to Unbent</string>
+    <string name="channel_captures">Captures</string>
+    <string name="channel_captures_desc">Progress and results for items shared to Unbent</string>
     <plurals name="capture_photos">
         <item quantity="one">%d photo</item>
         <item quantity="other">%d photos</item>

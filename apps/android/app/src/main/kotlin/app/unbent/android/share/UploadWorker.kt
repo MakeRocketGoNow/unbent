@@ -1,19 +1,11 @@
 package app.unbent.android.share
 
-import android.app.NotificationManager
-import android.app.PendingIntent
 import android.content.Context
-import android.content.Intent
-import androidx.core.app.NotificationCompat
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
 import app.unbent.android.Prefs
-import app.unbent.android.R
-import app.unbent.android.UnbentApp
 import app.unbent.android.api.ApiException
 import app.unbent.android.api.UnbentApi
-import app.unbent.android.ui.MainActivity
-import app.unbent.android.ui.SignInActivity
 import java.io.File
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -36,8 +28,11 @@ class UploadWorker(context: Context, params: WorkerParameters) : CoroutineWorker
         val types = inputData.getStringArray(KEY_TYPES).orEmpty()
         val notebook = inputData.getString(KEY_NOTEBOOK)
         val tags = inputData.getStringArray(KEY_TAGS).orEmpty().toList()
+        val context = applicationContext
 
-        val prefs = Prefs(applicationContext)
+        CaptureNotifications.saving(context, jobId, title)
+
+        val prefs = Prefs(context)
         if (!prefs.isSignedIn) {
             /*
              * No session yet. ShareActivity has already opened the sign-in screen — it can,
@@ -51,14 +46,14 @@ class UploadWorker(context: Context, params: WorkerParameters) : CoroutineWorker
             if (!awaitSession(prefs)) {
                 // Gave up, or never finished signing in. Say so rather than dropping it
                 // silently — the user shared something and deserves to know it did not land.
-                notify(applicationContext.getString(R.string.sign_in_needed), signInIntent())
-                Staging.clear(applicationContext, jobId)
+                CaptureNotifications.signInNeeded(context, jobId, title)
+                Staging.clear(context, jobId)
                 return@withContext Result.failure()
             }
         }
 
         val api = UnbentApi(prefs.instance, prefs.session?.bearer ?: return@withContext Result.failure())
-        val dir = Staging.jobDir(applicationContext, jobId)
+        val dir = Staging.jobDir(context, jobId)
 
         try {
             val noteId = api.createNote(title, body, tags, notebook).id
@@ -72,53 +67,34 @@ class UploadWorker(context: Context, params: WorkerParameters) : CoroutineWorker
                 }
             }
 
-            Staging.clear(applicationContext, jobId)
+            Staging.clear(context, jobId)
 
-            notify(applicationContext.getString(R.string.saved), openNoteIntent(noteId))
+            CaptureNotifications.saved(context, jobId, title, noteId)
             Result.success()
         } catch (e: ApiException) {
             if (e.status == 401) {
                 // The session is gone, not merely unreachable. Retrying cannot fix it, and
                 // the stale token would keep failing silently on every later share.
                 prefs.clearSession()
-                Staging.clear(applicationContext, jobId)
-                notify(applicationContext.getString(R.string.sign_in_needed), signInIntent())
+                Staging.clear(context, jobId)
+                CaptureNotifications.signInNeeded(context, jobId, title)
                 Result.failure()
             } else if (runAttemptCount < MAX_ATTEMPTS) {
                 Result.retry()
             } else {
-                Staging.clear(applicationContext, jobId)
-                notify(applicationContext.getString(R.string.save_failed), null)
+                Staging.clear(context, jobId)
+                CaptureNotifications.failed(context, jobId, title)
                 Result.failure()
             }
         } catch (e: Exception) {
             if (runAttemptCount < MAX_ATTEMPTS) {
                 Result.retry()
             } else {
-                Staging.clear(applicationContext, jobId)
-                notify(applicationContext.getString(R.string.save_failed), null)
+                Staging.clear(context, jobId)
+                CaptureNotifications.failed(context, jobId, title)
                 Result.failure()
             }
         }
-    }
-
-    private fun openNoteIntent(noteId: String): PendingIntent =
-        PendingIntent.getActivity(
-            applicationContext,
-            noteId.hashCode(),
-            MainActivity.openNote(applicationContext, noteId),
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
-        )
-
-    private fun signInIntent(): PendingIntent {
-        val intent = Intent(applicationContext, SignInActivity::class.java)
-            .apply { flags = Intent.FLAG_ACTIVITY_NEW_TASK }
-        return PendingIntent.getActivity(
-            applicationContext,
-            1,
-            intent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
-        )
     }
 
     /**
@@ -135,19 +111,6 @@ class UploadWorker(context: Context, params: WorkerParameters) : CoroutineWorker
             if (prefs.isSignedIn) return true
         }
         return false
-    }
-
-    private fun notify(text: String, tapAction: PendingIntent?) {
-        val manager = applicationContext.getSystemService(NotificationManager::class.java) ?: return
-        val notification = NotificationCompat.Builder(applicationContext, UnbentApp.CHANNEL_UPLOADS)
-            .setSmallIcon(android.R.drawable.stat_sys_upload_done)
-            .setContentTitle(applicationContext.getString(R.string.app_name))
-            .setContentText(text)
-            .setAutoCancel(true)
-            .apply { tapAction?.let { setContentIntent(it) } }
-            .build()
-        // POST_NOTIFICATIONS may be denied; the upload still succeeded, so swallow it.
-        runCatching { manager.notify(id.hashCode(), notification) }
     }
 
     companion object {
