@@ -49,37 +49,6 @@ class ConnectAuth(
         }
     }
 
-    /**
-     * Mints a one-time token from this app's session, for handing to the browser.
-     *
-     * The reverse of [redeem]: there, a browser session becomes an app session; here, the
-     * app's session becomes a browser one. Needed because the app can now sign in without a
-     * browser at all — Android's account sheet — which leaves the browser it opens logged
-     * out, showing a sign-in page to a user who just signed in.
-     */
-    fun mintHandoffToken(sessionToken: String): String? {
-        val req = Request.Builder()
-            .url("$origin/api/auth/one-time-token/generate")
-            .header("Origin", origin)
-            .header("Authorization", "Bearer $sessionToken")
-            .get()
-            .build()
-
-        return runCatching {
-            client.newCall(req).execute().use { res ->
-                if (!res.isSuccessful) return@use null
-                JSONObject(res.body?.string().orEmpty()).optString("token").ifEmpty { null }
-            }
-        }.getOrNull()
-    }
-
-    /** The URL that signs the browser in and then lands on [path]. */
-    fun handoffUrl(token: String, path: String): String {
-        val t = java.net.URLEncoder.encode(token, "UTF-8")
-        val p = java.net.URLEncoder.encode(path, "UTF-8")
-        return "$origin/handoff?token=$t&next=$p"
-    }
-
     private companion object {
         val JSON = "application/json; charset=utf-8".toMediaTypeOrNull()
     }

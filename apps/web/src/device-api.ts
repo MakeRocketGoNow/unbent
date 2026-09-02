@@ -75,19 +75,3 @@ export function mintConnectToken(): Promise<string> {
     .then(json<{ token: string }>)
     .then((r) => r.token);
 }
-
-/**
- * Trades a one-time token for a browser session.
- *
- * The response sets the session cookie, which is the whole point: the native app has a
- * session of its own but the browser it opens does not, and the app's window is that
- * browser. See routes/handoff.tsx.
- */
-export function redeemConnectToken(token: string): Promise<unknown> {
-  return fetch('/api/auth/one-time-token/verify', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    credentials: 'include',
-    body: JSON.stringify({ token }),
-  }).then(json<unknown>);
-}

@@ -12,7 +12,6 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as ConnectRouteImport } from './routes/connect'
 import { Route as DeviceRouteImport } from './routes/device'
-import { Route as HandoffRouteImport } from './routes/handoff'
 import { Route as ImportRouteImport } from './routes/import'
 import { Route as NotesRouteImport } from './routes/notes'
 import { Route as SettingsRouteImport } from './routes/settings'
@@ -41,11 +40,6 @@ const ConnectRoute = ConnectRouteImport.update({
 const DeviceRoute = DeviceRouteImport.update({
   id: '/device',
   path: '/device',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const HandoffRoute = HandoffRouteImport.update({
-  id: '/handoff',
-  path: '/handoff',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ImportRoute = ImportRouteImport.update({
@@ -123,7 +117,6 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/connect': typeof ConnectRoute
   '/device': typeof DeviceRoute
-  '/handoff': typeof HandoffRoute
   '/import': typeof ImportRoute
   '/notes': typeof NotesRouteWithChildren
   '/settings': typeof SettingsRouteWithChildren
@@ -143,7 +136,6 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/connect': typeof ConnectRoute
   '/device': typeof DeviceRoute
-  '/handoff': typeof HandoffRoute
   '/import': typeof ImportRoute
   '/notes/$noteId': typeof NotesNoteIdRoute
   '/settings/export': typeof SettingsExportRoute
@@ -161,7 +153,6 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/connect': typeof ConnectRoute
   '/device': typeof DeviceRoute
-  '/handoff': typeof HandoffRoute
   '/import': typeof ImportRoute
   '/notes': typeof NotesRouteWithChildren
   '/settings': typeof SettingsRouteWithChildren
@@ -183,7 +174,6 @@ export interface FileRouteTypes {
     | '/'
     | '/connect'
     | '/device'
-    | '/handoff'
     | '/import'
     | '/notes'
     | '/settings'
@@ -203,7 +193,6 @@ export interface FileRouteTypes {
     | '/'
     | '/connect'
     | '/device'
-    | '/handoff'
     | '/import'
     | '/notes/$noteId'
     | '/settings/export'
@@ -220,7 +209,6 @@ export interface FileRouteTypes {
     | '/'
     | '/connect'
     | '/device'
-    | '/handoff'
     | '/import'
     | '/notes'
     | '/settings'
@@ -241,7 +229,6 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   ConnectRoute: typeof ConnectRoute
   DeviceRoute: typeof DeviceRoute
-  HandoffRoute: typeof HandoffRoute
   ImportRoute: typeof ImportRoute
   NotesRoute: typeof NotesRouteWithChildren
   SettingsRoute: typeof SettingsRouteWithChildren
@@ -270,13 +257,6 @@ declare module '@tanstack/react-router' {
       path: '/device'
       fullPath: '/device'
       preLoaderRoute: typeof DeviceRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/handoff': {
-      id: '/handoff'
-      path: '/handoff'
-      fullPath: '/handoff'
-      preLoaderRoute: typeof HandoffRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/import': {
@@ -428,7 +408,6 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   ConnectRoute: ConnectRoute,
   DeviceRoute: DeviceRoute,
-  HandoffRoute: HandoffRoute,
   ImportRoute: ImportRoute,
   NotesRoute: NotesRouteWithChildren,
   SettingsRoute: SettingsRouteWithChildren,
