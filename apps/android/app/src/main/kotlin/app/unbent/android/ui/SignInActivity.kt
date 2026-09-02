@@ -5,6 +5,7 @@ import android.net.Uri
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
+import android.util.Log
 import android.view.View
 import androidx.appcompat.app.AppCompatActivity
 import androidx.browser.customtabs.CustomTabsIntent
@@ -12,6 +13,7 @@ import androidx.lifecycle.lifecycleScope
 import app.unbent.android.BuildConfig
 import app.unbent.android.Prefs
 import app.unbent.android.R
+import app.unbent.android.api.ApiException
 import app.unbent.android.api.ConnectAuth
 import app.unbent.android.api.GoogleAuth
 import app.unbent.android.databinding.ActivitySignInBinding
@@ -97,10 +99,20 @@ class SignInActivity : AppCompatActivity() {
                  * account that is not a Google one) gets a message pointing at the button
                  * that will work.
                  */
-                binding.status.setText(
-                    if (GoogleAuth.wasCancelled(e)) R.string.sign_in_intro
-                    else R.string.sign_in_google_failed,
-                )
+                // Logged as well as shown: the on-screen message cannot carry a status
+                // code or a server body, and those are what say why it was refused.
+                Log.w("Unbent", "Google sign-in failed", e)
+                /*
+                 * The server's own message when there is one — "this instance is not open
+                 * for sign-ups" tells the user what actually happened, where a generic
+                 * failure sends them to retry a button that will refuse them again.
+                 */
+                val refusal = (e as? ApiException)?.serverMessage()
+                when {
+                    GoogleAuth.wasCancelled(e) -> binding.status.setText(R.string.sign_in_intro)
+                    refusal != null -> binding.status.text = refusal
+                    else -> binding.status.setText(R.string.sign_in_google_failed)
+                }
             }
         }
     }

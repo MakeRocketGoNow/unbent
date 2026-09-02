@@ -13,7 +13,21 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONObject
 
 /** An API call that failed with a status, so 401 can be handled differently from the rest. */
-class ApiException(val status: Int, message: String) : IOException(message)
+class ApiException(val status: Int, message: String) : IOException(message) {
+    /**
+     * The server's own explanation, pulled out of the JSON body this wraps.
+     *
+     * Worth surfacing because some refusals are deliberate and actionable — a sign-up
+     * allowlist rejecting an address, for instance — and a generic "did not work" sends the
+     * user to retry something that will refuse them again for the same reason.
+     */
+    fun serverMessage(): String? {
+        val body = message?.substringAfter('{', "")?.let { if (it.isEmpty()) null else "{$it" }
+            ?: return null
+        return runCatching { org.json.JSONObject(body).optString("message").ifEmpty { null } }
+            .getOrNull()
+    }
+}
 
 /**
  * The two API calls a capture needs, plus a token check.

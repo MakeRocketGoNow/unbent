@@ -6,6 +6,8 @@ import androidx.credentials.GetCredentialRequest
 import androidx.credentials.exceptions.GetCredentialException
 import com.google.android.libraries.identity.googleid.GetGoogleIdOption
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -52,7 +54,11 @@ class GoogleAuth(
             else -> throw ApiException(0, "Unexpected credential type from Google.")
         }
 
-        return exchange(idToken)
+        /*
+         * The account sheet has to run on the main thread — it is UI — but the exchange is
+         * a blocking HTTP call, which Android refuses there. Only this half moves off.
+         */
+        return withContext(Dispatchers.IO) { exchange(idToken) }
     }
 
     /**
