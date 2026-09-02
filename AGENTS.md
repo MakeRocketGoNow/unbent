@@ -164,8 +164,9 @@ user's real data to test a control; if you do it by accident, put it back and sa
 
 `apps/android` is outside the pnpm workspace — `pnpm -r` silently skips it, so nothing above
 verifies it. It is checked with `cd apps/android && ./gradlew test`, which needs no device.
-The UI rules in this file are about the web app; the Android app has almost no UI by design,
-and adding screens to it is a decision to raise rather than make.
+The UI rules in this file apply to the Android app's Compose screens as much as to the
+web app. The app's editor is the web editor in a WebView, so a change to editing behaviour
+belongs in `apps/web` and reaches both.
 
 ## The local database is disposable — but ask
 

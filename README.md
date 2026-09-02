@@ -57,7 +57,7 @@ than on Workers, and export streams the zip as the client consumes it.
 ```
 apps/web       Vite + React SPA
 apps/api       Hono API on Workers
-apps/android   Kotlin share-sheet app + web shell
+apps/android   Kotlin app: native shell and share sheet, the web editor in a WebView
 packages/shared  zod schemas, frontmatter codec, remark plugins
 packages/enex    ENEX -> Markdown, runtime-agnostic
 ```
@@ -318,7 +318,11 @@ remove another account's objects.
 
 ## Android app
 
-Capturing a photo or a PDF from the phone share sheet, plus an icon that opens the site.
+A native app around the site's own editor. The note list, the note's title and filing,
+settings and the share sheet are Kotlin and Compose; a note's body is the web editor at
+`/embed/notes/:id`, rendered in a WebView. That is the same CodeMirror code the site runs,
+so editing behaves identically in both places, and a self-hosted instance serves the app
+the editor that matches its API.
 
 ```
 cd apps/android
@@ -332,10 +336,20 @@ The build needs a `local.properties` naming the SDK, which Android Studio writes
 sdk.dir=/Users/you/Library/Android/sdk
 ```
 
-**How it signs in.** The same device flow the migrate CLI uses (RFC 8628): the app shows a
-code, opens the approval page in a Custom Tab, and the user approves it in a browser already
-signed in. No password is ever typed into the app. The resulting session token is stored per
-origin in app-private preferences, and sends as `Authorization: Bearer`.
+**How it signs in.** By whatever the instance offers, read from `GET /api/config`: Google
+through Android's account sheet, GitHub through a Custom Tab to `/connect` that comes back
+with a one-time token, or email and password against Better Auth directly. Every path ends
+the same way: the session cookie the response set is stored per origin in app-private
+preferences. Its value goes out as `Authorization: Bearer` from the app's own client, and
+the same cookie is written into the WebView's jar before the editor loads — one sign-in,
+one session, nothing exchanged between the two. A Trusted Web Activity could never do
+this, because Chrome's cookie jar is Chrome's; that is why the previous shell needed a
+handoff on every launch.
+
+**How a note is edited.** The app draws the title, notebook and tags natively and saves
+them itself; the page saves the body. `PATCH /api/notes/:id` is partial, so the two never
+overwrite each other. A small bridge (`apps/web/src/app-bridge.ts`) carries the page's
+save state to the app and lets the app ask the page to flush before the screen closes.
 
 **How a capture works.** The share activity copies the shared files into the app's cache —
 the URI permission dies with the activity, so this cannot wait — and enqueues a WorkManager
@@ -343,23 +357,15 @@ job. That job creates one note and streams each file to
 `PUT /api/notes/:id/files?link=1`. The `link=1` flag is what makes the server append the
 markdown link to the note body, since a share sheet has no cursor and no copy of the body.
 Several files shared together become one note. Captures land unfiled, which the UI calls the
-Inbox. HEIC images are transcoded to JPEG on the phone, because the server's inline-safe
-allowlist excludes HEIC and browsers other than Safari cannot render it.
+Inbox, and the notification opens the note in the app. HEIC images are transcoded to JPEG
+on the phone, because the server's inline-safe allowlist excludes HEIC and browsers other
+than Safari cannot render it.
 
-**Pointing it at a dev server.** Open the app's settings (long-press the icon, or the
-Settings screen) and set the address to `http://10.0.2.2:5173` from an emulator. Cleartext
-is permitted for loopback addresses in debug builds only; see `network_security_config.xml`.
-
-**Full-screen depends on `assetlinks.json`.** The icon opens a Trusted Web Activity — Chrome
-rendering unbent.app with Chrome's cookies, which is what lets Google OAuth work (it refuses
-to run in a WebView). The address bar disappears only when
-`https://unbent.app/.well-known/assetlinks.json` lists the signing certificate of the
-installed build. That file is served from `apps/web/public/`, and currently lists the debug
-keystore only. Add the release fingerprint before distributing a release build:
-
-```
-keytool -list -v -keystore /path/to/release.jks -alias unbent | grep SHA256
-```
+**Pointing it at a dev server.** On the sign-in screen, Change the address to
+`http://10.0.2.2:5173` from an emulator; once signed in the same field is in Settings.
+Cleartext is permitted for loopback addresses in debug builds only (see
+`network_security_config.xml`), and the API trusts that origin in development (see
+`baseURLFor` in `apps/api/src/auth.ts`).
 
 **Release signing.** The keystore lives outside the repo. Point at it from
 `apps/android/local.properties`:
