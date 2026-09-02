@@ -1,4 +1,9 @@
-import { createRootRouteWithContext, Outlet, useNavigate } from '@tanstack/react-router';
+import {
+  createRootRouteWithContext,
+  Outlet,
+  useNavigate,
+  useRouterState,
+} from '@tanstack/react-router';
 import type { QueryClient } from '@tanstack/react-query';
 import { useSession, signOut } from '../auth-client.js';
 import { Login } from '../components/Login.js';
@@ -13,6 +18,33 @@ export const Route = createRootRouteWithContext<RouterContext>()({
 });
 
 /**
+ * Two shells, chosen by where we are.
+ *
+ * Everything under `/embed/` is a page the Android app hosts inside a WebView, with its
+ * own chrome around it: the app draws the title, the filing and the back button, and it
+ * has already put a session cookie in place before loading the page. So that shell has
+ * no topbar and no sign-in gate — an unauthenticated load is reported to the app through
+ * the bridge rather than rendered as a login screen inside someone else's screen.
+ *
+ * Split into two components rather than branched inside one so the session hook runs
+ * only where a session is the layout's business.
+ */
+function RootLayout() {
+  const embedded = useRouterState({
+    select: (s) => s.location.pathname.startsWith('/embed/'),
+  });
+  return embedded ? <EmbedShell /> : <AppShell />;
+}
+
+function EmbedShell() {
+  return (
+    <main className="shell embed">
+      <Outlet />
+    </main>
+  );
+}
+
+/**
  * Session gate and app chrome.
  *
  * The gate is here rather than in a `beforeLoad` guard because the session comes from
@@ -22,7 +54,7 @@ export const Route = createRootRouteWithContext<RouterContext>()({
  * behaviour that a deep link opened while signed out stays in the address bar: signing in
  * then lands on the note that was asked for, with no redirect parameter to carry.
  */
-function RootLayout() {
+function AppShell() {
   const { data: session, isPending } = useSession();
   const navigate = useNavigate();
 

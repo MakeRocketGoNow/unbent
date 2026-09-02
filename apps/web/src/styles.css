@@ -668,6 +668,39 @@ h1 {
   min-height: 0;
 }
 
+/*
+   The shell for a page the Android app hosts in a WebView.
+
+   No padding and no topbar: the app draws the chrome, and every pixel of the page is the
+   note. The same height chain as `.shell.wide`, and for the same reason — the editor pane
+   scrolls inside a definite height rather than the document scrolling away under the
+   app's title field. `dvh` because a WebView that shrinks for the keyboard reports that
+   through the viewport, and `vh` alone would keep the page laid out to the old height
+   underneath it.
+*/
+.shell.embed {
+  max-width: none;
+  padding: 0;
+  height: 100vh;
+  height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* The note body's own column: the attachments strip, then the pane that scrolls. */
+.embedded {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  padding: 0 0.75rem;
+}
+
+/* Room for the docked bar at every width, not only below the phone breakpoint: the bar
+   is always docked here, whatever width the WebView happens to have. */
+.embedded .pane { padding-bottom: 3.5rem; }
+
 .placeholder { margin-top: 3rem; text-align: center; }
 
 .workspace-head {
