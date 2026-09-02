@@ -120,6 +120,64 @@ h1 {
 }
 
 /*
+   The password form, below the provider buttons when an instance offers both.
+
+   The same box as the device-code input rather than a new one: inputs across the app share
+   a border, a radius and a focus treatment, and a login field is not special. Stacked at
+   full width because the column is 22rem, and a label beside a field would squeeze both.
+*/
+.login-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  margin-top: 1.25rem;
+  text-align: left;
+}
+
+.login-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.login-input {
+  padding: 0.55rem 0.7rem;
+  font: inherit;
+  color: var(--fg);
+  background: color-mix(in srgb, var(--fg) 4%, transparent);
+  border: 1px solid var(--border);
+  border-radius: 0.4rem;
+}
+
+.login-input:hover { border-color: color-mix(in srgb, var(--accent) 50%, var(--border)); }
+.login-input:focus { outline: none; border-color: var(--accent); }
+
+/* The submit gets a touch more room than the fields above it, so it reads as the end. */
+.login-form .btn-primary { margin-top: 0.25rem; }
+
+/* The mode toggle is an action on the form, not a field in it, so it sits centred below. */
+.login-switch { align-self: center; }
+
+/* "or" between the providers and the form, so the two do not read as one list. */
+.login-or {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-top: 1.25rem;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+.login-or::before,
+.login-or::after {
+  content: '';
+  flex: 1;
+  border-top: 1px solid var(--border);
+}
+
+/*
    A wordmark and an avatar, at every width.
 
    Centred rather than baseline-aligned because there is no longer a row of text links to

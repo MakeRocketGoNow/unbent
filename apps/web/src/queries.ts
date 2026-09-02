@@ -44,6 +44,7 @@ export const keys = {
   trashCount: () => ['trash', 'count'] as const,
   noteCount: () => ['notes', 'count'] as const,
   search: (q: string, filter: NoteFilter = {}) => ['search', q, filter] as const,
+  config: () => ['config'] as const,
 };
 
 /** Live notes matching a filter, paged. */
@@ -106,6 +107,13 @@ export const attachmentsQuery = (noteId: string) =>
 
 export const tagsQuery = () =>
   queryOptions({ queryKey: keys.tags(), queryFn: () => api.listTags() });
+
+/**
+ * The instance's sign-in methods. Never stale: they change only with a redeploy, and a
+ * login screen that refetched them on every mount would flash its buttons in.
+ */
+export const configQuery = () =>
+  queryOptions({ queryKey: keys.config(), queryFn: () => api.getConfig(), staleTime: Infinity });
 
 export const notebooksQuery = () =>
   queryOptions({ queryKey: keys.notebooks(), queryFn: () => api.listNotebooks() });

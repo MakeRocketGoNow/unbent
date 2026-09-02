@@ -1,4 +1,11 @@
-import type { AttachmentInfo, Note, NoteSort, NoteSummary, SearchResult } from '@unbent/shared';
+import type {
+  AppConfig,
+  AttachmentInfo,
+  Note,
+  NoteSort,
+  NoteSummary,
+  SearchResult,
+} from '@unbent/shared';
 
 /**
  * Thin fetch wrappers over the notes API. Same-origin, so cookies travel automatically.
@@ -125,6 +132,14 @@ export async function restoreNote(id: string): Promise<Note> {
 export async function deleteNotePermanently(id: string): Promise<void> {
   const res = await fetch(`/api/notes/${id}/permanent`, { method: 'DELETE' });
   if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+}
+
+/**
+ * How this instance can be signed in to. Public, so it works before there is a session;
+ * the login screen is what asks.
+ */
+export async function getConfig(): Promise<AppConfig> {
+  return json<AppConfig>(await fetch('/api/config'));
 }
 
 export async function listTags(): Promise<Array<{ name: string; count: number }>> {
