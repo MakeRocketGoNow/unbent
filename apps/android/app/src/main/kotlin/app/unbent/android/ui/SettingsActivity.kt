@@ -41,8 +41,12 @@ class SettingsActivity : AppCompatActivity() {
         }
 
         binding.openButton.setOnClickListener {
-            val intent = CustomTabsIntent.Builder().setShowTitle(true).build()
-            runCatching { intent.launchUrl(this, Uri.parse(Prefs(this).instance)) }
+            /*
+             * Through LaunchActivity, not a Custom Tab. A Custom Tab is a browser window
+             * with an X in the corner — right for a sign-in page you finish and dismiss,
+             * wrong for the app itself, which should have no chrome and nothing to close.
+             */
+            startActivity(Intent(this, LaunchActivity::class.java))
         }
 
         binding.openAfterCapture.isChecked = prefs.openAfterCapture
