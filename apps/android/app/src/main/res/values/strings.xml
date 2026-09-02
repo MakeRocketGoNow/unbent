@@ -10,11 +10,9 @@
     <string name="sign_in_google">Continue with Google</string>
     <string name="sign_in_browser">Continue in browser</string>
     <string name="sign_in_google_failed">Google sign-in did not work. Try the browser instead.</string>
-    <string name="sign_in_open">Try again</string>
     <string name="sign_in_waiting">Connecting…</string>
     <string name="sign_in_done">This phone is connected.</string>
     <string name="sign_in_denied">This phone was not connected.</string>
-    <string name="sign_in_expired">The code expired. Try again.</string>
 
     <string name="instance_label">Unbent address</string>
     <string name="save">Save</string>
