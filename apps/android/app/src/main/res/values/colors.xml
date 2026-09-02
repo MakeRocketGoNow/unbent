@@ -1,7 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- Matches the web app's green. Used for the launcher icon and the TWA splash. -->
+    <!-- Matches the web app's green, so the two do not look like different products. -->
     <color name="unbent_green">#2F6B4F</color>
+    <color name="unbent_green_dark">#12301F</color>
+    <color name="unbent_green_container">#B9E6CB</color>
     <color name="unbent_ink">#1A1A1A</color>
     <color name="white">#FFFFFF</color>
 </resources>

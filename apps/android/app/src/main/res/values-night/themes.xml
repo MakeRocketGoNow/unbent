@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Dark mode inverts which end of the green carries text. The fill is light here, so the
+    label on top of it has to be dark — inheriting the light theme's white would put white
+    on mint.
+-->
+<resources>
+    <style name="Theme.Unbent" parent="Theme.Material3.DayNight.NoActionBar">
+        <item name="colorPrimary">@color/unbent_green</item>
+        <item name="colorOnPrimary">@color/unbent_green_dark</item>
+        <item name="colorPrimaryContainer">@color/unbent_green_container</item>
+        <item name="colorOnPrimaryContainer">@color/white</item>
+        <item name="colorSecondary">@color/unbent_green</item>
+        <item name="colorOnSecondary">@color/unbent_green_dark</item>
+
+        <item name="android:statusBarColor">?attr/colorSurface</item>
+        <item name="android:navigationBarColor">?attr/colorSurface</item>
+        <item name="android:fitsSystemWindows">true</item>
+    </style>
+</resources>

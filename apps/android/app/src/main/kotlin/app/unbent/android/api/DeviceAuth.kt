@@ -101,9 +101,17 @@ class DeviceAuth(
         }
     }
 
-    /** The page the user approves on, pre-filled with the code when the server offers it. */
+    /**
+     * The page the user approves on, pre-filled with the code.
+     *
+     * Built from the origin this client is actually talking to, rather than the server's
+     * own `verification_uri`. Those differ whenever the server's configured address is not
+     * how this device reaches it — an emulator talks to a dev server at 10.0.2.2 while the
+     * server calls itself localhost, and sending the user there opens a page on the phone
+     * itself. Deployed, the two are the same string.
+     */
     fun approvalUrl(grant: DeviceCodeGrant): String =
-        grant.verificationUriComplete ?: "$origin/device?user_code=${grant.userCode}"
+        "$origin/device?user_code=${grant.userCode}"
 
     private fun post(path: String, payload: JSONObject): JSONObject {
         val req = Request.Builder()
