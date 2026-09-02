@@ -13,6 +13,7 @@ import androidx.work.NetworkType
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
 import app.unbent.android.Prefs
+import app.unbent.android.ui.SignInActivity
 import app.unbent.android.R
 import java.util.UUID
 import java.util.concurrent.TimeUnit
@@ -91,6 +92,22 @@ class ShareActivity : AppCompatActivity() {
                 .build()
 
             WorkManager.getInstance(appContext).enqueue(request)
+        }
+
+        /*
+         * Not signed in: open sign-in rather than failing quietly.
+         *
+         * The staging above has already run, so the share is safely on disk and the worker
+         * is waiting for a token — signing in here completes the capture that is already in
+         * flight rather than asking the user to share the same thing twice. Launched from
+         * the activity while it is still foreground, so the system permits it; the worker
+         * deliberately launches nothing itself, since it can run at any time.
+         */
+        if (!Prefs(this).isSignedIn) {
+            startActivity(
+                Intent(this, SignInActivity::class.java)
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+            )
         }
 
         finish()

@@ -38,18 +38,19 @@ class UploadWorker(context: Context, params: WorkerParameters) : CoroutineWorker
         val token = prefs.token
         if (token.isNullOrEmpty()) {
             /*
-             * No session. This should not happen in normal use — opening the app signs it
-             * in — but it can if someone shares to a freshly installed app they have never
-             * opened.
+             * No session yet. ShareActivity has already opened the sign-in screen — it can,
+             * being foreground at the time; a worker can run at any moment and must not
+             * throw a screen over whatever the user is doing.
              *
-             * The staged files are kept and the job waits, so the share is not lost while
-             * the user deals with the notification. Nothing is launched from here: throwing
-             * a sign-in screen over whatever they are doing is the interruption this whole
-             * change exists to remove.
+             * So this simply waits for the token that sign-in is about to write, and the
+             * capture completes on its own. The staged files sit on disk meanwhile, so
+             * nothing is lost if it takes the user a while.
              */
-            notify(applicationContext.getString(R.string.sign_in_needed), signInIntent())
             val arrived = awaitToken(prefs)
             if (arrived == null) {
+                // Gave up, or never finished signing in. Say so rather than dropping it
+                // silently — the user shared something and deserves to know it did not land.
+                notify(applicationContext.getString(R.string.sign_in_needed), signInIntent())
                 Staging.clear(applicationContext, jobId)
                 return@withContext Result.failure()
             }
