@@ -54,6 +54,10 @@ export function offeredProviders(env: Env): AuthProvider[] {
  * Tailscale (MagicDNS / 100.x). OAuth redirect_uri is derived from the request Host,
  * so a sign-in from the public Tailscale URL comes back there instead of localhost.
  * Production keeps a fixed APP_URL.
+ *
+ * These are also the origins Better Auth trusts, so the Android emulator's alias for
+ * the host machine has to be here: the app sends it as `Origin`, and without it every
+ * sign-in from an emulator is refused as CSRF with "Invalid origin".
  */
 function baseURLFor(env: Env) {
   if (!env.APP_URL.startsWith('http://localhost')) return env.APP_URL;
@@ -61,6 +65,7 @@ function baseURLFor(env: Env) {
     allowedHosts: [
       'localhost:5173',
       '127.0.0.1:5173',
+      '10.0.2.2:5173',
       '*.ts.net:5173',
       '100.*.*.*:5173',
     ],
