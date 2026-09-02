@@ -72,10 +72,23 @@ class UploadWorker(context: Context, params: WorkerParameters) : CoroutineWorker
             }
 
             Staging.clear(applicationContext, jobId)
-            notify(
-                applicationContext.getString(R.string.saved),
-                openNoteIntent(prefs.instance, noteId),
-            )
+
+            val open = openNoteIntent(prefs.instance, noteId)
+            notify(applicationContext.getString(R.string.saved), open)
+
+            /*
+             * Open the note it just made, so the title and notebook are one tap away while
+             * the user still remembers why they saved it. The capture itself stayed
+             * instant; this is the part that makes it findable later.
+             *
+             * A full-screen intent rather than startActivity: Android 10+ blocks a
+             * background app from launching an activity outright, and this worker is by
+             * definition running after the share screen has gone. The notification is
+             * posted either way, so a device that suppresses this still has the link.
+             */
+            if (prefs.openAfterCapture) {
+                runCatching { open.send() }
+            }
             Result.success()
         } catch (e: ApiException) {
             if (e.status == 401) {

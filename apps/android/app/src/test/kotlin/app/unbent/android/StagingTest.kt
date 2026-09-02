@@ -73,13 +73,60 @@ class StagingTest {
     fun `falls back to a dated title for a multi-file share`() {
         val when2 = Calendar.getInstance().apply { set(2026, 8, 1, 14, 30, 0) }.time
         val staged = listOf(staged("a.jpg"), staged("b.jpg"))
-        assertEquals("Capture 2026-09-01 14:30", Staging.deriveTitle(null, staged, when2))
+        assertEquals("Capture 2026-09-01 14:30", Staging.deriveTitle(null, staged, now = when2))
     }
 
     @Test
     fun `falls back to a dated title when nothing was shared but text`() {
         val when2 = Date(0)
-        assertTrue(Staging.deriveTitle("", emptyList(), when2).startsWith("Capture "))
+        assertTrue(Staging.deriveTitle("", emptyList(), now = when2).startsWith("Capture "))
+    }
+
+    @Test
+    fun `titles a shared link by its host, which is what a person recognises`() {
+        assertEquals(
+            "nytimes.com",
+            Staging.deriveTitle(null, emptyList(), "https://www.nytimes.com/2026/09/01/a-slug"),
+        )
+    }
+
+    @Test
+    fun `credits the app a link came from`() {
+        assertEquals(
+            "nytimes.com — via Chrome",
+            Staging.deriveTitle(null, emptyList(), "https://nytimes.com/x", "Chrome"),
+        )
+    }
+
+    @Test
+    fun `titles plain text by its first line`() {
+        assertEquals(
+            "Pick up prescription",
+            Staging.deriveTitle(null, emptyList(), "Pick up prescription\nand call the vet"),
+        )
+    }
+
+    @Test
+    fun `names the source app rather than only a timestamp`() {
+        val when2 = Calendar.getInstance().apply { set(2026, 8, 2, 14, 30, 0) }.time
+        assertEquals(
+            "Photos — 2026-09-02 14:30",
+            Staging.deriveTitle(null, listOf(staged("a.jpg"), staged("b.jpg")), null, "Photos", when2),
+        )
+    }
+
+    @Test
+    fun `the subject still wins over everything else`() {
+        assertEquals(
+            "Lab results",
+            Staging.deriveTitle("Lab results", emptyList(), "https://example.com", "Chrome"),
+        )
+    }
+
+    @Test
+    fun `finds a host inside surrounding text, and nothing when there is no url`() {
+        assertEquals("example.com", Staging.hostOf("look at https://example.com/x please"))
+        assertEquals(null, Staging.hostOf("no link here at all"))
     }
 
     private fun staged(name: String) = StagedFile(File("/tmp/$name"), name, "application/octet-stream")

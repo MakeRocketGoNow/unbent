@@ -45,6 +45,11 @@ class SettingsActivity : AppCompatActivity() {
             runCatching { intent.launchUrl(this, Uri.parse(Prefs(this).instance)) }
         }
 
+        binding.openAfterCapture.isChecked = prefs.openAfterCapture
+        binding.openAfterCapture.setOnCheckedChangeListener { _, checked ->
+            Prefs(this).openAfterCapture = checked
+        }
+
         render()
     }
 

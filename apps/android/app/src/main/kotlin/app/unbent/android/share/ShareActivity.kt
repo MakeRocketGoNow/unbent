@@ -55,6 +55,19 @@ class ShareActivity : AppCompatActivity() {
             return
         }
 
+        /*
+         * Which app this came from, for the title. `referrer` is the sending package when
+         * the share sheet supplies one; its label is what the user would recognise
+         * ("Photos", not "com.google.android.apps.photos").
+         */
+        val sourceApp = referrer?.host?.let { pkg ->
+            runCatching {
+                packageManager.getApplicationLabel(
+                    packageManager.getApplicationInfo(pkg, 0),
+                ).toString()
+            }.getOrNull()
+        }
+
         val jobId = UUID.randomUUID().toString()
         Toast.makeText(this, R.string.saving, Toast.LENGTH_SHORT).show()
 
@@ -67,7 +80,7 @@ class ShareActivity : AppCompatActivity() {
         val appContext = applicationContext
         thread {
             val staged = Staging.stageAll(appContext, uris, jobId)
-            val title = Staging.deriveTitle(subject, staged)
+            val title = Staging.deriveTitle(subject, staged, text, sourceApp)
 
             val request = OneTimeWorkRequestBuilder<UploadWorker>()
                 .setConstraints(

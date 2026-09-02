@@ -157,14 +157,52 @@ object Staging {
      * name, otherwise the date — because an untitled note is much harder to find later than
      * one named for the afternoon it arrived.
      */
-    fun deriveTitle(subject: String?, staged: List<StagedFile>, now: Date = Date()): String {
-        val cleaned = subject?.trim().orEmpty()
-        if (cleaned.isNotEmpty()) return cleaned.take(200)
+    fun deriveTitle(
+        subject: String?,
+        staged: List<StagedFile>,
+        text: String? = null,
+        sourceApp: String? = null,
+        now: Date = Date(),
+    ): String {
+        // What the sending app called it. Mail and most browsers set this, and it is
+        // almost always the best title available.
+        subject?.trim()?.takeIf { it.isNotEmpty() }?.let { return it.take(200) }
+
+        // A lone file: its own name, which the user chose or the camera dated.
         if (staged.size == 1) {
             val stem = staged[0].filename.substringBeforeLast('.', staged[0].filename)
             if (stem.isNotEmpty()) return stem.take(200)
         }
-        return "Capture ${SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.US).format(now)}"
+
+        val body = text?.trim().orEmpty()
+        if (body.isNotEmpty()) {
+            /*
+             * A shared link, which arrives as bare text. The host is what someone would
+             * recognise a month later — the full URL is unreadable in a list, and its
+             * path is usually a slug or an id.
+             */
+            hostOf(body)?.let { host ->
+                return if (sourceApp.isNullOrEmpty()) host else "$host — via $sourceApp".take(200)
+            }
+            // Plain text: its first line, which is how a note would title itself anyway.
+            body.lineSequence().firstOrNull()?.trim()?.takeIf { it.isNotEmpty() }
+                ?.let { return it.take(200) }
+        }
+
+        /*
+         * Nothing to go on. The app it came from beats a bare timestamp — "Photos" or
+         * "Chrome" is at least a hint about what this was.
+         */
+        val stamp = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.US).format(now)
+        return if (sourceApp.isNullOrEmpty()) "Capture $stamp" else "$sourceApp — $stamp".take(200)
+    }
+
+    /** The host of the first URL in some text, without the www. Null when there is none. */
+    fun hostOf(text: String): String? {
+        val match = Regex("""https?://\S+""").find(text) ?: return null
+        return runCatching {
+            java.net.URI(match.value).host?.removePrefix("www.")?.takeIf { it.isNotEmpty() }
+        }.getOrNull()
     }
 
     fun jobDir(context: Context, jobId: String): File =

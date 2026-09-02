@@ -18,6 +18,8 @@
 
     <string name="instance_label">Unbent address</string>
     <string name="save">Save</string>
+    <string name="open_after_capture">Open notes after saving</string>
+    <string name="open_after_capture_hint">Shared items save straight to your inbox. Opening the note lets you name and file it while you remember what it was.</string>
     <string name="sign_out">Sign out</string>
     <string name="signed_in_as">Signed in</string>
     <string name="signed_out">Not signed in</string>
