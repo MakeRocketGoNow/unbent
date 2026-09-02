@@ -158,7 +158,12 @@ class SignInActivity : AppCompatActivity() {
      */
     private fun continueToApp() {
         if (intent?.getBooleanExtra(EXTRA_THEN_LAUNCH, false) == true) {
-            startActivity(Intent(this, LaunchActivity::class.java))
+            /*
+             * Back through EntryActivity, not straight to the web view. Entry is where the
+             * app's session is handed to the browser; going direct showed the site with no
+             * browser cookie, so a user who had just signed in landed on a login page.
+             */
+            startActivity(Intent(this, EntryActivity::class.java))
         }
     }
 
