@@ -351,15 +351,17 @@ them itself; the page saves the body. `PATCH /api/notes/:id` is partial, so the 
 overwrite each other. A small bridge (`apps/web/src/app-bridge.ts`) carries the page's
 save state to the app and lets the app ask the page to flush before the screen closes.
 
-**How a capture works.** The share activity copies the shared files into the app's cache —
-the URI permission dies with the activity, so this cannot wait — and enqueues a WorkManager
-job. That job creates one note and streams each file to
-`PUT /api/notes/:id/files?link=1`. The `link=1` flag is what makes the server append the
-markdown link to the note body, since a share sheet has no cursor and no copy of the body.
-Several files shared together become one note. Captures land unfiled, which the UI calls the
-Inbox, and the notification opens the note in the app. HEIC images are transcoded to JPEG
-on the phone, because the server's inline-safe allowlist excludes HEIC and browsers other
-than Safari cannot render it.
+**How a capture works.** Sharing to Unbent opens a sheet over the sending app with the
+title, the notebook and the tags, prefilled so that the lazy case is one tap on Save. The
+shared files are copied into the app's cache the moment the sheet opens — the URI
+permission dies with the activity, so this cannot wait — which is also what lets someone
+who is signed out sign in and come back to find the share still there. Save enqueues a
+WorkManager job that creates one note, filed and tagged as the sheet said, and streams
+each file to `PUT /api/notes/:id/files?link=1`. The `link=1` flag is what makes the server
+append the markdown link to the note body, since the sheet has no cursor and no copy of
+the body. Several files shared together become one note, and the notification opens it in
+the app. HEIC images are transcoded to JPEG on the phone, because the server's inline-safe
+allowlist excludes HEIC and browsers other than Safari cannot render it.
 
 **Pointing it at a dev server.** On the sign-in screen, Change the address to
 `http://10.0.2.2:5173` from an emulator; once signed in the same field is in Settings.
