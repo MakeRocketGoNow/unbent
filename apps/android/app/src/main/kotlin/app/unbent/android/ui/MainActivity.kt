@@ -143,16 +143,24 @@ private fun App(
             NotesScreen(
                 api = api,
                 onOpen = { id -> nav.navigate("note/$id") },
+                onOpenNew = { id -> nav.navigate("note/$id?new=true") },
                 onSettings = { nav.navigate("settings") },
                 onUnauthorized = onSignedOut,
             )
         }
         composable(
-            "note/{id}",
-            arguments = listOf(navArgument("id") { type = NavType.StringType }),
+            "note/{id}?new={new}",
+            arguments = listOf(
+                navArgument("id") { type = NavType.StringType },
+                navArgument("new") {
+                    type = NavType.BoolType
+                    defaultValue = false
+                },
+            ),
         ) { entry ->
             NoteScreen(
                 noteId = entry.arguments?.getString("id").orEmpty(),
+                focusTitle = entry.arguments?.getBoolean("new") ?: false,
                 api = api,
                 prefs = prefs,
                 onBack = { nav.popBackStack() },

@@ -71,6 +71,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
@@ -119,6 +121,8 @@ import kotlinx.coroutines.withTimeoutOrNull
 fun NoteScreen(
     noteId: String,
     api: UnbentApi,
+    /** A note just created: the title takes focus, because a new note starts with its name. */
+    focusTitle: Boolean = false,
     prefs: Prefs,
     onBack: () -> Unit,
     onUnauthorized: () -> Unit,
@@ -228,7 +232,7 @@ fun NoteScreen(
                 }
 
                 else -> {
-                    TitleField(state.title, onChange = state::changeTitle)
+                    TitleField(state.title, onChange = state::changeTitle, takeFocus = focusTitle)
                     FilingRow(state.notebook, state.tags, onClick = { showFiling = true })
                     HorizontalDivider()
                     NoteWebView(
@@ -296,8 +300,10 @@ private fun SaveStatus(header: String, body: String) {
 
 /** The title: a bare field with the size of a heading, as on the web. No border, no label. */
 @Composable
-private fun TitleField(value: String, onChange: (String) -> Unit) {
+private fun TitleField(value: String, onChange: (String) -> Unit, takeFocus: Boolean) {
     val style = MaterialTheme.typography.titleLarge.copy(color = MaterialTheme.colorScheme.onSurface)
+    val focus = remember { FocusRequester() }
+    LaunchedEffect(takeFocus) { if (takeFocus) focus.requestFocus() }
     BasicTextField(
         value = value,
         onValueChange = onChange,
@@ -305,7 +311,10 @@ private fun TitleField(value: String, onChange: (String) -> Unit) {
         singleLine = true,
         cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
         keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences, imeAction = ImeAction.Done),
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 12.dp)
+            .focusRequester(focus),
         decorationBox = { inner ->
             Box {
                 if (value.isEmpty()) {

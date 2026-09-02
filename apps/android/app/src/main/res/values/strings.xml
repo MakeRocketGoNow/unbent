@@ -35,6 +35,25 @@
     <string name="untitled">Untitled</string>
     <string name="inbox">Inbox</string>
     <string name="no_notes">No notes yet.</string>
+    <string name="no_notes_filtered">No notes here.</string>
+    <string name="no_matches">No matches.</string>
+    <string name="matched_in">in %1$s</string>
+    <string name="search">Search</string>
+    <string name="search_hint">Search notes…</string>
+    <string name="close_search">Close search</string>
+    <string name="clear">Clear</string>
+    <string name="filters">Filters</string>
+    <string name="all_notes">All notes</string>
+    <string name="new_note">New note</string>
+    <string name="sort_label">Sort</string>
+    <string name="sort_updated">Recently updated</string>
+    <string name="sort_newest">Newest first</string>
+    <string name="sort_oldest">Oldest first</string>
+    <string name="sort_title_az">Title A–Z</string>
+    <string name="sort_title_za">Title Z–A</string>
+    <string name="just_now">just now</string>
+    <string name="minutes_ago">%1$dm ago</string>
+    <string name="hours_ago">%1$dh ago</string>
     <string name="load_failed">Couldn\'t load. %1$s</string>
     <string name="note_missing">That note doesn\'t exist, or was deleted.</string>
     <string name="note_delete">Delete</string>
@@ -68,4 +87,8 @@
     <string name="nothing_to_share">Nothing to share</string>
     <string name="channel_uploads">Captures</string>
     <string name="channel_uploads_desc">Progress and results for items shared to Unbent</string>
+    <plurals name="notes_count">
+        <item quantity="one">%d note</item>
+        <item quantity="other">%d notes</item>
+    </plurals>
 </resources>

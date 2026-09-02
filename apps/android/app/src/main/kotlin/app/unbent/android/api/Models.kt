@@ -18,6 +18,13 @@ internal val ApiJson = Json {
     encodeDefaults = false
 }
 
+/**
+ * The `notebook` filter value meaning "notes in no notebook", which the UI calls the Inbox.
+ * A sentinel rather than an empty string so an absent filter and this one stay distinct;
+ * the same string as `UNFILED` in schemas.ts.
+ */
+const val UNFILED = "[unfiled]"
+
 /** `GET /api/config`: the sign-in methods an instance offers, in display order. */
 @Serializable
 data class AppConfig(val providers: List<String> = emptyList()) {
