@@ -36,21 +36,6 @@
             android:layout_marginTop="8dp"
             android:text="@string/save" />
 
-        <com.google.android.material.materialswitch.MaterialSwitch
-            android:id="@+id/openAfterCapture"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:minHeight="48dp"
-            android:layout_marginTop="24dp"
-            android:text="@string/open_after_capture" />
-
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="@string/open_after_capture_hint"
-            android:textAppearance="?attr/textAppearanceBodySmall"
-            android:textColor="?android:attr/textColorSecondary" />
-
         <TextView
             android:id="@+id/status"
             android:layout_width="match_parent"

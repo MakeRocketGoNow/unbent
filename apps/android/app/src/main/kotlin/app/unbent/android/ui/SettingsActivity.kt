@@ -49,11 +49,6 @@ class SettingsActivity : AppCompatActivity() {
             startActivity(Intent(this, LaunchActivity::class.java))
         }
 
-        binding.openAfterCapture.isChecked = prefs.openAfterCapture
-        binding.openAfterCapture.setOnCheckedChangeListener { _, checked ->
-            Prefs(this).openAfterCapture = checked
-        }
-
         render()
     }
 

@@ -35,19 +35,6 @@ class Prefs(context: Context) {
 
     val isSignedIn: Boolean get() = !token.isNullOrEmpty()
 
-    /**
-     * Whether a finished capture opens the note it made.
-     *
-     * On by default. A share is deliberately fire-and-forget — no title prompt, no notebook
-     * picker — which is right at the moment of capture and wrong a week later, when the note
-     * is called "Capture 2026-09-02 14:30" and nobody remembers what it was. Opening it puts
-     * naming and filing one tap away while the reason is still fresh, without making anyone
-     * stop to type before the thing is saved.
-     */
-    var openAfterCapture: Boolean
-        get() = prefs.getBoolean(KEY_OPEN_AFTER, true)
-        set(value) = prefs.edit { putBoolean(KEY_OPEN_AFTER, value) }
-
     fun clearToken() {
         token = null
     }
@@ -58,7 +45,6 @@ class Prefs(context: Context) {
         private const val NAME = "unbent"
         private const val KEY_INSTANCE = "instance"
         private const val KEY_TOKEN_PREFIX = "token:"
-        private const val KEY_OPEN_AFTER = "openAfterCapture"
 
         /**
          * Trims a typed address to a bare origin.
