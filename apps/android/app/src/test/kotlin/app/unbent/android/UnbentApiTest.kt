@@ -1,19 +1,19 @@
 package app.unbent.android
 
 import app.unbent.android.api.ApiException
+import app.unbent.android.api.Filing
 import app.unbent.android.api.UnbentApi
-import java.io.File
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
-import org.junit.runner.RunWith
-import org.robolectric.RobolectricTestRunner
 import org.junit.rules.TemporaryFolder
 
 /**
@@ -21,14 +21,9 @@ import org.junit.rules.TemporaryFolder
  *
  * Worth pinning because every one of these was a requirement discovered in the server: the
  * bearer header, the `Origin` header Better Auth's CSRF check demands, the percent-encoded
- * `X-Filename`, and the `link=1` flag without which a shared file is stored but invisible
- * in the note.
+ * `X-Filename`, the `link=1` flag without which a shared file is stored but invisible in
+ * the note, and a PATCH that names only the fields it means to change.
  */
-/*
- * Robolectric, only for a real org.json: the unit-test JVM stubs Android's bundled
- * copy to return null from every method, and this code parses real API responses.
- */
-@RunWith(RobolectricTestRunner::class)
 class UnbentApiTest {
 
     @get:Rule val temp = TemporaryFolder()
@@ -48,11 +43,13 @@ class UnbentApiTest {
         server.shutdown()
     }
 
-    @Test
-    fun `createNote posts the title and returns the id`() {
-        server.enqueue(MockResponse().setResponseCode(201).setBody("""{"id":"note-1","title":"Receipt"}"""))
+    private val note = """{"id":"note-1","title":"Receipt","body":"","updatedAt":1,"createdAt":1,"tags":[],"notebook":null}"""
 
-        assertEquals("note-1", api.createNote("Receipt", "some text"))
+    @Test
+    fun `createNote posts the title and returns the note`() {
+        server.enqueue(MockResponse().setResponseCode(201).setBody(note))
+
+        assertEquals("note-1", api.createNote("Receipt", "some text").id)
 
         val req = server.takeRequest()
         assertEquals("POST", req.method)
@@ -65,7 +62,78 @@ class UnbentApiTest {
         assertTrue(body.contains("\"title\":\"Receipt\""))
         assertTrue(body.contains("\"body\":\"some text\""))
         // Notebook is deliberately absent: captures land in the inbox (unfiled).
-        assertTrue(!body.contains("notebook"))
+        assertFalse(body.contains("notebook"))
+    }
+
+    @Test
+    fun `createNote files and tags the note when asked to`() {
+        server.enqueue(MockResponse().setResponseCode(201).setBody(note))
+
+        api.createNote("Receipt", tags = listOf("Invoice", "2026"), notebook = "Taxes")
+
+        val body = server.takeRequest().body.readUtf8()
+        assertTrue(body.contains("\"tags\":[\"Invoice\",\"2026\"]"))
+        assertTrue(body.contains("\"notebook\":\"Taxes\""))
+    }
+
+    @Test
+    fun `updateNote sends only the fields it was given`() {
+        server.enqueue(MockResponse().setResponseCode(200).setBody(note))
+
+        api.updateNote("note-1", title = "Renamed")
+
+        val req = server.takeRequest()
+        assertEquals("PATCH", req.method)
+        assertEquals("/api/notes/note-1", req.path)
+        // The body belongs to the WebView; a title edit must not carry a stale copy of it.
+        assertEquals("""{"title":"Renamed"}""", req.body.readUtf8())
+    }
+
+    @Test
+    fun `updateNote says Inbox with an explicit null, and leaves the notebook alone otherwise`() {
+        server.enqueue(MockResponse().setResponseCode(200).setBody(note))
+        server.enqueue(MockResponse().setResponseCode(200).setBody(note))
+
+        api.updateNote("note-1", filing = Filing.INBOX)
+        assertEquals("""{"notebook":null}""", server.takeRequest().body.readUtf8())
+
+        api.updateNote("note-1", tags = emptyList())
+        assertEquals("""{"tags":[]}""", server.takeRequest().body.readUtf8())
+    }
+
+    @Test
+    fun `listNotes passes the cursor and filters through as query parameters`() {
+        server.enqueue(
+            MockResponse().setResponseCode(200).setBody(
+                """{"items":[{"id":"a","title":"A","updatedAt":2,"createdAt":1}],"cursor":"next","total":10}""",
+            ),
+        )
+
+        val page = api.listNotes(cursor = "c1", notebook = "Taxes", tag = "Invoice", sort = "title")
+
+        val req = server.takeRequest()
+        assertEquals("/api/notes?cursor=c1&notebook=Taxes&tag=Invoice&sort=title&limit=50", req.path)
+        assertEquals("a", page.items.single().id)
+        assertEquals("next", page.cursor)
+        assertEquals(10, page.total)
+    }
+
+    @Test
+    fun `a field the server adds later does not break decoding`() {
+        server.enqueue(
+            MockResponse().setResponseCode(200)
+                .setBody("""{"id":"n","title":"T","body":"b","updatedAt":1,"createdAt":1,"brandNew":true}"""),
+        )
+        assertEquals("b", api.getNote("n").body)
+    }
+
+    @Test
+    fun `me reports no user rather than failing when the session is gone`() {
+        server.enqueue(MockResponse().setResponseCode(200).setBody("""{"user":null}"""))
+        assertNull(api.me())
+
+        server.enqueue(MockResponse().setResponseCode(200).setBody("""{"user":{"id":"u1","email":"a@b.c","name":"A"}}"""))
+        assertEquals("a@b.c", api.me()?.email)
     }
 
     @Test
@@ -95,15 +163,6 @@ class UnbentApiTest {
     }
 
     @Test
-    fun `checkToken reports a dead session rather than throwing`() {
-        server.enqueue(MockResponse().setResponseCode(401).setBody("""{"error":"Unauthorized"}"""))
-        assertEquals(false, api.checkToken())
-
-        server.enqueue(MockResponse().setResponseCode(200).setBody("""{"notes":[]}"""))
-        assertEquals(true, api.checkToken())
-    }
-
-    @Test
     fun `a failed upload surfaces its status so 401 can be told apart`() {
         server.enqueue(MockResponse().setResponseCode(401).setBody("""{"error":"Unauthorized"}"""))
 
@@ -117,7 +176,7 @@ class UnbentApiTest {
     }
 
     @Test
-    fun `a 413 from an oversized file is reported, not retried blindly`() {
+    fun `the server's own explanation is readable from a refusal`() {
         server.enqueue(MockResponse().setResponseCode(413).setBody("""{"error":"Attachment exceeds 95MB limit"}"""))
 
         val file = temp.newFile("big.bin").apply { writeText("x") }
@@ -126,7 +185,7 @@ class UnbentApiTest {
             fail("expected ApiException")
         } catch (e: ApiException) {
             assertEquals(413, e.status)
-            assertTrue(e.message!!.contains("95MB"))
+            assertEquals("Attachment exceeds 95MB limit", e.serverMessage())
         }
     }
 }

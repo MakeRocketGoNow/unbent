@@ -42,7 +42,7 @@ class ConnectAuth(
         client.newCall(req).execute().use { res ->
             val text = res.body?.string().orEmpty()
             if (!res.isSuccessful) {
-                throw ApiException(res.code, "Could not connect: ${res.code} ${text.take(200)}")
+                throw ApiException(res.code, "Could not connect: ${res.code}", text)
             }
             return SessionCookie.fromSetCookie(res.headers("Set-Cookie"))
                 ?: throw ApiException(res.code, "Unexpected response while connecting.")

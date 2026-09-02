@@ -81,7 +81,7 @@ class GoogleAuth(
         client.newCall(req).execute().use { res ->
             val text = res.body?.string().orEmpty()
             if (!res.isSuccessful) {
-                throw ApiException(res.code, "Google sign-in failed: ${res.code} ${text.take(200)}")
+                throw ApiException(res.code, "Google sign-in failed: ${res.code}", text)
             }
             // The credential is the cookie the response set, not the token in its body: see
             // SessionCookie for why one string has to serve both OkHttp and the WebView.

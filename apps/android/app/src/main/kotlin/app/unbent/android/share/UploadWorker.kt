@@ -58,7 +58,7 @@ class UploadWorker(context: Context, params: WorkerParameters) : CoroutineWorker
         val dir = Staging.jobDir(applicationContext, jobId)
 
         try {
-            val noteId = api.createNote(title, body)
+            val noteId = api.createNote(title, body).id
 
             names.forEachIndexed { i, name ->
                 val file = File(dir, name)
