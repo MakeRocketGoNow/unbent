@@ -2,6 +2,8 @@ package app.unbent.android.ui
 
 import android.content.Intent
 import android.net.Uri
+import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Bundle
 import android.view.View
 import androidx.appcompat.app.AppCompatActivity
@@ -54,6 +56,20 @@ class SignInActivity : AppCompatActivity() {
         binding.googleButton.visibility =
             if (GoogleAuth.isConfigured(BuildConfig.GOOGLE_WEB_CLIENT_ID)) View.VISIBLE else View.GONE
 
+        /*
+         * Ask for notifications here rather than at launch. This screen stays up, so the
+         * dialog has somewhere to sit; the launcher finishes immediately and would be gone
+         * before the user could answer. Android 13+ needs it before a capture can report
+         * success or failure, and a capture that reports neither looks like one that was
+         * silently dropped.
+         */
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) !=
+            PackageManager.PERMISSION_GRANTED
+        ) {
+            requestPermissions(arrayOf(android.Manifest.permission.POST_NOTIFICATIONS), 1)
+        }
+
         // Launched by the deep link itself, when the activity was not already running.
         consume(intent)
     }
@@ -71,6 +87,7 @@ class SignInActivity : AppCompatActivity() {
                 Prefs(this@SignInActivity).token = session
                 binding.status.setText(R.string.sign_in_done)
                 setResult(RESULT_OK)
+                continueToApp()
                 finish()
             }.onFailure { e ->
                 /*
@@ -112,12 +129,25 @@ class SignInActivity : AppCompatActivity() {
                 Prefs(this@SignInActivity).token = session
                 binding.status.setText(R.string.sign_in_done)
                 setResult(RESULT_OK)
+                continueToApp()
                 finish()
             }.onFailure { e ->
                 binding.status.text = e.message ?: getString(R.string.save_failed)
             }
         }
         return true
+    }
+
+    /**
+     * Reopens the app when sign-in interrupted a launch.
+     *
+     * LaunchActivity finishes itself before showing this screen, so without this the user
+     * ends up back at the home screen after signing in rather than in the app they opened.
+     */
+    private fun continueToApp() {
+        if (intent?.getBooleanExtra(EXTRA_THEN_LAUNCH, false) == true) {
+            startActivity(Intent(this, LaunchActivity::class.java))
+        }
     }
 
     private fun openConnectPage() {
@@ -128,5 +158,10 @@ class SignInActivity : AppCompatActivity() {
         }.onFailure {
             binding.status.text = getString(R.string.save_failed)
         }
+    }
+
+    companion object {
+        /** Set when sign-in replaced a launch, so success reopens the app. */
+        const val EXTRA_THEN_LAUNCH = "thenLaunch"
     }
 }

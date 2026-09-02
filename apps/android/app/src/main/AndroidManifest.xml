@@ -38,12 +38,16 @@
             Full-screen (no address bar) depends on the assetlinks.json served from
             unbent.app matching this app's signing certificate.
         -->
+        <!--
+            The icon points at EntryActivity, which decides whether to sign in first and
+            then hands off. LaunchActivity cannot make that choice itself: its parent opens
+            the website in onCreate, so anything conditional there is covered a moment later.
+        -->
         <activity
-            android:name=".ui.LaunchActivity"
+            android:name=".ui.EntryActivity"
             android:exported="true"
             android:label="@string/app_name"
-            android:launchMode="singleTask"
-            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|uiMode">
+            android:theme="@style/Theme.Unbent">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
@@ -53,6 +57,13 @@
                 android:name="android.app.shortcuts"
                 android:resource="@xml/shortcuts" />
         </activity>
+
+        <activity
+            android:name=".ui.LaunchActivity"
+            android:exported="false"
+            android:label="@string/app_name"
+            android:launchMode="singleTask"
+            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|uiMode" />
 
         <!--
             The share-sheet entry. Translucent and finishes immediately: it stages the
@@ -99,7 +110,7 @@
         <activity
             android:name=".ui.SignInActivity"
             android:exported="true"
-            android:launchMode="singleTask"
+            android:launchMode="singleTop"
             android:label="@string/sign_in_title">
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
