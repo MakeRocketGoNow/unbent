@@ -144,8 +144,17 @@ pnpm release
 
 ## Auth
 
-Better Auth with OAuth only — Google and GitHub. A provider without configured credentials
-is simply not offered, so local development works with none of them set.
+Better Auth. Google and GitHub through OAuth, and email-and-password where an instance
+turns it on with `AUTH_PASSWORD=1`. A social provider without configured credentials is
+simply not offered, so local development works with none of them set.
+
+Password sign-in exists for self-hosted instances: OAuth needs a callback URL registered
+with each provider per deployment, which cannot be done on anyone else's behalf, while a
+password works anywhere. unbent.app leaves it off. `ALLOWED_EMAILS` gates account creation
+whatever the method.
+
+`GET /api/config` reports which methods an instance offers, in display order, so the login
+screen and the Android app render from it rather than guessing.
 
 Sessions are cookie-based and same-origin. Better Auth enforces CSRF by requiring a trusted
 `Origin`, so API clients outside the browser must send one.

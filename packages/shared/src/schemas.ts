@@ -44,6 +44,21 @@ export const notebookNameSchema = z.string().trim().min(1).max(MAX_TAG_LENGTH);
  */
 export const UNFILED = '[unfiled]';
 
+/**
+ * Every way an instance can offer to sign in.
+ *
+ * `password` is the one that needs nothing registered with a third party. OAuth needs a
+ * callback URL registered with each provider per deployment, which cannot be done on a
+ * self-hoster's behalf, so a password is what a self-hosted instance can always rely on.
+ */
+export const AUTH_PROVIDERS = ['google', 'github', 'password'] as const;
+export type AuthProvider = (typeof AUTH_PROVIDERS)[number];
+
+/** What `GET /api/config` reports: the instance's sign-in methods, in display order. */
+export interface AppConfig {
+  providers: AuthProvider[];
+}
+
 export const noteIdSchema = z.string().uuid();
 
 export const createNoteSchema = z.object({

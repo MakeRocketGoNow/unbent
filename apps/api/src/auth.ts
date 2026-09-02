@@ -1,6 +1,7 @@
 import { betterAuth } from 'better-auth';
 import { APIError } from 'better-auth/api';
 import { bearer, deviceAuthorization, oneTimeToken } from 'better-auth/plugins';
+import type { AuthProvider } from '@unbent/shared';
 import type { Env } from './types.js';
 
 /**
@@ -15,6 +16,37 @@ function allowedEmails(env: Env): string[] {
     .split(',')
     .map((e) => e.trim().toLowerCase())
     .filter(Boolean);
+}
+
+/**
+ * Whether password sign-in is offered.
+ *
+ * Two switches for one feature, on purpose. AUTH_PASSWORD is the self-hoster's choice:
+ * social providers need a callback URL registered per deployment with Google and GitHub,
+ * which nobody can do on behalf of every instance, so a password is the one method that
+ * works everywhere. ALLOW_TEST_CREDENTIALS stays as the test suite's own switch — it is
+ * documented as local-only, and folding it into the real flag would invite setting the
+ * real flag on a deployed instance "for the tests".
+ */
+function passwordEnabled(env: Env): boolean {
+  return env.AUTH_PASSWORD === '1' || env.ALLOW_TEST_CREDENTIALS === '1';
+}
+
+/**
+ * The sign-in methods this instance offers, in display order.
+ *
+ * Derived from the same checks `createAuth` makes, so the login screen and the Android
+ * app can render from it rather than guessing. The screen used to hardcode Google and
+ * GitHub, which only failed at the moment of pressing a button with no credentials behind
+ * it. Public, because it is needed before anyone is signed in; nothing here is secret,
+ * since a provider's presence is discoverable by trying it.
+ */
+export function offeredProviders(env: Env): AuthProvider[] {
+  const providers: AuthProvider[] = [];
+  if (env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET) providers.push('google');
+  if (env.GITHUB_CLIENT_ID && env.GITHUB_CLIENT_SECRET) providers.push('github');
+  if (passwordEnabled(env)) providers.push('password');
+  return providers;
 }
 
 /**
@@ -68,10 +100,9 @@ function createAuth(env: Env): AuthInstance {
     database: env.DB,
     baseURL: baseURLFor(env),
     secret: env.BETTER_AUTH_SECRET,
-    // OAuth only in normal operation. The isolation suite needs to mint sessions without
-    // a live OAuth provider, so ALLOW_TEST_CREDENTIALS enables password sign-up strictly
-    // for local runs; it is never set in deployed environments.
-    emailAndPassword: { enabled: env.ALLOW_TEST_CREDENTIALS === '1' },
+    // Off unless the instance asks for it; see passwordEnabled. The sign-up allowlist
+    // below applies to password accounts exactly as it does to OAuth ones.
+    emailAndPassword: { enabled: passwordEnabled(env) },
     socialProviders: {
       ...(env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET
         ? {
