@@ -1,18 +1,34 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Unbent</string>
-    <string name="sign_in_title">Connect to Unbent</string>
+    <string name="sign_in_title">Sign in to Unbent</string>
     <string name="settings_title">Unbent settings</string>
     <string name="shortcut_settings_short">Settings</string>
     <string name="shortcut_settings_long">Capture settings</string>
 
-    <string name="sign_in_intro">Sign in so the app can save what you share to it.</string>
+    <string name="sign_in_intro">Sign in to see your notes and save what you share here.</string>
     <string name="sign_in_google">Continue with Google</string>
-    <string name="sign_in_browser">Continue in browser</string>
-    <string name="sign_in_google_failed">Google sign-in did not work. Try the browser instead.</string>
-    <string name="sign_in_waiting">Connecting…</string>
-    <string name="sign_in_done">This phone is connected.</string>
+    <string name="sign_in_github">Continue with GitHub</string>
+    <string name="sign_in_google_failed">Google sign-in did not work. Try another way in.</string>
+    <string name="sign_in_failed">Sign-in did not work.</string>
+    <string name="sign_in_waiting">Signing in…</string>
+    <string name="sign_in_done">Signed in.</string>
     <string name="sign_in_denied">This phone was not connected.</string>
+    <string name="sign_in_email">Email</string>
+    <string name="sign_in_password">Password</string>
+    <string name="sign_in_name">Name</string>
+    <string name="sign_in_submit">Sign in</string>
+    <string name="sign_up_submit">Create account</string>
+    <string name="sign_in_switch_up">Create an account</string>
+    <string name="sign_in_switch_in">I already have an account</string>
+    <string name="sign_in_or">or</string>
+    <string name="sign_in_none">This Unbent has no sign-in method configured.</string>
+    <string name="sign_in_unreachable">Couldn\'t reach %1$s.</string>
+    <string name="sign_in_instance">Signing in to %1$s</string>
+    <string name="change">Change</string>
+    <string name="cancel">Cancel</string>
+    <string name="retry">Try again</string>
+    <string name="instance_use">Use this address</string>
 
     <string name="instance_label">Unbent address</string>
     <string name="save">Save</string>

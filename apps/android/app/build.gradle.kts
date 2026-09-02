@@ -4,6 +4,7 @@ plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.serialization)
+    alias(libs.plugins.kotlin.compose)
 }
 
 /**
@@ -93,6 +94,8 @@ android {
 
     buildFeatures {
         buildConfig = true
+        compose = true
+        // Still needed by the settings screen until it moves to Compose.
         viewBinding = true
     }
 
@@ -127,6 +130,12 @@ dependencies {
     implementation(libs.androidx.browser)
     implementation(libs.twa.helper)
     implementation(libs.androidx.work.runtime.ktx)
+    implementation(platform(libs.compose.bom))
+    implementation(libs.compose.ui)
+    implementation(libs.compose.ui.tooling.preview)
+    implementation(libs.compose.material3)
+    implementation(libs.androidx.activity.compose)
+    debugImplementation(libs.compose.ui.tooling)
     implementation(libs.okhttp)
     implementation(libs.kotlinx.serialization.json)
     implementation(libs.kotlinx.coroutines.android)
