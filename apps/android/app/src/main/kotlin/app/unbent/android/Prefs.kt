@@ -2,9 +2,10 @@ package app.unbent.android
 
 import android.content.Context
 import androidx.core.content.edit
+import app.unbent.android.api.SessionCookie
 
 /**
- * The two things this app remembers: which Unbent it talks to, and the session token that
+ * The two things this app remembers: which Unbent it talks to, and the session cookie that
  * proves who it is.
  *
  * Plain `SharedPreferences` in the app's private data directory, deliberately, matching the
@@ -14,8 +15,8 @@ import androidx.core.content.edit
  * would add a Keystore round trip and a deprecated dependency to protect against an
  * attacker who, having root, could read the key material too.
  *
- * The token is stored per-origin. Pointing the app at a different instance must not send
- * the old instance's token to it — the same trap the CLI's per-origin credentials file
+ * The session is stored per-origin. Pointing the app at a different instance must not send
+ * the old instance's credential to it — the same trap the CLI's per-origin credentials file
  * avoids.
  */
 class Prefs(context: Context) {
@@ -26,25 +27,40 @@ class Prefs(context: Context) {
         get() = prefs.getString(KEY_INSTANCE, null) ?: BuildConfig.DEFAULT_INSTANCE
         set(value) = prefs.edit { putString(KEY_INSTANCE, normalizeOrigin(value)) }
 
-    /** Session token for the current instance, or null when this phone is not signed in. */
-    var token: String?
-        get() = prefs.getString(tokenKey(instance), null)
+    /**
+     * The session cookie for the current instance, or null when this phone is not signed in.
+     *
+     * The cookie rather than a bare token: see [SessionCookie]. Name and value are stored
+     * separately because the name is part of what was learned from the server, not
+     * something to guess again when the cookie is put back into a WebView.
+     */
+    var session: SessionCookie?
+        get() {
+            val name = prefs.getString(sessionKey("name", instance), null) ?: return null
+            val value = prefs.getString(sessionKey("value", instance), null) ?: return null
+            return SessionCookie(name, value)
+        }
         set(value) = prefs.edit {
-            if (value == null) remove(tokenKey(instance)) else putString(tokenKey(instance), value)
+            if (value == null) {
+                remove(sessionKey("name", instance))
+                remove(sessionKey("value", instance))
+            } else {
+                putString(sessionKey("name", instance), value.name)
+                putString(sessionKey("value", instance), value.value)
+            }
         }
 
-    val isSignedIn: Boolean get() = !token.isNullOrEmpty()
+    val isSignedIn: Boolean get() = session != null
 
-    fun clearToken() {
-        token = null
+    fun clearSession() {
+        session = null
     }
 
-    private fun tokenKey(origin: String) = "$KEY_TOKEN_PREFIX${normalizeOrigin(origin)}"
+    private fun sessionKey(part: String, origin: String) = "session.$part:${normalizeOrigin(origin)}"
 
     companion object {
         private const val NAME = "unbent"
         private const val KEY_INSTANCE = "instance"
-        private const val KEY_TOKEN_PREFIX = "token:"
 
         /**
          * Trims a typed address to a bare origin.

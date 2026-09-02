@@ -35,8 +35,7 @@ class UploadWorker(context: Context, params: WorkerParameters) : CoroutineWorker
         val types = inputData.getStringArray(KEY_TYPES).orEmpty()
 
         val prefs = Prefs(applicationContext)
-        val token = prefs.token
-        if (token.isNullOrEmpty()) {
+        if (!prefs.isSignedIn) {
             /*
              * No session yet. ShareActivity has already opened the sign-in screen — it can,
              * being foreground at the time; a worker can run at any moment and must not
@@ -46,8 +45,7 @@ class UploadWorker(context: Context, params: WorkerParameters) : CoroutineWorker
              * capture completes on its own. The staged files sit on disk meanwhile, so
              * nothing is lost if it takes the user a while.
              */
-            val arrived = awaitToken(prefs)
-            if (arrived == null) {
+            if (!awaitSession(prefs)) {
                 // Gave up, or never finished signing in. Say so rather than dropping it
                 // silently — the user shared something and deserves to know it did not land.
                 notify(applicationContext.getString(R.string.sign_in_needed), signInIntent())
@@ -56,7 +54,7 @@ class UploadWorker(context: Context, params: WorkerParameters) : CoroutineWorker
             }
         }
 
-        val api = UnbentApi(prefs.instance, prefs.token ?: return@withContext Result.failure())
+        val api = UnbentApi(prefs.instance, prefs.session?.bearer ?: return@withContext Result.failure())
         val dir = Staging.jobDir(applicationContext, jobId)
 
         try {
@@ -79,7 +77,7 @@ class UploadWorker(context: Context, params: WorkerParameters) : CoroutineWorker
             if (e.status == 401) {
                 // The session is gone, not merely unreachable. Retrying cannot fix it, and
                 // the stale token would keep failing silently on every later share.
-                prefs.clearToken()
+                prefs.clearSession()
                 Staging.clear(applicationContext, jobId)
                 notify(applicationContext.getString(R.string.sign_in_needed), signInIntent())
                 Result.failure()
@@ -129,18 +127,17 @@ class UploadWorker(context: Context, params: WorkerParameters) : CoroutineWorker
     /**
      * Polls for a session while the user connects, up to [CONNECT_WAIT_MS].
      *
-     * A poll rather than a callback because the token is written by another activity in
+     * A poll rather than a callback because the session is written by another activity in
      * this same process, and a broadcast or an observer would be more machinery than a
-     * one-second check for something a person is doing by hand. Returns null on timeout.
+     * one-second check for something a person is doing by hand. False on timeout.
      */
-    private suspend fun awaitToken(prefs: Prefs): String? {
+    private suspend fun awaitSession(prefs: Prefs): Boolean {
         val deadline = System.currentTimeMillis() + CONNECT_WAIT_MS
         while (System.currentTimeMillis() < deadline) {
             delay(1_000)
-            val token = prefs.token
-            if (!token.isNullOrEmpty()) return token
+            if (prefs.isSignedIn) return true
         }
-        return null
+        return false
     }
 
     private fun notify(text: String, tapAction: PendingIntent?) {

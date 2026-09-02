@@ -2,6 +2,7 @@ package app.unbent.android
 
 import app.unbent.android.api.ApiException
 import app.unbent.android.api.ConnectAuth
+import app.unbent.android.api.SessionCookie
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
 import org.junit.After
@@ -49,14 +50,20 @@ class ConnectAuthTest {
     }
 
     @Test
-    fun `redeem exchanges the token for the session token`() {
+    fun `redeem yields the session cookie the response set, not the token in its body`() {
         server.enqueue(
-            MockResponse().setResponseCode(200).setBody(
-                """{"session":{"token":"sess-abc","userId":"u1"},"user":{"id":"u1"}}""",
-            ),
+            MockResponse().setResponseCode(200)
+                .addHeader(
+                    "Set-Cookie",
+                    "better-auth.session_token=sess-abc.sig; Max-Age=2592000; Path=/; HttpOnly",
+                )
+                .setBody("""{"session":{"token":"sess-abc","userId":"u1"},"user":{"id":"u1"}}"""),
         )
 
-        assertEquals("sess-abc", auth.redeem("one-time-xyz"))
+        assertEquals(
+            SessionCookie("better-auth.session_token", "sess-abc.sig"),
+            auth.redeem("one-time-xyz"),
+        )
 
         val req = server.takeRequest()
         assertEquals("POST", req.method)
@@ -79,8 +86,12 @@ class ConnectAuthTest {
     }
 
     @Test
-    fun `a response without a session token fails rather than storing an empty credential`() {
-        server.enqueue(MockResponse().setResponseCode(200).setBody("""{"user":{"id":"u1"}}"""))
+    fun `a response that sets no session cookie fails rather than storing an empty credential`() {
+        // A body with a session but no Set-Cookie: the token alone is not the credential.
+        server.enqueue(
+            MockResponse().setResponseCode(200)
+                .setBody("""{"session":{"token":"sess-abc"},"user":{"id":"u1"}}"""),
+        )
 
         try {
             auth.redeem("odd-response")

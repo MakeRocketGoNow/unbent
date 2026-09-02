@@ -36,7 +36,7 @@ class GoogleAuth(
      * `filterByAuthorizedAccounts = false` so an account that has never used this app still
      * appears; with it true, a first run shows an empty sheet and looks broken.
      */
-    suspend fun signIn(context: Context, webClientId: String): String {
+    suspend fun signIn(context: Context, webClientId: String): SessionCookie {
         val option = GetGoogleIdOption.Builder()
             .setServerClientId(webClientId)
             .setFilterByAuthorizedAccounts(false)
@@ -63,9 +63,9 @@ class GoogleAuth(
 
     /**
      * Hands the Google ID token to Better Auth, which verifies its signature and audience
-     * and returns a session. The same endpoint the web app's Google button uses.
+     * and signs the app in. The same endpoint the web app's Google button uses.
      */
-    private fun exchange(idToken: String): String {
+    private fun exchange(idToken: String): SessionCookie {
         val payload = JSONObject()
             .put("provider", "google")
             .put("idToken", JSONObject().put("token", idToken))
@@ -83,13 +83,10 @@ class GoogleAuth(
             if (!res.isSuccessful) {
                 throw ApiException(res.code, "Google sign-in failed: ${res.code} ${text.take(200)}")
             }
-            val body = JSONObject(text)
-            // Better Auth returns the session token at the top level for this endpoint.
-            return body.optString("token").ifEmpty {
-                body.optJSONObject("session")?.optString("token").orEmpty().ifEmpty {
-                    throw ApiException(res.code, "Google sign-in returned no session.")
-                }
-            }
+            // The credential is the cookie the response set, not the token in its body: see
+            // SessionCookie for why one string has to serve both OkHttp and the WebView.
+            return SessionCookie.fromSetCookie(res.headers("Set-Cookie"))
+                ?: throw ApiException(res.code, "Google sign-in returned no session.")
         }
     }
 

@@ -59,11 +59,11 @@ class EntryActivity : androidx.appcompat.app.AppCompatActivity() {
         val target = intent?.getStringExtra(LaunchActivity.EXTRA_URL)
         lifecycleScope.launch {
             val url = withContext(Dispatchers.IO) {
-                val session = prefs.token
-                if (session.isNullOrEmpty()) null
+                val session = prefs.session
+                if (session == null) null
                 else {
                     val auth = ConnectAuth(prefs.instance)
-                    auth.mintHandoffToken(session)?.let { ott ->
+                    auth.mintHandoffToken(session.bearer)?.let { ott ->
                         auth.handoffUrl(ott, pathOf(target, prefs.instance))
                     }
                 }

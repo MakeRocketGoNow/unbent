@@ -26,12 +26,12 @@ class ConnectAuth(
         "$origin/connect?redirect=${java.net.URLEncoder.encode("$scheme://connect", "UTF-8")}"
 
     /**
-     * Exchanges the token for a session token usable as a bearer credential.
+     * Exchanges the token for the session cookie the response sets; see [SessionCookie].
      *
      * The one-time token is spent by this call — replaying it fails — so a session that
      * does not get stored is simply lost, and the user connects again.
      */
-    fun redeem(token: String): String {
+    fun redeem(token: String): SessionCookie {
         val req = Request.Builder()
             .url("$origin/api/auth/one-time-token/verify")
             // Better Auth enforces CSRF by requiring a trusted Origin.
@@ -44,11 +44,8 @@ class ConnectAuth(
             if (!res.isSuccessful) {
                 throw ApiException(res.code, "Could not connect: ${res.code} ${text.take(200)}")
             }
-            val session = JSONObject(text).optJSONObject("session")
+            return SessionCookie.fromSetCookie(res.headers("Set-Cookie"))
                 ?: throw ApiException(res.code, "Unexpected response while connecting.")
-            return session.optString("token").ifEmpty {
-                throw ApiException(res.code, "Unexpected response while connecting.")
-            }
         }
     }
 

@@ -76,7 +76,7 @@ class SettingsActivity : AppCompatActivity() {
         // Local only. Revoking the session server-side would be better, but a phone that
         // has lost its token cannot revoke anything, so the web app's session list is the
         // reliable place to do that — and this must work offline.
-        Prefs(this).clearToken()
+        Prefs(this).clearSession()
         lifecycleScope.launch { render() }
     }
 }

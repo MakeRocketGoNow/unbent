@@ -86,7 +86,7 @@ class SignInActivity : AppCompatActivity() {
             }
 
             result.onSuccess { session ->
-                Prefs(this@SignInActivity).token = session
+                Prefs(this@SignInActivity).session = session
                 binding.status.setText(R.string.sign_in_done)
                 setResult(RESULT_OK)
                 continueToApp()
@@ -138,7 +138,7 @@ class SignInActivity : AppCompatActivity() {
         lifecycleScope.launch {
             val result = withContext(Dispatchers.IO) { runCatching { auth.redeem(token) } }
             result.onSuccess { session ->
-                Prefs(this@SignInActivity).token = session
+                Prefs(this@SignInActivity).session = session
                 binding.status.setText(R.string.sign_in_done)
                 setResult(RESULT_OK)
                 continueToApp()
