@@ -6,6 +6,11 @@ import * as api from '../notes-api.js';
 import { isStatus } from '../notes-api.js';
 import { useAutosave } from '../useAutosave.js';
 import { usePersistentState, clamp } from '../usePersistentState.js';
+import {
+  useCameFromList,
+  registerEditorFocus,
+  focusActiveListItem,
+} from '../useListKeys.js';
 import { useMediaQuery, MOBILE_QUERY } from '../useMediaQuery.js';
 import { useKeyboardInset } from '../useKeyboardInset.js';
 import {
@@ -97,6 +102,15 @@ export function Workspace({ noteId, readOnly = false, backTo = '/notes' }: Works
   const [editorView, setEditorView] = useState<EditorView | null>(null);
 
   /**
+   * Whether this note was reached with the sidebar's arrow keys.
+   *
+   * If it was, the editor must not take focus on mount: the next arrow press belongs to
+   * the list. Every other way of opening a note — a click, a fresh load, a shared link —
+   * still lands in the editor ready to type.
+   */
+  const cameFromList = useCameFromList();
+
+  /**
    * How much of the pane row the editor gets, 0–1.
    *
    * A fraction rather than two pixel widths so the split stays proportional when the
@@ -132,6 +146,23 @@ export function Workspace({ noteId, readOnly = false, backTo = '/notes' }: Works
    * screen whether or not anything was being typed.
    */
   const keyboardInset = useKeyboardInset();
+
+  /*
+     Lets the sidebar's Enter put the cursor in this note.
+
+     At the end of the document rather than the start: Enter here means "add to this",
+     which is where you would have clicked anyway. Registered while a view exists and
+     withdrawn with it, so an Enter pressed between notes does nothing rather than
+     reaching into a destroyed view.
+  */
+  useEffect(() => {
+    if (!editorView) return;
+    registerEditorFocus(() => {
+      editorView.dispatch({ selection: { anchor: editorView.state.doc.length } });
+      editorView.focus();
+    });
+    return () => registerEditorFocus(null);
+  }, [editorView]);
   // Seed the draft when a different note loads. Keyed on id, not on the note object,
   // so a background refetch never discards what is being typed.
   useEffect(() => {
@@ -432,6 +463,9 @@ export function Workspace({ noteId, readOnly = false, backTo = '/notes' }: Works
               return uploaded.path;
             }}
             rich={noteView === 'rich'}
+            autoFocus={!cameFromList}
+            // The way out of the editor, and the counterpart to the list's Enter.
+            onEscape={focusActiveListItem}
             onViewReady={setEditorView}
           />
         </div>

@@ -20,6 +20,23 @@ interface EditorProps {
   onUpload?: (file: File) => Promise<string>;
   /** Style markdown inline instead of showing plain source. */
   rich?: boolean;
+  /**
+   * Take focus when the view mounts.
+   *
+   * On by default, which is what opening a note should do — you clicked it to write in it.
+   * The sidebar's arrow keys turn it off: they mount a new editor for every note they
+   * pass, and an editor that grabbed focus each time would take the second arrow press
+   * and move a cursor through text instead of moving down the list.
+   */
+  autoFocus?: boolean;
+  /**
+   * Escape pressed with the cursor in the document.
+   *
+   * The sidebar uses it to take focus back, which is the way out of the editor that Enter
+   * is the way into. A prop rather than a keybinding of its own here: what Escape should
+   * leave *to* is the caller's business, and the editor has no idea a list exists.
+   */
+  onEscape?: () => void;
   /** Receives the view so a toolbar can act on it. */
   onViewReady?: (view: EditorView | null) => void;
 }
@@ -37,9 +54,17 @@ export function Editor({
   onChange,
   onUpload,
   rich = false,
+  autoFocus = true,
+  onEscape,
   onViewReady,
 }: EditorProps) {
   const host = useRef<HTMLDivElement>(null);
+  // Read at mount, never a dependency: this flips as the user moves between the mouse and
+  // the arrow keys, and rebuilding the view on that would discard the document's history.
+  const autoFocusRef = useRef(autoFocus);
+  autoFocusRef.current = autoFocus;
+  const onEscapeRef = useRef(onEscape);
+  onEscapeRef.current = onEscape;
   const onChangeRef = useRef(onChange);
   onChangeRef.current = onChange;
   const onUploadRef = useRef(onUpload);
@@ -56,6 +81,23 @@ export function Editor({
         extensions: [
           history(),
           // Markdown shortcuts come first so Mod-b and Mod-i win over any default binding.
+          /*
+             Before the default keymap, which is what gets the key first.
+
+             Returning false when there is no handler leaves Escape to CodeMirror, so the
+             behaviours that rely on it — closing an autocomplete, leaving the tab-capture
+             escape hatch — keep working.
+          */
+          keymap.of([
+            {
+              key: 'Escape',
+              run: () => {
+                if (!onEscapeRef.current) return false;
+                onEscapeRef.current();
+                return true;
+              },
+            },
+          ]),
           keymap.of([...markdownKeymap, ...defaultKeymap, ...historyKeymap]),
           // GFM parses task lists, tables, and strikethrough, which plain CommonMark
           // would leave as literal text — `[x]` otherwise reads as a link.
@@ -112,7 +154,7 @@ export function Editor({
       parent: host.current,
     });
 
-    view.focus();
+    if (autoFocusRef.current) view.focus();
     onViewReadyRef.current?.(view);
 
     return () => {

@@ -6,6 +6,7 @@ import { trashQuery, invalidateNoteMembership } from '../queries.js';
 import { useNotesLayout, SIDEBAR_DEFAULT, SIDEBAR_MIN, SIDEBAR_MAX } from '../useNotesLayout.js';
 import { ResizeHandle } from './ResizeHandle.js';
 import { NoteListItem } from './NoteListItem.js';
+import { useListKeys } from '../useListKeys.js';
 import { Confirm } from './Confirm.js';
 import { Button } from './Button.js';
 import { useMaintenance } from './use-maintenance.js';
@@ -23,6 +24,7 @@ export function TrashLayout({ children }: { children: React.ReactNode }) {
   // `open` is undefined unless a trashed note is on screen; used both to leave the view
   // when that note disappears and, on mobile, to decide which pane is showing.
   const layout = useNotesLayout('/trash/$noteId');
+  const onListKeys = useListKeys();
   const open = layout.open;
   /** Note awaiting an explicit "delete forever", or 'all' for emptying the trash. */
   const [pending, setPending] = useState<{ id: string; title: string } | 'all' | null>(null);
@@ -134,7 +136,7 @@ export function TrashLayout({ children }: { children: React.ReactNode }) {
 
         {list.error && <p className="bad small">{(list.error as Error).message}</p>}
 
-        <ul className="note-list">
+        <ul className="note-list" onKeyDown={onListKeys}>
           {notes.map((n) => (
             <NoteListItem
               key={n.id}

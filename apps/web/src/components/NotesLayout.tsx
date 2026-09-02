@@ -16,6 +16,7 @@ import { useNotesLayout, SIDEBAR_DEFAULT, SIDEBAR_MIN, SIDEBAR_MAX } from '../us
 import { useMediaQuery, MOBILE_QUERY } from '../useMediaQuery.js';
 import { ResizeHandle } from './ResizeHandle.js';
 import { NoteListItem } from './NoteListItem.js';
+import { useListKeys } from '../useListKeys.js';
 import { SearchResults } from './SearchResults.js';
 
 /** Sidebar plus the routed workspace. Filters come from the URL; nothing here is mirrored into state. */
@@ -24,6 +25,7 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const layout = useNotesLayout('/notes/$noteId');
+  const onListKeys = useListKeys();
   /**
    * Tags start collapsed on a phone and open everywhere else.
    *
@@ -339,7 +341,7 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
           </details>
         )}
 
-        <ul className="note-list">
+        <ul className="note-list" onKeyDown={onListKeys}>
           {results !== null && <SearchResults results={results} />}
 
           {results === null &&

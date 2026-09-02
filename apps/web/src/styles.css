@@ -344,6 +344,17 @@ h1 {
   flex-direction: column;
   gap: 0.75rem;
   min-width: 0;
+  /*
+     One text edge down the whole sidebar.
+
+     The notes carry padding of their own — it is what the hover fill and the selected
+     entry are drawn around — so their text started 0.7rem in while the count, search,
+     dates and tags started at zero, and the list read as indented under everything above
+     it. Matching that inset here is what lines the two up; `.note-list` then pulls itself
+     back out so the fill still runs the full width.
+  */
+  padding-left: 0.7rem;
+  padding-right: 0.7rem;
   /* No border-right: the resize handle is the divider, and two lines a gap apart read as
      a seam rather than as one edge. */
   /* Bounded so `.note-list` has a definite height to scroll within; without it the list
@@ -501,7 +512,19 @@ h1 {
 .note-list {
   list-style: none;
   margin: 0;
-  padding: 0;
+  /*
+     Back out to the sidebar's own edges, so a selected note's fill and border run the full
+     width while its text stays on the shared line the sidebar's padding sets.
+
+     The pull is the sidebar's padding; the 3px that goes back on as padding is room for
+     the focus ring, which is drawn outside the entry's border box. A scroll container
+     clips to its padding box, and `overflow-y: auto` forces `overflow-x` to compute to
+     `auto` as well, so without that gutter the ring was cut off down both sides always,
+     and along the top or bottom whenever the focused entry sat at the end of the scroll.
+  */
+  margin-left: calc(-0.7rem - 3px);
+  margin-right: calc(-0.7rem - 3px);
+  padding: 3px;
   display: flex;
   flex-direction: column;
   gap: 0.15rem;
@@ -516,7 +539,9 @@ h1 {
   display: flex;
   flex-direction: column;
   gap: 0.15rem;
-  width: 100%;
+  /* No `width: 100%`: it resolves against the list's content box and, once that box had
+     padding, made every entry wider than the container it scrolls in. The flex column
+     already stretches its children to the full width. */
   padding: 0.6rem 0.7rem;
   font: inherit;
   text-align: left;
@@ -525,6 +550,20 @@ h1 {
   border: none;
   border-radius: 0.45rem;
   cursor: pointer;
+}
+
+/*
+   Keyboard focus. `:focus-visible`, so a click selects a note without ringing it — the
+   active fill already says which note is open, and a ring on every click reads as an
+   error state.
+
+   2px inside a 3px gutter: the ring sits clear of the scroll edge, and the remaining
+   pixel keeps it off the container's own boundary. Matches the accent ring the tag
+   disclosure already uses, so focus looks the same everywhere in the sidebar.
+*/
+.note-item:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
 }
 
 .note-item:hover { background: color-mix(in srgb, var(--fg) 5%, transparent); }
