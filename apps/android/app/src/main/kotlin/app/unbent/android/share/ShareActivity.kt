@@ -14,7 +14,6 @@ import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
 import app.unbent.android.Prefs
 import app.unbent.android.R
-import app.unbent.android.ui.SignInActivity
 import java.util.UUID
 import java.util.concurrent.TimeUnit
 import kotlin.concurrent.thread
@@ -92,15 +91,6 @@ class ShareActivity : AppCompatActivity() {
                 .build()
 
             WorkManager.getInstance(appContext).enqueue(request)
-
-            // Only after the share is safely staged and queued. Connecting opens a browser
-            // and this activity is already gone by then; the work outlives both.
-            if (!Prefs(appContext).isSignedIn) {
-                appContext.startActivity(
-                    Intent(appContext, SignInActivity::class.java)
-                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
-                )
-            }
         }
 
         finish()

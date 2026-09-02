@@ -39,6 +39,14 @@ android {
         // what makes an emulator build usable against a local dev server.
         buildConfigField("String", "DEFAULT_INSTANCE", "\"https://unbent.app\"")
         buildConfigField("String", "CONNECT_SCHEME", "\"unbent\"")
+        // Google issues the ID token for the *web* client, which is the audience the
+        // API already verifies. The Android client exists only so Google will trust a
+        // request coming from this app's signature. Empty disables the native picker.
+        buildConfigField(
+            "String",
+            "GOOGLE_WEB_CLIENT_ID",
+            "\"${properties["unbent.google.webClientId"] ?: ""}\"",
+        )
         manifestPlaceholders["connectScheme"] = "unbent"
     }
 
@@ -120,6 +128,9 @@ dependencies {
     implementation(libs.androidx.work.runtime.ktx)
     implementation(libs.okhttp)
     implementation(libs.kotlinx.coroutines.android)
+    implementation(libs.androidx.credentials)
+    implementation(libs.androidx.credentials.play.services)
+    implementation(libs.googleid)
 
     testImplementation(libs.junit)
     testImplementation(libs.okhttp.mockwebserver)

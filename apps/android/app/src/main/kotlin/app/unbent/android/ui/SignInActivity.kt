@@ -10,6 +10,7 @@ import app.unbent.android.BuildConfig
 import app.unbent.android.Prefs
 import app.unbent.android.R
 import app.unbent.android.api.ConnectAuth
+import app.unbent.android.api.GoogleAuth
 import app.unbent.android.databinding.ActivitySignInBinding
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -43,7 +44,48 @@ class SignInActivity : AppCompatActivity() {
         binding.openButton.setOnClickListener { openConnectPage() }
 
         // Launched by the deep link itself, when the activity was not already running.
-        if (!consume(intent)) openConnectPage()
+        if (consume(intent)) return
+
+        /*
+         * The native account sheet first, when this build has a Google client id. It shows
+         * no web page at all: Android lists the accounts already on the phone and one tap
+         * finishes it.
+         *
+         * The connect page is the fallback, not a lesser path — it is the only way in for a
+         * GitHub account, since no system picker exists for a provider the phone does not
+         * know about.
+         */
+        if (GoogleAuth.isConfigured(BuildConfig.GOOGLE_WEB_CLIENT_ID)) {
+            trySilentGoogle()
+        } else {
+            openConnectPage()
+        }
+    }
+
+    /** Offers Android's Google sheet, falling back to the browser for anything else. */
+    private fun trySilentGoogle() {
+        binding.status.setText(R.string.sign_in_intro)
+        lifecycleScope.launch {
+            val result = runCatching {
+                GoogleAuth(Prefs(this@SignInActivity).instance)
+                    .signIn(this@SignInActivity, BuildConfig.GOOGLE_WEB_CLIENT_ID)
+            }
+
+            result.onSuccess { session ->
+                Prefs(this@SignInActivity).token = session
+                binding.status.setText(R.string.sign_in_done)
+                setResult(RESULT_OK)
+                finish()
+            }.onFailure { e ->
+                /*
+                 * Any failure here means the browser instead: no Google account on the
+                 * phone, a GitHub-only Unbent account, Play Services missing, or the user
+                 * dismissing the sheet — in which case the connect page still offers every
+                 * provider, so dismissing Google is not a dead end.
+                 */
+                openConnectPage()
+            }
+        }
     }
 
     override fun onNewIntent(intent: Intent) {

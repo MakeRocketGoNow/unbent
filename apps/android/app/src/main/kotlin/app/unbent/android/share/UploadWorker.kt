@@ -38,20 +38,19 @@ class UploadWorker(context: Context, params: WorkerParameters) : CoroutineWorker
         val token = prefs.token
         if (token.isNullOrEmpty()) {
             /*
-             * Not connected *yet*. A share that arrives before the phone is connected is
-             * held rather than discarded: the user is being sent to the connect page right
-             * now, and their file should be waiting on the other side instead of having to
-             * be shared a second time.
+             * No session. This should not happen in normal use — opening the app signs it
+             * in — but it can if someone shares to a freshly installed app they have never
+             * opened.
              *
-             * Waiting here rather than returning `retry` so the upload starts the instant
-             * the token lands — a job in exponential backoff would sit idle for another
-             * interval after the user finished connecting, which reads as the share having
-             * been lost.
+             * The staged files are kept and the job waits, so the share is not lost while
+             * the user deals with the notification. Nothing is launched from here: throwing
+             * a sign-in screen over whatever they are doing is the interruption this whole
+             * change exists to remove.
              */
+            notify(applicationContext.getString(R.string.sign_in_needed), signInIntent())
             val arrived = awaitToken(prefs)
             if (arrived == null) {
                 Staging.clear(applicationContext, jobId)
-                notify(applicationContext.getString(R.string.sign_in_needed), signInIntent())
                 return@withContext Result.failure()
             }
         }
