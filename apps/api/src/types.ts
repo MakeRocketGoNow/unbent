@@ -9,6 +9,8 @@ export interface Env {
   /** `wrangler secret put BETTER_AUTH_SECRET`; in dev it comes from .dev.vars. */
   BETTER_AUTH_SECRET: string;
   GOOGLE_CLIENT_ID?: string;
+  /** Optional second audience, when the Android app asks for its own client id. */
+  GOOGLE_ANDROID_CLIENT_ID?: string;
   GOOGLE_CLIENT_SECRET?: string;
   GITHUB_CLIENT_ID?: string;
   GITHUB_CLIENT_SECRET?: string;

@@ -6,7 +6,10 @@
     <string name="shortcut_settings_short">Settings</string>
     <string name="shortcut_settings_long">Capture settings</string>
 
-    <string name="sign_in_intro">Opening Unbent to connect this phone…</string>
+    <string name="sign_in_intro">Sign in so the app can save what you share to it.</string>
+    <string name="sign_in_google">Continue with Google</string>
+    <string name="sign_in_browser">Continue in browser</string>
+    <string name="sign_in_google_failed">Google sign-in did not work. Try the browser instead.</string>
     <string name="sign_in_open">Try again</string>
     <string name="sign_in_waiting">Connecting…</string>
     <string name="sign_in_done">This phone is connected.</string>

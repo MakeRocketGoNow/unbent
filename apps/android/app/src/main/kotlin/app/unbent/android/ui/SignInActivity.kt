@@ -3,6 +3,7 @@ package app.unbent.android.ui
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
+import android.view.View
 import androidx.appcompat.app.AppCompatActivity
 import androidx.browser.customtabs.CustomTabsIntent
 import androidx.lifecycle.lifecycleScope
@@ -42,29 +43,24 @@ class SignInActivity : AppCompatActivity() {
         setContentView(binding.root)
 
         binding.openButton.setOnClickListener { openConnectPage() }
-
-        // Launched by the deep link itself, when the activity was not already running.
-        if (consume(intent)) return
+        binding.googleButton.setOnClickListener { signInWithGoogle() }
 
         /*
-         * The native account sheet first, when this build has a Google client id. It shows
-         * no web page at all: Android lists the accounts already on the phone and one tap
-         * finishes it.
-         *
-         * The connect page is the fallback, not a lesser path — it is the only way in for a
-         * GitHub account, since no system picker exists for a provider the phone does not
-         * know about.
+         * Google gets a button, not an automatic prompt. An account here can be a GitHub
+         * one, and throwing up a Google account sheet at someone who does not use Google is
+         * a dialog they have to dismiss before they can reach the thing they wanted. The
+         * button only appears when this build has a client id to ask with.
          */
-        if (GoogleAuth.isConfigured(BuildConfig.GOOGLE_WEB_CLIENT_ID)) {
-            trySilentGoogle()
-        } else {
-            openConnectPage()
-        }
+        binding.googleButton.visibility =
+            if (GoogleAuth.isConfigured(BuildConfig.GOOGLE_WEB_CLIENT_ID)) View.VISIBLE else View.GONE
+
+        // Launched by the deep link itself, when the activity was not already running.
+        consume(intent)
     }
 
-    /** Offers Android's Google sheet, falling back to the browser for anything else. */
-    private fun trySilentGoogle() {
-        binding.status.setText(R.string.sign_in_intro)
+    /** Android's own account sheet: no web page, one tap. Google accounts only. */
+    private fun signInWithGoogle() {
+        binding.status.setText(R.string.sign_in_waiting)
         lifecycleScope.launch {
             val result = runCatching {
                 GoogleAuth(Prefs(this@SignInActivity).instance)
@@ -78,12 +74,16 @@ class SignInActivity : AppCompatActivity() {
                 finish()
             }.onFailure { e ->
                 /*
-                 * Any failure here means the browser instead: no Google account on the
-                 * phone, a GitHub-only Unbent account, Play Services missing, or the user
-                 * dismissing the sheet — in which case the connect page still offers every
-                 * provider, so dismissing Google is not a dead end.
+                 * Dismissing the sheet is a choice, not an error — say nothing and leave
+                 * the user on this screen, where the browser button is still there. Any
+                 * other failure (no Google account, Play Services missing, an Unbent
+                 * account that is not a Google one) gets a message pointing at the button
+                 * that will work.
                  */
-                openConnectPage()
+                binding.status.setText(
+                    if (GoogleAuth.wasCancelled(e)) R.string.sign_in_intro
+                    else R.string.sign_in_google_failed,
+                )
             }
         }
     }

@@ -76,7 +76,18 @@ function createAuth(env: Env): AuthInstance {
       ...(env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET
         ? {
             google: {
-              clientId: env.GOOGLE_CLIENT_ID,
+              /**
+               * An array widens *ID token audience* verification only — the browser's
+               * authorization-code flow still uses the first entry with the secret below.
+               *
+               * The Android app signs in with Credential Manager, which returns a token
+               * issued for whichever client id it asked for. That is normally this same web
+               * id, so the extra entry is only needed if a build ever asks for a separate
+               * Android audience; accepting both means neither choice breaks sign-in.
+               */
+              clientId: env.GOOGLE_ANDROID_CLIENT_ID
+                ? [env.GOOGLE_CLIENT_ID, env.GOOGLE_ANDROID_CLIENT_ID]
+                : env.GOOGLE_CLIENT_ID,
               clientSecret: env.GOOGLE_CLIENT_SECRET,
             },
           }
