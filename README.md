@@ -280,10 +280,23 @@ Roughly a fifth of scans produce character noise instead of language (`> CO 5 I 
 Those are filtered out rather than indexed. Much of the usable text is letter-spaced
 (`H a r b o r v i e w`), which is rejoined so the word is actually findable.
 
+**When it runs.** The editor extracts text from a PDF the moment its upload returns, from the
+bytes already in hand, so a file dropped into a note is searchable seconds later. The Android
+app does the same for a capture by loading `/embed/index-files?note=…` in a WebView nobody
+sees — the site's own extractor, run by the phone for the one note it just made. And the
+app runs a pass over whatever is still pending each time it opens, so a file either of those
+missed is caught the next time anyone looks.
+
+That pass stops short of a backlog: more than one page of pending files and it downloads
+nothing, because it pulls the same bytes the button does and a backlog is gigabytes that must
+not start flowing because a tab was opened on a phone. The sidebar says what it left, and
+"Index existing PDFs" in the Import panel is where that gets run.
+
 **Backfill.** Import is idempotent on content hash, so notes imported before extraction
 existed cannot be fixed by re-importing — they are skipped along with their attachments.
-"Index existing PDFs" in the Import panel walks the gap instead, extracting text for any
-attachment that does not have it yet.
+"Index existing PDFs" walks the gap instead, extracting text for any attachment that does
+not have it yet. `GET /api/attachments/pending-text` says what is still missing, scoped to
+one note with `?note=`, which is how the phone asks for its own capture and nothing else.
 
 ## Local database
 
@@ -378,6 +391,13 @@ tapped: "Saving" with the note's title, then "Saved", which peeks over the scree
 the note in the app. HEIC images are transcoded to JPEG on the phone, because the server's inline-safe
 allowlist excludes HEIC and browsers other than Safari cannot render it.
 
+**How a capture becomes searchable.** A PDF gets a second job, chained after the upload:
+it loads `/embed/index-files?note=…` in a WebView that is never shown, and the page runs
+the same pdf.js extraction the site does, for that one note. Chained rather than folded
+into the upload so a WebView failure can never re-run the upload and create the note
+twice; photos have no text and skip it. If it fails, the note is still saved and the file
+stays on the server's pending list, where the web app's pass on open picks it up.
+
 **Pointing it at a dev server.** On the sign-in screen, Change the address to
 `http://10.0.2.2:5173` from an emulator; once signed in the same field is in Settings.
 Cleartext is permitted for loopback addresses in debug builds only (see
@@ -402,12 +422,6 @@ Absent those, `assembleRelease` still builds, just unsigned. CI reads the same v
 - **Deleting a user strands its blobs.** The D1 rows cascade, but the objects under
   `users/{id}/` remain and the scoped sweep above cannot reach them once the account is
   gone. Account deletion needs to sweep the prefix before removing the user row.
-
-- **A PDF captured from the phone is not searchable until the backfill runs.** Text
-  extraction happens in the browser (pdfjs), and only when someone presses the button in
-  Settings -> Import. A PDF shared from Android is queued by
-  `GET /api/attachments/pending-text` but stays unindexed until then. Running the backfill
-  automatically on app open would close this.
 
 - **iOS has no share extension yet.** Safari does not implement Web Share Target, so an iOS
   capture needs a real share extension and a paid Apple Developer account.
