@@ -1111,6 +1111,33 @@ a.overflow-item { text-decoration: none; }
 .trash-link:hover { color: var(--fg); }
 
 /*
+   What the indexing pass is doing, under Trash on the sidebar floor.
+
+   Here rather than in the topbar, which is account chrome and nothing else, and here
+   rather than only in Settings, because this is the column people search from: a search
+   that cannot yet see inside a PDF is a fact about this list. Rendered only while there
+   is something to say — a pass running, or a backlog left for the Import panel — so the
+   floor is Trash alone the rest of the time. Sized a step under `.trash-link` so it reads
+   as status beneath a destination, not a second destination; one line, clipped, because
+   the sidebar can be narrowed to less than the sentence.
+*/
+.sidebar-status {
+  display: block;
+  padding: 0.45rem 0.7rem 0;
+  font-size: 0.8rem;
+  color: var(--muted);
+  text-decoration: none;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+a.sidebar-status:hover {
+  color: var(--fg);
+  text-decoration: underline;
+}
+
+/*
    The tag list, behind a disclosure.
 
    Open on a desktop, where the sidebar has the room; closed on a phone, where sixteen

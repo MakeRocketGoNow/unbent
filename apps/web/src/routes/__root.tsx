@@ -4,8 +4,10 @@ import {
   useNavigate,
   useRouterState,
 } from '@tanstack/react-router';
-import type { QueryClient } from '@tanstack/react-query';
+import { useEffect } from 'react';
+import { useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { useSession, signOut } from '../auth-client.js';
+import { startIndexing, subscribeIndexing } from '../index-files.js';
 import { Login } from '../components/Login.js';
 import { Topbar } from '../components/Topbar.js';
 
@@ -57,6 +59,30 @@ function EmbedShell() {
 function AppShell() {
   const { data: session, isPending } = useSession();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const userId = session?.user?.id;
+
+  /**
+   * Index whatever is pending, once there is someone to index for.
+   *
+   * The editor and the phone both upload PDFs without extracting their text, and the
+   * button in Settings was the only thing that ever caught up. Now the app does on open.
+   * The pass declines a backlog larger than one page — see AUTO_INDEX_LIMIT — so this can
+   * never start pulling gigabytes because a tab was opened on a phone; the sidebar says
+   * what it left and the Import panel is where that gets run.
+   *
+   * Attachment text is what search reads, so a result cached before the pass ran is
+   * stale once it has indexed something. Nothing else in the cache is.
+   */
+  useEffect(() => {
+    if (!userId) return;
+    startIndexing({ auto: true });
+    return subscribeIndexing((state) => {
+      if (state.status === 'done' && state.progress?.indexed) {
+        void queryClient.invalidateQueries({ queryKey: ['search'] });
+      }
+    });
+  }, [userId, queryClient]);
 
   if (isPending) {
     return (

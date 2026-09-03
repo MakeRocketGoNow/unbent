@@ -18,6 +18,7 @@ import { ResizeHandle } from './ResizeHandle.js';
 import { NoteListItem } from './NoteListItem.js';
 import { useListKeys } from '../useListKeys.js';
 import { SearchResults } from './SearchResults.js';
+import { IndexingStatus } from './IndexingStatus.js';
 
 /** Sidebar plus the routed workspace. Filters come from the URL; nothing here is mirrored into state. */
 export function NotesLayout({ children }: { children: React.ReactNode }) {
@@ -394,6 +395,7 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
           Trash
           {trashed > 0 && <span className="tag-count">{trashed}</span>}
         </Link>
+        <IndexingStatus />
       </aside>
 
       <ResizeHandle

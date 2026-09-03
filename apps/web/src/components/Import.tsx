@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ImportFailure, ImportProgress } from '@unbent/enex';
 import type { ImportEvent, ImportRequest } from '../import-worker.js';
-import { startIndexing, subscribeIndexing, useIndexing, type IndexingState } from '../index-files.js';
+import { startIndexing, useIndexing, type IndexingState } from '../index-files.js';
 import { Button } from './Button.js';
 import { useSettingsBusy } from './SettingsLayout.js';
 
@@ -73,15 +73,6 @@ export function Import({ onImported }: ImportProps) {
   useEffect(() => {
     return () => worker.current?.terminate();
   }, []);
-
-  // Indexing writes attachment text, so a search result cached before it ran is stale.
-  useEffect(
-    () =>
-      subscribeIndexing((state) => {
-        if (state.status === 'done') onImported();
-      }),
-    [onImported],
-  );
 
   // Mirrored into the section rather than set at each transition: the sub-nav has to go
   // inert for the whole run, and there are five places status changes.
