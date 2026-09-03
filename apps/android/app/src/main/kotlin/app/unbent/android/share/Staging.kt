@@ -2,8 +2,6 @@ package app.unbent.android.share
 
 import android.content.ContentResolver
 import android.content.Context
-import android.graphics.Bitmap
-import android.graphics.ImageDecoder
 import android.net.Uri
 import android.provider.OpenableColumns
 import java.io.File
@@ -28,9 +26,6 @@ data class StagedFile(
  */
 object Staging {
 
-    /** HEIC is what an iPhone-era Android camera hands over, and browsers cannot show it. */
-    private val HEIF_TYPES = setOf("image/heic", "image/heif", "image/heic-sequence")
-
     fun stageAll(context: Context, uris: List<Uri>, jobId: String): List<StagedFile> {
         val dir = jobDir(context, jobId).apply { mkdirs() }
         val used = mutableSetOf<String>()
@@ -50,25 +45,16 @@ object Staging {
         val declaredType = resolver.getType(uri) ?: "application/octet-stream"
         val displayName = queryDisplayName(resolver, uri)
 
-        val isHeif = declaredType.lowercase(Locale.ROOT).substringBefore(';') in HEIF_TYPES
+        // Transcode rather than upload, where the phone can: see Heif for why, and for
+        // why the name has to change with the bytes.
+        val transcode = Heif.isHeif(declaredType) && Heif.canTranscode
 
-        val baseName = sanitize(displayName, index, if (isHeif) "jpg" else extensionFor(declaredType))
+        val baseName = if (transcode) Heif.jpegName(displayName, index) else sanitize(displayName, index, extensionFor(declaredType))
         val filename = uniquify(baseName, used)
         val target = File(dir, filename)
 
-        if (isHeif) {
-            // Transcode rather than upload: the server serves only an allowlist of image
-            // types inline, HEIC is not on it, and Chrome cannot render it anyway. A shared
-            // photo has to appear in the note, not download as an opaque blob.
-            val source = ImageDecoder.createSource(resolver, uri)
-            val bitmap = ImageDecoder.decodeBitmap(source) { decoder, _, _ ->
-                decoder.allocator = ImageDecoder.ALLOCATOR_SOFTWARE
-                decoder.isMutableRequired = false
-            }
-            target.outputStream().use { out ->
-                bitmap.compress(Bitmap.CompressFormat.JPEG, 90, out)
-            }
-            bitmap.recycle()
+        if (transcode) {
+            Heif.toJpeg(resolver, uri, target)
             return StagedFile(target, filename, "image/jpeg")
         }
 
@@ -79,7 +65,7 @@ object Staging {
         return StagedFile(target, filename, declaredType.substringBefore(';').trim())
     }
 
-    private fun queryDisplayName(resolver: ContentResolver, uri: Uri): String? =
+    internal fun queryDisplayName(resolver: ContentResolver, uri: Uri): String? =
         runCatching {
             resolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)
                 ?.use { c ->
