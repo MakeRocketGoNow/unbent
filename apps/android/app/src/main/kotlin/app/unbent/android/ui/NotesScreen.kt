@@ -286,11 +286,35 @@ fun NotesScreen(
                 }
             },
         ) { padding ->
-            PullToRefreshBox(
-                isRefreshing = state.refreshing,
-                onRefresh = { scope.launch { state.refresh(pulled = true) } },
-                modifier = Modifier.padding(padding).fillMaxSize(),
-            ) {
+            Column(Modifier.padding(padding).fillMaxSize()) {
+                /*
+                 * Above the list rather than in place of it: the notes shown are real, and
+                 * the only thing wrong is that there are more of them than the filter on
+                 * screen implies. Replacing the list with this would hide the results the
+                 * fallback just went to the trouble of fetching.
+                 */
+                state.droppedTags.takeIf { it.isNotEmpty() }?.let { dropped ->
+                    Text(
+                        pluralStringResource(
+                            R.plurals.tags_dropped,
+                            dropped.size,
+                            state.selectedTags.firstOrNull().orEmpty(),
+                            dropped.joinToString(", ") { "#$it" },
+                        ),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = Space.Large, vertical = Space.Small),
+                    )
+                    HorizontalDivider()
+                }
+
+                PullToRefreshBox(
+                    isRefreshing = state.refreshing,
+                    onRefresh = { scope.launch { state.refresh(pulled = true) } },
+                    modifier = Modifier.fillMaxSize(),
+                ) {
                 val results = state.results
                 val error = state.error
                 when {
@@ -330,6 +354,7 @@ fun NotesScreen(
                         onNearEnd = { scope.launch { state.loadMore() } },
                     )
                 }
+            }
             }
         }
     }
@@ -885,10 +910,20 @@ class NotesState(private val api: UnbentApi) {
     /** Changes what the list shows. The screen reloads when it sees the change. */
     fun filterBy(notebook: String?, tags: List<String>) {
         if (this.notebook == notebook && this.selectedTags == tags) return
+        droppedTags = emptyList()
         this.notebook = notebook
         this.selectedTags = tags
         clearForReload()
     }
+
+    /**
+     * Tags this server could not filter by, so the screen can say what it dropped.
+     *
+     * Cleared by the next deliberate filter change: the notice belongs to one refusal, not
+     * to the session, and a banner that outlived the filter it described would be a puzzle.
+     */
+    var droppedTags by mutableStateOf<List<String>>(emptyList())
+        private set
 
     /** Takes every filter off at once, leaving the sort alone — it is not a filter. */
     fun clearFilters() {
@@ -1022,8 +1057,37 @@ class NotesState(private val api: UnbentApi) {
             if (page.total != null) total = page.total
             loaded = true
         }.onFailure { e ->
-            if ((e as? ApiException)?.status == 401) unauthorized = true
-            else error = e.message ?: e.javaClass.simpleName
+            val status = (e as? ApiException)?.status
+            when {
+                status == 401 -> unauthorized = true
+
+                /*
+                 * A 400 while sending several tags means this app is talking to a server
+                 * that predates the multi-tag filter: it reads `tag` as one value, gets a
+                 * list, and refuses the whole request.
+                 *
+                 * Worth handling rather than reporting, because the phone updates on its
+                 * own schedule and the server on someone else's — a self-hoster who has not
+                 * redeployed, or simply an app that reached the store first. The failure
+                 * was total and unexplained: the list went blank, the title still named
+                 * both tags, and "List notes failed: 400" gave no hint that dropping one
+                 * would fix it.
+                 *
+                 * Falling back to the first tag rather than none: one tag is what the old
+                 * server understands, and it is the narrowing the user asked for minus the
+                 * part it cannot do. Saying so matters as much as doing it — a filter that
+                 * silently means something other than what the chips show is worse than an
+                 * error.
+                 */
+                status == 400 && selectedTags.size > 1 -> {
+                    val kept = selectedTags.first()
+                    droppedTags = selectedTags.drop(1)
+                    selectedTags = listOf(kept)
+                    clearForReload()
+                }
+
+                else -> error = e.message ?: e.javaClass.simpleName
+            }
         }
     }
 }

@@ -54,6 +54,10 @@
     <string name="tags_find">Find tags</string>
     <string name="tags_no_matches">No tags match.</string>
     <string name="tags_all_chosen">Every tag is chosen.</string>
+    <plurals name="tags_dropped">
+        <item quantity="one">This Unbent can filter by one tag at a time, so %2$s was dropped. Showing #%1$s.</item>
+        <item quantity="other">This Unbent can filter by one tag at a time, so %2$s were dropped. Showing #%1$s.</item>
+    </plurals>
     <plurals name="tags_selected">
         <item quantity="one">%d tag</item>
         <item quantity="other">%d tags</item>
