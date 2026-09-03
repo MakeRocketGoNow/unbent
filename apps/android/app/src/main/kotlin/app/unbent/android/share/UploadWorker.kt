@@ -59,20 +59,26 @@ class UploadWorker(context: Context, params: WorkerParameters) : CoroutineWorker
         try {
             val noteId = api.createNote(title, body, tags, notebook).id
 
+            // Whether any file still needs its text extracted here. The server does it
+            // itself where it can, and says so; the indexing job then has nothing to do.
+            var needsIndex = false
             names.forEachIndexed { i, name ->
                 val file = File(dir, name)
                 // A file missing from the cache cannot be recovered by retrying; skip it
                 // rather than failing the whole capture and losing the others.
                 if (file.exists()) {
-                    api.uploadFile(noteId, file, name, types.getOrElse(i) { "application/octet-stream" })
+                    val type = types.getOrElse(i) { "application/octet-stream" }
+                    val uploaded = api.uploadFile(noteId, file, name, type)
+                    if (IndexWorker.needsIndexing(listOf(type)) && !uploaded.indexedByServer) needsIndex = true
                 }
             }
 
             Staging.clear(context, jobId)
 
             CaptureNotifications.saved(context, jobId, title, noteId)
-            // The note's id is this job's output, for the indexing job chained after it.
-            Result.success(workDataOf(KEY_NOTE_ID to noteId))
+            // This job's output is the indexing job's input: which note, and whether there
+            // is anything left for it to do.
+            Result.success(workDataOf(KEY_NOTE_ID to noteId, KEY_NEEDS_INDEX to needsIndex))
         } catch (e: ApiException) {
             if (e.status == 401) {
                 // The session is gone, not merely unreachable. Retrying cannot fix it, and
@@ -126,6 +132,8 @@ class UploadWorker(context: Context, params: WorkerParameters) : CoroutineWorker
         const val KEY_TAGS = "tags"
         /** Output: the note this capture became. */
         const val KEY_NOTE_ID = "noteId"
+        /** Output: false when the server extracted every PDF's text itself. */
+        const val KEY_NEEDS_INDEX = "needsIndex"
         private const val MAX_ATTEMPTS = 4
 
         /** How long a capture waits for the user to finish connecting. */

@@ -156,10 +156,15 @@ class UnbentApiTest {
 
     @Test
     fun `uploadFile streams to the note and asks the server to link it`() {
-        server.enqueue(MockResponse().setResponseCode(201).setBody("""{"filename":"a.pdf","path":"files/a.pdf"}"""))
+        server.enqueue(
+            MockResponse().setResponseCode(201)
+                .setBody("""{"filename":"a.pdf","path":"files/a.pdf","indexing":"server"}"""),
+        )
 
         val file = temp.newFile("a.pdf").apply { writeText("%PDF-1.4 hello") }
-        api.uploadFile("note-1", file, "a.pdf", "application/pdf")
+        val uploaded = api.uploadFile("note-1", file, "a.pdf", "application/pdf")
+        assertEquals("a.pdf", uploaded.filename)
+        assertEquals(true, uploaded.indexedByServer)
 
         val req = server.takeRequest()
         assertEquals("PUT", req.method)
@@ -171,10 +176,12 @@ class UnbentApiTest {
 
     @Test
     fun `uploadFile percent-encodes a filename with spaces and accents`() {
-        server.enqueue(MockResponse().setResponseCode(201).setBody("{}"))
+        // An older server says nothing about indexing; that reads as "not by the server".
+        server.enqueue(MockResponse().setResponseCode(201).setBody("""{"filename":"Café Bill.pdf"}"""))
 
         val file = temp.newFile("x.pdf").apply { writeText("x") }
-        api.uploadFile("note-1", file, "Café Bill.pdf", "application/pdf")
+        val uploaded = api.uploadFile("note-1", file, "Café Bill.pdf", "application/pdf")
+        assertEquals(false, uploaded.indexedByServer)
 
         // A raw header may not carry non-ASCII; the server decodes this back.
         assertEquals("Caf%C3%A9+Bill.pdf", server.takeRequest().getHeader("X-Filename"))

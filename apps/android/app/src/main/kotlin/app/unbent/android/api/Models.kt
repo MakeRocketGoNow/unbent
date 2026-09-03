@@ -78,6 +78,18 @@ data class NotePage(
     val total: Int? = null,
 )
 
+/**
+ * What `PUT /api/notes/:id/files` says about a file it stored.
+ *
+ * `indexing` is who extracts the file's text for search: `server`, in the background, or
+ * `client`, meaning nobody has yet. A server older than the field leaves it null, which
+ * means the same as `client`.
+ */
+@Serializable
+data class UploadedFile(val filename: String, val indexing: String? = null) {
+    val indexedByServer: Boolean get() = indexing == "server"
+}
+
 @Serializable
 data class Notebook(val id: String, val name: String, val count: Int = 0)
 

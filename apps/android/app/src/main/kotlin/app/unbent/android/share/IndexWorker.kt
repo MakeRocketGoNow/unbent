@@ -29,6 +29,9 @@ class IndexWorker(context: Context, params: WorkerParameters) : CoroutineWorker(
 
     override suspend fun doWork(): Result {
         val noteId = inputData.getString(UploadWorker.KEY_NOTE_ID) ?: return Result.success()
+        // The server may have extracted the text itself as the files landed; then there is
+        // nothing to spin a WebView up for. Absent means an older upload job: assume there is.
+        if (!inputData.getBoolean(UploadWorker.KEY_NEEDS_INDEX, true)) return Result.success()
         val prefs = Prefs(applicationContext)
         val session = prefs.session ?: return Result.success()
 

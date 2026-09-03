@@ -213,7 +213,7 @@ class UnbentApi(
      * of the note body and no cursor. The server appends the link atomically, which also
      * makes concurrent uploads to one note safe.
      */
-    fun uploadFile(noteId: String, file: File, filename: String, contentType: String) {
+    fun uploadFile(noteId: String, file: File, filename: String, contentType: String): UploadedFile {
         val url = "$origin/api/notes/$noteId/files".toHttpUrl().newBuilder()
             .addQueryParameter("link", "1")
             .build()
@@ -226,7 +226,7 @@ class UnbentApi(
             .put(file.asRequestBody(contentType.toMediaTypeOrNull()))
             .build()
 
-        call(req, "Upload")
+        return ApiJson.decodeFromString(call(req, "Upload"))
     }
 
     private fun noteUrl(id: String): HttpUrl =
