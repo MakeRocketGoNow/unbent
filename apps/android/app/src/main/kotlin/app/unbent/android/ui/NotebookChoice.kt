@@ -11,6 +11,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import app.unbent.android.ui.theme.Space
 
 /**
  * One notebook to pick, with its note count where it has one; the Inbox has none.
@@ -23,7 +24,7 @@ import androidx.compose.ui.unit.dp
 @Composable
 fun NotebookChoice(name: String, count: Int?, selected: Boolean, onSelect: () -> Unit) {
     Row(
-        Modifier.fillMaxWidth().clickable(onClick = onSelect).padding(vertical = 4.dp),
+        Modifier.fillMaxWidth().clickable(onClick = onSelect).padding(vertical = Space.Hair),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         RadioButton(selected = selected, onClick = onSelect)

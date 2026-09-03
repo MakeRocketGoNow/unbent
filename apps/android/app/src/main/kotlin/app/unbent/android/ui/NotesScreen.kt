@@ -24,24 +24,30 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material.icons.filled.Menu
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.DateRangePicker
 import androidx.compose.material3.DrawerValue
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.ModalDrawerSheet
 import androidx.compose.material3.ModalNavigationDrawer
 import androidx.compose.material3.NavigationDrawerItem
@@ -66,6 +72,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.SolidColor
@@ -88,6 +95,8 @@ import app.unbent.android.api.SearchResult
 import app.unbent.android.api.Tag
 import app.unbent.android.api.UNFILED
 import app.unbent.android.api.UnbentApi
+import app.unbent.android.ui.theme.Shapes
+import app.unbent.android.ui.theme.Space
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -127,12 +136,17 @@ fun NotesScreen(
     onOpen: (String) -> Unit,
     onOpenNew: (String) -> Unit,
     onSettings: () -> Unit,
+    onManageNotebooks: () -> Unit,
     onUnauthorized: () -> Unit,
 ) {
     val scope = rememberCoroutineScope()
     val state = remember(api) { NotesState(api) }
     val drawer = rememberDrawerState(DrawerValue.Closed)
     var searchOpen by rememberSaveable { mutableStateOf(false) }
+    var overflowOpen by remember { mutableStateOf(false) }
+    var pickingTags by rememberSaveable { mutableStateOf(false) }
+    var pickingSort by rememberSaveable { mutableStateOf(false) }
+    var pickingDates by rememberSaveable { mutableStateOf(false) }
 
     // The list follows its filter and sort: the first load, and a reload on every change.
     // The directory the drawer shows is loaded once here and refreshed with the list.
@@ -168,7 +182,8 @@ fun NotesScreen(
     // Back closes what is open before it leaves the app: the drawer, then the search.
     // The drawer does not do this for itself, and a back press that quit the app with a
     // drawer still open is the kind of thing that makes an app feel like a web page.
-    BackHandler(enabled = drawer.isOpen) { scope.launch { drawer.close() } }
+    BackHandler(enabled = pickingTags) { pickingTags = false }
+    BackHandler(enabled = drawer.isOpen && !pickingTags) { scope.launch { drawer.close() } }
     BackHandler(enabled = searchOpen && !drawer.isOpen) {
         searchOpen = false
         state.changeQuery("")
@@ -181,6 +196,8 @@ fun NotesScreen(
                 FilterDrawer(
                     state = state,
                     onPicked = { scope.launch { drawer.close() } },
+                    onPickTag = { pickingTags = true },
+                    onManageNotebooks = onManageNotebooks,
                 )
             }
         },
@@ -208,9 +225,22 @@ fun NotesScreen(
                             IconButton(onClick = { searchOpen = true }) {
                                 Icon(Icons.Default.Search, contentDescription = stringResource(R.string.search))
                             }
-                            IconButton(onClick = onSettings) {
-                                Icon(Icons.Default.Settings, contentDescription = stringResource(R.string.settings_title))
+                            /*
+                             * The gear gave up its place here to the overflow. Settings is
+                             * a rare destination, and an icon of its own next to sort and
+                             * dates implied the three were the same kind of thing.
+                             */
+                            IconButton(onClick = { overflowOpen = true }) {
+                                Icon(Icons.Default.MoreVert, contentDescription = stringResource(R.string.more))
                             }
+                            NotesOverflow(
+                                state = state,
+                                expanded = overflowOpen,
+                                onDismiss = { overflowOpen = false },
+                                onSort = { pickingSort = true },
+                                onDates = { pickingDates = true },
+                                onSettings = onSettings,
+                            )
                         },
                     )
                 }
@@ -236,18 +266,18 @@ fun NotesScreen(
                     results != null -> SearchList(results, onOpen)
 
                     error != null && state.items.isEmpty() -> Column(
-                        Modifier.fillMaxSize().padding(24.dp),
+                        Modifier.fillMaxSize().padding(Space.Screen),
                         horizontalAlignment = Alignment.CenterHorizontally,
                     ) {
                         Text(stringResource(R.string.load_failed, error), color = MaterialTheme.colorScheme.error)
-                        Spacer(Modifier.height(12.dp))
+                        Spacer(Modifier.height(Space.Medium))
                         OutlinedButton(onClick = { scope.launch { state.load() } }) {
                             Text(stringResource(R.string.retry))
                         }
                     }
 
                     state.loaded && state.items.isEmpty() -> Box(
-                        Modifier.fillMaxSize().padding(24.dp),
+                        Modifier.fillMaxSize().padding(Space.Screen),
                         contentAlignment = Alignment.TopCenter,
                     ) {
                         Text(
@@ -271,6 +301,29 @@ fun NotesScreen(
                 }
             }
         }
+    }
+
+    if (pickingTags) {
+        TagSheet(
+            state = state,
+            onDismiss = { pickingTags = false },
+            onPicked = {
+                pickingTags = false
+                scope.launch { drawer.close() }
+            },
+        )
+    }
+    if (pickingSort) SortDialog(state = state, onDismiss = { pickingSort = false })
+    if (pickingDates) {
+        DateRangeDialog(
+            from = state.from,
+            to = state.to,
+            onDismiss = { pickingDates = false },
+            onPick = { from, to ->
+                pickingDates = false
+                state.dateRange(from, to)
+            },
+        )
     }
 }
 
@@ -368,171 +421,315 @@ private fun SearchBar(query: String, onQuery: (String) -> Unit, onClose: () -> U
 }
 
 /**
- * The directory: every notebook and tag with its count, the dates, and the sort.
+ * The directory: where to go. Every notebook with its count, the Inbox, and a way into
+ * the tags.
+ *
+ * It used to hold the sort and the date range as well, which made it three unrelated
+ * things stacked in one column — a place to go, a filter to combine, and a view setting —
+ * and the user had to re-orient twice on the way down. Those moved to the app bar's
+ * overflow, where a setting you change occasionally belongs. What is left answers one
+ * question, so it reads as a directory instead of a control panel.
  *
  * Counts are the point. In an archive of thirteen thousand notes, "Dentist 22" is the
  * information; a bare name would leave the user to open it and find out.
  *
- * The dates sit between the tags and the sort because they belong to both: a range
- * narrows like a tag does, and which date it reads follows the sort — created under
- * "Newest first", updated under everything else — the same rule the web applies.
+ * Tags are one row rather than the chip cloud they were, because tags are a second axis
+ * that combines with the notebook — picking one keeps the notebook selected — and a cloud
+ * of forty chips in the middle of the notebook list buried the notebooks under a filter
+ * that is not even the same kind of thing. The row names the active tag so the filter is
+ * never applied invisibly.
  */
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun FilterDrawer(state: NotesState, onPicked: () -> Unit) {
-    Column(
-        Modifier
-            .verticalScroll(rememberScrollState())
-            .padding(vertical = 16.dp),
-    ) {
-        Text(
-            stringResource(R.string.app_name),
-            style = MaterialTheme.typography.titleLarge,
-            modifier = Modifier.padding(horizontal = 28.dp, vertical = 8.dp),
-        )
-
-        val item = Modifier.padding(horizontal = 12.dp)
-        NavigationDrawerItem(
-            label = { Text(stringResource(R.string.all_notes)) },
-            selected = state.notebook == null && state.tag == null,
-            onClick = {
-                state.filterBy(notebook = null, tag = null)
-                onPicked()
-            },
-            modifier = item,
-        )
-        // Shown while it has anything in it, or while it is what is selected: an empty Inbox
-        // that vanished from under the selection would leave the title pointing at nothing.
-        if (state.unfiled > 0 || state.notebook == UNFILED) {
-            NavigationDrawerItem(
-                label = { Text(stringResource(R.string.inbox)) },
-                badge = { Text(state.unfiled.toString()) },
-                selected = state.notebook == UNFILED,
-                onClick = {
-                    state.filterBy(notebook = UNFILED, tag = null)
-                    onPicked()
-                },
-                modifier = item,
-            )
-        }
-        for (nb in state.notebooks) {
-            NavigationDrawerItem(
-                label = { Text(nb.name, maxLines = 1, overflow = TextOverflow.Ellipsis) },
-                badge = { Text(nb.count.toString()) },
-                selected = state.notebook == nb.name,
-                onClick = {
-                    state.filterBy(notebook = nb.name, tag = null)
-                    onPicked()
-                },
-                modifier = item,
-            )
-        }
-
-        if (state.tags.isNotEmpty()) {
-            HorizontalDivider(Modifier.padding(vertical = 12.dp))
+private fun FilterDrawer(
+    state: NotesState,
+    onPicked: () -> Unit,
+    onPickTag: () -> Unit,
+    onManageNotebooks: () -> Unit,
+) {
+    // The list scrolls; the footer does not. A create action that scrolled away with the
+    // notebooks would be unreachable exactly when the list is long enough to need it.
+    Column(Modifier.fillMaxSize()) {
+        Column(
+            Modifier
+                .weight(1f)
+                .verticalScroll(rememberScrollState())
+                .padding(vertical = Space.Medium),
+        ) {
             Text(
-                stringResource(R.string.tags_label),
-                style = MaterialTheme.typography.titleSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(horizontal = 28.dp, vertical = 4.dp),
+                stringResource(R.string.app_name),
+                style = MaterialTheme.typography.titleLarge,
+                modifier = Modifier.padding(horizontal = Space.Screen, vertical = Space.Small),
             )
+
+            val item = Modifier.padding(horizontal = Space.Medium)
+            NavigationDrawerItem(
+                label = { Text(stringResource(R.string.all_notes)) },
+                selected = state.notebook == null && state.tag == null,
+                shape = Shapes.Row,
+                onClick = {
+                    state.filterBy(notebook = null, tag = null)
+                    onPicked()
+                },
+                modifier = item,
+            )
+            // Shown while it has anything in it, or while it is what is selected: an empty Inbox
+            // that vanished from under the selection would leave the title pointing at nothing.
+            if (state.unfiled > 0 || state.notebook == UNFILED) {
+                NavigationDrawerItem(
+                    label = { Text(stringResource(R.string.inbox)) },
+                    badge = { CountBadge(state.unfiled) },
+                    selected = state.notebook == UNFILED,
+                    shape = Shapes.Row,
+                    onClick = {
+                        state.filterBy(notebook = UNFILED, tag = null)
+                        onPicked()
+                    },
+                    modifier = item,
+                )
+            }
+
+            /*
+             * Above the divider with All notes and the Inbox, not down among the notebooks:
+             * those three are ways of choosing what to look at, and the notebooks below are
+             * the library itself. The chevron says it opens something rather than filtering
+             * on the spot, which is the one thing this row does that its neighbours do not.
+             */
+            NavigationDrawerItem(
+                label = {
+                    Text(
+                        state.tag ?: stringResource(R.string.tags_label),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                },
+                badge = {
+                    Icon(
+                        Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                },
+                selected = state.tag != null,
+                shape = Shapes.Row,
+                onClick = onPickTag,
+                modifier = item,
+            )
+
+            HorizontalDivider(Modifier.padding(vertical = Space.Medium))
+
+            for (nb in state.notebooks) {
+                NavigationDrawerItem(
+                    label = { Text(nb.name, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                    badge = { CountBadge(nb.count) },
+                    selected = state.notebook == nb.name,
+                    shape = Shapes.Row,
+                    onClick = {
+                        state.filterBy(notebook = nb.name, tag = null)
+                        onPicked()
+                    },
+                    modifier = item,
+                )
+            }
+        }
+
+        /*
+         * The footer: create on the left, manage on the right.
+         *
+         * Fixed rather than the last row of the scroll, so both are one tap from anywhere
+         * in a long directory. Creating is the common act and reads as a row like the ones
+         * above it; managing is rare and sits as an icon at the end, quiet but visible —
+         * which is the affordance a long-press would not have been.
+         */
+        HorizontalDivider()
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .padding(horizontal = Space.Medium, vertical = Space.Small),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            NavigationDrawerItem(
+                label = { Text(stringResource(R.string.new_notebook)) },
+                icon = { Icon(Icons.Default.Add, contentDescription = null) },
+                selected = false,
+                shape = Shapes.Row,
+                onClick = onManageNotebooks,
+                modifier = Modifier.weight(1f),
+            )
+            IconButton(onClick = onManageNotebooks) {
+                Icon(
+                    Icons.Default.Settings,
+                    contentDescription = stringResource(R.string.manage_notebooks),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+    }
+}
+
+/**
+ * The tags, as a sheet over the list rather than a screen of their own.
+ *
+ * A sheet because picking a tag narrows what is already on screen: the list stays behind
+ * it, and dismissing leaves everything as it was. It is also how the filing and capture
+ * sheets already pick things, so the gesture is one the app has taught before.
+ *
+ * "Any tag" leads, and is how the filter comes off — a chip cloud with no clear row makes
+ * removing the last filter a puzzle. The title names the notebook when one is selected,
+ * because picking a tag here narrows within it rather than escaping it, and that is not
+ * something the user can be expected to infer.
+ */
+@OptIn(ExperimentalLayoutApi::class, ExperimentalMaterial3Api::class)
+@Composable
+private fun TagSheet(state: NotesState, onDismiss: () -> Unit, onPicked: () -> Unit) {
+    ModalBottomSheet(onDismissRequest = onDismiss) {
+        Column(
+            Modifier
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = Space.Screen)
+                .padding(bottom = Space.Screen),
+        ) {
+            val notebook = state.notebook
+            Text(
+                when (notebook) {
+                    null -> stringResource(R.string.tags_pick)
+                    UNFILED -> stringResource(R.string.tags_in_notebook, stringResource(R.string.inbox))
+                    else -> stringResource(R.string.tags_in_notebook, notebook)
+                },
+                style = MaterialTheme.typography.titleMedium,
+            )
+            Spacer(Modifier.height(Space.Large))
+
             FlowRow(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                modifier = Modifier.padding(horizontal = 24.dp),
+                horizontalArrangement = Arrangement.spacedBy(Space.Small),
+                verticalArrangement = Arrangement.spacedBy(Space.Small),
             ) {
+                TagChip(
+                    name = stringResource(R.string.tags_none),
+                    count = null,
+                    selected = state.tag == null,
+                    onClick = {
+                        state.filterBy(notebook = state.notebook, tag = null)
+                        onPicked()
+                    },
+                )
                 for (tag in state.tags) {
                     val selected = state.tag == tag.name
-                    FilterChip(
+                    TagChip(
+                        name = tag.name,
+                        count = tag.count,
                         selected = selected,
                         onClick = {
                             // Tapping the selected tag clears it: a chip that is on can be turned off.
                             state.filterBy(notebook = state.notebook, tag = if (selected) null else tag.name)
                             onPicked()
                         },
-                        label = { Text("${tag.name} ${tag.count}") },
                     )
                 }
             }
         }
+    }
+}
 
-        HorizontalDivider(Modifier.padding(vertical = 12.dp))
-        Text(
-            stringResource(R.string.dates_label),
-            style = MaterialTheme.typography.titleSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(horizontal = 28.dp, vertical = 4.dp),
+/**
+ * Sort and dates, and the way to settings.
+ *
+ * These are the two settings that used to sit at the bottom of the drawer. They are not
+ * places to go, so they do not belong in a directory — but they cannot simply be hidden
+ * either: a sort you cannot see is a list in an order you did not ask for. Both rows name
+ * their current value, and the list's own title still carries an applied date range, so
+ * neither filter is ever in force with nothing on screen saying so.
+ */
+@Composable
+private fun NotesOverflow(
+    state: NotesState,
+    expanded: Boolean,
+    onDismiss: () -> Unit,
+    onSort: () -> Unit,
+    onDates: () -> Unit,
+    onSettings: () -> Unit,
+) {
+    DropdownMenu(expanded = expanded, onDismissRequest = onDismiss) {
+        DropdownMenuItem(
+            text = { Text(stringResource(R.string.sort_current, stringResource(state.sort.label))) },
+            leadingIcon = { Icon(Icons.AutoMirrored.Filled.List, contentDescription = null) },
+            onClick = {
+                onDismiss()
+                onSort()
+            },
         )
-        var pickingDates by rememberSaveable { mutableStateOf(false) }
-        val range = rangeLabel(state.from, state.to)
-        // Laid out like the sort rows beneath: an icon where their radio is, the label at the
-        // same offset. The row opens the picker; the × beside a set range clears it, so
-        // turning the filter off is one tap and never a trip through the dialog.
-        Row(
-            Modifier
-                .fillMaxWidth()
-                .clickable { pickingDates = true }
-                .padding(start = 16.dp, end = 4.dp, top = 2.dp, bottom = 2.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Icon(
-                Icons.Default.DateRange,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.size(24.dp),
-            )
-            Text(
-                range ?: stringResource(R.string.dates_any),
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f).padding(start = 8.dp),
-            )
-            if (range != null) {
-                IconButton(
-                    onClick = {
-                        state.dateRange(null, null)
-                        onPicked()
-                    },
-                ) {
-                    Icon(Icons.Default.Close, contentDescription = stringResource(R.string.dates_clear))
+        DropdownMenuItem(
+            text = {
+                val range = rangeLabel(state.from, state.to) ?: stringResource(R.string.dates_any)
+                Text(stringResource(R.string.dates_current, range), maxLines = 1, overflow = TextOverflow.Ellipsis)
+            },
+            leadingIcon = { Icon(Icons.Default.DateRange, contentDescription = null) },
+            trailingIcon = {
+                // Clearing a range without reopening the picker, the same affordance the
+                // drawer row carried. Only where there is something to clear.
+                if (state.from != null || state.to != null) {
+                    IconButton(
+                        onClick = {
+                            state.dateRange(null, null)
+                            onDismiss()
+                        },
+                    ) {
+                        Icon(Icons.Default.Close, contentDescription = stringResource(R.string.dates_clear))
+                    }
+                }
+            },
+            onClick = {
+                onDismiss()
+                onDates()
+            },
+        )
+        HorizontalDivider(Modifier.padding(vertical = Space.Hair))
+        DropdownMenuItem(
+            text = { Text(stringResource(R.string.settings_title)) },
+            leadingIcon = { Icon(Icons.Default.Settings, contentDescription = null) },
+            onClick = {
+                onDismiss()
+                onSettings()
+            },
+        )
+    }
+}
+
+/**
+ * The sort, as a dialog off the overflow.
+ *
+ * A submenu would have worked and would have been worse: the options are longer than a
+ * menu row wants to be, and the current one has to be legible at a glance, which a nested
+ * menu shows only after a second tap.
+ */
+@Composable
+private fun SortDialog(state: NotesState, onDismiss: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.sort_label)) },
+        confirmButton = {
+            TextButton(onClick = onDismiss) { Text(stringResource(android.R.string.cancel)) }
+        },
+        text = {
+            Column {
+                for (sort in NoteSort.entries) {
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .clip(Shapes.Row)
+                            .clickable {
+                                state.sortBy(sort)
+                                onDismiss()
+                            }
+                            .padding(horizontal = Space.Small, vertical = Space.Hair),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        RadioButton(selected = state.sort == sort, onClick = null)
+                        Text(stringResource(sort.label), modifier = Modifier.padding(start = Space.Small))
+                    }
                 }
             }
-        }
-        if (pickingDates) {
-            DateRangeDialog(
-                from = state.from,
-                to = state.to,
-                onDismiss = { pickingDates = false },
-                onPick = { from, to ->
-                    pickingDates = false
-                    state.dateRange(from, to)
-                    onPicked()
-                },
-            )
-        }
-
-        HorizontalDivider(Modifier.padding(vertical = 12.dp))
-        Text(
-            stringResource(R.string.sort_label),
-            style = MaterialTheme.typography.titleSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(horizontal = 28.dp, vertical = 4.dp),
-        )
-        for (sort in NoteSort.entries) {
-            Row(
-                Modifier
-                    .fillMaxWidth()
-                    .clickable {
-                        state.sortBy(sort)
-                        onPicked()
-                    }
-                    .padding(horizontal = 16.dp, vertical = 2.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                RadioButton(selected = state.sort == sort, onClick = null)
-                Text(stringResource(sort.label), modifier = Modifier.padding(start = 8.dp))
-            }
-        }
-    }
+        },
+    )
 }
 
 /**
@@ -602,13 +799,13 @@ private fun NoteList(
         }
         if (loadingMore) {
             item {
-                Box(Modifier.fillMaxWidth().padding(16.dp), contentAlignment = Alignment.Center) {
+                Box(Modifier.fillMaxWidth().padding(Space.Large), contentAlignment = Alignment.Center) {
                     CircularProgressIndicator()
                 }
             }
         }
         // Room under the last row for the button that floats over the list.
-        item { Spacer(Modifier.height(88.dp)) }
+        item { Spacer(Modifier.height(Space.FabClearance)) }
     }
 }
 
@@ -657,7 +854,7 @@ private fun NoteRow(note: NoteSummary, sort: NoteSort, showNotebook: Boolean, on
 @Composable
 private fun SearchList(results: List<SearchResult>, onOpen: (String) -> Unit) {
     if (results.isEmpty()) {
-        Box(Modifier.fillMaxSize().padding(24.dp), contentAlignment = Alignment.TopCenter) {
+        Box(Modifier.fillMaxSize().padding(Space.Screen), contentAlignment = Alignment.TopCenter) {
             Text(stringResource(R.string.no_matches), color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         return
@@ -691,7 +888,7 @@ private fun SearchList(results: List<SearchResult>, onOpen: (String) -> Unit) {
             )
             if (index < results.lastIndex) HorizontalDivider()
         }
-        item { Spacer(Modifier.height(88.dp)) }
+        item { Spacer(Modifier.height(Space.FabClearance)) }
     }
 }
 

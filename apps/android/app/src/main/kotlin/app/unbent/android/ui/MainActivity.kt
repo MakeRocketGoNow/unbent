@@ -145,6 +145,10 @@ private fun App(
                 onOpen = { id -> nav.navigate("note/$id") },
                 onOpenNew = { id -> nav.navigate("note/$id?new=true") },
                 onSettings = { nav.navigate("settings") },
+                // TODO: the manage-notebooks screen. Until it exists both drawer footer
+                // controls land on settings rather than doing nothing, so nothing in the
+                // drawer is a dead control while the restructure is being looked at.
+                onManageNotebooks = { nav.navigate("settings") },
                 onUnauthorized = onSignedOut,
             )
         }

@@ -8,18 +8,18 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -29,9 +29,9 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -52,6 +52,7 @@ import app.unbent.android.api.Notebook
 import app.unbent.android.api.Tag
 import app.unbent.android.api.UnbentApi
 import app.unbent.android.share.StagedFile
+import app.unbent.android.ui.theme.Space
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -103,7 +104,7 @@ fun CaptureSheet(
             modifier = Modifier.align(Alignment.BottomCenter),
         ) {
             Surface(
-                shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
+                shape = RoundedCornerShape(topStart = Space.Screen, topEnd = Space.Screen),
                 color = MaterialTheme.colorScheme.surfaceContainerLow,
                 modifier = Modifier
                     .fillMaxWidth()
@@ -115,8 +116,8 @@ fun CaptureSheet(
                         .verticalScroll(rememberScrollState())
                         .navigationBarsPadding()
                         .imePadding()
-                        .padding(horizontal = 24.dp)
-                        .padding(bottom = 24.dp),
+                        .padding(horizontal = Space.Screen)
+                        .padding(bottom = Space.Screen),
                 ) {
                     DragHandle()
                     Text(stringResource(R.string.capture_title), style = MaterialTheme.typography.titleMedium)
@@ -125,7 +126,7 @@ fun CaptureSheet(
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
-                    Spacer(Modifier.height(16.dp))
+                    Spacer(Modifier.height(Space.Large))
 
                     if (api == null) {
                         SignedOut(onSignIn, onDismiss)
@@ -144,13 +145,13 @@ private fun DragHandle() {
     Box(
         Modifier
             .fillMaxWidth()
-            .padding(top = 12.dp, bottom = 16.dp),
+            .padding(top = Space.Medium, bottom = Space.Large),
         contentAlignment = Alignment.Center,
     ) {
         Box(
             Modifier
-                .size(width = 32.dp, height = 4.dp)
-                .clip(RoundedCornerShape(2.dp))
+                .size(width = Space.Screen, height = Space.Hair)
+                .clip(RoundedCornerShape(Space.Hair))
                 .background(MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)),
         )
     }
@@ -159,7 +160,7 @@ private fun DragHandle() {
 @Composable
 private fun SignedOut(onSignIn: () -> Unit, onDismiss: () -> Unit) {
     Text(stringResource(R.string.capture_sign_in), style = MaterialTheme.typography.bodyMedium)
-    Spacer(Modifier.height(16.dp))
+    Spacer(Modifier.height(Space.Large))
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
         TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) }
         Button(onClick = onSignIn) { Text(stringResource(R.string.sign_in_submit)) }
@@ -203,7 +204,7 @@ private fun CaptureForm(
         keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences, imeAction = ImeAction.Done),
         modifier = Modifier.fillMaxWidth(),
     )
-    Spacer(Modifier.height(12.dp))
+    Spacer(Modifier.height(Space.Medium))
 
     // The field states the choice; tapping it unfolds the list beneath, inside the sheet.
     Box {
@@ -230,7 +231,7 @@ private fun CaptureForm(
         )
     }
     if (picking) {
-        Column(Modifier.padding(top = 4.dp)) {
+        Column(Modifier.padding(top = Space.Hair)) {
             NotebookChoice(stringResource(R.string.inbox), null, notebook == null) {
                 notebook = null
                 picking = false
@@ -243,14 +244,14 @@ private fun CaptureForm(
             }
         }
     }
-    Spacer(Modifier.height(12.dp))
+    Spacer(Modifier.height(Space.Medium))
 
     Text(
         stringResource(R.string.tags_label),
         style = MaterialTheme.typography.labelMedium,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
-    Spacer(Modifier.height(4.dp))
+    Spacer(Modifier.height(Space.Hair))
     TagEditor(
         tags = tags,
         draft = tagDraft,
@@ -258,11 +259,11 @@ private fun CaptureForm(
         onChange = { tags = it },
         onDraftChange = { tagDraft = it },
     )
-    Spacer(Modifier.height(20.dp))
+    Spacer(Modifier.height(Space.Large))
 
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End, verticalAlignment = Alignment.CenterVertically) {
         TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) }
-        Spacer(Modifier.padding(horizontal = 4.dp))
+        Spacer(Modifier.padding(horizontal = Space.Hair))
         // Enabled once the files are safely in the cache: saving before that would enqueue
         // an upload of files that are not there yet. A tag still being typed goes too.
         Button(

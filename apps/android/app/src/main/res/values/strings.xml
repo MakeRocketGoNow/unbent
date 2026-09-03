@@ -44,6 +44,14 @@
     <string name="clear">Clear</string>
     <string name="filters">Filters</string>
     <string name="all_notes">All notes</string>
+    <string name="tags_none">Any tag</string>
+    <string name="tags_pick">Choose a tag</string>
+    <string name="tags_clear">Clear tag</string>
+    <string name="tags_in_notebook">Tags in %1$s</string>
+    <string name="notebooks_label">Notebooks</string>
+    <string name="manage_notebooks">Manage notebooks</string>
+    <string name="sort_current">Sort: %1$s</string>
+    <string name="dates_current">Dates: %1$s</string>
     <string name="new_note">New note</string>
     <string name="sort_label">Sort</string>
     <string name="sort_updated">Recently updated</string>

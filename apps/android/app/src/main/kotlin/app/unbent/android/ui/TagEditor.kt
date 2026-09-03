@@ -23,6 +23,7 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import app.unbent.android.R
 import app.unbent.android.api.Tag
+import app.unbent.android.ui.theme.Space
 
 /**
  * The note's tags: the ones it has as chips, a field to add one, and the account's other
@@ -54,7 +55,7 @@ fun TagEditor(
 
     Column {
         if (tags.isNotEmpty()) {
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(Space.Small)) {
                 for (tag in tags) {
                     InputChip(
                         selected = false,
@@ -81,8 +82,8 @@ fun TagEditor(
             .filter { draft.isBlank() || it.name.contains(draft.trim(), ignoreCase = true) }
             .take(12)
         if (offered.isNotEmpty()) {
-            Spacer(Modifier.height(8.dp))
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Spacer(Modifier.height(Space.Small))
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(Space.Small)) {
                 for (s in offered) {
                     SuggestionChip(onClick = { add(s.name) }, label = { Text(s.name) })
                 }

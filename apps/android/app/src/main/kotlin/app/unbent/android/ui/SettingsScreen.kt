@@ -3,8 +3,8 @@ package app.unbent.android.ui
 import android.net.Uri
 import androidx.browser.customtabs.CustomTabsIntent
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -43,6 +43,7 @@ import androidx.compose.ui.unit.dp
 import app.unbent.android.Prefs
 import app.unbent.android.R
 import app.unbent.android.api.UnbentApi
+import app.unbent.android.ui.theme.Space
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -90,7 +91,7 @@ fun SettingsScreen(
                 .imePadding()
                 .fillMaxSize()
                 .verticalScroll(rememberScrollState())
-                .padding(24.dp),
+                .padding(Space.Screen),
         ) {
             Text(
                 stringResource(R.string.signed_in_as),
@@ -98,7 +99,7 @@ fun SettingsScreen(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             Text(email ?: "…", style = MaterialTheme.typography.bodyLarge)
-            Spacer(Modifier.height(12.dp))
+            Spacer(Modifier.height(Space.Medium))
             OutlinedButton(
                 onClick = {
                     scope.launch {
@@ -109,14 +110,14 @@ fun SettingsScreen(
                 },
             ) { Text(stringResource(R.string.sign_out)) }
 
-            HorizontalDivider(Modifier.padding(vertical = 24.dp))
+            HorizontalDivider(Modifier.padding(vertical = Space.Screen))
 
             Text(
                 stringResource(R.string.instance_label),
                 style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            Spacer(Modifier.height(8.dp))
+            Spacer(Modifier.height(Space.Small))
             OutlinedTextField(
                 value = address,
                 onValueChange = { address = it },
@@ -124,7 +125,7 @@ fun SettingsScreen(
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri, imeAction = ImeAction.Done),
                 modifier = Modifier.fillMaxWidth(),
             )
-            Spacer(Modifier.height(8.dp))
+            Spacer(Modifier.height(Space.Small))
             val normalized = Prefs.normalizeOrigin(address)
             Button(
                 onClick = {
@@ -139,7 +140,7 @@ fun SettingsScreen(
                 enabled = normalized.isNotEmpty() && normalized != prefs.instance,
             ) { Text(stringResource(R.string.instance_use)) }
 
-            HorizontalDivider(Modifier.padding(vertical = 24.dp))
+            HorizontalDivider(Modifier.padding(vertical = Space.Screen))
 
             OutlinedButton(
                 onClick = {
@@ -148,7 +149,7 @@ fun SettingsScreen(
                     }
                 },
             ) { Text(stringResource(R.string.manage_on_web)) }
-            Spacer(Modifier.height(8.dp))
+            Spacer(Modifier.height(Space.Small))
             Text(
                 stringResource(R.string.manage_on_web_hint),
                 style = MaterialTheme.typography.bodySmall,

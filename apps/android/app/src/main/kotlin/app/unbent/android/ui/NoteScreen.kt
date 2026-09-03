@@ -21,9 +21,9 @@ import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -94,6 +94,9 @@ import app.unbent.android.api.Notebook
 import app.unbent.android.api.SessionCookie
 import app.unbent.android.api.Tag
 import app.unbent.android.api.UnbentApi
+import app.unbent.android.ui.theme.Space
+import kotlin.concurrent.thread
+import kotlin.coroutines.resume
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -104,8 +107,6 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
-import kotlin.concurrent.thread
-import kotlin.coroutines.resume
 
 /**
  * One note: a native head, and the web editor for the body.
@@ -284,13 +285,13 @@ fun NoteScreen(
             when {
                 state.missing -> Text(
                     stringResource(R.string.note_missing),
-                    modifier = Modifier.padding(24.dp),
+                    modifier = Modifier.padding(Space.Screen),
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
 
-                state.error != null -> Column(Modifier.padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                state.error != null -> Column(Modifier.padding(Space.Screen), horizontalAlignment = Alignment.CenterHorizontally) {
                     Text(stringResource(R.string.load_failed, state.error!!), color = MaterialTheme.colorScheme.error)
-                    Spacer(Modifier.height(12.dp))
+                    Spacer(Modifier.height(Space.Medium))
                     OutlinedButton(onClick = { scope.launch { state.load() } }) { Text(stringResource(R.string.retry)) }
                 }
 
@@ -416,7 +417,7 @@ private fun TitleField(value: String, onChange: (String) -> Unit, takeFocus: Boo
         keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences, imeAction = ImeAction.Done),
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 12.dp)
+            .padding(horizontal = Space.Large, vertical = Space.Medium)
             .focusRequester(focus),
         decorationBox = { inner ->
             Box {
@@ -442,7 +443,7 @@ private fun FilingRow(notebook: String?, tags: List<String>, onClick: () -> Unit
         modifier = Modifier
             .fillMaxWidth()
             .clickable(onClick = onClick)
-            .padding(start = 16.dp, end = 8.dp, top = 4.dp, bottom = 10.dp),
+            .padding(start = Space.Large, end = Space.Small, top = Space.Hair, bottom = Space.Medium),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(
@@ -453,7 +454,7 @@ private fun FilingRow(notebook: String?, tags: List<String>, onClick: () -> Unit
         // The tags take whatever width is left, truncating rather than wrapping, so the
         // chevron always sits at the right edge; with no tags an empty spacer does the same.
         if (tags.isNotEmpty()) {
-            Spacer(Modifier.width(10.dp))
+            Spacer(Modifier.width(Space.Medium))
             Text(
                 tags.joinToString(" ") { "#$it" },
                 style = MaterialTheme.typography.labelLarge,
@@ -494,11 +495,11 @@ private fun FilingSheet(state: NoteState, onDismiss: () -> Unit) {
                 .verticalScroll(rememberScrollState())
                 .navigationBarsPadding()
                 .imePadding()
-                .padding(horizontal = 24.dp)
-                .padding(bottom = 32.dp),
+                .padding(horizontal = Space.Screen)
+                .padding(bottom = Space.Screen),
         ) {
             Text(stringResource(R.string.notebook_label), style = MaterialTheme.typography.titleMedium)
-            Spacer(Modifier.height(4.dp))
+            Spacer(Modifier.height(Space.Hair))
             NotebookChoice(stringResource(R.string.inbox), null, state.notebook == null) { state.changeNotebook(null) }
             for (nb in state.notebooks) {
                 NotebookChoice(nb.name, nb.count, state.notebook == nb.name) { state.changeNotebook(nb.name) }
@@ -525,9 +526,9 @@ private fun FilingSheet(state: NoteState, onDismiss: () -> Unit) {
                 ) { Text(stringResource(R.string.add)) }
             }
 
-            Spacer(Modifier.height(20.dp))
+            Spacer(Modifier.height(Space.Large))
             Text(stringResource(R.string.tags_label), style = MaterialTheme.typography.titleMedium)
-            Spacer(Modifier.height(4.dp))
+            Spacer(Modifier.height(Space.Hair))
             TagEditor(
                 tags = state.tags,
                 draft = tagDraft,
@@ -536,7 +537,7 @@ private fun FilingSheet(state: NoteState, onDismiss: () -> Unit) {
                 onDraftChange = { tagDraft = it },
             )
 
-            Spacer(Modifier.height(20.dp))
+            Spacer(Modifier.height(Space.Large))
             Button(onClick = close, modifier = Modifier.align(Alignment.End)) {
                 Text(stringResource(R.string.done))
             }
