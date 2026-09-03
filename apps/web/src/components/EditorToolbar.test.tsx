@@ -1,6 +1,9 @@
 import { describe, it, expect, afterEach, vi } from 'vitest';
 import { render, screen, cleanup, fireEvent } from '@testing-library/react';
+import { EditorState } from '@codemirror/state';
+import { EditorView } from '@codemirror/view';
 import { EditorToolbar, type NoteView } from './EditorToolbar.js';
+import { attachments, type AttachConfig } from '../editor/attach.js';
 
 /**
  * The view switcher, which is the part of this toolbar with a state machine in it.
@@ -79,5 +82,61 @@ describe('EditorToolbar view switcher', () => {
     // that preview disables it independently of whether the editor has mounted.
     setup('rich');
     expect((screen.getByLabelText('Bold (⌘B)') as HTMLButtonElement).disabled).toBe(true);
+  });
+});
+
+/**
+ * The Attach button, which is the one control in the bar that opens something rather
+ * than acting on the selection.
+ *
+ * A real view here, unlike above: whether the button is enabled depends on what the
+ * view was configured with, and whether a chosen file lands depends on the view's
+ * document. jsdom gives CodeMirror enough of a DOM for both.
+ */
+describe('EditorToolbar attach', () => {
+  function mount(config: AttachConfig | null) {
+    return new EditorView({
+      state: EditorState.create({ doc: 'body', extensions: config ? [attachments(config)] : [] }),
+      parent: document.body,
+    });
+  }
+
+  const attach = () => screen.getByLabelText('Attach file') as HTMLButtonElement;
+
+  it('is disabled until there is an editor', () => {
+    setup('rich');
+    expect(attach().disabled).toBe(true);
+  });
+
+  it('is disabled in the preview, where the cursor it inserts at is not on screen', () => {
+    const view = mount({ upload: async () => 'files/x' });
+    render(<EditorToolbar view={view} noteView={{ current: 'preview', onChange: () => {} }} />);
+    expect(attach().disabled).toBe(true);
+    view.destroy();
+  });
+
+  it('is disabled on a note that cannot take files', () => {
+    const view = mount(null);
+    render(<EditorToolbar view={view} noteView={{ current: 'rich', onChange: () => {} }} />);
+    expect(attach().disabled).toBe(true);
+    view.destroy();
+  });
+
+  it('opens the file picker on click, and puts the chosen file at the cursor', async () => {
+    const view = mount({ upload: () => new Promise(() => {}) });
+    view.dispatch({ selection: { anchor: 4 } });
+    render(<EditorToolbar view={view} noteView={{ current: 'rich', onChange: () => {} }} />);
+    const click = vi.spyOn(HTMLInputElement.prototype, 'click').mockImplementation(() => {});
+
+    expect(attach().disabled).toBe(false);
+    fireEvent.click(attach());
+    expect(click).toHaveBeenCalledTimes(1);
+
+    const input = document.querySelector('input[type="file"]') as HTMLInputElement;
+    fireEvent.change(input, { target: { files: [new File(['x'], 'a.png', { type: 'image/png' })] } });
+    expect(view.state.doc.toString()).toMatch(/^body!\[uploading a\.png…]/);
+
+    click.mockRestore();
+    view.destroy();
   });
 });

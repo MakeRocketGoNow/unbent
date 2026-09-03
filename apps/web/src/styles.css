@@ -1317,6 +1317,17 @@ a.overflow-item { text-decoration: none; }
 .editor-toolbar.docked .tb-btn { flex: 0 0 auto; }
 
 /*
+   Held at the left edge while the run scrolls under it, the mirror of the switcher on
+   the right; see the placement comment on AttachButton in EditorToolbar.tsx. The seam
+   and the background are what say the two are on different layers, as for the switcher.
+*/
+.editor-toolbar.docked .tb-attach {
+  padding-right: 0.5rem;
+  border-right: 1px solid var(--border);
+  background: var(--bg);
+}
+
+/*
    Held at the right edge while the formatting run scrolls under it.
 
    The seam and the background are what make that read as intended rather than as an
@@ -1836,6 +1847,17 @@ a.overflow-item { text-decoration: none; }
   gap: 0.15rem;
   min-width: 0;
   flex: 1 1 auto;
+}
+
+/*
+   The Attach button's slot, before the formatting run. Its own box rather than a button
+   in the run so the docked rule above can pin it; on a desktop, where nothing scrolls,
+   it is simply the first item in the row.
+*/
+.tb-attach {
+  display: inline-flex;
+  align-items: center;
+  flex: 0 0 auto;
 }
 
 .tb-btn {

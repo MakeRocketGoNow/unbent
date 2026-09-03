@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type ReactNode } from 'react';
 import type { EditorView } from '@codemirror/view';
 import type { StateCommand } from '@codemirror/state';
 import * as cmd from '../editor/markdown-commands.js';
+import { attachConfig, insertUploads } from '../editor/attach.js';
 import { buildSizePicker, PICKER_CSS } from '../editor/table-size-picker.js';
 
 /**
@@ -66,7 +67,7 @@ interface Action {
  * UI face. Drawn as SVG they inherit `currentColor` and the button's size like a letter
  * does, so the row reads as one set.
  *
- * Inline rather than from an icon library: this is four icons in a codebase whose other
+ * Inline rather than from an icon library: this is five icons in a codebase whose other
  * controls are letters, and a dependency would still not draw the B, I, S or H1.
  */
 function ToolbarIcon({ children }: { children: ReactNode }) {
@@ -109,6 +110,13 @@ const TableIcon = (
   <ToolbarIcon>
     <rect x="3" y="3" width="18" height="18" rx="2" />
     <path d="M3 9h18M3 15h18M9 3v18" />
+  </ToolbarIcon>
+);
+
+/** A paperclip, for attaching a file. */
+const AttachIcon = (
+  <ToolbarIcon>
+    <path d="M21.4 11.1l-9.2 9.2a6 6 0 0 1-8.5-8.5l9.2-9.2a4 4 0 0 1 5.7 5.7l-9.2 9.2a2 2 0 0 1-2.8-2.8l8.5-8.5" />
   </ToolbarIcon>
 );
 
@@ -216,6 +224,69 @@ function TableButton({ view }: { view: EditorView | null }) {
   );
 }
 
+/**
+ * The way a file gets in without a mouse to drag it or a clipboard to paste it from —
+ * which is to say, the way on a phone. Files land at the cursor through the same routine
+ * a drop uses, so the result is one undoable text edit either way.
+ *
+ * Opened from `onClick` rather than the `onMouseDown` its neighbours use. A file input
+ * only opens inside a user activation, click is the event every browser grants one for,
+ * and it is also the event a keyboard produces. Mousedown still prevents default so the
+ * button never takes focus from the editor; the picker is a modal and takes it anyway,
+ * but the selection survives blur, and `selection.main.head` is where the file lands.
+ *
+ * Afterwards the editor gets focus back only when the bar is not docked. Docked means a
+ * phone, where refocusing raises the keyboard over the note the user is looking at;
+ * undocked means a desktop, where "formatting should never cost the user their place"
+ * applies to attaching too.
+ */
+function AttachButton({
+  view,
+  disabled,
+  docked,
+}: {
+  view: EditorView | null;
+  disabled: boolean;
+  docked: boolean;
+}) {
+  const input = useRef<HTMLInputElement>(null);
+  // No uploader means a note that cannot take files — read-only, in the trash — and a
+  // button that opened a picker for nothing would be a lie.
+  const canUpload = view !== null && view.state.facet(attachConfig).upload !== undefined;
+
+  return (
+    <span className="tb-attach">
+      <button
+        type="button"
+        className="tb-btn"
+        title="Attach file"
+        aria-label="Attach file"
+        disabled={disabled || !canUpload}
+        onMouseDown={(e) => e.preventDefault()}
+        onClick={() => input.current?.click()}
+      >
+        {AttachIcon}
+      </button>
+      <input
+        ref={input}
+        type="file"
+        multiple
+        hidden
+        tabIndex={-1}
+        onChange={(e) => {
+          const files = [...(e.target.files ?? [])];
+          // Cleared so the same file can be chosen twice in a row; a file input only
+          // fires change when its value differs from last time.
+          e.target.value = '';
+          if (!view || files.length === 0) return;
+          void insertUploads(view, files, view.state.selection.main.head);
+          if (!docked) view.focus();
+        }}
+      />
+    </span>
+  );
+}
+
 export function EditorToolbar({
   view,
   noteView,
@@ -244,6 +315,18 @@ export function EditorToolbar({
       aria-label="Formatting"
       style={docked ? { bottom: `${keyboardInset}px` } : undefined}
     >
+      {/*
+          Pinned before the run, outside the scroller, the mirror of the switcher at the
+          other end. It is the one control that brings something into the note rather
+          than shaping what is there — put something in, shape it, look at it — and on a
+          phone it is the only way to attach a file at all, so it cannot be somewhere a
+          swipe has to find: last in the run is off-screen until swiped, first in the run
+          is hidden again the moment someone swipes to reach Link or Table. The price is
+          a run about a button and a half narrower on a 375px phone, which any control
+          that must always be visible would cost.
+      */}
+      <AttachButton view={view} disabled={!editing} docked={docked} />
+
       {/*
           The formatting run, and the only part of the bar that scrolls.
 
