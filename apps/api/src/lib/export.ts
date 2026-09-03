@@ -55,7 +55,7 @@ export interface ExportDeps {
  * filesystem's business, and asking for one would only make the query slower.
  */
 export interface ExportFilter {
-  tag?: string | undefined;
+  tags?: string[] | undefined;
   notebook?: string | undefined;
   from?: string | undefined;
   to?: string | undefined;

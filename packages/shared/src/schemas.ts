@@ -37,6 +37,26 @@ export const tagNameSchema = z.string().trim().min(1).max(MAX_TAG_LENGTH);
 export const notebookNameSchema = z.string().trim().min(1).max(MAX_TAG_LENGTH);
 
 /**
+ * The `tag` filter, which may be given more than once.
+ *
+ * Repeated params (`?tag=a&tag=b`) rather than one delimited value, because a tag name may
+ * contain whatever character the delimiter would have been — this archive has tags with
+ * spaces, dots and digits — and an escaping scheme is a bug waiting to happen. Hono hands
+ * back a bare string for one occurrence and an array for several, so both are coerced to
+ * an array here and every caller downstream sees the same shape.
+ *
+ * Several tags narrow conjunctively: a note must carry all of them. Union was never the
+ * useful reading — two common tags OR'd together return most of an archive rather than
+ * narrowing it — and AND makes the one-tag case identical to what a single filter meant
+ * before, which is what lets this be a widening rather than a change in behaviour.
+ */
+export const tagFilterSchema = z
+  .union([tagNameSchema, z.array(tagNameSchema)])
+  .optional()
+  .transform((v) => (v === undefined ? undefined : Array.isArray(v) ? v : [v]))
+  .pipe(z.array(tagNameSchema).max(20).optional());
+
+/**
  * Notebook filter value meaning "notes in no notebook".
  *
  * Shared so the client dropdown, the URL query param, and the repo predicate cannot drift
@@ -121,7 +141,7 @@ export function endOfDay(date: string): number {
 export const listNotesQuerySchema = z.object({
   cursor: z.string().optional(),
   limit: z.coerce.number().int().min(1).max(100).default(50),
-  tag: z.string().optional(),
+  tag: tagFilterSchema,
   notebook: z.string().optional(),
   sort: noteSortSchema,
   order: noteOrderSchema,
@@ -146,7 +166,7 @@ export const listNotesQuerySchema = z.object({
 export const searchQuerySchema = z.object({
   q: z.string().min(1).max(500),
   limit: z.coerce.number().int().min(1).max(100).default(50),
-  tag: z.string().optional(),
+  tag: tagFilterSchema,
   notebook: z.string().optional(),
   from: dateOnlySchema.optional(),
   to: dateOnlySchema.optional(),
@@ -161,7 +181,7 @@ export const searchQuerySchema = z.object({
  * of "2021" would quietly mean a different set of notes than the list showing "2021".
  */
 export const exportQuerySchema = z.object({
-  tag: z.string().optional(),
+  tag: tagFilterSchema,
   notebook: z.string().optional(),
   from: dateOnlySchema.optional(),
   to: dateOnlySchema.optional(),

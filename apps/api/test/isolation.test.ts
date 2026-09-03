@@ -403,6 +403,53 @@ describe('note CRUD', () => {
     expect(total).toBe(3);
   });
 
+  /**
+   * Several `?tag=` params narrow conjunctively rather than as a union.
+   *
+   * Pinned because AND is what makes multi-tag a widening of the single-tag filter: the
+   * one-tag case has to keep meaning exactly what it meant, and the two-tag case has to
+   * be the intersection. A union would have returned everything here, which on a real
+   * archive is the opposite of filtering.
+   */
+  it('narrows to notes carrying every tag given', async () => {
+    const actor = await signUp(`multitag-${Date.now()}@example.test`, 'multitag-pass', 'M');
+    const both = await createNote(actor, { title: 'Both', tags: ['Receipt', 'Medical'] });
+    await createNote(actor, { title: 'Receipt only', tags: ['Receipt'] });
+    await createNote(actor, { title: 'Medical only', tags: ['Medical'] });
+    await createNote(actor, { title: 'Neither', tags: ['Travel'] });
+
+    const two = await fetch(
+      `${BASE}/api/notes?tag=Receipt&tag=Medical`,
+      asUser(actor),
+    ).then((r) => r.json());
+
+    expect(two.items.map((i: { id: string }) => i.id)).toEqual([both.id]);
+    // The count has to agree with the rows, or the header contradicts the list.
+    expect(two.total).toBe(1);
+
+    // One tag still means what it always did: everything carrying it.
+    const one = await fetch(`${BASE}/api/notes?tag=Receipt`, asUser(actor)).then((r) => r.json());
+    expect(one.total).toBe(2);
+  });
+
+  /** Search takes the same filters as the list, so it has to narrow the same way. */
+  it('narrows a search by every tag given', async () => {
+    const actor = await signUp(`multitagq-${Date.now()}@example.test`, 'multitagq-pass', 'Q');
+    const both = await createNote(actor, {
+      title: 'Dentist invoice',
+      body: 'zebrafish',
+      tags: ['Receipt', 'Medical'],
+    });
+    await createNote(actor, { title: 'Grocery receipt', body: 'zebrafish', tags: ['Receipt'] });
+
+    const { results } = await fetch(
+      `${BASE}/api/search?q=zebrafish&tag=Receipt&tag=Medical`,
+      asUser(actor),
+    ).then((r) => r.json());
+
+    expect(results.map((r: { id: string }) => r.id)).toEqual([both.id]);
+  });
+
   it('accepts an open-ended range', async () => {
     const actor = await signUp(`openrange-${Date.now()}@example.test`, 'openrange-pass', 'O');
     await importDated(actor, 'Old', '2019-05-05');

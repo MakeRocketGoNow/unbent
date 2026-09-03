@@ -73,7 +73,7 @@ export function toFtsQuery(raw: string): string {
 }
 
 /**
- * SQL conditions for the `notebook` and `tag` filters, shared by `list` and `search`.
+ * SQL conditions for the `notebook` and `tags` filters, shared by `list` and `search`.
  *
  * Both call sites need identical semantics — a filter has to mean the same thing whether
  * or not a query is also typed — so the clauses live here rather than being written twice.
@@ -86,7 +86,7 @@ export function toFtsQuery(raw: string): string {
  */
 function filterConditions(
   opts: {
-    tag?: string | undefined;
+    tags?: string[] | undefined;
     notebook?: string | undefined;
     from?: string | undefined;
     to?: string | undefined;
@@ -126,8 +126,17 @@ function filterConditions(
     );
   }
 
-  if (opts.tag) {
-    binds.push(opts.tag, userId);
+  /*
+   * One EXISTS per tag, AND'd together: the note must carry every one of them.
+   *
+   * Conjunction is what makes this a widening rather than a change — a single tag
+   * produces exactly the clause a single filter produced before, so the existing
+   * behaviour is the one-element case rather than a case handled alongside it. Each
+   * clause is an independent semi-join on note_tags, so nothing here fans out the row
+   * count the way joining the table once per tag would.
+   */
+  for (const tag of opts.tags ?? []) {
+    binds.push(tag, userId);
     conditions.push(
       `EXISTS (SELECT 1 FROM note_tags nt2 JOIN tags t2 ON t2.id = nt2.tag_id
                WHERE nt2.note_id = n.id AND t2.name = ?${binds.length - 1} AND t2.user_id = ?${binds.length})`,
@@ -243,7 +252,7 @@ export class NotesRepo extends ScopedRepo {
   async list(opts: {
     limit: number;
     cursor?: string;
-    tag?: string;
+    tags?: string[];
     notebook?: string;
     sort?: NoteSort;
     order?: 'asc' | 'desc';
@@ -252,7 +261,7 @@ export class NotesRepo extends ScopedRepo {
     /** List trashed notes instead of live ones. */
     trashed?: boolean;
   }): Promise<NoteSummary[]> {
-    const { limit, cursor, tag, notebook, trashed, from, to } = opts;
+    const { limit, cursor, tags, notebook, trashed, from, to } = opts;
     const sort = opts.sort ?? 'updated';
     // Trash has one meaningful order — most recently deleted first — so it ignores both.
     const spec = trashed ? TRASH_SORT : SORTS[sort];
@@ -286,7 +295,7 @@ export class NotesRepo extends ScopedRepo {
     }
     conditions.push(
       // The range applies to the column being sorted, so the filter and the order agree.
-      ...filterConditions({ tag, notebook, from, to, dateColumn: spec.dateColumn }, binds, this.userId),
+      ...filterConditions({ tags, notebook, from, to, dateColumn: spec.dateColumn }, binds, this.userId),
     );
     binds.push(limit);
 
@@ -321,13 +330,13 @@ export class NotesRepo extends ScopedRepo {
   }
 
   /**
-   * Total live notes, optionally within a notebook and/or tag.
+   * Total live notes, optionally within a notebook and/or some tags.
    *
    * Reported separately from `list` because the list is paginated: counting what a page
    * returned would show "50 notes" for an account holding hundreds.
    */
   async count(opts?: {
-    tag?: string;
+    tags?: string[];
     notebook?: string;
     trashed?: boolean;
     from?: string;
@@ -343,7 +352,7 @@ export class NotesRepo extends ScopedRepo {
     conditions.push(
       ...filterConditions(
         {
-          tag: opts?.tag,
+          tags: opts?.tags,
           notebook: opts?.notebook,
           from: opts?.from,
           to: opts?.to,
@@ -647,7 +656,7 @@ export class NotesRepo extends ScopedRepo {
     rawQuery: string,
     limit: number,
     filters: {
-      tag?: string | undefined;
+      tags?: string[] | undefined;
       notebook?: string | undefined;
       from?: string | undefined;
       to?: string | undefined;

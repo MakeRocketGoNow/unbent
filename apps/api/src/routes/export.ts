@@ -23,12 +23,15 @@ import type { AppEnv } from '../types.js';
  * a filesystem.
  */
 function exportFilename(filter: ExportFilter, stamp: string): string {
-  const scoped = Boolean(filter.notebook || filter.tag || filter.from || filter.to);
+  const scoped = Boolean(filter.notebook || filter.tags?.length || filter.from || filter.to);
   // An unfiltered export keeps the name it has always had, so existing habits and any
   // backup script pointing at it are undisturbed.
   const parts = ['unbent', ...(scoped ? [] : ['export'])];
   if (filter.notebook) parts.push(slugify(filter.notebook));
-  if (filter.tag) parts.push(slugify(filter.tag));
+  // Every tag lands in the name: an export filtered to two tags is a different set
+  // than either alone, and a filename naming only the first would describe the wrong
+  // archive.
+  for (const tag of filter.tags ?? []) parts.push(slugify(tag));
   if (filter.from || filter.to) parts.push(`${filter.from ?? 'start'}-to-${filter.to ?? 'now'}`);
   parts.push(stamp);
   return `${parts.join('-')}.zip`;
@@ -37,8 +40,8 @@ function exportFilename(filter: ExportFilter, stamp: string): string {
 export const exportRoutes = new Hono<AppEnv>()
   .get('/export', requireAuth, withRepos, zValidator('query', exportQuerySchema), (c) => {
     const stamp = new Date().toISOString().slice(0, 10);
-    const { tag, notebook, from, to, sort } = c.req.valid('query');
-    const filter = { tag, notebook, from, to, sort };
+    const { tag: tags, notebook, from, to, sort } = c.req.valid('query');
+    const filter = { tags, notebook, from, to, sort };
 
     // Returned immediately, before any note is read: the archive is produced as the
     // client consumes it, so nothing is ever held in the Worker's 128MB of memory.
