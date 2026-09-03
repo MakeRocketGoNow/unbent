@@ -114,6 +114,8 @@ class UnbentApi(
         from: String? = null,
         to: String? = null,
         limit: Int = 50,
+        /** Lists the trash instead of live notes. It has one order and ignores the rest. */
+        trashed: Boolean = false,
     ): NotePage = get(
         "List notes",
         url(
@@ -121,6 +123,7 @@ class UnbentApi(
             "cursor" to cursor,
             "notebook" to notebook,
             "tag" to tags,
+            "trashed" to if (trashed) "1" else null,
             "sort" to sort,
             "order" to order,
             "from" to from,
@@ -189,9 +192,33 @@ class UnbentApi(
         return send("Update note", noteUrl(id), "PATCH", payload)
     }
 
-    /** Soft delete: the note goes to the trash, restorable from the web app. */
+    /** Soft delete: the note goes to the trash, where it can be restored. */
     fun deleteNote(id: String) {
         call(Request.Builder().url(noteUrl(id)).auth().delete().build(), "Delete note")
+    }
+
+    /** Brings a trashed note back. 404 when it is not this user's, or was never trashed. */
+    fun restoreNote(id: String): Note = send(
+        "Restore note",
+        noteUrl(id).newBuilder().addPathSegment("restore").build(),
+        "POST",
+        buildJsonObject {},
+    )
+
+    /**
+     * Permanently deletes one trashed note and the files it owned. No undo.
+     *
+     * Separate from [deleteNote] on purpose: that one is reversible and this one is not,
+     * and a single method with a flag would make the difference a parameter rather than a
+     * decision.
+     */
+    fun purgeNote(id: String) {
+        call(
+            Request.Builder()
+                .url(noteUrl(id).newBuilder().addPathSegment("permanent").build())
+                .auth().delete().build(),
+            "Delete note forever",
+        )
     }
 
     fun listNotebooks(): NotebookList = get("List notebooks", url("/api/notebooks"))

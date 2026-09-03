@@ -129,6 +129,51 @@ class UnbentApiTest {
      * this archive has tags with spaces and dots — so the shape is worth pinning.
      */
     @Test
+    fun `listNotes asks for the trash with a flag`() {
+        server.enqueue(MockResponse().setResponseCode(200).setBody("""{"items":[],"cursor":null,"total":0}"""))
+
+        api.listNotes(trashed = true)
+
+        assertEquals("/api/notes?trashed=1&limit=50", server.takeRequest().path)
+    }
+
+    /** Absent rather than `trashed=0`, so a live listing is the plain URL it always was. */
+    @Test
+    fun `listNotes omits the trash flag by default`() {
+        server.enqueue(MockResponse().setResponseCode(200).setBody("""{"items":[],"cursor":null,"total":0}"""))
+
+        api.listNotes()
+
+        assertEquals("/api/notes?limit=50", server.takeRequest().path)
+    }
+
+    @Test
+    fun `restoreNote posts to the note's restore path`() {
+        server.enqueue(MockResponse().setResponseCode(200).setBody(note))
+
+        api.restoreNote("note-1")
+
+        val req = server.takeRequest()
+        assertEquals("POST", req.method)
+        assertEquals("/api/notes/note-1/restore", req.path)
+    }
+
+    /**
+     * A different path from the reversible delete, not the same one with a flag: one of
+     * these can be undone and the other cannot, and the URLs should not look alike.
+     */
+    @Test
+    fun `purgeNote deletes the permanent path`() {
+        server.enqueue(MockResponse().setResponseCode(204))
+
+        api.purgeNote("note-1")
+
+        val req = server.takeRequest()
+        assertEquals("DELETE", req.method)
+        assertEquals("/api/notes/note-1/permanent", req.path)
+    }
+
+    @Test
     fun `renameNotebook patches by id`() {
         server.enqueue(
             MockResponse().setResponseCode(200).setBody("""{"id":"nb-1","name":"Taxes 2024"}"""),
