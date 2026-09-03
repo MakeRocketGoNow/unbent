@@ -95,3 +95,14 @@ export function cleanExtractedText(raw: string): CleanedText {
   const cleaned = normalizeWhitespace(rejoinLetterSpacing(raw)).slice(0, MAX_ATTACHMENT_TEXT);
   return { text: cleaned, quality: assessText(cleaned) };
 }
+
+/**
+ * Content types worth attempting extraction on.
+ *
+ * Here rather than beside pdf.js because the API asks the same question before handing a
+ * file to Workers AI, and this module is the one it can import without dragging a PDF
+ * library into a Worker bundle.
+ */
+export function isExtractable(mime: string): boolean {
+  return mime === 'application/pdf';
+}

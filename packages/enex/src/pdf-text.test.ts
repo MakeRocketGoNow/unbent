@@ -7,7 +7,8 @@
  */
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { extractPdfText, isExtractable } from './pdf-text.js';
+import { isExtractable } from './ocr-text.js';
+import { extractPdfText } from './pdf-text.js';
 
 function fixture(name: string): Uint8Array {
   return new Uint8Array(readFileSync(new URL(`../test/fixtures/${name}`, import.meta.url)));

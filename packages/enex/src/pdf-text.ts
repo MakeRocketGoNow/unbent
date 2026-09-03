@@ -95,8 +95,3 @@ export async function extractPdfText(bytes: Uint8Array): Promise<PdfTextResult> 
     };
   }
 }
-
-/** Content types worth attempting extraction on. */
-export function isExtractable(mime: string): boolean {
-  return mime === 'application/pdf';
-}

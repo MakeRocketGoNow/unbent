@@ -6,7 +6,8 @@
   "exports": {
     ".": "./src/index.ts",
     "./enml": "./src/enml-to-markdown.ts",
-    "./note-body": "./src/note-body.ts"
+    "./note-body": "./src/note-body.ts",
+    "./ocr-text": "./src/ocr-text.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",

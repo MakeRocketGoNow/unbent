@@ -1,6 +1,7 @@
 import { enmlToMarkdown } from './enml-to-markdown.js';
 import { parseEnexStream } from './parse.js';
-import { extractPdfText, isExtractable } from './pdf-text.js';
+import { isExtractable } from './ocr-text.js';
+import { extractPdfText } from './pdf-text.js';
 import { contentHash, withSourceLink } from './note-body.js';
 import type { EnexNote } from './types.js';
 

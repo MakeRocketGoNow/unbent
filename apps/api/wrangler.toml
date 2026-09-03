@@ -78,3 +78,12 @@ run_worker_first = ["/api/*"]
 
 [env.production.observability]
 enabled = true
+
+# Workers AI, for extracting a PDF's text on upload (see lib/extract-text.ts). Production
+# only, deliberately: a `wrangler dev` with this binding reaches the real service and needs
+# a Cloudflare login to start, which a self-hoster's first `pnpm dev` and the test suite
+# should not depend on. Without it the browser extracts, as it always has. To try the
+# server path locally, add the same two lines at the top level for the session and run
+# `wrangler dev` logged in; conversion of a PDF is free.
+[env.production.ai]
+binding = "AI"

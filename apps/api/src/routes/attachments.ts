@@ -8,6 +8,7 @@ import {
   serveContentType,
   serveDisposition,
 } from '@unbent/shared';
+import { canExtractOnServer, extractOnServer } from '../lib/extract-text.js';
 import { requireAuth } from '../lib/session.js';
 import { withRepos } from '../lib/repos-middleware.js';
 import type { AppEnv } from '../types.js';
@@ -97,6 +98,41 @@ export const attachments = new Hono<AppEnv>()
     const path = `files/${filename}`;
 
     /**
+     * Extract the text here, where the deployment can.
+     *
+     * Every client then gets a searchable PDF without doing anything: the editor, the
+     * phone, the import, and whatever comes next. After the response rather than before
+     * it, because the upload should return the moment the bytes are safe and conversion
+     * is a second or more of waiting on another service; `waitUntil` gives it thirty
+     * seconds. A failure of any kind leaves the row pending, and the browser's passes
+     * remain the fallback — only a conversion that read the file and found nothing writes
+     * the empty row. The response says which way it went, so a client that would extract
+     * on its own knows not to.
+     */
+    const indexing = canExtractOnServer(c.env, contentType, object.size) ? 'server' : 'client';
+    if (indexing === 'server') {
+      const ai = c.env.AI!;
+      c.executionCtx.waitUntil(
+        (async () => {
+          try {
+            const stored = await c.env.BLOBS.get(key);
+            if (!stored) return;
+            const extracted = await extractOnServer(ai, filename, await stored.blob());
+            if (!extracted) return;
+            await repo.recordText({
+              attachmentId: id,
+              noteId,
+              filename,
+              text: extracted.quality.usable ? extracted.text : '',
+            });
+          } catch {
+            // Left pending for the browser's passes.
+          }
+        })(),
+      );
+    }
+
+    /**
      * Opt-in body link, for clients that cannot write the markdown themselves.
      *
      * The browser editor inserts its own link at the cursor and does not pass this; a
@@ -114,7 +150,7 @@ export const attachments = new Hono<AppEnv>()
     }
 
     // The relative path the editor inserts into the markdown.
-    return c.json({ ...info, path }, 201);
+    return c.json({ ...info, path, indexing }, 201);
   })
 
   .get('/notes/:id/files/:filename', async (c) => {

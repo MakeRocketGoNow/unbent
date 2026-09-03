@@ -5,6 +5,12 @@ import type { AttachmentsRepo } from './lib/attachments-repo.js';
 export interface Env {
   DB: D1Database;
   BLOBS: R2Bucket;
+  /**
+   * Workers AI, for extracting a PDF's text on upload. Bound in production only — see
+   * wrangler.toml — so it is optional here, and its absence means the browser does the
+   * extracting, as it did before.
+   */
+  AI?: Ai;
   APP_URL: string;
   /** `wrangler secret put BETTER_AUTH_SECRET`; in dev it comes from .dev.vars. */
   BETTER_AUTH_SECRET: string;
