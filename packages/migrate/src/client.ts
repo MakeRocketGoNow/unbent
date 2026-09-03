@@ -67,7 +67,7 @@ export function createClient(baseUrl: string, token: string): ImportClient {
         // Raw bytes rather than base64, which would add a third to every upload.
         body: bytes as unknown as BodyInit,
       });
-      return res.json() as Promise<{ filename: string }>;
+      return res.json() as Promise<{ filename: string; indexing?: 'server' | 'client' }>;
     },
 
     listFiles: async (noteId) => {

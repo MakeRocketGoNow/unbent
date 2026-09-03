@@ -1,6 +1,7 @@
 import { useSyncExternalStore } from 'react';
 import { isExtractable } from '@unbent/enex';
 import type { IndexProgress } from './attachment-text.js';
+import type { UploadedFile } from './notes-api.js';
 import type { ImportEvent, ImportRequest } from './import-worker.js';
 
 /**
@@ -138,8 +139,14 @@ export function startIndexing(opts: { auto: boolean }): void {
   indexing.start(opts);
 }
 
-export function indexUploadedFile(noteId: string, filename: string, file: File): void {
-  indexing.indexFile(noteId, filename, file);
+/**
+ * Indexes a file the editor just uploaded, unless the server said it is doing that.
+ * The server's word wins because the server has the bytes and the client's pass would
+ * only race it — and lose, since the upsert takes whichever text lands last.
+ */
+export function indexUploadedFile(noteId: string, uploaded: UploadedFile, file: File): void {
+  if (uploaded.indexing === 'server') return;
+  indexing.indexFile(noteId, uploaded.filename, file);
 }
 
 export function subscribeIndexing(listener: (state: IndexingState) => void): () => void {

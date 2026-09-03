@@ -186,7 +186,7 @@ function EmbeddedNote({ noteId }: { noteId: string }) {
               // This is the editor the Android app hosts, so a PDF picked from the phone
               // is indexed here too. The app's share sheet uploads without this page and
               // has its own way: see IndexWorker in the app.
-              indexUploadedFile(note.id, uploaded.filename, file);
+              indexUploadedFile(note.id, uploaded, file);
               return uploaded.path;
             }}
             // The app shows "Attaching…" and asks before Back while this is above zero.

@@ -48,7 +48,11 @@ export interface ImportClient {
     filename: string,
     mime: string,
     bytes: Uint8Array,
-  ) => Promise<{ filename: string }>;
+  ) => Promise<{
+    filename: string;
+    /** `server` when the API is extracting the file's text itself; absent from older servers. */
+    indexing?: 'server' | 'client';
+  }>;
 
   /** Rewrites the body once real attachment filenames are known. */
   updateBody?: (noteId: string, body: string) => Promise<void>;
@@ -233,8 +237,13 @@ async function uploadResources(
      * extraction rather than OCR. Roughly a fifth of real scans yield noise instead of
      * language; those are dropped rather than indexed, so a failed scan does not pollute
      * search with character soup.
+     *
+     * Skipped when the server said it is extracting the text itself: a second of pdf.js
+     * per file and a request per PDF, saved across an import of thousands.
      */
-    if (options.extractText && client.saveFileText && isExtractable(resource.mime)) {
+    if (uploaded.indexing === 'server') {
+      progress.filesIndexed += 1;
+    } else if (options.extractText && client.saveFileText && isExtractable(resource.mime)) {
       const extracted = await extractPdfText(resource.bytes);
       if (extracted.quality.usable) {
         await client.saveFileText(noteId, uploaded.filename, extracted.text);

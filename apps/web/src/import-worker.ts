@@ -102,7 +102,7 @@ async function handle(request: Exclude<ImportRequest, { type: 'abort' }>): Promi
             // upload for no benefit.
             body: bytes as unknown as BodyInit,
           });
-          return res.json() as Promise<{ filename: string }>;
+          return res.json() as Promise<{ filename: string; indexing?: 'server' | 'client' }>;
         },
 
         listFiles: async (noteId) => {

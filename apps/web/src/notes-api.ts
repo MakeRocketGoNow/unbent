@@ -207,6 +207,12 @@ export interface UploadedFile {
   size: number;
   /** Relative path to insert into the markdown, e.g. `files/diagram.png`. */
   path: string;
+  /**
+   * Who is extracting the file's text for search: the server, in the background, or
+   * nobody yet, in which case the client that has the bytes should. Absent from a server
+   * older than the field, which means the same as `client`.
+   */
+  indexing?: 'server' | 'client';
 }
 
 /**

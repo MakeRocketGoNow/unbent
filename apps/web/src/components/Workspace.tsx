@@ -467,7 +467,7 @@ export function Workspace({ noteId, readOnly = false, backTo = '/notes' }: Works
                     const uploaded = await api.uploadFile(note.id, file, { signal });
                     void queryClient.invalidateQueries({ queryKey: keys.attachments(note.id) });
                     // Searchable now, from the bytes in hand, not on some later pass.
-                    indexUploadedFile(note.id, uploaded.filename, file);
+                    indexUploadedFile(note.id, uploaded, file);
                     return uploaded.path;
                   }
             }
