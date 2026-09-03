@@ -791,7 +791,18 @@ export class NotesRepo extends ScopedRepo {
     return { notes: ids.length, keys: keyRows.map((r) => r.r2_key) };
   }
 
-  /** Every tag this user has in use, with note counts, for the sidebar. */
+  /**
+   * Every tag this user has in use, with note counts, most-used first.
+   *
+   * Ordered by count rather than by name because an imported archive's tag list is long
+   * and desperately lopsided: this one has 326 tags, of which nearly half are on three
+   * notes or fewer, and the ten most-used cover most of what anyone actually filters by.
+   * Alphabetically the first screen is whatever begins with a digit or a dot — the
+   * deadest tags in the account — and the useful ones are hundreds of rows down.
+   *
+   * Name breaks ties, so the long tail of once-used tags is still ordered predictably
+   * rather than by whatever the query planner returns.
+   */
   async listTags(): Promise<Array<{ name: string; count: number }>> {
     const { results } = await this.db
       .prepare(
@@ -801,7 +812,7 @@ export class NotesRepo extends ScopedRepo {
            JOIN notes n ON n.id = nt.note_id AND n.deleted_at IS NULL
           WHERE t.user_id = ?1
           GROUP BY t.id, t.name
-          ORDER BY t.name`,
+          ORDER BY count DESC, t.name COLLATE NOCASE`,
       )
       .bind(this.userId)
       .all<{ id: string; name: string; count: number }>();

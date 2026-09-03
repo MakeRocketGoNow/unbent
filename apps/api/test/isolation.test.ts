@@ -247,6 +247,25 @@ describe('note CRUD', () => {
   });
 
   /**
+   * Most-used first, because that is the order that makes a long tag list usable.
+   *
+   * Pinned because the ordering is load-bearing rather than cosmetic: the pickers on both
+   * clients show the head of this list, and alphabetically the head of a real archive is
+   * whatever begins with a digit — the tags nobody filters by.
+   */
+  it('lists tags most-used first, breaking ties by name', async () => {
+    const actor = await signUp(`taglist-${Date.now()}@example.test`, 'taglist-pass', 'T');
+    await createNote(actor, { title: 'One', tags: ['common', 'zeta', 'alpha'] });
+    await createNote(actor, { title: 'Two', tags: ['common'] });
+    await createNote(actor, { title: 'Three', tags: ['common'] });
+
+    const { tags } = await fetch(`${BASE}/api/tags`, asUser(actor)).then((r) => r.json());
+
+    expect(tags.map((t: { name: string }) => t.name)).toEqual(['common', 'alpha', 'zeta']);
+    expect(tags[0].count).toBe(3);
+  });
+
+  /**
    * The list is paginated, so a count taken from a page would report the page size — an
    * account with hundreds of notes showed "50 notes" until the total was reported
    * separately.
