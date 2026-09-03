@@ -288,6 +288,19 @@ sees — the site's own extractor, run by the phone for the one note it just mad
 app runs a pass over whatever is still pending each time it opens, so a file either of those
 missed is caught the next time anyone looks.
 
+**On the server, where it can.** unbent.app binds Workers AI, and the upload handler hands a
+PDF to its document conversion after the response is sent, then records the text itself — so
+every client gets a searchable PDF without doing anything, and the editor, the import and the
+phone skip their own extraction when the upload says `indexing: "server"`. The conversion
+reads the text layer, as pdf.js does; measured on fifty scans from a real export, the two agree
+on which files have text and which have none, with a median word overlap of 0.89. Its output
+opens with the file's metadata — PDF version, the scanner's name — which is stripped before
+indexing, or every scan from the same scanner would match a search for it. Files over 25MB, a
+deployment without the binding, and any failure fall back to the browser paths above; only a
+conversion that read the file and found nothing closes the row. The binding is production-only
+in `wrangler.toml`, since a `wrangler dev` with it needs a Cloudflare login to start, so local
+development keeps extracting in the browser.
+
 That pass stops short of a backlog: more than one page of pending files and it downloads
 nothing, because it pulls the same bytes the button does and a backlog is gigabytes that must
 not start flowing because a tab was opened on a phone. The sidebar says what it left, and
@@ -396,8 +409,10 @@ allowlist excludes HEIC and browsers other than Safari cannot render it.
 it loads `/embed/index-files?note=…` in a WebView that is never shown, and the page runs
 the same pdf.js extraction the site does, for that one note. Chained rather than folded
 into the upload so a WebView failure can never re-run the upload and create the note
-twice; photos have no text and skip it. If it fails, the note is still saved and the file
-stays on the server's pending list, where the web app's pass on open picks it up.
+twice; photos have no text and skip it. When the server extracted the text itself as the
+files landed, the upload says so and the second job ends without opening a WebView. If it
+fails, the note is still saved and the file stays on the server's pending list, where the web
+app's pass on open picks it up.
 
 **Pointing it at a dev server.** On the sign-in screen, Change the address to
 `http://10.0.2.2:5173` from an emulator; once signed in the same field is in Settings.
