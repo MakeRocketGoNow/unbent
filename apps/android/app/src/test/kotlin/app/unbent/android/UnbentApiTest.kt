@@ -109,13 +109,51 @@ class UnbentApiTest {
             ),
         )
 
-        val page = api.listNotes(cursor = "c1", notebook = "Taxes", tag = "Invoice", sort = "title")
+        val page = api.listNotes(
+            cursor = "c1",
+            notebook = "Taxes",
+            tags = listOf("Invoice"),
+            sort = "title",
+        )
 
         val req = server.takeRequest()
         assertEquals("/api/notes?cursor=c1&notebook=Taxes&tag=Invoice&sort=title&limit=50", req.path)
         assertEquals("a", page.items.single().id)
         assertEquals("next", page.cursor)
         assertEquals(10, page.total)
+    }
+
+    /**
+     * Several tags go up as the key repeated, which is what the server reads as "all of
+     * these". A delimiter would have had to be escaped out of tag names that contain it —
+     * this archive has tags with spaces and dots — so the shape is worth pinning.
+     */
+    @Test
+    fun `listNotes repeats the tag parameter for each tag`() {
+        server.enqueue(MockResponse().setResponseCode(200).setBody("""{"items":[],"cursor":null,"total":0}"""))
+
+        api.listNotes(tags = listOf("Receipt", "Medical"))
+
+        assertEquals("/api/notes?tag=Receipt&tag=Medical&limit=50", server.takeRequest().path)
+    }
+
+    /** No tags means no parameter at all, not an empty one the server would reject. */
+    @Test
+    fun `listNotes omits the tag parameter when nothing is selected`() {
+        server.enqueue(MockResponse().setResponseCode(200).setBody("""{"items":[],"cursor":null,"total":0}"""))
+
+        api.listNotes(notebook = "Taxes")
+
+        assertEquals("/api/notes?notebook=Taxes&limit=50", server.takeRequest().path)
+    }
+
+    @Test
+    fun `search repeats the tag parameter too`() {
+        server.enqueue(MockResponse().setResponseCode(200).setBody("""{"results":[]}"""))
+
+        api.search("insurance", tags = listOf("Receipt", "Medical"))
+
+        assertEquals("/api/search?q=insurance&tag=Receipt&tag=Medical", server.takeRequest().path)
     }
 
     @Test

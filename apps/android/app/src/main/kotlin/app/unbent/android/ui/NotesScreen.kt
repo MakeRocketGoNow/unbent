@@ -150,7 +150,7 @@ fun NotesScreen(
 
     // The list follows its filter and sort: the first load, and a reload on every change.
     // The directory the drawer shows is loaded once here and refreshed with the list.
-    LaunchedEffect(state.notebook, state.tag, state.sort, state.from, state.to) { state.load() }
+    LaunchedEffect(state.notebook, state.selectedTags, state.sort, state.from, state.to) { state.load() }
     LaunchedEffect(state) { state.loadFilters() }
 
     /*
@@ -304,14 +304,7 @@ fun NotesScreen(
     }
 
     if (pickingTags) {
-        TagSheet(
-            state = state,
-            onDismiss = { pickingTags = false },
-            onPicked = {
-                pickingTags = false
-                scope.launch { drawer.close() }
-            },
-        )
+        TagSheet(state = state, onDismiss = { pickingTags = false })
     }
     if (pickingSort) SortDialog(state = state, onDismiss = { pickingSort = false })
     if (pickingDates) {
@@ -328,22 +321,26 @@ fun NotesScreen(
 }
 
 /**
- * What the list is showing and how much of it: everything, a notebook, a tag, or a tag
- * within a notebook — the filters combine, as on the web, so the title names both. A date
- * range goes on the second line beside the count, so a range is never applied invisibly:
- * it is there even while the count is still on its way after a reload.
+ * What the list is showing and how much of it: everything, a notebook, some tags, or tags
+ * within a notebook — the filters combine, as on the web, so the title names them all. A
+ * date range goes on the second line beside the count, so a range is never applied
+ * invisibly: it is there even while the count is still on its way after a reload.
+ *
+ * Every selected tag is named rather than the first plus a count. Two tags ANDed are a
+ * different question from either alone, and a title reading "#Receipt +1" would not say
+ * which question is on screen. The line ellipsises when it must, which is the honest
+ * failure — the row of chips in the filter surface is where a long selection is read.
  */
 @Composable
 private fun ListTitle(state: NotesState) {
     val notebook = state.notebook
-    val tag = state.tag
     val parts = listOfNotNull(
         when (notebook) {
             null -> null
             UNFILED -> stringResource(R.string.inbox)
             else -> notebook
         },
-        tag?.let { "#$it" },
+        state.selectedTags.takeIf { it.isNotEmpty() }?.joinToString(" ") { "#$it" },
     )
     val title = if (parts.isEmpty()) stringResource(R.string.app_name) else parts.joinToString(" · ")
     val detail = listOfNotNull(
@@ -464,10 +461,10 @@ private fun FilterDrawer(
             val item = Modifier.padding(horizontal = Space.Medium)
             NavigationDrawerItem(
                 label = { Text(stringResource(R.string.all_notes)) },
-                selected = state.notebook == null && state.tag == null,
+                selected = state.notebook == null && state.selectedTags.isEmpty(),
                 shape = Shapes.Row,
                 onClick = {
-                    state.filterBy(notebook = null, tag = null)
+                    state.filterBy(notebook = null, tags = emptyList())
                     onPicked()
                 },
                 modifier = item,
@@ -481,7 +478,7 @@ private fun FilterDrawer(
                     selected = state.notebook == UNFILED,
                     shape = Shapes.Row,
                     onClick = {
-                        state.filterBy(notebook = UNFILED, tag = null)
+                        state.filterBy(notebook = UNFILED, tags = emptyList())
                         onPicked()
                     },
                     modifier = item,
@@ -497,7 +494,8 @@ private fun FilterDrawer(
             NavigationDrawerItem(
                 label = {
                     Text(
-                        state.tag ?: stringResource(R.string.tags_label),
+                        state.selectedTags.takeIf { it.isNotEmpty() }?.joinToString(", ")
+                            ?: stringResource(R.string.tags_label),
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
@@ -509,7 +507,7 @@ private fun FilterDrawer(
                         tint = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 },
-                selected = state.tag != null,
+                selected = state.selectedTags.isNotEmpty(),
                 shape = Shapes.Row,
                 onClick = onPickTag,
                 modifier = item,
@@ -524,7 +522,7 @@ private fun FilterDrawer(
                     selected = state.notebook == nb.name,
                     shape = Shapes.Row,
                     onClick = {
-                        state.filterBy(notebook = nb.name, tag = null)
+                        state.filterBy(notebook = nb.name, tags = emptyList())
                         onPicked()
                     },
                     modifier = item,
@@ -569,18 +567,23 @@ private fun FilterDrawer(
 /**
  * The tags, as a sheet over the list rather than a screen of their own.
  *
- * A sheet because picking a tag narrows what is already on screen: the list stays behind
+ * A sheet because picking tags narrows what is already on screen: the list stays behind
  * it, and dismissing leaves everything as it was. It is also how the filing and capture
  * sheets already pick things, so the gesture is one the app has taught before.
  *
- * "Any tag" leads, and is how the filter comes off — a chip cloud with no clear row makes
- * removing the last filter a puzzle. The title names the notebook when one is selected,
+ * The sheet stays open as chips are tapped, because the selection is a set rather than
+ * one choice: closing on the first tap would make a two-tag filter take two trips, and
+ * choosing them together is the whole point of ANDing them. The list behind reloads as it
+ * goes, so each tap's effect is visible without leaving.
+ *
+ * "Any tag" leads, and takes the whole filter off in one tap — a chip cloud with no clear
+ * row makes removing several a chore. The title names the notebook when one is selected,
  * because picking a tag here narrows within it rather than escaping it, and that is not
  * something the user can be expected to infer.
  */
 @OptIn(ExperimentalLayoutApi::class, ExperimentalMaterial3Api::class)
 @Composable
-private fun TagSheet(state: NotesState, onDismiss: () -> Unit, onPicked: () -> Unit) {
+private fun TagSheet(state: NotesState, onDismiss: () -> Unit) {
     ModalBottomSheet(onDismissRequest = onDismiss) {
         Column(
             Modifier
@@ -606,25 +609,30 @@ private fun TagSheet(state: NotesState, onDismiss: () -> Unit, onPicked: () -> U
                 TagChip(
                     name = stringResource(R.string.tags_none),
                     count = null,
-                    selected = state.tag == null,
-                    onClick = {
-                        state.filterBy(notebook = state.notebook, tag = null)
-                        onPicked()
-                    },
+                    selected = state.selectedTags.isEmpty(),
+                    onClick = { state.filterBy(notebook = state.notebook, tags = emptyList()) },
                 )
                 for (tag in state.tags) {
-                    val selected = state.tag == tag.name
+                    val selected = tag.name in state.selectedTags
                     TagChip(
                         name = tag.name,
                         count = tag.count,
                         selected = selected,
                         onClick = {
-                            // Tapping the selected tag clears it: a chip that is on can be turned off.
-                            state.filterBy(notebook = state.notebook, tag = if (selected) null else tag.name)
-                            onPicked()
+                            // Tapping a chip that is on turns it off; the rest of the
+                            // filter is untouched, so tags accumulate.
+                            state.toggleTag(tag.name)
                         },
                     )
                 }
+            }
+
+            // The way out, since a chip no longer closes the sheet. Aligned right as the
+            // one action here; swiping down or tapping the scrim does the same thing,
+            // because every tap has already been applied.
+            Spacer(Modifier.height(Space.Large))
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                TextButton(onClick = onDismiss) { Text(stringResource(R.string.done)) }
             }
         }
     }
@@ -911,7 +919,14 @@ class NotesState(private val api: UnbentApi) {
 
     var notebook by mutableStateOf<String?>(null)
         private set
-    var tag by mutableStateOf<String?>(null)
+    /**
+     * The tags the list is narrowed to, ANDed: a note must carry all of them.
+     *
+     * A list rather than one tag because that is the question an archive with hundreds of
+     * them invites — "receipts that are also medical". Empty means unfiltered; `tags`
+     * below is the vocabulary to choose from, which is a different thing entirely.
+     */
+    var selectedTags by mutableStateOf<List<String>>(emptyList())
         private set
     var sort by mutableStateOf(NoteSort.UPDATED)
         private set
@@ -920,7 +935,8 @@ class NotesState(private val api: UnbentApi) {
         private set
     var to by mutableStateOf<String?>(null)
         private set
-    val filtered: Boolean get() = notebook != null || tag != null || from != null || to != null
+    val filtered: Boolean get() =
+        notebook != null || selectedTags.isNotEmpty() || from != null || to != null
 
     var notebooks by mutableStateOf<List<Notebook>>(emptyList())
         private set
@@ -959,11 +975,21 @@ class NotesState(private val api: UnbentApi) {
     }
 
     /** Changes what the list shows. The screen reloads when it sees the change. */
-    fun filterBy(notebook: String?, tag: String?) {
-        if (this.notebook == notebook && this.tag == tag) return
+    fun filterBy(notebook: String?, tags: List<String>) {
+        if (this.notebook == notebook && this.selectedTags == tags) return
         this.notebook = notebook
-        this.tag = tag
+        this.selectedTags = tags
         clearForReload()
+    }
+
+    /**
+     * Adds or removes one tag, leaving the rest of the filter alone.
+     *
+     * The picker works a tag at a time — tapping one that is on turns it off — and doing
+     * that through [filterBy] would make every call site rebuild the list itself.
+     */
+    fun toggleTag(tag: String) {
+        filterBy(notebook, if (tag in selectedTags) selectedTags - tag else selectedTags + tag)
     }
 
     fun sortBy(sort: NoteSort) {
@@ -1004,7 +1030,7 @@ class NotesState(private val api: UnbentApi) {
             results = null
             return
         }
-        val result = withContext(Dispatchers.IO) { runCatching { api.search(q, notebook, tag, from, to) } }
+        val result = withContext(Dispatchers.IO) { runCatching { api.search(q, notebook, selectedTags, from, to) } }
         // Only if the box still says what was searched for; a stale answer is worse than none.
         if (query.trim() != q) return
         result.onSuccess { results = it }.onFailure { e ->
@@ -1037,7 +1063,7 @@ class NotesState(private val api: UnbentApi) {
                 api.listNotes(
                     cursor = if (reset) null else cursor,
                     notebook = notebook,
-                    tag = tag,
+                    tags = selectedTags,
                     sort = sort.key,
                     order = sort.order,
                     from = from,

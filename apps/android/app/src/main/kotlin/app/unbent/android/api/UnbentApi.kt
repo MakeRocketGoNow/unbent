@@ -61,10 +61,21 @@ class UnbentApi(
         header("Origin", origin)
     }
 
-    /** `origin + path`, with any non-null query parameters. */
-    private fun url(path: String, vararg query: Pair<String, String?>): HttpUrl =
+    /**
+     * `origin + path`, with any non-null query parameters.
+     *
+     * A value may be a list, which is written as the same key repeated — `?tag=a&tag=b`,
+     * which is how the server takes several tags. Repeating the key rather than joining
+     * on a delimiter because a tag name may contain the delimiter; the server's own
+     * schema documents the same reasoning.
+     */
+    private fun url(path: String, vararg query: Pair<String, Any?>): HttpUrl =
         "$origin$path".toHttpUrl().newBuilder().apply {
-            for ((name, value) in query) if (value != null) addQueryParameter(name, value)
+            for ((name, value) in query) when (value) {
+                null -> Unit
+                is Iterable<*> -> for (v in value) if (v != null) addQueryParameter(name, v.toString())
+                else -> addQueryParameter(name, value.toString())
+            }
         }.build()
 
     /** Runs a request and returns its body, or throws [ApiException] carrying the status. */
@@ -97,7 +108,7 @@ class UnbentApi(
     fun listNotes(
         cursor: String? = null,
         notebook: String? = null,
-        tag: String? = null,
+        tags: List<String> = emptyList(),
         sort: String? = null,
         order: String? = null,
         from: String? = null,
@@ -109,7 +120,7 @@ class UnbentApi(
             "/api/notes",
             "cursor" to cursor,
             "notebook" to notebook,
-            "tag" to tag,
+            "tag" to tags,
             "sort" to sort,
             "order" to order,
             "from" to from,
@@ -125,13 +136,13 @@ class UnbentApi(
     fun search(
         q: String,
         notebook: String? = null,
-        tag: String? = null,
+        tags: List<String> = emptyList(),
         from: String? = null,
         to: String? = null,
     ): List<SearchResult> =
         get<SearchResults>(
             "Search",
-            url("/api/search", "q" to q, "notebook" to notebook, "tag" to tag, "from" to from, "to" to to),
+            url("/api/search", "q" to q, "notebook" to notebook, "tag" to tags, "from" to from, "to" to to),
         ).results
 
     fun getNote(id: String): Note = get("Load note", noteUrl(id))
