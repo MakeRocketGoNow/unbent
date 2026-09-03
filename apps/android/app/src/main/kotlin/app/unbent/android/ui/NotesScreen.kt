@@ -34,6 +34,8 @@ import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Badge
+import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.DateRangePicker
@@ -77,6 +79,7 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.SpanStyle
@@ -144,9 +147,8 @@ fun NotesScreen(
     val drawer = rememberDrawerState(DrawerValue.Closed)
     var searchOpen by rememberSaveable { mutableStateOf(false) }
     var overflowOpen by remember { mutableStateOf(false) }
-    var pickingTags by rememberSaveable { mutableStateOf(false) }
+    var filtering by rememberSaveable { mutableStateOf(false) }
     var pickingSort by rememberSaveable { mutableStateOf(false) }
-    var pickingDates by rememberSaveable { mutableStateOf(false) }
 
     // The list follows its filter and sort: the first load, and a reload on every change.
     // The directory the drawer shows is loaded once here and refreshed with the list.
@@ -182,8 +184,8 @@ fun NotesScreen(
     // Back closes what is open before it leaves the app: the drawer, then the search.
     // The drawer does not do this for itself, and a back press that quit the app with a
     // drawer still open is the kind of thing that makes an app feel like a web page.
-    BackHandler(enabled = pickingTags) { pickingTags = false }
-    BackHandler(enabled = drawer.isOpen && !pickingTags) { scope.launch { drawer.close() } }
+    BackHandler(enabled = filtering) { filtering = false }
+    BackHandler(enabled = drawer.isOpen && !filtering) { scope.launch { drawer.close() } }
     BackHandler(enabled = searchOpen && !drawer.isOpen) {
         searchOpen = false
         state.changeQuery("")
@@ -196,7 +198,6 @@ fun NotesScreen(
                 FilterDrawer(
                     state = state,
                     onPicked = { scope.launch { drawer.close() } },
-                    onPickTag = { pickingTags = true },
                     onManageNotebooks = onManageNotebooks,
                 )
             }
@@ -226,9 +227,26 @@ fun NotesScreen(
                                 Icon(Icons.Default.Search, contentDescription = stringResource(R.string.search))
                             }
                             /*
+                             * Filtering earns an icon of its own rather than a place in the
+                             * overflow: it is the thing this screen is for, and a menu is a
+                             * poor home for something reached this often. The badge says a
+                             * filter is on without naming it — the title does the naming —
+                             * so a narrowed list is never mistaken for the whole archive.
+                             */
+                            IconButton(onClick = { filtering = true }) {
+                                BadgedBox(
+                                    badge = { if (state.filtered) Badge() },
+                                ) {
+                                    Icon(
+                                        painterResource(R.drawable.ic_filter),
+                                        contentDescription = stringResource(R.string.filter_notes),
+                                    )
+                                }
+                            }
+                            /*
                              * The gear gave up its place here to the overflow. Settings is
-                             * a rare destination, and an icon of its own next to sort and
-                             * dates implied the three were the same kind of thing.
+                             * a rare destination, and an icon of its own beside the filter
+                             * implied the two were the same kind of thing.
                              */
                             IconButton(onClick = { overflowOpen = true }) {
                                 Icon(Icons.Default.MoreVert, contentDescription = stringResource(R.string.more))
@@ -238,7 +256,6 @@ fun NotesScreen(
                                 expanded = overflowOpen,
                                 onDismiss = { overflowOpen = false },
                                 onSort = { pickingSort = true },
-                                onDates = { pickingDates = true },
                                 onSettings = onSettings,
                             )
                         },
@@ -303,21 +320,8 @@ fun NotesScreen(
         }
     }
 
-    if (pickingTags) {
-        TagSheet(state = state, onDismiss = { pickingTags = false })
-    }
+    if (filtering) FilterSheet(state = state, onDismiss = { filtering = false })
     if (pickingSort) SortDialog(state = state, onDismiss = { pickingSort = false })
-    if (pickingDates) {
-        DateRangeDialog(
-            from = state.from,
-            to = state.to,
-            onDismiss = { pickingDates = false },
-            onPick = { from, to ->
-                pickingDates = false
-                state.dateRange(from, to)
-            },
-        )
-    }
 }
 
 /**
@@ -363,7 +367,7 @@ private fun ListTitle(state: NotesState) {
 
 /** The range as a phrase, or null when there is none. One end alone is a phrase too. */
 @Composable
-private fun rangeLabel(from: String?, to: String?): String? = when {
+internal fun rangeLabel(from: String?, to: String?): String? = when {
     from != null && to != null -> stringResource(R.string.date_range, formatDay(from), formatDay(to))
     from != null -> stringResource(R.string.date_from, formatDay(from))
     to != null -> stringResource(R.string.date_to, formatDay(to))
@@ -418,8 +422,7 @@ private fun SearchBar(query: String, onQuery: (String) -> Unit, onClose: () -> U
 }
 
 /**
- * The directory: where to go. Every notebook with its count, the Inbox, and a way into
- * the tags.
+ * The directory: where to go. Every notebook with its count, and the Inbox.
  *
  * It used to hold the sort and the date range as well, which made it three unrelated
  * things stacked in one column — a place to go, a filter to combine, and a view setting —
@@ -430,17 +433,16 @@ private fun SearchBar(query: String, onQuery: (String) -> Unit, onClose: () -> U
  * Counts are the point. In an archive of thirteen thousand notes, "Dentist 22" is the
  * information; a bare name would leave the user to open it and find out.
  *
- * Tags are one row rather than the chip cloud they were, because tags are a second axis
- * that combines with the notebook — picking one keeps the notebook selected — and a cloud
- * of forty chips in the middle of the notebook list buried the notebooks under a filter
- * that is not even the same kind of thing. The row names the active tag so the filter is
- * never applied invisibly.
+ * Tags have left entirely, to the filter sheet where the rest of the narrowing lives.
+ * They were never the same kind of thing as a notebook: a notebook is a place a note is
+ * kept and the drawer is how you go there, while a tag is a condition applied to whatever
+ * is already on screen. Keeping both here meant the notebooks — the reason to open this —
+ * shared a column with a filter that combines with them.
  */
 @Composable
 private fun FilterDrawer(
     state: NotesState,
     onPicked: () -> Unit,
-    onPickTag: () -> Unit,
     onManageNotebooks: () -> Unit,
 ) {
     // The list scrolls; the footer does not. A create action that scrolled away with the
@@ -484,34 +486,6 @@ private fun FilterDrawer(
                     modifier = item,
                 )
             }
-
-            /*
-             * Above the divider with All notes and the Inbox, not down among the notebooks:
-             * those three are ways of choosing what to look at, and the notebooks below are
-             * the library itself. The chevron says it opens something rather than filtering
-             * on the spot, which is the one thing this row does that its neighbours do not.
-             */
-            NavigationDrawerItem(
-                label = {
-                    Text(
-                        state.selectedTags.takeIf { it.isNotEmpty() }?.joinToString(", ")
-                            ?: stringResource(R.string.tags_label),
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                },
-                badge = {
-                    Icon(
-                        Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                },
-                selected = state.selectedTags.isNotEmpty(),
-                shape = Shapes.Row,
-                onClick = onPickTag,
-                modifier = item,
-            )
 
             HorizontalDivider(Modifier.padding(vertical = Space.Medium))
 
@@ -565,87 +539,13 @@ private fun FilterDrawer(
 }
 
 /**
- * The tags, as a sheet over the list rather than a screen of their own.
+ * The sort, and the way to settings.
  *
- * A sheet because picking tags narrows what is already on screen: the list stays behind
- * it, and dismissing leaves everything as it was. It is also how the filing and capture
- * sheets already pick things, so the gesture is one the app has taught before.
- *
- * The sheet stays open as chips are tapped, because the selection is a set rather than
- * one choice: closing on the first tap would make a two-tag filter take two trips, and
- * choosing them together is the whole point of ANDing them. The list behind reloads as it
- * goes, so each tap's effect is visible without leaving.
- *
- * "Any tag" leads, and takes the whole filter off in one tap — a chip cloud with no clear
- * row makes removing several a chore. The title names the notebook when one is selected,
- * because picking a tag here narrows within it rather than escaping it, and that is not
- * something the user can be expected to infer.
- */
-@OptIn(ExperimentalLayoutApi::class, ExperimentalMaterial3Api::class)
-@Composable
-private fun TagSheet(state: NotesState, onDismiss: () -> Unit) {
-    ModalBottomSheet(onDismissRequest = onDismiss) {
-        Column(
-            Modifier
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = Space.Screen)
-                .padding(bottom = Space.Screen),
-        ) {
-            val notebook = state.notebook
-            Text(
-                when (notebook) {
-                    null -> stringResource(R.string.tags_pick)
-                    UNFILED -> stringResource(R.string.tags_in_notebook, stringResource(R.string.inbox))
-                    else -> stringResource(R.string.tags_in_notebook, notebook)
-                },
-                style = MaterialTheme.typography.titleMedium,
-            )
-            Spacer(Modifier.height(Space.Large))
-
-            FlowRow(
-                horizontalArrangement = Arrangement.spacedBy(Space.Small),
-                verticalArrangement = Arrangement.spacedBy(Space.Small),
-            ) {
-                TagChip(
-                    name = stringResource(R.string.tags_none),
-                    count = null,
-                    selected = state.selectedTags.isEmpty(),
-                    onClick = { state.filterBy(notebook = state.notebook, tags = emptyList()) },
-                )
-                for (tag in state.tags) {
-                    val selected = tag.name in state.selectedTags
-                    TagChip(
-                        name = tag.name,
-                        count = tag.count,
-                        selected = selected,
-                        onClick = {
-                            // Tapping a chip that is on turns it off; the rest of the
-                            // filter is untouched, so tags accumulate.
-                            state.toggleTag(tag.name)
-                        },
-                    )
-                }
-            }
-
-            // The way out, since a chip no longer closes the sheet. Aligned right as the
-            // one action here; swiping down or tapping the scrim does the same thing,
-            // because every tap has already been applied.
-            Spacer(Modifier.height(Space.Large))
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                TextButton(onClick = onDismiss) { Text(stringResource(R.string.done)) }
-            }
-        }
-    }
-}
-
-/**
- * Sort and dates, and the way to settings.
- *
- * These are the two settings that used to sit at the bottom of the drawer. They are not
- * places to go, so they do not belong in a directory — but they cannot simply be hidden
- * either: a sort you cannot see is a list in an order you did not ask for. Both rows name
- * their current value, and the list's own title still carries an applied date range, so
- * neither filter is ever in force with nothing on screen saying so.
+ * What is left here once the filters have a surface of their own. Sort belongs apart from
+ * them because it is not one: every filter changes which notes are on screen, and the sort
+ * only changes their order — putting it among them would invite reading "Title A–Z" as
+ * something that narrows. The row names the current sort, since an order you cannot see
+ * is a list arranged in a way you did not ask for.
  */
 @Composable
 private fun NotesOverflow(
@@ -653,7 +553,6 @@ private fun NotesOverflow(
     expanded: Boolean,
     onDismiss: () -> Unit,
     onSort: () -> Unit,
-    onDates: () -> Unit,
     onSettings: () -> Unit,
 ) {
     DropdownMenu(expanded = expanded, onDismissRequest = onDismiss) {
@@ -663,31 +562,6 @@ private fun NotesOverflow(
             onClick = {
                 onDismiss()
                 onSort()
-            },
-        )
-        DropdownMenuItem(
-            text = {
-                val range = rangeLabel(state.from, state.to) ?: stringResource(R.string.dates_any)
-                Text(stringResource(R.string.dates_current, range), maxLines = 1, overflow = TextOverflow.Ellipsis)
-            },
-            leadingIcon = { Icon(Icons.Default.DateRange, contentDescription = null) },
-            trailingIcon = {
-                // Clearing a range without reopening the picker, the same affordance the
-                // drawer row carried. Only where there is something to clear.
-                if (state.from != null || state.to != null) {
-                    IconButton(
-                        onClick = {
-                            state.dateRange(null, null)
-                            onDismiss()
-                        },
-                    ) {
-                        Icon(Icons.Default.Close, contentDescription = stringResource(R.string.dates_clear))
-                    }
-                }
-            },
-            onClick = {
-                onDismiss()
-                onDates()
             },
         )
         HorizontalDivider(Modifier.padding(vertical = Space.Hair))
@@ -749,7 +623,7 @@ private fun SortDialog(state: NotesState, onDismiss: () -> Unit) {
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun DateRangeDialog(
+internal fun DateRangeDialog(
     from: String?,
     to: String?,
     onDismiss: () -> Unit,
@@ -979,6 +853,16 @@ class NotesState(private val api: UnbentApi) {
         if (this.notebook == notebook && this.selectedTags == tags) return
         this.notebook = notebook
         this.selectedTags = tags
+        clearForReload()
+    }
+
+    /** Takes every filter off at once, leaving the sort alone — it is not a filter. */
+    fun clearFilters() {
+        if (!filtered) return
+        notebook = null
+        selectedTags = emptyList()
+        from = null
+        to = null
         clearForReload()
     }
 

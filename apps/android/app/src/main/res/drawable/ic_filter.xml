@@ -1,0 +1,28 @@
+<!--
+  The filter icon, drawn here because the core Material set does not carry one.
+
+  `material-icons-core` holds about fifty glyphs and a filter is not among them; the
+  extended set is a several-thousand-icon dependency, which is a great deal of artifact
+  for one 24dp shape. The web app makes the same trade for the same reason — see the note
+  in EditorToolbar.tsx about why there is no icon library there either.
+
+  The standard three-bar funnel, on Material's 24dp grid with the same 2dp stroke weight
+  as the icons it sits beside in the app bar, so it does not read as lighter or heavier
+  than the search and overflow glyphs on either side of it.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24"
+    android:tint="?attr/colorControlNormal">
+    <path
+        android:fillColor="@android:color/white"
+        android:pathData="M4,6h16v2H4z" />
+    <path
+        android:fillColor="@android:color/white"
+        android:pathData="M7,11h10v2H7z" />
+    <path
+        android:fillColor="@android:color/white"
+        android:pathData="M10,16h4v2h-4z" />
+</vector>
