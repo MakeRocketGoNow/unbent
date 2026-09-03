@@ -1317,17 +1317,6 @@ a.overflow-item { text-decoration: none; }
 .editor-toolbar.docked .tb-btn { flex: 0 0 auto; }
 
 /*
-   Held at the left edge while the run scrolls under it, the mirror of the switcher on
-   the right; see the placement comment on AttachButton in EditorToolbar.tsx. The seam
-   and the background are what say the two are on different layers, as for the switcher.
-*/
-.editor-toolbar.docked .tb-attach {
-  padding-right: 0.5rem;
-  border-right: 1px solid var(--border);
-  background: var(--bg);
-}
-
-/*
    Held at the right edge while the formatting run scrolls under it.
 
    The seam and the background are what make that read as intended rather than as an
@@ -1335,12 +1324,37 @@ a.overflow-item { text-decoration: none; }
    nothing to say they are on different layers.
 */
 .editor-toolbar.docked .tb-views {
+  position: relative;
   flex: 0 0 auto;
   margin-left: 0;
   padding-left: 0.5rem;
   border-left: 1px solid var(--border);
   background: var(--bg);
 }
+
+/*
+   The run fading out under the switcher's edge while there is more of it to the right.
+
+   At rest a scrolling row looks exactly like one that does not scroll, and the Attach
+   button — the phone's only way to add a file — sits past the fold beside Link. The
+   toolbar measures the overflow and sets `tb-more`; the fade is on the switcher rather
+   than the scroller because a positioned pseudo-element inside the scroller would scroll
+   with it, and the switcher already owns that edge.
+*/
+.editor-toolbar.docked .tb-views::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  right: 100%;
+  width: 2.25rem;
+  background: linear-gradient(to right, transparent, var(--bg));
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 120ms;
+}
+
+.editor-toolbar.docked.tb-more .tb-views::before { opacity: 1; }
 
 /* Attachment inventory for the open note */
 .attachments {
@@ -1849,11 +1863,7 @@ a.overflow-item { text-decoration: none; }
   flex: 1 1 auto;
 }
 
-/*
-   The Attach button's slot, before the formatting run. Its own box rather than a button
-   in the run so the docked rule above can pin it; on a desktop, where nothing scrolls,
-   it is simply the first item in the row.
-*/
+/* The Attach button and the hidden file input it opens, kept together in the run. */
 .tb-attach {
   display: inline-flex;
   align-items: center;

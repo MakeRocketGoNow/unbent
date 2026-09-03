@@ -108,6 +108,14 @@ describe('EditorToolbar attach', () => {
     expect(attach().disabled).toBe(true);
   });
 
+  // Among the inserts: Link, then Attach, then Table. Its family, not a slot of its own.
+  it('sits right after Link', () => {
+    setup('rich');
+    const labels = screen.getAllByRole('button').map((b) => b.getAttribute('aria-label'));
+    expect(labels.indexOf('Attach file')).toBe(labels.indexOf('Link (⌘K)') + 1);
+    expect(labels[labels.indexOf('Attach file') + 1]).toBe('Table');
+  });
+
   it('is disabled in the preview, where the cursor it inserts at is not on screen', () => {
     const view = mount({ upload: async () => 'files/x' });
     render(<EditorToolbar view={view} noteView={{ current: 'preview', onChange: () => {} }} />);

@@ -229,6 +229,13 @@ function TableButton({ view }: { view: EditorView | null }) {
  * which is to say, the way on a phone. Files land at the cursor through the same routine
  * a drop uses, so the result is one undoable text edit either way.
  *
+ * Placed beside Link, among the inserts (Link, Attach, Table): it brings something into
+ * the note rather than shaping what is there, and that is the family it belongs to. On a
+ * phone that puts it in the part of the bar that scrolls, so the fade at the switcher's
+ * edge (`tb-more`) is what says the bar continues. Pinned at the left edge was tried
+ * first — always visible, but it left a run three buttons wide and read as a different
+ * kind of control from its family.
+ *
  * Opened from `onClick` rather than the `onMouseDown` its neighbours use. A file input
  * only opens inside a user activation, click is the event every browser grants one for,
  * and it is also the event a keyboard produces. Mousedown still prevents default so the
@@ -308,35 +315,52 @@ export function EditorToolbar({
   */
   const editing = noteView.current !== 'preview';
 
+  /*
+     Whether the docked run has more to the right of what is on screen.
+
+     A row that scrolls looks, at rest, exactly like a row that does not, and the phone's
+     only way to attach a file is past the fold. The switcher's edge fades the run out
+     while there is more, and stops the moment the end is reached, so the hint is never
+     a lie about a button that isn't there. Measured rather than styled with a mask,
+     because a mask fades the last button even once it has been scrolled to.
+  */
+  const scroller = useRef<HTMLDivElement>(null);
+  const [more, setMore] = useState(false);
+  useEffect(() => {
+    const el = scroller.current;
+    if (!docked || !el) {
+      setMore(false);
+      return;
+    }
+    const update = () => setMore(el.scrollWidth - el.clientWidth - el.scrollLeft > 1);
+    update();
+    el.addEventListener('scroll', update, { passive: true });
+    // The run's own width changes with the viewport; its content changes with `editing`.
+    const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(update);
+    observer?.observe(el);
+    return () => {
+      el.removeEventListener('scroll', update);
+      observer?.disconnect();
+    };
+  }, [docked, editing]);
+
   return (
     <div
-      className={docked ? 'editor-toolbar docked' : 'editor-toolbar'}
+      className={['editor-toolbar', docked ? 'docked' : '', more ? 'tb-more' : ''].filter(Boolean).join(' ')}
       role="toolbar"
       aria-label="Formatting"
       style={docked ? { bottom: `${keyboardInset}px` } : undefined}
     >
       {/*
-          Pinned before the run, outside the scroller, the mirror of the switcher at the
-          other end. It is the one control that brings something into the note rather
-          than shaping what is there — put something in, shape it, look at it — and on a
-          phone it is the only way to attach a file at all, so it cannot be somewhere a
-          swipe has to find: last in the run is off-screen until swiped, first in the run
-          is hidden again the moment someone swipes to reach Link or Table. The price is
-          a run about a button and a half narrower on a 375px phone, which any control
-          that must always be visible would cost.
-      */}
-      <AttachButton view={view} disabled={!editing} docked={docked} />
-
-      {/*
           The formatting run, and the only part of the bar that scrolls.
 
-          Eleven 44px touch targets do not fit a phone's width and never did — the bar has
+          Twelve 44px touch targets do not fit a phone's width and never did — the bar has
           always scrolled here. That is fine for formatting, which you dip into and can
           swipe for. It is not fine for the view switcher, which answers "where am I", so
           that sits outside this box and stays put. Splitting them is what lets each
           behave the way its job requires.
       */}
-      <div className="tb-scroll">
+      <div className="tb-scroll" ref={scroller}>
         {ACTIONS.map((action) => (
           <button
             key={action.title}
@@ -356,6 +380,7 @@ export function EditorToolbar({
           </button>
         ))}
 
+        <AttachButton view={view} disabled={!editing} docked={docked} />
         {editing && <TableButton view={view} />}
       </div>
 
