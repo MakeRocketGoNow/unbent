@@ -1,0 +1,209 @@
+import { Facet, type Extension } from '@codemirror/state';
+import { EditorView, ViewPlugin, type PluginValue } from '@codemirror/view';
+import { formatAttachmentMarkdown } from '@unbent/shared';
+
+/**
+ * Every way a file gets into the editor: a drop, a paste, and the toolbar's Attach button.
+ *
+ * The three used to be two closures inside `Editor.tsx`, which was fine while the only
+ * callers were DOM events the editor itself received. The toolbar changed that: it has the
+ * `EditorView` and nothing else, so the routine has to be reachable from the view alone.
+ * A facet is the CodeMirror way to say "this is configuration of the view" — the uploader
+ * goes in through `attachments()` once, and anything holding the view can find it with
+ * `view.state.facet(attachConfig)`. The alternatives were a callback prop threaded from
+ * `Workspace` to the toolbar (neither owns the routine, so the toolbar would have reached
+ * the editor two ways for one job) and a `StateEffect` the toolbar dispatches (starting
+ * fetches from a transaction listener is indirection, and abandon and the pending count
+ * would each have needed another effect).
+ *
+ * What an upload looks like in the document: a placeholder `![uploading NAME…](#upload-…)`
+ * goes in at once, and is replaced by the real link when the upload finishes. Uploads are
+ * slow enough that a person keeps typing, so the replacement finds the placeholder by
+ * searching for it rather than remembering an offset. A placeholder the user deleted
+ * mid-upload is simply not replaced; the file is still on the server, and the
+ * Attachments panel lists it as not linked.
+ *
+ * Known gap, not fixed here: remounting the editor mid-upload (switching rich/source, or
+ * deleting an attachment, which rewrites the body) leaves a placeholder the old view can
+ * no longer replace. The upload is allowed to finish so the file at least reaches the
+ * panel.
+ */
+export interface AttachConfig {
+  /** Uploads one file; resolves to its relative markdown path. Absent: uploads unsupported. */
+  upload?: (file: File, signal: AbortSignal) => Promise<string>;
+  /** Uploads in flight for this view, whenever the number changes. */
+  onPending?: (count: number) => void;
+}
+
+export const attachConfig = Facet.define<AttachConfig, AttachConfig>({
+  combine: (values) => values[0] ?? {},
+});
+
+/**
+ * The uploads a view has in flight, so they can be counted and abandoned.
+ *
+ * A view plugin rather than a module-level map because this state belongs to one view
+ * and should go when the view goes. `destroy` reports zero but does not abort: a file
+ * half-way to the server is worth having even if the view that sent it has gone.
+ */
+class PendingUploads implements PluginValue {
+  readonly jobs = new Map<string, AbortController>();
+
+  constructor(private readonly view: EditorView) {}
+
+  add(token: string, controller: AbortController) {
+    this.jobs.set(token, controller);
+    this.notify();
+  }
+
+  remove(token: string) {
+    if (this.jobs.delete(token)) this.notify();
+  }
+
+  /** Aborts everything and returns the tokens whose placeholders are now stale. */
+  abandon(): string[] {
+    const tokens = [...this.jobs.keys()];
+    const controllers = [...this.jobs.values()];
+    this.jobs.clear();
+    for (const controller of controllers) controller.abort();
+    if (tokens.length > 0) this.notify();
+    return tokens;
+  }
+
+  destroy() {
+    if (this.jobs.size === 0) return;
+    this.jobs.clear();
+    this.notify();
+  }
+
+  private notify() {
+    this.view.state.facet(attachConfig).onPending?.(this.jobs.size);
+  }
+}
+
+const pendingPlugin = ViewPlugin.fromClass(PendingUploads);
+
+/** The facet, the drop and paste handlers, and the per-view bookkeeping. */
+export function attachments(config: AttachConfig): Extension {
+  return [
+    attachConfig.of(config),
+    pendingPlugin,
+    EditorView.domEventHandlers({
+      drop(event, view) {
+        const files = [...(event.dataTransfer?.files ?? [])];
+        if (files.length === 0) return false;
+        event.preventDefault();
+        // Insert where the file was dropped, not where the cursor happened to be.
+        const at = view.posAtCoords({ x: event.clientX, y: event.clientY });
+        void insertUploads(view, files, at ?? view.state.selection.main.head);
+        return true;
+      },
+      paste(event, view) {
+        const files = [...(event.clipboardData?.files ?? [])];
+        if (files.length === 0) return false;
+        event.preventDefault();
+        void insertUploads(view, files, view.state.selection.main.head);
+        return true;
+      },
+    }),
+  ];
+}
+
+export function pendingUploads(view: EditorView): number {
+  return view.plugin(pendingPlugin)?.jobs.size ?? 0;
+}
+
+/**
+ * Uploads files, each behind a placeholder inserted at `at`.
+ *
+ * Every placeholder goes in before the first upload starts, in one transaction. The loop
+ * used to insert each file's placeholder at `at` only when its turn came, after the
+ * previous upload had finished — so three dropped files came out in reverse order, and
+ * landed in the wrong place if the user had typed above `at` in the meantime. One insert
+ * is also one undo step, which is what dropping three files at once should be.
+ *
+ * The uploads themselves run one at a time. On a phone radio a PDF and a photo racing
+ * each other finish later than the two in sequence, and the order in the note is already
+ * settled by the placeholders.
+ */
+export async function insertUploads(view: EditorView, files: File[], at: number): Promise<void> {
+  const { upload } = view.state.facet(attachConfig);
+  const pending = view.plugin(pendingPlugin);
+  if (!upload || !pending || files.length === 0) return;
+
+  const jobs = files.map((file) => ({
+    file,
+    token: `![uploading ${file.name}…](#upload-${uniqueId()})`,
+    controller: new AbortController(),
+  }));
+
+  view.dispatch({
+    changes: { from: at, insert: jobs.map((job) => `${job.token}\n`).join('') },
+    // A file chosen from the toolbar may land off-screen; a drop never does, and
+    // scrolling to something already visible is a no-op.
+    effects: EditorView.scrollIntoView(at),
+  });
+  for (const job of jobs) pending.add(job.token, job.controller);
+
+  for (const { file, token, controller } of jobs) {
+    // Abandoned while an earlier file was still going: its placeholder is already gone.
+    if (controller.signal.aborted) continue;
+    try {
+      const path = await upload(file, controller.signal);
+      const link = formatAttachmentMarkdown(file.name, path, {
+        image: file.type.startsWith('image/'),
+      });
+      replaceToken(view, token, link);
+    } catch (err) {
+      // An abort is not a failure the note should record; the placeholder was removed by
+      // whoever aborted, and a comment in its place would be the very junk they avoided.
+      if (!controller.signal.aborted) {
+        replaceToken(view, token, `<!-- upload failed: ${(err as Error).message} -->`);
+      }
+    } finally {
+      pending.remove(token);
+    }
+  }
+}
+
+/**
+ * Aborts every upload in flight and takes their placeholders out of the document.
+ *
+ * For a host that is about to throw the view away — the Android app, when the user
+ * presses Back mid-upload. Without this the placeholder would be what the page last
+ * saved, and it would sit in the note forever, because the WebView that could have
+ * replaced it dies with the screen. Returns whether the document changed.
+ */
+export function abandonUploads(view: EditorView): boolean {
+  const pending = view.plugin(pendingPlugin);
+  if (!pending || pending.jobs.size === 0) return false;
+
+  const tokens = pending.abandon();
+  const doc = view.state.doc.toString();
+  const changes = tokens.flatMap((token) => {
+    const from = doc.indexOf(token);
+    if (from === -1) return []; // the user already deleted it
+    const end = from + token.length;
+    // The newline that went in with it, so a removed placeholder leaves no blank line.
+    return [{ from, to: doc[end] === '\n' ? end + 1 : end }];
+  });
+  if (changes.length === 0) return false;
+  view.dispatch({ changes });
+  return true;
+}
+
+function replaceToken(view: EditorView, token: string, replacement: string) {
+  const doc = view.state.doc.toString();
+  const index = doc.indexOf(token);
+  if (index === -1) return; // the user deleted the placeholder mid-upload
+  view.dispatch({
+    changes: { from: index, to: index + token.length, insert: replacement },
+  });
+}
+
+/** Distinct enough to find one placeholder among others; not a security boundary. */
+function uniqueId(): string {
+  const c = globalThis.crypto;
+  if (c && typeof c.randomUUID === 'function') return c.randomUUID().slice(0, 8);
+  return Math.random().toString(16).slice(2, 10);
+}

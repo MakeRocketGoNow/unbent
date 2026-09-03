@@ -457,11 +457,17 @@ export function Workspace({ noteId, readOnly = false, backTo = '/notes' }: Works
             noteId={note.id}
             initialValue={editorOverride ?? note.body}
             onChange={(body) => setDraft((d) => ({ ...d, body }))}
-            onUpload={async (file) => {
-              const uploaded = await api.uploadFile(note.id, file);
-              void queryClient.invalidateQueries({ queryKey: keys.attachments(note.id) });
-              return uploaded.path;
-            }}
+            // No uploader on a read-only note: its autosave is off, so a dropped file
+            // would be stored with a link that is never saved — a blob nobody can see.
+            onUpload={
+              readOnly
+                ? undefined
+                : async (file, signal) => {
+                    const uploaded = await api.uploadFile(note.id, file, { signal });
+                    void queryClient.invalidateQueries({ queryKey: keys.attachments(note.id) });
+                    return uploaded.path;
+                  }
+            }
             rich={noteView === 'rich'}
             autoFocus={!cameFromList}
             // The way out of the editor, and the counterpart to the list's Enter.

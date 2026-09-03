@@ -213,7 +213,11 @@ export interface UploadedFile {
  * Uploads one file to a note. The body is sent as a raw stream rather than multipart so
  * the Worker can pipe it straight into R2 without buffering.
  */
-export async function uploadFile(noteId: string, file: File): Promise<UploadedFile> {
+export async function uploadFile(
+  noteId: string,
+  file: File,
+  opts: { signal?: AbortSignal } = {},
+): Promise<UploadedFile> {
   const res = await fetch(`/api/notes/${noteId}/files`, {
     method: 'PUT',
     headers: {
@@ -221,6 +225,8 @@ export async function uploadFile(noteId: string, file: File): Promise<UploadedFi
       'Content-Type': file.type || 'application/octet-stream',
     },
     body: file,
+    // The editor aborts an upload the user walked away from; see editor/attach.ts.
+    signal: opts.signal,
   });
   if (!res.ok) {
     const detail = await res.text().catch(() => '');

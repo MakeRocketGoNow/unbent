@@ -5,19 +5,26 @@ import { defaultKeymap, history, historyKeymap } from '@codemirror/commands';
 import { markdown } from '@codemirror/lang-markdown';
 import { GFM } from '@lezer/markdown';
 import { languages } from '@codemirror/language-data';
-import { formatAttachmentMarkdown } from '@unbent/shared';
 import { richMarkdown } from '../editor/rich-markdown.js';
 import { markdownKeymap } from '../editor/markdown-commands.js';
 import { tableTools } from '../editor/table-toolbar.js';
 import { fileDropCursor } from '../editor/drop-cursor.js';
+import { attachments } from '../editor/attach.js';
 
 interface EditorProps {
   /** Changes to this remount the editor; it is not a controlled value. */
   noteId: string;
   initialValue: string;
   onChange: (value: string) => void;
-  /** Uploads a dropped or pasted file and resolves to its relative markdown path. */
-  onUpload?: (file: File) => Promise<string>;
+  /**
+   * Uploads a dropped, pasted or chosen file and resolves to its relative markdown path.
+   *
+   * Absent, files are refused rather than inserted: a read-only note has no uploader, and
+   * without the handler CodeMirror's own drop would paste a file's bytes in as text.
+   */
+  onUpload?: (file: File, signal: AbortSignal) => Promise<string>;
+  /** How many uploads are in flight, whenever that changes. The Android app shows it. */
+  onUploadsPending?: (count: number) => void;
   /** Style markdown inline instead of showing plain source. */
   rich?: boolean;
   /**
@@ -53,6 +60,7 @@ export function Editor({
   initialValue,
   onChange,
   onUpload,
+  onUploadsPending,
   rich = false,
   autoFocus = true,
   onEscape,
@@ -69,6 +77,8 @@ export function Editor({
   onChangeRef.current = onChange;
   const onUploadRef = useRef(onUpload);
   onUploadRef.current = onUpload;
+  const onUploadsPendingRef = useRef(onUploadsPending);
+  onUploadsPendingRef.current = onUploadsPending;
   const onViewReadyRef = useRef(onViewReady);
   onViewReadyRef.current = onViewReady;
 
@@ -121,23 +131,22 @@ export function Editor({
           EditorView.updateListener.of((update) => {
             if (update.docChanged) onChangeRef.current(update.state.doc.toString());
           }),
-          EditorView.domEventHandlers({
-            drop(event, view) {
-              const files = [...(event.dataTransfer?.files ?? [])];
-              if (files.length === 0) return false;
-              event.preventDefault();
-              // Insert where the file was dropped, not where the cursor happened to be.
-              const at = view.posAtCoords({ x: event.clientX, y: event.clientY });
-              void insertUploads(view, files, at ?? view.state.selection.main.head);
-              return true;
-            },
-            paste(event, view) {
-              const files = [...(event.clipboardData?.files ?? [])];
-              if (files.length === 0) return false;
-              event.preventDefault();
-              void insertUploads(view, files, view.state.selection.main.head);
-              return true;
-            },
+          /*
+             Drop, paste and the toolbar's Attach button, through one routine. The view
+             outlives the props (it is rebuilt only on noteId and rich), so the facet holds
+             readers of the refs above rather than the props themselves. `upload` is left
+             undefined, not wrapped, when there is no handler: the toolbar reads its
+             absence as "nothing to attach with" and disables itself.
+          */
+          attachments({
+            upload: onUpload
+              ? (file, signal) => {
+                  const upload = onUploadRef.current;
+                  if (!upload) throw new Error('Uploads are switched off for this note');
+                  return upload(file, signal);
+                }
+              : undefined,
+            onPending: (count) => onUploadsPendingRef.current?.(count),
           }),
           EditorView.theme({
             '&': { height: '100%', fontSize: '15px' },
@@ -167,40 +176,4 @@ export function Editor({
   }, [noteId, rich]);
 
   return <div ref={host} className="editor-host" />;
-
-  /**
-   * Uploads files and replaces a placeholder with the real link when each finishes.
-   *
-   * The placeholder matters: uploads are slow enough that a user keeps typing, and
-   * inserting at a remembered offset afterwards would land in the wrong place. Replacing a
-   * unique marker is position-independent.
-   */
-  async function insertUploads(view: EditorView, files: File[], at: number) {
-    const upload = onUploadRef.current;
-    if (!upload) return;
-
-    for (const file of files) {
-      const token = `![uploading ${file.name}…](#upload-${crypto.randomUUID().slice(0, 8)})`;
-      view.dispatch({ changes: { from: at, insert: `${token}\n` } });
-
-      try {
-        const path = await upload(file);
-        const link = formatAttachmentMarkdown(file.name, path, {
-          image: file.type.startsWith('image/'),
-        });
-        replaceToken(view, token, link);
-      } catch (err) {
-        replaceToken(view, token, `<!-- upload failed: ${(err as Error).message} -->`);
-      }
-    }
-  }
-
-  function replaceToken(view: EditorView, token: string, replacement: string) {
-    const doc = view.state.doc.toString();
-    const index = doc.indexOf(token);
-    if (index === -1) return; // the user deleted the placeholder mid-upload
-    view.dispatch({
-      changes: { from: index, to: index + token.length, insert: replacement },
-    });
-  }
 }
