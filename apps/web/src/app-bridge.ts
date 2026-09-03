@@ -4,8 +4,8 @@ import type { SaveState } from './useAutosave.js';
  * The seam between an embedded page and the native app around it.
  *
  * The Android app shows a note's body in a WebView pointed at `/embed/notes/:id`, with
- * its own title, notebook and tag controls above. The page has four things to tell the
- * app and the app has one thing to ask the page, and this module is that whole
+ * its own title, notebook and tag controls above. The page has five things to tell the
+ * app and the app has two things to ask the page, and this module is that whole
  * vocabulary, so a change to the protocol is visible from one place on the web side.
  *
  * Page to app goes through `window.UnbentApp.postMessage`, which Android installs with
@@ -15,15 +15,21 @@ import type { SaveState } from './useAutosave.js';
  *
  * App to page is `window.__unbent.flush()`: save whatever is pending right now, because
  * the user is leaving the screen. The page answers with a `save` message like any other.
+ * `abandonUploads()` comes first when the user leaves mid-upload: it drops the uploads
+ * and their placeholders, so the flush that follows saves a note without them. The count
+ * of uploads in flight arrives as `upload`, which is what tells the app to ask before
+ * leaving at all.
  */
 export type AppMessage =
   | { type: 'ready' }
   | { type: 'save'; state: SaveState }
+  | { type: 'upload'; pending: number }
   | { type: 'unauthorized' }
   | { type: 'missing' };
 
 export interface AppHandlers {
   flush(): Promise<void>;
+  abandonUploads(): void;
 }
 
 declare global {

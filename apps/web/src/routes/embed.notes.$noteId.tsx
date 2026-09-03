@@ -1,5 +1,6 @@
 import { createFileRoute } from '@tanstack/react-router';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
+import { flushSync } from 'react-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { EditorView } from '@codemirror/view';
 import * as api from '../notes-api.js';
@@ -11,6 +12,7 @@ import { Editor } from '../components/Editor.js';
 import { Preview } from '../components/Preview.js';
 import { EditorToolbar, type NoteView } from '../components/EditorToolbar.js';
 import { Attachments } from '../components/Attachments.js';
+import { abandonUploads } from '../editor/attach.js';
 import { exposeToApp, postToApp } from '../app-bridge.js';
 
 /**
@@ -91,7 +93,26 @@ function EmbeddedNote({ noteId }: { noteId: string }) {
     postToApp({ type: 'save', state: saveState });
   }, [saveState]);
 
-  useEffect(() => exposeToApp({ flush }), [flush]);
+  /*
+     Called by the app when the user leaves mid-upload, right before it calls `flush`.
+
+     `flushSync` is what makes that order safe. Removing the placeholders is a CodeMirror
+     change that reaches autosave only through `setBody` → render → passive effect, and
+     without it the app's `flush` could run first, find nothing pending, and let the
+     screen close with the placeholder as the last thing saved — the exact junk this call
+     exists to prevent. React flushes the render and its effects synchronously inside
+     `flushSync`, so by the time this returns autosave holds the clean body and has told
+     the app it is dirty. Should that ever change, the app also waits briefly for a
+     dirty/saving report before it trusts a flush; see NoteScreen.leave.
+  */
+  const abandon = useCallback(() => {
+    if (!editorView) return;
+    flushSync(() => {
+      abandonUploads(editorView);
+    });
+  }, [editorView]);
+
+  useEffect(() => exposeToApp({ flush, abandonUploads: abandon }), [flush, abandon]);
 
   useEffect(() => {
     if (note) postToApp({ type: 'ready' });
@@ -158,11 +179,13 @@ function EmbeddedNote({ noteId }: { noteId: string }) {
             noteId={note.id}
             initialValue={editorOverride ?? note.body}
             onChange={setBody}
-            onUpload={async (file) => {
-              const uploaded = await api.uploadFile(note.id, file);
+            onUpload={async (file, signal) => {
+              const uploaded = await api.uploadFile(note.id, file, { signal });
               void queryClient.invalidateQueries({ queryKey: keys.attachments(note.id) });
               return uploaded.path;
             }}
+            // The app shows "Attaching…" and asks before Back while this is above zero.
+            onUploadsPending={(pending) => postToApp({ type: 'upload', pending })}
             rich={noteView === 'rich'}
             // A note opens to be read; the keyboard comes up when the body is tapped. Focus
             // on mount would raise it over a page the user has not chosen to write in yet.
