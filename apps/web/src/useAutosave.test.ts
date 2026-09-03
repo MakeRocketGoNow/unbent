@@ -70,6 +70,33 @@ describe('useAutosave priming', () => {
     expect(save).not.toHaveBeenCalled();
   });
 
+  /*
+     The baseline moves with each save. Left at the seed, a body that came back to exactly
+     its loaded text after a save looked like "no edit" and was never sent, so the server
+     kept the intermediate version. Attaching a file makes that ordinary: the upload's
+     placeholder autosaves, then abandoning the upload restores the seed.
+  */
+  it('saves a value that returns to the seed once something else was saved in between', async () => {
+    const save = vi.fn().mockResolvedValue(undefined);
+    const { rerender } = renderHook(
+      ({ value }) => useAutosave(value, save, { delay: 10, resetKey: 'note-1' }),
+      { initialProps: { value: 'seed' } },
+    );
+
+    rerender({ value: 'seed with placeholder' });
+    await act(async () => {
+      vi.advanceTimersByTime(50);
+    });
+    expect(save).toHaveBeenLastCalledWith('seed with placeholder');
+
+    rerender({ value: 'seed' });
+    await act(async () => {
+      vi.advanceTimersByTime(50);
+    });
+    expect(save).toHaveBeenCalledTimes(2);
+    expect(save).toHaveBeenLastCalledWith('seed');
+  });
+
   it('saves an edit to the second note, so re-priming does not disable autosave', async () => {
     const save = vi.fn().mockResolvedValue(undefined);
     const { rerender } = renderHook(

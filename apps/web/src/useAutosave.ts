@@ -55,6 +55,14 @@ export function useAutosave<T>(
       await saveRef.current(next);
       setState('saved');
       setError(null);
+      /*
+         What the server holds is now `next`, so that is the value an edit is measured
+         against from here on. Left at the seed, a body that came back to exactly its
+         loaded text after a save looked like "no edit" and was never sent — the server
+         kept the intermediate version. Attaching a file makes that the common case: the
+         upload's placeholder autosaves, and abandoning the upload restores the seed.
+      */
+      if (baseline.current) baseline.current.value = next;
     } catch (err) {
       setState('error');
       setError((err as Error).message);
