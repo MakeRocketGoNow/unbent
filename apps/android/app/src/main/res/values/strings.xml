@@ -64,6 +64,20 @@
     <string name="dates_year">This year</string>
     <string name="dates_custom">Custom…</string>
     <string name="manage_notebooks">Manage notebooks</string>
+    <string name="notebook_rename">Rename</string>
+    <string name="notebook_delete">Delete</string>
+    <string name="notebook_new_hint">New notebook name</string>
+    <string name="notebook_create">Create</string>
+    <string name="notebook_none">No notebooks yet.</string>
+    <string name="notebook_delete_title">Delete “%1$s”?</string>
+    <string name="notebook_delete_empty">It has no notes.</string>
+    <string name="notebook_delete_keep">Its notes become unfiled, not deleted.</string>
+    <string name="notebook_delete_only">Delete notebook</string>
+    <string name="notebook_manage_hint">Renaming a notebook updates every note in it. Deleting one leaves its notes unfiled unless you move them to the trash.</string>
+    <plurals name="notebook_delete_cascade">
+        <item quantity="one">Delete and move %d note to the trash</item>
+        <item quantity="other">Delete and move %d notes to the trash</item>
+    </plurals>
     <string name="new_note">New note</string>
     <string name="sort_label">Sort</string>
     <string name="sort_updated">Recently updated</string>

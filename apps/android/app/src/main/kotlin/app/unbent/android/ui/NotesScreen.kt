@@ -136,10 +136,13 @@ enum class NoteSort(val key: String, val order: String, val label: Int) {
 @Composable
 fun NotesScreen(
     api: UnbentApi,
+    /** Flipped by another screen that changed a notebook, so this one reloads on return. */
+    refreshKey: Boolean = false,
+    onRefreshed: () -> Unit = {},
     onOpen: (String) -> Unit,
     onOpenNew: (String) -> Unit,
     onSettings: () -> Unit,
-    onManageNotebooks: () -> Unit,
+    onManageNotebooks: (creating: Boolean) -> Unit,
     onUnauthorized: () -> Unit,
 ) {
     val scope = rememberCoroutineScope()
@@ -154,6 +157,15 @@ fun NotesScreen(
     // The directory the drawer shows is loaded once here and refreshed with the list.
     LaunchedEffect(state.notebook, state.selectedTags, state.sort, state.from, state.to) { state.load() }
     LaunchedEffect(state) { state.loadFilters() }
+
+    // Coming back from managing the notebooks, where a rename or a delete may have changed
+    // both the directory and which notes are in the current filter.
+    LaunchedEffect(refreshKey) {
+        if (refreshKey) {
+            state.refresh()
+            onRefreshed()
+        }
+    }
 
     /*
      * Reload whenever the screen comes back to the front.
@@ -443,7 +455,8 @@ private fun SearchBar(query: String, onQuery: (String) -> Unit, onClose: () -> U
 private fun FilterDrawer(
     state: NotesState,
     onPicked: () -> Unit,
-    onManageNotebooks: () -> Unit,
+    /** True when the user asked to create, so the new-notebook field takes focus. */
+    onManageNotebooks: (creating: Boolean) -> Unit,
 ) {
     // The list scrolls; the footer does not. A create action that scrolled away with the
     // notebooks would be unreachable exactly when the list is long enough to need it.
@@ -511,6 +524,12 @@ private fun FilterDrawer(
          * in a long directory. Creating is the common act and reads as a row like the ones
          * above it; managing is rare and sits as an icon at the end, quiet but visible —
          * which is the affordance a long-press would not have been.
+         *
+         * Both open the same screen, because creating a notebook and tidying the list are
+         * the same errand often enough that two destinations would be a distinction
+         * without a difference. "New notebook" asks for the field to be focused on
+         * arrival, so the row keeps its promise: it says create, and the keyboard is up
+         * with the cursor waiting.
          */
         HorizontalDivider()
         Row(
@@ -524,10 +543,10 @@ private fun FilterDrawer(
                 icon = { Icon(Icons.Default.Add, contentDescription = null) },
                 selected = false,
                 shape = Shapes.Row,
-                onClick = onManageNotebooks,
+                onClick = { onManageNotebooks(true) },
                 modifier = Modifier.weight(1f),
             )
-            IconButton(onClick = onManageNotebooks) {
+            IconButton(onClick = { onManageNotebooks(false) }) {
                 Icon(
                     Icons.Default.Settings,
                     contentDescription = stringResource(R.string.manage_notebooks),
@@ -934,8 +953,33 @@ class NotesState(private val api: UnbentApi) {
         withContext(Dispatchers.IO) { runCatching { api.listNotebooks() } }.onSuccess {
             notebooks = it.notebooks
             unfiled = it.unfiled
+
+            /*
+             * A filter pointing at a notebook that no longer exists shows an empty list and
+             * says nothing about why. That happens for real now that notebooks can be
+             * deleted from inside the app: delete the one you are reading and the title
+             * still names it over nothing. Fall back to everything, which is the honest
+             * answer — the notes are not gone, only unfiled.
+             *
+             * The Inbox is exempt: it is not in this list and never was.
+             */
+            val current = notebook
+            if (current != null && current != UNFILED && it.notebooks.none { nb -> nb.name == current }) {
+                notebook = null
+                clearForReload()
+            }
         }
-        withContext(Dispatchers.IO) { runCatching { api.listTags() } }.onSuccess { tags = it }
+        withContext(Dispatchers.IO) { runCatching { api.listTags() } }.onSuccess { fresh ->
+            tags = fresh
+            // Same for tags: trashing a notebook's notes can take the last note off a tag,
+            // and a filter on a tag the account no longer has cannot be turned off from
+            // the picker, because the picker no longer lists it.
+            val gone = selectedTags.filter { sel -> fresh.none { it.name == sel } }
+            if (gone.isNotEmpty()) {
+                selectedTags = selectedTags - gone.toSet()
+                clearForReload()
+            }
+        }
     }
 
     private suspend fun fetch(reset: Boolean) {

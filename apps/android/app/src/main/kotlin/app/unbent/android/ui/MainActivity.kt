@@ -112,9 +112,9 @@ class MainActivity : ComponentActivity() {
 }
 
 /**
- * The navigation host. Three destinations; the note takes its id from the route so a
- * back stack entry means one note, and returning to the list is a pop rather than a
- * navigation that would need to know where it came from.
+ * The navigation host. The note takes its id from the route so a back stack entry means
+ * one note, and returning to the list is a pop rather than a navigation that would need to
+ * know where it came from.
  */
 @Composable
 private fun App(
@@ -124,6 +124,8 @@ private fun App(
     onSignedOut: () -> Unit,
 ) {
     val nav = rememberNavController()
+    /** Set when the notebooks screen changed something the note list is showing. */
+    var notebooksChanged by remember { mutableStateOf(false) }
     val context = androidx.compose.ui.platform.LocalContext.current
     val prefs = remember { Prefs(context) }
     val api = remember { UnbentApi(prefs.instance, prefs.session?.bearer) }
@@ -142,13 +144,12 @@ private fun App(
         composable("notes") {
             NotesScreen(
                 api = api,
+                refreshKey = notebooksChanged,
+                onRefreshed = { notebooksChanged = false },
                 onOpen = { id -> nav.navigate("note/$id") },
                 onOpenNew = { id -> nav.navigate("note/$id?new=true") },
                 onSettings = { nav.navigate("settings") },
-                // TODO: the manage-notebooks screen. Until it exists both drawer footer
-                // controls land on settings rather than doing nothing, so nothing in the
-                // drawer is a dead control while the restructure is being looked at.
-                onManageNotebooks = { nav.navigate("settings") },
+                onManageNotebooks = { creating -> nav.navigate("notebooks?creating=$creating") },
                 onUnauthorized = onSignedOut,
             )
         }
@@ -168,6 +169,33 @@ private fun App(
                 api = api,
                 prefs = prefs,
                 onBack = { nav.popBackStack() },
+                onUnauthorized = onSignedOut,
+            )
+        }
+        composable(
+            "notebooks?creating={creating}",
+            arguments = listOf(
+                navArgument("creating") {
+                    type = NavType.BoolType
+                    defaultValue = false
+                },
+            ),
+        ) { entry ->
+            ManageNotebooksScreen(
+                api = api,
+                focusCreate = entry.arguments?.getBoolean("creating") ?: false,
+                /*
+                 * The list behind this screen keeps its state while this one is on top —
+                 * it is a navigation within one activity, so nothing about coming back
+                 * reloads it on its own. A notebook renamed here would still show its old
+                 * name in the drawer, and a deleted one would still be listed, until
+                 * something else happened to refresh. Saying so on the way out is cheaper
+                 * than making the list watch for changes it cannot see.
+                 */
+                onBack = {
+                    notebooksChanged = true
+                    nav.popBackStack()
+                },
                 onUnauthorized = onSignedOut,
             )
         }
