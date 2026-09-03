@@ -9,16 +9,18 @@ import kotlinx.serialization.Serializable
 /**
  * What the embedded page tells the app. Mirrors `AppMessage` in apps/web/src/app-bridge.ts.
  *
- * `state` accompanies `save` only, and is one of the web autosave's five states. Unknown
+ * `state` accompanies `save` only, and is one of the web autosave's five states; `pending`
+ * accompanies `upload` only, and is how many files the page is still sending. Unknown
  * types are ignored rather than failing, so a page from a newer deploy can say something
  * this build has never heard of without breaking the screen around it.
  */
 @Serializable
-data class BridgeMessage(val type: String, val state: String? = null) {
+data class BridgeMessage(val type: String, val state: String? = null, val pending: Int? = null) {
     val isReady get() = type == "ready"
     val isUnauthorized get() = type == "unauthorized"
     val isMissing get() = type == "missing"
     val saveState get() = if (type == "save") state else null
+    val uploadsPending get() = if (type == "upload") pending else null
 }
 
 /**
@@ -42,5 +44,12 @@ class NoteBridge(private val onMessage: (BridgeMessage) -> Unit) {
 
         /** Asks the page to save whatever is pending; it answers with a `save` message. */
         const val FLUSH_SCRIPT = "window.__unbent && window.__unbent.flush && window.__unbent.flush();"
+
+        /**
+         * Asks the page to drop its uploads and their placeholders, before a flush. The
+         * page reports the pending count as 0 and the body as dirty before this returns.
+         */
+        const val ABANDON_SCRIPT =
+            "window.__unbent && window.__unbent.abandonUploads && window.__unbent.abandonUploads();"
     }
 }

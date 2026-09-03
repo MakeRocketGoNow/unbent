@@ -7,10 +7,14 @@ import android.os.Build
 import android.os.Environment
 import android.view.ViewGroup
 import android.webkit.URLUtil
+import android.webkit.ValueCallback
+import android.webkit.WebChromeClient
 import android.webkit.WebResourceRequest
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.browser.customtabs.CustomTabsIntent
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.isSystemInDarkTheme
@@ -55,6 +59,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -70,6 +75,7 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
@@ -95,8 +101,11 @@ import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
+import kotlin.concurrent.thread
+import kotlin.coroutines.resume
 
 /**
  * One note: a native head, and the web editor for the body.
@@ -110,6 +119,11 @@ import kotlinx.coroutines.withTimeoutOrNull
  * cannot overwrite each other. Leaving flushes both: the page is asked to save whatever
  * it is holding and the title's debounce is run out, and the screen pops once the page
  * reports it is no longer saving, or after two seconds if it never does.
+ *
+ * The page's Attach button is the site's own, in the editor's bar; what the app adds is
+ * the file chooser behind it, since a WebView opens no picker of its own. See
+ * FileChooser.kt for the pieces, and [leave] for what happens to a file still on its way
+ * when the user presses Back.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -131,12 +145,31 @@ fun NoteScreen(
 
     var webView by remember { mutableStateOf<WebView?>(null) }
     var leaving by remember { mutableStateOf(false) }
+    var confirmLeave by remember { mutableStateOf(false) }
 
-    fun leave() {
+    /*
+     * With a file still uploading, Back asks first. Back is reflexive on a phone, and a
+     * note left mid-upload would keep the page's `![uploading …]` placeholder for ever:
+     * the WebView that could have replaced it dies with this screen. Leaving anyway
+     * tells the page to abandon the uploads — the placeholders go, and the flush that
+     * follows saves a note without them — rather than leaving it to the next save.
+     *
+     * The scripts are awaited, not fired and forgotten. The page reports through the
+     * bridge while a script runs, so its report is queued on the main thread before the
+     * script's completion is; waiting for the completion means the save state sampled
+     * below is the one the page just posted, not the one from before.
+     */
+    fun leave(force: Boolean = false) {
         if (leaving) return
+        if (!force && state.uploading > 0) {
+            confirmLeave = true
+            return
+        }
         leaving = true
         scope.launch {
-            webView?.evaluateJavascript(NoteBridge.FLUSH_SCRIPT, null)
+            val page = webView
+            if (force) page?.evaluate(NoteBridge.ABANDON_SCRIPT)
+            page?.evaluate(NoteBridge.FLUSH_SCRIPT)
             state.flushTitle()
             withTimeoutOrNull(2_000) {
                 snapshotFlow { state.bodySave }.first { it != "saving" && it != "dirty" }
@@ -146,6 +179,45 @@ fun NoteScreen(
     }
     BackHandler { leave() }
 
+    /*
+     * The file chooser. The page asks through the WebChromeClient below with a callback;
+     * the system picker answers through the launcher; a chosen HEIC is transcoded off the
+     * main thread on the way back. `request` is what keeps the two ends honest — see
+     * FileChooserRequest for why an unanswered callback is worse than a cancelled one.
+     */
+    val appContext = context.applicationContext
+    val request = remember { FileChooserRequest() }
+    val attachDir = remember { AttachCache.dir(appContext) }
+    // The JPEGs made for the page go with the screen. The WebView is destroyed with it,
+    // so nothing can still be reading them.
+    DisposableEffect(attachDir) {
+        onDispose { thread { attachDir.deleteRecursively() } }
+    }
+    val picker = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+        val chosen = trustedUris(appContext, chosenUris(result.resultCode, result.data))
+        if (chosen.isEmpty()) {
+            request.answer(null)
+        } else {
+            // Answered on the main thread, where the WebView expects it; the screen's own
+            // scope, because a screen that has gone has no WebView left to answer.
+            scope.launch {
+                val ready = withContext(Dispatchers.IO) {
+                    runCatching { AttachCache.prepare(appContext, chosen, attachDir) }.getOrDefault(chosen)
+                }
+                request.answer(ready.toTypedArray())
+            }
+        }
+    }
+    val chooseFiles: (ValueCallback<Array<Uri>>, WebChromeClient.FileChooserParams) -> Boolean = { callback, params ->
+        request.open(callback)
+        // `createIntent` is GET_CONTENT with OPENABLE, the accepted types, and multiple
+        // selection when the input allows it; nothing to add. A phone with no picker
+        // throws here, and false is how Chromium is told the request was not taken.
+        runCatching { picker.launch(params.createIntent()) }
+            .onFailure { request.forget() }
+            .isSuccess
+    }
+
     var showFiling by rememberSaveable { mutableStateOf(false) }
     var confirmDelete by rememberSaveable { mutableStateOf(false) }
     var menuOpen by remember { mutableStateOf(false) }
@@ -153,9 +225,9 @@ fun NoteScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { SaveStatus(state.headerSave, state.bodySave) },
+                title = { SaveStatus(state.headerSave, state.bodySave, state.uploading) },
                 navigationIcon = {
-                    IconButton(onClick = ::leave) {
+                    IconButton(onClick = { leave() }) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.back))
                     }
                 },
@@ -235,6 +307,7 @@ fun NoteScreen(
                         session = prefs.session,
                         noteId = noteId,
                         onMessage = state::onBridge,
+                        onChooseFiles = chooseFiles,
                         onCreated = { webView = it },
                         modifier = Modifier.weight(1f).fillMaxWidth(),
                     )
@@ -267,19 +340,54 @@ fun NoteScreen(
             },
         )
     }
+
+    if (confirmLeave) {
+        val count = state.uploading
+        if (count == 0) {
+            // The reason for asking has gone, and the user already said they want to go.
+            LaunchedEffect(Unit) {
+                confirmLeave = false
+                leave()
+            }
+        } else {
+            AlertDialog(
+                onDismissRequest = { confirmLeave = false },
+                title = { Text(stringResource(R.string.leave_attaching_title)) },
+                text = { Text(pluralStringResource(R.plurals.leave_attaching_body, count, count)) },
+                // Plain, not red: the note itself is safe either way. Only the files
+                // still on their way are dropped, and they were never in it yet.
+                confirmButton = {
+                    TextButton(
+                        onClick = {
+                            confirmLeave = false
+                            leave(force = true)
+                        },
+                    ) { Text(stringResource(R.string.leave_anyway)) }
+                },
+                dismissButton = {
+                    TextButton(onClick = { confirmLeave = false }) { Text(stringResource(R.string.leave_keep_waiting)) }
+                },
+            )
+        }
+    }
 }
 
 /**
  * One line for both halves' saving, as the web shows one for the whole note.
  *
- * Failure outranks everything; then anything still on its way; then a quiet "Saved" when
- * either has just landed. Nothing at all while nothing has happened, so a freshly opened
- * note does not announce a save that never was.
+ * Failure outranks everything; then a file still uploading; then anything still on its
+ * way; then a quiet "Saved" when either has just landed. Nothing at all while nothing
+ * has happened, so a freshly opened note does not announce a save that never was.
+ *
+ * Attaching sits above saving because while a large file uploads the body's own save has
+ * usually landed already — the placeholder autosaves within a second — so "Saving…"
+ * would go quiet with the file still on its way, and "Saved" would be a lie.
  */
 @Composable
-private fun SaveStatus(header: String, body: String) {
+private fun SaveStatus(header: String, body: String, uploading: Int) {
     val text = when {
         header == "error" || body == "error" -> stringResource(R.string.save_error)
+        uploading > 0 -> stringResource(R.string.attach_attaching)
         header == "saving" || body == "saving" -> stringResource(R.string.save_saving)
         header == "dirty" || body == "dirty" -> stringResource(R.string.save_unsaved)
         header == "saved" || body == "saved" -> stringResource(R.string.save_saved)
@@ -450,11 +558,16 @@ private fun NoteWebView(
     session: SessionCookie?,
     noteId: String,
     onMessage: (BridgeMessage) -> Unit,
+    /** The page wants a file; true when a picker was opened for it. */
+    onChooseFiles: (ValueCallback<Array<Uri>>, WebChromeClient.FileChooserParams) -> Boolean,
     onCreated: (WebView) -> Unit,
     modifier: Modifier,
 ) {
     val dark = isSystemInDarkTheme()
+    // The factory below runs once and keeps what it captured; these are read through
+    // State so the closure sees the latest lambda rather than the first.
     val currentOnMessage by rememberUpdatedState(onMessage)
+    val currentOnChooseFiles by rememberUpdatedState(onChooseFiles)
 
     AndroidView(
         modifier = modifier,
@@ -472,6 +585,13 @@ private fun NoteWebView(
                 applyDarkMode(this, dark)
                 addJavascriptInterface(NoteBridge { currentOnMessage(it) }, NoteBridge.NAME)
                 webViewClient = NoteWebViewClient(origin, ctx)
+                webChromeClient = object : WebChromeClient() {
+                    override fun onShowFileChooser(
+                        webView: WebView,
+                        filePathCallback: ValueCallback<Array<Uri>>,
+                        fileChooserParams: FileChooserParams,
+                    ): Boolean = currentOnChooseFiles(filePathCallback, fileChooserParams)
+                }
                 setDownloadListener { url, _, contentDisposition, mimeType, _ ->
                     download(ctx, url, contentDisposition, mimeType, session)
                 }
@@ -503,6 +623,20 @@ private fun applyDarkMode(view: WebView, dark: Boolean) {
     }
     if (WebViewFeature.isFeatureSupported(WebViewFeature.FORCE_DARK_STRATEGY)) {
         WebSettingsCompat.setForceDarkStrategy(settings, WebSettingsCompat.DARK_STRATEGY_WEB_THEME_DARKENING_ONLY)
+    }
+}
+
+/**
+ * `evaluateJavascript`, awaited: resumes once the page has run the script.
+ *
+ * Bounded, because a WebView destroyed before the script finishes never calls back, and
+ * a leave that waited on it would never pop.
+ */
+private suspend fun WebView.evaluate(script: String) {
+    withTimeoutOrNull(1_000) {
+        suspendCancellableCoroutine { cont ->
+            evaluateJavascript(script) { if (cont.isActive) cont.resume(Unit) }
+        }
     }
 }
 
@@ -582,6 +716,10 @@ class NoteState(
 
     /** The body's, as the page reports it through the bridge. */
     var bodySave by mutableStateOf("idle")
+        private set
+
+    /** Files the page is still uploading, as it reports them. Back asks while this is above zero. */
+    var uploading by mutableStateOf(0)
         private set
 
     private var titleJob: Job? = null
@@ -665,6 +803,7 @@ class NoteState(
             message.isUnauthorized -> unauthorized = true
             message.isMissing -> missing = true
             saveState != null -> bodySave = saveState
+            else -> message.uploadsPending?.let { uploading = it }
         }
     }
 

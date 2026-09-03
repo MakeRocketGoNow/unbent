@@ -114,5 +114,22 @@
                 <data android:scheme="${connectScheme}" android:host="connect" />
             </intent-filter>
         </activity>
+
+        <!--
+            How a file the app made reaches the editor. The WebView's file chooser returns
+            content URIs, and a HEIC photo the app has transcoded to JPEG has to come back
+            as one too, so the JPEG is served from the cache through this provider. Not
+            exported: the only reader is this app's own WebView, under a grant the
+            provider issues per file. Paths in res/xml/file_paths.xml.
+        -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.files"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
     </application>
 </manifest>

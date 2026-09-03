@@ -64,6 +64,14 @@
     <string name="save_saving">Saving…</string>
     <string name="save_saved">Saved</string>
     <string name="save_error">Save failed</string>
+    <string name="attach_attaching">Attaching…</string>
+    <string name="leave_attaching_title">Still attaching</string>
+    <plurals name="leave_attaching_body">
+        <item quantity="one">%d file is still attaching. If you leave now it won\'t be added to the note.</item>
+        <item quantity="other">%d files are still attaching. If you leave now they won\'t be added to the note.</item>
+    </plurals>
+    <string name="leave_keep_waiting">Keep waiting</string>
+    <string name="leave_anyway">Leave</string>
     <string name="filing_title">Filing</string>
     <string name="notebook_label">Notebook</string>
     <string name="new_notebook">New notebook</string>
