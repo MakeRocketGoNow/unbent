@@ -2,9 +2,9 @@ package app.unbent.android.ui
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -39,6 +39,7 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import app.unbent.android.R
 import app.unbent.android.api.AppConfig
+import app.unbent.android.ui.theme.Space
 
 /**
  * The sign-in screen, drawn from what the instance says it offers.
@@ -74,22 +75,22 @@ fun SignInScreen(
                 .imePadding()
                 .fillMaxSize()
                 .verticalScroll(rememberScrollState())
-                .padding(24.dp),
+                .padding(Space.Screen),
             verticalArrangement = Arrangement.Center,
         ) {
             Text(stringResource(R.string.app_name), style = MaterialTheme.typography.headlineMedium)
-            Spacer(Modifier.height(8.dp))
+            Spacer(Modifier.height(Space.Small))
             Text(
                 stringResource(R.string.sign_in_intro),
                 style = MaterialTheme.typography.bodyLarge,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            Spacer(Modifier.height(32.dp))
+            Spacer(Modifier.height(Space.Screen))
 
             when {
                 configError != null -> {
                     Text(configError, color = MaterialTheme.colorScheme.error)
-                    Spacer(Modifier.height(12.dp))
+                    Spacer(Modifier.height(Space.Medium))
                     OutlinedButton(onClick = onRetry) { Text(stringResource(R.string.retry)) }
                 }
                 config == null -> CircularProgressIndicator(Modifier.align(Alignment.CenterHorizontally))
@@ -97,7 +98,7 @@ fun SignInScreen(
             }
 
             if (status != null) {
-                Spacer(Modifier.height(24.dp))
+                Spacer(Modifier.height(Space.Screen))
                 Text(
                     status,
                     style = MaterialTheme.typography.bodyMedium,
@@ -105,7 +106,7 @@ fun SignInScreen(
                 )
             }
 
-            Spacer(Modifier.height(32.dp))
+            Spacer(Modifier.height(Space.Screen))
             InstanceLine(instance, enabled = !busy, onChange = onInstanceChange)
         }
     }
@@ -120,6 +121,8 @@ private fun Methods(
     onPassword: (String, String, String?) -> Unit,
 ) {
     val social = config.google || config.github
+    // 48dp is Material's minimum touch target, not a spacing step — it stays a literal
+    // rather than coming from Space, which measures gaps between things.
     val button = Modifier.fillMaxWidth().heightIn(min = 48.dp)
 
     /*
@@ -133,7 +136,7 @@ private fun Methods(
         }
     }
     if (config.github) {
-        if (config.google) Spacer(Modifier.height(12.dp))
+        if (config.google) Spacer(Modifier.height(Space.Medium))
         OutlinedButton(onClick = onGitHub, enabled = !busy, modifier = button) {
             Text(stringResource(R.string.sign_in_github))
         }
@@ -141,9 +144,9 @@ private fun Methods(
 
     if (config.password) {
         if (social) {
-            Spacer(Modifier.height(20.dp))
+            Spacer(Modifier.height(Space.Large))
             OrDivider()
-            Spacer(Modifier.height(20.dp))
+            Spacer(Modifier.height(Space.Large))
         }
         PasswordForm(busy, onPassword)
     }
@@ -163,7 +166,7 @@ private fun OrDivider() {
         HorizontalDivider(Modifier.weight(1f))
         Text(
             stringResource(R.string.sign_in_or),
-            modifier = Modifier.padding(horizontal = 12.dp),
+            modifier = Modifier.padding(horizontal = Space.Medium),
             style = MaterialTheme.typography.labelMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -201,7 +204,7 @@ private fun PasswordForm(busy: Boolean, onSubmit: (String, String, String?) -> U
                 ),
                 modifier = Modifier.fillMaxWidth(),
             )
-            Spacer(Modifier.height(12.dp))
+            Spacer(Modifier.height(Space.Medium))
         }
         OutlinedTextField(
             value = email,
@@ -215,7 +218,7 @@ private fun PasswordForm(busy: Boolean, onSubmit: (String, String, String?) -> U
             ),
             modifier = Modifier.fillMaxWidth(),
         )
-        Spacer(Modifier.height(12.dp))
+        Spacer(Modifier.height(Space.Medium))
         OutlinedTextField(
             value = password,
             onValueChange = { password = it },
@@ -229,7 +232,7 @@ private fun PasswordForm(busy: Boolean, onSubmit: (String, String, String?) -> U
             keyboardActions = KeyboardActions(onDone = { if (canSubmit) submit() }),
             modifier = Modifier.fillMaxWidth(),
         )
-        Spacer(Modifier.height(16.dp))
+        Spacer(Modifier.height(Space.Large))
         Button(
             onClick = ::submit,
             enabled = canSubmit,
@@ -283,7 +286,7 @@ private fun InstanceLine(instance: String, enabled: Boolean, onChange: (String) 
         keyboardActions = KeyboardActions(onDone = { onChange(draft); editing = false }),
         modifier = Modifier.fillMaxWidth(),
     )
-    Spacer(Modifier.height(8.dp))
+    Spacer(Modifier.height(Space.Small))
     Row(horizontalArrangement = Arrangement.End, modifier = Modifier.fillMaxWidth()) {
         TextButton(onClick = { draft = instance; editing = false }) {
             Text(stringResource(R.string.cancel))
