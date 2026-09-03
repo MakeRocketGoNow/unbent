@@ -207,6 +207,9 @@ Every affordance is built on top of that rather than around it:
   `apps/web/src/editor/markdown-commands.ts`, which rewrites the table's text and lets
   CodeMirror's history record it as a single undo step.
 - Dragging a file in shows a drop cursor at the exact insertion point.
+- An Attach button in the toolbar opens the file picker, for a phone and for anyone who
+  would rather not drag. It goes through the same routine as a drop or a paste: a
+  placeholder at the cursor, replaced by the link when the upload lands, one undo step.
 
 The test for any new editing feature is the same one every time: **can it be expressed as
 an edit to the text, undone with a single ⌘Z, and retyped by hand to the same result?** If
@@ -349,7 +352,17 @@ handoff on every launch.
 **How a note is edited.** The app draws the title, notebook and tags natively and saves
 them itself; the page saves the body. `PATCH /api/notes/:id` is partial, so the two never
 overwrite each other. A small bridge (`apps/web/src/app-bridge.ts`) carries the page's
-save state to the app and lets the app ask the page to flush before the screen closes.
+save state and its count of uploads in flight to the app, and lets the app ask the page
+to flush — or to abandon those uploads first — before the screen closes.
+
+**How a file is attached.** The Attach button is the editor's own, in its bar; what the
+app adds is the file chooser behind it, since a WebView opens no picker of its own. The
+system picker's files go to the page as they are, under the picker's grant. A HEIC photo
+is transcoded to JPEG on the phone first, for the reason given under captures below, and
+handed back through a FileProvider. Pressing Back with a file still uploading asks first:
+leaving anyway drops the upload and its placeholder rather than saving the placeholder
+into the note, which is what would otherwise happen, since the WebView that could have
+replaced it dies with the screen.
 
 **How a capture works.** Sharing to Unbent opens a sheet over the sending app with the
 title, the notebook and the tags, prefilled so that the lazy case is one tap on Save. The
