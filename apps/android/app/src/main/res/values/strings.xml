@@ -50,6 +50,13 @@
     <string name="sort_newest">Newest first</string>
     <string name="sort_oldest">Oldest first</string>
     <string name="sort_title_az">Title A–Z</string>
+    <string name="dates_label">Dates</string>
+    <string name="dates_any">Any time</string>
+    <string name="dates_clear">Clear dates</string>
+    <string name="dates_apply">Apply</string>
+    <string name="date_range">%1$s – %2$s</string>
+    <string name="date_from">From %1$s</string>
+    <string name="date_to">Until %1$s</string>
     <string name="sort_title_za">Title Z–A</string>
     <string name="just_now">just now</string>
     <string name="minutes_ago">%1$dm ago</string>

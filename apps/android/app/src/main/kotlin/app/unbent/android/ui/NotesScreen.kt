@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -25,10 +26,13 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DatePickerDialog
+import androidx.compose.material3.DateRangePicker
 import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
@@ -45,8 +49,10 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
+import androidx.compose.material3.rememberDateRangePickerState
 import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -130,7 +136,7 @@ fun NotesScreen(
 
     // The list follows its filter and sort: the first load, and a reload on every change.
     // The directory the drawer shows is loaded once here and refreshed with the list.
-    LaunchedEffect(state.notebook, state.tag, state.sort) { state.load() }
+    LaunchedEffect(state.notebook, state.tag, state.sort, state.from, state.to) { state.load() }
     LaunchedEffect(state) { state.loadFilters() }
 
     /*
@@ -270,7 +276,9 @@ fun NotesScreen(
 
 /**
  * What the list is showing and how much of it: everything, a notebook, a tag, or a tag
- * within a notebook — the filters combine, as on the web, so the title names both.
+ * within a notebook — the filters combine, as on the web, so the title names both. A date
+ * range goes on the second line beside the count, so a range is never applied invisibly:
+ * it is there even while the count is still on its way after a reload.
  */
 @Composable
 private fun ListTitle(state: NotesState) {
@@ -285,16 +293,31 @@ private fun ListTitle(state: NotesState) {
         tag?.let { "#$it" },
     )
     val title = if (parts.isEmpty()) stringResource(R.string.app_name) else parts.joinToString(" · ")
+    val detail = listOfNotNull(
+        state.total?.let { pluralStringResource(R.plurals.notes_count, it, it) },
+        rangeLabel(state.from, state.to),
+    ).joinToString(" · ")
     Column {
         Text(title, maxLines = 1, overflow = TextOverflow.Ellipsis)
-        state.total?.let { total ->
+        if (detail.isNotEmpty()) {
             Text(
-                pluralStringResource(R.plurals.notes_count, total, total),
+                detail,
                 style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
             )
         }
     }
+}
+
+/** The range as a phrase, or null when there is none. One end alone is a phrase too. */
+@Composable
+private fun rangeLabel(from: String?, to: String?): String? = when {
+    from != null && to != null -> stringResource(R.string.date_range, formatDay(from), formatDay(to))
+    from != null -> stringResource(R.string.date_from, formatDay(from))
+    to != null -> stringResource(R.string.date_to, formatDay(to))
+    else -> null
 }
 
 /** The app bar, turned into a search field. Back closes it and clears the query. */
@@ -345,10 +368,14 @@ private fun SearchBar(query: String, onQuery: (String) -> Unit, onClose: () -> U
 }
 
 /**
- * The directory: every notebook and tag with its count, and the sort.
+ * The directory: every notebook and tag with its count, the dates, and the sort.
  *
  * Counts are the point. In an archive of thirteen thousand notes, "Dentist 22" is the
  * information; a bare name would leave the user to open it and find out.
+ *
+ * The dates sit between the tags and the sort because they belong to both: a range
+ * narrows like a tag does, and which date it reads follows the sort — created under
+ * "Newest first", updated under everything else — the same rule the web applies.
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -430,6 +457,61 @@ private fun FilterDrawer(state: NotesState, onPicked: () -> Unit) {
 
         HorizontalDivider(Modifier.padding(vertical = 12.dp))
         Text(
+            stringResource(R.string.dates_label),
+            style = MaterialTheme.typography.titleSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(horizontal = 28.dp, vertical = 4.dp),
+        )
+        var pickingDates by rememberSaveable { mutableStateOf(false) }
+        val range = rangeLabel(state.from, state.to)
+        // Laid out like the sort rows beneath: an icon where their radio is, the label at the
+        // same offset. The row opens the picker; the × beside a set range clears it, so
+        // turning the filter off is one tap and never a trip through the dialog.
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .clickable { pickingDates = true }
+                .padding(start = 16.dp, end = 4.dp, top = 2.dp, bottom = 2.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(
+                Icons.Default.DateRange,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(24.dp),
+            )
+            Text(
+                range ?: stringResource(R.string.dates_any),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f).padding(start = 8.dp),
+            )
+            if (range != null) {
+                IconButton(
+                    onClick = {
+                        state.dateRange(null, null)
+                        onPicked()
+                    },
+                ) {
+                    Icon(Icons.Default.Close, contentDescription = stringResource(R.string.dates_clear))
+                }
+            }
+        }
+        if (pickingDates) {
+            DateRangeDialog(
+                from = state.from,
+                to = state.to,
+                onDismiss = { pickingDates = false },
+                onPick = { from, to ->
+                    pickingDates = false
+                    state.dateRange(from, to)
+                    onPicked()
+                },
+            )
+        }
+
+        HorizontalDivider(Modifier.padding(vertical = 12.dp))
+        Text(
             stringResource(R.string.sort_label),
             style = MaterialTheme.typography.titleSmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -450,6 +532,48 @@ private fun FilterDrawer(state: NotesState, onPicked: () -> Unit) {
                 Text(stringResource(sort.label), modifier = Modifier.padding(start = 8.dp))
             }
         }
+    }
+}
+
+/**
+ * Material's range picker in a dialog, applied on confirm.
+ *
+ * A start is required and an end is optional, which is the picker's own grammar: it
+ * cannot express a range with only an end, so "until" alone is one thing the web's two
+ * fields can say that this cannot. The conversions go through UTC — see DateRange.kt.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun DateRangeDialog(
+    from: String?,
+    to: String?,
+    onDismiss: () -> Unit,
+    onPick: (from: String, to: String?) -> Unit,
+) {
+    val picker = rememberDateRangePickerState(
+        initialSelectedStartDateMillis = from?.let(::dayMillis),
+        initialSelectedEndDateMillis = to?.let(::dayMillis),
+    )
+    DatePickerDialog(
+        onDismissRequest = onDismiss,
+        confirmButton = {
+            TextButton(
+                enabled = picker.selectedStartDateMillis != null,
+                onClick = {
+                    val start = picker.selectedStartDateMillis ?: return@TextButton
+                    onPick(utcDay(start), picker.selectedEndDateMillis?.let(::utcDay))
+                },
+            ) {
+                Text(stringResource(R.string.dates_apply))
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text(stringResource(android.R.string.cancel)) }
+        },
+    ) {
+        // The weight is what keeps Apply and Cancel on screen on a phone: the range picker
+        // is taller than the dialog, and without it pushes its own buttons off the bottom.
+        DateRangePicker(state = picker, modifier = Modifier.weight(1f))
     }
 }
 
@@ -594,7 +718,12 @@ class NotesState(private val api: UnbentApi) {
         private set
     var sort by mutableStateOf(NoteSort.UPDATED)
         private set
-    val filtered: Boolean get() = notebook != null || tag != null
+    /** Inclusive `YYYY-MM-DD` bounds, or null for open; see DateRange.kt. */
+    var from by mutableStateOf<String?>(null)
+        private set
+    var to by mutableStateOf<String?>(null)
+        private set
+    val filtered: Boolean get() = notebook != null || tag != null || from != null || to != null
 
     var notebooks by mutableStateOf<List<Notebook>>(emptyList())
         private set
@@ -646,6 +775,18 @@ class NotesState(private val api: UnbentApi) {
         clearForReload()
     }
 
+    /**
+     * Narrows the list to a range of days on the date the sort shows. Untouched by
+     * [filterBy], as on the web: which notebook and which year are separate questions,
+     * and answering one should not forget the other.
+     */
+    fun dateRange(from: String?, to: String?) {
+        if (this.from == from && this.to == to) return
+        this.from = from
+        this.to = to
+        clearForReload()
+    }
+
     private fun clearForReload() {
         loaded = false
         items = emptyList()
@@ -666,7 +807,7 @@ class NotesState(private val api: UnbentApi) {
             results = null
             return
         }
-        val result = withContext(Dispatchers.IO) { runCatching { api.search(q, notebook, tag) } }
+        val result = withContext(Dispatchers.IO) { runCatching { api.search(q, notebook, tag, from, to) } }
         // Only if the box still says what was searched for; a stale answer is worse than none.
         if (query.trim() != q) return
         result.onSuccess { results = it }.onFailure { e ->
@@ -702,6 +843,8 @@ class NotesState(private val api: UnbentApi) {
                     tag = tag,
                     sort = sort.key,
                     order = sort.order,
+                    from = from,
+                    to = to,
                 )
             }
         }
