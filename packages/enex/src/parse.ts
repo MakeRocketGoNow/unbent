@@ -24,7 +24,7 @@ export function parseEnexDate(value: string): Date | undefined {
   );
 }
 
-/** Extension for a resource that arrived without a `<file-name>`. */
+/** Extension implied by a resource's declared `<mime>`. */
 const MIME_EXT: Record<string, string> = {
   'image/png': 'png',
   'image/jpeg': 'jpg',
@@ -41,6 +41,33 @@ const MIME_EXT: Record<string, string> = {
 
 export function fallbackFilename(md5: string, mime: string): string {
   return `${md5.slice(0, 12)}.${MIME_EXT[mime] ?? 'bin'}`;
+}
+
+/**
+ * The name to store a resource under, given what the ENEX declared.
+ *
+ * Evernote's `<file-name>` is a display label, not a path: it is routinely written with a
+ * trailing space and, for anything the user did not attach from a file, with no extension
+ * at all. A real export has PDFs named `Menu Card` and `Lease Summary - DRAFT DRAFT `.
+ *
+ * That matters because the extension is load-bearing downstream — the preview decides
+ * whether to embed a document viewer by the path it resolves, the export writes these
+ * names to disk, and a phone picks its handler the same way. So the declared `<mime>`,
+ * which is the one trustworthy thing in the pair, supplies what the name is missing.
+ *
+ * An existing extension is left alone even when it disagrees with the mime: renaming
+ * `receipt.jpeg` to `receipt.jpg` would churn names for nothing, and a genuine mismatch is
+ * the exporter's claim to make, not ours to correct.
+ */
+export function resourceFilename(declared: string, md5: string, mime: string): string {
+  const name = declared.trim();
+  if (name === '') return fallbackFilename(md5, mime);
+
+  const ext = MIME_EXT[mime];
+  if (!ext) return name;
+  // A trailing dot is not an extension; `Rev.` should become `Rev..pdf`, not stay as-is.
+  if (/\.[a-z0-9]+$/i.test(name)) return name;
+  return `${name}.${ext}`;
 }
 
 interface PendingResource {
@@ -252,7 +279,7 @@ function decodeResource(pending: PendingResource): EnexResource | null {
   return {
     md5,
     mime,
-    filename: pending.filename || fallbackFilename(md5, mime),
+    filename: resourceFilename(pending.filename, md5, mime),
     bytes,
   };
 }

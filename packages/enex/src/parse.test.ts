@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { fallbackFilename, md5Hex, parseEnexDate } from './parse.js';
+import { fallbackFilename, md5Hex, parseEnexDate, resourceFilename } from './parse.js';
 
 /**
  * MD5 is implemented here because WebCrypto omits it and en-media hashes are MD5s.
@@ -70,5 +70,51 @@ describe('fallbackFilename', () => {
 
   it('falls back to .bin for unknown types', () => {
     expect(fallbackFilename('c'.repeat(32), 'application/x-weird')).toBe('cccccccccccc.bin');
+  });
+});
+
+/**
+ * Evernote writes `<file-name>` as a label rather than a path. A real Coupons export has
+ * two PDFs named `Menu Card` and `Lease Summary - DRAFT DRAFT ` — no extension, one with
+ * a trailing space — and both arrived as files nothing downstream could recognise as PDFs.
+ */
+describe('resourceFilename', () => {
+  const MD5 = 'a'.repeat(32);
+
+  it('appends the extension the mime implies when the name has none', () => {
+    expect(resourceFilename('Menu Card', MD5, 'application/pdf')).toBe('Menu Card.pdf');
+  });
+
+  it('trims a trailing space before appending', () => {
+    expect(resourceFilename('Lease Summary - DRAFT DRAFT ', MD5, 'application/pdf')).toBe(
+      'Lease Summary - DRAFT DRAFT.pdf',
+    );
+  });
+
+  it('trims a name that already has an extension', () => {
+    expect(resourceFilename('  scan.pdf  ', MD5, 'application/pdf')).toBe('scan.pdf');
+  });
+
+  it('leaves an existing extension alone, even a disagreeing one', () => {
+    expect(resourceFilename('receipt.jpeg', MD5, 'image/jpeg')).toBe('receipt.jpeg');
+    expect(resourceFilename('scan.png', MD5, 'application/pdf')).toBe('scan.png');
+  });
+
+  it('leaves a name alone when the mime implies no extension', () => {
+    expect(resourceFilename('archive', MD5, 'application/zip')).toBe('archive');
+  });
+
+  it('treats a trailing dot as no extension', () => {
+    expect(resourceFilename('Rev.', MD5, 'application/pdf')).toBe('Rev..pdf');
+  });
+
+  it('does not mistake a dotted stem for an extension', () => {
+    // `Dr. Smith` ends in `Smith`, not an extension, so it still needs one.
+    expect(resourceFilename('Dr. Smith', MD5, 'application/pdf')).toBe('Dr. Smith.pdf');
+  });
+
+  it('falls back to the md5 name when there is no file-name at all', () => {
+    expect(resourceFilename('', MD5, 'application/pdf')).toBe('aaaaaaaaaaaa.pdf');
+    expect(resourceFilename('   ', MD5, 'image/png')).toBe('aaaaaaaaaaaa.png');
   });
 });
