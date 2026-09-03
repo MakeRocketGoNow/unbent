@@ -1,10 +1,6 @@
 /// <reference lib="webworker" />
-import {
-  extractPdfText,
-  importEnex,
-  type ImportFailure,
-  type ImportProgress,
-} from '@unbent/enex';
+import { importEnex, type ImportFailure, type ImportProgress } from '@unbent/enex';
+import { apiFetch as api, indexPendingFiles, type IndexProgress } from './attachment-text.js';
 
 /**
  * Runs an ENEX import off the main thread.
@@ -19,14 +15,15 @@ import {
 
 export type ImportRequest =
   | { type: 'start'; file: File; extractText: boolean }
-  | { type: 'backfill' }
+  /** Index every pending PDF. `auto` marks a pass nobody asked for, which stops short of a backlog. */
+  | { type: 'backfill'; auto?: boolean }
   | { type: 'abort' };
 
-export type BackfillProgress = { done: number; indexed: number; total: number };
-
 export type ImportEvent =
-  | { type: 'backfill-progress'; progress: BackfillProgress }
-  | { type: 'backfill-done'; progress: BackfillProgress }
+  | { type: 'backfill-progress'; progress: IndexProgress }
+  | { type: 'backfill-done'; progress: IndexProgress }
+  /** The pass declined to start: this many files are pending. See `AUTO_INDEX_LIMIT`. */
+  | { type: 'backfill-deferred'; remaining: number }
   | { type: 'progress'; progress: ImportProgress }
   | { type: 'failure'; failure: ImportFailure }
   | { type: 'done'; progress: ImportProgress }
@@ -36,27 +33,32 @@ const post = (event: ImportEvent) => self.postMessage(event);
 
 let controller: AbortController | null = null;
 
-async function api(path: string, init: RequestInit): Promise<Response> {
-  const res = await fetch(path, { ...init, credentials: 'include' });
-  if (!res.ok) {
-    const detail = await res.text().catch(() => '');
-    throw new Error(`${res.status}${detail ? `: ${detail.slice(0, 200)}` : ''}`);
-  }
-  return res;
-}
+/**
+ * Requests run one at a time, in the order they arrived.
+ *
+ * The worker is kept for the page's lifetime and takes more than one kind of job, so two
+ * can be posted while one is running. Each waits its turn rather than starting at once:
+ * pdf.js in this worker is one instance, and two extractions interleaved through it have
+ * been seen to hang. `abort` is the exception — it must reach the run in progress.
+ */
+let queue: Promise<void> = Promise.resolve();
 
-self.onmessage = async (event: MessageEvent<ImportRequest>) => {
-  if (event.data.type === 'abort') {
+self.onmessage = (event: MessageEvent<ImportRequest>) => {
+  const request = event.data;
+  if (request.type === 'abort') {
     controller?.abort();
     return;
   }
+  queue = queue.then(() => handle(request));
+};
 
-  if (event.data.type === 'backfill') {
-    await runBackfill();
+async function handle(request: Exclude<ImportRequest, { type: 'abort' }>): Promise<void> {
+  if (request.type === 'backfill') {
+    await runBackfill(request.auto ?? false);
     return;
   }
 
-  const { file, extractText } = event.data;
+  const { file, extractText } = request;
   controller = new AbortController();
 
   try {
@@ -122,79 +124,22 @@ self.onmessage = async (event: MessageEvent<ImportRequest>) => {
   } finally {
     controller = null;
   }
-};
+}
 
-/**
- * Extracts text for attachments that do not have it yet.
- *
- * Needed because import is idempotent on content hash: notes imported before extraction
- * existed cannot be fixed by re-importing, since they are skipped along with their
- * attachments. This walks the gap instead.
- */
-async function runBackfill(): Promise<void> {
+/** The pending pass, reported as events. The loop itself lives in attachment-text.ts. */
+async function runBackfill(auto: boolean): Promise<void> {
   controller = new AbortController();
-  const progress: BackfillProgress = { done: 0, indexed: 0, total: 0 };
-
   try {
-    for (;;) {
-      if (controller.signal.aborted) break;
-
-      const res = await api('/api/attachments/pending-text?limit=25', { method: 'GET' });
-      const { pending, remaining } = (await res.json()) as {
-        pending: Array<{ noteId: string; filename: string }>;
-        remaining: number;
-      };
-
-      if (progress.total === 0) progress.total = remaining;
-      if (pending.length === 0) break;
-
-      for (const item of pending) {
-        if (controller.signal.aborted) break;
-
-        try {
-          const blob = await api(
-            `/api/notes/${item.noteId}/files/${encodeURIComponent(item.filename)}`,
-            { method: 'GET' },
-          );
-          const bytes = new Uint8Array(await blob.arrayBuffer());
-          const extracted = await extractPdfText(bytes);
-
-          if (extracted.quality.usable) {
-            await api(
-              `/api/notes/${item.noteId}/files/${encodeURIComponent(item.filename)}/text`,
-              {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ text: extracted.text }),
-              },
-            );
-            progress.indexed += 1;
-          } else {
-            /**
-             * Record that extraction was tried and yielded nothing usable.
-             *
-             * Without this the same failing scans reappear on every pass and the backfill
-             * never terminates. The server stores an empty row, so it can never match.
-             */
-            await api(
-              `/api/notes/${item.noteId}/files/${encodeURIComponent(item.filename)}/text`,
-              {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ unusable: true }),
-              },
-            );
-          }
-        } catch {
-          // A single unreadable file must not stop the pass.
-        }
-
-        progress.done += 1;
-        post({ type: 'backfill-progress', progress: { ...progress } });
-      }
+    const result = await indexPendingFiles({
+      auto,
+      signal: controller.signal,
+      onProgress: (progress) => post({ type: 'backfill-progress', progress }),
+    });
+    if (result.deferred !== undefined) {
+      post({ type: 'backfill-deferred', remaining: result.deferred });
+    } else {
+      post({ type: 'backfill-done', progress: result });
     }
-
-    post({ type: 'backfill-done', progress });
   } catch (err) {
     post({ type: 'error', message: (err as Error).message });
   } finally {

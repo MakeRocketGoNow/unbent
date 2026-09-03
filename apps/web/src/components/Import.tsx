@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ImportFailure, ImportProgress } from '@unbent/enex';
-import type { BackfillProgress, ImportEvent, ImportRequest } from '../import-worker.js';
+import type { ImportEvent, ImportRequest } from '../import-worker.js';
+import { startIndexing, subscribeIndexing, useIndexing, type IndexingState } from '../index-files.js';
+import { Button } from './Button.js';
 import { useSettingsBusy } from './SettingsLayout.js';
 
 interface ImportProps {
@@ -23,6 +25,30 @@ function initialProgress(): ImportProgress {
   };
 }
 
+/**
+ * One line under the button. The app may have run a pass on its own before this panel was
+ * opened, so every state the store can be in has a sentence here, not only the ones the
+ * button itself leads to.
+ */
+function indexingText(state: IndexingState): string {
+  const p = state.progress;
+  switch (state.status) {
+    case 'idle':
+      return 'For notes imported before PDF search existed.';
+    case 'running':
+      return `Indexing… ${p?.done ?? 0}${p?.total ? ` / ${p.total}` : ''}`;
+    case 'done':
+      return (
+        `Done. Indexed ${p?.indexed ?? 0} of ${p?.done ?? 0} PDFs.` +
+        (p?.failed ? ` ${p.failed} could not be read and will be tried again.` : '')
+      );
+    case 'deferred':
+      return `${state.remaining} PDFs are not searchable yet.`;
+    case 'error':
+      return state.error ?? 'Indexing failed.';
+  }
+}
+
 function formatBytes(n: number): string {
   if (n < 1024) return `${n} B`;
   if (n < 1024 ** 2) return `${(n / 1024).toFixed(0)} KB`;
@@ -38,8 +64,7 @@ export function Import({ onImported }: ImportProps) {
   const [error, setError] = useState<string | null>(null);
   const [elapsed, setElapsed] = useState(0);
   const [extractText, setExtractText] = useState(true);
-  const [backfill, setBackfill] = useState<BackfillProgress | null>(null);
-  const [backfillDone, setBackfillDone] = useState(false);
+  const indexing = useIndexing();
 
   const { setImportRunning } = useSettingsBusy();
   const worker = useRef<Worker | null>(null);
@@ -48,6 +73,15 @@ export function Import({ onImported }: ImportProps) {
   useEffect(() => {
     return () => worker.current?.terminate();
   }, []);
+
+  // Indexing writes attachment text, so a search result cached before it ran is stale.
+  useEffect(
+    () =>
+      subscribeIndexing((state) => {
+        if (state.status === 'done') onImported();
+      }),
+    [onImported],
+  );
 
   // Mirrored into the section rather than set at each transition: the sub-nav has to go
   // inert for the whole run, and there are five places status changes.
@@ -80,16 +114,7 @@ export function Import({ onImported }: ImportProps) {
 
     w.onmessage = (event: MessageEvent<ImportEvent>) => {
       const data = event.data;
-      if (data.type === 'backfill-progress') {
-        setBackfill(data.progress);
-      } else if (data.type === 'backfill-done') {
-        setBackfill(data.progress);
-        setBackfillDone(true);
-        setStatus('idle');
-        onImported();
-        w.terminate();
-        worker.current = null;
-      } else if (data.type === 'progress') {
+      if (data.type === 'progress') {
         setProgress(data.progress);
       } else if (data.type === 'failure') {
         // Cap the retained list: a bad file could otherwise produce thousands of entries
@@ -122,34 +147,6 @@ export function Import({ onImported }: ImportProps) {
     const request: ImportRequest = { type: 'start', file, extractText };
     w.postMessage(request);
   }, [file, extractText, onImported]);
-
-  const startBackfill = useCallback(() => {
-    setBackfill({ done: 0, indexed: 0, total: 0 });
-    setBackfillDone(false);
-    setError(null);
-
-    const w = new Worker(new URL('../import-worker.ts', import.meta.url), { type: 'module' });
-    worker.current = w;
-
-    w.onmessage = (event: MessageEvent<ImportEvent>) => {
-      const data = event.data;
-      if (data.type === 'backfill-progress') {
-        setBackfill(data.progress);
-      } else if (data.type === 'backfill-done') {
-        setBackfill(data.progress);
-        setBackfillDone(true);
-        onImported();
-        w.terminate();
-        worker.current = null;
-      } else if (data.type === 'error') {
-        setError(data.message);
-        w.terminate();
-        worker.current = null;
-      }
-    };
-
-    w.postMessage({ type: 'backfill' } satisfies ImportRequest);
-  }, [onImported]);
 
   function stop() {
     worker.current?.postMessage({ type: 'abort' } satisfies ImportRequest);
@@ -347,20 +344,11 @@ export function Import({ onImported }: ImportProps) {
 
       {status === 'idle' && (
         <div className="backfill-row">
-          <button
-            type="button"
-            className="link"
-            disabled={backfill !== null && !backfillDone}
-            onClick={startBackfill}
-          >
+          <Button size="small" disabled={indexing.status === 'running'} onClick={() => startIndexing({ auto: false })}>
             Index existing PDFs
-          </button>
-          <span className="muted small">
-            {backfill === null
-              ? 'For notes imported before PDF search existed.'
-              : backfillDone
-                ? `Done. Indexed ${backfill.indexed} of ${backfill.done} PDFs.`
-                : `Indexing… ${backfill.done}${backfill.total ? ` / ${backfill.total}` : ''}`}
+          </Button>
+          <span className={indexing.status === 'error' ? 'bad small' : 'muted small'}>
+            {indexingText(indexing)}
           </span>
         </div>
       )}
