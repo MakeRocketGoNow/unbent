@@ -4,9 +4,11 @@ import type { SaveState } from './useAutosave.js';
  * The seam between an embedded page and the native app around it.
  *
  * The Android app shows a note's body in a WebView pointed at `/embed/notes/:id`, with
- * its own title, notebook and tag controls above. The page has five things to tell the
- * app and the app has two things to ask the page, and this module is that whole
- * vocabulary, so a change to the protocol is visible from one place on the web side.
+ * its own title, notebook and tag controls above. It also loads `/embed/index-files`
+ * off screen after a capture, to extract a PDF's text with the extractor this site has.
+ * Everything a page can tell the app and everything the app can ask a page is this
+ * module's vocabulary, so a change to the protocol is visible from one place on the web
+ * side.
  *
  * Page to app goes through `window.UnbentApp.postMessage`, which Android installs with
  * `addJavascriptInterface` before the page loads. Absent that object — the same route
@@ -19,13 +21,19 @@ import type { SaveState } from './useAutosave.js';
  * and their placeholders, so the flush that follows saves a note without them. The count
  * of uploads in flight arrives as `upload`, which is what tells the app to ask before
  * leaving at all.
+ *
+ * The indexing page says `ready`, then `index-progress` as it goes, and ends with exactly
+ * one of `index-done`, `unauthorized` or `index-error`. The app has nothing to ask it.
  */
 export type AppMessage =
   | { type: 'ready' }
   | { type: 'save'; state: SaveState }
   | { type: 'upload'; pending: number }
   | { type: 'unauthorized' }
-  | { type: 'missing' };
+  | { type: 'missing' }
+  | { type: 'index-progress'; done: number; total: number }
+  | { type: 'index-done'; indexed: number; unusable: number; failed: number }
+  | { type: 'index-error'; message: string };
 
 export interface AppHandlers {
   flush(): Promise<void>;
