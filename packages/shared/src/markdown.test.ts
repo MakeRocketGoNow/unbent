@@ -274,6 +274,52 @@ describe('pdf embed marker', () => {
 });
 
 /**
+ * A file's extension is the usual signal, but an imported one may not have a truthful
+ * name: Evernote writes `<file-name>` as a display label, so a real export carries PDFs
+ * called `Menu Card`. The note's own attachment rows record the declared type, and
+ * that is what rescues notes already imported under such a name.
+ */
+describe('pdf embed marker from stored content types', () => {
+  const withPdfs = (md: string, names: string[]) =>
+    renderMarkdown(md, { noteId: NOTE, pdfFilenames: new Set(names) });
+
+  it('marks an extensionless attachment stored as a PDF', () => {
+    expect(withPdfs('[Menu Card](<files/Menu Card>)', ['Menu Card'])).toContain(
+      'unbent-pdf',
+    );
+  });
+
+  it('matches a name that needed encoding in the URL', () => {
+    const out = withPdfs('[Gift](<files/Lease Summary - DRAFT DRAFT>)', [
+      'Lease Summary - DRAFT DRAFT',
+    ]);
+    expect(out).toContain('unbent-pdf');
+  });
+
+  it('leaves files not in the set alone', () => {
+    expect(withPdfs('[notes](files/notes)', ['Menu Card'])).not.toContain('unbent-pdf');
+  });
+
+  it('still marks by extension when no set is given', () => {
+    expect(withPdfs('[Scan.pdf](files/Scan.pdf)', [])).toContain('unbent-pdf');
+  });
+
+  it('does not mark an external link that happens to share the name', () => {
+    // The set says which of *this note's* files are PDFs; it must not vouch for a URL
+    // pointing somewhere else, which is never fetched through the ownership check.
+    const out = withPdfs('[x](https://evil.test/files/Menu Card)', ['Menu Card']);
+    expect(out).not.toContain('unbent-pdf');
+  });
+
+  it('does not let another note id borrow the set', () => {
+    const out = withPdfs('[x](https://evil.test/api/notes/other/files/Menu Card)', [
+      'Menu Card',
+    ]);
+    expect(out).not.toContain('unbent-pdf');
+  });
+});
+
+/**
  * The preview styles ordered-list markers by nesting depth (`ol ol` -> lower-alpha, and
  * so on), matching the editor's `1.` -> `a.` -> `i.` cycle. That only works while the
  * pipeline emits genuinely nested lists: a flattened structure would still read fine as

@@ -135,6 +135,24 @@ export const PDF_EMBED_CLASS = 'unbent-pdf';
 /** Attachment links pointing at a PDF, by extension on the resolved path. */
 const PDF_PATH = /\.pdf$/i;
 
+/** What the renderer knows about the files a note actually stores. */
+export interface RenderOptions {
+  noteId: string;
+  /**
+   * Filenames whose stored `content_type` is `application/pdf`.
+   *
+   * The extension is the usual signal, and for anything uploaded through the editor it is
+   * the only one needed. This exists for the files where it lies: an ENEX `<file-name>` is
+   * a display label, so a real export carries PDFs named `Menu Card`, and those notes
+   * are already imported under that name. The attachment row records the declared type, so
+   * the note itself can say which of its files are documents.
+   *
+   * Trusted because of where it comes from — the note's own attachment rows, not its
+   * markdown. Note content can name any file it likes; it cannot put a name in this set.
+   */
+  pdfFilenames?: ReadonlySet<string>;
+}
+
 interface HastNode {
   type: string;
   tagName?: string;
@@ -148,7 +166,7 @@ interface HastNode {
  * cannot be forged from note content. It only inspects URLs this pipeline produced — the
  * `/api/notes/` prefix is written by `remarkResolveAttachments`, never by the author.
  */
-export function rehypeMarkPdfEmbeds() {
+export function rehypeMarkPdfEmbeds(opts: { pdfFilenames?: ReadonlySet<string> } = {}) {
   return (tree: unknown) => {
     visit(tree as never, (node: HastNode) => {
       if (node.type !== 'element' || node.tagName !== 'a') return;
@@ -163,7 +181,11 @@ export function rehypeMarkPdfEmbeds() {
         // A malformed escape means the link is not one we produced; leave it alone.
         return;
       }
-      if (!PDF_PATH.test(path)) return;
+
+      // The name is the last segment of a path this pipeline built, so it is the stored
+      // filename — the same key the attachment rows are listed under.
+      const filename = path.slice(path.lastIndexOf('/') + 1);
+      if (!PDF_PATH.test(path) && !opts.pdfFilenames?.has(filename)) return;
 
       node.properties = { ...node.properties, className: [PDF_EMBED_CLASS] };
     });
@@ -197,7 +219,7 @@ function remarkDisableSetext() {
   extensions.push({ disable: { null: ['setextUnderline'] } });
 }
 
-export function renderMarkdown(markdown: string, opts: { noteId: string }): string {
+export function renderMarkdown(markdown: string, opts: RenderOptions): string {
   return unified()
     .use(remarkParse)
     .use(remarkDisableSetext)
@@ -218,7 +240,7 @@ export function renderMarkdown(markdown: string, opts: { noteId: string }): stri
     .use(remarkRehype, { allowDangerousHtml: false })
     .use(rehypeSanitize, schema)
     // After sanitize, so a forged marker in the source is already gone.
-    .use(rehypeMarkPdfEmbeds)
+    .use(rehypeMarkPdfEmbeds, { pdfFilenames: opts.pdfFilenames })
     .use(rehypeStringify)
     .processSync(markdown)
     .toString();
