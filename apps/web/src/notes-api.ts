@@ -61,7 +61,7 @@ export interface NotePage {
 
 export async function listNotes(
   opts: {
-    tag?: string;
+    tag?: string[];
     notebook?: string;
     cursor?: string;
     trashed?: boolean;
@@ -73,7 +73,8 @@ export async function listNotes(
   } = {},
 ): Promise<NotePage> {
   const params = new URLSearchParams();
-  if (opts.tag) params.set('tag', opts.tag);
+  // Repeated rather than joined: a tag name may contain any delimiter we'd pick.
+  for (const t of opts.tag ?? []) params.append('tag', t);
   if (opts.notebook) params.set('notebook', opts.notebook);
   if (opts.cursor) params.set('cursor', opts.cursor);
   if (opts.sort) params.set('sort', opts.sort);
@@ -291,7 +292,7 @@ export async function deleteAttachment(noteId: string, filename: string): Promis
  * strings is this module's job; components deal in filters, not querystrings.
  */
 export function exportUrl(filter: {
-  tag?: string;
+  tag?: string[];
   notebook?: string;
   from?: string;
   to?: string;
@@ -302,7 +303,7 @@ export function exportUrl(filter: {
   sort?: NoteSort;
 }): string {
   const params = new URLSearchParams();
-  if (filter.tag) params.set('tag', filter.tag);
+  for (const t of filter.tag ?? []) params.append('tag', t);
   if (filter.notebook) params.set('notebook', filter.notebook);
   if (filter.from) params.set('from', filter.from);
   if (filter.to) params.set('to', filter.to);
@@ -313,10 +314,10 @@ export function exportUrl(filter: {
 
 export async function searchNotes(
   q: string,
-  filter: { tag?: string; notebook?: string; from?: string; to?: string } = {},
+  filter: { tag?: string[]; notebook?: string; from?: string; to?: string } = {},
 ): Promise<SearchResult[]> {
   const params = new URLSearchParams({ q });
-  if (filter.tag) params.set('tag', filter.tag);
+  for (const t of filter.tag ?? []) params.append('tag', t);
   if (filter.notebook) params.set('notebook', filter.notebook);
   if (filter.from) params.set('from', filter.from);
   if (filter.to) params.set('to', filter.to);

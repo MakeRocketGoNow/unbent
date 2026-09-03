@@ -23,6 +23,8 @@ import { IndexingStatus } from './IndexingStatus.js';
 /** Sidebar plus the routed workspace. Filters come from the URL; nothing here is mirrored into state. */
 export function NotesLayout({ children }: { children: React.ReactNode }) {
   const { notebook, tag, q = '', sort, order, from, to } = Route.useSearch();
+  /** The tag filter as a list, so the sidebar never has to care that it may be absent. */
+  const selectedTags = tag ?? [];
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const layout = useNotesLayout('/notes/$noteId');
@@ -48,7 +50,7 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
    * The export link is the current filter, serialized. Because the filters already live in
    * the URL there is no separate state to keep in step — the link is the view.
    */
-  const isFiltered = Boolean(notebook || tag || from || to);
+  const isFiltered = Boolean(notebook || selectedTags.length || from || to);
 
   const list = useInfiniteQuery(notesQuery(filter, ordering));
   const tags = useQuery(tagsQuery());
@@ -83,7 +85,9 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
       const created = await api.createNote({
         title: 'Untitled',
         body: '',
-        tags: tag ? [tag] : [],
+        // Every active tag, not just one: with two tags filtered, a note carrying only
+        // the first is still filtered out of the list it was created in.
+        tags: tag ?? [],
         // UNFILED is a filter sentinel, not a notebook name — a note created while
         // viewing it belongs in no notebook.
         notebook: notebook === UNFILED ? null : (notebook ?? null),
@@ -315,29 +319,50 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
               Tags
               {/* The active tag stays on the row while collapsed, so a filter is never
                   applied invisibly; otherwise the count says what is hidden. */}
-              {tag ? (
-                <span className="tag-filter-active">{tag}</span>
+              {selectedTags.length > 0 ? (
+                // Every selected tag, not the first and a count: two tags ANDed are a
+                // different question from either alone, and the collapsed row is the only
+                // place a filter shows while the list is closed.
+                selectedTags.map((name) => (
+                  <span className="tag-filter-active" key={name}>
+                    {name}
+                  </span>
+                ))
               ) : (
                 <span className="tag-filter-summary-count">{tags.data?.length}</span>
               )}
             </summary>
             <div className="tag-filter">
-              {tags.data?.map((t) => (
-                <button
-                  key={t.name}
-                  type="button"
-                  className={tag === t.name ? 'tag-filter-item active' : 'tag-filter-item'}
-                  onClick={() =>
-                    void navigate({
-                      to: '/notes',
-                      search: (prev) => ({ ...prev, tag: tag === t.name ? undefined : t.name }),
-                    })
-                  }
-                >
-                  {t.name}
-                  <span className="tag-count">{t.count}</span>
-                </button>
-              ))}
+              {tags.data?.map((t) => {
+                const on = selectedTags.includes(t.name);
+                return (
+                  <button
+                    key={t.name}
+                    type="button"
+                    className={on ? 'tag-filter-item active' : 'tag-filter-item'}
+                    aria-pressed={on}
+                    onClick={() =>
+                      void navigate({
+                        to: '/notes',
+                        search: (prev) => {
+                          /*
+                           * Tags accumulate rather than replace: picking a second one
+                           * narrows to notes carrying both. Dropping to undefined at zero
+                           * keeps `?tag=` out of the URL when nothing is selected.
+                           */
+                          const next = on
+                            ? selectedTags.filter((name) => name !== t.name)
+                            : [...selectedTags, t.name];
+                          return { ...prev, tag: next.length ? next : undefined };
+                        },
+                      })
+                    }
+                  >
+                    {t.name}
+                    <span className="tag-count">{t.count}</span>
+                  </button>
+                );
+              })}
             </div>
           </details>
         )}

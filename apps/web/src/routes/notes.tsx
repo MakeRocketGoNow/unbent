@@ -17,9 +17,25 @@ import { notesQuery, tagsQuery, notebooksQuery, trashCountQuery } from '../queri
  */
 const name = z.string().trim().min(1).max(100);
 
-const filters = z.object({
+/**
+ * The tag filter, which may name more than one.
+ *
+ * An array in the URL — `?tag=a&tag=b` — matching what the API takes and what the router
+ * already produces for a repeated param. A single `?tag=x` is coerced to a one-element
+ * array so old links, and anything that still writes one tag, keep working unchanged.
+ *
+ * Several tags narrow conjunctively: a note must carry all of them.
+ */
+const tagFilter = z
+  .union([name, z.array(name)])
+  .optional()
+  .catch(undefined)
+  .transform((v) => (v === undefined ? undefined : Array.isArray(v) ? v : [v]))
+  .pipe(z.array(name).max(20).optional());
+
+export const filters = z.object({
   notebook: z.union([z.literal(UNFILED), name]).optional().catch(undefined),
-  tag: name.optional().catch(undefined),
+  tag: tagFilter,
   q: z.string().max(500).optional().catch(undefined),
   /**
    * Ordering, left undefined at the default so a plain `/notes` URL stays clean and the
@@ -47,7 +63,7 @@ export const Route = createFileRoute('/notes')({
   loader: ({ context: { queryClient }, deps }) => {
     const filter = {
       ...(deps.notebook ? { notebook: deps.notebook } : {}),
-      ...(deps.tag ? { tag: deps.tag } : {}),
+      ...(deps.tag?.length ? { tag: deps.tag } : {}),
       ...(deps.from ? { from: deps.from } : {}),
       ...(deps.to ? { to: deps.to } : {}),
     };

@@ -16,7 +16,13 @@ import * as api from './notes-api.js';
 
 export interface NoteFilter {
   notebook?: string;
-  tag?: string;
+  /**
+   * Tags, ANDed. Order is not meaningful to the server but it is to the key hash, so
+   * whatever builds this must produce a stable order for the same selection — otherwise
+   * two spellings of one filter become two cache entries and the list refetches for a
+   * change the user did not make. The URL is that order: it is where the filter lives.
+   */
+  tag?: string[];
   /** Inclusive `YYYY-MM-DD` bounds. A range narrows membership, so it is a filter. */
   from?: string;
   to?: string;
