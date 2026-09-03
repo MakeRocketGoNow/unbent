@@ -5,6 +5,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { EditorView } from '@codemirror/view';
 import * as api from '../notes-api.js';
 import { isStatus } from '../notes-api.js';
+import { indexUploadedFile } from '../index-files.js';
 import { useAutosave } from '../useAutosave.js';
 import { usePersistentState } from '../usePersistentState.js';
 import { noteQuery, keys } from '../queries.js';
@@ -182,6 +183,10 @@ function EmbeddedNote({ noteId }: { noteId: string }) {
             onUpload={async (file, signal) => {
               const uploaded = await api.uploadFile(note.id, file, { signal });
               void queryClient.invalidateQueries({ queryKey: keys.attachments(note.id) });
+              // This is the editor the Android app hosts, so a PDF picked from the phone
+              // is indexed here too. The app's share sheet uploads without this page and
+              // has its own way: see IndexWorker in the app.
+              indexUploadedFile(note.id, uploaded.filename, file);
               return uploaded.path;
             }}
             // The app shows "Attaching…" and asks before Back while this is above zero.

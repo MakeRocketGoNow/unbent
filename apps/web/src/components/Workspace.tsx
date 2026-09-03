@@ -21,6 +21,7 @@ import {
   invalidateNoteMembership,
 } from '../queries.js';
 import { Editor } from './Editor.js';
+import { indexUploadedFile } from '../index-files.js';
 import { Preview } from './Preview.js';
 import { TagInput } from './TagInput.js';
 import { EditorToolbar, type NoteView } from './EditorToolbar.js';
@@ -465,6 +466,8 @@ export function Workspace({ noteId, readOnly = false, backTo = '/notes' }: Works
                 : async (file, signal) => {
                     const uploaded = await api.uploadFile(note.id, file, { signal });
                     void queryClient.invalidateQueries({ queryKey: keys.attachments(note.id) });
+                    // Searchable now, from the bytes in hand, not on some later pass.
+                    indexUploadedFile(note.id, uploaded.filename, file);
                     return uploaded.path;
                   }
             }

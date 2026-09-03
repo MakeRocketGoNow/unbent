@@ -1,6 +1,11 @@
 /// <reference lib="webworker" />
 import { importEnex, type ImportFailure, type ImportProgress } from '@unbent/enex';
-import { apiFetch as api, indexPendingFiles, type IndexProgress } from './attachment-text.js';
+import {
+  apiFetch as api,
+  indexFileBytes,
+  indexPendingFiles,
+  type IndexProgress,
+} from './attachment-text.js';
 
 /**
  * Runs an ENEX import off the main thread.
@@ -17,6 +22,8 @@ export type ImportRequest =
   | { type: 'start'; file: File; extractText: boolean }
   /** Index every pending PDF. `auto` marks a pass nobody asked for, which stops short of a backlog. */
   | { type: 'backfill'; auto?: boolean }
+  /** Index one file from its bytes, just uploaded under `filename`. */
+  | { type: 'index-file'; noteId: string; filename: string; file: File }
   | { type: 'abort' };
 
 export type ImportEvent =
@@ -55,6 +62,16 @@ self.onmessage = (event: MessageEvent<ImportRequest>) => {
 async function handle(request: Exclude<ImportRequest, { type: 'abort' }>): Promise<void> {
   if (request.type === 'backfill') {
     await runBackfill(request.auto ?? false);
+    return;
+  }
+
+  if (request.type === 'index-file') {
+    try {
+      await indexFileBytes(request.noteId, request.filename, new Uint8Array(await request.file.arrayBuffer()));
+    } catch {
+      // Nothing to report to anyone: the file is saved, its row stays pending, and the
+      // next pass on open picks it up.
+    }
     return;
   }
 

@@ -1,4 +1,5 @@
 import { useSyncExternalStore } from 'react';
+import { isExtractable } from '@unbent/enex';
 import type { IndexProgress } from './attachment-text.js';
 import type { ImportEvent, ImportRequest } from './import-worker.js';
 
@@ -31,6 +32,11 @@ export interface Indexing {
   /** Starts a pass over everything pending. `auto` marks an unasked one, which runs once. */
   start(opts: { auto: boolean }): void;
   abort(): void;
+  /**
+   * Indexes one file whose bytes are in hand, right after its upload. Nothing happens
+   * for a file with no text to extract.
+   */
+  indexFile(noteId: string, filename: string, file: File): void;
   subscribe(listener: (state: IndexingState) => void): () => void;
   get(): IndexingState;
 }
@@ -102,6 +108,17 @@ export function createIndexing(spawn: () => Worker): Indexing {
       worker?.postMessage({ type: 'abort' } satisfies ImportRequest);
     },
 
+    /**
+     * The File goes across as it is: it is structured-cloneable, and Chromium passes the
+     * blob by reference, so the bytes already in hand reach the worker without a copy and
+     * without fetching them back from R2. `filename` is the name the server stored, which
+     * is not always the file's own — `availableFilename` suffixes a collision.
+     */
+    indexFile(noteId, filename, file) {
+      if (!isExtractable(file.type)) return;
+      ensureWorker().postMessage({ type: 'index-file', noteId, filename, file } satisfies ImportRequest);
+    },
+
     subscribe(listener) {
       listeners.add(listener);
       return () => {
@@ -119,6 +136,10 @@ export const indexing = createIndexing(
 
 export function startIndexing(opts: { auto: boolean }): void {
   indexing.start(opts);
+}
+
+export function indexUploadedFile(noteId: string, filename: string, file: File): void {
+  indexing.indexFile(noteId, filename, file);
 }
 
 export function subscribeIndexing(listener: (state: IndexingState) => void): () => void {
