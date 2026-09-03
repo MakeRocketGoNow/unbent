@@ -90,12 +90,18 @@ class UnbentApi(
     /** Who the stored session belongs to, or null when the server no longer knows it. */
     fun me(): MeUser? = get<Me>("Session check", url("/api/me")).user
 
+    /**
+     * `from` and `to` are inclusive `YYYY-MM-DD` days, read by the server in UTC, on the
+     * date the sort shows: updated, created, or updated again under a title sort.
+     */
     fun listNotes(
         cursor: String? = null,
         notebook: String? = null,
         tag: String? = null,
         sort: String? = null,
         order: String? = null,
+        from: String? = null,
+        to: String? = null,
         limit: Int = 50,
     ): NotePage = get(
         "List notes",
@@ -106,13 +112,27 @@ class UnbentApi(
             "tag" to tag,
             "sort" to sort,
             "order" to order,
+            "from" to from,
+            "to" to to,
             "limit" to limit.toString(),
         ),
     )
 
-    /** Full-text search, narrowed by the same filters as the list. Ranked, so unsorted. */
-    fun search(q: String, notebook: String? = null, tag: String? = null): List<SearchResult> =
-        get<SearchResults>("Search", url("/api/search", "q" to q, "notebook" to notebook, "tag" to tag)).results
+    /**
+     * Full-text search, narrowed by the same filters as the list. Ranked, so unsorted —
+     * which is why its date range always means the created date.
+     */
+    fun search(
+        q: String,
+        notebook: String? = null,
+        tag: String? = null,
+        from: String? = null,
+        to: String? = null,
+    ): List<SearchResult> =
+        get<SearchResults>(
+            "Search",
+            url("/api/search", "q" to q, "notebook" to notebook, "tag" to tag, "from" to from, "to" to to),
+        ).results
 
     fun getNote(id: String): Note = get("Load note", noteUrl(id))
 

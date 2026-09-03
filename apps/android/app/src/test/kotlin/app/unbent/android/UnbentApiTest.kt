@@ -119,6 +119,24 @@ class UnbentApiTest {
     }
 
     @Test
+    fun `listNotes sends a date range as the API's day bounds`() {
+        server.enqueue(MockResponse().setResponseCode(200).setBody("""{"items":[],"cursor":null,"total":0}"""))
+
+        api.listNotes(sort = "created", from = "2023-01-01", to = "2023-12-31")
+
+        assertEquals("/api/notes?sort=created&from=2023-01-01&to=2023-12-31&limit=50", server.takeRequest().path)
+    }
+
+    @Test
+    fun `search narrows by the same range as the list`() {
+        server.enqueue(MockResponse().setResponseCode(200).setBody("""{"results":[]}"""))
+
+        api.search("insurance", notebook = "Taxes", from = "2023-01-01", to = "2023-12-31")
+
+        assertEquals("/api/search?q=insurance&notebook=Taxes&from=2023-01-01&to=2023-12-31", server.takeRequest().path)
+    }
+
+    @Test
     fun `a field the server adds later does not break decoding`() {
         server.enqueue(
             MockResponse().setResponseCode(200)
