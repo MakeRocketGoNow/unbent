@@ -856,6 +856,35 @@ class NotesState(private val api: UnbentApi) {
         const val PAGE_SIZE = 50
     }
 
+    /**
+     * What survives the process being killed while the app sits in the background.
+     *
+     * Only the filter: which notebook, which tags, which dates, which sort. Everything
+     * else this class holds is either fetched data or the status of a request, and both
+     * are better re-derived than restored — a page cached an hour ago is worse than a
+     * fresh one, and the load effect refetches from the filter anyway. What cannot be
+     * re-derived is what the user chose, which is precisely this list.
+     *
+     * The search query is deliberately absent. Coming back to the app still filtered to a
+     * notebook is what anyone would expect; coming back to a half-typed search, with the
+     * results it produced, is a state nobody asked to return to.
+     *
+     * The scroll position is absent for a different reason: `LazyListState` can save its
+     * index, but the list comes back empty and pages in fifty at a time, so an index deep
+     * in the archive has nothing to anchor to until several pages have loaded. Restoring
+     * the filter and starting at the top is the honest outcome.
+     *
+     * The sort is stored by `name` rather than ordinal, so reordering the enum cannot
+     * silently turn someone's "Oldest first" into something else.
+     */
+    class Saved(
+        val notebook: String?,
+        val tags: List<String>,
+        val sort: String,
+        val from: String?,
+        val to: String?,
+    )
+
     var items by mutableStateOf<List<NoteSummary>>(emptyList())
         private set
     var total by mutableStateOf<Int?>(null)
@@ -909,6 +938,18 @@ class NotesState(private val api: UnbentApi) {
     private var cursor: String? = null
     /** Which load is current, so a page from a superseded filter is thrown away. */
     private var generation = 0
+
+    /** Puts a saved filter back, before the first load runs. */
+    fun restore(saved: Saved) {
+        notebook = saved.notebook
+        selectedTags = saved.tags
+        sort = NoteSort.entries.firstOrNull { it.name == saved.sort } ?: NoteSort.UPDATED
+        from = saved.from
+        to = saved.to
+    }
+
+    /** The filter as it stands, for [Saved]. */
+    fun save(): Saved = Saved(notebook, selectedTags, sort.name, from, to)
 
     suspend fun load() = fetch(reset = true)
 

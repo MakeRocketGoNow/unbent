@@ -12,6 +12,9 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.Saver
+import androidx.compose.runtime.saveable.listSaver
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
@@ -113,6 +116,44 @@ class MainActivity : ComponentActivity() {
 }
 
 /**
+ * Saves the note list's filter into the instance state, and puts it back.
+ *
+ * A `listSaver` rather than a Parcelable, because what is being saved is five plain values
+ * and a Parcelable would be a class definition and a lot of ceremony to carry them. Nulls
+ * ride as empty strings: a bundle list holds them fine, but keeping the shape uniform means
+ * the restore side has one rule rather than one per field.
+ *
+ * The state is rebuilt around the same api client it had, which is why this is a function
+ * rather than a value — the client is not saveable and does not need to be, since it is
+ * reconstructed from prefs on the way up.
+ */
+private fun NotesStateSaver(api: UnbentApi): Saver<NotesState, Any> = listSaver(
+    save = { state ->
+        val saved = state.save()
+        // The tag list is last so it can be any length without the fixed fields moving.
+        listOf(
+            saved.notebook.orEmpty(),
+            saved.sort,
+            saved.from.orEmpty(),
+            saved.to.orEmpty(),
+        ) + saved.tags
+    },
+    restore = { values: List<String> ->
+        NotesState(api).apply {
+            restore(
+                NotesState.Saved(
+                    notebook = values[0].ifEmpty { null },
+                    sort = values[1],
+                    from = values[2].ifEmpty { null },
+                    to = values[3].ifEmpty { null },
+                    tags = values.drop(4),
+                ),
+            )
+        }
+    },
+)
+
+/**
  * The navigation host. The note takes its id from the route so a back stack entry means
  * one note, and returning to the list is a pop rather than a navigation that would need to
  * know where it came from.
@@ -141,12 +182,12 @@ private fun App(
      * and came back to the top of everything having to do it again. Owned here, the list
      * is where it was left.
      *
-     * Deliberately not `rememberSaveable`: this survives navigation, not the process being
-     * killed in the background. That is a rarer failure and a different fix — the filter
-     * fields would have to be saved individually — and mixing the two would make neither
-     * clear.
+     * Saved as well as remembered, so the filter also survives the process being killed
+     * while the app sits in the background — which for a phone is an ordinary thing to
+     * happen between putting it down and picking it up, not an edge case. Only the filter
+     * is saved; see [NotesState.Saved] for what is left to reload and why.
      */
-    val notes = remember(api) { NotesState(api) }
+    val notes = rememberSaveable(api, saver = NotesStateSaver(api)) { NotesState(api) }
     val notesScroll = rememberLazyListState()
 
     LaunchedEffect(requestedNote, requestedSettings) {
