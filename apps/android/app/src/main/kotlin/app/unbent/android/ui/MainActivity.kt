@@ -6,6 +6,7 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -130,6 +131,24 @@ private fun App(
     val prefs = remember { Prefs(context) }
     val api = remember { UnbentApi(prefs.instance, prefs.session?.bearer) }
 
+    /*
+     * The note list's state and its scroll live here rather than inside the destination.
+     *
+     * A NavHost takes a destination out of composition when it navigates away, so anything
+     * remembered inside `composable("notes")` is destroyed the moment a note is opened and
+     * rebuilt empty on the way back. That threw away the filter, the sort, the search and
+     * however far the list had been scrolled: you narrowed to a notebook, read one note,
+     * and came back to the top of everything having to do it again. Owned here, the list
+     * is where it was left.
+     *
+     * Deliberately not `rememberSaveable`: this survives navigation, not the process being
+     * killed in the background. That is a rarer failure and a different fix — the filter
+     * fields would have to be saved individually — and mixing the two would make neither
+     * clear.
+     */
+    val notes = remember(api) { NotesState(api) }
+    val notesScroll = rememberLazyListState()
+
     LaunchedEffect(requestedNote, requestedSettings) {
         if (requestedNote != null) {
             nav.navigate("note/$requestedNote") { launchSingleTop = true }
@@ -143,7 +162,8 @@ private fun App(
     NavHost(navController = nav, startDestination = "notes") {
         composable("notes") {
             NotesScreen(
-                api = api,
+                state = notes,
+                listState = notesScroll,
                 refreshKey = listStale,
                 onRefreshed = { listStale = false },
                 onOpen = { id -> nav.navigate("note/$id") },
@@ -169,7 +189,16 @@ private fun App(
                 focusTitle = entry.arguments?.getBoolean("new") ?: false,
                 api = api,
                 prefs = prefs,
-                onBack = { nav.popBackStack() },
+                /*
+                 * The list keeps its place now, which means it also keeps whatever it
+                 * knew before this note was opened — including the title and excerpt that
+                 * were just edited. It used to reload by being rebuilt from nothing; now
+                 * it has to be told.
+                 */
+                onBack = {
+                    listStale = true
+                    nav.popBackStack()
+                },
                 onUnauthorized = onSignedOut,
             )
         }

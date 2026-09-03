@@ -16,7 +16,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
-import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
@@ -135,8 +135,14 @@ enum class NoteSort(val key: String, val order: String, val label: Int) {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun NotesScreen(
-    api: UnbentApi,
-    /** Flipped by another screen that changed a notebook, so this one reloads on return. */
+    /**
+     * Owned by the navigation host, not by this screen: a destination is taken out of
+     * composition when it navigates away, and state remembered here would be rebuilt empty
+     * every time a note was opened and closed.
+     */
+    state: NotesState,
+    listState: LazyListState,
+    /** Flipped by another screen that changed a note or notebook, so this one reloads. */
     refreshKey: Boolean = false,
     onRefreshed: () -> Unit = {},
     onOpen: (String) -> Unit,
@@ -147,41 +153,51 @@ fun NotesScreen(
     onUnauthorized: () -> Unit,
 ) {
     val scope = rememberCoroutineScope()
-    val state = remember(api) { NotesState(api) }
     val drawer = rememberDrawerState(DrawerValue.Closed)
     var searchOpen by rememberSaveable { mutableStateOf(false) }
     var overflowOpen by remember { mutableStateOf(false) }
     var filtering by rememberSaveable { mutableStateOf(false) }
     var pickingSort by rememberSaveable { mutableStateOf(false) }
 
-    // The list follows its filter and sort: the first load, and a reload on every change.
-    // The directory the drawer shows is loaded once here and refreshed with the list.
-    LaunchedEffect(state.notebook, state.selectedTags, state.sort, state.from, state.to) { state.load() }
-    LaunchedEffect(state) { state.loadFilters() }
+    /*
+     * The list follows its filter and sort.
+     *
+     * Keyed on the filter rather than on entering the screen, which matters now that the
+     * state outlives this composable: returning from a note re-enters here with the same
+     * filter, and a key that included composition would refetch the whole list every time
+     * — which is the reset this state was hoisted to avoid. `loaded` covers the very first
+     * run, when there is nothing on screen yet.
+     */
+    LaunchedEffect(state.notebook, state.selectedTags, state.sort, state.from, state.to) {
+        if (!state.loaded || state.filterChanged) state.load()
+    }
+    LaunchedEffect(state) { if (state.notebooks.isEmpty() && state.tags.isEmpty()) state.loadFilters() }
 
-    // Coming back from managing the notebooks, where a rename or a delete may have changed
-    // both the directory and which notes are in the current filter.
+    // Coming back from a note, the notebooks screen or the trash — any of which may have
+    // changed a row on this list, the directory counts, or both.
     LaunchedEffect(refreshKey) {
         if (refreshKey) {
-            state.refresh()
+            state.refreshInPlace()
             onRefreshed()
         }
     }
 
     /*
-     * Reload whenever the screen comes back to the front.
+     * Reload whenever the app comes back to the front.
      *
-     * Coming back from a note re-enters this composable fresh, so that case takes care of
-     * itself. Coming back to the app does not: a share from another app lands a note
-     * while this activity sits in the background, and a list that only loaded once would
-     * show the library as it was before. The lifecycle brings a new observer up to the
-     * current state, so registering fires ON_RESUME at once; that first one is skipped,
-     * since the effect above is already loading.
+     * A share from another app lands a note while this activity sits in the background,
+     * and a list that only loaded once would show the library as it was before. In place,
+     * so returning to the app keeps the reader's position the same way returning from a
+     * note does. The lifecycle brings a new observer up to the current state, so
+     * registering fires ON_RESUME at once; that first one is skipped, since the list has
+     * not loaded yet and `refreshInPlace` has nothing to rebuild.
      */
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     DisposableEffect(lifecycle, state) {
         val observer = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_RESUME && state.loaded) scope.launch { state.refresh() }
+            if (event == Lifecycle.Event.ON_RESUME && state.loaded) {
+                scope.launch { state.refreshInPlace() }
+            }
         }
         lifecycle.addObserver(observer)
         onDispose { lifecycle.removeObserver(observer) }
@@ -346,6 +362,7 @@ fun NotesScreen(
                     }
 
                     else -> NoteList(
+                        listState = listState,
                         items = state.items,
                         sort = state.sort,
                         showNotebook = state.notebook == null,
@@ -717,6 +734,7 @@ internal fun DateRangeDialog(
 
 @Composable
 private fun NoteList(
+    listState: LazyListState,
     items: List<NoteSummary>,
     sort: NoteSort,
     showNotebook: Boolean,
@@ -724,8 +742,6 @@ private fun NoteList(
     onOpen: (String) -> Unit,
     onNearEnd: () -> Unit,
 ) {
-    val listState = rememberLazyListState()
-
     // Ask for the next page a few rows before the end, so scrolling never hits a wall.
     LaunchedEffect(listState, items.size) {
         snapshotFlow { listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0 }
@@ -835,6 +851,11 @@ private fun SearchList(results: List<SearchResult>, onOpen: (String) -> Unit) {
 
 /** The list's data: the current filter and sort, the pages fetched under them, the search. */
 class NotesState(private val api: UnbentApi) {
+    private companion object {
+        /** The page the API returns by default, and what [refreshInPlace] counts in. */
+        const val PAGE_SIZE = 50
+    }
+
     var items by mutableStateOf<List<NoteSummary>>(emptyList())
         private set
     var total by mutableStateOf<Int?>(null)
@@ -907,6 +928,61 @@ class NotesState(private val api: UnbentApi) {
         }
     }
 
+    /**
+     * Brings the rows up to date without giving up the reader's place.
+     *
+     * [refresh] restarts from the first page, which is right for a pull — the gesture means
+     * "start again" — and wrong for coming back from a note, where the list is meant to be
+     * as it was left. Deep in an unfiltered archive that would drop the pages already read
+     * and snap to the top, which is most of what this whole change set out to stop.
+     *
+     * So: re-request exactly as many pages as are loaded, and swap them in at the end. The
+     * rows are a data class, so pages that did not change compare equal and Compose repaints
+     * nothing; the note that was edited is the only row that moves. Most lists here are one
+     * page — filter to almost any tag in a real archive and everything fits — so this is
+     * usually a single request.
+     *
+     * The count and the directory come along, because an edit can move a note between
+     * notebooks and change what the drawer should say.
+     */
+    suspend fun refreshInPlace() {
+        if (!loaded) return
+        val pages = maxOf(1, (items.size + PAGE_SIZE - 1) / PAGE_SIZE)
+        val mine = ++generation
+
+        loadFilters()
+        if (mine != generation) return
+
+        val rebuilt = mutableListOf<NoteSummary>()
+        var next: String? = null
+        for (page in 0 until pages) {
+            val result = withContext(Dispatchers.IO) {
+                runCatching {
+                    api.listNotes(
+                        cursor = next,
+                        notebook = notebook,
+                        tags = selectedTags,
+                        sort = sort.key,
+                        order = sort.order,
+                        from = from,
+                        to = to,
+                    )
+                }
+            }
+            // A failure mid-way leaves the list exactly as it was rather than half rebuilt:
+            // stale rows are better than a list that has lost its second half.
+            val fetched = result.getOrNull() ?: return
+            if (mine != generation) return
+            rebuilt += fetched.items
+            if (page == 0 && fetched.total != null) total = fetched.total
+            next = fetched.cursor ?: break
+        }
+
+        items = rebuilt
+        cursor = next
+        if (results != null) search()
+    }
+
     /** Changes what the list shows. The screen reloads when it sees the change. */
     fun filterBy(notebook: String?, tags: List<String>) {
         if (this.notebook == notebook && this.selectedTags == tags) return
@@ -963,7 +1039,19 @@ class NotesState(private val api: UnbentApi) {
         clearForReload()
     }
 
+    /**
+     * True when the filter has moved since the last load.
+     *
+     * The screen's load effect is keyed on the filter fields, but a Compose key also fires
+     * when the composable is re-entered — which now happens on every return from a note,
+     * with the filter untouched. This is how the effect tells "the user changed something"
+     * from "we are back on this screen", so returning keeps the list it left.
+     */
+    var filterChanged by mutableStateOf(false)
+        private set
+
     private fun clearForReload() {
+        filterChanged = true
         loaded = false
         items = emptyList()
         // The count belongs to the old filter; showing it under the new title would lie
@@ -1056,6 +1144,7 @@ class NotesState(private val api: UnbentApi) {
             cursor = page.cursor
             if (page.total != null) total = page.total
             loaded = true
+            if (reset) filterChanged = false
         }.onFailure { e ->
             val status = (e as? ApiException)?.status
             when {
