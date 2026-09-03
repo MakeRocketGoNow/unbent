@@ -166,10 +166,17 @@ export class AttachmentsRepo extends ScopedRepo {
    * Drives backfill for notes imported before extraction existed, and for any upload where
    * extraction failed. Re-importing cannot fix those: import is idempotent on content
    * hash, so an already-imported note is skipped along with its attachments.
+   *
+   * `noteId` narrows the answer to one note. The phone asks for its own capture this way,
+   * because it must never be handed a thirteen-thousand-note backlog to pull over a radio;
+   * the desktop asks unscoped for everything. Ownership needs no separate check: a note id
+   * belonging to someone else fails the `user_id` join and yields nothing, the same way
+   * `resolve` does.
    */
-  async needingText(limit: number): Promise<
-    Array<{ id: string; noteId: string; filename: string; r2Key: string }>
-  > {
+  async needingText(
+    limit: number,
+    noteId?: string,
+  ): Promise<Array<{ id: string; noteId: string; filename: string; r2Key: string }>> {
     const { results } = await this.db
       .prepare(
         `SELECT a.id, a.note_id, a.filename, a.r2_key
@@ -181,10 +188,11 @@ export class AttachmentsRepo extends ScopedRepo {
             AND n.deleted_at IS NULL
             AND a.content_type = 'application/pdf'
             AND at.attachment_id IS NULL
+            ${noteId ? 'AND a.note_id = ?3' : ''}
           ORDER BY a.created_at
           LIMIT ?2`,
       )
-      .bind(this.userId, limit)
+      .bind(this.userId, limit, ...(noteId ? [noteId] : []))
       .all<{ id: string; note_id: string; filename: string; r2_key: string }>();
 
     return results.map((r) => ({
@@ -195,8 +203,13 @@ export class AttachmentsRepo extends ScopedRepo {
     }));
   }
 
-  /** Counts of extractable attachments and how many already have text. */
-  async textCoverage(): Promise<{ extractable: number; indexed: number }> {
+  /**
+   * Counts of extractable attachments and how many already have text.
+   *
+   * Scoped to one note when `noteId` is given, so a caller that asked for one note's
+   * pending files is told how many that note has left rather than how many the account has.
+   */
+  async textCoverage(noteId?: string): Promise<{ extractable: number; indexed: number }> {
     const row = await this.db
       .prepare(
         `SELECT
@@ -206,9 +219,10 @@ export class AttachmentsRepo extends ScopedRepo {
          JOIN notes n ON n.id = a.note_id
          LEFT JOIN attachment_text at ON at.attachment_id = a.id
         WHERE a.user_id = ?1 AND n.user_id = ?1 AND n.deleted_at IS NULL
-          AND a.content_type = 'application/pdf'`,
+          AND a.content_type = 'application/pdf'
+          ${noteId ? 'AND a.note_id = ?2' : ''}`,
       )
-      .bind(this.userId)
+      .bind(this.userId, ...(noteId ? [noteId] : []))
       .first<{ extractable: number; indexed: number | null }>();
 
     return { extractable: row?.extractable ?? 0, indexed: row?.indexed ?? 0 };

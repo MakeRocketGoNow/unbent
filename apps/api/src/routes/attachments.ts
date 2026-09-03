@@ -215,12 +215,17 @@ export const attachments = new Hono<AppEnv>()
    *
    * Backfill runs on the client because that is where the PDF library lives — the same
    * extraction the import uses. The server only says which files still need it.
+   *
+   * `?note=` narrows the list, and the counts, to one note. The Android app indexes the
+   * capture it just uploaded and nothing else, so it asks this way; the web asks unscoped
+   * and walks whatever the account has left.
    */
   .get('/attachments/pending-text', requireAuth, withRepos, async (c) => {
     const limit = Math.min(Number(c.req.query('limit') ?? '25'), 100);
+    const note = c.req.query('note') || undefined;
     const [pending, coverage] = await Promise.all([
-      c.get('attachments').needingText(limit),
-      c.get('attachments').textCoverage(),
+      c.get('attachments').needingText(limit, note),
+      c.get('attachments').textCoverage(note),
     ]);
 
     return c.json({

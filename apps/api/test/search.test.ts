@@ -423,6 +423,50 @@ describe('attachment text', () => {
     expect(res.extractable).toBe(0);
   });
 
+  /**
+   * The phone indexes only the capture it just uploaded. Scoped, the answer and its counts
+   * describe that one note, not the account's backlog — a phone must never be told it has
+   * four thousand files to pull over a radio.
+   */
+  it('scopes pending attachments to one note when asked', async () => {
+    const actor = await signUp(`scoped-${Date.now()}@example.test`, 'scoped-pass-123', 'S');
+    const first = await createNote(actor, { title: 'First scan', body: '' });
+    const second = await createNote(actor, { title: 'Second scan', body: '' });
+    for (const note of [first, second]) {
+      await fetch(`${BASE}/api/notes/${note.id}/files`, {
+        method: 'PUT',
+        headers: {
+          Cookie: actor.cookie,
+          Origin: ORIGIN,
+          'X-Filename': 'scan.pdf',
+          'Content-Type': 'application/pdf',
+        },
+        body: 'PDFBYTES',
+      });
+    }
+
+    const scoped = await fetch(`${BASE}/api/attachments/pending-text?note=${first.id}`, {
+      headers: { Cookie: actor.cookie, Origin: ORIGIN },
+    }).then((r) => r.json());
+    expect(scoped.pending).toEqual([{ noteId: first.id, filename: 'scan.pdf' }]);
+    expect(scoped.remaining).toBe(1);
+    expect(scoped.extractable).toBe(1);
+
+    const all = await fetch(`${BASE}/api/attachments/pending-text`, {
+      headers: { Cookie: actor.cookie, Origin: ORIGIN },
+    }).then((r) => r.json());
+    expect(all.remaining).toBe(2);
+  });
+
+  it('does not reveal another user\'s note through the note scope', async () => {
+    const mine = await noteWithText(alice, `scoped${Date.now()}`);
+    const res = await fetch(`${BASE}/api/attachments/pending-text?note=${mine.id}`, {
+      headers: { Cookie: bob.cookie, Origin: ORIGIN },
+    }).then((r) => r.json());
+    expect(res.pending).toEqual([]);
+    expect(res.extractable).toBe(0);
+  });
+
   it('scopes an attachment hit to the notebook filter', async () => {
     // The filter has to reach both CTEs. Applied to only the note side, a PDF match would
     // still surface notes from outside the selected notebook.
