@@ -254,25 +254,38 @@ private fun FilterChipRemovable(label: String, onRemove: () -> Unit) {
 }
 
 /**
- * The tags, searchable, most-used first.
+ * The tags: what is chosen, a field to narrow by, and the vocabulary to choose from.
+ *
+ * Laid out like [TagEditor], which is the same act on a note — chosen tags as removable
+ * chips above the field, candidates below it. Two pickers for one concept had drifted into
+ * two shapes, and the editor's own reasoning applies here just as well: a tag is chosen
+ * the same way wherever it is chosen.
+ *
+ * Chips above the field rather than ticks down the list because a selection has to stay
+ * visible. Sorted by use, a rare tag sits hundreds of rows down; select it, scroll away
+ * looking for a second, and the first is gone from the screen with no way to see or remove
+ * it but to find it again. Above the field it is always both.
  *
  * A search field because this is not a list anyone scrolls: a real archive has hundreds of
- * tags, and half of them sit on three notes or fewer. The server orders them by use, so
- * the tags worth filtering by are the ones on screen before a key is pressed, and typing
- * is how the tail is reached rather than the only way through.
- *
- * A LazyColumn rather than the chip cloud the sheet used to show, because a cloud of three
- * hundred chips cannot be scanned and its rows do not align. Selected tags stay in place
- * as they are tapped rather than jumping to the top: a list that reorders under the finger
- * makes the second tap land on something the user did not aim at.
+ * tags, and half sit on three notes or fewer. The server orders them by use, so the tags
+ * worth filtering by are on screen before a key is pressed, and typing is how the tail is
+ * reached rather than the only way through.
  */
 @Composable
+@OptIn(ExperimentalLayoutApi::class)
 private fun TagPicker(state: NotesState, onBack: () -> Unit) {
     var query by rememberSaveable { mutableStateOf("") }
-    val matches = remember(state.tags, query) {
+    val selected = state.selectedTags
+    /*
+     * Chosen tags leave the list below: they are already on screen as chips, and a name in
+     * two places at once invites tapping the one that does not remove it. This is what
+     * TagEditor does with its own suggestions, for the same reason.
+     */
+    val matches = remember(state.tags, query, selected) {
         val needle = query.trim()
-        if (needle.isEmpty()) state.tags
-        else state.tags.filter { it.name.contains(needle, ignoreCase = true) }
+        state.tags
+            .filter { it.name !in selected }
+            .filter { needle.isEmpty() || it.name.contains(needle, ignoreCase = true) }
     }
 
     Column(
@@ -281,6 +294,38 @@ private fun TagPicker(state: NotesState, onBack: () -> Unit) {
             .padding(bottom = Space.Screen),
     ) {
         PickerHeader(stringResource(R.string.tags_label), onBack)
+
+        if (selected.isNotEmpty()) {
+            /*
+             * Capped and scrollable rather than growing without limit. A note carries a
+             * handful of tags, so TagEditor can let its row grow; a filter can plausibly
+             * carry eight, and in a sheet every row they add is a row taken from the list
+             * being chosen from.
+             */
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(Space.Small),
+                verticalArrangement = Arrangement.spacedBy(Space.Small),
+                modifier = Modifier
+                    .heightIn(max = 112.dp)
+                    .verticalScroll(rememberScrollState()),
+            ) {
+                for (tag in selected) {
+                    InputChip(
+                        selected = true,
+                        onClick = { state.toggleTag(tag) },
+                        shape = Shapes.Pill,
+                        label = { Text(tag, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                        trailingIcon = {
+                            Icon(
+                                Icons.Default.Close,
+                                contentDescription = stringResource(R.string.remove_tag, tag),
+                            )
+                        },
+                    )
+                }
+            }
+            Spacer(Modifier.height(Space.Medium))
+        }
 
         OutlinedTextField(
             value = query,
@@ -297,7 +342,12 @@ private fun TagPicker(state: NotesState, onBack: () -> Unit) {
 
         if (matches.isEmpty()) {
             Text(
-                stringResource(R.string.tags_no_matches),
+                stringResource(
+                    // "No tags match" is wrong when the vocabulary is simply exhausted:
+                    // with everything chosen there is nothing left to offer, and nothing
+                    // the user typed is at fault.
+                    if (query.isBlank()) R.string.tags_all_chosen else R.string.tags_no_matches,
+                ),
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -307,12 +357,11 @@ private fun TagPicker(state: NotesState, onBack: () -> Unit) {
              * of tags, and so the field above stays visible while the list is scrolled —
              * a search field that scrolls away is a search field you cannot correct.
              */
-            LazyColumn(Modifier.heightIn(max = 420.dp)) {
+            LazyColumn(Modifier.heightIn(max = 360.dp)) {
                 items(matches, key = { it.name }) { tag ->
                     TagRow(
                         name = tag.name,
                         count = tag.count,
-                        selected = tag.name in state.selectedTags,
                         onClick = { state.toggleTag(tag.name) },
                     )
                 }
@@ -322,18 +371,23 @@ private fun TagPicker(state: NotesState, onBack: () -> Unit) {
 }
 
 /**
- * One tag: the chip, then its count.
+ * One tag on offer: the chip, then how many notes carry it.
  *
  * A full-width row rather than a cloud, because the names are unbounded — this archive has
  * tags like "20806 Greenwood Ave" — and chips at mixed widths cannot be scanned down. The
- * count sits just after the chip rather than pinned to the far edge: on a phone that put
- * a number a hand's width from the name it belonged to, with nothing between them.
+ * count sits just after the chip rather than pinned to the far edge: on a phone that put a
+ * number a hand's width from the name it belonged to, with nothing between them.
  *
- * The whole row is the target, not just the chip, so a short name is no harder to hit
- * than a long one.
+ * The count is the reason to keep this a row at all. On an archive where one tag has three
+ * hundred notes and the next has one, the number is most of what tells them apart, and a
+ * picker without it makes the choice blind.
+ *
+ * Never drawn selected: a chosen tag is a chip above the field instead, so this row always
+ * means "add this one". The whole row is the target, not just the chip, so a short name is
+ * no harder to hit than a long one.
  */
 @Composable
-private fun TagRow(name: String, count: Int, selected: Boolean, onClick: () -> Unit) {
+private fun TagRow(name: String, count: Int, onClick: () -> Unit) {
     Row(
         Modifier
             .fillMaxWidth()
@@ -341,7 +395,7 @@ private fun TagRow(name: String, count: Int, selected: Boolean, onClick: () -> U
             .padding(vertical = Space.Hair),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        TagChip(name = name, count = null, selected = selected, onClick = onClick)
+        TagChip(name = name, count = null, selected = false, onClick = onClick)
         Spacer(Modifier.width(Space.Medium))
         CountBadge(count)
     }

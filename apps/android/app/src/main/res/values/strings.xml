@@ -53,6 +53,7 @@
     <string name="filter_none">Nothing is filtered.</string>
     <string name="tags_find">Find tags</string>
     <string name="tags_no_matches">No tags match.</string>
+    <string name="tags_all_chosen">Every tag is chosen.</string>
     <plurals name="tags_selected">
         <item quantity="one">%d tag</item>
         <item quantity="other">%d tags</item>
