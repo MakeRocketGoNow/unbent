@@ -221,6 +221,21 @@ class UnbentApi(
         )
     }
 
+    /**
+     * Permanently deletes every trashed note and its files.
+     *
+     * `confirm=DELETE` is the server's own requirement, not a formality invented here: it
+     * refuses a bare POST so a stray retry cannot empty an account. Scoped to the trash —
+     * this client has no reason to offer the "everything" scope, which exists for
+     * repeating a trial import from a desk.
+     */
+    fun emptyTrash(): PurgeResult = send(
+        "Empty trash",
+        url("/api/admin/purge-notes", "scope" to "trashed", "confirm" to "DELETE"),
+        "POST",
+        buildJsonObject {},
+    )
+
     fun listNotebooks(): NotebookList = get("List notebooks", url("/api/notebooks"))
 
     /** Creates an empty notebook. A 409 means the name is taken, case-insensitively. */

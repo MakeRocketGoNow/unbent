@@ -124,8 +124,8 @@ private fun App(
     onSignedOut: () -> Unit,
 ) {
     val nav = rememberNavController()
-    /** Set when the notebooks screen changed something the note list is showing. */
-    var notebooksChanged by remember { mutableStateOf(false) }
+    /** Set when another screen changed something the note list is showing. */
+    var listStale by remember { mutableStateOf(false) }
     val context = androidx.compose.ui.platform.LocalContext.current
     val prefs = remember { Prefs(context) }
     val api = remember { UnbentApi(prefs.instance, prefs.session?.bearer) }
@@ -144,12 +144,13 @@ private fun App(
         composable("notes") {
             NotesScreen(
                 api = api,
-                refreshKey = notebooksChanged,
-                onRefreshed = { notebooksChanged = false },
+                refreshKey = listStale,
+                onRefreshed = { listStale = false },
                 onOpen = { id -> nav.navigate("note/$id") },
                 onOpenNew = { id -> nav.navigate("note/$id?new=true") },
                 onSettings = { nav.navigate("settings") },
                 onManageNotebooks = { creating -> nav.navigate("notebooks?creating=$creating") },
+                onTrash = { nav.navigate("trash") },
                 onUnauthorized = onSignedOut,
             )
         }
@@ -193,7 +194,19 @@ private fun App(
                  * than making the list watch for changes it cannot see.
                  */
                 onBack = {
-                    notebooksChanged = true
+                    listStale = true
+                    nav.popBackStack()
+                },
+                onUnauthorized = onSignedOut,
+            )
+        }
+        composable("trash") {
+            TrashScreen(
+                api = api,
+                // Restoring or purging changes what the list behind is showing, the same
+                // way a rename does; see the notebooks screen for why it must say so.
+                onBack = {
+                    listStale = true
                     nav.popBackStack()
                 },
                 onUnauthorized = onSignedOut,

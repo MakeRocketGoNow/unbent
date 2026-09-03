@@ -143,6 +143,7 @@ fun NotesScreen(
     onOpenNew: (String) -> Unit,
     onSettings: () -> Unit,
     onManageNotebooks: (creating: Boolean) -> Unit,
+    onTrash: () -> Unit,
     onUnauthorized: () -> Unit,
 ) {
     val scope = rememberCoroutineScope()
@@ -211,6 +212,7 @@ fun NotesScreen(
                     state = state,
                     onPicked = { scope.launch { drawer.close() } },
                     onManageNotebooks = onManageNotebooks,
+                    onTrash = onTrash,
                 )
             }
         },
@@ -457,6 +459,7 @@ private fun FilterDrawer(
     onPicked: () -> Unit,
     /** True when the user asked to create, so the new-notebook field takes focus. */
     onManageNotebooks: (creating: Boolean) -> Unit,
+    onTrash: () -> Unit,
 ) {
     // The list scrolls; the footer does not. A create action that scrolled away with the
     // notebooks would be unreachable exactly when the list is long enough to need it.
@@ -532,6 +535,18 @@ private fun FilterDrawer(
          * with the cursor waiting.
          */
         HorizontalDivider()
+        /*
+         * The trash sits with the footer rather than among the notebooks: it is a place to
+         * go, but it is not part of the library — putting it in the list would make it look
+         * like somewhere notes are filed.
+         */
+        NavigationDrawerItem(
+            label = { Text(stringResource(R.string.trash)) },
+            selected = false,
+            shape = Shapes.Row,
+            onClick = onTrash,
+            modifier = Modifier.padding(horizontal = Space.Medium, vertical = Space.Hair),
+        )
         Row(
             Modifier
                 .fillMaxWidth()

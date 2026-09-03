@@ -51,9 +51,10 @@ import kotlinx.coroutines.withContext
 /**
  * Who is signed in, where, and the way out.
  *
- * Deliberately short. Notebooks, import, export and the trash stay on the site for now
- * and are one tap away; the address field exists because an emulator has to be pointed
- * at a dev server, and a self-hoster at their own instance.
+ * Deliberately short. Notebooks and the trash have screens of their own now, reached from
+ * the drawer; import and export stay on the site and are one tap away. The address field
+ * exists because an emulator has to be pointed at a dev server, and a self-hoster at their
+ * own instance.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
