@@ -150,16 +150,36 @@ function filterConditions(
  */
 const SORTS: Record<
   NoteSort,
-  { column: string; collate?: string; text?: boolean; keyOf: (row: NoteSummary) => string | number }
+  {
+    column: string;
+    /**
+     * The column a `from`/`to` range applies to under this sort: the date the rows show.
+     * For the two date sorts that is the sort column itself. Under the title sort the rows
+     * show when they were updated — see NoteListItem and the Android NoteRow — so the
+     * range reads that column; comparing epoch-ms against `n.title`, which is what falling
+     * back to the sort column did, matched nothing at all.
+     */
+    dateColumn: string;
+    collate?: string;
+    text?: boolean;
+    keyOf: (row: NoteSummary) => string | number;
+  }
 > = {
-  updated: { column: 'n.updated_at', keyOf: (r) => r.updatedAt },
-  created: { column: 'n.created_at', keyOf: (r) => r.createdAt },
-  title: { column: 'n.title', collate: 'COLLATE NOCASE', text: true, keyOf: (r) => r.title },
+  updated: { column: 'n.updated_at', dateColumn: 'n.updated_at', keyOf: (r) => r.updatedAt },
+  created: { column: 'n.created_at', dateColumn: 'n.created_at', keyOf: (r) => r.createdAt },
+  title: {
+    column: 'n.title',
+    dateColumn: 'n.updated_at',
+    collate: 'COLLATE NOCASE',
+    text: true,
+    keyOf: (r) => r.title,
+  },
 };
 
 /** Trash is ordered by when it was deleted, whatever sort the live list is using. */
 const TRASH_SORT = {
   column: 'n.deleted_at',
+  dateColumn: 'n.deleted_at',
   keyOf: (r: NoteSummary) => r.deletedAt ?? r.updatedAt,
 };
 
@@ -266,7 +286,7 @@ export class NotesRepo extends ScopedRepo {
     }
     conditions.push(
       // The range applies to the column being sorted, so the filter and the order agree.
-      ...filterConditions({ tag, notebook, from, to, dateColumn: spec.column }, binds, this.userId),
+      ...filterConditions({ tag, notebook, from, to, dateColumn: spec.dateColumn }, binds, this.userId),
     );
     binds.push(limit);
 
@@ -327,7 +347,7 @@ export class NotesRepo extends ScopedRepo {
           notebook: opts?.notebook,
           from: opts?.from,
           to: opts?.to,
-          dateColumn: opts?.trashed ? TRASH_SORT.column : SORTS[opts?.sort ?? 'updated'].column,
+          dateColumn: opts?.trashed ? TRASH_SORT.dateColumn : SORTS[opts?.sort ?? 'updated'].dateColumn,
         },
         binds,
         this.userId,

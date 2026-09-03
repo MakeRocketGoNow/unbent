@@ -455,6 +455,22 @@ describe('note CRUD', () => {
     expect(ranged.results.map((r: { title: string }) => r.title)).toEqual(['Old hit']);
   });
 
+  it('reads a date range against the updated date under the title sort', async () => {
+    // A title sort has no date of its own. The rows show when they were updated, so that
+    // is what the range means; before, the range was compared against the title column
+    // itself and a date-filtered title sort returned nothing at all.
+    const actor = await signUp(`titlerange-${Date.now()}@example.test`, 'titlerange-pw', 'T');
+    const old = await importDated(actor, 'Alpha', '2021-04-04');
+    await importDated(actor, 'Beta', '2024-04-04');
+
+    const { items, total } = await fetch(
+      `${BASE}/api/notes?sort=title&from=2021-01-01&to=2021-12-31`,
+      asUser(actor),
+    ).then((r) => r.json());
+    expect(items.map((i: { id: string }) => i.id)).toEqual([old]);
+    expect(total).toBe(1);
+  });
+
   it('counts within a tag filter', async () => {
     const actor = await signUp(`tagcount-${Date.now()}@example.test`, 'tagcount-pass-1', 'T');
     const tag = `counted-${Date.now()}`;

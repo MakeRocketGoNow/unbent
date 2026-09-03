@@ -262,8 +262,9 @@ titles are not: an archive is full of notes called "Receipt", and paging nine id
 titled notes returns four without the tiebreak.
 
 Date bounds are `YYYY-MM-DD`, inclusive at both ends, read in UTC to match the epoch-ms
-columns. The range filters whichever column the sort uses, so the filter and the order
-always mean the same date; search, having no sort, filters on `created_at`.
+columns. The range filters the date the sort's rows show — updated or created, and updated
+under the title sort, which has no date of its own — so the filter and the row always mean
+the same date; search, having no sort, filters on `created_at`.
 
 ## Searching inside PDFs
 

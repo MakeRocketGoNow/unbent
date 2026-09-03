@@ -357,6 +357,17 @@ describe('filtered export', () => {
       ...(await fetchExport(actor, { from: '2021-01-01', to: '2021-12-31' })).keys(),
     ].join('\n');
     expect(byUpdated).not.toContain('filed-in-2021-edited-later');
+
+    // A title sort has no date of its own; its rows show the updated date, so its range
+    // means "updated in": this note is in 2026's slice and not in 2021's.
+    const byTitle2026 = [
+      ...(await fetchExport(actor, { from: '2026-01-01', to: '2026-12-31', sort: 'title' })).keys(),
+    ].join('\n');
+    expect(byTitle2026).toContain('filed-in-2021-edited-later');
+    const byTitle2021 = [
+      ...(await fetchExport(actor, { from: '2021-01-01', to: '2021-12-31', sort: 'title' })).keys(),
+    ].join('\n');
+    expect(byTitle2021).not.toContain('filed-in-2021-edited-later');
   });
 
   it('rejects a malformed date rather than exporting everything', async () => {
