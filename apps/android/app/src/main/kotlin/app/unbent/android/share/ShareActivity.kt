@@ -140,7 +140,25 @@ class ShareActivity : ComponentActivity() {
             )
             .build()
 
-        WorkManager.getInstance(applicationContext).enqueue(request)
+        /*
+         * A PDF gets a second job, chained after the upload, that makes its text
+         * searchable. Chained rather than done inside the upload so that a WebView
+         * failure in the second can never re-run the first and create the note twice;
+         * photos have no text to extract and skip it, so no WebView spins up for a
+         * screenshot.
+         */
+        val manager = WorkManager.getInstance(applicationContext)
+        if (IndexWorker.needsIndexing(files.map { it.contentType })) {
+            val index = OneTimeWorkRequestBuilder<IndexWorker>()
+                .setConstraints(
+                    Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build(),
+                )
+                .setBackoffCriteria(BackoffPolicy.LINEAR, 30, TimeUnit.SECONDS)
+                .build()
+            manager.beginWith(request).then(index).enqueue()
+        } else {
+            manager.enqueue(request)
+        }
         // The toast is the word on screen as the sheet closes; the notification is the
         // one that can turn into "Saved" and be tapped.
         Toast.makeText(this, R.string.saving, Toast.LENGTH_SHORT).show()

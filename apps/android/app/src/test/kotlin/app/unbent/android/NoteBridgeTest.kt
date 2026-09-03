@@ -35,4 +35,24 @@ class NoteBridgeTest {
         val message = ApiJson.decodeFromString<BridgeMessage>("""{"type":"upload","pending":1,"bytes":12345}""")
         assertEquals(1, message.uploadsPending)
     }
+
+    @Test
+    fun `an index-done message carries its counts`() {
+        val message = ApiJson.decodeFromString<BridgeMessage>(
+            """{"type":"index-done","indexed":3,"unusable":1,"failed":0}""",
+        )
+        assertEquals(true, message.isIndexDone)
+        assertEquals(3, message.indexed)
+        assertEquals(1, message.unusable)
+        assertEquals(0, message.failed)
+        assertNull(message.message)
+    }
+
+    @Test
+    fun `an index-error message carries what went wrong`() {
+        val message = ApiJson.decodeFromString<BridgeMessage>("""{"type":"index-error","message":"R2 is on fire"}""")
+        assertEquals(true, message.isIndexError)
+        assertEquals("R2 is on fire", message.message)
+        assertNull(message.indexed)
+    }
 }

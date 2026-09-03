@@ -3,6 +3,7 @@ package app.unbent.android.share
 import android.content.Context
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
+import androidx.work.workDataOf
 import app.unbent.android.Prefs
 import app.unbent.android.api.ApiException
 import app.unbent.android.api.UnbentApi
@@ -70,7 +71,8 @@ class UploadWorker(context: Context, params: WorkerParameters) : CoroutineWorker
             Staging.clear(context, jobId)
 
             CaptureNotifications.saved(context, jobId, title, noteId)
-            Result.success()
+            // The note's id is this job's output, for the indexing job chained after it.
+            Result.success(workDataOf(KEY_NOTE_ID to noteId))
         } catch (e: ApiException) {
             if (e.status == 401) {
                 // The session is gone, not merely unreachable. Retrying cannot fix it, and
@@ -122,6 +124,8 @@ class UploadWorker(context: Context, params: WorkerParameters) : CoroutineWorker
         /** Null means the Inbox. */
         const val KEY_NOTEBOOK = "notebook"
         const val KEY_TAGS = "tags"
+        /** Output: the note this capture became. */
+        const val KEY_NOTE_ID = "noteId"
         private const val MAX_ATTEMPTS = 4
 
         /** How long a capture waits for the user to finish connecting. */

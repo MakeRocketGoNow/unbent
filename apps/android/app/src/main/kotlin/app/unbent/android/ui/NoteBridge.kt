@@ -7,18 +7,30 @@ import app.unbent.android.api.ApiJson
 import kotlinx.serialization.Serializable
 
 /**
- * What the embedded page tells the app. Mirrors `AppMessage` in apps/web/src/app-bridge.ts.
+ * What an embedded page tells the app. Mirrors `AppMessage` in apps/web/src/app-bridge.ts.
  *
  * `state` accompanies `save` only, and is one of the web autosave's five states; `pending`
- * accompanies `upload` only, and is how many files the page is still sending. Unknown
- * types are ignored rather than failing, so a page from a newer deploy can say something
- * this build has never heard of without breaking the screen around it.
+ * accompanies `upload` only, and is how many files the page is still sending. The counts
+ * come with `index-done` and `message` with `index-error`, from the indexing page the
+ * capture job hosts. Unknown types are ignored rather than failing, so a page from a
+ * newer deploy can say something this build has never heard of without breaking the
+ * screen around it.
  */
 @Serializable
-data class BridgeMessage(val type: String, val state: String? = null, val pending: Int? = null) {
+data class BridgeMessage(
+    val type: String,
+    val state: String? = null,
+    val pending: Int? = null,
+    val indexed: Int? = null,
+    val unusable: Int? = null,
+    val failed: Int? = null,
+    val message: String? = null,
+) {
     val isReady get() = type == "ready"
     val isUnauthorized get() = type == "unauthorized"
     val isMissing get() = type == "missing"
+    val isIndexDone get() = type == "index-done"
+    val isIndexError get() = type == "index-error"
     val saveState get() = if (type == "save") state else null
     val uploadsPending get() = if (type == "upload") pending else null
 }
