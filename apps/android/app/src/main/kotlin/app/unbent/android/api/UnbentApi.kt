@@ -200,6 +200,30 @@ class UnbentApi(
     fun createNotebook(name: String): Notebook =
         send("Create notebook", url("/api/notebooks"), "POST", buildJsonObject { put("name", name) })
 
+    /**
+     * Renames a notebook. A 409 means another notebook already has that name.
+     *
+     * By id, unlike the list filter, which is by name: an id survives the rename, and the
+     * rename is the whole reason this route exists. The server's own notebook routes
+     * carry the same note.
+     */
+    fun renameNotebook(id: String, name: String): Notebook =
+        send("Rename notebook", notebookUrl(id), "PATCH", buildJsonObject { put("name", name) })
+
+    /**
+     * Deletes a notebook. Its notes survive, unfiled, unless [trashNotes] is set — and
+     * then they go to the trash, not the void: deleting an organisational label must never
+     * permanently destroy what it organised.
+     *
+     * 204, so there is nothing to decode and this cannot go through [send].
+     */
+    fun deleteNotebook(id: String, trashNotes: Boolean = false) {
+        val url = notebookUrl(id).newBuilder()
+            .apply { if (trashNotes) addQueryParameter("trashNotes", "1") }
+            .build()
+        call(Request.Builder().url(url).auth().delete().build(), "Delete notebook")
+    }
+
     fun listTags(): List<Tag> = get<TagList>("List tags", url("/api/tags")).tags
 
     /**
@@ -239,6 +263,9 @@ class UnbentApi(
 
         return ApiJson.decodeFromString(call(req, "Upload"))
     }
+
+    private fun notebookUrl(id: String): HttpUrl =
+        "$origin/api/notebooks".toHttpUrl().newBuilder().addPathSegment(id).build()
 
     private fun noteUrl(id: String): HttpUrl =
         "$origin/api/notes".toHttpUrl().newBuilder().addPathSegment(id).build()

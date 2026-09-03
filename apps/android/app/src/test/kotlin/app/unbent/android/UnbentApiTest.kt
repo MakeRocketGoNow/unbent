@@ -129,6 +129,65 @@ class UnbentApiTest {
      * this archive has tags with spaces and dots — so the shape is worth pinning.
      */
     @Test
+    fun `renameNotebook patches by id`() {
+        server.enqueue(
+            MockResponse().setResponseCode(200).setBody("""{"id":"nb-1","name":"Taxes 2024"}"""),
+        )
+
+        val renamed = api.renameNotebook("nb-1", "Taxes 2024")
+
+        val req = server.takeRequest()
+        assertEquals("PATCH", req.method)
+        // By id, not by the old name: the id is what survives the rename.
+        assertEquals("/api/notebooks/nb-1", req.path)
+        assertEquals("""{"name":"Taxes 2024"}""", req.body.readUtf8())
+        assertEquals("Taxes 2024", renamed.name)
+    }
+
+    /**
+     * The server answers a name clash with 409 and an explanation. Pinned because the
+     * screen shows that explanation rather than a generic failure — "already exists" tells
+     * the user what to do next, where "couldn't rename" sends them to try it again.
+     */
+    @Test
+    fun `renameNotebook surfaces the server's reason for a conflict`() {
+        server.enqueue(
+            MockResponse().setResponseCode(409)
+                .setBody("""{"error":"A notebook with that name already exists"}"""),
+        )
+
+        try {
+            api.renameNotebook("nb-1", "Taken")
+            fail("expected a conflict")
+        } catch (e: ApiException) {
+            assertEquals(409, e.status)
+            assertEquals("A notebook with that name already exists", e.serverMessage())
+        }
+    }
+
+    /** The default leaves the notes alone; they become unfiled rather than deleted. */
+    @Test
+    fun `deleteNotebook unfiles its notes by default`() {
+        server.enqueue(MockResponse().setResponseCode(204))
+
+        api.deleteNotebook("nb-1")
+
+        val req = server.takeRequest()
+        assertEquals("DELETE", req.method)
+        assertEquals("/api/notebooks/nb-1", req.path)
+    }
+
+    /** The cascade is opt-in, and it is trash rather than a purge. */
+    @Test
+    fun `deleteNotebook asks for the cascade explicitly`() {
+        server.enqueue(MockResponse().setResponseCode(204))
+
+        api.deleteNotebook("nb-1", trashNotes = true)
+
+        assertEquals("/api/notebooks/nb-1?trashNotes=1", server.takeRequest().path)
+    }
+
+    @Test
     fun `listNotes repeats the tag parameter for each tag`() {
         server.enqueue(MockResponse().setResponseCode(200).setBody("""{"items":[],"cursor":null,"total":0}"""))
 
