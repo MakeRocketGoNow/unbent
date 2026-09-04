@@ -2532,6 +2532,36 @@ a.sidebar-status:hover {
   .shell.wide { padding-top: 0.5rem; }
 
   /*
+     The side margins come in too, for the same reason the top one did.
+
+     1.5rem is a desktop gutter, and it was the one number this block never revisited: at
+     375px it spent 48px — an eighth of the screen — on empty margin, and the note list
+     pays it twice, because `.sidebar` adds its own 0.7rem inset to line the list up with
+     the text inside the note rows. That put a note's first character 35px from the glass
+     while the Android app's list starts near the edge.
+
+     0.75rem is the reduction that leaves the sidebar's inset intact — it is what aligns
+     the count, the search field and the note text, and `.note-list` pulls back out
+     through it so a selected row's fill still runs the full width. Halving the shell
+     instead gives that fill a margin to sit in rather than bleeding off the edge, and
+     brings the text to 23px: still clear of the rounded corners of a modern phone, and
+     24px of width per side handed back to the content.
+
+     Written to cover `.shell.wide` as well as bare `.shell`, so the notes view narrows
+     along with login, settings and import rather than keeping a gutter twice the width of
+     its neighbours. The compound selector is not redundant: `.shell.wide` sets `padding`
+     as a shorthand, which beats a bare `.shell` here on specificity — the notes view, the
+     one this is for, would otherwise have kept all 24px.
+
+     `:not(.embed)` because the WebView shell deliberately runs to the edge — the Android
+     app draws the chrome and every pixel of the page is the note. Its rule sits earlier in
+     this file at the same specificity, so without this it would be a source-order accident
+     that the two never collide.
+  */
+  .shell:not(.embed),
+  .shell.wide:not(.embed) { padding-inline: 0.75rem; }
+
+  /*
      The notebook and tag controls, collapsed to a line that states them.
 
      Same disclosure as the sidebar's tag filter, including the chevron, because it is the
