@@ -124,6 +124,7 @@ pnpm exec wrangler secret put GOOGLE_CLIENT_SECRET --env production
 pnpm exec wrangler secret put ALLOWED_EMAILS --env production       # comma-separated
 pnpm exec wrangler secret put RESEND_API_KEY --env production       # password reset mail
 pnpm exec wrangler secret put EMAIL_FROM --env production           # verified sender
+pnpm exec wrangler secret put EMAIL_REPLY_TO --env production       # optional, a real mailbox
 ```
 
 `RESEND_API_KEY` and `EMAIL_FROM` are what make password reset work. Without both, a reset

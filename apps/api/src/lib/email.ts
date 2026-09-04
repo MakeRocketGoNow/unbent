@@ -16,6 +16,16 @@
 export interface EmailEnv {
   RESEND_API_KEY?: string;
   EMAIL_FROM?: string;
+  /**
+   * Where a reply should go, when that is not the From address.
+   *
+   * Sending domains are usually a subdomain — mail.unbent.app — kept separate so a
+   * problem with bulk mail cannot damage the reputation of the apex that carries real
+   * correspondence. That subdomain is not a mailbox, so a From of noreply@mail.unbent.app
+   * is honest but leaves someone who hits Reply talking to nobody. This is the address
+   * that actually reads mail. Optional: unset means Reply goes to From, as before.
+   */
+  EMAIL_REPLY_TO?: string;
 }
 
 export interface Message {
@@ -48,7 +58,10 @@ export function canSendEmail(env: EmailEnv): boolean {
  */
 export async function sendEmail(env: EmailEnv, message: Message): Promise<void> {
   if (!canSendEmail(env)) {
-    console.log(`[email] not configured; would have sent to ${message.to}:\n${message.text}`);
+    console.log(
+      `[email] not configured; would have sent to ${message.to}` +
+        `${env.EMAIL_REPLY_TO ? ` (reply-to ${env.EMAIL_REPLY_TO})` : ''}:\n${message.text}`,
+    );
     return;
   }
 
@@ -63,6 +76,9 @@ export async function sendEmail(env: EmailEnv, message: Message): Promise<void> 
       to: message.to,
       subject: message.subject,
       text: message.text,
+      // Resend names this `reply_to`, and omits the header entirely when it is absent —
+      // which is what an unset EMAIL_REPLY_TO should mean, rather than an empty header.
+      ...(env.EMAIL_REPLY_TO ? { reply_to: env.EMAIL_REPLY_TO } : {}),
     }),
   });
 

@@ -39,8 +39,12 @@ export interface Env {
    * development wants and what a deployed instance must not do. See lib/email.ts.
    */
   RESEND_API_KEY?: string;
-  /** The From address, e.g. "Unbent <noreply@unbent.app>". Its domain must be verified. */
+  /** The From address, e.g. "Unbent <noreply@mail.unbent.app>". Its domain must be verified. */
   EMAIL_FROM?: string;
+  /**
+   * Optional Reply-To, for when the sending domain is not a mailbox. See lib/email.ts.
+   */
+  EMAIL_REPLY_TO?: string;
 }
 
 export interface SessionUser {

@@ -51,4 +51,10 @@ ALLOW_TEST_CREDENTIALS=1
 #   https://resend.com/api-keys
 #   EMAIL_FROM's domain has to be verified with Resend first.
 # RESEND_API_KEY=
-# EMAIL_FROM=Unbent <noreply@example.com>
+# EMAIL_FROM=Unbent <noreply@mail.example.com>
+#
+# Optional. Mail is usually sent from a subdomain kept separate from the apex, so that a
+# problem with it cannot harm the reputation of the address people actually write to — but
+# that subdomain is not a mailbox, so Reply on a noreply@ From goes nowhere. Set this to
+# the address that does read mail. Unset means Reply goes to EMAIL_FROM.
+# EMAIL_REPLY_TO=hello@example.com
