@@ -538,7 +538,7 @@ describe('formatTable', () => {
     );
   });
 
-  /** Monospace plus equal-width cells is what makes the columns readable. */
+  /** The monospace table face plus equal-width cells is what makes the columns readable. */
   it('gives every row the same width', () => {
     const r = fmt('|A|B|\n|-|-|\n|xx|y|\n|z|wwww|', 2);
     const widths = r.out.split('\n').map((l) => l.length);

@@ -97,10 +97,12 @@ const linkLabel = Decoration.mark({ class: 'cm-md-link' });
  * replacing the whole block — which takes the text, and the cursor, out of the document —
  * or per-cell width measurement that fights line wrapping and reruns on every keystroke.
  *
- * The editor is monospace, which is the whole reason the pipe format exists: when cells are
- * padded to equal width the columns line up on their own. So the rendering styles what is
- * there — header in bold, separators dimmed, the alignment row hidden — and `formatTable`
- * in the commands module does the aligning as a real edit the user can undo.
+ * Tables are set in monospace, which is the whole reason the pipe format exists: when cells
+ * are padded to equal width the columns line up on their own. Rich mode sets the rest of the
+ * document in a proportional serif, so the table's own `font-family` in the theme below is
+ * what keeps that true here. The rendering styles what is already there — header in bold,
+ * separators dimmed, the alignment row hidden — and `formatTable` in the commands module
+ * does the aligning as a real edit the user can undo.
  */
 const tableHeaderCell = Decoration.mark({ class: 'cm-md-th' });
 const tablePipe = Decoration.mark({ class: 'cm-md-table-pipe' });
@@ -1057,11 +1059,15 @@ export function richMarkdown(options: RichMarkdownOptions = {}): Extension {
       /**
        * Tables.
        *
-       * The columns line up because the editor is monospace and `formatTable` pads the
-       * cells, not because anything here does layout — see the note by the decorations.
-       * These only style what the padding already aligned.
+       * The columns line up because `formatTable` pads the cells with literal spaces and
+       * this rule puts them back in a monospace face — nothing here does layout, so both
+       * halves are load-bearing. Rich mode sets the rest of the document in a proportional
+       * serif, where equal character counts are no longer equal widths; the table would
+       * come apart without its own font. See the note by the decorations.
        */
       '.cm-md-table-row': {
+        fontFamily: 'var(--font-mono)',
+        fontSize: '0.9em',
         background: 'color-mix(in srgb, currentColor 4%, transparent)',
       },
       '.cm-md-table-head': {

@@ -162,10 +162,21 @@ export function Editor({
               : undefined,
             onPending: (count) => onUploadsPendingRef.current?.(count),
           }),
+          /*
+             The two modes are two different kinds of text, and the font is what says which.
+
+             Source is markup: the asterisks and pipes are the content, character positions
+             matter, and monospace is the honest rendering of that. Rich mode has hidden the
+             markup and is showing a document, so it gets a serif at the larger size prose
+             wants — mono there reads as a code editor no matter how the headings are styled.
+
+             Tables keep their own monospace inside rich mode; see the rich theme, where the
+             padding that aligns their columns depends on it.
+          */
           EditorView.theme({
-            '&': { height: '100%', fontSize: '15px' },
+            '&': { height: '100%', fontSize: rich ? '17px' : '15px' },
             '.cm-scroller': {
-              fontFamily: 'var(--font-mono)',
+              fontFamily: rich ? 'var(--font-prose)' : 'var(--font-mono)',
               lineHeight: '1.7',
               padding: '1rem 0',
             },

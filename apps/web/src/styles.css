@@ -9,6 +9,21 @@
   */
   --font-ui: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
   --font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+  /*
+     The note itself, in rich mode — the one place a reader spends an hour at a stretch.
+
+     A serif because this is a writing tool and not a code editor: monospace tells a reader
+     that character positions matter, which is true of the source view and false of a
+     rendered note. It also has no real italic, only a slanted upright, and the headings it
+     draws at 1.6em read as terminal banners.
+
+     System faces, in descending order of how well they hold a long paragraph. Iowan Old
+     Style ships on macOS and iOS and is the reason this list starts where it does; Charter
+     covers the same ground where Iowan is absent; Georgia is the floor and is everywhere.
+     Nothing here is downloaded, so the first paint is the final one — no reflow a writer
+     would watch happen mid-sentence.
+  */
+  --font-prose: "Iowan Old Style", "Palatino Linotype", Palatino, Charter, Georgia, serif;
 
   --bg: #fbfaf8;
   --fg: #1c1a17;

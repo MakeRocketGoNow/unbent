@@ -501,8 +501,9 @@ function padCell(text: string, width: number, align: Align): string {
 /**
  * Rewrites the table under the cursor so its columns line up.
  *
- * The editor is monospace, so equal-width cells are aligned columns — which is what the
- * pipe format was designed for and why a table typed by hand is readable at all. This is
+ * Tables are rendered in monospace, so equal-width cells are aligned columns — which is what
+ * the pipe format was designed for and why a table typed by hand is readable at all. Rich mode
+ * sets prose in a serif but exempts table rows, so this holds in both views. This is
  * an ordinary edit rather than a rendering trick: the alignment is in the file, so it
  * survives export and reads the same in any other editor.
  *
@@ -573,8 +574,8 @@ export function readTable(state: EditorState, pos: number): TableModel | null {
 /**
  * Renders a table back to markdown with its columns padded to equal width.
  *
- * The editor is monospace, so equal-width cells are aligned columns — that is what the
- * pipe format was designed for and why a table typed by hand is readable at all.
+ * Tables are rendered in monospace, so equal-width cells are aligned columns — that is what
+ * the pipe format was designed for and why a table typed by hand is readable at all.
  */
 export function renderTable(table: TableModel): string {
   const columns = table.aligns.length;

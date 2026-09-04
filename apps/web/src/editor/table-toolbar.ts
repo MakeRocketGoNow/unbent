@@ -299,8 +299,8 @@ const tableToolbarTheme = EditorView.theme({
 /**
  * Re-pads a table's columns when the cursor leaves it.
  *
- * The padding is what aligns the columns — the editor is monospace, so equal-width cells
- * are aligned ones — but it goes stale the moment a cell is typed into. Type a long header
+ * The padding is what aligns the columns — tables are rendered in monospace, so equal-width
+ * cells are aligned ones — but it goes stale the moment a cell is typed into. Type a long header
  * and the rows below still carry the width the old text needed, which is what makes a
  * table look broken without anything actually being wrong with it.
  *
