@@ -795,8 +795,18 @@ h1 {
    otherwise inherit, so it reads as a menu item and not as prose. */
 a.overflow-item { text-decoration: none; }
 
-/* Hidden until the mobile breakpoint, where the sidebar is off screen and this is the
-   only way back to the list. Sized to the 44px touch target, like the toolbar buttons. */
+/*
+   The error state's header row holds only the back arrow, and that arrow is hidden above
+   the breakpoint — which left a bordered 9px strip above the message with nothing in it.
+   So the row goes too, on the same breakpoint and for the same reason: on a desktop the
+   topbar is there and this row has nothing left to contribute.
+
+   Its own class rather than a rule on `.workspace-head`, because the loaded note's header
+   also contains a `.view-back` and must keep its border at every width — it still holds
+   the title, the save state and the menu.
+*/
+.workspace-error-head { display: none; }
+
 /*
    Leaving a full-screen view: one control, one place, one gesture.
 
@@ -2493,6 +2503,9 @@ a.sidebar-status:hover {
   .notes:not(.note-open) > .workspace { display: none; }
 
   .view-back { display: inline-flex; }
+
+  /* Where the arrow is the only way out of a failed note — see `.workspace-error-head`. */
+  .workspace-error-head { display: flex; }
 
   /*
      Pulled out through the shell's side padding, so the 44px target reaches the screen

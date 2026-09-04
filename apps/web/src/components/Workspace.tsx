@@ -219,6 +219,31 @@ export function Workspace({ noteId, readOnly = false, backTo = '/notes' }: Works
     const missing = isStatus(error, 404);
     return (
       <section className="workspace">
+        {/*
+            The way back, which this branch used to leave out.
+
+            It returned an error card and nothing else, on the reasoning that the topbar
+            above it already offered a way out. Below the breakpoint that topbar is hidden
+            now, so on a phone this state had no route anywhere except the "Clear" link in
+            the card — and "Clear" reads as dismissing a message, not as leaving the view.
+
+            The same row the loaded note draws, minus the controls that need a note to act
+            on. `backTo` is carried so a trashed note that fails to load returns to the
+            trash rather than the note list.
+        */}
+        <div className="workspace-head workspace-error-head">
+          <div className="workspace-title-row">
+            <Link
+              to={backTo}
+              search={(p) => p}
+              className="view-back"
+              aria-label="Back to notes"
+            >
+              ←
+            </Link>
+          </div>
+        </div>
+
         <div className="workspace-error">
           <p className={missing ? 'muted' : 'bad'}>
             {missing
