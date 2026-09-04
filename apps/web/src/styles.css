@@ -2507,7 +2507,39 @@ a.sidebar-status:hover {
      row and the editor body all share, so the flush target and the optical alignment
      turn out to be the same value.
   */
-  .view-back { margin-left: -0.75rem; }
+  .view-back {
+    margin-left: -0.75rem;
+    /*
+       And pulled in on the right, so the heading sits beside the arrow rather than beside
+       its tap target.
+
+       `←` does not fill its box: the ink stops 13.2px short of the right edge, so a 4px
+       gap between the boxes reads as 17px of daylight — conspicuous next to a short
+       heading like "Settings", where there is no long title to fill the row. This takes
+       the visible gap to about 8px. The heading overlaps only the last 6px of the box,
+       well clear of the ink, so the arrow keeps a target far wider than the glyph.
+    */
+    margin-right: -0.6rem;
+  }
+
+  /*
+     The heading row reaches the screen edge, through its own scroll container.
+
+     `.settings` sets `overflow-y: auto`, and that computes `overflow-x` to `auto` as
+     well — the same coupling `.note-list` records — so it clips anything pulled outside
+     its box. The arrow's own negative margin was being cut off: the box still laid out
+     at the screen edge, but its leftmost 12px were dead to a tap, leaving the corner
+     control quietly smaller than it looked.
+
+     So the scroller is given the shell's padding back as its own, and the heading row is
+     pulled out through it. Nothing is outside the container any more — its edge simply
+     moved — and the arrow lands on the glass for real. The body below keeps the inset,
+     which is what the padding restores.
+
+     The row itself needs no pull of its own: the arrow's `.view-back` margin already
+     cancels this padding, exactly as it cancels the shell's in every other view.
+  */
+  .settings { padding-inline: 0.75rem; margin-inline: -0.75rem; width: auto; }
 
   /*
      Only on a phone — see `.trash-head`.
@@ -2525,7 +2557,6 @@ a.sidebar-status:hover {
     margin-inline: -0.7rem;
     margin-bottom: 0.5rem;
   }
-
 
   /*
      In a note, the back arrow is the top-left control — as it is in every native app.
