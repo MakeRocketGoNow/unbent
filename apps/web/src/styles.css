@@ -2559,23 +2559,38 @@ a.sidebar-status:hover {
   }
 
   /*
-     In a note, the back arrow is the top-left control — as it is in every native app.
+     In a full-screen view, the back arrow is the top-left control — as it is in every
+     native app.
 
-     The topbar is account chrome: a wordmark that navigates to the list you are already
-     one tap from, and an avatar hiding Settings and Sign out. In a note on a phone it
-     costs 69px of an 812px viewport — 11% of what is left after browser chrome — and it
-     puts the wordmark in the top-left slot that a decade of muscle memory reserves for
-     the way back, demoting the most-used control in the view to a second row.
+     The topbar is account chrome: a wordmark that navigates to the list, and an avatar
+     hiding Settings and Sign out. Over a view that fills the phone it costs 69px of an
+     812px viewport — 11% of what is left after browser chrome, and a quarter of the
+     201px Settings put above its own content — while occupying the top-left slot a
+     decade of muscle memory reserves for the way back.
 
-     Scoped to `.note-open` deliberately. On the list the topbar stays: it is the only
-     route to Settings and Sign out — everything collapsed behind the avatar precisely
-     because it is the sole account surface — and the list is this app's home screen,
-     which is exactly where a native app does show its title and account.
+     A note, Settings and Trash each carry their own heading and their own `.view-back`
+     now, so none of them needs the wordmark to say where it is or how to leave. The
+     wordmark's destination is one tap away through that arrow either way.
 
-     Above the breakpoint it stays too. There the topbar competes with nothing and the
+     The list keeps its topbar. It is this app's home screen — exactly where a native app
+     does show its title and account — and it is the only view with no heading of its own
+     and nowhere to go back to. Sign out lives behind the avatar there, which is one tap
+     from any of these views.
+
+     Above the breakpoint the topbar stays everywhere: it competes with nothing and the
      vertical room is not scarce.
+
+     Three selectors because there is no one class these views share: a note is marked by
+     `.note-open` on the grid, Settings by its own wrapper, and the trash list by the
+     heading row that only it renders. A trashed note matches the first — `TrashLayout`
+     uses the same layout hook — and its sidebar, `.trash-head` included, is hidden by the
+     rule above, so only one back arrow is ever on screen.
   */
-  .shell.wide:has(.notes.note-open) > .topbar { display: none; }
+  .shell.wide:has(.notes.note-open) > .topbar,
+  .shell.wide:has(.settings) > .topbar,
+  .shell.wide:has(.trash-head) > .topbar {
+    display: none;
+  }
 
   /*
      The title gets the room; what is left of the controls tucks in beside it.
