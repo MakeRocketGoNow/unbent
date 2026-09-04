@@ -165,7 +165,7 @@ export function Editor({
           EditorView.theme({
             '&': { height: '100%', fontSize: '15px' },
             '.cm-scroller': {
-              fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+              fontFamily: 'var(--font-mono)',
               lineHeight: '1.7',
               padding: '1rem 0',
             },

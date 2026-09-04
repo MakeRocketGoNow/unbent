@@ -999,7 +999,7 @@ export function richMarkdown(options: RichMarkdownOptions = {}): Extension {
        */
       '.cm-md-codeblock': {
         background: 'color-mix(in srgb, currentColor 6%, transparent)',
-        fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+        fontFamily: 'var(--font-mono)',
         fontSize: '0.9em',
         padding: '0 0.7rem',
       },
@@ -1041,7 +1041,7 @@ export function richMarkdown(options: RichMarkdownOptions = {}): Extension {
       },
 
       '.cm-md-code': {
-        fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+        fontFamily: 'var(--font-mono)',
         fontSize: '0.9em',
         padding: '0.1em 0.3em',
         borderRadius: '0.25rem',

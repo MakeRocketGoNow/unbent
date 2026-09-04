@@ -1,4 +1,15 @@
 :root {
+  /*
+     Two families, one decision each.
+
+     `--font-ui` is the application: chrome, lists, menus, prose in the preview. `--font-mono`
+     is for text where character positions carry meaning — code, and the pipe tables whose
+     columns are aligned by literal padding in the document rather than by layout. Anything
+     that is neither is prose, and prose belongs to `--font-prose` below.
+  */
+  --font-ui: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+
   --bg: #fbfaf8;
   --fg: #1c1a17;
   --muted: #6b6560;
@@ -30,7 +41,7 @@ body {
   margin: 0;
   background: var(--bg);
   color: var(--fg);
-  font: 16px/1.6 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  font: 16px/1.6 var(--font-ui);
 }
 
 .shell {
@@ -66,7 +77,7 @@ h1 {
 
 .status p {
   margin: 0;
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-family: var(--font-mono);
   font-size: 0.9rem;
 }
 
@@ -927,7 +938,7 @@ a.overflow-item { text-decoration: none; }
 
 .preview code {
   padding: 0.12em 0.32em;
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-family: var(--font-mono);
   font-size: 0.88em;
   background: color-mix(in srgb, var(--fg) 8%, transparent);
   border-radius: 0.25rem;
@@ -1834,7 +1845,7 @@ a.sidebar-status:hover {
   font: inherit;
   /* Monospace with generous tracking: this is a string being compared character by
      character against another screen, where O/0 and I/1 have to be told apart. */
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-family: var(--font-mono);
   letter-spacing: 0.12em;
   text-transform: uppercase;
   color: var(--fg);
@@ -1852,7 +1863,7 @@ a.sidebar-status:hover {
   width: 100%;
   margin: 0;
   padding: 0.6rem;
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-family: var(--font-mono);
   font-size: 1.5rem;
   letter-spacing: 0.2em;
   text-align: center;
