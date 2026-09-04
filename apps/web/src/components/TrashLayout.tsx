@@ -63,6 +63,27 @@ export function TrashLayout({ children }: { children: React.ReactNode }) {
   return (
     <div className={layout.className} style={layout.style} ref={layout.containerRef}>
       <aside className="sidebar">
+        {/*
+            The way back, on a phone only.
+
+            This was a full-width bordered button sitting below the confirms and above the
+            list — a third shape for a gesture the note and settings views answer with an
+            arrow in the top-left corner. It is that arrow now, and it moved to the top of
+            the view because a control that leaves belongs before the thing it leaves, not
+            buried in the middle of it.
+
+            Above the breakpoint it is hidden: the topbar marks Trash active while you are
+            here, so the link that got you in is also the way out. That was already true
+            when this was a button — the button was the old toggle's leftover, from when
+            there was nothing in the chrome to go back to.
+        */}
+        <div className="trash-head">
+          <Link to="/notes" className="view-back" aria-label="Back to notes">
+            ←
+          </Link>
+          <h2>Trash</h2>
+        </div>
+
         <div className="sidebar-head">
           <span className="count">{total} in trash</span>
           {/* Offered here as well as on the maintenance page: this is the one place you
@@ -126,13 +147,6 @@ export function TrashLayout({ children }: { children: React.ReactNode }) {
         )}
 
         {empty.error && <p className="bad small">{empty.error}</p>}
-
-        {/* The way out is the topbar, which marks Trash active while you are here — the
-            same link that got you in. A second one in the sidebar was the old toggle's
-            leftover, from when there was nothing in the chrome to go back to. */}
-        <Link to="/notes" className="trash-back">
-          ← Back to notes
-        </Link>
 
         {list.error && <p className="bad small">{(list.error as Error).message}</p>}
 
