@@ -86,3 +86,34 @@ describe('GET /api/config', () => {
     }
   });
 });
+
+/**
+ * A method that is not advertised must not be reachable either.
+ *
+ * The two can drift: advertising is a list this codebase builds, while the endpoints come
+ * from whether a plugin was registered, and it is easy to gate one and forget the other.
+ * When that happened to passkeys, `AUTH_PASSKEY=0` removed the button and left
+ * /api/auth/passkey/* answering — an operator who turned them off still had them on.
+ */
+describe('advertisement and endpoints agree', () => {
+  it('does not answer on an endpoint for a method it does not offer', async () => {
+    const res = await fetch(`${BASE}/api/config`);
+    const { providers } = (await res.json()) as { providers: string[] };
+
+    if (!providers.includes('email-otp')) {
+      const otp = await fetch(`${BASE}/api/auth/email-otp/send-verification-otp`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Origin: BASE },
+        body: JSON.stringify({ email: 'probe@example.com', type: 'sign-in' }),
+      });
+      expect(otp.status).toBe(404);
+    }
+
+    if (!providers.includes('passkey')) {
+      const pk = await fetch(`${BASE}/api/auth/passkey/generate-authenticate-options`, {
+        headers: { Origin: BASE },
+      });
+      expect(pk.status).toBe(404);
+    }
+  });
+});

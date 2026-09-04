@@ -167,6 +167,36 @@ title-casing gets wrong (GitHub, GitLab, LinkedIn). Android shows one "Continue 
 browser" button for every non-Google provider rather than one each, because a phone has no
 native account picker for an arbitrary provider and they all end at the same page.
 
+#### Enabling a provider means trusting how it verifies email
+
+Better Auth links a new provider to an existing account when the emails match, so that
+somebody who signed up with Google and later presses a different button arrives at their
+own notes rather than a second, empty account. Two conditions gate that: the local account
+must already be verified, and either the provider must be listed in `trustedProviders` or
+it must claim the address is verified.
+
+The consequence is worth stating plainly, because enabling a provider is now one command.
+**A provider that will assert `email_verified` for an address its user does not own can be
+used to reach an existing account at that address.** Google and GitHub do not do this.
+Providers where the address is user-settable, or that were built for a single organisation
+and assume the operator controls the directory, historically have — this is the "nOAuth"
+class of bug, and it is a property of the identity provider rather than of this code.
+
+So: enable providers you would be willing to let someone sign in as. If you enable one you
+are unsure about, turn implicit linking off in `apps/api/src/auth.ts`:
+
+```ts
+account: { accountLinking: { disableImplicitLinking: true } },
+```
+
+Accounts then link only when someone explicitly asks while already signed in, and a second
+provider on an existing address is refused rather than merged. It is the safer setting and
+the more annoying one — someone who signed up with Google and then presses Discord is told
+the account is not linked instead of being let in.
+
+`ALLOWED_EMAILS` narrows this considerably on a closed instance: an address that cannot
+create an account cannot be linked into one either.
+
 Two things to know before removing a provider people already use. An account whose only
 credential is that provider loses its way in, so check before deleting. And deploy the
 replacement first — a secret deletion takes effect immediately, while new code does not.

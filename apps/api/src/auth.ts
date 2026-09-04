@@ -36,6 +36,19 @@ function passwordEnabled(env: Env): boolean {
 }
 
 /**
+ * Passkeys, on unless an instance says otherwise.
+ *
+ * Nothing has to be registered anywhere for a passkey to work — WebAuthn's other half is
+ * the browser and the user's own device — so there is no missing credential to infer an
+ * operator's intent from, and this is the one method that has to be opt-out rather than
+ * opt-in. It gates both the advertisement and the endpoints: an operator who turns this
+ * off means off, not hidden.
+ */
+function passkeysEnabled(env: Env): boolean {
+  return env.AUTH_PASSKEY !== '0';
+}
+
+/**
  * Whether codes by email can reach anyone from here.
  *
  * Configured mail, or local development — where `sendEmail` prints the code to the Worker
@@ -105,7 +118,7 @@ export function offeredProviders(env: Env): AuthProvider[] {
    * them to their users can leave them out; everything else here is opt-in, and this is
    * the one thing that has to be opt-out.
    */
-  if (env.AUTH_PASSKEY !== '0') providers.push('passkey');
+  if (passkeysEnabled(env)) providers.push('passkey');
   return providers;
 }
 
@@ -402,7 +415,7 @@ function createAuth(env: Env): AuthInstance {
        * are already signed in, so every account still has whatever method got it here.
        * That also keeps the recovery story simple — lose the device, use the password.
        */
-      passkey({ rpName: 'Unbent', ...relyingParty(env) }),
+      ...(passkeysEnabled(env) ? [passkey({ rpName: 'Unbent', ...relyingParty(env) })] : []),
       /**
        * A six-digit code by email: the way in that needs no account anywhere else.
        *
