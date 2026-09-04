@@ -28,7 +28,17 @@ val releaseStorePath = secret("unbent.keystore.path", "UNBENT_KEYSTORE_PATH")
 
 android {
     namespace = "app.unbent.android"
-    compileSdk = 35
+    /**
+     * What the app is compiled against, which is not what it promises to behave like —
+     * `targetSdk` below stays at 35 deliberately. Raising that opts into a release's new
+     * runtime behaviours and wants testing on its own; raising this only lets the compiler
+     * see newer APIs.
+     *
+     * It moved because AndroidX and Material now ship AARs whose metadata demands 36, and
+     * Gradle refuses them outright at `CheckAarMetadataWorkAction` rather than degrading —
+     * so this is the floor for taking any of those updates at all.
+     */
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "app.unbent.android"
