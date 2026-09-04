@@ -6,7 +6,7 @@
  * runs with ALLOW_TEST_CREDENTIALS, so password is always among the offered methods here.
  */
 import { describe, expect, it } from 'vitest';
-import { AUTH_PROVIDERS } from '@unbent/shared';
+import { LOCAL_METHODS, isLocalMethod } from '@unbent/shared';
 
 const BASE = process.env['API_URL'] ?? 'http://localhost:8787';
 
@@ -16,13 +16,25 @@ describe('GET /api/config', () => {
     expect(res.status).toBe(200);
   });
 
-  it('lists known providers once each, with password while the suite can sign up', async () => {
+  it('lists each method once, with password while the suite can sign up', async () => {
     const res = await fetch(`${BASE}/api/config`);
     const { providers } = (await res.json()) as { providers: string[] };
 
-    for (const p of providers) expect(AUTH_PROVIDERS).toContain(p);
+    // Deliberately not checked against a fixed list. Social providers are enabled by
+    // convention — `<PROVIDER>_CLIENT_ID` and its secret — so an instance may legitimately
+    // report one this repository has never named, and asserting otherwise would fail the
+    // moment somebody configured Discord.
     expect(new Set(providers).size).toBe(providers.length);
     expect(providers).toContain('password');
+    expect(providers.every((p) => typeof p === 'string' && p.length > 0)).toBe(true);
+  });
+
+  /** Whatever else is offered, the local methods are the ones this codebase implements. */
+  it('reports local methods by their documented names', async () => {
+    const res = await fetch(`${BASE}/api/config`);
+    const { providers } = (await res.json()) as { providers: string[] };
+    const local = providers.filter(isLocalMethod);
+    for (const p of local) expect(LOCAL_METHODS).toContain(p);
   });
 
   /**

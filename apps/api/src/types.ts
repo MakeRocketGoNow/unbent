@@ -14,6 +14,12 @@ export interface Env {
   APP_URL: string;
   /** `wrangler secret put BETTER_AUTH_SECRET`; in dev it comes from .dev.vars. */
   BETTER_AUTH_SECRET: string;
+  /**
+   * OAuth credentials follow a convention rather than a list: any of Better Auth's
+   * thirty-five providers is enabled by setting `<PROVIDER>_CLIENT_ID` and
+   * `<PROVIDER>_CLIENT_SECRET`. The two below are declared because this file reads them by
+   * name; the rest are found by `configuredSocials` and need no entry here.
+   */
   GOOGLE_CLIENT_ID?: string;
   /** Optional second audience, when the Android app asks for its own client id. */
   GOOGLE_ANDROID_CLIENT_ID?: string;
@@ -28,6 +34,12 @@ export interface Env {
   AUTH_PASSWORD?: string;
   /** '1' enables password auth so the isolation suite can mint sessions. Local only. */
   ALLOW_TEST_CREDENTIALS?: string;
+  /**
+   * '0' withholds passkeys, which are otherwise always offered because nothing has to be
+   * registered anywhere for them to work. For an operator who would rather not explain
+   * them, not because they can fail.
+   */
+  AUTH_PASSKEY?: string;
   /**
    * Comma-separated emails allowed to create an account. Unset or empty means anyone
    * can sign up, which is fine locally but not for a deployed instance.

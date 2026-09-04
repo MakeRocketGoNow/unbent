@@ -235,6 +235,23 @@ describe('Login', () => {
     expect(field.value).toBe('123456');
   });
 
+  /**
+   * The point of the server reporting plain strings: an instance can enable any of Better
+   * Auth's providers by setting its credentials, and the screen has to draw a working
+   * button for one this file has never named.
+   */
+  it('renders a provider it has never heard of', async () => {
+    harness(['discord']);
+    await waitFor(() => expect(screen.getByText('Continue with Discord')).toBeTruthy());
+  });
+
+  it('spells the awkward names properly', async () => {
+    harness(['github', 'gitlab', 'linkedin']);
+    await waitFor(() => expect(screen.getByText('Continue with GitHub')).toBeTruthy());
+    expect(screen.getByText('Continue with GitLab')).toBeTruthy();
+    expect(screen.getByText('Continue with LinkedIn')).toBeTruthy();
+  });
+
   it('does not confirm whether an address has an account when asked for a reset', async () => {
     harness(['password']);
     await waitFor(() => expect(screen.getByLabelText('Email')).toBeTruthy());

@@ -3,23 +3,35 @@
 # openssl rand -base64 32
 BETTER_AUTH_SECRET=replace-me
 
-# OAuth providers are optional in dev: a provider with no credentials is simply not
-# offered, and the sign-in endpoint returns PROVIDER_NOT_FOUND. Configure at least one to
-# exercise the real login flow.
+# OAuth providers, by convention rather than by a list.
+#
+# Any of the thirty-five providers Better Auth ships is enabled by setting both halves of
+# its credential pair — <PROVIDER>_CLIENT_ID and <PROVIDER>_CLIENT_SECRET — and disabled by
+# removing either. Nothing in the repository names them, so adding Discord or Microsoft or
+# Slack needs no code change and no fork; the sign-in screen draws whatever /api/config
+# reports.
+#
+#   apple atlassian cognito discord dropbox facebook figma github gitlab google
+#   huggingface kakao kick line linear linkedin microsoft naver notion paybin paypal
+#   polar railway reddit roblox salesforce slack spotify tiktok twitch twitter vercel
+#   vk wechat zoom
+#
+# Providers wanting more than a pair are configured through the same two names: Apple's
+# "secret" is a JWT you generate from a team id, key id and signing key, and goes in
+# APPLE_CLIENT_SECRET.
 #
 # Callback URLs use the SPA origin (5173), not the Worker port: APP_URL is the SPA and the
 # Vite proxy forwards /api to the Worker. In local dev Better Auth derives redirect_uri from
 # the request Host, so Tailscale MagicDNS / 100.x work too — register each origin you use.
+# The path is always /api/auth/callback/<provider>.
 #
 # Google:  https://console.cloud.google.com/apis/credentials
 #   Authorized redirect URI: http://localhost:5173/api/auth/callback/google
-#   (also add http://<tailscale-host>:5173/api/auth/callback/google if you sign in over Tailscale)
 # GOOGLE_CLIENT_ID=
 # GOOGLE_CLIENT_SECRET=
 #
 # GitHub:  https://github.com/settings/developers
 #   Authorization callback URL: http://localhost:5173/api/auth/callback/github
-#   (also add http://<tailscale-host>:5173/api/auth/callback/github if you sign in over Tailscale)
 # GITHUB_CLIENT_ID=
 # GITHUB_CLIENT_SECRET=
 #
@@ -27,6 +39,11 @@ BETTER_AUTH_SECRET=replace-me
 # whichever client id it asked for. Set this only if a build asks for its own Android
 # audience rather than reusing the web client id above; auth.ts then accepts both.
 # GOOGLE_ANDROID_CLIENT_ID=
+
+# Passkeys are offered unless this is '0'. They need nothing registered anywhere — the other
+# half of WebAuthn is the browser and the user's own device — so this exists for an operator
+# who would rather not offer them, not because they can be misconfigured.
+# AUTH_PASSKEY=0
 
 # Enables password sign-up so the isolation suite can mint sessions without a live OAuth
 # provider. Local development only — never set this in a deployed environment.

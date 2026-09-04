@@ -15,7 +15,13 @@
     <string name="sign_in_passkey">Sign in with a passkey</string>
     <string name="sign_in_passkey_failed">That passkey did not work. Try another way in.</string>
     <string name="sign_in_google">Continue with Google</string>
-    <string name="sign_in_github">Continue with GitHub</string>
+    <!--
+      One button for every OAuth provider that is not Google, because a phone has no
+      account picker for an arbitrary one: they all end at /connect in a browser, which
+      offers whatever the instance configured. Named for what it does rather than for a
+      provider, so an instance enabling Discord or Microsoft needs no change here.
+    -->
+    <string name="sign_in_browser_social">Continue in a browser</string>
     <string name="sign_in_google_failed">Google sign-in did not work. Try another way in.</string>
     <string name="sign_in_failed">Sign-in did not work.</string>
     <string name="sign_in_waiting">Signing in…</string>

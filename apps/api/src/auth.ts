@@ -2,6 +2,7 @@ import { betterAuth } from 'better-auth';
 import { APIError } from 'better-auth/api';
 import { bearer, deviceAuthorization, emailOTP, oneTimeToken } from 'better-auth/plugins';
 import { passkey } from '@better-auth/passkey';
+import { socialProviderList } from 'better-auth/social-providers';
 import type { AuthProvider } from '@unbent/shared';
 import type { Env } from './types.js';
 import { canSendEmail, sendEmail } from './lib/email.js';
@@ -55,10 +56,40 @@ function codesDeliverable(env: Env): boolean {
  * it. Public, because it is needed before anyone is signed in; nothing here is secret,
  * since a provider's presence is discoverable by trying it.
  */
+/**
+ * Credentials are looked up by name, so `Env`'s declared keys are not enough.
+ *
+ * The named fields stay for the ones this code reads directly and wants checked; this is
+ * the same object seen as the string map Workers actually hands over.
+ */
+function envMap(env: Env): Record<string, string | undefined> {
+  return env as unknown as Record<string, string | undefined>;
+}
+
+/**
+ * The OAuth providers this instance has credentials for.
+ *
+ * Every provider Better Auth ships — thirty-five of them — is available by convention
+ * rather than by being named here: set `<PROVIDER>_CLIENT_ID` and `<PROVIDER>_CLIENT_SECRET`
+ * and it appears; delete either and it goes. That convention is not new, it is what Google
+ * and GitHub already used; this only stops the list of which providers may use it from
+ * being hard-coded.
+ *
+ * Which matters for a self-hosted instance. Somebody running this for a company on
+ * Microsoft, or a community on Discord, should not have to fork the repository and edit
+ * this file to sign in — and every provider they might want is already sitting in the
+ * dependency, waiting to be named by an environment variable.
+ */
+export function configuredSocials(env: Env): string[] {
+  const vars = envMap(env);
+  return socialProviderList.filter((id) => {
+    const key = id.toUpperCase();
+    return Boolean(vars[`${key}_CLIENT_ID`] && vars[`${key}_CLIENT_SECRET`]);
+  });
+}
+
 export function offeredProviders(env: Env): AuthProvider[] {
-  const providers: AuthProvider[] = [];
-  if (env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET) providers.push('google');
-  if (env.GITHUB_CLIENT_ID && env.GITHUB_CLIENT_SECRET) providers.push('github');
+  const providers: AuthProvider[] = [...configuredSocials(env)];
   if (passwordEnabled(env)) providers.push('password');
   /**
    * Offered only where a code can actually reach someone. A deployed instance with no mail
@@ -67,12 +98,14 @@ export function offeredProviders(env: Env): AuthProvider[] {
    */
   if (codesDeliverable(env)) providers.push('email-otp');
   /**
-   * Always offered. A passkey needs nothing registered with anyone — no client id, no
-   * secret, no email provider — because WebAuthn's other half is the browser and the
-   * user's own device. It is the one method that cannot be misconfigured, so unlike the
-   * others there is no condition to test here.
+   * On unless an instance says otherwise. A passkey needs nothing registered with anyone —
+   * no client id, no secret, no email provider — because WebAuthn's other half is the
+   * browser and the user's own device, so there is no configuration that could make it
+   * fail. `AUTH_PASSKEY=0` exists only so that an operator who does not want to explain
+   * them to their users can leave them out; everything else here is opt-in, and this is
+   * the one thing that has to be opt-out.
    */
-  providers.push('passkey');
+  if (env.AUTH_PASSKEY !== '0') providers.push('passkey');
   return providers;
 }
 
@@ -136,6 +169,39 @@ interface AuthInstance {
       user?: { id: string; email: string; name: string; image?: string | null };
     } | null>;
   };
+}
+
+/**
+ * The `socialProviders` object, assembled from the environment.
+ *
+ * Every entry is the same shape — an id and a secret — with one exception. Google may be
+ * given a second client id: an array widens *ID token audience* verification only, and the
+ * browser's authorization-code flow still uses the first entry with the secret. The Android
+ * app signs in through Credential Manager, which returns a token issued for whichever
+ * client id it asked for; that is normally the same web id, so the extra entry matters only
+ * if a build asks for its own Android audience. Accepting both means neither choice breaks
+ * sign-in.
+ *
+ * Providers needing more than a pair — Apple wants a team id, a key id and a signing key,
+ * from which its "secret" is a JWT the operator generates — are configured by putting that
+ * generated value in `APPLE_CLIENT_SECRET`. That keeps the shape here uniform at the cost
+ * of some setup elsewhere, which is the right trade for something done once per instance.
+ */
+function socialConfig(env: Env): Record<string, { clientId: string | string[]; clientSecret: string }> {
+  const vars = envMap(env);
+  const config: Record<string, { clientId: string | string[]; clientSecret: string }> = {};
+
+  for (const id of configuredSocials(env)) {
+    const key = id.toUpperCase();
+    const clientId = vars[`${key}_CLIENT_ID`] as string;
+    const clientSecret = vars[`${key}_CLIENT_SECRET`] as string;
+    config[id] =
+      id === 'google' && env.GOOGLE_ANDROID_CLIENT_ID
+        ? { clientId: [clientId, env.GOOGLE_ANDROID_CLIENT_ID], clientSecret }
+        : { clientId, clientSecret };
+  }
+
+  return config;
 }
 
 /**
@@ -221,35 +287,12 @@ function createAuth(env: Env): AuthInstance {
       // a password that was already given a moment ago.
       autoSignInAfterVerification: true,
     },
-    socialProviders: {
-      ...(env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET
-        ? {
-            google: {
-              /**
-               * An array widens *ID token audience* verification only — the browser's
-               * authorization-code flow still uses the first entry with the secret below.
-               *
-               * The Android app signs in with Credential Manager, which returns a token
-               * issued for whichever client id it asked for. That is normally this same web
-               * id, so the extra entry is only needed if a build ever asks for a separate
-               * Android audience; accepting both means neither choice breaks sign-in.
-               */
-              clientId: env.GOOGLE_ANDROID_CLIENT_ID
-                ? [env.GOOGLE_CLIENT_ID, env.GOOGLE_ANDROID_CLIENT_ID]
-                : env.GOOGLE_CLIENT_ID,
-              clientSecret: env.GOOGLE_CLIENT_SECRET,
-            },
-          }
-        : {}),
-      ...(env.GITHUB_CLIENT_ID && env.GITHUB_CLIENT_SECRET
-        ? {
-            github: {
-              clientId: env.GITHUB_CLIENT_ID,
-              clientSecret: env.GITHUB_CLIENT_SECRET,
-            },
-          }
-        : {}),
-    },
+    /**
+     * Built from whatever credentials the environment holds — see `configuredSocials`.
+     * Adding a provider is `wrangler secret put DISCORD_CLIENT_ID` and its secret, and
+     * removing one is deleting either; neither touches this file.
+     */
+    socialProviders: socialConfig(env),
     /**
      * The allowlist gate.
      *

@@ -1,18 +1,35 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { useLocation } from '@tanstack/react-router';
 import { useQuery } from '@tanstack/react-query';
-import type { AuthProvider } from '@unbent/shared';
+import { isLocalMethod, type AuthProvider } from '@unbent/shared';
 import { emailOtp, requestPasswordReset, signIn, signUp } from '../auth-client.js';
 import { configQuery } from '../queries.js';
 import { Button } from './Button.js';
 
-/** The providers that redirect to somebody else's site. The local methods stay here. */
-type Social = Exclude<AuthProvider, 'password' | 'passkey' | 'email-otp'>;
-
-const SOCIAL_LABEL: Record<Social, string> = {
-  google: 'Continue with Google',
-  github: 'Continue with GitHub',
+/**
+ * Names for providers whose own spelling is not what title-casing the id would produce.
+ *
+ * Only the awkward ones need an entry. Anything absent is title-cased from its id, which
+ * is what makes an instance able to enable a provider this file has never heard of —
+ * `DISCORD_CLIENT_ID` on the server is enough to get a working "Continue with Discord"
+ * here, with no change on this side at all.
+ */
+const SOCIAL_NAME: Record<string, string> = {
+  github: 'GitHub',
+  gitlab: 'GitLab',
+  linkedin: 'LinkedIn',
+  tiktok: 'TikTok',
+  vk: 'VK',
+  wechat: 'WeChat',
+  huggingface: 'Hugging Face',
+  paypal: 'PayPal',
+  'exact-online': 'Exact Online',
 };
+
+function socialLabel(id: string): string {
+  const name = SOCIAL_NAME[id] ?? id.charAt(0).toUpperCase() + id.slice(1);
+  return `Continue with ${name}`;
+}
 
 /** Where the app lands when the current URL is not somewhere worth returning to. */
 const HOME = '/notes';
@@ -61,14 +78,14 @@ export function Login() {
   const { href } = useLocation();
 
   const providers = config.data?.providers ?? [];
-  const social = providers.filter(
-    (p): p is Social => p !== 'password' && p !== 'passkey' && p !== 'email-otp',
-  );
+  // Anything the server reports that this codebase does not implement itself is an OAuth
+  // provider, and gets a button whether or not this file has heard of it.
+  const social = providers.filter((p) => !isLocalMethod(p));
   const password = providers.includes('password');
   const passkeys = providers.includes('passkey');
   const otp = providers.includes('email-otp');
 
-  async function startSocial(provider: Social) {
+  async function startSocial(provider: string) {
     setPending(provider);
     setError(null);
     try {
@@ -183,7 +200,7 @@ export function Login() {
               disabled={pending !== null}
               onClick={() => void startSocial(p)}
             >
-              {pending === p ? 'Redirecting…' : SOCIAL_LABEL[p]}
+              {pending === p ? 'Redirecting…' : socialLabel(p)}
             </button>
           ))}
         </div>

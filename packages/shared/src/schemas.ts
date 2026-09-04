@@ -65,26 +65,44 @@ export const tagFilterSchema = z
 export const UNFILED = '[unfiled]';
 
 /**
- * Every way an instance can offer to sign in.
+ * The sign-in methods that are not an OAuth provider.
  *
- * `password` is the one that needs nothing registered with a third party. OAuth needs a
- * callback URL registered with each provider per deployment, which cannot be done on a
- * self-hoster's behalf, so a password is what a self-hosted instance can always rely on.
+ * These are the ones this codebase implements rather than delegates, so they are the only
+ * ones it can name. Social providers are deliberately absent: Better Auth ships
+ * thirty-five, an instance enables any of them by setting `<PROVIDER>_CLIENT_ID` and
+ * `<PROVIDER>_CLIENT_SECRET`, and a fixed list here would mean the server could offer
+ * something the client refused to render. `AppConfig.providers` therefore carries plain
+ * strings, and a client shows what it is told.
+ *
+ * `password` is what a self-hosted instance can always rely on: it needs nothing
+ * registered with a third party, unlike OAuth, whose callback URLs cannot be registered on
+ * a self-hoster's behalf.
  *
  * `passkey` needs nothing registered either — the other half of WebAuthn is the browser
- * and the user's own device — so it is always offered. It is not a way to *create* an
- * account: a passkey is added from settings once you are signed in by one of the others,
- * and only then does it appear on the sign-in screen as a way back in.
+ * and the user's own device. It is not a way to *create* an account: one is added from
+ * settings once you are signed in by something else, and only then appears on the sign-in
+ * screen as a way back in.
  *
  * `email-otp` is the one that can create an account without any third-party account at
  * all, needing only that the instance can send mail. That makes it the floor beneath the
  * rest: without it, an instance offering only OAuth turns anyone lacking those accounts
  * away at the door.
  */
-export const AUTH_PROVIDERS = ['google', 'github', 'password', 'passkey', 'email-otp'] as const;
-export type AuthProvider = (typeof AUTH_PROVIDERS)[number];
+export const LOCAL_METHODS = ['password', 'passkey', 'email-otp'] as const;
+export type LocalMethod = (typeof LOCAL_METHODS)[number];
 
-/** What `GET /api/config` reports: the instance's sign-in methods, in display order. */
+/**
+ * A method name as `/api/config` reports it: one of the above, or any Better Auth social
+ * provider id. The union is written so a known name still autocompletes while an arbitrary
+ * one is accepted.
+ */
+export type AuthProvider = LocalMethod | (string & {});
+
+/** Whether a reported method is one this codebase implements rather than delegates. */
+export function isLocalMethod(p: string): p is LocalMethod {
+  return (LOCAL_METHODS as readonly string[]).includes(p);
+}
+
 export interface AppConfig {
   providers: AuthProvider[];
 }

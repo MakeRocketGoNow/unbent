@@ -28,12 +28,31 @@ const val UNFILED = "[unfiled]"
 /** `GET /api/config`: the sign-in methods an instance offers, in display order. */
 @Serializable
 data class AppConfig(val providers: List<String> = emptyList()) {
-    val google: Boolean get() = "google" in providers
-    val github: Boolean get() = "github" in providers
     val password: Boolean get() = "password" in providers
     val passkey: Boolean get() = "passkey" in providers
     val emailOtp: Boolean get() = "email-otp" in providers
+
+    /** Google is the only provider with a native sheet, so it is the only one named. */
+    val google: Boolean get() = "google" in providers
+
+    /**
+     * Any OAuth provider that is not Google.
+     *
+     * They are deliberately not listed one button each. A phone has no account picker for
+     * an arbitrary provider, so every one of them ends at the same place — /connect in a
+     * browser, which offers whatever the instance configured. N buttons that all open the
+     * same page would be a menu pretending to be a choice.
+     *
+     * Left as a count rather than a list because nothing here needs their names: an
+     * instance can enable a provider this app has never heard of and the browser handles
+     * it, which is the point of the server reporting plain strings.
+     */
+    val browserSocials: Int
+        get() = providers.count { it !in LOCAL_METHODS && it != "google" }
 }
+
+/** The methods the apps implement themselves; everything else reported is OAuth. */
+private val LOCAL_METHODS = setOf("password", "passkey", "email-otp")
 
 /** `GET /api/me`. The user is null rather than the call failing when there is no session. */
 @Serializable

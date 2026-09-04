@@ -61,7 +61,7 @@ fun SignInScreen(
     status: String?,
     busy: Boolean,
     onGoogle: () -> Unit,
-    onGitHub: () -> Unit,
+    onBrowserSocial: () -> Unit,
     onPasskey: () -> Unit,
     /** Sends a code, then signs in with it. Null code means "send one to this address". */
     onEmailOtp: (email: String, code: String?) -> Unit,
@@ -97,7 +97,7 @@ fun SignInScreen(
                     OutlinedButton(onClick = onRetry) { Text(stringResource(R.string.retry)) }
                 }
                 config == null -> CircularProgressIndicator(Modifier.align(Alignment.CenterHorizontally))
-                else -> Methods(config, busy, onGoogle, onGitHub, onPasskey, onEmailOtp, onPassword)
+                else -> Methods(config, busy, onGoogle, onBrowserSocial, onPasskey, onEmailOtp, onPassword)
             }
 
             if (status != null) {
@@ -120,12 +120,12 @@ private fun Methods(
     config: AppConfig,
     busy: Boolean,
     onGoogle: () -> Unit,
-    onGitHub: () -> Unit,
+    onBrowserSocial: () -> Unit,
     onPasskey: () -> Unit,
     onEmailOtp: (String, String?) -> Unit,
     onPassword: (String, String, String?) -> Unit,
 ) {
-    val social = config.google || config.github || config.passkey || config.emailOtp
+    val social = config.google || config.browserSocials > 0 || config.passkey || config.emailOtp
     // 48dp is Material's minimum touch target, not a spacing step — it stays a literal
     // rather than coming from Space, which measures gaps between things.
     val button = Modifier.fillMaxWidth().heightIn(min = 48.dp)
@@ -150,15 +150,15 @@ private fun Methods(
             Text(stringResource(R.string.sign_in_google))
         }
     }
-    if (config.github) {
+    if (config.browserSocials > 0) {
         if (config.passkey || config.google) Spacer(Modifier.height(Space.Medium))
-        OutlinedButton(onClick = onGitHub, enabled = !busy, modifier = button) {
-            Text(stringResource(R.string.sign_in_github))
+        OutlinedButton(onClick = onBrowserSocial, enabled = !busy, modifier = button) {
+            Text(stringResource(R.string.sign_in_browser_social))
         }
     }
 
     if (config.emailOtp) {
-        if (config.passkey || config.google || config.github) {
+        if (config.passkey || config.google || config.browserSocials > 0) {
             Spacer(Modifier.height(Space.Large))
             OrDivider()
             Spacer(Modifier.height(Space.Large))

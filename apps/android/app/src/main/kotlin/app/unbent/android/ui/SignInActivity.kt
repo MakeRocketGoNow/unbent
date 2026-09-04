@@ -86,7 +86,7 @@ class SignInActivity : ComponentActivity() {
                     status = status,
                     busy = busy,
                     onGoogle = ::signInWithGoogle,
-                    onGitHub = ::openConnectPage,
+                    onBrowserSocial = ::openConnectPage,
                     onPasskey = ::signInWithPasskey,
                     onEmailOtp = ::signInWithEmailOtp,
                     onPassword = ::signInWithPassword,

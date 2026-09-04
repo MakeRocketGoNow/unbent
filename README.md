@@ -132,9 +132,44 @@ link is written to the Worker log instead of being sent, which is right for loca
 development and useless in production — anyone who forgets a password would have no way
 back to their notes.
 
-`ALLOWED_EMAILS` is what keeps a public URL from becoming a free notes host: sign-in is
-OAuth only, so without it anyone with a Google or GitHub account can create an account.
-It is a secret rather than a var only to keep the address list out of the repo.
+`ALLOWED_EMAILS` is what keeps a public URL from becoming a free notes host: without it,
+anyone who can satisfy any enabled sign-in method can create an account. It is a secret
+rather than a var only to keep the address list out of the repo.
+
+### Choosing sign-in methods
+
+Nothing here is compiled in. An instance decides what it offers through its environment,
+and `GET /api/config` reports the result — the web app and the Android app both draw their
+sign-in screens from that, so a method that is not configured is never shown.
+
+| Method | Turned on by | Turned off by |
+| --- | --- | --- |
+| Any OAuth provider | `<PROVIDER>_CLIENT_ID` **and** `<PROVIDER>_CLIENT_SECRET` | removing either |
+| Email + password | `AUTH_PASSWORD=1` | leaving it unset |
+| Code by email | `RESEND_API_KEY` **and** `EMAIL_FROM` | removing either |
+| Passkeys | on by default | `AUTH_PASSKEY=0` |
+
+The OAuth row means any of the thirty-five providers Better Auth ships — Apple, Discord,
+Microsoft, Slack, GitLab and the rest — not a list this repository maintains. Enabling one
+is two secrets and no code:
+
+```bash
+pnpm exec wrangler secret put DISCORD_CLIENT_ID --env production
+pnpm exec wrangler secret put DISCORD_CLIENT_SECRET --env production
+```
+
+Retiring one is `wrangler secret delete` on either half. Both take effect on the next
+request, without a deploy.
+
+The sign-in screens need no change for a provider they have never heard of: the button is
+labelled from the provider's own id, with a small table of exceptions for names that
+title-casing gets wrong (GitHub, GitLab, LinkedIn). Android shows one "Continue in a
+browser" button for every non-Google provider rather than one each, because a phone has no
+native account picker for an arbitrary provider and they all end at the same page.
+
+Two things to know before removing a provider people already use. An account whose only
+credential is that provider loses its way in, so check before deleting. And deploy the
+replacement first — a secret deletion takes effect immediately, while new code does not.
 
 OAuth callbacks have to be registered against the real origin before anyone can sign in,
 including you:
