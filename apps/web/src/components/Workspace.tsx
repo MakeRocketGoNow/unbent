@@ -286,7 +286,7 @@ export function Workspace({ noteId, readOnly = false, backTo = '/notes' }: Works
           <Link
             to={backTo}
             search={(p) => p}
-            className="workspace-back"
+            className="view-back"
             aria-label="Back to notes"
           >
             ←

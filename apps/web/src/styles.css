@@ -227,7 +227,6 @@ h1 {
  * off here or every note in the sidebar renders underlined.
  */
 .note-item,
-.trash-back,
 .link,
 .plain {
   text-decoration: none;
@@ -798,7 +797,24 @@ a.overflow-item { text-decoration: none; }
 
 /* Hidden until the mobile breakpoint, where the sidebar is off screen and this is the
    only way back to the list. Sized to the 44px touch target, like the toolbar buttons. */
-.workspace-back {
+/*
+   Leaving a full-screen view: one control, one place, one gesture.
+
+   A note, Settings and Trash each fill the screen on a phone and each needs a way back to
+   the list. They had three: a bare arrow top-left in a note, a text link top-right in
+   Settings, and a bordered button inside the sidebar in Trash — three answers to one
+   question, only one of them in the corner a phone reserves for it and only one of them a
+   44px target.
+
+   This is that one. It pairs with the heading beside it — the note's title, "Settings",
+   "Trash" — which is what lets the arrow stay a bare glyph and say where it goes.
+
+   Hidden above the breakpoint: on a desktop the wordmark and the avatar menu are both in
+   the chrome and both lead home, so a third way out is clutter. `display` is what the
+   breakpoint switches, so the control is always in the tree — making it conditional would
+   rebuild the note's uncontrolled CodeMirror view on resize.
+*/
+.view-back {
   display: none;
   align-items: center;
   justify-content: center;
@@ -811,7 +827,7 @@ a.overflow-item { text-decoration: none; }
   text-decoration: none;
 }
 
-.workspace-back:hover { color: var(--fg); }
+.view-back:hover { color: var(--fg); }
 
 .title-input {
   flex: 1;
@@ -2103,27 +2119,19 @@ a.sidebar-status:hover {
   flex-wrap: wrap;
 }
 
-/* The trash view's way back, sized like the filter controls it sits above. */
-.trash-back {
-  display: flex;
-  align-items: center;
-  gap: 0.4rem;
-  width: 100%;
-  padding: 0.4rem 0.6rem;
-  margin-bottom: 0.5rem;
-  font: inherit;
-  font-size: 0.85rem;
-  text-align: left;
-  color: inherit;
-  background: none;
-  border: 1px solid var(--border);
-  border-radius: 0.4rem;
-  cursor: pointer;
-}
+/*
+   The trash view's heading row, on a phone only.
 
-.trash-back:hover {
-  border-color: color-mix(in srgb, var(--accent) 50%, var(--border));
-}
+   Hidden above the breakpoint, heading and all: there the topbar marks Trash active, so
+   the view already says what it is and already offers the way out. This exists because
+   below the breakpoint that chrome is gone — the arrow needs a heading beside it to say
+   where it goes, the same pairing the note's title and "Settings" provide.
+
+   Matches `.settings-head`: same centring, same small gap, for the same reasons.
+*/
+.trash-head { display: none; }
+
+.trash-head h2 { margin: 0; font-size: 1.15rem; }
 
 /*
    The row of actions under a trashed note.
@@ -2334,11 +2342,23 @@ a.sidebar-status:hover {
   overflow-y: auto;
 }
 
+/*
+   The heading row, and on a phone the arrow that leaves.
+
+   `space-between` and a baseline here were for the "Back to notes" link that used to sit
+   opposite the heading; with that gone the row is the arrow and the heading reading as
+   one unit from the left. Centred rather than baseline-aligned because the arrow is a
+   44px box, not a line of text — a box lines up with a heading by its middle, the same
+   reasoning `.topbar` records.
+
+   The gap is small: the arrow is pulled out to the screen edge below the breakpoint, so
+   anything larger leaves the heading floating away from it. Above the breakpoint the
+   arrow is `display: none` and contributes no gap at all.
+*/
 .settings-head {
   display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 1rem;
+  align-items: center;
+  gap: 0.25rem;
   margin-bottom: 0.9rem;
 }
 
@@ -2472,12 +2492,13 @@ a.sidebar-status:hover {
   .notes.note-open > .sidebar { display: none; }
   .notes:not(.note-open) > .workspace { display: none; }
 
-  .workspace-back { display: inline-flex; }
+  .view-back { display: inline-flex; }
 
   /*
      Pulled out through the shell's side padding, so the 44px target reaches the screen
      edge instead of leaving an unclickable strip beside it. The arrow is the top-left
-     control in a note now, and a corner control people miss is the classic phone bug.
+     control in these views now, and a corner control people miss is the classic phone
+     bug.
 
      It sits here, next to the `.shell` rule above whose padding it cancels, because the
      two are one number: change that padding and this must change with it. A full-bleed
@@ -2486,7 +2507,25 @@ a.sidebar-status:hover {
      row and the editor body all share, so the flush target and the optical alignment
      turn out to be the same value.
   */
-  .workspace-back { margin-left: -0.75rem; }
+  .view-back { margin-left: -0.75rem; }
+
+  /*
+     Only on a phone — see `.trash-head`.
+
+     Pulled out through `.sidebar`'s own inset, because this row sits inside it and the
+     arrow's pull only cancels the shell's padding. Without this the two stack and the
+     arrow lands 11px in, which is neither flush to the edge nor on the text line — the
+     one position that reads as a mistake rather than a choice. Negative margin on both
+     sides so the row still spans the full width once it is pulled left.
+  */
+  .trash-head {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+    margin-inline: -0.7rem;
+    margin-bottom: 0.5rem;
+  }
+
 
   /*
      In a note, the back arrow is the top-left control — as it is in every native app.

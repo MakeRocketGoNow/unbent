@@ -47,10 +47,23 @@ export function SettingsLayout({ children }: { children: ReactNode }) {
     <SettingsBusy.Provider value={busy}>
       <div className="settings">
         <div className="settings-head">
-          <h2>Settings</h2>
-          <Link to="/notes" className="link">
-            ← Back to notes
+          {/*
+              The way back, on a phone only.
+
+              This was a "← Back to notes" text link on the right of this row at every
+              width. On a desktop it was a third route to a list the wordmark and the
+              avatar menu both already reach from the chrome beside it. On a phone it was
+              a 25px target in the top-right corner — the corner a phone reserves for
+              forward actions — while every other full-screen view here puts a 44px arrow
+              top-left.
+
+              So it is the same `.view-back` the note and trash views use, in the same
+              place, and the heading beside it says where it goes.
+          */}
+          <Link to="/notes" className="view-back" aria-label="Back to notes">
+            ←
           </Link>
+          <h2>Settings</h2>
         </div>
 
         <nav className="settings-nav" aria-label="Settings sections">
