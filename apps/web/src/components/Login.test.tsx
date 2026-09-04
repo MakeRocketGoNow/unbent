@@ -281,6 +281,39 @@ describe('Login', () => {
     expect(document.querySelectorAll('.login-or').length).toBe(0);
   });
 
+  /**
+   * A mark where there is one, and no placeholder where there is not. An instance can
+   * enable any of thirty-five providers and most have no icon here, so the button has to
+   * read correctly without one.
+   */
+  it('draws a mark for a provider it has art for', async () => {
+    harness(['github']);
+    await waitFor(() => expect(screen.getByText('Continue with GitHub')).toBeTruthy());
+    expect(document.querySelectorAll('.provider-icon').length).toBe(1);
+  });
+
+  it('draws no mark, and no placeholder, for one it does not', async () => {
+    harness(['railway']);
+    await waitFor(() => expect(screen.getByText('Continue with Railway')).toBeTruthy());
+    expect(document.querySelectorAll('.provider-icon').length).toBe(0);
+  });
+
+  /** Google's mark keeps its four colours; its guidelines do not allow a flattened one. */
+  it('keeps Google in its own colours', async () => {
+    harness(['google']);
+    await waitFor(() => expect(screen.getByText('Continue with Google')).toBeTruthy());
+    const paths = document.querySelectorAll('.provider-icon path');
+    expect(paths.length).toBe(4);
+    expect([...paths].every((p) => p.getAttribute('fill')?.startsWith('#'))).toBe(true);
+  });
+
+  /** The label already names the provider; the mark must not be announced a second time. */
+  it('hides the mark from screen readers', async () => {
+    harness(['github']);
+    await waitFor(() => expect(screen.getByText('Continue with GitHub')).toBeTruthy());
+    expect(document.querySelector('.provider-icon')?.getAttribute('aria-hidden')).toBe('true');
+  });
+
   it('does not confirm whether an address has an account when asked for a reset', async () => {
     harness(['password']);
     await waitFor(() => expect(screen.getByLabelText('Email')).toBeTruthy());

@@ -5,6 +5,7 @@ import { isLocalMethod, type AuthProvider } from '@unbent/shared';
 import { emailOtp, requestPasswordReset, signIn, signUp } from '../auth-client.js';
 import { configQuery } from '../queries.js';
 import { Button } from './Button.js';
+import { ProviderIcon } from './provider-icons.js';
 
 /**
  * Names for providers whose own spelling is not what title-casing the id would produce.
@@ -183,6 +184,7 @@ export function Login() {
               disabled={pending !== null}
               onClick={() => void startSocial(p)}
             >
+              <ProviderIcon provider={p} />
               {pending === p ? 'Redirecting…' : socialLabel(p)}
             </button>
           ))}
