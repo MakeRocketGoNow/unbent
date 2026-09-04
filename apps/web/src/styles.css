@@ -804,7 +804,8 @@ a.overflow-item { text-decoration: none; }
   justify-content: center;
   min-width: 2.75rem;
   height: 2.75rem;
-  margin-left: -0.6rem;
+  /* Only ever visible below the breakpoint, which is where the pull is set. */
+  margin-left: 0;
   font-size: 1.25rem;
   color: var(--muted);
   text-decoration: none;
@@ -2472,6 +2473,39 @@ a.sidebar-status:hover {
   .notes:not(.note-open) > .workspace { display: none; }
 
   .workspace-back { display: inline-flex; }
+
+  /*
+     Pulled out through the shell's side padding, so the 44px target reaches the screen
+     edge instead of leaving an unclickable strip beside it. The arrow is the top-left
+     control in a note now, and a corner control people miss is the classic phone bug.
+
+     It sits here, next to the `.shell` rule above whose padding it cancels, because the
+     two are one number: change that padding and this must change with it. A full-bleed
+     box would normally push a centred glyph off the text line, but `←` does not fill its
+     em box — its ink lands at 13.2px against the 12px line the notebook name, the tag
+     row and the editor body all share, so the flush target and the optical alignment
+     turn out to be the same value.
+  */
+  .workspace-back { margin-left: -0.75rem; }
+
+  /*
+     In a note, the back arrow is the top-left control — as it is in every native app.
+
+     The topbar is account chrome: a wordmark that navigates to the list you are already
+     one tap from, and an avatar hiding Settings and Sign out. In a note on a phone it
+     costs 69px of an 812px viewport — 11% of what is left after browser chrome — and it
+     puts the wordmark in the top-left slot that a decade of muscle memory reserves for
+     the way back, demoting the most-used control in the view to a second row.
+
+     Scoped to `.note-open` deliberately. On the list the topbar stays: it is the only
+     route to Settings and Sign out — everything collapsed behind the avatar precisely
+     because it is the sole account surface — and the list is this app's home screen,
+     which is exactly where a native app does show its title and account.
+
+     Above the breakpoint it stays too. There the topbar competes with nothing and the
+     vertical room is not scarce.
+  */
+  .shell.wide:has(.notes.note-open) > .topbar { display: none; }
 
   /*
      The title gets the room; what is left of the controls tucks in beside it.
