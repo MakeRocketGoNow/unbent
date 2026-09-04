@@ -12,12 +12,15 @@
 
 version: 2
 updates:
-  # pnpm workspace. Dependabot reads each package's manifest, so the workspace members are
-  # listed as well as the root — a lockfile-only update at the root would otherwise leave
-  # the ranges in apps/* and packages/* untouched.
+  # pnpm workspace. The members are listed and the root is deliberately not: with one
+  # shared lockfile, '/' reaches the same dependency graph as apps/* and packages/*, and
+  # GitHub's own guidance is that directories in one ecosystem must not overlap. Listing
+  # both produced two pull requests per upgrade — vite, jsdom and @vitejs/plugin-react each
+  # arrived twice, once against the workspace manifest's range and once against whatever
+  # the root lockfile had resolved. Nothing is lost by dropping it: the root manifest
+  # declares only typescript, which all five members declare too.
   - package-ecosystem: npm
     directories:
-      - '/'
       - '/apps/*'
       - '/packages/*'
     schedule:
