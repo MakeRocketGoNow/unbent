@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from 'react';
+import { Fragment, useEffect, useState, type FormEvent } from 'react';
 import { useLocation } from '@tanstack/react-router';
 import { useQuery } from '@tanstack/react-query';
 import { isLocalMethod, type AuthProvider } from '@unbent/shared';
@@ -156,42 +156,25 @@ export function Login() {
     void signIn.passkey({ autoFill: true }).catch(() => {});
   }, [passkeys]);
 
-  return (
-    <div className="login">
-      <h1>Unbent</h1>
-      <p className="tagline">Notes in Markdown that you can always take with you.</p>
-
-      {config.isError && (
-        <p className="bad">Couldn't load the sign-in options. {(config.error as Error).message}</p>
-      )}
-
-      {passkeys && (
+  /**
+   * The methods on offer, in the order they are shown, with the dividers left to the
+   * renderer below.
+   *
+   * A list rather than four conditional blocks because the blocks had to each work out
+   * whether anything preceded them in order to decide about a divider, which meant the
+   * order lived in four `||` chains that all had to agree — and reordering meant editing
+   * every one of them. Here the order is the order of this array.
+   *
+   * Social first: it is one tap for most people and needs nothing typed. Passkeys are
+   * faster still but only for someone who already has one, which is nobody on a first
+   * visit. The email code needs a round trip through another app, and a password is the
+   * one thing to be remembered, so they come last in that order.
+   */
+  const sections = [
+    social.length > 0 && {
+      key: 'social',
+      node: (
         <div className="login-actions">
-          <button
-            type="button"
-            className="provider"
-            disabled={pending !== null}
-            onClick={() => void startPasskey()}
-          >
-            {pending === 'passkey' ? 'Waiting for your device…' : 'Sign in with a passkey'}
-          </button>
-        </div>
-      )}
-
-      {otp && (
-        <>
-          {passkeys && <div className="login-or">or</div>}
-          <EmailOtpForm
-            busy={pending !== null}
-            onBusy={(b) => setPending(b ? 'email-otp' : null)}
-            onError={setError}
-          />
-        </>
-      )}
-
-      {social.length > 0 && (
-        <div className="login-actions">
-          {(passkeys || otp) && <div className="login-or">or</div>}
           {social.map((p) => (
             <button
               key={p}
@@ -204,18 +187,60 @@ export function Login() {
             </button>
           ))}
         </div>
+      ),
+    },
+    passkeys && {
+      key: 'passkey',
+      node: (
+        <div className="login-actions">
+          <button
+            type="button"
+            className="provider"
+            disabled={pending !== null}
+            onClick={() => void startPasskey()}
+          >
+            {pending === 'passkey' ? 'Waiting for your device…' : 'Sign in with a passkey'}
+          </button>
+        </div>
+      ),
+    },
+    otp && {
+      key: 'email-otp',
+      node: (
+        <EmailOtpForm
+          busy={pending !== null}
+          onBusy={(b) => setPending(b ? 'email-otp' : null)}
+          onError={setError}
+        />
+      ),
+    },
+    password && {
+      key: 'password',
+      node: (
+        <PasswordForm
+          busy={pending !== null}
+          onBusy={(b) => setPending(b ? 'password' : null)}
+          onError={setError}
+        />
+      ),
+    },
+  ].filter((s): s is { key: string; node: JSX.Element } => Boolean(s));
+
+  return (
+    <div className="login">
+      <h1>Unbent</h1>
+      <p className="tagline">Notes in Markdown that you can always take with you.</p>
+
+      {config.isError && (
+        <p className="bad">Couldn't load the sign-in options. {(config.error as Error).message}</p>
       )}
 
-      {password && (
-        <>
-          {(social.length > 0 || passkeys || otp) && <div className="login-or">or</div>}
-          <PasswordForm
-            busy={pending !== null}
-            onBusy={(b) => setPending(b ? 'password' : null)}
-            onError={setError}
-          />
-        </>
-      )}
+      {sections.map((section, i) => (
+        <Fragment key={section.key}>
+          {i > 0 && <div className="login-or">or</div>}
+          {section.node}
+        </Fragment>
+      ))}
 
       {config.isSuccess && providers.length === 0 && (
         <p className="muted">This Unbent has no sign-in method configured.</p>

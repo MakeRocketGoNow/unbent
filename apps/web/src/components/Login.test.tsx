@@ -252,6 +252,35 @@ describe('Login', () => {
     expect(screen.getByText('Continue with LinkedIn')).toBeTruthy();
   });
 
+  /**
+   * Order is a deliberate choice, not an accident of which block was written first: a
+   * social button is one tap and needs nothing typed, while a passkey only helps someone
+   * who already has one — nobody, on a first visit.
+   */
+  it('puts social providers above everything else', async () => {
+    harness(['google', 'passkey', 'email-otp']);
+    await waitFor(() => expect(screen.getByText('Continue with Google')).toBeTruthy());
+
+    const order = [...document.querySelectorAll('button, label')]
+      .map((el) => el.textContent ?? '')
+      .filter((t) => /Google|passkey|Email/.test(t));
+
+    expect(order[0]).toContain('Google');
+  });
+
+  /** One divider between each pair of methods, and none above the first or below the last. */
+  it('divides the methods it shows, and only between them', async () => {
+    harness(['google', 'passkey', 'email-otp']);
+    await waitFor(() => expect(screen.getByText('Continue with Google')).toBeTruthy());
+    expect(document.querySelectorAll('.login-or').length).toBe(2);
+  });
+
+  it('shows no divider when only one method is offered', async () => {
+    harness(['google']);
+    await waitFor(() => expect(screen.getByText('Continue with Google')).toBeTruthy());
+    expect(document.querySelectorAll('.login-or').length).toBe(0);
+  });
+
   it('does not confirm whether an address has an account when asked for a reset', async () => {
     harness(['password']);
     await waitFor(() => expect(screen.getByLabelText('Email')).toBeTruthy());
