@@ -176,6 +176,50 @@ function createAuth(env: Env): AuthInstance {
         });
       },
       revokeSessionsOnPasswordReset: true,
+      /**
+       * Make people prove they own the address before the account works.
+       *
+       * Gated on mail being real — `canSendEmail`, not `codesDeliverable` — because this
+       * one has a lockout failure mode the others do not: switched on without a way to
+       * send the link, every new account is created and then permanently unable to sign
+       * in. That also keeps it off locally, where the isolation suite signs up throwaway
+       * actors and uses the session immediately.
+       *
+       * What it is actually for: stopping someone signing up with an address they do not
+       * own. On unbent.app `ALLOWED_EMAILS` already does that and passwords are off
+       * entirely, so this is for self-hosted instances, which are the ones running open
+       * registration.
+       *
+       * It is worth being precise about what this does not do. It was suggested as a fix
+       * for the pre-account-hijacking advisories, and GHSA-g38m-r43w-p2q7 says outright
+       * that `requireEmailVerification: true` alone does not mitigate it — the OAuth
+       * auto-link gate was the bug, and the fix was the version bump. This narrows who
+       * can create an account; it is not a patch.
+       *
+       * One consequence to know about before turning mail on: password accounts created
+       * before this point have `emailVerified` 0, so configuring Resend on an existing
+       * self-hosted instance starts asking those people to confirm an address they have
+       * been using for months. They are not locked out — a sign-in attempt sends the link
+       * — but it arrives unannounced. OAuth accounts are unaffected, since the provider
+       * vouches for the address at creation.
+       */
+      requireEmailVerification: canSendEmail(env),
+    },
+    emailVerification: {
+      /**
+       * Sent on sign-up, and again on any sign-in attempt by an unverified account, so
+       * someone who lost the first one is not stuck with no way to ask for another.
+       */
+      sendVerificationEmail: async ({ user, url }: { user: { email: string }; url: string }) => {
+        await sendEmail(env, {
+          to: user.email,
+          subject: 'Confirm your email for Unbent',
+          text: `Confirm this address to finish setting up your Unbent account.\n\n${url}\n\nIf you did not sign up, you can ignore this email — the account cannot be used until someone follows this link.`,
+        });
+      },
+      // Straight into the app from the link, rather than back to a sign-in screen to type
+      // a password that was already given a moment ago.
+      autoSignInAfterVerification: true,
     },
     socialProviders: {
       ...(env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET
