@@ -12,18 +12,21 @@
   /*
      The note itself, in rich mode — the one place a reader spends an hour at a stretch.
 
-     A serif because this is a writing tool and not a code editor: monospace tells a reader
-     that character positions matter, which is true of the source view and false of a
-     rendered note. It also has no real italic, only a slanted upright, and the headings it
-     draws at 1.6em read as terminal banners.
+     Not monospace, which tells a reader that character positions matter: true of the source
+     view and false of a rendered note. Mono also has no real italic, only a slanted upright,
+     and the headings it draws at 1.6em read as terminal banners.
 
-     System faces, in descending order of how well they hold a long paragraph. Iowan Old
-     Style ships on macOS and iOS and is the reason this list starts where it does; Charter
-     covers the same ground where Iowan is absent; Georgia is the floor and is everywhere.
-     Nothing here is downloaded, so the first paint is the final one — no reflow a writer
-     would watch happen mid-sentence.
+     A serif was tried first and read as too bookish for a notes app. So: a sans, but a
+     text sans rather than a UI one. The distinction is real — Avenir Next and Seravek are
+     cut for running paragraphs, with the looser fit and taller lowercase that wants,
+     where the interface stack is tuned for labels and buttons at small sizes. It also
+     keeps rich mode visibly distinct from the chrome around it, which is what makes the
+     mode toggle legible at a glance.
+
+     `system-ui` is the floor and is everywhere. Nothing here is downloaded, so the first
+     paint is the final one — no reflow a writer would watch happen mid-sentence.
   */
-  --font-prose: "Iowan Old Style", "Palatino Linotype", Palatino, Charter, Georgia, serif;
+  --font-prose: "Avenir Next", Avenir, Seravek, "Segoe UI", system-ui, sans-serif;
 
   --bg: #fbfaf8;
   --fg: #1c1a17;
