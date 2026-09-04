@@ -1,0 +1,59 @@
+# Dependency updates.
+#
+# The reason this exists is the auth stack: Better Auth shipped three account-takeover
+# advisories in short order, all fixed in patch releases, and the gap between a fix landing
+# and someone noticing is the whole exposure. Nothing here reads advisories directly —
+# Dependabot's *security* updates are a repository setting rather than a file — but keeping
+# ordinary versions current is what makes a security bump a one-line diff instead of a
+# migration.
+#
+# Note this repository has no remote yet, so none of this runs until it is pushed to
+# GitHub. The same is true of the workflows beside it.
+
+version: 2
+updates:
+  # pnpm workspace. Dependabot reads each package's manifest, so the workspace members are
+  # listed as well as the root — a lockfile-only update at the root would otherwise leave
+  # the ranges in apps/* and packages/* untouched.
+  - package-ecosystem: npm
+    directories:
+      - '/'
+      - '/apps/*'
+      - '/packages/*'
+    schedule:
+      interval: weekly
+    # Grouped, because ungrouped this is a dozen pull requests a week on a project with one
+    # maintainer, and a queue nobody reads is the same as no updates at all. Auth is its own
+    # group so a Better Auth bump arrives alone and legible rather than buried in a batch.
+    groups:
+      auth:
+        patterns:
+          - 'better-auth'
+          - '@better-auth/*'
+      minor-and-patch:
+        update-types:
+          - minor
+          - patch
+    # Majors still come as their own pull request: they are the ones that need reading.
+    open-pull-requests-limit: 5
+
+  # Android. Gradle and AndroidX move on their own schedule and the app is built in CI.
+  - package-ecosystem: gradle
+    directory: '/apps/android'
+    schedule:
+      interval: monthly
+    groups:
+      androidx:
+        patterns:
+          - 'androidx.*'
+    open-pull-requests-limit: 3
+
+  # The actions in .github/workflows, which are pinned by tag and otherwise never revisited.
+  - package-ecosystem: github-actions
+    directory: '/'
+    schedule:
+      interval: monthly
+    groups:
+      actions:
+        patterns:
+          - '*'
