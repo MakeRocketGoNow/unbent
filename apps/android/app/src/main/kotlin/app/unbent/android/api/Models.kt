@@ -31,6 +31,8 @@ data class AppConfig(val providers: List<String> = emptyList()) {
     val google: Boolean get() = "google" in providers
     val github: Boolean get() = "github" in providers
     val password: Boolean get() = "password" in providers
+    val passkey: Boolean get() = "passkey" in providers
+    val emailOtp: Boolean get() = "email-otp" in providers
 }
 
 /** `GET /api/me`. The user is null rather than the call failing when there is no session. */

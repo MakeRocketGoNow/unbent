@@ -62,6 +62,9 @@ fun SignInScreen(
     busy: Boolean,
     onGoogle: () -> Unit,
     onGitHub: () -> Unit,
+    onPasskey: () -> Unit,
+    /** Sends a code, then signs in with it. Null code means "send one to this address". */
+    onEmailOtp: (email: String, code: String?) -> Unit,
     /** Name is null to sign in and present (possibly blank) to create an account. */
     onPassword: (email: String, password: String, name: String?) -> Unit,
     onInstanceChange: (String) -> Unit,
@@ -94,7 +97,7 @@ fun SignInScreen(
                     OutlinedButton(onClick = onRetry) { Text(stringResource(R.string.retry)) }
                 }
                 config == null -> CircularProgressIndicator(Modifier.align(Alignment.CenterHorizontally))
-                else -> Methods(config, busy, onGoogle, onGitHub, onPassword)
+                else -> Methods(config, busy, onGoogle, onGitHub, onPasskey, onEmailOtp, onPassword)
             }
 
             if (status != null) {
@@ -118,9 +121,11 @@ private fun Methods(
     busy: Boolean,
     onGoogle: () -> Unit,
     onGitHub: () -> Unit,
+    onPasskey: () -> Unit,
+    onEmailOtp: (String, String?) -> Unit,
     onPassword: (String, String, String?) -> Unit,
 ) {
-    val social = config.google || config.github
+    val social = config.google || config.github || config.passkey || config.emailOtp
     // 48dp is Material's minimum touch target, not a spacing step — it stays a literal
     // rather than coming from Space, which measures gaps between things.
     val button = Modifier.fillMaxWidth().heightIn(min = 48.dp)
@@ -130,16 +135,35 @@ private fun Methods(
      * prefers it, and it does not. The password form's own submit is the filled button,
      * because there it is the one thing the form is for.
      */
+    /*
+     * Passkeys lead, because for anyone who has one this is the whole screen: the sheet
+     * opens, a fingerprint confirms, and nothing else on this screen was needed.
+     */
+    if (config.passkey) {
+        OutlinedButton(onClick = onPasskey, enabled = !busy, modifier = button) {
+            Text(stringResource(R.string.sign_in_passkey))
+        }
+    }
     if (config.google) {
+        if (config.passkey) Spacer(Modifier.height(Space.Medium))
         OutlinedButton(onClick = onGoogle, enabled = !busy, modifier = button) {
             Text(stringResource(R.string.sign_in_google))
         }
     }
     if (config.github) {
-        if (config.google) Spacer(Modifier.height(Space.Medium))
+        if (config.passkey || config.google) Spacer(Modifier.height(Space.Medium))
         OutlinedButton(onClick = onGitHub, enabled = !busy, modifier = button) {
             Text(stringResource(R.string.sign_in_github))
         }
+    }
+
+    if (config.emailOtp) {
+        if (config.passkey || config.google || config.github) {
+            Spacer(Modifier.height(Space.Large))
+            OrDivider()
+            Spacer(Modifier.height(Space.Large))
+        }
+        EmailOtpForm(busy, onEmailOtp)
     }
 
     if (config.password) {
@@ -246,6 +270,99 @@ private fun PasswordForm(busy: Boolean, onSubmit: (String, String, String?) -> U
             modifier = Modifier.align(Alignment.CenterHorizontally),
         ) {
             Text(stringResource(if (creating) R.string.sign_in_switch_in else R.string.sign_in_switch_up))
+        }
+    }
+}
+
+/**
+ * A six-digit code by email, in two steps.
+ *
+ * The code is typed back into the screen that asked for it, which is the whole reason this
+ * is a code and not a link: a link tapped in a mail app opens in that app's browser, not
+ * this one, and the session lands somewhere the app cannot see.
+ *
+ * `sent` survives rotation along with the address, so turning the phone while reading the
+ * code out of a mail app does not throw away the step already taken.
+ */
+@Composable
+private fun EmailOtpForm(busy: Boolean, onSubmit: (String, String?) -> Unit) {
+    var email by rememberSaveable { mutableStateOf("") }
+    var code by rememberSaveable { mutableStateOf("") }
+    var sent by rememberSaveable { mutableStateOf(false) }
+
+    Column {
+        if (!sent) {
+            OutlinedTextField(
+                value = email,
+                onValueChange = { email = it },
+                label = { Text(stringResource(R.string.sign_in_email)) },
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(
+                    keyboardType = KeyboardType.Email,
+                    autoCorrectEnabled = false,
+                    imeAction = ImeAction.Done,
+                ),
+                keyboardActions = KeyboardActions(
+                    onDone = {
+                        if (!busy && email.isNotBlank()) {
+                            onSubmit(email.trim(), null)
+                            sent = true
+                        }
+                    },
+                ),
+                modifier = Modifier.fillMaxWidth(),
+            )
+            Spacer(Modifier.height(Space.Large))
+            Button(
+                onClick = {
+                    onSubmit(email.trim(), null)
+                    sent = true
+                },
+                enabled = !busy && email.isNotBlank(),
+                modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
+            ) {
+                Text(stringResource(R.string.sign_in_otp_send))
+            }
+        } else {
+            Text(
+                stringResource(R.string.sign_in_otp_sent, email),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Spacer(Modifier.height(Space.Medium))
+            OutlinedTextField(
+                value = code,
+                // Digits only, so a code pasted with a stray space still submits.
+                onValueChange = { code = it.filter(Char::isDigit).take(6) },
+                label = { Text(stringResource(R.string.sign_in_otp_code)) },
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(
+                    keyboardType = KeyboardType.NumberPassword,
+                    imeAction = ImeAction.Done,
+                ),
+                keyboardActions = KeyboardActions(
+                    onDone = { if (!busy && code.length == 6) onSubmit(email.trim(), code) },
+                ),
+                modifier = Modifier.fillMaxWidth(),
+            )
+            Spacer(Modifier.height(Space.Large))
+            Button(
+                onClick = { onSubmit(email.trim(), code) },
+                enabled = !busy && code.length == 6,
+                modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
+            ) {
+                Text(stringResource(R.string.sign_in_submit))
+            }
+            TextButton(
+                onClick = {
+                    sent = false
+                    code = ""
+                },
+                enabled = !busy,
+                modifier = Modifier.align(Alignment.CenterHorizontally),
+            ) {
+                Text(stringResource(R.string.sign_in_otp_other_address))
+            }
         }
     }
 }

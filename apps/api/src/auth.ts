@@ -1,8 +1,10 @@
 import { betterAuth } from 'better-auth';
 import { APIError } from 'better-auth/api';
-import { bearer, deviceAuthorization, oneTimeToken } from 'better-auth/plugins';
+import { bearer, deviceAuthorization, emailOTP, oneTimeToken } from 'better-auth/plugins';
+import { passkey } from '@better-auth/passkey';
 import type { AuthProvider } from '@unbent/shared';
 import type { Env } from './types.js';
+import { canSendEmail, sendEmail } from './lib/email.js';
 
 /**
  * Emails permitted to create an account, lowercased.
@@ -33,6 +35,18 @@ function passwordEnabled(env: Env): boolean {
 }
 
 /**
+ * Whether codes by email can reach anyone from here.
+ *
+ * Configured mail, or local development — where `sendEmail` prints the code to the Worker
+ * console instead of sending it. Without the second half the feature could not be worked
+ * on without a Resend account, since the same check decides both whether OTP is offered
+ * and whether mail is real. A deployed instance with no mail still does not offer it.
+ */
+function codesDeliverable(env: Env): boolean {
+  return canSendEmail(env) || env.APP_URL.startsWith('http://localhost');
+}
+
+/**
  * The sign-in methods this instance offers, in display order.
  *
  * Derived from the same checks `createAuth` makes, so the login screen and the Android
@@ -46,7 +60,38 @@ export function offeredProviders(env: Env): AuthProvider[] {
   if (env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET) providers.push('google');
   if (env.GITHUB_CLIENT_ID && env.GITHUB_CLIENT_SECRET) providers.push('github');
   if (passwordEnabled(env)) providers.push('password');
+  /**
+   * Offered only where a code can actually reach someone. A deployed instance with no mail
+   * provider would otherwise show a form whose code goes to a log nobody is reading, which
+   * is worse than not offering it — the same reasoning the OAuth checks above use.
+   */
+  if (codesDeliverable(env)) providers.push('email-otp');
+  /**
+   * Always offered. A passkey needs nothing registered with anyone — no client id, no
+   * secret, no email provider — because WebAuthn's other half is the browser and the
+   * user's own device. It is the one method that cannot be misconfigured, so unlike the
+   * others there is no condition to test here.
+   */
+  providers.push('passkey');
   return providers;
+}
+
+/**
+ * The relying party a passkey is bound to, derived from APP_URL so it cannot drift from
+ * the origin the app is actually served on.
+ *
+ * `rpID` is the bare hostname and `origin` the full URL; WebAuthn checks both, and a
+ * mismatch surfaces in the browser as a flat refusal to create or use a credential.
+ *
+ * A caveat local development has to live with: `baseURLFor` deliberately trusts Tailscale
+ * and emulator origins as well, but a credential is bound to exactly one rpID, so a
+ * passkey made on localhost will not work over Tailscale and the reverse. Passkeys are
+ * testable on localhost, which browsers treat as a secure context despite the http, and
+ * that is the supported way to exercise them here.
+ */
+function relyingParty(env: Env): { rpID: string; origin: string } {
+  const url = new URL(env.APP_URL);
+  return { rpID: url.hostname, origin: url.origin };
 }
 
 /**
@@ -107,7 +152,31 @@ function createAuth(env: Env): AuthInstance {
     secret: env.BETTER_AUTH_SECRET,
     // Off unless the instance asks for it; see passwordEnabled. The sign-up allowlist
     // below applies to password accounts exactly as it does to OAuth ones.
-    emailAndPassword: { enabled: passwordEnabled(env) },
+    emailAndPassword: {
+      enabled: passwordEnabled(env),
+      /**
+       * Password reset, which until now did not exist: someone who forgot theirs had no
+       * way back into their notes short of asking whoever runs the instance. This is the
+       * reason the Worker needs to send mail at all.
+       *
+       * Better Auth handles the token — one-time, stored in `verification`, an hour by
+       * default — so what is left here is delivery. Failures propagate: if Resend rejects
+       * the message, the caller is told the reset could not be sent rather than being
+       * left waiting for mail that is never coming.
+       *
+       * `revokeSessionsOnPasswordReset` is on because a reset is what someone does when
+       * they suspect their account is not only theirs, and leaving the other sessions
+       * signed in would defeat the point of the exercise.
+       */
+      sendResetPassword: async ({ user, url }: { user: { email: string }; url: string }) => {
+        await sendEmail(env, {
+          to: user.email,
+          subject: 'Reset your Unbent password',
+          text: `Someone asked to reset the password for your Unbent account.\n\n${url}\n\nThe link works once and expires in an hour. If this was not you, you can ignore this email — nothing has changed.`,
+        });
+      },
+      revokeSessionsOnPasswordReset: true,
+    },
     socialProviders: {
       ...(env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET
         ? {
@@ -179,6 +248,21 @@ function createAuth(env: Env): AuthInstance {
        */
       cookieCache: { enabled: true, maxAge: 5 * 60 },
     },
+    /**
+     * Count rate limits in D1 rather than in memory.
+     *
+     * Better Auth enables limiting in production by default but stores the counters in the
+     * isolate's memory, which on Workers means they are effectively not stored at all:
+     * every isolate has its own, and they are spun up and discarded constantly, so an
+     * attacker's requests mostly land on a fresh counter. The stricter rule Better Auth
+     * puts on /sign-in/email — three attempts in ten seconds — is the thing standing
+     * between a password and an online guessing attack, and it only actually holds if the
+     * count is somewhere shared. `rateLimit` in migration 0011 is that somewhere.
+     *
+     * Left disabled in dev, which is the upstream default and what the test suite needs:
+     * the isolation suite signs actors in far faster than three times in ten seconds.
+     */
+    rateLimit: { storage: 'database' },
     advanced: {
       // The SPA and API are same-origin in both dev and production, so a host-only
       // cookie is sufficient and avoids SameSite=None.
@@ -220,6 +304,62 @@ function createAuth(env: Env): AuthInstance {
        * one redirect back into the app.
        */
       oneTimeToken(),
+      /**
+       * Passkeys: the sign-in that is both the least work for the user and the hardest to
+       * steal. One touch of a fingerprint sensor, no password manager to open, no code to
+       * copy from another app — and because the credential is bound to this origin by the
+       * browser, there is nothing to phish and nothing on the server worth stealing. Only
+       * a public key is stored here.
+       *
+       * Additive rather than a replacement: a passkey is created from settings once you
+       * are already signed in, so every account still has whatever method got it here.
+       * That also keeps the recovery story simple — lose the device, use the password.
+       */
+      passkey({ rpName: 'Unbent', ...relyingParty(env) }),
+      /**
+       * A six-digit code by email: the way in that needs no account anywhere else.
+       *
+       * This is what lets unbent.app drop GitHub without becoming Google-only. Passkeys
+       * cannot fill that role — one has to be added from an account you already have — so
+       * a code is the only method here that can *create* an account unaided.
+       *
+       * Chosen over a magic link because of the phone. A link tapped in a mail app opens
+       * in whatever browser that app prefers, which is frequently not the one holding the
+       * session, and on Android the app's Custom Tab is a third context again. A code is
+       * typed into whatever asked for it, so it cannot land in the wrong place.
+       *
+       * Sign-up and sign-in are deliberately the same flow: an address with no account
+       * gets one. `ALLOWED_EMAILS` still governs that, through the same creation hook as
+       * every other method, which is what keeps a public URL from becoming a free host.
+       *
+       * Registered only where codes are deliverable, the same way a social provider with
+       * no credentials is left out rather than mounted and left to fail: an endpoint that
+       * accepts a request, reports success and sends nothing is worse than one that is
+       * not there, because the caller has no way to tell the difference.
+       *
+       * Note this instance may run OTP and passwords together, the combination behind
+       * GHSA-qq9h-g4jm-xgf3, where an attacker pre-registered a password on a victim's
+       * address and kept access after the victim verified by code. Fixed in 1.6.22 and so
+       * in the 1.7.1 pinned here: the passwordless path now clears the password and
+       * revokes sessions before marking an account verified.
+       */
+      ...(codesDeliverable(env) ? [emailOTP({
+        // Six digits for five minutes, both the plugin's defaults and right for a code
+        // read off a phone. Three attempts before it is burned, also the default.
+        sendVerificationOTP: async ({ email, otp }: { email: string; otp: string }) => {
+          await sendEmail(env, {
+            to: email,
+            subject: `${otp} is your Unbent sign-in code`,
+            text: `Your Unbent sign-in code is ${otp}\n\nIt expires in five minutes and can be used once. If you did not ask to sign in, you can ignore this email.`,
+          });
+        },
+        /**
+         * Hashed rather than the default plain, so the codes are not readable in the
+         * database. They live five minutes, but a stored credential that could be used
+         * as-is is worth avoiding whatever its lifetime.
+         */
+        storeOTP: 'hashed',
+      })] : []),
     ],
   });
 }

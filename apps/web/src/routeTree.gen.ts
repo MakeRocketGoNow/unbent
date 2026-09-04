@@ -14,6 +14,7 @@ import { Route as ConnectRouteImport } from './routes/connect'
 import { Route as DeviceRouteImport } from './routes/device'
 import { Route as ImportRouteImport } from './routes/import'
 import { Route as NotesRouteImport } from './routes/notes'
+import { Route as ResetPasswordRouteImport } from './routes/reset-password'
 import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as TrashRouteImport } from './routes/trash'
 import { Route as EmbedIndexFilesRouteImport } from './routes/embed.index-files'
@@ -24,6 +25,7 @@ import { Route as SettingsExportRouteImport } from './routes/settings.export'
 import { Route as SettingsImportRouteImport } from './routes/settings.import'
 import { Route as SettingsMaintenanceRouteImport } from './routes/settings.maintenance'
 import { Route as SettingsNotebooksRouteImport } from './routes/settings.notebooks'
+import { Route as SettingsSecurityRouteImport } from './routes/settings.security'
 import { Route as TrashIndexRouteImport } from './routes/trash.index'
 import { Route as TrashNoteIdRouteImport } from './routes/trash.$noteId'
 import { Route as EmbedNotesNoteIdRouteImport } from './routes/embed.notes.$noteId'
@@ -51,6 +53,11 @@ const ImportRoute = ImportRouteImport.update({
 const NotesRoute = NotesRouteImport.update({
   id: '/notes',
   path: '/notes',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ResetPasswordRoute = ResetPasswordRouteImport.update({
+  id: '/reset-password',
+  path: '/reset-password',
   getParentRoute: () => rootRouteImport,
 } as any)
 const SettingsRoute = SettingsRouteImport.update({
@@ -103,6 +110,11 @@ const SettingsNotebooksRoute = SettingsNotebooksRouteImport.update({
   path: '/notebooks',
   getParentRoute: () => SettingsRoute,
 } as any)
+const SettingsSecurityRoute = SettingsSecurityRouteImport.update({
+  id: '/security',
+  path: '/security',
+  getParentRoute: () => SettingsRoute,
+} as any)
 const TrashIndexRoute = TrashIndexRouteImport.update({
   id: '/',
   path: '/',
@@ -125,6 +137,7 @@ export interface FileRoutesByFullPath {
   '/device': typeof DeviceRoute
   '/import': typeof ImportRoute
   '/notes': typeof NotesRouteWithChildren
+  '/reset-password': typeof ResetPasswordRoute
   '/settings': typeof SettingsRouteWithChildren
   '/trash': typeof TrashRouteWithChildren
   '/embed/index-files': typeof EmbedIndexFilesRoute
@@ -133,6 +146,7 @@ export interface FileRoutesByFullPath {
   '/settings/import': typeof SettingsImportRoute
   '/settings/maintenance': typeof SettingsMaintenanceRoute
   '/settings/notebooks': typeof SettingsNotebooksRoute
+  '/settings/security': typeof SettingsSecurityRoute
   '/trash/$noteId': typeof TrashNoteIdRoute
   '/notes/': typeof NotesIndexRoute
   '/settings/': typeof SettingsIndexRoute
@@ -144,12 +158,14 @@ export interface FileRoutesByTo {
   '/connect': typeof ConnectRoute
   '/device': typeof DeviceRoute
   '/import': typeof ImportRoute
+  '/reset-password': typeof ResetPasswordRoute
   '/embed/index-files': typeof EmbedIndexFilesRoute
   '/notes/$noteId': typeof NotesNoteIdRoute
   '/settings/export': typeof SettingsExportRoute
   '/settings/import': typeof SettingsImportRoute
   '/settings/maintenance': typeof SettingsMaintenanceRoute
   '/settings/notebooks': typeof SettingsNotebooksRoute
+  '/settings/security': typeof SettingsSecurityRoute
   '/trash/$noteId': typeof TrashNoteIdRoute
   '/notes': typeof NotesIndexRoute
   '/settings': typeof SettingsIndexRoute
@@ -163,6 +179,7 @@ export interface FileRoutesById {
   '/device': typeof DeviceRoute
   '/import': typeof ImportRoute
   '/notes': typeof NotesRouteWithChildren
+  '/reset-password': typeof ResetPasswordRoute
   '/settings': typeof SettingsRouteWithChildren
   '/trash': typeof TrashRouteWithChildren
   '/embed/index-files': typeof EmbedIndexFilesRoute
@@ -171,6 +188,7 @@ export interface FileRoutesById {
   '/settings/import': typeof SettingsImportRoute
   '/settings/maintenance': typeof SettingsMaintenanceRoute
   '/settings/notebooks': typeof SettingsNotebooksRoute
+  '/settings/security': typeof SettingsSecurityRoute
   '/trash/$noteId': typeof TrashNoteIdRoute
   '/notes/': typeof NotesIndexRoute
   '/settings/': typeof SettingsIndexRoute
@@ -185,6 +203,7 @@ export interface FileRouteTypes {
     | '/device'
     | '/import'
     | '/notes'
+    | '/reset-password'
     | '/settings'
     | '/trash'
     | '/embed/index-files'
@@ -193,6 +212,7 @@ export interface FileRouteTypes {
     | '/settings/import'
     | '/settings/maintenance'
     | '/settings/notebooks'
+    | '/settings/security'
     | '/trash/$noteId'
     | '/notes/'
     | '/settings/'
@@ -204,12 +224,14 @@ export interface FileRouteTypes {
     | '/connect'
     | '/device'
     | '/import'
+    | '/reset-password'
     | '/embed/index-files'
     | '/notes/$noteId'
     | '/settings/export'
     | '/settings/import'
     | '/settings/maintenance'
     | '/settings/notebooks'
+    | '/settings/security'
     | '/trash/$noteId'
     | '/notes'
     | '/settings'
@@ -222,6 +244,7 @@ export interface FileRouteTypes {
     | '/device'
     | '/import'
     | '/notes'
+    | '/reset-password'
     | '/settings'
     | '/trash'
     | '/embed/index-files'
@@ -230,6 +253,7 @@ export interface FileRouteTypes {
     | '/settings/import'
     | '/settings/maintenance'
     | '/settings/notebooks'
+    | '/settings/security'
     | '/trash/$noteId'
     | '/notes/'
     | '/settings/'
@@ -243,6 +267,7 @@ export interface RootRouteChildren {
   DeviceRoute: typeof DeviceRoute
   ImportRoute: typeof ImportRoute
   NotesRoute: typeof NotesRouteWithChildren
+  ResetPasswordRoute: typeof ResetPasswordRoute
   SettingsRoute: typeof SettingsRouteWithChildren
   TrashRoute: typeof TrashRouteWithChildren
   EmbedIndexFilesRoute: typeof EmbedIndexFilesRoute
@@ -284,6 +309,13 @@ declare module '@tanstack/react-router' {
       path: '/notes'
       fullPath: '/notes'
       preLoaderRoute: typeof NotesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/reset-password': {
+      id: '/reset-password'
+      path: '/reset-password'
+      fullPath: '/reset-password'
+      preLoaderRoute: typeof ResetPasswordRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/settings': {
@@ -356,6 +388,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SettingsNotebooksRouteImport
       parentRoute: typeof SettingsRoute
     }
+    '/settings/security': {
+      id: '/settings/security'
+      path: '/security'
+      fullPath: '/settings/security'
+      preLoaderRoute: typeof SettingsSecurityRouteImport
+      parentRoute: typeof SettingsRoute
+    }
     '/trash/': {
       id: '/trash/'
       path: '/'
@@ -397,6 +436,7 @@ interface SettingsRouteChildren {
   SettingsImportRoute: typeof SettingsImportRoute
   SettingsMaintenanceRoute: typeof SettingsMaintenanceRoute
   SettingsNotebooksRoute: typeof SettingsNotebooksRoute
+  SettingsSecurityRoute: typeof SettingsSecurityRoute
   SettingsIndexRoute: typeof SettingsIndexRoute
 }
 
@@ -405,6 +445,7 @@ const SettingsRouteChildren: SettingsRouteChildren = {
   SettingsImportRoute: SettingsImportRoute,
   SettingsMaintenanceRoute: SettingsMaintenanceRoute,
   SettingsNotebooksRoute: SettingsNotebooksRoute,
+  SettingsSecurityRoute: SettingsSecurityRoute,
   SettingsIndexRoute: SettingsIndexRoute,
 }
 
@@ -430,6 +471,7 @@ const rootRouteChildren: RootRouteChildren = {
   DeviceRoute: DeviceRoute,
   ImportRoute: ImportRoute,
   NotesRoute: NotesRouteWithChildren,
+  ResetPasswordRoute: ResetPasswordRoute,
   SettingsRoute: SettingsRouteWithChildren,
   TrashRoute: TrashRouteWithChildren,
   EmbedIndexFilesRoute: EmbedIndexFilesRoute,

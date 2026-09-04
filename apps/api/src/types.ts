@@ -33,6 +33,14 @@ export interface Env {
    * can sign up, which is fine locally but not for a deployed instance.
    */
   ALLOWED_EMAILS?: string;
+  /**
+   * Resend credentials, for password reset mail. Both must be set for mail to be sent;
+   * without them a reset link is logged rather than delivered, which is what local
+   * development wants and what a deployed instance must not do. See lib/email.ts.
+   */
+  RESEND_API_KEY?: string;
+  /** The From address, e.g. "Unbent <noreply@unbent.app>". Its domain must be verified. */
+  EMAIL_FROM?: string;
 }
 
 export interface SessionUser {

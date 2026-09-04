@@ -29,6 +29,7 @@ const TABS = [
   { to: '/settings/import', label: 'Import' },
   { to: '/settings/export', label: 'Export' },
   { to: '/settings/maintenance', label: 'Maintenance' },
+  { to: '/settings/security', label: 'Security' },
 ] as const;
 
 /**

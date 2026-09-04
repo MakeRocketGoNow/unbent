@@ -122,7 +122,14 @@ pnpm exec wrangler secret put BETTER_AUTH_SECRET --env production   # openssl ra
 pnpm exec wrangler secret put GOOGLE_CLIENT_ID --env production
 pnpm exec wrangler secret put GOOGLE_CLIENT_SECRET --env production
 pnpm exec wrangler secret put ALLOWED_EMAILS --env production       # comma-separated
+pnpm exec wrangler secret put RESEND_API_KEY --env production       # password reset mail
+pnpm exec wrangler secret put EMAIL_FROM --env production           # verified sender
 ```
+
+`RESEND_API_KEY` and `EMAIL_FROM` are what make password reset work. Without both, a reset
+link is written to the Worker log instead of being sent, which is right for local
+development and useless in production — anyone who forgets a password would have no way
+back to their notes.
 
 `ALLOWED_EMAILS` is what keeps a public URL from becoming a free notes host: sign-in is
 OAuth only, so without it anyone with a Google or GitHub account can create an account.

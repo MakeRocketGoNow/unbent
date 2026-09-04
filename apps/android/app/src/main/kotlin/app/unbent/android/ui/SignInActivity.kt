@@ -20,7 +20,9 @@ import app.unbent.android.R
 import app.unbent.android.api.ApiException
 import app.unbent.android.api.AppConfig
 import app.unbent.android.api.ConnectAuth
+import app.unbent.android.api.EmailOtpAuth
 import app.unbent.android.api.GoogleAuth
+import app.unbent.android.api.PasskeyAuth
 import app.unbent.android.api.PasswordAuth
 import app.unbent.android.api.SessionCookie
 import app.unbent.android.api.UnbentApi
@@ -85,6 +87,8 @@ class SignInActivity : ComponentActivity() {
                     busy = busy,
                     onGoogle = ::signInWithGoogle,
                     onGitHub = ::openConnectPage,
+                    onPasskey = ::signInWithPasskey,
+                    onEmailOtp = ::signInWithEmailOtp,
                     onPassword = ::signInWithPassword,
                     onInstanceChange = ::changeInstance,
                     onRetry = ::loadConfig,
@@ -151,6 +155,66 @@ class SignInActivity : ComponentActivity() {
                     else -> (e as? ApiException)?.serverMessage()
                         ?: getString(R.string.sign_in_google_failed)
                 }
+            }
+        }
+    }
+
+    /**
+     * The credential sheet, for a passkey already made on this device or synced to it.
+     *
+     * No configuration to check first, unlike Google: a passkey needs no client id, and the
+     * link that makes it work — assetlinks.json — is the same one the Trusted Web Activity
+     * already relies on. If there is nothing to offer, the sheet says so by cancelling,
+     * which [PasskeyAuth.wasCancelled] treats as a choice rather than a fault.
+     */
+    private fun signInWithPasskey() {
+        busy = true
+        status = getString(R.string.sign_in_waiting)
+        lifecycleScope.launch {
+            val result = runCatching { PasskeyAuth(prefs.instance).signIn(this@SignInActivity) }
+            busy = false
+            result.onSuccess(::finishSignIn).onFailure { e ->
+                Log.w("Unbent", "Passkey sign-in failed", e)
+                status = when {
+                    PasskeyAuth.wasCancelled(e) -> null
+                    else -> (e as? ApiException)?.serverMessage()
+                        ?: getString(R.string.sign_in_passkey_failed)
+                }
+            }
+        }
+    }
+
+    /**
+     * Sends a code, or trades one for a session.
+     *
+     * One entry point for both steps because the screen drives the sequence: a null code
+     * means "send one to this address", and a present one means "this is what arrived".
+     * Sending reports nothing on success — the screen has already moved to the code field,
+     * and a confirmation the user did not ask for would only be one more thing to read.
+     */
+    private fun signInWithEmailOtp(email: String, code: String?) {
+        busy = true
+        status = getString(R.string.sign_in_waiting)
+        lifecycleScope.launch {
+            val origin = prefs.instance
+            val result = withContext(Dispatchers.IO) {
+                runCatching {
+                    val auth = EmailOtpAuth(origin)
+                    if (code == null) {
+                        auth.sendCode(email)
+                        null
+                    } else {
+                        auth.signIn(email, code)
+                    }
+                }
+            }
+            busy = false
+            result.onSuccess { session ->
+                if (session == null) status = null else finishSignIn(session)
+            }.onFailure { e ->
+                Log.w("Unbent", "Email code sign-in failed", e)
+                status = (e as? ApiException)?.serverMessage()
+                    ?: getString(if (code == null) R.string.sign_in_failed else R.string.sign_in_otp_failed)
             }
         }
     }

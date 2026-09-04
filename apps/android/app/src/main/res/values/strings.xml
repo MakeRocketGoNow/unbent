@@ -7,6 +7,13 @@
     <string name="shortcut_settings_long">Capture settings</string>
 
     <string name="sign_in_intro">Sign in to see your notes and save what you share here.</string>
+    <string name="sign_in_otp_send">Email me a code</string>
+    <string name="sign_in_otp_sent">We sent a code to %1$s. It expires in five minutes.</string>
+    <string name="sign_in_otp_code">Code</string>
+    <string name="sign_in_otp_other_address">Use a different address</string>
+    <string name="sign_in_otp_failed">That code did not work. Ask for a new one.</string>
+    <string name="sign_in_passkey">Sign in with a passkey</string>
+    <string name="sign_in_passkey_failed">That passkey did not work. Try another way in.</string>
     <string name="sign_in_google">Continue with Google</string>
     <string name="sign_in_github">Continue with GitHub</string>
     <string name="sign_in_google_failed">Google sign-in did not work. Try another way in.</string>

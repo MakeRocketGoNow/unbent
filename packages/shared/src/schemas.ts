@@ -70,8 +70,18 @@ export const UNFILED = '[unfiled]';
  * `password` is the one that needs nothing registered with a third party. OAuth needs a
  * callback URL registered with each provider per deployment, which cannot be done on a
  * self-hoster's behalf, so a password is what a self-hosted instance can always rely on.
+ *
+ * `passkey` needs nothing registered either — the other half of WebAuthn is the browser
+ * and the user's own device — so it is always offered. It is not a way to *create* an
+ * account: a passkey is added from settings once you are signed in by one of the others,
+ * and only then does it appear on the sign-in screen as a way back in.
+ *
+ * `email-otp` is the one that can create an account without any third-party account at
+ * all, needing only that the instance can send mail. That makes it the floor beneath the
+ * rest: without it, an instance offering only OAuth turns anyone lacking those accounts
+ * away at the door.
  */
-export const AUTH_PROVIDERS = ['google', 'github', 'password'] as const;
+export const AUTH_PROVIDERS = ['google', 'github', 'password', 'passkey', 'email-otp'] as const;
 export type AuthProvider = (typeof AUTH_PROVIDERS)[number];
 
 /** What `GET /api/config` reports: the instance's sign-in methods, in display order. */

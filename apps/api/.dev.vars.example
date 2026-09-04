@@ -22,6 +22,11 @@ BETTER_AUTH_SECRET=replace-me
 #   (also add http://<tailscale-host>:5173/api/auth/callback/github if you sign in over Tailscale)
 # GITHUB_CLIENT_ID=
 # GITHUB_CLIENT_SECRET=
+#
+# The Android app signs in through Credential Manager, which returns an ID token issued for
+# whichever client id it asked for. Set this only if a build asks for its own Android
+# audience rather than reusing the web client id above; auth.ts then accepts both.
+# GOOGLE_ANDROID_CLIENT_ID=
 
 # Enables password sign-up so the isolation suite can mint sessions without a live OAuth
 # provider. Local development only — never set this in a deployed environment.
@@ -37,3 +42,13 @@ ALLOW_TEST_CREDENTIALS=1
 # throwaway actors and would fail against an allowlist. Deployed instances set this so a
 # public URL does not become a free notes host for anyone who finds it.
 # ALLOWED_EMAILS=you@example.com
+
+# Resend, for password reset mail. Both must be set before any mail is sent; with either
+# missing the reset link is printed to the Worker console instead, which is what local
+# development wants — the whole flow can be exercised without signing up for anything.
+# A deployed instance must set these, or nobody who forgets a password can get back in.
+#
+#   https://resend.com/api-keys
+#   EMAIL_FROM's domain has to be verified with Resend first.
+# RESEND_API_KEY=
+# EMAIL_FROM=Unbent <noreply@example.com>
