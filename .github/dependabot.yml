@@ -12,15 +12,21 @@
 
 version: 2
 updates:
-  # pnpm workspace. The members are listed and the root is deliberately not: with one
-  # shared lockfile, '/' reaches the same dependency graph as apps/* and packages/*, and
-  # GitHub's own guidance is that directories in one ecosystem must not overlap. Listing
-  # both produced two pull requests per upgrade — vite, jsdom and @vitejs/plugin-react each
-  # arrived twice, once against the workspace manifest's range and once against whatever
-  # the root lockfile had resolved. Nothing is lost by dropping it: the root manifest
-  # declares only typescript, which all five members declare too.
+  # pnpm workspace: the members *and* the root, which is not the overlap it looks like.
+  #
+  # The root is where pnpm-lock.yaml lives, and the lockfile is the point. What the first
+  # run demonstrated: a grouped update spanning directories rewrites the member manifests
+  # and the lockfile together and passes CI, while an update scoped to one directory
+  # rewrites that package.json alone — leaving `pnpm install --frozen-lockfile` to fail on
+  # a lockfile that no longer agrees with it. All three single-package pull requests failed
+  # exactly that way.
+  #
+  # Which is why every update type below is grouped, majors included. Grouping is not about
+  # tidiness here; it is what keeps an update spanning directories, and therefore what keeps
+  # the lockfile travelling with the manifests that need it.
   - package-ecosystem: npm
     directories:
+      - '/'
       - '/apps/*'
       - '/packages/*'
     schedule:
@@ -37,7 +43,12 @@ updates:
         update-types:
           - minor
           - patch
-    # Majors still come as their own pull request: they are the ones that need reading.
+      # Grouped rather than left to arrive singly, which is the only way they carry the
+      # lockfile. It does mean majors land together and want reading together — but a
+      # major that cannot install is not a reviewable pull request in the first place.
+      major:
+        update-types:
+          - major
     open-pull-requests-limit: 5
 
   # Android. Gradle and AndroidX move on their own schedule and the app is built in CI.
