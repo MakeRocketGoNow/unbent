@@ -55,9 +55,10 @@ export function Topbar({ email, onSignOut }: TopbarProps) {
               </span>
             }
             items={[
-              // The address itself, so the menu says which account it belongs to. Not
-              // selectable as an action — see `.overflow-email`.
-              { label: email, className: 'overflow-email' },
+              // The address itself, so the menu says which account it belongs to. Static
+              // rather than selectable: it names the account, it does not act on it. It
+              // truncates to one line, so it carries the full address as a tooltip.
+              { label: email, className: 'overflow-email', static: true, title: email },
               { label: 'Settings', to: '/settings' },
               { label: 'Sign out', onSelect: onSignOut, tone: 'danger' },
             ]}

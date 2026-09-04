@@ -759,7 +759,17 @@ h1 {
   z-index: 20;
   display: flex;
   flex-direction: column;
-  min-width: 10rem;
+  /*
+     Wide enough for an address, bounded so it never reaches the far edge.
+
+     10rem was sized for the item labels — "Settings", "Sign out" — and the account menu
+     then had to fit an email into the same box, which wrapped `casey.lindqvist@example.com` onto
+     three lines. The address is the widest thing any of these menus carries, so the floor
+     is sized for a typical one and the ceiling keeps a long one from spanning a phone:
+     between them the menu sizes to its content and stops.
+  */
+  min-width: 14rem;
+  max-width: min(20rem, calc(100vw - 2rem));
   padding: 0.25rem;
   background: var(--bg);
   border: 1px solid var(--border);
@@ -1269,10 +1279,22 @@ a.sidebar-status:hover {
   color: var(--muted);
   border-bottom: 1px solid var(--border);
   cursor: default;
-  pointer-events: none;
-  /* Long addresses wrap here rather than stretching the menu off the screen edge. */
-  white-space: normal;
-  overflow-wrap: anywhere;
+  /*
+     One line, truncated from the end.
+
+     This wrapped before, on the reasoning that the alternative was stretching the menu off
+     the screen edge — but the menu is bounded now, so wrapping only bought a three-line
+     block of chrome above the two things you actually came here to press. An address is
+     identification: the local part is what distinguishes two accounts, so the head of the
+     string is the half worth keeping and the tail is what yields.
+
+     `title` carries the full address for the case where the ellipsis eats the part you
+     needed. `pointer-events: none` would suppress that tooltip, so the label instead
+     opts out of the pointer by not being a control in the first place.
+  */
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
 /*

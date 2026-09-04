@@ -25,6 +25,17 @@ export interface OverflowItem {
   tone?: 'default' | 'danger';
   /** Extra class, for an item needing placement or emphasis beyond `tone`. */
   className?: string;
+  /**
+   * Renders the item as static text rather than a control.
+   *
+   * The account menu heads itself with the address it belongs to, which is a label and
+   * not something you can press. As a `<button>` it still took focus on Tab and still
+   * announced itself as pressable; CSS could only hide that from the mouse. A `<span>`
+   * says the same thing to the pointer, the keyboard and a screen reader at once.
+   */
+  static?: boolean;
+  /** Native tooltip, for a label whose text may be truncated. */
+  title?: string;
 }
 
 /**
@@ -112,6 +123,15 @@ export function OverflowMenu({
             ]
               .filter(Boolean)
               .join(' ');
+
+            // A label, not a command: nothing to activate, so it is not in the tab order.
+            if (item.static === true) {
+              return (
+                <span key={i} className={className} title={item.title}>
+                  {item.label}
+                </span>
+              );
+            }
 
             // Anchor, link and button all sit in the tab order and all activate on
             // Enter, so the keyboard behaviour the list promises holds for each.
