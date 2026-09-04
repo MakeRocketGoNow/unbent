@@ -1,5 +1,11 @@
 import { syntaxTree } from '@codemirror/language';
-import { type EditorState, type Extension, type Range, RangeSetBuilder } from '@codemirror/state';
+import {
+  type EditorState,
+  type Extension,
+  type Range,
+  RangeSetBuilder,
+  StateEffect,
+} from '@codemirror/state';
 import {
   Decoration,
   type DecorationSet,
@@ -551,7 +557,31 @@ function unwrapUrl(raw: string): string {
 export interface RichMarkdownOptions {
   /** Resolves a relative `files/…` path to a URL the browser can load. */
   resolveAttachment?: (filename: string) => string;
+  /**
+   * Whether a stored file is a PDF, for names the extension does not admit to.
+   *
+   * The extension is the first signal and needs no help for anything uploaded here. An
+   * imported file is the exception: Evernote's `<file-name>` is a display label, so a real
+   * export carries PDFs called `Menu Card`, and the only thing that knows better is
+   * the content type on the note's attachment row.
+   *
+   * A live callback rather than a set, because the attachment list is fetched and the
+   * view is built before it lands. Asked again on every decoration rebuild, so an answer
+   * that changes from false to true takes effect on the next repaint — see
+   * `pdfNamesChanged` for making one happen.
+   */
+  isPdfAttachment?: (filename: string) => boolean;
 }
+
+/**
+ * Tells the rich renderer its answer to `isPdfAttachment` has changed.
+ *
+ * The decorations rebuild on edits, scrolls and selection changes, none of which a
+ * finished attachment fetch produces — without this the viewer would appear only after
+ * the next keystroke. Dispatching this on a transaction is the CodeMirror way to say
+ * "repaint", and costs one rebuild.
+ */
+export const pdfNamesChanged = StateEffect.define<null>();
 
 function buildDecorations(view: EditorView, options: RichMarkdownOptions): DecorationSet {
   const builder = new RangeSetBuilder<Decoration>();
@@ -807,10 +837,12 @@ function buildDecorations(view: EditorView, options: RichMarkdownOptions): Decor
           if (!url.startsWith(ATTACHMENT_PREFIX)) return;
 
           const filename = url.slice(ATTACHMENT_PREFIX.length);
-          // Extension on the path, matching how the shared pipeline decides the same
-          // thing for the preview pane — the two must agree or a note renders differently
-          // in each.
-          if (!PDF_PATH.test(decodePath(filename).split('?')[0] ?? '')) return;
+          // Extension on the path, then the stored content type — matching how the shared
+          // pipeline decides the same thing for the preview pane. The two must agree or a
+          // note renders differently in each, which is exactly what happened when only the
+          // preview learned to trust the content type.
+          const decoded = decodePath(filename).split('?')[0] ?? '';
+          if (!PDF_PATH.test(decoded) && !options.isPdfAttachment?.(decoded)) return;
 
           marks.push(
             Decoration.widget({ widget: new PdfWidget(resolve(filename)), side: 1 }).range(node.to),
@@ -915,8 +947,13 @@ export function richMarkdown(options: RichMarkdownOptions = {}): Extension {
         }
 
         update(update: ViewUpdate) {
-          // Selection changes matter as much as edits: they reveal and hide syntax.
-          if (update.docChanged || update.viewportChanged || update.selectionSet) {
+          // Selection changes matter as much as edits: they reveal and hide syntax. The
+          // effect covers the one input that changes without a transaction of its own —
+          // the attachment list arriving after the view was built.
+          const relisted = update.transactions.some((tr) =>
+            tr.effects.some((e) => e.is(pdfNamesChanged)),
+          );
+          if (update.docChanged || update.viewportChanged || update.selectionSet || relisted) {
             this.decorations = buildDecorations(update.view, options);
           }
         }

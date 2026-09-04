@@ -15,6 +15,7 @@ import { EditorToolbar, type NoteView } from '../components/EditorToolbar.js';
 import { Attachments } from '../components/Attachments.js';
 import { abandonUploads } from '../editor/attach.js';
 import { exposeToApp, postToApp } from '../app-bridge.js';
+import { usePdfAttachments } from '../usePdfAttachments.js';
 
 /**
  * A note's body, and nothing else, for the Android app to host in a WebView.
@@ -57,6 +58,8 @@ function EmbeddedNote({ noteId }: { noteId: string }) {
   const [editorRevision, setEditorRevision] = useState(0);
   const [editorOverride, setEditorOverride] = useState<string | null>(null);
   const [editorView, setEditorView] = useState<EditorView | null>(null);
+  // Which files are PDFs regardless of what they are named; both panes render from it.
+  const pdfFilenames = usePdfAttachments(noteId);
 
   // The same preference the web app keeps, so the editor a person writes in follows
   // them between the site and the app on a device where both share storage.
@@ -179,6 +182,8 @@ function EmbeddedNote({ noteId }: { noteId: string }) {
             key={`${note.id}-${editorRevision}`}
             noteId={note.id}
             initialValue={editorOverride ?? note.body}
+            // See the same prop in Workspace: rich mode needs the content types too.
+            pdfFilenames={pdfFilenames}
             onChange={setBody}
             onUpload={async (file, signal) => {
               const uploaded = await api.uploadFile(note.id, file, { signal });

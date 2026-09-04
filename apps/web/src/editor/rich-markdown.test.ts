@@ -3,7 +3,12 @@ import { EditorView } from '@codemirror/view';
 import { markdown } from '@codemirror/lang-markdown';
 import { GFM } from '@lezer/markdown';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { orderedMarker, resetExpandedPdfs, richMarkdown } from './rich-markdown.js';
+import {
+  orderedMarker,
+  pdfNamesChanged,
+  resetExpandedPdfs,
+  richMarkdown,
+} from './rich-markdown.js';
 
 /**
  * pdf.js never runs here: jsdom has no canvas rasterizer, and the widget's contract with
@@ -278,16 +283,20 @@ describe('ordered list markers', () => {
 
 describe('inline PDF', () => {
   /** Mounts with attachment resolution on; the shared `mount` deliberately has none. */
-  function mountWithAttachments(doc: string, cursor = 0): EditorView {
+  function mountWithAttachments(doc: string, cursor = 0, pdfNames: string[] = []): EditorView {
     const parent = document.createElement('div');
     document.body.appendChild(parent);
+    const names = new Set(pdfNames);
     view = new EditorView({
       state: EditorState.create({
         doc,
         selection: EditorSelection.cursor(cursor),
         extensions: [
           markdown({ extensions: [GFM] }),
-          richMarkdown({ resolveAttachment: (name) => `/api/notes/n1/files/${name}` }),
+          richMarkdown({
+            resolveAttachment: (name) => `/api/notes/n1/files/${name}`,
+            isPdfAttachment: (name) => names.has(name),
+          }),
         ],
       }),
       parent,
@@ -356,6 +365,65 @@ describe('inline PDF', () => {
   it('renders nothing when no resolver is configured', () => {
     mount('[report](files/report.pdf)', 0);
     expect(acquirePdf).not.toHaveBeenCalled();
+  });
+
+  /**
+   * An imported file may not admit to being a PDF: Evernote writes `<file-name>` as a
+   * display label, so a real export carries PDFs called `Menu Card`. The note's
+   * attachment row records the declared type, and rich mode has to reach the same verdict
+   * as the preview pane — a note that draws a document in one and a bare link in the other
+   * is precisely the bug this covers.
+   */
+  it('renders a PDF whose name has no extension', () => {
+    mountWithAttachments('[Menu Card](<files/Menu Card>)', 0, ['Menu Card']);
+    expect(acquirePdf).toHaveBeenCalledWith('/api/notes/n1/files/Menu Card');
+  });
+
+  it('matches the decoded name, not the percent-encoded one', () => {
+    mountWithAttachments('[Gift](files/Lease%20Summary)', 0, ['Lease Summary']);
+    expect(acquirePdf).toHaveBeenCalledWith('/api/notes/n1/files/Lease%20Summary');
+  });
+
+  it('leaves an extensionless file the note does not call a PDF alone', () => {
+    mountWithAttachments('[notes](files/notes)', 0, ['Menu Card']);
+    expect(acquirePdf).not.toHaveBeenCalled();
+  });
+
+  it('still renders by extension when nothing is known about the files', () => {
+    mountWithAttachments('[report](files/report.pdf)', 0, []);
+    expect(acquirePdf).toHaveBeenCalledWith('/api/notes/n1/files/report.pdf');
+  });
+
+  /**
+   * The list is fetched, so it lands after the view is built. Nothing about that is a
+   * document change, a scroll or a selection move, which are the only things that rebuild
+   * decorations — without the effect the viewer would wait for the next keystroke.
+   */
+  it('draws the viewer when the attachment list arrives after mount', () => {
+    const names = new Set<string>();
+    const parent = document.createElement('div');
+    document.body.appendChild(parent);
+    view = new EditorView({
+      state: EditorState.create({
+        doc: '[Menu Card](<files/Menu Card>)',
+        selection: EditorSelection.cursor(0),
+        extensions: [
+          markdown({ extensions: [GFM] }),
+          richMarkdown({
+            resolveAttachment: (name) => `/api/notes/n1/files/${name}`,
+            isPdfAttachment: (name) => names.has(name),
+          }),
+        ],
+      }),
+      parent,
+    });
+
+    expect(acquirePdf).not.toHaveBeenCalled();
+
+    names.add('Menu Card');
+    view.dispatch({ effects: pdfNamesChanged.of(null) });
+
+    expect(acquirePdf).toHaveBeenCalledWith('/api/notes/n1/files/Menu Card');
   });
 
   /**

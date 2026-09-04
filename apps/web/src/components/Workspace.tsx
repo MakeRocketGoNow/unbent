@@ -23,6 +23,7 @@ import {
 import { Editor } from './Editor.js';
 import { indexUploadedFile } from '../index-files.js';
 import { Preview } from './Preview.js';
+import { usePdfAttachments } from '../usePdfAttachments.js';
 import { TagInput } from './TagInput.js';
 import { EditorToolbar, type NoteView } from './EditorToolbar.js';
 import { Attachments } from './Attachments.js';
@@ -101,6 +102,8 @@ export function Workspace({ noteId, readOnly = false, backTo = '/notes' }: Works
    */
   const [splitPreview, setSplitPreview] = usePersistentState('splitPreview', false);
   const [editorView, setEditorView] = useState<EditorView | null>(null);
+  // Which files are PDFs regardless of what they are named; both panes render from it.
+  const pdfFilenames = usePdfAttachments(noteId);
 
   /**
    * Whether this note was reached with the sidebar's arrow keys.
@@ -457,6 +460,9 @@ export function Workspace({ noteId, readOnly = false, backTo = '/notes' }: Works
             key={`${note.id}-${editorRevision}`}
             noteId={note.id}
             initialValue={editorOverride ?? note.body}
+            // So rich mode draws a viewer for an imported PDF whose name lacks the
+            // extension, the same as the preview pane does.
+            pdfFilenames={pdfFilenames}
             onChange={(body) => setDraft((d) => ({ ...d, body }))}
             // No uploader on a read-only note: its autosave is off, so a dropped file
             // would be stored with a link that is never saved — a blob nobody can see.

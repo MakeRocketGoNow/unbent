@@ -1,7 +1,6 @@
 import { Fragment, useMemo } from 'react';
-import { useQuery } from '@tanstack/react-query';
 import { PDF_EMBED_CLASS, renderMarkdown } from '@unbent/shared';
-import { attachmentsQuery } from '../queries.js';
+import { usePdfAttachments } from '../usePdfAttachments.js';
 import { PdfPreview } from './PdfPreview.js';
 
 interface PreviewProps {
@@ -60,28 +59,8 @@ function splitOnPdfLinks(html: string): Segment[] {
  * content: the only way a viewer appears is if this component puts one there.
  */
 export function Preview({ markdown, noteId }: PreviewProps) {
-  /**
-   * Which of this note's files are PDFs, according to the type stored on the row.
-   *
-   * The renderer's own signal is the `.pdf` extension, which is right for anything
-   * uploaded here. It is wrong for an imported file whose Evernote `<file-name>` had no
-   * extension — `Menu Card`, a scan — and those notes are already in the database
-   * under that name. The attachment list is loaded on this screen regardless, so the
-   * answer costs nothing.
-   *
-   * A miss is a link rendered as a plain link, which is what happens today: the viewer
-   * appears once the list arrives.
-   */
-  const { data: files } = useQuery(attachmentsQuery(noteId));
-  const pdfFilenames = useMemo(
-    () =>
-      new Set(
-        (files ?? [])
-          .filter((f) => f.contentType === 'application/pdf')
-          .map((f) => f.filename),
-      ),
-    [files],
-  );
+  // Shared with the rich editor, so the two panes agree on what is a document.
+  const pdfFilenames = usePdfAttachments(noteId);
 
   const segments = useMemo(
     () => splitOnPdfLinks(renderMarkdown(markdown, { noteId, pdfFilenames })),

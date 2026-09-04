@@ -5,7 +5,7 @@ import { defaultKeymap, history, historyKeymap } from '@codemirror/commands';
 import { markdown } from '@codemirror/lang-markdown';
 import { GFM } from '@lezer/markdown';
 import { languages } from '@codemirror/language-data';
-import { richMarkdown } from '../editor/rich-markdown.js';
+import { pdfNamesChanged, richMarkdown } from '../editor/rich-markdown.js';
 import { markdownKeymap } from '../editor/markdown-commands.js';
 import { tableTools } from '../editor/table-toolbar.js';
 import { fileDropCursor } from '../editor/drop-cursor.js';
@@ -27,6 +27,13 @@ interface EditorProps {
   onUploadsPending?: (count: number) => void;
   /** Style markdown inline instead of showing plain source. */
   rich?: boolean;
+  /**
+   * Names of this note's files that are stored as PDFs, for the rich renderer.
+   *
+   * Only needed for the ones whose name does not say so — an imported `Menu Card`.
+   * May arrive after mount, and does not remount the view when it does.
+   */
+  pdfFilenames?: ReadonlySet<string>;
   /**
    * Take focus when the view mounts.
    *
@@ -62,6 +69,7 @@ export function Editor({
   onUpload,
   onUploadsPending,
   rich = false,
+  pdfFilenames,
   autoFocus = true,
   onEscape,
   onViewReady,
@@ -81,6 +89,11 @@ export function Editor({
   onUploadsPendingRef.current = onUploadsPending;
   const onViewReadyRef = useRef(onViewReady);
   onViewReadyRef.current = onViewReady;
+  // Read on every decoration rebuild rather than captured, so a list that arrives after
+  // the view was built is seen without discarding the document's history.
+  const pdfFilenamesRef = useRef(pdfFilenames);
+  pdfFilenamesRef.current = pdfFilenames;
+  const viewRef = useRef<EditorView | null>(null);
 
   useEffect(() => {
     if (!host.current) return;
@@ -120,6 +133,7 @@ export function Editor({
                 richMarkdown({
                   resolveAttachment: (filename) =>
                     `/api/notes/${encodeURIComponent(noteId)}/files/${encodeURIComponent(filename)}`,
+                  isPdfAttachment: (filename) => pdfFilenamesRef.current?.has(filename) ?? false,
                 }),
               ]
             : []),
@@ -163,17 +177,32 @@ export function Editor({
       parent: host.current,
     });
 
+    viewRef.current = view;
     if (autoFocusRef.current) view.focus();
     onViewReadyRef.current?.(view);
 
     return () => {
       onViewReadyRef.current?.(null);
+      viewRef.current = null;
       view.destroy();
     };
     // initialValue is intentionally not a dependency: the view owns the document after
     // mount, and re-running on every keystroke would rebuild the editor.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [noteId, rich]);
+
+  /**
+   * Repaint when the attachment list answers.
+   *
+   * The rich renderer rebuilds its decorations on edits, scrolls and selection changes.
+   * A finished fetch is none of those, so without this an imported PDF whose name lacks
+   * the extension would stay a plain link until the next keystroke.
+   */
+  useEffect(() => {
+    const view = viewRef.current;
+    if (!view || !rich) return;
+    view.dispatch({ effects: pdfNamesChanged.of(null) });
+  }, [pdfFilenames, rich]);
 
   return <div ref={host} className="editor-host" />;
 }
