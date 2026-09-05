@@ -49,15 +49,29 @@ BETTER_AUTH_SECRET=replace-me
 # provider. Local development only — never set this in a deployed environment.
 ALLOW_TEST_CREDENTIALS=1
 
-# Offers email-and-password sign-in to real users. Meant for self-hosted instances, which
-# cannot register OAuth callbacks with Google or GitHub on anyone's behalf; unbent.app
-# leaves it unset. ALLOWED_EMAILS gates password sign-ups the same as OAuth ones.
+# Email-and-password sign-in, which usually needs no setting at all.
+#
+# It is offered by default when nothing else on the instance can create an account — no
+# OAuth credentials and no mail — because the two methods left in that case cannot start
+# one: a passkey is added from an account you already have, and a code needs somewhere to
+# send it. So a self-hoster who configures nothing still gets in, and the default withdraws
+# the moment a provider or a mail key appears. unbent.app has providers and never sees it.
+#
+# '1' asks for a password alongside a configured provider. '0' refuses the default, for an
+# instance that wants passkeys and nothing else for people who already have accounts — it
+# is the one setting here that can leave nobody a way in, so it has to be asked for.
+#
+# ALLOWED_EMAILS gates password sign-ups the same as OAuth ones.
 # AUTH_PASSWORD=1
 
 # Comma-separated emails allowed to create an account. Empty or unset means anyone can
 # sign up, which is what local development and the test suite want — the suite signs up
 # throwaway actors and would fail against an allowlist. Deployed instances set this so a
 # public URL does not become a free notes host for anyone who finds it.
+#
+# Left empty on a deployed instance, the Worker warns once in its log and names the methods
+# a stranger could use. It is a warning rather than a refusal because requiring an allowlist
+# to sign up would lock an operator out of their own fresh deployment.
 # ALLOWED_EMAILS=you@example.com
 
 # Resend, for password reset mail. Both must be set before any mail is sent; with either

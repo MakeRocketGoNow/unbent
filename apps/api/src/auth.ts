@@ -30,9 +30,30 @@ function allowedEmails(env: Env): string[] {
  * works everywhere. ALLOW_TEST_CREDENTIALS stays as the test suite's own switch — it is
  * documented as local-only, and folding it into the real flag would invite setting the
  * real flag on a deployed instance "for the tests".
+ *
+ * And a default underneath both, because opt-in alone left a hole. A passkey cannot create
+ * an account — one is added from settings once you are already signed in — and a code by
+ * email needs a mail provider. So an instance deployed with no OAuth, no Resend and no
+ * AUTH_PASSWORD offered exactly one button, which could not work for anyone who did not
+ * already have an account, and on a fresh instance that is everyone including the operator.
+ * Nothing said so; it simply dead-ended. Password is now the floor: offered when nothing
+ * else here can create an account, and standing aside the moment something can.
+ *
+ * That the default disappears as soon as a real method exists is the point. An instance
+ * with Google configured is unchanged, and so is unbent.app — the open sign-up this would
+ * otherwise hand a public URL is exactly what made it opt-in in the first place, and
+ * ALLOWED_EMAILS is still what governs who may take it up.
+ *
+ * `AUTH_PASSWORD=0` is the way to refuse the default, for an instance that wants passkeys
+ * and nothing else for the people who already have accounts. It is checked before the test
+ * switch so that an explicit no wins over an implicit yes, and it is the one setting here
+ * that can still leave nobody a way in — deliberately, the same as `AUTH_PASSKEY=0`.
  */
 function passwordEnabled(env: Env): boolean {
-  return env.AUTH_PASSWORD === '1' || env.ALLOW_TEST_CREDENTIALS === '1';
+  if (env.AUTH_PASSWORD === '1') return true;
+  if (env.AUTH_PASSWORD === '0') return false;
+  if (env.ALLOW_TEST_CREDENTIALS === '1') return true;
+  return configuredSocials(env).length === 0 && !codesDeliverable(env);
 }
 
 /**
@@ -218,11 +239,44 @@ function socialConfig(env: Env): Record<string, { clientId: string | string[]; c
 }
 
 /**
+ * Says out loud that a deployed instance will accept a sign-up from anyone.
+ *
+ * An empty `ALLOWED_EMAILS` means unrestricted. That is what local development and the
+ * test suite want, and what a public URL almost never does — but nothing ever said so, and
+ * an instance with an open door looks exactly like one without. The silence got worse when
+ * password became the floor: an instance that configured nothing now has a sign-up form it
+ * did not ask for.
+ *
+ * A warning and not a refusal, deliberately. Refusing sign-ups without an allowlist would
+ * lock an operator out of their own fresh deployment, which is the dead end this change set
+ * exists to remove — it would trade a silent open door for a silent locked one. The offered
+ * methods are named because that is the part worth acting on: it says what an unknown
+ * visitor could actually use.
+ *
+ * Exported for its test. It is a plain function of the environment, and which of the three
+ * cases it fires on is exactly the kind of condition that rots quietly — too loud and every
+ * local run is noise, too quiet and a public instance says nothing.
+ */
+export function warnIfOpenToAnyone(env: Env): void {
+  if (env.APP_URL.startsWith('http://localhost')) return;
+  if (allowedEmails(env).length > 0) return;
+  console.warn(
+    `[auth] ALLOWED_EMAILS is empty and APP_URL (${env.APP_URL}) is not local: ` +
+      `anyone able to use ${offeredProviders(env).join(', ')} can create an account here.`,
+  );
+}
+
+/**
  * Better Auth must be constructed per-request: on Workers the D1 binding only exists on
  * `env`, which is not available at module scope. Instances are cheap, but we memoize per
  * Env object so repeated middleware calls within one request reuse the same instance.
+ *
+ * That memoization is also what paces the warning below. There is no startup hook on
+ * Workers to hang it from, and `getAuth` builds one instance per `Env`, so this lands about
+ * once per isolate. Do not move it to the request path, where it would repeat forever.
  */
 function createAuth(env: Env): AuthInstance {
+  warnIfOpenToAnyone(env);
   return betterAuth({
     // Better Auth v1.5+ accepts a D1 binding directly and picks its own dialect.
     // D1 has no interactive transactions; Better Auth falls back to batch() for atomicity.

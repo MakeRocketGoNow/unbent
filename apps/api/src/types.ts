@@ -27,9 +27,13 @@ export interface Env {
   GITHUB_CLIENT_ID?: string;
   GITHUB_CLIENT_SECRET?: string;
   /**
-   * '1' offers email-and-password sign-in. For self-hosted instances, which cannot
-   * register OAuth callbacks with Google or GitHub on anyone's behalf; unbent.app leaves
-   * it unset.
+   * '1' offers email-and-password sign-in, '0' refuses it.
+   *
+   * Neither is usually needed. Password is offered by default when nothing else on the
+   * instance can create an account — no OAuth and no mail — and withdrawn as soon as
+   * something can, so a self-hoster gets a way in without asking and unbent.app never sees
+   * it. '1' is for wanting a password alongside a configured provider; '0' is for refusing
+   * the default, and is the one setting here that can leave nobody a way in.
    */
   AUTH_PASSWORD?: string;
   /** '1' enables password auth so the isolation suite can mint sessions. Local only. */

@@ -83,10 +83,14 @@ export const UNFILED = '[unfiled]';
  * settings once you are signed in by something else, and only then appears on the sign-in
  * screen as a way back in.
  *
- * `email-otp` is the one that can create an account without any third-party account at
- * all, needing only that the instance can send mail. That makes it the floor beneath the
- * rest: without it, an instance offering only OAuth turns anyone lacking those accounts
- * away at the door.
+ * `email-otp` can create an account without any third-party account at all, needing only
+ * that the instance can send mail — so where there is mail, it is the floor: without it an
+ * instance offering only OAuth turns anyone lacking those accounts away at the door.
+ *
+ * Where there is no mail either, `password` is the floor instead, and the server offers it
+ * unasked. Those two are the only methods here that can start an account from nothing, so
+ * between them they are what guarantees an instance can always be signed in to. A client
+ * still renders whatever it is told; this is only why the list is never empty in practice.
  */
 export const LOCAL_METHODS = ['password', 'passkey', 'email-otp'] as const;
 export type LocalMethod = (typeof LOCAL_METHODS)[number];

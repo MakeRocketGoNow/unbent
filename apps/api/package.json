@@ -11,6 +11,7 @@
     "migrate:remote": "wrangler d1 migrations apply unbent --remote --env production",
     "cf-typegen": "wrangler types",
     "test": "vitest run",
+    "test:unit": "vitest run --project unit",
     "posttest": "./scripts/purge-test-data.sh",
     "purge-test-data": "./scripts/purge-test-data.sh",
     "db:reset": "./scripts/reset-local-db.sh",
