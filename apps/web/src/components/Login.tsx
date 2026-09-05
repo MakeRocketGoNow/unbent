@@ -1,8 +1,14 @@
 import { Fragment, useEffect, useState, type FormEvent } from 'react';
-import { useLocation } from '@tanstack/react-router';
+import { useNavigate } from '@tanstack/react-router';
 import { useQuery } from '@tanstack/react-query';
 import { isLocalMethod, type AuthProvider } from '@unbent/shared';
-import { emailOtp, requestPasswordReset, signIn, signUp } from '../auth-client.js';
+import {
+  emailOtp,
+  refreshSession,
+  requestPasswordReset,
+  signIn,
+  signUp,
+} from '../auth-client.js';
 import { configQuery } from '../queries.js';
 import { Button } from './Button.js';
 import { ProviderIcon } from './provider-icons.js';
@@ -32,30 +38,18 @@ function socialLabel(id: string): string {
   return `Continue with ${name}`;
 }
 
-/** Where the app lands when the current URL is not somewhere worth returning to. */
-const HOME = '/notes';
-
-/**
- * Where to come back to after signing in.
- *
- * Deep links keep their query string, which is what lets a device approval survive a
- * sign-in. `/device` without a code does not: there is nothing there to act on, and a code
- * that has since been used or has expired renders an error that looks like the sign-in
- * failed rather than like a stale link.
- */
-export function returnTo(href: string): string {
-  const [path, query = ''] = href.split('?');
-  if (path !== '/device') return href;
-  // Matched rather than parsed with the browser's query-string API, which
-  // `url-boundary.test.ts` reserves for outbound API queries so that browser URL handling
-  // stays the router's business.
-  const hasCode = /(^|&)user_code=[^&]/.test(query);
-  return hasCode ? href : HOME;
-}
-
 /** Better Auth reports failures two ways; this flattens both to something showable. */
 function asMessage(err: unknown): string {
   return (err as Error)?.message || 'Sign-in failed';
+}
+
+export interface LoginProps {
+  /**
+   * Where to go once signed in — a path on this origin, already checked by the route that
+   * reads it out of the URL. The screen does not work this out for itself: it is rendered
+   * at `/login`, which is nobody's destination.
+   */
+  redirectTo: string;
 }
 
 /**
@@ -70,13 +64,31 @@ function asMessage(err: unknown): string {
  * the browser offers the credential from the email field before a key is pressed, and a
  * touch of a sensor is the entire interaction. Everyone else sees what they saw before.
  */
-export function Login() {
+export function Login({ redirectTo }: LoginProps) {
   const config = useQuery(configQuery());
   const [pending, setPending] = useState<AuthProvider | null>(null);
   const [error, setError] = useState<string | null>(null);
   // Through the router rather than `window.location`, which `url-boundary.test.ts` forbids
-  // so that navigation stays the router's business. `href` is the path and query together.
-  const { href } = useLocation();
+  // so that navigation stays the router's business.
+  const navigate = useNavigate();
+
+  /**
+   * What every sign-in that stays in this tab ends with.
+   *
+   * The session is refetched *before* navigating, not after. The destination has a guard
+   * in front of it and loaders behind it, and both run before anything renders — so
+   * arriving with the previous answer still cached either bounces straight back here or
+   * fires the note list's requests without a cookie. The second is what used to happen:
+   * signing in swapped the login screen for "Something went wrong! 401 Unauthorized",
+   * and only a reload got past it.
+   *
+   * `replace`, so Back goes to wherever the user was before signing in rather than to a
+   * sign-in screen that now bounces forward again.
+   */
+  async function landed() {
+    await refreshSession();
+    await navigate({ href: redirectTo, replace: true });
+  }
 
   const providers = config.data?.providers ?? [];
   // Anything the server reports that this codebase does not implement itself is an OAuth
@@ -96,19 +108,18 @@ export function Login() {
        * This used to always return to `/`, on the reasoning that preserving the URL meant
        * widening the server's trusted-redirect allowlist. It does not: Better Auth
        * validates `callbackURL` with `allowRelativePaths`, so a same-origin path needs no
-       * allowlist entry, and building one here from `pathname + search` can never produce
-       * an absolute URL pointing somewhere else.
+       * allowlist entry, and `redirectTo` is a path on this origin by construction — the
+       * route checked it before handing it over.
        *
        * The device flow is what made this matter. `/device?user_code=ABCD1234` opened
        * while signed out sent the user to `/notes` with the code silently dropped, and the
        * CLI waiting on an approval page they had no way back to.
        *
-       * A bare `/device` is the exception, and returns to the notes instead. Without a
-       * code there is nothing to approve, so landing there after signing in is a dead end
-       * — and since a code is single-use and expires in 30 minutes, a stale one is worse
-       * than a dead end: it shows an error that reads as sign-in being broken.
+       * This is the one method that leaves the page, so it is the one that cannot use
+       * `landed` — the provider brings the browser back with a fresh load, and the guard
+       * on the destination reads the cookie that arrived with it.
        */
-      await signIn.social({ provider, callbackURL: returnTo(href) });
+      await signIn.social({ provider, callbackURL: redirectTo });
     } catch (err) {
       setError((err as Error).message || 'Sign-in failed');
       setPending(null);
@@ -130,9 +141,9 @@ export function Login() {
       // Reported in `error` rather than thrown, as elsewhere on this client.
       if (result?.error) {
         setError(result.error.message || 'That passkey did not work.');
+      } else {
+        await landed();
       }
-      // On success the session hook in the root layout re-renders the app in place, so
-      // there is no redirect to make and the deep link in the address bar survives.
     } catch (err) {
       setError(asMessage(err));
     } finally {
@@ -217,6 +228,7 @@ export function Login() {
           busy={pending !== null}
           onBusy={(b) => setPending(b ? (password ? 'password' : 'email-otp') : null)}
           onError={setError}
+          onSignedIn={landed}
         />
       ),
     },
@@ -254,6 +266,8 @@ interface EmailFormProps {
   busy: boolean;
   onBusy: (busy: boolean) => void;
   onError: (message: string | null) => void;
+  /** Called once a cookie is in place; see `landed` above for what it does with that. */
+  onSignedIn: () => Promise<void>;
 }
 
 /**
@@ -271,11 +285,11 @@ interface EmailFormProps {
  * it, and a code is the fallback for having forgotten it or never set one — the same
  * reason "Forgot your password?" sits nearby rather than on a page of its own.
  *
- * No `callbackURL` on any of these: the session hook in the root layout re-renders the app
- * in place once the cookie lands, and the deep link that was opened stays in the address
- * bar. The social buttons redirect because a provider round trip leaves them no choice.
+ * No `callbackURL` on any of these: nothing here leaves the page, so the cookie lands in
+ * the response and `onSignedIn` navigates. The social buttons redirect because a provider
+ * round trip leaves them no choice.
  */
-function EmailForm({ otp, password, busy, onBusy, onError }: EmailFormProps) {
+function EmailForm({ otp, password, busy, onBusy, onError, onSignedIn }: EmailFormProps) {
   const [mode, setMode] = useState<'in' | 'up'>('in');
   const [email, setEmail] = useState('');
   const [secret, setSecret] = useState('');
@@ -321,6 +335,7 @@ function EmailForm({ otp, password, busy, onBusy, onError }: EmailFormProps) {
           ? await signIn.email({ email, password: secret })
           : await signUp.email({ email, password: secret, name: email });
       if (result.error) onError(result.error.message || 'Sign-in failed');
+      else await onSignedIn();
     } catch (err) {
       onError(asMessage(err));
     } finally {
@@ -355,6 +370,7 @@ function EmailForm({ otp, password, busy, onBusy, onError }: EmailFormProps) {
       // A wrong code is reported here rather than thrown. The plugin burns the code after
       // three tries, so the message has to be shown rather than silently retried.
       if (result?.error) onError(result.error.message || 'That code did not work.');
+      else await onSignedIn();
     } catch (err) {
       onError(asMessage(err));
     } finally {

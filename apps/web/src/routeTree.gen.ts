@@ -13,6 +13,7 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as ConnectRouteImport } from './routes/connect'
 import { Route as DeviceRouteImport } from './routes/device'
 import { Route as ImportRouteImport } from './routes/import'
+import { Route as LoginRouteImport } from './routes/login'
 import { Route as NotesRouteImport } from './routes/notes'
 import { Route as ResetPasswordRouteImport } from './routes/reset-password'
 import { Route as SettingsRouteImport } from './routes/settings'
@@ -48,6 +49,11 @@ const DeviceRoute = DeviceRouteImport.update({
 const ImportRoute = ImportRouteImport.update({
   id: '/import',
   path: '/import',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const LoginRoute = LoginRouteImport.update({
+  id: '/login',
+  path: '/login',
   getParentRoute: () => rootRouteImport,
 } as any)
 const NotesRoute = NotesRouteImport.update({
@@ -136,6 +142,7 @@ export interface FileRoutesByFullPath {
   '/connect': typeof ConnectRoute
   '/device': typeof DeviceRoute
   '/import': typeof ImportRoute
+  '/login': typeof LoginRoute
   '/notes': typeof NotesRouteWithChildren
   '/reset-password': typeof ResetPasswordRoute
   '/settings': typeof SettingsRouteWithChildren
@@ -158,6 +165,7 @@ export interface FileRoutesByTo {
   '/connect': typeof ConnectRoute
   '/device': typeof DeviceRoute
   '/import': typeof ImportRoute
+  '/login': typeof LoginRoute
   '/reset-password': typeof ResetPasswordRoute
   '/embed/index-files': typeof EmbedIndexFilesRoute
   '/notes/$noteId': typeof NotesNoteIdRoute
@@ -178,6 +186,7 @@ export interface FileRoutesById {
   '/connect': typeof ConnectRoute
   '/device': typeof DeviceRoute
   '/import': typeof ImportRoute
+  '/login': typeof LoginRoute
   '/notes': typeof NotesRouteWithChildren
   '/reset-password': typeof ResetPasswordRoute
   '/settings': typeof SettingsRouteWithChildren
@@ -202,6 +211,7 @@ export interface FileRouteTypes {
     | '/connect'
     | '/device'
     | '/import'
+    | '/login'
     | '/notes'
     | '/reset-password'
     | '/settings'
@@ -224,6 +234,7 @@ export interface FileRouteTypes {
     | '/connect'
     | '/device'
     | '/import'
+    | '/login'
     | '/reset-password'
     | '/embed/index-files'
     | '/notes/$noteId'
@@ -243,6 +254,7 @@ export interface FileRouteTypes {
     | '/connect'
     | '/device'
     | '/import'
+    | '/login'
     | '/notes'
     | '/reset-password'
     | '/settings'
@@ -266,6 +278,7 @@ export interface RootRouteChildren {
   ConnectRoute: typeof ConnectRoute
   DeviceRoute: typeof DeviceRoute
   ImportRoute: typeof ImportRoute
+  LoginRoute: typeof LoginRoute
   NotesRoute: typeof NotesRouteWithChildren
   ResetPasswordRoute: typeof ResetPasswordRoute
   SettingsRoute: typeof SettingsRouteWithChildren
@@ -302,6 +315,13 @@ declare module '@tanstack/react-router' {
       path: '/import'
       fullPath: '/import'
       preLoaderRoute: typeof ImportRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/login': {
+      id: '/login'
+      path: '/login'
+      fullPath: '/login'
+      preLoaderRoute: typeof LoginRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/notes': {
@@ -470,6 +490,7 @@ const rootRouteChildren: RootRouteChildren = {
   ConnectRoute: ConnectRoute,
   DeviceRoute: DeviceRoute,
   ImportRoute: ImportRoute,
+  LoginRoute: LoginRoute,
   NotesRoute: NotesRouteWithChildren,
   ResetPasswordRoute: ResetPasswordRoute,
   SettingsRoute: SettingsRouteWithChildren,
