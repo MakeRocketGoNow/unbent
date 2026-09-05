@@ -1,0 +1,20 @@
+{
+  "name": "Unbent",
+  "install": "./.cursor/install.sh",
+  "ports": [
+    { "name": "web", "port": 5173 },
+    { "name": "api", "port": 8787 }
+  ],
+  "terminals": [
+    {
+      "name": "api",
+      "command": "cd apps/api && corepack pnpm dev",
+      "description": "Hono API on the Cloudflare Workers runtime (wrangler dev) at http://localhost:8787, against the local D1/R2. The API integration suite (pnpm --filter @unbent/api test) requires this to be up."
+    },
+    {
+      "name": "web",
+      "command": "cd apps/web && corepack pnpm dev",
+      "description": "Vite dev server for the SPA at http://localhost:5173, proxying /api/* to the Worker on :8787 so sessions are same-origin. This is the URL to open."
+    }
+  ]
+}
