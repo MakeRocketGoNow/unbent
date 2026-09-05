@@ -31,6 +31,7 @@ import { ResizeHandle } from './ResizeHandle.js';
 import { OverflowMenu } from './OverflowMenu.js';
 import { Button } from './Button';
 import { Disclosure } from './Disclosure.js';
+import { BackArrow } from './BackArrow.js';
 
 /** The editor's share of the pane row when split evenly, and the limits a drag respects. */
 const EDITOR_DEFAULT = 0.5;
@@ -241,7 +242,7 @@ export function Workspace({ noteId, readOnly = false, backTo = '/notes' }: Works
               className="view-back"
               aria-label="Back to notes"
             >
-              ←
+              <BackArrow />
             </Link>
           </div>
         </div>
@@ -315,7 +316,7 @@ export function Workspace({ noteId, readOnly = false, backTo = '/notes' }: Works
             className="view-back"
             aria-label="Back to notes"
           >
-            ←
+            <BackArrow />
           </Link>
           <input
             className="title-input"

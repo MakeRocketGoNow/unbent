@@ -9,6 +9,7 @@ import { NoteListItem } from './NoteListItem.js';
 import { useListKeys } from '../useListKeys.js';
 import { Confirm } from './Confirm.js';
 import { Button } from './Button.js';
+import { BackArrow } from './BackArrow.js';
 import { useMaintenance } from './use-maintenance.js';
 
 /**
@@ -79,7 +80,7 @@ export function TrashLayout({ children }: { children: React.ReactNode }) {
         */}
         <div className="trash-head">
           <Link to="/notes" className="view-back" aria-label="Back to notes">
-            ←
+            <BackArrow />
           </Link>
           <h2>Trash</h2>
         </div>

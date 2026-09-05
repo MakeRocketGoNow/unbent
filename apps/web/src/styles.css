@@ -2626,25 +2626,10 @@ a.sidebar-status:hover {
      bug.
 
      It sits here, next to the `.shell` rule above whose padding it cancels, because the
-     two are one number: change that padding and this must change with it. A full-bleed
-     box would normally push a centred glyph off the text line, but `←` does not fill its
-     em box — its ink lands at 13.2px against the 12px line the notebook name, the tag
-     row and the editor body all share, so the flush target and the optical alignment
-     turn out to be the same value.
+     two are one number: change that padding and this must change with it.
   */
   .view-back {
     margin-left: -0.75rem;
-    /*
-       And pulled in on the right, so the heading sits beside the arrow rather than beside
-       its tap target.
-
-       `←` does not fill its box: the ink stops 13.2px short of the right edge, so a 4px
-       gap between the boxes reads as 17px of daylight — conspicuous next to a short
-       heading like "Settings", where there is no long title to fill the row. This takes
-       the visible gap to about 8px. The heading overlaps only the last 6px of the box,
-       well clear of the ink, so the arrow keeps a target far wider than the glyph.
-    */
-    margin-right: -0.6rem;
   }
 
   /*
