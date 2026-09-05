@@ -15,6 +15,7 @@
     "build": "pnpm --filter @unbent/web build",
     "typecheck": "pnpm -r typecheck",
     "test": "pnpm -r test",
+    "worktree:setup": "scripts/worktree-setup.sh",
     "migrate:local": "pnpm --filter @unbent/api migrate:local",
     "migrate:remote": "pnpm --filter @unbent/api migrate:remote",
     "release": "pnpm build && pnpm --filter @unbent/api release"

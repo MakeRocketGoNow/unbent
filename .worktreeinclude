@@ -1,0 +1,11 @@
+# Gitignored files Claude Code copies into a worktree it creates.
+#
+# Machine-local secrets and paths that `git worktree add` cannot bring across, and without
+# which a Worker started in the worktree has no BETTER_AUTH_SECRET and Gradle has no SDK.
+# `pnpm worktree:setup` copies the same two for a worktree made by hand, along with
+# dependencies and local database state.
+#
+# .claude/launch.json is deliberately absent: its port is a literal, so a copy would point
+# the preview tool at the main checkout's server. scripts/dev.mjs writes it per checkout.
+apps/api/.dev.vars
+apps/android/local.properties
