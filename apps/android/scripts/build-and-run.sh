@@ -7,7 +7,7 @@ ANDROID_SDK="${ANDROID_HOME:-$HOME/Library/Android/sdk}"
 ADB="$ANDROID_SDK/platform-tools/adb"
 EMULATOR="$ANDROID_SDK/emulator/emulator"
 APP_ID="app.unbent.android.debug"
-AVD="${AVD_NAME:-Pixel_9_API_35}"
+AVD="${AVD_NAME:-Pixel_9_API_36}"
 
 if ! "$ADB" get-state 2>/dev/null | grep -q device; then
   echo "No emulator running, booting $AVD..."

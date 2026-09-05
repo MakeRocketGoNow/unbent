@@ -1,8 +1,8 @@
 import java.util.Properties
+import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 plugins {
     alias(libs.plugins.android.application)
-    alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.serialization)
     alias(libs.plugins.kotlin.compose)
 }
@@ -30,20 +30,30 @@ android {
     namespace = "app.unbent.android"
     /**
      * What the app is compiled against, which is not what it promises to behave like —
-     * `targetSdk` below stays at 35 deliberately. Raising that opts into a release's new
-     * runtime behaviours and wants testing on its own; raising this only lets the compiler
-     * see newer APIs.
+     * that is `targetSdk` below. Raising this only lets the compiler see newer APIs.
      *
-     * It moved because AndroidX and Material now ship AARs whose metadata demands 36, and
+     * It moved because AndroidX and Material now ship AARs whose metadata demands 37, and
      * Gradle refuses them outright at `CheckAarMetadataWorkAction` rather than degrading —
      * so this is the floor for taking any of those updates at all.
      */
-    compileSdk = 36
+    compileSdk = 37
 
     defaultConfig {
         applicationId = "app.unbent.android"
         minSdk = 26
-        targetSdk = 35
+        /**
+         * The behaviours the app opts into, which is the half that actually changes at
+         * runtime. It moved to 36 because Play stopped accepting 35 for new installs on
+         * Android 16 devices as of 31 August 2026 — an update still reaches existing
+         * users, but nobody new on a current phone can install it.
+         *
+         * What 36 enforces, and why none of it needed code: edge-to-edge can no longer be
+         * opted out of, and every activity already calls `enableEdgeToEdge()` with insets
+         * handled per screen; orientation and resizability locks are ignored above 600dp,
+         * and none are declared; `onBackPressed` stops being called, and back is handled
+         * through Compose's `BackHandler` rather than the removed path.
+         */
+        targetSdk = 36
         versionCode = 1
         versionName = "0.1.0"
 
@@ -105,19 +115,15 @@ android {
     buildFeatures {
         buildConfig = true
         compose = true
+        // AGP 9 turns this off by default. The debug build type renames the app via
+        // `resValue`, so it has to be asked for explicitly now.
+        resValues = true
     }
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
-
-    kotlinOptions {
-        jvmTarget = "17"
-    }
-
-    sourceSets["main"].java.srcDirs("src/main/kotlin")
-    sourceSets["test"].java.srcDirs("src/test/kotlin")
 
     testOptions {
         unitTests {
@@ -131,6 +137,15 @@ android {
     }
 }
 
+// AGP 9 compiles Kotlin itself, so `kotlinOptions` inside `android { }` is gone. The JVM
+// target still has to be stated, and still has to match `compileOptions` above — a mismatch
+// is a hard error, not a warning.
+kotlin {
+    compilerOptions {
+        jvmTarget.set(JvmTarget.JVM_17)
+    }
+}
+
 dependencies {
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.appcompat)
@@ -141,9 +156,11 @@ dependencies {
     implementation(libs.compose.ui)
     implementation(libs.compose.ui.tooling.preview)
     implementation(libs.compose.material3)
+    implementation(libs.compose.material.icons.core)
     implementation(libs.androidx.activity.compose)
     implementation(libs.androidx.navigation.compose)
     implementation(libs.androidx.webkit)
+    implementation(libs.androidx.lifecycle.runtime.compose)
     debugImplementation(libs.compose.ui.tooling)
     implementation(libs.okhttp)
     implementation(libs.kotlinx.serialization.json)

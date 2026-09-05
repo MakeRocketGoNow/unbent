@@ -45,7 +45,7 @@ class EmailOtpAuth(
 
         client.newCall(req).execute().use { res ->
             if (!res.isSuccessful) {
-                val text = res.body?.string().orEmpty()
+                val text = res.body.string()
                 throw ApiException(res.code, "Could not send a code: ${res.code}", text)
             }
         }
@@ -68,7 +68,7 @@ class EmailOtpAuth(
             .build()
 
         client.newCall(req).execute().use { res ->
-            val text = res.body?.string().orEmpty()
+            val text = res.body.string()
             if (!res.isSuccessful) throw ApiException(res.code, "Sign-in failed: ${res.code}", text)
             return SessionCookie.fromSetCookie(res.headers("Set-Cookie"))
                 ?: throw ApiException(res.code, "Sign-in returned no session.", text)

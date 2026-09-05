@@ -40,7 +40,7 @@ class ConnectAuth(
             .build()
 
         client.newCall(req).execute().use { res ->
-            val text = res.body?.string().orEmpty()
+            val text = res.body.string()
             if (!res.isSuccessful) {
                 throw ApiException(res.code, "Could not connect: ${res.code}", text)
             }

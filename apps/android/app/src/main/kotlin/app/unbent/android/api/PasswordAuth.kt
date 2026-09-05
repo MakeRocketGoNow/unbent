@@ -49,7 +49,7 @@ class PasswordAuth(
             .build()
 
         client.newCall(req).execute().use { res ->
-            val text = res.body?.string().orEmpty()
+            val text = res.body.string()
             if (!res.isSuccessful) throw ApiException(res.code, "$what failed: ${res.code}", text)
             return SessionCookie.fromSetCookie(res.headers("Set-Cookie"))
                 ?: throw ApiException(res.code, "$what returned no session.", text)

@@ -81,7 +81,7 @@ class UnbentApi(
     /** Runs a request and returns its body, or throws [ApiException] carrying the status. */
     private fun call(request: Request, what: String): String =
         client.newCall(request).execute().use { res ->
-            val text = res.body?.string().orEmpty()
+            val text = res.body.string()
             if (!res.isSuccessful) throw ApiException(res.code, "$what failed: ${res.code}", text)
             text
         }

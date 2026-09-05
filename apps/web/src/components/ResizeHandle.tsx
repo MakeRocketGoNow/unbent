@@ -4,7 +4,7 @@ interface ResizeHandleProps {
   /** Accessible name, e.g. "Resize sidebar". */
   label: string;
   /** The element the pointer is measured against — the grid this handle sits in. */
-  containerRef: React.RefObject<HTMLElement>;
+  containerRef: React.RefObject<HTMLElement | null>;
   /**
    * Maps a pointer position to a value. Only the caller knows whether a pixel is a
    * sidebar width or a fraction of the pane row, so the handle stays unit-agnostic.
