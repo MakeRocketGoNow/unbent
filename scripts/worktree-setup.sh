@@ -34,25 +34,29 @@ cd "$ROOT"
 COMMON=$(git rev-parse --path-format=absolute --git-common-dir)
 MAIN=$(dirname "$COMMON")
 
+# Stop rather than act: the main checkout is where everything is copied *from*, and the
+# steps below would run migrations against the database a dev server is probably using.
 if [ "$MAIN" = "$ROOT" ]; then
-  echo "$ROOT is the main checkout — nothing to carry over."
-else
-  copy_from_main() {
-    local rel="$1"
-    if [ -e "$ROOT/$rel" ]; then
-      echo "have    $rel"
-    elif [ -e "$MAIN/$rel" ]; then
-      mkdir -p "$(dirname "$ROOT/$rel")"
-      cp "$MAIN/$rel" "$ROOT/$rel"
-      echo "copied  $rel"
-    else
-      echo "missing $rel (not in $MAIN either)"
-    fi
-  }
-
-  copy_from_main apps/api/.dev.vars
-  copy_from_main apps/android/local.properties
+  echo "$ROOT is the main checkout, not a worktree — nothing to set up."
+  echo "For a first run here: pnpm install && pnpm migrate:local"
+  exit 0
 fi
+
+copy_from_main() {
+  local rel="$1"
+  if [ -e "$ROOT/$rel" ]; then
+    echo "have    $rel"
+  elif [ -e "$MAIN/$rel" ]; then
+    mkdir -p "$(dirname "$ROOT/$rel")"
+    cp "$MAIN/$rel" "$ROOT/$rel"
+    echo "copied  $rel"
+  else
+    echo "missing $rel (not in $MAIN either)"
+  fi
+}
+
+copy_from_main apps/api/.dev.vars
+copy_from_main apps/android/local.properties
 
 pnpm install
 
