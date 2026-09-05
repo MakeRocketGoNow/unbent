@@ -251,12 +251,34 @@ class TaskWidget extends WidgetType {
 }
 
 /**
+ * Attachment images that failed to load, by resolved URL.
+ *
+ * The markdown behind a rendered image hides while the cursor is elsewhere, the way a
+ * link's brackets and destination do. That is only safe while there is an image on screen
+ * to stand in for it: a missing attachment with its source hidden too would be an empty
+ * line with nothing to click on and nothing to explain the gap. The widget records the
+ * failure here and asks for a repaint, and the next build leaves that image's source
+ * visible and draws no widget for it — the same appearance a broken image had before the
+ * source learned to hide at all.
+ *
+ * Module-level for the same reason `expandedPdfs` is: the widget is destroyed whenever its
+ * line scrolls out of the viewport, and the failure has to survive that.
+ */
+const failedImages = new Set<string>();
+
+/** Forgets every failure. Exists for tests, like `resetExpandedPdfs`. */
+export function resetFailedImages(): void {
+  failedImages.clear();
+}
+
+/**
  * Inline preview for an attachment image.
  *
- * Added after the markdown rather than replacing it, so the source stays visible and
- * editable and a broken or slow image never hides the text that produced it. Declared as
- * an inline widget styled to fill the line: CodeMirror forbids true block decorations from
- * a ViewPlugin, and this needs the plugin's viewport awareness.
+ * Stands in for the `![alt](url)` while the cursor is elsewhere and sits after it once the
+ * cursor is on its line — see the Image branch of `buildDecorations` for why it is not
+ * simply appended in both cases. Declared as an inline widget styled to fill the line:
+ * CodeMirror forbids true block decorations from a ViewPlugin, and this needs the
+ * plugin's viewport awareness.
  */
 class ImageWidget extends WidgetType {
   constructor(
@@ -270,7 +292,7 @@ class ImageWidget extends WidgetType {
     return other.url === this.url && other.alt === this.alt;
   }
 
-  toDOM(): HTMLElement {
+  toDOM(view: EditorView): HTMLElement {
     const wrap = document.createElement('span');
     wrap.className = 'cm-md-image';
 
@@ -278,8 +300,14 @@ class ImageWidget extends WidgetType {
     img.src = this.url;
     img.alt = this.alt;
     img.loading = 'lazy';
-    // A missing attachment should not leave a broken-image icon mid-document.
-    img.onerror = () => wrap.remove();
+    // A missing attachment should not leave a broken-image icon mid-document — and its
+    // source must come back into view, since the image was what stood in for it. The
+    // effect is what gets the decorations rebuilt; nothing else about the view changed.
+    img.onerror = () => {
+      wrap.remove();
+      failedImages.add(this.url);
+      view.dispatch({ effects: imageFailed.of(null) });
+    };
 
     wrap.appendChild(img);
     return wrap;
@@ -585,6 +613,16 @@ export interface RichMarkdownOptions {
  */
 export const pdfNamesChanged = StateEffect.define<null>();
 
+/**
+ * Tells the rich renderer an image it drew has failed to load — see `failedImages`.
+ *
+ * Internal: only `ImageWidget` has reason to dispatch it.
+ */
+const imageFailed = StateEffect.define<null>();
+
+/** An image on a line of its own collapses that line's text height while it stands in. */
+const imageOnlyLine = Decoration.line({ class: 'cm-md-image-line' });
+
 function buildDecorations(view: EditorView, options: RichMarkdownOptions): DecorationSet {
   const builder = new RangeSetBuilder<Decoration>();
   const marks: Array<Range<Decoration>> = [];
@@ -729,14 +767,52 @@ function buildDecorations(view: EditorView, options: RichMarkdownOptions): Decor
           const url = unwrapUrl(match[2]!.trim());
           if (!url.startsWith(ATTACHMENT_PREFIX)) return;
 
+          // A file that did not load gets no widget and keeps its source on screen, so the
+          // note still says what belongs there. See `failedImages`.
+          const src = resolve(url.slice(ATTACHMENT_PREFIX.length));
+          if (failedImages.has(src)) return;
+
+          const widget = new ImageWidget(src, match[1] ?? '');
+
+          /**
+           * The image stands in for its source while the cursor is elsewhere.
+           *
+           * Same reveal rule as a link: the cursor on the line brings `![alt](url)` back to
+           * be edited, and anywhere else the picture is the whole of what a reader sees —
+           * the source is a filename repeated above its own image, which is noise in the
+           * one mode meant for reading. Unlike a link there is no label to keep, because
+           * the image is the label.
+           *
+           * Replaced, not hidden at zero size like every other mark here, because of how
+           * the caret travels. Moving down, CodeMirror probes a little below the caret and
+           * asks the line it lands in for the coordinates of its last position; if the
+           * probe is below those, it decides it hit the line's padding and skips on. Hidden
+           * text is a zero-height point at the top of its line, and on a line collapsed
+           * around a picture — see below — the probe is always below it, so the caret
+           * stepped straight over the image from above while reaching it from below. A
+           * replacing widget answers that question with the picture's own rectangle, in
+           * both directions. The source is still in the document: the caret lands on
+           * either side of the picture, that touches the line, and the next build puts
+           * the text back with the picture after it.
+           *
+           * The line has to give up its text height too: even with nothing but a widget
+           * in it, the buffers CodeMirror places around an inline widget keep the strut of
+           * an ordinary text line, and the image would sit under a blank one. When the
+           * image is all the line holds, the line collapses that height — the same trick
+           * as a code fence row. A line mixing text and an image keeps its height for the
+           * text.
+           */
+          const scope = revealScope(state, node.node);
+          if (!selectionTouches(state, scope.from, scope.to)) {
+            marks.push(Decoration.replace({ widget }).range(node.from, node.to));
+            const line = state.doc.lineAt(node.from);
+            if (line.text.trim() === text) marks.push(imageOnlyLine.range(line.from));
+            return;
+          }
+
           // Inline widget: CodeMirror forbids block decorations from a ViewPlugin, and
           // an inline one sits after the link text without needing its own line.
-          marks.push(
-            Decoration.widget({
-              widget: new ImageWidget(resolve(url.slice(ATTACHMENT_PREFIX.length)), match[1] ?? ''),
-              side: 1,
-            }).range(node.to),
-          );
+          marks.push(Decoration.widget({ widget, side: 1 }).range(node.to));
           return;
         }
 
@@ -950,12 +1026,12 @@ export function richMarkdown(options: RichMarkdownOptions = {}): Extension {
 
         update(update: ViewUpdate) {
           // Selection changes matter as much as edits: they reveal and hide syntax. The
-          // effect covers the one input that changes without a transaction of its own —
-          // the attachment list arriving after the view was built.
-          const relisted = update.transactions.some((tr) =>
-            tr.effects.some((e) => e.is(pdfNamesChanged)),
+          // effects cover the inputs that change without a transaction of their own — the
+          // attachment list arriving after the view was built, and an image failing to load.
+          const repaint = update.transactions.some((tr) =>
+            tr.effects.some((e) => e.is(pdfNamesChanged) || e.is(imageFailed)),
           );
-          if (update.docChanged || update.viewportChanged || update.selectionSet || relisted) {
+          if (update.docChanged || update.viewportChanged || update.selectionSet || repaint) {
             this.decorations = buildDecorations(update.view, options);
           }
         }
@@ -1159,6 +1235,21 @@ export function richMarkdown(options: RichMarkdownOptions = {}): Extension {
         cursor: 'pointer',
       },
       '.cm-md-pdf-more:hover': { opacity: '0.85' },
+
+      /**
+       * A line holding nothing but an image standing in for its source.
+       *
+       * The line box keeps its strut even with no text in it — see the Image branch of
+       * `buildDecorations`. Zero line height removes it, along with the `<br>` CodeMirror
+       * appends after a block-shaped widget, leaving the widget as the line's only height
+       * so the image sits in the paragraph rhythm rather than under a blank line. Zero
+       * font size is for the widget buffers CodeMirror puts around the widget: inline
+       * `<img>`s sized `1em` tall that otherwise leave a text-height gap above the
+       * picture, visibly wider than the gap below it. The caret can still land here — the
+       * picture has a rectangle of its own — and the moment it does the line reveals and
+       * this class comes off.
+       */
+      '.cm-md-image-line': { lineHeight: '0', fontSize: '0' },
 
       '.cm-md-image': { display: 'block', padding: '0.35rem 0 0.6rem' },
       /**

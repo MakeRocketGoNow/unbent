@@ -7,6 +7,7 @@ import {
   orderedMarker,
   pdfNamesChanged,
   resetExpandedPdfs,
+  resetFailedImages,
   richMarkdown,
 } from './rich-markdown.js';
 
@@ -40,6 +41,28 @@ function mount(doc: string, cursor = doc.length): EditorView {
       doc,
       selection: EditorSelection.cursor(cursor),
       extensions: [markdown({ extensions: [GFM] }), richMarkdown()],
+    }),
+    parent,
+  });
+  return view;
+}
+
+/** Mounts with attachment resolution on; the shared `mount` deliberately has none. */
+function mountWithAttachments(doc: string, cursor = 0, pdfNames: string[] = []): EditorView {
+  const parent = document.createElement('div');
+  document.body.appendChild(parent);
+  const names = new Set(pdfNames);
+  view = new EditorView({
+    state: EditorState.create({
+      doc,
+      selection: EditorSelection.cursor(cursor),
+      extensions: [
+        markdown({ extensions: [GFM] }),
+        richMarkdown({
+          resolveAttachment: (name) => `/api/notes/n1/files/${name}`,
+          isPdfAttachment: (name) => names.has(name),
+        }),
+      ],
     }),
     parent,
   });
@@ -282,28 +305,6 @@ describe('ordered list markers', () => {
 });
 
 describe('inline PDF', () => {
-  /** Mounts with attachment resolution on; the shared `mount` deliberately has none. */
-  function mountWithAttachments(doc: string, cursor = 0, pdfNames: string[] = []): EditorView {
-    const parent = document.createElement('div');
-    document.body.appendChild(parent);
-    const names = new Set(pdfNames);
-    view = new EditorView({
-      state: EditorState.create({
-        doc,
-        selection: EditorSelection.cursor(cursor),
-        extensions: [
-          markdown({ extensions: [GFM] }),
-          richMarkdown({
-            resolveAttachment: (name) => `/api/notes/n1/files/${name}`,
-            isPdfAttachment: (name) => names.has(name),
-          }),
-        ],
-      }),
-      parent,
-    });
-    return view;
-  }
-
   beforeEach(() => {
     acquirePdf.mockClear();
     releasePdf.mockClear();
@@ -531,6 +532,108 @@ describe('inline PDF', () => {
  * anywhere on a line shows every mark on it, so the text stops shifting under the caret
  * as it moves across.
  */
+describe('inline images', () => {
+  beforeEach(() => resetFailedImages());
+
+  const image = (v: EditorView) => v.dom.querySelector<HTMLImageElement>('.cm-md-image img');
+
+  it('draws the attachment', () => {
+    const v = mountWithAttachments('![scan](files/scan.jpg)\n\nplain', 0);
+    expect(image(v)?.getAttribute('src')).toBe('/api/notes/n1/files/scan.jpg');
+    expect(image(v)?.alt).toBe('scan');
+  });
+
+  /** The picture is the label: unlike a link there is nothing in the source worth keeping. */
+  it('hides the whole source with the cursor elsewhere', () => {
+    const doc = '![scan](files/scan.jpg)\n\nplain';
+    const v = mountWithAttachments(doc, doc.length);
+    expect(visibleText(v, 1)).toBe('');
+    expect(image(v)).not.toBeNull();
+  });
+
+  it('reveals the source with the cursor on its line', () => {
+    const doc = '![scan](files/scan.jpg)\n\nplain';
+    const v = mountWithAttachments(doc, 3);
+    expect(visibleText(v, 1)).toBe('![scan](files/scan.jpg)');
+    expect(image(v)).not.toBeNull();
+  });
+
+  it('reveals the source again when the cursor arrives', () => {
+    const doc = '![scan](files/scan.jpg)\n\nplain';
+    const v = mountWithAttachments(doc, doc.length);
+    v.dispatch({ selection: EditorSelection.cursor(2) });
+    expect(visibleText(v, 1)).toBe('![scan](files/scan.jpg)');
+  });
+
+  it('never rewrites the document', () => {
+    const doc = '![scan](files/scan.jpg)\n\nplain';
+    const v = mountWithAttachments(doc, doc.length);
+    expect(v.state.doc.toString()).toBe(doc);
+  });
+
+  /** Hidden text keeps its line box; the line has to give that height up too. */
+  it('collapses a line that holds only the image', () => {
+    const doc = '![scan](files/scan.jpg)\n\nplain';
+    const v = mountWithAttachments(doc, doc.length);
+    expect(lineClasses(v, 1)).toContain('cm-md-image-line');
+  });
+
+  it('keeps the height of a line that also holds text', () => {
+    const doc = 'Receipt: ![scan](files/scan.jpg)\n\nplain';
+    const v = mountWithAttachments(doc, doc.length);
+    expect(visibleText(v, 1)).toBe('Receipt: ');
+    expect(lineClasses(v, 1)).not.toContain('cm-md-image-line');
+  });
+
+  it('does not collapse the line while the source is revealed', () => {
+    const v = mountWithAttachments('![scan](files/scan.jpg)\n\nplain', 3);
+    expect(lineClasses(v, 1)).not.toContain('cm-md-image-line');
+  });
+
+  /** Without a widget there is nothing to stand in for the source, so it stays. */
+  it('leaves an external image alone', () => {
+    const doc = '![logo](https://example.com/logo.png)\n\nplain';
+    const v = mountWithAttachments(doc, doc.length);
+    expect(visibleText(v, 1)).toBe(doc.split('\n')[0]);
+    expect(image(v)).toBeNull();
+  });
+
+  it('leaves the source visible when no resolver is configured', () => {
+    const doc = '![scan](files/scan.jpg)\n\nplain';
+    const v = mount(doc, doc.length);
+    expect(visibleText(v, 1)).toBe('![scan](files/scan.jpg)');
+  });
+
+  /**
+   * A missing attachment used to leave nothing but its source; hiding that too would leave
+   * nothing at all. The failure has to bring the text back on its own — no keystroke or
+   * selection change is coming to trigger a rebuild.
+   */
+  it('brings the source back when the image fails to load', () => {
+    const doc = '![scan](files/missing.jpg)\n\nplain';
+    const v = mountWithAttachments(doc, doc.length);
+    expect(visibleText(v, 1)).toBe('');
+
+    image(v)!.dispatchEvent(new Event('error'));
+
+    expect(visibleText(v, 1)).toBe('![scan](files/missing.jpg)');
+    expect(lineClasses(v, 1)).not.toContain('cm-md-image-line');
+    expect(image(v)).toBeNull();
+  });
+
+  /** The failure outlives the widget, which is rebuilt on every scroll. */
+  it('remembers the failure across a rebuild', () => {
+    const doc = '![scan](files/missing.jpg)\n\nplain';
+    const v = mountWithAttachments(doc, doc.length);
+    image(v)!.dispatchEvent(new Event('error'));
+
+    v.dispatch({ changes: { from: doc.length, insert: ' more' } });
+
+    expect(visibleText(v, 1)).toBe('![scan](files/missing.jpg)');
+    expect(image(v)).toBeNull();
+  });
+});
+
 describe('block-level reveal', () => {
   const two = 'a **bold** and _italic_ here';
 
