@@ -12,6 +12,11 @@ on:
       - 'pnpm-lock.yaml'
       - '.github/workflows/web.yml'
   pull_request:
+    # `closed` is here only so a merged or abandoned PR's preview Worker gets deleted;
+    # `check` and `preview` both sit it out. The default list is the other three, and
+    # naming `closed` means naming all of them. The path filter still applies, so closing
+    # an Android-only PR tears down nothing, having deployed nothing.
+    types: [opened, synchronize, reopened, closed]
     paths:
       - 'apps/web/**'
       - 'apps/api/**'
@@ -22,6 +27,7 @@ on:
 
 jobs:
   check:
+    if: github.event.action != 'closed'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -58,3 +64,195 @@ jobs:
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+  # One Worker per PR, at a URL of its own, so a branch can be tried out rather than read.
+  #
+  # The URL is built rather than parsed back out of wrangler's output, because APP_URL is
+  # baked in at deploy time and the deploy therefore has to already know it. That works
+  # because a workers.dev URL is exactly `<worker name>.<subdomain>.workers.dev`, and both
+  # halves are known here.
+  preview:
+    needs: check
+    # Fork PRs get no secrets, so there is nothing to deploy with. They fail the guard
+    # rather than the deploy, which keeps the failure legible. `closed` is spelled out even
+    # though a skipped `check` would already skip this, so that reading the job tells you
+    # when it runs without having to trace the `needs` back.
+    if: >-
+      github.event_name == 'pull_request'
+      && github.event.action != 'closed'
+      && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+      deployments: write
+    concurrency:
+      group: preview-${{ github.event.pull_request.number }}
+      cancel-in-progress: true
+    env:
+      WORKER_NAME: unbent-pr-${{ github.event.pull_request.number }}
+      WORKERS_SUBDOMAIN: ${{ vars.CLOUDFLARE_WORKERS_SUBDOMAIN }}
+      PREVIEW_URL: https://unbent-pr-${{ github.event.pull_request.number }}.${{ vars.CLOUDFLARE_WORKERS_SUBDOMAIN }}.workers.dev
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+    steps:
+      # An unset subdomain would otherwise build `https://unbent-pr-1..workers.dev` and
+      # deploy it as APP_URL, which fails much later and looks like an auth bug.
+      - name: Require the workers.dev subdomain
+        run: |
+          if [ -z "$WORKERS_SUBDOMAIN" ]; then
+            echo "::error::Set the CLOUDFLARE_WORKERS_SUBDOMAIN repository variable to the account's *.workers.dev name."
+            exit 1
+          fi
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+
+      # Every preview shares one database, so this is the PR's migrations landing in it.
+      - name: Apply migrations to the shared preview database
+        working-directory: apps/api
+        run: pnpm migrate:dev
+
+      - name: Deploy the preview Worker
+        working-directory: apps/api
+        run: pnpm exec wrangler deploy --env dev --name "$WORKER_NAME" --var "APP_URL:$PREVIEW_URL"
+
+      # After the deploy, not before: secrets attach to a Worker, and `secret put` fails
+      # until one exists. They survive later deploys of the same name, so re-putting them
+      # on every push is redundant rather than harmful, and keeps a rotated value flowing
+      # without anyone having to remember which previews are live.
+      #
+      # No `--env dev`, and it must stay off. `secret put` resolves its target with
+      # wrangler's `getLegacyScriptName`, which is `--name` and `--env` concatenated:
+      # adding `--env dev` here would aim these at `unbent-pr-<N>-dev`, a Worker that does
+      # not exist. Nothing would fail — wrangler offers to create a missing Worker and
+      # takes its own "yes" when non-interactive — so CI would quietly stand up an empty
+      # stub per PR, put both secrets on it, and leave the real preview with neither. The
+      # deploy above resolves `--name` differently, via `getScriptName`, which ignores
+      # `--env`; that asymmetry is the whole trap.
+      #
+      # `printf` rather than `echo` so no trailing newline is read into the value.
+      - name: Put the preview secrets
+        working-directory: apps/api
+        env:
+          DEV_BETTER_AUTH_SECRET: ${{ secrets.DEV_BETTER_AUTH_SECRET }}
+          DEV_ALLOWED_EMAILS: ${{ secrets.DEV_ALLOWED_EMAILS }}
+        run: |
+          printf '%s' "$DEV_BETTER_AUTH_SECRET" |
+            pnpm exec wrangler secret put BETTER_AUTH_SECRET --name "$WORKER_NAME"
+          printf '%s' "$DEV_ALLOWED_EMAILS" |
+            pnpm exec wrangler secret put ALLOWED_EMAILS --name "$WORKER_NAME"
+
+      # Edited in place rather than appended to, so a PR with thirty pushes has one comment.
+      - name: Comment the preview URL
+        uses: actions/github-script@v9
+        with:
+          script: |
+            const marker = '<!-- unbent-preview -->';
+            const body = [
+              marker,
+              `### Preview: ${process.env.PREVIEW_URL}`,
+              '',
+              'Sign in with a password and an allowlisted address — a preview offers no OAuth,',
+              'because a callback URL cannot be registered for a host that changes every PR.',
+              '',
+              `Runs against the shared \`unbent-dev\` database and bucket, which every preview`,
+              'writes to. Production is untouched. The Worker is deleted when this PR closes.',
+            ].join('\n');
+            const { owner, repo } = context.repo;
+            const issue_number = context.payload.pull_request.number;
+            const comments = await github.paginate(github.rest.issues.listComments, {
+              owner, repo, issue_number, per_page: 100,
+            });
+            const existing = comments.find((c) => c.body?.includes(marker));
+            if (existing) {
+              await github.rest.issues.updateComment({ owner, repo, comment_id: existing.id, body });
+            } else {
+              await github.rest.issues.createComment({ owner, repo, issue_number, body });
+            }
+
+      # Puts the URL in the PR's own Deployments box, next to the checks, rather than only
+      # in a comment that scrolls away. `transient_environment` tells GitHub this one is
+      # disposable, so it presents it as a preview and not as somewhere releases go.
+      - name: Record the deployment
+        uses: actions/github-script@v9
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const deployment = await github.rest.repos.createDeployment({
+              owner, repo,
+              ref: context.payload.pull_request.head.sha,
+              environment: `pr-${context.payload.pull_request.number}`,
+              description: 'Preview Worker',
+              transient_environment: true,
+              // Both default to on and would have this return a merge commit or a
+              // "waiting on required contexts" object instead of a deployment.
+              auto_merge: false,
+              required_contexts: [],
+            });
+            await github.rest.repos.createDeploymentStatus({
+              owner, repo,
+              deployment_id: deployment.data.id,
+              state: 'success',
+              environment_url: process.env.PREVIEW_URL,
+              log_url: `${context.serverUrl}/${owner}/${repo}/actions/runs/${context.runId}`,
+            });
+
+  # Deliberately not `needs: check` — check skips on `closed`, and a job needing a skipped
+  # job is skipped too.
+  preview-teardown:
+    if: github.event.action == 'closed' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      deployments: write
+    concurrency:
+      group: preview-${{ github.event.pull_request.number }}
+      cancel-in-progress: true
+    env:
+      WORKER_NAME: unbent-pr-${{ github.event.pull_request.number }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+    steps:
+      # The base branch, not the PR: a merged PR's `refs/pull/N/merge` is deleted about as
+      # soon as this event fires, and the delete below needs nothing from the PR anyway.
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.base.ref }}
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+
+      # No `--env dev`: a Worker is deleted by name, so the environment's bindings are
+      # beside the point, and leaving it off means this keeps working from a base branch
+      # whose wrangler.toml predates `[env.dev]`.
+      #
+      # Whatever the PR wrote lives on in the shared preview D1 and R2. That is the trade
+      # a shared scratch instance makes; see the README on recreating it.
+      - name: Delete the preview Worker
+        working-directory: apps/api
+        run: pnpm exec wrangler delete --name "$WORKER_NAME" --force
+
+      - name: Deactivate the deployment
+        uses: actions/github-script@v9
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const deployments = await github.paginate(github.rest.repos.listDeployments, {
+              owner, repo,
+              environment: `pr-${context.payload.pull_request.number}`,
+              per_page: 100,
+            });
+            for (const deployment of deployments) {
+              await github.rest.repos.createDeploymentStatus({
+                owner, repo, deployment_id: deployment.id, state: 'inactive',
+              });
+            }
