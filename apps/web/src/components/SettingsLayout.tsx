@@ -1,5 +1,6 @@
 import { createContext, useContext, useMemo, useState, type ReactNode } from 'react';
 import { Link } from '@tanstack/react-router';
+import { BackArrow } from './BackArrow.js';
 
 interface BusyContext {
   /** Set while an import is running, so the sub-nav can refuse to unmount it. */
@@ -62,7 +63,7 @@ export function SettingsLayout({ children }: { children: ReactNode }) {
               place, and the heading beside it says where it goes.
           */}
           <Link to="/notes" className="view-back" aria-label="Back to notes">
-            ←
+            <BackArrow />
           </Link>
           <h2>Settings</h2>
         </div>
