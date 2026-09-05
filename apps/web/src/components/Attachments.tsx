@@ -10,6 +10,7 @@ import {
 import * as api from '../notes-api.js';
 import { attachmentsQuery, keys } from '../queries.js';
 import { Confirm } from './Confirm.js';
+import { Button } from './Button';
 
 interface AttachmentsProps {
   noteId: string;
@@ -142,23 +143,24 @@ export function Attachments({
               </div>
               <div className="attachments-actions">
                 {!isLinked && (
-                  <button
-                    type="button"
-                    className="link"
+                  <Button
+                    variant="quiet"
+                    size="small"
                     disabled={busy !== null}
                     onClick={() => insertLink(file)}
                   >
                     Insert link
-                  </button>
+                  </Button>
                 )}
-                <button
-                  type="button"
-                  className="link danger"
+                <Button
+                  variant="quiet"
+                  tone="danger"
+                  size="small"
                   disabled={busy !== null}
                   onClick={() => setPending(file.filename)}
                 >
                   {busy === file.filename ? 'Deleting…' : 'Delete'}
-                </button>
+                </Button>
               </div>
 
               {pending === file.filename && (
