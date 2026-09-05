@@ -239,11 +239,44 @@ function socialConfig(env: Env): Record<string, { clientId: string | string[]; c
 }
 
 /**
+ * Says out loud that a deployed instance will accept a sign-up from anyone.
+ *
+ * An empty `ALLOWED_EMAILS` means unrestricted. That is what local development and the
+ * test suite want, and what a public URL almost never does — but nothing ever said so, and
+ * an instance with an open door looks exactly like one without. The silence got worse when
+ * password became the floor: an instance that configured nothing now has a sign-up form it
+ * did not ask for.
+ *
+ * A warning and not a refusal, deliberately. Refusing sign-ups without an allowlist would
+ * lock an operator out of their own fresh deployment, which is the dead end this change set
+ * exists to remove — it would trade a silent open door for a silent locked one. The offered
+ * methods are named because that is the part worth acting on: it says what an unknown
+ * visitor could actually use.
+ *
+ * Exported for its test. It is a plain function of the environment, and which of the three
+ * cases it fires on is exactly the kind of condition that rots quietly — too loud and every
+ * local run is noise, too quiet and a public instance says nothing.
+ */
+export function warnIfOpenToAnyone(env: Env): void {
+  if (env.APP_URL.startsWith('http://localhost')) return;
+  if (allowedEmails(env).length > 0) return;
+  console.warn(
+    `[auth] ALLOWED_EMAILS is empty and APP_URL (${env.APP_URL}) is not local: ` +
+      `anyone able to use ${offeredProviders(env).join(', ')} can create an account here.`,
+  );
+}
+
+/**
  * Better Auth must be constructed per-request: on Workers the D1 binding only exists on
  * `env`, which is not available at module scope. Instances are cheap, but we memoize per
  * Env object so repeated middleware calls within one request reuse the same instance.
+ *
+ * That memoization is also what paces the warning below. There is no startup hook on
+ * Workers to hang it from, and `getAuth` builds one instance per `Env`, so this lands about
+ * once per isolate. Do not move it to the request path, where it would repeat forever.
  */
 function createAuth(env: Env): AuthInstance {
+  warnIfOpenToAnyone(env);
   return betterAuth({
     // Better Auth v1.5+ accepts a D1 binding directly and picks its own dialect.
     // D1 has no interactive transactions; Better Auth falls back to batch() for atomicity.

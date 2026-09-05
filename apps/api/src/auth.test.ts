@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'vitest';
-import { configuredSocials, offeredProviders } from './auth.js';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { configuredSocials, offeredProviders, warnIfOpenToAnyone } from './auth.js';
 import type { Env } from './types.js';
 
 /** Only the fields these functions read; the bindings are irrelevant here. */
@@ -129,5 +129,37 @@ describe('offeredProviders', () => {
       env({ DISCORD_CLIENT_ID: 'id', DISCORD_CLIENT_SECRET: 'secret', AUTH_PASSWORD: '1' }),
     );
     expect(offered).toEqual(['discord', 'password', 'passkey']);
+  });
+});
+
+/**
+ * An open sign-up is a decision, not an accident, and the warning is the only thing that
+ * makes it a visible one. Both halves of the condition are pinned: too eager and every
+ * local run is noise nobody reads, too shy and a public instance says nothing at all.
+ */
+describe('warnIfOpenToAnyone', () => {
+  const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+  afterEach(() => warn.mockClear());
+
+  it('warns when a deployed instance has no allowlist', () => {
+    warnIfOpenToAnyone(env({}));
+    expect(warn).toHaveBeenCalledOnce();
+  });
+
+  /** Naming them is the actionable part: it says what a stranger could actually use. */
+  it('names the methods a stranger could sign up with', () => {
+    warnIfOpenToAnyone(env({ GITHUB_CLIENT_ID: 'id', GITHUB_CLIENT_SECRET: 'secret' }));
+    expect(warn.mock.calls[0]?.[0]).toContain('github');
+  });
+
+  it('stays quiet once an allowlist says who may join', () => {
+    warnIfOpenToAnyone(env({ ALLOWED_EMAILS: 'you@example.com' }));
+    expect(warn).not.toHaveBeenCalled();
+  });
+
+  /** Local development is unrestricted on purpose, and the suite signs up throwaway actors. */
+  it('stays quiet in local development', () => {
+    warnIfOpenToAnyone(env({ APP_URL: 'http://localhost:5173' }));
+    expect(warn).not.toHaveBeenCalled();
   });
 });
