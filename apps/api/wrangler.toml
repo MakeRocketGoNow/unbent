@@ -87,3 +87,52 @@ enabled = true
 # `wrangler dev` logged in; conversion of a PDF is free.
 [env.production.ai]
 binding = "AI"
+
+# Preview instance, shared by every pull request.
+#
+# One Worker per PR, `unbent-pr-<N>`, and all of them bound to the same `unbent-dev` D1 and
+# `unbent-dev-blobs` R2. The Worker is per PR only because its URL — and therefore APP_URL —
+# has to differ; the data is shared on purpose. Nothing here touches production. Deployed
+# and torn down by .github/workflows/web.yml.
+#
+# Two values this block deliberately omits, because both are per PR and are supplied on the
+# deploy command line instead:
+#
+#   --name unbent-pr-<N>   replaces the name outright (wrangler's getScriptName is
+#                          `args.name ?? config.name`), rather than suffixing the env onto
+#                          it the way a bare `--env dev` would give `unbent-api-dev`.
+#   --var APP_URL:<url>    https://unbent-pr-<N>.<subdomain>.workers.dev
+#
+# APP_URL is the one that matters: `auth.ts` derives baseURL, trusted origins, cookie
+# security and the passkey rpID from it, so it must name the preview's own host. Left unset
+# the Worker throws on its first request, which is the right failure — a stale placeholder
+# would instead half-work, with sessions breaking in ways that look like anything but this.
+#
+# Because of that omission wrangler warns, on every deploy of this env, that the top-level
+# `vars` is not inherited and should be added here. The warning is expected and its advice
+# is wrong for this block specifically: pasting APP_URL in is what reintroduces the stale
+# placeholder above. There is no way to have the value be per-PR and also silence it.
+#
+# No `ai` binding, for the reason the production block gives; previews extract a PDF's text
+# in the browser, as an unconfigured instance always has.
+[env.dev]
+workers_dev = true
+
+[[env.dev.d1_databases]]
+binding = "DB"
+database_name = "unbent-dev"
+database_id = "PLACEHOLDER_RUN_WRANGLER_D1_CREATE"
+migrations_dir = "migrations"
+
+[[env.dev.r2_buckets]]
+binding = "BLOBS"
+bucket_name = "unbent-dev-blobs"
+
+[env.dev.assets]
+directory = "../web/dist"
+binding = "ASSETS"
+not_found_handling = "single-page-application"
+run_worker_first = ["/api/*"]
+
+[env.dev.observability]
+enabled = true
