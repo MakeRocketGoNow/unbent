@@ -237,9 +237,24 @@ jobs:
       #
       # Whatever the PR wrote lives on in the shared preview D1 and R2. That is the trade
       # a shared scratch instance makes; see the README on recreating it.
+      #
+      # A PR whose `check` failed never got as far as deploying, so there may be nothing
+      # here to delete. Only that one case is forgiven — 10007 is wrangler's Worker-not-
+      # found — because a closed PR going red over a Worker that never existed is noise,
+      # while a delete failing for any other reason is a preview left running.
       - name: Delete the preview Worker
         working-directory: apps/api
-        run: pnpm exec wrangler delete --name "$WORKER_NAME" --force
+        run: |
+          status=0
+          output="$(pnpm exec wrangler delete --name "$WORKER_NAME" --force 2>&1)" || status=$?
+          printf '%s\n' "$output"
+          if [ "$status" -ne 0 ]; then
+            if printf '%s\n' "$output" | grep -q 'code: 10007'; then
+              echo "::notice::No Worker named $WORKER_NAME — this PR never deployed a preview."
+              exit 0
+            fi
+            exit "$status"
+          fi
 
       - name: Deactivate the deployment
         uses: actions/github-script@v9
