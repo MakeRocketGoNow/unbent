@@ -1,5 +1,5 @@
 import { redirect, type ParsedLocation } from '@tanstack/react-router';
-import { ensureSession } from './auth-client.js';
+import { ensureSession, type Session } from './auth-client.js';
 
 /** Where the app lands when there is nowhere better to send someone. */
 export const HOME = '/notes';
@@ -88,10 +88,16 @@ export function safeRedirect(value: string | undefined): string | undefined {
  * cleared only by reloading the page.
  *
  * `replace`, so Back leaves rather than re-entering the redirect.
+ *
+ * Returns the session it established, because *who* it belongs to is the caller's business
+ * too: `claimCacheFor` in `queries.ts` reads the user id off it to notice the query cache
+ * changing hands between two people in a tab nobody reloaded. `undefined` means this path
+ * asked for no session — the two ungated shells — rather than that there is nobody.
  */
-export async function requireSession(location: ParsedLocation): Promise<void> {
-  if (shellFor(location.pathname) !== 'app') return;
-  if (await ensureSession()) return;
+export async function requireSession(location: ParsedLocation): Promise<Session | undefined> {
+  if (shellFor(location.pathname) !== 'app') return undefined;
+  const session = await ensureSession();
+  if (session) return session;
 
   const back = returnTo(location.href);
   throw redirect({
