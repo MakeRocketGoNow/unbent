@@ -13,13 +13,13 @@ import {
   invalidateNoteMembership,
 } from '../queries.js';
 import { useNotesLayout, SIDEBAR_DEFAULT, SIDEBAR_MIN, SIDEBAR_MAX } from '../useNotesLayout.js';
-import { useMediaQuery, MOBILE_QUERY } from '../useMediaQuery.js';
 import { ResizeHandle } from './ResizeHandle.js';
 import { NoteListItem } from './NoteListItem.js';
 import { useListKeys } from '../useListKeys.js';
 import { SearchResults } from './SearchResults.js';
 import { IndexingStatus } from './IndexingStatus.js';
 import { Button } from './Button';
+import { Disclosure } from './Disclosure.js';
 
 /** Sidebar plus the routed workspace. Filters come from the URL; nothing here is mirrored into state. */
 export function NotesLayout({ children }: { children: React.ReactNode }) {
@@ -30,14 +30,6 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
   const queryClient = useQueryClient();
   const layout = useNotesLayout('/notes/$noteId');
   const onListKeys = useListKeys();
-  /**
-   * Tags start collapsed on a phone and open everywhere else.
-   *
-   * CSS cannot do this: `<details open>` is an attribute, not a style, so a media query
-   * cannot close it. The initial state is all that is decided here — once the user
-   * toggles it, the element owns its own state and this stops applying.
-   */
-  const isMobile = useMediaQuery(MOBILE_QUERY);
 
   const filter = {
     ...(notebook ? { notebook } : {}),
@@ -311,28 +303,33 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
               it costs one row; the summary carries the active tag so a filter can never be
               applied invisibly.
 
-              `open` is a default, not a controlled value — `key` re-mounts the element when
-              the breakpoint changes so the new default takes, and between those crossings
-              the element owns its own state and the user's toggle sticks.
+              Open where the sidebar has room, closed on a phone — `defaultOpen="wide"` is
+              that, and Disclosure carries the remount the default needs to survive a
+              viewport change.
           */
-          <details className="tag-filter-wrap" key={String(isMobile)} open={!isMobile}>
-            <summary>
-              Tags
-              {/* The active tag stays on the row while collapsed, so a filter is never
-                  applied invisibly; otherwise the count says what is hidden. */}
-              {selectedTags.length > 0 ? (
-                // Every selected tag, not the first and a count: two tags ANDed are a
-                // different question from either alone, and the collapsed row is the only
-                // place a filter shows while the list is closed.
-                selectedTags.map((name) => (
-                  <span className="tag-filter-active" key={name}>
-                    {name}
-                  </span>
-                ))
-              ) : (
-                <span className="tag-filter-summary-count">{tags.data?.length}</span>
-              )}
-            </summary>
+          <Disclosure
+            className="tag-filter-wrap"
+            defaultOpen="wide"
+            summary={
+              <>
+                Tags
+                {/* The active tag stays on the row while collapsed, so a filter is never
+                    applied invisibly; otherwise the count says what is hidden. */}
+                {selectedTags.length > 0 ? (
+                  // Every selected tag, not the first and a count: two tags ANDed are a
+                  // different question from either alone, and the collapsed row is the only
+                  // place a filter shows while the list is closed.
+                  selectedTags.map((name) => (
+                    <span className="tag-filter-active" key={name}>
+                      {name}
+                    </span>
+                  ))
+                ) : (
+                  <span className="tag-filter-summary-count">{tags.data?.length}</span>
+                )}
+              </>
+            }
+          >
             <div className="tag-filter">
               {tags.data?.map((t) => {
                 const on = selectedTags.includes(t.name);
@@ -365,7 +362,7 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
                 );
               })}
             </div>
-          </details>
+          </Disclosure>
         )}
 
         <ul className="note-list" onKeyDown={onListKeys}>

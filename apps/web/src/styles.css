@@ -625,6 +625,101 @@ h1 {
 }
 
 
+/* ---------------------------------------------------------------------------------
+   Disclosures.
+
+   One collapsible row, drawn one way. This app had three hand-rolled `<details>` and no
+   component, so the convention lived in comments and got copied by hand — and drifted. The
+   note's filing row and the attachments panel ended up stacked directly on top of each other
+   on a phone, one with a custom chevron on the right, the other with the browser's native
+   triangle on the left. See Disclosure.tsx for the rest of that story.
+
+   The marker is drawn here rather than left to the browser. `display: flex` on a summary
+   suppresses the native triangle — browsers only draw it for `list-item` — which is what made
+   the first hand-rolled version a line of text with no affordance at all. Drawing it
+   explicitly also lets it rotate between states instead of swapping one glyph for another.
+
+   It is a rotated square with two borders, so it needs no glyph and no asset, and it inherits
+   `currentColor`, which is what makes it correct in dark mode for free.
+   --------------------------------------------------------------------------------- */
+.disclosure > summary {
+  display: flex;
+  align-items: center;
+  /*
+     A fixed box rather than whatever the text's leading produces, so the gap below a summary
+     is its container's padding alone. The mobile block raises this to the 44px touch target;
+     this is the desktop density, where the row is pointed at rather than tapped.
+  */
+  min-height: 2rem;
+  /* The same 0.78rem as every other secondary label — one number, not one per disclosure. */
+  font-size: 0.78rem;
+  color: var(--muted);
+  cursor: pointer;
+  /* A double-click on a disclosure should not select the label. */
+  user-select: none;
+}
+
+.disclosure > summary:hover { color: var(--fg); }
+
+/* Belt and braces: Safari draws its own marker from this pseudo-element regardless. */
+.disclosure > summary::-webkit-details-marker { display: none; }
+.disclosure > summary::marker { content: ''; }
+
+.disclosure > summary::after {
+  content: '';
+  /*
+     Never shrinks.
+
+     It is a flex item, and without this a long tag list squeezed it from 5.76px to 3.19px
+     wide while its height stayed put — a rotated box with only a right and a bottom border,
+     narrowed on one axis, reads as a checkmark rather than a chevron.
+  */
+  flex: 0 0 auto;
+  width: 0.36rem;
+  height: 0.36rem;
+  /* The chevron owns the space before it rather than splitting it with a gap on the summary:
+     one number to change instead of two that have to be added together. */
+  margin-left: 0.75rem;
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  /* Points right when closed, down when open. */
+  transform: rotate(-45deg) translate(-0.05rem, -0.05rem);
+  transition: transform 0.15s ease;
+}
+
+.disclosure[open] > summary::after {
+  transform: rotate(45deg) translate(-0.05rem, -0.05rem);
+}
+
+/* Keyboard focus has to land somewhere visible; summary carries no default ring here. */
+.disclosure > summary:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 0.25rem;
+}
+
+/*
+   The half of the summary that yields.
+
+   It truncates so the chevron never has to — see the note on `flex: 0 0 auto` above for what
+   a squeezed chevron turns into. Anything that should sit hard right goes in here with
+   `margin-left: auto`, which is why there is no separate trailing slot.
+
+   No `line-height` here on purpose. An earlier version pinned it to 1 to get a fixed row
+   height, which `min-height` now does — and inside `overflow: hidden` it clipped the
+   descenders off any tag with a g or a y in it.
+*/
+.disclosure-label {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
 .note-list {
   list-style: none;
   margin: 0;
@@ -1234,52 +1329,7 @@ a.sidebar-status:hover {
   border-bottom: 1px solid var(--border);
 }
 
-/*
-   The row reads as a control, not a heading.
-
-   `display: flex` on a summary suppresses the native disclosure triangle — the browser
-   only draws that marker for `list-item` display — so the first version was the word
-   "Tags" with no affordance at all. The chevron below is drawn explicitly instead, which
-   also lets it rotate rather than swapping glyphs.
-*/
-.tag-filter-wrap > summary {
-  display: flex;
-  align-items: center;
-  gap: 0.4rem;
-  padding: 0.3rem 0;
-  font-size: 0.8rem;
-  font-weight: 500;
-  color: var(--muted);
-  cursor: pointer;
-  /* A double-click on a disclosure should not select the label. */
-  user-select: none;
-}
-
-/* Belt and braces: Safari draws its own marker from this pseudo-element regardless. */
-.tag-filter-wrap > summary::-webkit-details-marker { display: none; }
-.tag-filter-wrap > summary::marker { content: ''; }
-
-/* The chevron: a rotated square with two borders, so it needs no glyph or asset. */
-.tag-filter-wrap > summary::after {
-  content: '';
-  /* Never shrinks — see the note on the note-filing chevron. A long active tag name would
-     otherwise squeeze this on one axis and turn it into a checkmark. */
-  flex: 0 0 auto;
-  width: 0.36rem;
-  height: 0.36rem;
-  /* The count and the active chip both push right, so the chevron only needs to follow
-     whichever is there — and still lands right when neither is. */
-  margin-left: 0.35rem;
-  border-right: 1.5px solid currentColor;
-  border-bottom: 1.5px solid currentColor;
-  /* Points right when closed, down when open. */
-  transform: rotate(-45deg) translate(-0.05rem, -0.05rem);
-  transition: transform 0.15s ease;
-}
-
-.tag-filter-wrap[open] > summary::after {
-  transform: rotate(45deg) translate(-0.05rem, -0.05rem);
-}
+/* The summary — chevron, marker suppression, focus ring, touch target — is `.disclosure`. */
 
 /* How many tags there are, so a collapsed row says what it is hiding. */
 .tag-filter-summary-count {
@@ -1287,17 +1337,6 @@ a.sidebar-status:hover {
   font-size: 0.75rem;
   font-weight: 400;
   opacity: 0.75;
-}
-
-
-
-.tag-filter-wrap > summary:hover { color: var(--fg); }
-
-/* Keyboard focus has to land somewhere visible; summary carries no default ring here. */
-.tag-filter-wrap > summary:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
-  border-radius: 0.25rem;
 }
 
 /* The active tag, shown on the summary so a collapsed list still says what it is doing. */
@@ -1395,12 +1434,38 @@ a.sidebar-status:hover {
 }
 
 /*
+   The two halves of the filing summary.
+
+   Not in the mobile block, though the summary is only visible there: these describe what the
+   spans are, not what width they appear at. `.disclosure-label` does the truncating; these
+   only say which half gives way first.
+*/
+
+/* Never shrinks below its own text: the notebook is the identifying half. */
+.tag-row-summary-book { flex: 0 0 auto; }
+
+/* The tags yield, and are tinted so the row reads as a notebook followed by its tags. */
+.tag-row-summary-tags {
+  color: var(--accent);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/*
    The note's filing, behind a disclosure on a phone.
 
-   Open and marker-less above the breakpoint, where it is simply the row it always was —
-   the summary only becomes a control at the width where the row costs too much.
+   Above the breakpoint it is simply the row it always was — no summary, no chevron. The
+   summary only becomes a control at the width where the row costs too much.
+
+   Written as a compound selector on purpose. `.disclosure > summary` and
+   `.tag-row-wrap > summary` carry equal specificity, so which one won would be settled by
+   source order — and the shared rule sits some 800 lines above this one. Matching both
+   classes puts this a step higher, so the hide wins wherever either rule ends up. The
+   mobile block re-reveals it at the same specificity, and wins there on source order
+   because that block is last in the file.
 */
-.tag-row-wrap > summary {
+.disclosure.tag-row-wrap > summary {
   display: none;
 }
 
@@ -1483,22 +1548,16 @@ a.sidebar-status:hover {
 /* Attachment inventory for the open note */
 .attachments {
   margin: 0.35rem 0 0.15rem;
-  padding: 0.45rem 0;
+  /* No padding: the summary carries its own height, and the list its own bottom gap. */
+  padding: 0;
   border-bottom: 1px solid var(--border);
-}
-
-.attachments summary {
-  cursor: pointer;
-  font-size: 0.78rem;
-  color: var(--muted);
-  user-select: none;
 }
 
 .attachments-warn { color: var(--bad); }
 
 .attachments-list {
   list-style: none;
-  margin: 0.45rem 0 0;
+  margin: 0.45rem 0 0.5rem;
   padding: 0;
   display: flex;
   flex-direction: column;
@@ -2701,10 +2760,17 @@ a.sidebar-status:hover {
   }
 
 
-  /* The one control in the sidebar that was still under the 44px touch target. */
-  .tag-filter-wrap > summary {
+  /*
+     Every disclosure is a thumb target here, not just the one that was noticed.
+
+     This started as a fix for the sidebar's tag filter, the one control left under 44px.
+     The note's filing row was 36px and the attachments summary about 19px — a line of
+     0.78rem text with no height of its own — because each had been styled where it was
+     written rather than as the same kind of thing. One rule now, so the next one cannot
+     be missed.
+  */
+  .disclosure > summary {
     min-height: 2.75rem;
-    padding: 0;
   }
 
   /*
@@ -2747,87 +2813,35 @@ a.sidebar-status:hover {
   /*
      The notebook and tag controls, collapsed to a line that states them.
 
-     Same disclosure as the sidebar's tag filter, including the chevron, because it is the
+     Same disclosure as the sidebar's tag filter, and the same component, because it is the
      same gesture — and the summary carries the values so nothing is hidden, only folded.
+
+     No border under it, though every other block here closes with one. Filing and the
+     attachments panel below it are now drawn identically, and with a rule between them the
+     pair read as two stacked panels that happened to land together — three hairlines inside
+     130px, under a title that has one of its own. They are one thing: what the note is,
+     as opposed to what it says. The attachments border closes the pair, and the gap between
+     the two summaries is the only division they need.
   */
   .tag-row-wrap {
     padding-bottom: 0;
-    border-bottom: 1px solid var(--border);
   }
 
   /* Collapsed, the controls contribute nothing. Open, `.tag-row` already carries the
-     0.5rem below the last control, so adding more here made the gap before the border
-     half again as large as every gap above it. */
+     0.5rem below the last control, so adding more here made the gap before the attachments
+     row half again as large as every gap above it. */
   .tag-row-wrap[open] { padding-bottom: 0; }
 
-  .tag-row-wrap > summary {
+  /*
+     The summary becomes a control at this width, and only here.
+
+     Everything about how it is drawn — the chevron, the marker suppression, the focus ring,
+     the 44px target — is `.disclosure`, shared with the sidebar's tag filter and the
+     attachments panel. This rule is only the switch that turns the row into a disclosure at
+     all. Compound selector to match the hide it is overriding; see that rule for why.
+  */
+  .disclosure.tag-row-wrap > summary {
     display: flex;
-    align-items: center;
-    gap: 0.4rem;
-    /* A fixed box rather than whatever the text's leading produces, so the gap below it
-       is `.tag-row`'s padding alone and matches every other gap in the block. */
-    min-height: 2.25rem;
-    line-height: 1;
-    font-size: 0.8rem;
-    color: var(--muted);
-    cursor: pointer;
-    user-select: none;
-  }
-
-  .tag-row-wrap > summary::-webkit-details-marker { display: none; }
-  .tag-row-wrap > summary::marker { content: ''; }
-
-  .tag-row-wrap > summary::after {
-    content: '';
-    /*
-       Never shrinks.
-
-       It is a flex item, and without this a long tag list squeezed it from 5.76px to
-       3.19px wide while its height stayed put — a rotated box with only a right and a
-       bottom border, narrowed on one axis, reads as a checkmark rather than a chevron.
-    */
-    flex: 0 0 auto;
-    width: 0.36rem;
-    height: 0.36rem;
-    margin-left: 0.35rem;
-    border-right: 1.5px solid currentColor;
-    border-bottom: 1.5px solid currentColor;
-    transform: rotate(-45deg) translate(-0.05rem, -0.05rem);
-    transition: transform 0.15s ease;
-  }
-
-  .tag-row-wrap[open] > summary::after {
-    transform: rotate(45deg) translate(-0.05rem, -0.05rem);
-  }
-
-  .tag-row-wrap > summary:focus-visible {
-    outline: 2px solid var(--accent);
-    outline-offset: 2px;
-    border-radius: 0.25rem;
-  }
-
-  /* The notebook name, then the tags, truncating together rather than wrapping. */
-  /* The half that yields: it truncates so the chevron beside it never has to. */
-  .tag-row-summary {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    flex: 1 1 auto;
-    min-width: 0;
-    margin-right: auto;
-    overflow: hidden;
-    white-space: nowrap;
-    text-overflow: ellipsis;
-  }
-
-  /* Never shrinks below its own text: the notebook is the identifying half. */
-  .tag-row-summary-book { flex: 0 0 auto; }
-
-  .tag-row-summary-tags {
-    color: var(--accent);
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
   }
 
   /*

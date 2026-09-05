@@ -30,6 +30,7 @@ import { Attachments } from './Attachments.js';
 import { ResizeHandle } from './ResizeHandle.js';
 import { OverflowMenu } from './OverflowMenu.js';
 import { Button } from './Button';
+import { Disclosure } from './Disclosure.js';
 
 /** The editor's share of the pane row when split evenly, and the limits a drag respects. */
 const EDITOR_DEFAULT = 0.5;
@@ -375,20 +376,23 @@ export function Workspace({ noteId, readOnly = false, backTo = '/notes' }: Works
           controls. Not moved into the overflow menu: this is what the note *is*, and in an
           archive this size tags are how anything gets found again.
 
-          Open above the breakpoint, where the row costs nothing. See the sidebar's tag
-          filter for the same pattern and the reason `key` is needed.
+          Open above the breakpoint, where the row costs nothing — `defaultOpen="wide"` is
+          that, and Disclosure carries the remount it needs to survive a viewport change.
       */}
-      <details className="tag-row-wrap" key={String(isMobile)} open={!isMobile}>
-        <summary>
-          <span className="tag-row-summary">
+      <Disclosure
+        className="tag-row-wrap"
+        defaultOpen="wide"
+        summary={
+          <>
             <span className="tag-row-summary-book">{draft.notebook ?? 'Inbox'}</span>
             {draft.tags.length > 0 && (
               <span className="tag-row-summary-tags">
                 {draft.tags.map((t) => `#${t}`).join(' ')}
               </span>
             )}
-          </span>
-        </summary>
+          </>
+        }
+      >
         <div className="tag-row">
         {/* Filing a note by picking from the notebooks that exist, rather than
             retyping a name — which is how case-variant duplicates used to appear. */}
@@ -414,7 +418,7 @@ export function Workspace({ noteId, readOnly = false, backTo = '/notes' }: Works
           onChange={(next) => setDraft((d) => ({ ...d, tags: next }))}
         />
         </div>
-      </details>
+      </Disclosure>
 
       {!readOnly && (
         <Attachments

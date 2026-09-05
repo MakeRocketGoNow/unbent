@@ -11,6 +11,7 @@ import * as api from '../notes-api.js';
 import { attachmentsQuery, keys } from '../queries.js';
 import { Confirm } from './Confirm.js';
 import { Button } from './Button';
+import { Disclosure } from './Disclosure.js';
 
 interface AttachmentsProps {
   noteId: string;
@@ -108,17 +109,22 @@ export function Attachments({
   if (files.length === 0) return null;
 
   return (
-    <details className="attachments">
-      <summary>
-        Attachments ({files.length})
-        {unlinkedCount > 0 && (
-          <span className="attachments-warn">
-            {' '}
-            · {unlinkedCount} not linked in note
-          </span>
-        )}
-      </summary>
-
+    /* Closed at every width, unlike the filing row above it: this list is as long as the
+       note has files, and every row of it carries a delete. */
+    <Disclosure
+      className="attachments"
+      summary={
+        <>
+          Attachments ({files.length})
+          {unlinkedCount > 0 && (
+            <span className="attachments-warn">
+              {' '}
+              · {unlinkedCount} not linked in note
+            </span>
+          )}
+        </>
+      }
+    >
       <ul className="attachments-list">
         {files.map((file) => {
           const isLinked = linked.has(file.filename);
@@ -190,6 +196,6 @@ export function Attachments({
       </ul>
 
       {deleteError && <p className="bad small">{deleteError}</p>}
-    </details>
+    </Disclosure>
   );
 }
