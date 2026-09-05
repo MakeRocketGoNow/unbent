@@ -61,9 +61,50 @@ describe('offeredProviders', () => {
     expect(offeredProviders(env({ AUTH_PASSKEY: '0' }))).not.toContain('passkey');
   });
 
-  it('offers a password only when the instance turns it on', () => {
-    expect(offeredProviders(env({}))).not.toContain('password');
-    expect(offeredProviders(env({ AUTH_PASSWORD: '1' }))).toContain('password');
+  /**
+   * The dead end this closes: a passkey is added from an account you already have and a
+   * code needs a mail provider, so an instance with neither used to advertise one button
+   * that nobody without an account could use — including whoever had just deployed it.
+   */
+  it('offers a password when nothing else can create an account', () => {
+    expect(offeredProviders(env({}))).toContain('password');
+  });
+
+  it('stands aside once a social provider can create one', () => {
+    const offered = offeredProviders(
+      env({ GITHUB_CLIENT_ID: 'id', GITHUB_CLIENT_SECRET: 'secret' }),
+    );
+    expect(offered).toContain('github');
+    expect(offered).not.toContain('password');
+  });
+
+  it('stands aside once a code could arrive', () => {
+    expect(
+      offeredProviders(env({ RESEND_API_KEY: 'k', EMAIL_FROM: 'a@b.c' })),
+    ).not.toContain('password');
+  });
+
+  it('offers a password whenever the instance asks for one', () => {
+    const offered = offeredProviders(
+      env({ GITHUB_CLIENT_ID: 'id', GITHUB_CLIENT_SECRET: 'secret', AUTH_PASSWORD: '1' }),
+    );
+    expect(offered).toContain('password');
+  });
+
+  /**
+   * The one way to refuse the floor, for an instance that wants passkeys and nothing else.
+   * It is the setting that can still leave nobody a way in, which is why it has to be
+   * asked for explicitly rather than arrived at.
+   */
+  it('withholds a password when the instance refuses it outright', () => {
+    expect(offeredProviders(env({ AUTH_PASSWORD: '0' }))).not.toContain('password');
+  });
+
+  /** An explicit no beats the suite's own switch, so the refusal means what it says. */
+  it('lets an explicit refusal outrank the test switch', () => {
+    expect(
+      offeredProviders(env({ AUTH_PASSWORD: '0', ALLOW_TEST_CREDENTIALS: '1' })),
+    ).not.toContain('password');
   });
 
   /**

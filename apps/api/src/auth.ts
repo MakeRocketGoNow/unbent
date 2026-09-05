@@ -30,9 +30,30 @@ function allowedEmails(env: Env): string[] {
  * works everywhere. ALLOW_TEST_CREDENTIALS stays as the test suite's own switch — it is
  * documented as local-only, and folding it into the real flag would invite setting the
  * real flag on a deployed instance "for the tests".
+ *
+ * And a default underneath both, because opt-in alone left a hole. A passkey cannot create
+ * an account — one is added from settings once you are already signed in — and a code by
+ * email needs a mail provider. So an instance deployed with no OAuth, no Resend and no
+ * AUTH_PASSWORD offered exactly one button, which could not work for anyone who did not
+ * already have an account, and on a fresh instance that is everyone including the operator.
+ * Nothing said so; it simply dead-ended. Password is now the floor: offered when nothing
+ * else here can create an account, and standing aside the moment something can.
+ *
+ * That the default disappears as soon as a real method exists is the point. An instance
+ * with Google configured is unchanged, and so is unbent.app — the open sign-up this would
+ * otherwise hand a public URL is exactly what made it opt-in in the first place, and
+ * ALLOWED_EMAILS is still what governs who may take it up.
+ *
+ * `AUTH_PASSWORD=0` is the way to refuse the default, for an instance that wants passkeys
+ * and nothing else for the people who already have accounts. It is checked before the test
+ * switch so that an explicit no wins over an implicit yes, and it is the one setting here
+ * that can still leave nobody a way in — deliberately, the same as `AUTH_PASSKEY=0`.
  */
 function passwordEnabled(env: Env): boolean {
-  return env.AUTH_PASSWORD === '1' || env.ALLOW_TEST_CREDENTIALS === '1';
+  if (env.AUTH_PASSWORD === '1') return true;
+  if (env.AUTH_PASSWORD === '0') return false;
+  if (env.ALLOW_TEST_CREDENTIALS === '1') return true;
+  return configuredSocials(env).length === 0 && !codesDeliverable(env);
 }
 
 /**
