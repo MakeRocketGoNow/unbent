@@ -162,30 +162,28 @@ function relyingParty(env: Env): { rpID: string; origin: string } {
 }
 
 /**
- * Local APP_URL is always http://localhost:5173, but the SPA may be reached over
- * Tailscale (MagicDNS / 100.x). OAuth redirect_uri is derived from the request Host,
+ * Local APP_URL names one port, but the SPA may be reached over Tailscale (MagicDNS /
+ * 100.x) or from another checkout. OAuth redirect_uri is derived from the request Host,
  * so a sign-in from the public Tailscale URL comes back there instead of localhost.
  * Production keeps a fixed APP_URL.
  *
  * These are also the origins Better Auth trusts, so the Android emulator's alias for
  * the host machine has to be here: the app sends it as `Origin`, and without it every
  * sign-in from an emulator is refused as CSRF with "Invalid origin".
+ *
+ * The port is a wildcard rather than an enumeration because each git worktree runs its
+ * own Vite on a port derived from its directory name (see `scripts/ports.mjs`), and the
+ * proxy forwards the browser's Host header verbatim — so the port reaching Better Auth
+ * is whichever checkout the request came from. `*` spans a port in Better Auth's matcher
+ * (its separator is `/`), which is what `*.ts.net:5173` already relied on.
+ *
+ * Only the local branch is this permissive: a deployed APP_URL returns above, so
+ * production still trusts exactly one origin.
  */
 function baseURLFor(env: Env) {
   if (!env.APP_URL.startsWith('http://localhost')) return env.APP_URL;
   return {
-    allowedHosts: [
-      'localhost:5173',
-      '127.0.0.1:5173',
-      '10.0.2.2:5173',
-      '*.ts.net:5173',
-      '100.*.*.*:5173',
-      'localhost:5174',
-      '127.0.0.1:5174',
-      '10.0.2.2:5174',
-      '*.ts.net:5174',
-      '100.*.*.*:5174',
-    ],
+    allowedHosts: ['localhost:*', '127.0.0.1:*', '10.0.2.2:*', '*.ts.net:*', '100.*.*.*:*'],
     fallback: env.APP_URL,
     protocol: 'http' as const,
   };
