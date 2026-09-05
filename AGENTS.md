@@ -154,7 +154,11 @@ If it's already up, use it. If you do start something, stop it when you're done.
 browser preview tools rather than `bash` for anything server-shaped.
 
 From a worktree the ports are different and derived — `pnpm dev` prints them on its first
-line, and `node scripts/ports.mjs` answers without starting anything. Never assume 5173.
+line, and `node scripts/ports.mjs` answers without starting anything. Never assume 5173,
+and don't cache the answer either: a worktree's pair is derived from its name but these
+bands belong to the whole machine, so when something else is already on one, `pnpm dev`
+steps to the next free pair and says `(its usual pair was taken)`. The line it prints is
+the truth; the derived pair is only where it started looking.
 
 ### Working from a git worktree
 
@@ -177,6 +181,14 @@ something Miniflare promises to survive.
 
 `.claude/launch.json` is untracked and written per checkout by `scripts/dev.mjs`, so the
 preview tool's `unbent` entry starts and opens whichever checkout you are in.
+
+That last part depends on the session having *started* in this directory. The preview tool
+resolves its project root once, when the session begins, and switching into a worktree
+partway through moves the shell without moving it — so `preview_start` reads the main
+checkout's `launch.json` and reports a conflict on :5173 that has nothing to do with the
+branch. There is nothing to fix in the repo when that happens, and deleting the main
+checkout's file only breaks the preview there too. Start the session in the worktree if
+you want the preview tool, and otherwise run `pnpm dev` and drive the printed URL directly.
 
 To point the API suites at a worktree, pass both origins — `API_URL` is the Worker,
 `APP_URL` is the SPA origin the tests send as `Origin`:
