@@ -279,7 +279,6 @@ function EmailForm({ otp, password, busy, onBusy, onError }: EmailFormProps) {
   const [mode, setMode] = useState<'in' | 'up'>('in');
   const [email, setEmail] = useState('');
   const [secret, setSecret] = useState('');
-  const [name, setName] = useState('');
   const [sentReset, setSentReset] = useState(false);
   /** Set once a code is on its way, which swaps the whole form for the code step. */
   const [codeSent, setCodeSent] = useState(false);
@@ -320,7 +319,7 @@ function EmailForm({ otp, password, busy, onBusy, onError }: EmailFormProps) {
       const result =
         mode === 'in'
           ? await signIn.email({ email, password: secret })
-          : await signUp.email({ email, password: secret, name: name.trim() || email });
+          : await signUp.email({ email, password: secret, name: email });
       if (result.error) onError(result.error.message || 'Sign-in failed');
     } catch (err) {
       onError(asMessage(err));
@@ -411,18 +410,6 @@ function EmailForm({ otp, password, busy, onBusy, onError }: EmailFormProps) {
 
   return (
     <form className="login-form" onSubmit={(e) => void (password ? submitPassword(e) : e.preventDefault())}>
-      {password && mode === 'up' && (
-        <label>
-          Name
-          <input
-            className="login-input"
-            type="text"
-            autoComplete="name"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-          />
-        </label>
-      )}
       <label>
         Email
         <input
