@@ -249,9 +249,9 @@ export function Import({ onImported }: ImportProps) {
             </span>
           </label>
 
-          <button type="button" className="primary" disabled={!file} onClick={start}>
+          <Button variant="primary" disabled={!file} onClick={start}>
             Start import
-          </button>
+          </Button>
         </>
       )}
 
@@ -297,9 +297,9 @@ export function Import({ onImported }: ImportProps) {
           {status === 'running' && (
             <>
               <p className="muted small truncate">{progress.currentTitle}</p>
-              <button type="button" className="link danger" onClick={stop}>
+              <Button variant="secondary" tone="danger" onClick={stop}>
                 Stop
-              </button>
+              </Button>
             </>
           )}
         </>
@@ -318,18 +318,18 @@ export function Import({ onImported }: ImportProps) {
               : ''}
             .
           </p>
-          <button type="button" className="link" onClick={reset}>
+          <Button variant="secondary" onClick={reset}>
             Import another file
-          </button>
+          </Button>
         </div>
       )}
 
       {status === 'error' && (
         <div className="import-finished">
           <p className="bad small">{error}</p>
-          <button type="button" className="link" onClick={reset}>
+          <Button variant="secondary" onClick={reset}>
             Try another file
-          </button>
+          </Button>
         </div>
       )}
 
