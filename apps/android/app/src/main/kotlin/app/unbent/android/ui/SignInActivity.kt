@@ -151,7 +151,14 @@ class SignInActivity : ComponentActivity() {
                  */
                 Log.w("Unbent", "Google sign-in failed", e)
                 status = when {
+                    // Dismissing the sheet is a choice, so say nothing and leave the other
+                    // methods where they were.
                     GoogleAuth.wasCancelled(e) -> null
+                    // The one cause with a fix the user can carry out, so it gets its own words.
+                    GoogleAuth.hasNoAccount(e) -> getString(R.string.sign_in_google_no_account)
+                    // Anything the server explained gets the server's own words: "this instance
+                    // is not open for sign-ups" sends someone to retry a button that will refuse
+                    // them again for the same reason.
                     else -> (e as? ApiException)?.serverMessage()
                         ?: getString(R.string.sign_in_google_failed)
                 }

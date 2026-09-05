@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.credentials.CredentialManager
 import androidx.credentials.GetCredentialRequest
 import androidx.credentials.exceptions.GetCredentialException
+import androidx.credentials.exceptions.NoCredentialException
 import com.google.android.libraries.identity.googleid.GetGoogleIdOption
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
 import kotlinx.coroutines.Dispatchers
@@ -43,7 +44,22 @@ class GoogleAuth(
             .setAutoSelectEnabled(true)
             .build()
 
-        val request = GetCredentialRequest.Builder().addCredentialOption(option).build()
+        /*
+         * Answer from what is already on the device, rather than waiting on anything remote.
+         *
+         * Without this, a device with no Google account signed in does not refuse — it hangs.
+         * Play Services accepts the request, never answers, and Credential Manager gives up
+         * thirteen seconds later with a cancellation from the provider. Thirteen seconds of a
+         * dead screen followed by a message reads as a broken app rather than a missing
+         * account. With it the same device fails at once, and can say which it is.
+         *
+         * It costs nothing when an account is present: accounts on the device are exactly
+         * what "immediately available" means, and the picker still appears.
+         */
+        val request = GetCredentialRequest.Builder()
+            .addCredentialOption(option)
+            .setPreferImmediatelyAvailableCredentials(true)
+            .build()
         val response = CredentialManager.create(context).getCredential(context, request)
 
         val credential = response.credential
@@ -96,8 +112,23 @@ class GoogleAuth(
         /** Whether a build was given a client id, and can therefore offer this at all. */
         fun isConfigured(webClientId: String) = webClientId.isNotEmpty()
 
-        /** True when the user dismissed the sheet, which is a choice rather than a failure. */
+            /** True when the user dismissed the sheet, which is a choice rather than a failure. */
         fun wasCancelled(e: Throwable) =
             e is GetCredentialException && e.type.contains("USER_CANCELED", ignoreCase = true)
+
+        /**
+         * True when the device has no Google account to offer.
+         *
+         * Worth separating from every other failure because it is the only one the person
+         * holding the phone can act on, and "add an account in Settings" is useless advice
+         * for any of the others.
+         *
+         * Matched on the type string as well as the class: the framework reports this as a
+         * plain GetCredentialException carrying TYPE_NO_CREDENTIAL in some paths rather than
+         * as the typed subclass, and both mean the same thing here.
+         */
+        fun hasNoAccount(e: Throwable) =
+            e is NoCredentialException ||
+                (e is GetCredentialException && e.type.contains("NO_CREDENTIAL", ignoreCase = true))
     }
 }
