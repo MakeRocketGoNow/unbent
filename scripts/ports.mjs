@@ -15,6 +15,7 @@
  * Used by `scripts/dev.mjs` and, through the CLI below, by `scripts/worktree-setup.sh`.
  */
 import { execFileSync } from 'node:child_process';
+import { createServer } from 'node:net';
 import { mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import { basename, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -100,6 +101,68 @@ export function portsFor(cwd = process.cwd(), env = process.env) {
 }
 
 /**
+ * Whether nothing is listening on `port` yet.
+ *
+ * Asked by binding it and letting go rather than by connecting to it: a port can be held
+ * by a process that accepts nothing, which a connect test reads as free. Both dev servers
+ * bind the loopback interface, so that is the address that has to be clear.
+ */
+function free(port) {
+  return new Promise((resolve) => {
+    const probe = createServer();
+    probe.once('error', () => resolve(false));
+    probe.once('listening', () => probe.close(() => resolve(true)));
+    probe.listen(port, '127.0.0.1');
+  });
+}
+
+/**
+ * The pair a checkout can actually bind: its preferred one, or the next free pair after it.
+ *
+ * `portsFor` derives a pair from the worktree's name and stops there, which is right up
+ * until something outside this repo answers on one of them first. These bands are not ours
+ * to reserve — an editor, a container, another project's server can be sitting on one —
+ * and when that happened `pnpm dev` died on Miniflare's `Address already in use` with a
+ * raw stack trace, no mention of which half had failed, and nothing to do about it.
+ *
+ * So a worktree walks forward through the band from its own offset until both halves of a
+ * pair are free. They move together and keep one offset between them, because `APP_URL`
+ * and the Vite proxy are derived from the pair: a web port that moved without its API port
+ * would point the proxy at somebody else's server.
+ *
+ * Two cases deliberately do not move. The main checkout stays on 5173/8787, which the
+ * emulator's `10.0.2.2:5173`, the registered OAuth redirect URIs and every `curl` in the
+ * docs all name — a busy port there is the user's own dev server, which AGENTS.md says to
+ * use rather than start a second one beside it. An explicit `WEB_PORT` / `API_PORT` does
+ * not move either: it was named on purpose, which is how the API tests aim themselves.
+ *
+ * `moved` is true when the preferred pair was taken, so the caller can say so out loud. A
+ * second `pnpm dev` in one worktree looks exactly like the first from here, and quietly
+ * starting a duplicate one port along is worse than naming the pair it settled on.
+ */
+export async function bindablePortsFor(cwd = process.cwd(), env = process.env) {
+  const preferred = portsFor(cwd, env);
+  const pinned = fromEnv('WEB_PORT', env) !== null || fromEnv('API_PORT', env) !== null;
+  if (preferred.worktree === null || pinned) return { ...preferred, moved: false };
+
+  const first = 1 + (fnv1a(preferred.worktree) % SPREAD);
+  for (let step = 0; step < SPREAD; step++) {
+    const offset = 1 + ((first - 1 + step) % SPREAD);
+    const web = WEB_BASE + offset;
+    const api = API_BASE + offset;
+    if ((await free(web)) && (await free(api))) {
+      return { worktree: preferred.worktree, web, api, moved: step > 0 };
+    }
+  }
+
+  throw new Error(
+    `No free port pair for worktree "${preferred.worktree}". Tried ${WEB_BASE + 1}-${WEB_BASE + SPREAD} ` +
+      `paired with ${API_BASE + 1}-${API_BASE + SPREAD}, and every pair had a half in use. ` +
+      `Set WEB_PORT and API_PORT to a pair you know is free.`,
+  );
+}
+
+/**
  * Point `.claude/launch.json` at this checkout's SPA port.
  *
  * The file is local config rather than a tracked file precisely because its `port` is a
@@ -139,9 +202,14 @@ export function syncLaunchJson(root, webPort) {
 }
 
 // `eval "$(node scripts/ports.mjs)"` in a shell script; --sync-launch for the setup script.
+//
+// Reports the bindable pair rather than the preferred one, so that what the setup script
+// prints and writes into `.claude/launch.json` is the pair `pnpm dev` will land on. Both
+// probe at their own moment and a port can be taken in between, which is why `dev.mjs`
+// re-syncs the file: this is the good guess, that one is the answer.
 if (process.argv[1] && real(process.argv[1]) === real(fileURLToPath(import.meta.url))) {
   const root = git(['rev-parse', '--show-toplevel'], process.cwd());
-  const { worktree, web, api } = portsFor(root);
+  const { worktree, web, api } = await bindablePortsFor(root);
   if (process.argv.includes('--sync-launch')) syncLaunchJson(root, web);
   process.stdout.write(`WEB_PORT=${web}\nAPI_PORT=${api}\nWORKTREE=${worktree ?? ''}\n`);
 }
