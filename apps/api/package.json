@@ -4,8 +4,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "wrangler dev",
-    "dev:watch": "until wrangler dev; do echo 'wrangler exited, restarting'; sleep 1; done",
+    "dev": "wrangler dev --port \"${API_PORT:-8787}\" --var \"APP_URL:http://localhost:${WEB_PORT:-5173}\"",
+    "dev:watch": "until wrangler dev --port \"${API_PORT:-8787}\" --var \"APP_URL:http://localhost:${WEB_PORT:-5173}\"; do echo 'wrangler exited, restarting'; sleep 1; done",
     "typecheck": "tsc --noEmit",
     "migrate:local": "wrangler d1 migrations apply unbent --local",
     "migrate:remote": "wrangler d1 migrations apply unbent --remote --env production",

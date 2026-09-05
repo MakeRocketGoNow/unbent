@@ -14,6 +14,14 @@ const decodeEntitiesNodeBuild = require
   .resolve('decode-named-character-reference')
   .replace(/index\.dom\.js$/, 'index.js');
 
+/**
+ * Ports come from the environment so that a second checkout can run its own pair.
+ * `scripts/dev.mjs` derives them from the worktree; started by hand, the defaults are the
+ * main checkout's.
+ */
+const WEB_PORT = Number(process.env.WEB_PORT ?? 5173);
+const API_PORT = Number(process.env.API_PORT ?? 8787);
+
 export default defineConfig({
   plugins: [
     // Must precede react(): the plugin generates routeTree.gen.ts from src/routes, and
@@ -71,13 +79,17 @@ export default defineConfig({
     // Vite blocks unknown Host headers (DNS rebinding guard). MagicDNS names fail
     // that check unless we allow them; true is fine for a private Tailscale/LAN bind.
     allowedHosts: true,
-    port: 5173,
+    port: WEB_PORT,
+    // Falling through to the next free port is worse than not starting: the proxy below
+    // forwards the browser's Host header unchanged, so the SPA would load on a port the
+    // Worker pairs with a different one and every sign-in would fail as CSRF. Fail loudly.
+    strictPort: true,
     proxy: {
       // Proxying keeps the API same-origin in development, so session cookies work
       // without CORS or SameSite workarounds. In production the API Worker serves the
       // built SPA itself, so the same origin is structural rather than arranged.
       '/api': {
-        target: 'http://127.0.0.1:8787',
+        target: `http://127.0.0.1:${API_PORT}`,
         changeOrigin: false,
       },
     },
