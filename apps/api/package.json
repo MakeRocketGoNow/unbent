@@ -9,6 +9,7 @@
     "typecheck": "tsc --noEmit",
     "migrate:local": "wrangler d1 migrations apply unbent --local",
     "migrate:remote": "wrangler d1 migrations apply unbent --remote --env production",
+    "migrate:dev": "wrangler d1 migrations apply unbent-dev --remote --env dev",
     "cf-typegen": "wrangler types",
     "test": "vitest run",
     "test:unit": "vitest run --project unit",
