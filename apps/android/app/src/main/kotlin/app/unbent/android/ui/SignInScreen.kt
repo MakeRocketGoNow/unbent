@@ -125,57 +125,73 @@ private fun Methods(
     onEmailOtp: (String, String?) -> Unit,
     onPassword: (String, String, String?) -> Unit,
 ) {
-    val social = config.google || config.browserSocials > 0 || config.passkey || config.emailOtp
     // 48dp is Material's minimum touch target, not a spacing step — it stays a literal
     // rather than coming from Space, which measures gaps between things.
     val button = Modifier.fillMaxWidth().heightIn(min = 48.dp)
+    val hasSocial = config.google || config.browserSocials > 0
+    val hasEmail = config.emailOtp || config.password
 
     /*
-     * Providers are outlined and equal, as on the web: filling one would say the app
-     * prefers it, and it does not. The password form's own submit is the filled button,
-     * because there it is the one thing the form is for.
+     * The methods on offer, in the order they are shown, with the dividers left to the loop
+     * below — the same arrangement and the same order as the web sign-in screen, which is
+     * the point: the two are the same product and someone moving between them should not
+     * have to look for the button twice.
+     *
+     * Social leads because it is one tap and needs nothing typed. Passkeys are faster
+     * still, but only for someone who already has one, which is nobody arriving for the
+     * first time. Anything beginning with an address comes last.
+     *
+     * A list rather than a run of `if` blocks each working out whether anything preceded
+     * it: that put the order in several boolean chains that all had to agree, so moving one
+     * method meant editing every one of them.
      */
-    /*
-     * Passkeys lead, because for anyone who has one this is the whole screen: the sheet
-     * opens, a fingerprint confirms, and nothing else on this screen was needed.
-     */
-    if (config.passkey) {
-        OutlinedButton(onClick = onPasskey, enabled = !busy, modifier = button) {
-            Text(stringResource(R.string.sign_in_passkey))
+    val sections = buildList<@Composable () -> Unit> {
+        if (hasSocial) add {
+            Column {
+                /*
+                 * Providers are outlined and equal: filling one would say the app prefers
+                 * it, and it does not. The email form's own submit is the filled button,
+                 * because there it is the one thing the form is for.
+                 */
+                if (config.google) {
+                    OutlinedButton(onClick = onGoogle, enabled = !busy, modifier = button) {
+                        Text(stringResource(R.string.sign_in_google))
+                    }
+                }
+                if (config.browserSocials > 0) {
+                    if (config.google) Spacer(Modifier.height(Space.Medium))
+                    OutlinedButton(onClick = onBrowserSocial, enabled = !busy, modifier = button) {
+                        Text(stringResource(R.string.sign_in_browser_social))
+                    }
+                }
+            }
         }
-    }
-    if (config.google) {
-        if (config.passkey) Spacer(Modifier.height(Space.Medium))
-        OutlinedButton(onClick = onGoogle, enabled = !busy, modifier = button) {
-            Text(stringResource(R.string.sign_in_google))
+        if (config.passkey) add {
+            OutlinedButton(onClick = onPasskey, enabled = !busy, modifier = button) {
+                Text(stringResource(R.string.sign_in_passkey))
+            }
         }
-    }
-    if (config.browserSocials > 0) {
-        if (config.passkey || config.google) Spacer(Modifier.height(Space.Medium))
-        OutlinedButton(onClick = onBrowserSocial, enabled = !busy, modifier = button) {
-            Text(stringResource(R.string.sign_in_browser_social))
+        if (hasEmail) add {
+            EmailForm(
+                otp = config.emailOtp,
+                password = config.password,
+                busy = busy,
+                onEmailOtp = onEmailOtp,
+                onPassword = onPassword,
+            )
         }
     }
 
-    if (config.emailOtp) {
-        if (config.passkey || config.google || config.browserSocials > 0) {
+    sections.forEachIndexed { index, section ->
+        if (index > 0) {
             Spacer(Modifier.height(Space.Large))
             OrDivider()
             Spacer(Modifier.height(Space.Large))
         }
-        EmailOtpForm(busy, onEmailOtp)
+        section()
     }
 
-    if (config.password) {
-        if (social) {
-            Spacer(Modifier.height(Space.Large))
-            OrDivider()
-            Spacer(Modifier.height(Space.Large))
-        }
-        PasswordForm(busy, onPassword)
-    }
-
-    if (!social && !config.password) {
+    if (sections.isEmpty()) {
         Text(
             stringResource(R.string.sign_in_none),
             color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -199,133 +215,53 @@ private fun OrDivider() {
 }
 
 /**
- * Email and password, with a toggle to create an account instead.
+ * Everything that starts with an email address, in one form.
  *
- * A name field appears only for sign-up, where Better Auth requires one; asking for it on
- * every sign-in would be a field the returning user has to skip past. Submit enables once
- * the password reaches Better Auth's minimum, so the server never has to say so.
+ * The two email methods were separate forms rendered one after the other, which on an
+ * instance offering both produced two address boxes a divider apart — the same question
+ * asked twice, with nothing on screen saying so. The web screen had the same fault and was
+ * fixed the same way, which matters because these two are the same product.
+ *
+ * The address is asked once and the ways to proceed hang off it: a password box and Sign in
+ * where passwords are on, "Email me a code" where codes are on, both where both are.
+ *
+ * The password is the primary action when both exist, and the code button goes quiet beside
+ * it: someone who has a password is signing in with it, and the code is for having
+ * forgotten it or never set one. Two filled buttons would be a choice with no default.
+ *
+ * `rememberSaveable` throughout, so turning the phone while reading a code out of a mail
+ * app does not throw away the address or the step already taken.
  */
 @Composable
-private fun PasswordForm(busy: Boolean, onSubmit: (String, String, String?) -> Unit) {
+private fun EmailForm(
+    otp: Boolean,
+    password: Boolean,
+    busy: Boolean,
+    onEmailOtp: (String, String?) -> Unit,
+    onPassword: (String, String, String?) -> Unit,
+) {
     var creating by rememberSaveable { mutableStateOf(false) }
     var email by rememberSaveable { mutableStateOf("") }
-    var password by rememberSaveable { mutableStateOf("") }
+    var secret by rememberSaveable { mutableStateOf("") }
     var name by rememberSaveable { mutableStateOf("") }
-
-    val canSubmit = !busy && email.isNotBlank() && password.length >= 8
-    fun submit() = onSubmit(email.trim(), password, if (creating) name.trim() else null)
-
-    Column {
-        if (creating) {
-            OutlinedTextField(
-                value = name,
-                onValueChange = { name = it },
-                label = { Text(stringResource(R.string.sign_in_name)) },
-                singleLine = true,
-                keyboardOptions = KeyboardOptions(
-                    capitalization = KeyboardCapitalization.Words,
-                    imeAction = ImeAction.Next,
-                ),
-                modifier = Modifier.fillMaxWidth(),
-            )
-            Spacer(Modifier.height(Space.Medium))
-        }
-        OutlinedTextField(
-            value = email,
-            onValueChange = { email = it },
-            label = { Text(stringResource(R.string.sign_in_email)) },
-            singleLine = true,
-            keyboardOptions = KeyboardOptions(
-                keyboardType = KeyboardType.Email,
-                autoCorrectEnabled = false,
-                imeAction = ImeAction.Next,
-            ),
-            modifier = Modifier.fillMaxWidth(),
-        )
-        Spacer(Modifier.height(Space.Medium))
-        OutlinedTextField(
-            value = password,
-            onValueChange = { password = it },
-            label = { Text(stringResource(R.string.sign_in_password)) },
-            singleLine = true,
-            visualTransformation = PasswordVisualTransformation(),
-            keyboardOptions = KeyboardOptions(
-                keyboardType = KeyboardType.Password,
-                imeAction = ImeAction.Done,
-            ),
-            keyboardActions = KeyboardActions(onDone = { if (canSubmit) submit() }),
-            modifier = Modifier.fillMaxWidth(),
-        )
-        Spacer(Modifier.height(Space.Large))
-        Button(
-            onClick = ::submit,
-            enabled = canSubmit,
-            modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
-        ) {
-            Text(stringResource(if (creating) R.string.sign_up_submit else R.string.sign_in_submit))
-        }
-        TextButton(
-            onClick = { creating = !creating },
-            enabled = !busy,
-            modifier = Modifier.align(Alignment.CenterHorizontally),
-        ) {
-            Text(stringResource(if (creating) R.string.sign_in_switch_in else R.string.sign_in_switch_up))
-        }
-    }
-}
-
-/**
- * A six-digit code by email, in two steps.
- *
- * The code is typed back into the screen that asked for it, which is the whole reason this
- * is a code and not a link: a link tapped in a mail app opens in that app's browser, not
- * this one, and the session lands somewhere the app cannot see.
- *
- * `sent` survives rotation along with the address, so turning the phone while reading the
- * code out of a mail app does not throw away the step already taken.
- */
-@Composable
-private fun EmailOtpForm(busy: Boolean, onSubmit: (String, String?) -> Unit) {
-    var email by rememberSaveable { mutableStateOf("") }
+    var codeSent by rememberSaveable { mutableStateOf(false) }
     var code by rememberSaveable { mutableStateOf("") }
-    var sent by rememberSaveable { mutableStateOf(false) }
 
-    Column {
-        if (!sent) {
-            OutlinedTextField(
-                value = email,
-                onValueChange = { email = it },
-                label = { Text(stringResource(R.string.sign_in_email)) },
-                singleLine = true,
-                keyboardOptions = KeyboardOptions(
-                    keyboardType = KeyboardType.Email,
-                    autoCorrectEnabled = false,
-                    imeAction = ImeAction.Done,
-                ),
-                keyboardActions = KeyboardActions(
-                    onDone = {
-                        if (!busy && email.isNotBlank()) {
-                            onSubmit(email.trim(), null)
-                            sent = true
-                        }
-                    },
-                ),
-                modifier = Modifier.fillMaxWidth(),
-            )
-            Spacer(Modifier.height(Space.Large))
-            Button(
-                onClick = {
-                    onSubmit(email.trim(), null)
-                    sent = true
-                },
-                enabled = !busy && email.isNotBlank(),
-                modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
-            ) {
-                Text(stringResource(R.string.sign_in_otp_send))
-            }
-        } else {
+    val button = Modifier.fillMaxWidth().heightIn(min = 48.dp)
+    val canSignIn = !busy && email.isNotBlank() && secret.length >= 8
+    val canSendCode = !busy && email.isNotBlank()
+
+    fun submitPassword() = onPassword(email.trim(), secret, if (creating) name.trim() else null)
+    fun sendCode() {
+        onEmailOtp(email.trim(), null)
+        codeSent = true
+    }
+
+    /* The code step replaces the form: there is nothing else to do until it is entered. */
+    if (codeSent) {
+        Column {
             Text(
-                stringResource(R.string.sign_in_otp_sent, email),
+                stringResource(R.string.sign_in_otp_sent, email.trim()),
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -341,27 +277,116 @@ private fun EmailOtpForm(busy: Boolean, onSubmit: (String, String?) -> Unit) {
                     imeAction = ImeAction.Done,
                 ),
                 keyboardActions = KeyboardActions(
-                    onDone = { if (!busy && code.length == 6) onSubmit(email.trim(), code) },
+                    onDone = { if (!busy && code.length == 6) onEmailOtp(email.trim(), code) },
                 ),
                 modifier = Modifier.fillMaxWidth(),
             )
             Spacer(Modifier.height(Space.Large))
             Button(
-                onClick = { onSubmit(email.trim(), code) },
+                onClick = { onEmailOtp(email.trim(), code) },
                 enabled = !busy && code.length == 6,
-                modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
+                modifier = button,
             ) {
                 Text(stringResource(R.string.sign_in_submit))
             }
             TextButton(
                 onClick = {
-                    sent = false
+                    // Back to the address, so a typo is fixable without starting over.
+                    codeSent = false
                     code = ""
                 },
                 enabled = !busy,
                 modifier = Modifier.align(Alignment.CenterHorizontally),
             ) {
                 Text(stringResource(R.string.sign_in_otp_other_address))
+            }
+        }
+        return
+    }
+
+    Column {
+        if (password && creating) {
+            OutlinedTextField(
+                value = name,
+                onValueChange = { name = it },
+                label = { Text(stringResource(R.string.sign_in_name)) },
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(
+                    capitalization = KeyboardCapitalization.Words,
+                    imeAction = ImeAction.Next,
+                ),
+                modifier = Modifier.fillMaxWidth(),
+            )
+            Spacer(Modifier.height(Space.Medium))
+        }
+
+        OutlinedTextField(
+            value = email,
+            onValueChange = { email = it },
+            label = { Text(stringResource(R.string.sign_in_email)) },
+            singleLine = true,
+            keyboardOptions = KeyboardOptions(
+                keyboardType = KeyboardType.Email,
+                autoCorrectEnabled = false,
+                imeAction = if (password) ImeAction.Next else ImeAction.Done,
+            ),
+            keyboardActions = KeyboardActions(
+                onDone = { if (!password && canSendCode) sendCode() },
+            ),
+            modifier = Modifier.fillMaxWidth(),
+        )
+
+        if (password) {
+            Spacer(Modifier.height(Space.Medium))
+            OutlinedTextField(
+                value = secret,
+                onValueChange = { secret = it },
+                label = { Text(stringResource(R.string.sign_in_password)) },
+                singleLine = true,
+                visualTransformation = PasswordVisualTransformation(),
+                keyboardOptions = KeyboardOptions(
+                    keyboardType = KeyboardType.Password,
+                    imeAction = ImeAction.Done,
+                ),
+                keyboardActions = KeyboardActions(onDone = { if (canSignIn) submitPassword() }),
+                modifier = Modifier.fillMaxWidth(),
+            )
+            Spacer(Modifier.height(Space.Large))
+            Button(onClick = ::submitPassword, enabled = canSignIn, modifier = button) {
+                Text(
+                    stringResource(
+                        if (creating) R.string.sign_up_submit else R.string.sign_in_submit,
+                    ),
+                )
+            }
+        }
+
+        if (otp) {
+            Spacer(Modifier.height(if (password) Space.Medium else Space.Large))
+            if (password) {
+                // Beside a password this is the alternative, so it is outlined rather than
+                // filled; alone it is the only way forward and takes the filled treatment.
+                OutlinedButton(onClick = ::sendCode, enabled = canSendCode, modifier = button) {
+                    Text(stringResource(R.string.sign_in_otp_send))
+                }
+            } else {
+                Button(onClick = ::sendCode, enabled = canSendCode, modifier = button) {
+                    Text(stringResource(R.string.sign_in_otp_send))
+                }
+            }
+        }
+
+        if (password) {
+            TextButton(
+                onClick = { creating = !creating },
+                enabled = !busy,
+                modifier = Modifier.align(Alignment.CenterHorizontally),
+            ) {
+                Text(
+                    stringResource(
+                        if (creating) R.string.sign_in_switch_in else R.string.sign_in_switch_up,
+                    ),
+                )
             }
         }
     }
