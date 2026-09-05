@@ -29,6 +29,7 @@ import { EditorToolbar, type NoteView } from './EditorToolbar.js';
 import { Attachments } from './Attachments.js';
 import { ResizeHandle } from './ResizeHandle.js';
 import { OverflowMenu } from './OverflowMenu.js';
+import { Button } from './Button';
 
 /** The editor's share of the pane row when split evenly, and the limits a drag respects. */
 const EDITOR_DEFAULT = 0.5;
@@ -251,17 +252,16 @@ export function Workspace({ noteId, readOnly = false, backTo = '/notes' }: Works
               : `Couldn't load that note. ${(error as Error).message}`}
           </p>
           {missing ? (
-            <button
-              type="button"
-              className="link"
+            <Button
+              variant="secondary"
               onClick={() => void navigate({ to: '/notes', search: (p) => p })}
             >
               Clear
-            </button>
+            </Button>
           ) : (
-            <button type="button" className="link" onClick={() => void refetch()}>
+            <Button variant="secondary" onClick={() => void refetch()}>
               Retry
-            </button>
+            </Button>
           )}
         </div>
       </section>
