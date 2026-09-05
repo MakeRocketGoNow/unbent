@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { type LoadedPdf, loadPdf } from '../pdf/render.js';
+import { Button } from './Button';
 
 interface PdfPreviewProps {
   /** Attachment API URL, produced by the markdown pipeline. */
@@ -109,9 +110,9 @@ export function PdfPreview({ src, label }: PdfPreviewProps) {
             </span>
           )}
           {status === 'ready' && remaining > 0 && (
-            <button type="button" className="link small" onClick={() => setShown(pageCount)}>
+            <Button variant="quiet" size="small" onClick={() => setShown(pageCount)}>
               Show all {pageCount} pages
-            </button>
+            </Button>
           )}
           {/* Always available: the browser's own viewer has search and print. */}
           <a href={src} target="_blank" rel="noreferrer noopener" className="link small">
