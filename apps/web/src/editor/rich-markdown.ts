@@ -1120,9 +1120,15 @@ export function richMarkdown(options: RichMarkdownOptions = {}): Extension {
         display: 'block',
         marginTop: '0.4rem',
       },
+      /**
+       * Sized to match images and the preview pane.
+       *
+       * The same reasoning as `.cm-md-image img`: the old 26rem cap made embedded PDFs
+       * noticeably smaller than they appeared in Preview mode.
+       */
       '.cm-md-pdf-canvas': {
         display: 'block',
-        maxWidth: 'min(100%, 26rem)',
+        maxWidth: '100%',
         borderRadius: '0.35rem',
         border: '1px solid color-mix(in srgb, currentColor 15%, transparent)',
         // A scan is nearly always on white; on a dark theme an unbacked canvas shows the
@@ -1155,9 +1161,17 @@ export function richMarkdown(options: RichMarkdownOptions = {}): Extension {
       '.cm-md-pdf-more:hover': { opacity: '0.85' },
 
       '.cm-md-image': { display: 'block', padding: '0.35rem 0 0.6rem' },
+      /**
+       * Sized to fill the line the way the preview pane does.
+       *
+       * This used to cap at 26rem, which was noticeably tighter than the preview's 100%
+       * within its 46rem prose column — the same image rendered smaller in Rich than in
+       * Preview, which read as a bug rather than as a deliberate density difference.
+       * Matching the preview keeps the two modes visually consistent.
+       */
       '.cm-md-image img': {
-        maxWidth: 'min(100%, 26rem)',
-        maxHeight: '18rem',
+        maxWidth: '100%',
+        height: 'auto',
         borderRadius: '0.35rem',
         border: '1px solid color-mix(in srgb, currentColor 15%, transparent)',
       },
