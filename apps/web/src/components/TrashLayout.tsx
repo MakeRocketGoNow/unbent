@@ -89,14 +89,15 @@ export function TrashLayout({ children }: { children: React.ReactNode }) {
           {/* Offered here as well as on the maintenance page: this is the one place you
               can see what you are about to destroy, and restore something instead. */}
           {total > 0 && (
-            <button
-              type="button"
-              className="link danger small"
+            <Button
+              variant="secondary"
+              tone="danger"
+              size="small"
               disabled={empty.busy}
               onClick={() => setPending('all')}
             >
               Empty trash
-            </button>
+            </Button>
           )}
         </div>
 
