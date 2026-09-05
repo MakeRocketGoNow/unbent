@@ -314,6 +314,56 @@ describe('Login', () => {
     expect(document.querySelector('.provider-icon')?.getAttribute('aria-hidden')).toBe('true');
   });
 
+  /**
+   * The bug this merge fixes: the two email methods were separate forms rendered one after
+   * the other, so an instance offering both asked for the same address twice, a divider
+   * apart, with nothing saying they were the same question.
+   */
+  it('asks for the address once when both email methods are offered', async () => {
+    harness(['email-otp', 'password']);
+    await waitFor(() => expect(screen.getByLabelText('Password')).toBeTruthy());
+    expect(screen.getAllByLabelText('Email').length).toBe(1);
+  });
+
+  it('offers both ways forward from that one address', async () => {
+    harness(['email-otp', 'password']);
+    await waitFor(() => expect(screen.getByText('Sign in')).toBeTruthy());
+    expect(screen.getByText('Email me a code')).toBeTruthy();
+  });
+
+  it('puts no divider between them, being one method by then', async () => {
+    harness(['email-otp', 'password']);
+    await waitFor(() => expect(screen.getByLabelText('Password')).toBeTruthy());
+    expect(document.querySelectorAll('.login-or').length).toBe(0);
+  });
+
+  /** Each alone must look exactly as it did before the merge. */
+  it('shows no password box for a codes-only instance', async () => {
+    harness(['email-otp']);
+    await waitFor(() => expect(screen.getByText('Email me a code')).toBeTruthy());
+    expect(screen.queryByLabelText('Password')).toBeNull();
+  });
+
+  it('shows no code button for a password-only instance', async () => {
+    harness(['password']);
+    await waitFor(() => expect(screen.getByLabelText('Password')).toBeTruthy());
+    expect(screen.queryByText('Email me a code')).toBeNull();
+  });
+
+  /** The code the user typed has to be checked against the address they typed above it. */
+  it('sends the code to the address in the shared field', async () => {
+    harness(['email-otp', 'password']);
+    await waitFor(() => expect(screen.getByLabelText('Password')).toBeTruthy());
+    fireEvent.change(screen.getByLabelText('Email'), { target: { value: 'both@example.com' } });
+    fireEvent.click(screen.getByText('Email me a code'));
+    await waitFor(() =>
+      expect(emailOtp.sendVerificationOtp).toHaveBeenCalledWith({
+        email: 'both@example.com',
+        type: 'sign-in',
+      }),
+    );
+  });
+
   it('does not confirm whether an address has an account when asked for a reset', async () => {
     harness(['password']);
     await waitFor(() => expect(screen.getByLabelText('Email')).toBeTruthy());

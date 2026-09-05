@@ -206,22 +206,16 @@ export function Login() {
         </div>
       ),
     },
-    otp && {
-      key: 'email-otp',
+    // One section whether an instance offers a code, a password, or both — the address is
+    // asked for once and the ways to proceed hang off it.
+    (otp || password) && {
+      key: 'email',
       node: (
-        <EmailOtpForm
+        <EmailForm
+          otp={otp}
+          password={password}
           busy={pending !== null}
-          onBusy={(b) => setPending(b ? 'email-otp' : null)}
-          onError={setError}
-        />
-      ),
-    },
-    password && {
-      key: 'password',
-      node: (
-        <PasswordForm
-          busy={pending !== null}
-          onBusy={(b) => setPending(b ? 'password' : null)}
+          onBusy={(b) => setPending(b ? (password ? 'password' : 'email-otp') : null)}
           onError={setError}
         />
       ),
@@ -253,29 +247,43 @@ export function Login() {
   );
 }
 
-interface PasswordFormProps {
+interface EmailFormProps {
+  /** Whether this instance offers a code by email, a password, or both. */
+  otp: boolean;
+  password: boolean;
   busy: boolean;
   onBusy: (busy: boolean) => void;
   onError: (message: string | null) => void;
 }
 
 /**
- * Email and password, with a toggle to create an account instead.
+ * Everything that starts with an email address, in one form.
  *
- * No `callbackURL`: the session hook in the root layout re-renders the app in place once
- * the cookie lands, and the deep link that was opened stays in the address bar — the same
- * behaviour the layout already promises, without a redirect that would reload the page.
- * The social buttons redirect because a provider round trip leaves them no choice.
+ * The two email methods used to be separate components rendered one after the other, which
+ * on an instance offering both produced two "Email" boxes a divider apart — the same
+ * address, asked for twice, with nothing on screen saying they were the same question.
  *
- * A name field appears only for sign-up, where Better Auth requires one. Asking for it on
- * every sign-in would be a field the returning user has to skip past.
+ * So the address is asked once and the ways to proceed hang off it. A password box and
+ * "Sign in" when passwords are on; "Email me a code" when codes are on; both, stacked,
+ * when both are. An instance offering one method looks exactly as it did before.
+ *
+ * Which is primary when both exist: the password. Someone who has one is signing in with
+ * it, and a code is the fallback for having forgotten it or never set one — the same
+ * reason "Forgot your password?" sits nearby rather than on a page of its own.
+ *
+ * No `callbackURL` on any of these: the session hook in the root layout re-renders the app
+ * in place once the cookie lands, and the deep link that was opened stays in the address
+ * bar. The social buttons redirect because a provider round trip leaves them no choice.
  */
-function PasswordForm({ busy, onBusy, onError }: PasswordFormProps) {
+function EmailForm({ otp, password, busy, onBusy, onError }: EmailFormProps) {
   const [mode, setMode] = useState<'in' | 'up'>('in');
   const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
+  const [secret, setSecret] = useState('');
   const [name, setName] = useState('');
   const [sentReset, setSentReset] = useState(false);
+  /** Set once a code is on its way, which swaps the whole form for the code step. */
+  const [codeSent, setCodeSent] = useState(false);
+  const [code, setCode] = useState('');
 
   /**
    * Ask for a reset link.
@@ -302,7 +310,7 @@ function PasswordForm({ busy, onBusy, onError }: PasswordFormProps) {
     }
   }
 
-  async function submit(e: FormEvent) {
+  async function submitPassword(e: FormEvent) {
     e.preventDefault();
     onBusy(true);
     onError(null);
@@ -311,21 +319,99 @@ function PasswordForm({ busy, onBusy, onError }: PasswordFormProps) {
       // a refused sign-up (the allowlist) arrives as the former, a network fault as the latter.
       const result =
         mode === 'in'
-          ? await signIn.email({ email, password })
-          : await signUp.email({ email, password, name: name.trim() || email });
-      if (result.error) {
-        onError(result.error.message || 'Sign-in failed');
-      }
+          ? await signIn.email({ email, password: secret })
+          : await signUp.email({ email, password: secret, name: name.trim() || email });
+      if (result.error) onError(result.error.message || 'Sign-in failed');
     } catch (err) {
-      onError((err as Error).message || 'Sign-in failed');
+      onError(asMessage(err));
     } finally {
       onBusy(false);
     }
   }
 
+  async function sendCode() {
+    if (!email) {
+      onError('Enter your email address first, then ask for a code.');
+      return;
+    }
+    onBusy(true);
+    onError(null);
+    try {
+      const result = await emailOtp.sendVerificationOtp({ email, type: 'sign-in' });
+      if (result?.error) onError(result.error.message || 'Could not send a code.');
+      else setCodeSent(true);
+    } catch (err) {
+      onError(asMessage(err));
+    } finally {
+      onBusy(false);
+    }
+  }
+
+  async function verifyCode(e: FormEvent) {
+    e.preventDefault();
+    onBusy(true);
+    onError(null);
+    try {
+      const result = await signIn.emailOtp({ email, otp: code });
+      // A wrong code is reported here rather than thrown. The plugin burns the code after
+      // three tries, so the message has to be shown rather than silently retried.
+      if (result?.error) onError(result.error.message || 'That code did not work.');
+    } catch (err) {
+      onError(asMessage(err));
+    } finally {
+      onBusy(false);
+    }
+  }
+
+  /** The code step replaces the form: there is nothing else to do until it is entered. */
+  if (codeSent) {
+    return (
+      <form className="login-form" onSubmit={(e) => void verifyCode(e)}>
+        <p className="muted">We sent a code to {email}. It expires in five minutes.</p>
+        <label>
+          Code
+          <input
+            className="login-input"
+            /**
+             * Not `type="number"`: a leading zero would be dropped and the spinners are
+             * meaningless here. `inputMode` gets the numeric keypad on a phone, and
+             * `one-time-code` is what makes iOS and Android offer the code straight from
+             * the notification, which is the whole reason this beats a link.
+             */
+            type="text"
+            inputMode="numeric"
+            autoComplete="one-time-code"
+            pattern="[0-9]*"
+            maxLength={6}
+            required
+            value={code}
+            onChange={(e) => setCode(e.target.value.replace(/\D/g, ''))}
+          />
+        </label>
+        <Button variant="primary" type="submit" disabled={busy || code.length < 6}>
+          {busy ? 'Signing in…' : 'Sign in'}
+        </Button>
+        <Button
+          variant="quiet"
+          size="small"
+          className="login-switch"
+          disabled={busy}
+          onClick={() => {
+            // Back to the address, so a typo is fixable without reloading the page.
+            setCodeSent(false);
+            setCode('');
+            onError(null);
+          }}
+        >
+          Use a different address
+        </Button>
+      </form>
+    );
+  }
+
   return (
-    <form className="login-form" onSubmit={(e) => void submit(e)}>
-      {mode === 'up' && (
+    <form className="login-form" onSubmit={(e) => void (password ? submitPassword(e) : e.preventDefault())}>
+      {password && mode === 'up' && (
         <label>
           Name
           <input
@@ -342,37 +428,67 @@ function PasswordForm({ busy, onBusy, onError }: PasswordFormProps) {
         <input
           className="login-input"
           type="email"
-          autoComplete="email"
+          /**
+           * `webauthn` alongside the usual token is what lets the browser offer a passkey
+           * from this field's autofill, next to saved addresses. Harmless where there is
+           * no passkey, and the reason `signIn.passkey({ autoFill: true })` has somewhere
+           * to attach.
+           */
+          autoComplete="username webauthn"
           required
           value={email}
           onChange={(e) => setEmail(e.target.value)}
         />
       </label>
-      <label>
-        Password
-        <input
-          className="login-input"
-          type="password"
-          autoComplete={mode === 'in' ? 'current-password' : 'new-password'}
-          required
-          minLength={8}
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-        />
-      </label>
-      <Button variant="primary" type="submit" disabled={busy}>
-        {busy ? 'Signing in…' : mode === 'in' ? 'Sign in' : 'Create account'}
-      </Button>
-      <Button
-        variant="quiet"
-        size="small"
-        className="login-switch"
-        disabled={busy}
-        onClick={() => setMode(mode === 'in' ? 'up' : 'in')}
-      >
-        {mode === 'in' ? 'Create an account' : 'I already have an account'}
-      </Button>
-      {mode === 'in' &&
+
+      {password && (
+        <label>
+          Password
+          <input
+            className="login-input"
+            type="password"
+            autoComplete={mode === 'in' ? 'current-password' : 'new-password'}
+            required
+            minLength={8}
+            value={secret}
+            onChange={(e) => setSecret(e.target.value)}
+          />
+        </label>
+      )}
+
+      {password && (
+        <Button variant="primary" type="submit" disabled={busy}>
+          {busy ? 'Signing in…' : mode === 'in' ? 'Sign in' : 'Create account'}
+        </Button>
+      )}
+
+      {otp && (
+        <Button
+          // Primary only when it is the only way forward; beside a password it is the
+          // alternative, and two filled buttons would be a choice with no default.
+          variant={password ? 'quiet' : 'primary'}
+          type="button"
+          disabled={busy}
+          onClick={() => void sendCode()}
+        >
+          {busy && !password ? 'Sending…' : 'Email me a code'}
+        </Button>
+      )}
+
+      {password && (
+        <Button
+          variant="quiet"
+          size="small"
+          className="login-switch"
+          disabled={busy}
+          onClick={() => setMode(mode === 'in' ? 'up' : 'in')}
+        >
+          {mode === 'in' ? 'Create an account' : 'I already have an account'}
+        </Button>
+      )}
+
+      {password &&
+        mode === 'in' &&
         (sentReset ? (
           <p className="muted">
             If that address has an account, a reset link is on its way. It works once and
@@ -389,136 +505,6 @@ function PasswordForm({ busy, onBusy, onError }: PasswordFormProps) {
             Forgot your password?
           </Button>
         ))}
-    </form>
-  );
-}
-
-interface EmailOtpFormProps {
-  busy: boolean;
-  onBusy: (busy: boolean) => void;
-  onError: (message: string | null) => void;
-}
-
-/**
- * A six-digit code by email, in two steps.
- *
- * The step that matters is the second one: the code is typed back into the same page that
- * asked for it. A magic link would have been one fewer thing to type, but on a phone the
- * link opens in whichever browser the mail app prefers — often not the one waiting for it,
- * and on Android not the app's Custom Tab either — so the session lands somewhere the user
- * cannot see. A code cannot go to the wrong place.
- *
- * No separate sign-up: an address with no account gets one, so there is no second form to
- * find and no wrong guess to make about which one you need. The instance's allowlist still
- * decides, and says so in its own words when it refuses.
- */
-function EmailOtpForm({ busy, onBusy, onError }: EmailOtpFormProps) {
-  const [email, setEmail] = useState('');
-  const [code, setCode] = useState('');
-  const [sent, setSent] = useState(false);
-
-  async function send(e: FormEvent) {
-    e.preventDefault();
-    onBusy(true);
-    onError(null);
-    try {
-      const result = await emailOtp.sendVerificationOtp({ email, type: 'sign-in' });
-      if (result?.error) onError(result.error.message || 'Could not send a code.');
-      else setSent(true);
-    } catch (err) {
-      onError(asMessage(err));
-    } finally {
-      onBusy(false);
-    }
-  }
-
-  async function verify(e: FormEvent) {
-    e.preventDefault();
-    onBusy(true);
-    onError(null);
-    try {
-      const result = await signIn.emailOtp({ email, otp: code });
-      // A wrong code is reported here rather than thrown. The plugin burns the code after
-      // three tries, so the message has to be shown rather than silently retried.
-      if (result?.error) onError(result.error.message || 'That code did not work.');
-      // On success the root layout's session hook re-renders in place, so the deep link in
-      // the address bar survives — the same reason the password form has no callbackURL.
-    } catch (err) {
-      onError(asMessage(err));
-    } finally {
-      onBusy(false);
-    }
-  }
-
-  if (!sent) {
-    return (
-      <form className="login-form" onSubmit={(e) => void send(e)}>
-        <label>
-          Email
-          <input
-            className="login-input"
-            type="email"
-            /**
-             * `webauthn` alongside the usual token is what lets the browser offer a passkey
-             * from this field's autofill, next to saved addresses. Harmless where there is
-             * no passkey, and the reason `signIn.passkey({ autoFill: true })` has somewhere
-             * to attach.
-             */
-            autoComplete="username webauthn"
-            required
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-          />
-        </label>
-        <Button variant="primary" type="submit" disabled={busy}>
-          {busy ? 'Sending…' : 'Email me a code'}
-        </Button>
-      </form>
-    );
-  }
-
-  return (
-    <form className="login-form" onSubmit={(e) => void verify(e)}>
-      <p className="muted">
-        We sent a code to {email}. It expires in five minutes.
-      </p>
-      <label>
-        Code
-        <input
-          className="login-input"
-          /**
-           * Not `type="number"`: a leading zero would be dropped and the spinners are
-           * meaningless here. `inputMode` gets the numeric keypad on a phone, and
-           * `one-time-code` is what makes iOS and Android offer the code straight from
-           * the notification, which is the whole reason this beats a link.
-           */
-          type="text"
-          inputMode="numeric"
-          autoComplete="one-time-code"
-          pattern="[0-9]*"
-          maxLength={6}
-          required
-          value={code}
-          onChange={(e) => setCode(e.target.value.replace(/\D/g, ''))}
-        />
-      </label>
-      <Button variant="primary" type="submit" disabled={busy || code.length < 6}>
-        {busy ? 'Signing in…' : 'Sign in'}
-      </Button>
-      <Button
-        variant="quiet"
-        size="small"
-        className="login-switch"
-        disabled={busy}
-        onClick={() => {
-          // Back to the address, so a typo is fixable without reloading the page.
-          setSent(false);
-          setCode('');
-          onError(null);
-        }}
-      >
-        Use a different address
-      </Button>
     </form>
   );
 }
