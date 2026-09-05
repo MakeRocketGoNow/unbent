@@ -153,6 +153,27 @@ curl -s -o /dev/null -w "%{http_code}" http://localhost:5173/
 If it's already up, use it. If you do start something, stop it when you're done. Use the
 browser preview tools rather than `bash` for anything server-shaped.
 
+### Working from a git worktree
+
+Branch work often happens in a worktree beside the main checkout. Two things about that are
+not obvious and have each cost an afternoon.
+
+**A worktree has no `.dev.vars`.** It is gitignored, so it does not come across, and a
+Worker started there has no `BETTER_AUTH_SECRET` and no OAuth credentials. Symlinking the
+main checkout's copy is enough: `ln -s ../../unbent/apps/api/.dev.vars apps/api/.dev.vars`.
+Its local D1 and R2 are separate too — `wrangler dev --persist-to` at the main checkout's
+`.wrangler/state` shares them, but never with two Workers running at once.
+
+**A worktree's Vite serves only the SPA.** It proxies `/api` to whatever is on :8787, which
+is normally the Worker running from the *main* checkout — so the branch's API code is not
+what answers, and its auth config and notes come from somewhere else entirely. If the
+change under test is server-side, the Worker has to be restarted from the worktree; if it
+is UI, the proxy is exactly what you want.
+
+The SPA then lands on :5174, Vite's next free port, which `baseURLFor` in `apps/api/src/auth.ts`
+has to trust or every sign-in from it is refused as CSRF with "Invalid origin" — the button
+does nothing and the page says nothing. If a new port ever comes into use, add it there.
+
 ## Verifying
 
 Verify UI changes in the browser and show the result — don't ask the user to check

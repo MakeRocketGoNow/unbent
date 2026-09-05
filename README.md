@@ -134,7 +134,9 @@ back to their notes.
 
 `ALLOWED_EMAILS` is what keeps a public URL from becoming a free notes host: without it,
 anyone who can satisfy any enabled sign-in method can create an account. It is a secret
-rather than a var only to keep the address list out of the repo.
+rather than a var only to keep the address list out of the repo. Leaving it empty is
+allowed — an instance is not locked to its operator — but a deployed Worker with no
+allowlist warns in its log, naming what a stranger could sign up with.
 
 ### Choosing sign-in methods
 
@@ -142,12 +144,27 @@ Nothing here is compiled in. An instance decides what it offers through its envi
 and `GET /api/config` reports the result — the web app and the Android app both draw their
 sign-in screens from that, so a method that is not configured is never shown.
 
-| Method | Turned on by | Turned off by |
+**Configure nothing and you get a password and a passkey.** Every instance can be signed in
+to; there is no combination of settings that leaves a working deployment with no way in
+except asking for one. That guarantee is worth stating because two of the four methods
+cannot stand on their own: a passkey is added from an account you already have, so it is
+never what gets you in the first time, and a code by email needs somewhere to send it.
+
+| Method | Offered when | Withheld when |
 | --- | --- | --- |
-| Any OAuth provider | `<PROVIDER>_CLIENT_ID` **and** `<PROVIDER>_CLIENT_SECRET` | removing either |
-| Email + password | `AUTH_PASSWORD=1` | leaving it unset |
-| Code by email | `RESEND_API_KEY` **and** `EMAIL_FROM` | removing either |
-| Passkeys | on by default | `AUTH_PASSKEY=0` |
+| Any OAuth provider | `<PROVIDER>_CLIENT_ID` **and** `<PROVIDER>_CLIENT_SECRET` | either is missing |
+| Email + password | nothing else can create an account, or `AUTH_PASSWORD=1` | something else can, or `AUTH_PASSWORD=0` |
+| Code by email | `RESEND_API_KEY` **and** `EMAIL_FROM` | either is missing |
+| Passkeys | always | `AUTH_PASSKEY=0` |
+
+The password row is the floor. It appears on an instance with no OAuth and no mail, and
+withdraws as soon as either arrives — so a self-hoster who configures nothing still gets in,
+and unbent.app, which has providers, never sees it. `AUTH_PASSWORD=1` asks for a password
+*alongside* a configured provider; `AUTH_PASSWORD=0` refuses the floor, and is the one
+setting here that can leave nobody a way in.
+
+An instance that accepts a sign-up from anyone says so in its log: deployed with an empty
+`ALLOWED_EMAILS`, the Worker warns once, naming the methods a stranger could use.
 
 The OAuth row means any of the thirty-five providers Better Auth ships — Apple, Discord,
 Microsoft, Slack, GitLab and the rest — not a list this repository maintains. Enabling one
@@ -217,14 +234,16 @@ pnpm release
 
 ## Auth
 
-Better Auth. Google and GitHub through OAuth, and email-and-password where an instance
-turns it on with `AUTH_PASSWORD=1`. A social provider without configured credentials is
-simply not offered, so local development works with none of them set.
+Better Auth. Any of its thirty-five OAuth providers by convention, plus passkeys, codes by
+email, and email-and-password. A social provider without configured credentials is simply
+not offered, so local development works with none of them set.
 
 Password sign-in exists for self-hosted instances: OAuth needs a callback URL registered
 with each provider per deployment, which cannot be done on anyone else's behalf, while a
-password works anywhere. unbent.app leaves it off. `ALLOWED_EMAILS` gates account creation
-whatever the method.
+password works anywhere. It is offered by default only where nothing else could create an
+account, so unbent.app — which has providers — does not show it. `ALLOWED_EMAILS` gates
+account creation whatever the method. See [Choosing sign-in
+methods](#choosing-sign-in-methods).
 
 `GET /api/config` reports which methods an instance offers, in display order, so the login
 screen and the Android app render from it rather than guessing.
