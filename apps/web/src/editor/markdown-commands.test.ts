@@ -3,7 +3,7 @@ import { EditorView, keymap } from '@codemirror/view';
 import { defaultKeymap, history, historyKeymap } from '@codemirror/commands';
 import { markdown as markdownLang } from '@codemirror/lang-markdown';
 import { GFM } from '@lezer/markdown';
-import { syntaxTree } from '@codemirror/language';
+import { ensureSyntaxTree } from '@codemirror/language';
 import { afterEach, describe, expect, it } from 'vitest';
 import * as cmd from './markdown-commands.js';
 
@@ -283,13 +283,35 @@ describe('outdentList', () => {
  * the editor but renders and exports as a flat list.
  */
 describe('indent produces real nesting', () => {
+  /**
+   * Nesting depth according to the parse tree, which has to be *forced* rather than read.
+   *
+   * `syntaxTree(state)` returns whatever the initial parse managed within its 20ms
+   * wall-clock budget — `Work.Apply`, in @codemirror/language. Blowing that budget is not
+   * an error and raises nothing: the parser calls `takeTree()` and hands back a partial
+   * tree, on the assumption that a view plugin will finish the job on idle. There is no
+   * view here, so the tree stays partial for good, and `- one\n  - two` reads as depth 1
+   * instead of 2 — the assertion below fails with `expected 1 to be 2`.
+   *
+   * Twenty milliseconds is ample for two lines on an idle machine, and not reliably ample
+   * when the suite is running two dozen jsdom environments at once. That is why this test
+   * failed roughly one full run in twenty-five and passed every single time it was run on
+   * its own, which is the shape of a flake that gets dismissed as noise.
+   *
+   * `ensureSyntaxTree` is the documented way to ask for a tree that actually spans the
+   * document. The timeout is a ceiling and not a delay — the real parse takes well under a
+   * millisecond — and null means it genuinely could not finish, which is worth a loud
+   * failure rather than a silent depth of 0.
+   */
   function nestingDepth(doc: string): number {
     const state = EditorState.create({
       doc,
       extensions: [markdownLang({ extensions: [GFM] })],
     });
+    const tree = ensureSyntaxTree(state, doc.length, 5000);
+    if (!tree) throw new Error(`markdown parse did not finish for ${JSON.stringify(doc)}`);
     let depth = 0;
-    syntaxTree(state).iterate({
+    tree.iterate({
       enter(n) {
         if (n.name === 'BulletList' || n.name === 'OrderedList') depth += 1;
       },
