@@ -32,9 +32,11 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm typecheck
-      # The API suite drives a live wrangler dev with real D1 and R2 and is not runnable
-      # here; the web suite is self-contained. See apps/api/test/README.md.
       - run: pnpm --filter @unbent/web test
+      # The API's unit tests only read a stubbed Env, so they run anywhere. Its `test`
+      # script also drives a live wrangler dev with real D1 and R2, which does not run
+      # here — that half stays local. See apps/api/test/README.md.
+      - run: pnpm --filter @unbent/api test:unit
       - run: pnpm build
 
   deploy:
