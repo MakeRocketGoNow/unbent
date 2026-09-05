@@ -6,9 +6,10 @@ import {
 } from '@tanstack/react-router';
 import { useEffect } from 'react';
 import { useQueryClient, type QueryClient } from '@tanstack/react-query';
-import { useSession, signOut } from '../auth-client.js';
+import { useSession, signOut, refreshSession } from '../auth-client.js';
+import { requireSession, shellFor } from '../auth-gate.js';
+import { claimCacheFor } from '../queries.js';
 import { startIndexing, subscribeIndexing } from '../index-files.js';
-import { Login } from '../components/Login.js';
 import { Topbar } from '../components/Topbar.js';
 
 export interface RouterContext {
@@ -16,26 +17,48 @@ export interface RouterContext {
 }
 
 export const Route = createRootRouteWithContext<RouterContext>()({
+  /**
+   * The session gate, in front of every loader in the app.
+   *
+   * It is here rather than on each route because a route added without it would be a
+   * silent hole, and here rather than in the component below because a component renders
+   * after the loaders it wraps have already run. See `auth-gate.ts` for what that cost.
+   *
+   * The cache is handed over in the same breath, and for the same timing reason. Loaders
+   * resolve through `ensureQueryData`, so a second person signing in without reloading was
+   * served the first one's notes out of the cache; this is the last moment before those
+   * loaders run. See `claimCacheFor` for why it is keyed on the user rather than hung off
+   * signing out.
+   */
+  beforeLoad: async ({ location, context }) => {
+    const session = await requireSession(location);
+    claimCacheFor(context.queryClient, session?.user.id);
+  },
   component: RootLayout,
 });
 
 /**
- * Two shells, chosen by where we are.
+ * Three shells, chosen by where we are — `shellFor` decides, and the same answer decides
+ * what the gate above lets through unauthenticated.
  *
- * Everything under `/embed/` is a page the Android app hosts inside a WebView, with its
- * own chrome around it: the app draws the title, the filing and the back button, and it
- * has already put a session cookie in place before loading the page. So that shell has
- * no topbar and no sign-in gate — an unauthenticated load is reported to the app through
- * the bridge rather than rendered as a login screen inside someone else's screen.
+ * `/embed/` is a page the Android app hosts inside a WebView, with its own chrome around
+ * it: the app draws the title, the filing and the back button, and it has already put a
+ * session cookie in place before loading the page. So that shell has no topbar and no
+ * gate — an unauthenticated load is reported to the app through the bridge rather than
+ * redirected to a sign-in screen inside someone else's screen.
  *
- * Split into two components rather than branched inside one so the session hook runs
+ * `plain` is the pages that exist because there is no session: the sign-in screen and the
+ * far end of a password-reset mail. They are centred on an otherwise empty page, with no
+ * topbar to sign out of.
+ *
+ * Split into separate components rather than branched inside one so the session hook runs
  * only where a session is the layout's business.
  */
 function RootLayout() {
-  const embedded = useRouterState({
-    select: (s) => s.location.pathname.startsWith('/embed/'),
-  });
-  return embedded ? <EmbedShell /> : <AppShell />;
+  const shell = useRouterState({ select: (s) => shellFor(s.location.pathname) });
+  if (shell === 'embed') return <EmbedShell />;
+  if (shell === 'plain') return <PlainShell />;
+  return <AppShell />;
 }
 
 function EmbedShell() {
@@ -46,15 +69,21 @@ function EmbedShell() {
   );
 }
 
+function PlainShell() {
+  return (
+    <main className="shell centered">
+      <Outlet />
+    </main>
+  );
+}
+
 /**
- * Session gate and app chrome.
+ * The signed-in app: chrome, and the background work that only makes sense for a user.
  *
- * The gate is here rather than in a `beforeLoad` guard because the session comes from
- * better-auth's `useSession` hook, which is React state — a loader would have to
- * duplicate that state into router context and keep the two in sync. Rendering the login
- * screen in place of the outlet keeps one source of truth, and it preserves the current
- * behaviour that a deep link opened while signed out stays in the address bar: signing in
- * then lands on the note that was asked for, with no redirect parameter to carry.
+ * There is no gate here any more. The route guard has established a session before this
+ * renders, so `useSession` is read for two things: the address in the topbar, and
+ * liveness — a session that expires, or a sign-out in another tab, arrives through this
+ * hook and nowhere else, and has to move the user off a screen they can no longer load.
  */
 function AppShell() {
   const { data: session, isPending } = useSession();
@@ -84,18 +113,19 @@ function AppShell() {
     });
   }, [userId, queryClient]);
 
-  if (isPending) {
-    return (
-      <main className="shell">
-        <p className="muted">Loading…</p>
-      </main>
-    );
-  }
+  /**
+   * The session going away under a rendered app — expiry, or a sign-out in another tab.
+   * The guard cannot catch that: it runs on navigation, and this happens between them.
+   */
+  useEffect(() => {
+    if (isPending || session?.user) return;
+    void navigate({ to: '/login', replace: true });
+  }, [isPending, session, navigate]);
 
   if (!session?.user) {
     return (
-      <main className="shell centered">
-        <Login />
+      <main className="shell">
+        <p className="muted">Loading…</p>
       </main>
     );
   }
@@ -105,9 +135,23 @@ function AppShell() {
       <Topbar
         email={session.user.email}
         onSignOut={() => {
-          // Leaving a note id in the address bar would expose it to the next person and
-          // reapply it on the next sign-in, so the URL is reset as part of signing out.
-          void signOut().then(() => navigate({ to: '/notes', replace: true }));
+          /**
+           * Leaving a note id in the address bar would expose it to the next person and
+           * reapply it on the next sign-in, so signing out goes to `/login` rather than
+           * staying put and letting the gate bounce it there a moment later.
+           *
+           * The session is refetched before navigating rather than left to settle on its
+           * own: `/login` turns away anyone who is signed in, and it reads the same store
+           * this call is in the middle of emptying.
+           *
+           * Nothing is dropped from the query cache here. The rows this user loaded are
+           * still in memory afterwards, and deliberately so — see `claimCacheFor`, which
+           * empties the cache when the *next* user arrives, where there is no mounted app
+           * left to refetch into a 401.
+           */
+          void signOut()
+            .then(() => refreshSession())
+            .then(() => navigate({ to: '/login', replace: true }));
         }}
       />
       <Outlet />

@@ -2816,20 +2816,23 @@ a.sidebar-status:hover {
      Same disclosure as the sidebar's tag filter, and the same component, because it is the
      same gesture — and the summary carries the values so nothing is hidden, only folded.
 
-     No border under it, though every other block here closes with one. Filing and the
-     attachments panel below it are now drawn identically, and with a rule between them the
-     pair read as two stacked panels that happened to land together — three hairlines inside
-     130px, under a title that has one of its own. They are one thing: what the note is,
-     as opposed to what it says. The attachments border closes the pair, and the gap between
-     the two summaries is the only division they need.
+     It keeps its own border, like every other block in this column. That was tried the
+     other way: once filing and the attachments panel were drawn identically, the rule
+     between them looked like it was separating two halves of one thing, so it came out.
+     On screen the opposite was true. Two identical rows with nothing between them read as
+     one row that had wrapped, and the eye had to use the chevrons to find where the first
+     ended — while the divider, which the rest of the column already uses to mean "different
+     thing", said it at a glance. Sameness of style is what makes them a family; the rule is
+     what keeps them countable.
   */
   .tag-row-wrap {
     padding-bottom: 0;
+    border-bottom: 1px solid var(--border);
   }
 
   /* Collapsed, the controls contribute nothing. Open, `.tag-row` already carries the
-     0.5rem below the last control, so adding more here made the gap before the attachments
-     row half again as large as every gap above it. */
+     0.5rem below the last control, so adding more here made the gap before the border
+     half again as large as every gap above it. */
   .tag-row-wrap[open] { padding-bottom: 0; }
 
   /*

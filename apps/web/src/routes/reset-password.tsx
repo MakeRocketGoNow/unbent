@@ -23,8 +23,14 @@ export const Route = createFileRoute('/reset-password')({
  * The other end of the reset mail.
  *
  * Deliberately outside the signed-in layout: someone resetting a password is by definition
- * unable to sign in, so this page has to render without a session. Better Auth has already
- * checked the token by the time the redirect lands here, and says so in the query string.
+ * unable to sign in, so this page has to render without a session. That was the intent
+ * before the sign-in screen had a route of its own, but not the behaviour — the root
+ * layout drew a login screen over every path without a session, this one included, so the
+ * link in the mail was dead for exactly the people it was sent to. `shellFor` in
+ * `auth-gate.ts` is now what exempts it, alongside `/login` itself.
+ *
+ * Better Auth has already checked the token by the time the redirect lands here, and says
+ * so in the query string.
  */
 function ResetPasswordPage() {
   const { token, error: tokenError } = Route.useSearch();
@@ -61,7 +67,7 @@ function ResetPasswordPage() {
           That reset link has expired or has already been used. Reset links work once and
           last an hour.
         </p>
-        <Button variant="primary" onClick={() => void navigate({ to: '/notes' })}>
+        <Button variant="primary" onClick={() => void navigate({ to: '/login' })}>
           Back to sign in
         </Button>
       </div>
@@ -76,7 +82,7 @@ function ResetPasswordPage() {
           Your password is changed, and any other devices that were signed in have been
           signed out.
         </p>
-        <Button variant="primary" onClick={() => void navigate({ to: '/notes' })}>
+        <Button variant="primary" onClick={() => void navigate({ to: '/login' })}>
           Sign in
         </Button>
       </div>

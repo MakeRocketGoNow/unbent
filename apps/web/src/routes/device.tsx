@@ -29,10 +29,10 @@ type Outcome = 'approved' | 'denied';
 /**
  * Approves a device — the browser half of the CLI sign-in.
  *
- * The root layout already gates on the session, so reaching this component means signed
- * in, and an unauthenticated visit shows the login screen and returns here afterwards with
- * the code still in the URL. That is why the code lives in a search param rather than
- * component state: it has to survive a sign-in round trip.
+ * The route guard already gates on the session, so reaching this component means signed
+ * in; an unauthenticated visit is redirected to `/login` carrying this URL, code included,
+ * and comes back here once there is a session. That is why the code lives in a search
+ * param rather than component state: it has to survive a sign-in round trip.
  */
 function DevicePage() {
   const { user_code } = Route.useSearch();
