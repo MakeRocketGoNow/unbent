@@ -8,7 +8,7 @@ import {
   RouterProvider,
 } from '@tanstack/react-router';
 import type { AuthProvider } from '@unbent/shared';
-import { Login, returnTo } from './Login.js';
+import { Login } from './Login.js';
 import { emailOtp, signIn } from '../auth-client.js';
 import * as api from '../notes-api.js';
 
@@ -31,42 +31,10 @@ vi.mock('../auth-client.js', () => ({
   signUp: { email: vi.fn() },
   emailOtp: { sendVerificationOtp: vi.fn().mockResolvedValue({}) },
   requestPasswordReset: vi.fn().mockResolvedValue({}),
+  // Every sign-in that stays in the tab refetches the session before navigating; with no
+  // server here it just has to resolve.
+  refreshSession: vi.fn().mockResolvedValue(null),
 }));
-
-/**
- * Where sign-in sends you afterwards.
- *
- * Both halves have been wrong in production. Returning always to `/notes` dropped the
- * device code and left the CLI waiting on a page the user could not get back to; returning
- * to the current URL unconditionally then parked people on a one-time approval page, which
- * shows an expiry error on the next visit and reads as sign-in being broken.
- */
-describe('returnTo', () => {
-  it('keeps a device code, so an approval survives signing in', () => {
-    expect(returnTo('/device?user_code=ABCD1234')).toBe('/device?user_code=ABCD1234');
-  });
-
-  it('sends a bare /device to the notes, since there is nothing to approve', () => {
-    expect(returnTo('/device')).toBe('/notes');
-  });
-
-  it('treats an empty user_code as no code', () => {
-    expect(returnTo('/device?user_code=')).toBe('/notes');
-  });
-
-  it('keeps ordinary deep links intact', () => {
-    expect(returnTo('/notes/abc-123')).toBe('/notes/abc-123');
-    expect(returnTo('/trash')).toBe('/trash');
-  });
-
-  it('keeps query strings on ordinary pages', () => {
-    expect(returnTo('/notes?tag=recipes')).toBe('/notes?tag=recipes');
-  });
-
-  it('leaves the root alone', () => {
-    expect(returnTo('/')).toBe('/');
-  });
-});
 
 /**
  * The screen is drawn from `/api/config`, not from a list in the component.
@@ -77,8 +45,9 @@ describe('returnTo', () => {
 function harness(providers: AuthProvider[]) {
   vi.mocked(api.getConfig).mockResolvedValue({ providers });
 
-  const rootRoute = createRootRoute({ component: Login });
-  const history = createMemoryHistory({ initialEntries: ['/notes'] });
+  // `redirectTo` is the route's job in the app; here it only has to be somewhere.
+  const rootRoute = createRootRoute({ component: () => <Login redirectTo="/notes" /> });
+  const history = createMemoryHistory({ initialEntries: ['/login'] });
   const router = createRouter({ routeTree: rootRoute, history });
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
 
