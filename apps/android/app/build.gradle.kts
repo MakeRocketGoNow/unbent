@@ -34,11 +34,11 @@ android {
      * runtime behaviours and wants testing on its own; raising this only lets the compiler
      * see newer APIs.
      *
-     * It moved because AndroidX and Material now ship AARs whose metadata demands 36, and
+     * It moved because AndroidX and Material now ship AARs whose metadata demands 37, and
      * Gradle refuses them outright at `CheckAarMetadataWorkAction` rather than degrading —
      * so this is the floor for taking any of those updates at all.
      */
-    compileSdk = 36
+    compileSdk = 37
 
     defaultConfig {
         applicationId = "app.unbent.android"
@@ -146,9 +146,11 @@ dependencies {
     implementation(libs.compose.ui)
     implementation(libs.compose.ui.tooling.preview)
     implementation(libs.compose.material3)
+    implementation(libs.compose.material.icons.core)
     implementation(libs.androidx.activity.compose)
     implementation(libs.androidx.navigation.compose)
     implementation(libs.androidx.webkit)
+    implementation(libs.androidx.lifecycle.runtime.compose)
     debugImplementation(libs.compose.ui.tooling)
     implementation(libs.okhttp)
     implementation(libs.kotlinx.serialization.json)

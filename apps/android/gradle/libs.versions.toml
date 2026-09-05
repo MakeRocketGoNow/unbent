@@ -1,23 +1,28 @@
 [versions]
 agp = "9.4.0"
 kotlin = "2.4.10"
-coreKtx = "1.15.0"
-appcompat = "1.7.0"
+coreKtx = "1.19.0"
+appcompat = "1.8.0"
 material = "1.14.0"
-browser = "1.8.0"
-work = "2.10.0"
+browser = "1.10.0"
+work = "2.11.2"
 okhttp = "4.12.0"
-coroutines = "1.9.0"
+coroutines = "1.11.0"
 junit = "4.13.2"
 robolectric = "4.16.1"
-androidxTestCore = "1.6.1"
-credentials = "1.5.0"
-googleid = "1.1.1"
-serialization = "1.7.3"
-composeBom = "2024.12.01"
-activityCompose = "1.9.3"
-navigationCompose = "2.8.5"
-webkit = "1.12.1"
+androidxTestCore = "1.7.0"
+credentials = "1.6.0"
+googleid = "1.2.0"
+serialization = "1.11.0"
+composeBom = "2026.08.00"
+# Discontinued by Google — 1.7.8 is the final release, and the Compose BOM no longer
+# carries it. The fourteen icons this app uses are all from the core set, so it stays
+# pinned here rather than becoming a rewrite. See the note in app/build.gradle.kts.
+materialIcons = "1.7.8"
+activityCompose = "1.13.0"
+navigationCompose = "2.10.0"
+webkit = "1.17.0"
+lifecycle = "2.11.0"
 
 [libraries]
 androidx-core-ktx = { module = "androidx.core:core-ktx", version.ref = "coreKtx" }
@@ -42,10 +47,14 @@ compose-ui = { module = "androidx.compose.ui:ui" }
 compose-ui-tooling = { module = "androidx.compose.ui:ui-tooling" }
 compose-ui-tooling-preview = { module = "androidx.compose.ui:ui-tooling-preview" }
 compose-material3 = { module = "androidx.compose.material3:material3" }
+# Versioned explicitly: no longer part of the BOM.
+compose-material-icons-core = { module = "androidx.compose.material:material-icons-core", version.ref = "materialIcons" }
 androidx-activity-compose = { module = "androidx.activity:activity-compose", version.ref = "activityCompose" }
 androidx-navigation-compose = { module = "androidx.navigation:navigation-compose", version.ref = "navigationCompose" }
 # WebSettingsCompat: dark-mode control for the WebView on devices older than API 33.
 androidx-webkit = { module = "androidx.webkit:webkit", version.ref = "webkit" }
+# `LocalLifecycleOwner` moved here out of compose-ui; the compose-ui one is deprecated.
+androidx-lifecycle-runtime-compose = { module = "androidx.lifecycle:lifecycle-runtime-compose", version.ref = "lifecycle" }
 # Response models. Lenient decoding, so a field the server adds later cannot break an installed app.
 kotlinx-serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "serialization" }
 
