@@ -46,6 +46,28 @@ function mount(doc: string, cursor = doc.length): EditorView {
   return view;
 }
 
+/** Mounts with attachment resolution on; the shared `mount` deliberately has none. */
+function mountWithAttachments(doc: string, cursor = 0, pdfNames: string[] = []): EditorView {
+  const parent = document.createElement('div');
+  document.body.appendChild(parent);
+  const names = new Set(pdfNames);
+  view = new EditorView({
+    state: EditorState.create({
+      doc,
+      selection: EditorSelection.cursor(cursor),
+      extensions: [
+        markdown({ extensions: [GFM] }),
+        richMarkdown({
+          resolveAttachment: (name) => `/api/notes/n1/files/${name}`,
+          isPdfAttachment: (name) => names.has(name),
+        }),
+      ],
+    }),
+    parent,
+  });
+  return view;
+}
+
 /**
  * Text of a line as rendered, excluding anything hidden.
  *
@@ -282,28 +304,6 @@ describe('ordered list markers', () => {
 });
 
 describe('inline PDF', () => {
-  /** Mounts with attachment resolution on; the shared `mount` deliberately has none. */
-  function mountWithAttachments(doc: string, cursor = 0, pdfNames: string[] = []): EditorView {
-    const parent = document.createElement('div');
-    document.body.appendChild(parent);
-    const names = new Set(pdfNames);
-    view = new EditorView({
-      state: EditorState.create({
-        doc,
-        selection: EditorSelection.cursor(cursor),
-        extensions: [
-          markdown({ extensions: [GFM] }),
-          richMarkdown({
-            resolveAttachment: (name) => `/api/notes/n1/files/${name}`,
-            isPdfAttachment: (name) => names.has(name),
-          }),
-        ],
-      }),
-      parent,
-    });
-    return view;
-  }
-
   beforeEach(() => {
     acquirePdf.mockClear();
     releasePdf.mockClear();
