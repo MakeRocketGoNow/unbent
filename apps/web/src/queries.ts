@@ -121,6 +121,51 @@ export const tagsQuery = () =>
 export const configQuery = () =>
   queryOptions({ queryKey: keys.config(), queryFn: () => api.getConfig(), staleTime: Infinity });
 
+/**
+ * Which user each cache currently holds rows for.
+ *
+ * Kept beside the client rather than in a variable of this module's own, so that a second
+ * client — every test builds one — starts out owned by nobody instead of inheriting
+ * whichever answer this module last happened to record.
+ */
+const cacheOwner = new WeakMap<QueryClient, string>();
+
+/**
+ * Hand the cache to whoever is signed in now, emptying it first if that is somebody new.
+ *
+ * Signing out leaves every row this cache holds — notes, tags, notebooks, counts — sitting
+ * in memory. Nothing renders them, because the sign-in screen renders none of it. The next
+ * person to sign in is where it becomes a bug: loaders resolve through `ensureQueryData`,
+ * an entry younger than `staleTime` is served without asking the server, and so the first
+ * paint of `/notes` was the previous user's list.
+ *
+ * The clearing is keyed on the user id, and happens on the way *in*, rather than in the
+ * sign-out handler. Sign-out has nowhere good to stand: before the navigation to `/login`
+ * the signed-in app is still mounted, so its observers see their queries vanish and
+ * refetch with no cookie, 401ing into the screen the `/login` route was added to keep
+ * quiet; after the navigation, the router has committed but React may not have unmounted
+ * those observers yet, which is the same race with better odds. And sign-out is not the
+ * only way one user follows another in a tab nobody reloaded — a session can expire, or be
+ * ended from another tab, with nothing pressed here at all.
+ *
+ * An unchanged user id keeps its cache. Being served your own rows is not the leak, and
+ * staleness already covers them, so signing out and back in stays as cheap as it was.
+ *
+ * `keys.config()` is spared. It describes the instance rather than the user, and it is
+ * `staleTime: Infinity` precisely so that the sign-in screen does not flash its provider
+ * buttons in — which is the screen mounted and observing it at the moment this runs.
+ */
+export function claimCacheFor(queryClient: QueryClient, userId: string | undefined): void {
+  // The two ungated shells reach here without a session: `/login` before anyone has signed
+  // in, and the app's WebView, which is never a second user arriving. Neither is evidence
+  // that the cache has changed hands.
+  if (!userId) return;
+  if (cacheOwner.get(queryClient) === userId) return;
+  cacheOwner.set(queryClient, userId);
+  const [config] = keys.config();
+  queryClient.removeQueries({ predicate: ({ queryKey }) => queryKey[0] !== config });
+}
+
 export const notebooksQuery = () =>
   queryOptions({ queryKey: keys.notebooks(), queryFn: () => api.listNotebooks() });
 

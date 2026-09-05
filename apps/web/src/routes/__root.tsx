@@ -8,6 +8,7 @@ import { useEffect } from 'react';
 import { useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { useSession, signOut, refreshSession } from '../auth-client.js';
 import { requireSession, shellFor } from '../auth-gate.js';
+import { claimCacheFor } from '../queries.js';
 import { startIndexing, subscribeIndexing } from '../index-files.js';
 import { Topbar } from '../components/Topbar.js';
 
@@ -22,8 +23,17 @@ export const Route = createRootRouteWithContext<RouterContext>()({
    * It is here rather than on each route because a route added without it would be a
    * silent hole, and here rather than in the component below because a component renders
    * after the loaders it wraps have already run. See `auth-gate.ts` for what that cost.
+   *
+   * The cache is handed over in the same breath, and for the same timing reason. Loaders
+   * resolve through `ensureQueryData`, so a second person signing in without reloading was
+   * served the first one's notes out of the cache; this is the last moment before those
+   * loaders run. See `claimCacheFor` for why it is keyed on the user rather than hung off
+   * signing out.
    */
-  beforeLoad: ({ location }) => requireSession(location),
+  beforeLoad: async ({ location, context }) => {
+    const session = await requireSession(location);
+    claimCacheFor(context.queryClient, session?.user.id);
+  },
   component: RootLayout,
 });
 
@@ -133,6 +143,11 @@ function AppShell() {
            * The session is refetched before navigating rather than left to settle on its
            * own: `/login` turns away anyone who is signed in, and it reads the same store
            * this call is in the middle of emptying.
+           *
+           * Nothing is dropped from the query cache here. The rows this user loaded are
+           * still in memory afterwards, and deliberately so — see `claimCacheFor`, which
+           * empties the cache when the *next* user arrives, where there is no mounted app
+           * left to refetch into a 401.
            */
           void signOut()
             .then(() => refreshSession())
