@@ -62,7 +62,7 @@ class PasskeyAuth(
             .build()
 
         client.newCall(req).execute().use { res ->
-            val text = res.body?.string().orEmpty()
+            val text = res.body.string()
             if (!res.isSuccessful) {
                 throw ApiException(res.code, "Could not start passkey sign-in: ${res.code}", text)
             }
@@ -85,7 +85,7 @@ class PasskeyAuth(
             .build()
 
         client.newCall(req).execute().use { res ->
-            val text = res.body?.string().orEmpty()
+            val text = res.body.string()
             if (!res.isSuccessful) {
                 throw ApiException(res.code, "Passkey sign-in failed: ${res.code}", text)
             }

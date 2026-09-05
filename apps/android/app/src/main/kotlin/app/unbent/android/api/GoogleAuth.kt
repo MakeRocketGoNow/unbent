@@ -95,7 +95,7 @@ class GoogleAuth(
             .build()
 
         client.newCall(req).execute().use { res ->
-            val text = res.body?.string().orEmpty()
+            val text = res.body.string()
             if (!res.isSuccessful) {
                 throw ApiException(res.code, "Google sign-in failed: ${res.code}", text)
             }
