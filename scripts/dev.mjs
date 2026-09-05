@@ -12,7 +12,8 @@
  * by hand if they need to be something in particular.
  */
 import { spawn } from 'node:child_process';
-import { dirname } from 'node:path';
+import { mkdirSync } from 'node:fs';
+import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { portsFor, syncLaunchJson } from './ports.mjs';
@@ -22,6 +23,12 @@ const { worktree, web, api } = portsFor(root);
 
 const where = worktree ? `${worktree}: ` : '';
 process.stdout.write(`${where}web http://localhost:${web}  api http://localhost:${api}\n`);
+
+// `[assets] directory` in wrangler.toml points at the SPA's build output, and wrangler
+// refuses to start if it is missing — which it is in any checkout that has not run a
+// build, a fresh worktree included. Vite serves the SPA in development and the proxy only
+// forwards /api, so an empty directory is all the Worker needs.
+mkdirSync(join(root, 'apps', 'web', 'dist'), { recursive: true });
 
 // Best effort: the preview tool reading a stale port is worth fixing, but not at the cost
 // of refusing to start the servers.
