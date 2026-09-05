@@ -19,6 +19,7 @@ import { NoteListItem } from './NoteListItem.js';
 import { useListKeys } from '../useListKeys.js';
 import { SearchResults } from './SearchResults.js';
 import { IndexingStatus } from './IndexingStatus.js';
+import { Button } from './Button';
 
 /** Sidebar plus the routed workspace. Filters come from the URL; nothing here is mirrored into state. */
 export function NotesLayout({ children }: { children: React.ReactNode }) {
@@ -111,9 +112,9 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
                 ? `${notes.length} of ${total} notes`
                 : `${notes.length} notes`}
           </span>
-          <button type="button" className="primary" onClick={() => void newNote()}>
+          <Button variant="primary" onClick={() => void newNote()}>
             New
-          </button>
+          </Button>
         </div>
 
         {error && <p className="bad small">{(error as Error).message}</p>}
@@ -267,9 +268,9 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
             />
           </label>
           {(from || to) && (
-            <button
-              type="button"
-              className="link-button small"
+            <Button
+              variant="quiet"
+              size="small"
               onClick={() =>
                 void navigate({
                   to: '/notes',
@@ -278,7 +279,7 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
               }
             >
               Clear
-            </button>
+            </Button>
           )}
         </div>
 
