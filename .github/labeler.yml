@@ -1,0 +1,14 @@
+# Configuration for the labeler action.
+# Maps path patterns to labels applied automatically on pull requests.
+
+web:
+  - changed-files:
+      - any-glob-to-any-file: 'apps/web/**'
+
+api:
+  - changed-files:
+      - any-glob-to-any-file: 'apps/api/**'
+
+android:
+  - changed-files:
+      - any-glob-to-any-file: 'apps/android/**'
