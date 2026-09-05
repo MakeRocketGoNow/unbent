@@ -57,13 +57,17 @@ describe('Confirm', () => {
       />,
     );
 
-    // The safe outcome is the one that looks pressable; the cascade is a link below it.
-    expect(screen.getByRole('button', { name: 'Delete notebook' }).className).toBe('primary');
+    // The safe outcome is the filled one; the cascade is still a button — quiet, and on its
+    // own line below. Asserted by variant class rather than the whole className, so adding
+    // a layout class to either one is not a test failure.
+    const safe = screen.getByRole('button', { name: 'Delete notebook' });
+    expect(safe.classList.contains('btn-primary')).toBe(true);
     const cascade = screen.getByRole('button', {
       name: 'Delete notebook and move 47 notes to Trash',
     });
     expect(cascade.classList.contains('confirm-secondary')).toBe(true);
-    expect(cascade.classList.contains('primary')).toBe(false);
+    expect(cascade.classList.contains('btn-primary')).toBe(false);
+    expect(cascade.classList.contains('btn-quiet')).toBe(true);
   });
 
   it('fills a lone destructive action, since destroying is the point', () => {
@@ -77,8 +81,8 @@ describe('Confirm', () => {
     );
 
     const button = screen.getByRole('button', { name: 'Empty trash' });
-    expect(button.classList.contains('primary')).toBe(true);
-    expect(button.classList.contains('danger')).toBe(true);
+    expect(button.classList.contains('btn-primary')).toBe(true);
+    expect(button.classList.contains('btn-danger')).toBe(true);
   });
 
   it('cancels on Escape, the way confirm() did', () => {

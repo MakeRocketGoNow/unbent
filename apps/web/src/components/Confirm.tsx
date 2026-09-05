@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 
+import { Button, type ButtonTone, type ButtonVariant } from './Button';
+
 export interface ConfirmAction {
   label: string;
   /** Shown in place of `label` while the action runs; falls back to `label`. */
@@ -21,7 +23,7 @@ export interface ConfirmProps {
   question: ReactNode;
   /** What happens and what survives. Rendered small and muted. */
   detail?: ReactNode;
-  /** The choices, in reading order. See `actionClass` for how order sets weight. */
+  /** The choices, in reading order. See `actionWeight` for how order sets weight. */
   actions: ConfirmAction[];
   /**
    * When set, every action stays disabled until the user types this string exactly.
@@ -35,15 +37,27 @@ export interface ConfirmProps {
 
 /**
  * Weight by position: the first action is the one being offered, and a destructive action
- * that comes *after* a safe one demotes itself to a link on its own line.
+ * that comes *after* a safe one demotes itself to a quiet button on its own line.
  *
  * This is the rule that keeps someone from trashing 47 notes by muscle memory, so it lives
  * in code rather than in each caller's class names — a caller passing the two notebook
  * outcomes in the right order gets the right emphasis without having to know about it.
+ *
+ * Returns `Button` props rather than a class string. The demoted action used to be
+ * `class="link"` — demotion spelled as "stop looking like a button at all", which took a
+ * control that still destroys 47 notes and gave it no padding and no hit area. `quiet`
+ * demotes the same amount and stays pressable: it keeps the body and drops only the
+ * border, which is the difference between quiet and disguised.
  */
-function actionClass(action: ConfirmAction, index: number): string {
-  if (action.tone === 'primary') return 'primary';
-  return index > 0 ? 'link danger small confirm-secondary' : 'primary danger';
+function actionWeight(
+  action: ConfirmAction,
+  index: number,
+): { variant: ButtonVariant; tone: ButtonTone; size?: 'small'; className?: string } {
+  if (action.tone === 'primary') return { variant: 'primary', tone: 'default' };
+  if (index > 0) {
+    return { variant: 'quiet', tone: 'danger', size: 'small', className: 'confirm-secondary' };
+  }
+  return { variant: 'primary', tone: 'danger' };
 }
 
 /**
@@ -108,19 +122,18 @@ export function Confirm({
 
       <div className="confirm-actions">
         {actions.map((action, i) => (
-          <button
+          <Button
             key={action.label}
-            type="button"
-            className={actionClass(action, i)}
+            {...actionWeight(action, i)}
             disabled={busy || locked}
             onClick={() => void action.onConfirm()}
           >
             {busy ? (action.busyLabel ?? action.label) : action.label}
-          </button>
+          </Button>
         ))}
-        <button type="button" className="link" disabled={busy} onClick={onCancel}>
+        <Button variant="secondary" disabled={busy} onClick={onCancel}>
           Cancel
-        </button>
+        </Button>
       </div>
     </div>
   );
