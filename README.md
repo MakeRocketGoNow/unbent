@@ -164,6 +164,68 @@ rather than a var only to keep the address list out of the repo. Leaving it empt
 allowed — an instance is not locked to its operator — but a deployed Worker with no
 allowlist warns in its log, naming what a stranger could sign up with.
 
+### Preview deployments
+
+Every pull request that touches the web app or the API gets a URL of its own —
+`https://unbent-pr-<N>.<subdomain>.workers.dev` — where the branch can be used rather than
+read. `.github/workflows/web.yml` deploys it on each push to the PR and deletes it when the
+PR closes, and posts the URL both as a comment it edits in place and as a deployment in the
+PR's own Deployments box.
+
+A preview is a whole Worker, not a static copy of the SPA, because one Worker serves both
+halves and `auth.ts` derives its baseURL, trusted origins, cookie security and passkey
+`rpID` from `APP_URL`. Cloudflare's own preview URLs share the production bindings, so a
+preview built on them would run against the production database with `APP_URL` still
+reading `https://unbent.app`, and refuse every sign-in from the preview host as an invalid
+origin. That is why the Worker and its `APP_URL` are per PR.
+
+The data underneath is not. All previews share one `dev` instance — the `unbent-dev` D1 and
+the `unbent-dev-blobs` bucket, configured as `[env.dev]` in `apps/api/wrangler.toml` — kept
+well away from production but not from each other. It is a scratch environment: notes made
+on one PR's preview are visible from another's, and nothing in it is backed up.
+
+Sign-in on a preview is a password and an allowlisted address. That is not a special case
+but the default any instance falls back to with no OAuth and no mail configured, as
+["Choosing sign-in methods"](#choosing-sign-in-methods) describes. OAuth is not offered
+because a callback URL cannot be registered for a host that changes with every PR. Passkeys
+work, each bound to the one preview host it was created on.
+
+Migrations are the sharp edge. A PR that adds one applies it to the shared database on its
+first preview deploy, and nothing rolls it back when the PR is abandoned. Wrangler tracks
+what it has applied by filename, so the stale file is simply never reconsidered — but its
+schema change stays, and the next migration written against a schema that does not have it
+fails on the preview while passing everywhere else. The fix is to recreate the instance,
+which costs nothing but the scratch data:
+
+```bash
+cd apps/api
+pnpm exec wrangler d1 delete unbent-dev
+pnpm exec wrangler d1 create unbent-dev   # paste the new id into [env.dev]
+```
+
+Setting this up on a fresh fork takes one D1, one bucket, and three new repository
+settings, alongside the Cloudflare credentials production already deploys with:
+
+```bash
+cd apps/api
+pnpm exec wrangler d1 create unbent-dev        # paste the id into [env.dev]
+pnpm exec wrangler r2 bucket create unbent-dev-blobs
+```
+
+| Setting | Kind | Value |
+| --- | --- | --- |
+| `CLOUDFLARE_WORKERS_SUBDOMAIN` | variable | the account's `*.workers.dev` name, from the Cloudflare dashboard |
+| `DEV_BETTER_AUTH_SECRET` | secret | a fresh `openssl rand -base64 32`, not production's |
+| `DEV_ALLOWED_EMAILS` | secret | who may sign in to a preview |
+| `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID` | secret | the same pair production deploys with, needing D1 and R2 edit scopes |
+
+The subdomain is a variable rather than a secret because the workflow has to build the URL
+before deploying — `APP_URL` is baked in at deploy time — and a masked value would arrive
+in the PR comment as `***`.
+
+Fork PRs get no preview. `pull_request` withholds secrets from them, so there would be
+nothing to deploy with; the job skips rather than failing halfway.
+
 ### Choosing sign-in methods
 
 Nothing here is compiled in. An instance decides what it offers through its environment,
