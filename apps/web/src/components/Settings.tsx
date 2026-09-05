@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import * as api from '../notes-api.js';
 import { Confirm } from './Confirm.js';
+import { Button } from './Button';
 
 interface SettingsProps {
   /** Called after any change, so the note list and sidebar refetch. */
@@ -145,9 +146,10 @@ export function Settings({ onChanged }: SettingsProps) {
                 Export
               </a>
 
-              <button
-                type="button"
-                className="link danger small"
+              <Button
+                variant="quiet"
+                tone="danger"
+                size="small"
                 disabled={busy}
                 onClick={() => {
                   setEditing(null);
@@ -155,7 +157,7 @@ export function Settings({ onChanged }: SettingsProps) {
                 }}
               >
                 Delete
-              </button>
+              </Button>
             </span>
           </li>
         ))}
@@ -209,9 +211,9 @@ export function Settings({ onChanged }: SettingsProps) {
           onChange={(e) => setNewName(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && create()}
         />
-        <button type="button" className="primary" disabled={busy || !newName.trim()} onClick={create}>
+        <Button variant="primary" disabled={busy || !newName.trim()} onClick={create}>
           Create
-        </button>
+        </Button>
       </div>
 
       <p className="muted small">
