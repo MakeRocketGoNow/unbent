@@ -10,6 +10,10 @@ nohup.out
 .vscode/
 .idea/
 
+# Per-checkout Claude Code config. `port` is a literal, so a copy carried into a
+# worktree would point the preview tool at the wrong server; scripts/dev.mjs writes it.
+.claude/launch.json
+
 # wrangler generated
 apps/api/worker-configuration.d.ts
 

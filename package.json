@@ -6,7 +6,7 @@
     "node": ">=22"
   },
   "scripts": {
-    "dev": "pnpm --parallel --filter \"./apps/*\" dev",
+    "dev": "node scripts/dev.mjs",
     "dev:api": "pnpm --filter @unbent/api dev",
     "dev:api:watch": "pnpm --filter @unbent/api dev:watch",
     "dev:web": "pnpm --filter @unbent/web dev",
