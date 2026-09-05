@@ -21,7 +21,7 @@
     "release": "pnpm build && pnpm --filter @unbent/api release"
   },
   "devDependencies": {
-    "typescript": "^5.9.3"
+    "typescript": "^7.0.2"
   },
   "packageManager": "pnpm@9.14.4"
 }

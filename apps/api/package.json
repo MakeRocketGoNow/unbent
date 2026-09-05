@@ -31,7 +31,7 @@
     "@cloudflare/workers-types": "^5.20260905.1",
     "@zip.js/zip.js": "^2.11.1",
     "tsx": "^4.23.13",
-    "typescript": "^5.9.3",
+    "typescript": "^7.0.2",
     "vitest": "^5.0.0",
     "wrangler": "^4.129.0"
   },
