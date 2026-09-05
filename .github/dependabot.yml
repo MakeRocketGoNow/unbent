@@ -2,13 +2,10 @@
 #
 # The reason this exists is the auth stack: Better Auth shipped three account-takeover
 # advisories in short order, all fixed in patch releases, and the gap between a fix landing
-# and someone noticing is the whole exposure. Nothing here reads advisories directly —
-# Dependabot's *security* updates are a repository setting rather than a file — but keeping
-# ordinary versions current is what makes a security bump a one-line diff instead of a
-# migration.
-#
-# Note this repository has no remote yet, so none of this runs until it is pushed to
-# GitHub. The same is true of the workflows beside it.
+# and someone noticing is the whole exposure. Whether security updates run at all is a
+# repository setting rather than a file, but how they are *grouped* is set here — and
+# grouping is the part that decides whether an advisory bump installs. Keeping ordinary
+# versions current is what makes that bump a one-line diff instead of a migration.
 
 version: 2
 updates:
@@ -34,6 +31,9 @@ updates:
     # Grouped, because ungrouped this is a dozen pull requests a week on a project with one
     # maintainer, and a queue nobody reads is the same as no updates at all. Auth is its own
     # group so a Better Auth bump arrives alone and legible rather than buried in a batch.
+    #
+    # A dependency only ever joins the first group whose patterns match, so the specific
+    # groups precede the catch-alls within each `applies-to` scope.
     groups:
       auth:
         patterns:
@@ -49,6 +49,20 @@ updates:
       major:
         update-types:
           - major
+      # The groups above cover version updates only: `applies-to` defaults to
+      # `version-updates`, so without these two the security pull requests — the ones this
+      # file exists for — fall back to the repository-level default, which groups per
+      # package manager *and directory*. That is the single-directory shape that broke
+      # `--frozen-lockfile` three times above.
+      auth-security:
+        applies-to: security-updates
+        patterns:
+          - 'better-auth'
+          - '@better-auth/*'
+      security:
+        applies-to: security-updates
+        patterns:
+          - '*'
     open-pull-requests-limit: 5
 
   # Android. Gradle and AndroidX move on their own schedule and the app is built in CI.
@@ -57,10 +71,30 @@ updates:
     schedule:
       interval: monthly
     groups:
+      # Compose BOM is `androidx.compose:compose-bom`, so it lands here too — which is what
+      # we want, since the BOM is the thing that pins every Compose artifact.
       androidx:
         patterns:
           - 'androidx.*'
-    open-pull-requests-limit: 3
+      # The three Kotlin plugins already share one version ref; this pulls the serialization
+      # and coroutines runtimes along with them, which is the pairing the Kotlin
+      # compatibility matrix actually cares about.
+      kotlin:
+        patterns:
+          - 'org.jetbrains.kotlin*'
+      # Everything else — okhttp, material, junit, robolectric, googleid, AGP. Matches last,
+      # so the two groups above win. Grouped for the same reason the npm block gives: left
+      # singly these are nine pull requests a month against a limit of four, and six of them
+      # get dropped without saying which.
+      gradle-rest:
+        patterns:
+          - '*'
+      androidx-security:
+        applies-to: security-updates
+        patterns:
+          - '*'
+    # Three version-update groups, plus headroom so a fourth would not silently starve.
+    open-pull-requests-limit: 4
 
   # The actions in .github/workflows, which are pinned by tag and otherwise never revisited.
   - package-ecosystem: github-actions
@@ -69,5 +103,9 @@ updates:
       interval: monthly
     groups:
       actions:
+        patterns:
+          - '*'
+      actions-security:
+        applies-to: security-updates
         patterns:
           - '*'
