@@ -1,8 +1,8 @@
 import java.util.Properties
+import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 plugins {
     alias(libs.plugins.android.application)
-    alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.serialization)
     alias(libs.plugins.kotlin.compose)
 }
@@ -105,19 +105,15 @@ android {
     buildFeatures {
         buildConfig = true
         compose = true
+        // AGP 9 turns this off by default. The debug build type renames the app via
+        // `resValue`, so it has to be asked for explicitly now.
+        resValues = true
     }
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
-
-    kotlinOptions {
-        jvmTarget = "17"
-    }
-
-    sourceSets["main"].java.srcDirs("src/main/kotlin")
-    sourceSets["test"].java.srcDirs("src/test/kotlin")
 
     testOptions {
         unitTests {
@@ -128,6 +124,15 @@ android {
 
     packaging {
         resources.excludes += setOf("META-INF/*.kotlin_module", "META-INF/AL2.0", "META-INF/LGPL2.1")
+    }
+}
+
+// AGP 9 compiles Kotlin itself, so `kotlinOptions` inside `android { }` is gone. The JVM
+// target still has to be stated, and still has to match `compileOptions` above — a mismatch
+// is a hard error, not a warning.
+kotlin {
+    compilerOptions {
+        jvmTarget.set(JvmTarget.JVM_17)
     }
 }
 
