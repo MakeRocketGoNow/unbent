@@ -143,8 +143,8 @@ Commit when asked. Don't commit or push unprompted.
 **Do not leave background processes running.** This has been raised sharply. Don't
 `nohup`, don't background a dev server, don't leave watchers behind.
 
-The dev server is usually the user's, on :5173 (web) and :8787 (API). **Check before
-starting your own:**
+The dev server is usually the user's, on :5173 (web) and :8787 (API) — those are the *main
+checkout's* ports. **Check before starting your own:**
 
 ```bash
 curl -s -o /dev/null -w "%{http_code}" http://localhost:5173/
@@ -153,26 +153,38 @@ curl -s -o /dev/null -w "%{http_code}" http://localhost:5173/
 If it's already up, use it. If you do start something, stop it when you're done. Use the
 browser preview tools rather than `bash` for anything server-shaped.
 
+From a worktree the ports are different and derived — `pnpm dev` prints them on its first
+line, and `node scripts/ports.mjs` answers without starting anything. Never assume 5173.
+
 ### Working from a git worktree
 
-Branch work often happens in a worktree beside the main checkout. Two things about that are
-not obvious and have each cost an afternoon.
+Branch work often happens in a worktree beside the main checkout. **Run
+`pnpm worktree:setup` once in a new one**, before anything else. `git worktree add` brings
+tracked files and nothing else, so until then the worktree has no `.dev.vars` (the Worker
+starts with no `BETTER_AUTH_SECRET` and no OAuth credentials), no dependencies, and no
+local database. The setup script copies those across and seeds D1 and R2 from the main
+checkout, then prints the ports.
 
-**A worktree has no `.dev.vars`.** It is gitignored, so it does not come across, and a
-Worker started there has no `BETTER_AUTH_SECRET` and no OAuth credentials. Symlinking the
-main checkout's copy is enough: `ln -s ../../unbent/apps/api/.dev.vars apps/api/.dev.vars`.
-Its local D1 and R2 are separate too — `wrangler dev --persist-to` at the main checkout's
-`.wrangler/state` shares them, but never with two Workers running at once.
+`pnpm dev` in a worktree runs *both* halves on that worktree's own pair, so the branch's
+API code is what answers and its notes and auth config are the worktree's own — not the
+main checkout's Worker on :8787. That is a change from how this used to work; there is no
+longer a reason to point a worktree's Vite at someone else's API.
 
-**A worktree's Vite serves only the SPA.** It proxies `/api` to whatever is on :8787, which
-is normally the Worker running from the *main* checkout — so the branch's API code is not
-what answers, and its auth config and notes come from somewhere else entirely. If the
-change under test is server-side, the Worker has to be restarted from the worktree; if it
-is UI, the proxy is exactly what you want.
+The state a worktree starts with is a copy taken at setup time, so the two databases drift
+apart from there. Don't expect a note created in one to appear in the other, and don't
+reach for `--persist-to` to share them: two Miniflare processes on one SQLite file is not
+something Miniflare promises to survive.
 
-The SPA then lands on :5174, Vite's next free port, which `baseURLFor` in `apps/api/src/auth.ts`
-has to trust or every sign-in from it is refused as CSRF with "Invalid origin" — the button
-does nothing and the page says nothing. If a new port ever comes into use, add it there.
+`.claude/launch.json` is untracked and written per checkout by `scripts/dev.mjs`, so the
+preview tool's `unbent` entry starts and opens whichever checkout you are in.
+
+To point the API suites at a worktree, pass both origins — `API_URL` is the Worker,
+`APP_URL` is the SPA origin the tests send as `Origin`:
+
+```bash
+API_URL=http://localhost:8817 APP_URL=http://localhost:5217 \
+  pnpm --filter @unbent/api exec vitest run test/isolation.test.ts
+```
 
 ## Verifying
 
