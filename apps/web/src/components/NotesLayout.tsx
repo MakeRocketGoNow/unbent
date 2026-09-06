@@ -19,7 +19,11 @@ import { useListKeys } from '../useListKeys.js';
 import { SearchResults } from './SearchResults.js';
 import { IndexingStatus } from './IndexingStatus.js';
 import { Button } from './Button';
-import { FilterControls } from './FilterControls.js';
+import { NotebookSelect } from './NotebookSelect.js';
+import { SortSelect } from './SortSelect.js';
+import { DateRange } from './DateRange.js';
+import { ExportLink } from './ExportLink.js';
+import { TagFilter } from './TagFilter.js';
 import { FilterSheet } from './FilterSheet.js';
 import { NoteListHead } from './NoteListHead.js';
 import { SortMenu } from './SortMenu.js';
@@ -109,6 +113,9 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
   const notes = list.data?.pages.flatMap((p) => p.items) ?? [];
   const total = list.data?.pages[0]?.total ?? null;
   const error = list.error ?? search.error;
+
+  /** Search results are on screen, which changes what is worth offering beside them. */
+  const searching = results !== null;
 
   /** What the list is showing, in three forms. Both breakpoints' headers read it. */
   const countLabel =
@@ -219,21 +226,60 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
                   this stays out of the way. */}
               {!isFiltered && <p className="sheet-summary small">Nothing is filtered.</p>}
 
-              <FilterControls
-                notebook={notebook}
-                selectedTags={selectedTags}
-                from={from}
-                to={to}
-                sort={sort}
-                order={order}
-                searching={results !== null}
-                total={total}
-                filter={filter}
-                notebooks={notebooks}
-                tags={tags}
-                showSort={false}
-                tagList="open"
-              />
+              {/*
+                  No sort here. It is not a filter — it changes the order of the list, not
+                  which notes are in it — so a surface headed "Filter notes" is the wrong
+                  home, and among the filters "Title A–Z" invites being read as something
+                  that narrows. It has its own icon in the header.
+              */}
+              {!searching && (
+                <NotebookSelect notebook={notebook} notebooks={notebooks} />
+              )}
+
+              <DateRange from={from} to={to} />
+
+              {!searching && isFiltered && (
+                <ExportLink filter={filter} sort={sort} total={total} />
+              )}
+
+              {/*
+                  Open, not a disclosure. The sidebar's version earns its collapse by
+                  sitting in a column the user did not open on purpose. A sheet is the
+                  opposite: it was opened to filter, and hiding the tags behind one more tap
+                  inside it spends the tap the sheet already cost.
+              */}
+              {!searching && (tags.data?.length ?? 0) > 0 && (
+                <div className="tag-filter-open">
+                  <span className="filter-section-label">Tags</span>
+                  <div className="tag-filter">
+                    {tags.data?.map((t) => {
+                      const on = selectedTags.includes(t.name);
+                      return (
+                        <button
+                          key={t.name}
+                          type="button"
+                          className={on ? 'tag-filter-item active' : 'tag-filter-item'}
+                          aria-pressed={on}
+                          onClick={() =>
+                            void navigate({
+                              to: '/notes',
+                              search: (prev) => {
+                                const next = on
+                                  ? selectedTags.filter((name) => name !== t.name)
+                                  : [...selectedTags, t.name];
+                                return { ...prev, tag: next.length ? next : undefined };
+                              },
+                            })
+                          }
+                        >
+                          {t.name}
+                          <span className="tag-count">{t.count}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
 
               <div className="sheet-foot">
                 <Button variant="quiet" onClick={() => setSheetOpen(false)}>
@@ -261,19 +307,25 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
               onChange={(e) => setQuery(e.target.value)}
             />
 
-            <FilterControls
-              notebook={notebook}
-              selectedTags={selectedTags}
-              from={from}
-              to={to}
-              sort={sort}
-              order={order}
-              searching={results !== null}
-              total={total}
-              filter={filter}
-              notebooks={notebooks}
-              tags={tags}
-            />
+            {!searching && (
+              <NotebookSelect
+                notebook={notebook}
+                notebooks={notebooks}
+                endsFilters={(tags.data?.length ?? 0) === 0}
+              />
+            )}
+
+            {/* Hidden while searching: results come back ranked by relevance, and
+                reordering them by date would throw away that ranking. */}
+            {!searching && <SortSelect sort={sort} order={order} />}
+
+            <DateRange from={from} to={to} />
+
+            {!searching && isFiltered && (
+              <ExportLink filter={filter} sort={sort} total={total} />
+            )}
+
+            {!searching && <TagFilter tags={tags.data ?? []} selected={selectedTags} />}
           </>
         )}
 

@@ -2913,28 +2913,6 @@ a.sidebar-status:hover {
   border-bottom: none;
 }
 
-/* The controls stack in the sheet exactly as they do in the sidebar; only the box around
-   them differs, so this is the whole of it. */
-.filter-controls {
-  display: flex;
-  flex-direction: column;
-  gap: 0.75rem;
-  min-width: 0;
-}
-
-/*
-   In the sidebar the stack is not a box at all.
-
-   `display: contents` drops the wrapper from the layout, so the controls stay direct
-   children of the sidebar's flex column and keep the one rhythm it sets. Without it the
-   extraction would have introduced a nested flex context and a second gap to keep in step
-   with the first — a spacing bug of exactly the kind this project keeps being asked to
-   stop shipping.
-*/
-.sidebar > .filter-controls {
-  display: contents;
-}
-
 
 /* ------------------------------------------------------------------------------------
    Mobile overrides.
