@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from '@tanstack/react-router';
 import { CloseIcon } from './icons.js';
+import { writeTagFilter } from '../routes/notes.js';
 
 export interface TagCount {
   name: string;
@@ -64,8 +65,9 @@ export function TagPicker({ tags, selected }: TagPickerProps) {
   const setTags = (next: string[]) =>
     void navigate({
       to: '/notes',
-      // Dropping to undefined at zero keeps `?tag=` out of the URL when nothing is selected.
-      search: (prev) => ({ ...prev, tag: next.length ? next : undefined }),
+      // Dropping to undefined at zero keeps `?tag=` out of the URL when nothing is
+      // selected; `writeTagFilter` is that rule, shared with the chip strip.
+      search: (prev) => ({ ...prev, tag: writeTagFilter(next) }),
     });
 
   return (

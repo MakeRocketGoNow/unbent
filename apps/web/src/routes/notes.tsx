@@ -20,11 +20,33 @@ const name = z.string().trim().min(1).max(100);
 /**
  * The tag filter, which may name more than one.
  *
- * An array in the URL — `?tag=a&tag=b` — matching what the API takes and what the router
- * already produces for a repeated param. A single `?tag=x` is coerced to a one-element
- * array so old links, and anything that still writes one tag, keep working unchanged.
+ * Read as either shape: a bare `?tag=Receipt` or a list. Both reach the app as an array, so
+ * nothing downstream has to care which was written — several tags narrow conjunctively, and
+ * a note must carry all of them. Accepting the bare form is what keeps older links, and
+ * hand-typed ones, working unchanged.
  *
- * Several tags narrow conjunctively: a note must carry all of them.
+ * **What the URL actually looks like.** Not `?tag=a&tag=b`, which an earlier version of
+ * this comment claimed. This router JSON-encodes an array search param, so the URL reads
+ * `?tag=["a","b"]`, percent-escaped:
+ *
+ *     /notes?tag=%5B%22Receipt%22%5D
+ *
+ * That is ugly to paste, and writing a bare string for the single-tag case looks like an
+ * easy fix — the router does serialize a lone string plainly, and the union above already
+ * reads it back. It does not work, and it is worth knowing why before trying it again.
+ * `validateSearch` runs on every navigation and this schema's `transform` coerces a string
+ * into a one-element array; the router then serializes *that* result into the URL. So the
+ * bare string is normalized away before it is ever written, and the JSON array comes back.
+ * Verified against the router, not reasoned about.
+ *
+ * Making it stick would mean either dropping the coercion — which breaks the old links this
+ * union exists to keep — or a custom `stringifySearch`/`parseSearch` pair on the router,
+ * which would take ownership of encoding *every* search param in the app to improve how one
+ * of them looks. Neither is worth it for an ugly but working link, so the JSON array stays.
+ *
+ * Not to be confused with the outbound API query, which is a separate serialization in
+ * `notes-api.ts` and *does* repeat the param — `?tag=a&tag=b` — because that is what the
+ * Worker reads. The two are different wires and are allowed to disagree.
  */
 const tagFilter = z
   .union([name, z.array(name)])
@@ -32,6 +54,21 @@ const tagFilter = z
   .catch(undefined)
   .transform((v) => (v === undefined ? undefined : Array.isArray(v) ? v : [v]))
   .pipe(z.array(name).max(20).optional());
+
+/**
+ * The tag selection as the URL should carry it: the list, or nothing at all.
+ *
+ * Dropping to `undefined` at zero is the whole job — it keeps a bare `?tag=` out of the URL
+ * when the last tag is removed. It is a function rather than a line repeated at each call
+ * site because two components write this filter, and a writer that forgot the empty case
+ * would leave a dead parameter behind on a link.
+ *
+ * It deliberately does *not* write a bare string for a single tag; see the note on
+ * `tagFilter` above for why that cannot work here.
+ */
+export function writeTagFilter(tags: string[]): string[] | undefined {
+  return tags.length > 0 ? tags : undefined;
+}
 
 export const filters = z.object({
   notebook: z.union([z.literal(UNFILED), name]).optional().catch(undefined),

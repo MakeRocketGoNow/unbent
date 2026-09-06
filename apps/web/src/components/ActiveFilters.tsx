@@ -2,6 +2,7 @@ import { useNavigate } from '@tanstack/react-router';
 import { UNFILED } from '@unbent/shared';
 import { CloseIcon } from './icons.js';
 import { rangeLabel } from './format-when.js';
+import { writeTagFilter } from '../routes/notes.js';
 
 interface ActiveFiltersProps {
   /**
@@ -77,10 +78,7 @@ export function ActiveFilters({ notebook, tags, from, to }: ActiveFiltersProps) 
           type="button"
           className="filter-chip"
           aria-label={`Remove tag filter: ${name}`}
-          onClick={() => {
-            const next = tags.filter((t) => t !== name);
-            drop({ tag: next.length ? next : undefined });
-          }}
+          onClick={() => drop({ tag: writeTagFilter(tags.filter((t) => t !== name)) })}
         >
           #{name}
           <CloseIcon />
