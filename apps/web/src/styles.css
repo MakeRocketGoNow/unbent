@@ -3411,6 +3411,22 @@ a.sidebar-status:hover {
   outline-offset: -2px;
 }
 
+/*
+   The glyph naming the row.
+
+   Muted like the value at the other end, so the label is the one thing at full strength on
+   the line — the icon and the chevron are both wayfinding, and the words are the content.
+   Fixed width so "Tags" and "Dates" start on the same column whatever the glyphs measure.
+*/
+.filter-row-icon {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.35rem;
+  color: var(--muted);
+}
+
 .filter-row-label { flex: 1; min-width: 0; }
 
 /* What it is set to. Muted because it is a state, not a control, and it truncates rather

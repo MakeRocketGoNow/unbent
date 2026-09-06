@@ -91,10 +91,17 @@ you find yourself drawing several new icons for one feature, or reaching for a g
 would be tedious to draw well, say so and propose the switch rather than quietly adding more
 paths.
 
-**We are at that line now: thirteen icons.** The phone's note list added search, filter,
-sort, close, menu and plus, and each of those is a few straight lines that a library would
-not have drawn better. The next feature that needs icons should propose the switch rather
-than making it fourteen — particularly if it wants anything with a distinctive shape.
+**We are past that line: fifteen icons.** The phone's note list added search, filter, sort,
+close, menu, plus, tag and calendar. The first six are a few straight lines each and a
+library would not have drawn them better; the last two are not — the tag with its punched
+hole and the calendar were drawn by translating Android's own drawables by eye, which is
+exactly the work a real icon set exists to save.
+
+**So the next icon should come with the switch, not after it.** Adding a sixteenth by hand
+means someone is redrawing a shape that lucide or Material already has, and doing it less
+well. `icons.tsx` is the single seam this passes through, so the change is that file and
+its callers rather than SVG scattered across the codebase — but it needs asking about
+first, as the paragraph above says.
 
 `icons.tsx` is what makes that switch cheap: it is the single seam every icon passes
 through, so moving to a library means changing that file, not hunting SVG across the

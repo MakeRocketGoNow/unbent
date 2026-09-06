@@ -29,7 +29,7 @@ import { FilterRow } from './FilterRow.js';
 import { DatePicker } from './DatePicker.js';
 import { rangeLabel } from './format-when.js';
 import { NotebookDrawer } from './NotebookDrawer.js';
-import { PlusIcon } from './icons.js';
+import { PlusIcon, TagIcon, CalendarIcon } from './icons.js';
 import { Sheet } from './Sheet.js';
 import { NoteListHead } from './NoteListHead.js';
 import { NotesOverflow } from './NotesOverflow.js';
@@ -342,6 +342,7 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
                   */}
                   {!searching && (tags.data?.length ?? 0) > 0 && (
                     <FilterRow
+                      icon={<TagIcon />}
                       label="Tags"
                       value={
                         selectedTags.length > 0
@@ -353,6 +354,7 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
                   )}
 
                   <FilterRow
+                    icon={<CalendarIcon />}
                     label="Dates"
                     value={rangeLabel(from, to) ?? undefined}
                     onClick={() => setSheetPage('dates')}

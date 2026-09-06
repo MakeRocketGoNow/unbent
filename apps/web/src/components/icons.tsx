@@ -64,6 +64,32 @@ function HeaderIcon({ children }: { children: ReactNode }) {
   );
 }
 
+/**
+ * An icon that labels a row of text rather than standing alone in a button.
+ *
+ * Sized against the label it sits beside rather than against a touch target: the whole row
+ * is the target, so the glyph only has to match the words. Muted by the row it is in, since
+ * it names the row rather than competing with it.
+ */
+function RowIcon({ children }: { children: ReactNode }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      width="1.15em"
+      height="1.15em"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      focusable="false"
+    >
+      {children}
+    </svg>
+  );
+}
+
 /** A magnifier, for opening the search field. */
 export function SearchIcon() {
   return (
@@ -143,6 +169,38 @@ export function PlusIcon() {
     >
       <path d="M12 5v14M5 12h14" />
     </svg>
+  );
+}
+
+/**
+ * A luggage label, for the tags row.
+ *
+ * Drawn stroked rather than filled, unlike the Android drawable it mirrors: every icon in
+ * this app is an outline at stroke width 2, and a solid shape among them reads as a
+ * different kind of thing rather than as the same row's sibling. The punched hole is the
+ * part that makes it a tag and not a chevron, so it survives the translation.
+ */
+export function TagIcon() {
+  return (
+    <RowIcon>
+      <path d="M3 3h7.2c.3 0 .6.1.8.4l9.6 9.6c.5.5.5 1.2 0 1.7l-5.9 5.9c-.5.5-1.2.5-1.7 0L3.4 11a1.2 1.2 0 0 1-.4-.8V3Z" />
+      <circle cx="7.3" cy="7.3" r="1.3" />
+    </RowIcon>
+  );
+}
+
+/**
+ * A calendar, for the dates row.
+ *
+ * The same 24×24 grid and stroke weight as the tag beside it, which is what makes the two
+ * rows read as siblings — Android's drawable says the same thing in its own comment.
+ */
+export function CalendarIcon() {
+  return (
+    <RowIcon>
+      <rect x="3" y="5" width="18" height="16" rx="2" />
+      <path d="M3 10h18M8 3v4M16 3v4" />
+    </RowIcon>
   );
 }
 
