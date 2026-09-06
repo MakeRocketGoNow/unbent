@@ -163,6 +163,11 @@ jobs:
               '',
               `Runs against the shared \`unbent-dev\` database and bucket, which every preview`,
               'writes to. Production is untouched. The Worker is deleted when this PR closes.',
+              '',
+              // Which push this URL is actually serving. Without it a stale comment and a
+              // fresh one look identical, and the only way to tell whether a redeploy has
+              // landed yet is to go and read the run log.
+              `<sub>Worker \`${process.env.WORKER_NAME}\` · deployed ${context.payload.pull_request.head.sha.slice(0, 7)}</sub>`,
             ].join('\n');
             const { owner, repo } = context.repo;
             const issue_number = context.payload.pull_request.number;
