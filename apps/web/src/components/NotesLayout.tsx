@@ -26,11 +26,14 @@ import { ExportLink } from './ExportLink.js';
 import { TagFilter } from './TagFilter.js';
 import { TagPicker } from './TagPicker.js';
 import { FilterRow } from './FilterRow.js';
+import { NotebookDrawer } from './NotebookDrawer.js';
 import { Sheet } from './Sheet.js';
 import { NoteListHead } from './NoteListHead.js';
 import { SortMenu } from './SortMenu.js';
 import { ActiveFilters } from './ActiveFilters.js';
 import { useMediaQuery, MOBILE_QUERY } from '../useMediaQuery.js';
+import { useSession } from '../auth-client.js';
+import { useSignOut } from '../useSignOut.js';
 
 /** Sidebar plus the routed workspace. Filters come from the URL; nothing here is mirrored into state. */
 export function NotesLayout({ children }: { children: React.ReactNode }) {
@@ -41,6 +44,13 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
   const queryClient = useQueryClient();
   const layout = useNotesLayout('/notes/$noteId');
   const onListKeys = useListKeys();
+  /*
+   * The account, for the drawer's floor. The topbar carries it at desktop width and is
+   * hidden over the phone's list, so this is where it is reached there — the root layout
+   * has already established the session by the time this renders.
+   */
+  const { data: session } = useSession();
+  const signOutAndLeave = useSignOut();
 
   const filter = {
     ...(notebook ? { notebook } : {}),
@@ -84,6 +94,7 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
    */
   const isMobile = useMediaQuery(MOBILE_QUERY);
   const [sheetOpen, setSheetOpen] = useState(false);
+  const [drawerOpen, setDrawerOpen] = useState(false);
   /*
    * Which page the sheet is showing. One dialog that swaps its contents rather than a
    * second sheet over the first, which would dim the first behind the second and leave two
@@ -115,6 +126,7 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
     if (!isMobile) {
       setSheetOpen(false);
       setSheetPage('root');
+      setDrawerOpen(false);
     }
   }, [isMobile]);
 
@@ -189,6 +201,7 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
                 setQuery('');
               }}
               onOpenFilters={() => setSheetOpen(true)}
+              onOpenMenu={() => setDrawerOpen(true)}
               filtered={isFiltered}
               /* Hidden while searching: results come back ranked by relevance, and
                  reordering them by date would throw away the ranking. */
@@ -212,6 +225,17 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
                 to={to}
               />
             )}
+
+            <NotebookDrawer
+              open={drawerOpen}
+              onClose={() => setDrawerOpen(false)}
+              notebook={notebook}
+              selectedTags={selectedTags}
+              notebooks={notebooks}
+              trashed={trashed}
+              email={session?.user.email ?? ''}
+              onSignOut={signOutAndLeave}
+            />
 
             <Sheet
               open={sheetOpen}
@@ -266,15 +290,14 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
                   <hr className="sheet-rule" />
 
                   {/*
-                      No sort here. It is not a filter — it changes the order of the list,
-                      not which notes are in it — so a surface headed "Filter notes" is the
-                      wrong home, and among the filters "Title A–Z" invites being read as
-                      something that narrows. It has its own icon in the header.
-                  */}
-                  {!searching && (
-                    <NotebookSelect notebook={notebook} notebooks={notebooks} />
-                  )}
+                      Neither the notebook nor the sort is here.
 
+                      The notebook is a place you go, so it is in the drawer — the rule that
+                      picking one clears the tags has been saying that all along. Sort is not
+                      a filter either: it changes the order of the list rather than which
+                      notes are in it, and among the filters "Title A–Z" invites being read
+                      as something that narrows. Both have their own control in the header.
+                  */}
                   {/*
                       Tags are a page rather than a panel here. The picker is a find field
                       and an unbounded list, and inlining it would make the sheet mostly

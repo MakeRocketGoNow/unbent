@@ -1,5 +1,5 @@
 import { useEffect, useRef, type ReactNode } from 'react';
-import { SearchIcon, FilterIcon } from './icons.js';
+import { SearchIcon, FilterIcon, MenuIcon } from './icons.js';
 import { BackArrow } from './BackArrow.js';
 
 interface NoteListHeadProps {
@@ -14,6 +14,8 @@ interface NoteListHeadProps {
   /** Closes the field *and* clears the query — see the comment on the back arrow. */
   onCloseSearch: () => void;
   onOpenFilters: () => void;
+  /** Opens the drawer of notebooks. */
+  onOpenMenu: () => void;
   /** Lights the dot on the filter icon: a narrowed list should never look like the whole archive. */
   filtered: boolean;
   /** The sort menu, hidden while searching. Passed in so this component owns no routing. */
@@ -48,6 +50,7 @@ export function NoteListHead({
   onOpenSearch,
   onCloseSearch,
   onOpenFilters,
+  onOpenMenu,
   filtered,
   sortMenu,
   newNote,
@@ -95,6 +98,14 @@ export function NoteListHead({
 
   return (
     <div className="list-head">
+      <button
+        type="button"
+        className="icon-btn"
+        aria-label="Notebooks"
+        onClick={onOpenMenu}
+      >
+        <MenuIcon />
+      </button>
       <span className="count">{count}</span>
       <div className="list-head-actions">
         <button type="button" className="icon-btn" aria-label="Search notes" onClick={onOpenSearch}>

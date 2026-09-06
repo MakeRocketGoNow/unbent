@@ -20,6 +20,7 @@ const props = {
   onOpenSearch: () => {},
   onCloseSearch: () => {},
   onOpenFilters: () => {},
+  onOpenMenu: () => {},
   filtered: false,
   sortMenu: <button>sort</button>,
   newNote: <button>New</button>,

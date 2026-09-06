@@ -2701,6 +2701,117 @@ a.sidebar-status:hover {
 
 
 /* ---------------------------------------------------------------------------------
+   The notebook drawer.
+
+   Where the notes are, on a phone: the notebooks, the trash and the account. Rows rather
+   than the sidebar's controls, because these navigate — see `NotebookDrawer.tsx`.
+   --------------------------------------------------------------------------------- */
+.drawer-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  min-width: 0;
+  /* Takes the height the foot does not, so a long notebook list scrolls while Trash and
+     the account stay on the floor where they can be reached. */
+  flex: 1;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.drawer-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  min-height: 2.75rem;
+  padding: 0.4rem 0.7rem;
+  font: inherit;
+  font-size: 0.95rem;
+  text-align: left;
+  text-decoration: none;
+  color: var(--fg);
+  background: none;
+  border: none;
+  /* Fully rounded, so the active fill reads as a pill around the row rather than as a
+     band across the drawer — the shape every drawer people arrive from uses. */
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+.drawer-item:hover { background: color-mix(in srgb, var(--fg) 8%, transparent); }
+
+.drawer-item:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+/*
+   Where you are. The same tint `.note-item.active` uses for the selected note, because it
+   is the same statement — this is the thing on screen — and two different colours for one
+   idea is how a UI starts feeling assembled rather than designed.
+
+   `.current` rather than `.active`, which is not a free choice: TanStack Router puts its own
+   `active` class on a `<Link>` whose target matches the route, so the two destinations on
+   this drawer's floor would have lit up as the current *scope* — Trash permanently, while
+   the trash is open. Same reason the class is not `.selected` either; this says which place
+   is on screen, and `aria-current` beside it says the same thing to a screen reader.
+*/
+.drawer-item.current {
+  color: var(--fg);
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+  font-weight: 500;
+}
+
+/* A notebook name is unbounded; it yields so the count never moves. */
+.drawer-item-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* The count sits hard right on rows whose label does not take the space itself. */
+.drawer-item > .tag-count { margin-left: auto; }
+
+.drawer-rule {
+  margin: 0.4rem 0;
+  border: none;
+  border-top: 1px solid var(--border);
+}
+
+/* Pinned under the list: destinations and the account, not places within the notes. */
+.drawer-foot {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  min-width: 0;
+}
+
+.drawer-foot-row {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  min-width: 0;
+}
+
+.drawer-new {
+  flex: 1;
+  min-width: 0;
+  color: var(--muted);
+}
+
+/* The one control on this row that is not a row; it keeps the avatar's own geometry. */
+.drawer-foot-row .overflow-account { flex: 0 0 auto; }
+
+.drawer-new::before {
+  content: '+';
+  font-size: 1.1rem;
+  line-height: 1;
+}
+
+/* ---------------------------------------------------------------------------------
    The note list header, on a phone.
 
    A count and four controls where the sidebar has a count, a New button, a search field,
