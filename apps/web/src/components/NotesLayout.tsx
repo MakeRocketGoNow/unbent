@@ -20,6 +20,11 @@ import { SearchResults } from './SearchResults.js';
 import { IndexingStatus } from './IndexingStatus.js';
 import { Button } from './Button';
 import { FilterControls } from './FilterControls.js';
+import { FilterSheet } from './FilterSheet.js';
+import { NoteListHead } from './NoteListHead.js';
+import { SortMenu } from './SortMenu.js';
+import { ActiveFilters } from './ActiveFilters.js';
+import { useMediaQuery, MOBILE_QUERY } from '../useMediaQuery.js';
 
 /** Sidebar plus the routed workspace. Filters come from the URL; nothing here is mirrored into state. */
 export function NotesLayout({ children }: { children: React.ReactNode }) {
@@ -64,12 +69,54 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
   }, [q]);
   const search = useQuery(searchQuery(debounced, filter));
 
+  /*
+   * The phone's header is a different set of controls, not the same ones restyled, so this
+   * is one of the few places the app reads the breakpoint in JS rather than in CSS. The
+   * policy in `useMediaQuery` allows exactly this — a control whose *meaning* changes with
+   * width — and what it protects against is elsewhere: the editor is an uncontrolled
+   * CodeMirror view that must not be rebuilt, and nothing here is in its tree.
+   */
+  const isMobile = useMediaQuery(MOBILE_QUERY);
+  const [sheetOpen, setSheetOpen] = useState(false);
+  /*
+   * Search starts open when the URL arrives with a query, so a shared link shows the field
+   * it was searched in rather than a bare list with results in it.
+   */
+  const [searchOpen, setSearchOpen] = useState(q !== '');
+
+  /*
+   * The sheet cannot outlive the width that justifies it. Rotating a phone to landscape
+   * crosses the breakpoint, and a modal dialog left open over the desktop layout would sit
+   * on top of the very controls it contains, now visible in the sidebar behind it.
+   */
+  useEffect(() => {
+    if (!isMobile) setSheetOpen(false);
+  }, [isMobile]);
+
+  /** Writes the search box's value to the URL. Shared by both breakpoints' fields. */
+  const setQuery = (next: string) =>
+    void navigate({
+      to: '/notes',
+      // replace, not push: the query updates per keystroke, and pushing would make
+      // Back crawl out of a search one character at a time.
+      search: (prev) => ({ ...prev, q: next || undefined }),
+      replace: true,
+    });
+
   /** Null means "not searching", which is distinct from searching and finding nothing. */
   const results = debounced.trim() === '' ? null : (search.data ?? null);
 
   const notes = list.data?.pages.flatMap((p) => p.items) ?? [];
   const total = list.data?.pages[0]?.total ?? null;
   const error = list.error ?? search.error;
+
+  /** What the list is showing, in three forms. Both breakpoints' headers read it. */
+  const countLabel =
+    results !== null
+      ? `${results.length} matches`
+      : total !== null && total > notes.length
+        ? `${notes.length} of ${total} notes`
+        : `${notes.length} notes`;
 
   async function newNote() {
     try {
@@ -96,50 +143,139 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
   return (
     <div className={layout.className} style={layout.style} ref={layout.containerRef}>
       <aside className="sidebar">
-        <div className="sidebar-head">
-          <span className="count">
-            {results !== null
-              ? `${results.length} matches`
-              : total !== null && total > notes.length
-                ? `${notes.length} of ${total} notes`
-                : `${notes.length} notes`}
-          </span>
-          <Button variant="primary" onClick={() => void newNote()}>
-            New
-          </Button>
-        </div>
+        {isMobile ? (
+          <>
+            <NoteListHead
+              count={countLabel}
+              query={q}
+              onQuery={setQuery}
+              searchOpen={searchOpen}
+              onOpenSearch={() => setSearchOpen(true)}
+              /*
+               * Closing clears the query. A closed field over a live `q` is a list narrowed
+               * by something with nothing on screen to say so — the same invisible-filter
+               * failure the chips below exist to prevent.
+               */
+              onCloseSearch={() => {
+                setSearchOpen(false);
+                setQuery('');
+              }}
+              onOpenFilters={() => setSheetOpen(true)}
+              filtered={isFiltered}
+              /* Hidden while searching: results come back ranked by relevance, and
+                 reordering them by date would throw away the ranking. */
+              sortMenu={results === null ? <SortMenu sort={sort} order={order} /> : null}
+              newNote={
+                <Button variant="primary" onClick={() => void newNote()}>
+                  New
+                </Button>
+              }
+            />
 
-        {error && <p className="bad small">{(error as Error).message}</p>}
+            {error && <p className="bad small">{(error as Error).message}</p>}
 
-        <input
-          className="search-field"
-          type="search"
-          value={q}
-          placeholder="Search notes…"
-          // replace, not push: the query updates per keystroke, and pushing would make
-          // Back crawl out of a search one character at a time.
-          onChange={(e) =>
-            void navigate({
-              to: '/notes',
-              search: (prev) => ({ ...prev, q: e.target.value || undefined }),
-              replace: true,
-            })
-          }
-        />
+            {/* Under the header rather than inside the sheet, so what is filtering the
+                list is readable without opening anything — and removable without it too. */}
+            {isFiltered && (
+              <ActiveFilters
+                notebook={notebook}
+                tags={selectedTags}
+                from={from}
+                to={to}
+              />
+            )}
 
-        <FilterControls
-          notebook={notebook}
-          selectedTags={selectedTags}
-          from={from}
-          to={to}
-          sort={sort}
-          order={order}
-          searching={results !== null}
-          total={total}
-          filter={filter}
-          notebooks={notebooks}
-          tags={tags}
-        />
+            <FilterSheet
+              open={sheetOpen}
+              onClose={() => setSheetOpen(false)}
+              title="Filter notes"
+              headAction={
+                // Offered only when it would do something: a permanently visible Clear all
+                // on an unfiltered list promises an effect it cannot have.
+                isFiltered ? (
+                  <Button
+                    variant="quiet"
+                    size="small"
+                    onClick={() =>
+                      void navigate({
+                        to: '/notes',
+                        search: (prev) => ({
+                          ...prev,
+                          notebook: undefined,
+                          tag: undefined,
+                          from: undefined,
+                          to: undefined,
+                        }),
+                      })
+                    }
+                  >
+                    Clear all
+                  </Button>
+                ) : null
+              }
+            >
+              {/* The sheet says what it is doing before it says what it can do. Unfiltered,
+                  that is a sentence; filtered, the chips above are already saying it, so
+                  this stays out of the way. */}
+              {!isFiltered && <p className="sheet-summary small">Nothing is filtered.</p>}
+
+              <FilterControls
+                notebook={notebook}
+                selectedTags={selectedTags}
+                from={from}
+                to={to}
+                sort={sort}
+                order={order}
+                searching={results !== null}
+                total={total}
+                filter={filter}
+                notebooks={notebooks}
+                tags={tags}
+                showSort={false}
+                tagList="open"
+              />
+
+              <div className="sheet-foot">
+                <Button variant="quiet" onClick={() => setSheetOpen(false)}>
+                  Done
+                </Button>
+              </div>
+            </FilterSheet>
+          </>
+        ) : (
+          <>
+            <div className="sidebar-head">
+              <span className="count">{countLabel}</span>
+              <Button variant="primary" onClick={() => void newNote()}>
+                New
+              </Button>
+            </div>
+
+            {error && <p className="bad small">{(error as Error).message}</p>}
+
+            <input
+              className="search-field"
+              type="search"
+              value={q}
+              placeholder="Search notes…"
+              onChange={(e) => setQuery(e.target.value)}
+            />
+
+            <FilterControls
+              notebook={notebook}
+              selectedTags={selectedTags}
+              from={from}
+              to={to}
+              sort={sort}
+              order={order}
+              searching={results !== null}
+              total={total}
+              filter={filter}
+              notebooks={notebooks}
+              tags={tags}
+            />
+          </>
+        )}
 
         <ul className="note-list" onKeyDown={onListKeys}>
           {results !== null && <SearchResults results={results} />}

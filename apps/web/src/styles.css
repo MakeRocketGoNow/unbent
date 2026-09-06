@@ -884,7 +884,8 @@ h1 {
   display: inline-flex;
 }
 
-.overflow-trigger {
+.overflow-trigger,
+.icon-btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -901,7 +902,8 @@ h1 {
   cursor: pointer;
 }
 
-.overflow-trigger:hover { color: var(--fg); background: color-mix(in srgb, var(--fg) 7%, transparent); }
+.overflow-trigger:hover,
+.icon-btn:hover { color: var(--fg); background: color-mix(in srgb, var(--fg) 7%, transparent); }
 
 .overflow-list {
   position: absolute;
@@ -2604,6 +2606,147 @@ a.sidebar-status:hover {
 
 
 /* ---------------------------------------------------------------------------------
+   The note list header, on a phone.
+
+   A count and four controls where the sidebar has a count, a New button, a search field,
+   two selects, two date inputs and a tag row. Everything is still reachable; what changed
+   is that it is reachable rather than permanently on screen.
+   --------------------------------------------------------------------------------- */
+.list-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+.list-head-actions {
+  display: flex;
+  align-items: center;
+  /* Tight, because each control already carries 44px of target around a 20px glyph — the
+     space between them is the padding, not the gap. */
+  gap: 0.1rem;
+}
+
+/*
+   New is the same height as the icons beside it.
+
+   `.btn` sizes itself from its padding and text, which came to 35px against the icons' 44,
+   and four controls in a row at two heights is the "spacing is really inconsistent"
+   feedback this project keeps getting. The button keeps its own horizontal padding — it is
+   a word, not a glyph, and squaring it off would make it as wide as it is tall.
+
+   The gap before it separates the one control that *makes* something from the three that
+   change what is on screen.
+*/
+.list-head-actions .btn {
+  min-height: 2.75rem;
+  margin-left: 0.4rem;
+}
+
+/*
+   A 44px square holding one icon.
+
+   Shares every declaration with `.overflow-trigger`, which is the same object: an icon that
+   opens something. They are one selector rather than two rules so the next change to the
+   hit area cannot land on only one of them — the drift that made the toolbar's disclosures
+   disagree about their own chevrons.
+*/
+.icon-btn {
+  position: relative;
+}
+
+/* Search takes the row. A field sharing 375px with four controls is a field you cannot read
+   back what you typed into. */
+.list-search {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  min-width: 0;
+}
+
+.list-search .search-field {
+  flex: 1;
+  min-width: 0;
+}
+
+/*
+   The dot that says a filter is on.
+
+   Positioned on the icon rather than beside it, so the control stays one 44px square and
+   the row does not reflow as filters come and go. It is decorative — the state is in the
+   button's accessible name, because a dot says nothing to a screen reader.
+
+   The ring is the page's own background, which is what keeps the dot legible where it
+   overlaps the funnel's stroke in either theme.
+*/
+.badge-dot {
+  position: absolute;
+  top: 0.5rem;
+  right: 0.55rem;
+  width: 0.45rem;
+  height: 0.45rem;
+  background: var(--accent);
+  border-radius: 50%;
+  box-shadow: 0 0 0 2px var(--bg);
+}
+
+/* ---------------------------------------------------------------------------------
+   The active filters, as chips.
+
+   What is narrowing the list, where the list is — the filter controls are behind an icon on
+   a phone, and a dot alone says that something is filtering without saying what.
+   --------------------------------------------------------------------------------- */
+.filter-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  min-width: 0;
+}
+
+/*
+   Filled, unlike the outlined tag pills in the sheet.
+
+   The two are different questions and must not be mistaken for each other: a pill in the
+   sheet offers a filter, and a chip here reports one that is already on. Filled is also
+   what the selected pill uses, so the chip is the same object the pill becomes — pressed
+   in one place, reported in the other.
+*/
+.filter-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  max-width: 100%;
+  padding: 0.25rem 0.5rem;
+  font: inherit;
+  font-size: 0.75rem;
+  color: var(--bg);
+  background: var(--accent);
+  border: 1px solid var(--accent);
+  border-radius: 999px;
+  cursor: pointer;
+  /* A tag name is unbounded; the chip yields rather than pushing the row wider than the
+     screen. The × never shrinks — see the disclosure chevron for the same rule and why. */
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.filter-chip svg {
+  flex: 0 0 auto;
+  opacity: 0.75;
+}
+
+.filter-chip:hover { opacity: 0.9; }
+.filter-chip:hover svg { opacity: 1; }
+
+.filter-chip:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+
+/* ---------------------------------------------------------------------------------
    The filter sheet.
 
    A `<dialog>` opened with showModal(), so the top layer, the inertness, the scrim, the
@@ -2616,8 +2759,23 @@ a.sidebar-status:hover {
    wider screen than the phone it is for.
    --------------------------------------------------------------------------------- */
 .sheet {
-  /* The floor, full width. `max-width: none` because the UA sheet caps a dialog at the
-     viewport less its margins, which would leave a gap down each side. */
+  /*
+     The floor, full width.
+
+     `margin: auto auto 0` is what puts it there. A dialog centres itself with `auto`
+     margins on all four sides; pinning the bottom one to zero drops it to the floor and
+     leaves the horizontal centring intact, which keeps it correct if it is ever shown on a
+     screen wider than the phone it is for.
+
+     `max-width: none` because the UA sheet caps a dialog at the viewport less its margins,
+     which would otherwise leave a gap down each side.
+
+     Note when measuring this in a browser: a modal dialog lives in the top layer, and
+     `getBoundingClientRect` reports it in that layer's own coordinate space rather than the
+     viewport's. On a scaled device-emulation pane the numbers come back larger than the
+     viewport and look like an overhang. `getComputedStyle().top` plus `height` is the
+     reading that answers the question — it sums to the viewport height when this is right.
+  */
   margin: auto auto 0;
   width: 100%;
   max-width: none;
@@ -3062,4 +3220,40 @@ a.sidebar-status:hover {
 
   /* Home-indicator clearance on iPhone; resolves to 0px everywhere else. */
   .shell.wide { padding-bottom: calc(1rem + env(safe-area-inset-bottom)); }
+
+  /*
+     The filter sheet's own controls are thumb targets like everything else here.
+
+     These are the sidebar's controls, and at desktop density they are 37-39px — pointed at
+     rather than tapped. They were the only controls in the app still under the 44px this
+     block sets everywhere else, and they are now the ones most likely to be tapped, since
+     reaching them at all means being on a phone.
+
+     The date inputs get it through their own rule rather than the shared one, because they
+     sit in a flex row whose label and field are separate boxes: a min-height on the label
+     would stretch the caption rather than the field.
+  */
+  .sheet .notebook-scope,
+  .sheet .date-range input {
+    min-height: 2.75rem;
+  }
+
+  /* The pills are a wrapped field of small targets rather than a row of large ones — 44px
+     each would make six tags three rows deep — so they get the compromise the toolbar uses:
+     enough height to be certain of, at the density that keeps them scannable. */
+  .sheet .tag-filter-item {
+    min-height: 2.25rem;
+    padding-inline: 0.7rem;
+  }
+
+  /*
+     The chips are the same compromise, and for the same reason: they wrap, and a row of
+     44px chips would push the notes down as far as the controls this change removed. They
+     each remove a filter on one tap, so they need to be certain of — 36px with the × inside
+     the target is the same size the sheet's own pills settle on.
+  */
+  .filter-chip {
+    min-height: 2.25rem;
+    padding-inline: 0.6rem;
+  }
 }

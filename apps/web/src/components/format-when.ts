@@ -8,3 +8,31 @@ export function formatWhen(ms: number): string {
   if (hr < 24) return `${hr}h ago`;
   return new Date(ms).toLocaleDateString();
 }
+
+/**
+ * A date range as a phrase, or null when there is none.
+ *
+ * One end alone is still a phrase: an archive question is usually open at one end
+ * ("anything before 2020"), which is why the two inputs exist rather than a preset list,
+ * and a label that could only describe a closed range would have nothing to say about the
+ * commoner case.
+ *
+ * The dates are `YYYY-MM-DD` and are formatted as local days rather than parsed as
+ * instants. `new Date('2026-01-01')` is midnight UTC, which is the previous day in every
+ * timezone west of London — a range the user set to January would have read as December.
+ */
+export function rangeLabel(from?: string, to?: string): string | null {
+  const day = (iso: string) => {
+    const [y, m, d] = iso.split('-').map(Number);
+    if (!y || !m || !d) return iso;
+    return new Date(y, m - 1, d).toLocaleDateString(undefined, {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+    });
+  };
+  if (from && to) return `${day(from)} – ${day(to)}`;
+  if (from) return `Since ${day(from)}`;
+  if (to) return `Until ${day(to)}`;
+  return null;
+}
