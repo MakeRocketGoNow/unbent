@@ -1734,17 +1734,35 @@ a.sidebar-status:hover {
   gap: 0.35rem;
 }
 
+/*
+   No horizontal padding: the panel this sits in already provides the inset, and the row's
+   own added a second one, so a filename started 8px right of the "Attachments" summary
+   above it and of the note body below. The vertical padding stays — that is the space
+   between rows, which nothing else supplies.
+
+   The `.unlinked` variant below draws a fill and an inset rule, and those want a little
+   room to sit in, so it puts the horizontal padding back for itself alone.
+*/
 .attachments-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 0.75rem;
   min-width: 0;
-  padding: 0.35rem 0.5rem;
+  padding: 0.35rem 0;
   border-radius: 0.3rem;
 }
 
+/*
+   The one row that draws a box around itself, so it needs room inside it.
+
+   No negative margin to go with the padding: the panel has no inset of its own to pull back
+   through, so a pull put the fill 8px outside the column every other row lines up with.
+   The label moving 8px right on the one row that is already shouting is the smaller cost —
+   and arguably the right one, since the inset rule reads as a callout.
+*/
 .attachments-row.unlinked {
+  padding-inline: 0.5rem;
   background: color-mix(in srgb, var(--bad) 9%, transparent);
   box-shadow: inset 3px 0 0 var(--bad);
 }
@@ -3728,6 +3746,32 @@ a.sidebar-status:hover {
      on the sidebar floor as well would be two places for one destination, and the drawer is
      the one that matches every other app. */
   .trash-link { display: none; }
+
+  /*
+     The sidebar gives up its own inset here, because the shell's is already doing that job.
+
+     Three insets were stacking on a phone: the shell's 0.75rem, the sidebar's 0.7rem, and
+     the note row's own 0.7rem, which `.note-list` pulls back out. Text landed 23px from the
+     glass on a 412px screen — over 5% of the width on each side before a single character,
+     on the view whose whole purpose is showing as much of a note list as possible.
+
+     Zeroing this does not break the alignment the desktop rule protects. The note rows keep
+     their padding and the list keeps its matching pull-out, so the notes still start where
+     the header and the chips above them do; all of them simply start one inset closer to
+     the edge. The desktop keeps the 0.7rem, where the column is a fixed 304px beside a
+     workspace and the breathing room costs nothing.
+  */
+  .sidebar {
+    padding-left: 0;
+    padding-right: 0;
+  }
+
+  /* With the sidebar's inset gone the list has nothing to pull out of; the 3px stays, which
+     is the room the focus ring needs — see `.note-list`. */
+  .note-list {
+    margin-left: -3px;
+    margin-right: -3px;
+  }
 
   /*
      Room for the floating button, so the last note is not left under it.
