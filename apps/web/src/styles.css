@@ -3056,7 +3056,10 @@ a.sidebar-status:hover {
   min-height: 2.75rem;
   padding: 0.4rem 0.5rem;
   font: inherit;
-  font-size: 0.95rem;
+  /* The same size as `.filter-row`, which these are reached from and sit on the same
+     surface as. They were a step smaller, which is near enough to read as a mistake rather
+     than as a distinction — they are the same kind of row and should look like it. */
+  font-size: 1rem;
   text-align: left;
   color: var(--fg);
   background: none;
@@ -3410,15 +3413,28 @@ a.sidebar-status:hover {
    the same rotated box the disclosure summary uses — no glyph, no asset, `currentColor`, so
    it is correct in dark mode without a second rule.
 */
+/*
+   Sized against the Android sheet these mirror, which reads better than this did.
+
+   Two differences, and the second is the one that showed. The label was 0.9rem against
+   its 16sp — small for the primary text on a row whose whole job is naming a filter — and
+   the rows were spaced 12px apart by the sheet body's gap, where Android's touch and take
+   their breathing room from 12dp of padding inside each one. Spacing between rows makes two
+   controls read as two lists of one; padding within them makes one list of two, and gives
+   the taller row a larger target for free.
+
+   The gap is cancelled rather than the body's rule changed, because every other child of
+   the sheet does want that gap — the chips, the rule, the export link. `+` so it only
+   collapses the space *between* rows and leaves the one above the first.
+*/
 .filter-row {
   display: flex;
   align-items: center;
   gap: 0.5rem;
   width: 100%;
-  min-height: 2.75rem;
-  padding: 0.4rem 0.2rem;
+  padding: 0.75rem 0.2rem;
   font: inherit;
-  font-size: 0.9rem;
+  font-size: 1rem;
   text-align: left;
   color: var(--fg);
   background: none;
@@ -3426,6 +3442,8 @@ a.sidebar-status:hover {
   border-radius: 0.35rem;
   cursor: pointer;
 }
+
+.filter-row + .filter-row { margin-top: -0.75rem; }
 
 .filter-row:hover { background: color-mix(in srgb, var(--fg) 8%, transparent); }
 
@@ -3459,7 +3477,9 @@ a.sidebar-status:hover {
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
-  font-size: 0.8rem;
+  /* One step below the label rather than two, matching the labelLarge/bodyLarge pair
+     Android uses: it is secondary to the row, not fine print. */
+  font-size: 0.875rem;
   color: var(--muted);
 }
 
