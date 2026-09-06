@@ -2572,6 +2572,181 @@ a.sidebar-status:hover {
 }
 
 
+/* ---------------------------------------------------------------------------------
+   The filter sheet.
+
+   A `<dialog>` opened with showModal(), so the top layer, the inertness, the scrim, the
+   Escape key and the focus return are all the platform's. What is left to style is the
+   shape: a panel on the floor of the screen rather than a box in the middle of it.
+
+   `margin: auto auto 0` is what puts it there. A dialog centres itself with `auto` margins
+   on all four sides; pinning the bottom one to zero drops it to the floor and leaves the
+   horizontal centring intact, which is what keeps it correct if it is ever shown on a
+   wider screen than the phone it is for.
+   --------------------------------------------------------------------------------- */
+.sheet {
+  /* The floor, full width. `max-width: none` because the UA sheet caps a dialog at the
+     viewport less its margins, which would leave a gap down each side. */
+  margin: auto auto 0;
+  width: 100%;
+  max-width: none;
+  /* Bounded so a long tag list scrolls inside the sheet rather than growing it past the
+     top of the screen. dvh, not vh: the mobile URL bar changes the viewport, and vh here
+     measures the tallest state, which puts the head under the browser chrome. */
+  max-height: 85dvh;
+  padding: 0;
+  overflow-y: auto;
+  color: var(--fg);
+  background: var(--bg);
+  border: none;
+  border-radius: 1rem 1rem 0 0;
+  box-shadow: 0 -8px 32px color-mix(in srgb, var(--fg) 18%, transparent);
+}
+
+.sheet::backdrop {
+  /* Fixed ink rather than a token: --fg is near-white in dark mode, and a scrim that
+     inverts with the theme lightens the screen it is supposed to be dimming. */
+  background: rgb(0 0 0 / 45%);
+}
+
+/*
+   The rise.
+
+   `allow-discrete` and the `@starting-style` block are what let an element that is
+   `display: none` until it opens animate at all — without them the sheet appears in place
+   and the transition never runs. Kept to a short slide with no bounce: this is a surface
+   arriving, not a thing being thrown.
+*/
+@media (prefers-reduced-motion: no-preference) {
+  .sheet {
+    transition:
+      translate 0.22s ease,
+      opacity 0.22s ease,
+      overlay 0.22s allow-discrete,
+      display 0.22s allow-discrete;
+  }
+
+  .sheet[open] {
+    translate: 0 0;
+    opacity: 1;
+  }
+
+  @starting-style {
+    .sheet[open] {
+      translate: 0 1.5rem;
+      opacity: 0;
+    }
+  }
+
+  .sheet:not([open]) {
+    translate: 0 1.5rem;
+    opacity: 0;
+  }
+}
+
+/*
+   The padding lives here rather than on the dialog.
+
+   A padded dialog has a padding box that is part of the element, so a tap on it hits the
+   dialog itself — which is exactly the test the backdrop click uses. The sheet would then
+   dismiss when someone tapped the gap beside a control, which reads as closing at random.
+*/
+.sheet-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 0.5rem 1rem 1rem;
+  /* Clear of the home indicator on an iPhone; resolves to 0px everywhere else. */
+  padding-bottom: calc(1rem + env(safe-area-inset-bottom));
+}
+
+/* The vocabulary phones have taught for "this panel came up from the bottom". Decorative:
+   there is no drag to hint at, and it is not in the tab order or the accessibility tree. */
+.sheet-grip {
+  flex: 0 0 auto;
+  width: 2.25rem;
+  height: 0.25rem;
+  margin: 0.25rem auto 0.25rem;
+  background: var(--border);
+  border-radius: 999px;
+}
+
+.sheet-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.sheet-head h2 {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+/*
+   What the sheet is showing, in one line.
+
+   It is the sheet's own state, not an instruction, so it is muted and it sits where the
+   chips will be when there are any — the two are the same slot in two states, which is
+   what keeps the head from moving as filters come and go.
+*/
+.sheet-summary {
+  margin: 0;
+  color: var(--muted);
+}
+
+/* Done, on the floor of the sheet. Right-aligned: it is the way out, and the way out sits
+   where the thumb is, not where the reading starts. */
+.sheet-foot {
+  display: flex;
+  justify-content: flex-end;
+}
+
+/* A label for a group of controls inside the sheet, matching a disclosure's summary
+   weight — these are the same tier of thing, one collapsed and one not. */
+.filter-section-label {
+  display: block;
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+
+.tag-filter-open {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+/* In the sheet the pills are the last thing before Done, and the rule that separates them
+   from the note list in the sidebar has nothing to separate them from here. */
+.tag-filter-open .tag-filter {
+  padding-bottom: 0;
+  border-bottom: none;
+}
+
+/* The controls stack in the sheet exactly as they do in the sidebar; only the box around
+   them differs, so this is the whole of it. */
+.filter-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  min-width: 0;
+}
+
+/*
+   In the sidebar the stack is not a box at all.
+
+   `display: contents` drops the wrapper from the layout, so the controls stay direct
+   children of the sidebar's flex column and keep the one rhythm it sets. Without it the
+   extraction would have introduced a nested flex context and a second gap to keep in step
+   with the first — a spacing bug of exactly the kind this project keeps being asked to
+   stop shipping.
+*/
+.sidebar > .filter-controls {
+  display: contents;
+}
+
+
 /* ------------------------------------------------------------------------------------
    Mobile overrides.
    Last in the file on purpose: these rules override base ones of equal specificity
