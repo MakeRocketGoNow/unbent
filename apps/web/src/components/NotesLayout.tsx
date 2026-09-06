@@ -67,6 +67,21 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
    */
   const isFiltered = Boolean(notebook || selectedTags.length || from || to);
 
+  /*
+   * What the filter icon speaks for: the tags and the dates, not the notebook.
+   *
+   * The two were one predicate until the notebook moved into the drawer, and keeping them
+   * one lit the filter badge for a notebook the filter sheet no longer chooses — a dot
+   * saying "something is narrowing this" beside a heading that had already said what, and
+   * pointing at a surface where nothing was set. A badge has to be about the control it
+   * sits on.
+   *
+   * `isFiltered` is still the whole scope, and still what the export link and the desktop
+   * stack read: those are about the slice of the archive on screen, which the notebook is
+   * very much part of.
+   */
+  const sheetFiltered = Boolean(selectedTags.length || from || to);
+
   const list = useInfiniteQuery(notesQuery(filter, ordering));
   const tags = useQuery(tagsQuery());
   const notebooks = useQuery(notebooksQuery());
@@ -217,7 +232,7 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
               }}
               onOpenFilters={() => setSheetOpen(true)}
               onOpenMenu={() => setDrawerOpen(true)}
-              filtered={isFiltered}
+              filtered={sheetFiltered}
               /* Hidden while searching: results come back ranked by relevance, and
                  reordering them by date would throw away the ranking. */
               sortMenu={results === null ? <SortMenu sort={sort} order={order} /> : null}
@@ -225,16 +240,16 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
 
             {error && <p className="bad small">{(error as Error).message}</p>}
 
-            {/* Under the header rather than inside the sheet, so what is filtering the
-                list is readable without opening anything — and removable without it too. */}
-            {isFiltered && (
-              <ActiveFilters
-                notebook={notebook}
-                tags={selectedTags}
-                from={from}
-                to={to}
-              />
-            )}
+            {/*
+                Under the header rather than only inside the sheet, so what is narrowing the
+                list is readable without opening anything — and removable without it too.
+
+                No notebook chip here: the heading above already names it, and the chip
+                repeated that word for word on the next line, spending a row of a phone
+                screen to say it twice. The sheet still shows it, because a surface that
+                claims to list everything applied has to.
+            */}
+            <ActiveFilters tags={selectedTags} from={from} to={to} />
 
             <NotebookDrawer
               open={drawerOpen}
@@ -257,16 +272,18 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
                 // on an unfiltered list promises an effect it cannot have. Not on the tags
                 // page, where the chips are the way back out and "all" would mean the
                 // dates too — a button whose blast radius is off screen.
-                sheetPage === 'root' && isFiltered ? (
+                sheetPage === 'root' && sheetFiltered ? (
                   <Button
                     variant="quiet"
                     size="small"
                     onClick={() =>
                       void navigate({
                         to: '/notes',
+                        // The notebook is not cleared: it is where you are, not something
+                        // this sheet applied, and "Clear all" walking you out of a notebook
+                        // into the whole archive is a bigger effect than the words promise.
                         search: (prev) => ({
                           ...prev,
-                          notebook: undefined,
                           tag: undefined,
                           from: undefined,
                           to: undefined,

@@ -44,6 +44,34 @@ const url = (history: { location: { href: string } }) => history.location.href;
 describe('ActiveFilters', () => {
   afterEach(cleanup);
 
+  /*
+   * The header strip omits the notebook, because the heading above it already names the
+   * notebook — a chip there repeated the title word for word on the very next line. The
+   * sheet passes it, since a surface claiming to list everything applied has to show it.
+   */
+  it('reports only what it was given, so the header can leave the notebook to the heading', async () => {
+    const { container, findByLabelText } = harness({
+      notebook: undefined,
+      tags: ['Receipt'],
+      from: undefined,
+      to: undefined,
+    });
+    await findByLabelText('Remove tag filter: Receipt');
+    expect(container.querySelectorAll('.filter-chip').length).toBe(1);
+  });
+
+  /* An empty strip is a gap above the notes with nothing in it, so a caller can mount it
+     without first working out whether this combination leaves anything to say. */
+  it('renders nothing when it has nothing to report', () => {
+    const { container } = harness({
+      notebook: undefined,
+      tags: [],
+      from: undefined,
+      to: undefined,
+    });
+    expect(container.querySelector('.filter-chips')).toBeNull();
+  });
+
   it('draws one chip per active filter, in the order the controls are in', async () => {
     const { container } = harness({
       notebook: 'Coupons',

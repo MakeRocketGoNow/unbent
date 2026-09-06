@@ -4,7 +4,16 @@ import { CloseIcon } from './icons.js';
 import { rangeLabel } from './format-when.js';
 
 interface ActiveFiltersProps {
-  notebook: string | undefined;
+  /**
+   * The notebook, when this strip is the only thing reporting it.
+   *
+   * Omitted under the list header, where the heading already names the notebook — a chip
+   * there repeated the title word for word on the line directly below it, and spent a whole
+   * row of a phone screen doing it. Passed in the filter sheet, which claims to show
+   * everything that is applied and so has to show this too; Android's sheet carries the
+   * notebook chip for exactly that reason, while its app bar title does the naming.
+   */
+  notebook?: string | undefined;
   tags: string[];
   from: string | undefined;
   to: string | undefined;
@@ -26,6 +35,10 @@ interface ActiveFiltersProps {
  * The order matches the sheet and the Android app: notebook, then tags in their selected
  * order, then the range. It is the order the controls appear in, so the eye moving between
  * the chips and the sheet is not re-sorting them.
+ *
+ * Renders nothing at all when it has nothing to report, so a caller can mount it without
+ * first working out whether this particular combination leaves anything to say — which the
+ * header does, now that the notebook alone is not enough to fill it.
  */
 export function ActiveFilters({ notebook, tags, from, to }: ActiveFiltersProps) {
   const navigate = useNavigate();
@@ -33,6 +46,9 @@ export function ActiveFilters({ notebook, tags, from, to }: ActiveFiltersProps) 
 
   const drop = (search: Record<string, unknown>) =>
     void navigate({ to: '/notes', search: (prev) => ({ ...prev, ...search }) });
+
+  // An empty strip is a gap above the notes with nothing in it.
+  if (!notebook && tags.length === 0 && !range) return null;
 
   return (
     <div className="filter-chips">
