@@ -1306,6 +1306,13 @@ a.overflow-item { text-decoration: none; }
   gap: 0.3rem;
 }
 
+/*
+   The presets sit directly above the From/To inputs they fill in, with the column's own
+   gap between them rather than a larger one: they are two ways of answering one question,
+   not two questions, and spacing them apart would say otherwise.
+*/
+.date-presets { margin-bottom: -0.35rem; }
+
 /* ---------------------------------------------------------------------------------
    The tag picker.
 
