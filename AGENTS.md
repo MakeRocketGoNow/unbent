@@ -73,13 +73,15 @@ component and are the backlog it exists to work through, not counterexamples to 
 
 ## Icons
 
-There is no icon library, deliberately — the reasoning is recorded in `EditorToolbar.tsx`:
+There is no icon library, deliberately — the reasoning is recorded in `icons.tsx`:
 this is a handful of icons in a codebase whose other controls are letters (B, I, S, H1),
 and a dependency would not draw those anyway.
 
-New icons go through the `ToolbarIcon` wrapper in that file, which fixes the shared
-geometry: a 24×24 box, `currentColor` stroke at width 2, round caps and joins, and
-`aria-hidden`. Pass it paths, and it will match everything else.
+New icons go in `apps/web/src/components/icons.tsx` and go through the `ToolbarIcon`
+wrapper there, which fixes the shared geometry: a 24×24 box, `currentColor` stroke at
+width 2, round caps and joins, and `aria-hidden`. Pass it paths, and it will match
+everything else. `HeaderIcon` beside it is the same geometry at a larger size, for an icon
+that sits alone in a 44px target rather than in a dense row.
 
 **This is a decision about the current scale, not a principle.** We are open to adopting an
 icon library if the icon count grows enough to justify it — hand-drawing paths stops being
@@ -89,9 +91,9 @@ you find yourself drawing several new icons for one feature, or reaching for a g
 would be tedious to draw well, say so and propose the switch rather than quietly adding more
 paths.
 
-`ToolbarIcon` is what makes that switch cheap: it is the single seam every icon passes
-through, so moving to a library means changing that wrapper and the icon constants beside
-it, not hunting SVG across the codebase. Keep new icons going through it for that reason.
+`icons.tsx` is what makes that switch cheap: it is the single seam every icon passes
+through, so moving to a library means changing that file, not hunting SVG across the
+codebase. Keep new icons going through it for that reason.
 
 Either way, don't add the dependency without asking first.
 
