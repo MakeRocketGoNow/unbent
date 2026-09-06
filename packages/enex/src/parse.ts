@@ -81,6 +81,15 @@ export interface ParseCallbacks {
   /** Byte offset consumed so far, for progress reporting. */
   onProgress?: (bytesRead: number) => void;
   onError?: (message: string) => void;
+  /**
+   * Stops the parse where it stands, leaving the notes already handed over untouched.
+   *
+   * `onNote` returning early is not enough on its own: the reader would still pull the
+   * rest of the file through the parser, which for the largest real export is another
+   * minute of CPU after the caller has stopped caring. Checked between chunks and between
+   * notes, so a stop takes effect at the next note rather than mid-upload.
+   */
+  signal?: AbortSignal;
 }
 
 /**
@@ -223,6 +232,7 @@ export async function parseEnexStream(
    */
   async function drain(): Promise<void> {
     while (ready.length > 0) {
+      if (callbacks.signal?.aborted) return;
       const next = ready.shift()!;
       try {
         await callbacks.onNote(next);
@@ -237,6 +247,7 @@ export async function parseEnexStream(
 
   try {
     for (;;) {
+      if (callbacks.signal?.aborted) break;
       const { done, value } = await reader.read();
       if (done) break;
 
@@ -249,10 +260,15 @@ export async function parseEnexStream(
       callbacks.onProgress?.(bytesRead);
     }
 
-    parser.close();
-    await drain();
+    // Only a stream read to the end is a well-formed document; closing a parser stopped
+    // partway through would throw on the tags the file never got to close.
+    if (!callbacks.signal?.aborted) {
+      parser.close();
+      await drain();
+    }
     callbacks.onProgress?.(bytesRead);
   } finally {
+    if (callbacks.signal?.aborted) await reader.cancel().catch(() => {});
     reader.releaseLock();
   }
 
