@@ -15,8 +15,15 @@ describe('rangeLabel', () => {
     expect(rangeLabel(undefined, undefined)).toBeNull();
   });
 
-  it('describes a range open at either end', () => {
-    expect(rangeLabel('2026-01-01', undefined)).toMatch(/^Since /);
+  /*
+   * "From" and "Until", which are the words the Android app uses for the same filter and
+   * the words the two inputs are labelled with. It said "Since" here, which read as a
+   * different kind of boundary from the "Until" it pairs with — and the two apps naming one
+   * filter differently is how people come to think they behave differently. They do not:
+   * both send the same `from`/`to` to the same endpoint.
+   */
+  it('describes a range open at either end, in the same words the phone app uses', () => {
+    expect(rangeLabel('2026-01-01', undefined)).toMatch(/^From /);
     expect(rangeLabel(undefined, '2026-03-05')).toMatch(/^Until /);
   });
 

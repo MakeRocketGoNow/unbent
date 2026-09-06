@@ -5,6 +5,15 @@ import { DATE_PRESETS, activePreset } from './date-presets.js';
 interface DatePickerProps {
   from: string | undefined;
   to: string | undefined;
+  /**
+   * Called when a choice finishes the page's job.
+   *
+   * A preset is one tap and the whole answer, so the page has nothing left to say and goes
+   * back on its own — the phone app does the same, and being returned to where you came
+   * from is what makes a sub-page feel like one rather than a place you get stranded.
+   * Deliberately not called for "Custom…", which opens the fields rather than answering.
+   */
+  onDone: () => void;
 }
 
 /**
@@ -23,18 +32,20 @@ interface DatePickerProps {
  * a calendar each, and the presets answer the question most of the time. They open already
  * expanded when a custom range is what is set, so the page always shows the state it is in.
  */
-export function DatePicker({ from, to }: DatePickerProps) {
+export function DatePicker({ from, to, onDone }: DatePickerProps) {
   const navigate = useNavigate();
   const active = activePreset(from, to);
   /** A range that is set but is not one of the presets is, by definition, a custom one. */
   const hasCustom = Boolean((from || to) && !active);
   const [showCustom, setShowCustom] = useState(hasCustom);
 
-  const set = (next: { from?: string; to?: string }) =>
+  const set = (next: { from?: string; to?: string }) => {
     void navigate({
       to: '/notes',
       search: (prev) => ({ ...prev, from: undefined, to: undefined, ...next }),
     });
+    onDone();
+  };
 
   return (
     <div className="date-picker">
@@ -78,6 +89,9 @@ export function DatePicker({ from, to }: DatePickerProps) {
 
       {showCustom && (
         <div className="date-range">
+          {/* These write directly rather than through `set`: a custom range is usually two
+              fields, and returning to the root after the first one would take the second
+              away mid-edit. */}
           <label>
             <span className="small">From</span>
             <input

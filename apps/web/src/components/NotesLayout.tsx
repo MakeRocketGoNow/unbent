@@ -306,7 +306,9 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
                 <TagPicker tags={tags.data ?? []} selected={selectedTags} />
               )}
 
-              {sheetPage === 'dates' && <DatePicker from={from} to={to} />}
+              {sheetPage === 'dates' && (
+                <DatePicker from={from} to={to} onDone={() => setSheetPage('root')} />
+              )}
 
               {sheetPage === 'root' && (
                 <>
@@ -362,11 +364,21 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
                 </>
               )}
 
-              <div className="sheet-foot">
-                <Button variant="quiet" onClick={closeSheet}>
-                  Done
-                </Button>
-              </div>
+              {/*
+                  Done only on the root.
+
+                  A sub-page had one too, which offered two ways out that did different
+                  things — back to the filters, or out of the sheet entirely — from two
+                  controls a thumb's width apart. The phone app has the same pages and puts
+                  the way out only where the sheet itself ends; the arrow is how a page ends.
+              */}
+              {sheetPage === 'root' && (
+                <div className="sheet-foot">
+                  <Button variant="quiet" onClick={closeSheet}>
+                    Done
+                  </Button>
+                </div>
+              )}
             </Sheet>
           </>
         ) : (

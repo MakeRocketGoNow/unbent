@@ -102,7 +102,7 @@ describe('ActiveFilters', () => {
       to: undefined,
     });
     expect(await findByLabelText('Remove tag filter: Receipt')).toBeTruthy();
-    expect(await findByLabelText(/^Remove date filter: Since /)).toBeTruthy();
+    expect(await findByLabelText(/^Remove date filter: From /)).toBeTruthy();
   });
 
   /*

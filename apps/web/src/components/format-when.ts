@@ -32,7 +32,10 @@ export function rangeLabel(from?: string, to?: string): string | null {
     });
   };
   if (from && to) return `${day(from)} – ${day(to)}`;
-  if (from) return `Since ${day(from)}`;
+  // "From", not "Since": it is the word the Android app uses for the same filter, and the
+  // word the input under it is labelled with. It also pairs with "Until" — "Since"/"Until"
+  // reads as two different kinds of boundary when they are the two ends of one range.
+  if (from) return `From ${day(from)}`;
   if (to) return `Until ${day(to)}`;
   return null;
 }
