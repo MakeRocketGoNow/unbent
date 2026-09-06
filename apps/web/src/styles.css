@@ -3041,6 +3041,12 @@ a.sidebar-status:hover {
   min-width: 0;
 }
 
+/*
+   These keep the full 44px while the tag rows give up eight of it, which is a difference
+   worth stating rather than leaving to look like drift. Sort and Dates are closed lists of
+   five and seven — they fit on any screen with room to spare, so there is nothing to buy by
+   tightening them. The tag list is unbounded, and there density is the whole point.
+*/
 .sort-option,
 .date-option {
   display: flex;
@@ -3467,6 +3473,16 @@ a.sidebar-status:hover {
   height: 70dvh;
   padding-bottom: 0;
   border-bottom: none;
+  /*
+     One rhythm from the header down.
+
+     The gap above the chips was the sheet body's 0.75rem and the two below it were this
+     box's 0.4rem, so the first space in the column was nearly double the others — the
+     "spacing is really inconsistent" reading, and it came from the two gaps being set in
+     different rules that never had to agree. Matching the body's gap here is what makes
+     header, chips and field one evenly spaced stack.
+  */
+  gap: 0.75rem;
 }
 
 /*
@@ -3839,8 +3855,17 @@ a.sidebar-status:hover {
      A tag row is a full-width target, so it gets the full 44px — unlike the pills and chips
      below, which wrap and would push the notes down a row for every one of them.
   */
+  /*
+     Denser than the 44px this block gives every other control, and deliberately.
+
+     44px is the floor for a control you must not miss. These are a scrolling list of
+     alternatives where the cost of a mis-tap is one more tap — the same trade the note list
+     itself makes, whose rows are shorter still. At 44px only eleven tags were on screen out
+     of hundreds, which is the problem the picker exists to solve, so the rows give up the
+     eight pixels the list needs to show two more.
+  */
   .sheet .tag-picker-item {
-    min-height: 2.75rem;
+    min-height: 2.25rem;
     padding-inline: 0.5rem;
     font-size: 0.9rem;
   }
