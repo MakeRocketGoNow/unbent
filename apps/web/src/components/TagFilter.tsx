@@ -16,8 +16,16 @@ interface TagFilterProps {
  * to give up when nobody asked to filter. Collapsed it costs one row; the summary carries
  * the active tags so a filter can never be applied invisibly.
  *
- * Open where the sidebar has room, closed on a phone — `defaultOpen="wide"` is that, and
- * `Disclosure` carries the remount that default needs to survive a viewport change.
+ * **Closed by default, at every width.** It used to open wherever the sidebar had room,
+ * which was right when the body was a short wrap of pills. The picker is 210px — a find
+ * field and six rows — and open by default on an 850px laptop it left the note list 127px
+ * with one entry in it, on the screen whose entire job is listing notes. `never` is the
+ * policy `Disclosure` documents for content that is unbounded or occasional, and this is
+ * both: the tag list is as long as the archive is old, and most visits do not filter by tag.
+ *
+ * Deliberately not `wide` with a shorter cap instead. The cap that would fit here is about
+ * three rows, which is too few to browse and too many to be a summary — the control would
+ * be permanently open and permanently useless. Better to cost one tap and then be worth it.
  */
 export function TagFilter({ tags, selected }: TagFilterProps) {
   if (tags.length === 0) return null;
@@ -25,7 +33,7 @@ export function TagFilter({ tags, selected }: TagFilterProps) {
   return (
     <Disclosure
       className="tag-filter-wrap"
-      defaultOpen="wide"
+      defaultOpen="never"
       summary={
         <>
           Tags

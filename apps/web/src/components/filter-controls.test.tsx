@@ -108,4 +108,17 @@ describe('the sidebar filter controls', () => {
     await findByText('Tags');
     expect(container.querySelector('.tag-filter-summary-count')?.textContent).toBe('2');
   });
+
+  /*
+   * Closed at every width, including a desktop one.
+   *
+   * It opened wherever there was room while its body was a short wrap of pills. The picker
+   * is a find field and six rows, and open by default on an 850px laptop it left the note
+   * list 127px with one entry in it — on the screen whose whole job is listing notes.
+   */
+  it('keeps the tag picker closed until it is asked for, even with room for it', async () => {
+    const { container, findByText } = harness(<TagFilter tags={TAGS} selected={[]} />);
+    await findByText('Tags');
+    expect(container.querySelector('details')?.open).toBe(false);
+  });
 });

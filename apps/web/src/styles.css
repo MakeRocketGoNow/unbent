@@ -742,7 +742,22 @@ h1 {
   /* The one scrolling part of the sidebar: the count, search, and filters above it stay
      in place while the notes move. */
   overflow-y: auto;
-  flex: 1;
+  flex-grow: 1;
+  flex-shrink: 1;
+  /*
+     Claims 12rem before the leftovers are handed out, rather than taking what is left.
+
+     `flex: 1` on its own made this last in line: the controls above are content-sized, they
+     summed to less than the column, so nothing overflowed and this got the remainder — which
+     came to 20px once the tag picker and the date presets were above it. A `flex-basis` is a
+     claim rather than a leftover, so the space is taken from the one box above that can give
+     it (see `.tag-filter-wrap`) instead of from the notes.
+
+     `min-height: 0` still matters and is not redundant with the basis: it is what permits
+     the box to be *shorter* than its content and scroll, which is what makes it a list
+     rather than something that grows and takes the page with it.
+  */
+  flex-basis: 12rem;
   min-height: 0;
 }
 
@@ -1353,7 +1368,15 @@ a.overflow-item { text-decoration: none; }
   list-style: none;
   margin: 0;
   padding: 0;
-  max-height: 14rem;
+  /*
+     Bounded twice: a fixed ceiling, and a share of the viewport.
+
+     14rem is the comfortable size in a tall window. The `vh` term is what stops the picker
+     from taking the note list's room in a short one — the sidebar is a column of controls
+     above a list, and on a laptop at 850px the controls had grown to leave the notes 20px.
+     `min()` takes whichever is smaller, so the picker gives way rather than the notes.
+  */
+  max-height: min(14rem, 28vh);
   overflow-y: auto;
   overscroll-behavior: contain;
 }
@@ -1452,7 +1475,23 @@ a.sidebar-status:hover {
    tags filled the screen before a note was visible. The summary keeps the active tag on
    screen either way, so a filter is never applied invisibly.
 */
+/*
+   The tag filter yields before the note list does.
+
+   The picker is a bounded box rather than a wrapped pill field, so with the date presets
+   added above it the sidebar's controls came to 660px on an 850px viewport and left the
+   note list 20px — one row of nothing, below the fold, on a laptop.
+
+   `flex-shrink` alone could not fix that: the children summed to less than the column's
+   height, so nothing was overflowing and nothing was asked to shrink — the note list was
+   simply last in line for what was left. The fix is to make the list ask. It claims a floor
+   through `flex-basis` below, and this box is the one that gives it up, because it is the
+   only control here that scrolls inside itself; every other row is fixed and has nothing to
+   give.
+*/
 .tag-filter-wrap {
+  min-height: 0;
+  overflow: hidden;
   padding-bottom: 0.6rem;
   border-bottom: 1px solid var(--border);
 }
