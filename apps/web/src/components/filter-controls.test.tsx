@@ -68,8 +68,8 @@ describe('the sidebar filter controls', () => {
     expect(classes).toContain('date-range');
     expect(classes).toContain('export-filtered small');
     expect(classes).toContain('disclosure tag-filter-wrap');
-    expect(classes).toContain('tag-filter');
-    expect(classes).toContain('tag-filter-item active');
+    expect(classes).toContain('tag-picker');
+    expect(classes).toContain('tag-picker-list');
 
     // Two selects, both wearing the shared control class: notebook then sort.
     const selects = [...container.querySelectorAll('select')];

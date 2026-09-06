@@ -24,6 +24,7 @@ import { SortSelect } from './SortSelect.js';
 import { DateRange } from './DateRange.js';
 import { ExportLink } from './ExportLink.js';
 import { TagFilter } from './TagFilter.js';
+import { TagPicker } from './TagPicker.js';
 import { FilterSheet } from './FilterSheet.js';
 import { NoteListHead } from './NoteListHead.js';
 import { SortMenu } from './SortMenu.js';
@@ -251,33 +252,7 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
               {!searching && (tags.data?.length ?? 0) > 0 && (
                 <div className="tag-filter-open">
                   <span className="filter-section-label">Tags</span>
-                  <div className="tag-filter">
-                    {tags.data?.map((t) => {
-                      const on = selectedTags.includes(t.name);
-                      return (
-                        <button
-                          key={t.name}
-                          type="button"
-                          className={on ? 'tag-filter-item active' : 'tag-filter-item'}
-                          aria-pressed={on}
-                          onClick={() =>
-                            void navigate({
-                              to: '/notes',
-                              search: (prev) => {
-                                const next = on
-                                  ? selectedTags.filter((name) => name !== t.name)
-                                  : [...selectedTags, t.name];
-                                return { ...prev, tag: next.length ? next : undefined };
-                              },
-                            })
-                          }
-                        >
-                          {t.name}
-                          <span className="tag-count">{t.count}</span>
-                        </button>
-                      );
-                    })}
-                  </div>
+                  <TagPicker tags={tags.data ?? []} selected={selectedTags} />
                 </div>
               )}
 
