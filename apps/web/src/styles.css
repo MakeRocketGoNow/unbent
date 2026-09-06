@@ -2886,6 +2886,30 @@ a.sidebar-status:hover {
   position: relative;
 }
 
+/*
+   Search open: the field on its own row, the match count under it.
+
+   The count moves rather than disappearing with the header it was in — "6 matches" is the
+   one thing a search has to report back, and the row itself has no width to spare for it
+   beside a field that already had to take the whole line.
+*/
+.list-search-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  min-width: 0;
+}
+
+/*
+   Lined up with the text inside the field, not with the field's box, so the count reads as
+   the field's answer rather than as a stray label under it.
+
+   Three numbers, and all three have to be here or the alignment drifts the next time one of
+   them changes: the arrow's 2.75rem target, the row's 0.25rem gap, and the 0.6rem inset
+   `.search-field` puts on its own text.
+*/
+.list-search-count { padding-left: calc(2.75rem + 0.25rem + 0.6rem); }
+
 /* Search takes the row. A field sharing 375px with four controls is a field you cannot read
    back what you typed into. */
 .list-search {

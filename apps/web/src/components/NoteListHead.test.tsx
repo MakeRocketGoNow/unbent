@@ -58,6 +58,15 @@ describe('NoteListHead', () => {
     expect(dot?.getAttribute('aria-hidden')).toBe('true');
   });
 
+  /* The count moves with the field rather than vanishing with the header it lived in:
+     "6 matches" is the one thing a search has to report back. */
+  it('keeps reporting how many matched while searching', () => {
+    const { getByText } = render(
+      <NoteListHead {...props} searchOpen query="derm" count="6 matches" />,
+    );
+    expect(getByText('6 matches')).toBeTruthy();
+  });
+
   it('gives the whole row to the field once search is open', () => {
     const { container, getByLabelText } = render(<NoteListHead {...props} searchOpen query="derm" />);
     expect((getByLabelText('Search notes') as HTMLInputElement).value).toBe('derm');

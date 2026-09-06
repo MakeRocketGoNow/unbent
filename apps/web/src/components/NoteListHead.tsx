@@ -78,30 +78,36 @@ export function NoteListHead({
 
   if (searchOpen) {
     return (
-      <div className="list-search">
-        <button
-          type="button"
-          className="icon-btn"
-          // "Close search" would describe the chrome; this describes the effect, which is
-          // the part that is not obvious from an arrow.
-          aria-label="Close search and clear the query"
-          onClick={onCloseSearch}
-        >
-          <BackArrow />
-        </button>
-        <input
-          ref={field}
-          className="search-field"
-          type="search"
-          value={query}
-          placeholder="Search notes…"
-          aria-label="Search notes"
-          onChange={(e) => onQuery(e.target.value)}
-          onKeyDown={(e) => {
-            // Escape leaves the search the way it does everywhere else in the app.
-            if (e.key === 'Escape') onCloseSearch();
-          }}
-        />
+      <div className="list-search-wrap">
+        <div className="list-search">
+          <button
+            type="button"
+            className="icon-btn"
+            // "Close search" would describe the chrome; this describes the effect, which is
+            // the part that is not obvious from an arrow.
+            aria-label="Close search and clear the query"
+            onClick={onCloseSearch}
+          >
+            <BackArrow />
+          </button>
+          <input
+            ref={field}
+            className="search-field"
+            type="search"
+            value={query}
+            placeholder="Search notes…"
+            aria-label="Search notes"
+            onChange={(e) => onQuery(e.target.value)}
+            onKeyDown={(e) => {
+              // Escape leaves the search the way it does everywhere else in the app.
+              if (e.key === 'Escape') onCloseSearch();
+            }}
+          />
+        </div>
+        {/* The count follows the field rather than vanishing with the header row. "6 matches"
+            is the one thing a search has to report, and the row above has no width to spare
+            for it beside a field that already had to take the whole line. */}
+        <span className="count list-search-count">{count}</span>
       </div>
     );
   }
