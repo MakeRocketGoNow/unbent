@@ -164,6 +164,73 @@ rather than a var only to keep the address list out of the repo. Leaving it empt
 allowed — an instance is not locked to its operator — but a deployed Worker with no
 allowlist warns in its log, naming what a stranger could sign up with.
 
+### The dev instance
+
+`https://dev.unbent.app` is one standing Worker, `unbent-dev`, deployed from `main` by the
+same job that deploys production and configured as `[env.dev]` in `apps/api/wrangler.toml`.
+It runs on the `unbent-dev` D1 and the `unbent-dev-blobs` bucket that every preview also
+uses, so it is a second window onto the same scratch data rather than a fourth environment
+with data of its own.
+
+It exists because a preview cannot be a stable host, and several things need one:
+
+- **OAuth.** A callback URL cannot be registered against a hostname that changes every PR.
+- **Passkeys.** `auth.ts` derives the `rpID` from `APP_URL`, so one enrolled on a preview is
+  useless on the next.
+- **Mail.** A reset or sign-in link is only worth sending to a host that will still be there
+  when the message is opened.
+- **The Android app.** `DEFAULT_INSTANCE` is `https://unbent.app`, and the Settings override
+  had nothing to point at that was neither production nor gone by morning.
+
+Before it, production was the only instance anywhere with a hostname stable enough to prove
+a sign-in flow against — which is a poor place to find out that one does not work.
+
+It is not staging, and should not be treated as one. Nothing in it is backed up, every
+preview writes to the same database, and a PR's migration lands there before the PR merges
+— so the dev instance can be briefly wrong for the code `main` is running. That is the same
+sharp edge previews have, with the same fix.
+
+Unlike a preview it carries the `ai` binding, so it extracts a PDF's text on the server as
+production does. An instance is only worth having if the path it exercises is production's,
+and extraction is the half of an import that differs most between the two.
+
+#### DNS for `dev.unbent.app`
+
+There is no record to create by hand. `[[env.dev.routes]]` sets `custom_domain = true`, the
+same mechanism production's apex uses: on the first `wrangler deploy --env dev` Cloudflare
+creates the proxied record, issues the certificate, and manages both from then on. Two
+things have to be true first, and on an instance that already deploys production both
+already are:
+
+- `unbent.app` is a zone on the same Cloudflare account as the Worker.
+- `CLOUDFLARE_API_TOKEN` has **Workers Scripts:Edit**, **Workers Routes:Edit** and
+  **Zone → DNS:Edit** on that zone. Production's apex is a custom domain too, so the token
+  production deploys with already carries all three.
+
+So the setup is the first push to `main` after `[env.dev]` exists. Verify it landed:
+
+```bash
+dig +short dev.unbent.app            # Cloudflare proxy addresses, the same shape as the apex
+curl -s https://dev.unbent.app/api/health
+```
+
+Certificate issuance takes a minute or two. Until it finishes the name resolves but TLS
+fails; that is the certificate still being issued, not a misconfiguration.
+
+| If the deploy fails with | The cause is |
+| --- | --- |
+| an authentication error, code 10000 | the token is missing DNS:Edit or Workers Routes:Edit on the zone |
+| a record already existing for `dev` | something else in the zone owns that name — delete it in the dashboard and redeploy |
+| the zone not being found | `unbent.app` is on another account, or another registrar entirely |
+
+If the zone is not on Cloudflare, or you would rather wrangler did not touch DNS: delete the
+`[[env.dev.routes]]` block, set `workers_dev = true`, and point `APP_URL` at
+`https://unbent-dev.<subdomain>.workers.dev`. A standing Worker's workers.dev URL is stable
+too, so OAuth, passkeys and mail all still work against it — only the name is uglier.
+
+To point the Android app at it, put the host in Settings; `Prefs.instance` is per-origin, so
+the production session is kept rather than overwritten.
+
 ### Preview deployments
 
 Every pull request that touches the web app or the API gets a URL of its own —
@@ -179,28 +246,36 @@ preview built on them would run against the production database with `APP_URL` s
 reading `https://unbent.app`, and refuse every sign-in from the preview host as an invalid
 origin. That is why the Worker and its `APP_URL` are per PR.
 
-The data underneath is not. All previews share one `dev` instance — the `unbent-dev` D1 and
-the `unbent-dev-blobs` bucket, configured as `[env.dev]` in `apps/api/wrangler.toml` — kept
-well away from production but not from each other. It is a scratch environment: notes made
-on one PR's preview are visible from another's, and nothing in it is backed up.
+The data underneath is not. All previews share the `unbent-dev` D1 and the
+`unbent-dev-blobs` bucket, configured as `[env.preview]` in `apps/api/wrangler.toml` and
+served with a stable hostname by [the dev instance](#the-dev-instance) above — kept well
+away from production but not from each other. It is a scratch environment: notes made on
+one PR's preview are visible from another's and from `dev.unbent.app`, and nothing in it is
+backed up.
+
+The environment is called `preview` rather than `dev` because the custom domain cannot live
+in a block previews reuse: `--name` changes which script a deploy targets but not which
+hostname it claims, so a route here would be taken over by whichever preview deployed last.
 
 Sign-in on a preview is a password and an allowlisted address. That is not a special case
 but the default any instance falls back to with no OAuth and no mail configured, as
 ["Choosing sign-in methods"](#choosing-sign-in-methods) describes. OAuth is not offered
 because a callback URL cannot be registered for a host that changes with every PR. Passkeys
-work, each bound to the one preview host it was created on.
+work, each bound to the one preview host it was created on. Both are what the dev instance
+is for — same data, hostname that stays put.
 
 Migrations are the sharp edge. A PR that adds one applies it to the shared database on its
 first preview deploy, and nothing rolls it back when the PR is abandoned. Wrangler tracks
 what it has applied by filename, so the stale file is simply never reconsidered — but its
 schema change stays, and the next migration written against a schema that does not have it
-fails on the preview while passing everywhere else. The fix is to recreate the instance,
-which costs nothing but the scratch data:
+fails on the preview while passing everywhere else. It reaches `dev.unbent.app` too, which
+runs `main` against whatever schema the last preview left. The fix is to recreate the
+instance, which costs nothing but the scratch data:
 
 ```bash
 cd apps/api
 pnpm exec wrangler d1 delete unbent-dev
-pnpm exec wrangler d1 create unbent-dev   # paste the new id into [env.dev]
+pnpm exec wrangler d1 create unbent-dev   # paste the new id into [env.dev] and [env.preview]
 ```
 
 Setting this up on a fresh fork takes one D1, one bucket, and three new repository
@@ -208,7 +283,7 @@ settings, alongside the Cloudflare credentials production already deploys with:
 
 ```bash
 cd apps/api
-pnpm exec wrangler d1 create unbent-dev        # paste the id into [env.dev]
+pnpm exec wrangler d1 create unbent-dev        # paste the id into [env.dev] and [env.preview]
 pnpm exec wrangler r2 bucket create unbent-dev-blobs
 ```
 
@@ -216,8 +291,8 @@ pnpm exec wrangler r2 bucket create unbent-dev-blobs
 | --- | --- | --- |
 | `CLOUDFLARE_WORKERS_SUBDOMAIN` | variable | the account's `*.workers.dev` name, from the Cloudflare dashboard |
 | `DEV_BETTER_AUTH_SECRET` | secret | a fresh `openssl rand -base64 32`, not production's |
-| `DEV_ALLOWED_EMAILS` | secret | who may sign in to a preview |
-| `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID` | secret | the same pair production deploys with, needing D1 and R2 edit scopes |
+| `DEV_ALLOWED_EMAILS` | secret | who may sign in to a preview or the dev instance |
+| `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID` | secret | the same pair production deploys with, needing D1 and R2 edit scopes, plus the DNS scope [the dev instance](#dns-for-devunbentapp) describes |
 
 The subdomain is a variable rather than a secret because the workflow has to build the URL
 before deploying — `APP_URL` is baked in at deploy time — and a masked value would arrive
