@@ -14,8 +14,8 @@ interface SortSelectProps {
  * and naming them ("Oldest first") is plainer than asking someone to assemble "created" and
  * "ascending" themselves.
  *
- * The desktop spelling of `SortMenu`, which is the phone's. Both read `SORT_OPTIONS`, so
- * the two cannot come to offer different orders.
+ * The desktop spelling of the phone's sort sheet, which hangs off `NotesOverflow`. Both
+ * read `SORT_OPTIONS`, so the two cannot come to offer different orders.
  *
  * Callers hide this while searching: results come back ranked by relevance, and reordering
  * them by date would throw away the ranking that makes them worth showing.

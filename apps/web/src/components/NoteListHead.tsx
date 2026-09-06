@@ -26,8 +26,8 @@ interface NoteListHeadProps {
   onOpenMenu: () => void;
   /** Lights the dot on the filter icon: a narrowed list should never look like the whole archive. */
   filtered: boolean;
-  /** The sort menu, hidden while searching. Passed in so this component owns no routing. */
-  sortMenu: ReactNode;
+  /** The ⋯ menu: sort, and the way to Settings. Passed in so this owns no routing. */
+  overflow: ReactNode;
 }
 
 /**
@@ -63,7 +63,7 @@ export function NoteListHead({
   onOpenFilters,
   onOpenMenu,
   filtered,
-  sortMenu,
+  overflow,
 }: NoteListHeadProps) {
   const field = useRef<HTMLInputElement>(null);
 
@@ -77,37 +77,43 @@ export function NoteListHead({
   }, [searchOpen]);
 
   if (searchOpen) {
+    /*
+     * One row, the same height as the row it replaces.
+     *
+     * The count is deliberately not here. It was, on a second line under the field, and
+     * that made the search row taller than the closed header — so opening search pushed
+     * the whole note list down and closing it pulled the list back up. Motion the user did
+     * not ask for reads as jank, and it was happening on the most-used control in the view.
+     *
+     * Nothing is lost by dropping it: the results are the answer, and the list underneath
+     * is showing them. A count is worth a line when it describes something you cannot see
+     * all of, which is the closed header's job, not this one's.
+     */
     return (
-      <div className="list-search-wrap">
-        <div className="list-search">
-          <button
-            type="button"
-            className="icon-btn"
-            // "Close search" would describe the chrome; this describes the effect, which is
-            // the part that is not obvious from an arrow.
-            aria-label="Close search and clear the query"
-            onClick={onCloseSearch}
-          >
-            <BackArrow />
-          </button>
-          <input
-            ref={field}
-            className="search-field"
-            type="search"
-            value={query}
-            placeholder="Search notes…"
-            aria-label="Search notes"
-            onChange={(e) => onQuery(e.target.value)}
-            onKeyDown={(e) => {
-              // Escape leaves the search the way it does everywhere else in the app.
-              if (e.key === 'Escape') onCloseSearch();
-            }}
-          />
-        </div>
-        {/* The count follows the field rather than vanishing with the header row. "6 matches"
-            is the one thing a search has to report, and the row above has no width to spare
-            for it beside a field that already had to take the whole line. */}
-        <span className="count list-search-count">{count}</span>
+      <div className="list-search">
+        <button
+          type="button"
+          className="icon-btn"
+          // "Close search" would describe the chrome; this describes the effect, which is
+          // the part that is not obvious from an arrow.
+          aria-label="Close search and clear the query"
+          onClick={onCloseSearch}
+        >
+          <BackArrow />
+        </button>
+        <input
+          ref={field}
+          className="search-field"
+          type="search"
+          value={query}
+          placeholder="Search notes…"
+          aria-label="Search notes"
+          onChange={(e) => onQuery(e.target.value)}
+          onKeyDown={(e) => {
+            // Escape leaves the search the way it does everywhere else in the app.
+            if (e.key === 'Escape') onCloseSearch();
+          }}
+        />
       </div>
     );
   }
@@ -147,7 +153,7 @@ export function NoteListHead({
           <FilterIcon />
           {filtered && <span className="badge-dot" aria-hidden="true" />}
         </button>
-        {sortMenu}
+        {overflow}
       </div>
     </div>
   );

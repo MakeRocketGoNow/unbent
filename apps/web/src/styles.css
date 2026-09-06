@@ -2863,6 +2863,10 @@ a.sidebar-status:hover {
   justify-content: space-between;
   gap: 0.5rem;
   min-width: 0;
+  /* The same floor `.list-search` takes, so swapping between them moves nothing. Both are
+     already at least this tall through their 44px controls; stating it is what keeps the
+     two in step if the title or the count ever changes size. */
+  min-height: 2.75rem;
 }
 
 /*
@@ -2932,30 +2936,27 @@ a.sidebar-status:hover {
    one thing a search has to report back, and the row itself has no width to spare for it
    beside a field that already had to take the whole line.
 */
-.list-search-wrap {
-  display: flex;
-  flex-direction: column;
-  gap: 0.15rem;
-  min-width: 0;
-}
-
 /*
-   Lined up with the text inside the field, not with the field's box, so the count reads as
-   the field's answer rather than as a stray label under it.
+   Search takes the row, and holds the header's height while it does.
 
-   Three numbers, and all three have to be here or the alignment drifts the next time one of
-   them changes: the arrow's 2.75rem target, the row's 0.25rem gap, and the 0.6rem inset
-   `.search-field` puts on its own text.
+   A field sharing 375px with four controls is a field you cannot read back what you typed
+   into, so it gets the whole line.
+
+   The `min-height` is the part that is not obvious. The closed header is two lines — a
+   title over a count — and this row is one, so without a floor here opening search pulled
+   the entire note list up by the difference and dropped it back on the way out. Motion
+   nobody asked for, on the most-used control in the view.
+
+   It matches `.list-head`'s own floor rather than guessing at the two-line height, so the
+   swap stays seamless if either line's type changes. Measured: both rows 44px, and the note
+   list does not move by a pixel in either direction.
 */
-.list-search-count { padding-left: calc(2.75rem + 0.25rem + 0.6rem); }
-
-/* Search takes the row. A field sharing 375px with four controls is a field you cannot read
-   back what you typed into. */
 .list-search {
   display: flex;
   align-items: center;
   gap: 0.25rem;
   min-width: 0;
+  min-height: 2.75rem;
 }
 
 .list-search .search-field {
@@ -3019,6 +3020,78 @@ a.sidebar-status:hover {
 .fab:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 3px;
+}
+
+/*
+   A list of choices filling a sheet page: the sort orders, the date ranges.
+
+   Full-width rows rather than the pills these replaced. A pill is for a value among a few
+   that fit on one line; once a choice has its own page there is room to give each option a
+   whole row, which is easier to hit and reads down the page instead of wrapping. It is the
+   same row `.tag-picker-item` uses, and deliberately so — three lists in one sheet that
+   looked like three different kinds of control would be three, to the eye.
+*/
+.sort-options,
+.date-picker {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.sort-option,
+.date-option {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  min-height: 2.75rem;
+  padding: 0.4rem 0.5rem;
+  font: inherit;
+  font-size: 0.95rem;
+  text-align: left;
+  color: var(--fg);
+  background: none;
+  border: none;
+  border-radius: 0.35rem;
+  cursor: pointer;
+}
+
+.sort-option:hover,
+.date-option:hover { background: color-mix(in srgb, var(--fg) 8%, transparent); }
+
+.sort-option:focus-visible,
+.date-option:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+/*
+   The one in effect, marked with a tick at the end of its row.
+
+   A tick rather than a fill: these are a choice among alternatives, not a set of things
+   switched on, and the filled treatment is what `.pill.active` and `.filter-chip` use for
+   "this is applied". Drawn as a rotated box with two borders — the same construction as the
+   disclosure chevron, so it needs no glyph and is correct in dark mode for free.
+*/
+.sort-option.current,
+.date-option.current { color: var(--accent); }
+
+.sort-option.current::after,
+.date-option.current::after {
+  content: '';
+  flex: 0 0 auto;
+  margin-left: auto;
+  width: 0.3rem;
+  height: 0.6rem;
+  border-right: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
+  transform: translateY(-15%) rotate(45deg);
+}
+
+/* The custom fields sit under the row that reveals them, indented to read as its content
+   rather than as two more options. */
+.date-picker .date-range {
+  padding: 0.25rem 0.5rem 0.5rem;
 }
 
 /* ---------------------------------------------------------------------------------

@@ -26,11 +26,13 @@ import { ExportLink } from './ExportLink.js';
 import { TagFilter } from './TagFilter.js';
 import { TagPicker } from './TagPicker.js';
 import { FilterRow } from './FilterRow.js';
+import { DatePicker } from './DatePicker.js';
+import { rangeLabel } from './format-when.js';
 import { NotebookDrawer } from './NotebookDrawer.js';
 import { PlusIcon } from './icons.js';
 import { Sheet } from './Sheet.js';
 import { NoteListHead } from './NoteListHead.js';
-import { SortMenu } from './SortMenu.js';
+import { NotesOverflow } from './NotesOverflow.js';
 import { ActiveFilters } from './ActiveFilters.js';
 import { useMediaQuery, MOBILE_QUERY } from '../useMediaQuery.js';
 import { useSession } from '../auth-client.js';
@@ -116,7 +118,7 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
    * second sheet over the first, which would dim the first behind the second and leave two
    * scrims on screen — Android's `FilterSheet` records the same choice.
    */
-  const [sheetPage, setSheetPage] = useState<'root' | 'tags'>('root');
+  const [sheetPage, setSheetPage] = useState<'root' | 'tags' | 'dates'>('root');
 
   /*
    * Closing always returns to the root. A sheet reopening on the page it was last closed
@@ -233,9 +235,11 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
               onOpenFilters={() => setSheetOpen(true)}
               onOpenMenu={() => setDrawerOpen(true)}
               filtered={sheetFiltered}
-              /* Hidden while searching: results come back ranked by relevance, and
-                 reordering them by date would throw away the ranking. */
-              sortMenu={results === null ? <SortMenu sort={sort} order={order} /> : null}
+              /* Sort is hidden while searching — results come back ranked by relevance,
+                 and reordering them by date would throw away that ranking — but the menu
+                 itself stays, because Settings is behind it and the topbar that used to
+                 carry Settings is not on this screen. */
+              overflow={<NotesOverflow sort={sort} order={order} showSort={results === null} />}
             />
 
             {error && <p className="bad small">{(error as Error).message}</p>}
@@ -265,8 +269,10 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
             <Sheet
               open={sheetOpen}
               onClose={closeSheet}
-              title={sheetPage === 'tags' ? 'Tags' : 'Filter notes'}
-              onBack={sheetPage === 'tags' ? () => setSheetPage('root') : undefined}
+              title={
+                sheetPage === 'tags' ? 'Tags' : sheetPage === 'dates' ? 'Dates' : 'Filter notes'
+              }
+              onBack={sheetPage === 'root' ? undefined : () => setSheetPage('root')}
               headAction={
                 // Offered only when it would do something: a permanently visible Clear all
                 // on an unfiltered list promises an effect it cannot have. Not on the tags
@@ -296,20 +302,25 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
                 ) : null
               }
             >
-              {sheetPage === 'tags' ? (
+              {sheetPage === 'tags' && (
                 <TagPicker tags={tags.data ?? []} selected={selectedTags} />
-              ) : (
+              )}
+
+              {sheetPage === 'dates' && <DatePicker from={from} to={to} />}
+
+              {sheetPage === 'root' && (
                 <>
-                  {/* The sheet says what it is doing before it says what it can do.
-                      Unfiltered, that is a sentence; filtered, the chips say it, and they
-                      are also how each one comes off. */}
-                  {isFiltered ? (
-                    <ActiveFilters
-                      notebook={notebook}
-                      tags={selectedTags}
-                      from={from}
-                      to={to}
-                    />
+                  {/*
+                      What this sheet has applied, and how each of it comes off.
+
+                      The notebook is deliberately absent, unlike Android's version of this
+                      surface. There it is the one filter the sheet reports but does not
+                      set, because its drawer is the only place naming it; here the list
+                      header names it permanently, one line above, so a chip for it was the
+                      third place saying "Appliance Manuals" on one screen.
+                  */}
+                  {sheetFiltered ? (
+                    <ActiveFilters tags={selectedTags} from={from} to={to} />
                   ) : (
                     <p className="sheet-summary small">Nothing is filtered.</p>
                   )}
@@ -317,18 +328,15 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
                   <hr className="sheet-rule" />
 
                   {/*
-                      Neither the notebook nor the sort is here.
+                      Two rows, each opening a page of its own — the shape Android's sheet
+                      settled on, and for the reason its root page stays readable: the tag
+                      picker is a find field and an unbounded list, and the dates are five
+                      pills plus two labelled fields. Inlined, either one is taller than
+                      everything else here put together.
 
-                      The notebook is a place you go, so it is in the drawer — the rule that
-                      picking one clears the tags has been saying that all along. Sort is not
-                      a filter either: it changes the order of the list rather than which
-                      notes are in it, and among the filters "Title A–Z" invites being read
-                      as something that narrows. Both have their own control in the header.
-                  */}
-                  {/*
-                      Tags are a page rather than a panel here. The picker is a find field
-                      and an unbounded list, and inlining it would make the sheet mostly
-                      tags with the other filters pushed below the fold.
+                      Neither the notebook nor the sort is among them. The notebook is a
+                      place you go, so it is in the drawer; sort changes the order rather
+                      than the membership, so it is under the ⋯ with Settings.
                   */}
                   {!searching && (tags.data?.length ?? 0) > 0 && (
                     <FilterRow
@@ -342,10 +350,11 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
                     />
                   )}
 
-                  <div className="filter-section">
-                    <span className="filter-section-label">Dates</span>
-                    <DateRange from={from} to={to} />
-                  </div>
+                  <FilterRow
+                    label="Dates"
+                    value={rangeLabel(from, to) ?? undefined}
+                    onClick={() => setSheetPage('dates')}
+                  />
 
                   {!searching && isFiltered && (
                     <ExportLink filter={filter} sort={sort} total={total} />

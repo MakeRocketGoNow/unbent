@@ -23,7 +23,7 @@ const props = {
   onOpenFilters: () => {},
   onOpenMenu: () => {},
   filtered: false,
-  sortMenu: <button>sort</button>,
+  overflow: <button>more</button>,
 };
 
 describe('NoteListHead', () => {
@@ -58,13 +58,19 @@ describe('NoteListHead', () => {
     expect(dot?.getAttribute('aria-hidden')).toBe('true');
   });
 
-  /* The count moves with the field rather than vanishing with the header it lived in:
-     "6 matches" is the one thing a search has to report back. */
-  it('keeps reporting how many matched while searching', () => {
-    const { getByText } = render(
+  /*
+   * The count is not carried into the search row, and that is the point.
+   *
+   * It was, on a second line under the field, which made the open row taller than the
+   * closed header and pushed the whole note list down on every search. The results are the
+   * answer to a search and they are already on screen; a count earns a line when it
+   * describes something you cannot see all of.
+   */
+  it('does not carry the count into the search row, which kept the list from shifting', () => {
+    const { queryByText } = render(
       <NoteListHead {...props} searchOpen query="derm" count="6 matches" />,
     );
-    expect(getByText('6 matches')).toBeTruthy();
+    expect(queryByText('6 matches')).toBeNull();
   });
 
   it('gives the whole row to the field once search is open', () => {
@@ -96,9 +102,11 @@ describe('NoteListHead', () => {
     expect(onCloseSearch).toHaveBeenCalled();
   });
 
-  it('hides the sort control while searching, where ranking is the order', () => {
-    const { queryByText } = render(<NoteListHead {...props} searchOpen sortMenu={null} />);
-    expect(queryByText('sort')).toBeNull();
+  /* The whole action row goes while searching, the ⋯ included — what belongs in it is
+     decided by the caller, since sort is hidden there but Settings is not. */
+  it('puts the actions away while the field has the row', () => {
+    const { queryByText } = render(<NoteListHead {...props} searchOpen />);
+    expect(queryByText('more')).toBeNull();
   });
 
   it('reports typing so the URL stays the one source of the query', () => {
