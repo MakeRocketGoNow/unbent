@@ -2887,6 +2887,43 @@ a.sidebar-status:hover {
   box-shadow: 0 -8px 32px color-mix(in srgb, var(--fg) 18%, transparent);
 }
 
+/*
+   From the side instead: a drawer.
+
+   Pinned to the inline start and run to the full height, which is what separates navigation
+   from the bottom sheet's "about the view behind it". `margin-inline-end: auto` is the
+   mirror of the bottom sheet's `margin-top: auto` — the free space goes on the far side, so
+   the box lands against the near edge without either of them naming a direction that would
+   be wrong in a right-to-left layout.
+
+   Width is bounded twice: a drawer wider than the notes it filters looks like the app has
+   changed page, and one that reaches the far edge leaves nothing of the list visible to
+   come back to.
+*/
+.sheet-side {
+  margin: 0 auto 0 0;
+  width: min(20rem, 85vw);
+  height: 100dvh;
+  max-height: none;
+  border-radius: 0 1rem 1rem 0;
+}
+
+/* The body fills the drawer, so its own foot can sit on the floor. */
+.sheet-side .sheet-body {
+  min-height: 100%;
+  padding-top: 1rem;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .sheet-side[open] { translate: 0 0; }
+
+  @starting-style {
+    .sheet-side[open] { translate: -1.5rem 0; }
+  }
+
+  .sheet-side:not([open]) { translate: -1.5rem 0; }
+}
+
 .sheet::backdrop {
   /* Fixed ink rather than a token: --fg is near-white in dark mode, and a scrim that
      inverts with the theme lightens the screen it is supposed to be dimming. */
@@ -2946,6 +2983,8 @@ a.sidebar-status:hover {
 
 /* The vocabulary phones have taught for "this panel came up from the bottom". Decorative:
    there is no drag to hint at, and it is not in the tab order or the accessibility tree. */
+.sheet-side .sheet-grip { display: none; }
+
 .sheet-grip {
   flex: 0 0 auto;
   width: 2.25rem;

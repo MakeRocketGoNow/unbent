@@ -1,7 +1,7 @@
 import { useEffect, useRef, type ReactNode } from 'react';
 import { BackArrow } from './BackArrow.js';
 
-export interface FilterSheetProps {
+export interface SheetProps {
   open: boolean;
   /** Called for every way out: Done, the backdrop, Escape, and the platform's own back. */
   onClose: () => void;
@@ -19,11 +19,20 @@ export interface FilterSheetProps {
    * is what a scrim means.
    */
   onBack?: () => void;
+  /**
+   * Which edge it comes from.
+   *
+   * `bottom` is a sheet about the whole view — the filters, which are about the list behind
+   * them. `start` is navigation: a drawer of places to go, which is why it takes the side
+   * the back gesture and the hamburger both live on, and why it runs the full height rather
+   * than sizing to its content.
+   */
+  side?: 'bottom' | 'start';
   children: ReactNode;
 }
 
 /**
- * A bottom sheet, on the platform's `<dialog>`.
+ * A sheet, on the platform's `<dialog>` — from the floor by default, or from the side.
  *
  * Nothing else in this app portals, and both `OverflowMenu` and `Confirm` carry comments
  * explaining why they do not — a menu of three items and an inline confirmation about a
@@ -44,15 +53,21 @@ export interface FilterSheetProps {
  * platform does not provide, and hand-rolling a gesture that fights the sheet's own scroll
  * is how these end up feeling broken. The backdrop, Escape, the back gesture and Done are
  * four ways out already.
+ *
+ * One component for both edges rather than a `Drawer` beside a `Sheet`: everything that is
+ * hard here — the modality, the four ways out, the padding that must not be on the dialog —
+ * is the same for both, and the difference is which edge the box is pinned to. Splitting
+ * them would mean maintaining that list twice.
  */
-export function FilterSheet({
+export function Sheet({
   open,
   onClose,
   title,
   headAction,
   onBack,
+  side = 'bottom',
   children,
-}: FilterSheetProps) {
+}: SheetProps) {
   const ref = useRef<HTMLDialogElement>(null);
 
   useEffect(() => {
@@ -71,7 +86,7 @@ export function FilterSheet({
   return (
     <dialog
       ref={ref}
-      className="sheet"
+      className={side === 'start' ? 'sheet sheet-side' : 'sheet'}
       aria-label={title}
       // Escape. The event is the platform telling us it is about to close; the state has to
       // follow or the next `open` finds `el.open` already false and does nothing.

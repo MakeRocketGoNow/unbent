@@ -1,6 +1,6 @@
 import { describe, it, expect, afterEach, vi } from 'vitest';
 import { render, cleanup, fireEvent } from '@testing-library/react';
-import { FilterSheet } from './FilterSheet.js';
+import { Sheet } from './Sheet.js';
 
 /**
  * The modality contract.
@@ -28,15 +28,15 @@ function stubDialog() {
 
 const dialogOf = (c: HTMLElement) => c.querySelector('dialog') as HTMLDialogElement;
 
-describe('FilterSheet', () => {
+describe('Sheet', () => {
   afterEach(cleanup);
 
   it('stays shut until it is opened', () => {
     const { showModal } = stubDialog();
     const { container } = render(
-      <FilterSheet open={false} onClose={() => {}} title="Filter notes">
+      <Sheet open={false} onClose={() => {}} title="Filter notes">
         body
-      </FilterSheet>,
+      </Sheet>,
     );
     expect(showModal).not.toHaveBeenCalled();
     expect(dialogOf(container).open).toBe(false);
@@ -50,14 +50,14 @@ describe('FilterSheet', () => {
   it('opens modally, so the rest of the page is inert', () => {
     const { showModal } = stubDialog();
     const { rerender, container } = render(
-      <FilterSheet open={false} onClose={() => {}} title="Filter notes">
+      <Sheet open={false} onClose={() => {}} title="Filter notes">
         body
-      </FilterSheet>,
+      </Sheet>,
     );
     rerender(
-      <FilterSheet open onClose={() => {}} title="Filter notes">
+      <Sheet open onClose={() => {}} title="Filter notes">
         body
-      </FilterSheet>,
+      </Sheet>,
     );
     expect(showModal).toHaveBeenCalledTimes(1);
     expect(dialogOf(container).open).toBe(true);
@@ -66,14 +66,14 @@ describe('FilterSheet', () => {
   it('closes the element when the prop goes back down', () => {
     const { close } = stubDialog();
     const { rerender } = render(
-      <FilterSheet open onClose={() => {}} title="Filter notes">
+      <Sheet open onClose={() => {}} title="Filter notes">
         body
-      </FilterSheet>,
+      </Sheet>,
     );
     rerender(
-      <FilterSheet open={false} onClose={() => {}} title="Filter notes">
+      <Sheet open={false} onClose={() => {}} title="Filter notes">
         body
-      </FilterSheet>,
+      </Sheet>,
     );
     expect(close).toHaveBeenCalledTimes(1);
   });
@@ -87,9 +87,9 @@ describe('FilterSheet', () => {
     stubDialog();
     const onClose = vi.fn();
     const { container } = render(
-      <FilterSheet open onClose={onClose} title="Filter notes">
+      <Sheet open onClose={onClose} title="Filter notes">
         body
-      </FilterSheet>,
+      </Sheet>,
     );
     fireEvent(dialogOf(container), new Event('cancel', { cancelable: true }));
     expect(onClose).toHaveBeenCalled();
@@ -99,9 +99,9 @@ describe('FilterSheet', () => {
     stubDialog();
     const onClose = vi.fn();
     const { container } = render(
-      <FilterSheet open onClose={onClose} title="Filter notes">
+      <Sheet open onClose={onClose} title="Filter notes">
         body
-      </FilterSheet>,
+      </Sheet>,
     );
     fireEvent(dialogOf(container), new Event('close'));
     expect(onClose).toHaveBeenCalled();
@@ -111,9 +111,9 @@ describe('FilterSheet', () => {
     stubDialog();
     const onClose = vi.fn();
     const { container } = render(
-      <FilterSheet open onClose={onClose} title="Filter notes">
+      <Sheet open onClose={onClose} title="Filter notes">
         body
-      </FilterSheet>,
+      </Sheet>,
     );
     fireEvent.click(dialogOf(container));
     expect(onClose).toHaveBeenCalledTimes(1);
@@ -128,9 +128,9 @@ describe('FilterSheet', () => {
     stubDialog();
     const onClose = vi.fn();
     const { container, getByText } = render(
-      <FilterSheet open onClose={onClose} title="Filter notes">
+      <Sheet open onClose={onClose} title="Filter notes">
         <button type="button">A control</button>
-      </FilterSheet>,
+      </Sheet>,
     );
     fireEvent.click(getByText('A control'));
     fireEvent.click(container.querySelector('.sheet-body') as HTMLElement);
@@ -145,16 +145,16 @@ describe('FilterSheet', () => {
     stubDialog();
     const onBack = vi.fn();
     const { queryByLabelText, rerender, getByLabelText } = render(
-      <FilterSheet open onClose={() => {}} title="Filter notes">
+      <Sheet open onClose={() => {}} title="Filter notes">
         body
-      </FilterSheet>,
+      </Sheet>,
     );
     expect(queryByLabelText('Back')).toBeNull();
 
     rerender(
-      <FilterSheet open onClose={() => {}} title="Tags" onBack={onBack}>
+      <Sheet open onClose={() => {}} title="Tags" onBack={onBack}>
         body
-      </FilterSheet>,
+      </Sheet>,
     );
     fireEvent.click(getByLabelText('Back'));
     expect(onBack).toHaveBeenCalledTimes(1);
@@ -163,19 +163,54 @@ describe('FilterSheet', () => {
   it('takes its accessible name from the page it is showing', () => {
     stubDialog();
     const { container } = render(
-      <FilterSheet open onClose={() => {}} title="Tags" onBack={() => {}}>
+      <Sheet open onClose={() => {}} title="Tags" onBack={() => {}}>
         body
-      </FilterSheet>,
+      </Sheet>,
     );
     expect(dialogOf(container)).toHaveProperty('ariaLabel', 'Tags');
+  });
+
+  /*
+   * One component, two edges. The class is the whole difference — everything hard about
+   * this (the modality, the four ways out, where the padding lives) is shared, which is why
+   * a separate `Drawer` component would have meant maintaining that list twice.
+   */
+  it('comes from the floor by default and from the side when asked', () => {
+    stubDialog();
+    const { container, rerender } = render(
+      <Sheet open onClose={() => {}} title="Filter notes">
+        body
+      </Sheet>,
+    );
+    expect(dialogOf(container).className).toBe('sheet');
+
+    rerender(
+      <Sheet open onClose={() => {}} title="Notebooks" side="start">
+        body
+      </Sheet>,
+    );
+    expect(dialogOf(container).className).toBe('sheet sheet-side');
+  });
+
+  it('closes the same four ways whichever edge it came from', () => {
+    stubDialog();
+    const onClose = vi.fn();
+    const { container } = render(
+      <Sheet open onClose={onClose} title="Notebooks" side="start">
+        body
+      </Sheet>,
+    );
+    fireEvent(dialogOf(container), new Event('cancel', { cancelable: true }));
+    fireEvent.click(dialogOf(container));
+    expect(onClose).toHaveBeenCalledTimes(2);
   });
 
   it('names itself for a screen reader and on screen, and carries a head action', () => {
     stubDialog();
     const { container, getByText } = render(
-      <FilterSheet open onClose={() => {}} title="Filter notes" headAction={<button>Clear all</button>}>
+      <Sheet open onClose={() => {}} title="Filter notes" headAction={<button>Clear all</button>}>
         body
-      </FilterSheet>,
+      </Sheet>,
     );
     expect(dialogOf(container)).toHaveProperty('ariaLabel', 'Filter notes');
     expect(getByText('Filter notes').tagName).toBe('H2');

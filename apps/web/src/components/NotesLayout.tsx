@@ -26,7 +26,7 @@ import { ExportLink } from './ExportLink.js';
 import { TagFilter } from './TagFilter.js';
 import { TagPicker } from './TagPicker.js';
 import { FilterRow } from './FilterRow.js';
-import { FilterSheet } from './FilterSheet.js';
+import { Sheet } from './Sheet.js';
 import { NoteListHead } from './NoteListHead.js';
 import { SortMenu } from './SortMenu.js';
 import { ActiveFilters } from './ActiveFilters.js';
@@ -213,7 +213,7 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
               />
             )}
 
-            <FilterSheet
+            <Sheet
               open={sheetOpen}
               onClose={closeSheet}
               title={sheetPage === 'tags' ? 'Tags' : 'Filter notes'}
@@ -308,7 +308,7 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
                   Done
                 </Button>
               </div>
-            </FilterSheet>
+            </Sheet>
           </>
         ) : (
           <>
