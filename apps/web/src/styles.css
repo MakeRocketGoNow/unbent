@@ -3316,9 +3316,37 @@ a.sidebar-status:hover {
   align-items: center;
   justify-content: space-between;
   gap: 0.5rem;
+  /* The row a page is identified by, so it holds its height whether or not it carries a
+     back arrow or an action. */
+  min-height: 2.75rem;
 }
 
+/*
+   No space between the grip and the title.
+
+   The body's gap put 12px here and the grip's own margin added 4 more, so the title sat
+   16px below a handle that is already the sheet's top edge, while everything under the
+   title was 12px apart. The grip is decoration rather than a sibling of the content;
+   cancelling both makes the header the first thing in the column instead of something
+   floating below it, and leaves one rhythm from the title down.
+
+   Written as the two numbers it cancels rather than as their sum, so it stays correct if
+   either the body's gap or the grip's margin is changed.
+
+   Bottom sheets only. The drawer hides its grip, so there is nothing above its header to
+   close a gap against, and applying this there pulled the title flush to the top of the
+   screen — it cancelled padding that was doing its job. `:not(.sheet-side)` rather than an
+   adjacent-sibling selector on the grip: the grip is `display: none` there, not absent, so
+   `.sheet-grip + .sheet-head` still matches it.
+*/
+.sheet:not(.sheet-side) .sheet-head {
+  margin-top: calc(-0.75rem - 0.25rem);
+}
+
+/* The title takes the room; the action sits hard right. */
 .sheet-head h2 {
+  flex: 1;
+  min-width: 0;
   margin: 0;
   font-size: 1rem;
   font-weight: 600;
@@ -3353,11 +3381,6 @@ a.sidebar-status:hover {
 
 /* The head is the row a page is identified by, so it holds its height whether or not it
    carries an arrow or an action. */
-.sheet-head { min-height: 2.75rem; }
-
-/* The title takes the room; the action sits hard right. */
-.sheet-head h2 { flex: 1; min-width: 0; }
-
 /*
    The rule under the summary.
 
