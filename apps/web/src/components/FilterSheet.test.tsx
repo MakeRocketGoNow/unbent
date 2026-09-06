@@ -137,6 +137,39 @@ describe('FilterSheet', () => {
     expect(onClose).not.toHaveBeenCalled();
   });
 
+  /*
+   * Pages swap inside one dialog rather than stacking a second sheet, so the arrow is the
+   * way back up while Escape and the backdrop still close the whole thing.
+   */
+  it('offers a way back up only on a sub-page', () => {
+    stubDialog();
+    const onBack = vi.fn();
+    const { queryByLabelText, rerender, getByLabelText } = render(
+      <FilterSheet open onClose={() => {}} title="Filter notes">
+        body
+      </FilterSheet>,
+    );
+    expect(queryByLabelText('Back')).toBeNull();
+
+    rerender(
+      <FilterSheet open onClose={() => {}} title="Tags" onBack={onBack}>
+        body
+      </FilterSheet>,
+    );
+    fireEvent.click(getByLabelText('Back'));
+    expect(onBack).toHaveBeenCalledTimes(1);
+  });
+
+  it('takes its accessible name from the page it is showing', () => {
+    stubDialog();
+    const { container } = render(
+      <FilterSheet open onClose={() => {}} title="Tags" onBack={() => {}}>
+        body
+      </FilterSheet>,
+    );
+    expect(dialogOf(container)).toHaveProperty('ariaLabel', 'Tags');
+  });
+
   it('names itself for a screen reader and on screen, and carries a head action', () => {
     stubDialog();
     const { container, getByText } = render(

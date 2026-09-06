@@ -25,6 +25,7 @@ import { DateRange } from './DateRange.js';
 import { ExportLink } from './ExportLink.js';
 import { TagFilter } from './TagFilter.js';
 import { TagPicker } from './TagPicker.js';
+import { FilterRow } from './FilterRow.js';
 import { FilterSheet } from './FilterSheet.js';
 import { NoteListHead } from './NoteListHead.js';
 import { SortMenu } from './SortMenu.js';
@@ -84,6 +85,22 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
   const isMobile = useMediaQuery(MOBILE_QUERY);
   const [sheetOpen, setSheetOpen] = useState(false);
   /*
+   * Which page the sheet is showing. One dialog that swaps its contents rather than a
+   * second sheet over the first, which would dim the first behind the second and leave two
+   * scrims on screen — Android's `FilterSheet` records the same choice.
+   */
+  const [sheetPage, setSheetPage] = useState<'root' | 'tags'>('root');
+
+  /*
+   * Closing always returns to the root. A sheet reopening on the page it was last closed
+   * from would open on tags for someone who went there once, and the root is what says
+   * what is filtered.
+   */
+  const closeSheet = () => {
+    setSheetOpen(false);
+    setSheetPage('root');
+  };
+  /*
    * Search starts open when the URL arrives with a query, so a shared link shows the field
    * it was searched in rather than a bare list with results in it.
    */
@@ -95,7 +112,10 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
    * on top of the very controls it contains, now visible in the sidebar behind it.
    */
   useEffect(() => {
-    if (!isMobile) setSheetOpen(false);
+    if (!isMobile) {
+      setSheetOpen(false);
+      setSheetPage('root');
+    }
   }, [isMobile]);
 
   /** Writes the search box's value to the URL. Shared by both breakpoints' fields. */
@@ -195,12 +215,15 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
 
             <FilterSheet
               open={sheetOpen}
-              onClose={() => setSheetOpen(false)}
-              title="Filter notes"
+              onClose={closeSheet}
+              title={sheetPage === 'tags' ? 'Tags' : 'Filter notes'}
+              onBack={sheetPage === 'tags' ? () => setSheetPage('root') : undefined}
               headAction={
                 // Offered only when it would do something: a permanently visible Clear all
-                // on an unfiltered list promises an effect it cannot have.
-                isFiltered ? (
+                // on an unfiltered list promises an effect it cannot have. Not on the tags
+                // page, where the chips are the way back out and "all" would mean the
+                // dates too — a button whose blast radius is off screen.
+                sheetPage === 'root' && isFiltered ? (
                   <Button
                     variant="quiet"
                     size="small"
@@ -222,42 +245,66 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
                 ) : null
               }
             >
-              {/* The sheet says what it is doing before it says what it can do. Unfiltered,
-                  that is a sentence; filtered, the chips above are already saying it, so
-                  this stays out of the way. */}
-              {!isFiltered && <p className="sheet-summary small">Nothing is filtered.</p>}
+              {sheetPage === 'tags' ? (
+                <TagPicker tags={tags.data ?? []} selected={selectedTags} />
+              ) : (
+                <>
+                  {/* The sheet says what it is doing before it says what it can do.
+                      Unfiltered, that is a sentence; filtered, the chips say it, and they
+                      are also how each one comes off. */}
+                  {isFiltered ? (
+                    <ActiveFilters
+                      notebook={notebook}
+                      tags={selectedTags}
+                      from={from}
+                      to={to}
+                    />
+                  ) : (
+                    <p className="sheet-summary small">Nothing is filtered.</p>
+                  )}
 
-              {/*
-                  No sort here. It is not a filter — it changes the order of the list, not
-                  which notes are in it — so a surface headed "Filter notes" is the wrong
-                  home, and among the filters "Title A–Z" invites being read as something
-                  that narrows. It has its own icon in the header.
-              */}
-              {!searching && (
-                <NotebookSelect notebook={notebook} notebooks={notebooks} />
-              )}
+                  <hr className="sheet-rule" />
 
-              <DateRange from={from} to={to} />
+                  {/*
+                      No sort here. It is not a filter — it changes the order of the list,
+                      not which notes are in it — so a surface headed "Filter notes" is the
+                      wrong home, and among the filters "Title A–Z" invites being read as
+                      something that narrows. It has its own icon in the header.
+                  */}
+                  {!searching && (
+                    <NotebookSelect notebook={notebook} notebooks={notebooks} />
+                  )}
 
-              {!searching && isFiltered && (
-                <ExportLink filter={filter} sort={sort} total={total} />
-              )}
+                  {/*
+                      Tags are a page rather than a panel here. The picker is a find field
+                      and an unbounded list, and inlining it would make the sheet mostly
+                      tags with the other filters pushed below the fold.
+                  */}
+                  {!searching && (tags.data?.length ?? 0) > 0 && (
+                    <FilterRow
+                      label="Tags"
+                      value={
+                        selectedTags.length > 0
+                          ? `${selectedTags.length} ${selectedTags.length === 1 ? 'tag' : 'tags'}`
+                          : undefined
+                      }
+                      onClick={() => setSheetPage('tags')}
+                    />
+                  )}
 
-              {/*
-                  Open, not a disclosure. The sidebar's version earns its collapse by
-                  sitting in a column the user did not open on purpose. A sheet is the
-                  opposite: it was opened to filter, and hiding the tags behind one more tap
-                  inside it spends the tap the sheet already cost.
-              */}
-              {!searching && (tags.data?.length ?? 0) > 0 && (
-                <div className="tag-filter-open">
-                  <span className="filter-section-label">Tags</span>
-                  <TagPicker tags={tags.data ?? []} selected={selectedTags} />
-                </div>
+                  <div className="filter-section">
+                    <span className="filter-section-label">Dates</span>
+                    <DateRange from={from} to={to} />
+                  </div>
+
+                  {!searching && isFiltered && (
+                    <ExportLink filter={filter} sort={sort} total={total} />
+                  )}
+                </>
               )}
 
               <div className="sheet-foot">
-                <Button variant="quiet" onClick={() => setSheetOpen(false)}>
+                <Button variant="quiet" onClick={closeSheet}>
                   Done
                 </Button>
               </div>

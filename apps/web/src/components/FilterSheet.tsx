@@ -1,4 +1,5 @@
 import { useEffect, useRef, type ReactNode } from 'react';
+import { BackArrow } from './BackArrow.js';
 
 export interface FilterSheetProps {
   open: boolean;
@@ -8,6 +9,16 @@ export interface FilterSheetProps {
   title: string;
   /** Shown at the right of the title row, when there is something to clear. */
   headAction?: ReactNode;
+  /**
+   * Go back to the sheet's previous page, drawn as an arrow before the title.
+   *
+   * Set only on a sub-page. A sheet that shows another sheet dims the first one behind the
+   * second and leaves two scrims on the screen, so pages swap inside one dialog instead —
+   * Android's `FilterSheet` makes the same choice and records the same reason. This arrow
+   * is the way back up; Escape and the backdrop still close the whole thing, because that
+   * is what a scrim means.
+   */
+  onBack?: () => void;
   children: ReactNode;
 }
 
@@ -34,7 +45,14 @@ export interface FilterSheetProps {
  * is how these end up feeling broken. The backdrop, Escape, the back gesture and Done are
  * four ways out already.
  */
-export function FilterSheet({ open, onClose, title, headAction, children }: FilterSheetProps) {
+export function FilterSheet({
+  open,
+  onClose,
+  title,
+  headAction,
+  onBack,
+  children,
+}: FilterSheetProps) {
   const ref = useRef<HTMLDialogElement>(null);
 
   useEffect(() => {
@@ -81,6 +99,11 @@ export function FilterSheet({ open, onClose, title, headAction, children }: Filt
             it is not a control, because there is no drag to hint at. */}
         <div className="sheet-grip" aria-hidden="true" />
         <div className="sheet-head">
+          {onBack && (
+            <button type="button" className="icon-btn sheet-back" aria-label="Back" onClick={onBack}>
+              <BackArrow />
+            </button>
+          )}
           <h2>{title}</h2>
           {headAction}
         </div>

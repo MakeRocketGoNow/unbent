@@ -2973,6 +2973,105 @@ a.sidebar-status:hover {
   color: var(--muted);
 }
 
+/*
+   The back arrow on a sub-page, sized to the title beside it rather than to a 44px square.
+
+   The head is a text row, and a full-height target in it would push the title down and make
+   the row taller than every other sheet head. The arrow keeps the width — the tap area runs
+   the full height of the row through the negative margin, which is what the row's own
+   min-height then guarantees.
+*/
+.sheet-back {
+  flex: 0 0 auto;
+  min-width: 2rem;
+  height: 2rem;
+  margin-left: -0.4rem;
+}
+
+/* The head is the row a page is identified by, so it holds its height whether or not it
+   carries an arrow or an action. */
+.sheet-head { min-height: 2.75rem; }
+
+/* The title takes the room; the action sits hard right. */
+.sheet-head h2 { flex: 1; min-width: 0; }
+
+/*
+   The rule under the summary.
+
+   It separates what is applied from what can be changed — the two halves of this page — and
+   it is the same seam `.filters-end` and `.trash-link` draw elsewhere. `margin: 0` because
+   the sheet body's own gap is the spacing; an `hr`'s default margin would double it.
+*/
+.sheet-rule {
+  margin: 0;
+  border: none;
+  border-top: 1px solid var(--border);
+}
+
+/* A titled group inside the sheet — the label plus the controls it names, kept together so
+   the body's gap does not separate a heading from what it heads. */
+.filter-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  min-width: 0;
+}
+
+/*
+   A filter that opens a page of its own.
+
+   Drawn as a row rather than as a control, because what it does is navigate. The chevron is
+   the same rotated box the disclosure summary uses — no glyph, no asset, `currentColor`, so
+   it is correct in dark mode without a second rule.
+*/
+.filter-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  min-height: 2.75rem;
+  padding: 0.4rem 0.2rem;
+  font: inherit;
+  font-size: 0.9rem;
+  text-align: left;
+  color: var(--fg);
+  background: none;
+  border: none;
+  border-radius: 0.35rem;
+  cursor: pointer;
+}
+
+.filter-row:hover { background: color-mix(in srgb, var(--fg) 8%, transparent); }
+
+.filter-row:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.filter-row-label { flex: 1; min-width: 0; }
+
+/* What it is set to. Muted because it is a state, not a control, and it truncates rather
+   than pushing the chevron off the row. */
+.filter-row-value {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+.filter-row::after {
+  content: '';
+  flex: 0 0 auto;
+  width: 0.36rem;
+  height: 0.36rem;
+  margin-left: 0.25rem;
+  border-right: 1.5px solid var(--muted);
+  border-bottom: 1.5px solid var(--muted);
+  transform: rotate(-45deg);
+}
+
 /* Done, on the floor of the sheet. Right-aligned: it is the way out, and the way out sits
    where the thumb is, not where the reading starts. */
 .sheet-foot {
