@@ -1353,6 +1353,9 @@ a.overflow-item { text-decoration: none; }
    reporting, and the field below must stay reachable without scrolling the sheet.
 */
 .tag-picker-selected {
+  /* Never shrinks: it is the answer to "what have I chosen", and the list below is what
+     gives up room for it. Capped so a long selection scrolls rather than eating the page. */
+  flex: 0 0 auto;
   max-height: 7rem;
   overflow-y: auto;
 }
@@ -3447,6 +3450,54 @@ a.sidebar-status:hover {
   gap: 0.4rem;
 }
 
+/*
+   In a sheet the picker owns a fixed page, and the list inside it does the yielding.
+
+   Left to size itself, the sheet grew by the height of the chip row the moment a tag was
+   picked — the list stayed at its cap and the chips were added on top, so the surface got
+   taller under the thumb that had just tapped. The phone app holds the sheet still and
+   pushes its own content down instead, which is what these three rules reproduce: the page
+   claims a height, the chips and the field keep theirs, and the list takes what is left.
+
+   `70dvh` rather than a fixed number of rows: the sheet is capped at 85dvh, so this stays
+   inside it on any screen, and `dvh` is right for the same reason it is right there — the
+   mobile URL bar changes the viewport, and `vh` measures the tallest state.
+*/
+.sheet .tag-picker {
+  height: 70dvh;
+  padding-bottom: 0;
+  border-bottom: none;
+}
+
+/*
+   This replaced a `max-height` on the list itself, which had to go rather than sit beside
+   it: a cap and a flex claim are two answers to one question, and the cap won on source
+   order — the list stayed at its old size while the page around it grew, leaving 173px of
+   nothing under the last row.
+*/
+
+/* The field is a fixed row between two boxes that flex; without this it is the one that
+   gets squeezed when the selection grows. */
+.sheet .tag-picker .search-field { flex: 0 0 auto; }
+
+/*
+   The list takes the rest of the page, growing and shrinking as the chips do.
+
+   `flex: 1` with a zero basis rather than `auto`: on `auto` the list's own content is its
+   starting size, so with more tags than fit it claimed the whole page and left 144px of
+   dead space below the last row instead of filling it. From zero it is sized by what
+   remains, which is what makes it absorb the chip row exactly.
+
+   `min-height: 0` is what lets it be shorter than its content and scroll at all — a flex
+   item's floor is its content, and without it the list refuses to shrink and pushes the
+   sheet taller again, which is the bug this whole rule exists to fix.
+*/
+.sheet .tag-picker-list {
+  flex: 1 1 0;
+  max-height: none;
+  min-height: 0;
+}
+
 /* In the sheet the picker is the last thing before Done, and the rule that separates it
    from the note list in the sidebar has nothing to separate it from here. */
 .tag-filter-open .tag-picker {
@@ -3792,19 +3843,6 @@ a.sidebar-status:hover {
     min-height: 2.75rem;
     padding-inline: 0.5rem;
     font-size: 0.9rem;
-  }
-
-  /*
-     More of the list, where the sheet is the whole screen anyway.
-
-     14rem is the sidebar's cap, sized against a column that also has to show notes. In the
-     sheet nothing is competing for the space, and a picker showing four rows of 326 is a
-     scrollbar with a list attached. `dvh` because the mobile URL bar changes the viewport
-     and `vh` would measure the tallest state, putting the last rows under the browser
-     chrome. The sheet's own 85dvh cap still bounds the whole thing.
-  */
-  .sheet .tag-picker-list {
-    max-height: min(22rem, 45dvh);
   }
 
   /* Pills wrap, so they take the compromise height rather than the full target: a row of

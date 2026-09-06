@@ -132,6 +132,32 @@ describe('TagPicker', () => {
     );
   });
 
+  /*
+   * The three boxes the sheet's layout sizes.
+   *
+   * Holding the sheet at a constant height when a tag is picked is CSS — the page claims a
+   * height, the chips and the field keep theirs, and the list takes what is left — and
+   * jsdom evaluates none of it. What a test can protect is the structure those rules hang
+   * on: three siblings in this order, with the chip row present only when it has something
+   * to say. Rename or reorder them and the sheet starts growing under the thumb again.
+   */
+  it('keeps the three boxes the sheet sizes, in order', async () => {
+    const { container, findByLabelText } = harness(['Receipt']);
+    await findByLabelText('Find tags');
+    const picker = container.querySelector('.tag-picker')!;
+    expect([...picker.children].map((e) => e.className.split(' ')[0])).toEqual([
+      'filter-chips',
+      'search-field',
+      'tag-picker-list',
+    ]);
+  });
+
+  it('leaves the chip row out entirely when nothing is chosen', async () => {
+    const { container, findByLabelText } = harness([]);
+    await findByLabelText('Find tags');
+    expect(container.querySelector('.tag-picker-selected')).toBeNull();
+  });
+
   /* Auto-focusing would raise the keyboard over the most-used tags, which are already on
      screen. Android does not focus it either. */
   it('does not steal focus when it opens', async () => {
