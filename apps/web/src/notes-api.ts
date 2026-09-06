@@ -38,14 +38,43 @@ export function isStatus(err: unknown, status: number): boolean {
   return err instanceof ApiError && err.status === status;
 }
 
-async function json<T>(res: Response): Promise<T> {
-  if (!res.ok) {
-    const detail = await res.text().catch(() => '');
-    throw new ApiError(
-      res.status,
-      `${res.status} ${res.statusText}${detail ? `: ${detail}` : ''}`,
-    );
+/** How much of an error body is worth repeating; the rest is never the useful part. */
+const MAX_DETAIL = 200;
+
+/**
+ * The message for a failed response, quoting the body only when the body says something.
+ *
+ * A request that never reached the Worker is answered by the edge instead, with its own
+ * HTML error page — and the first 200 characters of that page are the IE conditional
+ * comments of 2009, not what went wrong. An ENEX import repeats this message once per
+ * note, so a run that outlived its Worker produced dozens of lines of `<!--[if lt IE 7]>`
+ * and nothing a reader could act on. Naming the case is what makes it legible.
+ */
+export async function httpErrorMessage(res: Response): Promise<string> {
+  // HTTP/2 has no reason phrase, so `statusText` is routinely empty and must not be padded in.
+  const status = `${res.status}${res.statusText ? ` ${res.statusText}` : ''}`;
+  const body = (await res.text().catch(() => '')).trim();
+  if (!body) return status;
+
+  // Ours are `{ error }`. A JSON body shaped some other way falls through and is quoted raw.
+  if (res.headers.get('Content-Type')?.includes('json')) {
+    try {
+      const { error } = JSON.parse(body) as { error?: unknown };
+      if (typeof error === 'string' && error) return `${status}: ${error}`;
+    } catch {
+      // Mislabelled as JSON; treat it as text like anything else.
+    }
   }
+
+  if (body.startsWith('<')) {
+    return `${status} — the request did not reach the API; an error page came back instead`;
+  }
+
+  return `${status}: ${body.slice(0, MAX_DETAIL)}`;
+}
+
+async function json<T>(res: Response): Promise<T> {
+  if (!res.ok) throw new ApiError(res.status, await httpErrorMessage(res));
   return res.json() as Promise<T>;
 }
 
@@ -274,13 +303,7 @@ export async function deleteAttachment(noteId: string, filename: string): Promis
     `/api/notes/${noteId}/files/${encodeURIComponent(filename)}`,
     { method: 'DELETE' },
   );
-  if (!res.ok) {
-    const detail = await res.text().catch(() => '');
-    throw new ApiError(
-      res.status,
-      `${res.status} ${res.statusText}${detail ? `: ${detail}` : ''}`,
-    );
-  }
+  if (!res.ok) throw new ApiError(res.status, await httpErrorMessage(res));
 }
 
 /**

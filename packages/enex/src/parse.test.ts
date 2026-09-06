@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { fallbackFilename, md5Hex, parseEnexDate, resourceFilename } from './parse.js';
+import {
+  fallbackFilename,
+  md5Hex,
+  parseEnexDate,
+  parseEnexStream,
+  resourceFilename,
+} from './parse.js';
 
 /**
  * MD5 is implemented here because WebCrypto omits it and en-media hashes are MD5s.
@@ -116,5 +122,87 @@ describe('resourceFilename', () => {
   it('falls back to the md5 name when there is no file-name at all', () => {
     expect(resourceFilename('', MD5, 'application/pdf')).toBe('aaaaaaaaaaaa.pdf');
     expect(resourceFilename('   ', MD5, 'image/png')).toBe('aaaaaaaaaaaa.png');
+  });
+});
+
+/**
+ * Stopping a parse partway.
+ *
+ * The importer's breaker and its cancel button both come down to this: a run that has
+ * stopped caring must stop reading too. The largest real export is 3.6GB, so continuing to
+ * the end of the file is a minute of CPU spent on notes nobody will look at.
+ */
+describe('parseEnexStream signal', () => {
+  const noteXml = (title: string) =>
+    `<note><title>${title}</title><created>20240115T093000Z</created>` +
+    `<content><![CDATA[<en-note><div>x</div></en-note>]]></content></note>`;
+
+  /** Emits each note as its own chunk, so a stop can be observed between them. */
+  function chunked(count: number): { stream: ReadableStream<Uint8Array>; total: number } {
+    const parts = [
+      '<?xml version="1.0" encoding="UTF-8"?><en-export>',
+      ...Array.from({ length: count }, (_, i) => noteXml(`N${i}`)),
+      '</en-export>',
+    ];
+    const encoded = parts.map((p) => new TextEncoder().encode(p));
+    let i = 0;
+    return {
+      total: encoded.reduce((n, c) => n + c.byteLength, 0),
+      stream: new ReadableStream({
+        pull(controller) {
+          if (i < encoded.length) controller.enqueue(encoded[i++]!);
+          else controller.close();
+        },
+      }),
+    };
+  }
+
+  it('stops reading rather than draining the rest of the file', async () => {
+    const controller = new AbortController();
+    const seen: string[] = [];
+    let bytesRead = 0;
+    const { stream, total } = chunked(50);
+
+    await parseEnexStream(stream, {
+      signal: controller.signal,
+      onProgress: (bytes) => {
+        bytesRead = bytes;
+      },
+      onNote: (note) => {
+        seen.push(note.title);
+        controller.abort();
+      },
+    });
+
+    expect(seen).toEqual(['N0']);
+    expect(bytesRead).toBeLessThan(total);
+  });
+
+  it('reads to the end when nothing stops it', async () => {
+    const seen: string[] = [];
+    const { stream } = chunked(5);
+
+    const result = await parseEnexStream(stream, {
+      onNote: (note) => {
+        seen.push(note.title);
+      },
+    });
+
+    expect(seen).toEqual(['N0', 'N1', 'N2', 'N3', 'N4']);
+    expect(result.notes).toBe(5);
+  });
+
+  it('does not report an error for the tags a stopped file never closed', async () => {
+    const controller = new AbortController();
+    const errors: string[] = [];
+    const { stream } = chunked(50);
+
+    await parseEnexStream(stream, {
+      signal: controller.signal,
+      onError: (message) => errors.push(message),
+      onNote: () => controller.abort(),
+    });
+
+    expect(errors).toEqual([]);
   });
 });

@@ -1,6 +1,11 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it, vi } from 'vitest';
-import { importEnex, type ImportClient } from './import.js';
+import {
+  FAILURE_STREAK_LIMIT,
+  ImportStoppedError,
+  importEnex,
+  type ImportClient,
+} from './import.js';
 
 /** Builds an in-memory ENEX file with the given notes. */
 function enexFile(name: string, notes: string[]): {
@@ -418,4 +423,100 @@ describe('attachment text extraction', () => {
     expect(progress.filesIndexed).toBe(0);
     expect(saved).toEqual([]);
   }, 60_000);
+});
+
+/**
+ * The server going away partway through a run.
+ *
+ * This is the shape a deleted preview Worker produced: every request from one moment on
+ * answered with the same status, by something that was not the API. The notes are fine —
+ * the run has simply stopped being able to import anything — so it should end and say so
+ * rather than spend the rest of the file proving the point once per note.
+ */
+describe('a server that stops responding', () => {
+  const statusError = (status: number) =>
+    Object.assign(new Error(`${status} — the request did not reach the API`), { status });
+
+  const manyNotes = (count: number) =>
+    Array.from({ length: count }, (_, i) => note({ title: `N${i}`, content: '<div></div>' }));
+
+  it('stops the run once the failures are consecutive and alike', async () => {
+    const healthy = 2;
+    const createNote = vi.fn(async (input: { title: string; contentHash: string }) => {
+      if (notes.length >= healthy) throw statusError(404);
+      notes.push(input.title);
+      return { id: `note-${notes.length}`, created: true };
+    });
+    const notes: string[] = [];
+    const { client } = fakeClient({ createNote });
+
+    const failures: string[] = [];
+    const run = importEnex(enexFile('N.enex', manyNotes(60)), client, {
+      onFailure: (f) => failures.push(f.title),
+    });
+
+    await expect(run).rejects.toBeInstanceOf(ImportStoppedError);
+    await expect(run).rejects.toMatchObject({ status: 404, streak: FAILURE_STREAK_LIMIT });
+
+    // The whole point: it gave up rather than working through the other 53 notes.
+    expect(failures).toHaveLength(FAILURE_STREAK_LIMIT);
+    expect(createNote).toHaveBeenCalledTimes(healthy + FAILURE_STREAK_LIMIT);
+  });
+
+  it('says how much landed before it gave up', async () => {
+    const { client } = fakeClient({
+      createNote: vi.fn(async (input) => {
+        if (input.title === 'N0') return { id: 'note-1', created: true };
+        throw statusError(503);
+      }),
+    });
+
+    await expect(
+      importEnex(enexFile('N.enex', manyNotes(20)), client),
+    ).rejects.toThrow(/503.*1 notes were imported before that.*Import the same file again/s);
+  });
+
+  it('keeps going when a success breaks the streak', async () => {
+    let call = 0;
+    const { client } = fakeClient({
+      createNote: vi.fn(async () => {
+        // Fails in runs of four, which on its own never reaches the limit.
+        if (++call % 5 !== 0) throw statusError(404);
+        return { id: `note-${call}`, created: true };
+      }),
+    });
+
+    const progress = await importEnex(enexFile('N.enex', manyNotes(20)), client);
+    expect(progress.processed).toBe(20);
+    expect(progress.created).toBe(4);
+    expect(progress.failed).toBe(16);
+  });
+
+  it('keeps going when the statuses differ', async () => {
+    const statuses = [500, 502, 503, 504, 500, 502, 503, 504];
+    let call = 0;
+    const { client } = fakeClient({
+      createNote: vi.fn(async () => {
+        throw statusError(statuses[call++ % statuses.length]!);
+      }),
+    });
+
+    const progress = await importEnex(enexFile('N.enex', manyNotes(8)), client);
+    expect(progress.processed).toBe(8);
+    expect(progress.failed).toBe(8);
+  });
+
+  it('never trips on failures that are about the notes themselves', async () => {
+    const { client } = fakeClient({
+      // No status: the kind of failure a malformed note produces, which the next note
+      // says nothing about. Every one of these must still be attempted.
+      createNote: vi.fn(async () => {
+        throw new Error('Converted note body is too large to store.');
+      }),
+    });
+
+    const progress = await importEnex(enexFile('N.enex', manyNotes(12)), client);
+    expect(progress.processed).toBe(12);
+    expect(progress.failed).toBe(12);
+  });
 });
