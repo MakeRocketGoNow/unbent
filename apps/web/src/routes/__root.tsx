@@ -1,14 +1,9 @@
-import {
-  createRootRouteWithContext,
-  Outlet,
-  useNavigate,
-  useRouterState,
-} from '@tanstack/react-router';
+import { createRootRouteWithContext, Outlet, useNavigate } from '@tanstack/react-router';
 import { useEffect } from 'react';
 import { useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { useSession } from '../auth-client.js';
 import { useSignOut } from '../useSignOut.js';
-import { requireSession, shellFor } from '../auth-gate.js';
+import { requireSession, useShell } from '../auth-gate.js';
 import { claimCacheFor } from '../queries.js';
 import { startIndexing, subscribeIndexing } from '../index-files.js';
 import { Topbar } from '../components/Topbar.js';
@@ -39,8 +34,8 @@ export const Route = createRootRouteWithContext<RouterContext>()({
 });
 
 /**
- * Three shells, chosen by where we are — `shellFor` decides, and the same answer decides
- * what the gate above lets through unauthenticated.
+ * Three shells, chosen by what is rendered — `useShell` decides, and the same answer
+ * decides what the gate above lets through unauthenticated.
  *
  * `/embed/` is a page the Android app hosts inside a WebView, with its own chrome around
  * it: the app draws the title, the filing and the back button, and it has already put a
@@ -56,7 +51,7 @@ export const Route = createRootRouteWithContext<RouterContext>()({
  * only where a session is the layout's business.
  */
 function RootLayout() {
-  const shell = useRouterState({ select: (s) => shellFor(s.location.pathname) });
+  const shell = useShell();
   if (shell === 'embed') return <EmbedShell />;
   if (shell === 'plain') return <PlainShell />;
   return <AppShell />;
