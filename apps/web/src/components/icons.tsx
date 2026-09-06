@@ -106,6 +106,47 @@ export function SortIcon() {
 }
 
 /**
+ * Three lines, for the drawer.
+ *
+ * The universal glyph for "there is a panel of places behind this", and the one the Android
+ * app's own top bar draws in the same corner. Nothing else would be recognised as quickly,
+ * which is the whole job of a control that hides navigation.
+ */
+export function MenuIcon() {
+  return (
+    <HeaderIcon>
+      <path d="M4 7h16M4 12h16M4 17h16" />
+    </HeaderIcon>
+  );
+}
+
+/**
+ * A plus, for the button that makes a new note.
+ *
+ * A bare cross rather than a document-with-a-plus: the button is a filled circle in the
+ * corner of a list of notes, so what it would make is not in question, and the smaller
+ * shape reads at a glance where a detailed one would turn to mush.
+ */
+export function PlusIcon() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      width="1.5em"
+      height="1.5em"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      focusable="false"
+    >
+      <path d="M12 5v14M5 12h14" />
+    </svg>
+  );
+}
+
+/**
  * A cross, for removing one filter from a chip.
  *
  * Small: it rides inside a chip beside the filter's name, so it is sized against the label
