@@ -1,5 +1,5 @@
 import { extractPdfText } from '@unbent/enex';
-import { ApiError } from './notes-api.js';
+import { ApiError, httpErrorMessage } from './notes-api.js';
 
 /**
  * Extracting attachment text for search, wherever that happens to run.
@@ -51,10 +51,7 @@ export const AUTO_INDEX_LIMIT = 25;
  */
 export async function apiFetch(path: string, init: RequestInit = {}): Promise<Response> {
   const res = await fetch(path, { ...init, credentials: 'include' });
-  if (!res.ok) {
-    const detail = await res.text().catch(() => '');
-    throw new ApiError(res.status, `${res.status}${detail ? `: ${detail.slice(0, 200)}` : ''}`);
-  }
+  if (!res.ok) throw new ApiError(res.status, await httpErrorMessage(res));
   return res;
 }
 
