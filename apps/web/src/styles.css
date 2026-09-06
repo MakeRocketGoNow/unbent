@@ -2826,6 +2826,30 @@ a.sidebar-status:hover {
   min-width: 0;
 }
 
+/*
+   Where you are, and how much of it there is.
+
+   Two lines in one column so the row stays one row. The title takes the leftover width and
+   truncates; a notebook name is unbounded and four controls sit beside it.
+*/
+.list-title {
+  display: flex;
+  flex-direction: column;
+  gap: 0.05rem;
+  flex: 1;
+  min-width: 0;
+}
+
+.list-title h2 {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 600;
+  line-height: 1.2;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
 .list-head-actions {
   display: flex;
   align-items: center;
@@ -2895,6 +2919,43 @@ a.sidebar-status:hover {
   background: var(--accent);
   border-radius: 50%;
   box-shadow: 0 0 0 2px var(--bg);
+}
+
+/*
+   New, floating over the list.
+
+   Where every notes app people arrive from puts it, which is also what freed the header row
+   for the controls that are about what is on screen. Fixed rather than absolute: the sidebar
+   scrolls, and a button that scrolled with it would be reachable only at the bottom of the
+   list.
+
+   `env(safe-area-inset-bottom)` clears the home indicator on an iPhone and resolves to 0
+   everywhere else. The z-index sits under the sheet's backdrop, which the top layer puts
+   above everything regardless — this only has to beat the note list.
+*/
+.fab {
+  position: fixed;
+  right: 1rem;
+  bottom: calc(1rem + env(safe-area-inset-bottom));
+  z-index: 10;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 3.5rem;
+  height: 3.5rem;
+  color: var(--bg);
+  background: var(--accent);
+  border: none;
+  border-radius: 50%;
+  box-shadow: 0 4px 14px color-mix(in srgb, var(--fg) 28%, transparent);
+  cursor: pointer;
+}
+
+.fab:hover { opacity: 0.92; }
+
+.fab:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
 }
 
 /* ---------------------------------------------------------------------------------
@@ -3382,11 +3443,38 @@ a.sidebar-status:hover {
      uses the same layout hook — and its sidebar, `.trash-head` included, is hidden by the
      rule above, so only one back arrow is ever on screen.
   */
-  .shell.wide:has(.notes.note-open) > .topbar,
+  .shell.wide:has(.notes) > .topbar,
   .shell.wide:has(.settings) > .topbar,
   .shell.wide:has(.trash-head) > .topbar {
     display: none;
   }
+
+  /*
+     The note list now goes too, which the comment above said it could not.
+
+     Both reasons it kept the bar have been answered. It had no heading of its own, and now
+     the header names the notebook you are in — which the wordmark never did, on the one
+     screen where which app you are in was never the question. And sign out was reachable
+     only through the avatar here, which is now on the drawer's floor, one tap from the ☰ in
+     the same row.
+
+     `.notes` rather than `.notes.note-open`: the list and the open note are the same grid,
+     and both have their own top-left control now — the menu button and the back arrow.
+  */
+
+  /* Trash lives in the drawer at this width, with the notebooks it sits beside. Leaving it
+     on the sidebar floor as well would be two places for one destination, and the drawer is
+     the one that matches every other app. */
+  .trash-link { display: none; }
+
+  /*
+     Room for the floating button, so the last note is not left under it.
+
+     `.note-list` is the scroller, so the padding belongs there rather than on the sidebar —
+     on the sidebar it would be a permanent gap above the fold instead of scroll room at the
+     end.
+  */
+  .note-list { padding-bottom: 5rem; }
 
   /*
      The title gets the room; what is left of the controls tucks in beside it.

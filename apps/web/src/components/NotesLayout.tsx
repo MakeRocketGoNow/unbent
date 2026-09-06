@@ -27,6 +27,7 @@ import { TagFilter } from './TagFilter.js';
 import { TagPicker } from './TagPicker.js';
 import { FilterRow } from './FilterRow.js';
 import { NotebookDrawer } from './NotebookDrawer.js';
+import { PlusIcon } from './icons.js';
 import { Sheet } from './Sheet.js';
 import { NoteListHead } from './NoteListHead.js';
 import { SortMenu } from './SortMenu.js';
@@ -150,6 +151,19 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
   /** Search results are on screen, which changes what is worth offering beside them. */
   const searching = results !== null;
 
+  /**
+   * Where the list is, for the phone's heading.
+   *
+   * The notebook names itself; "Inbox" is what the UNFILED sentinel is called everywhere
+   * the user can see it; "All notes" is the unnarrowed list, and it matches the drawer's
+   * own first row so the heading and the place you picked it from agree.
+   *
+   * Tags are deliberately not in it. They are already under the header as chips that can be
+   * taken off, and a heading listing them would either duplicate that or truncate it.
+   */
+  const scopeLabel =
+    notebook === UNFILED ? 'Inbox' : (notebook ?? 'All notes');
+
   /** What the list is showing, in three forms. Both breakpoints' headers read it. */
   const countLabel =
     results !== null
@@ -187,6 +201,7 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
           <>
             <NoteListHead
               count={countLabel}
+              title={scopeLabel}
               query={q}
               onQuery={setQuery}
               searchOpen={searchOpen}
@@ -206,11 +221,6 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
               /* Hidden while searching: results come back ranked by relevance, and
                  reordering them by date would throw away the ranking. */
               sortMenu={results === null ? <SortMenu sort={sort} order={order} /> : null}
-              newNote={
-                <Button variant="primary" onClick={() => void newNote()}>
-                  New
-                </Button>
-              }
             />
 
             {error && <p className="bad small">{(error as Error).message}</p>}
@@ -372,6 +382,21 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
 
             {!searching && <TagFilter tags={tags.data ?? []} selected={selectedTags} />}
           </>
+        )}
+
+        {/*
+          * New, as a button floating over the list.
+          *
+          * Where every notes app people arrive from puts it, and what frees the header row
+          * for the four controls that are about what is on screen. Inside `.sidebar` rather
+          * than the shell so the rule that hides the list when a note is open takes this
+          * with it — a "new note" button floating over the note you are reading would make
+          * one every time a thumb reached for the scroll bar.
+          */}
+        {isMobile && (
+          <button type="button" className="fab" aria-label="New note" onClick={() => void newNote()}>
+            <PlusIcon />
+          </button>
         )}
 
         <ul className="note-list" onKeyDown={onListKeys}>

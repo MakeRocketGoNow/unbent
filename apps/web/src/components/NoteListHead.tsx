@@ -5,6 +5,14 @@ import { BackArrow } from './BackArrow.js';
 interface NoteListHeadProps {
   /** "30 notes", "12 matches" — built by the caller, which knows what it is counting. */
   count: string;
+  /**
+   * Where the list is: the notebook's name, "Inbox", or "All notes".
+   *
+   * The heading this view did not have. It is what lets the topbar go on a phone — the
+   * wordmark was saying which app you were in, on the one screen where that was never in
+   * doubt, while the thing actually in doubt was which notebook you were looking at.
+   */
+  title: string;
   /** The search box's value, which is the URL's `q`. */
   query: string;
   onQuery: (next: string) => void;
@@ -20,8 +28,6 @@ interface NoteListHeadProps {
   filtered: boolean;
   /** The sort menu, hidden while searching. Passed in so this component owns no routing. */
   sortMenu: ReactNode;
-  /** The New button. */
-  newNote: ReactNode;
 }
 
 /**
@@ -39,11 +45,16 @@ interface NoteListHeadProps {
  * list filtered by something invisible, which is the failure this whole change is about.
  * The Android app's search bar does the same.
  *
+ * New is not here. It is a floating button over the list, which is where every notes app
+ * people arrive from puts it, and it leaves this row to the four controls that are about
+ * what is on screen rather than about adding to it.
+ *
  * Above the breakpoint none of this renders — the sidebar has room for the controls
  * themselves, and one-click filtering there is a strength rather than clutter.
  */
 export function NoteListHead({
   count,
+  title,
   query,
   onQuery,
   searchOpen,
@@ -53,7 +64,6 @@ export function NoteListHead({
   onOpenMenu,
   filtered,
   sortMenu,
-  newNote,
 }: NoteListHeadProps) {
   const field = useRef<HTMLInputElement>(null);
 
@@ -106,7 +116,12 @@ export function NoteListHead({
       >
         <MenuIcon />
       </button>
-      <span className="count">{count}</span>
+      {/* Two lines in one column: where you are, and how much of it there is. The count
+          was the whole header before, which said how many without ever saying of what. */}
+      <div className="list-title">
+        <h2>{title}</h2>
+        <span className="count">{count}</span>
+      </div>
       <div className="list-head-actions">
         <button type="button" className="icon-btn" aria-label="Search notes" onClick={onOpenSearch}>
           <SearchIcon />
@@ -127,7 +142,6 @@ export function NoteListHead({
           {filtered && <span className="badge-dot" aria-hidden="true" />}
         </button>
         {sortMenu}
-        {newNote}
       </div>
     </div>
   );

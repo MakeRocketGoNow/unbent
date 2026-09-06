@@ -14,6 +14,7 @@ import { NoteListHead } from './NoteListHead.js';
  */
 const props = {
   count: '30 notes',
+  title: 'All notes',
   query: '',
   onQuery: () => {},
   searchOpen: false,
@@ -23,18 +24,29 @@ const props = {
   onOpenMenu: () => {},
   filtered: false,
   sortMenu: <button>sort</button>,
-  newNote: <button>New</button>,
 };
 
 describe('NoteListHead', () => {
   afterEach(cleanup);
 
-  it('shows the count and the controls, closed', () => {
-    const { getByText, getByLabelText } = render(<NoteListHead {...props} />);
-    expect(getByText('30 notes')).toBeTruthy();
+  it('says where the list is and how much of it there is', () => {
+    const { getByText, getByLabelText } = render(
+      <NoteListHead {...props} title="Coupons" count="12 notes" />,
+    );
+    // The heading this view did not have: the count alone said how many without ever
+    // saying of what.
+    expect(getByText('Coupons').tagName).toBe('H2');
+    expect(getByText('12 notes')).toBeTruthy();
+    expect(getByLabelText('Notebooks')).toBeTruthy();
     expect(getByLabelText('Search notes')).toBeTruthy();
     expect(getByLabelText('Filter notes')).toBeTruthy();
-    expect(getByText('New')).toBeTruthy();
+  });
+
+  /* New floats over the list now, where every notes app people arrive from puts it, so
+     this row is only the controls that are about what is already on screen. */
+  it('leaves making a note to the floating button', () => {
+    const { queryByText } = render(<NoteListHead {...props} />);
+    expect(queryByText('New')).toBeNull();
   });
 
   it('says in its name that the list is already narrowed', () => {
