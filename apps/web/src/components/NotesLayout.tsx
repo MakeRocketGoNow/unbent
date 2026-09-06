@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate } from '@tanstack/react-router';
 import { useQuery, useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
-import { UNFILED, type NoteSort } from '@unbent/shared';
+import { UNFILED } from '@unbent/shared';
 import * as api from '../notes-api.js';
 import { Route } from '../routes/notes.js';
 import {
@@ -19,7 +19,7 @@ import { useListKeys } from '../useListKeys.js';
 import { SearchResults } from './SearchResults.js';
 import { IndexingStatus } from './IndexingStatus.js';
 import { Button } from './Button';
-import { Disclosure } from './Disclosure.js';
+import { FilterControls } from './FilterControls.js';
 
 /** Sidebar plus the routed workspace. Filters come from the URL; nothing here is mirrored into state. */
 export function NotesLayout({ children }: { children: React.ReactNode }) {
@@ -127,243 +127,19 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
           }
         />
 
-        {/*
-            A notebook that no longer exists is syntactically valid, so validateSearch
-            cannot reject it — only the loaded list can. Saying so beats the old silent
-            desync, where the URL filtered by a notebook while the picker read "All
-            notebooks" and the empty list looked like a data problem.
-        */}
-        {results === null &&
-          notebook &&
-          notebook !== UNFILED &&
-          notebooks.isSuccess &&
-          !notebooks.data.notebooks.some((nb) => nb.name === notebook) && (
-            <p className="bad small">
-              No notebook named “{notebook}”.{' '}
-              <Link to="/notes" search={(prev) => ({ ...prev, notebook: undefined })}>
-                Show all notes
-              </Link>
-            </p>
-          )}
-
-        {results === null && (notebooks.data?.notebooks.length ?? 0) > 0 && (
-          <div className={`notebook-scope-wrap${(tags.data?.length ?? 0) === 0 ? ' filters-end' : ''}`}>
-            <select
-              className="notebook-scope"
-              value={notebook ?? ''}
-              // Clearing the tag matters: tags cross notebook boundaries, so keeping one
-              // selected here routinely yields an empty list with no visible cause.
-              onChange={(e) =>
-                void navigate({
-                  to: '/notes',
-                  search: (prev) => ({
-                    ...prev,
-                    notebook: e.target.value || undefined,
-                    tag: undefined,
-                  }),
-                })
-              }
-              aria-label="Notebook"
-            >
-              <option value="">All notebooks</option>
-              {notebooks.data?.notebooks.map((nb) => (
-                <option key={nb.id} value={nb.name}>
-                  {nb.name} ({nb.count})
-                </option>
-              ))}
-              {/*
-                  "Inbox" is the label for having no notebook — the same state the API and
-                  the UNFILED sentinel still call unfiled. One name for one bucket: notes
-                  arrive here from a phone share and from a deleted notebook alike, and both
-                  want the same triage. Renaming the sentinel would churn the API for a word.
-
-                  Offered only when there is something to see; with nothing unfiled the
-                  option leads to a guaranteed empty list. It stays rendered while it is the
-                  active filter so the select never falls back to showing "All notebooks"
-                  over a URL that says otherwise.
-              */}
-              {((notebooks.data?.unfiled ?? 0) > 0 || notebook === UNFILED) && (
-                <option value={UNFILED}>Inbox ({notebooks.data?.unfiled ?? 0})</option>
-              )}
-            </select>
-          </div>
-        )}
-
-        {/*
-          * Sort is one control rather than a field plus a direction, because the useful
-          * combinations are few and naming them ("Oldest first") is plainer than asking
-          * someone to assemble "created" and "ascending" themselves.
-          *
-          * Hidden while searching: results come back ranked by relevance, and reordering
-          * them by date would throw away the ranking that makes them worth showing.
-          */}
-        {results === null && (
-          <div className="notebook-scope-wrap">
-            <select
-              className="notebook-scope"
-              value={`${sort ?? 'updated'}:${order ?? 'desc'}`}
-              onChange={(e) => {
-                const [nextSort, nextOrder] = e.target.value.split(':') as [NoteSort, 'asc' | 'desc'];
-                void navigate({
-                  to: '/notes',
-                  // The default stays out of the URL so a plain /notes link is clean.
-                  search: (prev) => ({
-                    ...prev,
-                    sort: nextSort === 'updated' ? undefined : nextSort,
-                    order: nextOrder === 'desc' ? undefined : nextOrder,
-                  }),
-                });
-              }}
-              aria-label="Sort notes"
-            >
-              <option value="updated:desc">Recently updated</option>
-              <option value="created:desc">Newest first</option>
-              <option value="created:asc">Oldest first</option>
-              <option value="title:asc">Title A–Z</option>
-              <option value="title:desc">Title Z–A</option>
-            </select>
-          </div>
-        )}
-
-        {/*
-          * Shown while searching too: a date range narrows which notes match, which is a
-          * question worth asking of search results, unlike sort which would discard their
-          * relevance ranking.
-          */}
-        <div className="date-range">
-          <label>
-            <span className="small">From</span>
-            <input
-              type="date"
-              value={from ?? ''}
-              max={to ?? undefined}
-              onChange={(e) =>
-                void navigate({
-                  to: '/notes',
-                  search: (prev) => ({ ...prev, from: e.target.value || undefined }),
-                })
-              }
-            />
-          </label>
-          <label>
-            <span className="small">To</span>
-            <input
-              type="date"
-              value={to ?? ''}
-              min={from ?? undefined}
-              onChange={(e) =>
-                void navigate({
-                  to: '/notes',
-                  search: (prev) => ({ ...prev, to: e.target.value || undefined }),
-                })
-              }
-            />
-          </label>
-          {(from || to) && (
-            <Button
-              variant="quiet"
-              size="small"
-              onClick={() =>
-                void navigate({
-                  to: '/notes',
-                  search: (prev) => ({ ...prev, from: undefined, to: undefined }),
-                })
-              }
-            >
-              Clear
-            </Button>
-          )}
-        </div>
-
-        {/*
-          * Export the current filter.
-          *
-          * Here rather than only in Settings because this is where the scope was chosen:
-          * having filtered to a tag and a year, being sent to another page to describe the
-          * same slice again is the failure mode. Shown only when a filter is active — with
-          * none, this is the whole-library export, which has its own page and a warning
-          * about size that belongs with it.
-          *
-          * An anchor, like the export page's: the archive is generated as it downloads, so
-          * letting the browser consume the response is what keeps a corpus larger than the
-          * Worker's memory from ever landing in a JS buffer.
-          */}
-        {results === null && isFiltered && (
-          <a className="export-filtered small" href={api.exportUrl({ ...filter, sort: sort ?? 'updated' })} download>
-            {total !== null ? `Export these ${total} notes` : 'Export these notes'}
-          </a>
-        )}
-
-        {results === null && (tags.data?.length ?? 0) > 0 && (
-          /*
-              A disclosure rather than a flat list.
-
-              The tag list is as long as the user has tags — this account has sixteen, and
-              they filled most of a phone screen before a single note was visible. Collapsed
-              it costs one row; the summary carries the active tag so a filter can never be
-              applied invisibly.
-
-              Open where the sidebar has room, closed on a phone — `defaultOpen="wide"` is
-              that, and Disclosure carries the remount the default needs to survive a
-              viewport change.
-          */
-          <Disclosure
-            className="tag-filter-wrap"
-            defaultOpen="wide"
-            summary={
-              <>
-                Tags
-                {/* The active tag stays on the row while collapsed, so a filter is never
-                    applied invisibly; otherwise the count says what is hidden. */}
-                {selectedTags.length > 0 ? (
-                  // Every selected tag, not the first and a count: two tags ANDed are a
-                  // different question from either alone, and the collapsed row is the only
-                  // place a filter shows while the list is closed.
-                  selectedTags.map((name) => (
-                    <span className="tag-filter-active" key={name}>
-                      {name}
-                    </span>
-                  ))
-                ) : (
-                  <span className="tag-filter-summary-count">{tags.data?.length}</span>
-                )}
-              </>
-            }
-          >
-            <div className="tag-filter">
-              {tags.data?.map((t) => {
-                const on = selectedTags.includes(t.name);
-                return (
-                  <button
-                    key={t.name}
-                    type="button"
-                    className={on ? 'tag-filter-item active' : 'tag-filter-item'}
-                    aria-pressed={on}
-                    onClick={() =>
-                      void navigate({
-                        to: '/notes',
-                        search: (prev) => {
-                          /*
-                           * Tags accumulate rather than replace: picking a second one
-                           * narrows to notes carrying both. Dropping to undefined at zero
-                           * keeps `?tag=` out of the URL when nothing is selected.
-                           */
-                          const next = on
-                            ? selectedTags.filter((name) => name !== t.name)
-                            : [...selectedTags, t.name];
-                          return { ...prev, tag: next.length ? next : undefined };
-                        },
-                      })
-                    }
-                  >
-                    {t.name}
-                    <span className="tag-count">{t.count}</span>
-                  </button>
-                );
-              })}
-            </div>
-          </Disclosure>
-        )}
+        <FilterControls
+          notebook={notebook}
+          selectedTags={selectedTags}
+          from={from}
+          to={to}
+          sort={sort}
+          order={order}
+          searching={results !== null}
+          total={total}
+          filter={filter}
+          notebooks={notebooks}
+          tags={tags}
+        />
 
         <ul className="note-list" onKeyDown={onListKeys}>
           {results !== null && <SearchResults results={results} />}
