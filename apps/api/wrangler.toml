@@ -14,7 +14,8 @@ database_name = "unbent"
 # file under .wrangler, and never reaches a remote database. Do not paste a real id here —
 # it would not be used, and it would disagree with `database_name` above. Every real id
 # lives in a named environment below, where a deploy actually needs it:
-# [[env.production.d1_databases]] for `unbent`, [[env.dev.d1_databases]] for `unbent-dev`.
+# [[env.production.d1_databases]] for `unbent`, and [[env.dev.d1_databases]] /
+# [[env.preview.d1_databases]] for the `unbent-dev` those two share.
 database_id = "PLACEHOLDER_RUN_WRANGLER_D1_CREATE"
 migrations_dir = "migrations"
 
@@ -90,19 +91,24 @@ enabled = true
 [env.production.ai]
 binding = "AI"
 
-# Preview instance, shared by every pull request.
+# Preview instances, one per pull request.
 #
-# One Worker per PR, `unbent-pr-<N>`, and all of them bound to the same `unbent-dev` D1 and
-# `unbent-dev-blobs` R2. The Worker is per PR only because its URL — and therefore APP_URL —
-# has to differ; the data is shared on purpose. Nothing here touches production. Deployed
-# and torn down by .github/workflows/web.yml.
+# One Worker per PR, `unbent-pr-<N>`, all of them bound to the same `unbent-dev` D1 and
+# `unbent-dev-blobs` R2 that `[env.dev]` below serves. The Worker is per PR only because
+# its URL — and therefore APP_URL — has to differ; the data is shared on purpose. Nothing
+# here touches production. Deployed and torn down by .github/workflows/web.yml.
+#
+# Named `preview` rather than `dev` because that is what it is. The dev *instance* is the
+# block below: a Worker that outlives any one PR. Calling this one `dev` left the only
+# thing anybody could reach living inside whichever PR happened to be open, and the shared
+# database with no front door at all between merges.
 #
 # Two values this block deliberately omits, because both are per PR and are supplied on the
 # deploy command line instead:
 #
 #   --name unbent-pr-<N>   replaces the name outright (wrangler's getScriptName is
 #                          `args.name ?? config.name`), rather than suffixing the env onto
-#                          it the way a bare `--env dev` would give `unbent-api-dev`.
+#                          it the way a bare `--env preview` would give `unbent-api-preview`.
 #   --var APP_URL:<url>    https://unbent-pr-<N>.<subdomain>.workers.dev
 #
 # APP_URL is the one that matters: `auth.ts` derives baseURL, trusted origins, cookie
@@ -117,8 +123,60 @@ binding = "AI"
 #
 # No `ai` binding, for the reason the production block gives; previews extract a PDF's text
 # in the browser, as an unconfigured instance always has.
-[env.dev]
+#
+# No routes either, and that is load-bearing: a route here would be claimed by whichever
+# preview deployed last, since `--name` changes the script a deploy targets but not the
+# hostname it attaches. The dev instance's custom domain therefore cannot live in a block
+# that previews reuse.
+[env.preview]
 workers_dev = true
+
+[[env.preview.d1_databases]]
+binding = "DB"
+database_name = "unbent-dev"
+database_id = "40d2f47f-e7cf-4f8f-bdc7-be2cc587ead3"
+migrations_dir = "migrations"
+
+[[env.preview.r2_buckets]]
+binding = "BLOBS"
+bucket_name = "unbent-dev-blobs"
+
+[env.preview.assets]
+directory = "../web/dist"
+binding = "ASSETS"
+not_found_handling = "single-page-application"
+run_worker_first = ["/api/*"]
+
+[env.preview.observability]
+enabled = true
+
+# The dev instance, at https://dev.unbent.app.
+#
+# One standing Worker, deployed from main by .github/workflows/web.yml, on the same
+# `unbent-dev` D1 and `unbent-dev-blobs` R2 the previews above use.
+#
+# It exists because a preview structurally cannot be a stable host. `auth.ts` derives the
+# trusted origins and the passkey rpID from APP_URL, so a hostname that changes with every
+# PR can never have an OAuth callback registered against it, and a passkey enrolled on one
+# preview is useless on the next. Proving a sign-in flow end to end anywhere other than
+# production needs a hostname that stays put — and until this block existed, production was
+# the only instance in the world with one.
+#
+# Sharing the previews' data is deliberate. A second database would be another thing to
+# migrate, recreate and reason about for a scratch environment nothing is backed up in, and
+# it would cost the property that makes the shared instance worth having: a note made on a
+# preview is there on dev, and the other way round. The trade is that a PR's migration
+# lands here too, so this Worker can be briefly wrong for the code main is running. That is
+# the same sharp edge the previews already have, and the README's recipe for recreating the
+# instance is the same fix.
+[env.dev]
+# Replaces the name outright rather than suffixing the environment onto the top-level one,
+# which would otherwise deploy this as `unbent-api-dev`.
+name = "unbent-dev"
+# One hostname and one origin. A workers.dev URL alongside the custom domain would be a
+# second origin that APP_URL does not name, so every sign-in through it would fail on an
+# untrusted origin — a failure that reads as a broken deploy rather than the wrong URL.
+workers_dev = false
 
 [[env.dev.d1_databases]]
 binding = "DB"
@@ -130,6 +188,20 @@ migrations_dir = "migrations"
 binding = "BLOBS"
 bucket_name = "unbent-dev-blobs"
 
+[env.dev.vars]
+# Unlike a preview's, this one is a constant and belongs in the file: the host does not
+# change, so there is nothing for a deploy to supply and nothing to go stale.
+APP_URL = "https://dev.unbent.app"
+
+# `custom_domain` has Cloudflare create and manage both the DNS record and the certificate,
+# exactly as production's apex does, so there is no record to keep in step with this file by
+# hand. It needs `unbent.app` to be a zone on the same account — it is, production serves
+# from it — and an API token with DNS edit on that zone, which the production deploy's
+# token already has for the apex.
+[[env.dev.routes]]
+pattern = "dev.unbent.app"
+custom_domain = true
+
 [env.dev.assets]
 directory = "../web/dist"
 binding = "ASSETS"
@@ -138,3 +210,11 @@ run_worker_first = ["/api/*"]
 
 [env.dev.observability]
 enabled = true
+
+# Extracts a PDF's text on the server, as production does. A dev instance is only worth
+# having if the path it exercises is production's, and text extraction is the half of an
+# import that differs most between the two. The objection that keeps this binding out of
+# the top level does not reach here: a named environment is not what `wrangler dev` loads,
+# so a first `pnpm dev` and the test suite still need no Cloudflare login.
+[env.dev.ai]
+binding = "AI"

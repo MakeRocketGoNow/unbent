@@ -45,10 +45,17 @@ jobs:
       - run: pnpm --filter @unbent/api test:unit
       - run: pnpm build
 
+  # Ships main to both standing instances: production at unbent.app, and the dev instance
+  # at dev.unbent.app. One build serves both, which is the reason these are steps in one job
+  # rather than a job each — the alternative pays for a second checkout, install and build
+  # to deploy the same artifact twice.
   deploy:
     needs: check
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     runs-on: ubuntu-latest
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
     steps:
       - uses: actions/checkout@v7
       - uses: pnpm/action-setup@v6
@@ -58,12 +65,40 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm build
+
+      # Production first, so nothing about the scratch instance can delay the real one.
+      # Its migrations stay manual (`pnpm migrate:remote`); the dev ones below do not,
+      # because that database is already migrated automatically by every preview.
       - name: Deploy Worker
         working-directory: apps/api
         run: pnpm exec wrangler deploy --env production
+
+      # A PR's preview normally lands its migrations on the shared database before the PR
+      # merges, so this is usually a no-op. Usually is not always: a fork PR gets no
+      # preview, and a merge with checks skipped gets no preview either, and without this
+      # the dev instance would then run main's code against a schema missing them.
+      - name: Apply migrations to the dev database
+        working-directory: apps/api
+        run: pnpm migrate:dev
+
+      - name: Deploy the dev instance
+        working-directory: apps/api
+        run: pnpm exec wrangler deploy --env dev
+
+      # Same reasoning, and the same trap, as the preview secrets below: no `--env`, because
+      # `secret put` resolves its target by concatenating `--name` and `--env`, and adding
+      # one here would aim these at a Worker called `unbent-dev-dev`. Re-put on every push
+      # so a rotated value flows without anyone having to remember this instance exists.
+      - name: Put the dev instance secrets
+        working-directory: apps/api
         env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          DEV_BETTER_AUTH_SECRET: ${{ secrets.DEV_BETTER_AUTH_SECRET }}
+          DEV_ALLOWED_EMAILS: ${{ secrets.DEV_ALLOWED_EMAILS }}
+        run: |
+          printf '%s' "$DEV_BETTER_AUTH_SECRET" |
+            pnpm exec wrangler secret put BETTER_AUTH_SECRET --name unbent-dev
+          printf '%s' "$DEV_ALLOWED_EMAILS" |
+            pnpm exec wrangler secret put ALLOWED_EMAILS --name unbent-dev
 
   # One Worker per PR, at a URL of its own, so a branch can be tried out rather than read.
   #
@@ -120,16 +155,16 @@ jobs:
 
       - name: Deploy the preview Worker
         working-directory: apps/api
-        run: pnpm exec wrangler deploy --env dev --name "$WORKER_NAME" --var "APP_URL:$PREVIEW_URL"
+        run: pnpm exec wrangler deploy --env preview --name "$WORKER_NAME" --var "APP_URL:$PREVIEW_URL"
 
       # After the deploy, not before: secrets attach to a Worker, and `secret put` fails
       # until one exists. They survive later deploys of the same name, so re-putting them
       # on every push is redundant rather than harmful, and keeps a rotated value flowing
       # without anyone having to remember which previews are live.
       #
-      # No `--env dev`, and it must stay off. `secret put` resolves its target with
+      # No `--env preview`, and it must stay off. `secret put` resolves its target with
       # wrangler's `getLegacyScriptName`, which is `--name` and `--env` concatenated:
-      # adding `--env dev` here would aim these at `unbent-pr-<N>-dev`, a Worker that does
+      # adding `--env preview` here would aim these at `unbent-pr-<N>-preview`, a Worker that does
       # not exist. Nothing would fail — wrangler offers to create a missing Worker and
       # takes its own "yes" when non-interactive — so CI would quietly stand up an empty
       # stub per PR, put both secrets on it, and leave the real preview with neither. The
@@ -236,9 +271,9 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
 
-      # No `--env dev`: a Worker is deleted by name, so the environment's bindings are
+      # No `--env preview`: a Worker is deleted by name, so the environment's bindings are
       # beside the point, and leaving it off means this keeps working from a base branch
-      # whose wrangler.toml predates `[env.dev]`.
+      # whose wrangler.toml predates `[env.preview]`.
       #
       # Whatever the PR wrote lives on in the shared preview D1 and R2. That is the trade
       # a shared scratch instance makes; see the README on recreating it.
