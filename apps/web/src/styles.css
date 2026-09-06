@@ -2986,6 +2986,26 @@ a.sidebar-status:hover {
 }
 
 /*
+   The first control in a row lines its glyph up with the text below it.
+
+   A 44px target around a ~22px glyph centres the picture, so the ink sits about 11px inside
+   the button — and the button's own left edge is already the column's edge, so the glyph
+   ended up indented from every line of text under it. Two rows of chrome that look like
+   they start in different places is the thing this reads as.
+
+   The pull is per-icon because the glyphs do not fill their boxes equally: the hamburger's
+   strokes span x=4..20 of a 24 viewBox, the back chevron's only x=9..15. Aligning the SVG
+   boxes would leave the chevron nearly 8px in while the menu sat 3.5px in — which is what
+   was on screen. These offsets are measured from the ink, so both land on the text.
+
+   Only the leading control. Everything else in the row is a target among targets, where
+   even spacing matters more than where the ink starts.
+*/
+.list-head > .icon-btn:first-child { margin-left: -0.22rem; }
+
+.list-search > .icon-btn:first-child { margin-left: -0.49rem; }
+
+/*
    The dot that says a filter is on.
 
    Positioned on the icon rather than beside it, so the control stays one 44px square and
@@ -3654,6 +3674,13 @@ a.sidebar-status:hover {
 
      It sits here, next to the `.shell` rule above whose padding it cancels, because the
      two are one number: change that padding and this must change with it.
+
+     Not pulled the further 0.49rem that aligns the chevron's ink with the text below, the
+     way the list header's leading icons are. Here the two goals conflict: this arrow is
+     already pulled to put its target on the screen edge, and taking the ink offset as well
+     moved the target 8px off screen — trading a reachable corner control for a pixel of
+     alignment, which is the wrong way round. The ink lands ~7px inside the text instead,
+     which is the cost of the target reaching the glass.
   */
   .view-back {
     margin-left: -0.75rem;
