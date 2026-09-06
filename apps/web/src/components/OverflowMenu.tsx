@@ -36,6 +36,18 @@ export interface OverflowItem {
   static?: boolean;
   /** Native tooltip, for a label whose text may be truncated. */
   title?: string;
+  /**
+   * Marks the item as the one currently in effect.
+   *
+   * For a menu that is a choice rather than a list of commands — the sort menu, where one
+   * of five is always active. `aria-pressed` rather than `aria-checked`: these are plain
+   * buttons, not `role="menuitemradio"`, and the note above on `role="menu"` applies to
+   * its children too. A half-implemented radio group reads worse to a screen reader than
+   * an honest toggle does.
+   *
+   * Only meaningful on a button item. A link that navigates is not a setting.
+   */
+  selected?: boolean;
 }
 
 /**
@@ -119,6 +131,7 @@ export function OverflowMenu({
             const className = [
               'overflow-item',
               item.tone === 'danger' ? 'danger' : '',
+              item.selected === true ? 'selected' : '',
               item.className ?? '',
             ]
               .filter(Boolean)
@@ -156,6 +169,10 @@ export function OverflowMenu({
                 key={i}
                 type="button"
                 className={className}
+                // Only where it is a choice: on a command, "not pressed" is a state the
+                // item does not have, and announcing one invites the question of how to
+                // press it.
+                aria-pressed={item.selected === undefined ? undefined : item.selected}
                 onClick={() => {
                   setOpen(false);
                   item.onSelect?.();

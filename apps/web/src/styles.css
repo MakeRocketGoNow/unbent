@@ -945,6 +945,37 @@ h1 {
 
 .overflow-item:hover { background: color-mix(in srgb, var(--fg) 8%, transparent); }
 .overflow-item.danger { color: var(--bad); }
+
+/*
+   The item currently in effect, in a menu that is a choice rather than a list of commands.
+
+   A tick in a reserved gutter, not a tinted or bolded label: every item shifts by the same
+   amount whether or not it is the selected one, so the list does not reflow as the choice
+   moves down it. The gutter is on the whole list rather than on the selected item, which is
+   what reserves it.
+
+   Drawn as a rotated box with two borders, the same construction as the disclosure chevron
+   and the select's arrow — no glyph, no asset, and correct in dark mode for free because it
+   inherits currentColor.
+*/
+.overflow-list:has(.overflow-item.selected) .overflow-item { padding-left: 1.6rem; }
+
+.overflow-item.selected {
+  position: relative;
+  color: var(--accent);
+}
+
+.overflow-item.selected::before {
+  content: '';
+  position: absolute;
+  left: 0.55rem;
+  top: 50%;
+  width: 0.3rem;
+  height: 0.55rem;
+  border-right: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
+  transform: translateY(-65%) rotate(45deg);
+}
 /* The anchor variant, used by Download. Undoes the link colour and underline it would
    otherwise inherit, so it reads as a menu item and not as prose. */
 a.overflow-item { text-decoration: none; }
