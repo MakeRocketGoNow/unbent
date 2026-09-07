@@ -109,6 +109,10 @@ export function useListKeys() {
  * is a no-op, which is the correct behaviour for an Enter pressed before an editor
  * exists. A registration rather than a prop chain because the list and the editor are
  * siblings under a route, with the whole layout between them.
+ *
+ * Two callers press it: the list's Enter and the title field's. Both mean "done choosing,
+ * let me write", so both should land in the same place rather than each growing a way into
+ * the editor of its own.
  */
 let focusEditorImpl: (() => void) | null = null;
 
@@ -116,7 +120,7 @@ export function registerEditorFocus(fn: (() => void) | null) {
   focusEditorImpl = fn;
 }
 
-function focusEditor() {
+export function focusEditor() {
   focusEditorImpl?.();
 }
 

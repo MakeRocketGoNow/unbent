@@ -10,6 +10,7 @@ import {
   useCameFromList,
   registerEditorFocus,
   focusActiveListItem,
+  focusEditor,
 } from '../useListKeys.js';
 import { useIsNewNote } from '../useNewNote.js';
 import { useMediaQuery, MOBILE_QUERY } from '../useMediaQuery.js';
@@ -355,6 +356,19 @@ export function Workspace({ noteId, readOnly = false, backTo = '/notes' }: Works
           >
             <BackArrow />
           </Link>
+          {/*
+              Enter hands the note over to the body, and is the only way there from this
+              field without reaching for the mouse.
+
+              Tab cannot be it. The save state, the ⋯ menu and the toolbar's twelve
+              controls all sit between this field and the editor in the DOM, so Tab is
+              several presses from the text — and it is also how those controls are reached
+              on purpose, which taking it would cost.
+
+              The same move the sidebar's Enter makes, through the same registration, so
+              the caret lands at the end of the document in both cases rather than at the
+              end from the list and the start from here.
+          */}
           <input
             ref={titleRef}
             className="title-input"
@@ -362,6 +376,11 @@ export function Workspace({ noteId, readOnly = false, backTo = '/notes' }: Works
             placeholder="Untitled"
             readOnly={readOnly}
             onChange={(e) => setDraft((d) => ({ ...d, title: e.target.value }))}
+            onKeyDown={(e) => {
+              if (e.key !== 'Enter') return;
+              e.preventDefault();
+              focusEditor();
+            }}
           />
         </div>
 

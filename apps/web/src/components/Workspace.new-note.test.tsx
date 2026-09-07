@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest';
-import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, cleanup, fireEvent, waitFor, act } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
   createRootRoute,
@@ -73,6 +73,18 @@ function mount(noteOverrides: Partial<Note> = {}) {
 const title = () => screen.getByPlaceholderText('Untitled');
 const editorHost = () => document.querySelector('.cm-content');
 
+/**
+ * Lets the editor finish arriving.
+ *
+ * The view hands itself to the workspace as it mounts, and the workspace registers the way
+ * into it a commit later — so there is a moment, after the title already has the caret,
+ * when Enter has nothing to hand the note to. That is the documented behaviour of an Enter
+ * pressed before an editor exists, and it is measured in one render rather than anything a
+ * person could hit; here it is the difference between the test pressing the key and a user
+ * doing it.
+ */
+const settle = () => act(async () => {});
+
 beforeEach(() => {
   // jsdom ships no `matchMedia`, and the workspace asks for the breakpoint on its first
   // render. A desktop answer: the split preview is the only thing this changes here, and
@@ -129,6 +141,17 @@ describe('opening a note', () => {
     mount();
 
     await waitFor(() => expect(editorHost()).toBeTruthy());
+    expect(document.activeElement).toBe(editorHost());
+  });
+
+  it('hands the note over to the body when Enter is pressed in the title', async () => {
+    markNewNote('n1');
+    mount();
+
+    await waitFor(() => expect(document.activeElement).toBe(title()));
+    await settle();
+    fireEvent.keyDown(title(), { key: 'Enter' });
+
     expect(document.activeElement).toBe(editorHost());
   });
 });
