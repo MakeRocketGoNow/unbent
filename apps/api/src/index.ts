@@ -4,6 +4,7 @@ import type { AppEnv } from './types.js';
 import { sessionMiddleware } from './lib/session.js';
 import { health } from './routes/health.js';
 import { authRoutes } from './routes/auth.js';
+import { wellKnown } from './routes/well-known.js';
 import { notes } from './routes/notes.js';
 import { notebooks } from './routes/notebooks.js';
 import { exportRoutes } from './routes/export.js';
@@ -27,6 +28,12 @@ app.onError((err, c) => {
 app.notFound((c) => c.json({ error: 'Not found' }, 404));
 
 const routes = app
+  /**
+   * Mounted at the root rather than under /api, because that is where an MCP client looks
+   * for them. See routes/well-known.ts, and the matching run_worker_first entries in
+   * wrangler.toml without which these paths never reach this Worker at all.
+   */
+  .route('/', wellKnown)
   .route('/api', health)
   .route('/api', authRoutes)
   .route('/api', notes)

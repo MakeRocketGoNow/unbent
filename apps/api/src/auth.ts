@@ -1,6 +1,7 @@
 import { betterAuth } from 'better-auth';
 import { APIError } from 'better-auth/api';
-import { bearer, deviceAuthorization, emailOTP, oneTimeToken } from 'better-auth/plugins';
+import { bearer, deviceAuthorization, emailOTP, jwt, oneTimeToken } from 'better-auth/plugins';
+import { mcp } from '@better-auth/mcp';
 import { passkey } from '@better-auth/passkey';
 import { socialProviderList } from 'better-auth/social-providers';
 import type { AuthProvider } from '@unbent/shared';
@@ -190,6 +191,28 @@ function baseURLFor(env: Env) {
 }
 
 /**
+ * The MCP endpoint's canonical URL, which is also the audience every token issued for it
+ * carries.
+ *
+ * RFC 8707 calls this the resource identifier, and binding tokens to it is what stops one
+ * minted for somewhere else being replayed here — the check the MCP route makes on every
+ * call. It has to be the URL a client actually types, which is the SPA origin rather than
+ * the Worker's own: in production they are the same host, and locally the Vite proxy is
+ * what makes the two halves look like one origin.
+ *
+ * The plugin requires HTTPS with no query or fragment, and allows plain HTTP only on
+ * loopback, which is exactly the local-development case.
+ */
+export function mcpResource(env: Env): string {
+  return `${env.APP_URL.replace(/\/$/, '')}/api/mcp`;
+}
+
+/** Where tokens for that resource come from, and whose signature they carry. */
+export function mcpIssuer(env: Env): string {
+  return `${env.APP_URL.replace(/\/$/, '')}/api/auth`;
+}
+
+/**
  * What this module actually uses of a Better Auth instance: the catch-all request handler
  * mounted at /api/auth/*, and the session lookup sessionMiddleware performs.
  *
@@ -205,7 +228,29 @@ interface AuthInstance {
     getSession: (context: { headers: Headers }) => Promise<{
       user?: { id: string; email: string; name: string; image?: string | null };
     } | null>;
+    /**
+     * The two discovery documents, which routes/well-known.ts serves from the root. They
+     * are reachable through the handler as well, but only under /api/auth — and the
+     * clients that read them look at the origin root, which Better Auth's router 404s
+     * before a plugin ever sees it.
+     */
+    getOAuthServerConfig: (context: { request: Request; asResponse: false }) => Promise<unknown>;
+    getOpenIdConfig: (context: { request: Request; asResponse: false }) => Promise<unknown>;
   };
+  /**
+   * Needed by the MCP route for the base URL it verifies tokens against, and for the
+   * database-backed store that rejects a replayed DPoP proof across isolates.
+   */
+  $context: Promise<{
+    baseURL: string;
+    internalAdapter: {
+      reserveVerificationValue: (data: {
+        identifier: string;
+        value: string;
+        expiresAt: Date;
+      }) => Promise<boolean>;
+    };
+  }>;
 }
 
 /**
@@ -447,6 +492,46 @@ function createAuth(env: Env): AuthInstance {
        * resolves a user and `requireAuth` still guards the same routes.
        */
       bearer(),
+      /**
+       * Signing keys for the OAuth tokens the MCP plugin issues, published as a public key
+       * set at /api/auth/jwks.
+       *
+       * Required by the provider below rather than optional: it is what lets the MCP route
+       * verify a token by checking a signature instead of reading the database on every
+       * tool call, which matters when a single agent turn makes a dozen of them.
+       */
+      jwt(),
+      /**
+       * Makes this instance an OAuth 2.1 authorization server, so an AI assistant can be
+       * given access to someone's notes.
+       *
+       * This is a different shape of trust from every other plugin here. The others sign a
+       * person in; this one lets a *program* act as that person indefinitely, which is why
+       * the flow ends at a consent screen naming what is being granted and why settings
+       * has a page for taking it back.
+       *
+       * Registration is open, and deliberately: Claude, Cursor and the rest register
+       * themselves at connect time and there is no way to pre-provision credentials for
+       * clients you have never heard of. That means unauthenticated writes to `oauthClient`
+       * from anyone who can reach the URL, so registration is rate limited below. It buys
+       * nothing on its own — a registered client with no approved consent can read nothing
+       * — but a table that grows without a human in the loop should not grow quickly.
+       *
+       * The newer CIMD scheme, where a client is identified by a document on its own
+       * domain, is the direction this is heading and is not here yet: it needs a
+       * Workers-specific fetch transport the package does not ship.
+       */
+      mcp({
+        loginPage: '/login',
+        consentPage: '/consent',
+        resource: mcpResource(env),
+        allowDynamicClientRegistration: true,
+        allowUnauthenticatedClientRegistration: true,
+        rateLimit: {
+          // Ten registrations a minute per address. A real client registers once.
+          register: { window: 60, max: 10 },
+        },
+      }),
       /**
        * Lets a signed-in browser hand a session to a native app without the user reading
        * anything out.
