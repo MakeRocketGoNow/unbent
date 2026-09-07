@@ -2,12 +2,13 @@ import { useState } from 'react';
 import { Link } from '@tanstack/react-router';
 import { useQuery } from '@tanstack/react-query';
 import * as api from '../notes-api.js';
+import { deleteUser, useSession } from '../auth-client.js';
 import { Confirm } from './Confirm.js';
 import { Button } from './Button.js';
 import { useMaintenance } from './use-maintenance.js';
-import { noteCountQuery, trashCountQuery } from '../queries.js';
+import { configQuery, noteCountQuery, trashCountQuery } from '../queries.js';
 
-type Pending = 'trashed' | 'all' | null;
+type Pending = 'trashed' | 'all' | 'account' | null;
 
 function plural(n: number, word: string): string {
   return `${n} ${word}${n === 1 ? '' : 's'}`;
@@ -33,6 +34,46 @@ export function Maintenance() {
   const noteCount = useQuery(noteCountQuery());
   const trashed = trashCount.data ?? 0;
   const notes = noteCount.data ?? 0;
+
+  /**
+   * Account deletion is confirmed by mail, so an instance with none does not offer the
+   * endpoint and this section does not exist. Absent config reads as absent feature: a
+   * button that answers 404 looks like a broken app rather than a configured one.
+   */
+  const config = useQuery(configQuery());
+  const { data: session } = useSession();
+  const address = session?.user.email;
+
+  const [sending, setSending] = useState(false);
+  const [sentTo, setSentTo] = useState<string | null>(null);
+  const [sendError, setSendError] = useState<string | null>(null);
+
+  /**
+   * Deliberately not `run` from useMaintenance: nothing was deleted, so there is nothing
+   * to invalidate, and the outcome is not "deleted 47 notes" but "go and read your mail" —
+   * which belongs beside the control that caused it rather than in the page's result line.
+   *
+   * No `callbackURL` either. The API pins where the link lands, so that every caller gets
+   * the same ending whether or not it knew to ask; passing one here would only be this
+   * client agreeing with itself.
+   */
+  async function requestAccountDeletion() {
+    setSending(true);
+    setSendError(null);
+    try {
+      const res = await deleteUser({});
+      if (res?.error) {
+        setSendError(res.error.message || 'Could not send the confirmation.');
+      } else {
+        setSentTo(address ?? null);
+        setPending(null);
+      }
+    } catch (err) {
+      setSendError((err as Error).message || 'Could not send the confirmation.');
+    } finally {
+      setSending(false);
+    }
+  }
 
   const purge = (scope: 'trashed' | 'all') =>
     run(async () => {
@@ -226,6 +267,79 @@ export function Maintenance() {
           />
         )}
       </section>
+
+      {config.data?.accountDeletion && (
+        <section className="settings-section">
+          <h3>Delete account</h3>
+          <p className="muted small">
+            Ends the account itself rather than emptying it: every note and attachment, the
+            passkeys registered to it, and the apps it has connected. The action above
+            leaves you signed in to an empty account; this one leaves you with none.
+          </p>
+          <p className="muted small">
+            Confirming it takes a link sent to{' '}
+            <span className="wrap-anywhere">{address ?? 'your address'}</span>, so nothing
+            here deletes anything on its own.
+          </p>
+
+          {/*
+              No `requireTyped`, unlike "Delete all notes" above, and the difference is the
+              point rather than an oversight. Typing DELETE exists there because that button
+              *is* the irreversible step. Here the button only sends mail — the irreversible
+              step is the link, in an inbox, behind a session — so demanding the word would
+              be friction guarding nothing, and would teach the habit of typing it without
+              reading on the one page where the other control means it.
+          */}
+          <Button
+            variant="quiet"
+            tone="danger"
+            disabled={busy || sending}
+            onClick={() => {
+              setSendError(null);
+              setPending(pending === 'account' ? null : 'account');
+            }}
+          >
+            {sentTo ? 'Send the link again' : 'Delete account'}
+          </Button>
+
+          {pending === 'account' && (
+            <Confirm
+              label="Confirm delete account"
+              question="Delete this account and everything in it?"
+              detail={
+                <>
+                  A link goes to{' '}
+                  <span className="wrap-anywhere">{address ?? 'your address'}</span> and
+                  nothing is deleted until you open it.{' '}
+                  <Link to="/settings/export">Export first</Link> if you want a copy — there
+                  is no way back once it is done.
+                </>
+              }
+              busy={sending}
+              onCancel={() => setPending(null)}
+              actions={[
+                {
+                  label: 'Email me the link',
+                  busyLabel: 'Sending…',
+                  tone: 'danger',
+                  onConfirm: requestAccountDeletion,
+                },
+              ]}
+            />
+          )}
+
+          {/* Below the button, not above it: a message that pushes the control it came
+              from down the page is motion nobody asked for. */}
+          {sentTo && (
+            <p className="good small">
+              Sent to <span className="wrap-anywhere">{sentTo}</span>. Nothing has been
+              deleted yet — opening the link is what does that, and it only works in a
+              browser signed in to this account. It expires in a day.
+            </p>
+          )}
+          {sendError && <p className="bad small">{sendError}</p>}
+        </section>
+      )}
 
       {result && <p className="good small">{result}</p>}
       {error && <p className="bad small">{error}</p>}

@@ -631,11 +631,14 @@ prefix by design.
 
 ## Deleting an account
 
-There is no button for this yet, so the endpoint is the whole interface. `POST
-/api/auth/delete-user` sends a confirmation link to the account's own address and deletes
-nothing by itself. Opening that link in the browser holding the session is what removes the
-user row — cascading away every note, tag, notebook and attachment record — after sweeping
-`users/{id}/` out of R2, which no foreign key would have done.
+Settings → Maintenance, at the bottom, under everything else the page can destroy. The
+button sends a confirmation link to the account's own address and deletes nothing by
+itself; `POST /api/auth/delete-user` is the same thing without the page. Opening that link
+in the browser holding the session is what removes the user row — cascading away every
+note, tag, notebook and attachment record — after sweeping `users/{id}/` out of R2, which
+no foreign key would have done. It lands on `/goodbye`, which says so; the API pins that
+destination when it composes the mail, so it holds for every caller rather than only the
+ones that ask.
 
 A session on its own is deliberately not enough, and neither is a password. The session
 token travels as `Authorization: Bearer` from the phone and the CLI, and this is the one
@@ -643,8 +646,17 @@ action in the app with no trash to fish anything back out of; owning the address
 proof every account type can give, whether it signed in with Google, a passkey or a
 password. The link works once and expires in a day. Export first if you want anything.
 
+Unlike **Delete all notes**, the confirm does not ask you to type `DELETE`. That gate
+belongs to a button that *is* the irreversible step; this one only sends mail, and asking
+for the word to send an email would be friction guarding nothing — and would teach the
+habit of typing it unread on the page where the other control means it. The link also does
+nothing on its own: the callback resolves the session before it spends the token, so a mail
+scanner following it fails and leaves the link usable.
+
 An instance with no mail configured does not offer the endpoint at all, since the
-confirmation is the mechanism — the same test `/api/config` applies to codes by email. In
+confirmation is the mechanism — the same test that decides codes by email. `/api/config`
+reports it as `accountDeletion` alongside the sign-in methods, so the settings section is
+simply absent there rather than drawing a control the server would answer with a 404. In
 local development `sendEmail` prints the link to the Worker console instead of sending it,
 which is how the flow is exercised without a Resend account.
 
