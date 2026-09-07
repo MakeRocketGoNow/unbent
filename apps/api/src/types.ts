@@ -46,9 +46,18 @@ export interface Env {
   AUTH_PASSKEY?: string;
   /**
    * Comma-separated emails allowed to create an account. Unset or empty means anyone
-   * can sign up, which is fine locally but not for a deployed instance.
+   * can sign up, which is fine locally but not for a deployed instance — unless that is
+   * what the instance wants, which is what PUBLIC_SIGNUPS is for.
    */
   ALLOWED_EMAILS?: string;
+  /**
+   * '1' declares that an empty ALLOWED_EMAILS is deliberate, silencing the warning a
+   * deployed instance otherwise logs about accepting a sign-up from anyone.
+   *
+   * It does not open sign-ups; an empty allowlist already has. Nothing reads it but
+   * warnIfOpenToAnyone, so setting it alongside an allowlist does nothing at all.
+   */
+  PUBLIC_SIGNUPS?: string;
   /**
    * Resend credentials, for password reset mail. Both must be set for mail to be sent;
    * without them a reset link is logged rather than delivered, which is what local

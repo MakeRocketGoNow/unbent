@@ -79,6 +79,15 @@ ALLOW_TEST_CREDENTIALS=1
 # to sign up would lock an operator out of their own fresh deployment.
 # ALLOWED_EMAILS=you@example.com
 
+# '1' says an empty ALLOWED_EMAILS above is deliberate, which silences that warning and does
+# nothing else — an instance is already open to anyone the moment the allowlist is empty.
+#
+# It exists because an absent allowlist cannot say which of two things it means. Without
+# this, an instance that chose to be public logs the same warning forever as one that forgot
+# to set the list, and a warning nobody can act on is one nobody reads — including on the
+# instance that really did forget. No effect locally, where the warning never fires anyway.
+# PUBLIC_SIGNUPS=1
+
 # Resend, for password reset mail. Both must be set before any mail is sent; with either
 # missing the reset link is printed to the Worker console instead, which is what local
 # development wants — the whole flow can be exercised without signing up for anything.

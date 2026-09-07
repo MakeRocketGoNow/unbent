@@ -256,12 +256,25 @@ function socialConfig(env: Env): Record<string, { clientId: string | string[]; c
  * methods are named because that is the part worth acting on: it says what an unknown
  * visitor could actually use.
  *
- * Exported for its test. It is a plain function of the environment, and which of the three
+ * `PUBLIC_SIGNUPS=1` is how an instance says the open door is the point. Without it this
+ * cannot tell an instance that decided to be public from one that forgot its allowlist, and
+ * on the first of those it becomes a recurring line about a settled decision — which is how
+ * a warning stops being read, taking the forgotten-allowlist case down with it. An absent
+ * secret cannot express intent; a flag that is present can.
+ *
+ * It silences and does not enable. Sign-ups are already open whenever the allowlist is
+ * empty, and requiring this to open them would lock out the fresh deployment the paragraph
+ * above refuses to lock out. Nothing else reads it, deliberately: a declaration that also
+ * gated something would be load-bearing, and then setting it to quiet the log would change
+ * who can sign in.
+ *
+ * Exported for its test. It is a plain function of the environment, and which of the four
  * cases it fires on is exactly the kind of condition that rots quietly — too loud and every
  * local run is noise, too quiet and a public instance says nothing.
  */
 export function warnIfOpenToAnyone(env: Env): void {
   if (env.APP_URL.startsWith('http://localhost')) return;
+  if (env.PUBLIC_SIGNUPS === '1') return;
   if (allowedEmails(env).length > 0) return;
   console.warn(
     `[auth] ALLOWED_EMAILS is empty and APP_URL (${env.APP_URL}) is not local: ` +

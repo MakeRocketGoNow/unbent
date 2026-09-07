@@ -164,6 +164,18 @@ rather than a var only to keep the address list out of the repo. Leaving it empt
 allowed — an instance is not locked to its operator — but a deployed Worker with no
 allowlist warns in its log, naming what a stranger could sign up with.
 
+An instance that means to be public says so with `PUBLIC_SIGNUPS=1`, which silences that
+warning and nothing else:
+
+```bash
+pnpm exec wrangler secret put PUBLIC_SIGNUPS --env production       # 1, to mean it
+```
+
+It opens nothing — an empty `ALLOWED_EMAILS` has already done that — so this is a record of
+a decision rather than a switch. Without it the warning cannot tell an instance that chose
+to be public from one that forgot its allowlist, and on the first of those it becomes a
+recurring line about something already settled, which is how a log line stops being read.
+
 ### The dev instance
 
 `https://dev.unbent.app` is one standing Worker, `unbent-dev`, deployed from `main` by the
@@ -327,7 +339,9 @@ and unbent.app, which has providers, never sees it. `AUTH_PASSWORD=1` asks for a
 setting here that can leave nobody a way in.
 
 An instance that accepts a sign-up from anyone says so in its log: deployed with an empty
-`ALLOWED_EMAILS`, the Worker warns once, naming the methods a stranger could use.
+`ALLOWED_EMAILS`, the Worker warns once, naming the methods a stranger could use. Set
+`PUBLIC_SIGNUPS=1` to say the open door is deliberate and stop the warning; who may sign up
+is unchanged either way.
 
 The OAuth row means any of the thirty-five providers Better Auth ships — Apple, Discord,
 Microsoft, Slack, GitLab and the rest — not a list this repository maintains. Enabling one
