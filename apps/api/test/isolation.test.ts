@@ -1086,3 +1086,109 @@ describe('cross-tenant access', () => {
   it.todo('export: a bob zip contains no alice notes');
   it.todo('import: bob cannot write into an alice note id');
 });
+
+/**
+ * Account deletion.
+ *
+ * The sweep that empties the account's R2 prefix is unit-tested in `src/lib/blobs.test.ts`
+ * instead of here, because no request can observe it: `gc-blobs` only ever reports on the
+ * caller's own prefix, so once the account is gone nothing distinguishes a swept prefix
+ * from a stranded one. What belongs in a live suite is the other half — that a session on
+ * its own cannot destroy an account, which is a property of the real endpoint and its
+ * middleware rather than of any function here.
+ */
+describe('account deletion', () => {
+  async function upload(actor: Actor, noteId: string, filename: string, content: string) {
+    const res = await fetch(`${BASE}/api/notes/${noteId}/files`, {
+      method: 'PUT',
+      headers: {
+        Cookie: actor.cookie,
+        Origin: ORIGIN,
+        'X-Filename': encodeURIComponent(filename),
+        'Content-Type': 'text/plain',
+      },
+      body: content,
+    });
+    if (!res.ok) throw new Error(`upload failed: ${res.status}`);
+    return res.json();
+  }
+
+  async function requestDeletion(actor: Actor, body: Record<string, string> = {}) {
+    return fetch(`${BASE}/api/auth/delete-user`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Cookie: actor.cookie, Origin: ORIGIN },
+      body: JSON.stringify(body),
+    });
+  }
+
+  /** Everything the account still owns, read back the way its owner would. */
+  async function stillThere(actor: Actor, noteId: string) {
+    const me = await fetch(`${BASE}/api/me`, asUser(actor)).then((r) => r.json());
+    const note = await fetch(`${BASE}/api/notes/${noteId}`, asUser(actor));
+    const gc = await fetch(`${BASE}/api/admin/gc-blobs`, {
+      method: 'POST',
+      headers: { Cookie: actor.cookie, Origin: ORIGIN },
+    }).then((r) => r.json());
+    return { user: me.user?.id ?? null, note: note.status, stored: gc.stored };
+  }
+
+  /**
+   * The case this suite exists for. A session is not a confirmation: the request is
+   * answered with mail, and until the link in it comes back the account is untouched.
+   * Without this, an empty POST carrying a bearer token from the phone or the CLI was a
+   * whole-account wipe for the first day of that token's life.
+   */
+  it('answers a bare request with mail and deletes nothing', async () => {
+    const stamp = Date.now();
+    const actor = await signUp(`delete-me-${stamp}@example.test`, 'delete-me-password-123', 'DeleteMe');
+    const note = await createNote(actor, { title: 'Keep me', body: 'x', tags: ['tag1'] });
+    await upload(actor, note.id, 'important.pdf', '%PDF-1.4 fake content');
+
+    const res = await requestDeletion(actor);
+    expect(res.ok).toBe(true);
+    expect((await res.json()).message).toBe('Verification email sent');
+
+    expect(await stillThere(actor, note.id)).toEqual({
+      user: actor.userId,
+      note: 200,
+      stored: 1,
+    });
+  });
+
+  /**
+   * And a password is not a shortcut past it. Better Auth checks one when it is sent, but
+   * a checked password only proves the session's owner is present — the same thing the
+   * session already claimed — so it does not stand in for owning the address.
+   */
+  it('does not accept a password in place of the link', async () => {
+    const stamp = Date.now();
+    const password = 'blob-test-password-123';
+    const actor = await signUp(`blob-test-${stamp}@example.test`, password, 'BlobTest');
+    const note = await createNote(actor, { title: 'With files', body: 'x' });
+    await upload(actor, note.id, 'important.pdf', '%PDF-1.4 fake content');
+
+    const res = await requestDeletion(actor, { password });
+    expect(res.ok).toBe(true);
+    expect((await res.json()).message).toBe('Verification email sent');
+
+    expect(await stillThere(actor, note.id)).toEqual({
+      user: actor.userId,
+      note: 200,
+      stored: 1,
+    });
+  });
+
+  /** The token is the whole guard, so a made-up one must not spend anything. */
+  it('rejects a token it never issued', async () => {
+    const stamp = Date.now();
+    const actor = await signUp(`bad-token-${stamp}@example.test`, 'bad-token-password-123', 'BadToken');
+    const note = await createNote(actor, { title: 'Keep me too', body: 'x' });
+
+    const res = await requestDeletion(actor, { token: 'not-a-token-anyone-issued' });
+    expect(res.ok).toBe(false);
+
+    const after = await stillThere(actor, note.id);
+    expect(after.user).toBe(actor.userId);
+    expect(after.note).toBe(200);
+  });
+});

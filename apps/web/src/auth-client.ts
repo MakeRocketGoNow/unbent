@@ -39,6 +39,7 @@ export const {
   signIn,
   signUp,
   signOut,
+  deleteUser,
   useSession,
   passkey,
   emailOtp,

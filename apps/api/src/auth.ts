@@ -7,6 +7,7 @@ import { socialProviderList } from 'better-auth/social-providers';
 import type { AuthProvider } from '@unbent/shared';
 import type { Env } from './types.js';
 import { canSendEmail, sendEmail } from './lib/email.js';
+import { deleteKeys, deleteUserBlobs } from './lib/blobs.js';
 
 /**
  * Emails permitted to create an account, lowercased.
@@ -80,6 +81,22 @@ function passkeysEnabled(env: Env): boolean {
  */
 function codesDeliverable(env: Env): boolean {
   return canSendEmail(env) || env.APP_URL.startsWith('http://localhost');
+}
+
+/**
+ * Whether this instance lets an account delete itself.
+ *
+ * The same test as codes by email, for the reason spelled out on `deleteUser` below: the
+ * confirmation mail *is* the guard, so an instance that cannot send one has no way to ask
+ * and does not offer the flow. Named separately from `codesDeliverable` because the two
+ * answer different questions and only happen to agree — if deletion ever gains a second
+ * way to confirm, this is the line that changes.
+ *
+ * Exported because `/api/config` reports it: a settings page that drew a Delete account
+ * button on an instance where the endpoint 404s would be worse than not drawing one.
+ */
+export function accountDeletionOffered(env: Env): boolean {
+  return codesDeliverable(env);
 }
 
 /**
@@ -333,6 +350,28 @@ export function warnIfOpenToAnyone(env: Env): void {
 }
 
 /**
+ * The page the deletion mail links to.
+ *
+ * Not Better Auth's own `/delete-user/callback`, deliberately. That endpoint is a GET that
+ * deletes, and a GET that deletes is something anything can fire: a link prefetch, a
+ * scanner, a restored tab, a thumb landing an inch off. The session requirement rules out
+ * the ones that arrive without cookies, but not the case that matters — webmail read in the
+ * very browser that holds the session, where a speculative fetch carries them.
+ *
+ * So the mail points at the SPA instead, which asks once more and then deletes with a POST.
+ * That is the shape `/reset-password` already has here, and for the same reason: an emailed
+ * token names an intention, and the click that acts on it should be a person's.
+ *
+ * Built from `APP_URL` rather than from the URL Better Auth hands us, which addresses the
+ * API. Same origin in production, and in dev the SPA is the port with the proxy in front.
+ */
+export function confirmDeletionUrl(env: Env, token: string): string {
+  const link = new URL('/delete-account', env.APP_URL);
+  link.searchParams.set('token', token);
+  return link.toString();
+}
+
+/**
  * Better Auth must be constructed per-request: on Workers the D1 binding only exists on
  * `env`, which is not available at module scope. Instances are cheap, but we memoize per
  * Env object so repeated middleware calls within one request reuse the same instance.
@@ -487,6 +526,90 @@ function createAuth(env: Env): AuthInstance {
       // The SPA and API are same-origin in both dev and production, so a host-only
       // cookie is sufficient and avoids SameSite=None.
       useSecureCookies: !env.APP_URL.startsWith('http://localhost'),
+    },
+    user: {
+      /**
+       * Deleting an account, and why it takes an email to do it.
+       *
+       * Better Auth's `/delete-user` verifies a password only if the caller sends one.
+       * With nothing else configured, the entire guard on a bare POST is `freshAge` — a
+       * 24-hour window measured from when the session was created, not from when it was
+       * last used — and that is the wrong shape at both ends.
+       *
+       * Inside the window an empty POST carrying a session token deletes the account and
+       * everything under it. The Android app and the CLI both send that token as
+       * `Authorization: Bearer`, and the bearer plugin below turns it back into a session
+       * on every endpoint, so a token that leaks in its first day is a whole-account wipe
+       * with no confirmation of any kind. `purge-notes` asks for `?confirm=DELETE` before
+       * emptying the trash; this asks for nothing before emptying the account.
+       *
+       * Outside the window nobody without a password can delete at all: the no-password
+       * path is refused as stale, and sending a password finds no credential row to check
+       * it against. That is every Google, GitHub and passkey account — on unbent.app, all
+       * of them.
+       *
+       * `sendDeleteAccountVerification` replaces both with one rule that does not depend
+       * on how someone signed in: the request only ever sends mail, and the deletion
+       * happens when the link comes back. The link is a GET, which would be a mistake on
+       * its own since mail scanners follow links, except that the callback resolves the
+       * session before it consumes the token — a fetch without the signed-in browser's
+       * cookie fails and leaves the token unspent.
+       *
+       * Gated on `codesDeliverable` rather than simply on, because here the mail *is* the
+       * confirmation: an instance that cannot deliver it has no way to ask, so it does not
+       * offer the flow — the same line `emailOTP` draws, and the same reason locally is
+       * enough, `sendEmail` printing the link to the Worker console.
+       */
+      deleteUser: {
+        enabled: accountDeletionOffered(env),
+        /**
+         * Deliberately blunt about what is about to happen: this is the one action in the
+         * app with no undo and no trash to fish it back out of, and the mail is the last
+         * point at which someone can change their mind.
+         */
+        sendDeleteAccountVerification: async ({
+          user,
+          token,
+        }: {
+          user: { email: string };
+          token: string;
+        }) => {
+          await sendEmail(env, {
+            to: user.email,
+            subject: 'Confirm deleting your Unbent account',
+            text: `Someone asked to delete your Unbent account.\n\n${confirmDeletionUrl(env, token)}\n\nThat link opens a page asking you to confirm. Confirming deletes the account, every note in it and every file attached to one — there is no undo and no export afterwards, so take one first if you want one. Open it in the browser you are signed in with; it does nothing anywhere else.\n\nThe link works once and expires in a day. If this was not you, ignore this email. Nothing has happened, and nothing will: opening the link on its own deletes nothing.`,
+          });
+        },
+        /**
+         * Sweep R2 before the user row is deleted.
+         *
+         * D1 handles its own cleanup — notes, attachments, tags and sessions all have
+         * `ON DELETE CASCADE` — but R2 has no foreign keys and the scoped admin sweep
+         * cannot reach objects once the account is gone. This is the hook that prevents
+         * the "stranded blobs" gap the README used to document.
+         *
+         * Blobs before rows here, which is the reverse of what `purge-notes` does, and
+         * the reversal is the whole design. There the rows go first because a failure
+         * afterwards leaves orphans that gc-blobs can still reclaim; here the user id the
+         * sweep needs is the thing the deletion is about to destroy, so after the row is
+         * gone nothing can reach the prefix again. The cost is the mirror image: if this
+         * throws, Better Auth abandons the deletion and the account survives carrying
+         * attachment rows that point at objects already deleted. That is the recoverable
+         * half — the owner can ask again — and it is why the failure is logged rather
+         * than swallowed.
+         */
+        beforeDelete: async (user: { id: string }) => {
+          try {
+            await deleteUserBlobs(env.BLOBS, user.id);
+          } catch (err) {
+            // The rethrow is what stops the deletion. The log is so a half-swept account
+            // can be found afterwards: the id is the only way back to the prefix that
+            // still needs finishing, and by then there is no row to look it up from.
+            console.error(`Blob sweep failed for ${user.id}; account deletion abandoned:`, err);
+            throw err;
+          }
+        },
+      },
     },
     plugins: [
       /**

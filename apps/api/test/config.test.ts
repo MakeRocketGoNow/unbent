@@ -116,4 +116,15 @@ describe('advertisement and endpoints agree', () => {
       expect(pk.status).toBe(404);
     }
   });
+
+  /**
+   * Account deletion is gated on being able to send the confirmation mail, and the suite
+   * runs against localhost, where `sendEmail` prints the link instead. A client reads this
+   * to decide whether the Delete account control exists at all.
+   */
+  it('says whether an account can delete itself here', async () => {
+    const res = await fetch(`${BASE}/api/config`);
+    const { accountDeletion } = (await res.json()) as { accountDeletion: boolean };
+    expect(accountDeletion).toBe(true);
+  });
 });

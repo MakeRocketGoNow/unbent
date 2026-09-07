@@ -1,5 +1,11 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { configuredSocials, offeredProviders, warnIfOpenToAnyone } from './auth.js';
+import {
+  accountDeletionOffered,
+  configuredSocials,
+  offeredProviders,
+  confirmDeletionUrl,
+  warnIfOpenToAnyone,
+} from './auth.js';
 import type { Env } from './types.js';
 
 /** Only the fields these functions read; the bindings are irrelevant here. */
@@ -174,5 +180,69 @@ describe('warnIfOpenToAnyone', () => {
     warnIfOpenToAnyone(env({ PUBLIC_SIGNUPS: '0' }));
     warnIfOpenToAnyone(env({ PUBLIC_SIGNUPS: 'true' }));
     expect(warn).toHaveBeenCalledTimes(2);
+  });
+});
+
+/**
+ * Where the deletion mail points.
+ *
+ * At the SPA, not at Better Auth's `/delete-user/callback`, because that endpoint deletes
+ * on a bare GET — and a GET is fired by prefetches, scanners and restored tabs as readily
+ * as by people. The page it lands on asks once more and deletes with a POST.
+ */
+describe('confirmDeletionUrl', () => {
+  it('addresses the app, not the API', () => {
+    const url = new URL(confirmDeletionUrl(env({ APP_URL: 'https://unbent.app' }), 'tok'));
+    expect(url.origin).toBe('https://unbent.app');
+    expect(url.pathname).toBe('/delete-account');
+    expect(url.searchParams.get('token')).toBe('tok');
+  });
+
+  /** Dev serves the SPA on its own port, with the proxy in front of the Worker. */
+  it('uses the SPA origin in development', () => {
+    const url = new URL(
+      confirmDeletionUrl(env({ APP_URL: 'http://localhost:5173' }), 'tok'),
+    );
+    expect(url.host).toBe('localhost:5173');
+    expect(url.pathname).toBe('/delete-account');
+  });
+
+  /** A token is opaque and may carry characters a query string would otherwise eat. */
+  it('escapes the token rather than pasting it in', () => {
+    const url = confirmDeletionUrl(env({ APP_URL: 'https://unbent.app' }), 'a b&c=d');
+    expect(url).toContain('token=a+b%26c%3Dd');
+    expect(new URL(url).searchParams.get('token')).toBe('a b&c=d');
+  });
+
+  /** An instance served from a subpath should keep it rather than jump to the root. */
+  it('never points at the deleting GET endpoint', () => {
+    const url = confirmDeletionUrl(env({ APP_URL: 'https://unbent.app' }), 'tok');
+    expect(url).not.toContain('delete-user/callback');
+  });
+});
+
+/**
+ * Whether the instance offers account deletion at all.
+ *
+ * The confirmation mail is the guard, so this is really "can we ask?". An instance that
+ * cannot send one leaves the endpoint disabled, and `/api/config` says so rather than
+ * letting a settings page draw a button that answers 404.
+ */
+describe('accountDeletionOffered', () => {
+  it('offers it where mail is configured', () => {
+    expect(
+      accountDeletionOffered(env({ RESEND_API_KEY: 'key', EMAIL_FROM: 'a@example.com' })),
+    ).toBe(true);
+  });
+
+  /** Half a mail configuration is treated as none, the same as everywhere else here. */
+  it('refuses it on a deployed instance with no mail', () => {
+    expect(accountDeletionOffered(env({}))).toBe(false);
+    expect(accountDeletionOffered(env({ RESEND_API_KEY: 'key' }))).toBe(false);
+  });
+
+  /** Locally `sendEmail` prints the link, which is how the flow is worked on offline. */
+  it('offers it in local development, where the link goes to the console', () => {
+    expect(accountDeletionOffered(env({ APP_URL: 'http://localhost:5173' }))).toBe(true);
   });
 });

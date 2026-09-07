@@ -25,6 +25,19 @@ describe('shellFor', () => {
     expect(shellFor('/reset-password')).toBe('plain');
   });
 
+  /**
+   * Both ends of the deletion mail. `/delete-account` has to be able to tell a browser
+   * that it is not the signed-in one, which a redirect to the sign-in screen would replace
+   * with a mystery; `/goodbye` can never have a session at all, since the account that
+   * would have held it is gone by then. Gating either repeats the bug the reset page had.
+   */
+  it('lets both ends of the deletion mail render without a session', () => {
+    expect(shellFor('/delete-account')).toBe('plain');
+    expect(shellFor('/delete-account/')).toBe('plain');
+    expect(shellFor('/goodbye')).toBe('plain');
+    expect(shellFor('/goodbye/')).toBe('plain');
+  });
+
   it('leaves the app WebView to the app', () => {
     expect(shellFor('/embed/notes/abc-123')).toBe('embed');
     expect(shellFor('/embed/index-files')).toBe('embed');

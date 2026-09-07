@@ -649,13 +649,58 @@ rebuilds the schema, backing up D1 first. Use that rather than the in-app sweep 
 fixtures left by deleted test users — the scoped sweep cannot reach another account's
 prefix by design.
 
+## Deleting an account
+
+Settings → Maintenance, at the bottom, under everything else the page can destroy. The
+button sends a confirmation link to the account's own address and deletes nothing by
+itself; `POST /api/auth/delete-user` is the same thing without the page.
+
+The link opens `/delete-account`, which asks once more and deletes on a POST when the
+button there is pressed. It deliberately does not point at Better Auth's own
+`/delete-user/callback`, which deletes on a bare GET: a GET is fired by link prefetches,
+mail scanners, restored tabs and mistaps as readily as by people, and while a request with
+no cookies fails, webmail read in the browser that holds the session is exactly the case
+cookies do not cover. `/reset-password` has the same shape for the same reason — an emailed
+token names an intention, and the click that acts on it should be a person's.
+
+Pressing it removes the user row, cascading away every note, tag, notebook and attachment
+record, after sweeping `users/{id}/` out of R2, which no foreign key would have done. Then
+it signs the browser out and lands on `/goodbye`. The sign-out is not a formality: the
+deleting request re-writes the session-cache cookie from the session it resolved on the way
+in, so without it the browser would keep a five-minute claim to an account that no longer
+exists.
+
+A session on its own is deliberately not enough, and neither is a password. The session
+token travels as `Authorization: Bearer` from the phone and the CLI, and this is the one
+action in the app with no trash to fish anything back out of; owning the address is the one
+proof every account type can give, whether it signed in with Google, a passkey or a
+password. The link works once and expires in a day. Export first if you want anything.
+
+Unlike **Delete all notes**, the confirm does not ask you to type `DELETE`. That gate
+belongs to a button that *is* the irreversible step; this one only sends mail, and asking
+for the word to send an email would be friction guarding nothing — and would teach the
+habit of typing it unread on the page where the other control means it. The typed word is
+not what is missing from the mail's end either: a second press is.
+
+An instance with no mail configured does not offer the endpoint at all, since the
+confirmation is the mechanism — the same test that decides codes by email. `/api/config`
+reports it as `accountDeletion` alongside the sign-in methods, so the settings section is
+simply absent there rather than drawing a control the server would answer with a 404. In
+local development `sendEmail` prints the link to the Worker console instead of sending it,
+which is how the flow is exercised without a Resend account.
+
+If the R2 sweep fails, the deletion is abandoned rather than half-finished: the account
+survives with attachment rows pointing at objects that are already gone, and the failure is
+logged with the user id. Asking again is the fix. Blobs go before rows here, the reverse of
+`purge-notes`, because the user id the sweep needs is exactly what the deletion destroys.
+
 ## Blob garbage collection
 
 R2 has no foreign keys, so objects can outlive their metadata — a crash between the upload
-and the metadata insert, or a user row cascading away its attachment rows. `POST
-/api/admin/gc-blobs` sweeps the caller's own prefix and reports what it finds; add
-`?apply=1` to delete. It is scoped to `users/{caller}/` by design, so it can never see or
-remove another account's objects.
+and the metadata insert, or a user row cascading away its attachment rows without its
+prefix having been swept first. `POST /api/admin/gc-blobs` sweeps the caller's own prefix
+and reports what it finds; add `?apply=1` to delete. It is scoped to `users/{caller}/` by
+design, so it can never see or remove another account's objects.
 
 ## Android app
 
@@ -745,10 +790,6 @@ Absent those, `assembleRelease` still builds, just unsigned. CI reads the same v
 `UNBENT_KEYSTORE_PATH` and friends.
 
 ## Known gaps
-
-- **Deleting a user strands its blobs.** The D1 rows cascade, but the objects under
-  `users/{id}/` remain and the scoped sweep above cannot reach them once the account is
-  gone. Account deletion needs to sweep the prefix before removing the user row.
 
 - **Connected apps get all-or-nothing access.** Approving an MCP client grants every tool
   it offers; there is no way to connect one read-only. Scopes exist in the protocol and are
