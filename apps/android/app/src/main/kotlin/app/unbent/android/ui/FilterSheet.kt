@@ -395,15 +395,19 @@ private fun TagRow(name: String, count: Int, onClick: () -> Unit) {
         Modifier
             .fillMaxWidth()
             .clickable(onClick = onClick)
-            .padding(vertical = Space.Small),
+            .padding(vertical = Space.Hair),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         /*
-         * The chip drops its own 48dp touch target here. Material gives every chip one,
-         * which is right where a chip is the target — but the row is, and the row carries
-         * the 48dp itself. Left on, the two stacked: 16dp of the chip's padding inside a
-         * row that had already reserved the same space, and a list of 32dp chips came out
-         * a chip's height apart.
+         * The chip drops its own 48dp touch target here. Material gives every chip one
+         * whether or not the chip is the thing being tapped, and here it is not — the row
+         * is. Left on, a 32dp chip reserved 48dp and the rows sat 56dp apart: more empty
+         * space between two tag names than either name occupied.
+         *
+         * What is left is a 40dp row, which is a dense list row rather than the 48dp
+         * default. Deliberate: this list is scanned far more often than it is tapped, the
+         * names are the content, and the row is full-width, so the target stays easy to
+         * hit even at 40dp.
          */
         CompositionLocalProvider(LocalMinimumInteractiveComponentSize provides Dp.Unspecified) {
             TagChip(name = name, count = null, selected = false, onClick = onClick)
