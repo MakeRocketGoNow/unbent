@@ -20,5 +20,15 @@ if ! "$ADB" shell pm list packages | grep -q "$APP_ID"; then
   exit 1
 fi
 
+# `am start` on the resolved launcher activity, not `monkey`. Monkey refuses to run on a
+# device with no hardware keys — "SYS_KEYS has no physical keys", exit 251 — which every
+# recent gesture-navigation AVD is, and it bails before launching anything, so `set -e`
+# turned a working install into a failed command. Resolving the activity rather than
+# naming it keeps this working if the launcher entry point is ever renamed.
 echo "Launching $APP_ID..."
-"$ADB" shell monkey -p "$APP_ID" -c android.intent.category.LAUNCHER 1 >/dev/null
+ACTIVITY="$("$ADB" shell cmd package resolve-activity --brief "$APP_ID" | tail -1 | tr -d '\r')"
+if [ -z "$ACTIVITY" ] || [ "$ACTIVITY" = "No activity found" ]; then
+  echo "error: no launcher activity for $APP_ID" >&2
+  exit 1
+fi
+"$ADB" shell am start -n "$ACTIVITY" >/dev/null
