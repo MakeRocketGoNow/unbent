@@ -67,8 +67,24 @@ jobs:
       - run: pnpm build
 
       # Production first, so nothing about the scratch instance can delay the real one.
-      # Its migrations stay manual (`pnpm migrate:remote`); the dev ones below do not,
-      # because that database is already migrated automatically by every preview.
+      #
+      # Migrations before the Worker, and the order matters. The code in a PR is written for
+      # the schema its migration produces, so a Worker deployed ahead of that migration
+      # queries a table or column production does not yet have, and fails every request
+      # that touches it until someone notices. The reverse gap, the old Worker on the new
+      # schema for the seconds between these two steps, is the one a migration should be
+      # written to tolerate: add before the code needs it, drop only after the code stopped
+      # reading it.
+      #
+      # This used to be a manual `pnpm migrate:remote` before merging, which nothing
+      # enforced, so a merged PR that carried a migration shipped code for a schema
+      # production did not have. Wrangler applies only the files it has no record of, so
+      # on a push with no new migration this is a no-op, and a failure here stops the job
+      # before the Worker goes out.
+      - name: Apply migrations to the production database
+        working-directory: apps/api
+        run: pnpm migrate:remote
+
       - name: Deploy Worker
         working-directory: apps/api
         run: pnpm exec wrangler deploy --env production
