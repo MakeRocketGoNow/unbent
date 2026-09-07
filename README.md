@@ -139,6 +139,12 @@ pnpm release
 script of that name. The first deploy has to happen here, before the secrets below: they
 attach to a Worker, and `wrangler secret put` fails until one exists.
 
+Past this first setup neither command is routine. `.github/workflows/web.yml` runs both on
+every push to `main`, migrations first and then the Worker, so the code never runs ahead of
+the schema it was written for, and a merged PR that carries a migration needs nothing done
+by hand. `migrate:remote` stays for applying one out of band and is safe to run at any time:
+wrangler applies only what it has no record of.
+
 Then the secrets. `--env production` is required on every one: secrets are per-environment,
 and one set without it lands on a Worker that is not the one serving the site.
 
