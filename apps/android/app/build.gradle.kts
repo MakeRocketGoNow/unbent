@@ -74,7 +74,19 @@ android {
          * through Compose's `BackHandler` rather than the removed path.
          */
         targetSdk = 36
-        versionCode = 1
+        /**
+         * Play rejects an upload whose code it has seen before, and it is the ordering
+         * Android itself uses to decide what counts as an upgrade — so this has to rise on
+         * every build that could reach the store, and a number nobody has to remember to
+         * bump is the only version of that which survives contact with a busy week.
+         *
+         * CI passes the run number, which only ever increases and is unique across the
+         * repository. A local build falls back to 1: nothing built by hand goes to Play,
+         * and a fixed number there keeps `assembleDebug` reproducible.
+         */
+        versionCode = secret("unbent.versionCode", "UNBENT_VERSION_CODE")?.toIntOrNull() ?: 1
+        // What a person sees, in Settings and on the store listing. Bumped by hand, because
+        // it means something — unlike the code above, which is bookkeeping.
         versionName = "0.1.0"
 
         // The site the app is a shell for. Overridable at runtime in Settings, which is
