@@ -1,5 +1,11 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { configuredSocials, offeredProviders, warnIfOpenToAnyone, withCallback } from './auth.js';
+import {
+  accountDeletionOffered,
+  configuredSocials,
+  offeredProviders,
+  warnIfOpenToAnyone,
+  withCallback,
+} from './auth.js';
 import type { Env } from './types.js';
 
 /** Only the fields these functions read; the bindings are irrelevant here. */
@@ -200,5 +206,31 @@ describe('withCallback', () => {
     );
     expect(url.host).toBe('localhost:5173');
     expect(url.searchParams.get('callbackURL')).toBe('/goodbye');
+  });
+});
+
+/**
+ * Whether the instance offers account deletion at all.
+ *
+ * The confirmation mail is the guard, so this is really "can we ask?". An instance that
+ * cannot send one leaves the endpoint disabled, and `/api/config` says so rather than
+ * letting a settings page draw a button that answers 404.
+ */
+describe('accountDeletionOffered', () => {
+  it('offers it where mail is configured', () => {
+    expect(
+      accountDeletionOffered(env({ RESEND_API_KEY: 'key', EMAIL_FROM: 'a@example.com' })),
+    ).toBe(true);
+  });
+
+  /** Half a mail configuration is treated as none, the same as everywhere else here. */
+  it('refuses it on a deployed instance with no mail', () => {
+    expect(accountDeletionOffered(env({}))).toBe(false);
+    expect(accountDeletionOffered(env({ RESEND_API_KEY: 'key' }))).toBe(false);
+  });
+
+  /** Locally `sendEmail` prints the link, which is how the flow is worked on offline. */
+  it('offers it in local development, where the link goes to the console', () => {
+    expect(accountDeletionOffered(env({ APP_URL: 'http://localhost:5173' }))).toBe(true);
   });
 });

@@ -84,6 +84,22 @@ function codesDeliverable(env: Env): boolean {
 }
 
 /**
+ * Whether this instance lets an account delete itself.
+ *
+ * The same test as codes by email, for the reason spelled out on `deleteUser` below: the
+ * confirmation mail *is* the guard, so an instance that cannot send one has no way to ask
+ * and does not offer the flow. Named separately from `codesDeliverable` because the two
+ * answer different questions and only happen to agree — if deletion ever gains a second
+ * way to confirm, this is the line that changes.
+ *
+ * Exported because `/api/config` reports it: a settings page that drew a Delete account
+ * button on an instance where the endpoint 404s would be worse than not drawing one.
+ */
+export function accountDeletionOffered(env: Env): boolean {
+  return codesDeliverable(env);
+}
+
+/**
  * The sign-in methods this instance offers, in display order.
  *
  * Derived from the same checks `createAuth` makes, so the login screen and the Android
@@ -537,7 +553,7 @@ function createAuth(env: Env): AuthInstance {
        * enough, `sendEmail` printing the link to the Worker console.
        */
       deleteUser: {
-        enabled: codesDeliverable(env),
+        enabled: accountDeletionOffered(env),
         /**
          * Deliberately blunt about what is about to happen: this is the one action in the
          * app with no undo and no trash to fish it back out of, and the mail is the last
