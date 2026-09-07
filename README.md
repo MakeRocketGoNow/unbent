@@ -787,3 +787,20 @@ This is the backup mechanism, not a convenience feature: `wrangler d1 export` fa
 database containing an FTS5 table and leaves the database wedged in a "processing export"
 state ([workers-sdk#9519](https://github.com/cloudflare/workers-sdk/issues/9519)). Do not
 run it.
+
+## License
+
+[Functional Source License, Version 1.1, Apache 2.0 Future License](LICENSE.md)
+(`FSL-1.1-Apache-2.0`). The whole repository, mobile apps included, is under it.
+
+What it permits: run Unbent for yourself, your family, or your own company; read, modify,
+and redistribute the source; build the apps from it. What it forbids: offering Unbent, or
+something substantially like it, to others as a commercial product or service that competes
+with the software or with unbent.app. That is the one restriction, and it is what keeps the
+hosted service viable while the code stays public.
+
+Two years after each release, that release becomes available under Apache 2.0. The
+conversion is irrevocable and written into the license text, so the code cannot be locked up
+for good and the [export guarantee](#backups-and-export) does not depend on trusting anyone.
+
+Contributions are accepted under the same terms; see [CONTRIBUTING.md](CONTRIBUTING.md).
