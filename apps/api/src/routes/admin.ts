@@ -16,9 +16,11 @@ export const admin = new Hono<AppEnv>()
   /**
    * Deletes R2 objects with no attachment row pointing at them.
    *
-   * R2 has no foreign keys, so objects outlive their metadata when a user row cascades
-   * away its attachment rows, or when a crash lands between BLOBS.put and the metadata
-   * insert. Neither is reachable through the app, so only a sweep reclaims the storage.
+   * R2 has no foreign keys, so objects outlive their metadata when a crash lands between
+   * BLOBS.put and the metadata insert, or when a user row cascades away its attachment
+   * rows without its prefix having been swept — account deletion sweeps first, so what is
+   * left here is a row removed by hand or by a test fixture. Neither is reachable through
+   * the app, so only a sweep reclaims the storage.
    *
    * Dry run by default; `?apply=1` deletes.
    */

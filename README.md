@@ -629,13 +629,37 @@ rebuilds the schema, backing up D1 first. Use that rather than the in-app sweep 
 fixtures left by deleted test users — the scoped sweep cannot reach another account's
 prefix by design.
 
+## Deleting an account
+
+There is no button for this yet, so the endpoint is the whole interface. `POST
+/api/auth/delete-user` sends a confirmation link to the account's own address and deletes
+nothing by itself. Opening that link in the browser holding the session is what removes the
+user row — cascading away every note, tag, notebook and attachment record — after sweeping
+`users/{id}/` out of R2, which no foreign key would have done.
+
+A session on its own is deliberately not enough, and neither is a password. The session
+token travels as `Authorization: Bearer` from the phone and the CLI, and this is the one
+action in the app with no trash to fish anything back out of; owning the address is the one
+proof every account type can give, whether it signed in with Google, a passkey or a
+password. The link works once and expires in a day. Export first if you want anything.
+
+An instance with no mail configured does not offer the endpoint at all, since the
+confirmation is the mechanism — the same test `/api/config` applies to codes by email. In
+local development `sendEmail` prints the link to the Worker console instead of sending it,
+which is how the flow is exercised without a Resend account.
+
+If the R2 sweep fails, the deletion is abandoned rather than half-finished: the account
+survives with attachment rows pointing at objects that are already gone, and the failure is
+logged with the user id. Asking again is the fix. Blobs go before rows here, the reverse of
+`purge-notes`, because the user id the sweep needs is exactly what the deletion destroys.
+
 ## Blob garbage collection
 
 R2 has no foreign keys, so objects can outlive their metadata — a crash between the upload
-and the metadata insert, or a user row cascading away its attachment rows. `POST
-/api/admin/gc-blobs` sweeps the caller's own prefix and reports what it finds; add
-`?apply=1` to delete. It is scoped to `users/{caller}/` by design, so it can never see or
-remove another account's objects.
+and the metadata insert, or a user row cascading away its attachment rows without its
+prefix having been swept first. `POST /api/admin/gc-blobs` sweeps the caller's own prefix
+and reports what it finds; add `?apply=1` to delete. It is scoped to `users/{caller}/` by
+design, so it can never see or remove another account's objects.
 
 ## Android app
 
