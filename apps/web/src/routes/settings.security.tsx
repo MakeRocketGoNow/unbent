@@ -94,12 +94,12 @@ function SecurityPage() {
       ) : keys.length === 0 ? (
         <p className="muted">No passkeys yet.</p>
       ) : (
-        <ul className="passkey-list">
+        <ul className="owned-list">
           {keys.map((k) => (
             <li key={k.id}>
               <span>{k.name || 'Unnamed passkey'}</span>
               {k.createdAt && (
-                <span className="muted"> · added {k.createdAt.toLocaleDateString()}</span>
+                <span className="muted small">added {k.createdAt.toLocaleDateString()}</span>
               )}
               <Button
                 variant="quiet"

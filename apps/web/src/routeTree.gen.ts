@@ -11,6 +11,7 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as ConnectRouteImport } from './routes/connect'
+import { Route as ConsentRouteImport } from './routes/consent'
 import { Route as DeviceRouteImport } from './routes/device'
 import { Route as ImportRouteImport } from './routes/import'
 import { Route as LoginRouteImport } from './routes/login'
@@ -22,6 +23,7 @@ import { Route as EmbedIndexFilesRouteImport } from './routes/embed.index-files'
 import { Route as NotesIndexRouteImport } from './routes/notes.index'
 import { Route as NotesNoteIdRouteImport } from './routes/notes.$noteId'
 import { Route as SettingsIndexRouteImport } from './routes/settings.index'
+import { Route as SettingsConnectedAppsRouteImport } from './routes/settings.connected-apps'
 import { Route as SettingsExportRouteImport } from './routes/settings.export'
 import { Route as SettingsImportRouteImport } from './routes/settings.import'
 import { Route as SettingsMaintenanceRouteImport } from './routes/settings.maintenance'
@@ -39,6 +41,11 @@ const IndexRoute = IndexRouteImport.update({
 const ConnectRoute = ConnectRouteImport.update({
   id: '/connect',
   path: '/connect',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ConsentRoute = ConsentRouteImport.update({
+  id: '/consent',
+  path: '/consent',
   getParentRoute: () => rootRouteImport,
 } as any)
 const DeviceRoute = DeviceRouteImport.update({
@@ -96,6 +103,11 @@ const SettingsIndexRoute = SettingsIndexRouteImport.update({
   path: '/',
   getParentRoute: () => SettingsRoute,
 } as any)
+const SettingsConnectedAppsRoute = SettingsConnectedAppsRouteImport.update({
+  id: '/connected-apps',
+  path: '/connected-apps',
+  getParentRoute: () => SettingsRoute,
+} as any)
 const SettingsExportRoute = SettingsExportRouteImport.update({
   id: '/export',
   path: '/export',
@@ -140,6 +152,7 @@ const EmbedNotesNoteIdRoute = EmbedNotesNoteIdRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/connect': typeof ConnectRoute
+  '/consent': typeof ConsentRoute
   '/device': typeof DeviceRoute
   '/import': typeof ImportRoute
   '/login': typeof LoginRoute
@@ -149,6 +162,7 @@ export interface FileRoutesByFullPath {
   '/trash': typeof TrashRouteWithChildren
   '/embed/index-files': typeof EmbedIndexFilesRoute
   '/notes/$noteId': typeof NotesNoteIdRoute
+  '/settings/connected-apps': typeof SettingsConnectedAppsRoute
   '/settings/export': typeof SettingsExportRoute
   '/settings/import': typeof SettingsImportRoute
   '/settings/maintenance': typeof SettingsMaintenanceRoute
@@ -163,12 +177,14 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/connect': typeof ConnectRoute
+  '/consent': typeof ConsentRoute
   '/device': typeof DeviceRoute
   '/import': typeof ImportRoute
   '/login': typeof LoginRoute
   '/reset-password': typeof ResetPasswordRoute
   '/embed/index-files': typeof EmbedIndexFilesRoute
   '/notes/$noteId': typeof NotesNoteIdRoute
+  '/settings/connected-apps': typeof SettingsConnectedAppsRoute
   '/settings/export': typeof SettingsExportRoute
   '/settings/import': typeof SettingsImportRoute
   '/settings/maintenance': typeof SettingsMaintenanceRoute
@@ -184,6 +200,7 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/connect': typeof ConnectRoute
+  '/consent': typeof ConsentRoute
   '/device': typeof DeviceRoute
   '/import': typeof ImportRoute
   '/login': typeof LoginRoute
@@ -193,6 +210,7 @@ export interface FileRoutesById {
   '/trash': typeof TrashRouteWithChildren
   '/embed/index-files': typeof EmbedIndexFilesRoute
   '/notes/$noteId': typeof NotesNoteIdRoute
+  '/settings/connected-apps': typeof SettingsConnectedAppsRoute
   '/settings/export': typeof SettingsExportRoute
   '/settings/import': typeof SettingsImportRoute
   '/settings/maintenance': typeof SettingsMaintenanceRoute
@@ -209,6 +227,7 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/connect'
+    | '/consent'
     | '/device'
     | '/import'
     | '/login'
@@ -218,6 +237,7 @@ export interface FileRouteTypes {
     | '/trash'
     | '/embed/index-files'
     | '/notes/$noteId'
+    | '/settings/connected-apps'
     | '/settings/export'
     | '/settings/import'
     | '/settings/maintenance'
@@ -232,12 +252,14 @@ export interface FileRouteTypes {
   to:
     | '/'
     | '/connect'
+    | '/consent'
     | '/device'
     | '/import'
     | '/login'
     | '/reset-password'
     | '/embed/index-files'
     | '/notes/$noteId'
+    | '/settings/connected-apps'
     | '/settings/export'
     | '/settings/import'
     | '/settings/maintenance'
@@ -252,6 +274,7 @@ export interface FileRouteTypes {
     | '__root__'
     | '/'
     | '/connect'
+    | '/consent'
     | '/device'
     | '/import'
     | '/login'
@@ -261,6 +284,7 @@ export interface FileRouteTypes {
     | '/trash'
     | '/embed/index-files'
     | '/notes/$noteId'
+    | '/settings/connected-apps'
     | '/settings/export'
     | '/settings/import'
     | '/settings/maintenance'
@@ -276,6 +300,7 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   ConnectRoute: typeof ConnectRoute
+  ConsentRoute: typeof ConsentRoute
   DeviceRoute: typeof DeviceRoute
   ImportRoute: typeof ImportRoute
   LoginRoute: typeof LoginRoute
@@ -301,6 +326,13 @@ declare module '@tanstack/react-router' {
       path: '/connect'
       fullPath: '/connect'
       preLoaderRoute: typeof ConnectRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/consent': {
+      id: '/consent'
+      path: '/consent'
+      fullPath: '/consent'
+      preLoaderRoute: typeof ConsentRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/device': {
@@ -380,6 +412,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SettingsIndexRouteImport
       parentRoute: typeof SettingsRoute
     }
+    '/settings/connected-apps': {
+      id: '/settings/connected-apps'
+      path: '/connected-apps'
+      fullPath: '/settings/connected-apps'
+      preLoaderRoute: typeof SettingsConnectedAppsRouteImport
+      parentRoute: typeof SettingsRoute
+    }
     '/settings/export': {
       id: '/settings/export'
       path: '/export'
@@ -452,6 +491,7 @@ const NotesRouteChildren: NotesRouteChildren = {
 const NotesRouteWithChildren = NotesRoute._addFileChildren(NotesRouteChildren)
 
 interface SettingsRouteChildren {
+  SettingsConnectedAppsRoute: typeof SettingsConnectedAppsRoute
   SettingsExportRoute: typeof SettingsExportRoute
   SettingsImportRoute: typeof SettingsImportRoute
   SettingsMaintenanceRoute: typeof SettingsMaintenanceRoute
@@ -461,6 +501,7 @@ interface SettingsRouteChildren {
 }
 
 const SettingsRouteChildren: SettingsRouteChildren = {
+  SettingsConnectedAppsRoute: SettingsConnectedAppsRoute,
   SettingsExportRoute: SettingsExportRoute,
   SettingsImportRoute: SettingsImportRoute,
   SettingsMaintenanceRoute: SettingsMaintenanceRoute,
@@ -488,6 +529,7 @@ const TrashRouteWithChildren = TrashRoute._addFileChildren(TrashRouteChildren)
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   ConnectRoute: ConnectRoute,
+  ConsentRoute: ConsentRoute,
   DeviceRoute: DeviceRoute,
   ImportRoute: ImportRoute,
   LoginRoute: LoginRoute,

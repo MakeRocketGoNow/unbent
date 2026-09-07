@@ -2155,7 +2155,29 @@ a.sidebar-status:hover {
   border-radius: 0.4rem;
 }
 
+/* Shared with the OAuth consent screen, which is the same decision in the same shape:
+   two buttons, approve and refuse, weighted by order rather than by colour. */
 .device-actions { display: flex; gap: 0.6rem; }
+
+/* Rows of a thing you own and can revoke: passkeys, and connected apps.
+   Both are a name, when it was added, and one quiet destructive control, and both were
+   rendering as default browser bullets with the action jammed against the text — a marker
+   that means nothing next to a name, and no separation between one row and the next.
+   The control sits right, away from the label, because that is where a per-row action
+   belongs and because it then lines up down the list instead of moving with the name. */
+.owned-list { list-style: none; margin: 0.75rem 0 0; padding: 0; max-width: 46rem; }
+.owned-list li {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.6rem 0;
+  border-top: 1px solid var(--border);
+}
+.owned-list li:last-child { border-bottom: 1px solid var(--border); }
+/* The name takes the slack so the action stays at the right edge; min-width lets a long
+   app name or filename wrap rather than pushing the button off the row. */
+.owned-list li > :first-child { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.owned-list li > :last-child { flex: none; margin-left: auto; }
 
 /* Collapsed by default: the answer is only needed once, and open by default would push
    the file picker — the thing a returning user wants — below the fold. */

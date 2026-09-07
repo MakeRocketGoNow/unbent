@@ -20,11 +20,14 @@
     "release": "wrangler deploy --env production"
   },
   "dependencies": {
-    "@better-auth/passkey": "1.7.2",
+    "@better-auth/mcp": "^1.7.3",
+    "@better-auth/oauth-provider": "^1.7.3",
+    "@better-auth/passkey": "1.7.3",
     "@hono/zod-validator": "^0.9.1",
+    "@modelcontextprotocol/server": "^2.0.0",
     "@unbent/enex": "workspace:*",
     "@unbent/shared": "workspace:*",
-    "better-auth": "^1.7.2",
+    "better-auth": "^1.7.3",
     "hono": "^4.13.7",
     "zod": "^4.5.4"
   },
