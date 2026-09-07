@@ -8,12 +8,15 @@ export const HOME = '/notes';
 export const LOGIN = '/login';
 
 /**
- * Where the account-deletion mail lands once the deletion has happened.
+ * The two ends of the account-deletion mail: the page that asks, and the page that reports.
  *
- * Named here rather than written into the route, because the API composes the link that
- * arrives at it: `sendDeleteAccountVerification` in `apps/api/src/auth.ts` pins the same
- * path. Two halves of one address, so it is worth them being findable from each other.
+ * `CONFIRM_DELETE` is the address the API composes into the link —
+ * `confirmDeletionUrl` in `apps/api/src/auth.ts` builds it from APP_URL — so the two halves
+ * are worth being findable from each other. Neither can be behind the session gate for the
+ * same underlying reason: one has to explain itself to a browser that is not signed in,
+ * and by the time the other renders there is no account left to be signed in to.
  */
+export const CONFIRM_DELETE = '/delete-account';
 export const GOODBYE = '/goodbye';
 
 /**
@@ -28,9 +31,10 @@ export const GOODBYE = '/goodbye';
  * `plain` is the pages that exist precisely because there is no session: the sign-in
  * screen, and the far ends of the two mails that arrive when you cannot use one. Someone
  * resetting a password is by definition unable to sign in, so gating that page made the
- * reset link in the mail dead for exactly the people it was sent to. `/goodbye` is the
- * same shape taken further — the account that would have held the session is gone by the
- * time the browser arrives.
+ * reset link in the mail dead for exactly the people it was sent to. The deletion mail has
+ * two of them: `/delete-account`, which has to be able to say "you are not signed in here"
+ * rather than redirect and lose the token from view, and `/goodbye`, where the account that
+ * would have held the session is gone by the time the browser arrives.
  *
  * Everything else is `app`, which is the useful default: a route added tomorrow is behind
  * the session unless somebody deliberately lists it here. One function rather than a
@@ -43,7 +47,8 @@ export function shellFor(pathname: string): Shell {
   // Tolerant of a trailing slash, which a hand-typed address or an external link may carry
   // and which never means a different page.
   const path = pathname.length > 1 ? pathname.replace(/\/$/, '') : pathname;
-  if (path === LOGIN || path === '/reset-password' || path === GOODBYE) return 'plain';
+  if (path === LOGIN || path === '/reset-password') return 'plain';
+  if (path === CONFIRM_DELETE || path === GOODBYE) return 'plain';
   return 'app';
 }
 

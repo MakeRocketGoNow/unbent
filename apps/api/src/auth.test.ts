@@ -3,8 +3,8 @@ import {
   accountDeletionOffered,
   configuredSocials,
   offeredProviders,
+  confirmDeletionUrl,
   warnIfOpenToAnyone,
-  withCallback,
 } from './auth.js';
 import type { Env } from './types.js';
 
@@ -171,41 +171,40 @@ describe('warnIfOpenToAnyone', () => {
 });
 
 /**
- * Where the deletion mail's link sends the browser once the account is gone.
+ * Where the deletion mail points.
  *
- * Better Auth builds that link from `ctx.body.callbackURL || "/"`, so without this the
- * ending of the most consequential flow in the app is decided by whichever client happened
- * to make the request — and the default lands on the note list, which the session gate
- * turns into a sign-in form because the session was just destroyed.
+ * At the SPA, not at Better Auth's `/delete-user/callback`, because that endpoint deletes
+ * on a bare GET — and a GET is fired by prefetches, scanners and restored tabs as readily
+ * as by people. The page it lands on asks once more and deletes with a POST.
  */
-describe('withCallback', () => {
-  const base = 'https://unbent.app/api/auth/delete-user/callback?token=abc123';
-
-  it('replaces the callback a caller asked for', () => {
-    const url = new URL(withCallback(`${base}&callbackURL=%2F`, '/goodbye'));
-    expect(url.searchParams.get('callbackURL')).toBe('/goodbye');
-  });
-
-  it('adds one when the caller sent none', () => {
-    const url = new URL(withCallback(base, '/goodbye'));
-    expect(url.searchParams.get('callbackURL')).toBe('/goodbye');
-  });
-
-  /** The token is the half Better Auth minted; rewriting the landing must not disturb it. */
-  it('leaves the token and the origin alone', () => {
-    const url = new URL(withCallback(`${base}&callbackURL=%2Fsomewhere`, '/goodbye'));
-    expect(url.searchParams.get('token')).toBe('abc123');
+describe('confirmDeletionUrl', () => {
+  it('addresses the app, not the API', () => {
+    const url = new URL(confirmDeletionUrl(env({ APP_URL: 'https://unbent.app' }), 'tok'));
     expect(url.origin).toBe('https://unbent.app');
-    expect(url.pathname).toBe('/api/auth/delete-user/callback');
+    expect(url.pathname).toBe('/delete-account');
+    expect(url.searchParams.get('token')).toBe('tok');
   });
 
-  /** Dev serves the SPA on another port, and the link has to work there too. */
-  it('keeps a localhost base intact', () => {
+  /** Dev serves the SPA on its own port, with the proxy in front of the Worker. */
+  it('uses the SPA origin in development', () => {
     const url = new URL(
-      withCallback('http://localhost:5173/api/auth/delete-user/callback?token=t', '/goodbye'),
+      confirmDeletionUrl(env({ APP_URL: 'http://localhost:5173' }), 'tok'),
     );
     expect(url.host).toBe('localhost:5173');
-    expect(url.searchParams.get('callbackURL')).toBe('/goodbye');
+    expect(url.pathname).toBe('/delete-account');
+  });
+
+  /** A token is opaque and may carry characters a query string would otherwise eat. */
+  it('escapes the token rather than pasting it in', () => {
+    const url = confirmDeletionUrl(env({ APP_URL: 'https://unbent.app' }), 'a b&c=d');
+    expect(url).toContain('token=a+b%26c%3Dd');
+    expect(new URL(url).searchParams.get('token')).toBe('a b&c=d');
+  });
+
+  /** An instance served from a subpath should keep it rather than jump to the root. */
+  it('never points at the deleting GET endpoint', () => {
+    const url = confirmDeletionUrl(env({ APP_URL: 'https://unbent.app' }), 'tok');
+    expect(url).not.toContain('delete-user/callback');
   });
 });
 

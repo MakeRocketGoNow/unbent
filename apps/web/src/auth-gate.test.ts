@@ -26,11 +26,14 @@ describe('shellFor', () => {
   });
 
   /**
-   * The one page that can never have a session: the account that would have held it was
-   * deleted a redirect ago. Gating it would land someone who just deleted their account on
-   * a sign-in form with no word of what happened — the same bug the reset page had.
+   * Both ends of the deletion mail. `/delete-account` has to be able to tell a browser
+   * that it is not the signed-in one, which a redirect to the sign-in screen would replace
+   * with a mystery; `/goodbye` can never have a session at all, since the account that
+   * would have held it is gone by then. Gating either repeats the bug the reset page had.
    */
-  it('lets the deleted-account page render without a session', () => {
+  it('lets both ends of the deletion mail render without a session', () => {
+    expect(shellFor('/delete-account')).toBe('plain');
+    expect(shellFor('/delete-account/')).toBe('plain');
     expect(shellFor('/goodbye')).toBe('plain');
     expect(shellFor('/goodbye/')).toBe('plain');
   });

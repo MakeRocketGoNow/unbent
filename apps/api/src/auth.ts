@@ -337,29 +337,24 @@ export function warnIfOpenToAnyone(env: Env): void {
 }
 
 /**
- * Where the account-deletion mail lands once the deletion has happened.
+ * The page the deletion mail links to.
  *
- * The SPA's own name for it is `GOODBYE` in `apps/web/src/auth-gate.ts`, which also has to
- * exempt it from the session gate — there is no session by then, the account is gone.
+ * Not Better Auth's own `/delete-user/callback`, deliberately. That endpoint is a GET that
+ * deletes, and a GET that deletes is something anything can fire: a link prefetch, a
+ * scanner, a restored tab, a thumb landing an inch off. The session requirement rules out
+ * the ones that arrive without cookies, but not the case that matters — webmail read in the
+ * very browser that holds the session, where a speculative fetch carries them.
+ *
+ * So the mail points at the SPA instead, which asks once more and then deletes with a POST.
+ * That is the shape `/reset-password` already has here, and for the same reason: an emailed
+ * token names an intention, and the click that acts on it should be a person's.
+ *
+ * Built from `APP_URL` rather than from the URL Better Auth hands us, which addresses the
+ * API. Same origin in production, and in dev the SPA is the port with the proxy in front.
  */
-const GOODBYE_PATH = '/goodbye';
-
-/**
- * Pins where Better Auth's delete-user callback sends the browser afterwards.
- *
- * The `callbackURL` it embeds in the link comes from the request body, so left alone the
- * landing page is whatever the caller happened to send — and its default, `/`, is the note
- * list, which the session gate bounces to the sign-in screen because the session was
- * destroyed a moment earlier. Someone who has just deleted their account should not have
- * to infer that it worked from being dropped on a login form.
- *
- * Rewritten here rather than asked of callers so it holds for all of them, including the
- * ones that do not know to ask. Everything else about the URL is Better Auth's — the base
- * it derived from the request, and the token it just minted.
- */
-export function withCallback(url: string, path: string): string {
-  const link = new URL(url);
-  link.searchParams.set('callbackURL', path);
+export function confirmDeletionUrl(env: Env, token: string): string {
+  const link = new URL('/delete-account', env.APP_URL);
+  link.searchParams.set('token', token);
   return link.toString();
 }
 
@@ -561,15 +556,15 @@ function createAuth(env: Env): AuthInstance {
          */
         sendDeleteAccountVerification: async ({
           user,
-          url,
+          token,
         }: {
           user: { email: string };
-          url: string;
+          token: string;
         }) => {
           await sendEmail(env, {
             to: user.email,
             subject: 'Confirm deleting your Unbent account',
-            text: `Someone asked to delete your Unbent account.\n\n${withCallback(url, GOODBYE_PATH)}\n\nOpening that link in the browser you are signed in with deletes the account, every note in it and every file attached to one. There is no undo and no export afterwards, so take one first if you want one.\n\nThe link works once and expires in a day. If this was not you, ignore this email — nothing has changed, and the link does nothing without your own signed-in session.`,
+            text: `Someone asked to delete your Unbent account.\n\n${confirmDeletionUrl(env, token)}\n\nThat link opens a page asking you to confirm. Confirming deletes the account, every note in it and every file attached to one — there is no undo and no export afterwards, so take one first if you want one. Open it in the browser you are signed in with; it does nothing anywhere else.\n\nThe link works once and expires in a day. If this was not you, ignore this email. Nothing has happened, and nothing will: opening the link on its own deletes nothing.`,
           });
         },
         /**

@@ -333,8 +333,8 @@ export function Maintenance() {
           {sentTo && (
             <p className="good small">
               Sent to <span className="wrap-anywhere">{sentTo}</span>. Nothing has been
-              deleted yet — opening the link is what does that, and it only works in a
-              browser signed in to this account. It expires in a day.
+              deleted yet: the link opens a page here that asks once more. It works only in
+              a browser signed in to this account, and expires in a day.
             </p>
           )}
           {sendError && <p className="bad small">{sendError}</p>}

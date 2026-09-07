@@ -633,12 +633,22 @@ prefix by design.
 
 Settings → Maintenance, at the bottom, under everything else the page can destroy. The
 button sends a confirmation link to the account's own address and deletes nothing by
-itself; `POST /api/auth/delete-user` is the same thing without the page. Opening that link
-in the browser holding the session is what removes the user row — cascading away every
-note, tag, notebook and attachment record — after sweeping `users/{id}/` out of R2, which
-no foreign key would have done. It lands on `/goodbye`, which says so; the API pins that
-destination when it composes the mail, so it holds for every caller rather than only the
-ones that ask.
+itself; `POST /api/auth/delete-user` is the same thing without the page.
+
+The link opens `/delete-account`, which asks once more and deletes on a POST when the
+button there is pressed. It deliberately does not point at Better Auth's own
+`/delete-user/callback`, which deletes on a bare GET: a GET is fired by link prefetches,
+mail scanners, restored tabs and mistaps as readily as by people, and while a request with
+no cookies fails, webmail read in the browser that holds the session is exactly the case
+cookies do not cover. `/reset-password` has the same shape for the same reason — an emailed
+token names an intention, and the click that acts on it should be a person's.
+
+Pressing it removes the user row, cascading away every note, tag, notebook and attachment
+record, after sweeping `users/{id}/` out of R2, which no foreign key would have done. Then
+it signs the browser out and lands on `/goodbye`. The sign-out is not a formality: the
+deleting request re-writes the session-cache cookie from the session it resolved on the way
+in, so without it the browser would keep a five-minute claim to an account that no longer
+exists.
 
 A session on its own is deliberately not enough, and neither is a password. The session
 token travels as `Authorization: Bearer` from the phone and the CLI, and this is the one
@@ -649,9 +659,8 @@ password. The link works once and expires in a day. Export first if you want any
 Unlike **Delete all notes**, the confirm does not ask you to type `DELETE`. That gate
 belongs to a button that *is* the irreversible step; this one only sends mail, and asking
 for the word to send an email would be friction guarding nothing — and would teach the
-habit of typing it unread on the page where the other control means it. The link also does
-nothing on its own: the callback resolves the session before it spends the token, so a mail
-scanner following it fails and leaves the link usable.
+habit of typing it unread on the page where the other control means it. The typed word is
+not what is missing from the mail's end either: a second press is.
 
 An instance with no mail configured does not offer the endpoint at all, since the
 confirmation is the mechanism — the same test that decides codes by email. `/api/config`
