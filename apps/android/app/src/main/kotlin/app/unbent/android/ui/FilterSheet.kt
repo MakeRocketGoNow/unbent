@@ -27,12 +27,14 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.InputChip
+import androidx.compose.material3.LocalMinimumInteractiveComponentSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -45,6 +47,7 @@ import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import app.unbent.android.R
 import app.unbent.android.api.UNFILED
@@ -395,7 +398,20 @@ private fun TagRow(name: String, count: Int, onClick: () -> Unit) {
             .padding(vertical = Space.Hair),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        TagChip(name = name, count = null, selected = false, onClick = onClick)
+        /*
+         * The chip drops its own 48dp touch target here. Material gives every chip one
+         * whether or not the chip is the thing being tapped, and here it is not — the row
+         * is. Left on, a 32dp chip reserved 48dp and the rows sat 56dp apart: more empty
+         * space between two tag names than either name occupied.
+         *
+         * What is left is a 40dp row, which is a dense list row rather than the 48dp
+         * default. Deliberate: this list is scanned far more often than it is tapped, the
+         * names are the content, and the row is full-width, so the target stays easy to
+         * hit even at 40dp.
+         */
+        CompositionLocalProvider(LocalMinimumInteractiveComponentSize provides Dp.Unspecified) {
+            TagChip(name = name, count = null, selected = false, onClick = onClick)
+        }
         Spacer(Modifier.width(Space.Medium))
         CountBadge(count)
     }

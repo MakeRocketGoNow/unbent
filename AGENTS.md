@@ -212,6 +212,44 @@ API_URL=http://localhost:8817 APP_URL=http://localhost:5217 \
   pnpm --filter @unbent/api exec vitest run test/isolation.test.ts
 ```
 
+### The Android emulator is the user's — never launch it yourself
+
+**Do not start an emulator.** `pnpm android:build` builds, installs and launches the debug
+app; `pnpm android` launches what is already installed. Both boot an AVD only if none is
+running, and that fallback is for a human at a keyboard, not for you. If `adb devices` is
+empty, **stop and ask the user to start it** from Android Studio's Device Manager or by
+running those scripts in their own terminal.
+
+An emulator launched from an agent's shell has no macOS GUI session. It looks fine — it
+renders, it boots, `adb` input works, screenshots come back — so it is easy to believe it
+is healthy. But its window silently discards every real mouse click, logging
+`skipping QEventPoint ... : no target window`. The user is left with an emulator that
+ignores them while you report success from `adb`. If you find that line in the log, the
+emulator was started wrong; it cannot be fixed from here, only relaunched by the user.
+
+The scripts pass `-no-snapshot-save` deliberately, and the flag is load-bearing in both
+directions: it *loads* the saved `default_boot` snapshot — which is where the emulator's
+signed-in session lives — and does not write over it on exit. Hand-rolling the launch
+inverts both halves. `-no-snapshot-load` cold-boots to a signed-out app, and without
+`-no-snapshot-save` the emulator then overwrites `default_boot` on quit with that
+signed-out state. That trades a working, signed-in emulator for one that has to be set up
+again, and there is nothing to roll back to afterwards.
+
+The AVD is `Pixel_9_API_36` (`AVD_NAME` overrides it). Take it from the scripts rather than
+inferring it from what is installed or when files were last touched.
+
+Two builds sit side by side on the device. The **orange** icon is
+`app.unbent.android.debug`; the **green** one is `app.unbent.android`, the release build,
+which is signed into **production**. Drive the debug one. Never tap through the release app
+— a stray tap there writes to the user's real notes.
+
+And do not navigate by guessing coordinates. Blind `adb shell input tap` calls land on
+FABs and list rows and create notes nobody asked for. Read the bounds first:
+
+```bash
+adb shell uiautomator dump /sdcard/ui.xml && adb shell cat /sdcard/ui.xml
+```
+
 ## Verifying
 
 Verify UI changes in the browser and show the result — don't ask the user to check
