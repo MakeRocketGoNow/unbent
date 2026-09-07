@@ -58,12 +58,17 @@ export function protectMcp(
       if (!token || scheme?.toLowerCase() !== 'bearer') {
         throw new Error('missing authorization header');
       }
-      const claims = await verifyJwsAccessToken(token, {
+      const claims = (await verifyJwsAccessToken(token, {
         jwksFetch: () => getAuth(env).api.getJwks(),
         jwksCacheKey,
         verifyOptions: { issuer: await issuerFor(env, request), audience: resource },
-      });
-      return await handler(request, claims as AccessTokenClaims);
+      })) as AccessTokenClaims;
+
+      if (!(await grantStillStands(env, claims))) {
+        throw new Error('this application has been disconnected');
+      }
+
+      return await handler(request, claims);
     } catch (error) {
       return challenge(error, resource);
     }
@@ -92,6 +97,32 @@ async function issuerFor(env: Env, request: Request): Promise<string> {
   // provider does: this request's own origin, plus the auth base path.
   const fallback = new URL(request.url).origin;
   return fallback ? `${fallback}/api/auth` : mcpIssuer(env);
+}
+
+/**
+ * Whether the user still wants this application to have access.
+ *
+ * Signature checking alone cannot answer that. A token is valid for its whole lifetime by
+ * construction, so someone who disconnects an assistant in Settings would otherwise keep
+ * being read for up to an hour afterwards — and "disconnect" would mean "disconnect
+ * shortly", which is not what the word promises or what the settings page says.
+ *
+ * So each call checks that the consent row is still there. That is one indexed lookup on
+ * (clientId, userId), against the cost of the alternative: the user watching an app they
+ * just revoked continue to work. Tokens with no client id are refused rather than waved
+ * through, since a token that cannot be attributed cannot be revoked either.
+ */
+async function grantStillStands(env: Env, claims: AccessTokenClaims): Promise<boolean> {
+  const clientId = typeof claims.client_id === 'string' ? claims.client_id : null;
+  const userId = typeof claims.sub === 'string' ? claims.sub : null;
+  if (!clientId || !userId) return false;
+
+  const row = await env.DB.prepare(
+    `SELECT 1 AS ok FROM oauthConsent WHERE clientId = ?1 AND userId = ?2 LIMIT 1`,
+  )
+    .bind(clientId, userId)
+    .first<{ ok: number }>();
+  return row !== null;
 }
 
 /**
