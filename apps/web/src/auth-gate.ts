@@ -8,6 +8,15 @@ export const HOME = '/notes';
 export const LOGIN = '/login';
 
 /**
+ * Where the account-deletion mail lands once the deletion has happened.
+ *
+ * Named here rather than written into the route, because the API composes the link that
+ * arrives at it: `sendDeleteAccountVerification` in `apps/api/src/auth.ts` pins the same
+ * path. Two halves of one address, so it is worth them being findable from each other.
+ */
+export const GOODBYE = '/goodbye';
+
+/**
  * Which of the three shells a path belongs to — and, because the same answer decides both,
  * whether it needs a session.
  *
@@ -16,10 +25,12 @@ export const LOGIN = '/login';
  * reported to the app through the bridge rather than redirected to a sign-in screen inside
  * somebody else's screen.
  *
- * `plain` is the two pages that exist precisely because there is no session: the sign-in
- * screen, and the far end of a password-reset mail. Someone resetting a password is by
- * definition unable to sign in, so gating that page made the reset link in the mail dead
- * for exactly the people it was sent to.
+ * `plain` is the pages that exist precisely because there is no session: the sign-in
+ * screen, and the far ends of the two mails that arrive when you cannot use one. Someone
+ * resetting a password is by definition unable to sign in, so gating that page made the
+ * reset link in the mail dead for exactly the people it was sent to. `/goodbye` is the
+ * same shape taken further — the account that would have held the session is gone by the
+ * time the browser arrives.
  *
  * Everything else is `app`, which is the useful default: a route added tomorrow is behind
  * the session unless somebody deliberately lists it here. One function rather than a
@@ -32,7 +43,7 @@ export function shellFor(pathname: string): Shell {
   // Tolerant of a trailing slash, which a hand-typed address or an external link may carry
   // and which never means a different page.
   const path = pathname.length > 1 ? pathname.replace(/\/$/, '') : pathname;
-  if (path === LOGIN || path === '/reset-password') return 'plain';
+  if (path === LOGIN || path === '/reset-password' || path === GOODBYE) return 'plain';
   return 'app';
 }
 

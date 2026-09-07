@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { configuredSocials, offeredProviders, warnIfOpenToAnyone } from './auth.js';
+import { configuredSocials, offeredProviders, warnIfOpenToAnyone, withCallback } from './auth.js';
 import type { Env } from './types.js';
 
 /** Only the fields these functions read; the bindings are irrelevant here. */
@@ -161,5 +161,44 @@ describe('warnIfOpenToAnyone', () => {
   it('stays quiet in local development', () => {
     warnIfOpenToAnyone(env({ APP_URL: 'http://localhost:5173' }));
     expect(warn).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * Where the deletion mail's link sends the browser once the account is gone.
+ *
+ * Better Auth builds that link from `ctx.body.callbackURL || "/"`, so without this the
+ * ending of the most consequential flow in the app is decided by whichever client happened
+ * to make the request — and the default lands on the note list, which the session gate
+ * turns into a sign-in form because the session was just destroyed.
+ */
+describe('withCallback', () => {
+  const base = 'https://unbent.app/api/auth/delete-user/callback?token=abc123';
+
+  it('replaces the callback a caller asked for', () => {
+    const url = new URL(withCallback(`${base}&callbackURL=%2F`, '/goodbye'));
+    expect(url.searchParams.get('callbackURL')).toBe('/goodbye');
+  });
+
+  it('adds one when the caller sent none', () => {
+    const url = new URL(withCallback(base, '/goodbye'));
+    expect(url.searchParams.get('callbackURL')).toBe('/goodbye');
+  });
+
+  /** The token is the half Better Auth minted; rewriting the landing must not disturb it. */
+  it('leaves the token and the origin alone', () => {
+    const url = new URL(withCallback(`${base}&callbackURL=%2Fsomewhere`, '/goodbye'));
+    expect(url.searchParams.get('token')).toBe('abc123');
+    expect(url.origin).toBe('https://unbent.app');
+    expect(url.pathname).toBe('/api/auth/delete-user/callback');
+  });
+
+  /** Dev serves the SPA on another port, and the link has to work there too. */
+  it('keeps a localhost base intact', () => {
+    const url = new URL(
+      withCallback('http://localhost:5173/api/auth/delete-user/callback?token=t', '/goodbye'),
+    );
+    expect(url.host).toBe('localhost:5173');
+    expect(url.searchParams.get('callbackURL')).toBe('/goodbye');
   });
 });

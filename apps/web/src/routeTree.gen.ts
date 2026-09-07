@@ -13,6 +13,7 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as ConnectRouteImport } from './routes/connect'
 import { Route as ConsentRouteImport } from './routes/consent'
 import { Route as DeviceRouteImport } from './routes/device'
+import { Route as GoodbyeRouteImport } from './routes/goodbye'
 import { Route as ImportRouteImport } from './routes/import'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as NotesRouteImport } from './routes/notes'
@@ -51,6 +52,11 @@ const ConsentRoute = ConsentRouteImport.update({
 const DeviceRoute = DeviceRouteImport.update({
   id: '/device',
   path: '/device',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const GoodbyeRoute = GoodbyeRouteImport.update({
+  id: '/goodbye',
+  path: '/goodbye',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ImportRoute = ImportRouteImport.update({
@@ -154,6 +160,7 @@ export interface FileRoutesByFullPath {
   '/connect': typeof ConnectRoute
   '/consent': typeof ConsentRoute
   '/device': typeof DeviceRoute
+  '/goodbye': typeof GoodbyeRoute
   '/import': typeof ImportRoute
   '/login': typeof LoginRoute
   '/notes': typeof NotesRouteWithChildren
@@ -179,6 +186,7 @@ export interface FileRoutesByTo {
   '/connect': typeof ConnectRoute
   '/consent': typeof ConsentRoute
   '/device': typeof DeviceRoute
+  '/goodbye': typeof GoodbyeRoute
   '/import': typeof ImportRoute
   '/login': typeof LoginRoute
   '/reset-password': typeof ResetPasswordRoute
@@ -202,6 +210,7 @@ export interface FileRoutesById {
   '/connect': typeof ConnectRoute
   '/consent': typeof ConsentRoute
   '/device': typeof DeviceRoute
+  '/goodbye': typeof GoodbyeRoute
   '/import': typeof ImportRoute
   '/login': typeof LoginRoute
   '/notes': typeof NotesRouteWithChildren
@@ -229,6 +238,7 @@ export interface FileRouteTypes {
     | '/connect'
     | '/consent'
     | '/device'
+    | '/goodbye'
     | '/import'
     | '/login'
     | '/notes'
@@ -254,6 +264,7 @@ export interface FileRouteTypes {
     | '/connect'
     | '/consent'
     | '/device'
+    | '/goodbye'
     | '/import'
     | '/login'
     | '/reset-password'
@@ -276,6 +287,7 @@ export interface FileRouteTypes {
     | '/connect'
     | '/consent'
     | '/device'
+    | '/goodbye'
     | '/import'
     | '/login'
     | '/notes'
@@ -302,6 +314,7 @@ export interface RootRouteChildren {
   ConnectRoute: typeof ConnectRoute
   ConsentRoute: typeof ConsentRoute
   DeviceRoute: typeof DeviceRoute
+  GoodbyeRoute: typeof GoodbyeRoute
   ImportRoute: typeof ImportRoute
   LoginRoute: typeof LoginRoute
   NotesRoute: typeof NotesRouteWithChildren
@@ -340,6 +353,13 @@ declare module '@tanstack/react-router' {
       path: '/device'
       fullPath: '/device'
       preLoaderRoute: typeof DeviceRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/goodbye': {
+      id: '/goodbye'
+      path: '/goodbye'
+      fullPath: '/goodbye'
+      preLoaderRoute: typeof GoodbyeRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/import': {
@@ -531,6 +551,7 @@ const rootRouteChildren: RootRouteChildren = {
   ConnectRoute: ConnectRoute,
   ConsentRoute: ConsentRoute,
   DeviceRoute: DeviceRoute,
+  GoodbyeRoute: GoodbyeRoute,
   ImportRoute: ImportRoute,
   LoginRoute: LoginRoute,
   NotesRoute: NotesRouteWithChildren,

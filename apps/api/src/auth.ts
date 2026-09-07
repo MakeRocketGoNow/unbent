@@ -321,6 +321,33 @@ export function warnIfOpenToAnyone(env: Env): void {
 }
 
 /**
+ * Where the account-deletion mail lands once the deletion has happened.
+ *
+ * The SPA's own name for it is `GOODBYE` in `apps/web/src/auth-gate.ts`, which also has to
+ * exempt it from the session gate — there is no session by then, the account is gone.
+ */
+const GOODBYE_PATH = '/goodbye';
+
+/**
+ * Pins where Better Auth's delete-user callback sends the browser afterwards.
+ *
+ * The `callbackURL` it embeds in the link comes from the request body, so left alone the
+ * landing page is whatever the caller happened to send — and its default, `/`, is the note
+ * list, which the session gate bounces to the sign-in screen because the session was
+ * destroyed a moment earlier. Someone who has just deleted their account should not have
+ * to infer that it worked from being dropped on a login form.
+ *
+ * Rewritten here rather than asked of callers so it holds for all of them, including the
+ * ones that do not know to ask. Everything else about the URL is Better Auth's — the base
+ * it derived from the request, and the token it just minted.
+ */
+export function withCallback(url: string, path: string): string {
+  const link = new URL(url);
+  link.searchParams.set('callbackURL', path);
+  return link.toString();
+}
+
+/**
  * Better Auth must be constructed per-request: on Workers the D1 binding only exists on
  * `env`, which is not available at module scope. Instances are cheap, but we memoize per
  * Env object so repeated middleware calls within one request reuse the same instance.
@@ -526,7 +553,7 @@ function createAuth(env: Env): AuthInstance {
           await sendEmail(env, {
             to: user.email,
             subject: 'Confirm deleting your Unbent account',
-            text: `Someone asked to delete your Unbent account.\n\n${url}\n\nOpening that link in the browser you are signed in with deletes the account, every note in it and every file attached to one. There is no undo and no export afterwards, so take one first if you want one.\n\nThe link works once and expires in a day. If this was not you, ignore this email — nothing has changed, and the link does nothing without your own signed-in session.`,
+            text: `Someone asked to delete your Unbent account.\n\n${withCallback(url, GOODBYE_PATH)}\n\nOpening that link in the browser you are signed in with deletes the account, every note in it and every file attached to one. There is no undo and no export afterwards, so take one first if you want one.\n\nThe link works once and expires in a day. If this was not you, ignore this email — nothing has changed, and the link does nothing without your own signed-in session.`,
           });
         },
         /**

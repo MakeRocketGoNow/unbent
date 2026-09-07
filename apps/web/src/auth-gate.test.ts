@@ -25,6 +25,16 @@ describe('shellFor', () => {
     expect(shellFor('/reset-password')).toBe('plain');
   });
 
+  /**
+   * The one page that can never have a session: the account that would have held it was
+   * deleted a redirect ago. Gating it would land someone who just deleted their account on
+   * a sign-in form with no word of what happened — the same bug the reset page had.
+   */
+  it('lets the deleted-account page render without a session', () => {
+    expect(shellFor('/goodbye')).toBe('plain');
+    expect(shellFor('/goodbye/')).toBe('plain');
+  });
+
   it('leaves the app WebView to the app', () => {
     expect(shellFor('/embed/notes/abc-123')).toBe('embed');
     expect(shellFor('/embed/index-files')).toBe('embed');
