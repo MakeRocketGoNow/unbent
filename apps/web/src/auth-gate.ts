@@ -1,4 +1,4 @@
-import { redirect, type ParsedLocation } from '@tanstack/react-router';
+import { redirect, useRouterState, type ParsedLocation } from '@tanstack/react-router';
 import { ensureSession, type Session } from './auth-client.js';
 
 /** Where the app lands when there is nowhere better to send someone. */
@@ -34,6 +34,26 @@ export function shellFor(pathname: string): Shell {
   const path = pathname.length > 1 ? pathname.replace(/\/$/, '') : pathname;
   if (path === LOGIN || path === '/reset-password') return 'plain';
   return 'app';
+}
+
+/**
+ * The shell for what is on screen — which is not the shell for where the router is headed.
+ *
+ * `location` moves to the destination the moment a navigation starts, while the matches
+ * it renders swap only once that route's loaders have resolved. Selecting on it therefore
+ * dressed the outgoing page in the incoming page's chrome for as long as those loaders
+ * took, and signing in is where that shows: the topbar and `.shell.wide` went up around
+ * the still-rendered sign-in screen, and because `wide` drops the centred 46rem column
+ * that `.shell` otherwise sets, the login card slid to the left edge and sat there until
+ * the note list arrived. Four requests on a slow connection is seconds of a visibly
+ * broken page, on the one screen a new user is guaranteed to see.
+ *
+ * `resolvedLocation` is the last location whose matches actually committed, so the chrome
+ * and the content change in the same frame. It is undefined until the first navigation
+ * resolves, where `location` is the only answer available and the correct one.
+ */
+export function useShell(): Shell {
+  return useRouterState({ select: (s) => shellFor((s.resolvedLocation ?? s.location).pathname) });
 }
 
 /**
