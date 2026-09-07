@@ -16,6 +16,7 @@ import { useNotesLayout, SIDEBAR_DEFAULT, SIDEBAR_MIN, SIDEBAR_MAX } from '../us
 import { ResizeHandle } from './ResizeHandle.js';
 import { NoteListItem } from './NoteListItem.js';
 import { useListKeys } from '../useListKeys.js';
+import { markNewNote } from '../useNewNote.js';
 import { SearchResults } from './SearchResults.js';
 import { IndexingStatus } from './IndexingStatus.js';
 import { Button } from './Button';
@@ -194,7 +195,13 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
       // Carry the active filter onto the new note, otherwise it is created and then
       // immediately filtered out of the list the user is looking at.
       const created = await api.createNote({
-        title: 'Untitled',
+        // No name, rather than the literal string "Untitled". The title field's
+        // placeholder already says that word, and a placeholder is not data: a stored
+        // "Untitled" is written into the frontmatter of the exported markdown, sorted
+        // under U by the title sort, and — titles being in the FTS index — returned by a
+        // search for "untitled", all to say the note has no name yet. Android has always
+        // created notes with an empty title; this is the web agreeing with it.
+        title: '',
         body: '',
         // Every active tag, not just one: with two tags filtered, a note carrying only
         // the first is still filtered out of the list it was created in.
@@ -205,6 +212,10 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
       });
       await queryClient.invalidateQueries({ queryKey: ['notes'] });
       invalidateNoteMembership(queryClient);
+      // A new note starts with its name, so the title takes the caret rather than the
+      // body. Recorded here, before navigating, because it is a fact about this note's
+      // creation and the workspace it opens has no other way to know it.
+      markNewNote(created.id);
       void navigate({ to: '/notes/$noteId', params: { noteId: created.id }, search: (p) => p });
     } catch (err) {
       console.error(err);

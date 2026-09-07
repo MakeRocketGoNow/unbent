@@ -40,7 +40,8 @@ interface EditorProps {
    * On by default, which is what opening a note should do — you clicked it to write in it.
    * The sidebar's arrow keys turn it off: they mount a new editor for every note they
    * pass, and an editor that grabbed focus each time would take the second arrow press
-   * and move a cursor through text instead of moving down the list.
+   * and move a cursor through text instead of moving down the list. A note that has just
+   * been created turns it off too, so that its title can have the caret instead.
    */
   autoFocus?: boolean;
   /**

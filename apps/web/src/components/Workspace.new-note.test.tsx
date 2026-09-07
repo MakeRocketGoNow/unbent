@@ -1,0 +1,134 @@
+import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest';
+import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import {
+  createRootRoute,
+  createRoute,
+  createRouter,
+  createMemoryHistory,
+  RouterProvider,
+} from '@tanstack/react-router';
+import type { Note } from '@unbent/shared';
+import { keys } from '../queries.js';
+import { markNewNote } from '../useNewNote.js';
+import { Workspace } from './Workspace.js';
+
+/**
+ * Where the caret lands when a note opens.
+ *
+ * A new note is the one case that goes to the title; everything else goes to the body. The
+ * two are decided in different places — an effect here and the editor's `autoFocus` — and
+ * getting either alone right still leaves the caret in the wrong field, so this asserts
+ * what actually holds focus rather than the props behind it.
+ *
+ * The real editor is mounted for that reason: a stub could not take focus back, which is
+ * the failure this is watching for.
+ */
+const note: Note = {
+  id: 'n1',
+  title: '',
+  body: 'already written',
+  tags: [],
+  notebook: null,
+  createdAt: 0,
+  updatedAt: 0,
+};
+
+/**
+ * The workspace under a router, with every query already answered.
+ *
+ * Seeded rather than mocked, and never stale, so nothing this test is not about goes to
+ * the network — a refetch in jsdom would land on a relative URL and fail, and the note is
+ * exactly what focus is being decided from.
+ */
+function mount(noteOverrides: Partial<Note> = {}) {
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false, staleTime: Infinity } },
+  });
+  const seeded = { ...note, ...noteOverrides };
+  client.setQueryData(keys.note(seeded.id), seeded);
+  client.setQueryData(keys.attachments(seeded.id), []);
+  client.setQueryData(keys.tags(), []);
+  client.setQueryData(keys.notebooks(), { notebooks: [], unfiled: 0 });
+
+  const rootRoute = createRootRoute({
+    component: () => <Workspace noteId={seeded.id} />,
+  });
+  // A child route the workspace's own links can point at, so `Link` resolves rather than
+  // throwing on a route the router has never heard of.
+  const notesRoute = createRoute({ getParentRoute: () => rootRoute, path: '/notes' });
+  const router = createRouter({
+    routeTree: rootRoute.addChildren([notesRoute]),
+    history: createMemoryHistory({ initialEntries: ['/'] }),
+  });
+
+  return render(
+    <QueryClientProvider client={client}>
+      {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
+      <RouterProvider router={router as any} />
+    </QueryClientProvider>,
+  );
+}
+
+const title = () => screen.getByPlaceholderText('Untitled');
+const editorHost = () => document.querySelector('.cm-content');
+
+beforeEach(() => {
+  // jsdom ships no `matchMedia`, and the workspace asks for the breakpoint on its first
+  // render. A desktop answer: the split preview is the only thing this changes here, and
+  // it is off by default at both widths.
+  vi.stubGlobal('matchMedia', (query: string) => ({
+    matches: false,
+    media: query,
+    addEventListener: () => {},
+    removeEventListener: () => {},
+  }));
+});
+
+afterEach(() => {
+  cleanup();
+  vi.unstubAllGlobals();
+  // Both flags live at module scope, so they outlive a test unless they are put back.
+  fireEvent.pointerDown(document.body);
+});
+
+describe('opening a note', () => {
+  it('puts the caret in the title of a note that was just created', async () => {
+    markNewNote('n1');
+    mount();
+
+    await waitFor(() => expect(document.activeElement).toBe(title()));
+    // The point of the flag: the editor mounts in the same commit and must stand down
+    // rather than take the focus straight back.
+    expect(document.activeElement).not.toBe(editorHost());
+  });
+
+  it('leaves the title empty rather than selecting a word to type over', async () => {
+    markNewNote('n1');
+    mount();
+
+    await waitFor(() => expect(document.activeElement).toBe(title()));
+    // Nothing to type over, so nothing a stray click or arrow press can turn into
+    // "UntitledMeeting notes". The word on screen is the placeholder.
+    expect(title()).toHaveProperty('value', '');
+  });
+
+  it('puts the caret in the body of a note that already exists', async () => {
+    mount();
+
+    await waitFor(() => expect(editorHost()).toBeTruthy());
+    expect(document.activeElement).toBe(editorHost());
+  });
+
+  /*
+     The claim is spent on the note it was made for. Without this, opening a second note in
+     the same session would find the flag still set and take its title.
+  */
+  it('does not treat another note as new', async () => {
+    markNewNote('somewhere-else');
+    mount();
+
+    await waitFor(() => expect(editorHost()).toBeTruthy());
+    expect(document.activeElement).toBe(editorHost());
+  });
+});

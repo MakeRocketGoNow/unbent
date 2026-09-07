@@ -11,6 +11,7 @@ import {
   registerEditorFocus,
   focusActiveListItem,
 } from '../useListKeys.js';
+import { useIsNewNote } from '../useNewNote.js';
 import { useMediaQuery, MOBILE_QUERY } from '../useMediaQuery.js';
 import { useKeyboardInset } from '../useKeyboardInset.js';
 import {
@@ -118,6 +119,16 @@ export function Workspace({ noteId, readOnly = false, backTo = '/notes' }: Works
   const cameFromList = useCameFromList();
 
   /**
+   * Whether the New note button made this note a moment ago.
+   *
+   * The one case where the caret belongs in the title rather than in the body: a new note
+   * starts with its name, and every other way of opening one means adding to something
+   * already named. See the effect below and the editor's `autoFocus`.
+   */
+  const isNewNote = useIsNewNote(noteId);
+  const titleRef = useRef<HTMLInputElement>(null);
+
+  /**
    * How much of the pane row the editor gets, 0–1.
    *
    * A fraction rather than two pixel widths so the split stays proportional when the
@@ -177,6 +188,32 @@ export function Workspace({ noteId, readOnly = false, backTo = '/notes' }: Works
     setDraft({ title: note.title, body: note.body, tags: note.tags, notebook: note.notebook ?? null });
     setDraftFor(note.id);
     setEditorOverride(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [noteId, note !== undefined]);
+
+  /*
+     A new note opens with the caret in its title.
+
+     Only a note that was just created. Opening one that already has a name means adding to
+     it — you clicked it to write in it — so every other way in still lands in the editor,
+     which is what its `autoFocus` below does. `cameFromList` outranks both: while the
+     arrow keys are driving, the next press belongs to the list, not to either field.
+
+     The field is empty, with the placeholder showing, rather than holding a selected
+     "Untitled" to type over. A selection is lost to any stray click or arrow press — and
+     on a phone, to the tap that puts the caret in the field at all — and the next
+     keystroke then appends to the word instead of replacing it: "UntitledMeeting notes".
+     Nothing can go wrong with an empty field, and nothing has to be typed over.
+
+     Both flags are read as they stand when the note loads and are deliberately not
+     dependencies, the same way the editor reads its own `autoFocus` at mount. Either can
+     change while the note is open — a click clears one, Escape and Enter move the other —
+     and re-running on that would drag the caret out of whatever it had reached and put it
+     back in the title.
+  */
+  useEffect(() => {
+    if (!note || !isNewNote || cameFromList) return;
+    titleRef.current?.focus();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [noteId, note !== undefined]);
 
@@ -319,6 +356,7 @@ export function Workspace({ noteId, readOnly = false, backTo = '/notes' }: Works
             <BackArrow />
           </Link>
           <input
+            ref={titleRef}
             className="title-input"
             value={draft.title}
             placeholder="Untitled"
@@ -508,7 +546,9 @@ export function Workspace({ noteId, readOnly = false, backTo = '/notes' }: Works
                   }
             }
             rich={noteView === 'rich'}
-            autoFocus={!cameFromList}
+            /* Stands down for a note that was just created: the title has the caret, and
+               an editor grabbing it on mount would take it straight back. */
+            autoFocus={!cameFromList && !isNewNote}
             // The way out of the editor, and the counterpart to the list's Enter.
             onEscape={focusActiveListItem}
             onViewReady={setEditorView}
