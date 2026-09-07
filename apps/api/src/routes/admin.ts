@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import { requireAuth } from '../lib/session.js';
 import { withRepos } from '../lib/repos-middleware.js';
 import { deleteKeys } from '../lib/blobs.js';
+import { userPrefix } from '../lib/repo.js';
 import type { AppEnv } from '../types.js';
 
 /**
@@ -24,7 +25,7 @@ export const admin = new Hono<AppEnv>()
   .post('/admin/gc-blobs', requireAuth, async (c) => {
     const userId = c.get('userId')!;
     const apply = c.req.query('apply') === '1';
-    const prefix = `users/${userId}/`;
+    const prefix = userPrefix(userId);
 
     const { results } = await c.env.DB.prepare(
       `SELECT r2_key FROM attachments WHERE user_id = ?1`,

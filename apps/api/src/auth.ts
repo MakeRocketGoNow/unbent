@@ -8,6 +8,7 @@ import type { AuthProvider } from '@unbent/shared';
 import type { Env } from './types.js';
 import { canSendEmail, sendEmail } from './lib/email.js';
 import { deleteKeys } from './lib/blobs.js';
+import { userPrefix } from './lib/repo.js';
 
 /**
  * Emails permitted to create an account, lowercased.
@@ -492,7 +493,7 @@ function createAuth(env: Env): AuthInstance {
          * directory is ever touched.
          */
         beforeDelete: async (user: { id: string }) => {
-          const prefix = `users/${user.id}/`;
+          const prefix = userPrefix(user.id);
           const keys: string[] = [];
           let cursor: string | undefined;
           for (;;) {
