@@ -56,7 +56,7 @@ than on Workers, and export streams the zip as the client consumes it.
 
 ```
 apps/web       Vite + React SPA
-apps/api       Hono API on Workers
+apps/api       Hono API on Workers, and the MCP server under src/mcp
 apps/android   Kotlin app: native shell and share sheet, the web editor in a WebView
 packages/shared  zod schemas, frontmatter codec, remark plugins
 packages/enex    ENEX -> Markdown, runtime-agnostic
@@ -414,6 +414,42 @@ screen and the Android app render from it rather than guessing.
 Sessions are cookie-based and same-origin. Better Auth enforces CSRF by requiring a trusted
 `Origin`, so API clients outside the browser must send one.
 
+## Connecting an AI assistant
+
+Unbent is an [MCP](https://modelcontextprotocol.io) server, so Claude, Cursor, ChatGPT or
+anything else that speaks the protocol can work with your notes directly. The server URL is
+`https://unbent.app/api/mcp` — no trailing slash, and no API key to copy anywhere.
+
+Connecting runs the ordinary OAuth flow: the client registers itself, a browser opens on the
+consent screen, and approving it hands the client a token of its own. Fifteen tools are
+offered — search and list, read a note in full, create, edit, tag, move, trash and restore,
+plus notebook management. Note bodies are Markdown and pass whole in both directions, so an
+assistant writes a complete note in one call.
+
+Two are worth knowing about:
+
+- **`edit_note`** takes `append`, `prepend`, or `replace` with an exact `find` string, so
+  changing one line of a long note does not mean resending it. A `find` matching more than
+  once is refused with the count rather than guessed at.
+- **`get_attachment_text`** returns the text already extracted from a PDF, which is what
+  makes a scanned bill answerable. See [Searching inside PDFs](#searching-inside-pdfs).
+
+**Approving a client gives it standing access to everything.** It can read every note,
+create and change notes, and move them to the trash, from then on and without asking again.
+Settings › Connected apps lists what is connected and disconnects any of it; disconnecting
+deletes the app's tokens, and the endpoint checks the grant on every call, so access ends
+rather than lingering until a token expires. There is deliberately no tool that deletes
+permanently — the trash is as far as an assistant can go.
+
+Client registration is open, because clients register themselves at connect time and there
+is no way to pre-provision credentials for software you have never heard of. A registered
+client with no approved consent can read nothing; the registration endpoint is rate limited
+so the table cannot grow quickly.
+
+Locally, point the client at the **SPA** origin rather than the Worker's — the port
+`pnpm dev` prints first. Tokens are bound to the MCP endpoint's URL as their audience, and
+that URL is built from `APP_URL`.
+
 ## Editing
 
 **The goal is WYSIWYG.** Bold looks bold, headings are sized, task lists get real
@@ -694,6 +730,11 @@ Absent those, `assembleRelease` still builds, just unsigned. CI reads the same v
   `users/{id}/` remain and the scoped sweep above cannot reach them once the account is
   gone. Account deletion needs to sweep the prefix before removing the user row.
 
+- **Connected apps get all-or-nothing access.** Approving an MCP client grants every tool
+  it offers; there is no way to connect one read-only. Scopes exist in the protocol and are
+  advertised, but nothing enforces a narrower grant yet, and a consent screen offering a
+  choice nobody can act on would be worse than the honest sentence it shows instead.
+
 - **iOS has no share extension yet.** Safari does not implement Web Share Target, so an iOS
   capture needs a real share extension and a paid Apple Developer account.
 
@@ -703,7 +744,9 @@ D1 has no row-level security, so isolation is application code and nothing else.
 goes through the scoped repos in `apps/api/src/lib/repo.ts`, which take the user id as a
 constructor argument — route handlers never touch `env.DB` directly, so an unscoped query is
 not expressible. `apps/api/test/isolation.test.ts` asserts this and grows with every phase
-that adds a route touching user data.
+that adds a route touching user data. The MCP endpoint's cases live beside it in
+`apps/api/test/mcp.test.ts`, which needs a whole OAuth flow before it can call anything and
+would otherwise swamp the suite it belongs to.
 
 ## Backups and export
 
