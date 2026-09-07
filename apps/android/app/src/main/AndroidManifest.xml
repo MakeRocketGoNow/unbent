@@ -5,8 +5,30 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+
+    <!--
+        No foreground service, and nothing that asks to run one.
+
+        Nothing in the app runs one: a capture is an ordinary WorkManager job, never
+        expedited, and its progress is the notification POST_NOTIFICATIONS covers. The two
+        FOREGROUND_SERVICE permissions declared here were written in anticipation of a
+        foreground upload that never arrived.
+
+        Removing them from this file is not enough. `work-runtime` declares
+        FOREGROUND_SERVICE and its `SystemForegroundService` in its own manifest, and the
+        merger adds both to every app that depends on WorkManager whether or not it calls
+        `setForeground` — so this removal, and the matching one on the service inside
+        `application` below, are what keep them out of the built app.
+
+        Why bother: Play reads the merged manifest, and a foreground service there requires
+        a declaration justified by a demo video showing a user-initiated, perceptible use.
+        There is nothing to film, and the review would be answering for a capability the
+        app does not have. If an upload ever does need to outlive the app being
+        backgrounded, undoing these two removals is where that starts.
+    -->
+    <uses-permission
+        android:name="android.permission.FOREGROUND_SERVICE"
+        tools:node="remove" />
 
     <!--
         Android 11+ hides other packages unless declared. Sign-in with a provider that has
@@ -30,6 +52,15 @@
         android:theme="@style/Theme.Unbent"
         android:usesCleartextTraffic="${usesCleartextTraffic}"
         tools:targetApi="31">
+
+        <!--
+            The other half of the foreground-service removal at the top of this file:
+            WorkManager's own service, which the merger would otherwise contribute to an app
+            that never starts it.
+        -->
+        <service
+            android:name="androidx.work.impl.foreground.SystemForegroundService"
+            tools:node="remove" />
 
         <!--
             The app. One activity hosting the note list, an open note and settings.
