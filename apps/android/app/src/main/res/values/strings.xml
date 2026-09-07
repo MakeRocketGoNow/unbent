@@ -162,6 +162,16 @@
     <string name="add">Add</string>
     <string name="manage_on_web">Manage on the web</string>
     <string name="manage_on_web_hint">Import and export live on the site. The browser has its own sign-in.</string>
+
+    <!--
+        Deleting an account happens on the web, so this row opens the settings page that
+        starts it rather than doing it here. Play requires the path to be reachable from
+        inside the app; duplicating the flow natively would mean a second confirmation UI
+        to keep in step with the first, for something done once in an account's life — and
+        the confirmation that matters is a link in an email either way.
+    -->
+    <string name="delete_account">Delete account</string>
+    <string name="delete_account_hint">Removes your notes, files and account for good. Opens the site, which emails a link to confirm before anything is deleted.</string>
     <string name="instance_label">Unbent address</string>
     <string name="save">Save</string>
     <string name="sign_out">Sign out</string>

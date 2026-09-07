@@ -40,4 +40,20 @@ class PrefsTest {
     fun `leaves an empty string empty rather than inventing a host`() {
         assertEquals("", Prefs.normalizeOrigin("   "))
     }
+
+    /**
+     * The page the Settings row opens. Play requires a deletion path reachable from inside
+     * the app, and a self-hosted instance has to get its own page rather than one on
+     * unbent.app — which is why this is built from the stored address rather than a
+     * constant.
+     */
+    @Test
+    fun `builds the delete-account url for the instance in use`() {
+        assertEquals("https://unbent.app/settings/maintenance", Prefs.deleteAccountUrl("https://unbent.app"))
+        assertEquals("https://unbent.app/settings/maintenance", Prefs.deleteAccountUrl("https://unbent.app/"))
+        assertEquals(
+            "http://10.0.2.2:5173/settings/maintenance",
+            Prefs.deleteAccountUrl("http://10.0.2.2:5173"),
+        )
+    }
 }

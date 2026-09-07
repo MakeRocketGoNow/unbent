@@ -16,6 +16,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -153,6 +154,40 @@ fun SettingsScreen(
             Spacer(Modifier.height(Space.Small))
             Text(
                 stringResource(R.string.manage_on_web_hint),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+
+            HorizontalDivider(Modifier.padding(vertical = Space.Screen))
+
+            /*
+             * Deleting the account, which Play requires be reachable from inside the app
+             * rather than only by writing in.
+             *
+             * It opens the instance's Maintenance settings rather than deleting from here.
+             * That is where the flow starts: the site emails a confirmation link and
+             * deletes nothing until it is opened, so a native copy would be a second
+             * confirmation UI in front of the one that actually decides — for something a
+             * person does once, if ever. The Custom Tab carries the browser's session, not
+             * this app's, so whoever follows it signs in there the same way "Manage on the
+             * web" above already expects.
+             */
+            OutlinedButton(
+                onClick = {
+                    runCatching {
+                        CustomTabsIntent.Builder().build().launchUrl(
+                            context,
+                            Uri.parse(Prefs.deleteAccountUrl(prefs.instance)),
+                        )
+                    }
+                },
+                colors = ButtonDefaults.outlinedButtonColors(
+                    contentColor = MaterialTheme.colorScheme.error,
+                ),
+            ) { Text(stringResource(R.string.delete_account)) }
+            Spacer(Modifier.height(Space.Small))
+            Text(
+                stringResource(R.string.delete_account_hint),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )

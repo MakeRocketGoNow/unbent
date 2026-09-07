@@ -83,6 +83,22 @@ class Prefs(context: Context) {
          * copied link. Everything downstream concatenates "/api/…", so a trailing slash or
          * a stray path produces a URL that 404s in a way that looks like a server fault.
          */
+        /**
+         * Where account deletion is started, which is the site's Maintenance settings.
+         *
+         * Not `/delete-account`: that page is the far end of the confirmation mail and
+         * expects a token, so arriving there without one shows an error about a missing
+         * code to somebody who never had a link. The flow begins with the button that
+         * sends the mail, so this points at the button.
+         *
+         * Built here rather than at the call site so it is covered by the same tests as
+         * the normalization it depends on — and so a self-hosted instance gets its own
+         * page rather than one on unbent.app. `normalizeOrigin` has already removed any
+         * trailing slash, which is what makes plain concatenation safe.
+         */
+        fun deleteAccountUrl(instance: String): String =
+            "${normalizeOrigin(instance)}/settings/maintenance"
+
         fun normalizeOrigin(raw: String): String {
             val trimmed = raw.trim()
             if (trimmed.isEmpty()) return trimmed
