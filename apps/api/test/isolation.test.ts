@@ -1086,3 +1086,89 @@ describe('cross-tenant access', () => {
   it.todo('export: a bob zip contains no alice notes');
   it.todo('import: bob cannot write into an alice note id');
 });
+
+/**
+ * Account deletion. The safety property is that deleting a user also deletes all their
+ * notes, attachments, and R2 blobs — the "stranded blobs" gap that the beforeDelete hook
+ * was added to fix.
+ */
+describe('account deletion', () => {
+  async function upload(actor: Actor, noteId: string, filename: string, content: string) {
+    const res = await fetch(`${BASE}/api/notes/${noteId}/files`, {
+      method: 'PUT',
+      headers: {
+        Cookie: actor.cookie,
+        Origin: ORIGIN,
+        'X-Filename': encodeURIComponent(filename),
+        'Content-Type': 'text/plain',
+      },
+      body: content,
+    });
+    if (!res.ok) throw new Error(`upload failed: ${res.status}`);
+    return res.json();
+  }
+
+  it('deletes all notes, attachments, and R2 blobs when an account is deleted', async () => {
+    const stamp = Date.now();
+    const password = 'delete-me-password-123';
+    const actor = await signUp(`delete-me-${stamp}@example.test`, password, 'DeleteMe');
+
+    const note1 = await createNote(actor, { title: 'Note 1', body: 'Body 1' });
+    const note2 = await createNote(actor, { title: 'Note 2', body: 'Body 2', tags: ['tag1'] });
+    await upload(actor, note1.id, 'file1.txt', 'file 1 content');
+    await upload(actor, note2.id, 'file2.txt', 'file 2 content');
+
+    const beforeGc = await fetch(`${BASE}/api/admin/gc-blobs`, {
+      method: 'POST',
+      headers: { Cookie: actor.cookie, Origin: ORIGIN },
+    }).then((r) => r.json());
+    expect(beforeGc.stored).toBe(2);
+
+    const deleteRes = await fetch(`${BASE}/api/auth/delete-user`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Cookie: actor.cookie, Origin: ORIGIN },
+      body: JSON.stringify({ password }),
+    });
+    expect(deleteRes.ok).toBe(true);
+
+    const meRes = await fetch(`${BASE}/api/me`, { headers: { Cookie: actor.cookie, Origin: ORIGIN } });
+    expect((await meRes.json()).user).toBeNull();
+
+    const noteRes = await fetch(`${BASE}/api/notes/${note1.id}`, {
+      headers: { Cookie: actor.cookie, Origin: ORIGIN },
+    });
+    expect(noteRes.status).toBe(401);
+
+    const freshActor = await signUp(`fresh-${stamp}@example.test`, 'fresh-password-123', 'Fresh');
+    const freshGc = await fetch(`${BASE}/api/admin/gc-blobs`, {
+      method: 'POST',
+      headers: { Cookie: freshActor.cookie, Origin: ORIGIN },
+    }).then((r) => r.json());
+    expect(freshGc.stored).toBe(0);
+    expect(freshGc.orphaned).toBe(0);
+  });
+
+  it('deletes blobs before the user row so they are not stranded', async () => {
+    const stamp = Date.now();
+    const password = 'blob-test-password-123';
+    const actor = await signUp(`blob-test-${stamp}@example.test`, password, 'BlobTest');
+
+    const note = await createNote(actor, { title: 'With files', body: 'x' });
+    await upload(actor, note.id, 'important.pdf', '%PDF-1.4 fake content');
+
+    const gcBefore = await fetch(`${BASE}/api/admin/gc-blobs`, {
+      method: 'POST',
+      headers: { Cookie: actor.cookie, Origin: ORIGIN },
+    }).then((r) => r.json());
+    expect(gcBefore.stored).toBe(1);
+    expect(gcBefore.referenced).toBe(1);
+    expect(gcBefore.orphaned).toBe(0);
+
+    const deleteRes = await fetch(`${BASE}/api/auth/delete-user`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Cookie: actor.cookie, Origin: ORIGIN },
+      body: JSON.stringify({ password }),
+    });
+    expect(deleteRes.ok).toBe(true);
+  });
+});

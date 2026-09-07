@@ -320,6 +320,20 @@ export function warnIfOpenToAnyone(env: Env): void {
 }
 
 /**
+ * R2 accepts up to 1000 keys per delete call; batch to stay under that limit.
+ *
+ * Shared with the admin routes; here it is what empties a user's storage on account
+ * deletion. Written as a standalone function because `beforeDelete` cannot be async in
+ * the sense of waiting for follow-up work: the callback runs before the row is removed,
+ * so everything reachable through the user id must be gone by the time it returns.
+ */
+async function deleteKeys(bucket: R2Bucket, keys: string[]): Promise<void> {
+  for (let i = 0; i < keys.length; i += 1000) {
+    await bucket.delete(keys.slice(i, i + 1000));
+  }
+}
+
+/**
  * Better Auth must be constructed per-request: on Workers the D1 binding only exists on
  * `env`, which is not available at module scope. Instances are cheap, but we memoize per
  * Env object so repeated middleware calls within one request reuse the same instance.
@@ -474,6 +488,35 @@ function createAuth(env: Env): AuthInstance {
       // The SPA and API are same-origin in both dev and production, so a host-only
       // cookie is sufficient and avoids SameSite=None.
       useSecureCookies: !env.APP_URL.startsWith('http://localhost'),
+    },
+    user: {
+      deleteUser: {
+        enabled: true,
+        /**
+         * Sweep R2 before the user row is deleted.
+         *
+         * D1 handles its own cleanup — notes, attachments, tags and sessions all have
+         * `ON DELETE CASCADE` — but R2 has no foreign keys and the scoped admin sweep
+         * cannot reach objects once the account is gone. This is the hook that prevents
+         * the "stranded blobs" gap the README used to document.
+         *
+         * Paginating because an archive holds thousands of files, and `list()` returns
+         * at most 1000 per call. The prefix ensures no object outside this user's own
+         * directory is ever touched.
+         */
+        beforeDelete: async (user: { id: string }) => {
+          const prefix = `users/${user.id}/`;
+          const keys: string[] = [];
+          let cursor: string | undefined;
+          for (;;) {
+            const page = await env.BLOBS.list({ prefix, cursor, limit: 1000 });
+            for (const obj of page.objects) keys.push(obj.key);
+            if (!page.truncated) break;
+            cursor = page.cursor;
+          }
+          if (keys.length > 0) await deleteKeys(env.BLOBS, keys);
+        },
+      },
     },
     plugins: [
       /**
