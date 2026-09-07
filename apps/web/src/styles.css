@@ -103,6 +103,14 @@ h1 {
 .bad { color: var(--bad); }
 .muted { color: var(--muted); }
 
+/*
+ * For user data that has to be read exactly and has no length limit — an email address in
+ * a sentence, above all. `.settings-section p` caps its measure but nothing stops a long
+ * address from pushing past it on a phone, and truncating one hides the half that says
+ * which address it is. Same reasoning as the attachment filename further down.
+ */
+.wrap-anywhere { overflow-wrap: anywhere; }
+
 .centered {
   display: flex;
   min-height: 70vh;
@@ -312,6 +320,11 @@ h1 {
 .settings-section p a,
 .confirm p a,
 .confirm-detail a,
+/* The plain shell had no link treatment because until now it had no links: the sign-in
+   card is all buttons and the reset page navigates with one. `/goodbye` genuinely
+   navigates, so it uses an anchor — which without this rendered as browser-default blue
+   on the dark theme, the one look that says nobody checked. */
+.login a,
 .panel > p a {
   color: var(--accent);
   text-decoration: underline;
@@ -322,6 +335,7 @@ h1 {
 .settings-section p a:hover,
 .confirm p a:hover,
 .confirm-detail a:hover,
+.login a:hover,
 .panel > p a:hover {
   color: var(--fg);
 }

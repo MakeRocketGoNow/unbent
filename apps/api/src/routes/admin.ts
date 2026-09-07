@@ -1,6 +1,8 @@
 import { Hono } from 'hono';
 import { requireAuth } from '../lib/session.js';
 import { withRepos } from '../lib/repos-middleware.js';
+import { deleteKeys } from '../lib/blobs.js';
+import { userPrefix } from '../lib/repo.js';
 import type { AppEnv } from '../types.js';
 
 /**
@@ -14,16 +16,18 @@ export const admin = new Hono<AppEnv>()
   /**
    * Deletes R2 objects with no attachment row pointing at them.
    *
-   * R2 has no foreign keys, so objects outlive their metadata when a user row cascades
-   * away its attachment rows, or when a crash lands between BLOBS.put and the metadata
-   * insert. Neither is reachable through the app, so only a sweep reclaims the storage.
+   * R2 has no foreign keys, so objects outlive their metadata when a crash lands between
+   * BLOBS.put and the metadata insert, or when a user row cascades away its attachment
+   * rows without its prefix having been swept — account deletion sweeps first, so what is
+   * left here is a row removed by hand or by a test fixture. Neither is reachable through
+   * the app, so only a sweep reclaims the storage.
    *
    * Dry run by default; `?apply=1` deletes.
    */
   .post('/admin/gc-blobs', requireAuth, async (c) => {
     const userId = c.get('userId')!;
     const apply = c.req.query('apply') === '1';
-    const prefix = `users/${userId}/`;
+    const prefix = userPrefix(userId);
 
     const { results } = await c.env.DB.prepare(
       `SELECT r2_key FROM attachments WHERE user_id = ?1`,
@@ -92,10 +96,3 @@ export const admin = new Hono<AppEnv>()
 
     return c.json({ scope, notesDeleted: notes, filesDeleted: keys.length });
   });
-
-/** R2 accepts up to 1000 keys per delete call. */
-async function deleteKeys(bucket: R2Bucket, keys: string[]): Promise<void> {
-  for (let i = 0; i < keys.length; i += 1000) {
-    await bucket.delete(keys.slice(i, i + 1000));
-  }
-}

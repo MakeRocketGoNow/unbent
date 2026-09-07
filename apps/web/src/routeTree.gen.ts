@@ -12,7 +12,9 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as ConnectRouteImport } from './routes/connect'
 import { Route as ConsentRouteImport } from './routes/consent'
+import { Route as DeleteAccountRouteImport } from './routes/delete-account'
 import { Route as DeviceRouteImport } from './routes/device'
+import { Route as GoodbyeRouteImport } from './routes/goodbye'
 import { Route as ImportRouteImport } from './routes/import'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as NotesRouteImport } from './routes/notes'
@@ -48,9 +50,19 @@ const ConsentRoute = ConsentRouteImport.update({
   path: '/consent',
   getParentRoute: () => rootRouteImport,
 } as any)
+const DeleteAccountRoute = DeleteAccountRouteImport.update({
+  id: '/delete-account',
+  path: '/delete-account',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const DeviceRoute = DeviceRouteImport.update({
   id: '/device',
   path: '/device',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const GoodbyeRoute = GoodbyeRouteImport.update({
+  id: '/goodbye',
+  path: '/goodbye',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ImportRoute = ImportRouteImport.update({
@@ -153,7 +165,9 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/connect': typeof ConnectRoute
   '/consent': typeof ConsentRoute
+  '/delete-account': typeof DeleteAccountRoute
   '/device': typeof DeviceRoute
+  '/goodbye': typeof GoodbyeRoute
   '/import': typeof ImportRoute
   '/login': typeof LoginRoute
   '/notes': typeof NotesRouteWithChildren
@@ -178,7 +192,9 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/connect': typeof ConnectRoute
   '/consent': typeof ConsentRoute
+  '/delete-account': typeof DeleteAccountRoute
   '/device': typeof DeviceRoute
+  '/goodbye': typeof GoodbyeRoute
   '/import': typeof ImportRoute
   '/login': typeof LoginRoute
   '/reset-password': typeof ResetPasswordRoute
@@ -201,7 +217,9 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/connect': typeof ConnectRoute
   '/consent': typeof ConsentRoute
+  '/delete-account': typeof DeleteAccountRoute
   '/device': typeof DeviceRoute
+  '/goodbye': typeof GoodbyeRoute
   '/import': typeof ImportRoute
   '/login': typeof LoginRoute
   '/notes': typeof NotesRouteWithChildren
@@ -228,7 +246,9 @@ export interface FileRouteTypes {
     | '/'
     | '/connect'
     | '/consent'
+    | '/delete-account'
     | '/device'
+    | '/goodbye'
     | '/import'
     | '/login'
     | '/notes'
@@ -253,7 +273,9 @@ export interface FileRouteTypes {
     | '/'
     | '/connect'
     | '/consent'
+    | '/delete-account'
     | '/device'
+    | '/goodbye'
     | '/import'
     | '/login'
     | '/reset-password'
@@ -275,7 +297,9 @@ export interface FileRouteTypes {
     | '/'
     | '/connect'
     | '/consent'
+    | '/delete-account'
     | '/device'
+    | '/goodbye'
     | '/import'
     | '/login'
     | '/notes'
@@ -301,7 +325,9 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   ConnectRoute: typeof ConnectRoute
   ConsentRoute: typeof ConsentRoute
+  DeleteAccountRoute: typeof DeleteAccountRoute
   DeviceRoute: typeof DeviceRoute
+  GoodbyeRoute: typeof GoodbyeRoute
   ImportRoute: typeof ImportRoute
   LoginRoute: typeof LoginRoute
   NotesRoute: typeof NotesRouteWithChildren
@@ -335,11 +361,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ConsentRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/delete-account': {
+      id: '/delete-account'
+      path: '/delete-account'
+      fullPath: '/delete-account'
+      preLoaderRoute: typeof DeleteAccountRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/device': {
       id: '/device'
       path: '/device'
       fullPath: '/device'
       preLoaderRoute: typeof DeviceRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/goodbye': {
+      id: '/goodbye'
+      path: '/goodbye'
+      fullPath: '/goodbye'
+      preLoaderRoute: typeof GoodbyeRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/import': {
@@ -530,7 +570,9 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   ConnectRoute: ConnectRoute,
   ConsentRoute: ConsentRoute,
+  DeleteAccountRoute: DeleteAccountRoute,
   DeviceRoute: DeviceRoute,
+  GoodbyeRoute: GoodbyeRoute,
   ImportRoute: ImportRoute,
   LoginRoute: LoginRoute,
   NotesRoute: NotesRouteWithChildren,

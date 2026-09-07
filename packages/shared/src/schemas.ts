@@ -109,6 +109,18 @@ export function isLocalMethod(p: string): p is LocalMethod {
 
 export interface AppConfig {
   providers: AuthProvider[];
+  /**
+   * Whether an account can delete itself here.
+   *
+   * Deletion is confirmed by a link in the mail, so an instance with no mail configured
+   * does not offer the endpoint at all — see `accountDeletionOffered` in the API. Settings
+   * reads this to decide whether the control exists, rather than drawing a button that
+   * answers 404.
+   *
+   * Optional so a client stays compatible with an instance older than the field, where the
+   * honest reading of its absence is "not offered".
+   */
+  accountDeletion?: boolean;
 }
 
 export const noteIdSchema = z.string().uuid();
