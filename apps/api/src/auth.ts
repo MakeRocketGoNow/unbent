@@ -477,8 +477,58 @@ function createAuth(env: Env): AuthInstance {
       useSecureCookies: !env.APP_URL.startsWith('http://localhost'),
     },
     user: {
+      /**
+       * Deleting an account, and why it takes an email to do it.
+       *
+       * Better Auth's `/delete-user` verifies a password only if the caller sends one.
+       * With nothing else configured, the entire guard on a bare POST is `freshAge` — a
+       * 24-hour window measured from when the session was created, not from when it was
+       * last used — and that is the wrong shape at both ends.
+       *
+       * Inside the window an empty POST carrying a session token deletes the account and
+       * everything under it. The Android app and the CLI both send that token as
+       * `Authorization: Bearer`, and the bearer plugin below turns it back into a session
+       * on every endpoint, so a token that leaks in its first day is a whole-account wipe
+       * with no confirmation of any kind. `purge-notes` asks for `?confirm=DELETE` before
+       * emptying the trash; this asks for nothing before emptying the account.
+       *
+       * Outside the window nobody without a password can delete at all: the no-password
+       * path is refused as stale, and sending a password finds no credential row to check
+       * it against. That is every Google, GitHub and passkey account — on unbent.app, all
+       * of them.
+       *
+       * `sendDeleteAccountVerification` replaces both with one rule that does not depend
+       * on how someone signed in: the request only ever sends mail, and the deletion
+       * happens when the link comes back. The link is a GET, which would be a mistake on
+       * its own since mail scanners follow links, except that the callback resolves the
+       * session before it consumes the token — a fetch without the signed-in browser's
+       * cookie fails and leaves the token unspent.
+       *
+       * Gated on `codesDeliverable` rather than simply on, because here the mail *is* the
+       * confirmation: an instance that cannot deliver it has no way to ask, so it does not
+       * offer the flow — the same line `emailOTP` draws, and the same reason locally is
+       * enough, `sendEmail` printing the link to the Worker console.
+       */
       deleteUser: {
-        enabled: true,
+        enabled: codesDeliverable(env),
+        /**
+         * Deliberately blunt about what is about to happen: this is the one action in the
+         * app with no undo and no trash to fish it back out of, and the mail is the last
+         * point at which someone can change their mind.
+         */
+        sendDeleteAccountVerification: async ({
+          user,
+          url,
+        }: {
+          user: { email: string };
+          url: string;
+        }) => {
+          await sendEmail(env, {
+            to: user.email,
+            subject: 'Confirm deleting your Unbent account',
+            text: `Someone asked to delete your Unbent account.\n\n${url}\n\nOpening that link in the browser you are signed in with deletes the account, every note in it and every file attached to one. There is no undo and no export afterwards, so take one first if you want one.\n\nThe link works once and expires in a day. If this was not you, ignore this email — nothing has changed, and the link does nothing without your own signed-in session.`,
+          });
+        },
         /**
          * Sweep R2 before the user row is deleted.
          *

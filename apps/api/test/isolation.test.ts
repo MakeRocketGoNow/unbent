@@ -1088,9 +1088,14 @@ describe('cross-tenant access', () => {
 });
 
 /**
- * Account deletion. The safety property is that deleting a user also deletes all their
- * notes, attachments, and R2 blobs — the "stranded blobs" gap that the beforeDelete hook
- * was added to fix.
+ * Account deletion.
+ *
+ * The sweep that empties the account's R2 prefix is unit-tested in `src/lib/blobs.test.ts`
+ * instead of here, because no request can observe it: `gc-blobs` only ever reports on the
+ * caller's own prefix, so once the account is gone nothing distinguishes a swept prefix
+ * from a stranded one. What belongs in a live suite is the other half — that a session on
+ * its own cannot destroy an account, which is a property of the real endpoint and its
+ * middleware rather than of any function here.
  */
 describe('account deletion', () => {
   async function upload(actor: Actor, noteId: string, filename: string, content: string) {
@@ -1108,67 +1113,82 @@ describe('account deletion', () => {
     return res.json();
   }
 
-  it('deletes all notes, attachments, and R2 blobs when an account is deleted', async () => {
-    const stamp = Date.now();
-    const password = 'delete-me-password-123';
-    const actor = await signUp(`delete-me-${stamp}@example.test`, password, 'DeleteMe');
-
-    const note1 = await createNote(actor, { title: 'Note 1', body: 'Body 1' });
-    const note2 = await createNote(actor, { title: 'Note 2', body: 'Body 2', tags: ['tag1'] });
-    await upload(actor, note1.id, 'file1.txt', 'file 1 content');
-    await upload(actor, note2.id, 'file2.txt', 'file 2 content');
-
-    const beforeGc = await fetch(`${BASE}/api/admin/gc-blobs`, {
-      method: 'POST',
-      headers: { Cookie: actor.cookie, Origin: ORIGIN },
-    }).then((r) => r.json());
-    expect(beforeGc.stored).toBe(2);
-
-    const deleteRes = await fetch(`${BASE}/api/auth/delete-user`, {
+  async function requestDeletion(actor: Actor, body: Record<string, string> = {}) {
+    return fetch(`${BASE}/api/auth/delete-user`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Cookie: actor.cookie, Origin: ORIGIN },
-      body: JSON.stringify({ password }),
+      body: JSON.stringify(body),
     });
-    expect(deleteRes.ok).toBe(true);
+  }
 
-    const meRes = await fetch(`${BASE}/api/me`, { headers: { Cookie: actor.cookie, Origin: ORIGIN } });
-    expect((await meRes.json()).user).toBeNull();
-
-    const noteRes = await fetch(`${BASE}/api/notes/${note1.id}`, {
-      headers: { Cookie: actor.cookie, Origin: ORIGIN },
-    });
-    expect(noteRes.status).toBe(401);
-
-    const freshActor = await signUp(`fresh-${stamp}@example.test`, 'fresh-password-123', 'Fresh');
-    const freshGc = await fetch(`${BASE}/api/admin/gc-blobs`, {
+  /** Everything the account still owns, read back the way its owner would. */
+  async function stillThere(actor: Actor, noteId: string) {
+    const me = await fetch(`${BASE}/api/me`, asUser(actor)).then((r) => r.json());
+    const note = await fetch(`${BASE}/api/notes/${noteId}`, asUser(actor));
+    const gc = await fetch(`${BASE}/api/admin/gc-blobs`, {
       method: 'POST',
-      headers: { Cookie: freshActor.cookie, Origin: ORIGIN },
+      headers: { Cookie: actor.cookie, Origin: ORIGIN },
     }).then((r) => r.json());
-    expect(freshGc.stored).toBe(0);
-    expect(freshGc.orphaned).toBe(0);
+    return { user: me.user?.id ?? null, note: note.status, stored: gc.stored };
+  }
+
+  /**
+   * The case this suite exists for. A session is not a confirmation: the request is
+   * answered with mail, and until the link in it comes back the account is untouched.
+   * Without this, an empty POST carrying a bearer token from the phone or the CLI was a
+   * whole-account wipe for the first day of that token's life.
+   */
+  it('answers a bare request with mail and deletes nothing', async () => {
+    const stamp = Date.now();
+    const actor = await signUp(`delete-me-${stamp}@example.test`, 'delete-me-password-123', 'DeleteMe');
+    const note = await createNote(actor, { title: 'Keep me', body: 'x', tags: ['tag1'] });
+    await upload(actor, note.id, 'important.pdf', '%PDF-1.4 fake content');
+
+    const res = await requestDeletion(actor);
+    expect(res.ok).toBe(true);
+    expect((await res.json()).message).toBe('Verification email sent');
+
+    expect(await stillThere(actor, note.id)).toEqual({
+      user: actor.userId,
+      note: 200,
+      stored: 1,
+    });
   });
 
-  it('deletes blobs before the user row so they are not stranded', async () => {
+  /**
+   * And a password is not a shortcut past it. Better Auth checks one when it is sent, but
+   * a checked password only proves the session's owner is present — the same thing the
+   * session already claimed — so it does not stand in for owning the address.
+   */
+  it('does not accept a password in place of the link', async () => {
     const stamp = Date.now();
     const password = 'blob-test-password-123';
     const actor = await signUp(`blob-test-${stamp}@example.test`, password, 'BlobTest');
-
     const note = await createNote(actor, { title: 'With files', body: 'x' });
     await upload(actor, note.id, 'important.pdf', '%PDF-1.4 fake content');
 
-    const gcBefore = await fetch(`${BASE}/api/admin/gc-blobs`, {
-      method: 'POST',
-      headers: { Cookie: actor.cookie, Origin: ORIGIN },
-    }).then((r) => r.json());
-    expect(gcBefore.stored).toBe(1);
-    expect(gcBefore.referenced).toBe(1);
-    expect(gcBefore.orphaned).toBe(0);
+    const res = await requestDeletion(actor, { password });
+    expect(res.ok).toBe(true);
+    expect((await res.json()).message).toBe('Verification email sent');
 
-    const deleteRes = await fetch(`${BASE}/api/auth/delete-user`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Cookie: actor.cookie, Origin: ORIGIN },
-      body: JSON.stringify({ password }),
+    expect(await stillThere(actor, note.id)).toEqual({
+      user: actor.userId,
+      note: 200,
+      stored: 1,
     });
-    expect(deleteRes.ok).toBe(true);
+  });
+
+  /** The token is the whole guard, so a made-up one must not spend anything. */
+  it('rejects a token it never issued', async () => {
+    const stamp = Date.now();
+    const actor = await signUp(`bad-token-${stamp}@example.test`, 'bad-token-password-123', 'BadToken');
+    const note = await createNote(actor, { title: 'Keep me too', body: 'x' });
+
+    const res = await requestDeletion(actor, { token: 'not-a-token-anyone-issued' });
+    expect(res.ok).toBe(false);
+
+    const after = await stillThere(actor, note.id);
+    expect(after.user).toBe(actor.userId);
+    expect(after.note).toBe(200);
   });
 });
