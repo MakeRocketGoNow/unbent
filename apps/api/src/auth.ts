@@ -7,6 +7,7 @@ import { socialProviderList } from 'better-auth/social-providers';
 import type { AuthProvider } from '@unbent/shared';
 import type { Env } from './types.js';
 import { canSendEmail, sendEmail } from './lib/email.js';
+import { deleteKeys } from './lib/blobs.js';
 
 /**
  * Emails permitted to create an account, lowercased.
@@ -317,20 +318,6 @@ export function warnIfOpenToAnyone(env: Env): void {
     `[auth] ALLOWED_EMAILS is empty and APP_URL (${env.APP_URL}) is not local: ` +
       `anyone able to use ${offeredProviders(env).join(', ')} can create an account here.`,
   );
-}
-
-/**
- * R2 accepts up to 1000 keys per delete call; batch to stay under that limit.
- *
- * Shared with the admin routes; here it is what empties a user's storage on account
- * deletion. Written as a standalone function because `beforeDelete` cannot be async in
- * the sense of waiting for follow-up work: the callback runs before the row is removed,
- * so everything reachable through the user id must be gone by the time it returns.
- */
-async function deleteKeys(bucket: R2Bucket, keys: string[]): Promise<void> {
-  for (let i = 0; i < keys.length; i += 1000) {
-    await bucket.delete(keys.slice(i, i + 1000));
-  }
 }
 
 /**
