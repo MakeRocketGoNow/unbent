@@ -2155,6 +2155,8 @@ a.sidebar-status:hover {
   border-radius: 0.4rem;
 }
 
+/* Shared with the OAuth consent screen, which is the same decision in the same shape:
+   two buttons, approve and refuse, weighted by order rather than by colour. */
 .device-actions { display: flex; gap: 0.6rem; }
 
 /* Collapsed by default: the answer is only needed once, and open by default would push

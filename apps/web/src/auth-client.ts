@@ -1,5 +1,6 @@
 import { createAuthClient } from 'better-auth/react';
 import { emailOTPClient } from 'better-auth/client/plugins';
+import { oauthProviderClient } from '@better-auth/oauth-provider/client';
 import { passkeyClient } from '@better-auth/passkey/client';
 
 /**
@@ -24,8 +25,14 @@ const authClient = createAuthClient({
    * The email-OTP plugin adds `emailOtp.sendVerificationOtp` and `signIn.emailOtp`. Both
    * are declared here whatever the instance offers: what a client can *call* is separate
    * from what the sign-in screen draws, which follows `/api/config`.
+   *
+   * The OAuth provider plugin adds `oauth2.*`, which the consent screen needs — and, less
+   * visibly, a fetch hook that carries the signed authorization query along with every
+   * request that needs it. Signing in *during* an authorization flow depends on that hook:
+   * without it the provider has no way to know which authorization the new session belongs
+   * to, and the flow stops at the sign-in screen instead of resuming.
    */
-  plugins: [passkeyClient(), emailOTPClient()],
+  plugins: [passkeyClient(), emailOTPClient(), oauthProviderClient()],
 });
 
 export const {
@@ -38,6 +45,35 @@ export const {
   requestPasswordReset,
   resetPassword,
 } = authClient;
+
+/**
+ * The two OAuth calls the consent screen makes, named explicitly.
+ *
+ * `oauth2` cannot be re-exported the way `passkey` and `emailOtp` are: its inferred type
+ * reaches into `@better-auth/oauth-provider`'s bundled internals, which TypeScript refuses
+ * to name in an export as unportable (TS2883, the same family as the TS2742 the instance
+ * above documents). Restating the whole surface would be brittle, so this declares only
+ * what the consent screen calls — which is also a useful statement of how small that is.
+ */
+export interface ConsentClient {
+  /**
+   * Public metadata for the client asking for access, for the screen to name it.
+   *
+   * Snake_case because these are the OAuth registration fields as RFC 7591 spells them,
+   * returned as the client registered them, rather than anything this codebase names.
+   */
+  publicClient: (options: { query: { client_id: string } }) => Promise<{
+    data?: { client_name?: string | null; client_uri?: string | null; logo_uri?: string | null } | null;
+    error?: { message?: string } | null;
+  }>;
+  /** Approve or refuse. On approval the provider sends the browser on to the client. */
+  consent: (options: { accept: boolean }) => Promise<{
+    data?: { redirect?: boolean; url?: string } | null;
+    error?: { message?: string } | null;
+  }>;
+}
+
+export const oauth2 = authClient.oauth2 as unknown as ConsentClient;
 
 /**
  * The signed-in user, as much of the session as this app ever reads.

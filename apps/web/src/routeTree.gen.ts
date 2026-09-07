@@ -11,6 +11,7 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as ConnectRouteImport } from './routes/connect'
+import { Route as ConsentRouteImport } from './routes/consent'
 import { Route as DeviceRouteImport } from './routes/device'
 import { Route as ImportRouteImport } from './routes/import'
 import { Route as LoginRouteImport } from './routes/login'
@@ -39,6 +40,11 @@ const IndexRoute = IndexRouteImport.update({
 const ConnectRoute = ConnectRouteImport.update({
   id: '/connect',
   path: '/connect',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ConsentRoute = ConsentRouteImport.update({
+  id: '/consent',
+  path: '/consent',
   getParentRoute: () => rootRouteImport,
 } as any)
 const DeviceRoute = DeviceRouteImport.update({
@@ -140,6 +146,7 @@ const EmbedNotesNoteIdRoute = EmbedNotesNoteIdRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/connect': typeof ConnectRoute
+  '/consent': typeof ConsentRoute
   '/device': typeof DeviceRoute
   '/import': typeof ImportRoute
   '/login': typeof LoginRoute
@@ -163,6 +170,7 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/connect': typeof ConnectRoute
+  '/consent': typeof ConsentRoute
   '/device': typeof DeviceRoute
   '/import': typeof ImportRoute
   '/login': typeof LoginRoute
@@ -184,6 +192,7 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/connect': typeof ConnectRoute
+  '/consent': typeof ConsentRoute
   '/device': typeof DeviceRoute
   '/import': typeof ImportRoute
   '/login': typeof LoginRoute
@@ -209,6 +218,7 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/connect'
+    | '/consent'
     | '/device'
     | '/import'
     | '/login'
@@ -232,6 +242,7 @@ export interface FileRouteTypes {
   to:
     | '/'
     | '/connect'
+    | '/consent'
     | '/device'
     | '/import'
     | '/login'
@@ -252,6 +263,7 @@ export interface FileRouteTypes {
     | '__root__'
     | '/'
     | '/connect'
+    | '/consent'
     | '/device'
     | '/import'
     | '/login'
@@ -276,6 +288,7 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   ConnectRoute: typeof ConnectRoute
+  ConsentRoute: typeof ConsentRoute
   DeviceRoute: typeof DeviceRoute
   ImportRoute: typeof ImportRoute
   LoginRoute: typeof LoginRoute
@@ -301,6 +314,13 @@ declare module '@tanstack/react-router' {
       path: '/connect'
       fullPath: '/connect'
       preLoaderRoute: typeof ConnectRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/consent': {
+      id: '/consent'
+      path: '/consent'
+      fullPath: '/consent'
+      preLoaderRoute: typeof ConsentRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/device': {
@@ -488,6 +508,7 @@ const TrashRouteWithChildren = TrashRoute._addFileChildren(TrashRouteChildren)
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   ConnectRoute: ConnectRoute,
+  ConsentRoute: ConsentRoute,
   DeviceRoute: DeviceRoute,
   ImportRoute: ImportRoute,
   LoginRoute: LoginRoute,
