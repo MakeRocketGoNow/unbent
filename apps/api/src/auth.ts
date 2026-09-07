@@ -236,6 +236,11 @@ interface AuthInstance {
      */
     getOAuthServerConfig: (context: { request: Request; asResponse: false }) => Promise<unknown>;
     getOpenIdConfig: (context: { request: Request; asResponse: false }) => Promise<unknown>;
+    /**
+     * The public signing keys, read in-process by the MCP route. Same material the /jwks
+     * endpoint publishes, without a Worker having to make an HTTP request to itself.
+     */
+    getJwks: () => Promise<{ keys: Array<Record<string, unknown>> }>;
   };
   /**
    * Needed by the MCP route for the base URL it verifies tokens against, and for the

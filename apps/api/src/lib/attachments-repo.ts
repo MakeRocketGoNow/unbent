@@ -228,6 +228,31 @@ export class AttachmentsRepo extends ScopedRepo {
     return { extractable: row?.extractable ?? 0, indexed: row?.indexed ?? 0 };
   }
 
+  /**
+   * The text extracted from an attachment, when there is any.
+   *
+   * Added for the MCP server, where it is the difference between an assistant being able to
+   * answer a question about a scanned bill and having to say it cannot read PDFs. The bytes
+   * are useless to a language model; this text is what search already indexes, so returning
+   * it costs nothing new.
+   *
+   * `null` when the attachment does not exist or belongs to someone else, and an empty
+   * string when it exists but has no text yet — extraction is asynchronous, and "not indexed
+   * yet" is a different answer from "no such file".
+   */
+  async textFor(noteId: string, filename: string): Promise<string | null> {
+    const row = await this.db
+      .prepare(
+        `SELECT COALESCE(t.text, '') AS text
+           FROM attachments a
+           LEFT JOIN attachment_text t ON t.attachment_id = a.id
+          WHERE a.note_id = ?1 AND a.filename = ?2 AND a.user_id = ?3`,
+      )
+      .bind(noteId, filename, this.userId)
+      .first<{ text: string }>();
+    return row?.text ?? null;
+  }
+
   /** Attachment id for a filename within a note, scoped to this user. */
   async idFor(noteId: string, filename: string): Promise<string | null> {
     const row = await this.resolve(noteId, filename);
