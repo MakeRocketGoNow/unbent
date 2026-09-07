@@ -71,6 +71,11 @@ export interface ConsentClient {
     data?: { redirect?: boolean; url?: string } | null;
     error?: { message?: string } | null;
   }>;
+  /** Every app this user has approved, for the Connected apps page to list. */
+  getConsents: () => Promise<{
+    data?: Array<{ id: string; clientId: string; scopes?: string[]; createdAt?: string }> | null;
+    error?: { message?: string } | null;
+  }>;
 }
 
 export const oauth2 = authClient.oauth2 as unknown as ConsentClient;

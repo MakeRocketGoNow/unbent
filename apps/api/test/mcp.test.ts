@@ -306,4 +306,50 @@ describe('mcp cross-tenant isolation', () => {
     expect(outcome).toContain('error=invalid_target');
     expect(outcome).not.toContain('code=');
   }, 30_000);
+
+  it('stops honouring a token once the app is disconnected', async () => {
+    // The bug this guards against was silent: deleting the consent through the provider's
+    // own endpoint left the token working and its refresh token able to mint more, so
+    // "Disconnect" disconnected nothing. Access tokens are verified by signature, which
+    // cannot know about a revocation, so the endpoint checks the grant still stands.
+    const clientId = await registerClient('Disposable Assistant');
+    const cookie = await signUp(
+      `mcp-revoke-${Date.now()}@example.test`,
+      'revoke-password-123',
+      'Revoker',
+    );
+    const token = await tokenFor(cookie, clientId, RESOURCE);
+
+    expect((await mcp(token, 'tools/list')).status).toBe(200);
+
+    const consents = (await fetch(`${BASE}/api/auth/oauth2/get-consents`, {
+      headers: { Cookie: cookie, Origin: ORIGIN, Accept: 'application/json' },
+    }).then((r) => r.json())) as Array<{ id: string; clientId: string }>;
+    const grant = consents.find((c) => c.clientId === clientId);
+    expect(grant).toBeTruthy();
+
+    const disconnect = await fetch(`${BASE}/api/connected-apps/${grant!.id}/disconnect`, {
+      method: 'POST',
+      headers: { Cookie: cookie, Origin: ORIGIN },
+    });
+    expect(disconnect.status).toBe(204);
+
+    expect((await mcp(token, 'tools/list')).status).toBe(401);
+  }, 30_000);
+
+  it('will not disconnect a grant belonging to someone else', async () => {
+    const consents = (await fetch(`${BASE}/api/auth/oauth2/get-consents`, {
+      headers: { Cookie: alice.cookie, Origin: ORIGIN, Accept: 'application/json' },
+    }).then((r) => r.json())) as Array<{ id: string }>;
+    expect(consents.length).toBeGreaterThan(0);
+
+    const res = await fetch(`${BASE}/api/connected-apps/${consents[0]!.id}/disconnect`, {
+      method: 'POST',
+      headers: { Cookie: bob.cookie, Origin: ORIGIN },
+    });
+    expect(res.status).toBe(404);
+
+    // And alice's own access is untouched.
+    expect((await mcp(alice.token, 'tools/list')).status).toBe(200);
+  });
 });

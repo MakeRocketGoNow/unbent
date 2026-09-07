@@ -31,6 +31,7 @@ const TABS = [
   { to: '/settings/export', label: 'Export' },
   { to: '/settings/maintenance', label: 'Maintenance' },
   { to: '/settings/security', label: 'Security' },
+  { to: '/settings/connected-apps', label: 'Connected apps' },
 ] as const;
 
 /**

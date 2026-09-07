@@ -23,6 +23,7 @@ import { Route as EmbedIndexFilesRouteImport } from './routes/embed.index-files'
 import { Route as NotesIndexRouteImport } from './routes/notes.index'
 import { Route as NotesNoteIdRouteImport } from './routes/notes.$noteId'
 import { Route as SettingsIndexRouteImport } from './routes/settings.index'
+import { Route as SettingsConnectedAppsRouteImport } from './routes/settings.connected-apps'
 import { Route as SettingsExportRouteImport } from './routes/settings.export'
 import { Route as SettingsImportRouteImport } from './routes/settings.import'
 import { Route as SettingsMaintenanceRouteImport } from './routes/settings.maintenance'
@@ -102,6 +103,11 @@ const SettingsIndexRoute = SettingsIndexRouteImport.update({
   path: '/',
   getParentRoute: () => SettingsRoute,
 } as any)
+const SettingsConnectedAppsRoute = SettingsConnectedAppsRouteImport.update({
+  id: '/connected-apps',
+  path: '/connected-apps',
+  getParentRoute: () => SettingsRoute,
+} as any)
 const SettingsExportRoute = SettingsExportRouteImport.update({
   id: '/export',
   path: '/export',
@@ -156,6 +162,7 @@ export interface FileRoutesByFullPath {
   '/trash': typeof TrashRouteWithChildren
   '/embed/index-files': typeof EmbedIndexFilesRoute
   '/notes/$noteId': typeof NotesNoteIdRoute
+  '/settings/connected-apps': typeof SettingsConnectedAppsRoute
   '/settings/export': typeof SettingsExportRoute
   '/settings/import': typeof SettingsImportRoute
   '/settings/maintenance': typeof SettingsMaintenanceRoute
@@ -177,6 +184,7 @@ export interface FileRoutesByTo {
   '/reset-password': typeof ResetPasswordRoute
   '/embed/index-files': typeof EmbedIndexFilesRoute
   '/notes/$noteId': typeof NotesNoteIdRoute
+  '/settings/connected-apps': typeof SettingsConnectedAppsRoute
   '/settings/export': typeof SettingsExportRoute
   '/settings/import': typeof SettingsImportRoute
   '/settings/maintenance': typeof SettingsMaintenanceRoute
@@ -202,6 +210,7 @@ export interface FileRoutesById {
   '/trash': typeof TrashRouteWithChildren
   '/embed/index-files': typeof EmbedIndexFilesRoute
   '/notes/$noteId': typeof NotesNoteIdRoute
+  '/settings/connected-apps': typeof SettingsConnectedAppsRoute
   '/settings/export': typeof SettingsExportRoute
   '/settings/import': typeof SettingsImportRoute
   '/settings/maintenance': typeof SettingsMaintenanceRoute
@@ -228,6 +237,7 @@ export interface FileRouteTypes {
     | '/trash'
     | '/embed/index-files'
     | '/notes/$noteId'
+    | '/settings/connected-apps'
     | '/settings/export'
     | '/settings/import'
     | '/settings/maintenance'
@@ -249,6 +259,7 @@ export interface FileRouteTypes {
     | '/reset-password'
     | '/embed/index-files'
     | '/notes/$noteId'
+    | '/settings/connected-apps'
     | '/settings/export'
     | '/settings/import'
     | '/settings/maintenance'
@@ -273,6 +284,7 @@ export interface FileRouteTypes {
     | '/trash'
     | '/embed/index-files'
     | '/notes/$noteId'
+    | '/settings/connected-apps'
     | '/settings/export'
     | '/settings/import'
     | '/settings/maintenance'
@@ -400,6 +412,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SettingsIndexRouteImport
       parentRoute: typeof SettingsRoute
     }
+    '/settings/connected-apps': {
+      id: '/settings/connected-apps'
+      path: '/connected-apps'
+      fullPath: '/settings/connected-apps'
+      preLoaderRoute: typeof SettingsConnectedAppsRouteImport
+      parentRoute: typeof SettingsRoute
+    }
     '/settings/export': {
       id: '/settings/export'
       path: '/export'
@@ -472,6 +491,7 @@ const NotesRouteChildren: NotesRouteChildren = {
 const NotesRouteWithChildren = NotesRoute._addFileChildren(NotesRouteChildren)
 
 interface SettingsRouteChildren {
+  SettingsConnectedAppsRoute: typeof SettingsConnectedAppsRoute
   SettingsExportRoute: typeof SettingsExportRoute
   SettingsImportRoute: typeof SettingsImportRoute
   SettingsMaintenanceRoute: typeof SettingsMaintenanceRoute
@@ -481,6 +501,7 @@ interface SettingsRouteChildren {
 }
 
 const SettingsRouteChildren: SettingsRouteChildren = {
+  SettingsConnectedAppsRoute: SettingsConnectedAppsRoute,
   SettingsExportRoute: SettingsExportRoute,
   SettingsImportRoute: SettingsImportRoute,
   SettingsMaintenanceRoute: SettingsMaintenanceRoute,
