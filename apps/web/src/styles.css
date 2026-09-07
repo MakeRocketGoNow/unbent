@@ -742,7 +742,22 @@ h1 {
   /* The one scrolling part of the sidebar: the count, search, and filters above it stay
      in place while the notes move. */
   overflow-y: auto;
-  flex: 1;
+  flex-grow: 1;
+  flex-shrink: 1;
+  /*
+     Claims 12rem before the leftovers are handed out, rather than taking what is left.
+
+     `flex: 1` on its own made this last in line: the controls above are content-sized, they
+     summed to less than the column, so nothing overflowed and this got the remainder — which
+     came to 20px once the tag picker and the date presets were above it. A `flex-basis` is a
+     claim rather than a leftover, so the space is taken from the one box above that can give
+     it (see `.tag-filter-wrap`) instead of from the notes.
+
+     `min-height: 0` still matters and is not redundant with the basis: it is what permits
+     the box to be *shorter* than its content and scroll, which is what makes it a list
+     rather than something that grows and takes the page with it.
+  */
+  flex-basis: 12rem;
   min-height: 0;
 }
 
@@ -884,7 +899,8 @@ h1 {
   display: inline-flex;
 }
 
-.overflow-trigger {
+.overflow-trigger,
+.icon-btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -901,7 +917,8 @@ h1 {
   cursor: pointer;
 }
 
-.overflow-trigger:hover { color: var(--fg); background: color-mix(in srgb, var(--fg) 7%, transparent); }
+.overflow-trigger:hover,
+.icon-btn:hover { color: var(--fg); background: color-mix(in srgb, var(--fg) 7%, transparent); }
 
 .overflow-list {
   position: absolute;
@@ -945,6 +962,37 @@ h1 {
 
 .overflow-item:hover { background: color-mix(in srgb, var(--fg) 8%, transparent); }
 .overflow-item.danger { color: var(--bad); }
+
+/*
+   The item currently in effect, in a menu that is a choice rather than a list of commands.
+
+   A tick in a reserved gutter, not a tinted or bolded label: every item shifts by the same
+   amount whether or not it is the selected one, so the list does not reflow as the choice
+   moves down it. The gutter is on the whole list rather than on the selected item, which is
+   what reserves it.
+
+   Drawn as a rotated box with two borders, the same construction as the disclosure chevron
+   and the select's arrow — no glyph, no asset, and correct in dark mode for free because it
+   inherits currentColor.
+*/
+.overflow-list:has(.overflow-item.selected) .overflow-item { padding-left: 1.6rem; }
+
+.overflow-item.selected {
+  position: relative;
+  color: var(--accent);
+}
+
+.overflow-item.selected::before {
+  content: '';
+  position: absolute;
+  left: 0.55rem;
+  top: 50%;
+  width: 0.3rem;
+  height: 0.55rem;
+  border-right: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
+  transform: translateY(-65%) rotate(45deg);
+}
 /* The anchor variant, used by Download. Undoes the link colour and underline it would
    otherwise inherit, so it reads as a menu item and not as prose. */
 a.overflow-item { text-decoration: none; }
@@ -1234,16 +1282,18 @@ a.overflow-item { text-decoration: none; }
   border-bottom: 1px solid var(--border);
 }
 
-/* Tags */
-.tag-filter {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.3rem;
-  padding-bottom: 0.6rem;
-  border-bottom: 1px solid var(--border);
-}
+/* ---------------------------------------------------------------------------------
+   Pills.
 
-.tag-filter-item {
+   A small, rounded, outlined control for a value in a set — one of several date ranges, a
+   choice among a handful. Outlined when off, filled with the accent when on, which is the
+   same "reported" fill `.filter-chip` uses: a pill offers a value, a chip says one is
+   already applied, and the filled pill is the moment they are the same thing.
+
+   Named for the shape rather than for tags, which is what it used to be called. The tag
+   list outgrew pills — see `.tag-picker` — and what was left was a shape worth keeping.
+   --------------------------------------------------------------------------------- */
+.pill {
   display: inline-flex;
   align-items: center;
   gap: 0.35rem;
@@ -1257,13 +1307,117 @@ a.overflow-item { text-decoration: none; }
   cursor: pointer;
 }
 
-.tag-filter-item:hover { color: var(--fg); border-color: var(--accent); }
+.pill:hover { color: var(--fg); border-color: var(--accent); }
 
-.tag-filter-item.active {
+.pill.active {
   color: var(--bg);
   background: var(--accent);
   border-color: var(--accent);
 }
+
+.pill-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+}
+
+/*
+   The presets sit directly above the From/To inputs they fill in, with the column's own
+   gap between them rather than a larger one: they are two ways of answering one question,
+   not two questions, and spacing them apart would say otherwise.
+*/
+.date-presets { margin-bottom: -0.35rem; }
+
+/* ---------------------------------------------------------------------------------
+   The tag picker.
+
+   Selected tags as chips, a find field, then the rest as rows in a capped scroll box. It
+   replaced a wrapped field of pills, which was fine at sixteen tags and had no answer at
+   326 — it simply got taller. See `TagPicker.tsx` for the rest of that reasoning.
+   --------------------------------------------------------------------------------- */
+.tag-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  min-width: 0;
+  padding-bottom: 0.6rem;
+  border-bottom: 1px solid var(--border);
+}
+
+/*
+   The selection, bounded.
+
+   It is chips rather than rows because a selection is read across, not scanned down, and
+   because each one is a control that removes itself. Capped at about three rows: a
+   selection long enough to need more than that is one the note list itself is already
+   reporting, and the field below must stay reachable without scrolling the sheet.
+*/
+.tag-picker-selected {
+  /* Never shrinks: it is the answer to "what have I chosen", and the list below is what
+     gives up room for it. Capped so a long selection scrolls rather than eating the page. */
+  flex: 0 0 auto;
+  max-height: 7rem;
+  overflow-y: auto;
+}
+
+/*
+   The candidates.
+
+   A definite height rather than a natural one, because the whole point is that the list is
+   unbounded. `overscroll-behavior: contain` stops a flick at the end of this list from
+   scrolling the sheet or the page behind it, which on a phone reads as the picker leaking.
+*/
+.tag-picker-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  /*
+     Bounded twice: a fixed ceiling, and a share of the viewport.
+
+     14rem is the comfortable size in a tall window. The `vh` term is what stops the picker
+     from taking the note list's room in a short one — the sidebar is a column of controls
+     above a list, and on a laptop at 850px the controls had grown to leave the notes 20px.
+     `min()` takes whichever is smaller, so the picker gives way rather than the notes.
+  */
+  max-height: min(14rem, 28vh);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.tag-picker-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  width: 100%;
+  min-height: 2.25rem;
+  padding: 0.25rem 0.4rem;
+  font: inherit;
+  font-size: 0.8rem;
+  text-align: left;
+  color: var(--fg);
+  background: none;
+  border: none;
+  border-radius: 0.3rem;
+  cursor: pointer;
+}
+
+.tag-picker-item:hover { background: color-mix(in srgb, var(--fg) 8%, transparent); }
+
+.tag-picker-item:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+/* A tag name is unbounded; it yields so the count beside it never has to move. */
+.tag-picker-name {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.tag-picker-empty { margin: 0.25rem 0; }
 
 .tag-count { opacity: 0.7; font-variant-numeric: tabular-nums; }
 
@@ -1324,7 +1478,23 @@ a.sidebar-status:hover {
    tags filled the screen before a note was visible. The summary keeps the active tag on
    screen either way, so a filter is never applied invisibly.
 */
+/*
+   The tag filter yields before the note list does.
+
+   The picker is a bounded box rather than a wrapped pill field, so with the date presets
+   added above it the sidebar's controls came to 660px on an 850px viewport and left the
+   note list 20px — one row of nothing, below the fold, on a laptop.
+
+   `flex-shrink` alone could not fix that: the children summed to less than the column's
+   height, so nothing was overflowing and nothing was asked to shrink — the note list was
+   simply last in line for what was left. The fix is to make the list ask. It claims a floor
+   through `flex-basis` below, and this box is the one that gives it up, because it is the
+   only control here that scrolls inside itself; every other row is fixed and has nothing to
+   give.
+*/
 .tag-filter-wrap {
+  min-height: 0;
+  overflow: hidden;
   padding-bottom: 0.6rem;
   border-bottom: 1px solid var(--border);
 }
@@ -1354,7 +1524,7 @@ a.sidebar-status:hover {
 }
 
 /* The list already had this border; it belongs on the wrapper now. */
-.tag-filter-wrap .tag-filter {
+.tag-filter-wrap .tag-picker {
   padding-top: 0.5rem;
   padding-bottom: 0;
   border-bottom: none;
@@ -1564,17 +1734,35 @@ a.sidebar-status:hover {
   gap: 0.35rem;
 }
 
+/*
+   No horizontal padding: the panel this sits in already provides the inset, and the row's
+   own added a second one, so a filename started 8px right of the "Attachments" summary
+   above it and of the note body below. The vertical padding stays — that is the space
+   between rows, which nothing else supplies.
+
+   The `.unlinked` variant below draws a fill and an inset rule, and those want a little
+   room to sit in, so it puts the horizontal padding back for itself alone.
+*/
 .attachments-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 0.75rem;
   min-width: 0;
-  padding: 0.35rem 0.5rem;
+  padding: 0.35rem 0;
   border-radius: 0.3rem;
 }
 
+/*
+   The one row that draws a box around itself, so it needs room inside it.
+
+   No negative margin to go with the padding: the panel has no inset of its own to pull back
+   through, so a pull put the fill 8px outside the column every other row lines up with.
+   The label moving 8px right on the one row that is already shouting is the smaller cost —
+   and arguably the right one, since the inset rule reads as a callout.
+*/
 .attachments-row.unlinked {
+  padding-inline: 0.5rem;
   background: color-mix(in srgb, var(--bad) 9%, transparent);
   box-shadow: inset 3px 0 0 var(--bad);
 }
@@ -2572,6 +2760,865 @@ a.sidebar-status:hover {
 }
 
 
+/* ---------------------------------------------------------------------------------
+   The notebook drawer.
+
+   Where the notes are, on a phone: the notebooks, the trash and the account. Rows rather
+   than the sidebar's controls, because these navigate — see `NotebookDrawer.tsx`.
+   --------------------------------------------------------------------------------- */
+.drawer-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  min-width: 0;
+  /* Takes the height the foot does not, so a long notebook list scrolls while Trash and
+     the account stay on the floor where they can be reached. */
+  flex: 1;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.drawer-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  min-height: 2.75rem;
+  padding: 0.4rem 0.7rem;
+  font: inherit;
+  font-size: 0.95rem;
+  text-align: left;
+  text-decoration: none;
+  color: var(--fg);
+  background: none;
+  border: none;
+  /* Fully rounded, so the active fill reads as a pill around the row rather than as a
+     band across the drawer — the shape every drawer people arrive from uses. */
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+.drawer-item:hover { background: color-mix(in srgb, var(--fg) 8%, transparent); }
+
+.drawer-item:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+/*
+   Where you are. The same tint `.note-item.active` uses for the selected note, because it
+   is the same statement — this is the thing on screen — and two different colours for one
+   idea is how a UI starts feeling assembled rather than designed.
+
+   `.current` rather than `.active`, which is not a free choice: TanStack Router puts its own
+   `active` class on a `<Link>` whose target matches the route, so the two destinations on
+   this drawer's floor would have lit up as the current *scope* — Trash permanently, while
+   the trash is open. Same reason the class is not `.selected` either; this says which place
+   is on screen, and `aria-current` beside it says the same thing to a screen reader.
+*/
+.drawer-item.current {
+  color: var(--fg);
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+  font-weight: 500;
+}
+
+/* A notebook name is unbounded; it yields so the count never moves. */
+.drawer-item-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* The count sits hard right on rows whose label does not take the space itself. */
+.drawer-item > .tag-count { margin-left: auto; }
+
+.drawer-rule {
+  margin: 0.4rem 0;
+  border: none;
+  border-top: 1px solid var(--border);
+}
+
+/* Pinned under the list: destinations and the account, not places within the notes. */
+.drawer-foot {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  min-width: 0;
+}
+
+.drawer-foot-row {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  min-width: 0;
+}
+
+.drawer-new {
+  flex: 1;
+  min-width: 0;
+  color: var(--muted);
+}
+
+/* The one control on this row that is not a row; it keeps the avatar's own geometry. */
+.drawer-foot-row .overflow-account { flex: 0 0 auto; }
+
+.drawer-new::before {
+  content: '+';
+  font-size: 1.1rem;
+  line-height: 1;
+}
+
+/* ---------------------------------------------------------------------------------
+   The note list header, on a phone.
+
+   A count and four controls where the sidebar has a count, a New button, a search field,
+   two selects, two date inputs and a tag row. Everything is still reachable; what changed
+   is that it is reachable rather than permanently on screen.
+   --------------------------------------------------------------------------------- */
+.list-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  min-width: 0;
+  /* The same floor `.list-search` takes, so swapping between them moves nothing. Both are
+     already at least this tall through their 44px controls; stating it is what keeps the
+     two in step if the title or the count ever changes size. */
+  min-height: 2.75rem;
+}
+
+/*
+   Where you are, and how much of it there is.
+
+   Two lines in one column so the row stays one row. The title takes the leftover width and
+   truncates; a notebook name is unbounded and four controls sit beside it.
+*/
+.list-title {
+  display: flex;
+  flex-direction: column;
+  gap: 0.05rem;
+  flex: 1;
+  min-width: 0;
+}
+
+.list-title h2 {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 600;
+  line-height: 1.2;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.list-head-actions {
+  display: flex;
+  align-items: center;
+  /* Tight, because each control already carries 44px of target around a 20px glyph — the
+     space between them is the padding, not the gap. */
+  gap: 0.1rem;
+}
+
+/*
+   New is the same height as the icons beside it.
+
+   `.btn` sizes itself from its padding and text, which came to 35px against the icons' 44,
+   and four controls in a row at two heights is the "spacing is really inconsistent"
+   feedback this project keeps getting. The button keeps its own horizontal padding — it is
+   a word, not a glyph, and squaring it off would make it as wide as it is tall.
+
+   The gap before it separates the one control that *makes* something from the three that
+   change what is on screen.
+*/
+.list-head-actions .btn {
+  min-height: 2.75rem;
+  margin-left: 0.4rem;
+}
+
+/*
+   A 44px square holding one icon.
+
+   Shares every declaration with `.overflow-trigger`, which is the same object: an icon that
+   opens something. They are one selector rather than two rules so the next change to the
+   hit area cannot land on only one of them — the drift that made the toolbar's disclosures
+   disagree about their own chevrons.
+*/
+.icon-btn {
+  position: relative;
+}
+
+/*
+   Search open: the field on its own row, the match count under it.
+
+   The count moves rather than disappearing with the header it was in — "6 matches" is the
+   one thing a search has to report back, and the row itself has no width to spare for it
+   beside a field that already had to take the whole line.
+*/
+/*
+   Search takes the row, and holds the header's height while it does.
+
+   A field sharing 375px with four controls is a field you cannot read back what you typed
+   into, so it gets the whole line.
+
+   The `min-height` is the part that is not obvious. The closed header is two lines — a
+   title over a count — and this row is one, so without a floor here opening search pulled
+   the entire note list up by the difference and dropped it back on the way out. Motion
+   nobody asked for, on the most-used control in the view.
+
+   It matches `.list-head`'s own floor rather than guessing at the two-line height, so the
+   swap stays seamless if either line's type changes. Measured: both rows 44px, and the note
+   list does not move by a pixel in either direction.
+*/
+.list-search {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  min-width: 0;
+  min-height: 2.75rem;
+}
+
+.list-search .search-field {
+  flex: 1;
+  min-width: 0;
+}
+
+/*
+   The first control in a row lines its glyph up with the text below it.
+
+   A 44px target around a ~22px glyph centres the picture, so the ink sits about 11px inside
+   the button — and the button's own left edge is already the column's edge, so the glyph
+   ended up indented from every line of text under it. Two rows of chrome that look like
+   they start in different places is the thing this reads as.
+
+   The pull is per-icon because the glyphs do not fill their boxes equally: the hamburger's
+   strokes span x=4..20 of a 24 viewBox, the back chevron's only x=9..15. Aligning the SVG
+   boxes would leave the chevron nearly 8px in while the menu sat 3.5px in — which is what
+   was on screen. These offsets are measured from the ink, so both land on the text.
+
+   Only the leading control. Everything else in the row is a target among targets, where
+   even spacing matters more than where the ink starts.
+*/
+.list-head > .icon-btn:first-child { margin-left: -0.22rem; }
+
+.list-search > .icon-btn:first-child { margin-left: -0.49rem; }
+
+/*
+   The dot that says a filter is on.
+
+   Positioned on the icon rather than beside it, so the control stays one 44px square and
+   the row does not reflow as filters come and go. It is decorative — the state is in the
+   button's accessible name, because a dot says nothing to a screen reader.
+
+   The ring is the page's own background, which is what keeps the dot legible where it
+   overlaps the funnel's stroke in either theme.
+*/
+.badge-dot {
+  position: absolute;
+  top: 0.5rem;
+  right: 0.55rem;
+  width: 0.45rem;
+  height: 0.45rem;
+  background: var(--accent);
+  border-radius: 50%;
+  box-shadow: 0 0 0 2px var(--bg);
+}
+
+/*
+   New, floating over the list.
+
+   Where every notes app people arrive from puts it, which is also what freed the header row
+   for the controls that are about what is on screen. Fixed rather than absolute: the sidebar
+   scrolls, and a button that scrolled with it would be reachable only at the bottom of the
+   list.
+
+   `env(safe-area-inset-bottom)` clears the home indicator on an iPhone and resolves to 0
+   everywhere else. The z-index sits under the sheet's backdrop, which the top layer puts
+   above everything regardless — this only has to beat the note list.
+*/
+.fab {
+  position: fixed;
+  right: 1rem;
+  bottom: calc(1rem + env(safe-area-inset-bottom));
+  z-index: 10;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 3.5rem;
+  height: 3.5rem;
+  color: var(--bg);
+  background: var(--accent);
+  border: none;
+  border-radius: 50%;
+  box-shadow: 0 4px 14px color-mix(in srgb, var(--fg) 28%, transparent);
+  cursor: pointer;
+}
+
+.fab:hover { opacity: 0.92; }
+
+.fab:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+
+/*
+   A list of choices filling a sheet page: the sort orders, the date ranges.
+
+   Full-width rows rather than the pills these replaced. A pill is for a value among a few
+   that fit on one line; once a choice has its own page there is room to give each option a
+   whole row, which is easier to hit and reads down the page instead of wrapping. It is the
+   same row `.tag-picker-item` uses, and deliberately so — three lists in one sheet that
+   looked like three different kinds of control would be three, to the eye.
+*/
+.sort-options,
+.date-picker {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+/*
+   These keep the full 44px while the tag rows give up eight of it, which is a difference
+   worth stating rather than leaving to look like drift. Sort and Dates are closed lists of
+   five and seven — they fit on any screen with room to spare, so there is nothing to buy by
+   tightening them. The tag list is unbounded, and there density is the whole point.
+*/
+.sort-option,
+.date-option {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  min-height: 2.75rem;
+  padding: 0.4rem 0.5rem;
+  font: inherit;
+  /* The same size as `.filter-row`, which these are reached from and sit on the same
+     surface as. They were a step smaller, which is near enough to read as a mistake rather
+     than as a distinction — they are the same kind of row and should look like it. */
+  font-size: 1rem;
+  text-align: left;
+  color: var(--fg);
+  background: none;
+  border: none;
+  border-radius: 0.35rem;
+  cursor: pointer;
+}
+
+.sort-option:hover,
+.date-option:hover { background: color-mix(in srgb, var(--fg) 8%, transparent); }
+
+.sort-option:focus-visible,
+.date-option:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+/*
+   The one in effect, marked with a tick at the end of its row.
+
+   A tick rather than a fill: these are a choice among alternatives, not a set of things
+   switched on, and the filled treatment is what `.pill.active` and `.filter-chip` use for
+   "this is applied". Drawn as a rotated box with two borders — the same construction as the
+   disclosure chevron, so it needs no glyph and is correct in dark mode for free.
+*/
+.sort-option.current,
+.date-option.current { color: var(--accent); }
+
+.sort-option.current::after,
+.date-option.current::after {
+  content: '';
+  flex: 0 0 auto;
+  margin-left: auto;
+  width: 0.3rem;
+  height: 0.6rem;
+  border-right: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
+  transform: translateY(-15%) rotate(45deg);
+}
+
+/* The custom fields sit under the row that reveals them, indented to read as its content
+   rather than as two more options. */
+.date-picker .date-range {
+  padding: 0.25rem 0.5rem 0.5rem;
+}
+
+/* ---------------------------------------------------------------------------------
+   The active filters, as chips.
+
+   What is narrowing the list, where the list is — the filter controls are behind an icon on
+   a phone, and a dot alone says that something is filtering without saying what.
+   --------------------------------------------------------------------------------- */
+.filter-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  min-width: 0;
+}
+
+/*
+   Filled, unlike the outlined tag pills in the sheet.
+
+   The two are different questions and must not be mistaken for each other: a pill in the
+   sheet offers a filter, and a chip here reports one that is already on. Filled is also
+   what the selected pill uses, so the chip is the same object the pill becomes — pressed
+   in one place, reported in the other.
+*/
+.filter-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  max-width: 100%;
+  padding: 0.25rem 0.5rem;
+  font: inherit;
+  font-size: 0.75rem;
+  color: var(--bg);
+  background: var(--accent);
+  border: 1px solid var(--accent);
+  border-radius: 999px;
+  cursor: pointer;
+  /* A tag name is unbounded; the chip yields rather than pushing the row wider than the
+     screen. The × never shrinks — see the disclosure chevron for the same rule and why. */
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.filter-chip svg {
+  flex: 0 0 auto;
+  opacity: 0.75;
+}
+
+.filter-chip:hover { opacity: 0.9; }
+.filter-chip:hover svg { opacity: 1; }
+
+.filter-chip:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+
+/* ---------------------------------------------------------------------------------
+   The filter sheet.
+
+   A `<dialog>` opened with showModal(), so the top layer, the inertness, the scrim, the
+   Escape key and the focus return are all the platform's. What is left to style is the
+   shape: a panel on the floor of the screen rather than a box in the middle of it.
+
+   `margin: auto auto 0` is what puts it there. A dialog centres itself with `auto` margins
+   on all four sides; pinning the bottom one to zero drops it to the floor and leaves the
+   horizontal centring intact, which is what keeps it correct if it is ever shown on a
+   wider screen than the phone it is for.
+   --------------------------------------------------------------------------------- */
+.sheet {
+  /*
+     The floor, full width.
+
+     `margin: auto auto 0` is what puts it there. A dialog centres itself with `auto`
+     margins on all four sides; pinning the bottom one to zero drops it to the floor and
+     leaves the horizontal centring intact, which keeps it correct if it is ever shown on a
+     screen wider than the phone it is for.
+
+     `max-width: none` because the UA sheet caps a dialog at the viewport less its margins,
+     which would otherwise leave a gap down each side.
+
+     Note when measuring this in a browser: a modal dialog lives in the top layer, and
+     `getBoundingClientRect` reports it in that layer's own coordinate space rather than the
+     viewport's. On a scaled device-emulation pane the numbers come back larger than the
+     viewport and look like an overhang. `getComputedStyle().top` plus `height` is the
+     reading that answers the question — it sums to the viewport height when this is right.
+  */
+  margin: auto auto 0;
+  width: 100%;
+  max-width: none;
+  /* Bounded so a long tag list scrolls inside the sheet rather than growing it past the
+     top of the screen. dvh, not vh: the mobile URL bar changes the viewport, and vh here
+     measures the tallest state, which puts the head under the browser chrome. */
+  max-height: 85dvh;
+  padding: 0;
+  overflow-y: auto;
+  color: var(--fg);
+  background: var(--bg);
+  border: none;
+  border-radius: 1rem 1rem 0 0;
+  box-shadow: 0 -8px 32px color-mix(in srgb, var(--fg) 18%, transparent);
+}
+
+/*
+   From the side instead: a drawer.
+
+   Pinned to the inline start and run to the full height, which is what separates navigation
+   from the bottom sheet's "about the view behind it". `margin-inline-end: auto` is the
+   mirror of the bottom sheet's `margin-top: auto` — the free space goes on the far side, so
+   the box lands against the near edge without either of them naming a direction that would
+   be wrong in a right-to-left layout.
+
+   Width is bounded twice: a drawer wider than the notes it filters looks like the app has
+   changed page, and one that reaches the far edge leaves nothing of the list visible to
+   come back to.
+*/
+.sheet-side {
+  margin: 0 auto 0 0;
+  width: min(20rem, 85vw);
+  height: 100dvh;
+  max-height: none;
+  border-radius: 0 1rem 1rem 0;
+}
+
+/* The body fills the drawer, so its own foot can sit on the floor. */
+.sheet-side .sheet-body {
+  min-height: 100%;
+  padding-top: 1rem;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .sheet-side[open] { translate: 0 0; }
+
+  @starting-style {
+    .sheet-side[open] { translate: -1.5rem 0; }
+  }
+
+  .sheet-side:not([open]) { translate: -1.5rem 0; }
+}
+
+.sheet::backdrop {
+  /* Fixed ink rather than a token: --fg is near-white in dark mode, and a scrim that
+     inverts with the theme lightens the screen it is supposed to be dimming. */
+  background: rgb(0 0 0 / 45%);
+}
+
+/*
+   The rise.
+
+   `allow-discrete` and the `@starting-style` block are what let an element that is
+   `display: none` until it opens animate at all — without them the sheet appears in place
+   and the transition never runs. Kept to a short slide with no bounce: this is a surface
+   arriving, not a thing being thrown.
+*/
+@media (prefers-reduced-motion: no-preference) {
+  .sheet {
+    transition:
+      translate 0.22s ease,
+      opacity 0.22s ease,
+      overlay 0.22s allow-discrete,
+      display 0.22s allow-discrete;
+  }
+
+  .sheet[open] {
+    translate: 0 0;
+    opacity: 1;
+  }
+
+  @starting-style {
+    .sheet[open] {
+      translate: 0 1.5rem;
+      opacity: 0;
+    }
+  }
+
+  .sheet:not([open]) {
+    translate: 0 1.5rem;
+    opacity: 0;
+  }
+}
+
+/*
+   The padding lives here rather than on the dialog.
+
+   A padded dialog has a padding box that is part of the element, so a tap on it hits the
+   dialog itself — which is exactly the test the backdrop click uses. The sheet would then
+   dismiss when someone tapped the gap beside a control, which reads as closing at random.
+*/
+.sheet-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 0.5rem 1rem 1rem;
+  /* Clear of the home indicator on an iPhone; resolves to 0px everywhere else. */
+  padding-bottom: calc(1rem + env(safe-area-inset-bottom));
+}
+
+/* The vocabulary phones have taught for "this panel came up from the bottom". Decorative:
+   there is no drag to hint at, and it is not in the tab order or the accessibility tree. */
+.sheet-side .sheet-grip { display: none; }
+
+.sheet-grip {
+  flex: 0 0 auto;
+  width: 2.25rem;
+  height: 0.25rem;
+  margin: 0.25rem auto 0.25rem;
+  background: var(--border);
+  border-radius: 999px;
+}
+
+.sheet-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  /* The row a page is identified by, so it holds its height whether or not it carries a
+     back arrow or an action. */
+  min-height: 2.75rem;
+}
+
+/*
+   No space between the grip and the title.
+
+   The body's gap put 12px here and the grip's own margin added 4 more, so the title sat
+   16px below a handle that is already the sheet's top edge, while everything under the
+   title was 12px apart. The grip is decoration rather than a sibling of the content;
+   cancelling both makes the header the first thing in the column instead of something
+   floating below it, and leaves one rhythm from the title down.
+
+   Written as the two numbers it cancels rather than as their sum, so it stays correct if
+   either the body's gap or the grip's margin is changed.
+
+   Bottom sheets only. The drawer hides its grip, so there is nothing above its header to
+   close a gap against, and applying this there pulled the title flush to the top of the
+   screen — it cancelled padding that was doing its job. `:not(.sheet-side)` rather than an
+   adjacent-sibling selector on the grip: the grip is `display: none` there, not absent, so
+   `.sheet-grip + .sheet-head` still matches it.
+*/
+.sheet:not(.sheet-side) .sheet-head {
+  margin-top: calc(-0.75rem - 0.25rem);
+}
+
+/* The title takes the room; the action sits hard right. */
+.sheet-head h2 {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+/*
+   What the sheet is showing, in one line.
+
+   It is the sheet's own state, not an instruction, so it is muted and it sits where the
+   chips will be when there are any — the two are the same slot in two states, which is
+   what keeps the head from moving as filters come and go.
+*/
+.sheet-summary {
+  margin: 0;
+  color: var(--muted);
+}
+
+/*
+   The back arrow on a sub-page, sized to the title beside it rather than to a 44px square.
+
+   The head is a text row, and a full-height target in it would push the title down and make
+   the row taller than every other sheet head. The arrow keeps the width — the tap area runs
+   the full height of the row through the negative margin, which is what the row's own
+   min-height then guarantees.
+*/
+.sheet-back {
+  flex: 0 0 auto;
+  min-width: 2rem;
+  height: 2rem;
+  margin-left: -0.4rem;
+}
+
+/* The head is the row a page is identified by, so it holds its height whether or not it
+   carries an arrow or an action. */
+/*
+   The rule under the summary.
+
+   It separates what is applied from what can be changed — the two halves of this page — and
+   it is the same seam `.filters-end` and `.trash-link` draw elsewhere. `margin: 0` because
+   the sheet body's own gap is the spacing; an `hr`'s default margin would double it.
+*/
+.sheet-rule {
+  margin: 0;
+  border: none;
+  border-top: 1px solid var(--border);
+}
+
+/* A titled group inside the sheet — the label plus the controls it names, kept together so
+   the body's gap does not separate a heading from what it heads. */
+.filter-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  min-width: 0;
+}
+
+/*
+   A filter that opens a page of its own.
+
+   Drawn as a row rather than as a control, because what it does is navigate. The chevron is
+   the same rotated box the disclosure summary uses — no glyph, no asset, `currentColor`, so
+   it is correct in dark mode without a second rule.
+*/
+/*
+   Sized against the Android sheet these mirror, which reads better than this did.
+
+   Two differences, and the second is the one that showed. The label was 0.9rem against
+   its 16sp — small for the primary text on a row whose whole job is naming a filter — and
+   the rows were spaced 12px apart by the sheet body's gap, where Android's touch and take
+   their breathing room from 12dp of padding inside each one. Spacing between rows makes two
+   controls read as two lists of one; padding within them makes one list of two, and gives
+   the taller row a larger target for free.
+
+   The gap is cancelled rather than the body's rule changed, because every other child of
+   the sheet does want that gap — the chips, the rule, the export link. `+` so it only
+   collapses the space *between* rows and leaves the one above the first.
+*/
+.filter-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  padding: 0.75rem 0.2rem;
+  font: inherit;
+  font-size: 1rem;
+  text-align: left;
+  color: var(--fg);
+  background: none;
+  border: none;
+  border-radius: 0.35rem;
+  cursor: pointer;
+}
+
+.filter-row + .filter-row { margin-top: -0.75rem; }
+
+.filter-row:hover { background: color-mix(in srgb, var(--fg) 8%, transparent); }
+
+.filter-row:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+/*
+   The glyph naming the row.
+
+   Muted like the value at the other end, so the label is the one thing at full strength on
+   the line — the icon and the chevron are both wayfinding, and the words are the content.
+   Fixed width so "Tags" and "Dates" start on the same column whatever the glyphs measure.
+*/
+.filter-row-icon {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.35rem;
+  color: var(--muted);
+}
+
+.filter-row-label { flex: 1; min-width: 0; }
+
+/* What it is set to. Muted because it is a state, not a control, and it truncates rather
+   than pushing the chevron off the row. */
+.filter-row-value {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  /* One step below the label rather than two, matching the labelLarge/bodyLarge pair
+     Android uses: it is secondary to the row, not fine print. */
+  font-size: 0.875rem;
+  color: var(--muted);
+}
+
+.filter-row::after {
+  content: '';
+  flex: 0 0 auto;
+  width: 0.36rem;
+  height: 0.36rem;
+  margin-left: 0.25rem;
+  border-right: 1.5px solid var(--muted);
+  border-bottom: 1.5px solid var(--muted);
+  transform: rotate(-45deg);
+}
+
+/* Done, on the floor of the sheet. Right-aligned: it is the way out, and the way out sits
+   where the thumb is, not where the reading starts. */
+.sheet-foot {
+  display: flex;
+  justify-content: flex-end;
+}
+
+/* A label for a group of controls inside the sheet, matching a disclosure's summary
+   weight — these are the same tier of thing, one collapsed and one not. */
+.filter-section-label {
+  display: block;
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+
+.tag-filter-open {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+/*
+   In a sheet the picker owns a fixed page, and the list inside it does the yielding.
+
+   Left to size itself, the sheet grew by the height of the chip row the moment a tag was
+   picked — the list stayed at its cap and the chips were added on top, so the surface got
+   taller under the thumb that had just tapped. The phone app holds the sheet still and
+   pushes its own content down instead, which is what these three rules reproduce: the page
+   claims a height, the chips and the field keep theirs, and the list takes what is left.
+
+   `70dvh` rather than a fixed number of rows: the sheet is capped at 85dvh, so this stays
+   inside it on any screen, and `dvh` is right for the same reason it is right there — the
+   mobile URL bar changes the viewport, and `vh` measures the tallest state.
+*/
+.sheet .tag-picker {
+  height: 70dvh;
+  padding-bottom: 0;
+  border-bottom: none;
+  /*
+     One rhythm from the header down.
+
+     The gap above the chips was the sheet body's 0.75rem and the two below it were this
+     box's 0.4rem, so the first space in the column was nearly double the others — the
+     "spacing is really inconsistent" reading, and it came from the two gaps being set in
+     different rules that never had to agree. Matching the body's gap here is what makes
+     header, chips and field one evenly spaced stack.
+  */
+  gap: 0.75rem;
+}
+
+/*
+   This replaced a `max-height` on the list itself, which had to go rather than sit beside
+   it: a cap and a flex claim are two answers to one question, and the cap won on source
+   order — the list stayed at its old size while the page around it grew, leaving 173px of
+   nothing under the last row.
+*/
+
+/* The field is a fixed row between two boxes that flex; without this it is the one that
+   gets squeezed when the selection grows. */
+.sheet .tag-picker .search-field { flex: 0 0 auto; }
+
+/*
+   The list takes the rest of the page, growing and shrinking as the chips do.
+
+   `flex: 1` with a zero basis rather than `auto`: on `auto` the list's own content is its
+   starting size, so with more tags than fit it claimed the whole page and left 144px of
+   dead space below the last row instead of filling it. From zero it is sized by what
+   remains, which is what makes it absorb the chip row exactly.
+
+   `min-height: 0` is what lets it be shorter than its content and scroll at all — a flex
+   item's floor is its content, and without it the list refuses to shrink and pushes the
+   sheet taller again, which is the bug this whole rule exists to fix.
+*/
+.sheet .tag-picker-list {
+  flex: 1 1 0;
+  max-height: none;
+  min-height: 0;
+}
+
+/* In the sheet the picker is the last thing before Done, and the rule that separates it
+   from the note list in the sidebar has nothing to separate it from here. */
+.tag-filter-open .tag-picker {
+  padding-bottom: 0;
+  border-bottom: none;
+}
+
+
 /* ------------------------------------------------------------------------------------
    Mobile overrides.
    Last in the file on purpose: these rules override base ones of equal specificity
@@ -2627,6 +3674,13 @@ a.sidebar-status:hover {
 
      It sits here, next to the `.shell` rule above whose padding it cancels, because the
      two are one number: change that padding and this must change with it.
+
+     Not pulled the further 0.49rem that aligns the chevron's ink with the text below, the
+     way the list header's leading icons are. Here the two goals conflict: this arrow is
+     already pulled to put its target on the screen edge, and taking the ink offset as well
+     moved the target 8px off screen — trading a reachable corner control for a pixel of
+     alignment, which is the wrong way round. The ink lands ~7px inside the text instead,
+     which is the cost of the target reaching the glass.
   */
   .view-back {
     margin-left: -0.75rem;
@@ -2696,11 +3750,64 @@ a.sidebar-status:hover {
      uses the same layout hook — and its sidebar, `.trash-head` included, is hidden by the
      rule above, so only one back arrow is ever on screen.
   */
-  .shell.wide:has(.notes.note-open) > .topbar,
+  .shell.wide:has(.notes) > .topbar,
   .shell.wide:has(.settings) > .topbar,
   .shell.wide:has(.trash-head) > .topbar {
     display: none;
   }
+
+  /*
+     The note list now goes too, which the comment above said it could not.
+
+     Both reasons it kept the bar have been answered. It had no heading of its own, and now
+     the header names the notebook you are in — which the wordmark never did, on the one
+     screen where which app you are in was never the question. And sign out was reachable
+     only through the avatar here, which is now on the drawer's floor, one tap from the ☰ in
+     the same row.
+
+     `.notes` rather than `.notes.note-open`: the list and the open note are the same grid,
+     and both have their own top-left control now — the menu button and the back arrow.
+  */
+
+  /* Trash lives in the drawer at this width, with the notebooks it sits beside. Leaving it
+     on the sidebar floor as well would be two places for one destination, and the drawer is
+     the one that matches every other app. */
+  .trash-link { display: none; }
+
+  /*
+     The sidebar gives up its own inset here, because the shell's is already doing that job.
+
+     Three insets were stacking on a phone: the shell's 0.75rem, the sidebar's 0.7rem, and
+     the note row's own 0.7rem, which `.note-list` pulls back out. Text landed 23px from the
+     glass on a 412px screen — over 5% of the width on each side before a single character,
+     on the view whose whole purpose is showing as much of a note list as possible.
+
+     Zeroing this does not break the alignment the desktop rule protects. The note rows keep
+     their padding and the list keeps its matching pull-out, so the notes still start where
+     the header and the chips above them do; all of them simply start one inset closer to
+     the edge. The desktop keeps the 0.7rem, where the column is a fixed 304px beside a
+     workspace and the breathing room costs nothing.
+  */
+  .sidebar {
+    padding-left: 0;
+    padding-right: 0;
+  }
+
+  /* With the sidebar's inset gone the list has nothing to pull out of; the 3px stays, which
+     is the room the focus ring needs — see `.note-list`. */
+  .note-list {
+    margin-left: -3px;
+    margin-right: -3px;
+  }
+
+  /*
+     Room for the floating button, so the last note is not left under it.
+
+     `.note-list` is the scroller, so the padding belongs there rather than on the sidebar —
+     on the sidebar it would be a permanent gap above the fold instead of scroll room at the
+     end.
+  */
+  .note-list { padding-bottom: 5rem; }
 
   /*
      The title gets the room; what is left of the controls tucks in beside it.
@@ -2856,4 +3963,58 @@ a.sidebar-status:hover {
 
   /* Home-indicator clearance on iPhone; resolves to 0px everywhere else. */
   .shell.wide { padding-bottom: calc(1rem + env(safe-area-inset-bottom)); }
+
+  /*
+     The filter sheet's own controls are thumb targets like everything else here.
+
+     These are the sidebar's controls, and at desktop density they are 37-39px — pointed at
+     rather than tapped. They were the only controls in the app still under the 44px this
+     block sets everywhere else, and they are now the ones most likely to be tapped, since
+     reaching them at all means being on a phone.
+
+     The date inputs get it through their own rule rather than the shared one, because they
+     sit in a flex row whose label and field are separate boxes: a min-height on the label
+     would stretch the caption rather than the field.
+  */
+  .sheet .notebook-scope,
+  .sheet .date-range input {
+    min-height: 2.75rem;
+  }
+
+  /*
+     A tag row is a full-width target, so it gets the full 44px — unlike the pills and chips
+     below, which wrap and would push the notes down a row for every one of them.
+  */
+  /*
+     Denser than the 44px this block gives every other control, and deliberately.
+
+     44px is the floor for a control you must not miss. These are a scrolling list of
+     alternatives where the cost of a mis-tap is one more tap — the same trade the note list
+     itself makes, whose rows are shorter still. At 44px only eleven tags were on screen out
+     of hundreds, which is the problem the picker exists to solve, so the rows give up the
+     eight pixels the list needs to show two more.
+  */
+  .sheet .tag-picker-item {
+    min-height: 2.25rem;
+    padding-inline: 0.5rem;
+    font-size: 0.9rem;
+  }
+
+  /* Pills wrap, so they take the compromise height rather than the full target: a row of
+     44px date presets would be three rows deep on a phone. */
+  .pill {
+    min-height: 2.25rem;
+    padding-inline: 0.7rem;
+  }
+
+  /*
+     The chips are the same compromise, and for the same reason: they wrap, and a row of
+     44px chips would push the notes down as far as the controls this change removed. They
+     each remove a filter on one tap, so they need to be certain of — 36px with the × inside
+     the target is the same size the pills above settle on.
+  */
+  .filter-chip {
+    min-height: 2.25rem;
+    padding-inline: 0.6rem;
+  }
 }

@@ -178,10 +178,34 @@ export function Editor({
             '.cm-scroller': {
               fontFamily: rich ? 'var(--font-prose)' : 'var(--font-mono)',
               lineHeight: '1.7',
-              padding: '1rem 0',
+              /*
+                 The note's text starts where everything above it does.
+
+                 CodeMirror indents every line by 6px of its own, which put the body 6px
+                 right of the title, the filing row and the attachments panel — close enough
+                 to read as a mistake rather than as an indent, and the workspace column
+                 already supplies the inset those share.
+
+                 Zeroing that line padding alone is not the fix, though it looks like it.
+                 Both sides of the default exist so a caret at the very start or end of a
+                 line is not drawn half outside the scroller and clipped by its
+                 `overflow-x: auto`, and measured with the padding at zero the caret at
+                 offset 0 landed exactly on the scroller's left edge with nothing to spare.
+
+                 So the room moves rather than disappears: pulled 6px left and given the 6px
+                 back as padding. The line boxes now begin at the column's own inset — the
+                 text aligns — while the caret keeps the same margin it always had. The 2px
+                 on the right is CodeMirror's own and is left alone; nothing else is doing
+                 that job at the end of a line.
+              */
+              margin: '0 0 0 -6px',
+              padding: '1rem 0 1rem 6px',
             },
+
             '&.cm-focused': { outline: 'none' },
             '.cm-content': { caretColor: 'var(--fg)' },
+            // See the scroller above for why this is safe to zero.
+            '.cm-line': { paddingLeft: '0' },
           }),
         ],
       }),

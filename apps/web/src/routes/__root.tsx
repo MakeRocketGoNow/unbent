@@ -6,7 +6,8 @@ import {
 } from '@tanstack/react-router';
 import { useEffect } from 'react';
 import { useQueryClient, type QueryClient } from '@tanstack/react-query';
-import { useSession, signOut, refreshSession } from '../auth-client.js';
+import { useSession } from '../auth-client.js';
+import { useSignOut } from '../useSignOut.js';
 import { requireSession, shellFor } from '../auth-gate.js';
 import { claimCacheFor } from '../queries.js';
 import { startIndexing, subscribeIndexing } from '../index-files.js';
@@ -88,6 +89,7 @@ function PlainShell() {
 function AppShell() {
   const { data: session, isPending } = useSession();
   const navigate = useNavigate();
+  const signOutAndLeave = useSignOut();
   const queryClient = useQueryClient();
   const userId = session?.user?.id;
 
@@ -132,28 +134,9 @@ function AppShell() {
 
   return (
     <main className="shell wide">
-      <Topbar
-        email={session.user.email}
-        onSignOut={() => {
-          /**
-           * Leaving a note id in the address bar would expose it to the next person and
-           * reapply it on the next sign-in, so signing out goes to `/login` rather than
-           * staying put and letting the gate bounce it there a moment later.
-           *
-           * The session is refetched before navigating rather than left to settle on its
-           * own: `/login` turns away anyone who is signed in, and it reads the same store
-           * this call is in the middle of emptying.
-           *
-           * Nothing is dropped from the query cache here. The rows this user loaded are
-           * still in memory afterwards, and deliberately so — see `claimCacheFor`, which
-           * empties the cache when the *next* user arrives, where there is no mounted app
-           * left to refetch into a 401.
-           */
-          void signOut()
-            .then(() => refreshSession())
-            .then(() => navigate({ to: '/login', replace: true }));
-        }}
-      />
+      {/* The chain this runs, and why its order matters, is in `useSignOut` — the drawer
+          offers the same action on a phone, where there is no topbar over the list. */}
+      <Topbar email={session.user.email} onSignOut={signOutAndLeave} />
       <Outlet />
     </main>
   );

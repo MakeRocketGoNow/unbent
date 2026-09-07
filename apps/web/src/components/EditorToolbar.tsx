@@ -4,6 +4,7 @@ import type { StateCommand } from '@codemirror/state';
 import * as cmd from '../editor/markdown-commands.js';
 import { attachConfig, insertUploads } from '../editor/attach.js';
 import { buildSizePicker, PICKER_CSS } from '../editor/table-size-picker.js';
+import { ToolbarIcon } from './icons.js';
 
 /**
  * The three ways to look at a note, and the one modifier that applies to one of them.
@@ -58,7 +59,7 @@ interface Action {
   className?: string;
 }
 
-/**
+/*
  * The icons that stand in for the glyphs.
  *
  * `☑`, `🔗` and `▦` were literal characters, and they never matched the letterforms
@@ -67,27 +68,10 @@ interface Action {
  * UI face. Drawn as SVG they inherit `currentColor` and the button's size like a letter
  * does, so the row reads as one set.
  *
- * Inline rather than from an icon library: this is five icons in a codebase whose other
- * controls are letters, and a dependency would still not draw the B, I, S or H1.
+ * `ToolbarIcon` itself moved to `icons.tsx` when the note list header started drawing icons
+ * too — it was never specific to this toolbar, and importing it from here would have said
+ * it was. The reasoning about not taking an icon library moved with it.
  */
-function ToolbarIcon({ children }: { children: ReactNode }) {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      width="1.05em"
-      height="1.05em"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-      focusable="false"
-    >
-      {children}
-    </svg>
-  );
-}
 
 /** A ticked box, for the task-list command. */
 const TaskIcon = (
