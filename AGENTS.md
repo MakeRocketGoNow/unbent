@@ -239,7 +239,7 @@ The AVD is `Pixel_9_API_36` (`AVD_NAME` overrides it). Take it from the scripts 
 inferring it from what is installed or when files were last touched.
 
 Two builds sit side by side on the device. The **orange** icon is
-`app.unbent.android.debug`; the **green** one is `app.unbent.android`, the release build,
+`com.makerocketgonow.unbent.debug`; the **green** one is `com.makerocketgonow.unbent`, the release build,
 which is signed into **production**. Drive the debug one. Never tap through the release app
 — a stray tap there writes to the user's real notes.
 

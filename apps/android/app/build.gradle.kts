@@ -27,7 +27,17 @@ fun secret(key: String, env: String): String? =
 val releaseStorePath = secret("unbent.keystore.path", "UNBENT_KEYSTORE_PATH")
 
 android {
-    namespace = "app.unbent.android"
+    /**
+     * The Kotlin package, which moved here from `app.unbent.android` when the app was
+     * prepared for the Play Store.
+     *
+     * It is kept equal to `applicationId` below rather than left where it was. The two are
+     * independent as far as Gradle is concerned — only the id reaches Play, App Links and
+     * OAuth — but a source tree whose package disagrees with the installed id is a trap for
+     * anyone reading a stack trace or writing an `adb shell am` command, and there is
+     * nothing else in the tree that would explain the split.
+     */
+    namespace = "com.makerocketgonow.unbent"
     /**
      * What the app is compiled against, which is not what it promises to behave like —
      * that is `targetSdk` below. Raising this only lets the compiler see newer APIs.
@@ -39,7 +49,17 @@ android {
     compileSdk = 37
 
     defaultConfig {
-        applicationId = "app.unbent.android"
+        /**
+         * The identity Play, the Digital Asset Links file on unbent.app and the Google
+         * OAuth client all key on — and the one string here that can never change again
+         * once the app is published, since Play treats a different id as a different app
+         * with no upgrade path for anyone who installed the old one.
+         *
+         * `app.unbent.android` was never published, so this rename is free. It is
+         * `com.makerocketgonow.*` because that is the domain the developer account is
+         * registered under, and a reverse-domain id has to be one the publisher controls.
+         */
+        applicationId = "com.makerocketgonow.unbent"
         minSdk = 26
         /**
          * The behaviours the app opts into, which is the half that actually changes at
