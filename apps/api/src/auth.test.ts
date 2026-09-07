@@ -162,4 +162,17 @@ describe('warnIfOpenToAnyone', () => {
     warnIfOpenToAnyone(env({ APP_URL: 'http://localhost:5173' }));
     expect(warn).not.toHaveBeenCalled();
   });
+
+  /** The open door said out loud, which is the case the warning has nothing to tell. */
+  it('stays quiet once an instance declares its sign-ups public', () => {
+    warnIfOpenToAnyone(env({ PUBLIC_SIGNUPS: '1' }));
+    expect(warn).not.toHaveBeenCalled();
+  });
+
+  /** Anything else is not a declaration, so the open door is still an accident. */
+  it('warns when the declaration is anything other than 1', () => {
+    warnIfOpenToAnyone(env({ PUBLIC_SIGNUPS: '0' }));
+    warnIfOpenToAnyone(env({ PUBLIC_SIGNUPS: 'true' }));
+    expect(warn).toHaveBeenCalledTimes(2);
+  });
 });
