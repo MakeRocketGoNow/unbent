@@ -7,8 +7,7 @@ import { socialProviderList } from 'better-auth/social-providers';
 import type { AuthProvider } from '@unbent/shared';
 import type { Env } from './types.js';
 import { canSendEmail, sendEmail } from './lib/email.js';
-import { deleteKeys } from './lib/blobs.js';
-import { userPrefix } from './lib/repo.js';
+import { deleteKeys, deleteUserBlobs } from './lib/blobs.js';
 
 /**
  * Emails permitted to create an account, lowercased.
@@ -488,21 +487,26 @@ function createAuth(env: Env): AuthInstance {
          * cannot reach objects once the account is gone. This is the hook that prevents
          * the "stranded blobs" gap the README used to document.
          *
-         * Paginating because an archive holds thousands of files, and `list()` returns
-         * at most 1000 per call. The prefix ensures no object outside this user's own
-         * directory is ever touched.
+         * Blobs before rows here, which is the reverse of what `purge-notes` does, and
+         * the reversal is the whole design. There the rows go first because a failure
+         * afterwards leaves orphans that gc-blobs can still reclaim; here the user id the
+         * sweep needs is the thing the deletion is about to destroy, so after the row is
+         * gone nothing can reach the prefix again. The cost is the mirror image: if this
+         * throws, Better Auth abandons the deletion and the account survives carrying
+         * attachment rows that point at objects already deleted. That is the recoverable
+         * half — the owner can ask again — and it is why the failure is logged rather
+         * than swallowed.
          */
         beforeDelete: async (user: { id: string }) => {
-          const prefix = userPrefix(user.id);
-          const keys: string[] = [];
-          let cursor: string | undefined;
-          for (;;) {
-            const page = await env.BLOBS.list({ prefix, cursor, limit: 1000 });
-            for (const obj of page.objects) keys.push(obj.key);
-            if (!page.truncated) break;
-            cursor = page.cursor;
+          try {
+            await deleteUserBlobs(env.BLOBS, user.id);
+          } catch (err) {
+            // The rethrow is what stops the deletion. The log is so a half-swept account
+            // can be found afterwards: the id is the only way back to the prefix that
+            // still needs finishing, and by then there is no row to look it up from.
+            console.error(`Blob sweep failed for ${user.id}; account deletion abandoned:`, err);
+            throw err;
           }
-          if (keys.length > 0) await deleteKeys(env.BLOBS, keys);
         },
       },
     },
