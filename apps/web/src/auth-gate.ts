@@ -28,13 +28,16 @@ export const GOODBYE = '/goodbye';
  * reported to the app through the bridge rather than redirected to a sign-in screen inside
  * somebody else's screen.
  *
- * `plain` is the pages that exist precisely because there is no session: the sign-in
- * screen, and the far ends of the two mails that arrive when you cannot use one. Someone
- * resetting a password is by definition unable to sign in, so gating that page made the
- * reset link in the mail dead for exactly the people it was sent to. The deletion mail has
- * two of them: `/delete-account`, which has to be able to say "you are not signed in here"
- * rather than redirect and lose the token from view, and `/goodbye`, where the account that
- * would have held the session is gone by the time the browser arrives.
+ * `plain` is the pages that have to render for someone with no session, enumerated in
+ * `PUBLIC` below. Two kinds. Some exist precisely because there is no session: the sign-in
+ * screen, and the far ends of the two mails that arrive when you cannot use one — gating
+ * the reset page made the link in that mail dead for exactly the people it was sent to,
+ * `/delete-account` has to be able to say "you are not signed in here" rather than
+ * redirect and lose the token from view, and `/goodbye` is reached when the account that
+ * would have held the session is already gone.
+ *
+ * The legal pages are the other kind: read by people who have no account and never will.
+ * The Play listing links to the privacy policy, so it cannot sit behind a sign-in.
  *
  * Everything else is `app`, which is the useful default: a route added tomorrow is behind
  * the session unless somebody deliberately lists it here. One function rather than a
@@ -42,13 +45,33 @@ export const GOODBYE = '/goodbye';
  */
 export type Shell = 'app' | 'embed' | 'plain';
 
+/**
+ * The pages that render without a session, listed rather than inferred.
+ *
+ * Two kinds, and both are here because gating them broke something specific. The sign-in
+ * screen and the far end of a reset mail exist precisely because there is no session — a
+ * gate on the reset page made the link dead for the only people who ever receive one.
+ *
+ * The legal pages are the other kind: they have to be readable by someone who has no
+ * account and never will. The store listing links to the privacy policy, and the deletion
+ * page has to explain the process to someone who cannot sign in to follow it — a redirect
+ * to a login screen would be the wrong answer to both.
+ */
+const PUBLIC: ReadonlySet<string> = new Set([
+  LOGIN,
+  '/reset-password',
+  CONFIRM_DELETE,
+  GOODBYE,
+  '/privacy',
+  '/terms',
+]);
+
 export function shellFor(pathname: string): Shell {
   if (pathname.startsWith('/embed/')) return 'embed';
   // Tolerant of a trailing slash, which a hand-typed address or an external link may carry
   // and which never means a different page.
   const path = pathname.length > 1 ? pathname.replace(/\/$/, '') : pathname;
-  if (path === LOGIN || path === '/reset-password') return 'plain';
-  if (path === CONFIRM_DELETE || path === GOODBYE) return 'plain';
+  if (PUBLIC.has(path)) return 'plain';
   return 'app';
 }
 

@@ -18,8 +18,10 @@ import { Route as GoodbyeRouteImport } from './routes/goodbye'
 import { Route as ImportRouteImport } from './routes/import'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as NotesRouteImport } from './routes/notes'
+import { Route as PrivacyRouteImport } from './routes/privacy'
 import { Route as ResetPasswordRouteImport } from './routes/reset-password'
 import { Route as SettingsRouteImport } from './routes/settings'
+import { Route as TermsRouteImport } from './routes/terms'
 import { Route as TrashRouteImport } from './routes/trash'
 import { Route as EmbedIndexFilesRouteImport } from './routes/embed.index-files'
 import { Route as NotesIndexRouteImport } from './routes/notes.index'
@@ -80,6 +82,11 @@ const NotesRoute = NotesRouteImport.update({
   path: '/notes',
   getParentRoute: () => rootRouteImport,
 } as any)
+const PrivacyRoute = PrivacyRouteImport.update({
+  id: '/privacy',
+  path: '/privacy',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ResetPasswordRoute = ResetPasswordRouteImport.update({
   id: '/reset-password',
   path: '/reset-password',
@@ -88,6 +95,11 @@ const ResetPasswordRoute = ResetPasswordRouteImport.update({
 const SettingsRoute = SettingsRouteImport.update({
   id: '/settings',
   path: '/settings',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const TermsRoute = TermsRouteImport.update({
+  id: '/terms',
+  path: '/terms',
   getParentRoute: () => rootRouteImport,
 } as any)
 const TrashRoute = TrashRouteImport.update({
@@ -171,8 +183,10 @@ export interface FileRoutesByFullPath {
   '/import': typeof ImportRoute
   '/login': typeof LoginRoute
   '/notes': typeof NotesRouteWithChildren
+  '/privacy': typeof PrivacyRoute
   '/reset-password': typeof ResetPasswordRoute
   '/settings': typeof SettingsRouteWithChildren
+  '/terms': typeof TermsRoute
   '/trash': typeof TrashRouteWithChildren
   '/embed/index-files': typeof EmbedIndexFilesRoute
   '/notes/$noteId': typeof NotesNoteIdRoute
@@ -197,7 +211,9 @@ export interface FileRoutesByTo {
   '/goodbye': typeof GoodbyeRoute
   '/import': typeof ImportRoute
   '/login': typeof LoginRoute
+  '/privacy': typeof PrivacyRoute
   '/reset-password': typeof ResetPasswordRoute
+  '/terms': typeof TermsRoute
   '/embed/index-files': typeof EmbedIndexFilesRoute
   '/notes/$noteId': typeof NotesNoteIdRoute
   '/settings/connected-apps': typeof SettingsConnectedAppsRoute
@@ -223,8 +239,10 @@ export interface FileRoutesById {
   '/import': typeof ImportRoute
   '/login': typeof LoginRoute
   '/notes': typeof NotesRouteWithChildren
+  '/privacy': typeof PrivacyRoute
   '/reset-password': typeof ResetPasswordRoute
   '/settings': typeof SettingsRouteWithChildren
+  '/terms': typeof TermsRoute
   '/trash': typeof TrashRouteWithChildren
   '/embed/index-files': typeof EmbedIndexFilesRoute
   '/notes/$noteId': typeof NotesNoteIdRoute
@@ -252,8 +270,10 @@ export interface FileRouteTypes {
     | '/import'
     | '/login'
     | '/notes'
+    | '/privacy'
     | '/reset-password'
     | '/settings'
+    | '/terms'
     | '/trash'
     | '/embed/index-files'
     | '/notes/$noteId'
@@ -278,7 +298,9 @@ export interface FileRouteTypes {
     | '/goodbye'
     | '/import'
     | '/login'
+    | '/privacy'
     | '/reset-password'
+    | '/terms'
     | '/embed/index-files'
     | '/notes/$noteId'
     | '/settings/connected-apps'
@@ -303,8 +325,10 @@ export interface FileRouteTypes {
     | '/import'
     | '/login'
     | '/notes'
+    | '/privacy'
     | '/reset-password'
     | '/settings'
+    | '/terms'
     | '/trash'
     | '/embed/index-files'
     | '/notes/$noteId'
@@ -331,8 +355,10 @@ export interface RootRouteChildren {
   ImportRoute: typeof ImportRoute
   LoginRoute: typeof LoginRoute
   NotesRoute: typeof NotesRouteWithChildren
+  PrivacyRoute: typeof PrivacyRoute
   ResetPasswordRoute: typeof ResetPasswordRoute
   SettingsRoute: typeof SettingsRouteWithChildren
+  TermsRoute: typeof TermsRoute
   TrashRoute: typeof TrashRouteWithChildren
   EmbedIndexFilesRoute: typeof EmbedIndexFilesRoute
   EmbedNotesNoteIdRoute: typeof EmbedNotesNoteIdRoute
@@ -403,6 +429,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof NotesRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/privacy': {
+      id: '/privacy'
+      path: '/privacy'
+      fullPath: '/privacy'
+      preLoaderRoute: typeof PrivacyRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/reset-password': {
       id: '/reset-password'
       path: '/reset-password'
@@ -415,6 +448,13 @@ declare module '@tanstack/react-router' {
       path: '/settings'
       fullPath: '/settings'
       preLoaderRoute: typeof SettingsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/terms': {
+      id: '/terms'
+      path: '/terms'
+      fullPath: '/terms'
+      preLoaderRoute: typeof TermsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/trash': {
@@ -576,8 +616,10 @@ const rootRouteChildren: RootRouteChildren = {
   ImportRoute: ImportRoute,
   LoginRoute: LoginRoute,
   NotesRoute: NotesRouteWithChildren,
+  PrivacyRoute: PrivacyRoute,
   ResetPasswordRoute: ResetPasswordRoute,
   SettingsRoute: SettingsRouteWithChildren,
+  TermsRoute: TermsRoute,
   TrashRoute: TrashRouteWithChildren,
   EmbedIndexFilesRoute: EmbedIndexFilesRoute,
   EmbedNotesNoteIdRoute: EmbedNotesNoteIdRoute,

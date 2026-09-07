@@ -43,6 +43,11 @@ export function AccountMenu({ email, onSignOut }: AccountMenuProps) {
         // truncates to one line, so it carries the full address as a tooltip.
         { label: email, className: 'overflow-email', static: true, title: email },
         { label: 'Settings', to: '/settings' },
+        // Findable once signed in, which is the half the sign-in screen's own links cannot
+        // cover. They sit below Settings because they are reference, not something to act
+        // on, and above Sign out so the destructive item stays last.
+        { label: 'Privacy', to: '/privacy' },
+        { label: 'Terms', to: '/terms' },
         { label: 'Sign out', onSelect: onSignOut, tone: 'danger' },
       ]}
     />

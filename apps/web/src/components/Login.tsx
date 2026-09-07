@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useState, type FormEvent, type JSX } from 'react';
-import { useNavigate } from '@tanstack/react-router';
+import { Link, useNavigate } from '@tanstack/react-router';
 import { useQuery } from '@tanstack/react-query';
 import { isLocalMethod, type AuthProvider } from '@unbent/shared';
 import {
@@ -255,6 +255,14 @@ export function Login({ redirectTo }: LoginProps) {
       )}
 
       {error && <p className="bad">{error}</p>}
+
+      {/* Under the card rather than beside the button: this is the moment consent is
+          given, and it is also the only route to these pages for someone who has no
+          account and cannot reach the account menu. */}
+      <p className="login-legal">
+        By continuing you agree to the <Link to="/terms">Terms</Link> and{' '}
+        <Link to="/privacy">Privacy Policy</Link>.
+      </p>
     </div>
   );
 }

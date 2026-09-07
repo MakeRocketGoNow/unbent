@@ -3663,6 +3663,76 @@ a.sidebar-status:hover {
    four hundred lines below them.
    --------------------------------------------------------------------------------- */
 /*
+ * The legal pages: the privacy policy, the terms, and the deletion instructions.
+ *
+ * They borrow `.preview`'s long-form typography — measured column, generous line height,
+ * heading sizes — because it is already the answer to "a wall of prose someone has to
+ * actually read", and a second set of rules would drift from it.
+ *
+ * What has to be undone is the shell. These render in `PlainShell`, whose `.centered`
+ * vertically centres a login card in a flex box; a document several screens tall would be
+ * centred on its own middle, starting the page above the viewport. Back to normal flow,
+ * and top-aligned.
+ */
+.shell.centered:has(.legal) {
+  display: block;
+  min-height: 0;
+}
+
+.legal {
+  margin: 0 auto;
+  padding-bottom: 4rem;
+}
+
+.legal h1 {
+  font-size: 1.9rem;
+  margin-bottom: 0.25rem;
+}
+
+/* Sections are further apart than paragraphs, so the document scans as a list of topics
+   rather than one undifferentiated column. */
+.legal section {
+  margin-top: 2rem;
+}
+
+.legal h2 {
+  margin-bottom: 0.5rem;
+}
+
+.legal-effective {
+  margin-top: 0;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+/* The summary at the top, set slightly larger — it is the part most readers will stop
+   after, so it should not look like the first paragraph of the fine print. */
+.legal-intro {
+  font-size: 1.05rem;
+}
+
+/* The consent line under the sign-in card. Small and quiet: it has to be present and
+   readable, not compete with the buttons above it. */
+.login-legal {
+  margin-top: 2rem;
+  color: var(--muted);
+  font-size: 0.82rem;
+  line-height: 1.5;
+}
+
+.login-legal a {
+  color: inherit;
+  text-decoration: underline;
+}
+
+.legal-back {
+  margin-top: 3rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid var(--border);
+  font-size: 0.95rem;
+}
+
+/*
  * One pane at a time on a phone, driven by the URL rather than by stacking.
  *
  * The rule this replaced collapsed .notes to a single column, which put the entire
