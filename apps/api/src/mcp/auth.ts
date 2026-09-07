@@ -97,22 +97,49 @@ async function issuerFor(env: Env, request: Request): Promise<string> {
 /**
  * The 401 an MCP client is waiting for.
  *
- * The `WWW-Authenticate` header is the whole point: it names the document that says who
+ * The `WWW-Authenticate` header is the whole point. It names the document that says who
  * issues tokens for this resource, which is how a client that has never seen this server
- * knows where to send the user. Without it a client can only report that it was refused.
+ * learns where to send the user; without it a client can only report that it was refused,
+ * and connecting becomes impossible rather than merely manual.
+ *
+ * `createResourceServerChallenge` builds that header, but only for the typed errors Better
+ * Auth's own verifier raises — handed anything else it returns undefined. Verification here
+ * can also fail with a plain `Error` (a missing header, a malformed token), and an early
+ * version of this function let those through with no header at all: a 401 that told the
+ * client nothing. So the header is constructed directly when the packaged builder declines,
+ * to the same RFC 9728 shape it would have produced.
  *
  * The body is a JSON-RPC error rather than a bare message because the caller is speaking
  * JSON-RPC and will try to parse whatever comes back.
  */
 function challenge(error: unknown, resource: string): Response {
   const built = createResourceServerChallenge(error, resource);
+  const message = built?.message ?? (error instanceof Error ? error.message : 'unauthorized');
   const headers = new Headers(built?.headers as HeadersInit | undefined);
   headers.set('Content-Type', 'application/json');
-  const message = built?.message ?? (error instanceof Error ? error.message : 'unauthorized');
+  if (!headers.has('WWW-Authenticate')) {
+    headers.set(
+      'WWW-Authenticate',
+      `Bearer resource_metadata="${resourceMetadataUrl(resource)}"`,
+    );
+  }
   return new Response(
     JSON.stringify({ jsonrpc: '2.0', error: { code: -32000, message }, id: null }),
     { status: built?.statusCode ?? 401, headers },
   );
+}
+
+/**
+ * Where the protected-resource document for a resource lives (RFC 9728): the well-known
+ * segment goes between the origin and the resource's own path, so a resource at
+ * https://unbent.app/api/mcp is described at
+ * https://unbent.app/.well-known/oauth-protected-resource/api/mcp. routes/well-known.ts
+ * serves both that and the bare form.
+ */
+function resourceMetadataUrl(resource: string): string {
+  const url = new URL(resource);
+  const path = url.pathname.replace(/\/$/, '');
+  return `${url.origin}/.well-known/oauth-protected-resource${path}`;
 }
 
 /**
