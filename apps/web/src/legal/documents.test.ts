@@ -21,7 +21,7 @@ function text(doc: LegalDocument): string {
  * what appears, and the previous operator's must not survive anywhere in any of the three.
  */
 describe('legalDocuments', () => {
-  const docs = legalDocuments(OPERATOR);
+  const docs = legalDocuments(OPERATOR, { errorTracking: false });
   const all: [string, LegalDocument][] = [
     ['privacy', docs.privacy],
     ['terms', docs.terms],
@@ -52,5 +52,34 @@ describe('legalDocuments', () => {
       expect(doc.title.length).toBeGreaterThan(0);
       expect(doc.effective).toMatch(/^\d{4}-\d{2}-\d{2}$/);
     }
+  });
+});
+
+/**
+ * The policy must describe an error-tracking service exactly when the instance has one. A
+ * self-hosted copy sends errors only to its own logs, and a policy naming a third party it
+ * never contacts is as wrong as one that hides a third party it does.
+ */
+describe('legalDocuments and error tracking', () => {
+  const without = legalDocuments(OPERATOR, { errorTracking: false });
+  const with_ = legalDocuments(OPERATOR, { errorTracking: true });
+
+  it('says nothing about it on an instance that does not do it', () => {
+    expect(text(without.privacy)).not.toContain('error-tracking');
+    expect(text(without.privacy)).toContain('Two other kinds of service');
+  });
+
+  it('describes it, counts it among the services, and says Do Not Track stops it', () => {
+    const body = text(with_.privacy);
+    expect(body).toContain('error-tracking service');
+    expect(body).toContain('Three other kinds of service');
+    expect(body).toContain('Do Not Track');
+  });
+
+  /* It is a privacy-policy matter only: nothing about the terms or how to delete an
+     account changes because errors are grouped somewhere. */
+  it('leaves the terms and the deletion page identical either way', () => {
+    expect(text(with_.terms)).toBe(text(without.terms));
+    expect(text(with_.deletion)).toBe(text(without.deletion));
   });
 });

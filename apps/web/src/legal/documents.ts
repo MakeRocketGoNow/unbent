@@ -65,6 +65,17 @@ export interface LegalDocument {
 /** Who the documents name. `AppConfig['operator']`, minus the "not configured" case. */
 export type Operator = NonNullable<AppConfig['operator']>;
 
+/** What else this instance does that the documents have to account for. */
+export interface LegalOptions {
+  /**
+   * Whether errors in the browser are sent to an error-tracking service.
+   *
+   * Off for a self-hosted instance, which sends them only to its own logs, and its policy
+   * must not describe a third party it does not use. See `posthog.ts`.
+   */
+  errorTracking: boolean;
+}
+
 const EFFECTIVE = '2026-09-08';
 
 export interface LegalDocuments {
@@ -80,7 +91,7 @@ export interface LegalDocuments {
  * server answers, and because there is no honest default for it — see the header. Cheap
  * enough to call on every render: it builds three object literals and nothing else.
  */
-export function legalDocuments(operator: Operator): LegalDocuments {
+export function legalDocuments(operator: Operator, opts: LegalOptions): LegalDocuments {
   const privacy: LegalDocument = {
     title: 'Privacy Policy',
     effective: EFFECTIVE,
@@ -104,6 +115,16 @@ export function legalDocuments(operator: Operator): LegalDocuments {
             'tell us that a particular person visited a particular page, and we could not ' +
             'reconstruct that if we wanted to. Visitors from the European Union are excluded ' +
             'from it altogether — nothing is counted for them at all.',
+          ...(opts.errorTracking
+            ? [
+                'When something in the app goes wrong, a report of the error is sent to an ' +
+                  'error-tracking service so that it can be fixed: the message, where in the ' +
+                  'code it happened, and the shape of the page you were on with any note ' +
+                  'identifier removed. No cookie is set and no identifier is assigned to you, ' +
+                  'it is not tied to your account, and it never contains what a note says. If ' +
+                  'your browser sends a Do Not Track signal, nothing is sent at all.',
+              ]
+            : []),
         ],
         list: [
           'Account details — your email address, and the name and profile image your sign-in ' +
@@ -137,7 +158,8 @@ export function legalDocuments(operator: Operator): LegalDocuments {
             'stored with our hosting provider there, which also keeps ordinary request logs, as ' +
             'any web host does. Text inside PDFs you upload is extracted on those same systems ' +
             'so that search can find it; the file is used for that and nothing else.',
-          'Two other kinds of service are involved, each for one narrow job:',
+          `${opts.errorTracking ? 'Three' : 'Two'} other kinds of service are involved, each ` +
+            `for one narrow job:`,
         ],
         list: [
           'A sign-in provider, if you choose to sign in with one — Google, for example. The ' +
@@ -146,6 +168,12 @@ export function legalDocuments(operator: Operator): LegalDocuments {
           'An email delivery service, for the messages described above — sign-in codes, password ' +
             'resets, verification links. It sees your email address and the contents of those ' +
             'messages, which never include your notes.',
+          ...(opts.errorTracking
+            ? [
+                'An error-tracking service, which receives the error reports described above ' +
+                  'and nothing else. It never sees your notes, your files or your address.',
+              ]
+            : []),
         ],
       },
       {
@@ -212,6 +240,12 @@ export function legalDocuments(operator: Operator): LegalDocuments {
         body: [
           'There is nothing to honour or ignore: Unbent does not track you across websites, with or ' +
             'without a Do Not Track signal.',
+          ...(opts.errorTracking
+            ? [
+                'The one thing that does read it is error reporting, which is switched off ' +
+                  'entirely when the signal is present.',
+              ]
+            : []),
         ],
       },
       {

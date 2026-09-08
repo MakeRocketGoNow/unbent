@@ -79,6 +79,25 @@ describe('LegalPage', () => {
     );
   });
 
+  it('describes error tracking only where the instance reports to it', async () => {
+    const { findAllByText } = harness('privacy', {
+      operator: OPERATOR,
+      legal: BUILT_IN,
+      posthog: { key: 'phc_x', uiHost: 'https://us.posthog.com' },
+    });
+    // Twice over: the paragraph saying what is collected, and the list of who touches it.
+    expect(await findAllByText(/error-tracking service/)).toHaveLength(2);
+  });
+
+  it('leaves it out where the instance only logs errors itself', async () => {
+    const { findByText, queryByText } = harness('privacy', {
+      operator: OPERATOR,
+      legal: BUILT_IN,
+    });
+    await findByText(/Example Co/);
+    expect(queryByText(/error-tracking/)).toBeNull();
+  });
+
   it('offers a way back into the app from every state', async () => {
     const { findByText } = harness('terms', {});
     expect((await findByText('Back to Unbent')).getAttribute('href')).toBe('/login');

@@ -61,7 +61,12 @@ export function LegalPage({ which }: { which: LegalWhich }) {
   // halves from disagreeing about which documents this instance publishes.
   const builtIn = legal?.privacy.startsWith('/') ?? false;
 
-  if (operator && builtIn) return <LegalDoc doc={legalDocuments(operator)[which]} />;
+  if (operator && builtIn) {
+    // The documents describe an error-tracking service only where this instance has one, so
+    // that a self-hosted policy does not name a third party it never contacts.
+    const docs = legalDocuments(operator, { errorTracking: Boolean(config.data?.posthog) });
+    return <LegalDoc doc={docs[which]} />;
+  }
 
   // For terms, point at the terms; everything else has only the policy to offer.
   const elsewhere = builtIn ? undefined : which === 'terms' ? legal?.terms : legal?.privacy;
