@@ -1,12 +1,17 @@
 import { describe, it, expect, afterEach, vi } from 'vitest';
 import { render, cleanup, fireEvent } from '@testing-library/react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
   createMemoryHistory,
   createRootRoute,
   createRouter,
   RouterProvider,
 } from '@tanstack/react-router';
+import type { AppConfig } from '@unbent/shared';
+import { keys } from '../queries.js';
 import { AccountMenu } from './AccountMenu.js';
+
+const BUILT_IN = { privacy: '/privacy', terms: '/terms' };
 
 /**
  * The account menu, now that two surfaces draw it.
@@ -16,14 +21,26 @@ import { AccountMenu } from './AccountMenu.js';
  * and these pin the parts that would be easy to let drift apart: the address identifies the
  * account rather than acting on it, and signing out is marked as the destructive one.
  */
-function harness(email = 'someone@example.com', onSignOut = () => {}) {
+function harness(
+  email = 'someone@example.com',
+  onSignOut = () => {},
+  config: Partial<AppConfig> = { legal: BUILT_IN },
+) {
   const rootRoute = createRootRoute({
     component: () => <AccountMenu email={email} onSignOut={onSignOut} />,
   });
   const history = createMemoryHistory({ initialEntries: ['/notes'] });
   const router = createRouter({ routeTree: rootRoute, history });
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  return render(<RouterProvider router={router as any} />);
+  // Seeded rather than fetched: jsdom has no server, and the menu reads only this one to
+  // decide whether this instance has legal documents to link to.
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  client.setQueryData(keys.config(), { providers: ['password'], ...config });
+  return render(
+    <QueryClientProvider client={client}>
+      {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
+      <RouterProvider router={router as any} />
+    </QueryClientProvider>,
+  );
 }
 
 describe('AccountMenu', () => {
@@ -60,5 +77,33 @@ describe('AccountMenu', () => {
     expect(out.className).toContain('danger');
     fireEvent.click(out);
     expect(onSignOut).toHaveBeenCalledTimes(1);
+  });
+  /*
+   * An instance that publishes neither document offers no way to them, rather than a menu
+   * item leading to a page that says there is nothing there.
+   */
+  it('offers no legal links where the instance publishes none', async () => {
+    const { findByLabelText, queryByText } = harness('someone@example.com', () => {}, {});
+    fireEvent.click(await findByLabelText('Account: someone@example.com'));
+    expect(queryByText('Privacy')).toBeNull();
+    expect(queryByText('Terms')).toBeNull();
+  });
+
+  it('links to the built-in documents as routes', async () => {
+    const { findByLabelText, getByText } = harness();
+    fireEvent.click(await findByLabelText('Account: someone@example.com'));
+    const privacy = getByText('Privacy');
+    expect(privacy.tagName).toBe('A');
+    expect(privacy.getAttribute('href')).toBe('/privacy');
+  });
+
+  it('links to documents hosted elsewhere as plain anchors', async () => {
+    const elsewhere = { privacy: 'https://example.com/p', terms: 'https://example.com/t' };
+    const { findByLabelText, getByText } = harness('someone@example.com', () => {}, {
+      legal: elsewhere,
+    });
+    fireEvent.click(await findByLabelText('Account: someone@example.com'));
+    expect(getByText('Privacy').getAttribute('href')).toBe('https://example.com/p');
+    expect(getByText('Terms').getAttribute('href')).toBe('https://example.com/t');
   });
 });

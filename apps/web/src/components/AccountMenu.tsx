@@ -1,8 +1,15 @@
-import { OverflowMenu } from './OverflowMenu.js';
+import { useQuery } from '@tanstack/react-query';
+import { configQuery } from '../queries.js';
+import { OverflowMenu, type OverflowItem } from './OverflowMenu.js';
 
 interface AccountMenuProps {
   email: string;
   onSignOut: () => void;
+}
+
+/** A legal document as a menu item: a route for the built-in ones, an anchor for the rest. */
+function legalItem(label: string, url: string): OverflowItem {
+  return url.startsWith('/') ? { label, to: url } : { label, external: url };
 }
 
 /** First letter of the address, which is as much as a 1.75rem circle can carry. */
@@ -27,6 +34,9 @@ function initialOf(email: string): string {
  * the user's email to a third party on every page load.
  */
 export function AccountMenu({ email, onSignOut }: AccountMenuProps) {
+  const config = useQuery(configQuery());
+  const legal = config.data?.legal;
+
   return (
     <OverflowMenu
       label={`Account: ${email}`}
@@ -46,8 +56,13 @@ export function AccountMenu({ email, onSignOut }: AccountMenuProps) {
         // Findable once signed in, which is the half the sign-in screen's own links cannot
         // cover. They sit below Settings because they are reference, not something to act
         // on, and above Sign out so the destructive item stays last.
-        { label: 'Privacy', to: '/privacy' },
-        { label: 'Terms', to: '/terms' },
+        //
+        // Absent entirely on an instance that publishes neither, rather than pointing at a
+        // page that says there is nothing there — a menu offering Privacy and answering
+        // "not published" reads as a broken app rather than an unconfigured one. They are
+        // also whichever kind of link this instance needs: the built-in documents are
+        // routes, an operator's own are another site.
+        ...(legal ? [legalItem('Privacy', legal.privacy), legalItem('Terms', legal.terms)] : []),
         { label: 'Sign out', onSelect: onSignOut, tone: 'danger' },
       ]}
     />

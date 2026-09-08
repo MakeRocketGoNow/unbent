@@ -1,5 +1,6 @@
 import { describe, it, expect, afterEach, vi } from 'vitest';
 import { render, cleanup, fireEvent, waitFor } from '@testing-library/react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
   createMemoryHistory,
   createRootRoute,
@@ -7,6 +8,7 @@ import {
   RouterProvider,
 } from '@tanstack/react-router';
 import { UNFILED } from '@unbent/shared';
+import { keys } from '../queries.js';
 import { NotebookDrawer } from './NotebookDrawer.js';
 
 /**
@@ -56,8 +58,20 @@ function harness(props: Partial<Parameters<typeof NotebookDrawer>[0]> = {}) {
   const rootRoute = createRootRoute({ component: () => <NotebookDrawer {...full} /> });
   const history = createMemoryHistory({ initialEntries: ['/notes'] });
   const router = createRouter({ routeTree: rootRoute, history });
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  return { ...render(<RouterProvider router={router as any} />), history, onClose };
+  // The account menu on the drawer's floor reads the instance config to decide whether
+  // there are legal documents to link to. Seeded rather than fetched: jsdom has no server.
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  client.setQueryData(keys.config(), { providers: ['password'] });
+  return {
+    ...render(
+      <QueryClientProvider client={client}>
+        {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
+        <RouterProvider router={router as any} />
+      </QueryClientProvider>,
+    ),
+    history,
+    onClose,
+  };
 }
 
 const rows = (c: HTMLElement) =>

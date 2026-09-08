@@ -7,7 +7,7 @@ import {
   createRouter,
   RouterProvider,
 } from '@tanstack/react-router';
-import type { AuthProvider } from '@unbent/shared';
+import type { AppConfig, AuthProvider } from '@unbent/shared';
 import { Login } from './Login.js';
 import { emailOtp, signIn } from '../auth-client.js';
 import * as api from '../notes-api.js';
@@ -42,8 +42,10 @@ vi.mock('../auth-client.js', () => ({
  * The cases are the three instances that exist in practice: unbent.app with providers
  * only, a self-hosted instance with a password only, and one that offers both.
  */
-function harness(providers: AuthProvider[]) {
-  vi.mocked(api.getConfig).mockResolvedValue({ providers });
+const BUILT_IN = { privacy: '/privacy', terms: '/terms' };
+
+function harness(providers: AuthProvider[], config: Partial<AppConfig> = { legal: BUILT_IN }) {
+  vi.mocked(api.getConfig).mockResolvedValue({ providers, ...config });
 
   // `redirectTo` is the route's job in the app; here it only has to be somewhere.
   const rootRoute = createRootRoute({ component: () => <Login redirectTo="/notes" /> });
@@ -341,5 +343,30 @@ describe('Login', () => {
     });
     fireEvent.click(screen.getByText('Forgot your password?'));
     await waitFor(() => expect(screen.getByText(/If that address has an account/)).toBeTruthy());
+  });
+  /*
+   * The consent sentence is a claim about documents a reader can go and read. On an
+   * instance publishing neither, it would ask people to agree to nothing they can see, so
+   * the whole line goes rather than only its links.
+   */
+  it('drops the consent line where the instance publishes no documents', async () => {
+    harness(['password'], {});
+    await waitFor(() => expect(screen.getByLabelText('Email')).toBeTruthy());
+    expect(screen.queryByText(/By continuing/)).toBeNull();
+  });
+
+  it('links the consent line at the built-in documents', async () => {
+    harness(['password']);
+    await waitFor(() => expect(screen.getByText('Terms')).toBeTruthy());
+    expect(screen.getByText('Terms').getAttribute('href')).toBe('/terms');
+    expect(screen.getByText('Privacy Policy').getAttribute('href')).toBe('/privacy');
+  });
+
+  it('links the consent line at documents hosted elsewhere', async () => {
+    const legal = { privacy: 'https://example.com/p', terms: 'https://example.com/t' };
+    harness(['password'], { legal });
+    await waitFor(() => expect(screen.getByText('Terms')).toBeTruthy());
+    expect(screen.getByText('Terms').getAttribute('href')).toBe('https://example.com/t');
+    expect(screen.getByText('Privacy Policy').getAttribute('href')).toBe('https://example.com/p');
   });
 });

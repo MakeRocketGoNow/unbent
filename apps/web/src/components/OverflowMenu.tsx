@@ -21,6 +21,15 @@ export interface OverflowItem {
    * working, which a button would lose.
    */
   to?: string;
+  /**
+   * Renders the item as an anchor to another site.
+   *
+   * A third kind because neither above fits: `href` downloads, and `to` is a route, so an
+   * absolute URL handed to it becomes a page this app does not have rather than a
+   * navigation off it. Legal documents an operator hosts themselves are why this exists —
+   * see `LegalLink.tsx`, which draws the same distinction outside a menu.
+   */
+  external?: string;
   /** Destructive items are tinted and sorted to the bottom by the caller. */
   tone?: 'default' | 'danger';
   /** Extra class, for an item needing placement or emphasis beyond `tone`. */
@@ -148,6 +157,23 @@ export function OverflowMenu({
 
             // Anchor, link and button all sit in the tab order and all activate on
             // Enter, so the keyboard behaviour the list promises holds for each.
+            if (item.external !== undefined) {
+              return (
+                <a
+                  key={i}
+                  className={className}
+                  href={item.external}
+                  rel="noopener noreferrer"
+                  onClick={() => {
+                    setOpen(false);
+                    item.onSelect?.();
+                  }}
+                >
+                  {item.label}
+                </a>
+              );
+            }
+
             if (item.to !== undefined) {
               return (
                 <Link

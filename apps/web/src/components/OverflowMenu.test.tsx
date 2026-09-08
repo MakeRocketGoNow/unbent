@@ -27,6 +27,26 @@ describe('OverflowMenu', () => {
     }
   });
 
+  /*
+   * The third kind of item. `href` renders a download and `to` renders a route, so a
+   * document an operator hosts on their own site had nowhere to go before this — handed to
+   * `to` it became a route this app does not have.
+   */
+  it('renders a document hosted elsewhere as a plain anchor', () => {
+    const { container, getByText } = render(
+      <OverflowMenu
+        label="Account"
+        items={[{ label: 'Privacy', external: 'https://example.com/privacy' }]}
+      />,
+    );
+    open(container);
+    const item = getByText('Privacy');
+    expect(item.tagName).toBe('A');
+    expect(item.getAttribute('href')).toBe('https://example.com/privacy');
+    // Not a download: this is a page to read, not a file to save.
+    expect(item.hasAttribute('download')).toBe(false);
+  });
+
   it('marks the item in effect, and only that one', () => {
     const { container, getByText } = render(
       <OverflowMenu
