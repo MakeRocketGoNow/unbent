@@ -14,11 +14,21 @@ const TITLE: Record<LegalWhich, string> = {
   deletion: 'Deleting your Unbent account',
 };
 
-/** How each document is referred to in the sentence saying there isn't one. */
-const NOUN: Record<LegalWhich, string> = {
-  privacy: 'a privacy policy',
-  terms: 'terms of service',
-  deletion: 'a page about deleting an account',
+/**
+ * How each document is named in the two sentences below.
+ *
+ * Two forms rather than one because they sit in different grammar: "has not published *a
+ * privacy policy*", but "*The privacy policy* is at". One string used in both produced "Its
+ * a privacy policy is at", and terms are plural besides — "The terms *are* at".
+ */
+const NOUN: Record<LegalWhich, { indefinite: string; definite: string; verb: string }> = {
+  privacy: { indefinite: 'a privacy policy', definite: 'The privacy policy', verb: 'is' },
+  terms: { indefinite: 'terms of service', definite: 'The terms', verb: 'are' },
+  deletion: {
+    indefinite: 'a page about deleting an account',
+    definite: 'The page about deleting an account',
+    verb: 'is',
+  },
 };
 
 /**
@@ -74,10 +84,10 @@ export function LegalPage({ which }: { which: LegalWhich }) {
   return (
     <article className="preview legal">
       <h1>{TITLE[which]}</h1>
-      <p>This instance has not published {NOUN[which]}.</p>
+      <p>This instance has not published {NOUN[which].indefinite}.</p>
       {elsewhere && (
         <p>
-          Its {NOUN[which] === 'terms of service' ? 'terms are' : `${NOUN[which]} is`} at{' '}
+          {NOUN[which].definite} {NOUN[which].verb} at{' '}
           <LegalLink href={elsewhere}>{elsewhere}</LegalLink>.
         </p>
       )}

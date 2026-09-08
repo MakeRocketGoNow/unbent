@@ -71,6 +71,17 @@ describe('LegalPage', () => {
     expect(link.getAttribute('href')).toBe('https://example.com/privacy');
   });
 
+  /* One noun for both sentences produced "Its a privacy policy is at", and terms are
+     plural besides. The wording is pinned because nothing else would catch it. */
+  it('says where the documents are in a sentence that reads', async () => {
+    const { findByText } = harness('privacy', { legal: ELSEWHERE });
+    expect(await findByText(/^The privacy policy is at/)).toBeTruthy();
+
+    cleanup();
+    const terms = harness('terms', { legal: ELSEWHERE });
+    expect(await terms.findByText(/^The terms are at/)).toBeTruthy();
+  });
+
   /** Terms link to the terms, not to the policy that happens to be beside them. */
   it('points the terms page at the external terms', async () => {
     const { findByText } = harness('terms', { legal: ELSEWHERE });
