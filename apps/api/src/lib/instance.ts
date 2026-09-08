@@ -51,3 +51,48 @@ export function legalLinksOf(env: Env): AppConfig['legal'] | undefined {
   if (operatorOf(env)) return { privacy: '/privacy', terms: '/terms' };
   return undefined;
 }
+
+/** PostHog's US cloud, which is where a project lives unless its owner chose otherwise. */
+const DEFAULT_POSTHOG_HOST = 'https://us.i.posthog.com';
+
+/** Where the Worker forwards `/ingest/*`. No trailing slash, so paths can be appended. */
+export function posthogHost(env: Env): string {
+  return (env.POSTHOG_HOST?.trim() || DEFAULT_POSTHOG_HOST).replace(/\/$/, '');
+}
+
+/**
+ * Where the SDK's own static files come from.
+ *
+ * PostHog serves its bundle from a separate host to the one that takes events —
+ * `us-assets.i.` beside `us.i.` — and the proxy has to send `/static/*` to the right one or
+ * the browser gets an event endpoint's answer where it expected JavaScript. A self-hosted
+ * PostHog serves both from one origin, which is what the unchanged fallback means.
+ */
+export function posthogAssetsHost(env: Env): string {
+  return posthogHost(env).replace(
+    /^(https:\/\/[a-z0-9-]+)\.i\.posthog\.com$/i,
+    '$1-assets.i.posthog.com',
+  );
+}
+
+/**
+ * The error-tracking service this instance reports to, if it has one.
+ *
+ * The key alone turns it on; the host has a sensible default, and an instance setting one
+ * without the other means the US cloud rather than nothing.
+ *
+ * `uiHost` is derived rather than configured because it is the same deployment seen from a
+ * different side: `us.i.posthog.com` takes the events, `us.posthog.com` is the app someone
+ * opens to read them. The SDK needs both, and asking an operator to set two variables that
+ * differ by three characters is a way to get one of them wrong. A self-hosted PostHog
+ * serves both from one origin, and the unchanged fallback is right for it.
+ */
+export function posthogOf(env: Env): AppConfig['posthog'] | undefined {
+  const key = env.POSTHOG_KEY?.trim();
+  if (!key) return undefined;
+  const uiHost = posthogHost(env).replace(
+    /^(https:\/\/[a-z0-9-]+)\.i\.posthog\.com$/i,
+    '$1.posthog.com',
+  );
+  return { key, uiHost };
+}

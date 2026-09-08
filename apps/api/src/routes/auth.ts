@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import type { AppConfig } from '@unbent/shared';
 import { accountDeletionOffered, getAuth, offeredProviders } from '../auth.js';
-import { legalLinksOf, operatorOf } from '../lib/instance.js';
+import { legalLinksOf, operatorOf, posthogOf } from '../lib/instance.js';
 import type { AppEnv } from '../types.js';
 
 export const authRoutes = new Hono<AppEnv>()
@@ -36,5 +36,6 @@ export const authRoutes = new Hono<AppEnv>()
       accountDeletion: accountDeletionOffered(c.env),
       operator: operatorOf(c.env),
       legal: legalLinksOf(c.env),
+      posthog: posthogOf(c.env),
     } satisfies AppConfig),
   );

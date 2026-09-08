@@ -142,6 +142,18 @@ export interface AppConfig {
    * link to a page that says "nothing here" is worse than no link at all.
    */
   legal?: { privacy: string; terms: string };
+  /**
+   * The error-tracking service this instance reports browser crashes to, if it has one.
+   *
+   * Absent means the SDK is never downloaded — it is imported dynamically on the strength
+   * of this field, so an instance without it pays nothing for the feature and its privacy
+   * policy does not mention it.
+   *
+   * `key` is the project's public write-only token, which is meant to ship in a page.
+   * `uiHost` is where the service's own app lives, which the SDK needs told separately
+   * because its API traffic is proxied through this Worker rather than sent direct.
+   */
+  posthog?: { key: string; uiHost: string };
 }
 
 export const noteIdSchema = z.string().uuid();

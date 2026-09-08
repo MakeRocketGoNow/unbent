@@ -93,6 +93,24 @@ export interface Env {
    */
   LEGAL_PRIVACY_URL?: string;
   LEGAL_TERMS_URL?: string;
+  /**
+   * PostHog, for grouping the browser errors that `/api/client-errors` only ever logs.
+   *
+   * Setting the key is what turns it on: the SPA loads the SDK only when the config says
+   * so, and `/ingest/*` refuses to proxy anything without it. Unset — the default, and what
+   * every self-hosted instance gets — means no SDK, no third party, and a privacy policy
+   * that does not mention one.
+   *
+   * The token is public and write-only, so it could sit in this file; it is a secret on the
+   * hosted instance only to keep one fewer credential in a repository people will fork.
+   */
+  POSTHOG_KEY?: string;
+  /**
+   * Where the Worker forwards that traffic. Defaults to PostHog's US cloud; set it for the
+   * EU cloud or a self-hosted PostHog. The browser never sees it — it talks to `/ingest` on
+   * this origin, which is what keeps content blockers from dropping the reports.
+   */
+  POSTHOG_HOST?: string;
 }
 
 export interface SessionUser {

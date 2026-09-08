@@ -134,3 +134,20 @@ ALLOW_TEST_CREDENTIALS=1
 # is wrong for you, these two are the way out.
 # LEGAL_PRIVACY_URL=https://example.com/privacy
 # LEGAL_TERMS_URL=https://example.com/terms
+
+# PostHog, for grouping the browser errors that /api/client-errors otherwise only logs.
+#
+# Optional, and off here on purpose: a self-hosted instance downloads no SDK, sends nothing
+# to anyone, and its privacy policy does not mention an error-tracking service. Setting the
+# key is what turns all three on. Errors only — page views are counted by the hosting
+# provider, and this captures no page views, no session recordings and no profiles.
+#
+# The token is public and write-only; it ships in the page either way.
+#
+#   https://us.posthog.com/settings/project#variables
+# POSTHOG_KEY=phc_...
+#
+# Where the Worker forwards it. Defaults to PostHog's US cloud; set it for the EU cloud
+# (https://eu.i.posthog.com) or your own PostHog. The browser never sees this — it talks to
+# /ingest on this origin, which is what keeps content blockers from dropping the reports.
+# POSTHOG_HOST=https://us.i.posthog.com
