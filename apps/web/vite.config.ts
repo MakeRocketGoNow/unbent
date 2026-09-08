@@ -92,6 +92,13 @@ export default defineConfig({
         target: `http://127.0.0.1:${API_PORT}`,
         changeOrigin: false,
       },
+      // The analytics beacon takes the same path through the Worker in development as it
+      // does in production; without this the SPA fallback answers with index.html and the
+      // SDK reports a JSON parse error rather than a routing mistake.
+      '/ingest': {
+        target: `http://127.0.0.1:${API_PORT}`,
+        changeOrigin: false,
+      },
     },
   },
   build: {
