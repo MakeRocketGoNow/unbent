@@ -23,6 +23,16 @@ export interface LegalSection {
   body?: string[];
   /** A bulleted list, after the paragraphs. */
   list?: string[];
+  /**
+   * A numbered list, after the paragraphs — instructions to follow in order, rather than
+   * facts that happen to be enumerated.
+   *
+   * Separate from `list` because the distinction is the reader's, not the renderer's: a
+   * bullet says "these are the things", a number says "do this, then this". The deletion
+   * page is the reason it exists, where Play requires the steps be prominent and a
+   * four-item bulleted list reads as a description of the process rather than the process.
+   */
+  steps?: string[];
 }
 
 export interface LegalDocument {
