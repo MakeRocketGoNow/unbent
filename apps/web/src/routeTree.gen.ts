@@ -13,6 +13,7 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as ConnectRouteImport } from './routes/connect'
 import { Route as ConsentRouteImport } from './routes/consent'
 import { Route as DeleteAccountRouteImport } from './routes/delete-account'
+import { Route as DeleteMyAccountRouteImport } from './routes/delete-my-account'
 import { Route as DeviceRouteImport } from './routes/device'
 import { Route as GoodbyeRouteImport } from './routes/goodbye'
 import { Route as ImportRouteImport } from './routes/import'
@@ -55,6 +56,11 @@ const ConsentRoute = ConsentRouteImport.update({
 const DeleteAccountRoute = DeleteAccountRouteImport.update({
   id: '/delete-account',
   path: '/delete-account',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const DeleteMyAccountRoute = DeleteMyAccountRouteImport.update({
+  id: '/delete-my-account',
+  path: '/delete-my-account',
   getParentRoute: () => rootRouteImport,
 } as any)
 const DeviceRoute = DeviceRouteImport.update({
@@ -178,6 +184,7 @@ export interface FileRoutesByFullPath {
   '/connect': typeof ConnectRoute
   '/consent': typeof ConsentRoute
   '/delete-account': typeof DeleteAccountRoute
+  '/delete-my-account': typeof DeleteMyAccountRoute
   '/device': typeof DeviceRoute
   '/goodbye': typeof GoodbyeRoute
   '/import': typeof ImportRoute
@@ -207,6 +214,7 @@ export interface FileRoutesByTo {
   '/connect': typeof ConnectRoute
   '/consent': typeof ConsentRoute
   '/delete-account': typeof DeleteAccountRoute
+  '/delete-my-account': typeof DeleteMyAccountRoute
   '/device': typeof DeviceRoute
   '/goodbye': typeof GoodbyeRoute
   '/import': typeof ImportRoute
@@ -234,6 +242,7 @@ export interface FileRoutesById {
   '/connect': typeof ConnectRoute
   '/consent': typeof ConsentRoute
   '/delete-account': typeof DeleteAccountRoute
+  '/delete-my-account': typeof DeleteMyAccountRoute
   '/device': typeof DeviceRoute
   '/goodbye': typeof GoodbyeRoute
   '/import': typeof ImportRoute
@@ -265,6 +274,7 @@ export interface FileRouteTypes {
     | '/connect'
     | '/consent'
     | '/delete-account'
+    | '/delete-my-account'
     | '/device'
     | '/goodbye'
     | '/import'
@@ -294,6 +304,7 @@ export interface FileRouteTypes {
     | '/connect'
     | '/consent'
     | '/delete-account'
+    | '/delete-my-account'
     | '/device'
     | '/goodbye'
     | '/import'
@@ -320,6 +331,7 @@ export interface FileRouteTypes {
     | '/connect'
     | '/consent'
     | '/delete-account'
+    | '/delete-my-account'
     | '/device'
     | '/goodbye'
     | '/import'
@@ -350,6 +362,7 @@ export interface RootRouteChildren {
   ConnectRoute: typeof ConnectRoute
   ConsentRoute: typeof ConsentRoute
   DeleteAccountRoute: typeof DeleteAccountRoute
+  DeleteMyAccountRoute: typeof DeleteMyAccountRoute
   DeviceRoute: typeof DeviceRoute
   GoodbyeRoute: typeof GoodbyeRoute
   ImportRoute: typeof ImportRoute
@@ -392,6 +405,13 @@ declare module '@tanstack/react-router' {
       path: '/delete-account'
       fullPath: '/delete-account'
       preLoaderRoute: typeof DeleteAccountRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/delete-my-account': {
+      id: '/delete-my-account'
+      path: '/delete-my-account'
+      fullPath: '/delete-my-account'
+      preLoaderRoute: typeof DeleteMyAccountRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/device': {
@@ -611,6 +631,7 @@ const rootRouteChildren: RootRouteChildren = {
   ConnectRoute: ConnectRoute,
   ConsentRoute: ConsentRoute,
   DeleteAccountRoute: DeleteAccountRoute,
+  DeleteMyAccountRoute: DeleteMyAccountRoute,
   DeviceRoute: DeviceRoute,
   GoodbyeRoute: GoodbyeRoute,
   ImportRoute: ImportRoute,

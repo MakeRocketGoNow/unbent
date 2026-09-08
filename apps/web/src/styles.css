@@ -3705,6 +3705,17 @@ a.sidebar-status:hover {
   font-size: 0.9rem;
 }
 
+/*
+ * The numbered steps of a procedure, loosened from the list rhythm around them.
+ *
+ * Numbering and indent already come from `.preview ol`; what a list of instructions needs
+ * on top is space between the items, so each step reads as its own thing to go and do
+ * rather than as a run-on line of prose that happens to be numbered.
+ */
+.legal-steps li + li {
+  margin-top: 0.6rem;
+}
+
 /* The summary at the top, set slightly larger — it is the part most readers will stop
    after, so it should not look like the first paragraph of the fine print. */
 .legal-intro {
