@@ -1,0 +1,86 @@
+import { describe, it, expect, afterEach } from 'vitest';
+import { render, cleanup } from '@testing-library/react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import {
+  createMemoryHistory,
+  createRootRoute,
+  createRouter,
+  RouterProvider,
+} from '@tanstack/react-router';
+import type { AppConfig } from '@unbent/shared';
+import { keys } from '../queries.js';
+import { LegalPage, type LegalWhich } from './LegalPage.js';
+
+const OPERATOR = {
+  name: 'Example Co',
+  email: 'help@example.com',
+  host: 'notes.example.com',
+};
+const BUILT_IN = { privacy: '/privacy', terms: '/terms' };
+const ELSEWHERE = { privacy: 'https://example.com/privacy', terms: 'https://example.com/terms' };
+
+/**
+ * The three states a legal page can be in, each of which somebody can arrive at from a
+ * store listing — so what is pinned here is that none of them is blank or an error.
+ */
+function harness(which: LegalWhich, config: Partial<AppConfig>) {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  // Seeded rather than fetched: jsdom has no server, and this is the only query it reads.
+  client.setQueryData(keys.config(), { providers: ['password'], ...config });
+
+  const rootRoute = createRootRoute({ component: () => <LegalPage which={which} /> });
+  const router = createRouter({
+    routeTree: rootRoute,
+    history: createMemoryHistory({ initialEntries: ['/privacy'] }),
+  });
+  return render(
+    <QueryClientProvider client={client}>
+      {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
+      <RouterProvider router={router as any} />
+    </QueryClientProvider>,
+  );
+}
+
+describe('LegalPage', () => {
+  afterEach(cleanup);
+
+  it('renders the built-in policy for the operator who runs this instance', async () => {
+    const { findByText } = harness('privacy', { operator: OPERATOR, legal: BUILT_IN });
+    expect(await findByText(/Example Co/)).toBeTruthy();
+  });
+
+  it('renders the deletion page Play links to', async () => {
+    const { findByRole } = harness('deletion', { operator: OPERATOR, legal: BUILT_IN });
+    expect(await findByRole('heading', { name: 'Deleting your Unbent account' })).toBeTruthy();
+  });
+
+  /*
+   * The state a fresh checkout is in. A blank page or a 404 would read as a broken app
+   * rather than an unconfigured one, and this page is reachable from a store listing.
+   */
+  it('says so where the instance publishes nothing', async () => {
+    const { findByText, queryByText } = harness('privacy', {});
+    expect(await findByText(/has not published a privacy policy/)).toBeTruthy();
+    expect(queryByText(/Effective/)).toBeNull();
+  });
+
+  it('points at the operator’s own documents when they host them', async () => {
+    const { findByText } = harness('privacy', { legal: ELSEWHERE });
+    const link = await findByText('https://example.com/privacy');
+    expect(link.tagName).toBe('A');
+    expect(link.getAttribute('href')).toBe('https://example.com/privacy');
+  });
+
+  /** Terms link to the terms, not to the policy that happens to be beside them. */
+  it('points the terms page at the external terms', async () => {
+    const { findByText } = harness('terms', { legal: ELSEWHERE });
+    expect((await findByText('https://example.com/terms')).getAttribute('href')).toBe(
+      'https://example.com/terms',
+    );
+  });
+
+  it('offers a way back into the app from every state', async () => {
+    const { findByText } = harness('terms', {});
+    expect((await findByText('Back to Unbent')).getAttribute('href')).toBe('/login');
+  });
+});

@@ -1,6 +1,5 @@
 import { createFileRoute } from '@tanstack/react-router';
-import { LegalDoc } from '../components/LegalDoc.js';
-import { deletion } from '../legal/documents.js';
+import { LegalPage } from '../components/LegalPage.js';
 
 /**
  * How to delete your account, for a reader who is not signed in.
@@ -20,5 +19,5 @@ import { deletion } from '../legal/documents.js';
  * gated page at this address is the 403 all over again.
  */
 export const Route = createFileRoute('/delete-my-account')({
-  component: () => <LegalDoc doc={deletion} />,
+  component: () => <LegalPage which="deletion" />,
 });

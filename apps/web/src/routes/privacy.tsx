@@ -1,6 +1,5 @@
 import { createFileRoute } from '@tanstack/react-router';
-import { LegalDoc } from '../components/LegalDoc.js';
-import { privacy } from '../legal/documents.js';
+import { LegalPage } from '../components/LegalPage.js';
 
 /**
  * The privacy policy, which has to be readable by anyone.
@@ -10,5 +9,5 @@ import { privacy } from '../legal/documents.js';
  * route, which for this page would fail review.
  */
 export const Route = createFileRoute('/privacy')({
-  component: () => <LegalDoc doc={privacy} />,
+  component: () => <LegalPage which="privacy" />,
 });
