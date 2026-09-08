@@ -345,3 +345,92 @@ export const terms: LegalDocument = {
     },
   ],
 };
+
+/**
+ * How to delete your account, as a page anyone can read without signing in.
+ *
+ * This exists for the Google Play listing, which requires a public URL where the deletion
+ * process is explained, and which checks that the URL loads. Pointing it at
+ * `/settings/maintenance` — where the control actually is — returned a 403 in the console,
+ * because the reviewer following the link has no session and never will.
+ *
+ * Play asks a store listing's deletion URL for three specific things, and each is a
+ * section below rather than a paragraph that happens to mention them: name the app and the
+ * developer, feature the steps prominently, and say what is deleted, what is kept, and for
+ * how long.
+ *
+ * It is a `LegalDocument` because it has to say the same things `privacy` says about
+ * deletion and retention, and two prose copies of one fact drift apart — one gets corrected
+ * and the other quietly becomes a lie a store listing points at. Everything here is stated
+ * in the Privacy Policy's "Deleting your account" and "How long it is kept"; change both
+ * together, or neither.
+ *
+ * No `effective` date is displayed for it in the sense the legal documents have one — it
+ * shares theirs, because it is a restatement of them rather than a separate promise.
+ */
+export const deletion: LegalDocument = {
+  title: 'Deleting your Unbent account',
+  effective: EFFECTIVE,
+  intro: [
+    `Unbent is a notes application — a website at unbent.app and an Android app — operated ` +
+      `by ${ENTITY}. You can delete your account and everything in it yourself, at any time, ` +
+      `without asking us.`,
+    `This page explains how, and exactly what deletion removes. It is the same process ` +
+      `described in the Privacy Policy.`,
+  ],
+  sections: [
+    {
+      heading: 'How to delete your account',
+      body: [
+        'From the Android app or the website, signed in as the account you want to delete:',
+      ],
+      steps: [
+        'Open Settings, then Maintenance.',
+        'Press Delete account, and confirm when asked.',
+        'We email a confirmation link to the address on the account. Nothing has been ' +
+          'deleted at this point — the press only sends the mail, so a stray tap costs you ' +
+          'nothing.',
+        'Open that link in the same browser you are signed in with, and press Delete my ' +
+          'account. The account is deleted at that press. The link works once and expires ' +
+          'after a day.',
+      ],
+    },
+    {
+      heading: 'If you cannot sign in',
+      body: [
+        `You do not need a working sign-in to be rid of the account. Write to ` +
+          `${CONTACT_EMAIL} from the address on the account and we will delete it for you.`,
+      ],
+    },
+    {
+      heading: 'What is deleted',
+      body: [
+        'All of it, permanently. Deletion cannot be undone, and there is no export afterwards ' +
+          '— so if any of it matters, use Settings, then Export first, which gives you the ' +
+          'whole account as a zip of ordinary Markdown files with your attachments beside them.',
+      ],
+      list: [
+        'Your notes, including everything in the trash, and their titles, tags and notebooks.',
+        'Every file you attached, and the text extracted from PDFs for search.',
+        'Your account record and email address, any password hash, and your passkeys.',
+        'Any linked sign-in account, such as Google, and any app you connected to Unbent.',
+        'Your sessions, which signs the account out of every device it was signed in on.',
+      ],
+    },
+    {
+      heading: 'What is kept, and for how long',
+      body: [
+        'Nothing of your account or its contents is kept, and there is no grace period during ' +
+          'which it could be restored — the deletion is immediate and final rather than a ' +
+          'scheduled one you could change your mind about.',
+        'Two things outlive it, neither of which is your notes, and both are ordinary ' +
+          'infrastructure rather than anything we keep on purpose. Our hosting provider ' +
+          'retains routine server request logs, as any web host does. Mail we have already ' +
+          'sent you — a sign-in code, the deletion link itself — may persist for a short ' +
+          'period in our email provider’s own logs.',
+        'We may also keep a record where the law requires us to, which for a notes account is ' +
+          'not the ordinary case.',
+      ],
+    },
+  ],
+};

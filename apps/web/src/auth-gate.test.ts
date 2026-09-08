@@ -48,6 +48,17 @@ describe('shellFor', () => {
     expect(shellFor('/privacy/')).toBe('plain');
   });
 
+  /**
+   * Pinned on its own rather than folded into the legal pages above, because the cost of
+   * losing it is not a broken page: Play checks this URL from outside any session, and a
+   * gated one answers 403 and fails review. That is the exact failure this route was added
+   * for, the listing having pointed at `/settings/maintenance` before.
+   */
+  it('lets the account-deletion instructions render without a session', () => {
+    expect(shellFor('/delete-my-account')).toBe('plain');
+    expect(shellFor('/delete-my-account/')).toBe('plain');
+  });
+
   it('leaves the app WebView to the app', () => {
     expect(shellFor('/embed/notes/abc-123')).toBe('embed');
     expect(shellFor('/embed/index-files')).toBe('embed');

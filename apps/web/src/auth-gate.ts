@@ -20,6 +20,18 @@ export const CONFIRM_DELETE = '/delete-account';
 export const GOODBYE = '/goodbye';
 
 /**
+ * The public explanation of how to delete an account — the address the Play listing points
+ * at, and no part of the mail flow above.
+ *
+ * Worth not confusing with `CONFIRM_DELETE`, which the name deliberately keeps at arm's
+ * length: that page spends a token and destroys an account, this one acts on nothing and
+ * is written for someone who may not have an account at all. Play requires the deletion
+ * process be documented at a URL that loads without signing in, which is the whole reason
+ * this is a page rather than a section of `/privacy`.
+ */
+export const HOW_TO_DELETE = '/delete-my-account';
+
+/**
  * Which of the three shells a path belongs to — and, because the same answer decides both,
  * whether it needs a session.
  *
@@ -52,10 +64,12 @@ export type Shell = 'app' | 'embed' | 'plain';
  * screen and the far end of a reset mail exist precisely because there is no session — a
  * gate on the reset page made the link dead for the only people who ever receive one.
  *
- * The legal pages are the other kind: they have to be readable by someone who has no
- * account and never will. The store listing links to the privacy policy, and the deletion
- * page has to explain the process to someone who cannot sign in to follow it — a redirect
- * to a login screen would be the wrong answer to both.
+ * The public documents are the other kind: they have to be readable by someone who has no
+ * account and never will, because the Play listing links to them and Play checks that the
+ * links load. `HOW_TO_DELETE` is here for a failure that already happened — the listing's
+ * deletion URL pointed at `/settings/maintenance`, and the console answered 403, because
+ * the reviewer following it has no session. A redirect to a sign-in screen is the wrong
+ * answer to all of these.
  */
 const PUBLIC: ReadonlySet<string> = new Set([
   LOGIN,
@@ -64,6 +78,7 @@ const PUBLIC: ReadonlySet<string> = new Set([
   GOODBYE,
   '/privacy',
   '/terms',
+  HOW_TO_DELETE,
 ]);
 
 export function shellFor(pathname: string): Shell {
