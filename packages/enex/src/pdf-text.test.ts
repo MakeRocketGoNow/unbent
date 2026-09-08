@@ -1,9 +1,12 @@
 /**
- * PDF text extraction against real scanned attachments from an Evernote export.
+ * PDF text extraction against scanned attachments shaped like an Evernote export's.
  *
- * These are the actual files, not synthetic PDFs: the whole feature exists because real
- * scans carry Evernote's OCR layer, and its quality varies enough that both a good and a
- * failed scan are worth asserting on.
+ * The feature exists because real scans carry Evernote's OCR layer — a page image with
+ * invisible text laid over it — and its quality varies enough that both a good and a
+ * failed scan are worth asserting on. The fixtures used to be two of those real files;
+ * they were personal documents and have been withdrawn from the repository and its
+ * history. `scripts/make-scan-fixtures.mjs` now builds a pair with the same structure and
+ * invented content, and the assertions are what they always were.
  */
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';

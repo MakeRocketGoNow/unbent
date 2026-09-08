@@ -46,8 +46,14 @@ describe('normalizeWhitespace', () => {
   });
 });
 
-/** Thresholds are tuned against real scans, so they are asserted against real scans. */
-describe('assessText on real OCR output', () => {
+/**
+ * The thresholds were tuned against real scans from an Evernote export, and these samples
+ * reproduce their shape: the letter spacing, the spaced-out digits, the symbol soup of a
+ * failed scan. The originals were personal documents and have been withdrawn from the
+ * repository and its history; `scripts/make-scan-fixtures.mjs` builds these in their
+ * place, with invented names and numbers, so the assertions below are unchanged.
+ */
+describe('assessText on OCR-shaped output', () => {
   const samples = JSON.parse(
     readFileSync(new URL('../test/fixtures/ocr-samples.json', import.meta.url), 'utf8'),
   ) as Array<{ len: number; sample: string }>;

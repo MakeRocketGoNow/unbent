@@ -382,7 +382,7 @@ describe('attachment text extraction', () => {
     expect(progress.filesIndexed).toBe(1);
     expect(saved).toHaveLength(1);
     expect(saved[0]!.filename).toBe('scan.pdf');
-    // Real content from the scan, which is the whole point.
+    // Content from the scan's OCR layer, which is the whole point.
     expect(saved[0]!.text).toContain('Northfield');
   }, 60_000);
 
