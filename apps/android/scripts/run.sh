@@ -2,10 +2,26 @@
 # Boot an emulator (if none running) and launch the already-installed debug build.
 set -euo pipefail
 
+DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 ANDROID_SDK="${ANDROID_HOME:-$HOME/Library/Android/sdk}"
 ADB="$ANDROID_SDK/platform-tools/adb"
 EMULATOR="$ANDROID_SDK/emulator/emulator"
-APP_ID="app.unbent.android.debug"
+GRADLE_APP="$DIR/app"
+# The debug build's id, read from Gradle rather than written here.
+#
+# It was written here, and a rename to com.makerocketgonow.unbent left these scripts
+# pointing at an app that no longer existed: the build and install both succeeded, and only
+# the launch failed, with "no launcher activity" — which reads like a manifest problem
+# rather than a stale constant two directories away. Deriving it means the next rename
+# needs no edit here at all.
+GRADLE_BUILD="$GRADLE_APP/build.gradle.kts"
+BASE_ID="$(sed -n 's/^ *applicationId *= *"\(.*\)".*/\1/p' "$GRADLE_BUILD")"
+SUFFIX="$(sed -n 's/^ *applicationIdSuffix *= *"\(.*\)".*/\1/p' "$GRADLE_BUILD")"
+if [ -z "$BASE_ID" ]; then
+  echo "error: could not read applicationId from $GRADLE_BUILD" >&2
+  exit 1
+fi
+APP_ID="${BASE_ID}${SUFFIX}"
 AVD="${AVD_NAME:-Pixel_9_API_36}"
 
 if ! "$ADB" get-state 2>/dev/null | grep -q device; then

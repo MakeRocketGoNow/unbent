@@ -27,7 +27,17 @@ fun secret(key: String, env: String): String? =
 val releaseStorePath = secret("unbent.keystore.path", "UNBENT_KEYSTORE_PATH")
 
 android {
-    namespace = "app.unbent.android"
+    /**
+     * The Kotlin package, which moved here from `app.unbent.android` when the app was
+     * prepared for the Play Store.
+     *
+     * It is kept equal to `applicationId` below rather than left where it was. The two are
+     * independent as far as Gradle is concerned — only the id reaches Play, App Links and
+     * OAuth — but a source tree whose package disagrees with the installed id is a trap for
+     * anyone reading a stack trace or writing an `adb shell am` command, and there is
+     * nothing else in the tree that would explain the split.
+     */
+    namespace = "com.makerocketgonow.unbent"
     /**
      * What the app is compiled against, which is not what it promises to behave like —
      * that is `targetSdk` below. Raising this only lets the compiler see newer APIs.
@@ -39,7 +49,17 @@ android {
     compileSdk = 37
 
     defaultConfig {
-        applicationId = "app.unbent.android"
+        /**
+         * The identity Play, the Digital Asset Links file on unbent.app and the Google
+         * OAuth client all key on — and the one string here that can never change again
+         * once the app is published, since Play treats a different id as a different app
+         * with no upgrade path for anyone who installed the old one.
+         *
+         * `app.unbent.android` was never published, so this rename is free. It is
+         * `com.makerocketgonow.*` because that is the domain the developer account is
+         * registered under, and a reverse-domain id has to be one the publisher controls.
+         */
+        applicationId = "com.makerocketgonow.unbent"
         minSdk = 26
         /**
          * The behaviours the app opts into, which is the half that actually changes at
@@ -54,7 +74,19 @@ android {
          * through Compose's `BackHandler` rather than the removed path.
          */
         targetSdk = 36
-        versionCode = 1
+        /**
+         * Play rejects an upload whose code it has seen before, and it is the ordering
+         * Android itself uses to decide what counts as an upgrade — so this has to rise on
+         * every build that could reach the store, and a number nobody has to remember to
+         * bump is the only version of that which survives contact with a busy week.
+         *
+         * CI passes the run number, which only ever increases and is unique across the
+         * repository. A local build falls back to 1: nothing built by hand goes to Play,
+         * and a fixed number there keeps `assembleDebug` reproducible.
+         */
+        versionCode = secret("unbent.versionCode", "UNBENT_VERSION_CODE")?.toIntOrNull() ?: 1
+        // What a person sees, in Settings and on the store listing. Bumped by hand, because
+        // it means something — unlike the code above, which is bookkeeping.
         versionName = "0.1.0"
 
         // The site the app is a shell for. Overridable at runtime in Settings, which is

@@ -38,6 +38,16 @@ describe('shellFor', () => {
     expect(shellFor('/goodbye/')).toBe('plain');
   });
 
+  /**
+   * The legal pages are read by people with no account, which is the whole point of them:
+   * the Play listing links to the privacy policy, so it cannot sit behind a sign-in.
+   */
+  it('lets the legal pages render without a session', () => {
+    expect(shellFor('/privacy')).toBe('plain');
+    expect(shellFor('/terms')).toBe('plain');
+    expect(shellFor('/privacy/')).toBe('plain');
+  });
+
   it('leaves the app WebView to the app', () => {
     expect(shellFor('/embed/notes/abc-123')).toBe('embed');
     expect(shellFor('/embed/index-files')).toBe('embed');
@@ -46,6 +56,7 @@ describe('shellFor', () => {
   /** A hand-typed address may carry one, and it never means a different page. */
   it('ignores a trailing slash', () => {
     expect(shellFor('/login/')).toBe('plain');
+    expect(shellFor('/privacy/')).toBe('plain');
   });
 
   /**
