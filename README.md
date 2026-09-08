@@ -135,6 +135,41 @@ pnpm migrate:remote
 pnpm release
 ```
 
+### Who runs this instance
+
+The privacy policy, the terms and the "how to delete your account" page name a legal entity
+and give an address to write to. Four variables decide what they say, and a fresh checkout
+sets none of them.
+
+| Set | `/privacy` and `/terms` | Sign-in screen and account menu |
+| --- | --- | --- |
+| `OPERATOR_NAME` + `OPERATOR_EMAIL` | the built-in documents, filled in | link to them |
+| `LEGAL_PRIVACY_URL` + `LEGAL_TERMS_URL` | a sentence naming where they are, and a link | link straight there |
+| nothing | "this instance has not published a privacy policy" | no consent line, no menu items |
+
+Each pair is both-or-nothing, the same convention as an OAuth credential pair: a policy that
+names a company with no way to reach it is worse than one admitting there is none here. The
+external URLs win over the built-in documents when both are set — an operator who published
+their own is the one to believe.
+
+Unset is deliberate rather than unfinished. These documents used to name one company from a
+constant in the source, so every copy of this repository published `CDeutsch Consulting LLC`
+on somebody else's domain — a legal claim that operator never made. Nothing is inferred now,
+and an instance that has not said stays silent.
+
+Two things in the built-in documents are not configurable: they say the service is hosted in
+the United States, and that Minnesota law governs the terms. Both are facts about a
+jurisdiction rather than a name to substitute, and a variable holding "Minnesota" would
+produce a governing-law clause nobody had read. If either is wrong for you, write your own
+and point `LEGAL_PRIVACY_URL` and `LEGAL_TERMS_URL` at them.
+
+The software is called Unbent throughout either way. That is this program's name, not the
+name of whoever is answerable for running it.
+
+unbent.app and dev.unbent.app set `OPERATOR_NAME` and `OPERATOR_EMAIL` in
+`apps/api/wrangler.toml`. They are vars rather than secrets because both are printed on a
+public page, so there is nothing to keep out of the repository.
+
 ### Page statistics
 
 Cloudflare Web Analytics, which is free, sets no cookie and assigns no identifier — the
