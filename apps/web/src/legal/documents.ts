@@ -7,8 +7,14 @@
  *
  * Adapted from the same documents on pushthat.link, which is the other app this company
  * runs. Where the boilerplate said something untrue of a notes app it was rewritten rather
- * than kept for symmetry: the privacy policy in particular now describes what the code
- * actually stores, since that is the half a store listing is answerable for.
+ * than kept for symmetry: the privacy policy in particular describes what is actually
+ * stored, since that is the half a store listing is answerable for.
+ *
+ * What it deliberately does not say: which vendors host it, which products store what, or
+ * how the code keeps accounts apart. A reader needs to know the country their data sits
+ * in and who else can see it; naming the stack tells them nothing they can act on and
+ * tells everyone else how the service is built. So it is "our hosting provider" and "an
+ * email delivery service", and the operator's postal address is not here at all.
  */
 
 export interface LegalSection {
@@ -82,17 +88,17 @@ export const privacy: LegalDocument = {
     {
       heading: 'Where it is stored, and who else touches it',
       body: [
-        'Unbent runs on Cloudflare. Your notes and account records are in a Cloudflare D1 ' +
-          'database, and your attached files are in Cloudflare R2 storage, both in the United ' +
-          'States. Cloudflare also keeps ordinary request logs, as any web host does.',
-        'Three other services are involved, each for one narrow job:',
+        'Unbent is hosted in the United States. Your notes, files and account records are ' +
+          'stored with our hosting provider there, which also keeps ordinary request logs, as ' +
+          'any web host does. Text inside PDFs you upload is extracted on those same systems ' +
+          'so that search can find it; the file is used for that and nothing else.',
+        'Two other kinds of service are involved, each for one narrow job:',
       ],
       list: [
-        'Cloudflare Workers AI extracts text from PDFs you upload, so that search can find words ' +
-          'inside them. The file is sent for that purpose and not retained for any other.',
-        'Google, if you choose to sign in with a Google account. Google tells us your email ' +
-          'address, name and profile image; we tell Google nothing about your notes.',
-        'Resend delivers the transactional email described above — sign-in codes, password ' +
+        'A sign-in provider, if you choose to sign in with one — Google, for example. The ' +
+          'provider tells us your email address, name and profile image; we tell it nothing ' +
+          'about your notes.',
+        'An email delivery service, for the messages described above — sign-in codes, password ' +
           'resets, verification links. It sees your email address and the contents of those ' +
           'messages, which never include your notes.',
       ],
@@ -143,10 +149,9 @@ export const privacy: LegalDocument = {
     {
       heading: 'Security',
       body: [
-        'Connections use HTTPS. Passwords, where they exist, are stored hashed. Data is separated ' +
-          'per account at the application layer, and this separation is covered by an automated ' +
-          'test suite that runs against every change. No system is perfectly secure, and we do ' +
-          'not claim otherwise.',
+        'Connections use HTTPS. Passwords, where they exist, are stored hashed, and each ' +
+          'account’s data is kept separate from every other’s. No system is perfectly secure, ' +
+          'and we do not claim otherwise.',
       ],
     },
     {
