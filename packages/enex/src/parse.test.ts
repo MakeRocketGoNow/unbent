@@ -80,8 +80,8 @@ describe('fallbackFilename', () => {
 });
 
 /**
- * Evernote writes `<file-name>` as a label rather than a path. A real Coupons export has
- * two PDFs named `Menu Card` and `Lease Summary - DRAFT DRAFT ` — no extension, one with
+ * Evernote writes `<file-name>` as a label rather than a path. A real export had two PDFs
+ * named like `Menu Card` and `Lease Summary - DRAFT DRAFT ` — no extension, one with
  * a trailing space — and both arrived as files nothing downstream could recognise as PDFs.
  */
 describe('resourceFilename', () => {

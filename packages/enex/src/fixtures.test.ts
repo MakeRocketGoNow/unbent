@@ -1,6 +1,8 @@
 /**
- * Conversion against notes taken verbatim from a real Evernote export, rather than
- * hand-written ENML. Clipper output is stranger than anything worth inventing.
+ * Conversion against notes with the exact structure of a real Evernote export's, rather
+ * than tidy hand-written ENML: the clipper's dozen-declaration spans, its `<br></br>`
+ * pairs, its void `en-media` elements. The originals were real notes and have been
+ * withdrawn; these keep every quirk of the markup with invented content.
  */
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
@@ -18,7 +20,7 @@ function fixture(name: string): { enml: string; resources: EnexResource[] } {
   };
 }
 
-describe('real export fixtures', () => {
+describe('export-shaped fixtures', () => {
   it('strips clipper styling from a quote note', () => {
     const { enml } = fixture('styled-quote');
     const { markdown } = enmlToMarkdown(enml, []);
