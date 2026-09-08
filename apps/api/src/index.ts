@@ -14,6 +14,7 @@ import { search } from './routes/search.js';
 import { importEnmlRoutes, importRoutes } from './routes/import.js';
 import { connectedApps } from './routes/connected-apps.js';
 import { mcpRoutes } from './routes/mcp.js';
+import { clientErrors } from './routes/client-errors.js';
 
 const app = new Hono<AppEnv>();
 
@@ -47,7 +48,8 @@ const routes = app
   .route('/api', importRoutes)
   .route('/api', importEnmlRoutes)
   .route('/api', mcpRoutes)
-  .route('/api', connectedApps);
+  .route('/api', connectedApps)
+  .route('/api', clientErrors);
 
 /** Consumed by the SPA through `hc<AppType>()` for end-to-end types with no codegen. */
 export type AppType = typeof routes;
