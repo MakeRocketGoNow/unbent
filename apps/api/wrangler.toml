@@ -74,6 +74,13 @@ bucket_name = "unbent-blobs"
 [env.production.vars]
 APP_URL = "https://unbent.app"
 
+# The legal entity the built-in privacy policy and terms name, and the address they tell
+# people to write to. In the repository rather than a secret because both are printed on a
+# public page; absent from a fresh checkout on purpose, so that nobody self-hosting this
+# publishes CDeutsch Consulting LLC's documents on their own domain by accident.
+OPERATOR_NAME = "CDeutsch Consulting LLC"
+OPERATOR_EMAIL = "hello@unbent.app"
+
 # The apex serves both the SPA and /api, keeping them same-origin in production exactly as
 # they are in dev. `custom_domain` makes Cloudflare create and manage the DNS record and
 # certificate, so there is no separate record to keep in step with this file.
@@ -216,6 +223,13 @@ bucket_name = "unbent-dev-blobs"
 # Unlike a preview's, this one is a constant and belongs in the file: the host does not
 # change, so there is nothing for a deploy to supply and nothing to go stale.
 APP_URL = "https://dev.unbent.app"
+
+# The legal entity the built-in privacy policy and terms name, and the address they tell
+# people to write to. In the repository rather than a secret because both are printed on a
+# public page; absent from a fresh checkout on purpose, so that nobody self-hosting this
+# publishes CDeutsch Consulting LLC's documents on their own domain by accident.
+OPERATOR_NAME = "CDeutsch Consulting LLC"
+OPERATOR_EMAIL = "hello@unbent.app"
 
 # `custom_domain` has Cloudflare create and manage both the DNS record and the certificate,
 # exactly as production's apex does, so there is no record to keep in step with this file by
