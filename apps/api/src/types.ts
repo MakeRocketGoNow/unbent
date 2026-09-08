@@ -70,6 +70,29 @@ export interface Env {
    * Optional Reply-To, for when the sending domain is not a mailbox. See lib/email.ts.
    */
   EMAIL_REPLY_TO?: string;
+  /**
+   * Who runs this instance: the legal entity the built-in privacy policy and terms name,
+   * and the address they tell people to write to.
+   *
+   * Both or neither, the same shape as an OAuth credential pair — a policy naming a company
+   * with no way to reach it is worse than one that admits it does not exist. Unset is the
+   * deliberate default for a fresh checkout: this repository is open source, and an
+   * instance that has not said who runs it must not publish somebody else's name. See
+   * `operatorOf` in lib/instance.ts.
+   */
+  OPERATOR_NAME?: string;
+  OPERATOR_EMAIL?: string;
+  /**
+   * Legal documents hosted somewhere other than this app, for an operator whose lawyers
+   * wrote their own.
+   *
+   * Both or neither again, and when both are set they win over the built-in documents: an
+   * operator who has published their own is the one who should be believed. The built-in
+   * pages then say so and link onward rather than 404ing, because the Play listing points
+   * at one of them.
+   */
+  LEGAL_PRIVACY_URL?: string;
+  LEGAL_TERMS_URL?: string;
 }
 
 export interface SessionUser {

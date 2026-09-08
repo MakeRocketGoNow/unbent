@@ -103,3 +103,34 @@ ALLOW_TEST_CREDENTIALS=1
 # that subdomain is not a mailbox, so Reply on a noreply@ From goes nowhere. Set this to
 # the address that does read mail. Unset means Reply goes to EMAIL_FROM.
 # EMAIL_REPLY_TO=hello@example.com
+
+# Who runs this instance.
+#
+# The built-in privacy policy, terms and "how to delete your account" page name a legal
+# entity and give an address to write to. Both of these must be set before those documents
+# render at all: unset, /privacy and /terms say this instance has not published a policy,
+# and nothing links to them from the sign-in screen or the account menu.
+#
+# That is deliberate rather than unfinished. These documents used to name one company from
+# a constant in the source, which meant every copy of this repository published somebody
+# else's legal entity on its own domain — a claim that operator never made. Half a pair is
+# ignored the same way an OAuth credential pair is: a policy naming a company with no way to
+# reach it is worse than one that admits there is none here.
+#
+# The software's name stays "Unbent" throughout either way. That is what this program is
+# called, not who is answerable for running it.
+# OPERATOR_NAME=Example Co
+# OPERATOR_EMAIL=help@example.com
+
+# Legal documents you host yourself, if you would rather not use the built-in ones.
+#
+# Both or neither, and when both are set they win over OPERATOR_NAME/OPERATOR_EMAIL above:
+# an operator who has published their own documents is the one to believe. The built-in
+# pages then say so and link onward rather than answering 404, because a store listing may
+# point at one of them.
+#
+# Worth knowing before you use the built-in documents: they say the service is hosted in the
+# United States and that Minnesota law governs the terms. Neither is configurable. If either
+# is wrong for you, these two are the way out.
+# LEGAL_PRIVACY_URL=https://example.com/privacy
+# LEGAL_TERMS_URL=https://example.com/terms
