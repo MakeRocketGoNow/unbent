@@ -3,12 +3,17 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 export type SaveState = 'idle' | 'dirty' | 'saving' | 'saved' | 'error';
 
 /**
- * Debounced autosave with a flush on unmount and on tab hide.
+ * Debounced autosave with a flush on note change, unmount, and tab hide.
  *
  * The flush matters more than the debounce: without it, edits made in the last debounce
  * window are lost when the user switches notes or closes the tab — exactly the moments a
  * notes app must not lose work. `visibilitychange` is used rather than `beforeunload`
  * because it is the one mobile browsers reliably fire.
+ *
+ * Note switches are not unmounts. Workspace and the embed keep this hook alive and pass a
+ * new `resetKey`, so the outgoing edit has to be flushed here rather than waiting for a
+ * cleanup that never runs. The save function is captured with the edit: by the time the
+ * effect sees the new key, `save` already closes over the incoming note id.
  */
 export function useAutosave<T>(
   value: T,
@@ -21,7 +26,19 @@ export function useAutosave<T>(
   const [error, setError] = useState<string | null>(null);
 
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const pending = useRef<T | null>(null);
+  /**
+   * A snapshot plus the save that belonged to it.
+   *
+   * `epoch` is how a failed in-flight save knows whether its snapshot is still the latest.
+   * Restoring blindly would put an older body back over a newer one the user typed — or
+   * over the incoming note's pending, if they switched while a save was failing.
+   */
+  const pending = useRef<{
+    value: T;
+    save: (value: T) => Promise<void>;
+    epoch: number;
+  } | null>(null);
+  const epoch = useRef(0);
   const saveRef = useRef(save);
   saveRef.current = save;
 
@@ -36,8 +53,8 @@ export function useAutosave<T>(
    *
    * Comparing against the baseline instead means only a value that differs from what was
    * seeded counts as an edit, whatever order the renders arrive in. `resetKey` (the note
-   * id) re-arms it, so switching notes re-baselines rather than saving the outgoing note
-   * over the incoming one.
+   * id) re-arms it, so switching notes re-baselines rather than treating the incoming
+   * seed as an edit of the outgoing draft.
    */
   const baseline = useRef<{ key: string | undefined; value: T } | null>(null);
 
@@ -50,39 +67,61 @@ export function useAutosave<T>(
     if (next === null) return;
     pending.current = null;
 
+    const baselineKey = baseline.current?.key;
     setState('saving');
     try {
-      await saveRef.current(next);
+      await next.save(next.value);
       setState('saved');
       setError(null);
       /*
-         What the server holds is now `next`, so that is the value an edit is measured
-         against from here on. Left at the seed, a body that came back to exactly its
-         loaded text after a save looked like "no edit" and was never sent — the server
-         kept the intermediate version. Attaching a file makes that the common case: the
-         upload's placeholder autosaves, and abandoning the upload restores the seed.
+         What the server holds is now `next.value`, so that is the value an edit is
+         measured against from here on. Left at the seed, a body that came back to exactly
+         its loaded text after a save looked like "no edit" and was never sent — the
+         server kept the intermediate version. Attaching a file makes that the common
+         case: the upload's placeholder autosaves, and abandoning the upload restores
+         the seed.
+
+         Skip the write when the key moved during the await: the baseline now belongs to
+         the incoming note, and putting the outgoing body there would make the incoming
+         seed look like an edit — or worse, become the value a later flush measures
+         against.
       */
-      if (baseline.current) baseline.current.value = next;
+      if (baseline.current && baseline.current.key === baselineKey) {
+        baseline.current.value = next.value;
+      }
     } catch (err) {
       setState('error');
       setError((err as Error).message);
-      // Keep the value pending so a later flush can retry it.
-      pending.current = next;
+      // Retry only if nothing newer has been queued or taken while this save was in flight.
+      if (pending.current === null && epoch.current === next.epoch) {
+        pending.current = next;
+      }
     }
   }, []);
 
   useEffect(() => {
-    if (!enabled) return;
+    const noteChanged = !baseline.current || baseline.current.key !== resetKey;
 
-    // First value for this note, or a note change: this is the baseline, not an edit.
-    if (!baseline.current || baseline.current.key !== resetKey) {
+    if (noteChanged) {
+      if (pending.current) void flush();
+      if (!enabled) {
+        // Drop the baseline so the first enabled value for this key is a seed.
+        // Setting it to the still-showing outgoing draft would make the incoming
+        // seed look like an edit, which is the Evernote-dates bug above.
+        baseline.current = null;
+        return;
+      }
       baseline.current = { key: resetKey, value };
       return;
     }
-    // Re-seeding the same note with the same content (a refetch) is not an edit either.
-    if (Object.is(baseline.current.value, value)) return;
 
-    pending.current = value;
+    if (!enabled) return;
+    const seeded = baseline.current;
+    if (!seeded) return;
+    // Re-seeding the same note with the same content (a refetch) is not an edit either.
+    if (Object.is(seeded.value, value)) return;
+
+    pending.current = { value, save: saveRef.current, epoch: ++epoch.current };
     setState('dirty');
 
     if (timer.current) clearTimeout(timer.current);
@@ -93,7 +132,7 @@ export function useAutosave<T>(
     };
   }, [value, delay, enabled, flush, resetKey]);
 
-  // Flush on tab hide and on unmount so switching notes never drops the last edit.
+  // Flush on tab hide and on unmount so leaving the page never drops the last edit.
   useEffect(() => {
     const onHide = () => {
       if (document.visibilityState === 'hidden') void flush();

@@ -5,11 +5,12 @@ import { useAutosave } from './useAutosave.js';
 /**
  * Autosave must not fire for a value it was merely handed.
  *
- * The workspace is remounted per note and seeds its draft from the loaded note one render
- * after mount. A "skip the first render" guard is spent on the empty initial draft, so the
- * seeded value looks like an edit and every note is written just by being opened — which
- * silently rewrites `updated_at` and destroys the real modification dates carried over
- * from Evernote. `resetKey` is what makes the guard per-note instead of per-mount.
+ * Workspace stays mounted when the route param changes — it is the same instance with a
+ * new note id — and seeds its draft from the loaded note one render after that. A "skip
+ * the first render" guard is spent on the empty initial draft, so the seeded value looks
+ * like an edit and every note is written just by being opened — which silently rewrites
+ * `updated_at` and destroys the real modification dates carried over from Evernote.
+ * `resetKey` is what makes the guard per-note instead of per-mount.
  */
 describe('useAutosave priming', () => {
   beforeEach(() => vi.useFakeTimers());
@@ -113,5 +114,152 @@ describe('useAutosave priming', () => {
 
     expect(save).toHaveBeenCalledTimes(1);
     expect(save).toHaveBeenCalledWith('second body, edited');
+  });
+});
+
+/**
+ * Switching notes is not an unmount. The hook used to clear the debounce timer and leave
+ * the outgoing edit in `pending`, then either drop it when the incoming note was edited
+ * or flush it with the incoming note's save — writing one note's body onto another.
+ */
+describe('useAutosave note switches', () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  it('flushes an unsaved edit to the note it was typed in, not the one just opened', async () => {
+    const saveFirst = vi.fn().mockResolvedValue(undefined);
+    const saveSecond = vi.fn().mockResolvedValue(undefined);
+    const { rerender } = renderHook(
+      ({ value, resetKey, enabled, save }) =>
+        useAutosave(value, save, { delay: 800, enabled, resetKey }),
+      {
+        initialProps: {
+          value: 'first body',
+          resetKey: 'note-1',
+          enabled: true,
+          save: saveFirst,
+        },
+      },
+    );
+
+    rerender({
+      value: 'first body, edited',
+      resetKey: 'note-1',
+      enabled: true,
+      save: saveFirst,
+    });
+    // Navigate before the debounce fires, the way clicking another note does.
+    rerender({
+      value: 'first body, edited',
+      resetKey: 'note-2',
+      enabled: false,
+      save: saveSecond,
+    });
+    rerender({
+      value: 'second body',
+      resetKey: 'note-2',
+      enabled: true,
+      save: saveSecond,
+    });
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(saveFirst).toHaveBeenCalledTimes(1);
+    expect(saveFirst).toHaveBeenCalledWith('first body, edited');
+    expect(saveSecond).not.toHaveBeenCalled();
+  });
+
+  it('does not write the outgoing edit onto the incoming note if the tab hides after the switch', async () => {
+    const saveFirst = vi.fn().mockResolvedValue(undefined);
+    const saveSecond = vi.fn().mockResolvedValue(undefined);
+    const { rerender } = renderHook(
+      ({ value, resetKey, enabled, save }) =>
+        useAutosave(value, save, { delay: 800, enabled, resetKey }),
+      {
+        initialProps: {
+          value: 'first body',
+          resetKey: 'note-1',
+          enabled: true,
+          save: saveFirst,
+        },
+      },
+    );
+
+    rerender({
+      value: 'first body, edited',
+      resetKey: 'note-1',
+      enabled: true,
+      save: saveFirst,
+    });
+    rerender({
+      value: 'first body, edited',
+      resetKey: 'note-2',
+      enabled: false,
+      save: saveSecond,
+    });
+    rerender({
+      value: 'second body',
+      resetKey: 'note-2',
+      enabled: true,
+      save: saveSecond,
+    });
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+    saveFirst.mockClear();
+
+    await act(async () => {
+      Object.defineProperty(document, 'visibilityState', { value: 'hidden', configurable: true });
+      document.dispatchEvent(new Event('visibilitychange'));
+      await Promise.resolve();
+    });
+
+    expect(saveFirst).not.toHaveBeenCalled();
+    expect(saveSecond).not.toHaveBeenCalled();
+  });
+});
+
+describe('useAutosave in-flight failure', () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  it('does not replace a newer edit with the snapshot that just failed to save', async () => {
+    let finishFirst!: (ok: boolean) => void;
+    const save = vi
+      .fn()
+      .mockImplementationOnce(
+        () =>
+          new Promise<void>((resolve, reject) => {
+            finishFirst = (ok) => (ok ? resolve() : reject(new Error('network')));
+          }),
+      )
+      .mockResolvedValue(undefined);
+
+    const { rerender, result } = renderHook(
+      ({ value }) => useAutosave(value, save, { delay: 10, resetKey: 'note-1' }),
+      { initialProps: { value: 'seed' } },
+    );
+
+    rerender({ value: 'first edit' });
+    await act(async () => {
+      vi.advanceTimersByTime(50);
+    });
+    expect(save).toHaveBeenCalledTimes(1);
+
+    rerender({ value: 'second edit' });
+    await act(async () => {
+      finishFirst(false);
+      await Promise.resolve();
+    });
+
+    await act(async () => {
+      await result.current.flush();
+    });
+
+    expect(save).toHaveBeenLastCalledWith('second edit');
+    expect(save.mock.calls.at(-1)?.[0]).not.toBe('first edit');
   });
 });
