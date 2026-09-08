@@ -60,15 +60,21 @@ export const privacy: LegalDocument = {
       `notes application: a website at unbent.app and an Android app that talks to it. It is ` +
       `operated by ${ENTITY}.`,
     `The short version: your notes are yours, nothing is sold or shared for advertising, ` +
-      `there is no tracking or analytics of any kind, and you can export or delete ` +
+      `nothing tracks you or builds a profile of you, and you can export or delete ` +
       `everything at any time without asking anyone.`,
   ],
   sections: [
     {
       heading: 'What we collect',
       body: [
-        'Only what running the service requires. There is no analytics package, no advertising ' +
-          'network, no third-party tracking script, and no profile built from how you use the app.',
+        'Only what running the service requires. There is no advertising network, no profile ' +
+          'built from how you use the app, and nothing that can follow you to another site.',
+        'We do count page views, so that we know which parts of Unbent are worth working on. ' +
+          'It is aggregate and anonymous: no cookie is set, no identifier is assigned to you, ' +
+          'and nothing about it is tied to your account or to anything you write. It cannot ' +
+          'tell us that a particular person visited a particular page, and we could not ' +
+          'reconstruct that if we wanted to. Visitors from the European Union are excluded ' +
+          'from it altogether — nothing is counted for them at all.',
       ],
       list: [
         'Account details — your email address, and the name and profile image your sign-in ' +
