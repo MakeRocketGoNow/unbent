@@ -154,6 +154,9 @@ importers:
       '@cloudflare/workers-types':
         specifier: ^5.20260905.1
         version: 5.20260905.1
+      '@posthog/cli':
+        specifier: ^0.18.1
+        version: 0.18.1
       '@tanstack/router-plugin':
         specifier: ^1.168.35
         version: 1.168.35(@tanstack/react-router@1.170.32(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(esbuild@0.28.2)(rolldown@1.2.7)(rollup@4.62.5)(vite@8.2.2(@types/node@26.4.1)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.13)(yaml@2.9.0))
@@ -1360,6 +1363,11 @@ packages:
 
   '@posthog/browser-common@0.8.2':
     resolution: {integrity: sha512-8g7+ijrx8bfWmpDjmP07e0ZmdRnJoFqZ6PCcMQvfBTUrr422GRXvQWpQn7yD028zIJHIIn/rUTipKgUC5UkWpw==}
+
+  '@posthog/cli@0.18.1':
+    resolution: {integrity: sha512-JRxa9fxpDaYsHmZRsfoQH1aJOkBaeNFjcZS3z2pkmCatVrY3tsTbNcN0g0nc7Z3VqDc21dYviSr9Rtz/+yBJ1A==}
+    engines: {node: '>=14.14', npm: '>=6'}
+    hasBin: true
 
   '@posthog/core@1.51.0':
     resolution: {integrity: sha512-LilmmtjcrjV1LgaVNQXrAUt4IXcWIYMrwEtx6VJUUFDeBBdmeI99jshKGtAWugYeB3Wkcp9xQIVCrxIYRpNiRA==}
@@ -4156,6 +4164,10 @@ snapshots:
     dependencies:
       '@posthog/core': 1.51.0
       '@posthog/types': 1.409.2
+
+  '@posthog/cli@0.18.1':
+    dependencies:
+      detect-libc: 2.1.2
 
   '@posthog/core@1.51.0':
     dependencies:

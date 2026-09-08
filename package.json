@@ -20,7 +20,7 @@
     "migrate:local": "pnpm --filter @unbent/api migrate:local",
     "migrate:remote": "pnpm --filter @unbent/api migrate:remote",
     "migrate:dev": "pnpm --filter @unbent/api migrate:dev",
-    "release": "pnpm build && pnpm --filter @unbent/api release"
+    "release": "pnpm build && pnpm --filter @unbent/web sourcemaps && pnpm --filter @unbent/api release"
   },
   "devDependencies": {
     "typescript": "^7.0.2"
