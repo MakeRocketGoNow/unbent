@@ -4,6 +4,8 @@ import { RouterProvider, createRouter } from '@tanstack/react-router';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { routeTree } from './routeTree.gen.js';
 import { installErrorReporting } from './report-error.js';
+import { installPosthog } from './posthog.js';
+import { configQuery } from './queries.js';
 import './styles.css';
 
 /*
@@ -23,6 +25,24 @@ const queryClient = new QueryClient({
     },
   },
 });
+
+/*
+ * Error tracking, on the instances that have it — see `posthog.ts`.
+ *
+ * Here in module scope rather than in an effect, because `StrictMode` runs effects twice in
+ * development and `posthog.init` is not something to call twice. Through the query client so
+ * that the sign-in screen and Settings, which read the same config, get it from cache
+ * instead of asking again.
+ *
+ * Nothing is buffered while this resolves, deliberately. An error thrown before it does has
+ * already reached the Worker's log through the reporter installed above, which is the
+ * destination every instance has; a buffer would be a second cap and a second set of rules
+ * about what to drop, for reports that are not being lost.
+ */
+void queryClient
+  .ensureQueryData(configQuery())
+  .then((config) => (config.posthog ? installPosthog(config.posthog) : undefined))
+  .catch(() => {});
 
 const router = createRouter({
   routeTree,
