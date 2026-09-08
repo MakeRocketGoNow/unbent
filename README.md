@@ -205,14 +205,61 @@ JavaScript failure is invisible to Play's crash reporting: the process never die
 Android nothing happened. The logged `userAgent` is what separates "broken everywhere" from
 "broken only in the app", which is the first question these reports raise.
 
-Deliberately not Crashlytics or Sentry. Either would do this better, and either would put
-another company in the privacy policy for something the logs we already pay for can cover.
-Worth revisiting if the three-day window or the missing aggregation starts costing real
-time — that is the signal to reconsider, not the volume of reports.
-
 Nothing about it needs configuring, and there is no note content in a report: the route is
 logged with note ids replaced, and the query string is dropped. See
 `apps/web/src/report-error.ts`.
+
+#### Grouping them, optionally
+
+Three days and no aggregation is thin, which was said here when the endpoint was written:
+Crashlytics or Sentry would do it better, and the reason for neither was that it would put
+another company in the privacy policy of every instance for something the logs already
+cover. The signal to reconsider was the missing grouping costing real time, and it did.
+
+What changed is not the judgement but who pays for it. `POSTHOG_KEY` adds PostHog as a
+second destination on the instance that sets it, and on no other: the SDK is imported
+dynamically, so an instance without a key never downloads it, and the privacy policy is
+built from the same config, so its policy does not mention a service it never contacts. The
+first-party log stays unconditional either way — it is the one destination that works with
+nothing configured, and an error thrown before anything else has loaded is already in it.
+
+Errors only. Page views stay with the hosting provider above, which sets no cookie and
+assigns no identifier; moving them here would trade that for a worse answer. Every capture
+path is off in `init` and off again in `before_send`, so a default that changes in some
+future version cannot quietly turn this into a tracker. No session recording in particular:
+a recording of this app is a recording of somebody's notes.
+
+```bash
+cd apps/api
+pnpm exec wrangler secret put POSTHOG_KEY --env production
+```
+
+The token is public and write-only — it ships in the page — and is a secret here only to
+keep one fewer credential in a repository people fork. `POSTHOG_HOST` sets the region;
+unset means PostHog's US cloud, and the hosts the SDK needs are derived from it.
+
+Two things to set in the PostHog project, neither of which this repository can do for you:
+
+- **Cookieless server hash mode**, under Project settings → Web analytics. `cookieless_mode`
+  needs it; with it off, events are dropped server-side and nothing in the browser says so.
+- **Discard client IP data**, if you want it. Worth checking against the cookieless hash,
+  which is computed from the address at ingestion — confirm in the UI that the two coexist
+  before relying on both, and say what is true in the policy either way.
+
+Reports travel through `/ingest/*` on this origin rather than to `posthog.com`, because a
+request to that host is on every blocklist there is and the people running a blocker are
+disproportionately the ones whose bug reports are worth the most. See
+`apps/api/src/routes/ingest.ts`, and note that the path needs its `run_worker_first` entry
+in every environment or the SPA fallback answers it with `index.html`.
+
+Source maps are uploaded on release, without which every stack reads
+`index-CDkkheec.js:1:48213`. That needs `POSTHOG_CLI_API_KEY` and `POSTHOG_CLI_PROJECT_ID`
+as GitHub secrets — or exported locally before `pnpm release` — and is skipped silently
+when they are absent.
+
+The free tier is 100,000 exceptions a month and stops rather than bills. The reporter's own
+cap of five per page load is what keeps a bad deploy inside that: a render loop is five
+reports, not five thousand.
 
 `release` rather than `deploy` because `deploy` is a built-in pnpm command and shadows any
 script of that name. The first deploy has to happen here, before the secrets below: they
@@ -236,6 +283,7 @@ pnpm exec wrangler secret put ALLOWED_EMAILS --env production       # comma-sepa
 pnpm exec wrangler secret put RESEND_API_KEY --env production       # password reset mail
 pnpm exec wrangler secret put EMAIL_FROM --env production           # verified sender
 pnpm exec wrangler secret put EMAIL_REPLY_TO --env production       # optional, a real mailbox
+pnpm exec wrangler secret put POSTHOG_KEY --env production          # optional, error tracking
 ```
 
 `RESEND_API_KEY` and `EMAIL_FROM` are what make password reset work. Without both, a reset
