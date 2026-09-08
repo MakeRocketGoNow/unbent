@@ -159,6 +159,26 @@ no token to lose.
 Content blockers stop the beacon too, so treat all of this as "which pages get used" rather
 than as a count of anybody.
 
+### Errors in the browser
+
+A thrown exception in the page POSTs itself to `/api/client-errors`, which logs one line
+into the Worker's own logs — `wrangler tail` live, or Workers Logs in the dashboard, where
+it is searchable for three days on the free plan.
+
+It exists because of the Android app. The editor there is this site in a WebView, so a
+JavaScript failure is invisible to Play's crash reporting: the process never dies, and to
+Android nothing happened. The logged `userAgent` is what separates "broken everywhere" from
+"broken only in the app", which is the first question these reports raise.
+
+Deliberately not Crashlytics or Sentry. Either would do this better, and either would put
+another company in the privacy policy for something the logs we already pay for can cover.
+Worth revisiting if the three-day window or the missing aggregation starts costing real
+time — that is the signal to reconsider, not the volume of reports.
+
+Nothing about it needs configuring, and there is no note content in a report: the route is
+logged with note ids replaced, and the query string is dropped. See
+`apps/web/src/report-error.ts`.
+
 `release` rather than `deploy` because `deploy` is a built-in pnpm command and shadows any
 script of that name. The first deploy has to happen here, before the secrets below: they
 attach to a Worker, and `wrangler secret put` fails until one exists.

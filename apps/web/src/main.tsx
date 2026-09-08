@@ -3,7 +3,15 @@ import { createRoot } from 'react-dom/client';
 import { RouterProvider, createRouter } from '@tanstack/react-router';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { routeTree } from './routeTree.gen.js';
+import { installErrorReporting } from './report-error.js';
 import './styles.css';
+
+/*
+ * Before anything else renders, so that a crash while mounting the app is reported rather
+ * than only shown. The editor runs in the Android app's WebView, where a JavaScript error
+ * is invisible to Play's crash reporting — see `report-error.ts`.
+ */
+installErrorReporting();
 
 const queryClient = new QueryClient({
   defaultOptions: {
