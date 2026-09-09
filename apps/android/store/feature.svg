@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="500" viewBox="0 0 1024 500">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#2F6B4F"/>
+      <stop offset="100%" stop-color="#1E4A36"/>
+    </linearGradient>
+  </defs>
+  <rect width="1024" height="500" fill="url(#bg)"/>
+
+  <!-- The launcher U, scaled up as a mark -->
+  <g transform="translate(96,142) scale(2.05)">
+    <path d="M40,38 L40,60 A14,14 0 0 0 68,60 L68,38"
+          fill="none" stroke="#FFFFFF" stroke-width="7"
+          stroke-linecap="round" stroke-linejoin="round"
+          transform="translate(-40,-38)"/>
+  </g>
+
+  <text x="300" y="222" font-family="Helvetica Neue, Helvetica, Arial, sans-serif"
+        font-size="86" font-weight="700" fill="#FFFFFF" letter-spacing="-1">Unbent</text>
+  <text x="302" y="286" font-family="Helvetica Neue, Helvetica, Arial, sans-serif"
+        font-size="34" font-weight="400" fill="#CFE3D8">Markdown notes that stay yours</text>
+  <text x="302" y="338" font-family="Menlo, DejaVu Sans Mono, monospace"
+        font-size="25" fill="#9FC7B2">export &#8594; note.md + files/</text>
+</svg>
