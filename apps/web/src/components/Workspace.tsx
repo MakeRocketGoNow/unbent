@@ -240,6 +240,8 @@ export function Workspace({ noteId, readOnly = false, backTo = '/notes' }: Works
     await api.deleteNote(noteId);
     await queryClient.invalidateQueries({ queryKey: ['notes'] });
     void queryClient.invalidateQueries({ queryKey: ['trash'] });
+    // Invalidate search results so a deleted note disappears from any active search.
+    void queryClient.invalidateQueries({ queryKey: ['search'] });
     invalidateNoteMembership(queryClient);
     void navigate({ to: '/notes', search: (p) => p });
   }
