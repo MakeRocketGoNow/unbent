@@ -250,6 +250,39 @@ FABs and list rows and create notes nobody asked for. Read the bounds first:
 adb shell uiautomator dump /sdcard/ui.xml && adb shell cat /sdcard/ui.xml
 ```
 
+### Sample notes, and shooting the app
+
+**Check which instance the app is pointed at before creating anything.** The debug build
+stores an instance per install and it is often `https://unbent.app` — the user's real
+notes. Settings shows the address, and so does the sign-in screen's footer. Prefer a local
+instance for anything that writes.
+
+`pnpm seed:demo` creates `demo@example.com` on this checkout's dev server and fills it with
+ten presentable sample notes. It is idempotent, so re-running updates rather than
+duplicates; `--reset` clears the account's notes first, and `--url` aims it somewhere else
+on localhost. It refuses any host that is not loopback, because it signs up a password
+written down in the script. Sign-up works through `ALLOW_TEST_CREDENTIALS=1` in
+`.dev.vars` — local only, see `passwordEnabled` in `apps/api/src/auth.ts`.
+
+Point the app at that instance from Settings → Unbent address, or the sign-in screen's
+Change. Use `adb reverse tcp:<port> tcp:<port>` and the plain `http://localhost:<port>`;
+the dev servers bind loopback, so `10.0.2.2` does not always reach them, and a worktree's
+port is not 5173 (`scripts/ports.mjs`).
+
+**Switching the address signs the app out of the instance it was on.** Sessions are stored
+per origin and the old one is dropped, so a debug app that was signed into production comes
+back signed out and the user has to sign in again. Say so rather than leaving them to find
+it.
+
+Store screenshots must not show the debug name. `resValue("string", "app_name", …)` in
+`apps/android/app/build.gradle.kts` makes the debug build "Unbent (debug)"; set it to
+"Unbent" for the build you shoot, then **revert it and confirm `git diff` on that file is
+empty**. Existing assets and the full recipe are in `apps/android/store/`.
+
+`adb exec-out screencap -p > shot.png` captures without a temporary file on the device.
+`uiautomator dump` returns empty while the app is mid-animation or busy — let it settle
+rather than treating the empty file as a missing element.
+
 ## Verifying
 
 Verify UI changes in the browser and show the result — don't ask the user to check

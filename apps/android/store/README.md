@@ -38,9 +38,18 @@ listing. For the shots, `resValue("string", "app_name", …)` in `app/build.grad
 temporarily set to "Unbent", the app rebuilt and installed, and the change reverted
 afterwards. **`build.gradle.kts` is unmodified in git** — check before committing.
 
-To reproduce: point the app at a dev instance from Settings → Unbent address (see the
-README's "Pointing it at a dev server"), seed sample notes, make the same temporary rename,
-then `adb exec-out screencap -p > shot.png`.
+To reproduce:
+
+```sh
+pnpm dev                 # note the port it prints; a worktree is not on 5173
+pnpm seed:demo           # demo@example.com, ten sample notes, idempotent
+adb reverse tcp:<port> tcp:<port>
+```
+
+Point the app at `http://localhost:<port>` from Settings → Unbent address, make the same
+temporary rename, and capture with `adb exec-out screencap -p > shot.png`. Note that
+switching the address signs the app out of whatever instance it was on. The fuller version
+of all this is in `AGENTS.md` under "Sample notes, and shooting the app".
 
 ## The graphics
 
