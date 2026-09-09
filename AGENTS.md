@@ -300,9 +300,11 @@ just the upload key:
   only in the store build; every local release build works, because the upload key *is*
   registered.
 
-Both fingerprints come from Play Console → Test and release → Setup → App signing, which
-shows the App Signing and upload certificates side by side. Registering the upload key
-alone is the trap: it makes every build you can test locally work.
+Both fingerprints come from the app's App signing page in Play Console — search the console
+for "app signing" rather than following a menu path, which has moved more than once. Take
+them from the **Classical key** column; the post-quantum one beside it is a beta that
+neither the OAuth client nor Digital Asset Links accepts. Registering the upload key alone
+is the trap: it makes every build you can test locally work.
 
 ### Shipping to Play
 
