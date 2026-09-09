@@ -135,6 +135,34 @@ pnpm migrate:remote
 pnpm release
 ```
 
+### Deploying your own
+
+Everything under `[env.production]` in `apps/api/wrangler.toml` names unbent.app: the
+worker, the database, the bucket, the URL and the route. They are in the file rather than
+supplied at deploy time because CI deploys with a bare `--env production` and `APP_URL` in
+particular has to be resolvable — `auth.ts` keys secure cookies and the passkey relying
+party off it, so it cannot be a secret and cannot be absent.
+
+That makes them yours to replace rather than yours to inherit. A fork changes six things:
+
+| In `[env.production]` | Change to |
+| --- | --- |
+| `name` | your worker's name |
+| `database_name`, `database_id` | what `wrangler d1 create` printed |
+| `bucket_name` | what `wrangler r2 bucket create` printed |
+| `APP_URL` | your origin, with no trailing slash |
+| `routes.pattern` | the hostname you serve from |
+
+Nothing here works by accident if you miss one: a deploy against another account's
+database id fails on permissions, and a wrong `APP_URL` breaks sign-in on the first
+request. `[env.dev]` and `[env.preview]` name the same deployment again and are only worth
+setting up if you want the dev instance and PR previews — see
+[the dev instance](#the-dev-instance).
+
+The one thing that *would* work by accident is who the legal documents name — a fork that
+changed none of the above would still publish somebody else's legal entity. That is why it
+is configured outside this file entirely, as the next section describes.
+
 ### Who runs this instance
 
 The privacy policy, the terms and the "how to delete your account" page name a legal entity

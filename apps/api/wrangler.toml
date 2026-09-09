@@ -68,6 +68,10 @@ name = "unbent-api"
 [[env.production.d1_databases]]
 binding = "DB"
 database_name = "unbent"
+# unbent.app's own database. A fork replaces this — `wrangler d1 create` prints the id, and
+# a deploy against somebody else's id fails on permissions rather than doing damage. Same
+# for the bucket, the worker `name`, `APP_URL` and the route below: everything in this
+# environment names one deployment, and the README's "Deploying your own" lists the set.
 database_id = "40559d4d-f327-45d0-99f6-0e560b32200c"
 migrations_dir = "migrations"
 
