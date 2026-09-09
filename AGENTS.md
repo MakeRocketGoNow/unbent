@@ -304,6 +304,20 @@ Both fingerprints come from Play Console → Test and release → Setup → App 
 shows the App Signing and upload certificates side by side. Registering the upload key
 alone is the trap: it makes every build you can test locally work.
 
+### Shipping to Play
+
+Pushes to `main` build a signed bundle and upload it to the closed testing track as a
+**draft** — it appears in Play Console and passes Play's checks, but nobody receives it
+until a person promotes it. Making testers get it automatically is a one-word change
+(`status: completed` in `.github/workflows/android.yml`).
+
+Never build a bundle by hand for Play. A local build gets `versionCode = 1`, which Play
+rejects as a duplicate; CI takes the run number, which is unique and always rising.
+
+The publish needs `PLAY_SERVICE_ACCOUNT_JSON` alongside the keystore secrets, and skips
+cleanly without it. Play also requires **one bundle uploaded by hand** before the API will
+accept any — a brand new app or a renamed `applicationId` has to be primed that way once.
+
 ## Verifying
 
 Verify UI changes in the browser and show the result — don't ask the user to check

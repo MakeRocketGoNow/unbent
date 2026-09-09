@@ -69,3 +69,58 @@ jobs:
             apps/android/app/build/outputs/bundle/release/*.aab
             apps/android/app/build/outputs/apk/release/*.apk
           if-no-files-found: error
+
+      # Straight to the closed testing track, because the step this replaces was a person
+      # downloading the artifact above and uploading that same file by hand.
+      #
+      # Gated on the service account the same way signing is gated on the keystore: a fork,
+      # or this repo before the secret exists, still builds and uploads the artifact. It is
+      # also gated on the keystore, because an unsigned bundle is not something Play can
+      # take — without that check a missing keystore secret would fail here instead of
+      # skipping, which reads as a broken publish rather than a build nobody asked to ship.
+      #
+      # `status: draft` stops short of releasing to testers. The bundle appears in the
+      # track and Play runs its checks, but a person still presses the button — which is
+      # the right default for something triggered by every push to main. Change it to
+      # `completed` to have testers get the build without asking.
+      # `secrets` cannot be read in an `if:`, and a step that pulls in an action cannot
+      # carry the `env:` that the signing step uses to smuggle one in — so presence is
+      # decided once, here, and the publish reads the output.
+      - name: Can this run publish?
+        id: publishable
+        if: github.event_name != 'pull_request'
+        env:
+          KEYSTORE: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          PLAY_SERVICE_ACCOUNT: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+        # Both, not either: the service account says where to publish, and the keystore is
+        # what makes a bundle Play will accept. Without the keystore check a missing signing
+        # secret would fail in the upload rather than skipping, which reads as a broken
+        # publish rather than a build nobody asked to ship.
+        run: |
+          if [ -n "$KEYSTORE" ] && [ -n "$PLAY_SERVICE_ACCOUNT" ]; then
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "No Play service account or no keystore — skipping publish." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      # Straight to the testing track, because the step this replaces was a person
+      # downloading the artifact above and uploading that same file by hand.
+      #
+      # `status: draft` stops short of releasing to testers: the bundle appears in the
+      # track and Play runs its checks, but a person still presses the button. That is the
+      # right default for something every push to main triggers. Change it to `completed`
+      # to have testers get the build without anyone asking.
+      #
+      # `alpha` is the API's name for the default closed testing track — "closed" is not a
+      # track name, and a custom closed track is referenced by the name it was given in
+      # Play Console. Change this if the track being shipped to is not the default one.
+      - name: Publish to Play closed testing
+        if: steps.publishable.outputs.ready == 'true'
+        uses: r0adkll/upload-google-play@v1
+        with:
+          serviceAccountJsonPlainText: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+          packageName: com.makerocketgonow.unbent
+          releaseFiles: apps/android/app/build/outputs/bundle/release/*.aab
+          track: alpha
+          status: draft
