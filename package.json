@@ -20,6 +20,7 @@
     "migrate:local": "pnpm --filter @unbent/api migrate:local",
     "migrate:remote": "pnpm --filter @unbent/api migrate:remote",
     "migrate:dev": "pnpm --filter @unbent/api migrate:dev",
+    "seed:demo": "node scripts/seed-demo.mjs",
     "release": "pnpm build && pnpm --filter @unbent/web sourcemaps && pnpm --filter @unbent/api release"
   },
   "devDependencies": {

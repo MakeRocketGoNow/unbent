@@ -38,6 +38,8 @@ export function TrashLayout({ children }: { children: React.ReactNode }) {
   async function afterRemoval(id: string) {
     await queryClient.invalidateQueries({ queryKey: ['trash'] });
     void queryClient.invalidateQueries({ queryKey: ['notes'] });
+    // Restoring adds a note back to search results; destroying removes one that was there.
+    void queryClient.invalidateQueries({ queryKey: ['search'] });
     // Restoring files a note back into its notebook and tags; destroying it takes those
     // counts down for good. Both move the sidebar.
     invalidateNoteMembership(queryClient);
