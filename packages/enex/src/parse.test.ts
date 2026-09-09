@@ -1,3 +1,4 @@
+import { filenameSchema } from '@unbent/shared';
 import { describe, expect, it } from 'vitest';
 import {
   fallbackFilename,
@@ -122,6 +123,79 @@ describe('resourceFilename', () => {
   it('falls back to the md5 name when there is no file-name at all', () => {
     expect(resourceFilename('', MD5, 'application/pdf')).toBe('aaaaaaaaaaaa.pdf');
     expect(resourceFilename('   ', MD5, 'image/png')).toBe('aaaaaaaaaaaa.png');
+  });
+
+  /**
+   * These three are the notes a full import of the real export actually failed on, each
+   * with a 400 the upload was right to return and the parser wrong to provoke.
+   */
+  describe('names the upload would reject', () => {
+    it('replaces the separators in a label written as a path', () => {
+      expect(
+        resourceFilename('Special Characters and Symbols for HTML, CSS and JS / ASCII / Unicode', MD5, 'application/pdf'),
+      ).toBe('Special Characters and Symbols for HTML, CSS and JS - ASCII - Unicode.pdf');
+    });
+
+    it('replaces a backslash too, and does not let one collapse into a neighbour', () => {
+      expect(resourceFilename('a\\b/c', MD5, 'image/png')).toBe('a-b-c.png');
+    });
+
+    it('keeps the extension when truncating an over-long label', () => {
+      const long = 'x'.repeat(900);
+      const out = resourceFilename(long, MD5, 'application/pdf');
+      expect(out.length).toBeLessThanOrEqual(768);
+      expect(out.endsWith('.pdf')).toBe(true);
+    });
+
+    it('truncates even when the label brought its own extension', () => {
+      const out = resourceFilename(`${'x'.repeat(900)}.pdf`, MD5, 'application/pdf');
+      expect(out.length).toBeLessThanOrEqual(768);
+    });
+
+    it('does not split a surrogate pair when truncating', () => {
+      const LONE_SURROGATE =
+        /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/;
+      // An odd-length run before the emoji puts the cut between the halves of a pair.
+      for (const pad of [0, 1, 2, 3]) {
+        const out = resourceFilename(
+          'a'.repeat(pad) + '\u{1F600}'.repeat(500),
+          MD5,
+          'application/pdf',
+        );
+        expect(LONE_SURROGATE.test(out), `pad=${pad}`).toBe(false);
+        expect(out.length).toBeLessThanOrEqual(768);
+      }
+    });
+
+    it('drops a leading dot, which filenameSchema reserves', () => {
+      expect(resourceFilename('.hidden', MD5, 'application/pdf')).toBe('hidden.pdf');
+    });
+
+    it('falls back when sanitizing leaves nothing behind', () => {
+      expect(resourceFilename('/', MD5, 'image/png')).toBe('aaaaaaaaaaaa.png');
+      expect(resourceFilename('...', MD5, 'image/png')).toBe('aaaaaaaaaaaa.png');
+    });
+  });
+
+  /**
+   * Every name this function can emit must satisfy the schema the upload applies, since a
+   * name that fails there costs the note its attachment. This is also the guard on the
+   * limit being duplicated in parse.ts: raising one without the other fails here.
+   */
+  it('emits names filenameSchema accepts', () => {
+    const cases = [
+      'Special Characters and Symbols for HTML, CSS and JS / ASCII / Unicode',
+      'Athletic Greens Jar, Scoop, and Shaker',
+      'x'.repeat(900),
+      `${'\u00e9'.repeat(900)}.pdf`,
+      '.hidden',
+      'Lease Summary - DRAFT DRAFT ',
+      'a\\b/c',
+    ];
+    for (const c of cases) {
+      const out = resourceFilename(c, MD5, 'application/pdf');
+      expect(filenameSchema.safeParse(out).success, `rejected: ${out.slice(0, 60)}`).toBe(true);
+    }
   });
 });
 

@@ -39,6 +39,15 @@ const MIME_EXT: Record<string, string> = {
   'text/html': 'html',
 };
 
+/**
+ * Mirrors `MAX_FILENAME_LENGTH` in `@unbent/shared`, which is what the upload enforces.
+ *
+ * Copied rather than imported: this package parses ENEX with no knowledge of the server it
+ * feeds, and one number is not worth a dependency edge onto the API's schemas. Truncating
+ * to a larger value than the server accepts would only move the 400, so the two must agree.
+ */
+const MAX_FILENAME_LENGTH = 768;
+
 export function fallbackFilename(md5: string, mime: string): string {
   return `${md5.slice(0, 12)}.${MIME_EXT[mime] ?? 'bin'}`;
 }
@@ -58,16 +67,57 @@ export function fallbackFilename(md5: string, mime: string): string {
  * An existing extension is left alone even when it disagrees with the mime: renaming
  * `receipt.jpeg` to `receipt.jpg` would churn names for nothing, and a genuine mismatch is
  * the exporter's claim to make, not ours to correct.
+ *
+ * Being a label and not a path, it may also hold characters a filename cannot: a real
+ * export has one named `Special Characters and Symbols for HTML, CSS and JS / ASCII /
+ * Unicode`. Separators are replaced rather than stripped so the words stay readable and
+ * two labels differing only there cannot collide, a leading dot is dropped because
+ * `filenameSchema` reserves it, and an over-long label is truncated with its extension
+ * kept — the extension is what the preview and the export dispatch on. Sanitizing here
+ * rather than letting the upload 400 keeps a cosmetic quirk of the label from costing the
+ * note its attachment.
  */
 export function resourceFilename(declared: string, md5: string, mime: string): string {
-  const name = declared.trim();
-  if (name === '') return fallbackFilename(md5, mime);
+  const name = sanitizeLabel(declared);
+  // A label that was only separators or dots sanitizes to nothing worth keeping; `-.png`
+  // is no more useful than the empty name the fallback already covers.
+  if (!/[\p{L}\p{N}]/u.test(name)) return fallbackFilename(md5, mime);
 
   const ext = MIME_EXT[mime];
-  if (!ext) return name;
+  if (!ext) return truncate(name, '');
   // A trailing dot is not an extension; `Rev.` should become `Rev..pdf`, not stay as-is.
-  if (/\.[a-z0-9]+$/i.test(name)) return name;
-  return `${name}.${ext}`;
+  if (/\.[a-z0-9]+$/i.test(name)) return truncate(name, '');
+  return truncate(name, `.${ext}`);
+}
+
+/** Strips what a filename may not carry, leaving the label as legible as it started. */
+function sanitizeLabel(declared: string): string {
+  return declared
+    .replace(/[/\\]/g, '-')
+    // Control characters survive neither an R2 key nor a filesystem.
+    // eslint-disable-next-line no-control-regex
+    .replace(/[\x00-\x1f\x7f]/g, '')
+    .trim()
+    .replace(/^[.\-]+/, '')
+    .trim();
+}
+
+/**
+ * Fits `name + ext` inside the filename limit, keeping the extension.
+ *
+ * Measured in UTF-16 code units because that is what `filenameSchema` counts; the limit
+ * itself is sized so this stays inside R2's byte cap for multi-byte names.
+ *
+ * The cut is taken on a code point rather than a code unit: slicing an emoji filename mid
+ * surrogate pair leaves a lone surrogate, which is not a well-formed string and would be
+ * written into the R2 key as a replacement character.
+ */
+function truncate(name: string, ext: string): string {
+  if (name.length + ext.length <= MAX_FILENAME_LENGTH) return `${name}${ext}`;
+  let stem = name.slice(0, MAX_FILENAME_LENGTH - ext.length);
+  // Slicing between the halves of a pair leaves a high surrogate at the end; drop it.
+  if (/[\uD800-\uDBFF]$/.test(stem)) stem = stem.slice(0, -1);
+  return `${stem.trimEnd()}${ext}`;
 }
 
 interface PendingResource {
