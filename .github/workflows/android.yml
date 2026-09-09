@@ -25,6 +25,11 @@ jobs:
     # remembered or bumped by hand. See `versionCode` in app/build.gradle.kts.
     env:
       UNBENT_VERSION_CODE: ${{ github.run_number }}
+      # Without this the release build compiles a client id of "", which disables the
+      # native account sheet silently — `isConfigured` sends the user to the browser
+      # instead, and nothing in the build says the button was dropped. A fork without the
+      # secret still builds; it just gets the browser path.
+      UNBENT_GOOGLE_WEB_CLIENT_ID: ${{ secrets.GOOGLE_WEB_CLIENT_ID }}
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-java@v6
