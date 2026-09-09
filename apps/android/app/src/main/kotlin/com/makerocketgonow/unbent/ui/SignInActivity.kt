@@ -154,7 +154,9 @@ class SignInActivity : ComponentActivity() {
                     // Dismissing the sheet is a choice, so say nothing and leave the other
                     // methods where they were.
                     GoogleAuth.wasCancelled(e) -> null
-                    // The one cause with a fix the user can carry out, so it gets its own words.
+                    // The cause most likely to have a fix the user can carry out, so it gets
+                    // its own words — which suggest rather than assert, since NO_CREDENTIAL
+                    // also covers failures that are ours. See GoogleAuth.hasNoAccount.
                     GoogleAuth.hasNoAccount(e) -> getString(R.string.sign_in_google_no_account)
                     // Anything the server explained gets the server's own words: "this instance
                     // is not open for sign-ups" sends someone to retry a button that will refuse

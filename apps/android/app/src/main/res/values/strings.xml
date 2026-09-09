@@ -23,12 +23,15 @@
     -->
     <string name="sign_in_browser_social">Continue in a browser</string>
     <!--
-      Separate from the generic failure because it is the only Google problem the person
-      holding the phone can fix, and it names the fix. Every other cause — no network, Play
-      Services out of date, a client id the server will not accept — is not something to
-      send someone into Settings for.
+      Separate from the generic failure because adding an account is a fix the person
+      holding the phone can carry out. It suggests rather than asserts, because the
+      framework reports NO_CREDENTIAL for causes that have nothing to do with the accounts
+      on the device: a build whose signing certificate is not on the OAuth client — which
+      is every Play-signed install until the App Signing key is registered — fails exactly
+      this way on a phone with an account signed in. Telling that user a fact about their
+      phone that they can see is false sends them into Settings to fix nothing.
     -->
-    <string name="sign_in_google_no_account">This phone has no Google account. Add one in Settings, or use another way in.</string>
+    <string name="sign_in_google_no_account">Google had no account to offer. Check that a Google account is added in Settings, or use another way in.</string>
     <string name="sign_in_google_failed">Google sign-in did not work. Try another way in.</string>
     <string name="sign_in_failed">Sign-in did not work.</string>
     <string name="sign_in_waiting">Signing in…</string>

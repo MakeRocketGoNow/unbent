@@ -117,11 +117,15 @@ class GoogleAuth(
             e is GetCredentialException && e.type.contains("USER_CANCELED", ignoreCase = true)
 
         /**
-         * True when the device has no Google account to offer.
+         * True when Google had no credential to offer.
          *
-         * Worth separating from every other failure because it is the only one the person
-         * holding the phone can act on, and "add an account in Settings" is useless advice
-         * for any of the others.
+         * Not the same as "the device has no Google account", though that is the common
+         * cause. Google answers NO_CREDENTIAL for anything that leaves it unwilling to
+         * produce a token, including a signing certificate the OAuth client does not know —
+         * so a Play-signed build fails this way on a phone with an account signed in until
+         * the Play App Signing key's SHA-1 is registered alongside the upload key's. The
+         * wording this maps to suggests checking Settings rather than asserting what is on
+         * the phone, because this cannot tell the two apart.
          *
          * Matched on the type string as well as the class: the framework reports this as a
          * plain GetCredentialException carrying TYPE_NO_CREDENTIAL in some paths rather than
