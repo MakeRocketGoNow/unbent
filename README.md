@@ -152,11 +152,6 @@ names a company with no way to reach it is worse than one admitting there is non
 external URLs win over the built-in documents when both are set — an operator who published
 their own is the one to believe.
 
-Unset is deliberate rather than unfinished. These documents used to name one company from a
-constant in the source, so every copy of this repository published `CDeutsch Consulting LLC`
-on somebody else's domain — a legal claim that operator never made. Nothing is inferred now,
-and an instance that has not said stays silent.
-
 Two things in the built-in documents are not configurable: they say the service is hosted in
 the United States, and that Minnesota law governs the terms. Both are facts about a
 jurisdiction rather than a name to substitute, and a variable holding "Minnesota" would
@@ -166,9 +161,18 @@ and point `LEGAL_PRIVACY_URL` and `LEGAL_TERMS_URL` at them.
 The software is called Unbent throughout either way. That is this program's name, not the
 name of whoever is answerable for running it.
 
-unbent.app and dev.unbent.app set `OPERATOR_NAME` and `OPERATOR_EMAIL` in
-`apps/api/wrangler.toml`. They are vars rather than secrets because both are printed on a
-public page, so there is nothing to keep out of the repository.
+Set them per deployment rather than in `wrangler.toml`, which everyone who self-hosts
+checks out:
+
+```bash
+cd apps/api
+pnpm exec wrangler secret put OPERATOR_NAME --env production
+pnpm exec wrangler secret put OPERATOR_EMAIL --env production
+```
+
+Neither value is confidential — both are printed on a public page — so a plain environment
+variable in the Cloudflare dashboard does just as well. What matters is only that they stay
+out of the file a fork inherits.
 
 ### Page statistics
 
