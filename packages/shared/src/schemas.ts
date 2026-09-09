@@ -121,6 +121,39 @@ export interface AppConfig {
    * honest reading of its absence is "not offered".
    */
   accountDeletion?: boolean;
+  /**
+   * Who runs this instance, for the built-in legal documents to name.
+   *
+   * There is deliberately no default. The documents used to name one operator from a
+   * constant, which meant a self-hosted copy published somebody else's legal entity on its
+   * own domain — a claim that operator never made and cannot stand behind. Absent means
+   * nobody has said, and the documents say so rather than guessing.
+   *
+   * `host` comes from the server's `APP_URL` rather than from `location`, because the
+   * address a document gives for the site should be the one its operator configured, not
+   * whichever hostname a WebView or a Tailscale name happens to arrive on.
+   */
+  operator?: { name: string; email: string; host: string };
+  /**
+   * Where the privacy policy and terms are: absolute URLs when they are hosted elsewhere,
+   * `/privacy` and `/terms` for the built-in ones.
+   *
+   * Absent means this instance publishes neither, and nothing links to them anywhere — a
+   * link to a page that says "nothing here" is worse than no link at all.
+   */
+  legal?: { privacy: string; terms: string };
+  /**
+   * The error-tracking service this instance reports browser crashes to, if it has one.
+   *
+   * Absent means the SDK is never downloaded — it is imported dynamically on the strength
+   * of this field, so an instance without it pays nothing for the feature and its privacy
+   * policy does not mention it.
+   *
+   * `key` is the project's public write-only token, which is meant to ship in a page.
+   * `uiHost` is where the service's own app lives, which the SDK needs told separately
+   * because its API traffic is proxied through this Worker rather than sent direct.
+   */
+  posthog?: { key: string; uiHost: string };
 }
 
 export const noteIdSchema = z.string().uuid();

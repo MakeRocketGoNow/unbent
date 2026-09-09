@@ -1,5 +1,10 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { reportError, installErrorReporting, resetErrorReporting } from './report-error.js';
+import {
+  addErrorSink,
+  reportError,
+  installErrorReporting,
+  resetErrorReporting,
+} from './report-error.js';
 
 /**
  * The reporter's failure modes, which are all worse than the errors it reports.
@@ -122,5 +127,82 @@ describe('installErrorReporting', () => {
 
     add.mockRestore();
     remove.mockRestore();
+  });
+});
+
+/**
+ * A second destination, for an instance that runs an error-tracking service alongside the
+ * Worker's log. What matters is that adding one changes nothing about the three rules: the
+ * cap and the duplicate filter still bound the whole thing, and a sink that misbehaves is
+ * contained rather than allowed to take the reporter down with it.
+ */
+describe('addErrorSink', () => {
+  let fetchMock: ReturnType<typeof vi.fn>;
+
+  beforeEach(() => {
+    resetErrorReporting();
+    fetchMock = vi.fn(() => Promise.resolve(new Response(null, { status: 204 })));
+    vi.stubGlobal('fetch', fetchMock);
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('hands the sink the thrown value alongside the report, and still posts', () => {
+    const sink = vi.fn();
+    addErrorSink(sink);
+    const err = new Error('boom');
+
+    reportError(err, 'error');
+
+    expect(sink).toHaveBeenCalledTimes(1);
+    expect(sink).toHaveBeenCalledWith(
+      expect.objectContaining({ value: err, message: 'boom', kind: 'error' }),
+    );
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  /* The cap is on reports, not on destinations: a render loop is five in total. */
+  it('stays behind the duplicate filter and the cap', () => {
+    const sink = vi.fn();
+    addErrorSink(sink);
+
+    for (let i = 0; i < 50; i++) reportError(new Error('same'), 'error');
+    expect(sink).toHaveBeenCalledTimes(1);
+
+    for (let i = 0; i < 50; i++) reportError(new Error(`different ${i}`), 'error');
+    expect(sink).toHaveBeenCalledTimes(5);
+  });
+
+  it('contains a sink that throws, so the others and the send still run', () => {
+    addErrorSink(() => {
+      throw new Error('sink is broken');
+    });
+    const second = vi.fn();
+    addErrorSink(second);
+
+    expect(() => reportError(new Error('boom'), 'error')).not.toThrow();
+    expect(second).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('stops calling a sink once it is torn down', () => {
+    const sink = vi.fn();
+    const remove = addErrorSink(sink);
+    remove();
+
+    reportError(new Error('boom'), 'error');
+    expect(sink).not.toHaveBeenCalled();
+  });
+
+  /* `value` is for a sink that can parse an Error; the endpoint's schema is strict and
+     would refuse it as an unknown key. */
+  it('keeps the thrown value out of what is posted', () => {
+    addErrorSink(vi.fn());
+    reportError(new Error('boom'), 'error');
+
+    const body = JSON.parse((fetchMock.mock.calls[0]?.[1] as RequestInit).body as string);
+    expect(Object.keys(body).sort()).toEqual(['kind', 'message', 'route', 'stack']);
   });
 });

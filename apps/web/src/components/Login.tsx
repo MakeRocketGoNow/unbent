@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useState, type FormEvent, type JSX } from 'react';
-import { Link, useNavigate } from '@tanstack/react-router';
+import { useNavigate } from '@tanstack/react-router';
 import { useQuery } from '@tanstack/react-query';
 import { isLocalMethod, type AuthProvider } from '@unbent/shared';
 import {
@@ -11,6 +11,7 @@ import {
 } from '../auth-client.js';
 import { configQuery } from '../queries.js';
 import { Button } from './Button.js';
+import { LegalLink } from './LegalLink.js';
 import { ProviderIcon } from './provider-icons.js';
 
 /**
@@ -66,6 +67,8 @@ export interface LoginProps {
  */
 export function Login({ redirectTo }: LoginProps) {
   const config = useQuery(configQuery());
+  // Absent on an instance that publishes neither document; see the consent line below.
+  const legal = config.data?.legal;
   const [pending, setPending] = useState<AuthProvider | null>(null);
   const [error, setError] = useState<string | null>(null);
   // Through the router rather than `window.location`, which `url-boundary.test.ts` forbids
@@ -258,11 +261,18 @@ export function Login({ redirectTo }: LoginProps) {
 
       {/* Under the card rather than beside the button: this is the moment consent is
           given, and it is also the only route to these pages for someone who has no
-          account and cannot reach the account menu. */}
-      <p className="login-legal">
-        By continuing you agree to the <Link to="/terms">Terms</Link> and{' '}
-        <Link to="/privacy">Privacy Policy</Link>.
-      </p>
+          account and cannot reach the account menu.
+
+          The whole line goes when the instance publishes neither document, rather than
+          losing its links and leaving "By continuing you agree to the Terms and Privacy
+          Policy" as unlinked text. That sentence is a claim about documents a reader can
+          go and read; without them it asks people to agree to nothing they can see. */}
+      {legal && (
+        <p className="login-legal">
+          By continuing you agree to the <LegalLink href={legal.terms}>Terms</LegalLink> and{' '}
+          <LegalLink href={legal.privacy}>Privacy Policy</LegalLink>.
+        </p>
+      )}
     </div>
   );
 }

@@ -9,6 +9,7 @@
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
+    "sourcemaps": "scripts/sourcemaps.sh",
     "test": "vitest run"
   },
   "dependencies": {
@@ -30,6 +31,7 @@
     "codemirror": "^6.0.2",
     "hono": "^4.13.7",
     "pdfjs-dist": "^6.3.289",
+    "posthog-js": "^1.428.7",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
     "rehype-sanitize": "^6.0.0",
@@ -42,6 +44,7 @@
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^5.20260905.1",
+    "@posthog/cli": "^0.18.1",
     "@tanstack/router-plugin": "^1.168.35",
     "@testing-library/react": "^16.3.3",
     "@types/react": "^19.2.18",

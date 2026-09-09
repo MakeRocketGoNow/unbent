@@ -135,6 +135,73 @@ pnpm migrate:remote
 pnpm release
 ```
 
+### Deploying your own
+
+Everything under `[env.production]` in `apps/api/wrangler.toml` names unbent.app: the
+worker, the database, the bucket, the URL and the route. They are in the file rather than
+supplied at deploy time because CI deploys with a bare `--env production` and `APP_URL` in
+particular has to be resolvable — `auth.ts` keys secure cookies and the passkey relying
+party off it, so it cannot be a secret and cannot be absent.
+
+That makes them yours to replace rather than yours to inherit. A fork changes six things:
+
+| In `[env.production]` | Change to |
+| --- | --- |
+| `name` | your worker's name |
+| `database_name`, `database_id` | what `wrangler d1 create` printed |
+| `bucket_name` | what `wrangler r2 bucket create` printed |
+| `APP_URL` | your origin, with no trailing slash |
+| `routes.pattern` | the hostname you serve from |
+
+Nothing here works by accident if you miss one: a deploy against another account's
+database id fails on permissions, and a wrong `APP_URL` breaks sign-in on the first
+request. `[env.dev]` and `[env.preview]` name the same deployment again and are only worth
+setting up if you want the dev instance and PR previews — see
+[the dev instance](#the-dev-instance).
+
+The one thing that *would* work by accident is who the legal documents name — a fork that
+changed none of the above would still publish somebody else's legal entity. That is why it
+is configured outside this file entirely, as the next section describes.
+
+### Who runs this instance
+
+The privacy policy, the terms and the "how to delete your account" page name a legal entity
+and give an address to write to. Four variables decide what they say, and a fresh checkout
+sets none of them.
+
+| Set | `/privacy` and `/terms` | Sign-in screen and account menu |
+| --- | --- | --- |
+| `OPERATOR_NAME` + `OPERATOR_EMAIL` | the built-in documents, filled in | link to them |
+| `LEGAL_PRIVACY_URL` + `LEGAL_TERMS_URL` | a sentence naming where they are, and a link | link straight there |
+| nothing | "this instance has not published a privacy policy" | no consent line, no menu items |
+
+Each pair is both-or-nothing, the same convention as an OAuth credential pair: a policy that
+names a company with no way to reach it is worse than one admitting there is none here. The
+external URLs win over the built-in documents when both are set — an operator who published
+their own is the one to believe.
+
+Two things in the built-in documents are not configurable: they say the service is hosted in
+the United States, and that Minnesota law governs the terms. Both are facts about a
+jurisdiction rather than a name to substitute, and a variable holding "Minnesota" would
+produce a governing-law clause nobody had read. If either is wrong for you, write your own
+and point `LEGAL_PRIVACY_URL` and `LEGAL_TERMS_URL` at them.
+
+The software is called Unbent throughout either way. That is this program's name, not the
+name of whoever is answerable for running it.
+
+Set them per deployment rather than in `wrangler.toml`, which everyone who self-hosts
+checks out:
+
+```bash
+cd apps/api
+pnpm exec wrangler secret put OPERATOR_NAME --env production
+pnpm exec wrangler secret put OPERATOR_EMAIL --env production
+```
+
+Neither value is confidential — both are printed on a public page — so a plain environment
+variable in the Cloudflare dashboard does just as well. What matters is only that they stay
+out of the file a fork inherits.
+
 ### Page statistics
 
 Cloudflare Web Analytics, which is free, sets no cookie and assigns no identifier — the
@@ -170,14 +237,61 @@ JavaScript failure is invisible to Play's crash reporting: the process never die
 Android nothing happened. The logged `userAgent` is what separates "broken everywhere" from
 "broken only in the app", which is the first question these reports raise.
 
-Deliberately not Crashlytics or Sentry. Either would do this better, and either would put
-another company in the privacy policy for something the logs we already pay for can cover.
-Worth revisiting if the three-day window or the missing aggregation starts costing real
-time — that is the signal to reconsider, not the volume of reports.
-
 Nothing about it needs configuring, and there is no note content in a report: the route is
 logged with note ids replaced, and the query string is dropped. See
 `apps/web/src/report-error.ts`.
+
+#### Grouping them, optionally
+
+Three days and no aggregation is thin, which was said here when the endpoint was written:
+Crashlytics or Sentry would do it better, and the reason for neither was that it would put
+another company in the privacy policy of every instance for something the logs already
+cover. The signal to reconsider was the missing grouping costing real time, and it did.
+
+What changed is not the judgement but who pays for it. `POSTHOG_KEY` adds PostHog as a
+second destination on the instance that sets it, and on no other: the SDK is imported
+dynamically, so an instance without a key never downloads it, and the privacy policy is
+built from the same config, so its policy does not mention a service it never contacts. The
+first-party log stays unconditional either way — it is the one destination that works with
+nothing configured, and an error thrown before anything else has loaded is already in it.
+
+Errors only. Page views stay with the hosting provider above, which sets no cookie and
+assigns no identifier; moving them here would trade that for a worse answer. Every capture
+path is off in `init` and off again in `before_send`, so a default that changes in some
+future version cannot quietly turn this into a tracker. No session recording in particular:
+a recording of this app is a recording of somebody's notes.
+
+```bash
+cd apps/api
+pnpm exec wrangler secret put POSTHOG_KEY --env production
+```
+
+The token is public and write-only — it ships in the page — and is a secret here only to
+keep one fewer credential in a repository people fork. `POSTHOG_HOST` sets the region;
+unset means PostHog's US cloud, and the hosts the SDK needs are derived from it.
+
+Two things to set in the PostHog project, neither of which this repository can do for you:
+
+- **Cookieless server hash mode**, under Project settings → Web analytics. `cookieless_mode`
+  needs it; with it off, events are dropped server-side and nothing in the browser says so.
+- **Discard client IP data**, if you want it. Worth checking against the cookieless hash,
+  which is computed from the address at ingestion — confirm in the UI that the two coexist
+  before relying on both, and say what is true in the policy either way.
+
+Reports travel through `/ingest/*` on this origin rather than to `posthog.com`, because a
+request to that host is on every blocklist there is and the people running a blocker are
+disproportionately the ones whose bug reports are worth the most. See
+`apps/api/src/routes/ingest.ts`, and note that the path needs its `run_worker_first` entry
+in every environment or the SPA fallback answers it with `index.html`.
+
+Source maps are uploaded on release, without which every stack reads
+`index-CDkkheec.js:1:48213`. That needs `POSTHOG_CLI_API_KEY` and `POSTHOG_CLI_PROJECT_ID`
+as GitHub secrets — or exported locally before `pnpm release` — and is skipped silently
+when they are absent.
+
+The free tier is 100,000 exceptions a month and stops rather than bills. The reporter's own
+cap of five per page load is what keeps a bad deploy inside that: a render loop is five
+reports, not five thousand.
 
 `release` rather than `deploy` because `deploy` is a built-in pnpm command and shadows any
 script of that name. The first deploy has to happen here, before the secrets below: they
@@ -201,6 +315,7 @@ pnpm exec wrangler secret put ALLOWED_EMAILS --env production       # comma-sepa
 pnpm exec wrangler secret put RESEND_API_KEY --env production       # password reset mail
 pnpm exec wrangler secret put EMAIL_FROM --env production           # verified sender
 pnpm exec wrangler secret put EMAIL_REPLY_TO --env production       # optional, a real mailbox
+pnpm exec wrangler secret put POSTHOG_KEY --env production          # optional, error tracking
 ```
 
 `RESEND_API_KEY` and `EMAIL_FROM` are what make password reset work. Without both, a reset

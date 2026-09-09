@@ -48,6 +48,10 @@ run_worker_first = [
   "/.well-known/oauth-authorization-server*",
   "/.well-known/oauth-protected-resource*",
   "/.well-known/openid-configuration*",
+  # PostHog's traffic, proxied so a content blocker does not drop it. Listed
+  # unconditionally because this file cannot see POSTHOG_KEY; the route answers 404 on an
+  # instance that has none, which is a truthful answer the SPA fallback could not give.
+  "/ingest/*",
 ]
 
 # Production.
@@ -64,6 +68,10 @@ name = "unbent-api"
 [[env.production.d1_databases]]
 binding = "DB"
 database_name = "unbent"
+# unbent.app's own database. A fork replaces this — `wrangler d1 create` prints the id, and
+# a deploy against somebody else's id fails on permissions rather than doing damage. Same
+# for the bucket, the worker `name`, `APP_URL` and the route below: everything in this
+# environment names one deployment, and the README's "Deploying your own" lists the set.
 database_id = "40559d4d-f327-45d0-99f6-0e560b32200c"
 migrations_dir = "migrations"
 
@@ -73,6 +81,12 @@ bucket_name = "unbent-blobs"
 
 [env.production.vars]
 APP_URL = "https://unbent.app"
+
+# OPERATOR_NAME and OPERATOR_EMAIL are deliberately not here. They name the legal entity
+# the built-in privacy policy and terms are published under, and this file is checked out
+# by everyone who self-hosts — committing them would have every fork publishing somebody
+# else's legal claims on its own domain, which is the thing they exist to prevent. Set them
+# per deployment instead, with `wrangler secret put` or in the dashboard. See the README.
 
 # The apex serves both the SPA and /api, keeping them same-origin in production exactly as
 # they are in dev. `custom_domain` makes Cloudflare create and manage the DNS record and
@@ -93,6 +107,10 @@ run_worker_first = [
   "/.well-known/oauth-authorization-server*",
   "/.well-known/oauth-protected-resource*",
   "/.well-known/openid-configuration*",
+  # PostHog's traffic, proxied so a content blocker does not drop it. Listed
+  # unconditionally because this file cannot see POSTHOG_KEY; the route answers 404 on an
+  # instance that has none, which is a truthful answer the SPA fallback could not give.
+  "/ingest/*",
 ]
 
 [env.production.observability]
@@ -169,6 +187,10 @@ run_worker_first = [
   "/.well-known/oauth-authorization-server*",
   "/.well-known/oauth-protected-resource*",
   "/.well-known/openid-configuration*",
+  # PostHog's traffic, proxied so a content blocker does not drop it. Listed
+  # unconditionally because this file cannot see POSTHOG_KEY; the route answers 404 on an
+  # instance that has none, which is a truthful answer the SPA fallback could not give.
+  "/ingest/*",
 ]
 
 [env.preview.observability]
@@ -238,6 +260,10 @@ run_worker_first = [
   "/.well-known/oauth-authorization-server*",
   "/.well-known/oauth-protected-resource*",
   "/.well-known/openid-configuration*",
+  # PostHog's traffic, proxied so a content blocker does not drop it. Listed
+  # unconditionally because this file cannot see POSTHOG_KEY; the route answers 404 on an
+  # instance that has none, which is a truthful answer the SPA fallback could not give.
+  "/ingest/*",
 ]
 
 [env.dev.observability]

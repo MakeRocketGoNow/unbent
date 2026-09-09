@@ -5,6 +5,7 @@ import { sessionMiddleware } from './lib/session.js';
 import { health } from './routes/health.js';
 import { authRoutes } from './routes/auth.js';
 import { wellKnown } from './routes/well-known.js';
+import { ingest } from './routes/ingest.js';
 import { notes } from './routes/notes.js';
 import { notebooks } from './routes/notebooks.js';
 import { exportRoutes } from './routes/export.js';
@@ -37,6 +38,12 @@ const routes = app
    * wrangler.toml without which these paths never reach this Worker at all.
    */
   .route('/', wellKnown)
+  /**
+   * PostHog's traffic, forwarded so a content blocker does not drop it. At the root for the
+   * same reason as the block above — the SDK is pointed at a path, not at /api — and with
+   * the same requirement of a matching `run_worker_first` entry in wrangler.toml.
+   */
+  .route('/', ingest)
   .route('/api', health)
   .route('/api', authRoutes)
   .route('/api', notes)

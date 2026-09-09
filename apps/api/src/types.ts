@@ -70,6 +70,47 @@ export interface Env {
    * Optional Reply-To, for when the sending domain is not a mailbox. See lib/email.ts.
    */
   EMAIL_REPLY_TO?: string;
+  /**
+   * Who runs this instance: the legal entity the built-in privacy policy and terms name,
+   * and the address they tell people to write to.
+   *
+   * Both or neither, the same shape as an OAuth credential pair — a policy naming a company
+   * with no way to reach it is worse than one that admits it does not exist. Unset is the
+   * deliberate default for a fresh checkout: this repository is open source, and an
+   * instance that has not said who runs it must not publish somebody else's name. See
+   * `operatorOf` in lib/instance.ts.
+   */
+  OPERATOR_NAME?: string;
+  OPERATOR_EMAIL?: string;
+  /**
+   * Legal documents hosted somewhere other than this app, for an operator whose lawyers
+   * wrote their own.
+   *
+   * Both or neither again, and when both are set they win over the built-in documents: an
+   * operator who has published their own is the one who should be believed. The built-in
+   * pages then say so and link onward rather than 404ing, because the Play listing points
+   * at one of them.
+   */
+  LEGAL_PRIVACY_URL?: string;
+  LEGAL_TERMS_URL?: string;
+  /**
+   * PostHog, for grouping the browser errors that `/api/client-errors` only ever logs.
+   *
+   * Setting the key is what turns it on: the SPA loads the SDK only when the config says
+   * so, and `/ingest/*` refuses to proxy anything without it. Unset — the default, and what
+   * every self-hosted instance gets — means no SDK, no third party, and a privacy policy
+   * that does not mention one.
+   *
+   * The token is public and write-only, so it could sit in this file; it is a secret on the
+   * hosted instance only to keep one fewer credential in a repository people will fork.
+   */
+  POSTHOG_KEY?: string;
+  /**
+   * Where the Worker forwards that traffic. Defaults to PostHog's US cloud; set it for the
+   * EU cloud or a self-hosted PostHog. The browser never sees it — it talks to `/ingest` on
+   * this origin, which is what keeps content blockers from dropping the reports.
+   */
+  POSTHOG_HOST?: string;
 }
 
 export interface SessionUser {

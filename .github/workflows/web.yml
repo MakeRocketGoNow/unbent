@@ -56,6 +56,11 @@ jobs:
     env:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      # Read by the source-map step below. At job level rather than on the step because
+      # `secrets` is not available in a step's `if`, and the step has to be skippable: a
+      # fork without these must still deploy.
+      POSTHOG_CLI_API_KEY: ${{ secrets.POSTHOG_CLI_API_KEY }}
+      POSTHOG_CLI_PROJECT_ID: ${{ secrets.POSTHOG_CLI_PROJECT_ID }}
     steps:
       - uses: actions/checkout@v7
       - uses: pnpm/action-setup@v6
@@ -65,6 +70,14 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm build
+
+      # Before either deploy, and deliberately so: this rewrites the built JS with the chunk
+      # ids PostHog matches a stack trace against, so the injected bundle has to be the one
+      # that ships. Both instances then deploy it, which is harmless for the one that has no
+      # PostHog of its own.
+      - name: Upload source maps to PostHog
+        if: env.POSTHOG_CLI_API_KEY != ''
+        run: pnpm --filter @unbent/web sourcemaps
 
       # Production first, so nothing about the scratch instance can delay the real one.
       #
