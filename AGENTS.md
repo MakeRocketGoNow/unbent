@@ -283,6 +283,27 @@ empty**. Existing assets and the full recipe are in `apps/android/store/`.
 `uiautomator dump` returns empty while the app is mid-animation or busy — let it settle
 rather than treating the empty file as a missing element.
 
+### Three keys sign this app, and Google has to know all of them
+
+Debug builds use the local debug keystore, uploads are signed with the release key in
+`~/.config/unbent`, and **Play re-signs every bundle with its own App Signing key** — so
+what users install is signed by a certificate that never existed on this machine.
+
+Anything keyed on a signing certificate therefore needs the Play key registered too, not
+just the upload key:
+
+- **`apps/web/public/.well-known/assetlinks.json`** — SHA-256, or App Links open in a
+  browser instead of the app, and passkeys stop being offered.
+- **The Android OAuth client**, in the Google Cloud console — SHA-1. When it is missing,
+  Google refuses to issue an ID token and Credential Manager reports `NO_CREDENTIAL`,
+  which is indistinguishable from a phone with no Google account. Sign-in appears broken
+  only in the store build; every local release build works, because the upload key *is*
+  registered.
+
+Both fingerprints come from Play Console → Test and release → Setup → App signing, which
+shows the App Signing and upload certificates side by side. Registering the upload key
+alone is the trap: it makes every build you can test locally work.
+
 ## Verifying
 
 Verify UI changes in the browser and show the result — don't ask the user to check
