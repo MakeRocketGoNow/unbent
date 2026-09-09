@@ -283,6 +283,13 @@ class UnbentApi(
         }
     }
 
+    /** Files already stored on a note, so a retried capture can skip ones that landed. */
+    fun listAttachments(noteId: String): List<AttachmentInfo> =
+        get<AttachmentList>(
+            "List files",
+            noteUrl(noteId).newBuilder().addPathSegment("files").build(),
+        ).files
+
     /**
      * Streams one file to a note and asks the server to link it into the body.
      *
