@@ -23,11 +23,25 @@ export const MAX_ENML_BYTES = 8 * 1024 * 1024;
 export const MAX_TITLE_LENGTH = 500;
 export const MAX_TAG_LENGTH = 100;
 
+/**
+ * Attachment filenames are stored as the tail of an R2 object key:
+ * `users/{userId}/notes/{noteId}/files/{attachmentId}-{filename}`.
+ *
+ * R2 caps a key at 1024 bytes, and that prefix costs about 130 with UUID-length ids.
+ * 768 leaves room for the prefix, for the `-2`/`-999`/`-{8 hex}` suffix `availableFilename`
+ * adds on collision, and for the multi-byte case: this is a byte budget, while the check
+ * below counts UTF-16 code units, so a name of CJK or accented characters can cost up to
+ * three times its length. The earlier 255 was the POSIX `NAME_MAX` default rather than a
+ * limit anything here imposes — nothing writes these to a filesystem, and the D1 column is
+ * TEXT — and it rejected real Evernote attachments whose display label was a sentence.
+ */
+export const MAX_FILENAME_LENGTH = 768;
+
 /** Rejects path separators and traversal so a filename can never escape its note prefix. */
 export const filenameSchema = z
   .string()
   .min(1)
-  .max(255)
+  .max(MAX_FILENAME_LENGTH)
   .refine((n) => !n.includes('/') && !n.includes('\\'), 'Filename may not contain path separators')
   .refine((n) => n !== '.' && n !== '..', 'Invalid filename')
   .refine((n) => !n.startsWith('.'), 'Filename may not start with a dot');

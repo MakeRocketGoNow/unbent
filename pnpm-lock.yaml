@@ -212,6 +212,9 @@ importers:
       '@types/node':
         specifier: ^26.4.1
         version: 26.4.1
+      '@unbent/shared':
+        specifier: workspace:*
+        version: link:../shared
       typescript:
         specifier: ^7.0.2
         version: 7.0.2
