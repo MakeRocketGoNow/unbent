@@ -11,6 +11,19 @@ Everything the Play Console store listing asks for, and how it was made.
 | `feature-graphic-1024x500.png` | Feature graphic | 1024×500 PNG, ≤15 MB |
 | `screenshots/` | Phone screenshots | 1080×2424, native Pixel 9 |
 | `screenshots-9x16/` | Phone screenshots | 1080×1920, padded to exactly 9:16 |
+| `whatsnew/` | Release notes | 500 chars per locale, uploaded by CI |
+
+## Release notes
+
+`whatsnew/whatsnew-en-US` is what testers see under "What's new". CI passes the directory to
+the publish step, so editing that file *is* how the note changes — nothing is entered in Play
+Console by hand, and a release whose notes were not updated ships the previous ones.
+
+Write it for someone holding a phone: what is different for them, in their words. The commit
+subjects are addressed to whoever changes the code next and make poor release notes.
+
+One file per locale, named `whatsnew-<BCP 47>` — `whatsnew-de-DE` beside the existing one is
+all German takes. Play's limit is 500 characters each.
 
 Upload `screenshots/` first — Play accepts modern tall phone ratios in practice. If the form
 rejects them for aspect ratio, upload `screenshots-9x16/` instead; it is the same set scaled

@@ -136,3 +136,9 @@ jobs:
           tracks: alpha
           status: draft
           releaseName: ${{ steps.release_name.outputs.name }}
+          # Written by hand in `apps/android/store/whatsnew/`, not generated from commit
+          # subjects: those are addressed to whoever changes the code next ("Stop declaring
+          # required secrets on the local environment"), and a tester reading them learns
+          # nothing about what is different on their phone. Same reasoning, and the same
+          # place, as the store listing copy beside it.
+          whatsNewDirectory: apps/android/store/whatsnew
