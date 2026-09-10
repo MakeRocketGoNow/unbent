@@ -1634,6 +1634,26 @@ a.sidebar-status:hover {
    only say which half gives way first.
 */
 
+/*
+   Open, the summary names the section; closed, it states the values.
+
+   A disclosure's summary states its value so nothing is hidden, only folded — but once
+   it is open the controls right below state the same thing, and a notebook named twice
+   in a row, once in the summary and once in the picker under it, read as a mistake
+   rather than as a fold. So the value spans give way to one word while the row is open.
+   Done in CSS on the `open` attribute rather than in React because Disclosure
+   deliberately exposes no open state; see its header comment.
+*/
+.tag-row-summary-open { display: none; }
+
+.tag-row-wrap[open] > summary .tag-row-summary-open { display: inline; }
+
+.tag-row-wrap[open] > summary .tag-row-summary-book,
+.tag-row-wrap[open] > summary .tag-row-summary-tags,
+.tag-row-wrap[open] > summary .tag-row-summary-fields {
+  display: none;
+}
+
 /* Never shrinks below its own text: the notebook is the identifying half. */
 .tag-row-summary-book { flex: 0 0 auto; }
 
@@ -1778,10 +1798,21 @@ select.note-field-input { cursor: pointer; }
   text-decoration: underline;
 }
 
-/* "+ Add field": the tag entry's idle chip, standing alone at the end of the grid. */
-.note-field-add-hint {
+/*
+   The last row of the block: the "+ Add field" chip and the way to the notebook's field
+   settings, on one line. Two things that are both about the notebook's fields rather
+   than about a value; stacked they read as two more rows of the form.
+*/
+.note-fields-foot {
   grid-column: 1 / -1;
-  justify-self: start;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+/* "+ Add field": the tag entry's idle chip. */
+.note-field-add-hint {
   display: inline-flex;
   align-items: center;
   gap: 0.25rem;
@@ -1803,7 +1834,7 @@ select.note-field-input { cursor: pointer; }
 
 /* The open form takes the chip's place and the whole row. Nothing else moves. */
 .note-field-add {
-  grid-column: 1 / -1;
+  flex: 1 1 100%;
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -1817,10 +1848,7 @@ select.note-field-input { cursor: pointer; }
 
 .note-field-add .note-field-error { flex-basis: 100%; }
 
-.note-fields-manage {
-  grid-column: 1 / -1;
-  justify-self: start;
-}
+.note-fields-manage { white-space: nowrap; }
 
 /*
    The note's filing, behind a disclosure on a phone.
@@ -2126,7 +2154,14 @@ select.note-field-input { cursor: pointer; }
 .tag-add-hint {
   display: inline-flex;
   align-items: center;
-  justify-content: center;
+  /*
+     Left-aligned, not centred. The box is a fixed 5.5rem measured against one font, and
+     where the system font runs narrower the centred label drifted right of its padding —
+     so its plus sat a step further in than the "+ Add field" chip directly under it, and
+     the two chips read as different indents. Hugging the padding keeps every chip's plus
+     on the same line whatever the font measures.
+  */
+  justify-content: flex-start;
   gap: 0.25rem;
   width: 100%;
   padding: 0.15rem 0.55rem;

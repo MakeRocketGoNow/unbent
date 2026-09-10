@@ -206,6 +206,7 @@ describe('NoteFields', () => {
       'span.note-field-side',
     ]);
     expect(block.querySelectorAll('.note-field')).toHaveLength(defs.length);
-    expect(block.lastElementChild!.className).toBe('note-field-add-hint');
+    expect(block.lastElementChild!.className).toBe('note-fields-foot');
+    expect(block.querySelector('.note-fields-foot > .note-field-add-hint')).toBeTruthy();
   });
 });

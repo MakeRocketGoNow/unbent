@@ -483,6 +483,10 @@ export function Workspace({ noteId, readOnly = false, backTo = '/notes' }: Works
         defaultOpen="wide"
         summary={
           <>
+            {/* Shown only while open, in place of the values: the controls below then
+                say everything the summary said, and a notebook named twice in a row
+                reads as a mistake. See `.tag-row-summary-open`. */}
+            <span className="tag-row-summary-open">Filing</span>
             <span className="tag-row-summary-book">{draft.notebook ?? 'Inbox'}</span>
             {draft.tags.length > 0 && (
               <span className="tag-row-summary-tags">

@@ -100,8 +100,12 @@ export function NoteFields({
           </span>
         </div>
       ))}
-      {canAdd && <AddField onAdd={onAddField} />}
-      {canAdd && manage}
+      {canAdd && (
+        <div className="note-fields-foot">
+          <AddField onAdd={onAddField} />
+          {manage}
+        </div>
+      )}
     </div>
   );
 }
