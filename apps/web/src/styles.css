@@ -835,6 +835,15 @@ h1 {
   white-space: nowrap;
 }
 
+/* The row's field values, shaped like its tags but in the muted tone: data, not filing. */
+.note-fields-line {
+  font-size: 0.72rem;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .empty { padding: 0.6rem 0.7rem; }
 
 .workspace {
@@ -1625,6 +1634,26 @@ a.sidebar-status:hover {
    only say which half gives way first.
 */
 
+/*
+   Open, the summary names the section; closed, it states the values.
+
+   A disclosure's summary states its value so nothing is hidden, only folded — but once
+   it is open the controls right below state the same thing, and a notebook named twice
+   in a row, once in the summary and once in the picker under it, read as a mistake
+   rather than as a fold. So the value spans give way to one word while the row is open.
+   Done in CSS on the `open` attribute rather than in React because Disclosure
+   deliberately exposes no open state; see its header comment.
+*/
+.tag-row-summary-open { display: none; }
+
+.tag-row-wrap[open] > summary .tag-row-summary-open { display: inline; }
+
+.tag-row-wrap[open] > summary .tag-row-summary-book,
+.tag-row-wrap[open] > summary .tag-row-summary-tags,
+.tag-row-wrap[open] > summary .tag-row-summary-fields {
+  display: none;
+}
+
 /* Never shrinks below its own text: the notebook is the identifying half. */
 .tag-row-summary-book { flex: 0 0 auto; }
 
@@ -1635,6 +1664,191 @@ a.sidebar-status:hover {
   overflow: hidden;
   text-overflow: ellipsis;
 }
+
+/*
+   The values, after the tags, quieter than both.
+
+   They take whatever is left and truncate first: the notebook identifies the note, the
+   tags are how it is found, and the values are what it says. Without this the tags and
+   the values shrank in proportion to their length, and a note with seven values squeezed
+   its two tags down to a lone "#…" — the wrong half gave way. With values present the
+   tags stop shrinking and keep up to half the row; without them nothing changes.
+*/
+.tag-row-summary-fields {
+  flex: 1 1 0;
+  color: var(--muted);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tag-row-wrap:has(.tag-row-summary-fields) .tag-row-summary-tags {
+  flex-shrink: 0;
+  max-width: 45%;
+}
+
+/*
+   Custom fields, under the notebook picker and the tags.
+
+   A grid rather than stacked label/control pairs: the labels line up in one column, so
+   eight fields read as a form and not as eight rows that each found their own width. It
+   stretches across the row, unlike the picker and the tag entry, because a value can be
+   a sentence and the control has to have somewhere to put it. Every row is three cells —
+   label, control, and a side slot for Open/Call/Clear — and the third is always emitted,
+   even empty, so the rows cannot drift out of step in the grid.
+
+   The controls take the row's 1.65rem, the tag chips' and the picker's height, so the
+   whole filing block stays on one rhythm — see `.tag-row`.
+*/
+.note-fields {
+  align-self: stretch;
+  display: grid;
+  grid-template-columns: minmax(6rem, max-content) minmax(0, 1fr) auto;
+  align-items: center;
+  column-gap: 0.6rem;
+  row-gap: 0.35rem;
+}
+
+/* The row is a grouping for React and for the foreign/own distinction; the grid sees its cells. */
+.note-field { display: contents; }
+
+.note-field-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  min-width: 0;
+  font-size: 0.78rem;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* The same fill, edge and radius as the picker beside it, at the row's height. */
+.note-field-input {
+  width: 100%;
+  min-width: 0;
+  min-height: 1.65rem;
+  padding: 0.15rem 0.5rem;
+  font: inherit;
+  font-size: 0.8rem;
+  /* The system font's normal leading makes an input a pixel taller than the picker and
+     the chips it sits with; a fixed leading lets the shared min-height decide. */
+  line-height: 1.25;
+  color: var(--fg);
+  background: color-mix(in srgb, var(--fg) 4%, transparent);
+  border: 1px solid var(--border);
+  border-radius: 0.35rem;
+}
+
+.note-field-input:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--accent) 50%, var(--border));
+}
+
+.note-field-input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.note-field-input::placeholder { color: var(--muted); }
+
+select.note-field-input { cursor: pointer; }
+
+/* A checkbox is its own control; it takes the accent and none of the box. */
+.note-field-check {
+  justify-self: start;
+  width: 1.05rem;
+  height: 1.05rem;
+  margin: 0;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+/* A value the note carries from another notebook: read, not edited. */
+.note-field-value {
+  min-width: 0;
+  font-size: 0.8rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.note-field-origin {
+  margin-left: 0.25rem;
+  font-style: italic;
+}
+
+/* Never empty in the markup, often empty on screen; keeps the column count honest. */
+.note-field-side {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+}
+
+/* Open, Email, Call: a link beside a value that can be acted on. */
+.note-field-act {
+  font-size: 0.78rem;
+  color: var(--muted);
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.note-field-act:hover {
+  color: var(--accent);
+  text-decoration: underline;
+}
+
+/*
+   The last row of the block: the "+ Add field" chip and the way to the notebook's field
+   settings, on one line. Two things that are both about the notebook's fields rather
+   than about a value; stacked they read as two more rows of the form.
+*/
+.note-fields-foot {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+/* "+ Add field": the tag entry's idle chip. */
+.note-field-add-hint {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  min-height: 1.65rem;
+  padding: 0.15rem 0.55rem;
+  font: inherit;
+  font-size: 0.75rem;
+  color: var(--muted);
+  background: none;
+  border: 1px dashed var(--border);
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+.note-field-add-hint:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+/* The open form takes the chip's place and the whole row. Nothing else moves. */
+.note-field-add {
+  flex: 1 1 100%;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.note-field-add .note-field-input {
+  width: auto;
+  flex: 1 1 8rem;
+}
+
+.note-field-add .note-field-error { flex-basis: 100%; }
+
+.note-fields-manage { white-space: nowrap; }
 
 /*
    The note's filing, behind a disclosure on a phone.
@@ -1940,7 +2154,14 @@ a.sidebar-status:hover {
 .tag-add-hint {
   display: inline-flex;
   align-items: center;
-  justify-content: center;
+  /*
+     Left-aligned, not centred. The box is a fixed 5.5rem measured against one font, and
+     where the system font runs narrower the centred label drifted right of its padding —
+     so its plus sat a step further in than the "+ Add field" chip directly under it, and
+     the two chips read as different indents. Hugging the padding keeps every chip's plus
+     on the same line whatever the font measures.
+  */
+  justify-content: flex-start;
   gap: 0.25rem;
   width: 100%;
   padding: 0.15rem 0.55rem;
@@ -2556,6 +2777,26 @@ a.sidebar-status:hover {
 .notebook-admin-new .search-field {
   flex: 1;
 }
+
+/*
+   A notebook's field page: the notebook list's rows, each with a type and an order.
+
+   The rows wrap so a select field's options can sit on a second line under the name,
+   full width, where a list of chips has room; everything else stays on the first line.
+*/
+.field-admin li { flex-wrap: wrap; }
+
+/* The type picker is the sidebar's select at its own width, not the sidebar's full one. */
+.field-admin-type { flex: 0 0 auto; }
+.field-admin-type .notebook-scope { width: auto; }
+
+.field-admin-options {
+  flex-basis: 100%;
+  padding: 0.1rem 0 0.25rem;
+}
+
+.field-admin-new { flex-wrap: wrap; }
+.field-admin-new .tag-input { flex-basis: 100%; }
 
 /* Notebook picker in the note header, beside the tags. */
 .note-notebook {
@@ -4055,6 +4296,28 @@ a.sidebar-status:hover {
   .disclosure.tag-row-wrap > summary {
     display: flex;
   }
+
+  /*
+     Fields in one column: the label above its control, the side action beside the control.
+     A label column at this width would leave the control the width of a word.
+  */
+  .note-fields {
+    grid-template-columns: minmax(0, 1fr) auto;
+    row-gap: 0.25rem;
+  }
+
+  .note-field-label { grid-column: 1 / -1; }
+
+  /* Rows part by a little more than label-to-control, so a stack stays countable. */
+  .note-field + .note-field .note-field-label { margin-top: 0.35rem; }
+
+  /* The same 2.25rem the chips and pills take here: tall enough for a thumb, and no more. */
+  .note-field-input {
+    min-height: 2.25rem;
+    font-size: 0.9rem;
+  }
+
+  .note-field-add .note-field-input { flex-basis: 100%; }
 
   /*
      Room for the docked bar, so the last lines of a note are not left under it.

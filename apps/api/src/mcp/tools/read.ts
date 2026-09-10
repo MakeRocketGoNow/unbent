@@ -37,11 +37,12 @@ export function registerReadTools(
     {
       title: 'Search notes',
       description:
-        'Full-text search across note titles and bodies, and across text extracted from PDF ' +
-        'attachments. Results are ranked, with title matches weighted above body matches and ' +
-        'note matches above attachment matches, and each carries a snippet with the matched ' +
-        'terms marked. A result with matchedFile matched inside that attachment rather than ' +
-        'in the note body. Terms are matched literally and ANDed; there is no operator ' +
+        'Full-text search across note titles and bodies, custom field values, and text ' +
+        'extracted from PDF attachments. Results are ranked, with title matches weighted ' +
+        'above body matches, and note matches above field matches above attachment matches; ' +
+        'each carries a snippet with the matched terms marked. A result with matchedField ' +
+        'matched in that custom field\'s value; one with matchedFile matched inside that ' +
+        'attachment. Terms are matched literally and ANDed; there is no operator ' +
         'syntax, so narrow with the tag, notebook and date arguments rather than by writing ' +
         'filters into the query.',
       inputSchema: z.object({
@@ -179,16 +180,29 @@ export function registerReadTools(
       title: 'List notebooks',
       description:
         'Every notebook with the number of live notes in it, plus the count of notes filed in ' +
-        'none. Notebooks are flat: there is no nesting.',
+        'none. Notebooks are flat: there is no nesting. Each notebook lists its custom fields ' +
+        '(name, type, and the options of a select); values are read on a note and set by ' +
+        'name through create_note and update_note.',
       inputSchema: z.object({}),
       annotations: { readOnlyHint: true, openWorldHint: false },
     },
     async () => {
-      const [notebooks, unfiled] = await Promise.all([
+      const [notebooks, unfiled, fields] = await Promise.all([
         notes.listNotebooks(),
         notes.countUnfiledNotes(),
+        notes.listAllFields(),
       ]);
-      return jsonResult({ notebooks, unfiled });
+      return jsonResult({
+        notebooks: notebooks.map((nb) => ({
+          id: nb.id,
+          name: nb.name,
+          count: nb.count,
+          fields: fields
+            .filter((f) => f.notebookId === nb.id)
+            .map((f) => ({ id: f.id, name: f.name, type: f.type, options: f.options })),
+        })),
+        unfiled,
+      });
     },
   );
 

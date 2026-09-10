@@ -25,7 +25,7 @@ export const importRoutes = new Hono<AppEnv>().post(
   async (c) => {
     const input = c.req.valid('json');
 
-    const { id, created } = await c.get('notes').importNote({
+    const { id, created, skippedFields } = await c.get('notes').importNote({
       title: input.title,
       body: input.body,
       tags: input.tags,
@@ -34,11 +34,14 @@ export const importRoutes = new Hono<AppEnv>().post(
       updatedAt: input.updatedAt,
       contentHash: input.contentHash,
       sourceEnex: input.sourceEnex,
+      fields: input.fields,
     });
 
     // `created: false` tells the client this note was already imported, so it can skip
     // re-uploading the attachments too — the expensive part of a resumed run.
-    return c.json({ id, created }, created ? 201 : 200);
+    // `skippedFields` names any custom field values that could not be stored, so the
+    // client can report them rather than the import quietly dropping data.
+    return c.json({ id, created, skippedFields }, created ? 201 : 200);
   },
 );
 

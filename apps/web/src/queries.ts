@@ -46,6 +46,11 @@ export const keys = {
   attachments: (noteId: string) => ['attachments', noteId] as const,
   tags: () => ['tags'] as const,
   notebooks: () => ['notebooks'] as const,
+  /**
+   * Under its own root rather than `['notebooks', id]`: invalidating the notebook list
+   * (which happens on every save) must not refetch every open notebook's definitions.
+   */
+  notebookFields: (notebookId: string) => ['notebook-fields', notebookId] as const,
   trash: () => ['trash'] as const,
   trashCount: () => ['trash', 'count'] as const,
   noteCount: () => ['notes', 'count'] as const,
@@ -168,6 +173,14 @@ export function claimCacheFor(queryClient: QueryClient, userId: string | undefin
 
 export const notebooksQuery = () =>
   queryOptions({ queryKey: keys.notebooks(), queryFn: () => api.listNotebooks() });
+
+/** A notebook's custom field definitions. Disabled, not errored, for an unfiled note. */
+export const notebookFieldsQuery = (notebookId: string | undefined) =>
+  queryOptions({
+    queryKey: keys.notebookFields(notebookId ?? ''),
+    queryFn: () => api.listNotebookFields(notebookId!),
+    enabled: notebookId !== undefined && notebookId !== '',
+  });
 
 /**
  * Full-text search.

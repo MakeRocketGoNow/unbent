@@ -1,9 +1,13 @@
 import type {
   AppConfig,
   AttachmentInfo,
+  FieldDef,
+  FieldType,
   Note,
+  NoteFieldsPatch,
   NoteSort,
   NoteSummary,
+  NotebookSummary,
   SearchResult,
 } from '@unbent/shared';
 
@@ -125,6 +129,7 @@ export async function createNote(input: {
   body?: string;
   tags?: string[];
   notebook?: string | null;
+  fields?: NoteFieldsPatch;
 }): Promise<Note> {
   return json<Note>(
     await fetch('/api/notes', {
@@ -137,7 +142,14 @@ export async function createNote(input: {
 
 export async function updateNote(
   id: string,
-  patch: { title?: string; body?: string; tags?: string[]; notebook?: string | null },
+  patch: {
+    title?: string;
+    body?: string;
+    tags?: string[];
+    notebook?: string | null;
+    /** Merged: only the ids given change, and null clears one. */
+    fields?: NoteFieldsPatch;
+  },
 ): Promise<Note> {
   return json<Note>(
     await fetch(`/api/notes/${id}`, {
@@ -179,11 +191,7 @@ export async function listTags(): Promise<Array<{ name: string; count: number }>
   return tags;
 }
 
-export interface Notebook {
-  id: string;
-  name: string;
-  count: number;
-}
+export type Notebook = NotebookSummary;
 
 /** The notebook list plus how many notes sit outside every notebook. */
 export interface NotebookList {
@@ -229,6 +237,73 @@ export async function deleteNotebook(
   const qs = params.toString();
   const res = await fetch(`/api/notebooks/${id}${qs ? `?${qs}` : ''}`, { method: 'DELETE' });
   if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+}
+
+// --- Custom fields ---------------------------------------------------------------------
+
+export async function listNotebookFields(notebookId: string): Promise<FieldDef[]> {
+  const { fields } = await json<{ fields: FieldDef[] }>(
+    await fetch(`/api/notebooks/${notebookId}/fields`),
+  );
+  return fields;
+}
+
+/** Adds a field. Throws with a readable message when the name is taken. */
+export async function createNotebookField(
+  notebookId: string,
+  input: { name: string; type: FieldType; options: string[] },
+): Promise<FieldDef> {
+  const res = await fetch(`/api/notebooks/${notebookId}/fields`, {
+    method: 'POST',
+    headers: jsonHeaders,
+    body: JSON.stringify(input),
+  });
+  if (res.status === 409) throw new Error('This notebook already has a field with that name.');
+  return json(res);
+}
+
+/**
+ * Renames, retypes, or re-options a field. A type change reports how many values it had
+ * to clear; ask `previewFieldConversion` first to name that number before committing.
+ */
+export async function updateNotebookField(
+  notebookId: string,
+  fieldId: string,
+  patch: { name?: string; type?: FieldType; options?: string[] },
+): Promise<{ field: FieldDef; cleared: number }> {
+  const res = await fetch(`/api/notebooks/${notebookId}/fields/${fieldId}`, {
+    method: 'PATCH',
+    headers: jsonHeaders,
+    body: JSON.stringify(patch),
+  });
+  if (res.status === 409) throw new Error('This notebook already has a field with that name.');
+  return json(res);
+}
+
+export async function previewFieldConversion(
+  notebookId: string,
+  fieldId: string,
+  type: FieldType,
+): Promise<{ values: number; incompatible: number }> {
+  return json(
+    await fetch(`/api/notebooks/${notebookId}/fields/${fieldId}/conversion?type=${type}`),
+  );
+}
+
+/** Sets the order. `ids` must be every field of the notebook, each once. */
+export async function reorderNotebookFields(notebookId: string, ids: string[]): Promise<void> {
+  const res = await fetch(`/api/notebooks/${notebookId}/fields/order`, {
+    method: 'PUT',
+    headers: jsonHeaders,
+    body: JSON.stringify({ ids }),
+  });
+  if (!res.ok) throw new ApiError(res.status, await httpErrorMessage(res));
+}
+
+/** Deletes a field and every value under it. */
+export async function deleteNotebookField(notebookId: string, fieldId: string): Promise<void> {
+  const res = await fetch(`/api/notebooks/${notebookId}/fields/${fieldId}`, { method: 'DELETE' });
+  if (!res.ok) throw new ApiError(res.status, await httpErrorMessage(res));
 }
 
 export interface UploadedFile {

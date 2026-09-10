@@ -550,3 +550,49 @@ describe('single-note export', () => {
     expect((await fetchNote(bob, created.id)).status).toBe(404);
   });
 });
+
+describe('custom fields in the export', () => {
+  /**
+   * Values ride out as top-level frontmatter keys named by their field, typed as YAML
+   * scalars, and parse back as the same values — the same identity property the note's
+   * own metadata is held to, extended to what a person has defined.
+   */
+  it('writes every value as a frontmatter key that parses back typed', async () => {
+    const actor = await signUp(`exp-fld-${Date.now()}@example.test`, 'fld-password-1234', 'F');
+    const headers = { 'Content-Type': 'application/json', Cookie: actor.cookie, Origin: ORIGIN };
+    const nb = await fetch(`${BASE}/api/notebooks`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ name: 'Receipts' }),
+    }).then((r) => r.json());
+    const field = (name: string, type: string) =>
+      fetch(`${BASE}/api/notebooks/${nb.id}/fields`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ name, type }),
+      }).then((r) => r.json() as Promise<{ id: string }>);
+    const merchant = await field('Merchant', 'text');
+    const amount = await field('Amount', 'number');
+    const paid = await field('Paid', 'checkbox');
+    const on = await field('Paid on', 'date');
+
+    const created = await fetch(`${BASE}/api/notes`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        title: 'Lunch',
+        body: 'x',
+        notebook: 'Receipts',
+        fields: { [merchant.id]: 'Acme', [amount.id]: 12.5, [paid.id]: true, [on.id]: '2024-03-01' },
+      }),
+    }).then((r) => r.json());
+
+    const expected = { Merchant: 'Acme', Amount: 12.5, Paid: true, 'Paid on': '2024-03-01' };
+    const entry = [...(await fetchExport(actor)).values()][0]!;
+    expect(parse(entry).fields).toEqual(expected);
+    expect(parse(entry).notebook).toBe('Receipts');
+
+    // The single-note download is the same text.
+    expect(parse(await (await fetchNote(actor, created.id)).text()).fields).toEqual(expected);
+  });
+});

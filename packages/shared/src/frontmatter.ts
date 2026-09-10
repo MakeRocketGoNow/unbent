@@ -11,6 +11,7 @@
  * need correct quoting on the way out, and `yaml` gets that right by default.
  */
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
+import { isReservedFieldName, type FieldValue } from './fields.js';
 
 export interface NoteFrontmatter {
   id: string;
@@ -22,6 +23,12 @@ export interface NoteFrontmatter {
   notebook?: string;
   /** Original URL for a clipped or bookmarked note. Omitted when absent. */
   source?: string;
+  /**
+   * Custom field values keyed by field name, written as ordinary top-level keys so any
+   * other Markdown tool reads them as properties. Numbers and booleans are YAML scalars;
+   * dates are `YYYY-MM-DD` strings. Omitted when there are none.
+   */
+  fields?: Record<string, FieldValue>;
 }
 
 export interface ParsedNote extends NoteFrontmatter {
@@ -77,6 +84,12 @@ export function serialize(note: ParsedNote): string {
       ...(note.notebook ? { notebook: note.notebook } : {}),
       // Omitted rather than emitted empty: most notes have no source.
       ...(note.source ? { source: note.source } : {}),
+      // After the keys above so a reader sees the note's own metadata first. The name
+      // schema already refuses reserved names; filtering again here means a stray value
+      // can never overwrite the id or the title on the way out.
+      ...Object.fromEntries(
+        Object.entries(note.fields ?? {}).filter(([k]) => !isReservedFieldName(k)),
+      ),
     },
     {
       lineWidth: 0, // never fold long titles onto a second line
@@ -126,6 +139,20 @@ export function parse(source: string): ParsedNote {
     tags = [raw['tags']];
   }
 
+  // Every other scalar key is a custom field. Known keys are claimed above, and reserved
+  // names are dropped case-insensitively so a hand-written `Title:` cannot come back as
+  // a field called Title. Lists and maps are not values a field can hold; they are left
+  // behind rather than stringified into something that would round-trip as text.
+  const fields: Record<string, FieldValue> = {};
+  for (const [key, value] of Object.entries(raw)) {
+    if (isReservedFieldName(key)) continue;
+    if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+      fields[key] = value;
+    } else if (value instanceof Date && !Number.isNaN(value.getTime())) {
+      fields[key] = value.toISOString().slice(0, 10);
+    }
+  }
+
   return {
     id: raw['id'],
     title,
@@ -136,6 +163,7 @@ export function parse(source: string): ParsedNote {
       ? { notebook: raw['notebook'] }
       : {}),
     ...(typeof raw['source'] === 'string' && raw['source'] ? { source: raw['source'] } : {}),
+    ...(Object.keys(fields).length > 0 ? { fields } : {}),
     // serialize() writes exactly one blank line after the fence; strip it back off.
     body: (rest ?? '').replace(/^\r?\n/, ''),
   };

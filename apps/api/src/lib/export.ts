@@ -1,5 +1,5 @@
 import { ZipWriter } from '@zip.js/zip.js';
-import { serialize } from '@unbent/shared';
+import { fieldsByName, serialize } from '@unbent/shared';
 import type { Note, NoteSort } from '@unbent/shared';
 import { nextCursor, type NotesRepo } from './notes-repo.js';
 import type { AttachmentsRepo } from './attachments-repo.js';
@@ -145,6 +145,9 @@ export function noteMarkdown(note: Note): string {
     updated: new Date(note.updatedAt),
     tags: note.tags,
     ...(note.notebook ? { notebook: note.notebook } : {}),
+    // Every value the note carries, by field name, including any left over from a
+    // notebook it has since left — an export that dropped those would be a lossy backup.
+    ...(note.fields?.length ? { fields: fieldsByName(note.fields, note.notebookId ?? null) } : {}),
     body: note.body,
   });
 }

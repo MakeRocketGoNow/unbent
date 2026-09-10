@@ -578,3 +578,127 @@ describe('cross-tenant access', () => {
     expect(res.status).toBe(401);
   });
 });
+
+/**
+ * Custom field values have their own index, maintained by the same kind of triggers as
+ * the other two. The integrity cases mirror theirs: a value that is changed, cleared or
+ * whose field is deleted must stop matching, or the index is quietly wrong.
+ */
+describe('custom field values', () => {
+  const headers = (actor: Actor) => ({
+    'Content-Type': 'application/json',
+    Cookie: actor.cookie,
+    Origin: ORIGIN,
+  });
+
+  async function raw(actor: Actor, q: string) {
+    const res = await fetch(`${BASE}/api/search?q=${encodeURIComponent(q)}`, {
+      headers: { Cookie: actor.cookie, Origin: ORIGIN },
+    });
+    const { results } = (await res.json()) as {
+      results: Array<{ id: string; snippet: string; matchedField?: string; matchedFile?: string }>;
+    };
+    return results;
+  }
+
+  let notebookId: string;
+  let vendorId: string;
+
+  beforeAll(async () => {
+    const nb = await fetch(`${BASE}/api/notebooks`, {
+      method: 'POST',
+      headers: headers(alice),
+      body: JSON.stringify({ name: `Fields ${unique}` }),
+    }).then((r) => r.json() as Promise<{ id: string; name: string }>);
+    notebookId = nb.id;
+    const vendor = await fetch(`${BASE}/api/notebooks/${nb.id}/fields`, {
+      method: 'POST',
+      headers: headers(alice),
+      body: JSON.stringify({ name: 'Vendor', type: 'text' }),
+    }).then((r) => r.json() as Promise<{ id: string }>);
+    vendorId = vendor.id;
+  });
+
+  async function noteWithVendor(actor: Actor, title: string, vendor: string) {
+    const res = await fetch(`${BASE}/api/notes`, {
+      method: 'POST',
+      headers: headers(actor),
+      body: JSON.stringify({
+        title,
+        body: 'nothing to see in the body',
+        notebook: `Fields ${unique}`,
+        fields: { [vendorId]: vendor },
+      }),
+    });
+    if (!res.ok) throw new Error(`create failed: ${res.status} ${await res.text()}`);
+    return res.json() as Promise<{ id: string }>;
+  }
+
+  it('finds a note by a value held only in a field, and names the field', async () => {
+    const term = `Quaxley${unique}`;
+    const note = await noteWithVendor(alice, 'Receipt', `${term} Hardware`);
+    const hits = await raw(alice, term);
+    expect(hits.map((h) => h.id)).toContain(note.id);
+    const hit = hits.find((h) => h.id === note.id)!;
+    expect(hit.matchedField).toBe('Vendor');
+    expect(hit.matchedFile).toBeUndefined();
+    expect(hit.snippet).toContain(`<<${term}>>`);
+  });
+
+  it('stops matching a value once it is changed or cleared', async () => {
+    const before = `Brindle${unique}`;
+    const after = `Corvid${unique}`;
+    const note = await noteWithVendor(alice, 'Changing', before);
+    expect((await raw(alice, before)).map((h) => h.id)).toContain(note.id);
+
+    await fetch(`${BASE}/api/notes/${note.id}`, {
+      method: 'PATCH',
+      headers: headers(alice),
+      body: JSON.stringify({ fields: { [vendorId]: after } }),
+    });
+    expect((await raw(alice, before)).map((h) => h.id)).not.toContain(note.id);
+    expect((await raw(alice, after)).map((h) => h.id)).toContain(note.id);
+
+    await fetch(`${BASE}/api/notes/${note.id}`, {
+      method: 'PATCH',
+      headers: headers(alice),
+      body: JSON.stringify({ fields: { [vendorId]: null } }),
+    });
+    expect((await raw(alice, after)).map((h) => h.id)).not.toContain(note.id);
+  });
+
+  it('stops matching when the field itself is deleted', async () => {
+    const term = `Dorset${unique}`;
+    const doomed = await fetch(`${BASE}/api/notebooks/${notebookId}/fields`, {
+      method: 'POST',
+      headers: headers(alice),
+      body: JSON.stringify({ name: 'Doomed', type: 'text' }),
+    }).then((r) => r.json() as Promise<{ id: string }>);
+    const note = await fetch(`${BASE}/api/notes`, {
+      method: 'POST',
+      headers: headers(alice),
+      body: JSON.stringify({ title: 'x', body: '', notebook: `Fields ${unique}`, fields: { [doomed.id]: term } }),
+    }).then((r) => r.json() as Promise<{ id: string }>);
+    expect((await raw(alice, term)).map((h) => h.id)).toContain(note.id);
+
+    await fetch(`${BASE}/api/notebooks/${notebookId}/fields/${doomed.id}`, {
+      method: 'DELETE',
+      headers: headers(alice),
+    });
+    expect((await raw(alice, term)).map((h) => h.id)).not.toContain(note.id);
+  });
+
+  it('does not leak a value across users', async () => {
+    const term = `Ember${unique}`;
+    await noteWithVendor(alice, 'Private', term);
+    expect(await raw(bob, term)).toEqual([]);
+  });
+
+  it('ranks a field match above an attachment match and below a body match', async () => {
+    const term = `Kestrel${unique}`;
+    const inField = await noteWithVendor(alice, 'In a field', term);
+    const inBody = await createNote(alice, { title: 'In the body', body: `${term} written down` });
+    const ids = (await raw(alice, term)).map((h) => h.id);
+    expect(ids.indexOf(inBody.id)).toBeLessThan(ids.indexOf(inField.id));
+  });
+});

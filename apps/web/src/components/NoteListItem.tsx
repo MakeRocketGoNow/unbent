@@ -1,6 +1,7 @@
 import { Link } from '@tanstack/react-router';
 import type { NoteSort, NoteSummary } from '@unbent/shared';
 import { formatWhen } from './format-when.js';
+import { formatFieldValue } from './format-field.js';
 
 interface NoteListItemProps {
   note: NoteSummary;
@@ -46,6 +47,13 @@ export function NoteListItem({ note, to, actions, sort }: NoteListItemProps) {
           {note.deletedAt ? `Deleted ${formatWhen(note.deletedAt)}` : formatWhen(when)}
         </span>
         {note.excerpt && <span className="note-excerpt">{note.excerpt}</span>}
+        {/* The values, named, on one line like the tags under them: what the note *is*
+            when its notebook is a collection of records rather than of prose. */}
+        {note.fields && note.fields.length > 0 && (
+          <span className="note-fields-line">
+            {note.fields.map((f) => `${f.name}: ${formatFieldValue(f.type, f.value)}`).join(' · ')}
+          </span>
+        )}
         {note.tags.length > 0 && (
           <span className="note-tags">{note.tags.map((t) => `#${t}`).join(' ')}</span>
         )}

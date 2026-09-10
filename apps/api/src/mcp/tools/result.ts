@@ -1,4 +1,4 @@
-import type { NoteSummary } from '@unbent/shared';
+import { fieldsByName, type NoteSummary } from '@unbent/shared';
 
 /**
  * How every tool here answers.
@@ -17,6 +17,10 @@ export function jsonResult(value: unknown) {
  * Timestamps go out as ISO-8601 rather than the epoch milliseconds the database holds. A
  * model reading `1788743954000` has to be told what it is; a model reading
  * `2026-09-06T20:39:14Z` does not, and can compare two of them without arithmetic.
+ *
+ * Custom field values go out keyed by field name as typed JSON — `{"Merchant": "Acme",
+ * "Amount": 12.5}` — for the same reason: that needs no explanation, where a list of
+ * `{fieldId, type, value}` records would. The names are also what the write tools take.
  */
 export function noteRef(note: NoteSummary) {
   return {
@@ -26,6 +30,7 @@ export function noteRef(note: NoteSummary) {
     updatedAt: new Date(note.updatedAt).toISOString(),
     tags: note.tags,
     notebook: note.notebook ?? null,
+    ...(note.fields?.length ? { fields: fieldsByName(note.fields, note.notebookId ?? null) } : {}),
     ...(note.excerpt ? { excerpt: note.excerpt } : {}),
     ...(note.deletedAt ? { trashedAt: new Date(note.deletedAt).toISOString() } : {}),
   };

@@ -5,6 +5,12 @@ interface TagInputProps {
   /** Existing tag names, offered as completions. */
   suggestions: string[];
   onChange: (tags: string[]) => void;
+  /**
+   * What one token is called, for the hint and the accessible names: "tag" here, "option"
+   * where the same editor edits a select field's choices. The control is the same either
+   * way; only the noun changes.
+   */
+  label?: string;
 }
 
 /**
@@ -13,7 +19,7 @@ interface TagInputProps {
  * Commits on Enter, Tab, and comma, and on blur — committing only on Enter silently drops
  * a tag the user typed and then clicked away from, which reads as the app losing data.
  */
-export function TagInput({ tags, suggestions, onChange }: TagInputProps) {
+export function TagInput({ tags, suggestions, onChange, label = 'tag' }: TagInputProps) {
   const [draft, setDraft] = useState('');
   /**
    * Whether the field is being used, as opposed to merely present.
@@ -50,7 +56,7 @@ export function TagInput({ tags, suggestions, onChange }: TagInputProps) {
           <button
             type="button"
             className="tag-remove"
-            aria-label={`Remove tag ${t}`}
+            aria-label={`Remove ${label} ${t}`}
             onClick={(e) => {
               e.stopPropagation();
               remove(t);
@@ -66,7 +72,7 @@ export function TagInput({ tags, suggestions, onChange }: TagInputProps) {
             the field are the same target rather than two things to tab between. */}
         <span className="tag-add-hint" aria-hidden="true">
           <span className="tag-add-plus">+</span>
-          Add tag
+          Add {label}
         </span>
         <input
           ref={inputRef}
@@ -74,7 +80,7 @@ export function TagInput({ tags, suggestions, onChange }: TagInputProps) {
           value={draft}
           // The visible label is the hint above; this names the field for screen readers,
           // which never see it.
-          aria-label="Add a tag"
+          aria-label={`Add a ${label}`}
           onFocus={() => setActive(true)}
           onChange={(e) => setDraft(e.target.value)}
           onBlur={() => {

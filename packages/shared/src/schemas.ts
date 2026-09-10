@@ -3,6 +3,17 @@
  * API contract and the TypeScript type, so the two cannot drift.
  */
 import { z } from 'zod';
+import { dateOnlySchema } from './dates.js';
+import {
+  MAX_FIELD_NAME_LENGTH,
+  fieldValueInputSchema,
+  noteFieldsPatchSchema,
+  type NoteFieldValue,
+} from './fields.js';
+
+// The date helpers live in their own module so the field codec can use them without a
+// cycle; re-exported here so nothing that imported them from the schemas notices.
+export { dateOnlySchema, startOfDay, endOfDay } from './dates.js';
 
 /** D1 rejects rows over 2MB; cap note bodies below that with room for the other columns. */
 export const MAX_BODY_BYTES = 1_800_000;
@@ -177,6 +188,8 @@ export const createNoteSchema = z.object({
   body: z.string().max(MAX_BODY_BYTES).default(''),
   tags: z.array(tagNameSchema).max(100).default([]),
   notebook: notebookNameSchema.nullable().optional(),
+  /** Custom field values by field id. See `noteFieldsPatchSchema`. */
+  fields: noteFieldsPatchSchema.optional(),
 });
 
 export const updateNoteSchema = z.object({
@@ -184,6 +197,8 @@ export const updateNoteSchema = z.object({
   body: z.string().max(MAX_BODY_BYTES).optional(),
   tags: z.array(tagNameSchema).max(100).optional(),
   notebook: notebookNameSchema.nullable().optional(),
+  /** Merged into the note's values: absent keys are untouched, null clears one. */
+  fields: noteFieldsPatchSchema.optional(),
 });
 
 /**
@@ -199,35 +214,6 @@ export type NoteSort = (typeof NOTE_SORTS)[number];
 export const noteSortSchema = z.enum(NOTE_SORTS).default('updated');
 /** Ascending is meaningful for every sort: oldest first, or A–Z. */
 export const noteOrderSchema = z.enum(['asc', 'desc']).default('desc');
-
-/**
- * A calendar day, `YYYY-MM-DD`, as typed by a date input.
- *
- * Dates rather than timestamps because the filter is a human question — "everything from
- * 2023" — and a timestamp boundary would make the answer depend on the hour. Interpreted
- * in UTC to match the epoch-ms columns; a local-midnight reading would shift the boundary
- * by the viewer's offset and quietly include or drop a day's notes.
- */
-export const dateOnlySchema = z
-  .string()
-  .regex(/^\d{4}-\d{2}-\d{2}$/, 'expected YYYY-MM-DD')
-  .refine((v) => !Number.isNaN(Date.parse(`${v}T00:00:00Z`)), 'not a real date');
-
-/** Start of that UTC day. */
-export function startOfDay(date: string): number {
-  return Date.parse(`${date}T00:00:00Z`);
-}
-
-/**
- * End of that UTC day, inclusive.
- *
- * The range is inclusive of both ends because that is what a person means by "1 January
- * to 31 January" — an exclusive upper bound silently drops everything filed on the last
- * day of the range.
- */
-export function endOfDay(date: string): number {
-  return Date.parse(`${date}T23:59:59.999Z`);
-}
 
 export const listNotesQuerySchema = z.object({
   cursor: z.string().optional(),
@@ -294,6 +280,13 @@ export const importNoteSchema = z.object({
   sourceEnex: z.string().max(255).optional(),
   /** Evernote note-attributes/source-url, kept for bookmark-style notes. */
   sourceUrl: z.string().max(2000).optional(),
+  /**
+   * Custom field values keyed by field *name*, the interchange form, resolved against the
+   * note's notebook on the way in; a name with no definition creates one. Keys are only
+   * length-checked here so that one reserved or unreadable value skips that field rather
+   * than failing the whole note — the import reports what it skipped.
+   */
+  fields: z.record(z.string().max(MAX_FIELD_NAME_LENGTH), fieldValueInputSchema).optional(),
 });
 
 /**
@@ -346,6 +339,10 @@ export interface NoteSummary {
   createdAt: number;
   tags: string[];
   notebook?: string | null;
+  /** The notebook's id, for looking up its field definitions. Null when unfiled. */
+  notebookId?: string | null;
+  /** Custom field values, own notebook's first in definition order, then any foreign ones. */
+  fields?: NoteFieldValue[];
   excerpt?: string;
   /** When this note was trashed. Only present on notes listed from the trash. */
   deletedAt?: number;
@@ -353,6 +350,16 @@ export interface NoteSummary {
 
 export interface Note extends NoteSummary {
   body: string;
+}
+
+/** A notebook as the list reports it. */
+export interface NotebookSummary {
+  id: string;
+  name: string;
+  /** Live notes filed here. */
+  count: number;
+  /** Custom fields defined here. */
+  fields: number;
 }
 
 export interface AttachmentInfo {
@@ -368,4 +375,6 @@ export interface SearchResult {
   snippet: string;
   /** Set when the match came from an attachment's extracted text rather than the note. */
   matchedFile?: string;
+  /** Set when the match came from a custom field's value; the field's name. */
+  matchedField?: string;
 }

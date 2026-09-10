@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import { zValidator } from '@hono/zod-validator';
 import {
   createNoteSchema,
+  InvalidFieldValue,
   listNotesQuerySchema,
   updateNoteSchema,
 } from '@unbent/shared';
@@ -9,6 +10,16 @@ import { nextCursor } from '../lib/notes-repo.js';
 import { requireAuth } from '../lib/session.js';
 import { withRepos } from '../lib/repos-middleware.js';
 import type { AppEnv } from '../types.js';
+
+/**
+ * A custom-field value the field cannot hold is the client's mistake, so it is a 400 that
+ * names the field — "Amount must be a number" — rather than a 500 that names nothing.
+ * Validation of the *shape* is zod's job at the route; whether a value fits its field's
+ * type is only known once the definition is read, which is why it surfaces from the repo.
+ */
+function fieldError(err: InvalidFieldValue): string {
+  return `${err.fieldName} ${err.message}`;
+}
 
 /**
  * Note CRUD. Every handler reads its repo from context rather than touching env.DB, so
@@ -42,8 +53,13 @@ export const notes = new Hono<AppEnv>()
 
   .post('/notes', zValidator('json', createNoteSchema), async (c) => {
     const input = c.req.valid('json');
-    const note = await c.get('notes').create({ id: crypto.randomUUID(), ...input });
-    return c.json(note, 201);
+    try {
+      const note = await c.get('notes').create({ id: crypto.randomUUID(), ...input });
+      return c.json(note, 201);
+    } catch (err) {
+      if (err instanceof InvalidFieldValue) return c.json({ error: fieldError(err) }, 400);
+      throw err;
+    }
   })
 
   .get('/notes/:id', async (c) => {
@@ -53,9 +69,14 @@ export const notes = new Hono<AppEnv>()
   })
 
   .patch('/notes/:id', zValidator('json', updateNoteSchema), async (c) => {
-    const note = await c.get('notes').update(c.req.param('id'), c.req.valid('json'));
-    if (!note) return c.json({ error: 'Not found' }, 404);
-    return c.json(note);
+    try {
+      const note = await c.get('notes').update(c.req.param('id'), c.req.valid('json'));
+      if (!note) return c.json({ error: 'Not found' }, 404);
+      return c.json(note);
+    } catch (err) {
+      if (err instanceof InvalidFieldValue) return c.json({ error: fieldError(err) }, 400);
+      throw err;
+    }
   })
 
   /**

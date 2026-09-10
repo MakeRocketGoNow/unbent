@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { Link } from '@tanstack/react-router';
 import * as api from '../notes-api.js';
 import { Confirm } from './Confirm.js';
 import { Button } from './Button';
@@ -137,6 +138,16 @@ export function Settings({ onChanged }: SettingsProps) {
               * it downloads.
               */}
             <span className="notebook-admin-actions">
+              {/* Navigation to the notebook's own page, so a link. The count says at a
+                  glance which notebooks are collections of records. */}
+              <Link
+                to="/settings/notebooks/$notebookId"
+                params={{ notebookId: nb.id }}
+                className="link small"
+              >
+                Fields{nb.fields > 0 && <span className="tag-count"> {nb.fields}</span>}
+              </Link>
+
               <a
                 className="link small"
                 href={api.exportUrl({ notebook: nb.name })}
@@ -174,9 +185,12 @@ export function Settings({ onChanged }: SettingsProps) {
             </>
           }
           detail={
-            noteLabel
+            (noteLabel
               ? `Its ${noteLabel} will become unfiled, not deleted.`
-              : 'It has no notes.'
+              : 'It has no notes.') +
+            (pendingDelete.fields > 0
+              ? ` Its ${pendingDelete.fields} custom field${pendingDelete.fields === 1 ? '' : 's'} and their values will be deleted.`
+              : '')
           }
           busy={busy}
           onCancel={() => setPendingDelete(null)}

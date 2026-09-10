@@ -985,6 +985,353 @@ describe('notebooks', () => {
   });
 });
 
+/**
+ * Custom fields: definitions on a notebook, values on a note.
+ *
+ * Every route here touches user data, so the cross-tenant case at the end is not optional
+ * — see the file header. Values are exercised through the notes routes because that is
+ * how they are written: a field is only ever set through the note that holds it.
+ */
+describe('notebook fields', () => {
+  function json(actor: Actor, method: string, path: string, body?: unknown): Promise<Response> {
+    return fetch(`${BASE}${path}`, {
+      method,
+      headers: { 'Content-Type': 'application/json', Cookie: actor.cookie, Origin: ORIGIN },
+      ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
+    });
+  }
+
+  interface Field {
+    id: string;
+    name: string;
+    type: string;
+    options: string[];
+    position: number;
+    valueCount?: number;
+  }
+  interface Value {
+    fieldId: string;
+    name: string;
+    type: string;
+    value: string | number | boolean;
+    notebookId: string;
+    notebook: string;
+  }
+
+  async function makeNotebook(actor: Actor, name: string): Promise<{ id: string; name: string }> {
+    const res = await json(actor, 'POST', '/api/notebooks', { name });
+    if (res.status !== 201) throw new Error(`notebook: ${res.status} ${await res.text()}`);
+    return res.json();
+  }
+
+  async function makeField(
+    actor: Actor,
+    notebookId: string,
+    def: { name: string; type: string; options?: string[] },
+  ): Promise<Field> {
+    const res = await json(actor, 'POST', `/api/notebooks/${notebookId}/fields`, def);
+    if (res.status !== 201) throw new Error(`field: ${res.status} ${await res.text()}`);
+    return res.json();
+  }
+
+  async function getFields(actor: Actor, notebookId: string): Promise<Field[]> {
+    const res = await json(actor, 'GET', `/api/notebooks/${notebookId}/fields`);
+    if (!res.ok) throw new Error(`fields: ${res.status}`);
+    return (await res.json()).fields;
+  }
+
+  async function getNote(actor: Actor, id: string) {
+    return json(actor, 'GET', `/api/notes/${id}`).then((r) => r.json());
+  }
+
+  const byName = (values: Value[] | undefined) =>
+    Object.fromEntries((values ?? []).map((v) => [v.name, v.value]));
+
+  let nb: { id: string; name: string };
+  let f: Record<string, Field>;
+
+  beforeAll(async () => {
+    nb = await makeNotebook(alice, `Receipts ${Date.now()}`);
+    f = {};
+    for (const def of [
+      { name: 'Merchant', type: 'text' },
+      { name: 'Amount', type: 'number' },
+      { name: 'Paid on', type: 'date' },
+      { name: 'Reimbursed', type: 'checkbox' },
+      { name: 'Receipt', type: 'url' },
+      { name: 'Contact', type: 'email' },
+      { name: 'Phone', type: 'phone' },
+      { name: 'Category', type: 'select', options: ['Food', 'Travel'] },
+    ]) {
+      f[def.name] = await makeField(alice, nb.id, def);
+    }
+  }, 30_000);
+
+  it('lists fields in the order they were made, with types, options and counts', async () => {
+    const fields = await getFields(alice, nb.id);
+    expect(fields.map((x) => x.name)).toEqual([
+      'Merchant', 'Amount', 'Paid on', 'Reimbursed', 'Receipt', 'Contact', 'Phone', 'Category',
+    ]);
+    expect(fields.map((x) => x.position)).toEqual([0, 1, 2, 3, 4, 5, 6, 7]);
+    expect(fields.find((x) => x.name === 'Category')!.options).toEqual(['Food', 'Travel']);
+    expect(fields.find((x) => x.name === 'Merchant')!.options).toEqual([]);
+    expect(fields.every((x) => x.valueCount === 0)).toBe(true);
+
+    const listed = (await json(alice, 'GET', '/api/notebooks').then((r) => r.json())).notebooks;
+    expect(listed.find((n: { id: string }) => n.id === nb.id).fields).toBe(8);
+  });
+
+  it('refuses a reserved name, a name taken in another case, and an unknown type', async () => {
+    expect((await json(alice, 'POST', `/api/notebooks/${nb.id}/fields`, { name: 'Title', type: 'text' })).status).toBe(400);
+    expect((await json(alice, 'POST', `/api/notebooks/${nb.id}/fields`, { name: 'merchant', type: 'text' })).status).toBe(409);
+    expect((await json(alice, 'POST', `/api/notebooks/${nb.id}/fields`, { name: 'Odd', type: 'rollup' })).status).toBe(400);
+  });
+
+  it('caps a notebook at fifty fields', async () => {
+    const full = await makeNotebook(alice, `Full ${Date.now()}`);
+    for (let i = 0; i < 50; i++) await makeField(alice, full.id, { name: `F${i}`, type: 'text' });
+    const res = await json(alice, 'POST', `/api/notebooks/${full.id}/fields`, { name: 'One more', type: 'text' });
+    expect(res.status).toBe(400);
+  }, 60_000);
+
+  it('stores a value of every type and reads them back typed', async () => {
+    const res = await json(alice, 'POST', '/api/notes', {
+      title: 'Lunch',
+      body: 'x',
+      notebook: nb.name,
+      fields: {
+        [f['Merchant']!.id]: 'Acme',
+        [f['Amount']!.id]: '12.50',
+        [f['Paid on']!.id]: '2024-03-01',
+        [f['Reimbursed']!.id]: true,
+        [f['Receipt']!.id]: 'https://x.test/r/1',
+        [f['Contact']!.id]: 'ap@acme.test',
+        [f['Phone']!.id]: '+1 555 0100',
+        [f['Category']!.id]: 'Food',
+      },
+    });
+    expect(res.status).toBe(201);
+    const created = await res.json();
+    expect(created.notebookId).toBe(nb.id);
+    expect(byName(created.fields)).toEqual({
+      Merchant: 'Acme',
+      Amount: 12.5,
+      'Paid on': '2024-03-01',
+      Reimbursed: true,
+      Receipt: 'https://x.test/r/1',
+      Contact: 'ap@acme.test',
+      Phone: '+1 555 0100',
+      Category: 'Food',
+    });
+    // In definition order, and each value knows its notebook.
+    expect((created.fields as Value[]).map((v) => v.name)).toEqual([
+      'Merchant', 'Amount', 'Paid on', 'Reimbursed', 'Receipt', 'Contact', 'Phone', 'Category',
+    ]);
+    expect((created.fields as Value[]).every((v) => v.notebookId === nb.id && v.notebook === nb.name)).toBe(true);
+
+    const fetched = await getNote(alice, created.id);
+    expect(byName(fetched.fields)).toEqual(byName(created.fields));
+
+    const { items } = await json(alice, 'GET', `/api/notes?notebook=${encodeURIComponent(nb.name)}`).then((r) => r.json());
+    const row = items.find((i: { id: string }) => i.id === created.id);
+    expect(byName(row.fields).Amount).toBe(12.5);
+    expect(row.notebookId).toBe(nb.id);
+
+    expect((await getFields(alice, nb.id)).find((x) => x.name === 'Amount')!.valueCount).toBe(1);
+  });
+
+  it('rejects a value the field cannot hold, naming the field, and leaves the note untouched', async () => {
+    const created = await json(alice, 'POST', '/api/notes', { title: 'Before', body: '', notebook: nb.name }).then((r) => r.json());
+
+    const bad = await json(alice, 'PATCH', `/api/notes/${created.id}`, {
+      title: 'After',
+      fields: { [f['Amount']!.id]: 'twelve' },
+    });
+    expect(bad.status).toBe(400);
+    expect((await bad.json()).error).toMatch(/^Amount must be a number/);
+    expect((await getNote(alice, created.id)).title).toBe('Before');
+
+    for (const [id, value] of [
+      [f['Category']!.id, 'Vet'],
+      [f['Contact']!.id, 'not an address'],
+      [f['Receipt']!.id, 'javascript:alert(1)'],
+      [f['Paid on']!.id, 'March 1'],
+      [f['Reimbursed']!.id, 'yes'],
+    ]) {
+      expect((await json(alice, 'PATCH', `/api/notes/${created.id}`, { fields: { [id!]: value } })).status).toBe(400);
+    }
+
+    const unknown = await json(alice, 'PATCH', `/api/notes/${created.id}`, {
+      fields: { [crypto.randomUUID()]: 'x' },
+    });
+    expect(unknown.status).toBe(400);
+  });
+
+  it('merges a patch, and clears a value with null or an empty string', async () => {
+    const created = await json(alice, 'POST', '/api/notes', {
+      title: 'Merge',
+      body: '',
+      notebook: nb.name,
+      fields: { [f['Merchant']!.id]: 'Acme', [f['Amount']!.id]: 3 },
+    }).then((r) => r.json());
+
+    // Only the key in the patch changes.
+    let note = await json(alice, 'PATCH', `/api/notes/${created.id}`, { fields: { [f['Amount']!.id]: 4 } }).then((r) => r.json());
+    expect(byName(note.fields)).toEqual({ Merchant: 'Acme', Amount: 4 });
+
+    note = await json(alice, 'PATCH', `/api/notes/${created.id}`, {
+      fields: { [f['Amount']!.id]: null, [f['Merchant']!.id]: '   ' },
+    }).then((r) => r.json());
+    expect(note.fields).toBeUndefined();
+  });
+
+  it('keeps values when the note moves, marking them with the notebook they belong to', async () => {
+    const created = await json(alice, 'POST', '/api/notes', {
+      title: 'Mover',
+      body: '',
+      notebook: nb.name,
+      fields: { [f['Merchant']!.id]: 'Acme' },
+    }).then((r) => r.json());
+
+    const moved = await json(alice, 'PATCH', `/api/notes/${created.id}`, { notebook: `Elsewhere ${Date.now()}` }).then((r) => r.json());
+    expect(moved.notebookId).not.toBe(nb.id);
+    expect(byName(moved.fields)).toEqual({ Merchant: 'Acme' });
+    expect((moved.fields as Value[])[0]!.notebookId).toBe(nb.id);
+    expect((moved.fields as Value[])[0]!.notebook).toBe(nb.name);
+
+    const unfiled = await json(alice, 'PATCH', `/api/notes/${created.id}`, { notebook: null }).then((r) => r.json());
+    expect(unfiled.notebookId).toBeNull();
+    expect(byName(unfiled.fields)).toEqual({ Merchant: 'Acme' });
+  });
+
+  it('previews a type change, then applies it, clearing what cannot be read', async () => {
+    const code = await makeField(alice, nb.id, { name: 'Code', type: 'text' });
+    const ids: string[] = [];
+    for (const value of ['12', 'abc', '7']) {
+      const n = await json(alice, 'POST', '/api/notes', { title: value, body: '', notebook: nb.name, fields: { [code.id]: value } }).then((r) => r.json());
+      ids.push(n.id);
+    }
+
+    const preview = await json(alice, 'GET', `/api/notebooks/${nb.id}/fields/${code.id}/conversion?type=number`).then((r) => r.json());
+    expect(preview).toEqual({ values: 3, incompatible: 1 });
+    // A preview writes nothing.
+    expect(byName((await getNote(alice, ids[1]!)).fields).Code).toBe('abc');
+
+    const changed = await json(alice, 'PATCH', `/api/notebooks/${nb.id}/fields/${code.id}`, { type: 'number' }).then((r) => r.json());
+    expect(changed.field.type).toBe('number');
+    expect(changed.cleared).toBe(1);
+
+    expect(byName((await getNote(alice, ids[0]!)).fields).Code).toBe(12);
+    expect(byName((await getNote(alice, ids[1]!)).fields).Code).toBeUndefined();
+    expect(byName((await getNote(alice, ids[2]!)).fields).Code).toBe(7);
+    expect((await json(alice, 'GET', `/api/notebooks/${nb.id}/fields/${code.id}/conversion?type=rollup`)).status).toBe(400);
+  });
+
+  it('seeds the options from existing values when a field becomes a select', async () => {
+    const kind = await makeField(alice, nb.id, { name: 'Kind', type: 'text' });
+    for (const value of ['GP', 'Dentist', 'GP']) {
+      await json(alice, 'POST', '/api/notes', { title: value, body: '', notebook: nb.name, fields: { [kind.id]: value } });
+    }
+    const changed = await json(alice, 'PATCH', `/api/notebooks/${nb.id}/fields/${kind.id}`, { type: 'select' }).then((r) => r.json());
+    expect(changed.cleared).toBe(0);
+    expect(new Set(changed.field.options)).toEqual(new Set(['GP', 'Dentist']));
+    expect((await getFields(alice, nb.id)).find((x) => x.id === kind.id)!.valueCount).toBe(3);
+  });
+
+  it('renames a field, replaces its options, and reorders the notebook', async () => {
+    const own = await makeNotebook(alice, `Order ${Date.now()}`);
+    const a = await makeField(alice, own.id, { name: 'A', type: 'select', options: ['x'] });
+    const b = await makeField(alice, own.id, { name: 'B', type: 'text' });
+    const c = await makeField(alice, own.id, { name: 'C', type: 'text' });
+
+    const renamed = await json(alice, 'PATCH', `/api/notebooks/${own.id}/fields/${a.id}`, { name: 'Alpha', options: ['x', 'y', 'x'] }).then((r) => r.json());
+    expect(renamed.field.name).toBe('Alpha');
+    expect(renamed.field.options).toEqual(['x', 'y']);
+    expect((await json(alice, 'PATCH', `/api/notebooks/${own.id}/fields/${b.id}`, { name: 'alpha' })).status).toBe(409);
+    // Re-casing a field's own name is not a clash.
+    expect((await json(alice, 'PATCH', `/api/notebooks/${own.id}/fields/${a.id}`, { name: 'ALPHA' })).status).toBe(200);
+
+    expect((await json(alice, 'PUT', `/api/notebooks/${own.id}/fields/order`, { ids: [c.id, a.id, b.id] })).status).toBe(204);
+    expect((await getFields(alice, own.id)).map((x) => x.id)).toEqual([c.id, a.id, b.id]);
+    // An order that does not name every field once is a stale client.
+    expect((await json(alice, 'PUT', `/api/notebooks/${own.id}/fields/order`, { ids: [c.id, a.id] })).status).toBe(400);
+    expect((await json(alice, 'PUT', `/api/notebooks/${own.id}/fields/order`, { ids: [c.id, a.id, b.id, crypto.randomUUID()] })).status).toBe(400);
+  });
+
+  it('deletes a field together with its values', async () => {
+    const gone = await makeField(alice, nb.id, { name: 'Gone', type: 'text' });
+    const note = await json(alice, 'POST', '/api/notes', { title: 'Has gone', body: '', notebook: nb.name, fields: { [gone.id]: 'yes', [f['Merchant']!.id]: 'Acme' } }).then((r) => r.json());
+    expect(byName(note.fields).Gone).toBe('yes');
+
+    expect((await json(alice, 'DELETE', `/api/notebooks/${nb.id}/fields/${gone.id}`)).status).toBe(204);
+    expect((await json(alice, 'DELETE', `/api/notebooks/${nb.id}/fields/${gone.id}`)).status).toBe(404);
+    expect(byName((await getNote(alice, note.id)).fields)).toEqual({ Merchant: 'Acme' });
+    expect((await getFields(alice, nb.id)).some((x) => x.id === gone.id)).toBe(false);
+  });
+
+  it('deletes a notebook together with its fields and their values', async () => {
+    const doomed = await makeNotebook(alice, `Doomed ${Date.now()}`);
+    const field = await makeField(alice, doomed.id, { name: 'X', type: 'text' });
+    const note = await json(alice, 'POST', '/api/notes', { title: 'In doomed', body: '', notebook: doomed.name, fields: { [field.id]: 'v' } }).then((r) => r.json());
+
+    expect((await json(alice, 'DELETE', `/api/notebooks/${doomed.id}`)).status).toBe(204);
+    expect((await json(alice, 'GET', `/api/notebooks/${doomed.id}/fields`)).status).toBe(404);
+    const after = await getNote(alice, note.id);
+    expect(after.notebook).toBeNull();
+    expect(after.fields).toBeUndefined();
+  });
+
+  it('imports values by name, creating the definitions it lacks and naming what it skipped', async () => {
+    const payload = {
+      title: 'Imported receipt',
+      body: 'from a vault',
+      tags: [] as string[],
+      notebook: nb.name,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      contentHash: 'c'.repeat(64),
+      fields: { Merchant: 'Acme', Total: 12.5, title: 'shadow', Category: 'Vet' },
+    };
+    const res = await json(alice, 'POST', '/api/import/note', payload);
+    expect(res.status).toBe(201);
+    const { id, skippedFields } = await res.json();
+    // Reserved, and a select value not among the options.
+    expect(skippedFields.sort()).toEqual(['Category', 'title']);
+
+    expect(byName((await getNote(alice, id)).fields)).toEqual({ Merchant: 'Acme', Total: 12.5 });
+    const total = (await getFields(alice, nb.id)).find((x) => x.name === 'Total');
+    expect(total?.type).toBe('number');
+
+    // A re-run restores a value a deleted field lost, but never overwrites an edit.
+    await json(alice, 'PATCH', `/api/notes/${id}`, { fields: { [f['Merchant']!.id]: 'Edited' } });
+    await json(alice, 'DELETE', `/api/notebooks/${nb.id}/fields/${total!.id}`);
+    const again = await json(alice, 'POST', '/api/import/note', payload);
+    expect(again.status).toBe(200);
+    expect(byName((await getNote(alice, id)).fields)).toEqual({ Merchant: 'Edited', Total: 12.5 });
+  });
+
+  it("does not expose or accept changes to another user's fields", async () => {
+    const merchant = f['Merchant']!;
+    const aliceNote = await json(alice, 'POST', '/api/notes', { title: 'Hers', body: '', notebook: nb.name, fields: { [merchant.id]: 'Acme' } }).then((r) => r.json());
+
+    expect((await json(bob, 'GET', `/api/notebooks/${nb.id}/fields`)).status).toBe(404);
+    expect((await json(bob, 'POST', `/api/notebooks/${nb.id}/fields`, { name: 'Mine', type: 'text' })).status).toBe(404);
+    expect((await json(bob, 'PATCH', `/api/notebooks/${nb.id}/fields/${merchant.id}`, { name: 'Stolen' })).status).toBe(404);
+    expect((await json(bob, 'GET', `/api/notebooks/${nb.id}/fields/${merchant.id}/conversion?type=number`)).status).toBe(404);
+    expect((await json(bob, 'PUT', `/api/notebooks/${nb.id}/fields/order`, { ids: [merchant.id] })).status).toBe(404);
+    expect((await json(bob, 'DELETE', `/api/notebooks/${nb.id}/fields/${merchant.id}`)).status).toBe(404);
+
+    // Bob's own note cannot hold a value under alice's field: the id is treated as unknown.
+    const bobNote = await json(bob, 'POST', '/api/notes', { title: 'His', body: '' }).then((r) => r.json());
+    expect((await json(bob, 'PATCH', `/api/notes/${bobNote.id}`, { fields: { [merchant.id]: 'x' } })).status).toBe(400);
+    expect((await json(bob, 'POST', '/api/notes', { title: 'His 2', body: '', fields: { [merchant.id]: 'x' } })).status).toBe(400);
+
+    // And nothing of alice's moved.
+    expect((await getFields(alice, nb.id)).find((x) => x.id === merchant.id)!.name).toBe('Merchant');
+    expect(byName((await getNote(alice, aliceNote.id)).fields)).toEqual({ Merchant: 'Acme' });
+  });
+});
+
 describe('unauthenticated access', () => {
   const cases: Array<[string, string, RequestInit]> = [
     ['GET', '/api/notes', {}],
@@ -994,6 +1341,8 @@ describe('unauthenticated access', () => {
     ['DELETE', '/api/notes/whatever', { method: 'DELETE' }],
     ['GET', '/api/tags', {}],
     ['GET', '/api/notebooks', {}],
+    ['GET', '/api/notebooks/whatever/fields', {}],
+    ['POST', '/api/notebooks/whatever/fields', { method: 'POST', body: '{}' }],
   ];
 
   it.each(cases)('%s %s requires a session', async (_m, path, init) => {
