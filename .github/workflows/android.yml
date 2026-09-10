@@ -70,19 +70,6 @@ jobs:
             apps/android/app/build/outputs/apk/release/*.apk
           if-no-files-found: error
 
-      # Straight to the closed testing track, because the step this replaces was a person
-      # downloading the artifact above and uploading that same file by hand.
-      #
-      # Gated on the service account the same way signing is gated on the keystore: a fork,
-      # or this repo before the secret exists, still builds and uploads the artifact. It is
-      # also gated on the keystore, because an unsigned bundle is not something Play can
-      # take — without that check a missing keystore secret would fail here instead of
-      # skipping, which reads as a broken publish rather than a build nobody asked to ship.
-      #
-      # `status: draft` stops short of releasing to testers. The bundle appears in the
-      # track and Play runs its checks, but a person still presses the button — which is
-      # the right default for something triggered by every push to main. Change it to
-      # `completed` to have testers get the build without asking.
       # `secrets` cannot be read in an `if:`, and a step that pulls in an action cannot
       # carry the `env:` that the signing step uses to smuggle one in — so presence is
       # decided once, here, and the publish reads the output.
@@ -115,6 +102,9 @@ jobs:
       # `alpha` is the API's name for the default closed testing track — "closed" is not a
       # track name, and a custom closed track is referenced by the name it was given in
       # Play Console. Change this if the track being shipped to is not the default one.
+      #
+      # `tracks`, plural: the singular `track` still works but warns that it is going away,
+      # and it takes the same value.
       - name: Publish to Play closed testing
         if: steps.publishable.outputs.ready == 'true'
         uses: r0adkll/upload-google-play@v1
@@ -122,5 +112,5 @@ jobs:
           serviceAccountJsonPlainText: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
           packageName: com.makerocketgonow.unbent
           releaseFiles: apps/android/app/build/outputs/bundle/release/*.aab
-          track: alpha
+          tracks: alpha
           status: draft
