@@ -49,6 +49,8 @@ export function SearchResults({ results }: SearchResultsProps) {
             {/* Naming the file makes an otherwise puzzling hit explicable: the note body
                 may not contain the search term at all. */}
             {r.matchedFile && <span className="matched-file">in {r.matchedFile}</span>}
+            {/* Same reason, same treatment: the term was in a field's value. */}
+            {r.matchedField && <span className="matched-file">in {r.matchedField}</span>}
             <Snippet text={r.snippet} />
           </Link>
         </li>

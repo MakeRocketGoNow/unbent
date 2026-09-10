@@ -37,11 +37,12 @@ export function registerReadTools(
     {
       title: 'Search notes',
       description:
-        'Full-text search across note titles and bodies, and across text extracted from PDF ' +
-        'attachments. Results are ranked, with title matches weighted above body matches and ' +
-        'note matches above attachment matches, and each carries a snippet with the matched ' +
-        'terms marked. A result with matchedFile matched inside that attachment rather than ' +
-        'in the note body. Terms are matched literally and ANDed; there is no operator ' +
+        'Full-text search across note titles and bodies, custom field values, and text ' +
+        'extracted from PDF attachments. Results are ranked, with title matches weighted ' +
+        'above body matches, and note matches above field matches above attachment matches; ' +
+        'each carries a snippet with the matched terms marked. A result with matchedField ' +
+        'matched in that custom field\'s value; one with matchedFile matched inside that ' +
+        'attachment. Terms are matched literally and ANDed; there is no operator ' +
         'syntax, so narrow with the tag, notebook and date arguments rather than by writing ' +
         'filters into the query.',
       inputSchema: z.object({

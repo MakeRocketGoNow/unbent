@@ -823,15 +823,18 @@ export class NotesRepo extends ScopedRepo {
     const scoped = scope.length > 0 ? `AND ${scope.join(' AND ')}` : '';
 
     /**
-     * Two indexes, one result set.
+     * Three indexes, one result set.
      *
      * Most notes in an imported Evernote corpus are a scanned PDF with an empty body, so
      * searching note text alone misses the majority of them. attachment_text_fts carries
      * the OCR text those files already contained; a match there surfaces the note and
-     * names the file it came from.
+     * names the file it came from. note_fields_fts carries custom field values — a vendor,
+     * a policy number — which are in neither the body nor the file; a match there names
+     * the field.
      *
-     * Note matches rank ahead of attachment matches at equal relevance: what the user
-     * wrote is a better answer than what a scanner read.
+     * Tiers order the sources at equal relevance: what the user wrote, then what they
+     * filed under a field, then what a scanner read. A field value is a deliberate,
+     * exact statement about the note, so it outranks OCR text.
      */
     const { results } = await this.db
       .prepare(
@@ -839,6 +842,7 @@ export class NotesRepo extends ScopedRepo {
            SELECT n.id, n.title, n.updated_at,
                   snippet(notes_fts, 1, '<<', '>>', '…', 24) AS snippet,
                   NULL AS matched_file,
+                  NULL AS matched_field,
                   bm25(notes_fts, 10.0, 1.0) AS rank,
                   0 AS tier
              FROM notes_fts
@@ -846,12 +850,28 @@ export class NotesRepo extends ScopedRepo {
             WHERE notes_fts MATCH ?1 AND n.user_id = ?2 AND n.deleted_at IS NULL
               ${scoped}
          ),
+         field_hits AS (
+           SELECT n.id, n.title, n.updated_at,
+                  snippet(note_fields_fts, 0, '<<', '>>', '…', 24) AS snippet,
+                  NULL AS matched_file,
+                  f.name AS matched_field,
+                  bm25(note_fields_fts) AS rank,
+                  1 AS tier
+             FROM note_fields_fts
+             JOIN note_fields nf ON nf.rowid = note_fields_fts.rowid
+             JOIN notebook_fields f ON f.id = nf.field_id
+             JOIN notes n ON n.id = nf.note_id
+            WHERE note_fields_fts MATCH ?1 AND nf.user_id = ?2
+              AND n.user_id = ?2 AND n.deleted_at IS NULL
+              ${scoped}
+         ),
          file_hits AS (
            SELECT n.id, n.title, n.updated_at,
                   snippet(attachment_text_fts, 0, '<<', '>>', '…', 24) AS snippet,
                   at.filename AS matched_file,
+                  NULL AS matched_field,
                   bm25(attachment_text_fts) AS rank,
-                  1 AS tier
+                  2 AS tier
              FROM attachment_text_fts
              JOIN attachment_text at ON at.rowid = attachment_text_fts.rowid
              JOIN notes n ON n.id = at.note_id
@@ -859,8 +879,13 @@ export class NotesRepo extends ScopedRepo {
               AND n.user_id = ?2 AND n.deleted_at IS NULL
               ${scoped}
          ),
-         combined AS (SELECT * FROM note_hits UNION ALL SELECT * FROM file_hits)
-         SELECT id, title, updated_at, snippet, matched_file, MIN(tier) AS tier, MIN(rank) AS rank
+         combined AS (
+           SELECT * FROM note_hits
+           UNION ALL SELECT * FROM field_hits
+           UNION ALL SELECT * FROM file_hits
+         )
+         SELECT id, title, updated_at, snippet, matched_file, matched_field,
+                MIN(tier) AS tier, MIN(rank) AS rank
            FROM combined
           GROUP BY id
           ORDER BY tier, rank
@@ -873,6 +898,7 @@ export class NotesRepo extends ScopedRepo {
         updated_at: number;
         snippet: string;
         matched_file: string | null;
+        matched_field: string | null;
       }>();
 
     return results.map((r) => ({
@@ -881,6 +907,7 @@ export class NotesRepo extends ScopedRepo {
       updatedAt: r.updated_at,
       snippet: r.snippet,
       ...(r.matched_file ? { matchedFile: r.matched_file } : {}),
+      ...(r.matched_field ? { matchedField: r.matched_field } : {}),
     }));
   }
 
