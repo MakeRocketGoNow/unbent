@@ -71,6 +71,20 @@ function statusOf(err: unknown): number | undefined {
   return typeof status === 'number' ? status : undefined;
 }
 
+/**
+ * Statuses that are about this note, not the host.
+ *
+ * The breaker exists because a deleted preview Worker answered every remaining request
+ * with the same status — 404, 502, 503. The browser client attaches that status to every
+ * `ApiError`, including the 400/413 a healthy server returns for a body over the cap or a
+ * name it will not store. Five of those in a row used to abort the rest of the file, and
+ * re-importing could not get past them: they fail again in the same order, the breaker
+ * trips again, and everything after is never reached.
+ */
+function isNoteFailure(status: number): boolean {
+  return status === 400 || status === 413 || status === 415 || status === 422;
+}
+
 export interface ImportClient {
   createNote: (input: {
     title: string;
@@ -190,7 +204,11 @@ export async function importEnex(
               ? { status, count: streak.count + 1 }
               : { status, count: 1 };
 
-          if (status !== undefined && streak.count >= FAILURE_STREAK_LIMIT) {
+          if (
+            status !== undefined &&
+            !isNoteFailure(status) &&
+            streak.count >= FAILURE_STREAK_LIMIT
+          ) {
             stopped = new ImportStoppedError(
               status,
               streak.count,
