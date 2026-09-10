@@ -1,6 +1,8 @@
 import type { ReactNode } from 'react';
 import type { LucideIcon } from 'lucide-react';
 import {
+  ArrowDown,
+  ArrowUp,
   ArrowUpDown,
   Calendar,
   Funnel,
@@ -173,6 +175,15 @@ const FIELD_TYPE_ICONS: Record<FieldType, LucideIcon> = {
 
 export function FieldTypeIcon({ type }: { type: FieldType }) {
   return <RowIcon icon={FIELD_TYPE_ICONS[type]} />;
+}
+
+/** Arrows for the two buttons that reorder a list one step at a time. */
+export function MoveUpIcon() {
+  return <RowIcon icon={ArrowUp} />;
+}
+
+export function MoveDownIcon() {
+  return <RowIcon icon={ArrowDown} />;
 }
 
 /**

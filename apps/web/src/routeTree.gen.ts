@@ -37,6 +37,7 @@ import { Route as SettingsSecurityRouteImport } from './routes/settings.security
 import { Route as TrashIndexRouteImport } from './routes/trash.index'
 import { Route as TrashNoteIdRouteImport } from './routes/trash.$noteId'
 import { Route as EmbedNotesNoteIdRouteImport } from './routes/embed.notes.$noteId'
+import { Route as SettingsNotebooksNotebookIdRouteImport } from './routes/settings.notebooks_.$notebookId'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -178,6 +179,12 @@ const EmbedNotesNoteIdRoute = EmbedNotesNoteIdRouteImport.update({
   path: '/embed/notes/$noteId',
   getParentRoute: () => rootRouteImport,
 } as any)
+const SettingsNotebooksNotebookIdRoute =
+  SettingsNotebooksNotebookIdRouteImport.update({
+    id: '/notebooks_/$notebookId',
+    path: '/notebooks/$notebookId',
+    getParentRoute: () => SettingsRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -208,6 +215,7 @@ export interface FileRoutesByFullPath {
   '/settings/': typeof SettingsIndexRoute
   '/trash/': typeof TrashIndexRoute
   '/embed/notes/$noteId': typeof EmbedNotesNoteIdRoute
+  '/settings/notebooks/$notebookId': typeof SettingsNotebooksNotebookIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -235,6 +243,7 @@ export interface FileRoutesByTo {
   '/settings': typeof SettingsIndexRoute
   '/trash': typeof TrashIndexRoute
   '/embed/notes/$noteId': typeof EmbedNotesNoteIdRoute
+  '/settings/notebooks/$notebookId': typeof SettingsNotebooksNotebookIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -266,6 +275,7 @@ export interface FileRoutesById {
   '/settings/': typeof SettingsIndexRoute
   '/trash/': typeof TrashIndexRoute
   '/embed/notes/$noteId': typeof EmbedNotesNoteIdRoute
+  '/settings/notebooks_/$notebookId': typeof SettingsNotebooksNotebookIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -298,6 +308,7 @@ export interface FileRouteTypes {
     | '/settings/'
     | '/trash/'
     | '/embed/notes/$noteId'
+    | '/settings/notebooks/$notebookId'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -325,6 +336,7 @@ export interface FileRouteTypes {
     | '/settings'
     | '/trash'
     | '/embed/notes/$noteId'
+    | '/settings/notebooks/$notebookId'
   id:
     | '__root__'
     | '/'
@@ -355,6 +367,7 @@ export interface FileRouteTypes {
     | '/settings/'
     | '/trash/'
     | '/embed/notes/$noteId'
+    | '/settings/notebooks_/$notebookId'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -575,6 +588,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof EmbedNotesNoteIdRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/settings/notebooks_/$notebookId': {
+      id: '/settings/notebooks_/$notebookId'
+      path: '/notebooks/$notebookId'
+      fullPath: '/settings/notebooks/$notebookId'
+      preLoaderRoute: typeof SettingsNotebooksNotebookIdRouteImport
+      parentRoute: typeof SettingsRoute
+    }
   }
 }
 
@@ -598,6 +618,7 @@ interface SettingsRouteChildren {
   SettingsNotebooksRoute: typeof SettingsNotebooksRoute
   SettingsSecurityRoute: typeof SettingsSecurityRoute
   SettingsIndexRoute: typeof SettingsIndexRoute
+  SettingsNotebooksNotebookIdRoute: typeof SettingsNotebooksNotebookIdRoute
 }
 
 const SettingsRouteChildren: SettingsRouteChildren = {
@@ -608,6 +629,7 @@ const SettingsRouteChildren: SettingsRouteChildren = {
   SettingsNotebooksRoute: SettingsNotebooksRoute,
   SettingsSecurityRoute: SettingsSecurityRoute,
   SettingsIndexRoute: SettingsIndexRoute,
+  SettingsNotebooksNotebookIdRoute: SettingsNotebooksNotebookIdRoute,
 }
 
 const SettingsRouteWithChildren = SettingsRoute._addFileChildren(

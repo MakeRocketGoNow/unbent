@@ -2743,6 +2743,26 @@ select.note-field-input { cursor: pointer; }
   flex: 1;
 }
 
+/*
+   A notebook's field page: the notebook list's rows, each with a type and an order.
+
+   The rows wrap so a select field's options can sit on a second line under the name,
+   full width, where a list of chips has room; everything else stays on the first line.
+*/
+.field-admin li { flex-wrap: wrap; }
+
+/* The type picker is the sidebar's select at its own width, not the sidebar's full one. */
+.field-admin-type { flex: 0 0 auto; }
+.field-admin-type .notebook-scope { width: auto; }
+
+.field-admin-options {
+  flex-basis: 100%;
+  padding: 0.1rem 0 0.25rem;
+}
+
+.field-admin-new { flex-wrap: wrap; }
+.field-admin-new .tag-input { flex-basis: 100%; }
+
 /* Notebook picker in the note header, beside the tags. */
 .note-notebook {
   flex-shrink: 0;

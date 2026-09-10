@@ -93,3 +93,14 @@ describe('TagInput add affordance', () => {
     expect(container.querySelector('.tag-entry')!.className).toBe('tag-entry');
   });
 });
+
+describe('TagInput as an option editor', () => {
+  afterEach(cleanup);
+
+  it('takes the noun for its hint and its accessible names', () => {
+    render(<TagInput label="option" tags={['GP']} suggestions={[]} onChange={() => {}} />);
+    expect(screen.getByText('Add option')).toBeTruthy();
+    expect(screen.getByLabelText('Add a option')).toBeTruthy();
+    expect(screen.getByLabelText('Remove option GP')).toBeTruthy();
+  });
+});

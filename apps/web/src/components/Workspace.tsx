@@ -528,6 +528,17 @@ export function Workspace({ noteId, readOnly = false, backTo = '/notes' }: Works
             setDraft((d) => ({ ...d, fields: { ...d.fields, [fieldId]: value } }))
           }
           onAddField={addField}
+          manage={
+            currentNotebook && (
+              <Link
+                to="/settings/notebooks/$notebookId"
+                params={{ notebookId: currentNotebook.id }}
+                className="link small note-fields-manage"
+              >
+                Manage fields
+              </Link>
+            )
+          }
         />
         </div>
       </Disclosure>

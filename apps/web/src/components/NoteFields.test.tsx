@@ -57,6 +57,9 @@ function mount(props: Partial<Parameters<typeof NoteFields>[0]> = {}) {
 
 const input = (label: string) => screen.getByLabelText(label) as HTMLInputElement;
 
+/** A select's value; the DOM typings here will not cast an HTMLElement to a select directly. */
+const selectValue = (label: string) => (screen.getByLabelText(label) as unknown as { value: string }).value;
+
 afterEach(cleanup);
 
 describe('NoteFields', () => {
@@ -83,7 +86,7 @@ describe('NoteFields', () => {
     expect(input('Receipt').type).toBe('url');
     expect(input('Contact').type).toBe('email');
     expect(input('Phone').type).toBe('tel');
-    expect((screen.getByLabelText('Category') as HTMLSelectElement).value).toBe('Food');
+    expect(selectValue('Category')).toBe('Food');
 
     expect(screen.getByText('Open').getAttribute('href')).toBe('https://x.test/r');
     expect(screen.getByText('Email').getAttribute('href')).toBe('mailto:ap@acme.test');
@@ -104,7 +107,7 @@ describe('NoteFields', () => {
 
   it('keeps a select value that is no longer an option selectable, and says so', () => {
     mount({ values: { 'f-sel': 'Vet' } });
-    expect((screen.getByLabelText('Category') as HTMLSelectElement).value).toBe('Vet');
+    expect(selectValue('Category')).toBe('Vet');
     expect(screen.getByText('Vet (no longer an option)')).toBeTruthy();
   });
 

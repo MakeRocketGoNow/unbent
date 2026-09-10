@@ -62,6 +62,7 @@ function harness(initial: string) {
     settingsRoute.addChildren([
       indexRoute,
       child('/notebooks', 'notebooks page'),
+      child('/notebooks/$notebookId', 'fields page'),
       child('/import', 'import page'),
       child('/export', 'export page'),
       child('/maintenance', 'maintenance page'),
@@ -107,6 +108,15 @@ describe('settings section routing', () => {
     // redirects forward again and the user can never get out.
     router.history.back();
     await waitFor(() => expect(router.state.location.pathname).toBe('/notes'));
+  });
+
+  it('keeps Notebooks lit on a notebook\'s own fields page', async () => {
+    harness('/settings/notebooks/abc');
+    await waitFor(() => expect(screen.getByText('fields page')).toBeTruthy());
+
+    const active = document.querySelectorAll('.settings-nav-item.active');
+    expect(active.length).toBe(1);
+    expect(active[0]?.textContent).toBe('Notebooks');
   });
 
   it('marks only the current section in the sub-nav', async () => {
