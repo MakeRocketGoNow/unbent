@@ -73,41 +73,25 @@ component and are the backlog it exists to work through, not counterexamples to 
 
 ## Icons
 
-There is no icon library, deliberately — the reasoning is recorded in `icons.tsx`:
-this is a handful of icons in a codebase whose other controls are letters (B, I, S, H1),
-and a dependency would not draw those anyway.
+Icons come from [lucide](https://lucide.dev), and every one of them passes through
+`apps/web/src/components/icons.tsx`. Import the named components from there — `TagIcon`,
+`CalendarIcon` and so on — and never `lucide-react` directly from a component. The file is
+the single seam: it fixes each icon's size against what it sits beside (a lone control in a
+44px target, a label beside a row of text, a cross inside a chip), and it is the one place
+to change if the library ever changes again.
 
-New icons go in `apps/web/src/components/icons.tsx` and go through the `ToolbarIcon`
-wrapper there, which fixes the shared geometry: a 24×24 box, `currentColor` stroke at
-width 2, round caps and joins, and `aria-hidden`. Pass it paths, and it will match
-everything else. `HeaderIcon` beside it is the same geometry at a larger size, for an icon
-that sits alone in a 44px target rather than in a dense row.
+They were hand-drawn until the fifteenth. The first dozen were a few straight lines each,
+which no library would have drawn better; the tag and the calendar were traced from
+Android's drawables by eye, which is exactly the work an icon set exists to save, and the
+next feature wanted eight more. lucide's defaults are the geometry the hand-drawn set
+already had — a 24×24 box, `currentColor` at stroke width 2, round caps and joins — so the
+switch changed no pixels that mattered.
 
-**This is a decision about the current scale, not a principle.** We are open to adopting an
-icon library if the icon count grows enough to justify it — hand-drawing paths stops being
-cheaper than a dependency somewhere around a dozen icons, and a real set also brings
-consistent optical sizing and a much wider vocabulary than anyone wants to draw by hand. If
-you find yourself drawing several new icons for one feature, or reaching for a glyph that
-would be tedious to draw well, say so and propose the switch rather than quietly adding more
-paths.
+The editor toolbar's own glyphs still go through `ToolbarIcon` with paths, deliberately:
+bold, italic and the rest are letters in that toolbar, and the few real icons beside them
+are drawn to match those letters rather than a library's weight.
 
-**We are past that line: fifteen icons.** The phone's note list added search, filter, sort,
-close, menu, plus, tag and calendar. The first six are a few straight lines each and a
-library would not have drawn them better; the last two are not — the tag with its punched
-hole and the calendar were drawn by translating Android's own drawables by eye, which is
-exactly the work a real icon set exists to save.
-
-**So the next icon should come with the switch, not after it.** Adding a sixteenth by hand
-means someone is redrawing a shape that lucide or Material already has, and doing it less
-well. `icons.tsx` is the single seam this passes through, so the change is that file and
-its callers rather than SVG scattered across the codebase — but it needs asking about
-first, as the paragraph above says.
-
-`icons.tsx` is what makes that switch cheap: it is the single seam every icon passes
-through, so moving to a library means changing that file, not hunting SVG across the
-codebase. Keep new icons going through it for that reason.
-
-Either way, don't add the dependency without asking first.
+Don't add a second icon library, and ask before adding any other dependency.
 
 ## Destructive actions
 

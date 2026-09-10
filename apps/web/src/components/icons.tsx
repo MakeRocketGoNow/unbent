@@ -1,23 +1,29 @@
 import type { ReactNode } from 'react';
+import type { LucideIcon } from 'lucide-react';
+import { ArrowUpDown, Calendar, Funnel, Menu, Plus, Search, Tag, X } from 'lucide-react';
 
 /**
- * The shared geometry every icon in this app is drawn on.
+ * Every icon in this app passes through this file.
  *
- * A 24×24 box, `currentColor` at stroke width 2, round caps and joins, sized in `em` so it
- * inherits the surrounding font-size the way a letter does. Pass it paths and the result
- * matches everything else.
+ * The glyphs come from lucide. They were hand-drawn until the fifteenth one: the first
+ * dozen were a few straight lines each and a library would not have drawn them better, but
+ * the tag with its punched hole and the calendar were traced from Android's drawables by
+ * eye, which is exactly the work an icon set exists to save — and custom field types then
+ * asked for eight more. AGENTS.md records the same arc. lucide rather than Material because
+ * its defaults are the geometry this file already had: a 24×24 box, `currentColor` at
+ * stroke width 2, round caps and joins.
  *
- * Inline rather than from an icon library: this is a handful of icons in a codebase whose
- * other controls are letters (B, I, S, H1), and a dependency would still not draw those.
- * That is a judgement about the current scale and not a principle — see the Icons section
- * of AGENTS.md, which says to propose the switch rather than quietly adding more paths once
- * the count justifies it. This wrapper is the seam that keeps the switch cheap: every icon
- * passes through it, so adopting a library means changing this file rather than hunting SVG
- * across the codebase.
- *
- * It lives here rather than in `EditorToolbar`, where it was written, because the note list
- * header now draws icons too and importing them from the editor's toolbar would have said
- * they were the toolbar's.
+ * Still one seam on purpose. Callers import named components from here and never lucide
+ * directly, so the sizes stay consistent (an icon is sized against what it sits beside,
+ * not against a pixel grid — see the three wrappers) and swapping the library again would
+ * be this file rather than a hunt across the codebase.
+ */
+
+/**
+ * The editor toolbar's own glyphs, which are paths rather than library icons: bold, italic
+ * and the rest are letters in this toolbar, and the few real icons beside them
+ * (`EditorToolbar.tsx`) are drawn to match those letters rather than a library's weight.
+ * Sized in `em` so it inherits the surrounding font-size the way a letter does.
  */
 export function ToolbarIcon({ children }: { children: ReactNode }) {
   return (
@@ -45,23 +51,8 @@ export function ToolbarIcon({ children }: { children: ReactNode }) {
  * than in a dense row of letterforms: at 1.05em a lone icon in a 2.75rem target reads as an
  * afterthought in the middle of it.
  */
-function HeaderIcon({ children }: { children: ReactNode }) {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      width="1.25em"
-      height="1.25em"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-      focusable="false"
-    >
-      {children}
-    </svg>
-  );
+function HeaderIcon({ icon: Icon }: { icon: LucideIcon }) {
+  return <Icon size="1.25em" strokeWidth={2} aria-hidden="true" focusable="false" />;
 }
 
 /**
@@ -71,33 +62,13 @@ function HeaderIcon({ children }: { children: ReactNode }) {
  * is the target, so the glyph only has to match the words. Muted by the row it is in, since
  * it names the row rather than competing with it.
  */
-function RowIcon({ children }: { children: ReactNode }) {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      width="1.15em"
-      height="1.15em"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-      focusable="false"
-    >
-      {children}
-    </svg>
-  );
+export function RowIcon({ icon: Icon }: { icon: LucideIcon }) {
+  return <Icon size="1.15em" strokeWidth={2} aria-hidden="true" focusable="false" />;
 }
 
 /** A magnifier, for opening the search field. */
 export function SearchIcon() {
-  return (
-    <HeaderIcon>
-      <circle cx="11" cy="11" r="7" />
-      <path d="m20 20-3.6-3.6" />
-    </HeaderIcon>
-  );
+  return <HeaderIcon icon={Search} />;
 }
 
 /**
@@ -108,11 +79,7 @@ export function SearchIcon() {
  * halves of one product should not name the same surface with different pictures.
  */
 export function FilterIcon() {
-  return (
-    <HeaderIcon>
-      <path d="M3 5h18l-7 8v6l-4 2v-8Z" />
-    </HeaderIcon>
-  );
+  return <HeaderIcon icon={Funnel} />;
 }
 
 /**
@@ -123,12 +90,7 @@ export function FilterIcon() {
  * options have in common.
  */
 export function SortIcon() {
-  return (
-    <HeaderIcon>
-      <path d="M7 4v16m0 0-3.5-3.5M7 20l3.5-3.5" />
-      <path d="M17 20V4m0 0-3.5 3.5M17 4l3.5 3.5" />
-    </HeaderIcon>
-  );
+  return <HeaderIcon icon={ArrowUpDown} />;
 }
 
 /**
@@ -139,11 +101,7 @@ export function SortIcon() {
  * which is the whole job of a control that hides navigation.
  */
 export function MenuIcon() {
-  return (
-    <HeaderIcon>
-      <path d="M4 7h16M4 12h16M4 17h16" />
-    </HeaderIcon>
-  );
+  return <HeaderIcon icon={Menu} />;
 }
 
 /**
@@ -154,77 +112,37 @@ export function MenuIcon() {
  * shape reads at a glance where a detailed one would turn to mush.
  */
 export function PlusIcon() {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      width="1.5em"
-      height="1.5em"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-      focusable="false"
-    >
-      <path d="M12 5v14M5 12h14" />
-    </svg>
-  );
+  return <Plus size="1.5em" strokeWidth={2} aria-hidden="true" focusable="false" />;
 }
 
 /**
  * A luggage label, for the tags row.
  *
- * Drawn stroked rather than filled, unlike the Android drawable it mirrors: every icon in
- * this app is an outline at stroke width 2, and a solid shape among them reads as a
- * different kind of thing rather than as the same row's sibling. The punched hole is the
- * part that makes it a tag and not a chevron, so it survives the translation.
+ * Stroked, like every icon here, unlike the filled Android drawable it mirrors: a solid
+ * shape among outlines reads as a different kind of thing rather than as the same row's
+ * sibling. The punched hole is what makes it a tag and not a chevron.
  */
 export function TagIcon() {
-  return (
-    <RowIcon>
-      <path d="M3 3h7.2c.3 0 .6.1.8.4l9.6 9.6c.5.5.5 1.2 0 1.7l-5.9 5.9c-.5.5-1.2.5-1.7 0L3.4 11a1.2 1.2 0 0 1-.4-.8V3Z" />
-      <circle cx="7.3" cy="7.3" r="1.3" />
-    </RowIcon>
-  );
+  return <RowIcon icon={Tag} />;
 }
 
 /**
  * A calendar, for the dates row.
  *
- * The same 24×24 grid and stroke weight as the tag beside it, which is what makes the two
- * rows read as siblings — Android's drawable says the same thing in its own comment.
+ * The same grid and stroke weight as the tag beside it, which is what makes the two rows
+ * read as siblings — Android's drawable says the same thing in its own comment.
  */
 export function CalendarIcon() {
-  return (
-    <RowIcon>
-      <rect x="3" y="5" width="18" height="16" rx="2" />
-      <path d="M3 10h18M8 3v4M16 3v4" />
-    </RowIcon>
-  );
+  return <RowIcon icon={Calendar} />;
 }
 
 /**
  * A cross, for removing one filter from a chip.
  *
- * Small: it rides inside a chip beside the filter's name, so it is sized against the label
- * rather than against a touch target — the whole chip is the target.
+ * Small and a touch heavier: it rides inside a chip beside the filter's name, so it is
+ * sized against the label rather than against a touch target — the whole chip is the
+ * target — and at that size stroke width 2 goes faint.
  */
 export function CloseIcon() {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      width="0.85em"
-      height="0.85em"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2.5"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-      focusable="false"
-    >
-      <path d="M18 6 6 18M6 6l12 12" />
-    </svg>
-  );
+  return <X size="0.85em" strokeWidth={2.5} aria-hidden="true" focusable="false" />;
 }
