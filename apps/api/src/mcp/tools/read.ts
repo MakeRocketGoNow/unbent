@@ -179,16 +179,29 @@ export function registerReadTools(
       title: 'List notebooks',
       description:
         'Every notebook with the number of live notes in it, plus the count of notes filed in ' +
-        'none. Notebooks are flat: there is no nesting.',
+        'none. Notebooks are flat: there is no nesting. Each notebook lists its custom fields ' +
+        '(name, type, and the options of a select); values are read on a note and set by ' +
+        'name through create_note and update_note.',
       inputSchema: z.object({}),
       annotations: { readOnlyHint: true, openWorldHint: false },
     },
     async () => {
-      const [notebooks, unfiled] = await Promise.all([
+      const [notebooks, unfiled, fields] = await Promise.all([
         notes.listNotebooks(),
         notes.countUnfiledNotes(),
+        notes.listAllFields(),
       ]);
-      return jsonResult({ notebooks, unfiled });
+      return jsonResult({
+        notebooks: notebooks.map((nb) => ({
+          id: nb.id,
+          name: nb.name,
+          count: nb.count,
+          fields: fields
+            .filter((f) => f.notebookId === nb.id)
+            .map((f) => ({ id: f.id, name: f.name, type: f.type, options: f.options })),
+        })),
+        unfiled,
+      });
     },
   );
 
