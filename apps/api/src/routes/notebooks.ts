@@ -1,7 +1,13 @@
 import { Hono } from 'hono';
 import { zValidator } from '@hono/zod-validator';
 import { z } from 'zod';
-import { notebookNameSchema } from '@unbent/shared';
+import {
+  createFieldSchema,
+  fieldTypeSchema,
+  notebookNameSchema,
+  reorderFieldsSchema,
+  updateFieldSchema,
+} from '@unbent/shared';
 import { requireAuth } from '../lib/session.js';
 import { withRepos } from '../lib/repos-middleware.js';
 import type { AppEnv } from '../types.js';
@@ -80,4 +86,69 @@ export const notebooks = new Hono<AppEnv>()
       if (!ok) return c.json({ error: 'Not found' }, 404);
       return c.body(null, 204);
     },
-  );
+  )
+
+  // --- Custom fields ---------------------------------------------------------------------
+  //
+  // Definitions live under their notebook, addressed by id like the notebook itself. A
+  // field belonging to another user's notebook is a 404 for the same reason as above.
+
+  .get('/notebooks/:id/fields', async (c) => {
+    const fields = await c.get('notes').listFields(c.req.param('id'));
+    if (!fields) return c.json({ error: 'Not found' }, 404);
+    return c.json({ fields });
+  })
+
+  .post('/notebooks/:id/fields', zValidator('json', createFieldSchema), async (c) => {
+    const result = await c.get('notes').createField(c.req.param('id'), c.req.valid('json'));
+    if (result === 'missing') return c.json({ error: 'Not found' }, 404);
+    if (result === 'conflict') {
+      return c.json({ error: 'A field with that name already exists in this notebook' }, 409);
+    }
+    if (result === 'full') return c.json({ error: 'This notebook has as many fields as it can hold' }, 400);
+    return c.json(result, 201);
+  })
+
+  /**
+   * Registered before `/:fieldId` so that "order" is never read as a field id. The body
+   * must name every field exactly once; anything else is a stale client and gets 400.
+   */
+  .put('/notebooks/:id/fields/order', zValidator('json', reorderFieldsSchema), async (c) => {
+    const notebookId = c.req.param('id');
+    const fields = await c.get('notes').listFields(notebookId);
+    if (!fields) return c.json({ error: 'Not found' }, 404);
+    const ok = await c.get('notes').reorderFields(notebookId, c.req.valid('json').ids);
+    if (!ok) return c.json({ error: 'The order must list every field in the notebook once' }, 400);
+    return c.body(null, 204);
+  })
+
+  .patch('/notebooks/:id/fields/:fieldId', zValidator('json', updateFieldSchema), async (c) => {
+    const result = await c
+      .get('notes')
+      .updateField(c.req.param('id'), c.req.param('fieldId'), c.req.valid('json'));
+    if (result === 'missing') return c.json({ error: 'Not found' }, 404);
+    if (result === 'conflict') {
+      return c.json({ error: 'A field with that name already exists in this notebook' }, 409);
+    }
+    return c.json(result);
+  })
+
+  /** What a type change would clear, so the client can say so before doing it. */
+  .get(
+    '/notebooks/:id/fields/:fieldId/conversion',
+    zValidator('query', z.object({ type: fieldTypeSchema })),
+    async (c) => {
+      const preview = await c
+        .get('notes')
+        .previewConversion(c.req.param('id'), c.req.param('fieldId'), c.req.valid('query').type);
+      if (!preview) return c.json({ error: 'Not found' }, 404);
+      return c.json(preview);
+    },
+  )
+
+  /** Deletes a field and every value held under it. Not recoverable; the client confirms. */
+  .delete('/notebooks/:id/fields/:fieldId', async (c) => {
+    const ok = await c.get('notes').deleteField(c.req.param('id'), c.req.param('fieldId'));
+    if (!ok) return c.json({ error: 'Not found' }, 404);
+    return c.body(null, 204);
+  });
