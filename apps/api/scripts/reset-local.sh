@@ -20,5 +20,5 @@ if [ -d "$STATE/d1" ]; then
 fi
 
 rm -rf "$STATE/d1" "$STATE/r2"
-npx wrangler d1 migrations apply unbent --local
+npx wrangler d1 migrations apply DB --local
 echo "local d1 and r2 cleared, schema rebuilt"
