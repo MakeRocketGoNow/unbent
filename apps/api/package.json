@@ -5,12 +5,12 @@
   "license": "FSL-1.1-Apache-2.0",
   "type": "module",
   "scripts": {
-    "dev": "wrangler dev --port \"${API_PORT:-8787}\" --var \"APP_URL:http://localhost:${WEB_PORT:-5173}\"",
-    "dev:watch": "until wrangler dev --port \"${API_PORT:-8787}\" --var \"APP_URL:http://localhost:${WEB_PORT:-5173}\"; do echo 'wrangler exited, restarting'; sleep 1; done",
+    "dev": "wrangler dev --env local --port \"${API_PORT:-8787}\" --var \"APP_URL:http://localhost:${WEB_PORT:-5173}\" --var ALLOW_TEST_CREDENTIALS:1",
+    "dev:watch": "until wrangler dev --env local --port \"${API_PORT:-8787}\" --var \"APP_URL:http://localhost:${WEB_PORT:-5173}\" --var ALLOW_TEST_CREDENTIALS:1; do echo 'wrangler exited, restarting'; sleep 1; done",
     "typecheck": "tsc --noEmit",
-    "migrate:local": "wrangler d1 migrations apply unbent --local",
-    "migrate:remote": "wrangler d1 migrations apply unbent --remote --env production",
-    "migrate:dev": "wrangler d1 migrations apply unbent-dev --remote --env dev",
+    "migrate:local": "wrangler d1 migrations apply DB --local --env local",
+    "migrate:remote": "wrangler d1 migrations apply DB --remote --env \"\"",
+    "migrate:dev": "wrangler d1 migrations apply DB --remote --env dev",
     "cf-typegen": "wrangler types",
     "test": "vitest run",
     "test:unit": "vitest run --project unit",
@@ -18,7 +18,7 @@
     "purge-test-data": "./scripts/purge-test-data.sh",
     "db:reset": "./scripts/reset-local-db.sh",
     "reset:local": "./scripts/reset-local.sh",
-    "release": "wrangler deploy --env production"
+    "release": "wrangler deploy --env \"\""
   },
   "dependencies": {
     "@better-auth/mcp": "^1.7.3",

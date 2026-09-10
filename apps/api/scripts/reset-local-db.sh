@@ -17,5 +17,5 @@ if [ -d "$STATE" ]; then
 fi
 
 rm -rf "$STATE"
-npx wrangler d1 migrations apply unbent --local
+npx wrangler d1 migrations apply DB --local --env local
 echo "local d1 rebuilt from migrations"

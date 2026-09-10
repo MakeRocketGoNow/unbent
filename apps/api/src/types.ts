@@ -11,6 +11,17 @@ export interface Env {
    * extracting, as it did before.
    */
   AI?: Ai;
+  /**
+   * The origin the app is served on — what Better Auth, the passkey relying party, secure
+   * cookies, the MCP audience and the legal documents' host all derive from.
+   *
+   * Always present by the time a route sees it, and optional in the deployment: the
+   * Worker's entry point fills it from the request origin when nothing configured one
+   * (see lib/app-url.ts), so an instance need not know its own address before its first
+   * deploy. Setting it — as a secret, which survives deploys — pins one origin and makes
+   * every other hostname the Worker answers on refuse sign-in, which is what a deployment
+   * with both a custom domain and a workers.dev name wants.
+   */
   APP_URL: string;
   /** `wrangler secret put BETTER_AUTH_SECRET`; in dev it comes from .dev.vars. */
   BETTER_AUTH_SECRET: string;
@@ -36,7 +47,11 @@ export interface Env {
    * the default, and is the one setting here that can leave nobody a way in.
    */
   AUTH_PASSWORD?: string;
-  /** '1' enables password auth so the isolation suite can mint sessions. Local only. */
+  /**
+   * '1' enables password auth so the isolation suite and `pnpm seed:demo` can mint
+   * sessions. `pnpm dev` passes it on the command line, so it is on for every local
+   * Worker and never in a file a deploy reads.
+   */
   ALLOW_TEST_CREDENTIALS?: string;
   /**
    * '0' withholds passkeys, which are otherwise always offered because nothing has to be
@@ -94,6 +109,15 @@ export interface Env {
   LEGAL_PRIVACY_URL?: string;
   LEGAL_TERMS_URL?: string;
   /**
+   * The Digital Asset Links document this origin serves at /.well-known/assetlinks.json:
+   * which Android apps, by package and signing certificate, it vouches for. Verbatim JSON.
+   *
+   * Per deployment because it names an app. Unset — every fresh instance — means the origin
+   * vouches for none, which is right until an operator has an app of their own; see
+   * routes/well-known.ts and the README's Android section.
+   */
+  ANDROID_ASSET_LINKS?: string;
+  /**
    * PostHog, for grouping the browser errors that `/api/client-errors` only ever logs.
    *
    * Setting the key is what turns it on: the SPA loads the SDK only when the config says
@@ -131,3 +155,9 @@ export interface Variables {
 }
 
 export type AppEnv = { Bindings: Env; Variables: Variables };
+
+/**
+ * What the platform actually hands the Worker: `Env` before the entry point has settled
+ * `APP_URL`. Only lib/app-url.ts should need this name.
+ */
+export type RawEnv = Omit<Env, 'APP_URL'> & { APP_URL?: string };

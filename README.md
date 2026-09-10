@@ -69,7 +69,7 @@ is built with its own wrapper. See [Android app](#android-app).
 
 ```bash
 pnpm install
-cp apps/api/.dev.vars.example apps/api/.dev.vars   # then set BETTER_AUTH_SECRET
+cp apps/api/.dev.vars.example apps/api/.dev.vars   # then fill in BETTER_AUTH_SECRET
 pnpm migrate:local
 pnpm dev
 ```
@@ -100,68 +100,139 @@ instead.
 
 Social sign-in is the one thing a worktree does not get for free — Google and GitHub match
 the redirect URI including its port, so a worktree's port has to be registered with the
-provider to use it. A password (`ALLOW_TEST_CREDENTIALS=1`) or the sign-in code printed to
-the Worker console needs nothing registered.
+provider to use it. A password — `pnpm dev` turns password sign-up on for every local
+Worker — or the sign-in code printed to the Worker console needs nothing registered.
 
-## Deployment
+## Running your own instance
 
-Production lives at `https://unbent.app` under the `production` environment in
-`apps/api/wrangler.toml`. It is a named environment rather than edited top-level values so
-that `wrangler dev` cannot pick up production settings, and a deploy cannot ship a
-localhost `APP_URL` — `auth.ts` keys secure cookies off that string, so a wrong value
-breaks every session and only shows up after the deploy.
+Unbent is one Cloudflare Worker serving the site and the API, and the top level of
+`apps/api/wrangler.toml` is that Worker — the same file whether the instance is unbent.app
+or yours. Nothing in the repository names a deployment: resources are named rather than
+identified and the first deploy provisions them, the origin is derived from the request
+when nothing configured one, and a custom domain is attached in the dashboard. So a fork
+deploys the file unchanged, and pulling upstream never touches the thing that holds your
+notes. The named environments below the top level are local development (`local`) and
+unbent.app's own dev instance and pull-request previews (`dev`, `preview`); a fork ignores
+them.
 
-Wrangler is a devDependency of `apps/api`, not a global install — the lockfile pins the
-version the config is known to work with, and a global copy would silently override it.
-`pnpm exec` from that directory runs the pinned one; `npx` from the repo root does not, and
-downloads a different version instead.
+Three ways to get an instance, from least to most hands-on. Each ends at the same place,
+and `pnpm setup:instance --check` reads any of them back.
 
-First time, in order:
+### With the button
 
-R2 is opt-in per account and cannot be enabled from the CLI — turn it on in the dashboard
-first, or the bucket command fails with code 10042.
+[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/MakeRocketGoNow/unbent)
+
+Cloudflare copies the repository into your GitHub account, creates the database and the
+bucket, asks for the two things every instance has to decide — an auth secret and who may
+sign in, the uncommented lines of `apps/api/.dev.vars.example` — and deploys. From then on
+every push to your copy deploys through Workers Builds. The copy is not a GitHub fork, so
+taking upstream changes is a remote and a merge:
+
+```bash
+git remote add upstream https://github.com/MakeRocketGoNow/unbent.git
+git pull upstream main
+```
+
+R2 has to be enabled on the account first; it is a dashboard toggle with terms attached, and
+nothing can press it for you.
+
+### With GitHub Actions
+
+Fork, set three repository secrets, push to `main`:
+
+| Secret | Value |
+| --- | --- |
+| `CLOUDFLARE_API_TOKEN` | a token from the "Edit Cloudflare Workers" template, plus **D1:Edit** and **Workers R2 Storage:Edit** |
+| `CLOUDFLARE_ACCOUNT_ID` | from the dashboard's sidebar |
+| `BETTER_AUTH_SECRET` | `openssl rand -base64 32`, once |
+
+`.github/workflows/web.yml` creates the database if the account has none, applies
+migrations, and deploys the Worker with the auth secret. The third secret exists because a
+Worker that does not exist yet cannot have a secret put on it, and `wrangler.toml` declares
+this one required; the deploy carries it, and re-sending it on every push is harmless. The
+run's log ends with the instance's `workers.dev` address.
+
+### From your laptop
+
+```bash
+pnpm install
+pnpm setup:instance
+```
+
+The script checks everything an instance needs and offers to fill each gap, in order: log in
+to Cloudflare, create the database, apply migrations, build and deploy with a generated auth
+secret, ask who may sign in and who runs the instance, and set the GitHub secrets above if
+you want pushes to deploy. Every step says what it is about to run; `--dry-run` prints the
+commands instead of running them, and `--check` reports without changing anything and exits
+non-zero when something required is missing — which makes it a status page for an instance
+you set up some other way:
+
+```bash
+pnpm setup:instance --check --url https://notes.example.com
+```
+
+Three things it cannot do, because they have no API, so it links to each and waits: enable
+R2 on the account, mint the API token for GitHub, and own the domain.
+
+The same steps by hand, for when a script is the wrong tool:
 
 ```bash
 cd apps/api
 pnpm exec wrangler login
-pnpm exec wrangler d1 create unbent   # paste the id into [[env.production.d1_databases]]
-pnpm exec wrangler r2 bucket create unbent-blobs
+pnpm exec wrangler d1 create unbent
+pnpm migrate:remote
+pnpm build
+printf 'BETTER_AUTH_SECRET=%s\n' "$(openssl rand -base64 32)" > /tmp/unbent-secrets
+pnpm exec wrangler deploy --env "" --secrets-file /tmp/unbent-secrets && rm /tmp/unbent-secrets
+pnpm exec wrangler secret put ALLOWED_EMAILS
 ```
 
-Then, from the repo root:
+After the first deploy it is `pnpm release` from the repo root. Wrangler is a devDependency
+of `apps/api`, not a global install — the lockfile pins the version the config is known to
+work with, and `pnpm exec` from that directory runs the pinned one; `npx` from the repo
+root downloads a different version instead.
+
+### Your own domain
+
+Add it to the Worker in the dashboard, under Settings → Domains & Routes → Custom domain.
+Cloudflare creates the record and the certificate, and a deploy with no routes in its
+config leaves it alone. The instance is then reachable on two origins, the domain and the
+`workers.dev` name, each a front door of its own with its own cookies and passkeys. To
+close the second one, pin the first:
 
 ```bash
-pnpm migrate:remote
-pnpm release
+pnpm exec wrangler secret put APP_URL     # https://notes.example.com, no trailing slash
 ```
 
-### Deploying your own
+A secret rather than a var because a deploy replaces plain vars. Every other hostname then
+refuses sign-in as an untrusted origin, which is what unbent.app does. With GitHub Actions,
+set it as the `APP_URL` repository secret instead and the deploy carries it.
 
-Everything under `[env.production]` in `apps/api/wrangler.toml` names unbent.app: the
-worker, the database, the bucket, the URL and the route. They are in the file rather than
-supplied at deploy time because CI deploys with a bare `--env production` and `APP_URL` in
-particular has to be resolvable — `auth.ts` keys secure cookies and the passkey relying
-party off it, so it cannot be a secret and cannot be absent.
+### Everything you can set
 
-That makes them yours to replace rather than yours to inherit. A fork changes six things:
+Nothing below is required except the first row. Each is a Worker secret unless the table
+says otherwise; `pnpm exec wrangler secret put NAME` from `apps/api`, or the dashboard.
 
-| In `[env.production]` | Change to |
-| --- | --- |
-| `name` | your worker's name |
-| `database_name`, `database_id` | what `wrangler d1 create` printed |
-| `bucket_name` | what `wrangler r2 bucket create` printed |
-| `APP_URL` | your origin, with no trailing slash |
-| `routes.pattern` | the hostname you serve from |
-
-Nothing here works by accident if you miss one: a deploy against another account's
-database id fails on permissions, and a wrong `APP_URL` breaks sign-in on the first
-request. `[env.dev]` and `[env.preview]` name the same deployment again and are only worth
-setting up if you want the dev instance and PR previews — see
-[the dev instance](#the-dev-instance).
+| Setting | For | Notes |
+| --- | --- | --- |
+| `BETTER_AUTH_SECRET` | signing sessions | **required**; declared so in `wrangler.toml` |
+| `ALLOWED_EMAILS` | who may create an account | comma-separated; empty means anyone, and the Worker warns |
+| `PUBLIC_SIGNUPS=1` | saying an empty allowlist is deliberate | silences that warning and nothing else |
+| `APP_URL` | pinning one origin | see [Your own domain](#your-own-domain); also a GitHub secret the deploy carries |
+| `OPERATOR_NAME`, `OPERATOR_EMAIL` | the built-in privacy policy and terms | both or neither; see [Who runs this instance](#who-runs-this-instance) |
+| `LEGAL_PRIVACY_URL`, `LEGAL_TERMS_URL` | legal pages hosted elsewhere | both or neither; win over the built-in ones |
+| `RESEND_API_KEY`, `EMAIL_FROM`, `EMAIL_REPLY_TO` | codes by email, password reset | the first two or neither; see [Choosing sign-in methods](#choosing-sign-in-methods) |
+| `<PROVIDER>_CLIENT_ID`, `<PROVIDER>_CLIENT_SECRET` | any of Better Auth's OAuth providers | both or neither; the callback is `/api/auth/callback/<provider>` on your origin |
+| `AUTH_PASSWORD`, `AUTH_PASSKEY` | forcing a method on or off | rarely needed; the defaults are explained in the sign-in section |
+| `POSTHOG_KEY`, `POSTHOG_HOST` | error tracking | see [Errors in the browser](#errors-in-the-browser) |
+| `ANDROID_ASSET_LINKS` | an Android build of your own | see [Android app](#android-app) |
+| Custom domain | serving from your own name | dashboard, not config |
+| `ANDROID_APPLICATION_ID`, `ANDROID_DEFAULT_INSTANCE` | the Android build in CI | GitHub repository **variables**; `unbent.applicationId` and `unbent.defaultInstance` in `local.properties` locally |
+| `CLOUDFLARE_WORKERS_SUBDOMAIN`, `DEV_BETTER_AUTH_SECRET`, `DEV_ALLOWED_EMAILS` | a dev instance and PR previews of your own | GitHub; see [The dev instance](#the-dev-instance) — every job skips itself without them |
 
 The one thing that *would* work by accident is who the legal documents name — a fork that
-changed none of the above would still publish somebody else's legal entity. That is why it
-is configured outside this file entirely, as the next section describes.
+deployed the file unchanged would otherwise publish somebody else's legal entity. That is why
+it is configured outside the file entirely, as the next section describes.
 
 ### Who runs this instance
 
@@ -194,8 +265,8 @@ checks out:
 
 ```bash
 cd apps/api
-pnpm exec wrangler secret put OPERATOR_NAME --env production
-pnpm exec wrangler secret put OPERATOR_EMAIL --env production
+pnpm exec wrangler secret put OPERATOR_NAME
+pnpm exec wrangler secret put OPERATOR_EMAIL
 ```
 
 Neither value is confidential — both are printed on a public page — so a plain environment
@@ -263,7 +334,7 @@ a recording of this app is a recording of somebody's notes.
 
 ```bash
 cd apps/api
-pnpm exec wrangler secret put POSTHOG_KEY --env production
+pnpm exec wrangler secret put POSTHOG_KEY
 ```
 
 The token is public and write-only — it ships in the page — and is a secret here only to
@@ -293,9 +364,12 @@ The free tier is 100,000 exceptions a month and stops rather than bills. The rep
 cap of five per page load is what keeps a bad deploy inside that: a render loop is five
 reports, not five thousand.
 
-`release` rather than `deploy` because `deploy` is a built-in pnpm command and shadows any
-script of that name. The first deploy has to happen here, before the secrets below: they
-attach to a Worker, and `wrangler secret put` fails until one exists.
+`release` rather than `deploy` because bare `pnpm deploy` is a built-in pnpm command that
+shadows any script of that name; a `deploy` script does exist, migrations then release, for
+deploy flows that look for one by that name, and is reached as `pnpm run deploy`. The first
+deploy has to happen before the secrets below: they attach to a Worker, and `wrangler secret
+put` fails until one exists — which is why the very first one carries `BETTER_AUTH_SECRET`
+in a secrets file, as [Running your own instance](#from-your-laptop) shows.
 
 Past this first setup neither command is routine. `.github/workflows/web.yml` runs both on
 every push to `main`, migrations first and then the Worker, so the code never runs ahead of
@@ -303,19 +377,19 @@ the schema it was written for, and a merged PR that carries a migration needs no
 by hand. `migrate:remote` stays for applying one out of band and is safe to run at any time:
 wrangler applies only what it has no record of.
 
-Then the secrets. `--env production` is required on every one: secrets are per-environment,
-and one set without it lands on a Worker that is not the one serving the site.
+Then the secrets. No `--env` on any of them: the production Worker is the top level of the
+config, and an environment flag would aim them at a different Worker.
 
 ```bash
 cd apps/api
-pnpm exec wrangler secret put BETTER_AUTH_SECRET --env production   # openssl rand -base64 32
-pnpm exec wrangler secret put GOOGLE_CLIENT_ID --env production
-pnpm exec wrangler secret put GOOGLE_CLIENT_SECRET --env production
-pnpm exec wrangler secret put ALLOWED_EMAILS --env production       # comma-separated
-pnpm exec wrangler secret put RESEND_API_KEY --env production       # password reset mail
-pnpm exec wrangler secret put EMAIL_FROM --env production           # verified sender
-pnpm exec wrangler secret put EMAIL_REPLY_TO --env production       # optional, a real mailbox
-pnpm exec wrangler secret put POSTHOG_KEY --env production          # optional, error tracking
+pnpm exec wrangler secret put BETTER_AUTH_SECRET   # openssl rand -base64 32
+pnpm exec wrangler secret put GOOGLE_CLIENT_ID
+pnpm exec wrangler secret put GOOGLE_CLIENT_SECRET
+pnpm exec wrangler secret put ALLOWED_EMAILS       # comma-separated
+pnpm exec wrangler secret put RESEND_API_KEY       # password reset mail
+pnpm exec wrangler secret put EMAIL_FROM           # verified sender
+pnpm exec wrangler secret put EMAIL_REPLY_TO       # optional, a real mailbox
+pnpm exec wrangler secret put POSTHOG_KEY          # optional, error tracking
 ```
 
 `RESEND_API_KEY` and `EMAIL_FROM` are what make password reset work. Without both, a reset
@@ -333,7 +407,7 @@ An instance that means to be public says so with `PUBLIC_SIGNUPS=1`, which silen
 warning and nothing else:
 
 ```bash
-pnpm exec wrangler secret put PUBLIC_SIGNUPS --env production       # 1, to mean it
+pnpm exec wrangler secret put PUBLIC_SIGNUPS       # 1, to mean it
 ```
 
 It opens nothing — an empty `ALLOWED_EMAILS` has already done that — so this is a record of
@@ -343,8 +417,8 @@ recurring line about something already settled, which is how a log line stops be
 
 ### The dev instance
 
-`https://dev.unbent.app` is one standing Worker, `unbent-dev`, deployed from `main` by the
-same job that deploys production and configured as `[env.dev]` in `apps/api/wrangler.toml`.
+`https://dev.unbent.app` is one standing Worker, `unbent-dev`, deployed from `main` by
+`.github/workflows/previews.yml` and configured as `[env.dev]` in `apps/api/wrangler.toml`.
 It runs on the `unbent-dev` D1 and the `unbent-dev-blobs` bucket that every preview also
 uses, so it is a second window onto the same scratch data rather than a fourth environment
 with data of its own.
@@ -412,7 +486,7 @@ the production session is kept rather than overwritten.
 
 Every pull request that touches the web app or the API gets a URL of its own —
 `https://unbent-pr-<N>.<subdomain>.workers.dev` — where the branch can be used rather than
-read. `.github/workflows/web.yml` deploys it on each push to the PR and deletes it when the
+read. `.github/workflows/previews.yml` deploys it on each push to the PR and deletes it when the
 PR closes, and posts the URL both as a comment it edits in place and as a deployment in the
 PR's own Deployments box.
 
@@ -452,17 +526,14 @@ instance, which costs nothing but the scratch data:
 ```bash
 cd apps/api
 pnpm exec wrangler d1 delete unbent-dev
-pnpm exec wrangler d1 create unbent-dev   # paste the new id into [env.dev] and [env.preview]
+pnpm exec wrangler d1 create unbent-dev   # the next deploy connects to it by name
 ```
 
-Setting this up on a fresh fork takes one D1, one bucket, and three new repository
-settings, alongside the Cloudflare credentials production already deploys with:
-
-```bash
-cd apps/api
-pnpm exec wrangler d1 create unbent-dev        # paste the id into [env.dev] and [env.preview]
-pnpm exec wrangler r2 bucket create unbent-dev-blobs
-```
+Setting this up on a fresh fork takes three repository settings, alongside the Cloudflare
+credentials production already deploys with. The workflow creates the `unbent-dev` database
+if the account has none and the first deploy provisions the bucket, so there is nothing to
+run by hand; a repository without these settings skips both jobs with a note in the run
+summary rather than failing.
 
 | Setting | Kind | Value |
 | --- | --- | --- |
@@ -513,8 +584,8 @@ Microsoft, Slack, GitLab and the rest — not a list this repository maintains. 
 is two secrets and no code:
 
 ```bash
-pnpm exec wrangler secret put DISCORD_CLIENT_ID --env production
-pnpm exec wrangler secret put DISCORD_CLIENT_SECRET --env production
+pnpm exec wrangler secret put DISCORD_CLIENT_ID
+pnpm exec wrangler secret put DISCORD_CLIENT_SECRET
 ```
 
 Retiring one is `wrangler secret delete` on either half. Both take effect on the next
@@ -767,9 +838,10 @@ on which files have text and which have none, with a median word overlap of 0.89
 opens with the file's metadata — PDF version, the scanner's name — which is stripped before
 indexing, or every scan from the same scanner would match a search for it. Files over 25MB, a
 deployment without the binding, and any failure fall back to the browser paths above; only a
-conversion that read the file and found nothing closes the row. The binding is production-only
-in `wrangler.toml`, since a `wrangler dev` with it needs a Cloudflare login to start, so local
-development keeps extracting in the browser.
+conversion that read the file and found nothing closes the row. The binding is on every deployed
+instance and left out of the `local` environment in `wrangler.toml`, since a `wrangler dev`
+with it needs a Cloudflare login to start, so local development keeps extracting in the
+browser.
 
 That pass stops short of a backlog: more than one page of pending files and it downloads
 nothing, because it pulls the same bytes the button does and a backlog is gigabytes that must
@@ -947,6 +1019,42 @@ unbent.key.password=…
 
 Absent those, `assembleRelease` still builds, just unsigned. CI reads the same values from
 `UNBENT_KEYSTORE_PATH` and friends.
+
+**Building it for your own instance.** Two more lines in the same file, neither of which
+touches a tracked file:
+
+```
+unbent.defaultInstance=https://notes.example.com
+unbent.applicationId=com.example.notes
+```
+
+The first is where the app signs in until someone changes it in Settings; unset, it is
+`https://unbent.app`. The second is the identity Play, the Google OAuth client and the app
+links document all key on, and a fork that publishes needs one of its own — Play will not
+take a second app under an id it already has, and a reverse-domain id has to be one you
+control. The Kotlin package stays `com.makerocketgonow.unbent` either way; only the id
+changes, and `scripts/app-id.sh` prints what a build of this checkout gets. CI reads the
+same two as the `ANDROID_DEFAULT_INSTANCE` and `ANDROID_APPLICATION_ID` repository
+variables, and the Play upload publishes under the same id.
+
+**Vouching for the app.** Android will only open this site's links in the app, and only
+offer the site's passkeys to it, if the site says which app that is: a Digital Asset Links
+document at `/.well-known/assetlinks.json` naming the package and the SHA-256 of every
+certificate that signs it. The instance serves that document from its `ANDROID_ASSET_LINKS`
+secret — the JSON verbatim, an array of statements — and an instance that has not set one
+vouches for no app, which is right until you have one. Three keys usually sign a published
+app, and all three belong in it: the debug keystore, the upload key, and the App Signing
+key Play re-signs every bundle with, whose fingerprint is on the app's App signing page in
+Play Console. Registering only the upload key is the classic trap, because every build you
+can test locally then works and the store build does not.
+
+```bash
+cd apps/api
+pnpm exec wrangler secret put ANDROID_ASSET_LINKS < assetlinks.json
+```
+
+The `ANDROID_ASSET_LINKS` repository secret carries the same document to the dev instance
+and previews, so passkeys made there work from the app too.
 
 ## Known gaps
 

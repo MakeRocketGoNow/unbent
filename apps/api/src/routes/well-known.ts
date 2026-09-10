@@ -49,7 +49,42 @@ export const wellKnown = new Hono<AppEnv>()
    * told at the token endpoint rather than being invited to guess from here.
    */
   .get('/.well-known/oauth-protected-resource', (c) => resourceMetadata(c.env))
-  .get('/.well-known/oauth-protected-resource/api/mcp', (c) => resourceMetadata(c.env));
+  .get('/.well-known/oauth-protected-resource/api/mcp', (c) => resourceMetadata(c.env))
+  /**
+   * The Digital Asset Links document: which Android apps this origin vouches for.
+   *
+   * Android reads it for two things. App Links, so that a link to this site opens in the
+   * app; and passkeys, because Credential Manager will only offer a credential for a
+   * domain to an app that domain has declared. It used to be a static file in the web
+   * app, which meant every fork served unbent.app's package and signing keys from its own
+   * domain — a claim about somebody else's app — while its own app got nothing.
+   *
+   * So it is per deployment now, from `ANDROID_ASSET_LINKS`, the same way the operator's
+   * name is: unset means this instance vouches for no app, and the response is a 404 that
+   * Android treats as exactly that. The value is the document verbatim, a JSON array of
+   * statements; see the README's Android section for where the fingerprints come from.
+   */
+  .get('/.well-known/assetlinks.json', (c) => {
+    const raw = c.env.ANDROID_ASSET_LINKS?.trim();
+    if (!raw) return c.json({ error: 'Not found' }, 404);
+    let statements: unknown;
+    try {
+      statements = JSON.parse(raw);
+    } catch {
+      statements = undefined;
+    }
+    if (!Array.isArray(statements)) {
+      // Loud, because the symptom on a phone is "passkeys stopped being offered", which is
+      // nowhere near the secret that caused it.
+      console.error('[well-known] ANDROID_ASSET_LINKS is not a JSON array of statements');
+      return c.json({ error: 'ANDROID_ASSET_LINKS is not valid JSON' }, 500);
+    }
+    return c.json(statements, 200, {
+      // Google fetches it on demand and caches on its side; an hour keeps a corrected
+      // value from waiting a day while costing nothing on a document this small.
+      'Cache-Control': 'public, max-age=3600',
+    });
+  });
 
 function resourceMetadata(env: AppEnv['Bindings']): Response {
   return Response.json(

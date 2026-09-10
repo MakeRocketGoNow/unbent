@@ -10,9 +10,10 @@
  * No credential is stored anywhere. The password below is a constant in a script that
  * refuses to run against anything but localhost, and the account it makes lives in a
  * disposable local D1; a saved one would only drift out of sync with the next `--fresh`
- * worktree or `migrate:local`. Sign-up works because `ALLOW_TEST_CREDENTIALS=1` in
- * `.dev.vars` turns on password auth for local development, the same switch the API test
- * suite mints its sessions with. See the comment on `passwordEnabled` in `apps/api/src/auth.ts`.
+ * worktree or `migrate:local`. Sign-up works because `pnpm dev` passes
+ * `ALLOW_TEST_CREDENTIALS=1` to the Worker, which turns on password auth for local
+ * development — the same switch the API test suite mints its sessions with. See the
+ * comment on `passwordEnabled` in `apps/api/src/auth.ts`.
  *
  * Idempotent: run it twice and you get the same ten notes, not twenty. Notes are matched
  * by title, so editing the body here and re-running updates the note in place.
@@ -323,7 +324,7 @@ async function session() {
       `could not sign up or sign in as ${EMAIL}.\n` +
         `sign-up said ${up.status}: ${(await up.text()).slice(0, 200)}\n` +
         `sign-in said ${inRes.status}: ${(await inRes.text()).slice(0, 200)}\n` +
-        `Is ALLOW_TEST_CREDENTIALS=1 set in apps/api/.dev.vars?`,
+        `Was the Worker started by \`pnpm dev\`, which passes ALLOW_TEST_CREDENTIALS=1?`,
     );
   }
   const cookie = cookieFrom(inRes);
