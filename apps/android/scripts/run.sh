@@ -7,21 +7,11 @@ ANDROID_SDK="${ANDROID_HOME:-$HOME/Library/Android/sdk}"
 ADB="$ANDROID_SDK/platform-tools/adb"
 EMULATOR="$ANDROID_SDK/emulator/emulator"
 GRADLE_APP="$DIR/app"
-# The debug build's id, read from Gradle rather than written here.
-#
-# It was written here, and a rename to com.makerocketgonow.unbent left these scripts
-# pointing at an app that no longer existed: the build and install both succeeded, and only
-# the launch failed, with "no launcher activity" — which reads like a manifest problem
-# rather than a stale constant two directories away. Deriving it means the next rename
-# needs no edit here at all.
-GRADLE_BUILD="$GRADLE_APP/build.gradle.kts"
-BASE_ID="$(sed -n 's/^ *applicationId *= *"\(.*\)".*/\1/p' "$GRADLE_BUILD")"
-SUFFIX="$(sed -n 's/^ *applicationIdSuffix *= *"\(.*\)".*/\1/p' "$GRADLE_BUILD")"
-if [ -z "$BASE_ID" ]; then
-  echo "error: could not read applicationId from $GRADLE_BUILD" >&2
-  exit 1
-fi
-APP_ID="${BASE_ID}${SUFFIX}"
+# The debug build's id, resolved the way Gradle resolves it — local.properties, then the
+# environment, then the default in build.gradle.kts — so a fork's own id and a rename of
+# the default both reach here without an edit. Sets APP_ID.
+# shellcheck source=app-id.sh
+. "$DIR/scripts/app-id.sh"
 AVD="${AVD_NAME:-Pixel_9_API_36}"
 
 if ! "$ADB" get-state 2>/dev/null | grep -q device; then

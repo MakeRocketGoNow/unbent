@@ -21,21 +21,39 @@ val keystoreProps = Properties().apply {
     if (f.exists()) f.inputStream().use { load(it) }
 }
 
+/**
+ * A value from `local.properties` or, failing that, the environment — and blank counts as
+ * absent in both. CI maps repository variables into the environment unconditionally, so an
+ * unset variable arrives as an empty string, and an empty application id or instance URL
+ * would be worse than none.
+ */
 fun secret(key: String, env: String): String? =
-    keystoreProps.getProperty(key) ?: System.getenv(env)
+    (keystoreProps.getProperty(key) ?: System.getenv(env))?.takeUnless { it.isBlank() }
 
 val releaseStorePath = secret("unbent.keystore.path", "UNBENT_KEYSTORE_PATH")
+
+/**
+ * The identity a build gets when nothing has said otherwise: unbent.app's own app.
+ *
+ * A fork that publishes to Play needs an id of its own — Play treats the id as the app,
+ * and will not take a second app under an id it already has — and it sets one with
+ * `unbent.applicationId` in local.properties or UNBENT_APPLICATION_ID in the environment,
+ * never by editing this line. A named `val` on its own line rather than a literal below,
+ * because scripts/app-id.sh reads it with `sed` to find the installed app on a device.
+ */
+val defaultApplicationId = "com.makerocketgonow.unbent"
 
 android {
     /**
      * The Kotlin package, which moved here from `app.unbent.android` when the app was
      * prepared for the Play Store.
      *
-     * It is kept equal to `applicationId` below rather than left where it was. The two are
-     * independent as far as Gradle is concerned — only the id reaches Play, App Links and
-     * OAuth — but a source tree whose package disagrees with the installed id is a trap for
-     * anyone reading a stack trace or writing an `adb shell am` command, and there is
-     * nothing else in the tree that would explain the split.
+     * Fixed, unlike `applicationId` below, because it is the source tree: every file under
+     * src/ declares it, and R and BuildConfig are generated into it. The two are independent
+     * as far as Gradle is concerned — only the id reaches Play, App Links and OAuth — so a
+     * fork keeps this package and changes the id. They match on unbent.app's own build,
+     * which is the reading a stack trace or an `adb shell am` command assumes; on a fork
+     * they differ, and the installed id is what `adb` wants.
      */
     namespace = "com.makerocketgonow.unbent"
     /**
@@ -50,16 +68,18 @@ android {
 
     defaultConfig {
         /**
-         * The identity Play, the Digital Asset Links file on unbent.app and the Google
-         * OAuth client all key on — and the one string here that can never change again
-         * once the app is published, since Play treats a different id as a different app
+         * The identity Play, the Digital Asset Links document the instance serves and the
+         * Google OAuth client all key on — and the one string that can never change again
+         * once an app is published, since Play treats a different id as a different app
          * with no upgrade path for anyone who installed the old one.
          *
-         * `app.unbent.android` was never published, so this rename is free. It is
-         * `com.makerocketgonow.*` because that is the domain the developer account is
-         * registered under, and a reverse-domain id has to be one the publisher controls.
+         * Configured rather than written, so that a fork publishing its own app never edits
+         * this file: see `defaultApplicationId`. The default is `com.makerocketgonow.*`
+         * because that is the domain unbent.app's developer account is registered under,
+         * and a reverse-domain id has to be one the publisher controls — which is also why
+         * a fork must choose its own.
          */
-        applicationId = "com.makerocketgonow.unbent"
+        applicationId = secret("unbent.applicationId", "UNBENT_APPLICATION_ID") ?: defaultApplicationId
         minSdk = 26
         /**
          * The behaviours the app opts into, which is the half that actually changes at
@@ -89,9 +109,20 @@ android {
         // it means something — unlike the code above, which is bookkeeping.
         versionName = "0.1.0"
 
-        // The site the app is a shell for. Overridable at runtime in Settings, which is
-        // what makes an emulator build usable against a local dev server.
-        buildConfigField("String", "DEFAULT_INSTANCE", "\"https://unbent.app\"")
+        /**
+         * The instance the app talks to until someone changes it in Settings — which is
+         * what makes an emulator build usable against a local dev server, and a store
+         * build usable against any instance at all.
+         *
+         * A fork building the app for its own instance sets `unbent.defaultInstance` in
+         * local.properties or UNBENT_DEFAULT_INSTANCE in the environment. Unset, the app
+         * points at unbent.app, the instance this repository's own listing describes.
+         */
+        buildConfigField(
+            "String",
+            "DEFAULT_INSTANCE",
+            "\"${secret("unbent.defaultInstance", "UNBENT_DEFAULT_INSTANCE") ?: "https://unbent.app"}\"",
+        )
         buildConfigField("String", "CONNECT_SCHEME", "\"unbent\"")
         // Google issues the ID token for the *web* client, which is the audience the
         // API already verifies. The Android client exists only so Google will trust a

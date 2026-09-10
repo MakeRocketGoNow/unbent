@@ -958,6 +958,23 @@ unbent.key.password=…
 Absent those, `assembleRelease` still builds, just unsigned. CI reads the same values from
 `UNBENT_KEYSTORE_PATH` and friends.
 
+**Building it for your own instance.** Two more lines in the same file, neither of which
+touches a tracked file:
+
+```
+unbent.defaultInstance=https://notes.example.com
+unbent.applicationId=com.example.notes
+```
+
+The first is where the app signs in until someone changes it in Settings; unset, it is
+`https://unbent.app`. The second is the identity Play, the Google OAuth client and the app
+links document all key on, and a fork that publishes needs one of its own — Play will not
+take a second app under an id it already has, and a reverse-domain id has to be one you
+control. The Kotlin package stays `com.makerocketgonow.unbent` either way; only the id
+changes, and `scripts/app-id.sh` prints what a build of this checkout gets. CI reads the
+same two as the `ANDROID_DEFAULT_INSTANCE` and `ANDROID_APPLICATION_ID` repository
+variables, and the Play upload publishes under the same id.
+
 ## Known gaps
 
 - **Connected apps get all-or-nothing access.** Approving an MCP client grants every tool
