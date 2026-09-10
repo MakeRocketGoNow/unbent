@@ -230,3 +230,50 @@ describe('hasFrontmatter', () => {
     expect(hasFrontmatter('text\n---\nnot frontmatter\n---\n')).toBe(false);
   });
 });
+
+describe('fields', () => {
+  const fields = { Merchant: 'Acme', Amount: 12.5, Paid: true, Expires: '2024-03-01' };
+
+  it('round-trips every value kind with its type intact', () => {
+    const out = parse(serialize({ ...base, fields }));
+    expect(out.fields).toEqual(fields);
+  });
+
+  it('writes fields as ordinary top-level keys, after the note\'s own', () => {
+    const out = serialize({ ...base, fields });
+    const keys = out
+      .split('---')[1]!
+      .split('\n')
+      .filter((l) => /^\S/.test(l))
+      .map((l) => l.split(':')[0]);
+    expect(keys).toEqual(['id', 'title', 'created', 'updated', 'tags', 'Merchant', 'Amount', 'Paid', 'Expires']);
+    expect(out).toContain('Amount: 12.5\n');
+    expect(out).toContain('Paid: true\n');
+    expect(out).toContain('Expires: 2024-03-01\n');
+  });
+
+  it('keeps text that looks like a number or a boolean as text', () => {
+    const out = parse(serialize({ ...base, fields: { Code: '42', Flag: 'true' } }));
+    expect(out.fields).toEqual({ Code: '42', Flag: 'true' });
+  });
+
+  it('omits the fields entirely when there are none', () => {
+    expect(parse(serialize(base)).fields).toBeUndefined();
+    expect(parse(serialize({ ...base, fields: {} })).fields).toBeUndefined();
+  });
+
+  it('never lets a field overwrite a reserved key, in either direction', () => {
+    const out = serialize({ ...base, fields: { title: 'Not the title', Merchant: 'Acme' } });
+    expect(out).toContain('title: Meeting notes\n');
+    expect(out).not.toContain('Not the title');
+
+    const handWritten = `---\nid: abc\nTitle: Shadow\ncreated: 2024-01-15T09:30:00Z\nupdated: 2024-01-15T09:30:00Z\nMerchant: Acme\n---\n\nbody\n`;
+    expect(parse(handWritten).fields).toEqual({ Merchant: 'Acme' });
+    expect(parse(handWritten).title).toBe('');
+  });
+
+  it('leaves lists and maps behind and reads a yaml timestamp as a date', () => {
+    const handWritten = `---\nid: abc\ncreated: 2024-01-15T09:30:00Z\nupdated: 2024-01-15T09:30:00Z\naliases: [a, b]\nmeta: {k: v}\nnothing: null\nExpires: 2024-03-01\n---\n`;
+    expect(parse(handWritten).fields).toEqual({ Expires: '2024-03-01' });
+  });
+});
