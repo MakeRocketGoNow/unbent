@@ -1,7 +1,16 @@
 # Copy to .dev.vars for local development. .dev.vars is gitignored.
+#
+# This file is read twice. Locally it is the template for .dev.vars. And when a repository
+# is deployed through Cloudflare's "Deploy to Cloudflare" flow, the uncommented names here
+# are what the flow asks for before it deploys, and the values it stores on the new Worker.
+# So an uncommented line means "every instance needs to decide this", and everything
+# optional stays commented out with the instructions beside it. Nothing here may carry a
+# value that would be wrong on a real instance.
 
-# openssl rand -base64 32
-BETTER_AUTH_SECRET=replace-me
+# Required. Signs every session cookie; a Worker without it cannot sign anyone in, and
+# wrangler.toml declares it required so a deploy refuses to go out without one.
+#   openssl rand -base64 32
+BETTER_AUTH_SECRET=
 
 # OAuth providers, by convention rather than by a list.
 #
@@ -50,9 +59,10 @@ BETTER_AUTH_SECRET=replace-me
 # who would rather not offer them, not because they can be misconfigured.
 # AUTH_PASSKEY=0
 
-# Enables password sign-up so the isolation suite can mint sessions without a live OAuth
-# provider. Local development only — never set this in a deployed environment.
-ALLOW_TEST_CREDENTIALS=1
+# Password sign-up for the test suite and `pnpm seed:demo` is not a line here. `pnpm dev`
+# passes ALLOW_TEST_CREDENTIALS=1 to the Worker itself, so it is on for every local server
+# and cannot be copied into a deployed one — this file used to carry it, and a file that a
+# deploy flow reads must not.
 
 # Email-and-password sign-in, which usually needs no setting at all.
 #
@@ -77,7 +87,9 @@ ALLOW_TEST_CREDENTIALS=1
 # Left empty on a deployed instance, the Worker warns once in its log and names the methods
 # a stranger could use. It is a warning rather than a refusal because requiring an allowlist
 # to sign up would lock an operator out of their own fresh deployment.
-# ALLOWED_EMAILS=you@example.com
+#
+# Uncommented so that a deploy flow asks. Empty is right for local development.
+ALLOWED_EMAILS=
 
 # '1' says an empty ALLOWED_EMAILS above is deliberate, which silences that warning and does
 # nothing else — an instance is already open to anyone the moment the allowlist is empty.

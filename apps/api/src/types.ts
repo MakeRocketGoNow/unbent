@@ -47,7 +47,11 @@ export interface Env {
    * the default, and is the one setting here that can leave nobody a way in.
    */
   AUTH_PASSWORD?: string;
-  /** '1' enables password auth so the isolation suite can mint sessions. Local only. */
+  /**
+   * '1' enables password auth so the isolation suite and `pnpm seed:demo` can mint
+   * sessions. `pnpm dev` passes it on the command line, so it is on for every local
+   * Worker and never in a file a deploy reads.
+   */
   ALLOW_TEST_CREDENTIALS?: string;
   /**
    * '0' withholds passkeys, which are otherwise always offered because nothing has to be

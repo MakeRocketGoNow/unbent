@@ -69,7 +69,7 @@ is built with its own wrapper. See [Android app](#android-app).
 
 ```bash
 pnpm install
-cp apps/api/.dev.vars.example apps/api/.dev.vars   # then set BETTER_AUTH_SECRET
+cp apps/api/.dev.vars.example apps/api/.dev.vars   # then fill in BETTER_AUTH_SECRET
 pnpm migrate:local
 pnpm dev
 ```
@@ -100,8 +100,8 @@ instead.
 
 Social sign-in is the one thing a worktree does not get for free — Google and GitHub match
 the redirect URI including its port, so a worktree's port has to be registered with the
-provider to use it. A password (`ALLOW_TEST_CREDENTIALS=1`) or the sign-in code printed to
-the Worker console needs nothing registered.
+provider to use it. A password — `pnpm dev` turns password sign-up on for every local
+Worker — or the sign-in code printed to the Worker console needs nothing registered.
 
 ## Deployment
 

@@ -20,7 +20,7 @@ if [ ! -f apps/api/.dev.vars ]; then
   cp apps/api/.dev.vars.example apps/api/.dev.vars
   secret="$(openssl rand -base64 32)"
   # `|` delimiter because a base64 secret can contain `/` and `+`.
-  sed -i "s|BETTER_AUTH_SECRET=replace-me|BETTER_AUTH_SECRET=${secret}|" apps/api/.dev.vars
+  sed -i "s|^BETTER_AUTH_SECRET=.*|BETTER_AUTH_SECRET=${secret}|" apps/api/.dev.vars
 fi
 
 # Create the local D1 (SQLite under .wrangler) from migrations. Wrangler records what it has

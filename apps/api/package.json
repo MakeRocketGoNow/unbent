@@ -5,8 +5,8 @@
   "license": "FSL-1.1-Apache-2.0",
   "type": "module",
   "scripts": {
-    "dev": "wrangler dev --env local --port \"${API_PORT:-8787}\" --var \"APP_URL:http://localhost:${WEB_PORT:-5173}\"",
-    "dev:watch": "until wrangler dev --env local --port \"${API_PORT:-8787}\" --var \"APP_URL:http://localhost:${WEB_PORT:-5173}\"; do echo 'wrangler exited, restarting'; sleep 1; done",
+    "dev": "wrangler dev --env local --port \"${API_PORT:-8787}\" --var \"APP_URL:http://localhost:${WEB_PORT:-5173}\" --var ALLOW_TEST_CREDENTIALS:1",
+    "dev:watch": "until wrangler dev --env local --port \"${API_PORT:-8787}\" --var \"APP_URL:http://localhost:${WEB_PORT:-5173}\" --var ALLOW_TEST_CREDENTIALS:1; do echo 'wrangler exited, restarting'; sleep 1; done",
     "typecheck": "tsc --noEmit",
     "migrate:local": "wrangler d1 migrations apply DB --local --env local",
     "migrate:remote": "wrangler d1 migrations apply DB --remote --env \"\"",

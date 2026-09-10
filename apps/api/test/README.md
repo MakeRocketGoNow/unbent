@@ -24,8 +24,10 @@ pnpm --filter @unbent/api test
 `test` runs both projects and then purges the throwaway data the live suite creates, which
 is why it is the one to reach for locally. `test:unit` skips that, having created none.
 
-The suite signs up its own actors through the email/password provider, which `.dev.vars`
-turns on with `ALLOW_TEST_CREDENTIALS=1`. Deployed environments never set that — though
+The suite signs up its own actors through the email/password provider, which `pnpm dev`
+turns on by passing `ALLOW_TEST_CREDENTIALS=1` to the Worker. A deployed environment
+cannot set it by accident, since it is a flag on the dev command rather than a line in a
+file a deploy might read — though
 password sign-in can still appear there on its own, since an instance offers it when nothing
 else could create an account. unbent.app has providers, so it does not.
 

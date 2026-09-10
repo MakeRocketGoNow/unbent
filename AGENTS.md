@@ -261,8 +261,9 @@ instance for anything that writes.
 ten presentable sample notes. It is idempotent, so re-running updates rather than
 duplicates; `--reset` clears the account's notes first, and `--url` aims it somewhere else
 on localhost. It refuses any host that is not loopback, because it signs up a password
-written down in the script. Sign-up works through `ALLOW_TEST_CREDENTIALS=1` in
-`.dev.vars` — local only, see `passwordEnabled` in `apps/api/src/auth.ts`.
+written down in the script. Sign-up works because `pnpm dev` passes
+`ALLOW_TEST_CREDENTIALS=1` to the Worker — local only, see `passwordEnabled` in
+`apps/api/src/auth.ts`.
 
 Point the app at that instance from Settings → Unbent address, or the sign-in screen's
 Change. Use `adb reverse tcp:<port> tcp:<port>` and the plain `http://localhost:<port>`;
