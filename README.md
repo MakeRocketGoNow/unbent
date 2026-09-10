@@ -205,7 +205,8 @@ pnpm exec wrangler secret put APP_URL     # https://notes.example.com, no traili
 ```
 
 A secret rather than a var because a deploy replaces plain vars. Every other hostname then
-refuses sign-in as an untrusted origin, which is what unbent.app does.
+refuses sign-in as an untrusted origin, which is what unbent.app does. With GitHub Actions,
+set it as the `APP_URL` repository secret instead and the deploy carries it.
 
 ### Everything you can set
 
@@ -217,7 +218,7 @@ says otherwise; `pnpm exec wrangler secret put NAME` from `apps/api`, or the das
 | `BETTER_AUTH_SECRET` | signing sessions | **required**; declared so in `wrangler.toml` |
 | `ALLOWED_EMAILS` | who may create an account | comma-separated; empty means anyone, and the Worker warns |
 | `PUBLIC_SIGNUPS=1` | saying an empty allowlist is deliberate | silences that warning and nothing else |
-| `APP_URL` | pinning one origin | see [Your own domain](#your-own-domain) |
+| `APP_URL` | pinning one origin | see [Your own domain](#your-own-domain); also a GitHub secret the deploy carries |
 | `OPERATOR_NAME`, `OPERATOR_EMAIL` | the built-in privacy policy and terms | both or neither; see [Who runs this instance](#who-runs-this-instance) |
 | `LEGAL_PRIVACY_URL`, `LEGAL_TERMS_URL` | legal pages hosted elsewhere | both or neither; win over the built-in ones |
 | `RESEND_API_KEY`, `EMAIL_FROM`, `EMAIL_REPLY_TO` | codes by email, password reset | the first two or neither; see [Choosing sign-in methods](#choosing-sign-in-methods) |
