@@ -107,7 +107,7 @@ android {
         versionCode = secret("unbent.versionCode", "UNBENT_VERSION_CODE")?.toIntOrNull() ?: 1
         // What a person sees, in Settings and on the store listing. Bumped by hand, because
         // it means something — unlike the code above, which is bookkeeping.
-        versionName = "0.1.0"
+        versionName = "0.1.1"
 
         /**
          * The instance the app talks to until someone changes it in Settings — which is
