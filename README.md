@@ -103,76 +103,135 @@ the redirect URI including its port, so a worktree's port has to be registered w
 provider to use it. A password — `pnpm dev` turns password sign-up on for every local
 Worker — or the sign-in code printed to the Worker console needs nothing registered.
 
-## Deployment
+## Running your own instance
 
-One Worker serves the site and the API, and the top level of `apps/api/wrangler.toml` is
-that Worker — the same file whether the instance is unbent.app or yours. Nothing in it names
-a deployment. Resources are named rather than identified, and `wrangler deploy` provisions a
-database and a bucket with those names on the first deploy and connects to the existing ones
-after that. The origin is derived from the request when nothing configured one, so the
-Worker need not know its address before its first deploy prints it. A custom domain is
-attached in the dashboard, and a deploy with no routes in its config leaves it alone. The
-named environments below the top level are local development (`local`) and unbent.app's own
-dev instance and pull-request previews (`dev`, `preview`); a fork ignores them.
+Unbent is one Cloudflare Worker serving the site and the API, and the top level of
+`apps/api/wrangler.toml` is that Worker — the same file whether the instance is unbent.app
+or yours. Nothing in the repository names a deployment: resources are named rather than
+identified and the first deploy provisions them, the origin is derived from the request
+when nothing configured one, and a custom domain is attached in the dashboard. So a fork
+deploys the file unchanged, and pulling upstream never touches the thing that holds your
+notes. The named environments below the top level are local development (`local`) and
+unbent.app's own dev instance and pull-request previews (`dev`, `preview`); a fork ignores
+them.
 
-Wrangler is a devDependency of `apps/api`, not a global install — the lockfile pins the
-version the config is known to work with, and a global copy would silently override it.
-`pnpm exec` from that directory runs the pinned one; `npx` from the repo root does not, and
-downloads a different version instead.
+Three ways to get an instance, from least to most hands-on. Each ends at the same place,
+and `pnpm setup:instance --check` reads any of them back.
 
-First time, in order:
+### With the button
 
-R2 is opt-in per account and cannot be enabled from the CLI — turn it on in the dashboard
-first, or the first deploy fails to create the bucket with code 10042.
+[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/MakeRocketGoNow/unbent)
+
+Cloudflare copies the repository into your GitHub account, creates the database and the
+bucket, asks for the two things every instance has to decide — an auth secret and who may
+sign in, the uncommented lines of `apps/api/.dev.vars.example` — and deploys. From then on
+every push to your copy deploys through Workers Builds. The copy is not a GitHub fork, so
+taking upstream changes is a remote and a merge:
+
+```bash
+git remote add upstream https://github.com/MakeRocketGoNow/unbent.git
+git pull upstream main
+```
+
+R2 has to be enabled on the account first; it is a dashboard toggle with terms attached, and
+nothing can press it for you.
+
+### With GitHub Actions
+
+Fork, set three repository secrets, push to `main`:
+
+| Secret | Value |
+| --- | --- |
+| `CLOUDFLARE_API_TOKEN` | a token from the "Edit Cloudflare Workers" template, plus **D1:Edit** and **Workers R2 Storage:Edit** |
+| `CLOUDFLARE_ACCOUNT_ID` | from the dashboard's sidebar |
+| `BETTER_AUTH_SECRET` | `openssl rand -base64 32`, once |
+
+`.github/workflows/web.yml` creates the database if the account has none, applies
+migrations, and deploys the Worker with the auth secret. The third secret exists because a
+Worker that does not exist yet cannot have a secret put on it, and `wrangler.toml` declares
+this one required; the deploy carries it, and re-sending it on every push is harmless. The
+run's log ends with the instance's `workers.dev` address.
+
+### From your laptop
+
+```bash
+pnpm install
+pnpm setup:instance
+```
+
+The script checks everything an instance needs and offers to fill each gap, in order: log in
+to Cloudflare, create the database, apply migrations, build and deploy with a generated auth
+secret, ask who may sign in and who runs the instance, and set the GitHub secrets above if
+you want pushes to deploy. Every step says what it is about to run; `--dry-run` prints the
+commands instead of running them, and `--check` reports without changing anything and exits
+non-zero when something required is missing — which makes it a status page for an instance
+you set up some other way:
+
+```bash
+pnpm setup:instance --check --url https://notes.example.com
+```
+
+Three things it cannot do, because they have no API, so it links to each and waits: enable
+R2 on the account, mint the API token for GitHub, and own the domain.
+
+The same steps by hand, for when a script is the wrong tool:
 
 ```bash
 cd apps/api
 pnpm exec wrangler login
-pnpm exec wrangler d1 create unbent   # migrations run before the deploy that would create it
+pnpm exec wrangler d1 create unbent
+pnpm migrate:remote
+pnpm build
+printf 'BETTER_AUTH_SECRET=%s\n' "$(openssl rand -base64 32)" > /tmp/unbent-secrets
+pnpm exec wrangler deploy --env "" --secrets-file /tmp/unbent-secrets && rm /tmp/unbent-secrets
+pnpm exec wrangler secret put ALLOWED_EMAILS
 ```
 
-The bucket needs no command: the deploy provisions it. The database is created by hand only
-because migrations are applied before the first deploy, and a database has to exist to be
-migrated.
+After the first deploy it is `pnpm release` from the repo root. Wrangler is a devDependency
+of `apps/api`, not a global install — the lockfile pins the version the config is known to
+work with, and `pnpm exec` from that directory runs the pinned one; `npx` from the repo
+root downloads a different version instead.
 
-`BETTER_AUTH_SECRET` is declared required in `wrangler.toml`, so a deploy refuses to go out
-without it — and a Worker that does not exist yet cannot have a secret put on it. The first
-deploy therefore carries the secret with it, and every deploy after that inherits it:
+### Your own domain
+
+Add it to the Worker in the dashboard, under Settings → Domains & Routes → Custom domain.
+Cloudflare creates the record and the certificate, and a deploy with no routes in its
+config leaves it alone. The instance is then reachable on two origins, the domain and the
+`workers.dev` name, each a front door of its own with its own cookies and passkeys. To
+close the second one, pin the first:
 
 ```bash
-# from the repo root
-pnpm migrate:remote
-printf 'BETTER_AUTH_SECRET=%s\n' "$(openssl rand -base64 32)" > /tmp/unbent-secrets
-pnpm --filter @unbent/api exec wrangler deploy --env "" --secrets-file /tmp/unbent-secrets
-rm /tmp/unbent-secrets
+pnpm exec wrangler secret put APP_URL     # https://notes.example.com, no trailing slash
 ```
 
-From then on it is `pnpm release`. The deploy prints the Worker's `workers.dev` address,
-which is the instance; to serve it from your own domain, add the domain to the Worker in the
-dashboard under Settings → Domains & Routes, and Cloudflare creates the record and the
-certificate.
+A secret rather than a var because a deploy replaces plain vars. Every other hostname then
+refuses sign-in as an untrusted origin, which is what unbent.app does.
 
-### Deploying your own
+### Everything you can set
 
-Nothing in the repository has to change. The Worker, database and bucket names are per
-account, so keeping unbent.app's is fine; the address comes from wherever the Worker is
-reached; the domain lives in the dashboard. A fork follows the steps above, or sets three
-repository secrets — `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`, and a fresh
-`BETTER_AUTH_SECRET` for the first deploy to carry — and lets `.github/workflows/web.yml` do
-all of it on every push to `main`, the database included.
+Nothing below is required except the first row. Each is a Worker secret unless the table
+says otherwise; `pnpm exec wrangler secret put NAME` from `apps/api`, or the dashboard.
 
-Two things are worth knowing. An instance with both a custom domain and its `workers.dev`
-name is reachable on two origins, each a front door of its own with its own cookies and
-passkeys; to close the second, pin the first as a secret — `wrangler secret put APP_URL`, a
-secret rather than a var because a deploy replaces plain vars — and every other hostname
-then refuses sign-in as an untrusted origin. And `[env.dev]` and `[env.preview]` are
-unbent.app's dev instance and PR previews: the workflow that deploys them skips itself when
-their secrets are absent, and they are only worth setting up if you want the same — see
-[the dev instance](#the-dev-instance).
+| Setting | For | Notes |
+| --- | --- | --- |
+| `BETTER_AUTH_SECRET` | signing sessions | **required**; declared so in `wrangler.toml` |
+| `ALLOWED_EMAILS` | who may create an account | comma-separated; empty means anyone, and the Worker warns |
+| `PUBLIC_SIGNUPS=1` | saying an empty allowlist is deliberate | silences that warning and nothing else |
+| `APP_URL` | pinning one origin | see [Your own domain](#your-own-domain) |
+| `OPERATOR_NAME`, `OPERATOR_EMAIL` | the built-in privacy policy and terms | both or neither; see [Who runs this instance](#who-runs-this-instance) |
+| `LEGAL_PRIVACY_URL`, `LEGAL_TERMS_URL` | legal pages hosted elsewhere | both or neither; win over the built-in ones |
+| `RESEND_API_KEY`, `EMAIL_FROM`, `EMAIL_REPLY_TO` | codes by email, password reset | the first two or neither; see [Choosing sign-in methods](#choosing-sign-in-methods) |
+| `<PROVIDER>_CLIENT_ID`, `<PROVIDER>_CLIENT_SECRET` | any of Better Auth's OAuth providers | both or neither; the callback is `/api/auth/callback/<provider>` on your origin |
+| `AUTH_PASSWORD`, `AUTH_PASSKEY` | forcing a method on or off | rarely needed; the defaults are explained in the sign-in section |
+| `POSTHOG_KEY`, `POSTHOG_HOST` | error tracking | see [Errors in the browser](#errors-in-the-browser) |
+| `ANDROID_ASSET_LINKS` | an Android build of your own | see [Android app](#android-app) |
+| Custom domain | serving from your own name | dashboard, not config |
+| `ANDROID_APPLICATION_ID`, `ANDROID_DEFAULT_INSTANCE` | the Android build in CI | GitHub repository **variables**; `unbent.applicationId` and `unbent.defaultInstance` in `local.properties` locally |
+| `CLOUDFLARE_WORKERS_SUBDOMAIN`, `DEV_BETTER_AUTH_SECRET`, `DEV_ALLOWED_EMAILS` | a dev instance and PR previews of your own | GitHub; see [The dev instance](#the-dev-instance) — every job skips itself without them |
 
 The one thing that *would* work by accident is who the legal documents name — a fork that
 deployed the file unchanged would otherwise publish somebody else's legal entity. That is why
-it is configured outside this file entirely, as the next section describes.
+it is configured outside the file entirely, as the next section describes.
 
 ### Who runs this instance
 
@@ -304,10 +363,12 @@ The free tier is 100,000 exceptions a month and stops rather than bills. The rep
 cap of five per page load is what keeps a bad deploy inside that: a render loop is five
 reports, not five thousand.
 
-`release` rather than `deploy` because `deploy` is a built-in pnpm command and shadows any
-script of that name. The first deploy has to happen before the secrets below: they attach
-to a Worker, and `wrangler secret put` fails until one exists — which is why the very first
-one carries `BETTER_AUTH_SECRET` in a secrets file, as [Deployment](#deployment) shows.
+`release` rather than `deploy` because bare `pnpm deploy` is a built-in pnpm command that
+shadows any script of that name; a `deploy` script does exist, migrations then release, for
+deploy flows that look for one by that name, and is reached as `pnpm run deploy`. The first
+deploy has to happen before the secrets below: they attach to a Worker, and `wrangler secret
+put` fails until one exists — which is why the very first one carries `BETTER_AUTH_SECRET`
+in a secrets file, as [Running your own instance](#from-your-laptop) shows.
 
 Past this first setup neither command is routine. `.github/workflows/web.yml` runs both on
 every push to `main`, migrations first and then the Worker, so the code never runs ahead of
