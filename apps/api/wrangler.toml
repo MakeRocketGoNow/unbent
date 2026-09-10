@@ -93,8 +93,8 @@ run_worker_first = [
 # A named environment so that `wrangler dev` never loads the deployable bindings above,
 # and the difference is one binding: no Workers AI, for the reason given on it. Everything
 # else is repeated rather than inherited because wrangler does not inherit bindings into
-# an environment. It warns on every start that `ai` was left behind here; that warning is
-# this block doing its job.
+# an environment. It warns on every start about the two keys deliberately left behind,
+# `ai` and `secrets`; both warnings are this block doing its job.
 #
 # The `database_id` is a placeholder, and correctly so: `--local` never reaches a remote
 # database, and miniflare keys the SQLite file under .wrangler on this string, so changing
@@ -116,10 +116,12 @@ bucket_name = "unbent-blobs"
 # checkout's own port; this is the value a bare `wrangler dev --env local` gets.
 APP_URL = "http://localhost:5173"
 
-# Same list as the top level, so `wrangler dev` checks .dev.vars for it and says which
-# name is missing rather than failing on the first request.
-[env.local.secrets]
-required = ["BETTER_AUTH_SECRET"]
+# No `[env.local.secrets]`, and the omission is load-bearing. Once an environment declares
+# `secrets`, `wrangler dev` loads from .dev.vars only the names that list contains and the
+# vars above — every optional secret, an OAuth pair, a Resend key, the operator's name,
+# silently stops reaching the Worker. Verified by watching GitHub vanish from the offered
+# sign-in methods. Wrangler warns on every start that the top-level `secrets` was not
+# inherited here; that warning, like the one for `ai`, is this block doing its job.
 
 [env.local.assets]
 directory = "../web/dist"
