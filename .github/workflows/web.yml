@@ -66,6 +66,10 @@ jobs:
       # A Worker that already has the secret, as unbent.app's does, leaves this unset and
       # inherits.
       BETTER_AUTH_SECRET: ${{ secrets.BETTER_AUTH_SECRET }}
+      # Optional: the Android app-links document, for a repository that builds the app.
+      # Sent the same way, and for the same reason it is not in a file — it names one
+      # deployment's app.
+      ANDROID_ASSET_LINKS: ${{ secrets.ANDROID_ASSET_LINKS }}
     steps:
       - uses: actions/checkout@v7
       - uses: pnpm/action-setup@v6
@@ -117,13 +121,22 @@ jobs:
       # the first deploy, by name.
       #
       # `printf` rather than `echo` so no trailing newline is read into the secret.
+      #
+      # The app-links value is JSON; `jq -c` folds it to one line, since the file is one
+      # value per line, and refuses anything that is not JSON before it reaches the Worker.
       - name: Deploy Worker
         working-directory: apps/api
         run: |
+          : > "$RUNNER_TEMP/secrets.env"
           if [ -n "$BETTER_AUTH_SECRET" ]; then
-            printf 'BETTER_AUTH_SECRET=%s\n' "$BETTER_AUTH_SECRET" > "$RUNNER_TEMP/secrets.env"
+            printf 'BETTER_AUTH_SECRET=%s\n' "$BETTER_AUTH_SECRET" >> "$RUNNER_TEMP/secrets.env"
+          fi
+          if [ -n "$ANDROID_ASSET_LINKS" ]; then
+            printf 'ANDROID_ASSET_LINKS=%s\n' "$(printf '%s' "$ANDROID_ASSET_LINKS" | jq -c .)" >> "$RUNNER_TEMP/secrets.env"
+          fi
+          if [ -s "$RUNNER_TEMP/secrets.env" ]; then
             pnpm exec wrangler deploy --env "" --secrets-file "$RUNNER_TEMP/secrets.env"
-            rm -f "$RUNNER_TEMP/secrets.env"
           else
             pnpm exec wrangler deploy --env ""
           fi
+          rm -f "$RUNNER_TEMP/secrets.env"

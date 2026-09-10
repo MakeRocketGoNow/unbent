@@ -48,6 +48,9 @@ jobs:
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
       DEV_BETTER_AUTH_SECRET: ${{ secrets.DEV_BETTER_AUTH_SECRET }}
       DEV_ALLOWED_EMAILS: ${{ secrets.DEV_ALLOWED_EMAILS }}
+      # Optional; the same document production serves, so the Android app's passkeys work
+      # against the dev instance and previews too.
+      ANDROID_ASSET_LINKS: ${{ secrets.ANDROID_ASSET_LINKS }}
     steps:
       # `secrets` cannot be read in an `if:`, so presence is decided once here, as an
       # output, and every later step reads it. The auth secret is the one that decides:
@@ -109,6 +112,9 @@ jobs:
         run: |
           printf 'BETTER_AUTH_SECRET=%s\nALLOWED_EMAILS=%s\n' \
             "$DEV_BETTER_AUTH_SECRET" "$DEV_ALLOWED_EMAILS" > "$RUNNER_TEMP/dev-secrets.env"
+          if [ -n "$ANDROID_ASSET_LINKS" ]; then
+            printf 'ANDROID_ASSET_LINKS=%s\n' "$(printf '%s' "$ANDROID_ASSET_LINKS" | jq -c .)" >> "$RUNNER_TEMP/dev-secrets.env"
+          fi
           pnpm exec wrangler deploy --env dev --secrets-file "$RUNNER_TEMP/dev-secrets.env"
           rm -f "$RUNNER_TEMP/dev-secrets.env"
 
@@ -147,6 +153,9 @@ jobs:
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
       DEV_BETTER_AUTH_SECRET: ${{ secrets.DEV_BETTER_AUTH_SECRET }}
       DEV_ALLOWED_EMAILS: ${{ secrets.DEV_ALLOWED_EMAILS }}
+      # Optional; the same document production serves, so the Android app's passkeys work
+      # against the dev instance and previews too.
+      ANDROID_ASSET_LINKS: ${{ secrets.ANDROID_ASSET_LINKS }}
     steps:
       # The subdomain is set but the secrets may not be; same gate as the dev job.
       - name: Are the preview secrets set?
@@ -199,6 +208,9 @@ jobs:
         run: |
           printf 'BETTER_AUTH_SECRET=%s\nALLOWED_EMAILS=%s\n' \
             "$DEV_BETTER_AUTH_SECRET" "$DEV_ALLOWED_EMAILS" > "$RUNNER_TEMP/preview-secrets.env"
+          if [ -n "$ANDROID_ASSET_LINKS" ]; then
+            printf 'ANDROID_ASSET_LINKS=%s\n' "$(printf '%s' "$ANDROID_ASSET_LINKS" | jq -c .)" >> "$RUNNER_TEMP/preview-secrets.env"
+          fi
           pnpm exec wrangler deploy --env preview --name "$WORKER_NAME" --var "APP_URL:$PREVIEW_URL" \
             --secrets-file "$RUNNER_TEMP/preview-secrets.env"
           rm -f "$RUNNER_TEMP/preview-secrets.env"

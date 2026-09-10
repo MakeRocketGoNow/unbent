@@ -147,6 +147,13 @@ ALLOWED_EMAILS=
 # LEGAL_PRIVACY_URL=https://example.com/privacy
 # LEGAL_TERMS_URL=https://example.com/terms
 
+# The Android app-links document, served at /.well-known/assetlinks.json: which apps, by
+# package name and signing certificate, this origin vouches for. Android reads it to open
+# links in the app and to offer passkeys to it. Set it only if you build the Android app
+# for this instance; unset, the origin vouches for none. The value is the document itself,
+# a JSON array of statements — see the README's Android section for the fingerprints.
+# ANDROID_ASSET_LINKS=[{"relation":["delegate_permission/common.handle_all_urls"],"target":{"namespace":"android_app","package_name":"com.example.notes","sha256_cert_fingerprints":["AA:BB:..."]}}]
+
 # PostHog, for grouping the browser errors that /api/client-errors otherwise only logs.
 #
 # Optional, and off here on purpose: a self-hosted instance downloads no SDK, sends nothing

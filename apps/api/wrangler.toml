@@ -76,12 +76,12 @@ not_found_handling = "single-page-application"
 # not_found_handling never gets a chance to fire. The API is unaffected either way.
 run_worker_first = [
   "/api/*",
-  # OAuth discovery. An MCP client reads these from the origin root, so they cannot live
-  # under /api — and without them listed here the SPA fallback answers each one with
-  # index.html and a 200, which reads as a broken client rather than a routing mistake.
-  "/.well-known/oauth-authorization-server*",
-  "/.well-known/oauth-protected-resource*",
-  "/.well-known/openid-configuration*",
+  # Everything under .well-known is the Worker's: OAuth discovery, which an MCP client reads
+  # from the origin root so it cannot live under /api, and the Android app-links document,
+  # which is per deployment. Without this the SPA fallback answers each one with index.html
+  # and a 200, which reads as a broken client rather than a routing mistake. Nothing static
+  # lives under the prefix any more, so one entry covers it.
+  "/.well-known/*",
   # PostHog's traffic, proxied so a content blocker does not drop it. Listed
   # unconditionally because this file cannot see POSTHOG_KEY; the route answers 404 on an
   # instance that has none, which is a truthful answer the SPA fallback could not give.
@@ -129,9 +129,7 @@ binding = "ASSETS"
 not_found_handling = "single-page-application"
 run_worker_first = [
   "/api/*",
-  "/.well-known/oauth-authorization-server*",
-  "/.well-known/oauth-protected-resource*",
-  "/.well-known/openid-configuration*",
+  "/.well-known/*",
   "/ingest/*",
 ]
 
@@ -197,9 +195,7 @@ binding = "ASSETS"
 not_found_handling = "single-page-application"
 run_worker_first = [
   "/api/*",
-  "/.well-known/oauth-authorization-server*",
-  "/.well-known/oauth-protected-resource*",
-  "/.well-known/openid-configuration*",
+  "/.well-known/*",
   "/ingest/*",
 ]
 
@@ -264,9 +260,7 @@ binding = "ASSETS"
 not_found_handling = "single-page-application"
 run_worker_first = [
   "/api/*",
-  "/.well-known/oauth-authorization-server*",
-  "/.well-known/oauth-protected-resource*",
-  "/.well-known/openid-configuration*",
+  "/.well-known/*",
   "/ingest/*",
 ]
 

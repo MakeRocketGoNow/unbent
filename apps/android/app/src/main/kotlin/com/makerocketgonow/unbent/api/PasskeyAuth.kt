@@ -15,10 +15,11 @@ import okhttp3.RequestBody.Companion.toRequestBody
  * Signing in with a passkey, through Android's own credential sheet.
  *
  * The same WebAuthn credential the web app makes, reachable from here because the app and
- * the site are linked: `assetlinks.json` already declares this package for the Trusted Web
- * Activity, and passkeys reuse that exact association. Nothing new has to be hosted, but
- * that file is what makes this work — without it the sheet finds no credential for the
- * instance's domain and shows nothing.
+ * the site are linked: the instance serves `/.well-known/assetlinks.json`, from its
+ * `ANDROID_ASSET_LINKS` secret, declaring this package and its signing certificate, and
+ * passkeys reuse that association. That document is what makes this work — an instance
+ * that has not published one, or that names a different app, leaves the sheet finding no
+ * credential for the domain and showing nothing.
  *
  * Two round trips, both to Better Auth's own endpoints: ask for a challenge, hand it to
  * Credential Manager, then post what the authenticator signed. The private key never

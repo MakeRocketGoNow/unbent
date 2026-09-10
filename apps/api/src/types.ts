@@ -109,6 +109,15 @@ export interface Env {
   LEGAL_PRIVACY_URL?: string;
   LEGAL_TERMS_URL?: string;
   /**
+   * The Digital Asset Links document this origin serves at /.well-known/assetlinks.json:
+   * which Android apps, by package and signing certificate, it vouches for. Verbatim JSON.
+   *
+   * Per deployment because it names an app. Unset — every fresh instance — means the origin
+   * vouches for none, which is right until an operator has an app of their own; see
+   * routes/well-known.ts and the README's Android section.
+   */
+  ANDROID_ASSET_LINKS?: string;
+  /**
    * PostHog, for grouping the browser errors that `/api/client-errors` only ever logs.
    *
    * Setting the key is what turns it on: the SPA loads the SDK only when the config says

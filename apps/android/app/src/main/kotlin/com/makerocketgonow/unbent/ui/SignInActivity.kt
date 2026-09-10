@@ -171,10 +171,10 @@ class SignInActivity : ComponentActivity() {
     /**
      * The credential sheet, for a passkey already made on this device or synced to it.
      *
-     * No configuration to check first, unlike Google: a passkey needs no client id, and the
-     * link that makes it work — assetlinks.json — is the same one the Trusted Web Activity
-     * already relies on. If there is nothing to offer, the sheet says so by cancelling,
-     * which [PasskeyAuth.wasCancelled] treats as a choice rather than a fault.
+     * No configuration to check first, unlike Google: a passkey needs no client id, only
+     * the app-links document the instance serves (see [PasskeyAuth]). If there is nothing
+     * to offer, the sheet says so by cancelling, which [PasskeyAuth.wasCancelled] treats
+     * as a choice rather than a fault.
      */
     private fun signInWithPasskey() {
         busy = true

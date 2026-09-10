@@ -975,6 +975,25 @@ changes, and `scripts/app-id.sh` prints what a build of this checkout gets. CI r
 same two as the `ANDROID_DEFAULT_INSTANCE` and `ANDROID_APPLICATION_ID` repository
 variables, and the Play upload publishes under the same id.
 
+**Vouching for the app.** Android will only open this site's links in the app, and only
+offer the site's passkeys to it, if the site says which app that is: a Digital Asset Links
+document at `/.well-known/assetlinks.json` naming the package and the SHA-256 of every
+certificate that signs it. The instance serves that document from its `ANDROID_ASSET_LINKS`
+secret — the JSON verbatim, an array of statements — and an instance that has not set one
+vouches for no app, which is right until you have one. Three keys usually sign a published
+app, and all three belong in it: the debug keystore, the upload key, and the App Signing
+key Play re-signs every bundle with, whose fingerprint is on the app's App signing page in
+Play Console. Registering only the upload key is the classic trap, because every build you
+can test locally then works and the store build does not.
+
+```bash
+cd apps/api
+pnpm exec wrangler secret put ANDROID_ASSET_LINKS < assetlinks.json
+```
+
+The `ANDROID_ASSET_LINKS` repository secret carries the same document to the dev instance
+and previews, so passkeys made there work from the app too.
+
 ## Known gaps
 
 - **Connected apps get all-or-nothing access.** Approving an MCP client grants every tool

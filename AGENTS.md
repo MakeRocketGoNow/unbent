@@ -293,8 +293,12 @@ what users install is signed by a certificate that never existed on this machine
 Anything keyed on a signing certificate therefore needs the Play key registered too, not
 just the upload key:
 
-- **`apps/web/public/.well-known/assetlinks.json`** — SHA-256, or App Links open in a
-  browser instead of the app, and passkeys stop being offered.
+- **The `ANDROID_ASSET_LINKS` secret on the Worker**, which is what the instance serves at
+  `/.well-known/assetlinks.json` — SHA-256, or App Links open in a browser instead of the
+  app, and passkeys stop being offered. It is a per-deployment secret rather than a file,
+  because a fork's instance must not vouch for this repository's app; put it on production
+  with `wrangler secret put`, and the `ANDROID_ASSET_LINKS` repository secret carries it to
+  the dev instance and previews.
 - **The Android OAuth client**, in the Google Cloud console — SHA-1. When it is missing,
   Google refuses to issue an ID token and Credential Manager reports `NO_CREDENTIAL`,
   which is indistinguishable from a phone with no Google account. Sign-in appears broken
