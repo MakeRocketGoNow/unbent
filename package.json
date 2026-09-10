@@ -21,7 +21,9 @@
     "migrate:remote": "pnpm --filter @unbent/api migrate:remote",
     "migrate:dev": "pnpm --filter @unbent/api migrate:dev",
     "seed:demo": "node scripts/seed-demo.mjs",
-    "release": "pnpm build && pnpm --filter @unbent/web sourcemaps && pnpm --filter @unbent/api release"
+    "setup:instance": "node scripts/setup-instance.mjs",
+    "release": "pnpm build && pnpm --filter @unbent/web sourcemaps && pnpm --filter @unbent/api release",
+    "deploy": "pnpm migrate:remote && pnpm release"
   },
   "devDependencies": {
     "typescript": "^7.0.2"
