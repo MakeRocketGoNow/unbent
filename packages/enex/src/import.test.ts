@@ -519,4 +519,46 @@ describe('a server that stops responding', () => {
     expect(progress.processed).toBe(12);
     expect(progress.failed).toBe(12);
   });
+
+  it('never trips on HTTP 400s, which a healthy server returns for a bad note', async () => {
+    // The browser worker throws ApiError with a status for every non-2xx, so a run of
+    // oversized bodies or rejected names arrives as consecutive 400s, not as bare Errors.
+    // Stopping here is how the remainder of a 13k-note file was skipped, and how
+    // re-importing the same file could never reach it: these five fail again first.
+    const { client } = fakeClient({
+      createNote: vi.fn(async () => {
+        throw statusError(400);
+      }),
+    });
+
+    const progress = await importEnex(enexFile('N.enex', manyNotes(12)), client);
+    expect(progress.processed).toBe(12);
+    expect(progress.failed).toBe(12);
+  });
+
+  it('never trips on HTTP 413s from an attachment the server will not store', async () => {
+    const { client } = fakeClient({
+      createNote: vi.fn(async () => {
+        throw statusError(413);
+      }),
+    });
+
+    const progress = await importEnex(enexFile('N.enex', manyNotes(12)), client);
+    expect(progress.processed).toBe(12);
+    expect(progress.failed).toBe(12);
+  });
+
+  it('still stops when the host goes away after a run of bad notes', async () => {
+    let call = 0;
+    const createNote = vi.fn(async () => {
+      call += 1;
+      throw statusError(call <= 8 ? 400 : 404);
+    });
+    const { client } = fakeClient({ createNote });
+
+    const run = importEnex(enexFile('N.enex', manyNotes(20)), client);
+    await expect(run).rejects.toMatchObject({ status: 404, streak: FAILURE_STREAK_LIMIT });
+    // Eight note-shaped 400s, then five host 404s, then it gives up.
+    expect(createNote).toHaveBeenCalledTimes(8 + FAILURE_STREAK_LIMIT);
+  });
 });
