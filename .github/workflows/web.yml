@@ -116,10 +116,12 @@ jobs:
         working-directory: apps/api
         run: pnpm exec wrangler deploy --env dev
 
-      # Same reasoning, and the same trap, as the preview secrets below: no `--env`, because
-      # `secret put` resolves its target by concatenating `--name` and `--env`, and adding
-      # one here would aim these at a Worker called `unbent-dev-dev`. Re-put on every push
-      # so a rotated value flows without anyone having to remember this instance exists.
+      # `--env dev` and no `--name`, so the target is whatever `[env.dev]` calls itself and
+      # this file never repeats it. That is the opposite of the preview step below, and both
+      # are right: `secret put` resolves its target as `--name` and `--env` joined, so a
+      # `--name` here would aim these at `unbent-dev-dev`, while without one it reads the
+      # environment's own `name`. Re-put on every push so a rotated value flows without
+      # anyone having to remember this instance exists.
       - name: Put the dev instance secrets
         working-directory: apps/api
         env:
@@ -127,9 +129,9 @@ jobs:
           DEV_ALLOWED_EMAILS: ${{ secrets.DEV_ALLOWED_EMAILS }}
         run: |
           printf '%s' "$DEV_BETTER_AUTH_SECRET" |
-            pnpm exec wrangler secret put BETTER_AUTH_SECRET --name unbent-dev
+            pnpm exec wrangler secret put BETTER_AUTH_SECRET --env dev
           printf '%s' "$DEV_ALLOWED_EMAILS" |
-            pnpm exec wrangler secret put ALLOWED_EMAILS --name unbent-dev
+            pnpm exec wrangler secret put ALLOWED_EMAILS --env dev
 
   # One Worker per PR, at a URL of its own, so a branch can be tried out rather than read.
   #
