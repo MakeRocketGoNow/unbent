@@ -11,6 +11,17 @@ export interface Env {
    * extracting, as it did before.
    */
   AI?: Ai;
+  /**
+   * The origin the app is served on — what Better Auth, the passkey relying party, secure
+   * cookies, the MCP audience and the legal documents' host all derive from.
+   *
+   * Always present by the time a route sees it, and optional in the deployment: the
+   * Worker's entry point fills it from the request origin when nothing configured one
+   * (see lib/app-url.ts), so an instance need not know its own address before its first
+   * deploy. Setting it — as a secret, which survives deploys — pins one origin and makes
+   * every other hostname the Worker answers on refuse sign-in, which is what a deployment
+   * with both a custom domain and a workers.dev name wants.
+   */
   APP_URL: string;
   /** `wrangler secret put BETTER_AUTH_SECRET`; in dev it comes from .dev.vars. */
   BETTER_AUTH_SECRET: string;
@@ -131,3 +142,9 @@ export interface Variables {
 }
 
 export type AppEnv = { Bindings: Env; Variables: Variables };
+
+/**
+ * What the platform actually hands the Worker: `Env` before the entry point has settled
+ * `APP_URL`. Only lib/app-url.ts should need this name.
+ */
+export type RawEnv = Omit<Env, 'APP_URL'> & { APP_URL?: string };

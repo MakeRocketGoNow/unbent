@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import { logger } from 'hono/logger';
-import type { AppEnv } from './types.js';
+import type { AppEnv, RawEnv } from './types.js';
+import { withAppUrl } from './lib/app-url.js';
 import { sessionMiddleware } from './lib/session.js';
 import { health } from './routes/health.js';
 import { authRoutes } from './routes/auth.js';
@@ -61,4 +62,13 @@ const routes = app
 /** Consumed by the SPA through `hc<AppType>()` for end-to-end types with no codegen. */
 export type AppType = typeof routes;
 
-export default app;
+/**
+ * The entry point settles `APP_URL` before Hono sees the request, so every route and
+ * every Better Auth instance downstream can keep treating it as a plain string. See
+ * lib/app-url.ts for what happens when a deployment has not set one.
+ */
+export default {
+  fetch(request: Request, env: RawEnv, ctx: ExecutionContext): Response | Promise<Response> {
+    return app.fetch(request, withAppUrl(env, request), ctx);
+  },
+};
