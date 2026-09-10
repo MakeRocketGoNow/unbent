@@ -297,6 +297,22 @@ class UnbentApiTest {
     }
 
     @Test
+    fun `listAttachments reads the note's files`() {
+        server.enqueue(
+            MockResponse().setResponseCode(200)
+                .setBody("""{"files":[{"filename":"a.pdf","contentType":"application/pdf","size":12}]}"""),
+        )
+
+        val files = api.listAttachments("note-1")
+        assertEquals(1, files.size)
+        assertEquals("a.pdf", files[0].filename)
+
+        val req = server.takeRequest()
+        assertEquals("GET", req.method)
+        assertEquals("/api/notes/note-1/files", req.path)
+    }
+
+    @Test
     fun `uploadFile streams to the note and asks the server to link it`() {
         server.enqueue(
             MockResponse().setResponseCode(201)

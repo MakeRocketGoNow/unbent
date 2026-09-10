@@ -144,6 +144,10 @@ internal data class SearchResults(val results: List<SearchResult> = emptyList())
 @Serializable
 data class AttachmentInfo(val filename: String, val contentType: String, val size: Long)
 
+/** `GET /api/notes/:id/files`. */
+@Serializable
+internal data class AttachmentList(val files: List<AttachmentInfo> = emptyList())
+
 /**
  * Where a note is filed, for [UnbentApi.updateNote].
  *

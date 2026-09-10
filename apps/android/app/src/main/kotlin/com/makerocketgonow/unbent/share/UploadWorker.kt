@@ -18,6 +18,11 @@ import kotlinx.coroutines.withContext
  * A worker rather than work on the share activity's thread: the share sheet should close
  * the instant the files are staged, and an upload over a phone radio outlives the activity
  * that started it. WorkManager also gives retries and a network constraint for free.
+ *
+ * Retries re-enter this function from the top. The note id is therefore written to the
+ * staging directory as soon as the note exists, and files already on it are skipped —
+ * otherwise a dropped radio after `createNote` would leave a second, empty note beside
+ * the first. See [CaptureResume].
  */
 class UploadWorker(context: Context, params: WorkerParameters) : CoroutineWorker(context, params) {
 
@@ -57,17 +62,41 @@ class UploadWorker(context: Context, params: WorkerParameters) : CoroutineWorker
         val dir = Staging.jobDir(context, jobId)
 
         try {
-            val noteId = api.createNote(title, body, tags, notebook).id
+            /*
+             * Create once, remember the id, reuse it on retry.
+             *
+             * WorkManager re-runs this whole function after a network failure. Creating
+             * the note again would leave a duplicate beside the one the first attempt
+             * already made — often without its files, if the failure was the upload.
+             * Written to the staging dir as soon as the server answers, so a process
+             * death between create and the first PUT still finds the same note.
+             */
+            val noteId = CaptureResume.readNoteId(dir) ?: api.createNote(title, body, tags, notebook).id.also {
+                CaptureResume.writeNoteId(dir, it)
+            }
+
+            val already = if (names.isEmpty()) {
+                emptySet()
+            } else {
+                api.listAttachments(noteId).map { it.filename }.toSet()
+            }
 
             // Whether any file still needs its text extracted here. The server does it
             // itself where it can, and says so; the indexing job then has nothing to do.
             var needsIndex = false
             names.forEachIndexed { i, name ->
+                val type = types.getOrElse(i) { "application/octet-stream" }
+                if (name in already) {
+                    // Landed on an earlier attempt. Still index a PDF: this attempt will
+                    // not hear whether the server extracted it, and skipping that would
+                    // leave a capture unsearchable until something else opened the app.
+                    if (IndexWorker.needsIndexing(listOf(type))) needsIndex = true
+                    return@forEachIndexed
+                }
                 val file = File(dir, name)
                 // A file missing from the cache cannot be recovered by retrying; skip it
                 // rather than failing the whole capture and losing the others.
                 if (file.exists()) {
-                    val type = types.getOrElse(i) { "application/octet-stream" }
                     val uploaded = api.uploadFile(noteId, file, name, type)
                     if (IndexWorker.needsIndexing(listOf(type)) && !uploaded.indexedByServer) needsIndex = true
                 }
