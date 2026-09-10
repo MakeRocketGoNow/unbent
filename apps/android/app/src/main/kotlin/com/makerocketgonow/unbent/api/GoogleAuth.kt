@@ -41,24 +41,35 @@ class GoogleAuth(
         val option = GetGoogleIdOption.Builder()
             .setServerClientId(webClientId)
             .setFilterByAuthorizedAccounts(false)
+            /*
+             * Auto-select only ever fires when exactly one account has already authorised
+             * this app, so it cannot skip a choice the user still had to make — and on the
+             * second sign-in it saves them making a choice of one.
+             */
             .setAutoSelectEnabled(true)
             .build()
 
         /*
-         * Answer from what is already on the device, rather than waiting on anything remote.
+         * `preferImmediatelyAvailableCredentials` is deliberately left at its default of
+         * false, and must stay there. It used to be set true, to make a phone with no Google
+         * account fail at once rather than hang for thirteen seconds — but it bought that at
+         * the cost of the feature working at all.
          *
-         * Without this, a device with no Google account signed in does not refuse — it hangs.
-         * Play Services accepts the request, never answers, and Credential Manager gives up
-         * thirteen seconds later with a cancellation from the provider. Thirteen seconds of a
-         * dead screen followed by a message reads as a broken app rather than a missing
-         * account. With it the same device fails at once, and can say which it is.
+         * The flag means, in the library's own words, "return immediately when there is no
+         * available credentials instead of falling back to discovering remote options", and
+         * androidx hands it straight to Play Services' BeginSignInRequest. Paired with
+         * `filterByAuthorizedAccounts = false` above it is self-defeating: that asks for
+         * accounts which have *not* yet authorised this app, which are precisely the ones
+         * that are not sitting locally as an available credential. So Play Services took the
+         * request, found nothing already available, and returned NO_CREDENTIAL instantly
+         * without ever drawing the sheet — on phones signed into a Google account.
          *
-         * It costs nothing when an account is present: accounts on the device are exactly
-         * what "immediately available" means, and the picker still appears.
+         * That is indistinguishable from a phone with no account, which is why it read as a
+         * signing or client-id problem for so long. If the thirteen-second hang comes back,
+         * fix it with a timeout around this call, not by turning this on.
          */
         val request = GetCredentialRequest.Builder()
             .addCredentialOption(option)
-            .setPreferImmediatelyAvailableCredentials(true)
             .build()
         val response = CredentialManager.create(context).getCredential(context, request)
 
@@ -119,13 +130,16 @@ class GoogleAuth(
         /**
          * True when Google had no credential to offer.
          *
-         * Not the same as "the device has no Google account", though that is the common
-         * cause. Google answers NO_CREDENTIAL for anything that leaves it unwilling to
-         * produce a token, including a signing certificate the OAuth client does not know —
-         * so a Play-signed build fails this way on a phone with an account signed in until
-         * the Play App Signing key's SHA-1 is registered alongside the upload key's. The
-         * wording this maps to suggests checking Settings rather than asserting what is on
-         * the phone, because this cannot tell the two apart.
+         * Not the same as "the device has no Google account", though that is one cause.
+         * Google answers NO_CREDENTIAL for anything that leaves it unwilling to produce a
+         * token, and the causes that are ours look identical from here: a request that asked
+         * for immediately-available credentials only (see [signIn], which is what this app
+         * actually got wrong), or a signing certificate the OAuth client does not know, which
+         * is every Play-signed build until the App Signing key's SHA-1 is registered.
+         *
+         * So the wording this maps to suggests checking Settings rather than asserting what
+         * is on the phone. When a report says the message appeared on a phone that plainly
+         * has an account, suspect this side of it before the phone.
          *
          * Matched on the type string as well as the class: the framework reports this as a
          * plain GetCredentialException carrying TYPE_NO_CREDENTIAL in some paths rather than
