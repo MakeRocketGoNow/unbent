@@ -1,11 +1,25 @@
 import { ScopedRepo } from './repo.js';
 import {
+  decodeFieldValue,
+  encodeFieldValue,
   endOfDay,
+  expectedFieldValue,
+  inferFieldType,
+  InvalidFieldValue,
+  isReservedFieldName,
+  MAX_FIELDS_PER_NOTEBOOK,
+  planConversion,
   startOfDay,
   UNFILED,
+  type FieldDef,
+  type FieldType,
+  type FieldValue,
   type Note,
+  type NoteFieldsPatch,
+  type NoteFieldValue,
   type NoteSort,
   type NoteSummary,
+  type NotebookSummary,
   type SearchResult,
 } from '@unbent/shared';
 
@@ -16,6 +30,7 @@ interface NoteRow {
   created_at: number;
   updated_at: number;
   notebook: string | null;
+  notebook_id: string | null;
 }
 
 interface SummaryRow {
@@ -26,8 +41,88 @@ interface SummaryRow {
   updated_at: number;
   deleted_at: number | null;
   notebook: string | null;
+  notebook_id: string | null;
   tags: string | null;
+  /** JSON array of `FieldJson`, from the correlated subquery in `list`. */
+  fields: string | null;
 }
+
+interface FieldRow {
+  id: string;
+  notebook_id: string;
+  name: string;
+  type: string;
+  options: string | null;
+  position: number;
+  value_count?: number;
+}
+
+/** One value as the list's `json_group_array` subquery emits it. */
+interface FieldJson {
+  fieldId: string;
+  name: string;
+  type: string;
+  text: string;
+  position: number;
+  notebookId: string;
+  notebook: string;
+}
+
+function rowToField(row: FieldRow): FieldDef {
+  return {
+    id: row.id,
+    notebookId: row.notebook_id,
+    name: row.name,
+    type: row.type as FieldType,
+    options: row.options ? (JSON.parse(row.options) as string[]) : [],
+    position: row.position,
+    ...(row.value_count !== undefined ? { valueCount: row.value_count } : {}),
+  };
+}
+
+/** Options are only stored for `select`; every other type carries NULL, whatever was sent. */
+function optionsColumn(type: FieldType, options: string[]): string | null {
+  return type === 'select' ? JSON.stringify(options) : null;
+}
+
+/**
+ * A note's values in the order the editor and the list show them: the note's own
+ * notebook's fields in definition order, then anything left over from a notebook the note
+ * has since left. Ordered here rather than in SQL because `json_group_array(... ORDER BY)`
+ * needs a newer SQLite than D1 promises.
+ */
+function decodeFieldsJson(json: string | null, ownNotebookId: string | null): NoteFieldValue[] {
+  if (!json) return [];
+  const rows = JSON.parse(json) as FieldJson[];
+  return rows
+    .sort((a, b) => {
+      const aOwn = a.notebookId === ownNotebookId ? 0 : 1;
+      const bOwn = b.notebookId === ownNotebookId ? 0 : 1;
+      return aOwn - bOwn || a.notebook.localeCompare(b.notebook) || a.position - b.position;
+    })
+    .map((r) => ({
+      fieldId: r.fieldId,
+      name: r.name,
+      type: r.type as FieldType,
+      value: decodeFieldValue(r.type as FieldType, r.text),
+      notebookId: r.notebookId,
+      notebook: r.notebook,
+    }));
+}
+
+/**
+ * The correlated subquery that hands `list` and `get` a note's values as one JSON
+ * column — the same shape as the tags subquery beside it, so the per-row cost is one
+ * primary-key lookup rather than a join that multiplies rows. `json_object` rather than
+ * a delimited string because a value can contain any character a delimiter could be.
+ */
+const FIELDS_SUBQUERY = `(SELECT json_group_array(json_object(
+                 'fieldId', f.id, 'name', f.name, 'type', f.type, 'text', nf.value_text,
+                 'position', f.position, 'notebookId', f.notebook_id, 'notebook', fnb.name))
+            FROM note_fields nf
+            JOIN notebook_fields f ON f.id = nf.field_id
+            JOIN notebooks fnb ON fnb.id = f.notebook_id
+           WHERE nf.note_id = n.id) AS fields`;
 
 /**
  * Unit separator (U+001F): cannot occur in a tag name, so it is a safe group_concat
@@ -304,10 +399,11 @@ export class NotesRepo extends ScopedRepo {
     const { results } = await this.db
       .prepare(
         `SELECT n.id, n.title, n.body, n.created_at, n.updated_at, n.deleted_at,
-                nb.name AS notebook,
+                nb.name AS notebook, n.notebook_id,
                 (SELECT group_concat(t.name, char(31)) FROM note_tags nt
                    JOIN tags t ON t.id = nt.tag_id
-                  WHERE nt.note_id = n.id) AS tags
+                  WHERE nt.note_id = n.id) AS tags,
+                ${FIELDS_SUBQUERY}
            FROM notes n
            LEFT JOIN notebooks nb ON nb.id = n.notebook_id
           WHERE ${conditions.join(' AND ')}
@@ -317,16 +413,23 @@ export class NotesRepo extends ScopedRepo {
       .bind(...binds)
       .all<SummaryRow>();
 
-    return results.map((r) => ({
-      id: r.id,
-      title: r.title,
-      createdAt: r.created_at,
-      updatedAt: r.updated_at,
-      tags: splitTags(r.tags),
-      notebook: r.notebook,
-      excerpt: excerptOf(r.body),
-      deletedAt: r.deleted_at ?? undefined,
-    }));
+    return results.map((r) => {
+      const fields = decodeFieldsJson(r.fields, r.notebook_id);
+      return {
+        id: r.id,
+        title: r.title,
+        createdAt: r.created_at,
+        updatedAt: r.updated_at,
+        tags: splitTags(r.tags),
+        notebook: r.notebook,
+        notebookId: r.notebook_id,
+        // Omitted when empty: most rows in a large archive have none, and a page of fifty
+        // should not carry fifty empty arrays.
+        ...(fields.length > 0 ? { fields } : {}),
+        excerpt: excerptOf(r.body),
+        deletedAt: r.deleted_at ?? undefined,
+      };
+    });
   }
 
   /**
@@ -375,13 +478,14 @@ export class NotesRepo extends ScopedRepo {
   async get(id: string): Promise<Note | null> {
     const row = await this.db
       .prepare(
-        `SELECT n.id, n.title, n.body, n.created_at, n.updated_at, nb.name AS notebook
+        `SELECT n.id, n.title, n.body, n.created_at, n.updated_at, nb.name AS notebook,
+                n.notebook_id, ${FIELDS_SUBQUERY}
            FROM notes n
            LEFT JOIN notebooks nb ON nb.id = n.notebook_id
           WHERE n.id = ?1 AND n.user_id = ?2 AND n.deleted_at IS NULL`,
       )
       .bind(id, this.userId)
-      .first<NoteRow>();
+      .first<NoteRow & { fields: string | null }>();
     if (!row) return null;
 
     const { results } = await this.db
@@ -392,6 +496,7 @@ export class NotesRepo extends ScopedRepo {
       .bind(id, this.userId)
       .all<{ name: string }>();
 
+    const fields = decodeFieldsJson(row.fields, row.notebook_id);
     return {
       id: row.id,
       title: row.title,
@@ -400,6 +505,8 @@ export class NotesRepo extends ScopedRepo {
       updatedAt: row.updated_at,
       tags: results.map((t) => t.name),
       notebook: row.notebook,
+      notebookId: row.notebook_id,
+      ...(fields.length > 0 ? { fields } : {}),
     };
   }
 
@@ -409,8 +516,11 @@ export class NotesRepo extends ScopedRepo {
     body: string;
     tags: string[];
     notebook?: string | null;
+    fields?: NoteFieldsPatch;
   }): Promise<Note> {
     const now = Date.now();
+    // Validated before the insert, so a bad value leaves no half-made note behind.
+    const fieldWrites = input.fields ? await this.prepareFieldWrites(input.id, input.fields) : [];
     const notebookId = await this.resolveNotebook(input.notebook);
     await this.db
       .prepare(
@@ -421,6 +531,12 @@ export class NotesRepo extends ScopedRepo {
       .run();
 
     if (input.tags.length > 0) await this.setTags(input.id, input.tags);
+    if (fieldWrites.length > 0) {
+      await this.db.batch(fieldWrites);
+      // Read back rather than hand-built: the values carry their definitions' names and
+      // types, which only the database knows.
+      return (await this.get(input.id))!;
+    }
 
     return {
       id: input.id,
@@ -430,14 +546,26 @@ export class NotesRepo extends ScopedRepo {
       updatedAt: now,
       tags: input.tags,
       notebook: input.notebook ?? null,
+      notebookId,
     };
   }
 
   /** Returns null when the note does not exist *or* belongs to someone else. */
   async update(
     id: string,
-    patch: { title?: string; body?: string; tags?: string[]; notebook?: string | null },
+    patch: {
+      title?: string;
+      body?: string;
+      tags?: string[];
+      notebook?: string | null;
+      fields?: NoteFieldsPatch;
+    },
   ): Promise<Note | null> {
+    // Field values are validated before anything is written: a value the field cannot
+    // hold fails the whole patch rather than landing after the title has changed.
+    const fieldWrites =
+      patch.fields !== undefined ? await this.prepareFieldWrites(id, patch.fields) : [];
+
     const sets: string[] = [];
     const binds: unknown[] = [];
 
@@ -470,7 +598,8 @@ export class NotesRepo extends ScopedRepo {
       // No rows changed means no such note for this user — do not fall through to tags.
       if (res.meta.changes === 0) return null;
     } else {
-      // A tags-only edit still needs an ownership check before touching the join table.
+      // A tags- or fields-only edit still needs an ownership check before touching the
+      // side tables.
       const owned = await this.db
         .prepare(`SELECT 1 FROM notes WHERE id = ?1 AND user_id = ?2 AND deleted_at IS NULL`)
         .bind(id, this.userId)
@@ -478,8 +607,9 @@ export class NotesRepo extends ScopedRepo {
       if (!owned) return null;
     }
 
-    if (patch.tags !== undefined) {
-      await this.setTags(id, patch.tags);
+    if (patch.tags !== undefined) await this.setTags(id, patch.tags);
+    if (fieldWrites.length > 0) await this.db.batch(fieldWrites);
+    if (patch.tags !== undefined || fieldWrites.length > 0) {
       await this.db
         .prepare(`UPDATE notes SET updated_at = ?1 WHERE id = ?2 AND user_id = ?3`)
         .bind(Date.now(), id, this.userId)
@@ -580,7 +710,9 @@ export class NotesRepo extends ScopedRepo {
     updatedAt: number;
     contentHash: string;
     sourceEnex?: string;
-  }): Promise<{ id: string; created: boolean }> {
+    /** By field name; see `applyImportedFields`. */
+    fields?: Record<string, FieldValue>;
+  }): Promise<{ id: string; created: boolean; skippedFields: string[] }> {
     const existing = await this.db
       .prepare(
         `SELECT id FROM notes
@@ -599,6 +731,7 @@ export class NotesRepo extends ScopedRepo {
        * come back and the notes would stay unfiled forever. Manual moves after import are
        * preserved: only unfiled notes are re-attached.
        */
+      let skippedFields: string[] = [];
       if (input.notebook) {
         const notebookId = await this.resolveNotebook(input.notebook);
         await this.db
@@ -608,8 +741,15 @@ export class NotesRepo extends ScopedRepo {
           )
           .bind(notebookId, existing.id, this.userId)
           .run();
+        // Same rule as the re-file above: restore values a deleted field took with it,
+        // but never overwrite a value the person has since changed.
+        if (notebookId && input.fields) {
+          skippedFields = await this.applyImportedFields(existing.id, notebookId, input.fields, true);
+        }
+      } else if (input.fields) {
+        skippedFields = Object.keys(input.fields);
       }
-      return { id: existing.id, created: false };
+      return { id: existing.id, created: false, skippedFields };
     }
 
     const id = crypto.randomUUID();
@@ -635,7 +775,15 @@ export class NotesRepo extends ScopedRepo {
 
     if (input.tags.length > 0) await this.setTags(id, input.tags);
 
-    return { id, created: true };
+    // Fields belong to a notebook, so an unfiled import has nowhere to put them.
+    let skippedFields: string[] = [];
+    if (input.fields) {
+      skippedFields = notebookId
+        ? await this.applyImportedFields(id, notebookId, input.fields, false)
+        : Object.keys(input.fields);
+    }
+
+    return { id, created: true, skippedFields };
   }
 
   /** Replaces a note's body after its attachment links are known. */
@@ -837,12 +985,16 @@ export class NotesRepo extends ScopedRepo {
     return row?.count ?? 0;
   }
 
-  /** Every notebook this user has in use, with note counts, for the sidebar scope selector. */
-  async listNotebooks(): Promise<Array<{ id: string; name: string; count: number }>> {
+  /**
+   * Every notebook this user has, with note and field counts, for the sidebar scope
+   * selector and the management page.
+   */
+  async listNotebooks(): Promise<NotebookSummary[]> {
     const { results } = await this.db
       .prepare(
         `SELECT nb.id, nb.name,
-                COUNT(n.id) AS count
+                COUNT(n.id) AS count,
+                (SELECT COUNT(*) FROM notebook_fields f WHERE f.notebook_id = nb.id) AS fields
            FROM notebooks nb
            LEFT JOIN notes n
              ON n.notebook_id = nb.id AND n.deleted_at IS NULL AND n.user_id = ?1
@@ -851,7 +1003,7 @@ export class NotesRepo extends ScopedRepo {
           ORDER BY nb.name COLLATE NOCASE`,
       )
       .bind(this.userId)
-      .all<{ id: string; name: string; count: number }>();
+      .all<NotebookSummary>();
     return results;
   }
 
@@ -973,10 +1125,412 @@ export class NotesRepo extends ScopedRepo {
 
     await this.db.batch([
       noteUpdate,
+      // The notebook's fields and their values go with it, explicitly, for the same
+      // reason the notes are unfiled by hand rather than by ON DELETE.
+      this.db
+        .prepare(
+          `DELETE FROM note_fields
+            WHERE user_id = ?1
+              AND field_id IN (SELECT id FROM notebook_fields WHERE notebook_id = ?2)`,
+        )
+        .bind(this.userId, id),
+      this.db
+        .prepare(`DELETE FROM notebook_fields WHERE notebook_id = ?1 AND user_id = ?2`)
+        .bind(id, this.userId),
       this.db.prepare(`DELETE FROM notebooks WHERE id = ?1 AND user_id = ?2`).bind(id, this.userId),
     ]);
 
     return true;
+  }
+
+  // --- Custom fields -------------------------------------------------------------------
+
+  /**
+   * A notebook's field definitions in display order, with how many notes hold a value for
+   * each (the management page names that count before a delete). Null when the notebook
+   * is not this user's, so the route can answer 404 without a second query.
+   */
+  async listFields(notebookId: string): Promise<FieldDef[] | null> {
+    const owned = await this.db
+      .prepare(`SELECT 1 FROM notebooks WHERE id = ?1 AND user_id = ?2`)
+      .bind(notebookId, this.userId)
+      .first();
+    if (!owned) return null;
+
+    const { results } = await this.db
+      .prepare(
+        `SELECT f.id, f.notebook_id, f.name, f.type, f.options, f.position,
+                (SELECT COUNT(*) FROM note_fields nf WHERE nf.field_id = f.id) AS value_count
+           FROM notebook_fields f
+          WHERE f.notebook_id = ?1 AND f.user_id = ?2
+          ORDER BY f.position`,
+      )
+      .bind(notebookId, this.userId)
+      .all<FieldRow>();
+    return results.map(rowToField);
+  }
+
+  /** Every field this user has defined, across notebooks, for a listing that shows them all. */
+  async listAllFields(): Promise<FieldDef[]> {
+    const { results } = await this.db
+      .prepare(
+        `SELECT id, notebook_id, name, type, options, position
+           FROM notebook_fields WHERE user_id = ?1
+          ORDER BY notebook_id, position`,
+      )
+      .bind(this.userId)
+      .all<FieldRow>();
+    return results.map(rowToField);
+  }
+
+  /**
+   * Adds a field to a notebook, at the end.
+   *
+   * Names are checked before the insert rather than caught on the unique constraint so
+   * the three outcomes stay distinct — a missing notebook, a taken name and a full
+   * notebook each get their own status upstream.
+   */
+  async createField(
+    notebookId: string,
+    input: { name: string; type: FieldType; options: string[] },
+  ): Promise<FieldDef | 'missing' | 'conflict' | 'full'> {
+    const owned = await this.db
+      .prepare(`SELECT 1 FROM notebooks WHERE id = ?1 AND user_id = ?2`)
+      .bind(notebookId, this.userId)
+      .first();
+    if (!owned) return 'missing';
+
+    const count = await this.db
+      .prepare(`SELECT COUNT(*) AS n FROM notebook_fields WHERE notebook_id = ?1`)
+      .bind(notebookId)
+      .first<{ n: number }>();
+    if ((count?.n ?? 0) >= MAX_FIELDS_PER_NOTEBOOK) return 'full';
+
+    const clash = await this.db
+      .prepare(
+        `SELECT 1 FROM notebook_fields WHERE notebook_id = ?1 AND name = ?2 COLLATE NOCASE`,
+      )
+      .bind(notebookId, input.name)
+      .first();
+    if (clash) return 'conflict';
+
+    const id = crypto.randomUUID();
+    await this.db
+      .prepare(
+        `INSERT INTO notebook_fields (id, user_id, notebook_id, name, type, options, position, created_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6,
+                 (SELECT COALESCE(MAX(position) + 1, 0) FROM notebook_fields WHERE notebook_id = ?3),
+                 ?7)`,
+      )
+      .bind(
+        id,
+        this.userId,
+        notebookId,
+        input.name,
+        input.type,
+        optionsColumn(input.type, input.options),
+        Date.now(),
+      )
+      .run();
+
+    return (await this.getField(notebookId, id)) ?? 'missing';
+  }
+
+  /**
+   * Renames a field, replaces its options, or changes its type.
+   *
+   * A type change converts the values first (see `convertFieldValues`) and reports how
+   * many it had to clear. Converting to `select` seeds the options from the existing
+   * values, which then take precedence over any options in the same patch: a caller
+   * cannot both pick a new type and hand-write an option list that would orphan values.
+   */
+  async updateField(
+    notebookId: string,
+    fieldId: string,
+    patch: { name?: string; type?: FieldType; options?: string[] },
+  ): Promise<{ field: FieldDef; cleared: number } | 'missing' | 'conflict'> {
+    const current = await this.getField(notebookId, fieldId);
+    if (!current) return 'missing';
+
+    if (patch.name !== undefined && patch.name.toLowerCase() !== current.name.toLowerCase()) {
+      const clash = await this.db
+        .prepare(
+          `SELECT 1 FROM notebook_fields
+            WHERE notebook_id = ?1 AND name = ?2 COLLATE NOCASE AND id <> ?3`,
+        )
+        .bind(notebookId, patch.name, fieldId)
+        .first();
+      if (clash) return 'conflict';
+    }
+
+    let options = patch.options ?? current.options;
+    let cleared = 0;
+    const type = patch.type ?? current.type;
+    if (type !== current.type) {
+      const converted = await this.convertFieldValues(fieldId, current.type, type);
+      cleared = converted.cleared;
+      if (converted.seededOptions) options = converted.seededOptions;
+    }
+
+    await this.db
+      .prepare(
+        `UPDATE notebook_fields SET name = ?1, type = ?2, options = ?3
+          WHERE id = ?4 AND notebook_id = ?5 AND user_id = ?6`,
+      )
+      .bind(patch.name ?? current.name, type, optionsColumn(type, options), fieldId, notebookId, this.userId)
+      .run();
+
+    const field = await this.getField(notebookId, fieldId);
+    return field ? { field, cleared } : 'missing';
+  }
+
+  /**
+   * What a type change would do, without doing it. The same plan the write uses, so the
+   * number the confirmation names is the number that will be cleared.
+   */
+  async previewConversion(
+    notebookId: string,
+    fieldId: string,
+    to: FieldType,
+  ): Promise<{ values: number; incompatible: number } | null> {
+    const field = await this.getField(notebookId, fieldId);
+    if (!field) return null;
+    const rows = await this.fieldValueRows(fieldId);
+    const plan = planConversion(field.type, to, rows);
+    return { values: rows.length, incompatible: plan.drop.length };
+  }
+
+  /** Sets a notebook's field order. `ids` must be exactly its fields, each once. */
+  async reorderFields(notebookId: string, ids: string[]): Promise<boolean> {
+    const { results } = await this.db
+      .prepare(`SELECT id FROM notebook_fields WHERE notebook_id = ?1 AND user_id = ?2`)
+      .bind(notebookId, this.userId)
+      .all<{ id: string }>();
+    const have = new Set(results.map((r) => r.id));
+    if (have.size === 0 || have.size !== ids.length || !ids.every((id) => have.has(id))) {
+      return false;
+    }
+    if (new Set(ids).size !== ids.length) return false;
+
+    await this.db.batch(
+      ids.map((id, position) =>
+        this.db
+          .prepare(`UPDATE notebook_fields SET position = ?1 WHERE id = ?2 AND user_id = ?3`)
+          .bind(position, id, this.userId),
+      ),
+    );
+    return true;
+  }
+
+  /**
+   * Deletes a field and every value held under it.
+   *
+   * The values go explicitly rather than by `ON DELETE CASCADE`, for the reason
+   * `deleteNotebook` gives: D1 does not promise foreign keys are enforced. Batched so a
+   * value can never outlive its definition.
+   */
+  async deleteField(notebookId: string, fieldId: string): Promise<boolean> {
+    const field = await this.getField(notebookId, fieldId);
+    if (!field) return false;
+
+    await this.db.batch([
+      this.db
+        .prepare(`DELETE FROM note_fields WHERE field_id = ?1 AND user_id = ?2`)
+        .bind(fieldId, this.userId),
+      this.db
+        .prepare(`DELETE FROM notebook_fields WHERE id = ?1 AND user_id = ?2`)
+        .bind(fieldId, this.userId),
+    ]);
+    return true;
+  }
+
+  private async getField(notebookId: string, fieldId: string): Promise<FieldDef | null> {
+    const row = await this.db
+      .prepare(
+        `SELECT id, notebook_id, name, type, options, position
+           FROM notebook_fields
+          WHERE id = ?1 AND notebook_id = ?2 AND user_id = ?3`,
+      )
+      .bind(fieldId, notebookId, this.userId)
+      .first<FieldRow>();
+    return row ? rowToField(row) : null;
+  }
+
+  private async fieldValueRows(fieldId: string): Promise<Array<{ noteId: string; text: string }>> {
+    const { results } = await this.db
+      .prepare(`SELECT note_id, value_text FROM note_fields WHERE field_id = ?1 AND user_id = ?2`)
+      .bind(fieldId, this.userId)
+      .all<{ note_id: string; value_text: string }>();
+    return results.map((r) => ({ noteId: r.note_id, text: r.value_text }));
+  }
+
+  /**
+   * Rewrites a field's stored values for a new type.
+   *
+   * Done here rather than in SQL because SQLite cannot be trusted to say whether text is
+   * a number — `CAST('abc' AS REAL)` is 0.0, not an error. The rows are read, planned by
+   * the shared codec, and written back in batches of fifty statements. That is not one
+   * transaction across batches, but every statement is idempotent, so a retry after a
+   * failure converges on the same end state.
+   */
+  private async convertFieldValues(
+    fieldId: string,
+    from: FieldType,
+    to: FieldType,
+  ): Promise<{ cleared: number; seededOptions?: string[] }> {
+    const rows = await this.fieldValueRows(fieldId);
+    const plan = planConversion(from, to, rows);
+
+    const statements: D1PreparedStatement[] = [
+      ...plan.keep.map((k) =>
+        this.db
+          .prepare(
+            `UPDATE note_fields SET value_text = ?1, value_num = ?2
+              WHERE note_id = ?3 AND field_id = ?4 AND user_id = ?5`,
+          )
+          .bind(k.text, k.num, k.row.noteId, fieldId, this.userId),
+      ),
+      ...plan.drop.map((r) =>
+        this.db
+          .prepare(`DELETE FROM note_fields WHERE note_id = ?1 AND field_id = ?2 AND user_id = ?3`)
+          .bind(r.noteId, fieldId, this.userId),
+      ),
+    ];
+    for (let i = 0; i < statements.length; i += 50) {
+      await this.db.batch(statements.slice(i, i + 50));
+    }
+
+    return {
+      cleared: plan.drop.length,
+      ...(plan.seededOptions ? { seededOptions: plan.seededOptions } : {}),
+    };
+  }
+
+  /**
+   * Turns a values patch into the statements that apply it, validating every value first.
+   *
+   * Split from the write so that `update` can validate before it touches the note: a bad
+   * value must fail the whole patch, not land after the title has already changed. Throws
+   * `InvalidFieldValue` naming the field, which the route turns into a 400 and the MCP
+   * tool into an error the model can correct.
+   *
+   * A field id the user does not own is reported exactly like one that does not exist,
+   * so an id from someone else's notebook confirms nothing.
+   *
+   * Merge semantics, unlike `setTags`: only the keys in the patch change. The editor sends
+   * every field anyway, and a caller setting one value should not have to know the rest.
+   */
+  private async prepareFieldWrites(
+    noteId: string,
+    patch: NoteFieldsPatch,
+  ): Promise<D1PreparedStatement[]> {
+    const ids = Object.keys(patch);
+    if (ids.length === 0) return [];
+    if (ids.length > 100) throw new InvalidFieldValue('fields', 'Too many fields in one change');
+
+    const { results } = await this.db
+      .prepare(
+        `SELECT id, notebook_id, name, type, options, position
+           FROM notebook_fields
+          WHERE user_id = ?1 AND id IN (${ids.map((_, i) => `?${i + 2}`).join(', ')})`,
+      )
+      .bind(this.userId, ...ids)
+      .all<FieldRow>();
+    const defs = new Map(results.map((r) => [r.id, rowToField(r)]));
+
+    const statements: D1PreparedStatement[] = [];
+    for (const id of ids) {
+      const def = defs.get(id);
+      if (!def) throw new InvalidFieldValue(id, 'No such field');
+
+      const value = patch[id];
+      const encoded = value === null || value === undefined ? 'clear' : encodeFieldValue(def, value);
+      if (encoded === null) throw new InvalidFieldValue(def.name, expectedFieldValue(def));
+
+      statements.push(
+        encoded === 'clear'
+          ? this.db
+              .prepare(`DELETE FROM note_fields WHERE note_id = ?1 AND field_id = ?2 AND user_id = ?3`)
+              .bind(noteId, id, this.userId)
+          : this.db
+              .prepare(
+                `INSERT INTO note_fields (note_id, field_id, user_id, value_text, value_num)
+                 VALUES (?1, ?2, ?3, ?4, ?5)
+                 ON CONFLICT(note_id, field_id)
+                 DO UPDATE SET value_text = excluded.value_text, value_num = excluded.value_num`,
+              )
+              .bind(noteId, id, this.userId, encoded.text, encoded.num),
+      );
+    }
+    return statements;
+  }
+
+  /**
+   * Applies imported values, which arrive by field *name* — the interchange form.
+   *
+   * A name with no definition in the notebook creates one, typed from the value, so a
+   * vault exported elsewhere lands with its properties intact. Anything that cannot be
+   * stored (a reserved name, a value the field's type cannot read, a notebook already at
+   * its limit) is skipped and named, rather than failing the note: an import is judged by
+   * what it kept. With `onlyMissing`, a value a note already holds is left alone — the
+   * content-hash skip path restores what a deleted field lost without undoing an edit.
+   */
+  private async applyImportedFields(
+    noteId: string,
+    notebookId: string,
+    fields: Record<string, FieldValue>,
+    onlyMissing: boolean,
+  ): Promise<string[]> {
+    const skipped: string[] = [];
+    for (const [rawName, value] of Object.entries(fields)) {
+      const name = rawName.trim();
+      if (!name || isReservedFieldName(name)) {
+        skipped.push(rawName);
+        continue;
+      }
+
+      let def = await this.db
+        .prepare(
+          `SELECT id, notebook_id, name, type, options, position
+             FROM notebook_fields WHERE notebook_id = ?1 AND name = ?2 COLLATE NOCASE`,
+        )
+        .bind(notebookId, name)
+        .first<FieldRow>()
+        .then((r) => (r ? rowToField(r) : null));
+
+      if (!def) {
+        const created = await this.createField(notebookId, {
+          name,
+          type: inferFieldType(value),
+          options: [],
+        });
+        if (typeof created === 'string') {
+          skipped.push(rawName);
+          continue;
+        }
+        def = created;
+      }
+
+      const encoded = encodeFieldValue(def, value);
+      if (encoded === null || encoded === 'clear') {
+        skipped.push(rawName);
+        continue;
+      }
+
+      await this.db
+        .prepare(
+          `INSERT INTO note_fields (note_id, field_id, user_id, value_text, value_num)
+           VALUES (?1, ?2, ?3, ?4, ?5)
+           ON CONFLICT(note_id, field_id) DO ${
+             onlyMissing
+               ? 'NOTHING'
+               : 'UPDATE SET value_text = excluded.value_text, value_num = excluded.value_num'
+           }`,
+        )
+        .bind(noteId, def.id, this.userId, encoded.text, encoded.num)
+        .run();
+    }
+    return skipped;
   }
 
   private async setTags(noteId: string, tags: string[]): Promise<void> {
