@@ -138,7 +138,7 @@ run_worker_first = [
 # One Worker per PR, `unbent-pr-<N>`, all of them bound to the same `unbent-dev` D1 and
 # `unbent-dev-blobs` R2 that `[env.dev]` below serves. The Worker is per PR only because
 # its URL — and therefore APP_URL — has to differ; the data is shared on purpose. Nothing
-# here touches production. Deployed and torn down by .github/workflows/web.yml.
+# here touches production. Deployed and torn down by .github/workflows/previews.yml.
 #
 # Named `preview` rather than `dev` because that is what it is. The dev *instance* is the
 # block below: a Worker that outlives any one PR. Calling this one `dev` left the only
@@ -173,13 +173,12 @@ run_worker_first = [
 [env.preview]
 workers_dev = true
 
-# Deliberately empty rather than the top-level list. A preview is a brand-new Worker on
-# every PR, and a required secret has to exist before a new Worker's first deploy — which
-# the workflow cannot do, since it puts the secrets after the deploy that creates the
-# Worker. Declaring none keeps that order working; the runtime still fails loudly without
-# the secret, just later.
+# A preview is a brand-new Worker on every PR, and a required secret has to be present
+# when a new Worker is first deployed — `secret put` cannot manage that, since it needs a
+# Worker to exist. The workflow therefore sends the secrets with the deploy itself, through
+# `--secrets-file`, which is what lets this list be the real one rather than empty.
 [env.preview.secrets]
-required = []
+required = ["BETTER_AUTH_SECRET"]
 
 [[env.preview.d1_databases]]
 binding = "DB"
@@ -207,7 +206,7 @@ enabled = true
 
 # The dev instance, at https://dev.unbent.app. unbent.app's own; see the header.
 #
-# One standing Worker, deployed from main by .github/workflows/web.yml, on the same
+# One standing Worker, deployed from main by .github/workflows/previews.yml, on the same
 # `unbent-dev` D1 and `unbent-dev-blobs` R2 the previews above use.
 #
 # It exists because a preview structurally cannot be a stable host. `auth.ts` derives the

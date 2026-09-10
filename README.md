@@ -156,9 +156,10 @@ certificate.
 
 Nothing in the repository has to change. The Worker, database and bucket names are per
 account, so keeping unbent.app's is fine; the address comes from wherever the Worker is
-reached; the domain lives in the dashboard. A fork follows the steps above, or sets the two
-Cloudflare secrets on its repository and lets `.github/workflows/web.yml` do them on every
-push to `main`.
+reached; the domain lives in the dashboard. A fork follows the steps above, or sets three
+repository secrets — `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`, and a fresh
+`BETTER_AUTH_SECRET` for the first deploy to carry — and lets `.github/workflows/web.yml` do
+all of it on every push to `main`, the database included.
 
 Two things are worth knowing. An instance with both a custom domain and its `workers.dev`
 name is reachable on two origins, each a front door of its own with its own cookies and
@@ -354,8 +355,8 @@ recurring line about something already settled, which is how a log line stops be
 
 ### The dev instance
 
-`https://dev.unbent.app` is one standing Worker, `unbent-dev`, deployed from `main` by the
-same job that deploys production and configured as `[env.dev]` in `apps/api/wrangler.toml`.
+`https://dev.unbent.app` is one standing Worker, `unbent-dev`, deployed from `main` by
+`.github/workflows/previews.yml` and configured as `[env.dev]` in `apps/api/wrangler.toml`.
 It runs on the `unbent-dev` D1 and the `unbent-dev-blobs` bucket that every preview also
 uses, so it is a second window onto the same scratch data rather than a fourth environment
 with data of its own.
@@ -423,7 +424,7 @@ the production session is kept rather than overwritten.
 
 Every pull request that touches the web app or the API gets a URL of its own —
 `https://unbent-pr-<N>.<subdomain>.workers.dev` — where the branch can be used rather than
-read. `.github/workflows/web.yml` deploys it on each push to the PR and deletes it when the
+read. `.github/workflows/previews.yml` deploys it on each push to the PR and deletes it when the
 PR closes, and posts the URL both as a comment it edits in place and as a deployment in the
 PR's own Deployments box.
 
@@ -466,14 +467,11 @@ pnpm exec wrangler d1 delete unbent-dev
 pnpm exec wrangler d1 create unbent-dev   # the next deploy connects to it by name
 ```
 
-Setting this up on a fresh fork takes one D1 and three new repository settings, alongside
-the Cloudflare credentials production already deploys with. The bucket is provisioned by the
-first deploy; the database has to exist first because migrations run before it:
-
-```bash
-cd apps/api
-pnpm exec wrangler d1 create unbent-dev        # [env.dev] and [env.preview] connect by name
-```
+Setting this up on a fresh fork takes three repository settings, alongside the Cloudflare
+credentials production already deploys with. The workflow creates the `unbent-dev` database
+if the account has none and the first deploy provisions the bucket, so there is nothing to
+run by hand; a repository without these settings skips both jobs with a note in the run
+summary rather than failing.
 
 | Setting | Kind | Value |
 | --- | --- | --- |
