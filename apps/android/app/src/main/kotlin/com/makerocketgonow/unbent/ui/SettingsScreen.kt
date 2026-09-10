@@ -38,6 +38,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import com.makerocketgonow.unbent.BuildConfig
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
@@ -188,6 +189,24 @@ fun SettingsScreen(
             Spacer(Modifier.height(Space.Small))
             Text(
                 stringResource(R.string.delete_account_hint),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            /*
+             * Which build this is, at the bottom where an about line belongs.
+             *
+             * Both numbers, because neither is enough alone: `versionName` stays the same
+             * across every build until someone bumps it, and `versionCode` is the one that
+             * rises every build but is shown nowhere else on Android. A tester asked which build
+             * they are on had no way to answer before this.
+             */
+            Spacer(Modifier.height(Space.Large))
+            Text(
+                stringResource(
+                    R.string.settings_version,
+                    BuildConfig.VERSION_NAME,
+                    BuildConfig.VERSION_CODE,
+                ),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )

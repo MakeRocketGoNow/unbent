@@ -175,6 +175,13 @@
     -->
     <string name="delete_account">Delete account</string>
     <string name="delete_account_hint">Removes your notes, files and account for good. Opens the site, which emails a link to confirm before anything is deleted.</string>
+    <!--
+      Version name and code together, because neither identifies a build on its own: the
+      name repeats across every build between bumps, and the code is the only thing that
+      rises per build but is shown nowhere else on Android. Together they match what Play
+      lists beside the bundle, so a tester can say which build they are on.
+    -->
+    <string name="settings_version">Version %1$s (%2$d)</string>
     <string name="instance_label">Unbent address</string>
     <string name="save">Save</string>
     <string name="sign_out">Sign out</string>
