@@ -1,0 +1,3 @@
+Google sign-in works again on the Play Store build. It was failing on phones that had a Google account signed in, and saying the phone had none.
+
+Settings now shows which version you are running, so a bug report can say which build it came from.
