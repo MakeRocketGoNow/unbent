@@ -1,6 +1,23 @@
 import type { ReactNode } from 'react';
 import type { LucideIcon } from 'lucide-react';
-import { ArrowUpDown, Calendar, Funnel, Menu, Plus, Search, Tag, X } from 'lucide-react';
+import {
+  ArrowUpDown,
+  Calendar,
+  Funnel,
+  Hash,
+  Link as LinkGlyph,
+  List,
+  Mail,
+  Menu,
+  Phone,
+  Plus,
+  Search,
+  SquareCheck,
+  Tag,
+  Type,
+  X,
+} from 'lucide-react';
+import type { FieldType } from '@unbent/shared';
 
 /**
  * Every icon in this app passes through this file.
@@ -134,6 +151,28 @@ export function TagIcon() {
  */
 export function CalendarIcon() {
   return <RowIcon icon={Calendar} />;
+}
+
+/**
+ * One glyph per custom field type, labelling a field's row.
+ *
+ * The glyph says the type so the label does not have to: "Amount" beside a hash reads
+ * as a number without "(number)" after it. Drawn through `RowIcon` because that is what
+ * these are — a picture beside a row of text, sized against the words.
+ */
+const FIELD_TYPE_ICONS: Record<FieldType, LucideIcon> = {
+  text: Type,
+  number: Hash,
+  date: Calendar,
+  checkbox: SquareCheck,
+  url: LinkGlyph,
+  email: Mail,
+  phone: Phone,
+  select: List,
+};
+
+export function FieldTypeIcon({ type }: { type: FieldType }) {
+  return <RowIcon icon={FIELD_TYPE_ICONS[type]} />;
 }
 
 /**

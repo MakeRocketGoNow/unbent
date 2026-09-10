@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate } from '@tanstack/react-router';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { EditorView } from '@codemirror/view';
+import type { FieldType, FieldValue } from '@unbent/shared';
 import * as api from '../notes-api.js';
 import { isStatus } from '../notes-api.js';
 import { useAutosave } from '../useAutosave.js';
@@ -18,6 +19,7 @@ import { useKeyboardInset } from '../useKeyboardInset.js';
 import {
   noteQuery,
   notebooksQuery,
+  notebookFieldsQuery,
   tagsQuery,
   keys,
   invalidateNoteMembership,
@@ -34,6 +36,8 @@ import { OverflowMenu } from './OverflowMenu.js';
 import { Button } from './Button';
 import { Disclosure } from './Disclosure.js';
 import { BackArrow } from './BackArrow.js';
+import { NoteFields } from './NoteFields.js';
+import { formatFieldValue } from './format-field.js';
 
 /** The editor's share of the pane row when split evenly, and the limits a drag respects. */
 const EDITOR_DEFAULT = 0.5;
@@ -68,7 +72,19 @@ export function Workspace({ noteId, readOnly = false, backTo = '/notes' }: Works
     body: string;
     tags: string[];
     notebook: string | null;
-  }>({ title: '', body: '', tags: [], notebook: null });
+    /** Custom field values by field id. Replaced, never mutated: autosave compares by reference. */
+    fields: Record<string, FieldValue | null>;
+  }>({ title: '', body: '', tags: [], notebook: null, fields: {} });
+
+  /**
+   * The notebook the draft names, as the list knows it, for its id. By name because that
+   * is what the draft and the picker hold — ids never leave the database's world except
+   * to address a notebook's own settings, which is what this one is for.
+   */
+  const currentNotebook = notebooks.data?.notebooks.find(
+    (nb) => nb.name.toLowerCase() === draft.notebook?.toLowerCase(),
+  );
+  const fieldDefs = useQuery(notebookFieldsQuery(currentNotebook?.id));
   /** Which note `draft` was seeded from; guards autosave against a not-yet-seeded draft. */
   const [draftFor, setDraftFor] = useState<string | null>(null);
   /**
@@ -186,7 +202,13 @@ export function Workspace({ noteId, readOnly = false, backTo = '/notes' }: Works
   // so a background refetch never discards what is being typed.
   useEffect(() => {
     if (!note) return;
-    setDraft({ title: note.title, body: note.body, tags: note.tags, notebook: note.notebook ?? null });
+    setDraft({
+      title: note.title,
+      body: note.body,
+      tags: note.tags,
+      notebook: note.notebook ?? null,
+      fields: Object.fromEntries((note.fields ?? []).map((v) => [v.fieldId, v.value])),
+    });
     setDraftFor(note.id);
     setEditorOverride(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -235,6 +257,23 @@ export function Workspace({ noteId, readOnly = false, backTo = '/notes' }: Works
     enabled: note !== undefined && !readOnly && draftFor === noteId,
     resetKey: noteId,
   });
+
+  /**
+   * Adds a definition to the note's notebook from the note itself. The definitions
+   * refetch before this resolves so the new row is on screen when the form closes.
+   */
+  async function addField(input: { name: string; type: FieldType; options: string[] }) {
+    if (!currentNotebook) return;
+    await api.createNotebookField(currentNotebook.id, input);
+    await queryClient.invalidateQueries({ queryKey: keys.notebookFields(currentNotebook.id) });
+    void queryClient.invalidateQueries({ queryKey: keys.notebooks() });
+  }
+
+  /** The values, named, for the collapsed summary: only those of the note's own notebook. */
+  const fieldSummary = (fieldDefs.data ?? [])
+    .filter((d) => draft.fields[d.id] !== null && draft.fields[d.id] !== undefined)
+    .map((d) => `${d.name}: ${formatFieldValue(d.type, draft.fields[d.id]!)}`)
+    .join(' · ');
 
   async function removeNote() {
     await api.deleteNote(noteId);
@@ -450,6 +489,7 @@ export function Workspace({ noteId, readOnly = false, backTo = '/notes' }: Works
                 {draft.tags.map((t) => `#${t}`).join(' ')}
               </span>
             )}
+            {fieldSummary && <span className="tag-row-summary-fields">{fieldSummary}</span>}
           </>
         }
       >
@@ -476,6 +516,18 @@ export function Workspace({ noteId, readOnly = false, backTo = '/notes' }: Works
           tags={draft.tags}
           suggestions={tags.data?.map((t) => t.name) ?? []}
           onChange={(next) => setDraft((d) => ({ ...d, tags: next }))}
+        />
+
+        <NoteFields
+          definitions={fieldDefs.data}
+          values={draft.fields}
+          carried={note.fields ?? []}
+          notebookId={currentNotebook?.id ?? null}
+          readOnly={readOnly}
+          onChange={(fieldId, value) =>
+            setDraft((d) => ({ ...d, fields: { ...d.fields, [fieldId]: value } }))
+          }
+          onAddField={addField}
         />
         </div>
       </Disclosure>
