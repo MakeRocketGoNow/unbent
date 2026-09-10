@@ -32,6 +32,10 @@ compatibility_flags = ["nodejs_compat"]
 # own cookies and passkeys. Pinning APP_URL (see above) closes the second one — sign-in
 # from any other hostname is refused as an untrusted origin — which is what unbent.app does.
 workers_dev = true
+# Off, for the same reason APP_URL gets pinned: a per-version preview URL is one more
+# origin the Worker would answer on, and nothing here needs one. Wrangler turns them on by
+# default whenever workers.dev is on, and says so on every deploy unless told.
+preview_urls = false
 
 [observability]
 enabled = true
