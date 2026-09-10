@@ -28,5 +28,10 @@
   "devDependencies": {
     "typescript": "^7.0.2"
   },
-  "packageManager": "pnpm@9.14.4"
+  "packageManager": "pnpm@9.14.4",
+  "pnpm": {
+    "overrides": {
+      "@better-auth/utils": "0.4.2"
+    }
+  }
 }

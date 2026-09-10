@@ -24,6 +24,7 @@
     "@better-auth/mcp": "^1.7.3",
     "@better-auth/oauth-provider": "^1.7.3",
     "@better-auth/passkey": "1.7.3",
+    "@better-auth/utils": "0.4.2",
     "@hono/zod-validator": "^0.9.1",
     "@modelcontextprotocol/server": "^2.0.0",
     "@unbent/enex": "workspace:*",
