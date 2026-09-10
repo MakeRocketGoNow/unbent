@@ -87,7 +87,7 @@ android {
         versionCode = secret("unbent.versionCode", "UNBENT_VERSION_CODE")?.toIntOrNull() ?: 1
         // What a person sees, in Settings and on the store listing. Bumped by hand, because
         // it means something — unlike the code above, which is bookkeeping.
-        versionName = "0.1.0"
+        versionName = "0.1.1"
 
         // The site the app is a shell for. Overridable at runtime in Settings, which is
         // what makes an emulator build usable against a local dev server.
