@@ -98,9 +98,11 @@ jobs:
         working-directory: apps/api
         run: pnpm migrate:remote
 
+      # The top level of wrangler.toml is the production Worker; `--env ""` says so
+      # explicitly, which is what stops wrangler warning that other environments exist.
       - name: Deploy Worker
         working-directory: apps/api
-        run: pnpm exec wrangler deploy --env production
+        run: pnpm exec wrangler deploy --env ""
 
       # A PR's preview normally lands its migrations on the shared database before the PR
       # merges, so this is usually a no-op. Usually is not always: a fork PR gets no

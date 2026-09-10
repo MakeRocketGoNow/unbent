@@ -105,11 +105,15 @@ the Worker console needs nothing registered.
 
 ## Deployment
 
-Production lives at `https://unbent.app` under the `production` environment in
-`apps/api/wrangler.toml`. It is a named environment rather than edited top-level values so
-that `wrangler dev` cannot pick up production settings, and a deploy cannot ship a
-localhost `APP_URL` — `auth.ts` keys secure cookies off that string, so a wrong value
-breaks every session and only shows up after the deploy.
+One Worker serves the site and the API, and the top level of `apps/api/wrangler.toml` is
+that Worker — the same file whether the instance is unbent.app or yours. Nothing in it names
+a deployment. Resources are named rather than identified, and `wrangler deploy` provisions a
+database and a bucket with those names on the first deploy and connects to the existing ones
+after that. The origin is derived from the request when nothing configured one, so the
+Worker need not know its address before its first deploy prints it. A custom domain is
+attached in the dashboard, and a deploy with no routes in its config leaves it alone. The
+named environments below the top level are local development (`local`) and unbent.app's own
+dev instance and pull-request previews (`dev`, `preview`); a fork ignores them.
 
 Wrangler is a devDependency of `apps/api`, not a global install — the lockfile pins the
 version the config is known to work with, and a global copy would silently override it.
@@ -119,49 +123,55 @@ downloads a different version instead.
 First time, in order:
 
 R2 is opt-in per account and cannot be enabled from the CLI — turn it on in the dashboard
-first, or the bucket command fails with code 10042.
+first, or the first deploy fails to create the bucket with code 10042.
 
 ```bash
 cd apps/api
 pnpm exec wrangler login
-pnpm exec wrangler d1 create unbent   # paste the id into [[env.production.d1_databases]]
-pnpm exec wrangler r2 bucket create unbent-blobs
+pnpm exec wrangler d1 create unbent   # migrations run before the deploy that would create it
 ```
 
-Then, from the repo root:
+The bucket needs no command: the deploy provisions it. The database is created by hand only
+because migrations are applied before the first deploy, and a database has to exist to be
+migrated.
+
+`BETTER_AUTH_SECRET` is declared required in `wrangler.toml`, so a deploy refuses to go out
+without it — and a Worker that does not exist yet cannot have a secret put on it. The first
+deploy therefore carries the secret with it, and every deploy after that inherits it:
 
 ```bash
+# from the repo root
 pnpm migrate:remote
-pnpm release
+printf 'BETTER_AUTH_SECRET=%s\n' "$(openssl rand -base64 32)" > /tmp/unbent-secrets
+pnpm --filter @unbent/api exec wrangler deploy --env "" --secrets-file /tmp/unbent-secrets
+rm /tmp/unbent-secrets
 ```
+
+From then on it is `pnpm release`. The deploy prints the Worker's `workers.dev` address,
+which is the instance; to serve it from your own domain, add the domain to the Worker in the
+dashboard under Settings → Domains & Routes, and Cloudflare creates the record and the
+certificate.
 
 ### Deploying your own
 
-Everything under `[env.production]` in `apps/api/wrangler.toml` names unbent.app: the
-worker, the database, the bucket, the URL and the route. They are in the file rather than
-supplied at deploy time because CI deploys with a bare `--env production` and `APP_URL` in
-particular has to be resolvable — `auth.ts` keys secure cookies and the passkey relying
-party off it, so it cannot be a secret and cannot be absent.
+Nothing in the repository has to change. The Worker, database and bucket names are per
+account, so keeping unbent.app's is fine; the address comes from wherever the Worker is
+reached; the domain lives in the dashboard. A fork follows the steps above, or sets the two
+Cloudflare secrets on its repository and lets `.github/workflows/web.yml` do them on every
+push to `main`.
 
-That makes them yours to replace rather than yours to inherit. A fork changes six things:
-
-| In `[env.production]` | Change to |
-| --- | --- |
-| `name` | your worker's name |
-| `database_name`, `database_id` | what `wrangler d1 create` printed |
-| `bucket_name` | what `wrangler r2 bucket create` printed |
-| `APP_URL` | your origin, with no trailing slash |
-| `routes.pattern` | the hostname you serve from |
-
-Nothing here works by accident if you miss one: a deploy against another account's
-database id fails on permissions, and a wrong `APP_URL` breaks sign-in on the first
-request. `[env.dev]` and `[env.preview]` name the same deployment again and are only worth
-setting up if you want the dev instance and PR previews — see
+Two things are worth knowing. An instance with both a custom domain and its `workers.dev`
+name is reachable on two origins, each a front door of its own with its own cookies and
+passkeys; to close the second, pin the first as a secret — `wrangler secret put APP_URL`, a
+secret rather than a var because a deploy replaces plain vars — and every other hostname
+then refuses sign-in as an untrusted origin. And `[env.dev]` and `[env.preview]` are
+unbent.app's dev instance and PR previews: the workflow that deploys them skips itself when
+their secrets are absent, and they are only worth setting up if you want the same — see
 [the dev instance](#the-dev-instance).
 
 The one thing that *would* work by accident is who the legal documents name — a fork that
-changed none of the above would still publish somebody else's legal entity. That is why it
-is configured outside this file entirely, as the next section describes.
+deployed the file unchanged would otherwise publish somebody else's legal entity. That is why
+it is configured outside this file entirely, as the next section describes.
 
 ### Who runs this instance
 
@@ -194,8 +204,8 @@ checks out:
 
 ```bash
 cd apps/api
-pnpm exec wrangler secret put OPERATOR_NAME --env production
-pnpm exec wrangler secret put OPERATOR_EMAIL --env production
+pnpm exec wrangler secret put OPERATOR_NAME
+pnpm exec wrangler secret put OPERATOR_EMAIL
 ```
 
 Neither value is confidential — both are printed on a public page — so a plain environment
@@ -263,7 +273,7 @@ a recording of this app is a recording of somebody's notes.
 
 ```bash
 cd apps/api
-pnpm exec wrangler secret put POSTHOG_KEY --env production
+pnpm exec wrangler secret put POSTHOG_KEY
 ```
 
 The token is public and write-only — it ships in the page — and is a secret here only to
@@ -294,8 +304,9 @@ cap of five per page load is what keeps a bad deploy inside that: a render loop 
 reports, not five thousand.
 
 `release` rather than `deploy` because `deploy` is a built-in pnpm command and shadows any
-script of that name. The first deploy has to happen here, before the secrets below: they
-attach to a Worker, and `wrangler secret put` fails until one exists.
+script of that name. The first deploy has to happen before the secrets below: they attach
+to a Worker, and `wrangler secret put` fails until one exists — which is why the very first
+one carries `BETTER_AUTH_SECRET` in a secrets file, as [Deployment](#deployment) shows.
 
 Past this first setup neither command is routine. `.github/workflows/web.yml` runs both on
 every push to `main`, migrations first and then the Worker, so the code never runs ahead of
@@ -303,19 +314,19 @@ the schema it was written for, and a merged PR that carries a migration needs no
 by hand. `migrate:remote` stays for applying one out of band and is safe to run at any time:
 wrangler applies only what it has no record of.
 
-Then the secrets. `--env production` is required on every one: secrets are per-environment,
-and one set without it lands on a Worker that is not the one serving the site.
+Then the secrets. No `--env` on any of them: the production Worker is the top level of the
+config, and an environment flag would aim them at a different Worker.
 
 ```bash
 cd apps/api
-pnpm exec wrangler secret put BETTER_AUTH_SECRET --env production   # openssl rand -base64 32
-pnpm exec wrangler secret put GOOGLE_CLIENT_ID --env production
-pnpm exec wrangler secret put GOOGLE_CLIENT_SECRET --env production
-pnpm exec wrangler secret put ALLOWED_EMAILS --env production       # comma-separated
-pnpm exec wrangler secret put RESEND_API_KEY --env production       # password reset mail
-pnpm exec wrangler secret put EMAIL_FROM --env production           # verified sender
-pnpm exec wrangler secret put EMAIL_REPLY_TO --env production       # optional, a real mailbox
-pnpm exec wrangler secret put POSTHOG_KEY --env production          # optional, error tracking
+pnpm exec wrangler secret put BETTER_AUTH_SECRET   # openssl rand -base64 32
+pnpm exec wrangler secret put GOOGLE_CLIENT_ID
+pnpm exec wrangler secret put GOOGLE_CLIENT_SECRET
+pnpm exec wrangler secret put ALLOWED_EMAILS       # comma-separated
+pnpm exec wrangler secret put RESEND_API_KEY       # password reset mail
+pnpm exec wrangler secret put EMAIL_FROM           # verified sender
+pnpm exec wrangler secret put EMAIL_REPLY_TO       # optional, a real mailbox
+pnpm exec wrangler secret put POSTHOG_KEY          # optional, error tracking
 ```
 
 `RESEND_API_KEY` and `EMAIL_FROM` are what make password reset work. Without both, a reset
@@ -333,7 +344,7 @@ An instance that means to be public says so with `PUBLIC_SIGNUPS=1`, which silen
 warning and nothing else:
 
 ```bash
-pnpm exec wrangler secret put PUBLIC_SIGNUPS --env production       # 1, to mean it
+pnpm exec wrangler secret put PUBLIC_SIGNUPS       # 1, to mean it
 ```
 
 It opens nothing — an empty `ALLOWED_EMAILS` has already done that — so this is a record of
@@ -452,16 +463,16 @@ instance, which costs nothing but the scratch data:
 ```bash
 cd apps/api
 pnpm exec wrangler d1 delete unbent-dev
-pnpm exec wrangler d1 create unbent-dev   # paste the new id into [env.dev] and [env.preview]
+pnpm exec wrangler d1 create unbent-dev   # the next deploy connects to it by name
 ```
 
-Setting this up on a fresh fork takes one D1, one bucket, and three new repository
-settings, alongside the Cloudflare credentials production already deploys with:
+Setting this up on a fresh fork takes one D1 and three new repository settings, alongside
+the Cloudflare credentials production already deploys with. The bucket is provisioned by the
+first deploy; the database has to exist first because migrations run before it:
 
 ```bash
 cd apps/api
-pnpm exec wrangler d1 create unbent-dev        # paste the id into [env.dev] and [env.preview]
-pnpm exec wrangler r2 bucket create unbent-dev-blobs
+pnpm exec wrangler d1 create unbent-dev        # [env.dev] and [env.preview] connect by name
 ```
 
 | Setting | Kind | Value |
@@ -513,8 +524,8 @@ Microsoft, Slack, GitLab and the rest — not a list this repository maintains. 
 is two secrets and no code:
 
 ```bash
-pnpm exec wrangler secret put DISCORD_CLIENT_ID --env production
-pnpm exec wrangler secret put DISCORD_CLIENT_SECRET --env production
+pnpm exec wrangler secret put DISCORD_CLIENT_ID
+pnpm exec wrangler secret put DISCORD_CLIENT_SECRET
 ```
 
 Retiring one is `wrangler secret delete` on either half. Both take effect on the next
@@ -767,9 +778,10 @@ on which files have text and which have none, with a median word overlap of 0.89
 opens with the file's metadata — PDF version, the scanner's name — which is stripped before
 indexing, or every scan from the same scanner would match a search for it. Files over 25MB, a
 deployment without the binding, and any failure fall back to the browser paths above; only a
-conversion that read the file and found nothing closes the row. The binding is production-only
-in `wrangler.toml`, since a `wrangler dev` with it needs a Cloudflare login to start, so local
-development keeps extracting in the browser.
+conversion that read the file and found nothing closes the row. The binding is on every deployed
+instance and left out of the `local` environment in `wrangler.toml`, since a `wrangler dev`
+with it needs a Cloudflare login to start, so local development keeps extracting in the
+browser.
 
 That pass stops short of a backlog: more than one page of pending files and it downloads
 nothing, because it pulls the same bytes the button does and a backlog is gigabytes that must

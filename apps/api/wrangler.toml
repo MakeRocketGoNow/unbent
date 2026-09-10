@@ -1,31 +1,65 @@
+# The Worker every deployment of Unbent runs — yours included.
+#
+# The top level of this file is the instance a bare `wrangler deploy` ships, and it is
+# written so that a fork deploys it unchanged. Three things make that possible:
+#
+#   - Resources are named, never identified. `wrangler deploy` provisions a D1 database
+#     and an R2 bucket with these names on the first deploy and connects to the existing
+#     ones on every deploy after, so there is no id to paste and nothing here belongs to
+#     one account. Names are per account, so keeping unbent.app's is fine.
+#   - There is no APP_URL. The Worker derives its origin from the request when none is
+#     configured (see src/lib/app-url.ts), so an instance need not know its address before
+#     its first deploy prints one. An operator who wants to pin a single origin sets it as
+#     a secret, which survives deploys; a plain var would be replaced by the next one.
+#   - There are no routes. A custom domain is attached in the dashboard, once, and a deploy
+#     with no routes in its config leaves it alone. Putting a hostname here would make the
+#     file name one deployment, which is exactly what it must not do.
+#
+# The named environments below are not for you. `local` is what `pnpm dev` runs, and `dev`
+# and `preview` are unbent.app's own dev instance and pull-request previews; a fork ignores
+# them, and the workflow that deploys them skips itself when their secrets are absent.
+#
+# Deploy with: pnpm build && wrangler deploy   (or `pnpm release` from the repo root)
 name = "unbent-api"
 main = "src/index.ts"
 compatibility_date = "2026-08-01"
 # Better Auth reaches for node crypto; the Worker needs the node compat layer.
 compatibility_flags = ["nodejs_compat"]
 
+# On, and on purpose: with no routes in this file the workers.dev name is the only address
+# a fresh deploy has, and a Deploy to Cloudflare button relies on it. An instance that also
+# has a custom domain is then reachable on two origins, each its own front door with its
+# own cookies and passkeys. Pinning APP_URL (see above) closes the second one — sign-in
+# from any other hostname is refused as an untrusted origin — which is what unbent.app does.
+workers_dev = true
+
 [observability]
 enabled = true
+
+# Secrets a deploy must find on the Worker, or refuse. Only the one nothing can work
+# without: Better Auth cannot sign a cookie without it, so a Worker missing it fails on its
+# first request in a way that reads as a broken sign-in rather than a missing setting.
+# Everything else — mail, providers, the allowlist, the operator — is optional by design;
+# see .dev.vars.example for the whole list.
+[secrets]
+required = ["BETTER_AUTH_SECRET"]
 
 [[d1_databases]]
 binding = "DB"
 database_name = "unbent"
-# Still a placeholder, and correctly so: development runs `--local`, against the SQLite
-# file under .wrangler, and never reaches a remote database. Do not paste a real id here —
-# it would not be used, and it would disagree with `database_name` above. Every real id
-# lives in a named environment below, where a deploy actually needs it:
-# [[env.production.d1_databases]] for `unbent`, and [[env.dev.d1_databases]] /
-# [[env.preview.d1_databases]] for the `unbent-dev` those two share.
-database_id = "PLACEHOLDER_RUN_WRANGLER_D1_CREATE"
 migrations_dir = "migrations"
 
 [[r2_buckets]]
 binding = "BLOBS"
 bucket_name = "unbent-blobs"
 
-[vars]
-# Overridden per-environment; the SPA origin for OAuth redirects and cookie scope.
-APP_URL = "http://localhost:5173"
+# Workers AI, for extracting a PDF's text on upload (see lib/extract-text.ts). Deployed
+# instances get it; `[env.local]` below deliberately does not, because a `wrangler dev`
+# with this binding reaches the real service and needs a Cloudflare login to start, which
+# a self-hoster's first `pnpm dev` and the test suite should not depend on. Without it the
+# browser extracts, as it always has. Conversion of a PDF is free.
+[ai]
+binding = "AI"
 
 # The SPA is served by this same Worker, so "same-origin" is structural rather than a
 # routing rule that has to be kept correct in a dashboard. Session cookies and OAuth
@@ -54,78 +88,52 @@ run_worker_first = [
   "/ingest/*",
 ]
 
-# Production.
+# Local development: what `pnpm dev` and `migrate:local` run.
 #
-# A named environment rather than edited top-level values, so `wrangler dev` keeps using
-# the localhost settings above and deploying can never silently pick up a dev APP_URL —
-# `auth.ts` keys secure cookies off that string, so getting it wrong breaks every session
-# in a way that only shows up after deploy.
+# A named environment so that `wrangler dev` never loads the deployable bindings above,
+# and the difference is one binding: no Workers AI, for the reason given on it. Everything
+# else is repeated rather than inherited because wrangler does not inherit bindings into
+# an environment. It warns on every start that `ai` was left behind here; that warning is
+# this block doing its job.
 #
-# Deploy with: pnpm build && wrangler deploy --env production
-[env.production]
-name = "unbent-api"
+# The `database_id` is a placeholder, and correctly so: `--local` never reaches a remote
+# database, and miniflare keys the SQLite file under .wrangler on this string, so changing
+# it would make every checkout's local notes vanish into a fresh empty database.
+[env.local]
 
-[[env.production.d1_databases]]
+[[env.local.d1_databases]]
 binding = "DB"
 database_name = "unbent"
-# unbent.app's own database. A fork replaces this — `wrangler d1 create` prints the id, and
-# a deploy against somebody else's id fails on permissions rather than doing damage. Same
-# for the bucket, the worker `name`, `APP_URL` and the route below: everything in this
-# environment names one deployment, and the README's "Deploying your own" lists the set.
-database_id = "40559d4d-f327-45d0-99f6-0e560b32200c"
+database_id = "PLACEHOLDER_RUN_WRANGLER_D1_CREATE"
 migrations_dir = "migrations"
 
-[[env.production.r2_buckets]]
+[[env.local.r2_buckets]]
 binding = "BLOBS"
 bucket_name = "unbent-blobs"
 
-[env.production.vars]
-APP_URL = "https://unbent.app"
+[env.local.vars]
+# The SPA origin for OAuth redirects and cookie scope. `pnpm dev` overrides it with the
+# checkout's own port; this is the value a bare `wrangler dev --env local` gets.
+APP_URL = "http://localhost:5173"
 
-# OPERATOR_NAME and OPERATOR_EMAIL are deliberately not here. They name the legal entity
-# the built-in privacy policy and terms are published under, and this file is checked out
-# by everyone who self-hosts — committing them would have every fork publishing somebody
-# else's legal claims on its own domain, which is the thing they exist to prevent. Set them
-# per deployment instead, with `wrangler secret put` or in the dashboard. See the README.
+# Same list as the top level, so `wrangler dev` checks .dev.vars for it and says which
+# name is missing rather than failing on the first request.
+[env.local.secrets]
+required = ["BETTER_AUTH_SECRET"]
 
-# The apex serves both the SPA and /api, keeping them same-origin in production exactly as
-# they are in dev. `custom_domain` makes Cloudflare create and manage the DNS record and
-# certificate, so there is no separate record to keep in step with this file.
-[[env.production.routes]]
-pattern = "unbent.app"
-custom_domain = true
-
-[env.production.assets]
+[env.local.assets]
 directory = "../web/dist"
 binding = "ASSETS"
 not_found_handling = "single-page-application"
 run_worker_first = [
   "/api/*",
-  # OAuth discovery. An MCP client reads these from the origin root, so they cannot live
-  # under /api — and without them listed here the SPA fallback answers each one with
-  # index.html and a 200, which reads as a broken client rather than a routing mistake.
   "/.well-known/oauth-authorization-server*",
   "/.well-known/oauth-protected-resource*",
   "/.well-known/openid-configuration*",
-  # PostHog's traffic, proxied so a content blocker does not drop it. Listed
-  # unconditionally because this file cannot see POSTHOG_KEY; the route answers 404 on an
-  # instance that has none, which is a truthful answer the SPA fallback could not give.
   "/ingest/*",
 ]
 
-[env.production.observability]
-enabled = true
-
-# Workers AI, for extracting a PDF's text on upload (see lib/extract-text.ts). Production
-# only, deliberately: a `wrangler dev` with this binding reaches the real service and needs
-# a Cloudflare login to start, which a self-hoster's first `pnpm dev` and the test suite
-# should not depend on. Without it the browser extracts, as it always has. To try the
-# server path locally, add the same two lines at the top level for the session and run
-# `wrangler dev` logged in; conversion of a PDF is free.
-[env.production.ai]
-binding = "AI"
-
-# Preview instances, one per pull request.
+# Preview instances, one per pull request. unbent.app's own; see the header.
 #
 # One Worker per PR, `unbent-pr-<N>`, all of them bound to the same `unbent-dev` D1 and
 # `unbent-dev-blobs` R2 that `[env.dev]` below serves. The Worker is per PR only because
@@ -145,18 +153,18 @@ binding = "AI"
 #                          it the way a bare `--env preview` would give `unbent-api-preview`.
 #   --var APP_URL:<url>    https://unbent-pr-<N>.<subdomain>.workers.dev
 #
-# APP_URL is the one that matters: `auth.ts` derives baseURL, trusted origins, cookie
-# security and the passkey rpID from it, so it must name the preview's own host. Left unset
-# the Worker throws on its first request, which is the right failure — a stale placeholder
-# would instead half-work, with sessions breaking in ways that look like anything but this.
+# APP_URL is supplied rather than derived because every preview shares one database: with
+# each Worker naming its own origin, a token or a passkey made on one preview cannot be
+# replayed against another.
 #
 # Because of that omission wrangler warns, on every deploy of this env, that the top-level
 # `vars` is not inherited and should be added here. The warning is expected and its advice
-# is wrong for this block specifically: pasting APP_URL in is what reintroduces the stale
-# placeholder above. There is no way to have the value be per-PR and also silence it.
+# is wrong for this block specifically. There is no way to have the value be per-PR and
+# also silence it.
 #
-# No `ai` binding, for the reason the production block gives; previews extract a PDF's text
-# in the browser, as an unconfigured instance always has.
+# No `ai` binding: previews extract a PDF's text in the browser, as an unconfigured
+# instance always has. Wrangler warns about that omission too, on every preview deploy,
+# beside the `vars` one above; both are expected.
 #
 # No routes either, and that is load-bearing: a route here would be claimed by whichever
 # preview deployed last, since `--name` changes the script a deploy targets but not the
@@ -165,10 +173,17 @@ binding = "AI"
 [env.preview]
 workers_dev = true
 
+# Deliberately empty rather than the top-level list. A preview is a brand-new Worker on
+# every PR, and a required secret has to exist before a new Worker's first deploy — which
+# the workflow cannot do, since it puts the secrets after the deploy that creates the
+# Worker. Declaring none keeps that order working; the runtime still fails loudly without
+# the secret, just later.
+[env.preview.secrets]
+required = []
+
 [[env.preview.d1_databases]]
 binding = "DB"
 database_name = "unbent-dev"
-database_id = "40d2f47f-e7cf-4f8f-bdc7-be2cc587ead3"
 migrations_dir = "migrations"
 
 [[env.preview.r2_buckets]]
@@ -181,22 +196,16 @@ binding = "ASSETS"
 not_found_handling = "single-page-application"
 run_worker_first = [
   "/api/*",
-  # OAuth discovery. An MCP client reads these from the origin root, so they cannot live
-  # under /api — and without them listed here the SPA fallback answers each one with
-  # index.html and a 200, which reads as a broken client rather than a routing mistake.
   "/.well-known/oauth-authorization-server*",
   "/.well-known/oauth-protected-resource*",
   "/.well-known/openid-configuration*",
-  # PostHog's traffic, proxied so a content blocker does not drop it. Listed
-  # unconditionally because this file cannot see POSTHOG_KEY; the route answers 404 on an
-  # instance that has none, which is a truthful answer the SPA fallback could not give.
   "/ingest/*",
 ]
 
 [env.preview.observability]
 enabled = true
 
-# The dev instance, at https://dev.unbent.app.
+# The dev instance, at https://dev.unbent.app. unbent.app's own; see the header.
 #
 # One standing Worker, deployed from main by .github/workflows/web.yml, on the same
 # `unbent-dev` D1 and `unbent-dev-blobs` R2 the previews above use.
@@ -227,7 +236,6 @@ workers_dev = false
 [[env.dev.d1_databases]]
 binding = "DB"
 database_name = "unbent-dev"
-database_id = "40d2f47f-e7cf-4f8f-bdc7-be2cc587ead3"
 migrations_dir = "migrations"
 
 [[env.dev.r2_buckets]]
@@ -239,11 +247,12 @@ bucket_name = "unbent-dev-blobs"
 # change, so there is nothing for a deploy to supply and nothing to go stale.
 APP_URL = "https://dev.unbent.app"
 
+[env.dev.secrets]
+required = ["BETTER_AUTH_SECRET"]
+
 # `custom_domain` has Cloudflare create and manage both the DNS record and the certificate,
-# exactly as production's apex does, so there is no record to keep in step with this file by
-# hand. It needs `unbent.app` to be a zone on the same account — it is, production serves
-# from it — and an API token with DNS edit on that zone, which the production deploy's
-# token already has for the apex.
+# so there is no record to keep in step with this file by hand. It needs `unbent.app` to be
+# a zone on the same account and an API token with DNS edit on that zone.
 [[env.dev.routes]]
 pattern = "dev.unbent.app"
 custom_domain = true
@@ -254,25 +263,17 @@ binding = "ASSETS"
 not_found_handling = "single-page-application"
 run_worker_first = [
   "/api/*",
-  # OAuth discovery. An MCP client reads these from the origin root, so they cannot live
-  # under /api — and without them listed here the SPA fallback answers each one with
-  # index.html and a 200, which reads as a broken client rather than a routing mistake.
   "/.well-known/oauth-authorization-server*",
   "/.well-known/oauth-protected-resource*",
   "/.well-known/openid-configuration*",
-  # PostHog's traffic, proxied so a content blocker does not drop it. Listed
-  # unconditionally because this file cannot see POSTHOG_KEY; the route answers 404 on an
-  # instance that has none, which is a truthful answer the SPA fallback could not give.
   "/ingest/*",
 ]
 
 [env.dev.observability]
 enabled = true
 
-# Extracts a PDF's text on the server, as production does. A dev instance is only worth
-# having if the path it exercises is production's, and text extraction is the half of an
-# import that differs most between the two. The objection that keeps this binding out of
-# the top level does not reach here: a named environment is not what `wrangler dev` loads,
-# so a first `pnpm dev` and the test suite still need no Cloudflare login.
+# Extracts a PDF's text on the server, as a deployed instance does. A dev instance is only
+# worth having if the path it exercises is production's, and text extraction is the half
+# of an import that differs most between the two.
 [env.dev.ai]
 binding = "AI"
