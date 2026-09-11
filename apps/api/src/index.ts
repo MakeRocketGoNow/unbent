@@ -9,6 +9,7 @@ import { wellKnown } from './routes/well-known.js';
 import { ingest } from './routes/ingest.js';
 import { notes } from './routes/notes.js';
 import { notebooks } from './routes/notebooks.js';
+import { tags } from './routes/tags.js';
 import { exportRoutes } from './routes/export.js';
 import { attachments } from './routes/attachments.js';
 import { admin } from './routes/admin.js';
@@ -49,6 +50,7 @@ const routes = app
   .route('/api', authRoutes)
   .route('/api', notes)
   .route('/api', notebooks)
+  .route('/api', tags)
   .route('/api', exportRoutes)
   .route('/api', attachments)
   .route('/api', admin)
