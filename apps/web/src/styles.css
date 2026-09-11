@@ -4392,6 +4392,10 @@ select.note-field-input { cursor: pointer; }
   */
   .sheet .note-fields { row-gap: 0.15rem; }
 
+  /* "+ Add field" and "Manage fields" are about the notebook, not a value: a breath before
+     them keeps the last field from reading as a row that happens to have two buttons. */
+  .sheet .note-fields-foot { margin-top: 0.6rem; }
+
   .sheet-body { gap: 0.6rem; }
 
   .filing-row {
