@@ -16,6 +16,20 @@ import androidx.compose.runtime.saveable.Saver
 import androidx.compose.runtime.saveable.listSaver
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.animation.AnimatedContentTransitionScope
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.dp
+import androidx.navigation.NavBackStackEntry
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -153,6 +167,10 @@ private fun NotesStateSaver(api: UnbentApi): Saver<NotesState, Any> = listSaver(
     },
 )
 
+/** Whether a back stack entry is a note, which is the one destination with a direction. */
+private val NavBackStackEntry.isNote: Boolean
+    get() = destination.route?.startsWith("note/") == true
+
 /**
  * The navigation host. The note takes its id from the route so a back stack entry means
  * one note, and returning to the list is a pop rather than a navigation that would need to
@@ -200,8 +218,58 @@ private fun App(
         }
     }
 
-    NavHost(navController = nav, startDestination = "notes") {
-        composable("notes") {
+    /*
+     * How screens arrive.
+     *
+     * The host's default is Material's fade-through: the old screen fades out, the new
+     * one fades in while settling from slightly smaller. It is the motion for a sibling
+     * — Settings, the Trash, the notebooks screen are places beside the list, not inside
+     * it. A note is different: it is the thing that was tapped, opened, so it takes the
+     * shared-axis slide below, which gives the tap a direction and gives Back the same
+     * direction reversed. Keep grows the tapped card into the note; that container
+     * transform is not worth it here because the note's body is a WebView that arrives
+     * blank, so the card would morph into nothing. The slide lands on a screen that is
+     * already drawing its own chrome.
+     *
+     * The timings are the spec's: 300ms for the slide, a 90ms fade out and a 210ms fade
+     * in that starts as the fade out ends, so the two screens never sit fully lit on top
+     * of each other. Defined once here rather than per route.
+     */
+    val shortcut = 30.dp
+    val slide = with(LocalDensity.current) { shortcut.roundToPx() }
+    val fadeOut = fadeOut(tween(90))
+    val fadeIn = fadeIn(tween(210, delayMillis = 90))
+    val slideSpec = tween<IntOffset>(300, easing = FastOutSlowInEasing)
+
+    // Shared axis X: the incoming screen slides in from the end edge, the outgoing one
+    // slides a little toward the start; Back runs the same thing mirrored.
+    val enterNote: AnimatedContentTransitionScope<NavBackStackEntry>.() -> EnterTransition =
+        { slideInHorizontally(slideSpec) { slide } + fadeIn }
+    val exitForNote: AnimatedContentTransitionScope<NavBackStackEntry>.() -> ExitTransition =
+        { slideOutHorizontally(slideSpec) { -slide } + fadeOut }
+    val popEnterFromNote: AnimatedContentTransitionScope<NavBackStackEntry>.() -> EnterTransition =
+        { slideInHorizontally(slideSpec) { -slide } + fadeIn }
+    val popExitNote: AnimatedContentTransitionScope<NavBackStackEntry>.() -> ExitTransition =
+        { slideOutHorizontally(slideSpec) { slide } + fadeOut }
+
+    NavHost(
+        navController = nav,
+        startDestination = "notes",
+        enterTransition = { fadeIn + scaleIn(tween(210, delayMillis = 90), initialScale = 0.92f) },
+        exitTransition = { fadeOut },
+        popEnterTransition = { fadeIn + scaleIn(tween(210, delayMillis = 90), initialScale = 0.92f) },
+        popExitTransition = { fadeOut },
+    ) {
+        composable(
+            "notes",
+            // The list's side of opening a note, and of coming back from one. Only for a
+            // note: its other neighbours are siblings and take the host's fade-through.
+            exitTransition = { if (targetState.isNote) exitForNote() else fadeOut },
+            popEnterTransition = {
+                if (initialState.isNote) popEnterFromNote()
+                else fadeIn + scaleIn(tween(210, delayMillis = 90), initialScale = 0.92f)
+            },
+        ) {
             NotesScreen(
                 state = notes,
                 listState = notesScroll,
@@ -224,6 +292,8 @@ private fun App(
                     defaultValue = false
                 },
             ),
+            enterTransition = enterNote,
+            popExitTransition = popExitNote,
         ) { entry ->
             NoteScreen(
                 noteId = entry.arguments?.getString("id").orEmpty(),
