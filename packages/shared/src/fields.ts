@@ -222,6 +222,8 @@ export function isHeldSelectValue(
   storedText: string | undefined,
 ): boolean {
   if (def.type !== 'select' || storedText === undefined || typeof value !== 'string') return false;
+  // Re-trims rather than reusing encodeFieldValue's trimmed text: this runs only after
+  // encodeFieldValue has already rejected the value, so its `text` isn't in scope here.
   return value.trim() === storedText;
 }
 
