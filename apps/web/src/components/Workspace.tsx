@@ -14,7 +14,7 @@ import {
   focusEditor,
 } from '../useListKeys.js';
 import { useIsNewNote } from '../useNewNote.js';
-import { useMediaQuery, MOBILE_QUERY } from '../useMediaQuery.js';
+import { useMediaQuery, MOBILE_QUERY, TOUCH_QUERY } from '../useMediaQuery.js';
 import { useKeyboardInset } from '../useKeyboardInset.js';
 import {
   noteQuery,
@@ -171,6 +171,15 @@ export function Workspace({ noteId, readOnly = false, backTo = '/notes' }: Works
    * question at every width now, so this no longer decides what renders.
    */
   const isMobile = useMediaQuery(MOBILE_QUERY);
+
+  /**
+   * Whether opening this note would raise a keyboard.
+   *
+   * Deliberately not `isMobile`. The question here is whether focus costs half the screen,
+   * which is about the keyboard rather than the layout, and the two disagree at both ends —
+   * see `TOUCH_QUERY`.
+   */
+  const touch = useMediaQuery(TOUCH_QUERY);
 
   /**
    * How much of the viewport the on-screen keyboard covers.
@@ -634,9 +643,19 @@ export function Workspace({ noteId, readOnly = false, backTo = '/notes' }: Works
                   }
             }
             rich={noteView === 'rich'}
-            /* Stands down for a note that was just created: the title has the caret, and
-               an editor grabbing it on mount would take it straight back. */
-            autoFocus={!cameFromList && !isNewNote}
+            /*
+               Stands down for a note that was just created: the title has the caret, and
+               an editor grabbing it on mount would take it straight back.
+
+               And on a touch device, for every note. Taking focus there raises the keyboard
+               over half the screen before anything has been tapped — so opening a note to
+               read one costs a dismissal first, and the note is half hidden while you do
+               it. Every notes app worth copying opens an existing note reading; the
+               keyboard is the reader's decision, and the body is one tap away. A new note
+               is the exception that is already handled above: it was created to be typed
+               into, and its caret goes to the title.
+            */
+            autoFocus={!cameFromList && !isNewNote && !touch}
             // The way out of the editor, and the counterpart to the list's Enter.
             onEscape={focusActiveListItem}
             onViewReady={setEditorView}

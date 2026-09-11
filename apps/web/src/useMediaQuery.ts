@@ -28,3 +28,13 @@ export function useMediaQuery(query: string): boolean {
 
 /** The one breakpoint in the app. Kept beside the query so the two cannot drift. */
 export const MOBILE_QUERY = '(max-width: 860px)';
+
+/**
+ * Whether this is a touch device, which is to say: whether focusing something raises a
+ * software keyboard over half the screen.
+ *
+ * Not a width. `MOBILE_QUERY` answers "is the layout narrow", and the two part company in
+ * both directions — a tablet at 1024px has a software keyboard, and a desktop window
+ * dragged narrow has none. Autofocus is a question about the keyboard, so it asks this.
+ */
+export const TOUCH_QUERY = '(hover: none) and (pointer: coarse)';
