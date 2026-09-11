@@ -39,7 +39,7 @@ continuing — the answer is usually to start a fresh one, not to work in it.
 ## 2. Set up the worktree
 
 ```bash
-pnpm worktree:setup          # or: pnpm worktree:setup --fresh
+pnpm worktree:setup --fresh  # default; omit --fresh only when asked for the real corpus
 ```
 
 `git worktree add` brings tracked files and nothing else, so until this runs the worktree
@@ -49,15 +49,17 @@ from the main checkout, applies migrations, and prints the ports. It is idempote
 
 **Which variant:**
 
-- **Default** copies the main checkout's D1 *and* R2. R2 can be ~110M and the D1 carries
-  the user's real local notes. The upside is the browser arrives already signed in — the
-  localhost session cookie is host-only and ports do not scope cookies.
-- **`--fresh`** skips the copy and builds an empty schema from migrations. Right for UI and
-  layout work, and anything where you only need *some* notes rather than *their* notes.
+- **`--fresh` is the default.** It skips the copy and builds an empty schema from
+  migrations. Right for UI and layout work, and anything where you only need *some* notes
+  rather than *their* notes — which, with step 4, is almost everything. Use it unless the
+  user has said they want their real notes.
+- **Omitting `--fresh`** copies the main checkout's D1 *and* R2. R2 can be ~110M and the D1
+  carries the user's real local notes. The upside is the browser arrives already signed
+  in — the localhost session cookie is host-only and ports do not scope cookies.
 
-**Ask before the default variant.** Copying the real corpus is a decision about the user's
-disk and their data, not a detail. `--fresh` plus step 4 is the cheaper default when all
-you need is a populated-looking app.
+**Don't copy the real corpus unless asked.** It is a decision about the user's disk and
+their data, not a detail, so it takes an explicit instruction rather than a judgement call —
+run `--fresh` and move on.
 
 Verify the schema landed — a table count and a migration list, not just a zero exit code.
 
