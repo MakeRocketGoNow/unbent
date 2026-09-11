@@ -4249,9 +4249,9 @@ select.note-field-input { cursor: pointer; }
   .shell.wide:not(.embed) { padding-inline: 0.75rem; }
 
   /*
-     The filing row keeps its own border, like every other block in this column.
+     The border above is that divider, and it is deliberate.
 
-     That was tried the other way: once filing and the attachments panel were drawn
+     It was tried the other way: once filing and the attachments panel were drawn
      identically, the rule between them looked like it was separating two halves of one
      thing, so it came out. On screen the opposite was true. Two identical rows with nothing
      between them read as one row that had wrapped, and the eye had to use the chevrons to
@@ -4259,9 +4259,6 @@ select.note-field-input { cursor: pointer; }
      uses to mean "different thing", said it at a glance. Sameness of style is what makes
      them a family; the rule is what keeps them countable.
   */
-  .filing-row {
-    border-bottom: 1px solid var(--border);
-  }
 
   /*
      The filing row: what the note is filed as, and the way to the sheet that changes it.
@@ -4273,6 +4270,10 @@ select.note-field-input { cursor: pointer; }
   */
   .filing-row {
     display: flex;
+    /* The values take a line of their own below, which only happens if the row may wrap:
+       without this their `flex-basis: 100%` squeezed the notebook and tags beside them to
+       zero width, and the line the row exists to state disappeared off the screen. */
+    flex-wrap: wrap;
     align-items: center;
     gap: 0.15rem 0.5rem;
     width: 100%;
@@ -4283,7 +4284,11 @@ select.note-field-input { cursor: pointer; }
     color: var(--muted);
     text-align: start;
     background: none;
+    /* Only the bottom edge, which is the divider this column uses between blocks. A
+       shorthand `border: none` here would be undone further down by the rule that adds it,
+       and which of the two won would be source order rather than intent. */
     border: none;
+    border-bottom: 1px solid var(--border);
     cursor: pointer;
   }
 
@@ -4324,9 +4329,13 @@ select.note-field-input { cursor: pointer; }
   .filing-row::after {
     content: '';
     flex: 0 0 auto;
+    /* Stays on the first line, beside the notebook it belongs to: centred against a
+       two-line row it floated in the gap between them and read as unattached. */
+    align-self: center;
+    order: 0;
     width: 0.36rem;
     height: 0.36rem;
-    margin-left: 0.75rem;
+    margin-left: auto;
     border-right: 1.5px solid currentColor;
     border-bottom: 1.5px solid currentColor;
     transform: rotate(-45deg) translate(-0.05rem, -0.05rem);
