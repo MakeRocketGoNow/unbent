@@ -3544,7 +3544,7 @@ select.note-field-input { cursor: pointer; }
   /* Bounded so a long tag list scrolls inside the sheet rather than growing it past the
      top of the screen. dvh, not vh: the mobile URL bar changes the viewport, and vh here
      measures the tallest state, which puts the head under the browser chrome. */
-  max-height: 85dvh;
+  max-height: 90dvh;
   padding: 0;
   overflow-y: auto;
   color: var(--fg);
@@ -4312,6 +4312,34 @@ select.note-field-input { cursor: pointer; }
      family is what makes the blocks countable. The chevron does not rotate: this one opens
      a sheet rather than unfolding, and a rotating chevron would promise the other gesture.
   */
+  /*
+     The sheet's own rhythm, tighter than the column the controls came from.
+
+     Three gaps were stacking on top of each other: the body's 0.75rem between every child,
+     `.tag-row`'s own 0.5rem between controls, and its 0.5rem of top and bottom padding.
+     That padding earned its place in flow, where it separated the block from the summary
+     above it and the border below — inside a sheet there is neither, so it was 16px of
+     nothing between the tag entry and the first field, on the surface with the least room
+     to spare. The row keeps its gap; it gives up the padding it no longer has a use for.
+  */
+  .sheet .tag-row {
+    padding: 0;
+    gap: 0.6rem;
+    /* The controls are the sheet's content, not a column inside it. */
+    align-self: stretch;
+  }
+
+  /*
+     Field rows close ranks.
+
+     0.1rem between 36px rows read as a list with nothing holding it together, while the
+     0.75rem body gap above pushed the first field far from the tags. Halving the distance
+     above and giving the rows a hair more of their own makes the block read as one list.
+  */
+  .sheet .note-fields { row-gap: 0.15rem; }
+
+  .sheet-body { gap: 0.6rem; }
+
   .filing-row {
     display: flex;
     /* The values take a line of their own below, which only happens if the row may wrap:
