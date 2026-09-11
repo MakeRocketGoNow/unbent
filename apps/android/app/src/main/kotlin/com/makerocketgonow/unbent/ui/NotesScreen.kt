@@ -1,6 +1,8 @@
 package com.makerocketgonow.unbent.ui
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -71,6 +73,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
@@ -168,6 +171,15 @@ fun NotesScreen(
         if (!state.loaded || state.filterChanged) state.load()
     }
     LaunchedEffect(state) { if (state.notebooks.isEmpty() && state.tags.isEmpty()) state.loadFilters() }
+
+    // The new notebook's rows start at the top. Only once the state says so: a key that
+    // fired on re-entering the screen would throw away the place a reader left.
+    LaunchedEffect(state.scrollToTop) {
+        if (state.scrollToTop) {
+            listState.scrollToItem(0)
+            state.scrolledToTop()
+        }
+    }
 
     // Coming back from a note, the notebooks screen or the trash — any of which may have
     // changed a row on this list, the directory counts, or both.
@@ -352,7 +364,14 @@ fun NotesScreen(
                         }
                     }
 
-                    state.loaded && state.items.isEmpty() -> Box(
+                    // Nothing on screen yet, or nothing worth keeping on screen: a filter
+                    // change from an empty list has no rows to hold, so it spins.
+                    !state.loaded || (state.stale && state.items.isEmpty()) ->
+                        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                            CircularProgressIndicator()
+                        }
+
+                    state.items.isEmpty() -> Box(
                         Modifier.fillMaxSize().padding(Space.Screen),
                         contentAlignment = Alignment.TopCenter,
                     ) {
@@ -362,16 +381,15 @@ fun NotesScreen(
                         )
                     }
 
-                    !state.loaded -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        CircularProgressIndicator()
-                    }
-
                     else -> NoteList(
                         listState = listState,
                         items = state.items,
                         sort = state.sort,
                         showNotebook = state.notebook == null,
-                        loadingMore = state.loading,
+                        stale = state.stale,
+                        // A stale list is being replaced, not extended; the spinner under
+                        // its last row would promise more of the old notebook.
+                        loadingMore = state.loading && !state.stale,
                         onOpen = onOpen,
                         onNearEnd = { scope.launch { state.loadMore() } },
                     )
@@ -408,10 +426,11 @@ private fun ListTitle(state: NotesState) {
         state.selectedTags.takeIf { it.isNotEmpty() }?.joinToString(" ") { "#$it" },
     )
     val title = if (parts.isEmpty()) stringResource(R.string.app_name) else parts.joinToString(" · ")
-    val detail = listOfNotNull(
-        state.total?.let { pluralStringResource(R.plurals.notes_count, it, it) },
-        rangeLabel(state.from, state.to),
-    ).joinToString(" · ")
+    // While the rows under the title are still the old notebook's, the count says so
+    // rather than claiming a number for a list that has not arrived.
+    val count = state.total?.let { pluralStringResource(R.plurals.notes_count, it, it) }
+        ?: if (state.stale) stringResource(R.string.loading) else null
+    val detail = listOfNotNull(count, rangeLabel(state.from, state.to)).joinToString(" · ")
     Column {
         Text(title, maxLines = 1, overflow = TextOverflow.Ellipsis)
         if (detail.isNotEmpty()) {
@@ -751,10 +770,26 @@ private fun NoteList(
     items: List<NoteSummary>,
     sort: NoteSort,
     showNotebook: Boolean,
+    /** The rows are the previous filter's, kept while the next one's load; see [NotesState.stale]. */
+    stale: Boolean,
     loadingMore: Boolean,
     onOpen: (String) -> Unit,
     onNearEnd: () -> Unit,
 ) {
+    /*
+     * Stale rows dim, after a beat.
+     *
+     * The dimming waits 150ms before it starts: a load on a good connection is back
+     * inside that, and rows that flicker half-grey on every tap would be worse than rows
+     * that briefly stay put. The return to full strength is immediate, so the new rows
+     * arrive at once. The same numbers the web list uses.
+     */
+    val dim by animateFloatAsState(
+        targetValue = if (stale) 0.45f else 1f,
+        animationSpec = tween(durationMillis = 150, delayMillis = if (stale) 150 else 0),
+        label = "stale",
+    )
+
     // Ask for the next page a few rows before the end, so scrolling never hits a wall.
     LaunchedEffect(listState, items.size) {
         snapshotFlow { listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0 }
@@ -762,7 +797,7 @@ private fun NoteList(
             .collect { last -> if (last >= items.size - 5) onNearEnd() }
     }
 
-    LazyColumn(state = listState, modifier = Modifier.fillMaxSize()) {
+    LazyColumn(state = listState, modifier = Modifier.fillMaxSize().alpha(dim)) {
         itemsIndexed(items, key = { _, note -> note.id }) { index, note ->
             NoteRow(note, sort, showNotebook, onClick = { onOpen(note.id) })
             if (index < items.lastIndex) HorizontalDivider()
@@ -907,6 +942,21 @@ class NotesState(private val api: UnbentApi) {
     var refreshing by mutableStateOf(false)
         private set
     var loaded by mutableStateOf(false)
+        private set
+    /**
+     * The rows on screen belong to the previous filter.
+     *
+     * A filter change used to empty the list and spin until the first page came back —
+     * honest, and a blank screen for the whole round trip on every tap in the drawer. The
+     * rows are kept now and marked stale so the screen can dim them, and the first page
+     * of the new filter replaces them in one step. The title has always followed the
+     * filter at once; this is what stops the list beneath it going blank while it does.
+     * The web app makes the same change with the same words.
+     */
+    var stale by mutableStateOf(false)
+        private set
+    /** Set once a changed filter's first page has landed, so the screen can start at the top. */
+    var scrollToTop by mutableStateOf(false)
         private set
     var error by mutableStateOf<String?>(null)
         private set
@@ -1106,11 +1156,17 @@ class NotesState(private val api: UnbentApi) {
 
     private fun clearForReload() {
         filterChanged = true
-        loaded = false
-        items = emptyList()
+        // The rows stay, marked as the old filter's, until the new one's arrive; see
+        // [stale]. Before anything has loaded there is nothing to keep, and `loaded`
+        // staying false is what shows the first spinner.
+        if (loaded) stale = true
         // The count belongs to the old filter; showing it under the new title would lie
         // for as long as the first page takes.
         total = null
+    }
+
+    fun scrolledToTop() {
+        scrollToTop = false
     }
 
     fun changeQuery(q: String) {
@@ -1198,8 +1254,20 @@ class NotesState(private val api: UnbentApi) {
             cursor = page.cursor
             if (page.total != null) total = page.total
             loaded = true
-            if (reset) filterChanged = false
+            if (reset) {
+                // Only a changed filter starts at the top: a pull-to-refresh or a return
+                // to the app rebuilds the same list, and the reader's place is theirs.
+                if (filterChanged) scrollToTop = true
+                filterChanged = false
+                stale = false
+            }
         }.onFailure { e ->
+            // The old rows must not sit under the new title with an error nowhere on
+            // screen: the error state shows only over an empty list, so make it one.
+            if (reset) {
+                items = emptyList()
+                stale = false
+            }
             val status = (e as? ApiException)?.status
             when {
                 status == 401 -> unauthorized = true
