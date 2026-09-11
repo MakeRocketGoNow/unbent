@@ -14,6 +14,7 @@ import {
   Phone,
   Plus,
   Search,
+  Settings,
   SquareCheck,
   Tag,
   Type,
@@ -110,6 +111,17 @@ export function FilterIcon() {
  */
 export function SortIcon() {
   return <HeaderIcon icon={ArrowUpDown} />;
+}
+
+/**
+ * A gear, for the way to Settings.
+ *
+ * On a desktop it sits in the topbar beside the avatar, which is where Keep's web app puts
+ * its own: Settings is about the app, and the avatar menu is about the account, and one
+ * gear beside one avatar keeps the two from being confused for each other.
+ */
+export function SettingsIcon() {
+  return <HeaderIcon icon={Settings} />;
 }
 
 /**

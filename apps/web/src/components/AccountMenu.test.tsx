@@ -65,13 +65,14 @@ describe('AccountMenu', () => {
     expect(label.tagName).toBe('SPAN');
   });
 
-  it('offers Settings as a link and Sign out as the destructive action', async () => {
+  it('offers Sign out as the destructive action, and nothing that is not about the account', async () => {
     const onSignOut = vi.fn();
-    const { findByLabelText, getByText } = harness('someone@example.com', onSignOut);
+    const { findByLabelText, getByText, queryByText } = harness('someone@example.com', onSignOut);
     fireEvent.click(await findByLabelText('Account: someone@example.com'));
 
-    // Settings navigates, so it has to be a real link — middle-click and copy still work.
-    expect(getByText('Settings').tagName).toBe('A');
+    // Settings has a gear in the topbar and a row on the drawer's floor; a third route here
+    // would sit a thumb's width from Sign out for no gain.
+    expect(queryByText('Settings')).toBeNull();
 
     const out = getByText('Sign out');
     expect(out.className).toContain('danger');

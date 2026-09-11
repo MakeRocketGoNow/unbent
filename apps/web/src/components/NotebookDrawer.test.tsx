@@ -80,6 +80,9 @@ const rows = (c: HTMLElement) =>
 describe('NotebookDrawer', () => {
   afterEach(cleanup);
 
+  /* Keep's order: the places, the way to make another, then on the floor the two
+     destinations that are not places — Trash, and Settings, which used to hide behind
+     the avatar on the one screen with no topbar to show the avatar on. */
   it('lists the places notes live, then the destinations', async () => {
     const { container, findByText } = harness();
     await findByText('All notes');
@@ -88,8 +91,9 @@ describe('NotebookDrawer', () => {
       'Inbox4',
       'Coupons5',
       'Podcast Bookmarks3',
-      'Trash1',
       'New notebook',
+      'Trash1',
+      'Settings',
     ]);
   });
 
@@ -164,11 +168,12 @@ describe('NotebookDrawer', () => {
     expect(rows(container)).toContain('Trash');
   });
 
-  /* Trash and New notebook navigate, so they are links: middle-click and copy keep
-     working, which a button would lose. */
+  /* Trash, Settings and New notebook navigate, so they are links: middle-click and copy
+     keep working, which a button would lose. */
   it('draws the destinations as links rather than buttons', async () => {
     const { findByText } = harness();
     expect((await findByText('Trash')).tagName).toBe('A');
+    expect((await findByText('Settings')).tagName).toBe('A');
     expect((await findByText('New notebook')).tagName).toBe('A');
   });
 
@@ -185,8 +190,12 @@ describe('NotebookDrawer', () => {
     expect(trash.getAttribute('aria-current')).toBeNull();
   });
 
-  it('carries the account on its floor, which is the only place it is on a phone', async () => {
-    const { findByLabelText } = harness();
-    expect(await findByLabelText('Account: someone@example.com')).toBeTruthy();
+  /* Sign out is rare and disruptive; it stays behind the avatar rather than becoming a
+     row a thumb's width under Settings. */
+  it('carries the account in its head, which is the only place it is on a phone', async () => {
+    const { findByLabelText, container } = harness();
+    const account = await findByLabelText('Account: someone@example.com');
+    expect(account.closest('.sheet-head')).toBeTruthy();
+    expect(rows(container)).not.toContain('Sign out');
   });
 });

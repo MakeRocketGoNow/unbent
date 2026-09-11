@@ -32,6 +32,14 @@ interface NotebookDrawerProps {
  *
  * Desktop keeps the select. The sidebar is always on screen there, so a drawer would be
  * hiding something that costs nothing to show.
+ *
+ * The shape of it is Keep's: the places at the top, and on the floor the things that are
+ * not places — Trash, then Settings — as plain rows, with the account up in the head beside
+ * the wordmark. Settings used to be behind the avatar, which on a phone was the one screen
+ * with no topbar to show the avatar on; a row on the floor is one tap from the ☰ and is
+ * where every drawer people arrive from puts it. Sign out stays behind the avatar on
+ * purpose: it is rare and disruptive, and a row for it on this floor would sit a thumb's
+ * width under Settings in a list of places to go.
  */
 export function NotebookDrawer({
   open,
@@ -63,7 +71,15 @@ export function NotebookDrawer({
   const allActive = !notebook && selectedTags.length === 0;
 
   return (
-    <Sheet open={open} onClose={onClose} title="Unbent" side="start">
+    <Sheet
+      open={open}
+      onClose={onClose}
+      title="Unbent"
+      side="start"
+      // The account, in the head beside the wordmark — where Keep's avatar sits relative to
+      // its drawer, and out of the way of the rows that navigate.
+      headAction={<AccountMenu email={email} onSignOut={onSignOut} />}
+    >
       <nav className="drawer-list">
         <button
           type="button"
@@ -109,15 +125,24 @@ export function NotebookDrawer({
             </button>
           );
         })}
+
+        {/*
+            Making another notebook, as the last row of the notebooks rather than a control
+            on the floor: it is about the list above it, and Keep ends its labels the same
+            way. It navigates away, which unmounts the drawer, so it never closes it by hand.
+        */}
+        <Link to="/settings/notebooks" className="drawer-item drawer-new">
+          New notebook
+        </Link>
       </nav>
 
       {/*
-          The floor: a destination, a way to make another notebook, and the account.
+          The floor: the destinations that are not places notes live.
 
-          Trash is a `Link` rather than a scope button because it is a different view rather
+          Both are `Link`s rather than scope buttons because each is a different view rather
           than a narrowing of this one — and a link can be middle-clicked and copied, which
-          a button cannot. Both it and New notebook navigate away, which unmounts the drawer,
-          so neither needs to close it by hand.
+          a button cannot. Both navigate away, which unmounts the drawer, so neither needs
+          to close it by hand.
       */}
       <div className="drawer-foot">
         <hr className="drawer-rule" />
@@ -125,12 +150,9 @@ export function NotebookDrawer({
           Trash
           {trashed > 0 && <span className="tag-count">{trashed}</span>}
         </Link>
-        <div className="drawer-foot-row">
-          <Link to="/settings/notebooks" className="drawer-item drawer-new">
-            New notebook
-          </Link>
-          <AccountMenu email={email} onSignOut={onSignOut} />
-        </div>
+        <Link to="/settings" className="drawer-item">
+          Settings
+        </Link>
       </div>
     </Sheet>
   );

@@ -33,7 +33,7 @@ import { NotebookDrawer } from './NotebookDrawer.js';
 import { PlusIcon, TagIcon, CalendarIcon } from './icons.js';
 import { Sheet } from './Sheet.js';
 import { NoteListHead } from './NoteListHead.js';
-import { NotesOverflow } from './NotesOverflow.js';
+import { NotesSort } from './NotesSort.js';
 import { ActiveFilters } from './ActiveFilters.js';
 import { useMediaQuery, MOBILE_QUERY } from '../useMediaQuery.js';
 import { useSession } from '../auth-client.js';
@@ -246,11 +246,11 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
               onOpenFilters={() => setSheetOpen(true)}
               onOpenMenu={() => setDrawerOpen(true)}
               filtered={sheetFiltered}
-              /* Sort is hidden while searching — results come back ranked by relevance,
-                 and reordering them by date would throw away that ranking — but the menu
-                 itself stays, because Settings is behind it and the topbar that used to
-                 carry Settings is not on this screen. */
-              overflow={<NotesOverflow sort={sort} order={order} showSort={results === null} />}
+              /* Hidden while searching — results come back ranked by relevance, and
+                 reordering them by date would throw away that ranking. Nothing else is
+                 lost with it: Settings, which used to share this corner, is on the
+                 drawer's floor. */
+              sort={results === null ? <NotesSort sort={sort} order={order} /> : null}
             />
 
             {error && <p className="bad small">{(error as Error).message}</p>}

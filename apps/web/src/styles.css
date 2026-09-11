@@ -3149,7 +3149,7 @@ select.note-field-input { cursor: pointer; }
   border-top: 1px solid var(--border);
 }
 
-/* Pinned under the list: destinations and the account, not places within the notes. */
+/* Pinned under the list: the destinations that are not places within the notes. */
 .drawer-foot {
   flex: 0 0 auto;
   display: flex;
@@ -3158,21 +3158,10 @@ select.note-field-input { cursor: pointer; }
   min-width: 0;
 }
 
-.drawer-foot-row {
-  display: flex;
-  align-items: center;
-  gap: 0.25rem;
-  min-width: 0;
-}
-
+/* The last row of the notebooks, quieter than the notebooks it makes more of. */
 .drawer-new {
-  flex: 1;
-  min-width: 0;
   color: var(--muted);
 }
-
-/* The one control on this row that is not a row; it keeps the avatar's own geometry. */
-.drawer-foot-row .overflow-account { flex: 0 0 auto; }
 
 .drawer-new::before {
   content: '+';

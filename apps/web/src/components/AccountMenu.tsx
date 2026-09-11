@@ -18,14 +18,18 @@ function initialOf(email: string): string {
 }
 
 /**
- * Who you are signed in as, how the app is configured, and how to leave.
+ * Who you are signed in as, and how to leave.
  *
  * One coherent menu behind one avatar, which is why it collapses at every width rather than
  * only on a phone: what it holds is account chrome, not navigation. Trash used to sit here
  * and was the reason the row needed splitting — it is a view of notes, not of the account.
+ * Settings went the same way later: it is about the app, not the account, and it has a
+ * place of its own at both widths — a gear beside this avatar in the topbar, and a row on
+ * the drawer's floor on a phone, which is where Keep puts it. Leaving it here as well would
+ * have been two routes to one page a thumb's width apart.
  *
  * Lifted out of `Topbar` because the phone no longer shows a topbar over the note list: the
- * list has a heading of its own now, and this menu is reached from the drawer's floor
+ * list has a heading of its own now, and this menu is reached from the drawer's head
  * instead. Two callers, one menu, so the two cannot come to disagree about what the account
  * can do.
  *
@@ -52,10 +56,9 @@ export function AccountMenu({ email, onSignOut }: AccountMenuProps) {
         // rather than selectable: it names the account, it does not act on it. It
         // truncates to one line, so it carries the full address as a tooltip.
         { label: email, className: 'overflow-email', static: true, title: email },
-        { label: 'Settings', to: '/settings' },
         // Findable once signed in, which is the half the sign-in screen's own links cannot
-        // cover. They sit below Settings because they are reference, not something to act
-        // on, and above Sign out so the destructive item stays last.
+        // cover. They are reference, not something to act on, and they sit above Sign out
+        // so the destructive item stays last.
         //
         // Absent entirely on an instance that publishes neither, rather than pointing at a
         // page that says there is nothing there — a menu offering Privacy and answering
