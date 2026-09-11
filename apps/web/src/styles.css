@@ -4345,6 +4345,26 @@ select.note-field-input { cursor: pointer; }
   .notes.note-open > .sidebar { display: none; }
   .notes:not(.note-open) > .workspace { display: none; }
 
+  /*
+     Opening a note grows the tapped entry into it.
+
+     Keep's container transform, on the platform's View Transitions: the entry that was
+     tapped (marked by `NoteListItem` in the click, since the URL does not yet say which)
+     and the open note share one `view-transition-name`, so when the grid swaps the list
+     for the note the browser morphs the entry's box into the note's. Back does the same
+     in reverse — the mark stays on the entry while the note is open, so the note has a
+     row to shrink into. Below the breakpoint only: on a desktop the list and the note are
+     both on screen, and two elements with one name would make the browser skip the whole
+     thing, correctly, since there is nothing to morph.
+
+     The editor is not remounted by any of this. A view transition is snapshots of the
+     old and new page painted over the real one for 300ms; CodeMirror keeps its cursor,
+     scroll and undo history underneath. The motion itself is in the block below the
+     breakpoint rules, with the timing.
+  */
+  .note-item[data-opening] { view-transition-name: note; }
+  .notes.note-open > .workspace { view-transition-name: note; }
+
   .view-back { display: inline-flex; }
 
   /* Where the arrow is the only way out of a failed note — see `.workspace-error-head`. */
@@ -4888,5 +4908,81 @@ select.note-field-input { cursor: pointer; }
   .filter-chip {
     min-height: 2.25rem;
     padding-inline: 0.6rem;
+  }
+}
+
+/* ---------------------------------------------------------------------------------
+   The note's view transition: how the morph moves. Names are given above, under the
+   phone breakpoint; nothing here fires unless something carries the name.
+   --------------------------------------------------------------------------------- */
+@media (prefers-reduced-motion: no-preference) {
+  /*
+     Only the note moves. Without this the root crossfades as well, which on a phone is
+     the whole screen fading behind the box that is already growing across it — two
+     animations telling one story.
+  */
+  ::view-transition-old(root),
+  ::view-transition-new(root) {
+    animation: none;
+  }
+
+  /*
+     The box: 300ms in on Material's emphasized-decelerate, a fast start that settles
+     slowly so the note is readable long before it stops; 220ms out on the mirror, since
+     leaving should be quicker than arriving. The same pair the drawer uses.
+  */
+  ::view-transition-group(note) {
+    animation-duration: 0.3s;
+    animation-timing-function: cubic-bezier(0.05, 0.7, 0.1, 1);
+  }
+
+  html:active-view-transition-type(note-close)::view-transition-group(note) {
+    animation-duration: 0.22s;
+    animation-timing-function: cubic-bezier(0.3, 0, 0.8, 0.15);
+  }
+
+  /*
+     What is painted inside the box. The old and new snapshots would crossfade for the
+     whole 300ms by default, so mid-way the row and the note are both half-visible in a
+     box that fits neither. A quick fade out of the old and a fade in of the new, one
+     after the other, keeps the box carrying one picture at a time. The snapshots are
+     sized to the box's width rather than stretched, so the row's text does not smear
+     into the note's.
+  */
+  ::view-transition-old(note) {
+    animation: 0.1s ease both vt-fade-out;
+    object-fit: none;
+    object-position: top left;
+  }
+
+  ::view-transition-new(note) {
+    animation: 0.2s 0.08s ease both vt-fade-in;
+    object-fit: none;
+    object-position: top left;
+  }
+
+  ::view-transition-image-pair(note) {
+    isolation: auto;
+    overflow: clip;
+  }
+}
+
+@keyframes vt-fade-out {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+
+@keyframes vt-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/* With reduced motion asked for, the page changes and nothing morphs — the transition
+   still runs, since the router starts it, but every part of it is instant. */
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-group(*),
+  ::view-transition-old(*),
+  ::view-transition-new(*) {
+    animation: none !important;
   }
 }

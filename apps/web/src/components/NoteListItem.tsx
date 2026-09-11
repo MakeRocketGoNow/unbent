@@ -11,6 +11,14 @@ interface NoteListItemProps {
   actions?: React.ReactNode;
   /** The sort the list is using, so the entry shows the date that ordering is based on. */
   sort?: NoteSort;
+  /**
+   * Opens the note through a view transition that grows this entry into the note.
+   *
+   * Set on a phone only. There the list is replaced by the note, so the tapped entry
+   * has somewhere to go; on a desktop the two sit side by side and a transition would
+   * animate a change nobody can see.
+   */
+  transition?: boolean;
 }
 
 /**
@@ -29,7 +37,7 @@ interface NoteListItemProps {
  * Trashed notes show when they were deleted rather than either — in the bin, "how long
  * until this is really gone" is the useful fact.
  */
-export function NoteListItem({ note, to, actions, sort }: NoteListItemProps) {
+export function NoteListItem({ note, to, actions, sort, transition = false }: NoteListItemProps) {
   const when = sort === 'created' ? note.createdAt : note.updatedAt;
   return (
     <li>
@@ -41,6 +49,30 @@ export function NoteListItem({ note, to, actions, sort }: NoteListItemProps) {
         search={(prev) => prev}
         className="note-item"
         activeProps={{ className: 'note-item active' }}
+        viewTransition={transition ? { types: ['note-open'] } : undefined}
+        /*
+         * Which entry is opening, for the transition to grow from.
+         *
+         * The browser snapshots the page before the navigation, and at that moment
+         * nothing in the route says which entry was tapped — the id only reaches the URL
+         * afterwards. So the entry marks itself here, synchronously in the click, and
+         * the stylesheet gives the marked entry the note's `view-transition-name`. The
+         * mark stays while the note is open, which is what lets Back run the same
+         * transition in reverse, shrinking the note into the row it came from; any
+         * sibling still carrying it from an earlier open is cleared first, because two
+         * elements with one name make the browser skip the transition altogether.
+         */
+        onClick={
+          transition
+            ? (e) => {
+                const el = e.currentTarget;
+                el.closest('.note-list')
+                  ?.querySelectorAll('[data-opening]')
+                  .forEach((n) => n.removeAttribute('data-opening'));
+                el.setAttribute('data-opening', '');
+              }
+            : undefined
+        }
       >
         <span className="note-title">{note.title || 'Untitled'}</span>
         <span className="note-meta">
