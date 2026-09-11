@@ -3628,16 +3628,6 @@ select.note-field-input { cursor: pointer; }
   font-weight: 600;
 }
 
-@media (prefers-reduced-motion: no-preference) {
-  .sheet-side[open] { translate: 0 0; }
-
-  @starting-style {
-    .sheet-side[open] { translate: -1.5rem 0; }
-  }
-
-  .sheet-side:not([open]) { translate: -1.5rem 0; }
-}
-
 .sheet::backdrop {
   /* Fixed ink rather than a token: --fg is near-white in dark mode, and a scrim that
      inverts with the theme lightens the screen it is supposed to be dimming. */
@@ -3676,6 +3666,96 @@ select.note-field-input { cursor: pointer; }
   .sheet:not([open]) {
     translate: 0 1.5rem;
     opacity: 0;
+  }
+
+  /*
+     The scrim fades in step with whichever surface it is behind, rather than snapping to
+     45% ink the instant the dialog opens and vanishing the instant it closes. `overlay`
+     and `display` are listed for the same reason they are on the sheet: without them the
+     backdrop is gone before its opacity has anywhere to go.
+  */
+  .sheet::backdrop {
+    opacity: 1;
+    transition:
+      opacity 0.22s ease,
+      overlay 0.22s allow-discrete,
+      display 0.22s allow-discrete;
+  }
+
+  @starting-style {
+    .sheet[open]::backdrop { opacity: 0; }
+  }
+
+  .sheet:not([open])::backdrop { opacity: 0; }
+
+  /*
+     The drawer's motion, which is not the sheet's.
+
+     The bottom sheet rises 1.5rem while fading in, which reads as a surface *arriving*
+     — right for a panel about the view behind it. A drawer is a panel that was always
+     there, off the edge, and is being pulled on: it slides its whole width from the edge
+     it lives on, at full opacity the whole way, so at no point is there a half-transparent
+     panel floating a few pixels inside the screen. The 1.5rem-and-fade version this
+     replaces read as a popover rather than a drawer, which is why it is here.
+
+     The curves are Material's emphasized pair, which is what Keep's drawer runs on: a
+     fast start that settles slowly on the way in, so the panel is readable long before it
+     stops, and the mirror on the way out — 250ms in, 200ms out, because leaving should be
+     quicker than arriving. The two rules carry their own `transition` so the easing
+     differs by direction; a single declaration would run the same curve both ways.
+
+     `-100%` is the element's own width, so it holds whatever `min(20rem, 85vw)` resolves
+     to. It is a physical direction, as the 1.5rem before it was: the drawer pins itself to
+     the inline start through its margins, so this would need mirroring for a
+     right-to-left layout — as would the whole file.
+
+     Inside the same `prefers-reduced-motion` block as the rest: with reduced motion asked
+     for, none of this runs and the drawer simply appears, which for a full-width slide
+     is exactly the setting's request. After the sheet's own rules, deliberately — the
+     specificities are equal, so order is what lets these win.
+  */
+  .sheet-side {
+    opacity: 1;
+    transition:
+      translate 0.2s cubic-bezier(0.3, 0, 0.8, 0.15),
+      overlay 0.2s allow-discrete,
+      display 0.2s allow-discrete;
+  }
+
+  .sheet-side[open] {
+    translate: 0 0;
+    opacity: 1;
+    transition:
+      translate 0.25s cubic-bezier(0.05, 0.7, 0.1, 1),
+      overlay 0.25s allow-discrete,
+      display 0.25s allow-discrete;
+  }
+
+  @starting-style {
+    .sheet-side[open] {
+      translate: -100% 0;
+      opacity: 1;
+    }
+  }
+
+  .sheet-side:not([open]) {
+    translate: -100% 0;
+    opacity: 1;
+  }
+
+  /* The drawer's scrim takes the drawer's timings, so the two land and leave together. */
+  .sheet-side::backdrop {
+    transition:
+      opacity 0.2s ease,
+      overlay 0.2s allow-discrete,
+      display 0.2s allow-discrete;
+  }
+
+  .sheet-side[open]::backdrop {
+    transition:
+      opacity 0.25s ease,
+      overlay 0.25s allow-discrete,
+      display 0.25s allow-discrete;
   }
 }
 
