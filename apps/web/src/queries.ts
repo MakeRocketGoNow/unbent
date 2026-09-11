@@ -1,4 +1,9 @@
-import { queryOptions, infiniteQueryOptions, type QueryClient } from '@tanstack/react-query';
+import {
+  queryOptions,
+  infiniteQueryOptions,
+  keepPreviousData,
+  type QueryClient,
+} from '@tanstack/react-query';
 import type { NoteSort } from '@unbent/shared';
 import * as api from './notes-api.js';
 
@@ -58,7 +63,16 @@ export const keys = {
   config: () => ['config'] as const,
 };
 
-/** Live notes matching a filter, paged. */
+/**
+ * Live notes matching a filter, paged.
+ *
+ * `keepPreviousData`: changing the filter changes the key, and a fresh key has no data
+ * until its request lands. Without this the list emptied for the duration and refilled,
+ * which reads as a flash; with it the previous rows stay on screen, marked stale through
+ * `isPlaceholderData` so the layout can dim them, and are replaced in one step. The
+ * route's loader deliberately no longer waits for this query, so this is what carries the
+ * list across the gap.
+ */
 export const notesQuery = (filter: NoteFilter, ordering: NoteOrdering = {}) =>
   infiniteQueryOptions({
     queryKey: keys.notes(filter, ordering),
@@ -66,6 +80,7 @@ export const notesQuery = (filter: NoteFilter, ordering: NoteOrdering = {}) =>
       api.listNotes({ ...filter, ...ordering, ...(pageParam ? { cursor: pageParam } : {}) }),
     initialPageParam: '' as string,
     getNextPageParam: (last) => last.cursor ?? undefined,
+    placeholderData: keepPreviousData,
   });
 
 /** Trashed notes. Deliberately unfiltered: see the trash view in Notes. */

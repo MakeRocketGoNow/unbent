@@ -738,6 +738,13 @@ h1 {
   list-style: none;
   margin: 0;
   /*
+     Stale rows dim while the next notebook's load — see `aria-busy` in `NotesLayout`.
+     The dimming waits 150ms before it starts: a local load is back inside that, and rows
+     that flicker half-grey on every tap would be worse than rows that briefly stay put.
+     The return to full strength is immediate, so the new rows arrive at once.
+  */
+  transition: opacity 0.15s ease;
+  /*
      Back out to the sidebar's own edges, so a selected note's fill and border run the full
      width while its text stays on the shared line the sidebar's padding sets.
 
@@ -773,6 +780,11 @@ h1 {
   */
   flex-basis: 12rem;
   min-height: 0;
+}
+
+.note-list[aria-busy='true'] {
+  opacity: 0.45;
+  transition: opacity 0.15s ease 0.15s;
 }
 
 .note-item {
