@@ -3729,6 +3729,22 @@ select.note-field-input { cursor: pointer; }
   margin-left: -0.4rem;
 }
 
+/*
+   The way out, at the end of the head.
+
+   Sized and pulled like `.sheet-back` is at the other end, so the two sit symmetrically
+   against the body's padding: an icon button's box is wider than its glyph, and without the
+   pull the ✕ floats a few pixels inside the edge every other row lines up with. It keeps the
+   44px target the mobile block gives every `.icon-btn` — the 2rem here is the drawn box, not
+   the tappable one.
+*/
+.sheet-close {
+  flex: 0 0 auto;
+  min-width: 2rem;
+  height: 2rem;
+  margin-right: -0.4rem;
+}
+
 /* The head is the row a page is identified by, so it holds its height whether or not it
    carries an arrow or an action. */
 /*

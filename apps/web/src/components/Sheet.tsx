@@ -1,5 +1,6 @@
 import { useEffect, useRef, type ReactNode } from 'react';
 import { BackArrow } from './BackArrow.js';
+import { CloseIcon } from './icons.js';
 
 export interface SheetProps {
   open: boolean;
@@ -49,10 +50,16 @@ export interface SheetProps {
  * Every part of the pattern this codebase declined to hand-roll is a part the platform is
  * doing. It is the same trade `Disclosure` makes with `<details>`.
  *
- * Deliberately not draggable. Drag-to-dismiss is the one part of the native sheet the
- * platform does not provide, and hand-rolling a gesture that fights the sheet's own scroll
- * is how these end up feeling broken. The backdrop, Escape, the back gesture and Done are
- * four ways out already.
+ * Deliberately not draggable, and that is why it carries a close button.
+ *
+ * Drag-to-dismiss is the one part of the native sheet the platform does not provide, and
+ * hand-rolling a gesture that fights the sheet's own scroll is how these end up feeling
+ * broken — a drag that begins on a scrolled list has to decide, mid-gesture, whether it is
+ * scrolling or dismissing, and getting that wrong strands the sheet half off the screen.
+ * The grip at the top looks like the handle that would do it, so without a visible way out
+ * the obvious gesture is the one that does nothing. An explicit ✕ is the honest answer:
+ * the backdrop, Escape and the platform's back gesture still work, and now there is a
+ * control that says so.
  *
  * One component for both edges rather than a `Drawer` beside a `Sheet`: everything that is
  * hard here — the modality, the four ways out, the padding that must not be on the dialog —
@@ -121,6 +128,15 @@ export function Sheet({
           )}
           <h2>{title}</h2>
           {headAction}
+          {/* Last in the row, where a phone has taught people to look for it. */}
+          <button
+            type="button"
+            className="icon-btn sheet-close"
+            aria-label="Close"
+            onClick={onClose}
+          >
+            <CloseIcon />
+          </button>
         </div>
         {children}
       </div>

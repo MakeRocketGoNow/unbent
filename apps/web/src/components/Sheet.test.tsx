@@ -31,6 +31,27 @@ const dialogOf = (c: HTMLElement) => c.querySelector('dialog') as HTMLDialogElem
 describe('Sheet', () => {
   afterEach(cleanup);
 
+  /*
+     The visible way out.
+
+     The grip at the top looks like a drag handle, and dragging is the one thing this sheet
+     deliberately does not implement — so the gesture it advertises does nothing, and without
+     a control that does, a phone user's first instinct is a dead end. Asserted here rather
+     than left to the callers: every sheet in the app gets this, and a missing ✕ is invisible
+     to a type check.
+  */
+  it('offers a close button that dismisses it', () => {
+    stubDialog();
+    const onClose = vi.fn();
+    const { getByLabelText } = render(
+      <Sheet open onClose={onClose} title="Filter notes">
+        body
+      </Sheet>,
+    );
+    fireEvent.click(getByLabelText('Close'));
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
   it('stays shut until it is opened', () => {
     const { showModal } = stubDialog();
     const { container } = render(
