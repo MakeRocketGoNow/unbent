@@ -289,11 +289,19 @@ export function Workspace({ noteId, readOnly = false, backTo = '/notes' }: Works
     void queryClient.invalidateQueries({ queryKey: keys.notebooks() });
   }
 
-  /** The values, named, for the collapsed summary: only those of the note's own notebook. */
-  const fieldSummary = (fieldDefs.data ?? [])
+  /**
+   * The values, named, for the row's summary: only those of the note's own notebook.
+   *
+   * Elements rather than one joined string, which is what lets the name be drawn a step
+   * quieter than the value it names. As text there was one colour for the whole line and
+   * the eye had to parse `Code: T1-WWC-5G839 · Date Added: …` by punctuation alone — the
+   * names and the values weighed the same, so nothing stood out and the row read as a
+   * paragraph. The colon goes with it: once the two halves differ in colour it is one more
+   * mark doing a job the contrast already does.
+   */
+  const fieldValues = (fieldDefs.data ?? [])
     .filter((d) => draft.fields[d.id] !== null && draft.fields[d.id] !== undefined)
-    .map((d) => `${d.name}: ${formatFieldValue(d.type, draft.fields[d.id]!)}`)
-    .join(' · ');
+    .map((d) => ({ id: d.id, name: d.name, text: formatFieldValue(d.type, draft.fields[d.id]!) }));
 
   /**
    * The note's filing controls, for whichever container this width puts them in.
@@ -595,7 +603,20 @@ export function Workspace({ noteId, readOnly = false, backTo = '/notes' }: Works
               </span>
               {/* The values on their own line, so the notebook and tags above are not
                   squeezed into an ellipsis by a field list that is longer than both. */}
-              {fieldSummary && <span className="tag-row-summary-fields">{fieldSummary}</span>}
+              {fieldValues.length > 0 && (
+                <span className="tag-row-summary-fields">
+                  {fieldValues.map((f, i) => (
+                    <span className="summary-pair" key={f.id}>
+                      {/* The separator belongs to the pair that follows it rather than
+                          sitting between two siblings: a `·` of its own would be a flex
+                          item that could wrap to the head of a line on its own. */}
+                      {i > 0 && <span className="summary-sep"> · </span>}
+                      <span className="summary-name">{f.name}</span>{' '}
+                      <span className="summary-value">{f.text}</span>
+                    </span>
+                  ))}
+                </span>
+              )}
             </button>
             <Sheet
               open={detailsOpen}

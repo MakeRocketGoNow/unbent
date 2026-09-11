@@ -137,7 +137,9 @@ describe('the note details on a phone', () => {
     fireEvent.click(row()!);
     fireEvent.change(screen.getByLabelText('Code'), { target: { value: 'T1-WWC-5G839' } });
 
-    await waitFor(() => expect(row()!.textContent).toContain('Code: T1-WWC-5G839'));
+    // Name and value are separate elements now, so the row's text reads "Code T1-WWC-5G839"
+    // with no colon: the two are told apart by tone rather than by punctuation.
+    await waitFor(() => expect(row()!.textContent).toContain('Code T1-WWC-5G839'));
   });
 });
 
