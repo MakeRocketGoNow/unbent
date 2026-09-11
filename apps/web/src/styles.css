@@ -4355,13 +4355,17 @@ select.note-field-input { cursor: pointer; }
      starts its rows near the glass. So this view alone drops the shell inset to 0.25rem, and
      the row's fill and border begin a quarter-rem from the edge instead of three.
 
-     Scoped by `:has(.notes)` rather than by narrowing the shared rule, so it is the notes
-     view that changes and nothing else moves. The compound outweighs `.shell.wide` on
-     specificity, which is what lets it win here while the bare rule keeps every other route
-     at 0.75rem. The row keeps its own 0.7rem, so a note's text still sits inside the fill
-     the way it always has — see `.note-item`.
+     Scoped by `:has(.notes:not(.note-open))` rather than by narrowing the shared rule, so
+     it is the list view alone that changes and nothing else moves. `.notes` gains
+     `.note-open` when a note is open and the grid swaps the list for the editor — a reading
+     view like settings, which wants the full gutter — so the selector deliberately stops
+     matching there and the shell falls back to the shared 0.75rem. The compound outweighs
+     `.shell.wide` on specificity, which is what lets it win on the list while the bare rule
+     keeps every other route, the open note included, at 0.75rem. The row keeps its own
+     0.7rem, so a note's text still sits inside the fill the way it always has — see
+     `.note-item`.
   */
-  .shell.wide:not(.embed):has(.notes) { padding-inline: 0.25rem; }
+  .shell.wide:not(.embed):has(.notes:not(.note-open)) { padding-inline: 0.25rem; }
 
   /*
      The border above is that divider, and it is deliberate.
