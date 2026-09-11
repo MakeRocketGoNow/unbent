@@ -7,6 +7,7 @@ import {
   fieldNameSchema,
   fieldsByName,
   inferFieldType,
+  isHeldSelectValue,
   isReservedFieldName,
   planConversion,
   type FieldType,
@@ -93,6 +94,16 @@ describe('encodeFieldValue', () => {
     expect(encodeFieldValue(def('select', ['Dentist', 'GP']), 'GP')).toEqual({ text: 'GP', num: null });
     expect(encodeFieldValue(def('select', ['Dentist', 'GP']), 'Vet')).toBeNull();
     expect(encodeFieldValue(def('select', []), 'GP')).toBeNull();
+  });
+
+  it('keeps a select value a note already holds after that option is removed', () => {
+    const select = def('select', ['Food']);
+    expect(isHeldSelectValue(select, 'Travel', 'Travel')).toBe(true);
+    expect(isHeldSelectValue(select, ' Travel ', 'Travel')).toBe(true);
+    // A value the note never held is still a new choice.
+    expect(isHeldSelectValue(select, 'Vet', 'Travel')).toBe(false);
+    expect(isHeldSelectValue(select, 'Travel', undefined)).toBe(false);
+    expect(isHeldSelectValue(def('text'), 'Travel', 'Travel')).toBe(false);
   });
 
   it('has a hint for every rejection', () => {
