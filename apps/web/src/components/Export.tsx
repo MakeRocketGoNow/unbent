@@ -58,8 +58,7 @@ export function Export() {
       <p className="muted small">
         This page exports everything. To export part of your library — one notebook, a tag,
         a range of dates — filter the note list and use <em>Export these notes</em> beneath
-        the filters, or the Export link beside a notebook under Notebooks. The archive has
-        the same shape either way.
+        the filters. The archive has the same shape either way.
       </p>
 
       <a className="primary export-button" href="/api/export" download onClick={() => setStarted(true)}>

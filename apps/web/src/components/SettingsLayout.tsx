@@ -27,6 +27,7 @@ export function useSettingsBusy() {
 
 const TABS = [
   { to: '/settings/notebooks', label: 'Notebooks' },
+  { to: '/settings/tags', label: 'Tags' },
   { to: '/settings/import', label: 'Import' },
   { to: '/settings/export', label: 'Export' },
   { to: '/settings/maintenance', label: 'Maintenance' },

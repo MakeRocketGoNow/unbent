@@ -2753,6 +2753,107 @@ select.note-field-input { cursor: pointer; }
   padding: 0 0.1rem 0.45rem;
 }
 
+/* ---------------------------------------------------------------------------------
+   The label editor: notebooks and tags, in Keep's editing shape. See `LabelEditor.tsx`.
+
+   Two rules carry the whole design. The glyph and the trash can share one slot, and the
+   pencil and the check share another, so a row's picture does not move when it starts
+   editing; and the rule above and below an editing row is laid out on every row, in
+   transparent ink, so it costs no height when it appears. The Android screen learned
+   both after the fact; here they are the starting point.
+   --------------------------------------------------------------------------------- */
+.label-editor-wrap {
+  /* `.panel` shrink-wraps its children; the rows need the panel's full width so their
+     controls line up down the right edge whatever the names are. */
+  align-self: stretch;
+}
+
+.label-editor {
+  list-style: none;
+  margin: 0.25rem 0 0;
+  padding: 0;
+}
+
+.label-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-height: 3rem;
+  /* Laid out in both states, drawn in one. */
+  border-top: 1px solid transparent;
+  border-bottom: 1px solid transparent;
+}
+
+.label-row.editing { border-color: var(--border); }
+
+/* The leading slot: a 44px box, whether it holds a glyph or a button, so the glyph and
+   the trash can centre on the same line. Pulled left by the box's own padding so the
+   glyph sits on the panel's text edge rather than a half-slot inside it. */
+.label-slot {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  min-width: 2.75rem;
+  height: 2.75rem;
+  margin-left: -0.75rem;
+  color: var(--muted);
+}
+
+/* The name is the row's target. A button, since it acts, drawn as the text it is. */
+.label-name {
+  flex: 1;
+  min-width: 0;
+  padding: 0.6rem 0;
+  font: inherit;
+  font-size: 0.95rem;
+  text-align: left;
+  color: var(--fg);
+  background: none;
+  border: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  cursor: pointer;
+}
+
+.label-name:disabled { cursor: default; }
+
+/* Creating is quieter than the names it makes more of. */
+.label-create .label-name { color: var(--muted); }
+
+/* The field a row becomes: the name's own type and inset, with nothing drawn around it —
+   the fence on the row is what marks the state. */
+.label-field {
+  flex: 1;
+  min-width: 0;
+  padding: 0.6rem 0;
+  font: inherit;
+  font-size: 0.95rem;
+  color: var(--fg);
+  background: none;
+  border: 0;
+  outline: none;
+}
+
+.label-field::placeholder { color: var(--muted); }
+
+.label-editor .tag-count { flex: 0 0 auto; }
+
+/* The last button sits on the panel's right edge, like the slot sits on its left. */
+.label-row > .icon-btn:last-child { margin-right: -0.75rem; }
+
+.label-extra { flex: 0 0 auto; }
+
+.label-empty {
+  padding: 0.75rem 0;
+}
+
+.label-find {
+  margin-top: 0.5rem;
+  align-self: stretch;
+}
+
 /* Notebook management, inside the settings panel. */
 .notebook-admin {
   list-style: none;

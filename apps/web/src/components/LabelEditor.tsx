@@ -1,0 +1,315 @@
+import { useEffect, useRef, useState, type ReactNode } from 'react';
+import {
+  NotebookRowIcon,
+  TagIcon,
+  PlusRowIcon,
+  PencilIcon,
+  CheckIcon,
+  CancelIcon,
+  TrashIcon,
+} from './icons.js';
+
+export interface LabelItem {
+  id: string;
+  name: string;
+  /** Live notes carrying it; shown beside the name, since in an archive the number is the information. */
+  count: number;
+}
+
+interface LabelEditorProps {
+  /** Which glyph the rows carry, and which words the empty state uses. */
+  kind: 'notebook' | 'tag';
+  /** Null while the list is still on its way; the editor says so rather than showing an empty list. */
+  items: LabelItem[] | null;
+  /** Set while a request is in flight; the controls wait for it. */
+  busy: boolean;
+  /**
+   * Makes something new. Absent for tags, which exist only on a note — a tag with no note
+   * would vanish from the list the moment it was made.
+   */
+  onCreate?: (name: string) => Promise<boolean>;
+  /** Resolves true when the rename went through, which closes the row; false leaves it open to fix. */
+  onRename: (item: LabelItem, name: string) => Promise<boolean>;
+  /** Asks to delete. The caller confirms, since only it knows what deleting means for this kind. */
+  onDelete: (item: LabelItem) => void;
+  /** Anything else a resting row should carry between its name and its count. */
+  renderExtra?: (item: LabelItem) => ReactNode;
+  /** The item, if any, whose row should be in its editing state — the caller keeps it there under a confirm. */
+  editingId?: string | null;
+  /** The find field, offered once a list is long enough to need one. */
+  findable?: boolean;
+  emptyText: string;
+  hint: ReactNode;
+}
+
+/** Past this many rows a name is quicker to type than to scroll to. */
+const FIND_THRESHOLD = 8;
+
+/**
+ * The editor for a list of names: notebooks, tags.
+ *
+ * Keep's "Edit labels" screen, which the Android notebooks screen adopted first and this
+ * copies from it. A resting row is its glyph, its name, its count and a pencil. Tapping
+ * it turns the row into the field in place, with a trash can where the glyph was and a
+ * check where the pencil was, fenced by a rule above and below: the two things you can
+ * do to a name, offered once you have said which one. Delete lives only in that state, so
+ * a destructive word is not on every line of a list whose rows are mostly read, and a
+ * stray click on the list cannot find it. Creating is a row at the top that becomes a
+ * field the same way.
+ *
+ * Nothing moves when a row starts editing. The glyph and the trash can share one slot,
+ * the pencil and the check share another, and the fence is laid out transparent on a
+ * resting row so it costs no height when it appears — the Android screen learned both of
+ * those the hard way and they are written into the CSS here from the start.
+ *
+ * One component for two kinds rather than two pages that drift: the difference between
+ * a notebook and a tag is real — a notebook is a place and a tag an attribute — but the
+ * act of correcting a name is the same act, and Evernote users arrive with hundreds of
+ * each to correct. A tag list that long gets a find field; the caller decides.
+ */
+export function LabelEditor({
+  kind,
+  items,
+  busy,
+  onCreate,
+  onRename,
+  onDelete,
+  renderExtra,
+  editingId,
+  findable = false,
+  emptyText,
+  hint,
+}: LabelEditorProps) {
+  const [editing, setEditing] = useState<{ id: string; value: string } | null>(null);
+  const [creating, setCreating] = useState<string | null>(null);
+  const [find, setFind] = useState('');
+
+  // The caller can hold a row open — under a merge confirm, say — after this component
+  // would otherwise have closed it.
+  const openId = editing?.id ?? editingId ?? null;
+
+  const noun = kind === 'notebook' ? 'notebook' : 'tag';
+  const Glyph = kind === 'notebook' ? NotebookRowIcon : TagIcon;
+
+  const startRename = (item: LabelItem) => {
+    setCreating(null);
+    setEditing({ id: item.id, value: item.name });
+  };
+
+  const commitRename = async (item: LabelItem) => {
+    const value = editing?.value.trim() ?? '';
+    // A no-op rename would refuse against the name's own row; an empty one is a cancel.
+    if (!value || value === item.name) {
+      setEditing(null);
+      return;
+    }
+    if (await onRename(item, value)) setEditing(null);
+  };
+
+  const commitCreate = async () => {
+    const value = creating?.trim() ?? '';
+    if (!value || !onCreate) return;
+    if (await onCreate(value)) setCreating(null);
+  };
+
+  const shown =
+    items === null
+      ? []
+      : find.trim()
+        ? items.filter((i) => i.name.toLowerCase().includes(find.trim().toLowerCase()))
+        : items;
+
+  return (
+    <div className="label-editor-wrap">
+      {findable && items !== null && items.length > FIND_THRESHOLD && (
+        <input
+          className="search-field label-find"
+          type="search"
+          value={find}
+          placeholder={`Find a ${noun}…`}
+          aria-label={`Find a ${noun}`}
+          onChange={(e) => setFind(e.target.value)}
+        />
+      )}
+
+      <ul className="label-editor" aria-busy={busy || items === null || undefined}>
+        {onCreate &&
+          (creating !== null ? (
+            <li className="label-row editing">
+              {/* Leaving, not deleting: nothing exists yet, so the slot the trash can
+                  takes on a real row takes a cross here. */}
+              <button
+                type="button"
+                className="icon-btn label-slot"
+                aria-label="Cancel"
+                disabled={busy}
+                onClick={() => setCreating(null)}
+              >
+                <CancelIcon />
+              </button>
+              <RowField
+                value={creating}
+                placeholder={`New ${noun} name`}
+                label={`New ${noun} name`}
+                disabled={busy}
+                onChange={setCreating}
+                onCommit={() => void commitCreate()}
+                onCancel={() => setCreating(null)}
+              />
+              <button
+                type="button"
+                className="icon-btn"
+                aria-label="Create"
+                disabled={busy || !creating.trim()}
+                onClick={() => void commitCreate()}
+              >
+                <CheckIcon />
+              </button>
+            </li>
+          ) : (
+            <li className="label-row label-create">
+              <span className="label-slot" aria-hidden="true">
+                <PlusRowIcon />
+              </span>
+              <button
+                type="button"
+                className="label-name"
+                disabled={busy}
+                onClick={() => {
+                  setEditing(null);
+                  setCreating('');
+                }}
+              >
+                Create new {noun}
+              </button>
+            </li>
+          ))}
+
+        {shown.map((item) =>
+          openId === item.id ? (
+            <li key={item.id} className="label-row editing">
+              <button
+                type="button"
+                className="icon-btn label-slot"
+                aria-label={`Delete ${item.name}`}
+                disabled={busy}
+                onClick={() => onDelete(item)}
+              >
+                <TrashIcon />
+              </button>
+              <RowField
+                value={editing?.value ?? item.name}
+                label={`Rename ${item.name}`}
+                disabled={busy}
+                onChange={(value) => setEditing({ id: item.id, value })}
+                onCommit={() => void commitRename(item)}
+                onCancel={() => setEditing(null)}
+              />
+              <button
+                type="button"
+                className="icon-btn"
+                aria-label="Save"
+                disabled={busy}
+                onClick={() => void commitRename(item)}
+              >
+                <CheckIcon />
+              </button>
+            </li>
+          ) : (
+            <li key={item.id} className="label-row">
+              <span className="label-slot" aria-hidden="true">
+                <Glyph />
+              </span>
+              {/* The name is the row's target, since renaming is what the row is mostly
+                  for; the pencil beside it says so, which a bare name did not. */}
+              <button
+                type="button"
+                className="label-name"
+                disabled={busy}
+                onClick={() => startRename(item)}
+              >
+                {item.name}
+              </button>
+              {renderExtra?.(item)}
+              <span className="tag-count">{item.count}</span>
+              <button
+                type="button"
+                className="icon-btn"
+                aria-label={`Rename ${item.name}`}
+                disabled={busy}
+                onClick={() => startRename(item)}
+              >
+                <PencilIcon />
+              </button>
+            </li>
+          ),
+        )}
+
+        {items !== null && items.length === 0 && (
+          <li className="muted small label-empty">{emptyText}</li>
+        )}
+        {items !== null && items.length > 0 && shown.length === 0 && (
+          <li className="muted small label-empty">Nothing matches.</li>
+        )}
+      </ul>
+
+      {/* Nothing to say until the list is known: a hint under a list that has not arrived
+          describes something the reader cannot see yet. */}
+      {items !== null && <p className="muted small">{hint}</p>}
+    </div>
+  );
+}
+
+/**
+ * The field a row becomes.
+ *
+ * A bare input rather than a boxed one: the row is still the row, only now you can type
+ * in it, and a box drawn around the name would make it jump into a different kind of
+ * control. Focus is taken on arrival with the caret at the end, since a rename is usually
+ * a correction there — and a caret at the start, where a focused input puts it, makes
+ * the first keystroke land in front of the name. Enter commits and Escape leaves; a click
+ * elsewhere does neither, because the check and the cross beside the field are the
+ * decision, and a field that saved itself on blur would decide for a reader who only
+ * meant to scroll.
+ */
+function RowField({
+  value,
+  label,
+  placeholder,
+  disabled,
+  onChange,
+  onCommit,
+  onCancel,
+}: {
+  value: string;
+  label: string;
+  placeholder?: string;
+  disabled: boolean;
+  onChange: (value: string) => void;
+  onCommit: () => void;
+  onCancel: () => void;
+}) {
+  const ref = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    el.focus();
+    el.setSelectionRange(el.value.length, el.value.length);
+  }, []);
+
+  return (
+    <input
+      ref={ref}
+      className="label-field"
+      value={value}
+      placeholder={placeholder}
+      aria-label={label}
+      disabled={disabled}
+      onChange={(e) => onChange(e.target.value)}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') onCommit();
+        if (e.key === 'Escape') onCancel();
+      }}
+    />
+  );
+}
