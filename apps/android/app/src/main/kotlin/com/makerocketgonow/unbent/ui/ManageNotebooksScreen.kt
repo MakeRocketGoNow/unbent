@@ -278,10 +278,19 @@ private fun EditorRow(
             modifier
                 .fillMaxWidth()
                 .heightIn(min = 56.dp)
-                .padding(start = Space.Large, end = Space.Small),
+                .padding(start = Space.Hair, end = Space.Small),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Box(Modifier.size(48.dp), contentAlignment = Alignment.CenterStart) { leading() }
+            /*
+             * The leading slot is a 48dp box with its content centred, whichever state the
+             * row is in. A bare glyph and an icon button are different sizes — 24dp and
+             * 48dp — and aligning both to the slot's start put the trash can's glyph 12dp
+             * further in than the book it replaces, so the row's picture jumped right the
+             * moment editing began. Centred, both glyphs sit 28dp from the edge: the
+             * row's 4dp inset plus half the slot, which is where the book was before.
+             */
+            Box(Modifier.size(48.dp), contentAlignment = Alignment.Center) { leading() }
+            Spacer(Modifier.width(Space.Medium))
             middle()
             trailing()
         }
