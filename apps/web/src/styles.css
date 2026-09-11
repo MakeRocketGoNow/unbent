@@ -4347,6 +4347,23 @@ select.note-field-input { cursor: pointer; }
   .shell.wide:not(.embed) { padding-inline: 0.75rem; }
 
   /*
+     The notes list runs closer to the edge than the rest.
+
+     Every other view keeps the 0.75rem above: login, settings, import and trash are reading
+     width, and a gutter that frames them is the point. The notes list is the opposite — its
+     whole job is showing as much of the list as possible, and the Android app it mirrors
+     starts its rows near the glass. So this view alone drops the shell inset to 0.25rem, and
+     the row's fill and border begin a quarter-rem from the edge instead of three.
+
+     Scoped by `:has(.notes)` rather than by narrowing the shared rule, so it is the notes
+     view that changes and nothing else moves. The compound outweighs `.shell.wide` on
+     specificity, which is what lets it win here while the bare rule keeps every other route
+     at 0.75rem. The row keeps its own 0.7rem, so a note's text still sits inside the fill
+     the way it always has — see `.note-item`.
+  */
+  .shell.wide:not(.embed):has(.notes) { padding-inline: 0.25rem; }
+
+  /*
      The border above is that divider, and it is deliberate.
 
      It was tried the other way: once filing and the attachments panel were drawn
