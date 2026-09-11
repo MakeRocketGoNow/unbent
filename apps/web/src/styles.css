@@ -3648,24 +3648,62 @@ select.note-field-input { cursor: pointer; }
   padding-bottom: calc(1rem + env(safe-area-inset-bottom));
 }
 
-/* The vocabulary phones have taught for "this panel came up from the bottom". Decorative:
-   there is no drag to hint at, and it is not in the tab order or the accessibility tree. */
+/* The drawer slides from the side; a bar that says "pull me down" would be lying. */
 .sheet-side .sheet-grip { display: none; }
 
+/*
+   The handle: the bar phones have taught for "this panel came up from the bottom", and
+   here it does what it implies — see `useGripDrag` in Sheet.tsx.
+
+   The bar is drawn by `::after` rather than being the element, so the element can be a
+   thumb-sized target — 44px tall, the full width — while the mark stays a 4px line. The
+   element's box is what receives the pointer, and a 4px box would take a stylus to hit.
+   The margins are what keep everything else still. The old grip was 0.25rem tall with
+   0.25rem above and below: 0.75rem in the flow. This box is 2.75rem with -1rem above and
+   below: the same 0.75rem, the bar at the same place inside it, and the head's own
+   pull-up (see `.sheet-head`) still cancels the same numbers it did.
+
+   `touch-action: none` is what makes the gesture possible at all: without it the browser
+   claims a vertical drag for scrolling before the first pointermove arrives.
+*/
 .sheet-grip {
   flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 2.75rem;
+  margin: -1rem 0;
+  touch-action: none;
+  cursor: grab;
+}
+
+.sheet-grip:active { cursor: grabbing; }
+
+.sheet-grip::after {
+  content: '';
   width: 2.25rem;
   height: 0.25rem;
-  margin: 0.25rem auto 0.25rem;
   background: var(--border);
   border-radius: 999px;
 }
+
+/* While a finger has it, the sheet follows immediately rather than easing 220ms behind. */
+.sheet[data-dragging] { transition: none; }
 
 .sheet-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 0.5rem;
+  /*
+     Part of the handle, with the grip above it: the 4px bar alone is a 22px target once
+     the head is drawn over the lower half of its box, so a drag may begin on the title too.
+     `touch-action: none` stops the browser claiming that drag to scroll the sheet, and no
+     selection so a slow drag does not highlight the title on its way down.
+  */
+  touch-action: none;
+  user-select: none;
   /* The row a page is identified by, so it holds its height whether or not it carries a
      back arrow or an action. */
   min-height: 2.75rem;

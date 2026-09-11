@@ -1,4 +1,4 @@
-import { describe, it, expect, afterEach, vi } from 'vitest';
+import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest';
 import { render, cleanup, fireEvent } from '@testing-library/react';
 import { Sheet } from './Sheet.js';
 
@@ -40,6 +40,137 @@ describe('Sheet', () => {
      than left to the callers: every sheet in the app gets this, and a missing ✕ is invisible
      to a type check.
   */
+  /*
+     The handle.
+
+     jsdom has no pointer capture and no layout, so what is tested is the decision: a pull
+     past the threshold closes, a short one does not, a flick closes on speed alone, and an
+     upward drag never does. The follow-the-finger translate is checked as the inline style
+     it sets, since that is the whole mechanism.
+  */
+  describe('dragging the grip', () => {
+    const grip = (c: HTMLElement) => c.querySelector('.sheet-grip') as HTMLElement;
+    /*
+       A drag of `ms` milliseconds. The hook reads `performance.now()` at the start and at
+       the end, so the clock is stubbed to answer those two reads in order — jsdom fires the
+       events microseconds apart, which would make every pull a flick.
+    */
+    const drag = (el: HTMLElement, from: number, to: number, ms: number) => {
+      vi.spyOn(performance, 'now').mockReturnValueOnce(1000).mockReturnValueOnce(1000 + ms);
+      fireEvent.pointerDown(el, { clientY: from, button: 0, pointerId: 1 });
+      fireEvent.pointerMove(el, { clientY: to, pointerId: 1 });
+      fireEvent.pointerUp(el, { clientY: to, pointerId: 1 });
+    };
+
+    beforeEach(() => {
+      // jsdom does not implement pointer capture; the hook calls it on every drag.
+      HTMLElement.prototype.setPointerCapture = () => {};
+    });
+
+    afterEach(() => vi.restoreAllMocks());
+
+    it('follows the finger while it is held', () => {
+      stubDialog();
+      const { container } = render(
+        <Sheet open onClose={() => {}} title="Filter notes">
+          body
+        </Sheet>,
+      );
+      const el = grip(container);
+      fireEvent.pointerDown(el, { clientY: 100, button: 0, pointerId: 1 });
+      fireEvent.pointerMove(el, { clientY: 140, pointerId: 1 });
+      expect(dialogOf(container).style.translate).toBe('0 40px');
+      expect(dialogOf(container).hasAttribute('data-dragging')).toBe(true);
+    });
+
+    it('closes after a long pull', () => {
+      stubDialog();
+      const onClose = vi.fn();
+      const { container } = render(
+        <Sheet open onClose={onClose} title="Filter notes">
+          body
+        </Sheet>,
+      );
+      drag(grip(container), 100, 200, 600);
+      expect(onClose).toHaveBeenCalledTimes(1);
+      // Let go: the inline follow is gone so the stylesheet decides where it rests.
+      expect(dialogOf(container).style.translate).toBe('');
+      expect(dialogOf(container).hasAttribute('data-dragging')).toBe(false);
+    });
+
+    it('snaps back after a short one', () => {
+      stubDialog();
+      const onClose = vi.fn();
+      const { container } = render(
+        <Sheet open onClose={onClose} title="Filter notes">
+          body
+        </Sheet>,
+      );
+      drag(grip(container), 100, 130, 600);
+      expect(onClose).not.toHaveBeenCalled();
+      expect(dialogOf(container).style.translate).toBe('');
+    });
+
+    it('closes on a quick flick even when it is short', () => {
+      stubDialog();
+      const onClose = vi.fn();
+      const { container } = render(
+        <Sheet open onClose={onClose} title="Filter notes">
+          body
+        </Sheet>,
+      );
+      drag(grip(container), 100, 140, 40);
+      expect(onClose).toHaveBeenCalledTimes(1);
+    });
+
+    /* The head is part of the handle; the bar alone is too small a target. */
+    it('closes after a long pull that starts on the title', () => {
+      stubDialog();
+      const onClose = vi.fn();
+      const { container, getByText } = render(
+        <Sheet open onClose={onClose} title="Filter notes">
+          body
+        </Sheet>,
+      );
+      drag(getByText('Filter notes'), 100, 200, 600);
+      expect(onClose).toHaveBeenCalledTimes(1);
+    });
+
+    /* A press on the ✕ has to stay a click: capturing it would retarget the pointerup. */
+    it('leaves a press on the close button alone', () => {
+      stubDialog();
+      const onClose = vi.fn();
+      const { container, getByLabelText } = render(
+        <Sheet open onClose={onClose} title="Filter notes">
+          body
+        </Sheet>,
+      );
+      const btn = getByLabelText('Close');
+      fireEvent.pointerDown(btn, { clientY: 100, button: 0, pointerId: 1 });
+      fireEvent.pointerMove(btn, { clientY: 200, pointerId: 1 });
+      expect(dialogOf(container).style.translate).toBe('');
+      expect(dialogOf(container).hasAttribute('data-dragging')).toBe(false);
+      fireEvent.pointerUp(btn, { clientY: 200, pointerId: 1 });
+      expect(onClose).not.toHaveBeenCalled();
+    });
+
+    it('ignores a drag upward', () => {
+      stubDialog();
+      const onClose = vi.fn();
+      const { container } = render(
+        <Sheet open onClose={onClose} title="Filter notes">
+          body
+        </Sheet>,
+      );
+      const el = grip(container);
+      fireEvent.pointerDown(el, { clientY: 200, button: 0, pointerId: 1 });
+      fireEvent.pointerMove(el, { clientY: 100, pointerId: 1 });
+      expect(dialogOf(container).style.translate).toBe('0 0px');
+      fireEvent.pointerUp(el, { clientY: 100, pointerId: 1 });
+      expect(onClose).not.toHaveBeenCalled();
+    });
+  });
+
   it('offers a close button that dismisses it', () => {
     stubDialog();
     const onClose = vi.fn();
