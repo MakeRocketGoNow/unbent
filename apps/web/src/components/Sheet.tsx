@@ -62,8 +62,16 @@ export interface SheetProps {
  * not reach any further down. The head is included for the same reason a native sheet's
  * whole header drags: the bar is 4px and a thumb lands near it, not on it.
  *
- * The ✕ stays. Not everyone finds the grip, a mouse on a desktop has no swipe, and a
- * control that says "close" costs nothing beside a handle that only implies it.
+ * The ✕ stays on the bottom sheet. Not everyone finds the grip, a mouse on a desktop has
+ * no swipe, and a control that says "close" costs nothing beside a handle that only
+ * implies it.
+ *
+ * The drawer has none. Its head is the wordmark and the account, which is what Keep's
+ * drawer is headed by, and a ✕ beside them made a navigation panel read as a dialog about
+ * something. The ways out it keeps are the ones a drawer is expected to have — the scrim,
+ * Escape, the platform's back gesture — and picking a row, which is how a drawer is
+ * normally left. A screen reader still has Escape, which the platform wires for a modal
+ * dialog without any help from here.
  *
  * One component for both edges rather than a `Drawer` beside a `Sheet`: everything that is
  * hard here — the modality, the four ways out, the padding that must not be on the dialog —
@@ -202,15 +210,18 @@ export function Sheet({
           )}
           <h2>{title}</h2>
           {headAction}
-          {/* Last in the row, where a phone has taught people to look for it. */}
-          <button
-            type="button"
-            className="icon-btn sheet-close"
-            aria-label="Close"
-            onClick={onClose}
-          >
-            <CloseIcon />
-          </button>
+          {/* Last in the row, where a phone has taught people to look for it. Not on the
+              drawer — see the note on the ✕ above. */}
+          {side === 'bottom' && (
+            <button
+              type="button"
+              className="icon-btn sheet-close"
+              aria-label="Close"
+              onClick={onClose}
+            >
+              <CloseIcon />
+            </button>
+          )}
         </div>
         {children}
       </div>

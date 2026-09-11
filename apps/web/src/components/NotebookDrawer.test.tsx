@@ -190,6 +190,22 @@ describe('NotebookDrawer', () => {
     expect(trash.getAttribute('aria-current')).toBeNull();
   });
 
+  /* Keep's drawer is headed by its name and closed by the scrim, the back gesture or a
+     row; a ✕ beside the wordmark made a navigation panel read as a dialog. */
+  it('has no close button, unlike the bottom sheet', async () => {
+    const { findByText, queryByLabelText } = harness();
+    await findByText('All notes');
+    expect(queryByLabelText('Close')).toBeNull();
+  });
+
+  /* The rows are places to go, so the way to change them lives outside the rows. */
+  it('offers the way to edit the notebooks beside their section head', async () => {
+    const { findByText } = harness();
+    const edit = await findByText('Edit');
+    expect(edit.tagName).toBe('A');
+    expect(edit.getAttribute('href')).toBe('/settings/notebooks');
+  });
+
   /* Sign out is rare and disruptive; it stays behind the avatar rather than becoming a
      row a thumb's width under Settings. */
   it('carries the account in its head, which is the only place it is on a phone', async () => {

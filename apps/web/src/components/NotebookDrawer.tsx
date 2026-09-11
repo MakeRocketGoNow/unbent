@@ -2,6 +2,14 @@ import { Link, useNavigate } from '@tanstack/react-router';
 import { UNFILED } from '@unbent/shared';
 import { Sheet } from './Sheet.js';
 import { AccountMenu } from './AccountMenu.js';
+import {
+  NotesRowIcon,
+  InboxRowIcon,
+  NotebookRowIcon,
+  PlusRowIcon,
+  TrashRowIcon,
+  SettingsRowIcon,
+} from './icons.js';
 import type { NotebookData } from './NotebookSelect.js';
 
 interface NotebookDrawerProps {
@@ -33,8 +41,9 @@ interface NotebookDrawerProps {
  * Desktop keeps the select. The sidebar is always on screen there, so a drawer would be
  * hiding something that costs nothing to show.
  *
- * The shape of it is Keep's: the places at the top, and on the floor the things that are
- * not places — Trash, then Settings — as plain rows, with the account up in the head beside
+ * The shape of it is Keep's: a glyph on every row, the places at the top under a section
+ * head that carries the way to edit them, and on the floor the things that are not
+ * places — Trash, then Settings — as plain rows, with the account up in the head beside
  * the wordmark. Settings used to be behind the avatar, which on a phone was the one screen
  * with no topbar to show the avatar on; a row on the floor is one tap from the ☰ and is
  * where every drawer people arrive from puts it. Sign out stays behind the avatar on
@@ -87,6 +96,7 @@ export function NotebookDrawer({
           aria-current={allActive ? 'true' : undefined}
           onClick={() => scope(undefined)}
         >
+          <NotesRowIcon />
           All notes
         </button>
 
@@ -103,12 +113,30 @@ export function NotebookDrawer({
             aria-current={notebook === UNFILED ? 'true' : undefined}
             onClick={() => scope(UNFILED)}
           >
+            <InboxRowIcon />
             Inbox
             <span className="tag-count">{notebooks.data?.unfiled ?? 0}</span>
           </button>
         )}
 
-        {(notebooks.data?.notebooks.length ?? 0) > 0 && <hr className="drawer-rule" />}
+        <hr className="drawer-rule" />
+
+        {/*
+            The section's name, and the way to change what is in it.
+
+            Keep heads its labels the same way — a muted word on the left, Edit on the
+            right — and the reason is that the rows below are places to go, so anything that
+            changes them has to live outside the rows or every row would need two targets.
+            Edit is a `Link` to the notebooks page, which navigates away and unmounts the
+            drawer. Shown even with no notebooks: the way to make the first one is the row
+            at the end of this section.
+        */}
+        <div className="drawer-section">
+          <span className="drawer-section-label">Notebooks</span>
+          <Link to="/settings/notebooks" className="drawer-section-action">
+            Edit
+          </Link>
+        </div>
 
         {notebooks.data?.notebooks.map((nb) => {
           const on = notebook === nb.name;
@@ -120,6 +148,7 @@ export function NotebookDrawer({
               aria-current={on ? 'true' : undefined}
               onClick={() => scope(nb.name)}
             >
+              <NotebookRowIcon />
               <span className="drawer-item-label">{nb.name}</span>
               <span className="tag-count">{nb.count}</span>
             </button>
@@ -132,6 +161,7 @@ export function NotebookDrawer({
             way. It navigates away, which unmounts the drawer, so it never closes it by hand.
         */}
         <Link to="/settings/notebooks" className="drawer-item drawer-new">
+          <PlusRowIcon />
           New notebook
         </Link>
       </nav>
@@ -147,10 +177,12 @@ export function NotebookDrawer({
       <div className="drawer-foot">
         <hr className="drawer-rule" />
         <Link to="/trash" className="drawer-item">
+          <TrashRowIcon />
           Trash
           {trashed > 0 && <span className="tag-count">{trashed}</span>}
         </Link>
         <Link to="/settings" className="drawer-item">
+          <SettingsRowIcon />
           Settings
         </Link>
       </div>

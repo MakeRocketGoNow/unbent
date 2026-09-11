@@ -3090,7 +3090,9 @@ select.note-field-input { cursor: pointer; }
 .drawer-item {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
+  /* Room between the glyph and the word: a row is read as icon-then-label, and at the
+     body's usual 0.5rem the two read as one blob. */
+  gap: 0.9rem;
   width: 100%;
   min-height: 2.75rem;
   padding: 0.4rem 0.7rem;
@@ -3108,6 +3110,15 @@ select.note-field-input { cursor: pointer; }
 }
 
 .drawer-item:hover { background: color-mix(in srgb, var(--fg) 8%, transparent); }
+
+/* The glyph names the row rather than competing with it, so it is quieter than the word —
+   except on the current row, where the whole row is the statement. */
+.drawer-item > svg {
+  flex: 0 0 auto;
+  color: var(--muted);
+}
+
+.drawer-item.current > svg { color: var(--fg); }
 
 .drawer-item:focus-visible {
   outline: 2px solid var(--accent);
@@ -3163,10 +3174,41 @@ select.note-field-input { cursor: pointer; }
   color: var(--muted);
 }
 
-.drawer-new::before {
-  content: '+';
-  font-size: 1.1rem;
-  line-height: 1;
+/*
+   A section's head: its name on the left, the way to change it on the right.
+
+   Indented to the rows' own text edge so the word sits over the glyphs rather than over the
+   rounded pill's padding. Smaller and muted, because it names the rows and is not one.
+*/
+.drawer-section {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  min-height: 2.25rem;
+  padding: 0 0.7rem;
+  font-size: 0.85rem;
+}
+
+.drawer-section-label {
+  color: var(--muted);
+}
+
+/* A link, drawn as a word rather than a row: it leaves the drawer for the settings page. */
+.drawer-section-action {
+  padding: 0.3rem 0.4rem;
+  margin-right: -0.4rem;
+  font-weight: 500;
+  color: var(--accent);
+  text-decoration: none;
+  border-radius: 0.3rem;
+}
+
+.drawer-section-action:hover { background: color-mix(in srgb, var(--fg) 8%, transparent); }
+
+.drawer-section-action:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
 }
 
 /* ---------------------------------------------------------------------------------
@@ -3568,6 +3610,22 @@ select.note-field-input { cursor: pointer; }
 .sheet-side .sheet-body {
   min-height: 100%;
   padding-top: 1rem;
+}
+
+/*
+   The drawer's head is the wordmark, not a dialog title.
+
+   Keep heads its drawer with its name at the size of an app's name, and with nothing else
+   but the account beside it; a 1rem "Unbent" with a ✕ read as the title of a filter
+   sheet. Indented to the rows' text edge for the same reason the section head is.
+*/
+.sheet-side .sheet-head {
+  padding: 0.25rem 0.7rem 0.5rem;
+}
+
+.sheet-side .sheet-head h2 {
+  font-size: 1.3rem;
+  font-weight: 600;
 }
 
 @media (prefers-reduced-motion: no-preference) {

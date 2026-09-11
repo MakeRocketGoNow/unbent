@@ -4,9 +4,11 @@ import {
   ArrowDown,
   ArrowUp,
   ArrowUpDown,
+  Book,
   Calendar,
   Funnel,
   Hash,
+  Inbox,
   Link as LinkGlyph,
   List,
   Mail,
@@ -16,7 +18,9 @@ import {
   Search,
   Settings,
   SquareCheck,
+  StickyNote,
   Tag,
+  Trash2,
   Type,
   X,
 } from 'lucide-react';
@@ -84,6 +88,39 @@ function HeaderIcon({ icon: Icon }: { icon: LucideIcon }) {
  */
 export function RowIcon({ icon: Icon }: { icon: LucideIcon }) {
   return <Icon size="1.15em" strokeWidth={2} aria-hidden="true" focusable="false" />;
+}
+
+/*
+   The drawer's rows.
+
+   Every row gets a glyph, as every drawer people arrive from gives it: a column of bare
+   words is scanned by reading, and a column with a picture beside each word is scanned by
+   looking. They are `RowIcon`s — sized to the label, muted by the row — and they name
+   what the row is rather than decorate it, which is why each notebook gets the same book
+   rather than a picture of its own.
+*/
+export function NotesRowIcon() {
+  return <RowIcon icon={StickyNote} />;
+}
+
+export function InboxRowIcon() {
+  return <RowIcon icon={Inbox} />;
+}
+
+export function NotebookRowIcon() {
+  return <RowIcon icon={Book} />;
+}
+
+export function PlusRowIcon() {
+  return <RowIcon icon={Plus} />;
+}
+
+export function TrashRowIcon() {
+  return <RowIcon icon={Trash2} />;
+}
+
+export function SettingsRowIcon() {
+  return <RowIcon icon={Settings} />;
 }
 
 /** A magnifier, for opening the search field. */
