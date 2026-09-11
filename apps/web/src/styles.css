@@ -1634,8 +1634,19 @@ a.sidebar-status:hover {
    the row runs out of room.
 */
 
-/* Never shrinks below its own text: the notebook is the identifying half. */
-.tag-row-summary-book { flex: 0 0 auto; }
+/*
+   The notebook: never shrinks below its own text, and drawn as the identifying half.
+
+   It used to inherit the row's muted grey while the tags beside it carried the accent, so
+   the one thing that says where the note lives was the quietest text on the line. The
+   weight is 500, the same step `.note-item` gives a note's title for the same job — 600
+   would set it against the note title directly above it, which is a different question.
+*/
+.tag-row-summary-book {
+  flex: 0 0 auto;
+  color: var(--fg);
+  font-weight: 500;
+}
 
 /* The tags yield, and are tinted so the row reads as a notebook followed by its tags. */
 .tag-row-summary-tags {
@@ -1661,6 +1672,39 @@ a.sidebar-status:hover {
   overflow: hidden;
   text-overflow: ellipsis;
 }
+
+/*
+   A field's name and its value, told apart by tone.
+
+   The whole line was one colour, so `Code: T1-WWC-5G839 · Date Added: 2026-07-03` had to be
+   read by punctuation — every name weighed exactly as much as the value beside it, and a row
+   of six read as a paragraph rather than as six facts. Two steps fixes it: the name stays at
+   the row's muted grey and the value comes up towards the foreground, so the eye lands on the
+   values and picks up the names only when it needs them.
+
+   A mix rather than `--fg` outright. These are still the quietest line in the note's header,
+   below the notebook above them, and full-strength values would make the summary compete with
+   the title. 75% is the step that separates them without promoting the line.
+*/
+.summary-name { color: var(--muted); }
+
+.summary-value { color: color-mix(in srgb, var(--fg) 75%, var(--muted)); }
+
+/* Dimmer than either half it divides: it is punctuation, not content. */
+.summary-sep { color: color-mix(in srgb, var(--muted) 55%, transparent); }
+
+/*
+   So a pair breaks as one thing: a name is never left at the end of a line with its value
+   on the next.
+
+   `nowrap` on the pair, not on the value inside it — a long note left to `nowrap` alone
+   would run off the line rather than wrapping within it, so the value releases the rule the
+   pair sets. The effect is a break between pairs by preference, inside a long value only
+   when there is no other choice.
+*/
+.summary-pair { white-space: nowrap; }
+
+.summary-value { white-space: normal; }
 
 /* The values have their own line inside `.filing-row`, so the tags no longer have to yield
    to them — they share the first line with the notebook alone. Kept as a rule about the two
@@ -4322,6 +4366,24 @@ select.note-field-input { cursor: pointer; }
   .filing-row .tag-row-summary-fields {
     flex: 1 0 100%;
     order: 1;
+    /*
+       Wraps to three lines, then gives up.
+
+       The base rule clips this to one line with an ellipsis, which is right in a flex row
+       where it is competing for width — here it has a line of its own and the values are
+       the thing worth reading, so a coupon's five fields should wrap rather than end at
+       "Discou…". Three is the cap: enough for the fields a note actually carries, and short
+       enough that the row cannot push the note off the screen, which is what this whole
+       block exists to prevent.
+
+       `line-clamp` needs the `-webkit-` box to do the clamping; the unprefixed property is
+       included so this stops needing the prefix when the standard version lands.
+    */
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 3;
+    line-clamp: 3;
+    white-space: normal;
   }
 
   /* The chevron, drawn as `.disclosure > summary::after` draws it, pointing the way the
