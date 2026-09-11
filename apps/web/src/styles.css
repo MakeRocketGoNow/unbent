@@ -738,6 +738,13 @@ h1 {
   list-style: none;
   margin: 0;
   /*
+     Stale rows dim while the next notebook's load — see `aria-busy` in `NotesLayout`.
+     The dimming waits 150ms before it starts: a local load is back inside that, and rows
+     that flicker half-grey on every tap would be worse than rows that briefly stay put.
+     The return to full strength is immediate, so the new rows arrive at once.
+  */
+  transition: opacity 0.15s ease;
+  /*
      Back out to the sidebar's own edges, so a selected note's fill and border run the full
      width while its text stays on the shared line the sidebar's padding sets.
 
@@ -773,6 +780,11 @@ h1 {
   */
   flex-basis: 12rem;
   min-height: 0;
+}
+
+.note-list[aria-busy='true'] {
+  opacity: 0.45;
+  transition: opacity 0.15s ease 0.15s;
 }
 
 .note-item {
@@ -3090,7 +3102,9 @@ select.note-field-input { cursor: pointer; }
 .drawer-item {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
+  /* Room between the glyph and the word: a row is read as icon-then-label, and at the
+     body's usual 0.5rem the two read as one blob. */
+  gap: 0.9rem;
   width: 100%;
   min-height: 2.75rem;
   padding: 0.4rem 0.7rem;
@@ -3108,6 +3122,15 @@ select.note-field-input { cursor: pointer; }
 }
 
 .drawer-item:hover { background: color-mix(in srgb, var(--fg) 8%, transparent); }
+
+/* The glyph names the row rather than competing with it, so it is quieter than the word —
+   except on the current row, where the whole row is the statement. */
+.drawer-item > svg {
+  flex: 0 0 auto;
+  color: var(--muted);
+}
+
+.drawer-item.current > svg { color: var(--fg); }
 
 .drawer-item:focus-visible {
   outline: 2px solid var(--accent);
@@ -3149,7 +3172,7 @@ select.note-field-input { cursor: pointer; }
   border-top: 1px solid var(--border);
 }
 
-/* Pinned under the list: destinations and the account, not places within the notes. */
+/* Pinned under the list: the destinations that are not places within the notes. */
 .drawer-foot {
   flex: 0 0 auto;
   display: flex;
@@ -3158,26 +3181,46 @@ select.note-field-input { cursor: pointer; }
   min-width: 0;
 }
 
-.drawer-foot-row {
-  display: flex;
-  align-items: center;
-  gap: 0.25rem;
-  min-width: 0;
-}
-
+/* The last row of the notebooks, quieter than the notebooks it makes more of. */
 .drawer-new {
-  flex: 1;
-  min-width: 0;
   color: var(--muted);
 }
 
-/* The one control on this row that is not a row; it keeps the avatar's own geometry. */
-.drawer-foot-row .overflow-account { flex: 0 0 auto; }
+/*
+   A section's head: its name on the left, the way to change it on the right.
 
-.drawer-new::before {
-  content: '+';
-  font-size: 1.1rem;
-  line-height: 1;
+   Indented to the rows' own text edge so the word sits over the glyphs rather than over the
+   rounded pill's padding. Smaller and muted, because it names the rows and is not one.
+*/
+.drawer-section {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  min-height: 2.25rem;
+  padding: 0 0.7rem;
+  font-size: 0.85rem;
+}
+
+.drawer-section-label {
+  color: var(--muted);
+}
+
+/* A link, drawn as a word rather than a row: it leaves the drawer for the settings page. */
+.drawer-section-action {
+  padding: 0.3rem 0.4rem;
+  margin-right: -0.4rem;
+  font-weight: 500;
+  color: var(--accent);
+  text-decoration: none;
+  border-radius: 0.3rem;
+}
+
+.drawer-section-action:hover { background: color-mix(in srgb, var(--fg) 8%, transparent); }
+
+.drawer-section-action:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
 }
 
 /* ---------------------------------------------------------------------------------
@@ -3581,14 +3624,20 @@ select.note-field-input { cursor: pointer; }
   padding-top: 1rem;
 }
 
-@media (prefers-reduced-motion: no-preference) {
-  .sheet-side[open] { translate: 0 0; }
+/*
+   The drawer's head is the wordmark, not a dialog title.
 
-  @starting-style {
-    .sheet-side[open] { translate: -1.5rem 0; }
-  }
+   Keep heads its drawer with its name at the size of an app's name, and with nothing else
+   but the account beside it; a 1rem "Unbent" with a ✕ read as the title of a filter
+   sheet. Indented to the rows' text edge for the same reason the section head is.
+*/
+.sheet-side .sheet-head {
+  padding: 0.25rem 0.7rem 0.5rem;
+}
 
-  .sheet-side:not([open]) { translate: -1.5rem 0; }
+.sheet-side .sheet-head h2 {
+  font-size: 1.3rem;
+  font-weight: 600;
 }
 
 .sheet::backdrop {
@@ -3629,6 +3678,96 @@ select.note-field-input { cursor: pointer; }
   .sheet:not([open]) {
     translate: 0 1.5rem;
     opacity: 0;
+  }
+
+  /*
+     The scrim fades in step with whichever surface it is behind, rather than snapping to
+     45% ink the instant the dialog opens and vanishing the instant it closes. `overlay`
+     and `display` are listed for the same reason they are on the sheet: without them the
+     backdrop is gone before its opacity has anywhere to go.
+  */
+  .sheet::backdrop {
+    opacity: 1;
+    transition:
+      opacity 0.22s ease,
+      overlay 0.22s allow-discrete,
+      display 0.22s allow-discrete;
+  }
+
+  @starting-style {
+    .sheet[open]::backdrop { opacity: 0; }
+  }
+
+  .sheet:not([open])::backdrop { opacity: 0; }
+
+  /*
+     The drawer's motion, which is not the sheet's.
+
+     The bottom sheet rises 1.5rem while fading in, which reads as a surface *arriving*
+     — right for a panel about the view behind it. A drawer is a panel that was always
+     there, off the edge, and is being pulled on: it slides its whole width from the edge
+     it lives on, at full opacity the whole way, so at no point is there a half-transparent
+     panel floating a few pixels inside the screen. The 1.5rem-and-fade version this
+     replaces read as a popover rather than a drawer, which is why it is here.
+
+     The curves are Material's emphasized pair, which is what Keep's drawer runs on: a
+     fast start that settles slowly on the way in, so the panel is readable long before it
+     stops, and the mirror on the way out — 250ms in, 200ms out, because leaving should be
+     quicker than arriving. The two rules carry their own `transition` so the easing
+     differs by direction; a single declaration would run the same curve both ways.
+
+     `-100%` is the element's own width, so it holds whatever `min(20rem, 85vw)` resolves
+     to. It is a physical direction, as the 1.5rem before it was: the drawer pins itself to
+     the inline start through its margins, so this would need mirroring for a
+     right-to-left layout — as would the whole file.
+
+     Inside the same `prefers-reduced-motion` block as the rest: with reduced motion asked
+     for, none of this runs and the drawer simply appears, which for a full-width slide
+     is exactly the setting's request. After the sheet's own rules, deliberately — the
+     specificities are equal, so order is what lets these win.
+  */
+  .sheet-side {
+    opacity: 1;
+    transition:
+      translate 0.2s cubic-bezier(0.3, 0, 0.8, 0.15),
+      overlay 0.2s allow-discrete,
+      display 0.2s allow-discrete;
+  }
+
+  .sheet-side[open] {
+    translate: 0 0;
+    opacity: 1;
+    transition:
+      translate 0.25s cubic-bezier(0.05, 0.7, 0.1, 1),
+      overlay 0.25s allow-discrete,
+      display 0.25s allow-discrete;
+  }
+
+  @starting-style {
+    .sheet-side[open] {
+      translate: -100% 0;
+      opacity: 1;
+    }
+  }
+
+  .sheet-side:not([open]) {
+    translate: -100% 0;
+    opacity: 1;
+  }
+
+  /* The drawer's scrim takes the drawer's timings, so the two land and leave together. */
+  .sheet-side::backdrop {
+    transition:
+      opacity 0.2s ease,
+      overlay 0.2s allow-discrete,
+      display 0.2s allow-discrete;
+  }
+
+  .sheet-side[open]::backdrop {
+    transition:
+      opacity 0.25s ease,
+      overlay 0.25s allow-discrete,
+      display 0.25s allow-discrete;
   }
 }
 

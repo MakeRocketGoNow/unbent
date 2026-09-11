@@ -26,12 +26,18 @@ interface NoteListHeadProps {
   onOpenMenu: () => void;
   /** Lights the dot on the filter icon: a narrowed list should never look like the whole archive. */
   filtered: boolean;
-  /** The ⋯ menu: sort, and the way to Settings. Passed in so this owns no routing. */
-  overflow: ReactNode;
+  /**
+   * The sort control, or nothing while searching. Passed in so this owns no routing.
+   *
+   * It was a ⋯ menu carrying sort *and* Settings, because this row was the only chrome on
+   * the phone's list and Settings had nowhere else to be. Settings is a row on the drawer's
+   * floor now, so the corner goes back to the control people reach for daily.
+   */
+  sort: ReactNode;
 }
 
 /**
- * The note list's header on a phone: a count, three icons and New.
+ * The note list's header on a phone: where you are, and four icons.
  *
  * The controls these replace cost about half a small screen before a single note was
  * visible — a search field, two selects, a pair of date inputs and a tag row, all present
@@ -63,7 +69,7 @@ export function NoteListHead({
   onOpenFilters,
   onOpenMenu,
   filtered,
-  overflow,
+  sort,
 }: NoteListHeadProps) {
   const field = useRef<HTMLInputElement>(null);
 
@@ -153,7 +159,7 @@ export function NoteListHead({
           <FilterIcon />
           {filtered && <span className="badge-dot" aria-hidden="true" />}
         </button>
-        {overflow}
+        {sort}
       </div>
     </div>
   );

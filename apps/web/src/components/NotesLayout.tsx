@@ -33,7 +33,7 @@ import { NotebookDrawer } from './NotebookDrawer.js';
 import { PlusIcon, TagIcon, CalendarIcon } from './icons.js';
 import { Sheet } from './Sheet.js';
 import { NoteListHead } from './NoteListHead.js';
-import { NotesOverflow } from './NotesOverflow.js';
+import { NotesSort } from './NotesSort.js';
 import { ActiveFilters } from './ActiveFilters.js';
 import { useMediaQuery, MOBILE_QUERY } from '../useMediaQuery.js';
 import { useSession } from '../auth-client.js';
@@ -166,6 +166,19 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
   const total = list.data?.pages[0]?.total ?? null;
   const error = list.error ?? search.error;
 
+  /*
+   * Whether the rows on screen are the rows for the heading above them.
+   *
+   * The route commits before the list arrives — see the loader in `routes/notes.tsx` —
+   * so for a moment the heading names the new notebook while the rows are still the
+   * previous one's, kept by `keepPreviousData`. Nothing on screen may claim otherwise
+   * during that moment: the count says loading rather than the old total, and the list
+   * marks itself busy so it can be dimmed. `isPending` is the first load, where there are
+   * no previous rows to keep and the empty state must not flash "No notes yet".
+   */
+  const stale = list.isPlaceholderData;
+  const loading = list.isPending || stale;
+
   /** Search results are on screen, which changes what is worth offering beside them. */
   const searching = results !== null;
 
@@ -186,9 +199,11 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
   const countLabel =
     results !== null
       ? `${results.length} matches`
-      : total !== null && total > notes.length
-        ? `${notes.length} of ${total} notes`
-        : `${notes.length} notes`;
+      : loading
+        ? 'Loading…'
+        : total !== null && total > notes.length
+          ? `${notes.length} of ${total} notes`
+          : `${notes.length} notes`;
 
   async function newNote() {
     try {
@@ -246,11 +261,11 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
               onOpenFilters={() => setSheetOpen(true)}
               onOpenMenu={() => setDrawerOpen(true)}
               filtered={sheetFiltered}
-              /* Sort is hidden while searching — results come back ranked by relevance,
-                 and reordering them by date would throw away that ranking — but the menu
-                 itself stays, because Settings is behind it and the topbar that used to
-                 carry Settings is not on this screen. */
-              overflow={<NotesOverflow sort={sort} order={order} showSort={results === null} />}
+              /* Hidden while searching — results come back ranked by relevance, and
+                 reordering them by date would throw away that ranking. Nothing else is
+                 lost with it: Settings, which used to share this corner, is on the
+                 drawer's floor. */
+              sort={results === null ? <NotesSort sort={sort} order={order} /> : null}
             />
 
             {error && <p className="bad small">{(error as Error).message}</p>}
@@ -450,7 +465,7 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
           </button>
         )}
 
-        <ul className="note-list" onKeyDown={onListKeys}>
+        <ul className="note-list" aria-busy={stale || undefined} onKeyDown={onListKeys}>
           {results !== null && <SearchResults results={results} />}
 
           {results === null &&
@@ -471,7 +486,7 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
             </li>
           )}
 
-          {results === null && notes.length === 0 && !error && (
+          {results === null && notes.length === 0 && !error && !list.isPending && (
             <li className="muted small empty">
               {tag
                 ? `No notes tagged ${tag}.`

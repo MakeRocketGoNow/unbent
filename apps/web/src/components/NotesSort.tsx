@@ -1,64 +1,59 @@
 import { useState } from 'react';
 import { useNavigate } from '@tanstack/react-router';
-import { OverflowMenu } from './OverflowMenu.js';
 import { Sheet } from './Sheet.js';
 import { Button } from './Button';
+import { SortIcon } from './icons.js';
 import type { NoteSort } from '@unbent/shared';
 import { SORT_OPTIONS, sortKey, parseSortKey, sortLabel } from './sort-options.js';
 
-interface NotesOverflowProps {
+interface NotesSortProps {
   sort: NoteSort | undefined;
   order: 'asc' | 'desc' | undefined;
-  /** Hidden while searching, where results are ranked by relevance rather than sorted. */
-  showSort: boolean;
 }
 
 /**
- * The note list's ⋯ menu: how the list is ordered, and the way out to Settings.
+ * The note list's sort control on a phone: one icon, and the sheet of orders behind it.
  *
- * Sort had its own icon here, which left Settings with nowhere to be: the topbar carried it
- * behind the avatar, and the topbar is hidden over the phone's list. A view with no route
- * to Settings is a worse problem than a sort that costs one extra tap, and the Android app
- * had already settled this shape — sort and Settings under one ⋯, a divider between them.
+ * This was a ⋯ menu holding "Sort: …" and Settings. Settings was here only because the
+ * phone hides the topbar over the list and the avatar menu that carried it went with it —
+ * a view with no route to Settings was the bigger problem, so sort paid for it with an
+ * extra tap. The drawer's floor carries Settings now, as a row beside Trash, which is
+ * where Keep puts it and where a thumb that opened the ☰ already is. That frees this
+ * corner for the control people actually reach for several times a day, drawn as itself.
  *
  * Sort stays out of the filter sheet for the reason it always did: every filter changes
  * which notes are on screen and this only changes their order, so among the filters
  * "Title A–Z" invites being read as something that narrows.
  *
- * The current sort is named in the menu row rather than shown as a tick beside five
- * options, which is what Android does and is the better read here: one line says what the
- * order *is* without the menu having to be opened twice.
+ * The current order is named in the icon's accessible name rather than beside it — the
+ * row has no room for a caption, and the sheet marks the current choice the moment it
+ * opens, so nothing is hidden that a second tap would have revealed.
+ *
+ * The caller decides whether this renders at all: while searching, results come back ranked
+ * by relevance and reordering them would throw that ranking away, so the icon goes.
  */
-export function NotesOverflow({ sort, order, showSort }: NotesOverflowProps) {
+export function NotesSort({ sort, order }: NotesSortProps) {
   const navigate = useNavigate();
   const [picking, setPicking] = useState(false);
   const current = sortKey(sort, order);
 
   return (
     <>
-      <OverflowMenu
-        label="More"
-        className="overflow-notes"
-        triggerClassName="icon-btn"
-        items={[
-          ...(showSort
-            ? [
-                {
-                  label: `Sort: ${sortLabel(sort, order)}`,
-                  onSelect: () => setPicking(true),
-                },
-              ]
-            : []),
-          { label: 'Settings', to: '/settings' },
-        ]}
-      />
+      <button
+        type="button"
+        className="icon-btn"
+        aria-label={`Sort notes, currently ${sortLabel(sort, order)}`}
+        onClick={() => setPicking(true)}
+      >
+        <SortIcon />
+      </button>
 
       {/*
-          The orders themselves, as a sheet rather than a submenu.
+          The orders themselves, as a sheet rather than a menu.
 
-          A nested menu shows the current choice only after a second tap, and these labels
-          are longer than a menu row wants to be. Android reaches for a dialog here for the
-          same reasons; this app's equivalent surface is the sheet it already has.
+          A menu shows the current choice only after a second tap, and these labels are
+          longer than a menu row wants to be. Android reaches for a dialog here for the same
+          reasons; this app's equivalent surface is the sheet it already has.
       */}
       <Sheet open={picking} onClose={() => setPicking(false)} title="Sort notes">
         <div className="sort-options">

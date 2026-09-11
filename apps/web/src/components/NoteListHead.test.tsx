@@ -23,7 +23,7 @@ const props = {
   onOpenFilters: () => {},
   onOpenMenu: () => {},
   filtered: false,
-  overflow: <button>more</button>,
+  sort: <button>more</button>,
 };
 
 describe('NoteListHead', () => {
@@ -102,8 +102,8 @@ describe('NoteListHead', () => {
     expect(onCloseSearch).toHaveBeenCalled();
   });
 
-  /* The whole action row goes while searching, the ⋯ included — what belongs in it is
-     decided by the caller, since sort is hidden there but Settings is not. */
+  /* The whole action row goes while searching, the sort slot included — the caller
+     already passes nothing there, and the row must not leave an empty corner behind. */
   it('puts the actions away while the field has the row', () => {
     const { queryByText } = render(<NoteListHead {...props} searchOpen />);
     expect(queryByText('more')).toBeNull();

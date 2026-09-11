@@ -108,12 +108,27 @@ export const Route = createFileRoute('/notes')({
       ...(deps.sort ? { sort: deps.sort } : {}),
       ...(deps.order ? { order: deps.order } : {}),
     };
-    // Warmed, not awaited except for the list: the sidebar's tag and notebook counts can
-    // arrive a moment later without holding up the notes themselves.
+    /*
+     * Warmed, none of it awaited — the list included.
+     *
+     * The list used to be returned, which held the navigation until the rows arrived.
+     * That is the router's contract: nothing about the URL changes until the loader
+     * resolves, so for however long the request took, the drawer had closed and the
+     * heading still named the old notebook, the old notes still under it, with nothing
+     * on screen to say a tap had landed. On a phone across a network that was a full
+     * second of the app appearing to ignore its own drawer.
+     *
+     * Started here and left to run, the request is the same one the component's
+     * `useInfiniteQuery` would make — React Query dedupes on the key — but the URL
+     * commits immediately, the heading names the new place on the next frame, and the
+     * list says it is loading (see `placeholderData` on `notesQuery`, and `aria-busy` in
+     * `NotesLayout`) rather than the app saying nothing. A hover preload still warms the
+     * cache through this same call.
+     */
     void queryClient.ensureQueryData(tagsQuery());
     void queryClient.ensureQueryData(notebooksQuery());
     void queryClient.ensureQueryData(trashCountQuery());
-    return queryClient.ensureInfiniteQueryData(notesQuery(filter, ordering));
+    void queryClient.ensureInfiniteQueryData(notesQuery(filter, ordering));
   },
   component: () => (
     <NotesLayout>
