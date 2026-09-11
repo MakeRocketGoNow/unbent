@@ -4505,11 +4505,16 @@ select.note-field-input { cursor: pointer; }
      label column would leave the control the width of a word. That held while this was a
      form. It is a list of values now, read far more often than edited, and stacking cost
      two lines and a box per field: eight fields filled the screen and none of them could
-     be taken in at a glance. A third of the row is enough for a field name, and the value
-     gets the rest — the same shape as every detail list a phone has taught.
+     be taken in at a glance. The longest name sets the label column, and the value gets
+     the rest — the same shape as every detail list a phone has taught.
+
+     `fit-content` rather than a fixed share. A flat 32% gave "Code" the same 110px as
+     "Date Added", and every value started a third of the way across a screen with no
+     width to spare; now the column is as wide as its longest label and no wider, and the
+     cap only catches a name that is a sentence.
   */
   .note-fields {
-    grid-template-columns: minmax(5.5rem, 32%) minmax(0, 1fr) auto;
+    grid-template-columns: fit-content(30%) minmax(0, 1fr) auto;
     row-gap: 0.1rem;
   }
 
