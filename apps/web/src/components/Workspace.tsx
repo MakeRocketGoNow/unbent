@@ -35,6 +35,7 @@ import { ResizeHandle } from './ResizeHandle.js';
 import { OverflowMenu } from './OverflowMenu.js';
 import { Button } from './Button';
 import { Disclosure } from './Disclosure.js';
+import { Sheet } from './Sheet.js';
 import { BackArrow } from './BackArrow.js';
 import { NoteFields } from './NoteFields.js';
 import { formatFieldValue } from './format-field.js';
@@ -123,6 +124,16 @@ export function Workspace({ noteId, readOnly = false, backTo = '/notes' }: Works
    */
   const [splitPreview, setSplitPreview] = usePersistentState('splitPreview', false);
   const [editorView, setEditorView] = useState<EditorView | null>(null);
+
+  /**
+   * Whether the phone's Details sheet is up.
+   *
+   * Only consulted below the breakpoint: the desktop branch renders the same controls in
+   * flow and never reads this. The two branches are separate subtrees, so crossing the
+   * breakpoint unmounts the sheet and this goes back to false with it — which is the right
+   * answer anyway, since the controls are on screen at that width.
+   */
+  const [detailsOpen, setDetailsOpen] = useState(false);
   // Which files are PDFs regardless of what they are named; both panes render from it.
   const pdfFilenames = usePdfAttachments(noteId);
 
@@ -283,6 +294,67 @@ export function Workspace({ noteId, readOnly = false, backTo = '/notes' }: Works
     .filter((d) => draft.fields[d.id] !== null && draft.fields[d.id] !== undefined)
     .map((d) => `${d.name}: ${formatFieldValue(d.type, draft.fields[d.id]!)}`)
     .join(' · ');
+
+  /**
+   * The note's filing controls, for whichever container this width puts them in.
+   *
+   * Built here rather than twice in the markup below: a phone shows them in a sheet and a
+   * desktop shows them in flow, and everything about *what* they are — the picker, the tag
+   * entry, the fields and the way to their settings — is the same either way.
+   *
+   * Null until the note has loaded, which is what the render below tests: `note` is read
+   * for the carried values.
+   */
+  const filingControls = !note ? null : (
+    <div className="tag-row">
+      {/* Filing a note by picking from the notebooks that exist, rather than
+          retyping a name — which is how case-variant duplicates used to appear. */}
+      <select
+        className="note-notebook"
+        value={draft.notebook ?? ''}
+        aria-label="Notebook"
+        disabled={readOnly}
+        onChange={(e) => setDraft((d) => ({ ...d, notebook: e.target.value || null }))}
+      >
+        {/* No notebook. Shown as "Inbox" everywhere in the UI; see NotesLayout. */}
+        <option value="">Inbox</option>
+        {notebooks.data?.notebooks.map((nb) => (
+          <option key={nb.id} value={nb.name}>
+            {nb.name}
+          </option>
+        ))}
+      </select>
+
+      <TagInput
+        tags={draft.tags}
+        suggestions={tags.data?.map((t) => t.name) ?? []}
+        onChange={(next) => setDraft((d) => ({ ...d, tags: next }))}
+      />
+
+      <NoteFields
+        definitions={fieldDefs.data}
+        values={draft.fields}
+        carried={note.fields ?? []}
+        notebookId={currentNotebook?.id ?? null}
+        readOnly={readOnly}
+        onChange={(fieldId, value) =>
+          setDraft((d) => ({ ...d, fields: { ...d.fields, [fieldId]: value } }))
+        }
+        onAddField={addField}
+        manage={
+          currentNotebook && (
+            <Link
+              to="/settings/notebooks/$notebookId"
+              params={{ notebookId: currentNotebook.id }}
+              className="link small note-fields-manage"
+            >
+              Manage fields
+            </Link>
+          )
+        }
+      />
+    </div>
+  );
 
   async function removeNote() {
     await api.deleteNote(noteId);
@@ -476,85 +548,68 @@ export function Workspace({ noteId, readOnly = false, backTo = '/notes' }: Works
       </div>
 
       {/*
-          The note's filing, collapsed to one line on a phone.
+          The note's filing: a notebook, its tags, and the notebook's own fields.
 
-          A notebook picker and a tag field are two full rows of controls — 69px — sitting
-          permanently between the title and the first line of the note. They are read far
-          more often than they are changed, so the summary states them and a tap opens the
-          controls. Not moved into the overflow menu: this is what the note *is*, and in an
+          Two shapes for one set of controls, because the two widths ask different questions
+          of them. `filingControls` is written once and rendered by both.
+
+          On a desktop they sit in flow, open, where a row of pickers costs nothing.
+
+          On a phone they move into a sheet, and the note keeps its screen. Inline they were
+          unbounded: `.workspace` does not scroll — only `.pane` does — so a notebook with
+          six fields grew this block until the editor was a sliver, with the title above it
+          and the docked toolbar and the keyboard below. Capping it would only have nested a
+          scroller inside chrome that cannot scroll. A sheet is the shape that answers it:
+          the values stay readable on the row, the controls come up over the note rather
+          than pushing it, and they scroll inside their own 85dvh. It is also what the
+          Android app already does — `NoteScreen.kt` draws this row and opens a
+          `ModalBottomSheet` from it — so the two platforms now agree.
+
+          Not the overflow menu, at either width: this is what the note *is*, and in an
           archive this size tags are how anything gets found again.
-
-          Open above the breakpoint, where the row costs nothing — `defaultOpen="wide"` is
-          that, and Disclosure carries the remount it needs to survive a viewport change.
       */}
-      <Disclosure
-        className="tag-row-wrap"
-        defaultOpen="wide"
-        summary={
+      {filingControls &&
+        (isMobile ? (
           <>
-            {/* Shown only while open, in place of the values: the controls below then
-                say everything the summary said, and a notebook named twice in a row
-                reads as a mistake. See `.tag-row-summary-open`. */}
-            <span className="tag-row-summary-open">Filing</span>
-            <span className="tag-row-summary-book">{draft.notebook ?? 'Inbox'}</span>
-            {draft.tags.length > 0 && (
-              <span className="tag-row-summary-tags">
-                {draft.tags.map((t) => `#${t}`).join(' ')}
+            {/*
+                The row states the filing and opens the sheet.
+
+                A button rather than a `<details>` summary: what it does now is open a
+                surface, not unfold in place, and a chevron that promised an unfold would be
+                describing the wrong gesture.
+            */}
+            <button
+              type="button"
+              className="filing-row"
+              aria-haspopup="dialog"
+              aria-expanded={detailsOpen}
+              onClick={() => setDetailsOpen(true)}
+            >
+              <span className="filing-row-line">
+                <span className="tag-row-summary-book">{draft.notebook ?? 'Inbox'}</span>
+                {draft.tags.length > 0 && (
+                  <span className="tag-row-summary-tags">
+                    {draft.tags.map((t) => `#${t}`).join(' ')}
+                  </span>
+                )}
               </span>
-            )}
-            {fieldSummary && <span className="tag-row-summary-fields">{fieldSummary}</span>}
+              {/* The values on their own line, so the notebook and tags above are not
+                  squeezed into an ellipsis by a field list that is longer than both. */}
+              {fieldSummary && <span className="tag-row-summary-fields">{fieldSummary}</span>}
+            </button>
+            <Sheet
+              open={detailsOpen}
+              onClose={() => setDetailsOpen(false)}
+              title="Details"
+            >
+              {filingControls}
+            </Sheet>
           </>
-        }
-      >
-        <div className="tag-row">
-        {/* Filing a note by picking from the notebooks that exist, rather than
-            retyping a name — which is how case-variant duplicates used to appear. */}
-        <select
-          className="note-notebook"
-          value={draft.notebook ?? ''}
-          aria-label="Notebook"
-          disabled={readOnly}
-          onChange={(e) => setDraft((d) => ({ ...d, notebook: e.target.value || null }))}
-        >
-          {/* No notebook. Shown as "Inbox" everywhere in the UI; see NotesLayout. */}
-          <option value="">Inbox</option>
-          {notebooks.data?.notebooks.map((nb) => (
-            <option key={nb.id} value={nb.name}>
-              {nb.name}
-            </option>
-          ))}
-        </select>
-
-        <TagInput
-          tags={draft.tags}
-          suggestions={tags.data?.map((t) => t.name) ?? []}
-          onChange={(next) => setDraft((d) => ({ ...d, tags: next }))}
-        />
-
-        <NoteFields
-          definitions={fieldDefs.data}
-          values={draft.fields}
-          carried={note.fields ?? []}
-          notebookId={currentNotebook?.id ?? null}
-          readOnly={readOnly}
-          onChange={(fieldId, value) =>
-            setDraft((d) => ({ ...d, fields: { ...d.fields, [fieldId]: value } }))
-          }
-          onAddField={addField}
-          manage={
-            currentNotebook && (
-              <Link
-                to="/settings/notebooks/$notebookId"
-                params={{ notebookId: currentNotebook.id }}
-                className="link small note-fields-manage"
-              >
-                Manage fields
-              </Link>
-            )
-          }
-        />
-        </div>
-      </Disclosure>
+        ) : (
+          <Disclosure className="tag-row-wrap" defaultOpen="wide" summary={<>Details</>}>
+            {filingControls}
+          </Disclosure>
+        ))}
 
       {!readOnly && (
         <Attachments
