@@ -129,12 +129,22 @@ The subject line says what changed **for the user**, in plain language, as a sen
 Not `feat(editor): add PDF expansion`. The body explains what was wrong before, what the
 change does, and any non-obvious reasoning — the same "why" standard as the comments.
 
-The user drives commits with a `msg-and-commit` skill, which scopes the message to the
-current session's changes rather than the whole dirty tree. It lives in their environment,
-not in this repo, so it may not be available to you — if it isn't, follow the same rule by
-hand: stage only what this session touched.
+**Commit atomically as you go.** Don't accumulate a session's work into one commit at the
+end, and don't wait to be asked for each one — when a logical change is complete and
+verified, commit it. Each commit should stand on its own: the tree builds and typechecks at
+every one, not only at the tip.
 
-Commit when asked. Don't commit or push unprompted.
+Stage only what this session touched. A working directory often carries edits from another
+terminal or an unfinished task, and `git diff` cannot tell those apart — only the session
+can. Prefer explicit paths over `git add -A`, and if `git status` shows files you didn't
+touch, leave them and say what you skipped.
+
+The user also has a `msg-and-commit` skill for the same job on demand, which scopes a
+message to the session's changes. It lives in their environment, not in this repo, so it
+may not be available to you — the rule above is the same either way.
+
+**Pushing is still on request.** Committing as you go is the default; pushing and opening a
+PR are not. Don't push unprompted.
 
 ## Running things
 
@@ -160,9 +170,22 @@ the truth; the derived pair is only where it started looking.
 
 ### Working from a git worktree
 
-Branch work often happens in a worktree beside the main checkout. **Run
-`pnpm worktree:setup` once in a new one**, before anything else. `git worktree add` brings
-tracked files and nothing else, so until then the worktree has no `.dev.vars` (the Worker
+Branch work often happens in a worktree beside the main checkout — prefer one over
+switching branches in place, so the user's checkout and dev server stay where they are.
+
+**Branch off a freshly synced `main`.** A local `main` is stale as often as not, and a
+branch cut from it starts behind, which shows up later as conflicts or as a review of code
+that was already changed on `origin`. Fetch first and branch from the remote ref, rather
+than assuming the local one is current:
+
+```bash
+git fetch origin
+git worktree add -b <branch> <path> origin/main
+```
+
+The README's Worktrees section has the rest of the mechanics. **Run `pnpm worktree:setup`
+once in a new worktree**, before anything else. `git worktree add` brings tracked files and
+nothing else, so until then the worktree has no `.dev.vars` (the Worker
 starts with no `BETTER_AUTH_SECRET` and no OAuth credentials), no dependencies, and no
 local database. The setup script copies those across and seeds D1 and R2 from the main
 checkout, then prints the ports.
