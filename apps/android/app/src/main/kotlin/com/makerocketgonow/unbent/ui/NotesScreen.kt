@@ -485,6 +485,14 @@ private fun SearchBar(query: String, onQuery: (String) -> Unit, onClose: () -> U
 /**
  * The directory: where to go. Every notebook with its count, and the Inbox.
  *
+ * Drawn the way Keep draws its drawer, which the web app now copies too: a glyph on every
+ * row, because a column of bare words is scanned by reading and a column with a picture
+ * beside each word is scanned by looking; the notebooks under a section head that carries
+ * the way to edit them; and the way to make another as the last row of the list it adds
+ * to. The glyphs are the web's own lucide shapes, traced (`ic_notes`, `ic_inbox`,
+ * `ic_notebook`), so someone who learned the drawer on the site finds the same pictures
+ * here.
+ *
  * It used to hold the sort and the date range as well, which made it three unrelated
  * things stacked in one column — a place to go, a filter to combine, and a view setting —
  * and the user had to re-orient twice on the way down. Those moved to the app bar's
@@ -527,6 +535,7 @@ private fun FilterDrawer(
             val item = Modifier.padding(horizontal = Space.Medium)
             NavigationDrawerItem(
                 label = { Text(stringResource(R.string.all_notes)) },
+                icon = { Icon(painterResource(R.drawable.ic_notes), contentDescription = null) },
                 selected = state.notebook == null && state.selectedTags.isEmpty(),
                 shape = Shapes.Row,
                 onClick = {
@@ -540,6 +549,7 @@ private fun FilterDrawer(
             if (state.unfiled > 0 || state.notebook == UNFILED) {
                 NavigationDrawerItem(
                     label = { Text(stringResource(R.string.inbox)) },
+                    icon = { Icon(painterResource(R.drawable.ic_inbox), contentDescription = null) },
                     badge = { CountBadge(state.unfiled) },
                     selected = state.notebook == UNFILED,
                     shape = Shapes.Row,
@@ -553,9 +563,40 @@ private fun FilterDrawer(
 
             HorizontalDivider(Modifier.padding(vertical = Space.Medium))
 
+            /*
+             * The section's name, and the way to change what is in it.
+             *
+             * A muted word on the left and Edit on the right, as Keep heads its labels.
+             * The rows below are places to go, so anything that changes them has to live
+             * outside the rows — a control on every line of the app's main navigation
+             * would put a rarely used thing on its most used surface. Edit replaces the
+             * gear that used to sit in the footer, which was the same destination behind
+             * a picture that said "settings". Shown even with no notebooks, because the
+             * way to make the first one is the row at the end of this section.
+             */
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    // The rows' own inset plus their inner padding, so the word sits over
+                    // the glyphs rather than over the pill's rounded edge.
+                    .padding(start = Space.Medium + Space.Large, end = Space.Medium),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    stringResource(R.string.notebooks_label),
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.weight(1f),
+                )
+                TextButton(onClick = { onManageNotebooks(false) }) {
+                    Text(stringResource(R.string.notebooks_edit))
+                }
+            }
+
             for (nb in state.notebooks) {
                 NavigationDrawerItem(
                     label = { Text(nb.name, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                    icon = { Icon(painterResource(R.drawable.ic_notebook), contentDescription = null) },
                     badge = { CountBadge(nb.count) },
                     selected = state.notebook == nb.name,
                     shape = Shapes.Row,
@@ -566,44 +607,28 @@ private fun FilterDrawer(
                     modifier = item,
                 )
             }
-        }
 
-        /*
-         * The footer: create on the left, manage on the right.
-         *
-         * Fixed rather than the last row of the scroll, so both are one tap from anywhere
-         * in a long directory. Creating is the common act and reads as a row like the ones
-         * above it; managing is rare and sits as an icon at the end, quiet but visible —
-         * which is the affordance a long-press would not have been.
-         *
-         * Both open the same screen, because creating a notebook and tidying the list are
-         * the same errand often enough that two destinations would be a distinction
-         * without a difference. "New notebook" asks for the field to be focused on
-         * arrival, so the row keeps its promise: it says create, and the keyboard is up
-         * with the cursor waiting.
-         */
-        HorizontalDivider()
-        Row(
-            Modifier
-                .fillMaxWidth()
-                .padding(horizontal = Space.Medium, vertical = Space.Small),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
+            /*
+             * Making another notebook, as the last row of the notebooks rather than a
+             * fixed footer: it is about the list above it, and Keep ends its labels the
+             * same way. It was fixed so it stayed one tap from anywhere in a long
+             * directory; that reachability now belongs to Edit in the section head, at
+             * the top, where a long list starts.
+             *
+             * It opens the same screen Edit does, because creating a notebook and tidying
+             * the list are the same errand often enough that two destinations would be a
+             * distinction without a difference. It asks for the field to be focused on
+             * arrival, so the row keeps its promise: it says create, and the keyboard is
+             * up with the cursor waiting.
+             */
             NavigationDrawerItem(
                 label = { Text(stringResource(R.string.new_notebook)) },
                 icon = { Icon(Icons.Default.Add, contentDescription = null) },
                 selected = false,
                 shape = Shapes.Row,
                 onClick = { onManageNotebooks(true) },
-                modifier = Modifier.weight(1f),
+                modifier = item,
             )
-            IconButton(onClick = { onManageNotebooks(false) }) {
-                Icon(
-                    Icons.Default.Settings,
-                    contentDescription = stringResource(R.string.manage_notebooks),
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
         }
 
         /*
