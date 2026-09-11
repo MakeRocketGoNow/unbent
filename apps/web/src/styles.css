@@ -1627,32 +1627,12 @@ a.sidebar-status:hover {
 }
 
 /*
-   The two halves of the filing summary.
+   The parts of the filing summary, which is the phone's `.filing-row`.
 
-   Not in the mobile block, though the summary is only visible there: these describe what the
-   spans are, not what width they appear at. `.disclosure-label` does the truncating; these
-   only say which half gives way first.
+   Not in the mobile block, though that is the only place they are drawn: these describe what
+   the spans are, not what width they appear at. They only say which part gives way first when
+   the row runs out of room.
 */
-
-/*
-   Open, the summary names the section; closed, it states the values.
-
-   A disclosure's summary states its value so nothing is hidden, only folded — but once
-   it is open the controls right below state the same thing, and a notebook named twice
-   in a row, once in the summary and once in the picker under it, read as a mistake
-   rather than as a fold. So the value spans give way to one word while the row is open.
-   Done in CSS on the `open` attribute rather than in React because Disclosure
-   deliberately exposes no open state; see its header comment.
-*/
-.tag-row-summary-open { display: none; }
-
-.tag-row-wrap[open] > summary .tag-row-summary-open { display: inline; }
-
-.tag-row-wrap[open] > summary .tag-row-summary-book,
-.tag-row-wrap[open] > summary .tag-row-summary-tags,
-.tag-row-wrap[open] > summary .tag-row-summary-fields {
-  display: none;
-}
 
 /* Never shrinks below its own text: the notebook is the identifying half. */
 .tag-row-summary-book { flex: 0 0 auto; }
@@ -1682,9 +1662,12 @@ a.sidebar-status:hover {
   text-overflow: ellipsis;
 }
 
-.tag-row-wrap:has(.tag-row-summary-fields) .tag-row-summary-tags {
-  flex-shrink: 0;
-  max-width: 45%;
+/* The values have their own line inside `.filing-row`, so the tags no longer have to yield
+   to them — they share the first line with the notebook alone. Kept as a rule about the two
+   spans rather than deleted, because that is still the pair that competes for the width. */
+.filing-row:has(.tag-row-summary-fields) .tag-row-summary-tags {
+  flex-shrink: 1;
+  min-width: 0;
 }
 
 /*
@@ -1696,6 +1679,12 @@ a.sidebar-status:hover {
    a sentence and the control has to have somewhere to put it. Every row is three cells —
    label, control, and a side slot for Open/Call/Clear — and the third is always emitted,
    even empty, so the rows cannot drift out of step in the grid.
+
+   No type glyph beside the label. One icon per row, eight rows deep, read as decoration
+   rather than as information: the label already names the field, and the control below it
+   already says what the type is — a date picker and a checkbox do not need announcing. The
+   glyphs survive in the notebook's field settings, where the type is the subject and rows
+   are picked out by it.
 
    The controls take the row's 1.65rem, the tag chips' and the picker's height, so the
    whole filing block stays on one rhythm — see `.tag-row`.
@@ -1715,7 +1704,6 @@ a.sidebar-status:hover {
 .note-field-label {
   display: inline-flex;
   align-items: center;
-  gap: 0.35rem;
   min-width: 0;
   font-size: 0.78rem;
   color: var(--muted);
@@ -1851,17 +1839,17 @@ select.note-field-input { cursor: pointer; }
 .note-fields-manage { white-space: nowrap; }
 
 /*
-   The note's filing, behind a disclosure on a phone.
+   The desktop filing block has no summary to show.
 
-   Above the breakpoint it is simply the row it always was — no summary, no chevron. The
-   summary only becomes a control at the width where the row costs too much.
+   This is the only width that renders the disclosure at all — a phone draws `.filing-row`
+   and opens a sheet instead — and here the controls are always open, so a summary would be
+   a heading above a row that is already stating itself. `Disclosure` requires the prop, so
+   the word is hidden rather than absent, and the element keeps the accessible name.
 
    Written as a compound selector on purpose. `.disclosure > summary` and
    `.tag-row-wrap > summary` carry equal specificity, so which one won would be settled by
    source order — and the shared rule sits some 800 lines above this one. Matching both
-   classes puts this a step higher, so the hide wins wherever either rule ends up. The
-   mobile block re-reveals it at the same specificity, and wins there on source order
-   because that block is last in the file.
+   classes puts this a step higher, so the hide wins wherever either rule ends up.
 */
 .disclosure.tag-row-wrap > summary {
   display: none;
@@ -4261,60 +4249,150 @@ select.note-field-input { cursor: pointer; }
   .shell.wide:not(.embed) { padding-inline: 0.75rem; }
 
   /*
-     The notebook and tag controls, collapsed to a line that states them.
+     The border above is that divider, and it is deliberate.
 
-     Same disclosure as the sidebar's tag filter, and the same component, because it is the
-     same gesture — and the summary carries the values so nothing is hidden, only folded.
-
-     It keeps its own border, like every other block in this column. That was tried the
-     other way: once filing and the attachments panel were drawn identically, the rule
-     between them looked like it was separating two halves of one thing, so it came out.
-     On screen the opposite was true. Two identical rows with nothing between them read as
-     one row that had wrapped, and the eye had to use the chevrons to find where the first
-     ended — while the divider, which the rest of the column already uses to mean "different
-     thing", said it at a glance. Sameness of style is what makes them a family; the rule is
-     what keeps them countable.
+     It was tried the other way: once filing and the attachments panel were drawn
+     identically, the rule between them looked like it was separating two halves of one
+     thing, so it came out. On screen the opposite was true. Two identical rows with nothing
+     between them read as one row that had wrapped, and the eye had to use the chevrons to
+     find where the first ended — while the divider, which the rest of the column already
+     uses to mean "different thing", said it at a glance. Sameness of style is what makes
+     them a family; the rule is what keeps them countable.
   */
-  .tag-row-wrap {
-    padding-bottom: 0;
-    border-bottom: 1px solid var(--border);
-  }
-
-  /* Collapsed, the controls contribute nothing. Open, `.tag-row` already carries the
-     0.5rem below the last control, so adding more here made the gap before the border
-     half again as large as every gap above it. */
-  .tag-row-wrap[open] { padding-bottom: 0; }
 
   /*
-     The summary becomes a control at this width, and only here.
+     The filing row: what the note is filed as, and the way to the sheet that changes it.
 
-     Everything about how it is drawn — the chevron, the marker suppression, the focus ring,
-     the 44px target — is `.disclosure`, shared with the sidebar's tag filter and the
-     attachments panel. This rule is only the switch that turns the row into a disclosure at
-     all. Compound selector to match the hide it is overriding; see that rule for why.
+     Drawn as the disclosures around it are — the same muted 0.78rem, the same 44px target,
+     the same chevron box — because it is the same kind of thing in the column and the
+     family is what makes the blocks countable. The chevron does not rotate: this one opens
+     a sheet rather than unfolding, and a rotating chevron would promise the other gesture.
   */
-  .disclosure.tag-row-wrap > summary {
+  .filing-row {
     display: flex;
+    /* The values take a line of their own below, which only happens if the row may wrap:
+       without this their `flex-basis: 100%` squeezed the notebook and tags beside them to
+       zero width, and the line the row exists to state disappeared off the screen. */
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.15rem 0.5rem;
+    width: 100%;
+    min-height: 2.75rem;
+    padding: 0.35rem 0;
+    font: inherit;
+    font-size: 0.78rem;
+    color: var(--muted);
+    text-align: start;
+    background: none;
+    /* Only the bottom edge, which is the divider this column uses between blocks. A
+       shorthand `border: none` here would be undone further down by the rule that adds it,
+       and which of the two won would be source order rather than intent. */
+    border: none;
+    border-bottom: 1px solid var(--border);
+    cursor: pointer;
+  }
+
+  .filing-row:hover { color: var(--fg); }
+
+  .filing-row:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+    border-radius: 0.25rem;
+  }
+
+  /* The notebook and its tags, which share a line and truncate against each other. */
+  .filing-row-line {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
   }
 
   /*
-     Fields in one column: the label above its control, the side action beside the control.
-     A label column at this width would leave the control the width of a word.
+     The values wrap to their own line rather than competing for the first one.
+
+     Inline they were the longest part of the row and took the space the notebook and tags
+     needed, so a coupon with five fields showed "Coupons #b… Code: T1-…" — every part
+     truncated and none of them readable. On their own line all of them fit, and the row
+     states the note's filing in full without opening anything, which is the whole point of
+     the summary.
+  */
+  .filing-row .tag-row-summary-fields {
+    flex: 1 0 100%;
+    order: 1;
+  }
+
+  /* The chevron, drawn as `.disclosure > summary::after` draws it, pointing the way the
+     sheet comes from. Fixed: see the note on the row above. */
+  .filing-row::after {
+    content: '';
+    flex: 0 0 auto;
+    /* Stays on the first line, beside the notebook it belongs to: centred against a
+       two-line row it floated in the gap between them and read as unattached. */
+    align-self: center;
+    order: 0;
+    width: 0.36rem;
+    height: 0.36rem;
+    margin-left: auto;
+    border-right: 1.5px solid currentColor;
+    border-bottom: 1.5px solid currentColor;
+    transform: rotate(-45deg) translate(-0.05rem, -0.05rem);
+  }
+
+  /*
+     Inside the sheet the controls have the width to themselves.
+
+     In flow these size to their content beside each other; here each one is a row of a
+     surface that is about them, and a picker half the width of the sheet reads as unfinished.
+  */
+  .sheet .note-notebook,
+  .sheet .tag-input { width: 100%; }
+
+  /*
+     Label and value on one line, which is how a phone states a detail.
+
+     These used to stack — label above a full-width boxed input — on the reasoning that a
+     label column would leave the control the width of a word. That held while this was a
+     form. It is a list of values now, read far more often than edited, and stacking cost
+     two lines and a box per field: eight fields filled the screen and none of them could
+     be taken in at a glance. A third of the row is enough for a field name, and the value
+     gets the rest — the same shape as every detail list a phone has taught.
   */
   .note-fields {
-    grid-template-columns: minmax(0, 1fr) auto;
-    row-gap: 0.25rem;
+    grid-template-columns: minmax(5.5rem, 32%) minmax(0, 1fr) auto;
+    row-gap: 0.1rem;
   }
 
-  .note-field-label { grid-column: 1 / -1; }
+  /*
+     Quiet at rest, a control when touched.
 
-  /* Rows part by a little more than label-to-control, so a stack stays countable. */
-  .note-field + .note-field .note-field-label { margin-top: 0.35rem; }
-
-  /* The same 2.25rem the chips and pills take here: tall enough for a thumb, and no more. */
+     The border and fill are what made eight values read as a settings form. Dropping them
+     leaves the row as `Code  T1-WWC-5G839` — information — while the input is still an
+     input: tapping it brings the edge back and the caret with it, so nothing is a tap
+     further away than it was. This is the read-first half of the same trade the sheet
+     makes, and it costs no second state to get in and out of.
+  */
   .note-field-input {
     min-height: 2.25rem;
     font-size: 0.9rem;
+    padding-inline: 0.25rem;
+    background: transparent;
+    border-color: transparent;
+  }
+
+  /* The edge comes back for the one being edited. */
+  .note-field-input:focus {
+    background: color-mix(in srgb, var(--fg) 4%, transparent);
+    border-color: var(--accent);
+  }
+
+  /* A select keeps its edge: the native arrow is the only thing saying it has options,
+     and an arrow with no box around it reads as part of the value. */
+  select.note-field-input {
+    padding-inline: 0.35rem;
+    border-color: var(--border);
   }
 
   .note-field-add .note-field-input { flex-basis: 100%; }

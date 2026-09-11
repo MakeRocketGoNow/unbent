@@ -11,6 +11,7 @@ import {
 import type { Note } from '@unbent/shared';
 import { keys } from '../queries.js';
 import { markNewNote } from '../useNewNote.js';
+import { TOUCH_QUERY } from '../useMediaQuery.js';
 import { Workspace } from './Workspace.js';
 
 /**
@@ -85,16 +86,26 @@ const editorHost = () => document.querySelector('.cm-content');
  */
 const settle = () => act(async () => {});
 
-beforeEach(() => {
-  // jsdom ships no `matchMedia`, and the workspace asks for the breakpoint on its first
-  // render. A desktop answer: the split preview is the only thing this changes here, and
-  // it is off by default at both widths.
+/**
+ * Answers each query on its own rather than answering `false` to everything.
+ *
+ * The workspace asks two questions now — the width and whether there is a keyboard — and
+ * they are different questions with different answers, which a blanket stub cannot say.
+ * jsdom ships no `matchMedia` at all, so this is also what keeps the component mountable.
+ */
+function stubMedia(matches: (query: string) => boolean) {
   vi.stubGlobal('matchMedia', (query: string) => ({
-    matches: false,
+    matches: matches(query),
     media: query,
     addEventListener: () => {},
     removeEventListener: () => {},
   }));
+}
+
+beforeEach(() => {
+  // A mouse on a desktop: no keyboard to raise, so the body keeps the caret. The touch
+  // tests below restub for the other answer.
+  stubMedia(() => false);
 });
 
 afterEach(() => {
@@ -142,6 +153,35 @@ describe('opening a note', () => {
 
     await waitFor(() => expect(editorHost()).toBeTruthy());
     expect(document.activeElement).toBe(editorHost());
+  });
+
+  /*
+     The keyboard costs half the screen, so nothing takes focus on a phone by itself.
+
+     Keyed on the pointer rather than the width: a tablet at 1024px is not `MOBILE_QUERY`
+     and still raises a keyboard. Asserted as "the body has focus" rather than "the editor
+     does not", because a caret parked anywhere is the failure — the screen has to open
+     with nothing focused at all.
+  */
+  it('leaves an existing note unfocused on a touch device', async () => {
+    stubMedia((q) => q === TOUCH_QUERY);
+    mount();
+
+    await waitFor(() => expect(editorHost()).toBeTruthy());
+    await settle();
+    expect(document.activeElement).toBe(document.body);
+  });
+
+  /*
+     The exception. A note that was just created was created to be typed into, and the
+     keyboard is what you asked for — so the title still takes the caret on a phone.
+  */
+  it('still puts the caret in the title of a new note on a touch device', async () => {
+    stubMedia((q) => q === TOUCH_QUERY);
+    markNewNote('n1');
+    mount();
+
+    await waitFor(() => expect(document.activeElement).toBe(title()));
   });
 
   it('hands the note over to the body when Enter is pressed in the title', async () => {

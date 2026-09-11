@@ -9,7 +9,6 @@ import {
   type NoteFieldValue,
 } from '@unbent/shared';
 import { Button } from './Button';
-import { FieldTypeIcon } from './icons.js';
 
 export interface NoteFieldsProps {
   /** The note's notebook's definitions, in order. Undefined while they load. */
@@ -86,7 +85,6 @@ export function NoteFields({
       {foreign.map((v) => (
         <div key={v.fieldId} className="note-field note-field-foreign" data-type={v.type}>
           <span className="note-field-label">
-            <FieldTypeIcon type={v.type} />
             {v.name}
             <span className="note-field-origin">from {v.notebook}</span>
           </span>
@@ -127,6 +125,19 @@ function FieldRow({ def, value, readOnly, onChange }: FieldRowProps) {
     disabled: readOnly,
   };
 
+  /*
+     An em dash for a value that has none.
+
+     With the mobile row drawn quiet — no border, no fill — an empty text input is an empty
+     patch of screen, and a field with no value reads as a rendering failure rather than as
+     a blank. The dash is what a detail list puts there instead.
+
+     Only for the inputs that would otherwise render nothing. A checkbox, a date input and a
+     select all draw their own empty state — and `placeholder` on a `<select>` is not a
+     thing at all, which is why this is spread rather than folded into `common`.
+  */
+  const blank = { placeholder: '—' };
+
   let control: ReactNode;
   let side: ReactNode = null;
   switch (def.type) {
@@ -134,6 +145,7 @@ function FieldRow({ def, value, readOnly, onChange }: FieldRowProps) {
       control = (
         <input
           {...common}
+          {...blank}
           type="number"
           step="any"
           inputMode="decimal"
@@ -178,7 +190,7 @@ function FieldRow({ def, value, readOnly, onChange }: FieldRowProps) {
     }
     case 'url':
       control = (
-        <input {...common} type="url" value={text} onChange={(e) => setText(e.target.value)} />
+        <input {...common} {...blank} type="url" value={text} onChange={(e) => setText(e.target.value)} />
       );
       if (/^https?:\/\//.test(text)) {
         side = (
@@ -190,7 +202,7 @@ function FieldRow({ def, value, readOnly, onChange }: FieldRowProps) {
       break;
     case 'email':
       control = (
-        <input {...common} type="email" value={text} onChange={(e) => setText(e.target.value)} />
+        <input {...common} {...blank} type="email" value={text} onChange={(e) => setText(e.target.value)} />
       );
       if (text.includes('@')) {
         side = (
@@ -202,7 +214,7 @@ function FieldRow({ def, value, readOnly, onChange }: FieldRowProps) {
       break;
     case 'phone':
       control = (
-        <input {...common} type="tel" value={text} onChange={(e) => setText(e.target.value)} />
+        <input {...common} {...blank} type="tel" value={text} onChange={(e) => setText(e.target.value)} />
       );
       if (text) {
         side = (
@@ -214,7 +226,7 @@ function FieldRow({ def, value, readOnly, onChange }: FieldRowProps) {
       break;
     case 'text':
       control = (
-        <input {...common} type="text" value={text} onChange={(e) => setText(e.target.value)} />
+        <input {...common} {...blank} type="text" value={text} onChange={(e) => setText(e.target.value)} />
       );
       break;
   }
@@ -222,7 +234,6 @@ function FieldRow({ def, value, readOnly, onChange }: FieldRowProps) {
   return (
     <div className="note-field" data-type={def.type}>
       <label className="note-field-label" htmlFor={id}>
-        <FieldTypeIcon type={def.type} />
         {def.name}
       </label>
       {control}
