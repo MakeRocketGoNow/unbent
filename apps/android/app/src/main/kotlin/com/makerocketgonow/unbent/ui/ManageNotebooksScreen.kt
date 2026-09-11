@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
@@ -33,6 +34,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
@@ -136,6 +138,18 @@ fun ManageNotebooksScreen(
                 .imePadding()
                 .fillMaxSize(),
         ) {
+            /*
+             * What the server is doing, under the app bar.
+             *
+             * The first load, and every rename, create and delete after it, is a round
+             * trip; on a slow connection the screen otherwise sits still with nothing to
+             * say it heard the tap. The bar's height is reserved whether or not it is
+             * showing, so the list does not step down 4dp each time a request starts.
+             */
+            Box(Modifier.fillMaxWidth().height(4.dp)) {
+                if (!state.loaded || state.busy) LinearProgressIndicator(Modifier.fillMaxWidth())
+            }
+
             state.error?.let { message ->
                 Text(
                     message,
@@ -179,16 +193,20 @@ fun ManageNotebooksScreen(
                     )
                 }
 
-                item(key = "foot") {
-                    Text(
-                        stringResource(
-                            if (state.loaded && state.notebooks.isEmpty()) R.string.notebook_none
-                            else R.string.notebook_manage_hint,
-                        ),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(Space.Large),
-                    )
+                // Nothing to say until the list is known: "No notebooks yet" over a list
+                // that has not arrived would be a lie for the length of the round trip.
+                if (state.loaded) {
+                    item(key = "foot") {
+                        Text(
+                            stringResource(
+                                if (state.notebooks.isEmpty()) R.string.notebook_none
+                                else R.string.notebook_manage_hint,
+                            ),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(Space.Large),
+                        )
+                    }
                 }
             }
         }

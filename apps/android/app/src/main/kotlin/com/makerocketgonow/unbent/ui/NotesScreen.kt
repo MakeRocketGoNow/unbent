@@ -612,6 +612,29 @@ private fun FilterDrawer(
                 }
             }
 
+            /*
+             * Until the directory has answered, a spinner where the first notebook will
+             * be. Without it a slow load shows a head with nothing under it but "New
+             * notebook", which reads as an account with no notebooks — and the drawer is
+             * often the first thing opened after a cold start, when the request is still
+             * in flight. Sized and inset like a row so nothing moves when the rows land.
+             */
+            if (!state.filtersLoaded) {
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .height(56.dp)
+                        .padding(start = Space.Medium + Space.Large),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(20.dp),
+                        strokeWidth = 2.dp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+
             for (nb in state.notebooks) {
                 NavigationDrawerItem(
                     label = { Text(nb.name, maxLines = 1, overflow = TextOverflow.Ellipsis) },
@@ -986,6 +1009,13 @@ class NotesState(private val api: UnbentApi) {
 
     var notebooks by mutableStateOf<List<Notebook>>(emptyList())
         private set
+    /**
+     * Whether the directory has answered at least once. Never goes back to false: a
+     * refresh replaces the rows in place, and a spinner appearing over a list that is
+     * already on screen would say the wrong thing.
+     */
+    var filtersLoaded by mutableStateOf(false)
+        private set
     var unfiled by mutableStateOf(0)
         private set
     var tags by mutableStateOf<List<Tag>>(emptyList())
@@ -1217,6 +1247,7 @@ class NotesState(private val api: UnbentApi) {
                 clearForReload()
             }
         }
+        filtersLoaded = true
         withContext(Dispatchers.IO) { runCatching { api.listTags() } }.onSuccess { fresh ->
             tags = fresh
             // Same for tags: trashing a notebook's notes can take the last note off a tag,
