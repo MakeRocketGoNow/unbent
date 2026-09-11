@@ -25,12 +25,11 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
-import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.DateRange
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Menu
-import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.AlertDialog
@@ -40,8 +39,6 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.DateRangePicker
 import androidx.compose.material3.DrawerValue
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.HorizontalDivider
@@ -155,7 +152,6 @@ fun NotesScreen(
     val scope = rememberCoroutineScope()
     val drawer = rememberDrawerState(DrawerValue.Closed)
     var searchOpen by rememberSaveable { mutableStateOf(false) }
-    var overflowOpen by remember { mutableStateOf(false) }
     var filtering by rememberSaveable { mutableStateOf(false) }
     var pickingSort by rememberSaveable { mutableStateOf(false) }
 
@@ -229,6 +225,7 @@ fun NotesScreen(
                     onPicked = { scope.launch { drawer.close() } },
                     onManageNotebooks = onManageNotebooks,
                     onTrash = onTrash,
+                    onSettings = onSettings,
                 )
             }
         },
@@ -274,20 +271,28 @@ fun NotesScreen(
                                 }
                             }
                             /*
-                             * The gear gave up its place here to the overflow. Settings is
-                             * a rare destination, and an icon of its own beside the filter
-                             * implied the two were the same kind of thing.
+                             * Sort, as itself.
+                             *
+                             * This corner was a ⋮ holding "Sort: …" and Settings. The gear
+                             * had given up its own icon because it is a rare destination,
+                             * and Settings then had nowhere to be but a menu — so sort,
+                             * reached several times a day, paid for it with an extra tap.
+                             * Settings is a row on the drawer's floor now, as Keep draws
+                             * it and as the web app does, which gives this corner back to
+                             * the control it should always have been. The description
+                             * names the current order, since an order you cannot see is a
+                             * list arranged in a way you did not ask for; the dialog marks
+                             * it the moment it opens.
                              */
-                            IconButton(onClick = { overflowOpen = true }) {
-                                Icon(Icons.Default.MoreVert, contentDescription = stringResource(R.string.more))
+                            IconButton(onClick = { pickingSort = true }) {
+                                Icon(
+                                    painterResource(R.drawable.ic_sort),
+                                    contentDescription = stringResource(
+                                        R.string.sort_current,
+                                        stringResource(state.sort.label),
+                                    ),
+                                )
                             }
-                            NotesOverflow(
-                                state = state,
-                                expanded = overflowOpen,
-                                onDismiss = { overflowOpen = false },
-                                onSort = { pickingSort = true },
-                                onSettings = onSettings,
-                            )
                         },
                     )
                 }
@@ -502,6 +507,7 @@ private fun FilterDrawer(
     /** True when the user asked to create, so the new-notebook field takes focus. */
     onManageNotebooks: (creating: Boolean) -> Unit,
     onTrash: () -> Unit,
+    onSettings: () -> Unit,
 ) {
     // The list scrolls; the footer does not. A create action that scrolled away with the
     // notebooks would be unreachable exactly when the list is long enough to need it.
@@ -577,18 +583,6 @@ private fun FilterDrawer(
          * with the cursor waiting.
          */
         HorizontalDivider()
-        /*
-         * The trash sits with the footer rather than among the notebooks: it is a place to
-         * go, but it is not part of the library — putting it in the list would make it look
-         * like somewhere notes are filed.
-         */
-        NavigationDrawerItem(
-            label = { Text(stringResource(R.string.trash)) },
-            selected = false,
-            shape = Shapes.Row,
-            onClick = onTrash,
-            modifier = Modifier.padding(horizontal = Space.Medium, vertical = Space.Hair),
-        )
         Row(
             Modifier
                 .fillMaxWidth()
@@ -611,53 +605,47 @@ private fun FilterDrawer(
                 )
             }
         }
-    }
-}
 
-/**
- * The sort, and the way to settings.
- *
- * What is left here once the filters have a surface of their own. Sort belongs apart from
- * them because it is not one: every filter changes which notes are on screen, and the sort
- * only changes their order — putting it among them would invite reading "Title A–Z" as
- * something that narrows. The row names the current sort, since an order you cannot see
- * is a list arranged in a way you did not ask for.
- */
-@Composable
-private fun NotesOverflow(
-    state: NotesState,
-    expanded: Boolean,
-    onDismiss: () -> Unit,
-    onSort: () -> Unit,
-    onSettings: () -> Unit,
-) {
-    DropdownMenu(expanded = expanded, onDismissRequest = onDismiss) {
-        DropdownMenuItem(
-            text = { Text(stringResource(R.string.sort_current, stringResource(state.sort.label))) },
-            leadingIcon = { Icon(Icons.AutoMirrored.Filled.List, contentDescription = null) },
-            onClick = {
-                onDismiss()
-                onSort()
-            },
+        /*
+         * The floor: the two destinations that are not places notes live.
+         *
+         * The trash sits here rather than among the notebooks: it is a place to go, but it
+         * is not part of the library — putting it in the list would make it look like
+         * somewhere notes are filed. Settings joins it from the app bar's overflow, where
+         * it had been the one item that was not about the list on screen. Keep ends its
+         * drawer the same way, Trash then Settings as plain rows, and the web app now does
+         * too; a thumb that has opened the ☰ is already where both of these are.
+         *
+         * Sign out is deliberately not a third row. It is rare and disruptive, and it
+         * stays on the Settings screen under the account it signs out of — one tap further
+         * than a row here, which is the right distance for it.
+         */
+        HorizontalDivider()
+        NavigationDrawerItem(
+            label = { Text(stringResource(R.string.trash)) },
+            icon = { Icon(Icons.Default.Delete, contentDescription = null) },
+            selected = false,
+            shape = Shapes.Row,
+            onClick = onTrash,
+            modifier = Modifier.padding(horizontal = Space.Medium, vertical = Space.Hair),
         )
-        HorizontalDivider(Modifier.padding(vertical = Space.Hair))
-        DropdownMenuItem(
-            text = { Text(stringResource(R.string.settings_title)) },
-            leadingIcon = { Icon(Icons.Default.Settings, contentDescription = null) },
-            onClick = {
-                onDismiss()
-                onSettings()
-            },
+        NavigationDrawerItem(
+            label = { Text(stringResource(R.string.settings_title)) },
+            icon = { Icon(Icons.Default.Settings, contentDescription = null) },
+            selected = false,
+            shape = Shapes.Row,
+            onClick = onSettings,
+            modifier = Modifier.padding(horizontal = Space.Medium, vertical = Space.Hair),
         )
     }
 }
 
 /**
- * The sort, as a dialog off the overflow.
+ * The sort, as a dialog off the app bar's sort icon.
  *
- * A submenu would have worked and would have been worse: the options are longer than a
- * menu row wants to be, and the current one has to be legible at a glance, which a nested
- * menu shows only after a second tap.
+ * A menu would have worked and would have been worse: the options are longer than a menu
+ * row wants to be, and the current one has to be legible at a glance, which a menu shows
+ * only after a second tap.
  */
 @Composable
 private fun SortDialog(state: NotesState, onDismiss: () -> Unit) {
