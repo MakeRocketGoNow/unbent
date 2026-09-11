@@ -1,32 +1,38 @@
 package com.makerocketgonow.unbent.ui
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -40,18 +46,21 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
 import com.makerocketgonow.unbent.R
 import com.makerocketgonow.unbent.api.ApiException
 import com.makerocketgonow.unbent.api.Notebook
 import com.makerocketgonow.unbent.api.UnbentApi
-import com.makerocketgonow.unbent.ui.theme.Shapes
 import com.makerocketgonow.unbent.ui.theme.Space
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -63,13 +72,23 @@ import kotlinx.coroutines.withContext
  * A screen of its own rather than controls on the drawer's rows. The drawer is where you
  * go to a notebook, and hanging an overflow menu off every row there would put a rarely
  * used control on every line of the app's main navigation — density belongs to the
- * content, and the notebooks are the content. Reached from the drawer's footer instead,
- * directly under the list it manages, so it reads as a continuation of that list rather
- * than a separate place that happens to hold the same names.
+ * content, and the notebooks are the content. Reached from the drawer's section head
+ * instead, directly above the list it manages, so it reads as a continuation of that list
+ * rather than a separate place that happens to hold the same names.
  *
  * The list here duplicates the drawer's, which is a real cost and worth it: delete needs
  * room for a two-option confirm, rename needs a field the row can become, and both need
  * somewhere to put an error. None of that fits in a drawer.
+ *
+ * The shape is Keep's "Edit labels" screen, which the web app's editor will copy from
+ * here. A row is its glyph, its name, its count and a pencil. Tapping it turns it into
+ * the field in place, with a trash can where the glyph was and a check where the pencil
+ * was: the two things you can do to a notebook, offered only once you have said which
+ * one. Delete used to be a text button on every row, which put a destructive word on
+ * every line of a list whose rows are mostly read, not changed; behind the pencil it is
+ * still one tap from the field, and a stray tap on the list cannot find it. Creating is
+ * a row at the top that becomes a field the same way, rather than an always-open field
+ * and button above a list that rarely needs them.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -82,11 +101,16 @@ fun ManageNotebooksScreen(
 ) {
     val scope = rememberCoroutineScope()
     val state = remember(api) { NotebooksState(api) }
-    val createFocus = remember { FocusRequester() }
-    LaunchedEffect(focusCreate) { if (focusCreate) createFocus.requestFocus() }
+    LaunchedEffect(focusCreate) { if (focusCreate) state.startCreate() }
 
     LaunchedEffect(state) { state.load() }
     if (state.unauthorized) LaunchedEffect(Unit) { onUnauthorized() }
+
+    // Back leaves the row before it leaves the screen, the way it closes a drawer first.
+    BackHandler(enabled = state.editing != null || state.creating) {
+        state.cancelRename()
+        state.cancelCreate()
+    }
 
     Scaffold(
         topBar = {
@@ -110,37 +134,6 @@ fun ManageNotebooksScreen(
                 .imePadding()
                 .fillMaxSize(),
         ) {
-            /*
-             * Creating sits at the top, above the list.
-             *
-             * Below it, on an account with a hundred notebooks, the field would be off the
-             * bottom of a screen the user has to scroll to reach — and it is the one thing
-             * here that is not about an existing row.
-             */
-            Row(
-                Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = Space.Large, vertical = Space.Medium),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                OutlinedTextField(
-                    value = state.draft,
-                    onValueChange = state::changeDraft,
-                    placeholder = { Text(stringResource(R.string.notebook_new_hint)) },
-                    singleLine = true,
-                    enabled = !state.busy,
-                    shape = Shapes.Row,
-                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
-                    keyboardActions = KeyboardActions(onDone = { scope.launch { state.create() } }),
-                    modifier = Modifier.weight(1f).focusRequester(createFocus),
-                )
-                Spacer(Modifier.width(Space.Small))
-                Button(
-                    onClick = { scope.launch { state.create() } },
-                    enabled = !state.busy && state.draft.isNotBlank(),
-                ) { Text(stringResource(R.string.notebook_create)) }
-            }
-
             state.error?.let { message ->
                 Text(
                     message,
@@ -150,21 +143,27 @@ fun ManageNotebooksScreen(
                 )
             }
 
-            HorizontalDivider()
-
-            when {
-                !state.loaded -> Spacer(Modifier.height(Space.Large))
-                state.notebooks.isEmpty() -> Text(
-                    stringResource(R.string.notebook_none),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(Space.Large),
-                )
-
-                else -> Unit
-            }
-
             LazyColumn(Modifier.weight(1f)) {
+                /*
+                 * Creating sits at the top, above the list.
+                 *
+                 * Below it, on an account with a hundred notebooks, the row would be off
+                 * the bottom of a screen the user has to scroll to reach — and it is the
+                 * one thing here that is not about an existing row. Keep puts its
+                 * "Create new label" in the same place.
+                 */
+                item(key = "create") {
+                    CreateRow(
+                        creating = state.creating,
+                        draft = state.draft,
+                        busy = state.busy,
+                        onStart = state::startCreate,
+                        onDraft = state::changeDraft,
+                        onCommit = { scope.launch { state.create() } },
+                        onCancel = state::cancelCreate,
+                    )
+                }
+
                 items(state.notebooks, key = { it.id }) { notebook ->
                     NotebookRow(
                         notebook = notebook,
@@ -174,15 +173,16 @@ fun ManageNotebooksScreen(
                         onDraft = state::changeRename,
                         onStartRename = { state.startRename(notebook) },
                         onCommitRename = { scope.launch { state.commitRename() } },
-                        onCancelRename = state::cancelRename,
                         onDelete = { state.askDelete(notebook) },
                     )
-                    HorizontalDivider()
                 }
 
-                item {
+                item(key = "foot") {
                     Text(
-                        stringResource(R.string.notebook_manage_hint),
+                        stringResource(
+                            if (state.loaded && state.notebooks.isEmpty()) R.string.notebook_none
+                            else R.string.notebook_manage_hint,
+                        ),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(Space.Large),
@@ -203,12 +203,160 @@ fun ManageNotebooksScreen(
 }
 
 /**
- * One notebook: its name and count, or the field it becomes while being renamed.
+ * The field a row becomes.
  *
- * The field replaces the name in place rather than opening anywhere else — a control that
- * moves what it is editing reads as jank. Rename is the row itself, since renaming is what
- * the row is mostly for; delete is a button at the trailing edge, quiet because it repeats
- * on every row and destructive so it must never be the thing a stray tap finds.
+ * A bare field rather than an outlined one: the row is still the row, only now you can
+ * type in it, and a box drawn around the name would make it jump into a different kind
+ * of control. The dividers above and below the editing row (see [EditorRow]) are what
+ * mark it out, which is how Keep draws the same state. Focus is taken on arrival, so the
+ * keyboard is up with the cursor waiting — the promise a tap on a name makes.
+ */
+@Composable
+private fun RowField(
+    value: String,
+    hint: String?,
+    enabled: Boolean,
+    onValue: (String) -> Unit,
+    onDone: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val focus = remember { FocusRequester() }
+    LaunchedEffect(Unit) { focus.requestFocus() }
+    /*
+     * The caret starts at the end of the name, as Keep's does: a rename is usually an
+     * addition or a correction at the end, and a caret at the start — where a bare
+     * string value puts it — makes the first keystroke land in front of the name. The
+     * selection is this field's own; the text stays the caller's.
+     */
+    var field by remember { mutableStateOf(TextFieldValue(value, TextRange(value.length))) }
+    if (field.text != value) field = field.copy(text = value)
+    val style = MaterialTheme.typography.bodyLarge.copy(color = MaterialTheme.colorScheme.onSurface)
+    BasicTextField(
+        value = field,
+        onValueChange = {
+            field = it
+            onValue(it.text)
+        },
+        singleLine = true,
+        enabled = enabled,
+        textStyle = style,
+        cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
+        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+        keyboardActions = KeyboardActions(onDone = { onDone() }),
+        modifier = modifier.focusRequester(focus),
+        decorationBox = { inner ->
+            Box {
+                if (value.isEmpty() && hint != null) {
+                    Text(hint, style = style, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                inner()
+            }
+        },
+    )
+}
+
+/**
+ * One row of the editor, in either state: a glyph, the middle, and a trailing control.
+ *
+ * One layout for both states so nothing moves when a row starts editing — the glyph's
+ * slot takes the trash can, the pencil's slot takes the check, and the name becomes the
+ * field at the same x. A control that moves what it is editing reads as jank. The row
+ * being edited is fenced by a divider above and below, as Keep fences its own, so the
+ * one row that is different is the one that looks different.
+ */
+@Composable
+private fun EditorRow(
+    editing: Boolean,
+    leading: @Composable () -> Unit,
+    trailing: @Composable () -> Unit,
+    modifier: Modifier = Modifier,
+    middle: @Composable RowScope.() -> Unit,
+) {
+    Column {
+        if (editing) HorizontalDivider()
+        Row(
+            modifier
+                .fillMaxWidth()
+                .heightIn(min = 56.dp)
+                .padding(start = Space.Large, end = Space.Small),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Box(Modifier.size(48.dp), contentAlignment = Alignment.CenterStart) { leading() }
+            middle()
+            trailing()
+        }
+        if (editing) HorizontalDivider()
+    }
+}
+
+/** "Create new notebook", and the field it becomes. */
+@Composable
+private fun CreateRow(
+    creating: Boolean,
+    draft: String,
+    busy: Boolean,
+    onStart: () -> Unit,
+    onDraft: (String) -> Unit,
+    onCommit: () -> Unit,
+    onCancel: () -> Unit,
+) {
+    if (creating) {
+        EditorRow(
+            editing = true,
+            leading = {
+                // Leaving, not deleting: there is nothing to delete yet, so the slot the
+                // trash can takes on a real row takes a cross here.
+                IconButton(onClick = onCancel, enabled = !busy) {
+                    Icon(Icons.Default.Close, contentDescription = stringResource(R.string.cancel))
+                }
+            },
+            trailing = {
+                IconButton(onClick = onCommit, enabled = !busy && draft.isNotBlank()) {
+                    Icon(Icons.Default.Check, contentDescription = stringResource(R.string.notebook_create))
+                }
+            },
+        ) {
+            RowField(
+                value = draft,
+                hint = stringResource(R.string.notebook_new_hint),
+                enabled = !busy,
+                onValue = onDraft,
+                onDone = onCommit,
+                modifier = Modifier.weight(1f),
+            )
+        }
+    } else {
+        EditorRow(
+            editing = false,
+            leading = {
+                Icon(
+                    Icons.Default.Add,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            },
+            // Nothing trailing: the row is one act, and a pencil would promise editing
+            // something that does not exist yet.
+            trailing = {},
+            modifier = Modifier.clickable(enabled = !busy, onClick = onStart),
+        ) {
+            Text(
+                stringResource(R.string.notebook_create_row),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.weight(1f),
+            )
+        }
+    }
+}
+
+/**
+ * One notebook: its glyph, name, count and a pencil — or, while being renamed, a trash
+ * can, the field, and a check.
+ *
+ * Rename is the whole row, since renaming is what the row is mostly for; the pencil says
+ * so, which a bare name did not. Delete appears only once the row is being edited: it is
+ * destructive and must never be the thing a stray tap on a list finds, and the confirm
+ * dialog behind it still names the notes at stake.
  */
 @Composable
 private fun NotebookRow(
@@ -219,65 +367,61 @@ private fun NotebookRow(
     onDraft: (String) -> Unit,
     onStartRename: () -> Unit,
     onCommitRename: () -> Unit,
-    onCancelRename: () -> Unit,
     onDelete: () -> Unit,
 ) {
-    Row(
-        Modifier
-            .fillMaxWidth()
-            .padding(horizontal = Space.Large, vertical = Space.Small),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        if (editing) {
-            val focus = remember { FocusRequester() }
-            LaunchedEffect(Unit) { focus.requestFocus() }
-            OutlinedTextField(
+    if (editing) {
+        EditorRow(
+            editing = true,
+            leading = {
+                IconButton(onClick = onDelete, enabled = !busy) {
+                    Icon(Icons.Default.Delete, contentDescription = stringResource(R.string.notebook_delete))
+                }
+            },
+            trailing = {
+                IconButton(onClick = onCommitRename, enabled = !busy) {
+                    Icon(Icons.Default.Check, contentDescription = stringResource(R.string.save))
+                }
+            },
+        ) {
+            RowField(
                 value = draft,
-                onValueChange = onDraft,
-                singleLine = true,
+                hint = null,
                 enabled = !busy,
-                shape = Shapes.Row,
-                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
-                keyboardActions = KeyboardActions(onDone = { onCommitRename() }),
-                modifier = Modifier.weight(1f).focusRequester(focus),
+                onValue = onDraft,
+                onDone = onCommitRename,
+                modifier = Modifier.weight(1f),
             )
-            TextButton(onClick = onCancelRename, enabled = !busy) {
-                Text(stringResource(R.string.cancel))
-            }
-            TextButton(onClick = onCommitRename, enabled = !busy) {
-                Text(stringResource(R.string.save))
-            }
-        } else {
-            /*
-             * A clickable Row rather than a TextButton: a button centres its content, which
-             * put the name in the middle of the row with the count floating beside it and
-             * nothing at the left edge where a list's names belong. The whole area is still
-             * the target — it just aligns like the row it is.
-             */
-            Row(
-                Modifier
-                    .weight(1f)
-                    .clip(Shapes.Row)
-                    .clickable(enabled = !busy, onClick = onStartRename)
-                    .padding(horizontal = Space.Small, vertical = Space.Medium),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(
-                    notebook.name,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    color = MaterialTheme.colorScheme.onSurface,
-                    modifier = Modifier.weight(1f, fill = false),
+        }
+    } else {
+        EditorRow(
+            editing = false,
+            leading = {
+                Icon(
+                    painterResource(R.drawable.ic_notebook),
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-                Spacer(Modifier.width(Space.Small))
-                CountBadge(notebook.count)
-            }
-            TextButton(onClick = onDelete, enabled = !busy) {
-                Text(
-                    stringResource(R.string.notebook_delete),
-                    color = MaterialTheme.colorScheme.error,
-                )
-            }
+            },
+            trailing = {
+                IconButton(onClick = onStartRename, enabled = !busy) {
+                    Icon(
+                        Icons.Default.Edit,
+                        contentDescription = stringResource(R.string.notebook_rename),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            },
+            modifier = Modifier.clickable(enabled = !busy, onClick = onStartRename),
+        ) {
+            Text(
+                notebook.name,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                color = MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier.weight(1f, fill = true),
+            )
+            CountBadge(notebook.count)
+            Spacer(Modifier.width(Space.Small))
         }
     }
 }
@@ -360,6 +504,9 @@ private class NotebooksState(private val api: UnbentApi) {
 
     var draft by mutableStateOf("")
         private set
+    /** Whether the create row is a field right now. */
+    var creating by mutableStateOf(false)
+        private set
 
     /** The notebook being renamed, with what has been typed so far. */
     var editing by mutableStateOf<Editing?>(null)
@@ -373,6 +520,18 @@ private class NotebooksState(private val api: UnbentApi) {
         draft = value
     }
 
+    fun startCreate() {
+        error = null
+        editing = null
+        pendingDelete = null
+        creating = true
+    }
+
+    fun cancelCreate() {
+        creating = false
+        draft = ""
+    }
+
     fun changeRename(value: String) {
         editing = editing?.copy(value = value)
     }
@@ -380,6 +539,9 @@ private class NotebooksState(private val api: UnbentApi) {
     fun startRename(notebook: Notebook) {
         error = null
         pendingDelete = null
+        // One row at a time: two fields on one screen would be two places for the
+        // keyboard to be about.
+        cancelCreate()
         editing = Editing(notebook.id, notebook.name)
     }
 
@@ -387,9 +549,10 @@ private class NotebooksState(private val api: UnbentApi) {
         editing = null
     }
 
+    // The row stays in its editing state under the dialog: the trash can was reached
+    // from there, and Cancel should land back where the finger left.
     fun askDelete(notebook: Notebook) {
         error = null
-        editing = null
         pendingDelete = notebook
     }
 
@@ -412,6 +575,9 @@ private class NotebooksState(private val api: UnbentApi) {
         run {
             api.createNotebook(name)
             draft = ""
+            // Back to the row, as Keep returns to "Create new label": one notebook was
+            // asked for and one was made.
+            creating = false
         }
     }
 
@@ -435,6 +601,8 @@ private class NotebooksState(private val api: UnbentApi) {
         run {
             api.deleteNotebook(target.id, trashNotes = cascade)
             pendingDelete = null
+            // The row it was reached from is gone with it.
+            editing = null
         }
     }
 

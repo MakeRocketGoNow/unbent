@@ -111,6 +111,7 @@
     <string name="notebook_delete">Delete</string>
     <string name="notebook_new_hint">New notebook name</string>
     <string name="notebook_create">Create</string>
+    <string name="notebook_create_row">Create new notebook</string>
     <string name="notebook_none">No notebooks yet.</string>
     <string name="notebook_delete_title">Delete “%1$s”?</string>
     <string name="notebook_delete_empty">It has no notes.</string>
