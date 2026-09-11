@@ -1167,6 +1167,45 @@ describe('notebook fields', () => {
     expect(unknown.status).toBe(400);
   });
 
+  it('keeps a select value after that option is removed, so a later save of the note still writes', async () => {
+    const kind = await makeField(alice, nb.id, {
+      name: `Kind ${Date.now()}`,
+      type: 'select',
+      options: ['A', 'B'],
+    });
+    const created = await json(alice, 'POST', '/api/notes', {
+      title: 'Before',
+      body: 'old',
+      notebook: nb.name,
+      fields: { [kind.id]: 'B' },
+    }).then((r) => r.json());
+
+    expect(
+      (await json(alice, 'PATCH', `/api/notebooks/${nb.id}/fields/${kind.id}`, { options: ['A'] })).status,
+    ).toBe(200);
+
+    const saved = await json(alice, 'PATCH', `/api/notes/${created.id}`, {
+      title: 'After',
+      body: 'new',
+      fields: { [kind.id]: 'B' },
+    });
+    expect(saved.status).toBe(200);
+    const note = await saved.json();
+    expect(note.title).toBe('After');
+    expect(note.body).toBe('new');
+    expect(byName(note.fields)[kind.name]).toBe('B');
+
+    // A value the note never held is still a new choice and still rejected.
+    expect(
+      (await json(alice, 'PATCH', `/api/notes/${created.id}`, { fields: { [kind.id]: 'C' } })).status,
+    ).toBe(400);
+    expect((await getNote(alice, created.id)).title).toBe('After');
+
+    const cleared = await json(alice, 'PATCH', `/api/notes/${created.id}`, { fields: { [kind.id]: null } });
+    expect(cleared.status).toBe(200);
+    expect(byName((await cleared.json()).fields)[kind.name]).toBeUndefined();
+  });
+
   it('merges a patch, and clears a value with null or an empty string', async () => {
     const created = await json(alice, 'POST', '/api/notes', {
       title: 'Merge',

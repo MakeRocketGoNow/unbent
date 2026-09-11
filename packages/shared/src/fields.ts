@@ -207,6 +207,24 @@ export function encodeFieldValue(
   }
 }
 
+/**
+ * Whether a select value that `encodeFieldValue` rejected should still be left on the note.
+ *
+ * Select options can shrink without converting the field. The editor keeps a retired
+ * value on notes that already hold it ("Travel (no longer an option)"), and it resends
+ * every field on every save. Rejecting that resend fails the whole patch — title and
+ * body included — until someone clears the value by hand. A value the note does not
+ * already hold is a new choice and still has to be in the list.
+ */
+export function isHeldSelectValue(
+  def: Pick<FieldDef, 'type'>,
+  value: FieldValue | null | undefined,
+  storedText: string | undefined,
+): boolean {
+  if (def.type !== 'select' || storedText === undefined || typeof value !== 'string') return false;
+  return value.trim() === storedText;
+}
+
 /** What a rejected value should have looked like, for an error message. */
 export function expectedFieldValue(def: Pick<FieldDef, 'type' | 'options'>): string {
   switch (def.type) {

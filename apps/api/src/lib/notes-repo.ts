@@ -6,6 +6,7 @@ import {
   expectedFieldValue,
   inferFieldType,
   InvalidFieldValue,
+  isHeldSelectValue,
   isReservedFieldName,
   MAX_FIELDS_PER_NOTEBOOK,
   planConversion,
@@ -1446,6 +1447,11 @@ export class NotesRepo extends ScopedRepo {
    *
    * Merge semantics, unlike `setTags`: only the keys in the patch change. The editor sends
    * every field anyway, and a caller setting one value should not have to know the rest.
+   *
+   * A select value the option list has dropped is left on notes that already hold it, for
+   * the reason `isHeldSelectValue` gives: the editor resends every field, and failing that
+   * resend would refuse the title and body too. Looked up here so a new choice that is not
+   * in the list is still a 400.
    */
   private async prepareFieldWrites(
     noteId: string,
@@ -1465,6 +1471,15 @@ export class NotesRepo extends ScopedRepo {
       .all<FieldRow>();
     const defs = new Map(results.map((r) => [r.id, rowToField(r)]));
 
+    const { results: heldRows } = await this.db
+      .prepare(
+        `SELECT field_id, value_text FROM note_fields
+          WHERE note_id = ?1 AND user_id = ?2 AND field_id IN (${ids.map((_, i) => `?${i + 3}`).join(', ')})`,
+      )
+      .bind(noteId, this.userId, ...ids)
+      .all<{ field_id: string; value_text: string }>();
+    const held = new Map(heldRows.map((r) => [r.field_id, r.value_text]));
+
     const statements: D1PreparedStatement[] = [];
     for (const id of ids) {
       const def = defs.get(id);
@@ -1472,7 +1487,10 @@ export class NotesRepo extends ScopedRepo {
 
       const value = patch[id];
       const encoded = value === null || value === undefined ? 'clear' : encodeFieldValue(def, value);
-      if (encoded === null) throw new InvalidFieldValue(def.name, expectedFieldValue(def));
+      if (encoded === null) {
+        if (isHeldSelectValue(def, value, held.get(id))) continue;
+        throw new InvalidFieldValue(def.name, expectedFieldValue(def));
+      }
 
       statements.push(
         encoded === 'clear'
