@@ -34,6 +34,7 @@ import { Route as SettingsImportRouteImport } from './routes/settings.import'
 import { Route as SettingsMaintenanceRouteImport } from './routes/settings.maintenance'
 import { Route as SettingsNotebooksRouteImport } from './routes/settings.notebooks'
 import { Route as SettingsSecurityRouteImport } from './routes/settings.security'
+import { Route as SettingsTagsRouteImport } from './routes/settings.tags'
 import { Route as TrashIndexRouteImport } from './routes/trash.index'
 import { Route as TrashNoteIdRouteImport } from './routes/trash.$noteId'
 import { Route as EmbedNotesNoteIdRouteImport } from './routes/embed.notes.$noteId'
@@ -164,6 +165,11 @@ const SettingsSecurityRoute = SettingsSecurityRouteImport.update({
   path: '/security',
   getParentRoute: () => SettingsRoute,
 } as any)
+const SettingsTagsRoute = SettingsTagsRouteImport.update({
+  id: '/tags',
+  path: '/tags',
+  getParentRoute: () => SettingsRoute,
+} as any)
 const TrashIndexRoute = TrashIndexRouteImport.update({
   id: '/',
   path: '/',
@@ -210,6 +216,7 @@ export interface FileRoutesByFullPath {
   '/settings/maintenance': typeof SettingsMaintenanceRoute
   '/settings/notebooks': typeof SettingsNotebooksRoute
   '/settings/security': typeof SettingsSecurityRoute
+  '/settings/tags': typeof SettingsTagsRoute
   '/trash/$noteId': typeof TrashNoteIdRoute
   '/notes/': typeof NotesIndexRoute
   '/settings/': typeof SettingsIndexRoute
@@ -238,6 +245,7 @@ export interface FileRoutesByTo {
   '/settings/maintenance': typeof SettingsMaintenanceRoute
   '/settings/notebooks': typeof SettingsNotebooksRoute
   '/settings/security': typeof SettingsSecurityRoute
+  '/settings/tags': typeof SettingsTagsRoute
   '/trash/$noteId': typeof TrashNoteIdRoute
   '/notes': typeof NotesIndexRoute
   '/settings': typeof SettingsIndexRoute
@@ -270,6 +278,7 @@ export interface FileRoutesById {
   '/settings/maintenance': typeof SettingsMaintenanceRoute
   '/settings/notebooks': typeof SettingsNotebooksRoute
   '/settings/security': typeof SettingsSecurityRoute
+  '/settings/tags': typeof SettingsTagsRoute
   '/trash/$noteId': typeof TrashNoteIdRoute
   '/notes/': typeof NotesIndexRoute
   '/settings/': typeof SettingsIndexRoute
@@ -303,6 +312,7 @@ export interface FileRouteTypes {
     | '/settings/maintenance'
     | '/settings/notebooks'
     | '/settings/security'
+    | '/settings/tags'
     | '/trash/$noteId'
     | '/notes/'
     | '/settings/'
@@ -331,6 +341,7 @@ export interface FileRouteTypes {
     | '/settings/maintenance'
     | '/settings/notebooks'
     | '/settings/security'
+    | '/settings/tags'
     | '/trash/$noteId'
     | '/notes'
     | '/settings'
@@ -362,6 +373,7 @@ export interface FileRouteTypes {
     | '/settings/maintenance'
     | '/settings/notebooks'
     | '/settings/security'
+    | '/settings/tags'
     | '/trash/$noteId'
     | '/notes/'
     | '/settings/'
@@ -567,6 +579,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SettingsSecurityRouteImport
       parentRoute: typeof SettingsRoute
     }
+    '/settings/tags': {
+      id: '/settings/tags'
+      path: '/tags'
+      fullPath: '/settings/tags'
+      preLoaderRoute: typeof SettingsTagsRouteImport
+      parentRoute: typeof SettingsRoute
+    }
     '/trash/': {
       id: '/trash/'
       path: '/'
@@ -617,6 +636,7 @@ interface SettingsRouteChildren {
   SettingsMaintenanceRoute: typeof SettingsMaintenanceRoute
   SettingsNotebooksRoute: typeof SettingsNotebooksRoute
   SettingsSecurityRoute: typeof SettingsSecurityRoute
+  SettingsTagsRoute: typeof SettingsTagsRoute
   SettingsIndexRoute: typeof SettingsIndexRoute
   SettingsNotebooksNotebookIdRoute: typeof SettingsNotebooksNotebookIdRoute
 }
@@ -628,6 +648,7 @@ const SettingsRouteChildren: SettingsRouteChildren = {
   SettingsMaintenanceRoute: SettingsMaintenanceRoute,
   SettingsNotebooksRoute: SettingsNotebooksRoute,
   SettingsSecurityRoute: SettingsSecurityRoute,
+  SettingsTagsRoute: SettingsTagsRoute,
   SettingsIndexRoute: SettingsIndexRoute,
   SettingsNotebooksNotebookIdRoute: SettingsNotebooksNotebookIdRoute,
 }

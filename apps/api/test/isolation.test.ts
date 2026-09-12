@@ -1580,3 +1580,107 @@ describe('account deletion', () => {
     expect(after.note).toBe(200);
   });
 });
+
+describe('tags', () => {
+  async function listTags(actor: Actor) {
+    const res = await fetch(`${BASE}/api/tags`, asUser(actor));
+    return (await res.json()).tags as Array<{ id: string; name: string; count: number }>;
+  }
+
+  async function noteTags(actor: Actor, id: string) {
+    const res = await fetch(`${BASE}/api/notes/${id}`, asUser(actor));
+    return ((await res.json()) as { tags: string[] }).tags;
+  }
+
+  function rename(actor: Actor, id: string, name: string, merge = false) {
+    return fetch(`${BASE}/api/tags/${id}${merge ? '?merge=1' : ''}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', ...asUser(actor).headers },
+      body: JSON.stringify({ name }),
+    });
+  }
+
+  it('lists tags by id, so a rename has something stable to address', async () => {
+    const name = `Listed ${Date.now()}`;
+    await createNote(alice, { title: 'a', body: 'x', tags: [name] });
+    const found = (await listTags(alice)).find((t) => t.name === name);
+    expect(found?.id).toBeTruthy();
+    expect(found?.count).toBe(1);
+  });
+
+  it('renames a tag and every note follows', async () => {
+    const stamp = Date.now();
+    const before = `Recipts ${stamp}`;
+    const after = `Receipts ${stamp}`;
+    const a = await createNote(alice, { title: 'a', body: 'x', tags: [before, 'keep'] });
+    const b = await createNote(alice, { title: 'b', body: 'x', tags: [before] });
+    const tag = (await listTags(alice)).find((t) => t.name === before)!;
+
+    const res = await rename(alice, tag.id, after);
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ id: tag.id, name: after, merged: false });
+
+    expect(await noteTags(alice, a.id)).toEqual(expect.arrayContaining([after, 'keep']));
+    expect(await noteTags(alice, a.id)).not.toContain(before);
+    expect(await noteTags(alice, b.id)).toEqual([after]);
+
+    const tags = await listTags(alice);
+    expect(tags.find((t) => t.name === after)?.count).toBe(2);
+    expect(tags.find((t) => t.name === before)).toBeUndefined();
+  });
+
+  it('refuses a rename onto an existing tag unless asked to merge', async () => {
+    const stamp = Date.now();
+    const winner = `Winner ${stamp}`;
+    const loser = `Loser ${stamp}`;
+    const both = await createNote(alice, { title: 'both', body: 'x', tags: [winner, loser] });
+    const only = await createNote(alice, { title: 'only', body: 'x', tags: [loser] });
+    const tags = await listTags(alice);
+    const winnerTag = tags.find((t) => t.name === winner)!;
+    const loserTag = tags.find((t) => t.name === loser)!;
+
+    const refused = await rename(alice, loserTag.id, winner);
+    expect(refused.status).toBe(409);
+    // Nothing moved on a refusal.
+    expect(await noteTags(alice, only.id)).toEqual([loser]);
+
+    const merged = await rename(alice, loserTag.id, winner, true);
+    expect(merged.status).toBe(200);
+    expect(await merged.json()).toEqual({ id: winnerTag.id, name: winner, merged: true });
+
+    // The note that had both keeps one; the note that had only the loser gains the winner.
+    expect(await noteTags(alice, both.id)).toEqual([winner]);
+    expect(await noteTags(alice, only.id)).toEqual([winner]);
+    const after = await listTags(alice);
+    expect(after.find((t) => t.name === winner)?.count).toBe(2);
+    expect(after.find((t) => t.name === loser)).toBeUndefined();
+  });
+
+  it('deletes a tag off every note and leaves the notes alone', async () => {
+    const stamp = Date.now();
+    const gone = `Gone ${stamp}`;
+    const stays = `Stays ${stamp}`;
+    const note = await createNote(alice, { title: 'n', body: 'x', tags: [gone, stays] });
+    const tag = (await listTags(alice)).find((t) => t.name === gone)!;
+
+    const res = await fetch(`${BASE}/api/tags/${tag.id}`, { method: 'DELETE', ...asUser(alice) });
+    expect(res.status).toBe(204);
+
+    expect(await noteTags(alice, note.id)).toEqual([stays]);
+    expect((await listTags(alice)).find((t) => t.name === gone)).toBeUndefined();
+    const still = await fetch(`${BASE}/api/notes/${note.id}`, asUser(alice));
+    expect(still.status).toBe(200);
+  });
+
+  it("answers 404 for another user's tag, on both mutations", async () => {
+    const name = `Private ${Date.now()}`;
+    await createNote(alice, { title: 'p', body: 'x', tags: [name] });
+    const tag = (await listTags(alice)).find((t) => t.name === name)!;
+
+    expect((await rename(bob, tag.id, 'Stolen')).status).toBe(404);
+    const del = await fetch(`${BASE}/api/tags/${tag.id}`, { method: 'DELETE', ...asUser(bob) });
+    expect(del.status).toBe(404);
+    // And nothing happened to it.
+    expect((await listTags(alice)).find((t) => t.name === name)?.count).toBe(1);
+  });
+});

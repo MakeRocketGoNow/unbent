@@ -979,10 +979,10 @@ export class NotesRepo extends ScopedRepo {
    * Name breaks ties, so the long tail of once-used tags is still ordered predictably
    * rather than by whatever the query planner returns.
    */
-  async listTags(): Promise<Array<{ name: string; count: number }>> {
+  async listTags(): Promise<Array<{ id: string; name: string; count: number }>> {
     const { results } = await this.db
       .prepare(
-        `SELECT t.name, COUNT(nt.note_id) AS count
+        `SELECT t.id, t.name, COUNT(nt.note_id) AS count
            FROM tags t
            JOIN note_tags nt ON nt.tag_id = t.id
            JOIN notes n ON n.id = nt.note_id AND n.deleted_at IS NULL
@@ -993,6 +993,88 @@ export class NotesRepo extends ScopedRepo {
       .bind(this.userId)
       .all<{ id: string; name: string; count: number }>();
     return results;
+  }
+
+  /**
+   * Renames a tag; every note carrying it follows, because notes reference the row.
+   *
+   * A tag is addressed by id here for the same reason a notebook is: the id is stable
+   * across the rename that is the whole point of the call. Names stay the interchange
+   * format everywhere else — `?tag=` filters, frontmatter, the picker.
+   *
+   * When another tag already has the new name, the two are either kept apart (`conflict`,
+   * the default) or merged: every note under this tag gains the other, duplicates
+   * ignored, and this tag's row goes. Merging is what "rename Receipts to Receipt" means
+   * when Receipt already exists, and it is the one operation an archive with hundreds of
+   * near-duplicate tags actually needs — but it is also irreversible, so the client asks
+   * before passing `merge`. Case is compared exactly, as the UNIQUE index does: "receipt"
+   * and "Receipt" are two tags today, and a rename between them is a plain rename.
+   *
+   * Notes' `updated_at` is left alone, as `renameNotebook` leaves it: nothing about the
+   * note's own content changed.
+   */
+  async renameTag(
+    id: string,
+    name: string,
+    opts?: { merge?: boolean },
+  ): Promise<{ id: string; name: string; merged: boolean } | 'conflict' | 'missing'> {
+    const trimmed = name.trim();
+    if (!trimmed) return 'missing';
+
+    const own = await this.db
+      .prepare(`SELECT name FROM tags WHERE id = ?1 AND user_id = ?2`)
+      .bind(id, this.userId)
+      .first<{ name: string }>();
+    if (!own) return 'missing';
+    if (own.name === trimmed) return { id, name: trimmed, merged: false };
+
+    const other = await this.db
+      .prepare(`SELECT id FROM tags WHERE user_id = ?1 AND name = ?2 AND id <> ?3`)
+      .bind(this.userId, trimmed, id)
+      .first<{ id: string }>();
+
+    if (!other) {
+      await this.db
+        .prepare(`UPDATE tags SET name = ?1 WHERE id = ?2 AND user_id = ?3`)
+        .bind(trimmed, id, this.userId)
+        .run();
+      return { id, name: trimmed, merged: false };
+    }
+
+    if (!opts?.merge) return 'conflict';
+
+    // Batched so a note can never be left with neither tag. The join rows are removed by
+    // hand rather than by ON DELETE CASCADE, which D1 does not promise is enforced.
+    await this.db.batch([
+      this.db
+        .prepare(
+          `INSERT OR IGNORE INTO note_tags (note_id, tag_id)
+             SELECT note_id, ?1 FROM note_tags WHERE tag_id = ?2`,
+        )
+        .bind(other.id, id),
+      this.db.prepare(`DELETE FROM note_tags WHERE tag_id = ?1`).bind(id),
+      this.db.prepare(`DELETE FROM tags WHERE id = ?1 AND user_id = ?2`).bind(id, this.userId),
+    ]);
+    return { id: other.id, name: trimmed, merged: true };
+  }
+
+  /**
+   * Deletes a tag, taking it off every note that carries it — trashed notes included, so
+   * a restore cannot bring a deleted tag back. The notes themselves are untouched; a tag
+   * is a label, and removing a label must never remove what it labelled.
+   */
+  async deleteTag(id: string): Promise<boolean> {
+    const owned = await this.db
+      .prepare(`SELECT 1 FROM tags WHERE id = ?1 AND user_id = ?2`)
+      .bind(id, this.userId)
+      .first();
+    if (!owned) return false;
+
+    await this.db.batch([
+      this.db.prepare(`DELETE FROM note_tags WHERE tag_id = ?1`).bind(id),
+      this.db.prepare(`DELETE FROM tags WHERE id = ?1 AND user_id = ?2`).bind(id, this.userId),
+    ]);
+    return true;
   }
 
   /**

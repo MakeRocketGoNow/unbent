@@ -6,6 +6,7 @@ import {
   ArrowUpDown,
   Book,
   Calendar,
+  Check,
   Funnel,
   Hash,
   Inbox,
@@ -13,6 +14,7 @@ import {
   List,
   Mail,
   Menu,
+  Pencil,
   Phone,
   Plus,
   Search,
@@ -121,6 +123,28 @@ export function TrashRowIcon() {
 
 export function SettingsRowIcon() {
   return <RowIcon icon={Settings} />;
+}
+
+/*
+   The label editor's controls: the two a resting row offers and the two an editing row
+   offers. `HeaderIcon`-sized, because each sits alone in a 44px button rather than
+   beside a word — the pencil is the row's one control and the check, cross and trash
+   can are the editing row's. Keep's "Edit labels" screen draws exactly this set.
+*/
+export function PencilIcon() {
+  return <HeaderIcon icon={Pencil} />;
+}
+
+export function CheckIcon() {
+  return <HeaderIcon icon={Check} />;
+}
+
+export function CancelIcon() {
+  return <HeaderIcon icon={X} />;
+}
+
+export function TrashIcon() {
+  return <HeaderIcon icon={Trash2} />;
 }
 
 /** A magnifier, for opening the search field. */

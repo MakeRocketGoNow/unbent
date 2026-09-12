@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach } from 'vitest';
-import { render, screen, cleanup } from '@testing-library/react';
+import { render, screen, cleanup, fireEvent } from '@testing-library/react';
 import {
   createRootRoute,
   createRoute,
@@ -57,4 +57,44 @@ describe('NoteListItem', () => {
     await screen.findByText('Lunch');
     expect(document.querySelector('.note-fields-line')).toBeNull();
   });
+});
+
+/*
+ * The mark the transition grows from.
+ *
+ * The browser snapshots the page before the URL changes, so the entry has to say it is
+ * the one opening, in the click itself. Only one entry may say so at a time: two elements
+ * with one `view-transition-name` make the browser skip the transition.
+ */
+it('marks the tapped entry as opening, and only that one, when transitions are on', async () => {
+  const other: NoteSummary = { ...note, id: 'n2', title: 'Dinner' };
+  const rootRoute = createRootRoute({
+    component: () => (
+      <ul className="note-list">
+        <NoteListItem note={note} to="/notes/$noteId" transition />
+        <NoteListItem note={other} to="/notes/$noteId" transition />
+      </ul>
+    ),
+  });
+  const noteRoute = createRoute({ getParentRoute: () => rootRoute, path: '/notes/$noteId' });
+  const router = createRouter({
+    routeTree: rootRoute.addChildren([noteRoute]),
+    history: createMemoryHistory({ initialEntries: ['/'] }),
+  });
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { findByText, getByText } = render(<RouterProvider router={router as any} />);
+
+  fireEvent.click(await findByText('Lunch'));
+  expect(getByText('Lunch').closest('a')?.hasAttribute('data-opening')).toBe(true);
+  expect(getByText('Dinner').closest('a')?.hasAttribute('data-opening')).toBe(false);
+
+  fireEvent.click(getByText('Dinner'));
+  expect(getByText('Lunch').closest('a')?.hasAttribute('data-opening')).toBe(false);
+  expect(getByText('Dinner').closest('a')?.hasAttribute('data-opening')).toBe(true);
+});
+
+it('leaves entries unmarked where there is no transition to grow from', async () => {
+  const { findByText, getByText } = mount();
+  fireEvent.click(await findByText('Lunch'));
+  expect(getByText('Lunch').closest('a')?.hasAttribute('data-opening')).toBe(false);
 });

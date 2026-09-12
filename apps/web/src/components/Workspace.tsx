@@ -409,6 +409,7 @@ export function Workspace({ noteId, readOnly = false, backTo = '/notes' }: Works
               search={(p) => p}
               className="view-back"
               aria-label="Back to notes"
+              viewTransition={{ types: ['note-close'] }}
             >
               <BackArrow />
             </Link>
@@ -483,6 +484,9 @@ export function Workspace({ noteId, readOnly = false, backTo = '/notes' }: Works
             search={(p) => p}
             className="view-back"
             aria-label="Back to notes"
+            // The reverse of the entry's `note-open`; the arrow is only ever shown on a
+            // phone, where the note shrinks back into the row it grew from.
+            viewTransition={{ types: ['note-close'] }}
           >
             <BackArrow />
           </Link>

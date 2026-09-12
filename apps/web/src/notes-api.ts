@@ -184,11 +184,54 @@ export async function getConfig(): Promise<AppConfig> {
   return json<AppConfig>(await fetch('/api/config'));
 }
 
-export async function listTags(): Promise<Array<{ name: string; count: number }>> {
-  const { tags } = await json<{ tags: Array<{ name: string; count: number }> }>(
-    await fetch('/api/tags'),
-  );
+/** A tag as the list reports it: its id, which a rename addresses, and how many live notes carry it. */
+export interface TagSummary {
+  id: string;
+  name: string;
+  count: number;
+}
+
+export async function listTags(): Promise<TagSummary[]> {
+  const { tags } = await json<{ tags: TagSummary[] }>(await fetch('/api/tags'));
   return tags;
+}
+
+/**
+ * The server refused because the name is taken.
+ *
+ * Its own class rather than a message, because the tag editor acts on it: a rename that
+ * collides is an offer to merge, and the editor has to tell that refusal from a network
+ * failure to make the offer.
+ */
+export class ConflictError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'ConflictError';
+  }
+}
+
+/**
+ * Renames a tag; every note carrying it follows. Throws `ConflictError` when another tag
+ * has the name, unless `merge` is set, which folds this tag into that one.
+ */
+export async function renameTag(
+  id: string,
+  name: string,
+  opts?: { merge?: boolean },
+): Promise<{ id: string; name: string; merged: boolean }> {
+  const res = await fetch(`/api/tags/${id}${opts?.merge ? '?merge=1' : ''}`, {
+    method: 'PATCH',
+    headers: jsonHeaders,
+    body: JSON.stringify({ name }),
+  });
+  if (res.status === 409) throw new ConflictError('A tag with that name already exists.');
+  return json(res);
+}
+
+/** Takes the tag off every note that carries it. The notes stay. */
+export async function deleteTag(id: string): Promise<void> {
+  const res = await fetch(`/api/tags/${id}`, { method: 'DELETE' });
+  if (!res.ok) throw new Error(await httpErrorMessage(res));
 }
 
 export type Notebook = NotebookSummary;

@@ -2753,6 +2753,107 @@ select.note-field-input { cursor: pointer; }
   padding: 0 0.1rem 0.45rem;
 }
 
+/* ---------------------------------------------------------------------------------
+   The label editor: notebooks and tags, in Keep's editing shape. See `LabelEditor.tsx`.
+
+   Two rules carry the whole design. The glyph and the trash can share one slot, and the
+   pencil and the check share another, so a row's picture does not move when it starts
+   editing; and the rule above and below an editing row is laid out on every row, in
+   transparent ink, so it costs no height when it appears. The Android screen learned
+   both after the fact; here they are the starting point.
+   --------------------------------------------------------------------------------- */
+.label-editor-wrap {
+  /* `.panel` shrink-wraps its children; the rows need the panel's full width so their
+     controls line up down the right edge whatever the names are. */
+  align-self: stretch;
+}
+
+.label-editor {
+  list-style: none;
+  margin: 0.25rem 0 0;
+  padding: 0;
+}
+
+.label-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-height: 3rem;
+  /* Laid out in both states, drawn in one. */
+  border-top: 1px solid transparent;
+  border-bottom: 1px solid transparent;
+}
+
+.label-row.editing { border-color: var(--border); }
+
+/* The leading slot: a 44px box, whether it holds a glyph or a button, so the glyph and
+   the trash can centre on the same line. Pulled left by the box's own padding so the
+   glyph sits on the panel's text edge rather than a half-slot inside it. */
+.label-slot {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  min-width: 2.75rem;
+  height: 2.75rem;
+  margin-left: -0.75rem;
+  color: var(--muted);
+}
+
+/* The name is the row's target. A button, since it acts, drawn as the text it is. */
+.label-name {
+  flex: 1;
+  min-width: 0;
+  padding: 0.6rem 0;
+  font: inherit;
+  font-size: 0.95rem;
+  text-align: left;
+  color: var(--fg);
+  background: none;
+  border: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  cursor: pointer;
+}
+
+.label-name:disabled { cursor: default; }
+
+/* Creating is quieter than the names it makes more of. */
+.label-create .label-name { color: var(--muted); }
+
+/* The field a row becomes: the name's own type and inset, with nothing drawn around it —
+   the fence on the row is what marks the state. */
+.label-field {
+  flex: 1;
+  min-width: 0;
+  padding: 0.6rem 0;
+  font: inherit;
+  font-size: 0.95rem;
+  color: var(--fg);
+  background: none;
+  border: 0;
+  outline: none;
+}
+
+.label-field::placeholder { color: var(--muted); }
+
+.label-editor .tag-count { flex: 0 0 auto; }
+
+/* The last button sits on the panel's right edge, like the slot sits on its left. */
+.label-row > .icon-btn:last-child { margin-right: -0.75rem; }
+
+.label-extra { flex: 0 0 auto; }
+
+.label-empty {
+  padding: 0.75rem 0;
+}
+
+.label-find {
+  margin-top: 0.5rem;
+  align-self: stretch;
+}
+
 /* Notebook management, inside the settings panel. */
 .notebook-admin {
   list-style: none;
@@ -4244,6 +4345,26 @@ select.note-field-input { cursor: pointer; }
   .notes.note-open > .sidebar { display: none; }
   .notes:not(.note-open) > .workspace { display: none; }
 
+  /*
+     Opening a note grows the tapped entry into it.
+
+     Keep's container transform, on the platform's View Transitions: the entry that was
+     tapped (marked by `NoteListItem` in the click, since the URL does not yet say which)
+     and the open note share one `view-transition-name`, so when the grid swaps the list
+     for the note the browser morphs the entry's box into the note's. Back does the same
+     in reverse — the mark stays on the entry while the note is open, so the note has a
+     row to shrink into. Below the breakpoint only: on a desktop the list and the note are
+     both on screen, and two elements with one name would make the browser skip the whole
+     thing, correctly, since there is nothing to morph.
+
+     The editor is not remounted by any of this. A view transition is snapshots of the
+     old and new page painted over the real one for 300ms; CodeMirror keeps its cursor,
+     scroll and undo history underneath. The motion itself is in the block below the
+     breakpoint rules, with the timing.
+  */
+  .note-item[data-opening] { view-transition-name: note; }
+  .notes.note-open > .workspace { view-transition-name: note; }
+
   .view-back { display: inline-flex; }
 
   /* Where the arrow is the only way out of a failed note — see `.workspace-error-head`. */
@@ -4787,5 +4908,81 @@ select.note-field-input { cursor: pointer; }
   .filter-chip {
     min-height: 2.25rem;
     padding-inline: 0.6rem;
+  }
+}
+
+/* ---------------------------------------------------------------------------------
+   The note's view transition: how the morph moves. Names are given above, under the
+   phone breakpoint; nothing here fires unless something carries the name.
+   --------------------------------------------------------------------------------- */
+@media (prefers-reduced-motion: no-preference) {
+  /*
+     Only the note moves. Without this the root crossfades as well, which on a phone is
+     the whole screen fading behind the box that is already growing across it — two
+     animations telling one story.
+  */
+  ::view-transition-old(root),
+  ::view-transition-new(root) {
+    animation: none;
+  }
+
+  /*
+     The box: 300ms in on Material's emphasized-decelerate, a fast start that settles
+     slowly so the note is readable long before it stops; 220ms out on the mirror, since
+     leaving should be quicker than arriving. The same pair the drawer uses.
+  */
+  ::view-transition-group(note) {
+    animation-duration: 0.3s;
+    animation-timing-function: cubic-bezier(0.05, 0.7, 0.1, 1);
+  }
+
+  html:active-view-transition-type(note-close)::view-transition-group(note) {
+    animation-duration: 0.22s;
+    animation-timing-function: cubic-bezier(0.3, 0, 0.8, 0.15);
+  }
+
+  /*
+     What is painted inside the box. The old and new snapshots would crossfade for the
+     whole 300ms by default, so mid-way the row and the note are both half-visible in a
+     box that fits neither. A quick fade out of the old and a fade in of the new, one
+     after the other, keeps the box carrying one picture at a time. The snapshots are
+     sized to the box's width rather than stretched, so the row's text does not smear
+     into the note's.
+  */
+  ::view-transition-old(note) {
+    animation: 0.1s ease both vt-fade-out;
+    object-fit: none;
+    object-position: top left;
+  }
+
+  ::view-transition-new(note) {
+    animation: 0.2s 0.08s ease both vt-fade-in;
+    object-fit: none;
+    object-position: top left;
+  }
+
+  ::view-transition-image-pair(note) {
+    isolation: auto;
+    overflow: clip;
+  }
+}
+
+@keyframes vt-fade-out {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+
+@keyframes vt-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/* With reduced motion asked for, the page changes and nothing morphs — the transition
+   still runs, since the router starts it, but every part of it is instant. */
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-group(*),
+  ::view-transition-old(*),
+  ::view-transition-new(*) {
+    animation: none !important;
   }
 }
