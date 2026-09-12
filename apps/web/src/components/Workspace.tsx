@@ -37,7 +37,7 @@ import { OverflowMenu } from './OverflowMenu.js';
 import { Button } from './Button';
 import { Disclosure } from './Disclosure.js';
 import { BackArrow } from './BackArrow.js';
-import { NotebookRowIcon, TagIcon } from './icons.js';
+import { FilingRows, NotebookPicker } from './FilingRows.js';
 import { NoteFields } from './NoteFields.js';
 
 /** The editor's share of the pane row when split evenly, and the limits a drag respects. */
@@ -307,41 +307,6 @@ export function Workspace({ noteId, readOnly = false, backTo = '/notes' }: Works
   }
 
   /**
-   * The notebook picker: filing a note by picking from the notebooks that exist, rather
-   * than retyping a name — which is how case-variant duplicates used to appear. One
-   * element, drawn two ways: the desktop's own select in its row, and the phone's chip in
-   * the property list, where `.note-field-input` is what a chosen value looks like.
-   */
-  const notebookSelect = (className: string, id?: string) => (
-    <select
-      id={id}
-      className={className}
-      value={draft.notebook ?? ''}
-      aria-label="Notebook"
-      disabled={readOnly}
-      // A chosen notebook is a chip; the Inbox is the absence of one, drawn like "Empty".
-      data-filled={draft.notebook ? true : undefined}
-      onChange={(e) => setDraft((d) => ({ ...d, notebook: e.target.value || null }))}
-    >
-      {/* No notebook. Shown as "Inbox" everywhere in the UI; see NotesLayout. */}
-      <option value="">Inbox</option>
-      {notebooks.data?.notebooks.map((nb) => (
-        <option key={nb.id} value={nb.name}>
-          {nb.name}
-        </option>
-      ))}
-    </select>
-  );
-
-  const tagInput = (
-    <TagInput
-      tags={draft.tags}
-      suggestions={tags.data?.map((t) => t.name) ?? []}
-      onChange={(next) => setDraft((d) => ({ ...d, tags: next }))}
-    />
-  );
-
-  /**
    * The desktop's filing row: the notebook and the tags on a line above the body.
    *
    * Null until the note has loaded, which is what the render below tests: `note` is read
@@ -349,8 +314,18 @@ export function Workspace({ noteId, readOnly = false, backTo = '/notes' }: Works
    */
   const filingControls = !note ? null : (
     <div className="tag-row">
-      {notebookSelect('note-notebook')}
-      {tagInput}
+      <NotebookPicker
+        className="note-notebook"
+        notebook={draft.notebook}
+        notebooks={notebooks.data?.notebooks}
+        readOnly={readOnly}
+        onChange={(next) => setDraft((d) => ({ ...d, notebook: next }))}
+      />
+      <TagInput
+        tags={draft.tags}
+        suggestions={tags.data?.map((t) => t.name) ?? []}
+        onChange={(next) => setDraft((d) => ({ ...d, tags: next }))}
+      />
     </div>
   );
 
@@ -359,31 +334,19 @@ export function Workspace({ noteId, readOnly = false, backTo = '/notes' }: Works
    *
    * They used to be a row that opened a sheet holding them — a full-height modal surface
    * for a select and a chip, once the fields had left it, and a tap that bought nothing the
-   * row had not already said. As properties they read the way Notion reads a page's
-   * location and tags: two facts about the record, at the top, edited where they are read.
-   * Rows in the list's own grid, so their labels share the fields' column.
+   * row had not already said. `FilingRows` is the shared drawing; the Android app's embed
+   * draws the same rows.
    */
   const filingRows = !note ? null : (
-    <>
-      <div className="note-field filing-prop">
-        <span className="note-field-glyph" aria-hidden="true">
-          <NotebookRowIcon />
-        </span>
-        <label className="note-field-label" htmlFor="filing-notebook">
-          Notebook
-        </label>
-        {notebookSelect('note-field-input', 'filing-notebook')}
-        <span className="note-field-side" />
-      </div>
-      <div className="note-field filing-prop">
-        <span className="note-field-glyph" aria-hidden="true">
-          <TagIcon />
-        </span>
-        <span className="note-field-label">Tags</span>
-        {tagInput}
-        <span className="note-field-side" />
-      </div>
-    </>
+    <FilingRows
+      notebook={draft.notebook}
+      notebooks={notebooks.data?.notebooks}
+      tags={draft.tags}
+      suggestions={tags.data?.map((t) => t.name) ?? []}
+      readOnly={readOnly}
+      onNotebook={(next) => setDraft((d) => ({ ...d, notebook: next }))}
+      onTags={(next) => setDraft((d) => ({ ...d, tags: next }))}
+    />
   );
 
   /**
