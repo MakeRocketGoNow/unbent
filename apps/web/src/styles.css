@@ -859,6 +859,14 @@ h1 {
 .empty { padding: 0.6rem 0.7rem; }
 
 .workspace {
+  /* A row: the note's column, and on a desktop the fields' column beside it. */
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+}
+
+.workspace-main {
+  flex: 1 1 auto;
   display: flex;
   flex-direction: column;
   min-width: 0;
@@ -869,6 +877,37 @@ h1 {
      is being worked on.
   */
   min-height: 0;
+}
+
+/*
+   The fields' own column, on a desktop.
+
+   Fixed width rather than a share, so the note's measure does not change with how many
+   fields its notebook has; scrolls within itself, so a long list costs the note nothing.
+   The rule on its left is the same seam the sidebar's handle draws. Inside it the name
+   column is narrower than the in-flow list's, since the panel has a fifth of the width.
+*/
+.fields-panel {
+  flex: 0 0 19rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  min-height: 0;
+  margin-left: 1.25rem;
+  padding: 0.25rem 0 0 1rem;
+  overflow-y: auto;
+  border-left: 1px solid var(--border);
+}
+
+.fields-panel-head {
+  margin: 0;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.fields-panel .note-fields {
+  grid-template-columns: auto minmax(4rem, 7rem) minmax(0, 1fr) auto;
 }
 
 /*
@@ -1669,65 +1708,7 @@ a.sidebar-status:hover {
 }
 
 /*
-   The values, after the tags, quieter than both.
-
-   They take whatever is left and truncate first: the notebook identifies the note, the
-   tags are how it is found, and the values are what it says. Without this the tags and
-   the values shrank in proportion to their length, and a note with seven values squeezed
-   its two tags down to a lone "#…" — the wrong half gave way. With values present the
-   tags stop shrinking and keep up to half the row; without them nothing changes.
-*/
-.tag-row-summary-fields {
-  flex: 1 1 0;
-  color: var(--muted);
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-/*
-   A field's name and its value, told apart by tone.
-
-   The whole line was one colour, so `Code: T1-WWC-5G839 · Date Added: 2026-07-03` had to be
-   read by punctuation — every name weighed exactly as much as the value beside it, and a row
-   of six read as a paragraph rather than as six facts. Two steps fixes it: the name stays at
-   the row's muted grey and the value comes up towards the foreground, so the eye lands on the
-   values and picks up the names only when it needs them.
-
-   A mix rather than `--fg` outright. These are still the quietest line in the note's header,
-   below the notebook above them, and full-strength values would make the summary compete with
-   the title. 75% is the step that separates them without promoting the line.
-*/
-.summary-name { color: var(--muted); }
-
-.summary-value { color: color-mix(in srgb, var(--fg) 75%, var(--muted)); }
-
-/* Dimmer than either half it divides: it is punctuation, not content. */
-.summary-sep { color: color-mix(in srgb, var(--muted) 55%, transparent); }
-
-/*
-   So a pair breaks as one thing: a name is never left at the end of a line with its value
-   on the next.
-
-   `nowrap` on the pair, not on the value inside it — a long note left to `nowrap` alone
-   would run off the line rather than wrapping within it, so the value releases the rule the
-   pair sets. The effect is a break between pairs by preference, inside a long value only
-   when there is no other choice.
-*/
-.summary-pair { white-space: nowrap; }
-
-.summary-value { white-space: normal; }
-
-/* The values have their own line inside `.filing-row`, so the tags no longer have to yield
-   to them — they share the first line with the notebook alone. Kept as a rule about the two
-   spans rather than deleted, because that is still the pair that competes for the width. */
-.filing-row:has(.tag-row-summary-fields) .tag-row-summary-tags {
-  flex-shrink: 1;
-  min-width: 0;
-}
-
-/*
-   Custom fields, under the notebook picker and the tags.
+   Custom fields, as a property list — beside the note on a desktop, above it on a phone.
 
    A grid rather than stacked label/control pairs: the labels line up in one column, so
    eight fields read as a form and not as eight rows that each found their own width. It
@@ -4723,11 +4704,28 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
      0.75rem body gap above pushed the first field far from the tags. Halving the distance
      above and giving the rows a hair more of their own makes the block read as one list.
   */
-  .sheet .note-fields { row-gap: 0.15rem; }
+  /*
+     The fields, in flow above the body on a phone.
+
+     Capped and scrolling within, because `.workspace` does not scroll and the body
+     needs the rest: without the cap a notebook with thirty fields left the editor a
+     sliver under them. Half the screen is the most the list may take before it scrolls;
+     the rule beneath is the seam between the note's data and its text.
+  */
+  .fields-inline {
+    flex: 0 1 auto;
+    max-height: 45dvh;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding: 0.35rem 0;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .fields-inline .note-fields { row-gap: 0.15rem; }
 
   /* "+ Add field" and "Manage fields" are about the notebook, not a value: a breath before
      them keeps the last field from reading as a row that happens to have two buttons. */
-  .sheet .note-fields-foot { margin-top: 0.6rem; }
+  .fields-inline .note-fields-foot { margin-top: 0.4rem; }
 
   .sheet-body { gap: 0.6rem; }
 
@@ -4771,38 +4769,6 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
     flex: 1 1 auto;
     min-width: 0;
     overflow: hidden;
-  }
-
-  /*
-     The values wrap to their own line rather than competing for the first one.
-
-     Inline they were the longest part of the row and took the space the notebook and tags
-     needed, so a coupon with five fields showed "Coupons #b… Code: T1-…" — every part
-     truncated and none of them readable. On their own line all of them fit, and the row
-     states the note's filing in full without opening anything, which is the whole point of
-     the summary.
-  */
-  .filing-row .tag-row-summary-fields {
-    flex: 1 0 100%;
-    order: 1;
-    /*
-       Wraps to three lines, then gives up.
-
-       The base rule clips this to one line with an ellipsis, which is right in a flex row
-       where it is competing for width — here it has a line of its own and the values are
-       the thing worth reading, so a coupon's five fields should wrap rather than end at
-       "Discou…". Three is the cap: enough for the fields a note actually carries, and short
-       enough that the row cannot push the note off the screen, which is what this whole
-       block exists to prevent.
-
-       `line-clamp` needs the `-webkit-` box to do the clamping; the unprefixed property is
-       included so this stops needing the prefix when the standard version lands.
-    */
-    display: -webkit-box;
-    -webkit-box-orient: vertical;
-    -webkit-line-clamp: 3;
-    line-clamp: 3;
-    white-space: normal;
   }
 
   /* The chevron, drawn as `.disclosure > summary::after` draws it, pointing the way the
