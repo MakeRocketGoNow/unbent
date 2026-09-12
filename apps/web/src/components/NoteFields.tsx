@@ -9,6 +9,8 @@ import {
   type NoteFieldValue,
 } from '@unbent/shared';
 import { Button } from './Button';
+import { FieldTypeIcon } from './icons.js';
+import { usePersistentState } from '../usePersistentState.js';
 
 export interface NoteFieldsProps {
   /** The note's notebook's definitions, in order. Undefined while they load. */
@@ -32,12 +34,27 @@ export interface NoteFieldsProps {
 }
 
 /**
- * A note's custom fields, under the notebook picker and the tags.
+ * A note's custom fields, as a property list.
  *
- * Fields are the note's filing as much as the notebook is, so they sit in the same block
- * and keep its rhythm rather than getting a panel of their own. Each row is a label and a
- * control sized to the row's shared 1.65rem, in a grid so the labels line up: eight fields
- * should read as a form, not as eight rows that each found their own width.
+ * Drawn the way Notion draws a page's properties, which is what the people who will use
+ * fields arrive knowing: a glyph for the type, the field's name, and the value as the
+ * thing it is — text, a chip, a checkbox, a link — with no box around it. It used to be
+ * a form, every value in a bordered input. That reads at five fields and fails at thirty:
+ * thirty boxed inputs is a tax return, thirty rows of name and value is a record. The
+ * glyphs came back for the same reason the drawer got them — a column with a picture
+ * beside each word is scanned by looking, and "Amount" beside a hash reads as a number
+ * without a type in brackets.
+ *
+ * What is *not* copied is Notion's editing mechanic. There, a click opens a separate
+ * editor for every property, which on a phone is a dance of overlays and pickers. Here
+ * the value is the control, all the time: it looks like text at rest and shows its edge
+ * on hover and focus, so editing is a click into the value and typing, and nothing opens
+ * over the thing being edited. The same rule the label editor follows.
+ *
+ * A value that is missing says "Empty" rather than showing a blank patch of screen, so
+ * filled and unfilled are told apart at a glance; and once a notebook has enough fields
+ * for the empties to be noise, they can be hidden — a preference that sticks, since the
+ * notebooks that need it need it every time.
  *
  * A value the note carries from a notebook it has since left is shown, not hidden — it is
  * the note's data — but as text with a Clear rather than as a control. Editing it would
@@ -48,6 +65,9 @@ export interface NoteFieldsProps {
  * field is the moment they are looking at the note that needs it. The chip opens into the
  * form in place, the way the tag entry does.
  */
+/** From this many fields, hiding the empty ones is offered. */
+const HIDE_EMPTY_FROM = 8;
+
 export function NoteFields({
   definitions,
   values,
@@ -59,6 +79,13 @@ export function NoteFields({
   manage,
 }: NoteFieldsProps) {
   const defs = notebookId ? definitions : [];
+  // Sticks across notes and sessions: the notebooks whose empties are noise are noise
+  // every time, and a toggle that reset on each note would be flipped on every visit.
+  const [hideEmpty, setHideEmpty] = usePersistentState<boolean>(
+    'noteFieldsHideEmpty',
+    false,
+    (raw) => (typeof raw === 'boolean' ? raw : undefined),
+  );
   // Not yet known which fields the notebook has: showing every value as foreign for a
   // frame and then re-sorting it under a label would be exactly the jump to avoid.
   if (!defs) return null;
@@ -71,9 +98,19 @@ export function NoteFields({
   const canAdd = !readOnly && notebookId !== null;
   if (defs.length === 0 && foreign.length === 0 && !canAdd) return null;
 
+  const isEmpty = (def: FieldDef) => {
+    const v = values[def.id];
+    return v === null || v === undefined || v === '';
+  };
+  const empties = defs.filter(isEmpty).length;
+  // The toggle is offered once the empties are worth hiding: a short list is read whole,
+  // and hiding two rows of six only makes the list look like it lost something.
+  const offerHide = defs.length >= HIDE_EMPTY_FROM && empties > 0;
+  const shown = hideEmpty && offerHide ? defs.filter((d) => !isEmpty(d)) : defs;
+
   return (
     <div className="note-fields">
-      {defs.map((def) => (
+      {shown.map((def) => (
         <FieldRow
           key={def.id}
           def={def}
@@ -84,6 +121,9 @@ export function NoteFields({
       ))}
       {foreign.map((v) => (
         <div key={v.fieldId} className="note-field note-field-foreign" data-type={v.type}>
+          <span className="note-field-glyph" aria-hidden="true">
+            <FieldTypeIcon type={v.type} />
+          </span>
           <span className="note-field-label">
             {v.name}
             <span className="note-field-origin">from {v.notebook}</span>
@@ -98,10 +138,20 @@ export function NoteFields({
           </span>
         </div>
       ))}
-      {canAdd && (
+      {(canAdd || offerHide) && (
         <div className="note-fields-foot">
-          <AddField onAdd={onAddField} />
-          {manage}
+          {canAdd && <AddField onAdd={onAddField} />}
+          {offerHide && (
+            <button
+              type="button"
+              className="note-fields-toggle"
+              aria-pressed={hideEmpty}
+              onClick={() => setHideEmpty(!hideEmpty)}
+            >
+              {hideEmpty ? `Show ${empties} empty` : `Hide ${empties} empty`}
+            </button>
+          )}
+          {canAdd && manage}
         </div>
       )}
     </div>
@@ -126,17 +176,19 @@ function FieldRow({ def, value, readOnly, onChange }: FieldRowProps) {
   };
 
   /*
-     An em dash for a value that has none.
+     "Empty" for a value that has none, as Notion writes it.
 
-     With the mobile row drawn quiet — no border, no fill — an empty text input is an empty
-     patch of screen, and a field with no value reads as a rendering failure rather than as
-     a blank. The dash is what a detail list puts there instead.
+     The control is drawn with no border or fill at rest, so an empty text input is an
+     empty patch of screen, and a field with no value would read as a rendering failure
+     rather than as a blank. The word says what the blank is, and tells filled from
+     unfilled at a glance, which with thirty rows is the first thing anyone wants.
 
-     Only for the inputs that would otherwise render nothing. A checkbox, a date input and a
-     select all draw their own empty state — and `placeholder` on a `<select>` is not a
-     thing at all, which is why this is spread rather than folded into `common`.
+     Only for the inputs that would otherwise render nothing. A checkbox and a date input
+     draw their own empty state, and a select's is its first option — `placeholder` on a
+     `<select>` is not a thing at all, which is why this is spread rather than folded
+     into `common`.
   */
-  const blank = { placeholder: '—' };
+  const blank = { placeholder: 'Empty' };
 
   let control: ReactNode;
   let side: ReactNode = null;
@@ -176,8 +228,14 @@ function FieldRow({ def, value, readOnly, onChange }: FieldRowProps) {
       // blanked: the note said it, and the option list changing is not the note's edit.
       const stale = text !== '' && !def.options.includes(text);
       control = (
-        <select {...common} value={text} onChange={(e) => setText(e.target.value)}>
-          <option value="">—</option>
+        <select
+          {...common}
+          // The stylesheet draws a chosen option as a chip; an unchosen one as "Empty".
+          data-filled={text !== '' || undefined}
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+        >
+          <option value="">Empty</option>
           {def.options.map((o) => (
             <option key={o} value={o}>
               {o}
@@ -233,6 +291,9 @@ function FieldRow({ def, value, readOnly, onChange }: FieldRowProps) {
 
   return (
     <div className="note-field" data-type={def.type}>
+      <span className="note-field-glyph" aria-hidden="true">
+        <FieldTypeIcon type={def.type} />
+      </span>
       <label className="note-field-label" htmlFor={id}>
         {def.name}
       </label>

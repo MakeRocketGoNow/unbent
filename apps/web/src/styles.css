@@ -1748,57 +1748,98 @@ a.sidebar-status:hover {
 .note-fields {
   align-self: stretch;
   display: grid;
-  grid-template-columns: minmax(6rem, max-content) minmax(0, 1fr) auto;
+  /* Glyph, name, value, and the value's own action (Open, Call). The name column grows to
+     its longest word up to a cap, so thirty labels line up without one long one pushing
+     every value to the right of the block. */
+  grid-template-columns: auto minmax(5rem, 9rem) minmax(0, 1fr) auto;
   align-items: center;
-  column-gap: 0.6rem;
-  row-gap: 0.35rem;
+  column-gap: 0.5rem;
+  row-gap: 0.1rem;
 }
 
-/* The row is a grouping for React and for the foreign/own distinction; the grid sees its cells. */
 .note-field { display: contents; }
+
+/* The type, as a picture: muted like the name it sits beside, since both describe the
+   value rather than being it. */
+.note-field-glyph {
+  display: inline-flex;
+  align-items: center;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
 
 .note-field-label {
   display: inline-flex;
   align-items: center;
   min-width: 0;
-  font-size: 0.78rem;
+  font-size: 0.82rem;
   color: var(--muted);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
-/* The same fill, edge and radius as the picker beside it, at the row's height. */
+/*
+   The value is the control, drawn as the value.
+
+   No border and no fill at rest, so a row reads as name and value rather than as a form
+   field; the edge appears on hover, which is the affordance, and stays on focus, which is
+   the state. The negative inline margin puts the text where a plain value would sit, on
+   the column's edge, rather than a padding-width inside it — so a resting row and an
+   editing row put the value in the same place.
+*/
 .note-field-input {
   width: 100%;
   min-width: 0;
-  min-height: 1.65rem;
-  padding: 0.15rem 0.5rem;
+  min-height: 1.75rem;
+  padding: 0.2rem 0.45rem;
+  margin-left: -0.45rem;
   font: inherit;
-  font-size: 0.8rem;
-  /* The system font's normal leading makes an input a pixel taller than the picker and
-     the chips it sits with; a fixed leading lets the shared min-height decide. */
-  line-height: 1.25;
+  font-size: 0.85rem;
+  line-height: 1.3;
   color: var(--fg);
-  background: color-mix(in srgb, var(--fg) 4%, transparent);
-  border: 1px solid var(--border);
+  background: none;
+  border: 1px solid transparent;
   border-radius: 0.35rem;
 }
 
 .note-field-input:hover:not(:disabled) {
-  border-color: color-mix(in srgb, var(--accent) 50%, var(--border));
+  background: color-mix(in srgb, var(--fg) 5%, transparent);
 }
 
 .note-field-input:focus {
   outline: none;
+  background: color-mix(in srgb, var(--fg) 4%, transparent);
   border-color: var(--accent);
 }
 
 .note-field-input::placeholder { color: var(--muted); }
 
-select.note-field-input { cursor: pointer; }
+/*
+   A select is a chip once it holds a value — the shape a chosen option has in every
+   property list — and the word "Empty" until it does. The native menu stays: it is the
+   one control here that is better as the platform's own than as something drawn.
+*/
+select.note-field-input {
+  width: auto;
+  max-width: 100%;
+  cursor: pointer;
+  appearance: none;
+}
 
-/* A checkbox is its own control; it takes the accent and none of the box. */
+select.note-field-input:not([data-filled]) { color: var(--muted); }
+
+select.note-field-input[data-filled] {
+  padding-inline: 0.55rem;
+  color: var(--fg);
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+  border-radius: 999px;
+}
+
+select.note-field-input[data-filled]:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--accent) 24%, transparent);
+}
+
 .note-field-check {
   justify-self: start;
   width: 1.05rem;
@@ -1808,10 +1849,9 @@ select.note-field-input { cursor: pointer; }
   cursor: pointer;
 }
 
-/* A value the note carries from another notebook: read, not edited. */
 .note-field-value {
   min-width: 0;
-  font-size: 0.8rem;
+  font-size: 0.85rem;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1822,7 +1862,6 @@ select.note-field-input { cursor: pointer; }
   font-style: italic;
 }
 
-/* Never empty in the markup, often empty on screen; keeps the column count honest. */
 .note-field-side {
   display: inline-flex;
   align-items: center;
@@ -1893,6 +1932,19 @@ select.note-field-input { cursor: pointer; }
 .note-field-add .note-field-error { flex-basis: 100%; }
 
 .note-fields-manage { white-space: nowrap; }
+
+/* Hide or show the empties: a preference, drawn as quietly as the add chip beside it. */
+.note-fields-toggle {
+  padding: 0.15rem 0.2rem;
+  font: inherit;
+  font-size: 0.75rem;
+  color: var(--muted);
+  background: none;
+  border: none;
+  cursor: pointer;
+}
+
+.note-fields-toggle:hover { color: var(--accent); }
 
 /*
    The desktop filing block has no summary to show.

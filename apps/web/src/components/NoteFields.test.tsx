@@ -201,6 +201,7 @@ describe('NoteFields', () => {
     const block = container.querySelector('.note-fields')!;
     const row = block.querySelector('.note-field')!;
     expect([...row.children].map((c) => `${c.tagName.toLowerCase()}.${c.className.split(' ')[0]}`)).toEqual([
+      'span.note-field-glyph',
       'label.note-field-label',
       'input.note-field-input',
       'span.note-field-side',
@@ -208,5 +209,47 @@ describe('NoteFields', () => {
     expect(block.querySelectorAll('.note-field')).toHaveLength(defs.length);
     expect(block.lastElementChild!.className).toBe('note-fields-foot');
     expect(block.querySelector('.note-fields-foot > .note-field-add-hint')).toBeTruthy();
+  });
+});
+
+/*
+ * The property list's own two behaviours: an empty value says so, and once a notebook has
+ * enough fields, the empty ones can be put away. Both are Notion's, and both are what
+ * makes thirty rows readable.
+ */
+describe('NoteFields as a property list', () => {
+  afterEach(() => {
+    cleanup();
+    localStorage.clear();
+  });
+
+  it('says Empty where a value is missing, and draws a chosen select as a chip', () => {
+    mount({ values: { 'f-sel': 'Food' } });
+    expect(input('Merchant').placeholder).toBe('Empty');
+    const sel = screen.getByLabelText('Category');
+    expect(sel.getAttribute('data-filled')).toBe('true');
+    cleanup();
+    mount();
+    expect(screen.getByLabelText('Category').getAttribute('data-filled')).toBeNull();
+  });
+
+  it('offers to hide the empties only once the list is long, and remembers the choice', () => {
+    // Eight definitions is the threshold; one value leaves seven empty.
+    const { getByText, queryByLabelText } = mount({ values: { 'f-text': 'Acme' } });
+    fireEvent.click(getByText('Hide 7 empty'));
+    expect(queryByLabelText('Amount')).toBeNull();
+    expect(input('Merchant').value).toBe('Acme');
+    expect(getByText('Show 7 empty')).toBeTruthy();
+
+    // A short list is read whole: no toggle.
+    cleanup();
+    const { queryByText } = mount({ definitions: defs.slice(0, 3) });
+    expect(queryByText(/empty$/)).toBeNull();
+
+    // And the preference sticks for the next note.
+    cleanup();
+    const again = mount({ values: { 'f-text': 'Acme' } });
+    expect(again.queryByLabelText('Amount')).toBeNull();
+    expect(again.getByText('Show 7 empty')).toBeTruthy();
   });
 });
