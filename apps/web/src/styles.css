@@ -958,11 +958,20 @@ h1 {
   font-size: 1rem;
 }
 
-.embedded .note-field-input { min-height: 3rem; }
-.embedded .note-field-label { min-height: 3rem; }
-/* A chip is Material's 32dp, not the row's 48: the row keeps its height from the label. */
-.embedded select.note-field-input { min-height: 2rem; }
+/* 44dp: a comfortable touch target, tighter than Material's 48dp list item, which read
+   as more air than a value row of this density wanted. */
+/* 44dp: a comfortable touch target, tighter than Material's 48dp list item, which read
+   as more air than a value row of this density wanted. */
+.embedded .note-field-input { min-height: 2.75rem; }
+.embedded .note-field-label { min-height: 2.75rem; }
 .embedded .note-field-glyph { font-size: 1.1rem; }
+
+/*
+   A chip's own height, one value for all three — the notebook, a tag, the add-tag entry.
+   Material's 32dp, taller than the site's 1.65rem so a thumb clears it, and identical
+   across the three so the two filing rows never look like different controls.
+*/
+.embedded select.note-field-input[data-filled],
 .embedded .tag-chip,
 .embedded .tag-add-hint { min-height: 2rem; }
 
@@ -1865,7 +1874,16 @@ select.note-field-input {
 select.note-field-input:not([data-filled]) { color: var(--muted); }
 
 select.note-field-input[data-filled] {
-  padding-inline: 0.55rem;
+  /*
+     A chosen notebook is a chip, and the same chip as a tag: same height, padding and
+     type, so the two rows read as one kind of control rather than as a select that
+     happens to sit above some tags. Without this the select inherited the field input's
+     taller box and larger type, and on a desktop — where neither is capped to a touch
+     target — the notebook pill stood visibly taller than the tags below it.
+  */
+  min-height: 1.65rem;
+  padding: 0.15rem 0.55rem;
+  font-size: 0.75rem;
   color: var(--chip-fg);
   background: var(--chip-bg);
   border-radius: 999px;

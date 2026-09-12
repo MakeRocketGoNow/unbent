@@ -68,6 +68,33 @@ describe('TagInput add affordance', () => {
     expect(onChange).toHaveBeenCalledWith(['Dentist']);
   });
 
+  /*
+   * Enter keeps the caret in the emptied field, so a run of tags can be typed without
+   * reaching back to the field between each. Tags come in runs; the alternative carried
+   * focus to the next control after the first.
+   */
+  it('keeps focus in the field after Enter, ready for the next tag', () => {
+    const onChange = vi.fn();
+    render(<TagInput tags={[]} suggestions={[]} onChange={onChange} />);
+    const field = screen.getByLabelText('Add a tag');
+    field.focus();
+    fireEvent.change(field, { target: { value: 'Dentist' } });
+    fireEvent.keyDown(field, { key: 'Enter' });
+    expect(document.activeElement).toBe(field);
+  });
+
+  /* Tab is the one that leaves: it commits, then lets focus move on. */
+  it('commits on Tab without holding focus', () => {
+    const onChange = vi.fn();
+    render(<TagInput tags={[]} suggestions={[]} onChange={onChange} />);
+    const field = screen.getByLabelText('Add a tag');
+    fireEvent.change(field, { target: { value: 'Dentist' } });
+    const prevented = !fireEvent.keyDown(field, { key: 'Tab' });
+    expect(onChange).toHaveBeenCalledWith(['Dentist']);
+    // The commit ran, but nothing forced focus back to the field.
+    expect(prevented).toBe(true);
+  });
+
   /**
    * The field must open where the chip was, not jump elsewhere.
    *
