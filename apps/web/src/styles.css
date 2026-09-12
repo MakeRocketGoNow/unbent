@@ -45,6 +45,20 @@
   color-scheme: light;
 }
 
+/*
+   Every checkbox and radio is the app's green, not the browser's blue.
+
+   The editor's task boxes, the preview's, a field's, a settings row's: one control, one
+   colour, everywhere it appears — and inside the Android app's embed that colour is the
+   app's primary, which is what makes a ticked task in the WebView match the native
+   checkbox on the notebooks screen above it. `accent-color` is the whole mechanism; the
+   platform keeps drawing the control.
+*/
+input[type='checkbox'],
+input[type='radio'] {
+  accent-color: var(--accent);
+}
+
 @media (prefers-color-scheme: dark) {
   :root {
     --bg: #16151a;
@@ -1866,7 +1880,6 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
   width: 1.05rem;
   height: 1.05rem;
   margin: 0;
-  accent-color: var(--accent);
   cursor: pointer;
 }
 
