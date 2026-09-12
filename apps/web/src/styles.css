@@ -76,6 +76,20 @@ input[type='radio'] {
   box-sizing: border-box;
 }
 
+/*
+   Never let a WebView resize text on its own.
+
+   Android's WebView runs a text-inflation pass that scales up what it decides is body
+   text and leaves the rest — which sized a tag chip's short label at 16px while the
+   field values beside it stayed at the 12px both were authored at, a difference visible
+   only on the phone. Pinning the adjustment to 100% holds every element at its declared
+   size. A no-op in a normal browser, where the property already resolves to 100%.
+*/
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
 body {
   margin: 0;
   background: var(--bg);
@@ -940,6 +954,22 @@ h1 {
 }
 
 .fields-inline .note-fields { row-gap: 0.15rem; }
+
+/*
+   The tag row's chips start on the value column, not a chip-padding-width inside it.
+
+   Every other value on the list — a field input, the notebook chip — is pulled left by
+   its own negative margin so its text lands on the column's edge. The tag wrapper holds
+   its chips with no such pull, so the first chip's text sat ~9px right of the values
+   above and below it. This pulls the wrapper by a chip's own inline padding, putting the
+   first chip's text back on the line. `align-self: center` keeps a one-line row centred
+   in the taller label cell beside it.
+*/
+.note-fields .tag-input {
+  min-width: 0;
+  align-self: center;
+  margin-left: -0.55rem;
+}
 
 /* Material's list sizes for the property rows the app hosts: bodyLarge on 48dp rows. */
 .embedded .note-fields {
@@ -1880,9 +1910,14 @@ select.note-field-input[data-filled] {
      happens to sit above some tags. Without this the select inherited the field input's
      taller box and larger type, and on a desktop — where neither is capped to a touch
      target — the notebook pill stood visibly taller than the tags below it.
+
+     The margin cancels the chip's own inline padding so the label starts on the value
+     column's edge, where the field inputs and the tag chips start; the plain input's
+     smaller pull left it a few pixels further in than the tags below it.
   */
   min-height: 1.65rem;
   padding: 0.15rem 0.55rem;
+  margin-left: -0.55rem;
   font-size: 0.75rem;
   color: var(--chip-fg);
   background: var(--chip-bg);
