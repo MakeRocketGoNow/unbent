@@ -18,6 +18,11 @@ interface TagInputProps {
  *
  * Commits on Enter, Tab, and comma, and on blur — committing only on Enter silently drops
  * a tag the user typed and then clicked away from, which reads as the app losing data.
+ *
+ * Enter keeps the caret here, in a now-empty field, rather than moving to the next control:
+ * adding tags comes in runs, and a soft keyboard's action key would otherwise carry focus
+ * out of the field after the first. `enterKeyHint` asks that key to read "done" rather than
+ * "next", and the handler refocuses to make it so even where the hint is ignored.
  */
 export function TagInput({ tags, suggestions, onChange, label = 'tag' }: TagInputProps) {
   const [draft, setDraft] = useState('');
@@ -87,11 +92,18 @@ export function TagInput({ tags, suggestions, onChange, label = 'tag' }: TagInpu
             setActive(false);
             commit(draft);
           }}
+          // Not "next": Enter adds a tag and stays, so the key that does it should not
+          // promise a jump to the next field.
+          enterKeyHint="done"
           onKeyDown={(e) => {
             if (e.key === 'Enter' || e.key === 'Tab' || e.key === ',') {
               if (draft.trim() === '') return;
               e.preventDefault();
               commit(draft);
+              // Tab is meant to leave; Enter and comma are mid-run, so hold the caret in
+              // the field the commit just emptied. A soft keyboard's own action key can
+              // still move focus despite preventDefault, so this puts it back.
+              if (e.key !== 'Tab') inputRef.current?.focus();
             } else if (e.key === 'Backspace' && draft === '' && tags.length > 0) {
               // Backspace on an empty field removes the last tag, as chips usually behave.
               remove(tags[tags.length - 1]!);

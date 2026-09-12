@@ -958,8 +958,10 @@ h1 {
   font-size: 1rem;
 }
 
-.embedded .note-field-input { min-height: 3rem; }
-.embedded .note-field-label { min-height: 3rem; }
+/* 44dp: a comfortable touch target, tighter than Material's 48dp list item, which read
+   as more air than a value row of this density wanted. */
+.embedded .note-field-input { min-height: 2.75rem; }
+.embedded .note-field-label { min-height: 2.75rem; }
 /* A chip is Material's 32dp, not the row's 48: the row keeps its height from the label. */
 .embedded select.note-field-input { min-height: 2rem; }
 .embedded .note-field-glyph { font-size: 1.1rem; }
