@@ -96,37 +96,33 @@ afterEach(() => {
 describe('the note details on a phone', () => {
   beforeEach(() => stubMedia((q) => q === MOBILE_QUERY));
 
-  it('states the filing on a row instead of spending the screen on controls', async () => {
+  /*
+   * The notebook and the tags are the first two rows of the property list, on the page —
+   * not a row that opens a sheet. The sheet earned its place holding six controls; once
+   * the fields moved onto the page it held two, and a modal surface for two controls the
+   * row already showed was ceremony.
+   */
+  it('puts the notebook and the tags on the page as the first rows, with no sheet', async () => {
     const { container } = mount();
 
-    await waitFor(() => expect(row()).toBeTruthy());
-    expect(row()!.textContent).toContain('Coupons');
-    expect(row()!.textContent).toContain('#bikes');
-    /*
-       Nothing between the title and the editor but that one row.
+    await waitFor(() => expect(container.querySelector('.fields-inline')).toBeTruthy());
+    expect(row()).toBeNull();
+    expect(document.querySelector('dialog')).toBeNull();
 
-       Tested as "no controls outside the sheet" rather than "no controls at all": the sheet
-       renders its `<dialog>` and its children in the tree whether or not it is open, and a
-       closed dialog is invisible because the platform does not paint it, not because React
-       left it out. In flow is the thing that cost the screen, so in flow is what is asserted.
-    */
-    const inFlow = [...container.querySelectorAll('.tag-row')].filter((el) => !el.closest('dialog'));
-    expect(inFlow).toHaveLength(0);
-  });
+    const inline = container.querySelector('.fields-inline')!;
+    const notebook = screen.getByLabelText('Notebook') as unknown as HTMLSelectElement;
+    expect(inline.contains(notebook)).toBe(true);
+    expect(notebook.value).toBe('Coupons');
+    // A chosen notebook is drawn as a chip, like a chosen select value on a field row.
+    expect(notebook.getAttribute('data-filled')).toBe('true');
+    expect(inline.querySelector('.tag-input')).toBeTruthy();
+    expect(inline.textContent).toContain('bikes');
 
-  it('opens the controls in a sheet, without moving the note', async () => {
-    mount();
-
-    await waitFor(() => expect(row()).toBeTruthy());
-    fireEvent.click(row()!);
-
-    const dialog = document.querySelector('dialog') as HTMLDialogElement;
-    expect(dialog.open).toBe(true);
-    expect(dialog.getAttribute('aria-label')).toBe('Details');
-    // The notebook and the tags are what the sheet holds; the fields are not in it.
-    expect(dialog.querySelector('.tag-row')).toBeTruthy();
-    expect(screen.getByLabelText('Notebook').closest('dialog')).toBe(dialog);
-    expect(screen.getByLabelText('Code').closest('dialog')).toBeNull();
+    // Before the fields, in the same grid: the first two `.note-field` rows are theirs.
+    const rows = [...inline.querySelectorAll('.note-field')];
+    expect(rows[0]?.textContent).toContain('Notebook');
+    expect(rows[1]?.textContent).toContain('Tags');
+    expect(rows[2]?.textContent).toContain('Code');
   });
 
   /*
@@ -136,9 +132,8 @@ describe('the note details on a phone', () => {
   it('keeps the fields on the page above the note, editable in place', async () => {
     const { container } = mount();
 
-    await waitFor(() => expect(row()).toBeTruthy());
+    await waitFor(() => expect(container.querySelector('.fields-inline')).toBeTruthy());
     const inline = container.querySelector('.fields-inline');
-    expect(inline).toBeTruthy();
     expect(inline!.closest('dialog')).toBeNull();
     const code = screen.getByLabelText('Code') as HTMLInputElement;
     expect(inline!.contains(code)).toBe(true);
@@ -147,8 +142,6 @@ describe('the note details on a phone', () => {
     await waitFor(() =>
       expect((screen.getByLabelText('Code') as HTMLInputElement).value).toBe('T1-WWC-5G839'),
     );
-    // The row states the filing only; the values have rows of their own now.
-    expect(row()!.textContent).not.toContain('T1-WWC-5G839');
   });
 });
 
