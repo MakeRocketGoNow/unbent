@@ -219,6 +219,135 @@ function remarkDisableSetext() {
   extensions.push({ disable: { null: ['setextUnderline'] } });
 }
 
+/**
+ * A note body reduced to the prose someone would read, for a list row.
+ *
+ * Parsed with the same grammar the renderer uses, then flattened: headings, emphasis,
+ * links and code keep their words and lose their marks; list items and table rows read
+ * in order; a task keeps its box. Three kinds of node contribute nothing, on purpose:
+ *
+ * - **Images and attachment links.** A note that is one scanned PDF used to excerpt as
+ *   `[Scan.pdf](<files/Scan.pdf>)` — the markup was the whole line. The list shows a
+ *   note's files as their own line, from the attachment rows rather than from the body,
+ *   so repeating them here as prose would say it twice and say it worse. An image's alt
+ *   is nearly always its filename, so it goes with the image.
+ * - **Raw HTML.** Imported ENML leaves inline tags behind, and a row is not the place to
+ *   render them.
+ * - **Rules and footnote marks.** Layout, not content.
+ *
+ * Blocks are joined with a middle dot rather than a newline: the row shows one line,
+ * and `milk · eggs · bread` reads as the list it was, where the newline would have been
+ * folded into a space and lost. The same separator the row already uses between field
+ * values.
+ *
+ * Only the head of the body is parsed. A 140-character excerpt is decided well inside
+ * the first few kilobytes, and an archive page lists fifty of these per request.
+ */
+export function excerptMarkdown(markdown: string, max = 140): string {
+  const parts: string[] = [];
+  let length = 0;
+  const separator = ' · ';
+
+  for (const block of parseHead(markdown)) {
+    for (const text of blockTexts(block)) {
+      const cleaned = text.replace(/\s+/g, ' ').trim();
+      if (!cleaned) continue;
+      parts.push(cleaned);
+      length += cleaned.length + separator.length;
+      if (length > max) break;
+    }
+    if (length > max) break;
+  }
+
+  const joined = parts.join(separator);
+  return joined.length > max ? `${joined.slice(0, max - 1).trimEnd()}…` : joined;
+}
+
+/** How much of the body the excerpt reads. See `excerptMarkdown`. */
+const EXCERPT_HEAD_CHARS = 4000;
+
+/** The loose node shape the excerpt walks; `@types/mdast` is not a dependency. */
+interface MdNode {
+  type: string;
+  value?: string;
+  url?: string;
+  checked?: boolean | null;
+  children?: MdNode[];
+}
+
+function parseHead(markdown: string): MdNode[] {
+  const tree = unified()
+    .use(remarkParse)
+    .use(remarkDisableSetext)
+    .use(remarkGfm)
+    .parse(markdown.slice(0, EXCERPT_HEAD_CHARS)) as MdNode;
+  return tree.children ?? [];
+}
+
+/**
+ * One block's text, as the segments the excerpt joins.
+ *
+ * A paragraph or heading is one segment. Containers open up: each item of a list and each
+ * row of a table is its own segment, so a to-do list reads item by item rather than as
+ * one run-on. A blockquote's own blocks are yielded as they are.
+ */
+function* blockTexts(node: MdNode): Generator<string> {
+  switch (node.type) {
+    case 'paragraph':
+    case 'heading':
+      yield inlineText(node);
+      return;
+    case 'code':
+      yield node.value ?? '';
+      return;
+    case 'blockquote':
+    case 'footnoteDefinition':
+      for (const child of node.children ?? []) yield* blockTexts(child);
+      return;
+    case 'list':
+      for (const item of node.children ?? []) {
+        // Nested lists sit inside the item; their items come out as segments of their own.
+        const own = (item.children ?? []).filter((c) => c.type !== 'list');
+        const nested = (item.children ?? []).filter((c) => c.type === 'list');
+        const text = own.map((c) => [...blockTexts(c)].join(' ')).join(' ');
+        const box = item.checked === true ? '☑ ' : item.checked === false ? '☐ ' : '';
+        yield `${box}${text}`;
+        for (const list of nested) yield* blockTexts(list);
+      }
+      return;
+    case 'table':
+      for (const row of node.children ?? []) {
+        yield (row.children ?? []).map(inlineText).join(' ');
+      }
+      return;
+    default:
+      // thematicBreak, html, definition, yaml — nothing to read.
+      return;
+  }
+}
+
+/** The words of an inline run, marks removed and the two non-prose kinds dropped. */
+function inlineText(node: MdNode): string {
+  switch (node.type) {
+    case 'text':
+    case 'inlineCode':
+      return node.value ?? '';
+    case 'break':
+      return ' ';
+    case 'image':
+    case 'imageReference':
+    case 'html':
+    case 'footnoteReference':
+      return '';
+    case 'link':
+      // A same-note attachment is shown by the row's file line, not repeated as its label.
+      if (typeof node.url === 'string' && node.url.startsWith(ATTACHMENT_PREFIX)) return '';
+      return (node.children ?? []).map(inlineText).join('');
+    default:
+      return (node.children ?? []).map(inlineText).join('');
+  }
+}
+
 export function renderMarkdown(markdown: string, opts: RenderOptions): string {
   return unified()
     .use(remarkParse)
