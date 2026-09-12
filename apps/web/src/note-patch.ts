@@ -52,10 +52,30 @@ export function buildNotePatch(
   const notebook = note.notebook ?? null;
   if (draft.notebook !== notebook) patch.notebook = draft.notebook;
 
-  const fields = fieldPatch(draft.fields, note.fields ?? [], definitions);
+  const { patch: fields } = diffFields(draft.fields, note.fields ?? [], definitions);
   if (fields) patch.fields = fields;
 
   return Object.keys(patch).length > 0 ? patch : null;
+}
+
+/**
+ * The field ids whose draft value this save is leaving behind, because the type cannot
+ * read it yet — a number still at "12.", a URL at "http://".
+ *
+ * Skipping them is what keeps the title and body typed in the same breath saveable, but
+ * it means a save can report success while one of these values exists nowhere but the
+ * draft. The editor asks so its indicator can go on saying "Unsaved", rather than
+ * claiming work the server does not have and letting the user walk away on that word.
+ *
+ * An id the notebook no longer defines is not in here. There is nothing to type that
+ * would make it storeable, and nothing for the editor to point at.
+ */
+export function unstoreableFieldIds(
+  draft: NoteDraft,
+  note: Pick<Note, 'fields'>,
+  definitions: FieldDef[] | undefined,
+): string[] {
+  return diffFields(draft.fields, note.fields ?? [], definitions).held;
 }
 
 function sameTags(a: string[], b: string[]): boolean {
@@ -66,29 +86,37 @@ function sameTags(a: string[], b: string[]): boolean {
  * Only the field ids whose draft value differs from what is stored, and only when that
  * value can actually be written. Unknown ids (a field deleted in another tab) and
  * values the type cannot read yet ("12.", "http://") are skipped rather than sent.
+ *
+ * The skipped-for-now ids come back alongside the patch: they are the difference between
+ * "nothing changed" and "something changed that cannot be written yet", and only the
+ * caller can tell the user which one it is looking at.
  */
-function fieldPatch(
+function diffFields(
   draft: Record<string, FieldValue | null>,
   stored: NoteFieldValue[],
   definitions: FieldDef[] | undefined,
-): NoteFieldsPatch | null {
+): { patch: NoteFieldsPatch | null; held: string[] } {
   const previous = new Map(stored.map((v) => [v.fieldId, v]));
   const defs = new Map((definitions ?? []).map((d) => [d.id, d]));
   const patch: NoteFieldsPatch = {};
+  const held: string[] = [];
 
   for (const [id, value] of Object.entries(draft)) {
-    const held = previous.get(id);
+    const stands = previous.get(id);
     if (value === null || value === undefined) {
-      if (held) patch[id] = null;
+      if (stands) patch[id] = null;
       continue;
     }
-    if (held && sameFieldValue(held.value, value)) continue;
+    if (stands && sameFieldValue(stands.value, value)) continue;
 
-    const def = defs.get(id) ?? (held ? { type: held.type, options: [] as string[] } : undefined);
+    const def = defs.get(id) ?? (stands ? { type: stands.type, options: [] as string[] } : undefined);
     if (!def) continue;
 
     const encoded = encodeFieldValue(def, value);
-    if (encoded === null) continue;
+    if (encoded === null) {
+      held.push(id);
+      continue;
+    }
     /*
        An emptied input is "no value", never the empty string, so it sends the same null
        the branch above does — and is skipped the same way when the note has nothing to
@@ -96,13 +124,13 @@ function fieldPatch(
        against its own contract rather than against what the far end happens to forgive.
     */
     if (encoded === 'clear') {
-      if (held) patch[id] = null;
+      if (stands) patch[id] = null;
       continue;
     }
     patch[id] = value;
   }
 
-  return Object.keys(patch).length > 0 ? patch : null;
+  return { patch: Object.keys(patch).length > 0 ? patch : null, held };
 }
 
 function sameFieldValue(a: FieldValue, b: FieldValue): boolean {

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { FieldDef, Note, NoteFieldValue } from '@unbent/shared';
-import { buildNotePatch, type NoteDraft } from './note-patch.js';
+import { buildNotePatch, unstoreableFieldIds, type NoteDraft } from './note-patch.js';
 
 const amount: FieldDef = {
   id: '11111111-1111-1111-1111-111111111111',
@@ -192,5 +192,42 @@ describe('buildNotePatch', () => {
 
   it('treats a number the input re-emitted as a string as unchanged', () => {
     expect(buildNotePatch(draft({ fields: { [amount.id]: '12' } }), note(), [amount])).toBeNull();
+  });
+});
+
+describe('unstoreableFieldIds', () => {
+  it('names the field whose value the save is leaving behind', () => {
+    expect(
+      unstoreableFieldIds(draft({ body: 'new', fields: { [amount.id]: '12.' } }), note(), [amount]),
+    ).toEqual([amount.id]);
+  });
+
+  it('names nothing when every value is one the type can read', () => {
+    expect(unstoreableFieldIds(draft({ fields: { [amount.id]: '12.5' } }), note(), [amount])).toEqual(
+      [],
+    );
+    expect(unstoreableFieldIds(draft({ fields: { [amount.id]: null } }), note(), [amount])).toEqual([]);
+  });
+
+  /*
+     Neither of these is something the user can finish typing, so neither belongs in an
+     indicator asking them to: the field is gone, and the retired select value is one the
+     note already holds.
+  */
+  it('names neither a deleted field nor an unchanged retired select', () => {
+    expect(
+      unstoreableFieldIds(draft({ fields: { [amount.id]: 12, [gone]: 'leftover' } }), note(), [
+        amount,
+      ]),
+    ).toEqual([]);
+
+    const withKind = note({ fields: [value(amount, 12), value(kind, 'Travel')] });
+    expect(
+      unstoreableFieldIds(
+        draft({ fields: { [amount.id]: 12, [kind.id]: 'Travel' } }),
+        withKind,
+        [amount, kind],
+      ),
+    ).toEqual([]);
   });
 });
