@@ -5,6 +5,7 @@ import type { EditorView } from '@codemirror/view';
 import type { FieldType, FieldValue } from '@unbent/shared';
 import * as api from '../notes-api.js';
 import { isStatus } from '../notes-api.js';
+import { buildNotePatch, unstoreableFieldIds } from '../note-patch.js';
 import { useAutosave } from '../useAutosave.js';
 import { usePersistentState, clamp } from '../usePersistentState.js';
 import {
@@ -261,7 +262,17 @@ export function Workspace({ noteId, readOnly = false, backTo = '/notes' }: Works
   }, [noteId, note !== undefined]);
 
   async function save(value: typeof draft) {
-    const updated = await api.updateNote(noteId, value);
+    if (!note) return;
+    /*
+       Only the keys that actually changed, and only field values the type can store.
+       Sending the whole draft used to 400 a body save on a half-typed number, and to
+       write the stale title back over a rename the phone had already saved — see
+       `buildNotePatch`. Nothing storeable is a successful no-op: the debounce fired
+       because the draft moved, but the movement was not yet a value the server can hold.
+    */
+    const patch = buildNotePatch(value, note, fieldDefs.data);
+    if (!patch) return;
+    const updated = await api.updateNote(noteId, patch);
     queryClient.setQueryData(keys.note(noteId), updated);
     // A tag or notebook edit changes the sidebar counts, and the title and ordering
     // change the list, so both are refetched rather than patched by hand.
@@ -269,14 +280,30 @@ export function Workspace({ noteId, readOnly = false, backTo = '/notes' }: Works
     invalidateNoteMembership(queryClient);
   }
 
+  const editing = note !== undefined && !readOnly && draftFor === noteId;
+
   const { state: saveState } = useAutosave(draft, save, {
     // Never autosave while viewing the trash: a note in the bin is a record of what was
     // deleted, and writing to it would be editing something the user believes is gone.
     // `draftFor === noteId` keeps a draft still holding the previous note's text from
     // being written over this one during the render between navigation and reseeding.
-    enabled: note !== undefined && !readOnly && draftFor === noteId,
+    enabled: editing,
     resetKey: noteId,
   });
+
+  /*
+     A field value the type cannot read yet — a number at "12.", a URL at "http://" — is
+     left out of the patch so the title and body typed beside it still save. The save then
+     succeeds with that value held nowhere but the draft, and "Saved" over it is a word the
+     user can act on: switch notes or close the tab and the half-typed value is gone.
+
+     So the head keeps saying "Unsaved" until the value is one the field can hold. The
+     state machine is left alone — the save did succeed, and failing it would put back the
+     400 that took the body down with it.
+  */
+  const holdingField = editing && unstoreableFieldIds(draft, note, fieldDefs.data).length > 0;
+  const saveLabel =
+    holdingField && saveState === 'saved' ? SAVE_LABEL.dirty : SAVE_LABEL[saveState];
 
   /**
    * Adds a definition to the note's notebook from the note itself. The definitions
@@ -520,7 +547,7 @@ export function Workspace({ noteId, readOnly = false, backTo = '/notes' }: Works
 
         <div className="workspace-actions">
           <span className={saveState === 'error' ? 'bad small' : 'muted small'}>
-            {readOnly ? 'In trash' : SAVE_LABEL[saveState]}
+            {readOnly ? 'In trash' : saveLabel}
           </span>
 
           {/*
