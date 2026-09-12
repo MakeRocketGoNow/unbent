@@ -36,8 +36,8 @@ import { ResizeHandle } from './ResizeHandle.js';
 import { OverflowMenu } from './OverflowMenu.js';
 import { Button } from './Button';
 import { Disclosure } from './Disclosure.js';
-import { Sheet } from './Sheet.js';
 import { BackArrow } from './BackArrow.js';
+import { NotebookRowIcon, TagIcon } from './icons.js';
 import { NoteFields } from './NoteFields.js';
 
 /** The editor's share of the pane row when split evenly, and the limits a drag respects. */
@@ -125,15 +125,6 @@ export function Workspace({ noteId, readOnly = false, backTo = '/notes' }: Works
   const [splitPreview, setSplitPreview] = usePersistentState('splitPreview', false);
   const [editorView, setEditorView] = useState<EditorView | null>(null);
 
-  /**
-   * Whether the phone's Details sheet is up.
-   *
-   * Only consulted below the breakpoint: the desktop branch renders the same controls in
-   * flow and never reads this. The two branches are separate subtrees, so crossing the
-   * breakpoint unmounts the sheet and this goes back to false with it — which is the right
-   * answer anyway, since the controls are on screen at that width.
-   */
-  const [detailsOpen, setDetailsOpen] = useState(false);
   // Which files are PDFs regardless of what they are named; both panes render from it.
   const pdfFilenames = usePdfAttachments(noteId);
 
@@ -316,41 +307,83 @@ export function Workspace({ noteId, readOnly = false, backTo = '/notes' }: Works
   }
 
   /**
-   * The note's filing controls, for whichever container this width puts them in.
-   *
-   * Built here rather than twice in the markup below: a phone shows them in a sheet and a
-   * desktop shows them in flow, and everything about *what* they are — the picker, the tag
-   * entry, the fields and the way to their settings — is the same either way.
+   * The notebook picker: filing a note by picking from the notebooks that exist, rather
+   * than retyping a name — which is how case-variant duplicates used to appear. One
+   * element, drawn two ways: the desktop's own select in its row, and the phone's chip in
+   * the property list, where `.note-field-input` is what a chosen value looks like.
+   */
+  const notebookSelect = (className: string, id?: string) => (
+    <select
+      id={id}
+      className={className}
+      value={draft.notebook ?? ''}
+      aria-label="Notebook"
+      disabled={readOnly}
+      // A chosen notebook is a chip; the Inbox is the absence of one, drawn like "Empty".
+      data-filled={draft.notebook ? true : undefined}
+      onChange={(e) => setDraft((d) => ({ ...d, notebook: e.target.value || null }))}
+    >
+      {/* No notebook. Shown as "Inbox" everywhere in the UI; see NotesLayout. */}
+      <option value="">Inbox</option>
+      {notebooks.data?.notebooks.map((nb) => (
+        <option key={nb.id} value={nb.name}>
+          {nb.name}
+        </option>
+      ))}
+    </select>
+  );
+
+  const tagInput = (
+    <TagInput
+      tags={draft.tags}
+      suggestions={tags.data?.map((t) => t.name) ?? []}
+      onChange={(next) => setDraft((d) => ({ ...d, tags: next }))}
+    />
+  );
+
+  /**
+   * The desktop's filing row: the notebook and the tags on a line above the body.
    *
    * Null until the note has loaded, which is what the render below tests: `note` is read
    * for the carried values.
    */
   const filingControls = !note ? null : (
     <div className="tag-row">
-      {/* Filing a note by picking from the notebooks that exist, rather than
-          retyping a name — which is how case-variant duplicates used to appear. */}
-      <select
-        className="note-notebook"
-        value={draft.notebook ?? ''}
-        aria-label="Notebook"
-        disabled={readOnly}
-        onChange={(e) => setDraft((d) => ({ ...d, notebook: e.target.value || null }))}
-      >
-        {/* No notebook. Shown as "Inbox" everywhere in the UI; see NotesLayout. */}
-        <option value="">Inbox</option>
-        {notebooks.data?.notebooks.map((nb) => (
-          <option key={nb.id} value={nb.name}>
-            {nb.name}
-          </option>
-        ))}
-      </select>
-
-      <TagInput
-        tags={draft.tags}
-        suggestions={tags.data?.map((t) => t.name) ?? []}
-        onChange={(next) => setDraft((d) => ({ ...d, tags: next }))}
-      />
+      {notebookSelect('note-notebook')}
+      {tagInput}
     </div>
+  );
+
+  /**
+   * The phone's: the same two controls as the first two rows of the property list.
+   *
+   * They used to be a row that opened a sheet holding them — a full-height modal surface
+   * for a select and a chip, once the fields had left it, and a tap that bought nothing the
+   * row had not already said. As properties they read the way Notion reads a page's
+   * location and tags: two facts about the record, at the top, edited where they are read.
+   * Rows in the list's own grid, so their labels share the fields' column.
+   */
+  const filingRows = !note ? null : (
+    <>
+      <div className="note-field filing-prop">
+        <span className="note-field-glyph" aria-hidden="true">
+          <NotebookRowIcon />
+        </span>
+        <label className="note-field-label" htmlFor="filing-notebook">
+          Notebook
+        </label>
+        {notebookSelect('note-field-input', 'filing-notebook')}
+        <span className="note-field-side" />
+      </div>
+      <div className="note-field filing-prop">
+        <span className="note-field-glyph" aria-hidden="true">
+          <TagIcon />
+        </span>
+        <span className="note-field-label">Tags</span>
+        {tagInput}
+        <span className="note-field-side" />
+      </div>
+    </>
   );
 
   /**
@@ -363,8 +396,10 @@ export function Workspace({ noteId, readOnly = false, backTo = '/notes' }: Works
    * way Notion's page does. That is a deliberate trade, chosen over the sheet the fields
    * used to share with the notebook picker: what the sheet hid was the note's own data.
    */
-  const fieldsBlock = !note ? null : (
+  const fieldsBlock = (lead?: React.ReactNode) =>
+    !note ? null : (
       <NoteFields
+        lead={lead}
         definitions={fieldDefs.data}
         values={draft.fields}
         carried={note.fields ?? []}
@@ -598,68 +633,22 @@ export function Workspace({ noteId, readOnly = false, backTo = '/notes' }: Works
       {/*
           The note's filing: a notebook, its tags, and the notebook's own fields.
 
-          Two shapes for one set of controls, because the two widths ask different questions
-          of them. `filingControls` is written once and rendered by both.
+          On a desktop the notebook and the tags sit in flow on a row above the body, where
+          a pair of pickers costs nothing, and the fields have a column of their own beside
+          the note. On a phone all of it is the property list, pinned above the body: the
+          notebook and the tags as its first two rows, the fields after them. That block is
+          capped and scrolls within, since `.workspace` itself does not — see
+          `.fields-inline` — so a long notebook cannot push the body off the screen.
 
-          On a desktop they sit in flow, open, where a row of pickers costs nothing.
-
-          On a phone they move into a sheet, and the note keeps its screen. Inline they were
-          unbounded: `.workspace` does not scroll — only `.pane` does — so a notebook with
-          six fields grew this block until the editor was a sliver, with the title above it
-          and the docked toolbar and the keyboard below. Capping it would only have nested a
-          scroller inside chrome that cannot scroll. A sheet is the shape that answers it:
-          the values stay readable on the row, the controls come up over the note rather
-          than pushing it, and they scroll inside their own 85dvh. It is also what the
-          Android app already does — `NoteScreen.kt` draws this row and opens a
-          `ModalBottomSheet` from it — so the two platforms now agree.
-
-          Not the overflow menu, at either width: this is what the note *is*, and in an
-          archive this size tags are how anything gets found again.
+          There used to be a sheet here on a phone, opened from a row that stated the
+          filing. It earned its place holding six controls; once the fields moved onto the
+          page it held two, and a modal surface for two controls the row already showed
+          was ceremony. Not the overflow menu, at either width: this is what the note *is*,
+          and in an archive this size tags are how anything gets found again.
       */}
       {filingControls &&
         (isMobile ? (
-          <>
-            {/*
-                The row states the filing and opens the sheet.
-
-                A button rather than a `<details>` summary: what it does now is open a
-                surface, not unfold in place, and a chevron that promised an unfold would be
-                describing the wrong gesture.
-            */}
-            <button
-              type="button"
-              className="filing-row"
-              aria-haspopup="dialog"
-              aria-expanded={detailsOpen}
-              onClick={() => setDetailsOpen(true)}
-            >
-              <span className="filing-row-line">
-                <span className="tag-row-summary-book">{draft.notebook ?? 'Inbox'}</span>
-                {draft.tags.length > 0 && (
-                  <span className="tag-row-summary-tags">
-                    {draft.tags.map((t) => `#${t}`).join(' ')}
-                  </span>
-                )}
-              </span>
-            </button>
-            {/*
-                The fields, on the page, under the row that states the filing.
-
-                Pinned above the body rather than kept in the sheet, because they are the
-                note's own data and the sheet hid them. The body moves down to make room,
-                which is the trade Notion makes and the one chosen here. Capped and
-                scrollable within, since `.workspace` itself does not scroll — see
-                `.fields-inline` — so thirty fields cannot push the body off the screen.
-            */}
-            {fieldsBlock && <div className="fields-inline">{fieldsBlock}</div>}
-            <Sheet
-              open={detailsOpen}
-              onClose={() => setDetailsOpen(false)}
-              title="Details"
-            >
-              {filingControls}
-            </Sheet>
-          </>
+          <div className="fields-inline">{fieldsBlock(filingRows)}</div>
         ) : (
           <Disclosure className="tag-row-wrap" defaultOpen="wide" summary={<>Details</>}>
             {filingControls}
@@ -808,7 +797,7 @@ export function Workspace({ noteId, readOnly = false, backTo = '/notes' }: Works
       {!isMobile && (
         <aside className="fields-panel" aria-label="Fields">
           <h3 className="fields-panel-head">Fields</h3>
-          {fieldsBlock ?? (
+          {fieldsBlock() ?? (
             <p className="muted small">File this note in a notebook to give it fields.</p>
           )}
         </aside>

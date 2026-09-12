@@ -31,6 +31,15 @@ export interface NoteFieldsProps {
   onAddField: (input: { name: string; type: FieldType; options: string[] }) => Promise<void>;
   /** Rendered last: the way to the notebook's field settings. */
   manage?: ReactNode;
+  /**
+   * Rows rendered first, inside the same grid, so their labels share the fields' column.
+   *
+   * The phone puts the notebook and the tags here, as the first two properties of the
+   * record: on a desktop they have a row of their own above the body, but on a phone
+   * that row was a button opening a sheet for two controls, and two controls belong in
+   * the list beside the others. Rows passed here draw themselves as `.note-field` rows.
+   */
+  lead?: ReactNode;
 }
 
 /**
@@ -77,6 +86,7 @@ export function NoteFields({
   onChange,
   onAddField,
   manage,
+  lead,
 }: NoteFieldsProps) {
   const defs = notebookId ? definitions : [];
   // Sticks across notes and sessions: the notebooks whose empties are noise are noise
@@ -96,7 +106,7 @@ export function NoteFields({
   );
 
   const canAdd = !readOnly && notebookId !== null;
-  if (defs.length === 0 && foreign.length === 0 && !canAdd) return null;
+  if (defs.length === 0 && foreign.length === 0 && !canAdd && !lead) return null;
 
   const isEmpty = (def: FieldDef) => {
     const v = values[def.id];
@@ -110,6 +120,7 @@ export function NoteFields({
 
   return (
     <div className="note-fields">
+      {lead}
       {shown.map((def) => (
         <FieldRow
           key={def.id}

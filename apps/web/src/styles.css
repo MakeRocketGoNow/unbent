@@ -1701,37 +1701,6 @@ a.sidebar-status:hover {
   */
   padding: 0.5rem 0;
 }
-
-/*
-   The parts of the filing summary, which is the phone's `.filing-row`.
-
-   Not in the mobile block, though that is the only place they are drawn: these describe what
-   the spans are, not what width they appear at. They only say which part gives way first when
-   the row runs out of room.
-*/
-
-/*
-   The notebook: never shrinks below its own text, and drawn as the identifying half.
-
-   It used to inherit the row's muted grey while the tags beside it carried the accent, so
-   the one thing that says where the note lives was the quietest text on the line. The
-   weight is 500, the same step `.note-item` gives a note's title for the same job — 600
-   would set it against the note title directly above it, which is a different question.
-*/
-.tag-row-summary-book {
-  flex: 0 0 auto;
-  color: var(--fg);
-  font-weight: 500;
-}
-
-/* The tags yield, and are tinted so the row reads as a notebook followed by its tags. */
-.tag-row-summary-tags {
-  color: var(--accent);
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
 /*
    Custom fields, as a property list — beside the note on a desktop, above it on a phone.
 
@@ -1955,7 +1924,7 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
 /*
    The desktop filing block has no summary to show.
 
-   This is the only width that renders the disclosure at all — a phone draws `.filing-row`
+   This is the only width that renders the disclosure at all — a phone draws the property list
    and opens a sheet instead — and here the controls are always open, so a summary would be
    a heading above a row that is already stating itself. `Disclosure` requires the prop, so
    the word is hidden rather than absent, and the element keeps the accessible name.
@@ -4697,101 +4666,8 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
      them a family; the rule is what keeps them countable.
   */
 
-  /*
-     The filing row: what the note is filed as, and the way to the sheet that changes it.
-
-     Drawn as the disclosures around it are — the same muted 0.78rem, the same 44px target,
-     the same chevron box — because it is the same kind of thing in the column and the
-     family is what makes the blocks countable. The chevron does not rotate: this one opens
-     a sheet rather than unfolding, and a rotating chevron would promise the other gesture.
-  */
-  /*
-     The sheet's own rhythm, tighter than the column the controls came from.
-
-     Three gaps were stacking on top of each other: the body's 0.75rem between every child,
-     `.tag-row`'s own 0.5rem between controls, and its 0.5rem of top and bottom padding.
-     That padding earned its place in flow, where it separated the block from the summary
-     above it and the border below — inside a sheet there is neither, so it was 16px of
-     nothing between the tag entry and the first field, on the surface with the least room
-     to spare. The row keeps its gap; it gives up the padding it no longer has a use for.
-  */
-  .sheet .tag-row {
-    padding: 0;
-    gap: 0.6rem;
-    /* The controls are the sheet's content, not a column inside it. */
-    align-self: stretch;
-  }
-
+  /* The sheet's own rhythm: tighter than the column its controls came from. */
   .sheet-body { gap: 0.6rem; }
-
-  .filing-row {
-    display: flex;
-    /* The values take a line of their own below, which only happens if the row may wrap:
-       without this their `flex-basis: 100%` squeezed the notebook and tags beside them to
-       zero width, and the line the row exists to state disappeared off the screen. */
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 0.15rem 0.5rem;
-    width: 100%;
-    min-height: 2.75rem;
-    padding: 0.35rem 0;
-    font: inherit;
-    font-size: 0.78rem;
-    color: var(--muted);
-    text-align: start;
-    background: none;
-    /* Only the bottom edge, which is the divider this column uses between blocks. A
-       shorthand `border: none` here would be undone further down by the rule that adds it,
-       and which of the two won would be source order rather than intent. */
-    border: none;
-    border-bottom: 1px solid var(--border);
-    cursor: pointer;
-  }
-
-  .filing-row:hover { color: var(--fg); }
-
-  .filing-row:focus-visible {
-    outline: 2px solid var(--accent);
-    outline-offset: 2px;
-    border-radius: 0.25rem;
-  }
-
-  /* The notebook and its tags, which share a line and truncate against each other. */
-  .filing-row-line {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    flex: 1 1 auto;
-    min-width: 0;
-    overflow: hidden;
-  }
-
-  /* The chevron, drawn as `.disclosure > summary::after` draws it, pointing the way the
-     sheet comes from. Fixed: see the note on the row above. */
-  .filing-row::after {
-    content: '';
-    flex: 0 0 auto;
-    /* Stays on the first line, beside the notebook it belongs to: centred against a
-       two-line row it floated in the gap between them and read as unattached. */
-    align-self: center;
-    order: 0;
-    width: 0.36rem;
-    height: 0.36rem;
-    margin-left: auto;
-    border-right: 1.5px solid currentColor;
-    border-bottom: 1.5px solid currentColor;
-    transform: rotate(-45deg) translate(-0.05rem, -0.05rem);
-  }
-
-  /*
-     Inside the sheet the controls have the width to themselves.
-
-     In flow these size to their content beside each other; here each one is a row of a
-     surface that is about them, and a picker half the width of the sheet reads as unfinished.
-  */
-  .sheet .note-notebook,
-  .sheet .tag-input { width: 100%; }
-
   /*
      Label and value on one line, which is how a phone states a detail.
 
