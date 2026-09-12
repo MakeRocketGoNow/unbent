@@ -35,7 +35,28 @@
   --good: #1a7f45;
   --bad: #b3261e;
   --accent: #2f6f4f;
+  /*
+     A chip's fill and ink — a chosen select option, a tag. Derived from the accent here,
+     so the site draws them as it always has; the Android app's embed sets them to
+     Material's primaryContainer pair, which is what a chip is on that platform.
+  */
+  --chip-bg: color-mix(in srgb, var(--accent) 12%, transparent);
+  --chip-fg: var(--accent);
   color-scheme: light;
+}
+
+/*
+   Every checkbox and radio is the app's green, not the browser's blue.
+
+   The editor's task boxes, the preview's, a field's, a settings row's: one control, one
+   colour, everywhere it appears — and inside the Android app's embed that colour is the
+   app's primary, which is what makes a ticked task in the WebView match the native
+   checkbox on the notebooks screen above it. `accent-color` is the whole mechanism; the
+   platform keeps drawing the control.
+*/
+input[type='checkbox'],
+input[type='radio'] {
+  accent-color: var(--accent);
 }
 
 @media (prefers-color-scheme: dark) {
@@ -920,6 +941,31 @@ h1 {
 
 .fields-inline .note-fields { row-gap: 0.15rem; }
 
+/* Material's list sizes for the property rows the app hosts: bodyLarge on 48dp rows. */
+.embedded .note-fields {
+  row-gap: 0;
+  column-gap: 0.75rem;
+}
+
+.embedded .note-field-label,
+.embedded .note-field-input,
+.embedded .note-field-value,
+.embedded .tag-chip,
+.embedded .tag-add-hint,
+.embedded .note-field-add-hint,
+.embedded .note-fields-toggle,
+.embedded .note-field-act {
+  font-size: 1rem;
+}
+
+.embedded .note-field-input { min-height: 3rem; }
+.embedded .note-field-label { min-height: 3rem; }
+/* A chip is Material's 32dp, not the row's 48: the row keeps its height from the label. */
+.embedded select.note-field-input { min-height: 2rem; }
+.embedded .note-field-glyph { font-size: 1.1rem; }
+.embedded .tag-chip,
+.embedded .tag-add-hint { min-height: 2rem; }
+
 /* "+ Add field" and "Manage fields" are about the notebook, not a value: a breath before
    them keeps the last field from reading as a row that happens to have two buttons. */
 .fields-inline .note-fields-foot { margin-top: 0.4rem; }
@@ -946,6 +992,17 @@ h1 {
    underneath it.
 */
 .shell.embed {
+  /*
+     The host's type, and its sizes.
+
+     The page sits under a native title in Roboto at Material's sizes, so it takes the
+     same face and puts its property rows at bodyLarge — 16px on a 48px row, the list
+     item every Android screen is built from — rather than the site's denser 13.6px. The
+     colours arrive on the URL; see `useHostTheme` in the embed route. Congruent, not
+     identical: the editor keeps its own measure below, since prose is prose.
+  */
+  --font-ui: Roboto, "Noto Sans", system-ui, sans-serif;
+  --font-prose: Roboto, "Noto Sans", system-ui, sans-serif;
   max-width: none;
   padding: 0;
   height: 100vh;
@@ -1809,13 +1866,13 @@ select.note-field-input:not([data-filled]) { color: var(--muted); }
 
 select.note-field-input[data-filled] {
   padding-inline: 0.55rem;
-  color: var(--fg);
-  background: color-mix(in srgb, var(--accent) 16%, transparent);
+  color: var(--chip-fg);
+  background: var(--chip-bg);
   border-radius: 999px;
 }
 
 select.note-field-input[data-filled]:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--accent) 24%, transparent);
+  background: color-mix(in srgb, var(--chip-bg), var(--chip-fg) 12%);
 }
 
 .note-field-check {
@@ -1823,7 +1880,6 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
   width: 1.05rem;
   height: 1.05rem;
   margin: 0;
-  accent-color: var(--accent);
   cursor: pointer;
 }
 
@@ -2162,8 +2218,8 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
   min-height: 1.65rem;
   padding: 0.15rem 0.25rem 0.15rem 0.55rem;
   font-size: 0.75rem;
-  color: var(--accent);
-  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  color: var(--chip-fg);
+  background: var(--chip-bg);
   border-radius: 999px;
 }
 

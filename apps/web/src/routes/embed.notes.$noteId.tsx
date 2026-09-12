@@ -1,4 +1,5 @@
 import { createFileRoute } from '@tanstack/react-router';
+import { z } from 'zod';
 import { useCallback, useEffect, useState } from 'react';
 import { flushSync } from 'react-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -38,9 +39,76 @@ import { usePdfAttachments } from '../usePdfAttachments.js';
  * page drew underneath, which is exactly the "assembled" look this is meant to end. The
  * phone now shows the same list the site's own phone layout does, above the body.
  */
+/**
+ * The host's palette, as six-digit hex without the hash.
+ *
+ * The Android app appends its Material colour roles to the URL so this page paints with
+ * the same ink and ground as the native title above it. Each is optional and a bad value
+ * is dropped rather than refused: a page that fails to load over a typo in a colour would
+ * be a strange trade, and the site's own tokens are a fine fallback.
+ */
+const hex = z.string().regex(/^[0-9a-fA-F]{6}$/).optional().catch(undefined);
+
+const themeSearch = z.object({
+  surface: hex,
+  onSurface: hex,
+  onSurfaceVariant: hex,
+  outlineVariant: hex,
+  primary: hex,
+  primaryContainer: hex,
+  onPrimaryContainer: hex,
+  error: hex,
+});
+
+type ThemeSearch = z.infer<typeof themeSearch>;
+
+/** Which of the stylesheet's tokens each role becomes. */
+const ROLE_TOKENS: Array<[keyof ThemeSearch, string]> = [
+  ['surface', '--bg'],
+  ['onSurface', '--fg'],
+  ['onSurfaceVariant', '--muted'],
+  ['outlineVariant', '--border'],
+  ['primary', '--accent'],
+  ['primaryContainer', '--chip-bg'],
+  ['onPrimaryContainer', '--chip-fg'],
+  ['error', '--bad'],
+];
+
 export const Route = createFileRoute('/embed/notes/$noteId')({
+  validateSearch: themeSearch,
   component: EmbeddedNoteRoute,
 });
+
+/**
+ * Paints the page with the host's colours.
+ *
+ * Set on the root element's inline style, which is what lets them win over both the
+ * stylesheet's light tokens and its dark-scheme override: the app decides the theme, and
+ * it has already chosen a dark or a light palette to send. The site's own tokens stand in
+ * for anything not sent, so a page opened outside the app looks like the site.
+ */
+function useHostTheme(theme: ThemeSearch) {
+  useEffect(() => {
+    const style = document.documentElement.style;
+    for (const [role, token] of ROLE_TOKENS) {
+      const value = theme[role];
+      if (value) style.setProperty(token, `#${value}`);
+      else style.removeProperty(token);
+    }
+    return () => {
+      for (const [, token] of ROLE_TOKENS) style.removeProperty(token);
+    };
+  }, [
+    theme.surface,
+    theme.onSurface,
+    theme.onSurfaceVariant,
+    theme.outlineVariant,
+    theme.primary,
+    theme.primaryContainer,
+    theme.onPrimaryContainer,
+    theme.error,
+  ]);
+}
 
 /** What this page files a note as, edited together and saved together. */
 interface Filing {
@@ -51,6 +119,7 @@ interface Filing {
 
 function EmbeddedNoteRoute() {
   const { noteId } = Route.useParams();
+  useHostTheme(Route.useSearch());
   return <EmbeddedNote noteId={noteId} />;
 }
 
