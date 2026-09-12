@@ -157,6 +157,30 @@ describe('buildNotePatch', () => {
     ).toEqual({ body: 'new' });
   });
 
+  /*
+     `encodeFieldValue` answers 'clear' for an emptied input rather than an encoded value.
+     Nothing in the UI sends one — `NoteFields` turns '' into null before it reaches the
+     draft — but this function is called directly, and a raw '' is a clear, not a value.
+  */
+  it('reads an emptied field value as a clear rather than sending the empty string', () => {
+    const withBoth = note({
+      fields: [value(amount, 12), value(site, 'https://old.test'), value(kind, 'Food')],
+    });
+    expect(
+      buildNotePatch(
+        draft({ fields: { [amount.id]: 12, [site.id]: '', [kind.id]: '   ' } }),
+        withBoth,
+        [amount, site, kind],
+      ),
+    ).toEqual({ fields: { [site.id]: null, [kind.id]: null } });
+  });
+
+  it('leaves an emptied field out when the note has nothing to clear', () => {
+    expect(
+      buildNotePatch(draft({ fields: { [amount.id]: 12, [site.id]: '' } }), note(), [amount, site]),
+    ).toBeNull();
+  });
+
   it('treats a number the input re-emitted as a string as unchanged', () => {
     expect(buildNotePatch(draft({ fields: { [amount.id]: '12' } }), note(), [amount])).toBeNull();
   });

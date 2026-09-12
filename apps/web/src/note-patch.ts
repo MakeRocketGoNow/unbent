@@ -86,7 +86,19 @@ function fieldPatch(
 
     const def = defs.get(id) ?? (held ? { type: held.type, options: [] as string[] } : undefined);
     if (!def) continue;
-    if (encodeFieldValue(def, value) === null) continue;
+
+    const encoded = encodeFieldValue(def, value);
+    if (encoded === null) continue;
+    /*
+       An emptied input is "no value", never the empty string, so it sends the same null
+       the branch above does — and is skipped the same way when the note has nothing to
+       clear. The server reads a bare '' as a clear too, but this function is written
+       against its own contract rather than against what the far end happens to forgive.
+    */
+    if (encoded === 'clear') {
+      if (held) patch[id] = null;
+      continue;
+    }
     patch[id] = value;
   }
 
