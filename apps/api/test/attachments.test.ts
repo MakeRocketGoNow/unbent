@@ -104,6 +104,25 @@ describe('upload and serve', () => {
     expect(new Uint8Array(await get.arrayBuffer())).toEqual(bytes);
   });
 
+  /**
+   * The row for a note shows what it holds from the attachment rows, not from links in the
+   * body — the two tests above attached files to a note whose body is still empty.
+   */
+  it('lists the files on the note summary, oldest first, and omits the key when none', async () => {
+    const other = await createNote(alice, 'Without attachments');
+    const res = await fetch(`${BASE}/api/notes`, { headers: { Cookie: alice.cookie, Origin: ORIGIN } });
+    const { items } = (await res.json()) as {
+      items: { id: string; attachments?: { filename: string; contentType: string }[] }[];
+    };
+
+    const withFiles = items.find((n) => n.id === aliceNote.id);
+    expect(withFiles?.attachments).toEqual([
+      { filename: 'hello.txt', contentType: 'text/plain' },
+      { filename: 'image.png', contentType: 'image/png' },
+    ]);
+    expect(items.find((n) => n.id === other.id)).not.toHaveProperty('attachments');
+  });
+
   it('sets immutable caching and nosniff', async () => {
     const get = await fetch(`${BASE}/api/notes/${aliceNote.id}/files/hello.txt`, {
       headers: { Cookie: alice.cookie, Origin: ORIGIN },
