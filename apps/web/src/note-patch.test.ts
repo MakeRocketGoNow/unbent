@@ -133,15 +133,24 @@ describe('buildNotePatch', () => {
     ).toEqual({ body: 'new' });
   });
 
-  it('sends a finished field value, and a clear, and leaves an unchanged retired select out', () => {
+  it('sends a field value the type can read', () => {
     expect(
       buildNotePatch(draft({ fields: { [amount.id]: '12.5' } }), note(), [amount]),
     ).toEqual({ fields: { [amount.id]: '12.5' } });
+  });
 
+  it('sends a null the draft holds as a clear', () => {
     expect(
       buildNotePatch(draft({ fields: { [amount.id]: null } }), note(), [amount]),
     ).toEqual({ fields: { [amount.id]: null } });
+  });
 
+  /*
+     Options can be retired without converting the field, and the editor keeps showing a
+     value a note already holds. Resending it is not an edit, so it never reaches the
+     check that would reject it for not being on the list.
+  */
+  it('leaves an unchanged retired select value out', () => {
     const withKind = note({
       fields: [value(amount, 12), value(kind, 'Travel')],
     });
