@@ -69,6 +69,8 @@
     <string name="all_notes">All notes</string>
     <string name="tags_clear">Clear tag</string>
     <string name="notebooks_label">Notebooks</string>
+    <string name="notebooks_edit">Edit</string>
+    <string name="loading">Loading…</string>
     <string name="filter_notes">Filter notes</string>
     <string name="filter_clear_all">Clear all</string>
     <string name="filter_applied">Filters</string>
@@ -109,6 +111,7 @@
     <string name="notebook_delete">Delete</string>
     <string name="notebook_new_hint">New notebook name</string>
     <string name="notebook_create">Create</string>
+    <string name="notebook_create_row">Create new notebook</string>
     <string name="notebook_none">No notebooks yet.</string>
     <string name="notebook_delete_title">Delete “%1$s”?</string>
     <string name="notebook_delete_empty">It has no notes.</string>
