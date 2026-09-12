@@ -158,14 +158,12 @@
     </plurals>
     <string name="leave_keep_waiting">Keep waiting</string>
     <string name="leave_anyway">Leave</string>
-    <string name="filing_title">Filing</string>
     <string name="notebook_label">Notebook</string>
     <string name="new_notebook">New notebook</string>
     <string name="tags_label">Tags</string>
     <string name="add_tag">Add a tag</string>
     <string name="remove_tag">Remove %1$s</string>
     <string name="done">Done</string>
-    <string name="add">Add</string>
     <string name="manage_on_web">Manage on the web</string>
     <string name="manage_on_web_hint">Import and export live on the site. The browser has its own sign-in.</string>
 

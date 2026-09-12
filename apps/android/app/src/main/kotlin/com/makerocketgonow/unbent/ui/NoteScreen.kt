@@ -16,32 +16,22 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.browser.customtabs.CustomTabsIntent
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.isSystemInDarkTheme
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
-import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.BasicTextField
-import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -50,14 +40,11 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -65,9 +52,9 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -79,8 +66,6 @@ import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
-import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.webkit.WebSettingsCompat
 import androidx.webkit.WebViewFeature
@@ -88,11 +73,8 @@ import com.makerocketgonow.unbent.Prefs
 import com.makerocketgonow.unbent.R
 import com.makerocketgonow.unbent.UnbentApp
 import com.makerocketgonow.unbent.api.ApiException
-import com.makerocketgonow.unbent.api.Filing
 import com.makerocketgonow.unbent.api.Note
-import com.makerocketgonow.unbent.api.Notebook
 import com.makerocketgonow.unbent.api.SessionCookie
-import com.makerocketgonow.unbent.api.Tag
 import com.makerocketgonow.unbent.api.UnbentApi
 import com.makerocketgonow.unbent.ui.theme.Space
 import kotlin.concurrent.thread
@@ -109,12 +91,15 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 
 /**
- * One note: a native head, and the web editor for the body.
+ * One note: a native title, and the web page for everything under it.
  *
- * The title, the notebook and the tags are this screen's, drawn and saved natively. The
- * body below them is the site's own editor at `/embed/notes/:id`, in a WebView the app
- * has signed in by writing its session cookie into the jar — the same editor, the same
- * code, and no second implementation of the one part of the app that is genuinely hard.
+ * The title is this screen's, drawn and saved natively. Everything below it — the
+ * notebook, the tags, the fields and the body — is the site's own page at
+ * `/embed/notes/:id`, in a WebView the app has signed in by writing its session cookie
+ * into the jar: the same property list and the same editor the site's phone layout
+ * draws, and no second implementation of any of it. The notebook and the tags used to be
+ * this screen's too, a row that opened a sheet, drawn in a second font and rhythm over
+ * the fields the page drew underneath; one list, in one place, is what ended that.
  *
  * The two halves write different fields, and PATCH is partial on the server, so they
  * cannot overwrite each other. Leaving flushes both: the page is asked to save whatever
@@ -219,7 +204,6 @@ fun NoteScreen(
             .isSuccess
     }
 
-    var showFiling by rememberSaveable { mutableStateOf(false) }
     var confirmDelete by rememberSaveable { mutableStateOf(false) }
     var menuOpen by remember { mutableStateOf(false) }
 
@@ -301,7 +285,6 @@ fun NoteScreen(
 
                 else -> {
                     TitleField(state.title, onChange = state::changeTitle, takeFocus = focusTitle)
-                    FilingRow(state.notebook, state.tags, onClick = { showFiling = true })
                     HorizontalDivider()
                     NoteWebView(
                         origin = prefs.instance,
@@ -315,10 +298,6 @@ fun NoteScreen(
                 }
             }
         }
-    }
-
-    if (showFiling) {
-        FilingSheet(state, onDismiss = { showFiling = false })
     }
 
     if (confirmDelete) {
@@ -428,121 +407,6 @@ private fun TitleField(value: String, onChange: (String) -> Unit, takeFocus: Boo
             }
         },
     )
-}
-
-/**
- * The note's filing, stated on one line, as the web's phone layout does.
- *
- * Read far more often than changed, so it states the notebook and the tags and a tap
- * opens the controls, rather than spending two rows of pickers between the title and
- * the first line of the note.
- */
-@Composable
-private fun FilingRow(notebook: String?, tags: List<String>, onClick: () -> Unit) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick)
-            .padding(start = Space.Large, end = Space.Small, top = Space.Hair, bottom = Space.Medium),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text(
-            notebook ?: stringResource(R.string.inbox),
-            style = MaterialTheme.typography.labelLarge,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        // The tags take whatever width is left, truncating rather than wrapping, so the
-        // chevron always sits at the right edge; with no tags an empty spacer does the same.
-        if (tags.isNotEmpty()) {
-            Spacer(Modifier.width(Space.Medium))
-            Text(
-                tags.joinToString(" ") { "#$it" },
-                style = MaterialTheme.typography.labelLarge,
-                color = MaterialTheme.colorScheme.primary,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f),
-            )
-        } else {
-            Spacer(Modifier.weight(1f))
-        }
-        Icon(
-            Icons.Default.ArrowDropDown,
-            contentDescription = stringResource(R.string.filing_title),
-            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-    }
-}
-
-/** Notebook and tags in one sheet: the same disclosure the web's phone layout opens. */
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun FilingSheet(state: NoteState, onDismiss: () -> Unit) {
-    val sheet = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-    var newNotebook by rememberSaveable { mutableStateOf("") }
-    var tagDraft by rememberSaveable { mutableStateOf("") }
-
-    // Every way out — Done, the scrim, a swipe down — keeps a tag that was still being typed.
-    val close = {
-        val tags = tagsWithDraft(state.tags, tagDraft)
-        if (tags != state.tags) state.changeTags(tags)
-        onDismiss()
-    }
-
-    ModalBottomSheet(onDismissRequest = close, sheetState = sheet) {
-        Column(
-            Modifier
-                .verticalScroll(rememberScrollState())
-                .navigationBarsPadding()
-                .imePadding()
-                .padding(horizontal = Space.Screen)
-                .padding(bottom = Space.Screen),
-        ) {
-            Text(stringResource(R.string.notebook_label), style = MaterialTheme.typography.titleMedium)
-            Spacer(Modifier.height(Space.Hair))
-            NotebookChoice(stringResource(R.string.inbox), null, state.notebook == null) { state.changeNotebook(null) }
-            for (nb in state.notebooks) {
-                NotebookChoice(nb.name, nb.count, state.notebook == nb.name) { state.changeNotebook(nb.name) }
-            }
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                OutlinedTextField(
-                    value = newNotebook,
-                    onValueChange = { newNotebook = it },
-                    placeholder = { Text(stringResource(R.string.new_notebook)) },
-                    singleLine = true,
-                    keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Words, imeAction = ImeAction.Done),
-                    keyboardActions = KeyboardActions(onDone = {
-                        state.createNotebook(newNotebook)
-                        newNotebook = ""
-                    }),
-                    modifier = Modifier.weight(1f),
-                )
-                TextButton(
-                    onClick = {
-                        state.createNotebook(newNotebook)
-                        newNotebook = ""
-                    },
-                    enabled = newNotebook.isNotBlank(),
-                ) { Text(stringResource(R.string.add)) }
-            }
-
-            Spacer(Modifier.height(Space.Large))
-            Text(stringResource(R.string.tags_label), style = MaterialTheme.typography.titleMedium)
-            Spacer(Modifier.height(Space.Hair))
-            TagEditor(
-                tags = state.tags,
-                draft = tagDraft,
-                suggestions = state.allTags,
-                onChange = state::changeTags,
-                onDraftChange = { tagDraft = it },
-            )
-
-            Spacer(Modifier.height(Space.Large))
-            Button(onClick = close, modifier = Modifier.align(Alignment.End)) {
-                Text(stringResource(R.string.done))
-            }
-        }
-    }
 }
 
 /**
@@ -696,14 +560,6 @@ class NoteState(
         private set
     var title by mutableStateOf("")
         private set
-    var notebook by mutableStateOf<String?>(null)
-        private set
-    var tags by mutableStateOf<List<String>>(emptyList())
-        private set
-    var notebooks by mutableStateOf<List<Notebook>>(emptyList())
-        private set
-    var allTags by mutableStateOf<List<Tag>>(emptyList())
-        private set
     var error by mutableStateOf<String?>(null)
         private set
     var missing by mutableStateOf(false)
@@ -731,8 +587,6 @@ class NoteState(
         result.onSuccess {
             note = it
             title = it.title
-            notebook = it.notebook
-            tags = it.tags
         }.onFailure { e ->
             when ((e as? ApiException)?.status) {
                 401 -> unauthorized = true
@@ -740,12 +594,6 @@ class NoteState(
                 else -> error = e.message ?: e.javaClass.simpleName
             }
         }
-        if (note == null) return
-
-        // The filing choices, after the note: the sheet shows whatever has arrived by the
-        // time it opens, and a failure here is nothing worth stopping the note for.
-        withContext(Dispatchers.IO) { runCatching { api.listNotebooks().notebooks } }.onSuccess { notebooks = it }
-        withContext(Dispatchers.IO) { runCatching { api.listTags() } }.onSuccess { allTags = it }
     }
 
     /** Debounced like the web's autosave, and flushed by [flushTitle] when leaving. */
@@ -764,38 +612,6 @@ class NoteState(
         if (!pending.isActive) return
         pending.cancel()
         patch { api.updateNote(noteId, title = title) }
-    }
-
-    fun changeNotebook(name: String?) {
-        notebook = name
-        saves.launch {
-            patch { api.updateNote(noteId, filing = Filing(name)) }
-            // The counts beside the notebooks changed with this note's move; a stale "0"
-            // beside the notebook it was just filed in reads as the move having failed.
-            withContext(Dispatchers.IO) { runCatching { api.listNotebooks().notebooks } }
-                .onSuccess { notebooks = it }
-        }
-    }
-
-    fun changeTags(next: List<String>) {
-        tags = next
-        saves.launch { patch { api.updateNote(noteId, tags = next) } }
-    }
-
-    /** Creates the notebook and files the note in it, which is why anyone types one here. */
-    fun createNotebook(rawName: String) {
-        val name = rawName.trim()
-        if (name.isEmpty()) return
-        saves.launch {
-            val created = withContext(Dispatchers.IO) { runCatching { api.createNotebook(name) } }
-            created.onSuccess { nb ->
-                notebooks = (notebooks + nb).sortedBy { it.name.lowercase() }
-                changeNotebook(nb.name)
-            }.onFailure { e ->
-                // Taken already: file the note there instead, which is what was meant.
-                if ((e as? ApiException)?.status == 409) changeNotebook(name) else headerSave = "error"
-            }
-        }
     }
 
     fun onBridge(message: BridgeMessage) {
