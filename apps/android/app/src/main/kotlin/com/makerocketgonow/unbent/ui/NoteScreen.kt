@@ -60,7 +60,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
@@ -429,6 +431,28 @@ private fun NoteWebView(
     modifier: Modifier,
 ) {
     val dark = isSystemInDarkTheme()
+    /*
+     * The theme, handed to the page on its URL.
+     *
+     * The page draws the property list and the editor under this screen's native title,
+     * and it used to paint them in the site's own tokens — a grey-white ground and a
+     * different green under Material's lavender-tinted surface, in a different face. The
+     * roles the page needs are sent as hex and it paints its own tokens from them, so
+     * the two halves of the screen share ink and ground, and follow this theme if it
+     * ever changes. Six-digit hex without the hash, which is what the page validates.
+     */
+    val scheme = MaterialTheme.colorScheme
+    fun hex(color: Color) = "%06x".format(color.toArgb() and 0xFFFFFF)
+    val theme = listOf(
+        "surface" to scheme.surface,
+        "onSurface" to scheme.onSurface,
+        "onSurfaceVariant" to scheme.onSurfaceVariant,
+        "outlineVariant" to scheme.outlineVariant,
+        "primary" to scheme.primary,
+        "primaryContainer" to scheme.primaryContainer,
+        "onPrimaryContainer" to scheme.onPrimaryContainer,
+        "error" to scheme.error,
+    ).joinToString("&") { (role, color) -> "$role=${hex(color)}" }
     // The factory below runs once and keeps what it captured; these are read through
     // State so the closure sees the latest lambda rather than the first.
     val currentOnMessage by rememberUpdatedState(onMessage)
@@ -461,7 +485,7 @@ private fun NoteWebView(
                     download(ctx, url, contentDisposition, mimeType, session)
                 }
                 if (session != null) WebSession.install(origin, session)
-                loadUrl("$origin/embed/notes/$noteId")
+                loadUrl("$origin/embed/notes/$noteId?$theme")
                 onCreated(this)
             }
         },
