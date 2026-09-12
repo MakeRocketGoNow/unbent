@@ -39,7 +39,6 @@ import { Disclosure } from './Disclosure.js';
 import { Sheet } from './Sheet.js';
 import { BackArrow } from './BackArrow.js';
 import { NoteFields } from './NoteFields.js';
-import { formatFieldValue } from './format-field.js';
 
 /** The editor's share of the pane row when split evenly, and the limits a drag respects. */
 const EDITOR_DEFAULT = 0.5;
@@ -317,20 +316,6 @@ export function Workspace({ noteId, readOnly = false, backTo = '/notes' }: Works
   }
 
   /**
-   * The values, named, for the row's summary: only those of the note's own notebook.
-   *
-   * Elements rather than one joined string, which is what lets the name be drawn a step
-   * quieter than the value it names. As text there was one colour for the whole line and
-   * the eye had to parse `Code: T1-WWC-5G839 · Date Added: …` by punctuation alone — the
-   * names and the values weighed the same, so nothing stood out and the row read as a
-   * paragraph. The colon goes with it: once the two halves differ in colour it is one more
-   * mark doing a job the contrast already does.
-   */
-  const fieldValues = (fieldDefs.data ?? [])
-    .filter((d) => draft.fields[d.id] !== null && draft.fields[d.id] !== undefined)
-    .map((d) => ({ id: d.id, name: d.name, text: formatFieldValue(d.type, draft.fields[d.id]!) }));
-
-  /**
    * The note's filing controls, for whichever container this width puts them in.
    *
    * Built here rather than twice in the markup below: a phone shows them in a sheet and a
@@ -365,7 +350,20 @@ export function Workspace({ noteId, readOnly = false, backTo = '/notes' }: Works
         suggestions={tags.data?.map((t) => t.name) ?? []}
         onChange={(next) => setDraft((d) => ({ ...d, tags: next }))}
       />
+    </div>
+  );
 
+  /**
+   * The note's fields, as a property list, for whichever place this width gives them.
+   *
+   * Out of the filing block: the notebook and the tags are a line, and the fields are a
+   * list that is as much the note as its body is — a coupon's code, a game's rating. On a
+   * desktop they take a column of their own beside the note, so a long list never pushes
+   * the body down; on a phone they sit above the body, in flow, and the body follows, the
+   * way Notion's page does. That is a deliberate trade, chosen over the sheet the fields
+   * used to share with the notebook picker: what the sheet hid was the note's own data.
+   */
+  const fieldsBlock = !note ? null : (
       <NoteFields
         definitions={fieldDefs.data}
         values={draft.fields}
@@ -388,7 +386,6 @@ export function Workspace({ noteId, readOnly = false, backTo = '/notes' }: Works
           )
         }
       />
-    </div>
   );
 
   async function removeNote() {
@@ -487,6 +484,18 @@ export function Workspace({ noteId, readOnly = false, backTo = '/notes' }: Works
 
   return (
     <section className="workspace">
+      {/*
+          Two columns on a desktop: the note, and its fields beside it.
+
+          The fields used to sit above the body with the notebook and tags, which put a
+          long list between the title and the text. A column of their own means the body
+          starts at the same height whatever the notebook defines, and the list scrolls in
+          its own space rather than the note's. Notion pins its properties above; this is
+          the wider screen's better answer to the same wish. The panel is always drawn, so
+          the note's width does not change between a filed note and an unfiled one — an
+          unfiled note's panel says how to get fields instead.
+      */}
+      <div className="workspace-main">
       {/*
           Two rows on a phone, one on a desktop.
 
@@ -632,23 +641,17 @@ export function Workspace({ noteId, readOnly = false, backTo = '/notes' }: Works
                   </span>
                 )}
               </span>
-              {/* The values on their own line, so the notebook and tags above are not
-                  squeezed into an ellipsis by a field list that is longer than both. */}
-              {fieldValues.length > 0 && (
-                <span className="tag-row-summary-fields">
-                  {fieldValues.map((f, i) => (
-                    <span className="summary-pair" key={f.id}>
-                      {/* The separator belongs to the pair that follows it rather than
-                          sitting between two siblings: a `·` of its own would be a flex
-                          item that could wrap to the head of a line on its own. */}
-                      {i > 0 && <span className="summary-sep"> · </span>}
-                      <span className="summary-name">{f.name}</span>{' '}
-                      <span className="summary-value">{f.text}</span>
-                    </span>
-                  ))}
-                </span>
-              )}
             </button>
+            {/*
+                The fields, on the page, under the row that states the filing.
+
+                Pinned above the body rather than kept in the sheet, because they are the
+                note's own data and the sheet hid them. The body moves down to make room,
+                which is the trade Notion makes and the one chosen here. Capped and
+                scrollable within, since `.workspace` itself does not scroll — see
+                `.fields-inline` — so thirty fields cannot push the body off the screen.
+            */}
+            {fieldsBlock && <div className="fields-inline">{fieldsBlock}</div>}
             <Sheet
               open={detailsOpen}
               onClose={() => setDetailsOpen(false)}
@@ -800,6 +803,16 @@ export function Workspace({ noteId, readOnly = false, backTo = '/notes' }: Works
           </div>
         )}
       </div>
+      </div>
+
+      {!isMobile && (
+        <aside className="fields-panel" aria-label="Fields">
+          <h3 className="fields-panel-head">Fields</h3>
+          {fieldsBlock ?? (
+            <p className="muted small">File this note in a notebook to give it fields.</p>
+          )}
+        </aside>
+      )}
     </section>
   );
 }

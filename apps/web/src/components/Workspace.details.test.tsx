@@ -123,23 +123,32 @@ describe('the note details on a phone', () => {
     const dialog = document.querySelector('dialog') as HTMLDialogElement;
     expect(dialog.open).toBe(true);
     expect(dialog.getAttribute('aria-label')).toBe('Details');
-    // The same controls the desktop renders in flow, now inside the sheet.
+    // The notebook and the tags are what the sheet holds; the fields are not in it.
     expect(dialog.querySelector('.tag-row')).toBeTruthy();
-    expect(screen.getByLabelText('Notebook')).toBeTruthy();
-    expect(screen.getByLabelText('Code')).toBeTruthy();
+    expect(screen.getByLabelText('Notebook').closest('dialog')).toBe(dialog);
+    expect(screen.getByLabelText('Code').closest('dialog')).toBeNull();
   });
 
-  /* A value typed in the sheet is the note's, so the row behind it has to say so. */
-  it('carries an edited value back to the row', async () => {
-    mount();
+  /*
+   * The fields are the note's own data, so they are on the page, above the body, and
+   * edited where they are read — not summarised on the row and edited in the sheet.
+   */
+  it('keeps the fields on the page above the note, editable in place', async () => {
+    const { container } = mount();
 
     await waitFor(() => expect(row()).toBeTruthy());
-    fireEvent.click(row()!);
-    fireEvent.change(screen.getByLabelText('Code'), { target: { value: 'T1-WWC-5G839' } });
+    const inline = container.querySelector('.fields-inline');
+    expect(inline).toBeTruthy();
+    expect(inline!.closest('dialog')).toBeNull();
+    const code = screen.getByLabelText('Code') as HTMLInputElement;
+    expect(inline!.contains(code)).toBe(true);
 
-    // Name and value are separate elements now, so the row's text reads "Code T1-WWC-5G839"
-    // with no colon: the two are told apart by tone rather than by punctuation.
-    await waitFor(() => expect(row()!.textContent).toContain('Code T1-WWC-5G839'));
+    fireEvent.change(code, { target: { value: 'T1-WWC-5G839' } });
+    await waitFor(() =>
+      expect((screen.getByLabelText('Code') as HTMLInputElement).value).toBe('T1-WWC-5G839'),
+    );
+    // The row states the filing only; the values have rows of their own now.
+    expect(row()!.textContent).not.toContain('T1-WWC-5G839');
   });
 });
 
@@ -153,5 +162,16 @@ describe('the note details on a desktop', () => {
     expect(screen.getByLabelText('Notebook')).toBeTruthy();
     expect(row()).toBeNull();
     expect(document.querySelector('dialog')).toBeNull();
+  });
+
+  /* A column of their own beside the note, so a long list never pushes the body down. */
+  it('gives the fields a panel beside the note rather than a place above it', async () => {
+    const { container } = mount();
+
+    await waitFor(() => expect(container.querySelector('.fields-panel')).toBeTruthy());
+    const panel = container.querySelector('.fields-panel')!;
+    expect(panel.contains(screen.getByLabelText('Code'))).toBe(true);
+    expect(container.querySelector('.tag-row .note-fields')).toBeNull();
+    expect(container.querySelector('.workspace-main')!.contains(panel)).toBe(false);
   });
 });
