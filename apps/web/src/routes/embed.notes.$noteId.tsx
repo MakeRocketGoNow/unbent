@@ -8,10 +8,11 @@ import { isStatus } from '../notes-api.js';
 import { indexUploadedFile } from '../index-files.js';
 import { useAutosave } from '../useAutosave.js';
 import { usePersistentState } from '../usePersistentState.js';
-import { noteQuery, notebooksQuery, notebookFieldsQuery, keys } from '../queries.js';
+import { noteQuery, notebooksQuery, notebookFieldsQuery, tagsQuery, keys } from '../queries.js';
 import type { FieldType, FieldValue } from '@unbent/shared';
 import { buildNotePatch } from '../note-patch.js';
 import { NoteFields } from '../components/NoteFields.js';
+import { FilingRows } from '../components/FilingRows.js';
 import { Editor } from '../components/Editor.js';
 import { Preview } from '../components/Preview.js';
 import { EditorToolbar, type NoteView } from '../components/EditorToolbar.js';
@@ -21,23 +22,32 @@ import { exposeToApp, postToApp } from '../app-bridge.js';
 import { usePdfAttachments } from '../usePdfAttachments.js';
 
 /**
- * A note's fields and body, for the Android app to host in a WebView.
+ * A note's filing, fields and body, for the Android app to host in a WebView.
  *
- * The app draws the title, the notebook and the tags natively above this page and writes
- * them itself; this page owns the fields and the body and writes only those. `PATCH
- * /notes/:id` is a partial update, so the two never overwrite each other's field. No
- * loader: the root layout skips its session gate for `/embed/`, and a fetch that fails is
- * reported to the app through the bridge rather than rendered as a login screen inside
- * its screen.
+ * The app draws the title natively above this page and writes it itself; this page owns
+ * everything under the title — the notebook, the tags, the fields and the body — and
+ * writes only those. `PATCH /notes/:id` is a partial update, so the two never overwrite
+ * each other's field. No loader: the root layout skips its session gate for `/embed/`,
+ * and a fetch that fails is reported to the app through the bridge rather than rendered
+ * as a login screen inside its screen.
  *
- * The fields are here rather than native because the repo's rule is that editing
- * behaviour belongs in the web app and reaches both platforms: the property list, its
- * in-place controls and its add-field form are one implementation, and the phone shows
- * the same one the site does, above the body, the way the site's own phone layout does.
+ * The filing and the fields are here rather than native because the repo's rule is that
+ * editing behaviour belongs in the web app and reaches both platforms, and because a
+ * property list has to be one list: the app used to draw the notebook and the tags
+ * natively and open a sheet for them, in a second font and rhythm over the fields the
+ * page drew underneath, which is exactly the "assembled" look this is meant to end. The
+ * phone now shows the same list the site's own phone layout does, above the body.
  */
 export const Route = createFileRoute('/embed/notes/$noteId')({
   component: EmbeddedNoteRoute,
 });
+
+/** What this page files a note as, edited together and saved together. */
+interface Filing {
+  notebook: string | null;
+  tags: string[];
+  fields: Record<string, FieldValue | null>;
+}
 
 function EmbeddedNoteRoute() {
   const { noteId } = Route.useParams();
@@ -59,15 +69,20 @@ function EmbeddedNote({ noteId }: { noteId: string }) {
 
   /** The body being edited. Null until seeded from the loaded note, which gates autosave. */
   const [body, setBody] = useState<string | null>(null);
-  /** The field values being edited, by field id; null is a cleared value. Seeded with the body. */
-  const [fields, setFields] = useState<Record<string, FieldValue | null>>({});
+  /**
+   * The filing being edited: notebook, tags, and the field values by id (null is a
+   * cleared value). Seeded with the body, saved on its own clock. One object rather than
+   * three, so a notebook change and the field values that follow it go in one patch.
+   */
+  const [filing, setFiling] = useState<Filing>({ notebook: null, tags: [], fields: {} });
   /*
-   * The notebook the note is filed in, for its field definitions. By name, since that is
-   * what the note carries; the id only exists to address the notebook's own settings.
+   * The notebook the draft names, for its field definitions. By name, since that is what
+   * the note carries; the id only exists to address the notebook's own settings.
    */
   const notebooks = useQuery(notebooksQuery());
+  const allTags = useQuery(tagsQuery());
   const currentNotebook = notebooks.data?.notebooks.find(
-    (nb) => nb.name.toLowerCase() === note?.notebook?.toLowerCase(),
+    (nb) => nb.name.toLowerCase() === filing.notebook?.toLowerCase(),
   );
   const fieldDefs = useQuery(notebookFieldsQuery(currentNotebook?.id));
   const [seededFor, setSeededFor] = useState<string | null>(null);
@@ -90,7 +105,11 @@ function EmbeddedNote({ noteId }: { noteId: string }) {
   useEffect(() => {
     if (!note) return;
     setBody(note.body);
-    setFields(Object.fromEntries((note.fields ?? []).map((v) => [v.fieldId, v.value])));
+    setFiling({
+      notebook: note.notebook ?? null,
+      tags: note.tags,
+      fields: Object.fromEntries((note.fields ?? []).map((v) => [v.fieldId, v.value])),
+    });
     setSeededFor(note.id);
     setEditorOverride(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -113,16 +132,15 @@ function EmbeddedNote({ noteId }: { noteId: string }) {
   });
 
   /**
-   * The fields save on their own clock, through the same patch builder the site uses,
-   * so a half-typed number is held rather than sent and a cleared value goes as null.
-   * Only the fields differ from the note here: the body is the editor's business, and
-   * naming the note's own body, title and tags in the draft is what keeps them out of
-   * the patch.
+   * The filing saves on its own clock, through the same patch builder the site uses, so
+   * a half-typed number is held rather than sent and a cleared value goes as null. The
+   * body is the editor's business and the title is the app's; naming the note's own
+   * values for both in the draft is what keeps them out of the patch.
    */
-  async function saveFields(value: Record<string, FieldValue | null>) {
+  async function saveFiling(value: Filing) {
     if (!note) return;
     const patch = buildNotePatch(
-      { title: note.title, body: note.body, tags: note.tags, notebook: note.notebook ?? null, fields: value },
+      { title: note.title, body: note.body, tags: value.tags, notebook: value.notebook, fields: value.fields },
       note,
       fieldDefs.data,
     );
@@ -130,13 +148,17 @@ function EmbeddedNote({ noteId }: { noteId: string }) {
     try {
       const updated = await api.updateNote(noteId, patch);
       queryClient.setQueryData(keys.note(noteId), updated);
+      // A move changes the counts beside the notebooks, and a rename of the tag set
+      // changes what the picker suggests.
+      if (patch.notebook !== undefined) void queryClient.invalidateQueries({ queryKey: keys.notebooks() });
+      if (patch.tags) void queryClient.invalidateQueries({ queryKey: keys.tags() });
     } catch (err) {
       if (isStatus(err, 401)) postToApp({ type: 'unauthorized' });
       throw err;
     }
   }
 
-  const { state: fieldsState, flush: flushFields } = useAutosave(fields, saveFields, {
+  const { state: fieldsState, flush: flushFields } = useAutosave(filing, saveFiling, {
     enabled: note !== undefined && seededFor === noteId,
     resetKey: noteId,
   });
@@ -232,11 +254,23 @@ function EmbeddedNote({ noteId }: { noteId: string }) {
           draws them — the same `.fields-inline` block. */}
       <div className="fields-inline">
         <NoteFields
+          lead={
+            <FilingRows
+              notebook={filing.notebook}
+              notebooks={notebooks.data?.notebooks}
+              tags={filing.tags}
+              suggestions={allTags.data?.map((t) => t.name) ?? []}
+              onNotebook={(next) => setFiling((f) => ({ ...f, notebook: next }))}
+              onTags={(next) => setFiling((f) => ({ ...f, tags: next }))}
+            />
+          }
           definitions={fieldDefs.data}
-          values={fields}
+          values={filing.fields}
           carried={note.fields ?? []}
           notebookId={currentNotebook?.id ?? null}
-          onChange={(fieldId, value) => setFields((f) => ({ ...f, [fieldId]: value }))}
+          onChange={(fieldId, value) =>
+            setFiling((f) => ({ ...f, fields: { ...f.fields, [fieldId]: value } }))
+          }
           onAddField={addField}
         />
       </div>

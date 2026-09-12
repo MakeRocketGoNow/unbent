@@ -1798,6 +1798,9 @@ a.sidebar-status:hover {
 select.note-field-input {
   width: auto;
   max-width: 100%;
+  /* A chip hugs its word. A grid item stretches to its cell by default, which drew a
+     chosen notebook as a pill the full width of the row. */
+  justify-self: start;
   cursor: pointer;
   appearance: none;
 }
