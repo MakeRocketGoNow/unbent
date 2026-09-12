@@ -2,6 +2,7 @@ import { Link } from '@tanstack/react-router';
 import type { NoteSort, NoteSummary } from '@unbent/shared';
 import { formatWhen } from './format-when.js';
 import { formatFieldValue } from './format-field.js';
+import { AttachmentKindIcon } from './icons.js';
 
 interface NoteListItemProps {
   note: NoteSummary;
@@ -79,6 +80,29 @@ export function NoteListItem({ note, to, actions, sort, transition = false }: No
           {note.deletedAt ? `Deleted ${formatWhen(note.deletedAt)}` : formatWhen(when)}
         </span>
         {note.excerpt && <span className="note-excerpt">{note.excerpt}</span>}
+        {/*
+          The files the note holds: a glyph for the kind, the first one's name, and how
+          many more there are.
+
+          Under the excerpt rather than folded into it, because the two answer different
+          questions — what the note says, and what it carries — and for most of an imported
+          archive only one of them has an answer: a scanned document has files and no
+          prose, a journal entry the reverse. Each row then shows the line it has, and a
+          note with both shows both.
+
+          One name and a count, not every name. The sidebar is narrow, a filename is
+          unbounded, and the first file is the one the note was made for; the rest are
+          listed in the title for a hover on a desktop, and in the note itself.
+        */}
+        {note.attachments && note.attachments.length > 0 && (
+          <span className="note-files" title={note.attachments.map((a) => a.filename).join('\n')}>
+            <AttachmentKindIcon contentType={note.attachments[0]!.contentType} />
+            <span className="note-files-name">{note.attachments[0]!.filename}</span>
+            {note.attachments.length > 1 && (
+              <span className="note-files-more">+{note.attachments.length - 1}</span>
+            )}
+          </span>
+        )}
         {/* The values, named, on one line like the tags under them: what the note *is*
             when its notebook is a collection of records rather than of prose. */}
         {note.fields && note.fields.length > 0 && (

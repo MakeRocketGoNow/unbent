@@ -7,13 +7,18 @@ import {
   Book,
   Calendar,
   Check,
+  FileText,
+  Film,
   Funnel,
   Hash,
+  Image,
   Inbox,
   Link as LinkGlyph,
   List,
   Mail,
   Menu,
+  Music,
+  Paperclip,
   Pencil,
   Phone,
   Plus,
@@ -26,7 +31,7 @@ import {
   Type,
   X,
 } from 'lucide-react';
-import type { FieldType } from '@unbent/shared';
+import { normalizeContentType, type FieldType } from '@unbent/shared';
 
 /**
  * Every icon in this app passes through this file.
@@ -248,6 +253,30 @@ const FIELD_TYPE_ICONS: Record<FieldType, LucideIcon> = {
 
 export function FieldTypeIcon({ type }: { type: FieldType }) {
   return <RowIcon icon={FIELD_TYPE_ICONS[type]} />;
+}
+
+/**
+ * What kind of file a note holds, labelling its name on the list row.
+ *
+ * The glyph says the kind so the name does not have to — an Evernote export carries PDFs
+ * named `Menu Card`, and a row scanning for "that receipt photo" is looking for the
+ * picture, not reading extensions. Four kinds are worth telling apart at a glance; the
+ * rest share the paperclip, which is what every mail client has taught "a file" to look
+ * like. Decided from the declared type, which is unverified — it chooses a picture here
+ * and nothing more.
+ */
+export function AttachmentKindIcon({ contentType }: { contentType: string }) {
+  const type = normalizeContentType(contentType);
+  const icon = type.startsWith('image/')
+    ? Image
+    : type === 'application/pdf'
+      ? FileText
+      : type.startsWith('audio/')
+        ? Music
+        : type.startsWith('video/')
+          ? Film
+          : Paperclip;
+  return <RowIcon icon={icon} />;
 }
 
 /** Arrows for the two buttons that reorder a list one step at a time. */

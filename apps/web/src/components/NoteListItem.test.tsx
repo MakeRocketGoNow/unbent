@@ -57,6 +57,37 @@ describe('NoteListItem', () => {
     await screen.findByText('Lunch');
     expect(document.querySelector('.note-fields-line')).toBeNull();
   });
+
+  it('shows the first file by name with a count of the rest, under the excerpt', async () => {
+    mount({
+      excerpt: 'Used credit card.',
+      attachments: [
+        { filename: 'Sale Confirmation.pdf', contentType: 'application/pdf' },
+        { filename: 'front.jpg', contentType: 'image/jpeg' },
+        { filename: 'back.jpg', contentType: 'image/jpeg' },
+      ],
+    });
+    const name = await screen.findByText('Sale Confirmation.pdf');
+    const line = name.parentElement!;
+    expect(line.className).toBe('note-files');
+    expect(line.querySelector('svg')).not.toBeNull();
+    expect(screen.getByText('+2').className).toBe('note-files-more');
+    expect(line.previousElementSibling?.className).toBe('note-excerpt');
+    // Every name is there for a hover, since the row shows only the first.
+    expect(line.getAttribute('title')).toBe('Sale Confirmation.pdf\nfront.jpg\nback.jpg');
+  });
+
+  it('shows one file without a count', async () => {
+    mount({ attachments: [{ filename: 'scan.png', contentType: 'image/png' }] });
+    await screen.findByText('scan.png');
+    expect(document.querySelector('.note-files-more')).toBeNull();
+  });
+
+  it('draws no files line for a note without files', async () => {
+    mount();
+    await screen.findByText('Lunch');
+    expect(document.querySelector('.note-files')).toBeNull();
+  });
 });
 
 /*
