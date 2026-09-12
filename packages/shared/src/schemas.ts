@@ -343,6 +343,7 @@ export interface NoteSummary {
   notebookId?: string | null;
   /** Custom field values, own notebook's first in definition order, then any foreign ones. */
   fields?: NoteFieldValue[];
+  /** The body's prose, marks removed, for the row. Empty when the body has no prose. */
   excerpt?: string;
   /** When this note was trashed. Only present on notes listed from the trash. */
   deletedAt?: number;

@@ -3,6 +3,7 @@ import {
   decodeFieldValue,
   encodeFieldValue,
   endOfDay,
+  excerptMarkdown,
   expectedFieldValue,
   inferFieldType,
   InvalidFieldValue,
@@ -131,16 +132,6 @@ const FIELDS_SUBQUERY = `(SELECT json_group_array(json_object(
  * mangled by an editor or a copy-paste.
  */
 const TAG_SEP = '\u001F';
-
-/** First non-empty line of the body, stripped of markdown heading syntax. */
-function excerptOf(body: string, max = 140): string {
-  const line = body
-    .split('\n')
-    .map((l) => l.replace(/^#{1,6}\s+/, '').trim())
-    .find((l) => l.length > 0);
-  if (!line) return '';
-  return line.length > max ? `${line.slice(0, max - 1)}…` : line;
-}
 
 /**
  * Turns arbitrary user input into a valid FTS5 MATCH expression.
@@ -427,7 +418,7 @@ export class NotesRepo extends ScopedRepo {
         // Omitted when empty: most rows in a large archive have none, and a page of fifty
         // should not carry fifty empty arrays.
         ...(fields.length > 0 ? { fields } : {}),
-        excerpt: excerptOf(r.body),
+        excerpt: excerptMarkdown(r.body),
         deletedAt: r.deleted_at ?? undefined,
       };
     });
