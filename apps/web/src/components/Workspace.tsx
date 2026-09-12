@@ -5,6 +5,7 @@ import type { EditorView } from '@codemirror/view';
 import type { FieldType, FieldValue } from '@unbent/shared';
 import * as api from '../notes-api.js';
 import { isStatus } from '../notes-api.js';
+import { buildNotePatch } from '../note-patch.js';
 import { useAutosave } from '../useAutosave.js';
 import { usePersistentState, clamp } from '../usePersistentState.js';
 import {
@@ -261,7 +262,17 @@ export function Workspace({ noteId, readOnly = false, backTo = '/notes' }: Works
   }, [noteId, note !== undefined]);
 
   async function save(value: typeof draft) {
-    const updated = await api.updateNote(noteId, value);
+    if (!note) return;
+    /*
+       Only the keys that actually changed, and only field values the type can store.
+       Sending the whole draft used to 400 a body save on a half-typed number, and to
+       write the stale title back over a rename the phone had already saved — see
+       `buildNotePatch`. Nothing storeable is a successful no-op: the debounce fired
+       because the draft moved, but the movement was not yet a value the server can hold.
+    */
+    const patch = buildNotePatch(value, note, fieldDefs.data);
+    if (!patch) return;
+    const updated = await api.updateNote(noteId, patch);
     queryClient.setQueryData(keys.note(noteId), updated);
     // A tag or notebook edit changes the sidebar counts, and the title and ordering
     // change the list, so both are refetched rather than patched by hand.
