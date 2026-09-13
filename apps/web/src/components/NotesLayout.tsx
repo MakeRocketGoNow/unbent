@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate } from '@tanstack/react-router';
 import { useQuery, useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
 import { UNFILED } from '@unbent/shared';
@@ -35,7 +35,8 @@ import { Sheet } from './Sheet.js';
 import { NoteListHead } from './NoteListHead.js';
 import { NotesSort } from './NotesSort.js';
 import { ActiveFilters } from './ActiveFilters.js';
-import { useMediaQuery, MOBILE_QUERY } from '../useMediaQuery.js';
+import { useMediaQuery, MOBILE_QUERY, RAIL_DRAWER_QUERY } from '../useMediaQuery.js';
+import { MenuIcon } from './icons.js';
 import { useSession } from '../auth-client.js';
 import { useSignOut } from '../useSignOut.js';
 
@@ -137,9 +138,25 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
   const [searchOpen, setSearchOpen] = useState(q !== '');
 
   /*
+   * The middle band, between the phone and the full desktop: wide enough to keep the note
+   * beside its fields, too narrow to keep the sidebar there as well. This reads the width in
+   * JS for the same narrow reason `isMobile` does — a control that only exists here (the ☰,
+   * and the scrim behind the open drawer) and state that must not outlive the width that
+   * justifies it. The layout itself is CSS; see `RAIL_DRAWER_QUERY` and the band's block in
+   * `styles.css`. The editor is not in this component's tree, so nothing here rebuilds it.
+   */
+  const railDrawer = useMediaQuery(RAIL_DRAWER_QUERY);
+  const [railOpen, setRailOpen] = useState(false);
+  /* Where focus returns when the drawer closes: the ☰ that opened it. */
+  const railToggle = useRef<HTMLButtonElement>(null);
+  const sidebarRef = useRef<HTMLElement>(null);
+
+  /*
    * The sheet cannot outlive the width that justifies it. Rotating a phone to landscape
    * crosses the breakpoint, and a modal dialog left open over the desktop layout would sit
-   * on top of the very controls it contains, now visible in the sidebar behind it.
+   * on top of the very controls it contains, now visible in the sidebar behind it. The rail
+   * drawer is the same: above the band the sidebar is back in the row, so a drawer still
+   * marked open would slide it over the note it sits beside.
    */
   useEffect(() => {
     if (!isMobile) {
@@ -148,6 +165,46 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
       setDrawerOpen(false);
     }
   }, [isMobile]);
+  useEffect(() => {
+    if (!railDrawer) setRailOpen(false);
+  }, [railDrawer]);
+
+  /*
+   * Opening a note closes the drawer. In the band the list lives in the drawer, so tapping a
+   * row means "read this" — and the note it opens is behind the scrim the row was on. Keyed
+   * on the open note's id so it fires on every pick, including moving from one note to
+   * another. Only in the band: elsewhere the drawer is never open, so this is inert.
+   */
+  const openNote = layout.open;
+  useEffect(() => {
+    if (railDrawer) setRailOpen(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [openNote]);
+
+  /*
+   * The drawer's modality, kept off the platform's `<dialog>` on purpose: the sidebar is one
+   * copy of a large tree that is a plain column at desktop width, and moving it into a dialog
+   * for this band alone would mean either drawing it twice or wrapping it in a dialog that is
+   * inert on every other screen. So the three things `<dialog>` would have given for free are
+   * done by hand here, and only these three: Escape closes it, focus moves into it on open,
+   * and focus returns to the ☰ on close. Inertness of the rest is the one part left out — the
+   * scrim takes the click that would reach behind it, which is what a mouse can do here.
+   */
+  useEffect(() => {
+    if (!railOpen) return;
+    sidebarRef.current?.focus();
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setRailOpen(false);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [railOpen]);
+  /* Return focus on close, but not on the mount where it was already closed. */
+  const wasRailOpen = useRef(false);
+  useEffect(() => {
+    if (wasRailOpen.current && !railOpen) railToggle.current?.focus();
+    wasRailOpen.current = railOpen;
+  }, [railOpen]);
 
   /** Writes the search box's value to the URL. Shared by both breakpoints' fields. */
   const setQuery = (next: string) =>
@@ -238,8 +295,48 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <div className={layout.className} style={layout.style} ref={layout.containerRef}>
-      <aside className="sidebar">
+    <div
+      /*
+       * `rail-open` rides on the grid beside `note-open`, the class the mobile block already
+       * keys on. The band's rules read both: the sidebar only becomes a drawer while a note
+       * is open, and only slides in when this is set. Off the band the class is harmless — no
+       * rule outside the band's media block mentions it.
+       */
+      className={railOpen ? `${layout.className} rail-open` : layout.className}
+      style={layout.style}
+      ref={layout.containerRef}
+    >
+      {/*
+          The ☰, and the scrim behind the open drawer. Both are drawn at every width and shown
+          by CSS only in the band with a note open — making them conditional in JS would add a
+          third thing that changes at the breakpoint, and there is no cost to leaving inert
+          markup in place. The scrim is a real button so a click and the Enter/Space on it both
+          close the drawer; it is `aria-hidden` because Escape is the announced way out and a
+          screen reader should not meet a nameless "close" control before the sidebar itself.
+      */}
+      <button
+        ref={railToggle}
+        type="button"
+        className="rail-toggle"
+        aria-label="Show the note list"
+        aria-expanded={railOpen}
+        onClick={() => setRailOpen(true)}
+      >
+        <MenuIcon />
+      </button>
+      <button
+        type="button"
+        className="rail-scrim"
+        aria-hidden="true"
+        tabIndex={-1}
+        onClick={() => setRailOpen(false)}
+      />
+      <aside
+        className="sidebar"
+        ref={sidebarRef}
+        /* Focusable only as the drawer's landing spot; -1 keeps it out of the tab order. */
+        tabIndex={railOpen ? -1 : undefined}
+      >
         {isMobile ? (
           <>
             <NoteListHead
