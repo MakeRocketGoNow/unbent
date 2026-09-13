@@ -1035,11 +1035,19 @@ h1 {
    The shell for a page the Android app hosts in a WebView.
 
    No padding and no topbar: the app draws the chrome, and every pixel of the page is the
-   note. The same height chain as `.shell.wide`, and for the same reason — the editor pane
-   scrolls inside a definite height rather than the document scrolling away under the
-   app's title field. `dvh` because a WebView that shrinks for the keyboard reports that
-   through the viewport, and `vh` alone would keep the page laid out to the old height
-   underneath it.
+   note. The shell is the note's one scroll region, the way `.workspace-main` is in the
+   phone block: the filing rows, the attachments strip and the editor scroll as one
+   document under the app's title bar, which stays put above the WebView. It used to keep
+   the desktop's height chain instead — the fields capped and scrolling within themselves,
+   the editor pane scrolling inside a box — which on a phone read as a note broken into
+   two windows, each with a scrollbar of its own, under a title that was a third.
+
+   A definite height rather than the document scrolling, so the docked bar and the
+   reading view's fixed editor have a viewport to be fixed against. `dvh` because a
+   WebView that shrinks for the keyboard reports that through the viewport, and `vh`
+   alone would keep the page laid out to the old height underneath it; the app shrinks
+   the WebView above the keys, so the region's bottom is always above them and no
+   keyboard inset is needed here.
 */
 .shell.embed {
   /*
@@ -1055,23 +1063,43 @@ h1 {
   padding: 0;
   height: 100vh;
   height: 100dvh;
-  display: flex;
-  flex-direction: column;
+  overflow-y: auto;
+  /* A flick past the end stays in the page; the WebView has no pull-to-refresh to
+     hand it to, but nor should it hand a rubber-band to the app's screen. */
+  overscroll-behavior: contain;
+}
+
+/*
+   The note as a document in flow: the fields, the attachments strip, the editor. Nothing
+   here is sized to fit, so each grows to its content and the shell scrolls the lot.
+
+   The bottom padding is room for the docked bar, at every width rather than only below
+   the phone breakpoint: the bar is always docked here, whatever width the WebView has.
+*/
+.embedded {
+  padding: 0 0.75rem 3.5rem;
+}
+
+/* The phone block lifts the fields' cap for `.workspace-main`; the same lift here. */
+.embedded .fields-inline {
+  max-height: none;
+  overflow: visible;
+  overscroll-behavior: auto;
+}
+
+/* The pane no longer scrolls; the shell does. See the phone block for `.editor-host`. */
+.embedded .pane { overflow: visible; }
+
+/*
+   The reading view's hidden editor, fixed rather than absolute for the reason given at
+   the phone block's copy of this rule: an absolutely positioned pane still adds its
+   height — the whole note's — to the shell's scrollable overflow.
+*/
+.embedded .panes.reading > .editor-pane {
+  position: fixed;
+  inset: 0;
   overflow: hidden;
 }
-
-/* The note body's own column: the attachments strip, then the pane that scrolls. */
-.embedded {
-  display: flex;
-  flex-direction: column;
-  flex: 1;
-  min-height: 0;
-  padding: 0 0.75rem;
-}
-
-/* Room for the docked bar at every width, not only below the phone breakpoint: the bar
-   is always docked here, whatever width the WebView happens to have. */
-.embedded .pane { padding-bottom: 3.5rem; }
 
 .placeholder { margin-top: 3rem; text-align: center; }
 
