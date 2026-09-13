@@ -93,15 +93,23 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 
 /**
- * One note: a native title, and the web page for everything under it.
+ * One note: a native title in the bar, and the web page for everything under it.
  *
- * The title is this screen's, drawn and saved natively. Everything below it — the
- * notebook, the tags, the fields and the body — is the site's own page at
+ * The title is this screen's, drawn and saved natively, and it sits in the app bar
+ * beside the back arrow — the row the site's phone layout draws as the note's head,
+ * with the save state at its right end and the menu after it. Everything below the bar
+ * — the notebook, the tags, the fields and the body — is the site's own page at
  * `/embed/notes/:id`, in a WebView the app has signed in by writing its session cookie
  * into the jar: the same property list and the same editor the site's phone layout
  * draws, and no second implementation of any of it. The notebook and the tags used to be
  * this screen's too, a row that opened a sheet, drawn in a second font and rhythm over
  * the fields the page drew underneath; one list, in one place, is what ended that.
+ *
+ * The title used to be a row of its own under the bar, above the page: three bands —
+ * the bar, the title, the page — where the site has two, and the page scrolled under a
+ * title that stayed put while the bar above it held only a status. With the title in
+ * the bar the page is the whole of the screen below it and scrolls as one document, the
+ * way the site's phone note scrolls under its sticky head.
  *
  * The two halves write different fields, and PATCH is partial on the server, so they
  * cannot overwrite each other. Leaving flushes both: the page is asked to save whatever
@@ -212,13 +220,21 @@ fun NoteScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { SaveStatus(state.headerSave, state.bodySave, state.uploading) },
+                // Only once the note is here: a placeholder "Untitled" that flips to the
+                // real title a moment later is a jump the bar does not need.
+                title = {
+                    if (state.note != null) {
+                        TitleField(state.title, onChange = state::changeTitle, takeFocus = focusTitle)
+                    }
+                },
                 navigationIcon = {
                     IconButton(onClick = { leave() }) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.back))
                     }
                 },
                 actions = {
+                    // At the title's right end, before the menu, where the site puts it.
+                    SaveStatus(state.headerSave, state.bodySave, state.uploading)
                     IconButton(onClick = { menuOpen = true }) {
                         Icon(Icons.Default.MoreVert, contentDescription = stringResource(R.string.more))
                     }
@@ -286,7 +302,7 @@ fun NoteScreen(
                 }
 
                 else -> {
-                    TitleField(state.title, onChange = state::changeTitle, takeFocus = focusTitle)
+                    // The rule under the site's note head; the bar itself draws none.
                     HorizontalDivider()
                     NoteWebView(
                         origin = prefs.instance,
@@ -383,7 +399,12 @@ private fun SaveStatus(header: String, body: String, uploading: Int) {
     )
 }
 
-/** The title: a bare field with the size of a heading, as on the web. No border, no label. */
+/**
+ * The title: a bare field with the size of a heading, as on the web. No border, no label.
+ *
+ * Sized for the app bar's title slot, which sets the inset from the back arrow and the
+ * gap to the actions itself; the field adds no padding of its own.
+ */
 @Composable
 private fun TitleField(value: String, onChange: (String) -> Unit, takeFocus: Boolean) {
     val style = MaterialTheme.typography.titleLarge.copy(color = MaterialTheme.colorScheme.onSurface)
@@ -398,7 +419,6 @@ private fun TitleField(value: String, onChange: (String) -> Unit, takeFocus: Boo
         keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences, imeAction = ImeAction.Done),
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = Space.Large, vertical = Space.Medium)
             .focusRequester(focus),
         decorationBox = { inner ->
             Box {
