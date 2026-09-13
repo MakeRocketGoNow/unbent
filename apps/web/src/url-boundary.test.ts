@@ -14,7 +14,11 @@ import { fileURLToPath } from 'node:url';
  *
  * `notes-api.ts` is allowed because its `URLSearchParams` builds an outbound API query
  * string, which has nothing to do with browser navigation; the pattern cannot tell the
- * two apart.
+ * two apart. The embed note route is allowed because it decodes the router's own
+ * `location.searchStr` — read through `useLocation`, so the router still owns the
+ * location — to keep the Android app's colour values as the strings they were written
+ * as; the router's parsed search had turned an all-digit colour into a number. Reading a
+ * string is not navigating either.
  */
 describe('url boundary', () => {
   it('leaves navigation to the router', () => {
@@ -40,7 +44,7 @@ describe('url boundary', () => {
       out = '';
     }
 
-    const allowed = ['notes-api.ts', 'url-boundary.test.ts'];
+    const allowed = ['notes-api.ts', 'embed.notes.$noteId.tsx', 'url-boundary.test.ts'];
     const offenders = out
       .split('\n')
       .filter(Boolean)

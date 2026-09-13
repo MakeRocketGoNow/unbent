@@ -1,6 +1,6 @@
-import { createFileRoute } from '@tanstack/react-router';
+import { createFileRoute, useLocation } from '@tanstack/react-router';
 import { z } from 'zod';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { flushSync } from 'react-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { EditorView } from '@codemirror/view';
@@ -46,6 +46,13 @@ import { usePdfAttachments } from '../usePdfAttachments.js';
  * the same ink and ground as the native title above it. Each is optional and a bad value
  * is dropped rather than refused: a page that fails to load over a typo in a colour would
  * be a strange trade, and the site's own tokens are a fine fallback.
+ *
+ * Parsed from the raw query string by [parseHostTheme], not through the route's
+ * `validateSearch`. The router JSON-parses every search value before validating it, so a
+ * colour that happens to be all digits — `131313`, a common dark surface — arrived as a
+ * number, failed `z.string()` and was dropped, and the page kept the site's ground under
+ * the app's ink. Coercing the number back to a string is not enough: `0e1234` is six hex
+ * digits and JSON's zero, and `100e10` is a hundred billion. Only the raw string knows.
  */
 const hex = z.string().regex(/^[0-9a-fA-F]{6}$/).optional().catch(undefined);
 
@@ -62,6 +69,11 @@ const themeSearch = z.object({
 
 type ThemeSearch = z.infer<typeof themeSearch>;
 
+/** The roles a query string carries, each kept as the string the app wrote. */
+export function parseHostTheme(searchStr: string): ThemeSearch {
+  return themeSearch.parse(Object.fromEntries(new URLSearchParams(searchStr)));
+}
+
 /** Which of the stylesheet's tokens each role becomes. */
 const ROLE_TOKENS: Array<[keyof ThemeSearch, string]> = [
   ['surface', '--bg'],
@@ -75,7 +87,6 @@ const ROLE_TOKENS: Array<[keyof ThemeSearch, string]> = [
 ];
 
 export const Route = createFileRoute('/embed/notes/$noteId')({
-  validateSearch: themeSearch,
   component: EmbeddedNoteRoute,
 });
 
@@ -87,7 +98,9 @@ export const Route = createFileRoute('/embed/notes/$noteId')({
  * it has already chosen a dark or a light palette to send. The site's own tokens stand in
  * for anything not sent, so a page opened outside the app looks like the site.
  */
-function useHostTheme(theme: ThemeSearch) {
+function useHostTheme() {
+  const searchStr = useLocation({ select: (location) => location.searchStr });
+  const theme = useMemo(() => parseHostTheme(searchStr), [searchStr]);
   useEffect(() => {
     const style = document.documentElement.style;
     for (const [role, token] of ROLE_TOKENS) {
@@ -119,7 +132,7 @@ interface Filing {
 
 function EmbeddedNoteRoute() {
   const { noteId } = Route.useParams();
-  useHostTheme(Route.useSearch());
+  useHostTheme();
   return <EmbeddedNote noteId={noteId} />;
 }
 
