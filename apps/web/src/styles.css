@@ -1005,39 +1005,16 @@ h1 {
   margin-left: -0.55rem;
 }
 
-/* Material's list sizes for the property rows the app hosts: bodyLarge on 48dp rows. */
-.embedded .note-fields {
-  row-gap: 0;
-  column-gap: 0.75rem;
-}
-
-.embedded .note-field-label,
-.embedded .note-field-input,
-.embedded .note-field-value,
-.embedded .tag-chip,
-.embedded .tag-add-hint,
-.embedded .note-field-add-hint,
-.embedded .note-fields-toggle,
-.embedded .note-field-act {
-  font-size: 1rem;
-}
-
-/* 44dp: a comfortable touch target, tighter than Material's 48dp list item, which read
-   as more air than a value row of this density wanted. */
-/* 44dp: a comfortable touch target, tighter than Material's 48dp list item, which read
-   as more air than a value row of this density wanted. */
-.embedded .note-field-input { min-height: 2.75rem; }
-.embedded .note-field-label { min-height: 2.75rem; }
-.embedded .note-field-glyph { font-size: 1.1rem; }
-
 /*
-   A chip's own height, one value for all three — the notebook, a tag, the add-tag entry.
-   Material's 32dp, taller than the site's 1.65rem so a thumb clears it, and identical
-   across the three so the two filing rows never look like different controls.
+   No sizes of its own for the property rows the app hosts.
+
+   They were once put at Material's list sizes — bodyLarge on 44dp rows, chips at 32dp —
+   to sit under the native title in the app's own scale. Against the site's phone page,
+   which draws the same list at 0.85rem, that read as the same note in two sizes, and
+   the one that was wrong was the app's: the list is the site's, and its density is part
+   of what makes it recognisable. So the embed takes the phone layout's sizes unchanged,
+   and only the face and the palette are the host's; see `.shell.embed`.
 */
-.embedded select.note-field-input[data-filled],
-.embedded .tag-chip,
-.embedded .tag-add-hint { min-height: 2rem; }
 
 /* "+ Add field" and "Manage fields" are about the notebook, not a value: a breath before
    them keeps the last field from reading as a row that happens to have two buttons. */
@@ -1066,13 +1043,11 @@ h1 {
 */
 .shell.embed {
   /*
-     The host's type, and its sizes.
+     The host's type.
 
-     The page sits under a native title in Roboto at Material's sizes, so it takes the
-     same face and puts its property rows at bodyLarge — 16px on a 48px row, the list
-     item every Android screen is built from — rather than the site's denser 13.6px. The
-     colours arrive on the URL; see `useHostTheme` in the embed route. Congruent, not
-     identical: the editor keeps its own measure below, since prose is prose.
+     The page sits under a native title in Roboto, so it takes the same face; the sizes
+     are the site's own phone sizes, for the reason given at the `.embedded` list rules.
+     The colours arrive on the URL; see `useHostTheme` in the embed route.
   */
   --font-ui: Roboto, "Noto Sans", system-ui, sans-serif;
   --font-prose: Roboto, "Noto Sans", system-ui, sans-serif;
