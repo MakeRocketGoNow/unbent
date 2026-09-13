@@ -493,7 +493,19 @@ export function Workspace({ noteId, readOnly = false, backTo = '/notes' }: Works
           the note's width does not change between a filed note and an unfiled one — an
           unfiled note's panel says how to get fields instead.
       */}
-      <div className="workspace-main">
+      <div
+        className="workspace-main"
+        /*
+            How much of the screen the keyboard is covering, for the stylesheet.
+
+            On a phone this column is the note's one scroll region, and a keyboard covers
+            the bottom of it: without room past the last line, the end of a note can never
+            be scrolled up above the keys. The phone rules pad the column's bottom by this
+            much, so the whole note stays reachable while typing. `useKeyboardInset`
+            reads 0 wherever there is no keyboard, so the padding costs nothing then.
+        */
+        style={{ '--keyboard-inset': `${keyboardInset}px` } as React.CSSProperties}
+      >
       {/*
           Two rows on a phone, one on a desktop.
 
