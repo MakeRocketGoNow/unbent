@@ -2,10 +2,10 @@ import { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate } from '@tanstack/react-router';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { EditorView } from '@codemirror/view';
-import type { FieldType, FieldValue } from '@unbent/shared';
+import type { FieldDef, FieldType, FieldValue } from '@unbent/shared';
 import * as api from '../notes-api.js';
 import { isStatus } from '../notes-api.js';
-import { buildNotePatch, unstoreableFieldIds } from '../note-patch.js';
+import { buildNotePatch, rememberFieldDefs, unstoreableFieldIds } from '../note-patch.js';
 import { useAutosave } from '../useAutosave.js';
 import { usePersistentState, clamp } from '../usePersistentState.js';
 import {
@@ -84,6 +84,16 @@ export function Workspace({ noteId, readOnly = false, backTo = '/notes' }: Works
     (nb) => nb.name.toLowerCase() === draft.notebook?.toLowerCase(),
   );
   const fieldDefs = useQuery(notebookFieldsQuery(currentNotebook?.id));
+  /*
+     Every definition this session has loaded, not only the current notebook's.
+
+     A newly typed value has no stored row yet, so the patch can encode it only from a
+     definition. Changing the notebook swaps `fieldDefs` for the new notebook's — or
+     undefined while they load — and used to drop that value: Amount typed, note filed,
+     Amount gone. The editor still renders `fieldDefs.data`; this list is for the save.
+  */
+  const seenFieldDefs = useRef(new Map<string, FieldDef>());
+  const knownFieldDefs = rememberFieldDefs(seenFieldDefs.current, fieldDefs.data);
   /** Which note `draft` was seeded from; guards autosave against a not-yet-seeded draft. */
   const [draftFor, setDraftFor] = useState<string | null>(null);
   /**
@@ -258,7 +268,7 @@ export function Workspace({ noteId, readOnly = false, backTo = '/notes' }: Works
        `buildNotePatch`. Nothing storeable is a successful no-op: the debounce fired
        because the draft moved, but the movement was not yet a value the server can hold.
     */
-    const patch = buildNotePatch(value, note, fieldDefs.data);
+    const patch = buildNotePatch(value, note, knownFieldDefs);
     if (!patch) return;
     const updated = await api.updateNote(noteId, patch);
     queryClient.setQueryData(keys.note(noteId), updated);
@@ -289,7 +299,7 @@ export function Workspace({ noteId, readOnly = false, backTo = '/notes' }: Works
      state machine is left alone — the save did succeed, and failing it would put back the
      400 that took the body down with it.
   */
-  const holdingField = editing && unstoreableFieldIds(draft, note, fieldDefs.data).length > 0;
+  const holdingField = editing && unstoreableFieldIds(draft, note, knownFieldDefs).length > 0;
   const saveLabel =
     holdingField && saveState === 'saved' ? SAVE_LABEL.dirty : SAVE_LABEL[saveState];
 

@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import type { FieldDef, Note, NoteFieldValue } from '@unbent/shared';
-import { buildNotePatch, unstoreableFieldIds, type NoteDraft } from './note-patch.js';
+import {
+  buildNotePatch,
+  rememberFieldDefs,
+  unstoreableFieldIds,
+  type NoteDraft,
+} from './note-patch.js';
 
 const amount: FieldDef = {
   id: '11111111-1111-1111-1111-111111111111',
@@ -192,6 +197,62 @@ describe('buildNotePatch', () => {
 
   it('treats a number the input re-emitted as a string as unchanged', () => {
     expect(buildNotePatch(draft({ fields: { [amount.id]: '12' } }), note(), [amount])).toBeNull();
+  });
+
+  /*
+     Filing a note is a notebook change. The current notebook's definitions then no longer
+     include Amount — or are undefined while they load — and Amount was empty, so there is
+     no stored row to take the type from. Handing the definition we already loaded is what
+     keeps the just-typed number in the patch; without it only the notebook would go.
+  */
+  it('still sends a newly typed field when the note is filed in another notebook', () => {
+    const empty = note({ fields: [] });
+    expect(
+      buildNotePatch(
+        draft({
+          notebook: 'Taxes',
+          fields: { [amount.id]: '12.5' },
+        }),
+        empty,
+        [amount],
+      ),
+    ).toEqual({ notebook: 'Taxes', fields: { [amount.id]: '12.5' } });
+  });
+
+  it('drops that newly typed field when no definition is known, matching a leftover id', () => {
+    const empty = note({ fields: [] });
+    expect(
+      buildNotePatch(
+        draft({ notebook: 'Taxes', fields: { [amount.id]: '12.5' } }),
+        empty,
+        [],
+      ),
+    ).toEqual({ notebook: 'Taxes' });
+    expect(
+      buildNotePatch(
+        draft({ notebook: 'Taxes', fields: { [amount.id]: '12.5' } }),
+        empty,
+        undefined,
+      ),
+    ).toEqual({ notebook: 'Taxes' });
+  });
+});
+
+describe('rememberFieldDefs', () => {
+  it('keeps a previous notebook\'s definitions after the current list is replaced', () => {
+    const seen = new Map<string, FieldDef>();
+    expect(rememberFieldDefs(seen, [amount])).toEqual([amount]);
+    expect(rememberFieldDefs(seen, [])).toEqual([amount]);
+    expect(rememberFieldDefs(seen, undefined)).toEqual([amount]);
+  });
+
+  it('adds the new notebook\'s definitions without dropping the old', () => {
+    const seen = new Map<string, FieldDef>();
+    rememberFieldDefs(seen, [amount]);
+    const taxesAmount: FieldDef = { ...amount, id: 'taxes-amount', notebookId: 'nb2' };
+    expect(rememberFieldDefs(seen, [taxesAmount]).map((d) => d.id).sort()).toEqual(
+      ['taxes-amount', amount.id].sort(),
+    );
   });
 });
 

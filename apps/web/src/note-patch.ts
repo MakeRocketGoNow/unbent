@@ -25,6 +25,35 @@ export type NotePatch = {
 };
 
 /**
+ * Definitions this session has already loaded, so a notebook change does not forget
+ * the types a draft value was typed against.
+ *
+ * `buildNotePatch` encodes a value the note has never stored from the definition list
+ * it is handed. After the note is moved, that list is the *new* notebook's — or
+ * undefined while those definitions load — so an Amount typed on Receipts and a move
+ * to Taxes in the same breath used to drop the number: no definition in the new list,
+ * no stored row, skip. The server would have accepted it; the field still exists on
+ * Receipts, and a value already saved would have survived as a foreign field.
+ *
+ * Accumulating every definition we have seen keeps the type around long enough to
+ * write what the user typed. The editor still *shows* only the current notebook's
+ * fields; this list is only for the patch.
+ *
+ * A field deleted in another tab can still 400 the save if they edit it, the same
+ * way changing an already-stored value of a deleted field already can (`stands.type`
+ * in `diffFields`). That is rarer than losing a just-typed amount to a filing.
+ */
+export function rememberFieldDefs(
+  seen: Map<string, FieldDef>,
+  current: FieldDef[] | undefined,
+): FieldDef[] {
+  if (current) {
+    for (const def of current) seen.set(def.id, def);
+  }
+  return [...seen.values()];
+}
+
+/**
  * The PATCH a note save should send, given the draft and what the server last told us.
  *
  * The editor used to send the whole draft on every autosave. The API is merge-shaped —
@@ -110,6 +139,11 @@ function diffFields(
     if (stands && sameFieldValue(stands.value, value)) continue;
 
     const def = defs.get(id) ?? (stands ? { type: stands.type, options: [] as string[] } : undefined);
+    // No type and nothing stored: a leftover id, or a just-typed value whose definition
+    // this call was not handed. The callers accumulate every definition they have loaded
+    // (`rememberFieldDefs`) so a notebook change still has the type the value was typed
+    // against. An id we have never seen is skipped, so a stale draft key cannot 400
+    // the rest of the save.
     if (!def) continue;
 
     const encoded = encodeFieldValue(def, value);
