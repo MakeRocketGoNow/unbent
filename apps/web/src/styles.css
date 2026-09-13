@@ -1880,6 +1880,18 @@ a.sidebar-status:hover {
   display: inline-flex;
   align-items: center;
   min-width: 0;
+  /*
+     Clearance from the value's box, which reaches into the column gap.
+
+     Every value is pulled left by its own padding so its text lands on the column's
+     edge — a plain input by 0.35–0.45rem, a chip by 0.55rem — which puts the box's edge
+     that far back into the 0.5rem gap. A chip's box therefore started a hair inside the
+     name column, and on a phone, where the column is as wide as its longest name, the
+     notebook chip sat on the word "Notebook". The name keeps its own margin rather than
+     the gap growing: a wider gap would also move the glyph away from the name, and the
+     boxes are the values' business, not the grid's.
+  */
+  padding-right: 0.35rem;
   font-size: 0.82rem;
   color: var(--muted);
   white-space: nowrap;
