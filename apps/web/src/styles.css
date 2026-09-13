@@ -439,6 +439,19 @@ h1 {
 /* Text selection while dragging a divider reads as a bug rather than a feature. */
 .notes[data-resizing] { user-select: none; }
 
+/*
+   The ☰ that opens the sidebar-as-drawer, and the scrim behind it.
+
+   Both belong to the middle band alone — see the band's block far below. Drawn at every
+   width and off by default here, so the width is what turns them on rather than a JS branch
+   that would change the tree at the breakpoint. Nothing above the band, and nothing on a
+   phone, ever shows them.
+*/
+.rail-toggle,
+.rail-scrim {
+  display: none;
+}
+
 .resize-handle {
   /*
      One pixel wide, and it is the divider line.
@@ -4496,6 +4509,159 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
   padding-top: 1.5rem;
   border-top: 1px solid var(--border);
   font-size: 0.95rem;
+}
+
+/*
+ * The middle band: a note beside its fields, with the list a drawer away.
+ *
+ * Between the phone and the full desktop is a width too narrow for three columns and too
+ * wide to give up the note-beside-its-fields layout the way a phone does. A 304px sidebar, a
+ * 304px fields column and their margins left the editor about 250px of a 960px screen — its
+ * toolbar wrapped to five rows and its title truncated to a dozen characters.
+ *
+ * So here the sidebar comes out of the row *while a note is open* and becomes a drawer over
+ * it: the note and its fields take the width the sidebar was holding, and the ☰ slides the
+ * list back when you want it. Keyed on `.note-open`, the same class the phone block reads,
+ * and for the same reason the phone keeps its list in view — the list view itself leaves the
+ * sidebar in place, because a list hidden in a drawer is a view of nothing. See
+ * `RAIL_DRAWER_QUERY`; the band's upper edge is where three columns stop being cramped.
+ *
+ * Nothing unmounts across either edge of the band. The layout is CSS keyed on classes the
+ * grid already carried; the JS reads the width only to open and close the drawer and to draw
+ * its scrim, never to swap the tree the editor lives in.
+ */
+@media (min-width: 861px) and (max-width: 1080px) {
+  /*
+     Only with a note open, and not in the trash.
+
+     The list view keeps the desktop's sidebar-and-workspace grid untouched — its whole
+     content is the list, which must not be the thing that slides away. And the trash is left
+     alone entirely: `TrashLayout` shares this grid and so matches `.note-open`, but it has no
+     ☰ and no drawer state — collapsing its sidebar would hide the trash list with no way
+     back. `:not(:has(.trash-head))` is how the trash sidebar names itself; the same marker
+     the topbar rule uses to tell the two apart. A trashed note keeps the desktop layout at
+     this width, exactly as it did before.
+  */
+  .notes.note-open:not(:has(.trash-head)) {
+    /* The drawer and the scrim are positioned against this. */
+    position: relative;
+    /* The sidebar leaves the flow (absolute, below) and the handle is hidden, so the one
+       track left is the workspace — the note and its fields, now spanning the width. */
+    grid-template-columns: 1fr;
+  }
+
+  /* No column to size, and the drawer is not resized by dragging its edge. */
+  .notes.note-open:not(:has(.trash-head)) > .resize-handle {
+    display: none;
+  }
+
+  /*
+     The sidebar as an off-canvas panel.
+
+     Absolute rather than fixed: it is pinned to the grid, which already fills the space under
+     the topbar, so it lands the drawer under the topbar rather than over it. Its own surface
+     and right edge, because it now floats over the note rather than sitting in a column with
+     a seam drawn by the handle. Capped at 20rem so it never becomes the whole screen at the
+     band's wide end, and at 85% so it always leaves a strip of the note — and the scrim on
+     it — visible to tap back to.
+  */
+  .notes.note-open:not(:has(.trash-head)) > .sidebar {
+    position: absolute;
+    inset: 0 auto 0 0;
+    z-index: 2;
+    width: min(20rem, 85%);
+    padding: 0.25rem 1rem 0;
+    background: var(--bg);
+    border-right: 1px solid var(--border);
+    box-shadow: 0 0 2rem rgb(0 0 0 / 0.12);
+    /*
+       Closed by default; the open state below brings it in.
+
+       The extra 1.5rem past its own width is the shell's inline padding: the drawer is
+       anchored to `.notes`, which sits that far in from the glass, so -100% alone leaves a
+       strip of the panel — its border and shadow — poking into the padding at the screen
+       edge. Clearing that padding too puts the whole panel, shadow included, off the screen.
+       If `.shell.wide`'s inline padding changes, this must change with it.
+    */
+    translate: calc(-101% - 1.5rem) 0;
+    overflow-y: auto;
+  }
+
+  .notes.note-open.rail-open > .sidebar {
+    translate: 0 0;
+  }
+
+  /*
+     The ☰, top-left of the note, where the phone's back arrow and the desktop's nothing both
+     leave the corner free. Hidden once the drawer is open: the sidebar covers this corner,
+     and the scrim is then the way back out.
+  */
+  .notes.note-open:not(:has(.trash-head)) > .rail-toggle {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    position: absolute;
+    top: 0;
+    left: 0;
+    z-index: 1;
+    width: 2.25rem;
+    height: 2.25rem;
+    padding: 0;
+    border: 1px solid var(--border);
+    border-radius: 0.5rem;
+    background: var(--bg);
+    color: var(--fg);
+    cursor: pointer;
+  }
+
+  .notes.note-open > .rail-toggle:hover {
+    background: var(--chip-bg);
+  }
+
+  .notes.note-open.rail-open > .rail-toggle {
+    display: none;
+  }
+
+  /*
+     The scrim, over the note while the drawer is open. Under the sidebar in the stack (z:2)
+     and over everything else, so a click anywhere off the drawer closes it — the mouse's
+     version of the Escape the JS also wires.
+  */
+  .notes.note-open.rail-open > .rail-scrim {
+    display: block;
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+    border: none;
+    background: rgb(0 0 0 / 0.32);
+    cursor: default;
+  }
+
+  /*
+     The note's own top-left control sits where the ☰ now is, so give the note's head room to
+     clear it. The workspace head is one row here (the desktop's layout, not the phone's
+     stacked one), and its first child is the title row; a left pad on it keeps the title off
+     the ☰ without moving the fields column or the body.
+  */
+  .notes.note-open:not(:has(.trash-head)) > .workspace .workspace-head {
+    padding-left: 2.75rem;
+  }
+}
+
+@media (min-width: 861px) and (max-width: 1080px) and (prefers-reduced-motion: no-preference) {
+  /* The slide, for anyone who has not asked motion off. The scrim fades with it. */
+  .notes.note-open:not(:has(.trash-head)) > .sidebar {
+    transition: translate 220ms ease;
+  }
+  .notes.note-open.rail-open > .rail-scrim {
+    animation: rail-scrim-in 220ms ease;
+  }
+}
+
+@keyframes rail-scrim-in {
+  from {
+    opacity: 0;
+  }
 }
 
 /*
