@@ -860,6 +860,36 @@ private fun NoteRow(note: NoteSummary, sort: NoteSort, showNotebook: Boolean, on
                 note.excerpt?.takeIf { it.isNotBlank() }?.let { excerpt ->
                     Text(excerpt, maxLines = 2, overflow = TextOverflow.Ellipsis)
                 }
+                /*
+                 * The files the note holds, as the web row shows them: a glyph for the
+                 * kind, the first file's name, and how many more there are. Its own line
+                 * under the excerpt, because what a note says and what it carries are
+                 * different questions and, for most of an imported archive, only one has
+                 * an answer — a scanned document has files and no prose. Only the name may
+                 * shrink; the glyph and the count are what keep an ellipsized name legible
+                 * as "a PDF, and two more".
+                 */
+                note.attachments.firstOrNull()?.let { first ->
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(Space.Hair),
+                    ) {
+                        Icon(
+                            painterResource(fileKindDrawable(first.contentType)),
+                            contentDescription = null,
+                            modifier = Modifier.size(16.dp),
+                        )
+                        Text(
+                            first.filename,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f, fill = false),
+                        )
+                        if (note.attachments.size > 1) {
+                            Text("+${note.attachments.size - 1}")
+                        }
+                    }
+                }
                 if (note.tags.isNotEmpty()) {
                     Text(
                         note.tags.joinToString(" ") { "#$it" },
@@ -872,6 +902,22 @@ private fun NoteRow(note: NoteSummary, sort: NoteSort, showNotebook: Boolean, on
             }
         },
     )
+}
+
+/**
+ * The glyph for a file's declared type, as the web's `AttachmentKindIcon` chooses it: four
+ * kinds worth telling apart at a glance, and the paperclip for the rest. Parameters and
+ * case are dropped first, since `Image/JPEG; q=1` is the same type as `image/jpeg`.
+ */
+private fun fileKindDrawable(contentType: String): Int {
+    val type = contentType.substringBefore(';').trim().lowercase()
+    return when {
+        type.startsWith("image/") -> R.drawable.ic_file_image
+        type == "application/pdf" -> R.drawable.ic_file_document
+        type.startsWith("audio/") -> R.drawable.ic_file_audio
+        type.startsWith("video/") -> R.drawable.ic_file_video
+        else -> R.drawable.ic_file_other
+    }
 }
 
 /**

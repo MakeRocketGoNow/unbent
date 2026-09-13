@@ -136,8 +136,8 @@ describe('note CRUD', () => {
 
     const { items } = await fetch(`${BASE}/api/notes`, asUser(alice)).then((r) => r.json());
     expect(items[0].id).toBe(newer.id);
-    // The excerpt strips heading syntax and uses the first non-empty line.
-    expect(items[0].excerpt).toBe('Heading');
+    // The excerpt is the body's prose with its marks removed, blocks joined on one line.
+    expect(items[0].excerpt).toBe('Heading · real text');
   });
 
   it('patches title, body, and tags independently', async () => {

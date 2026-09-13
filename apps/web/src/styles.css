@@ -882,6 +882,32 @@ h1 {
   white-space: nowrap;
 }
 
+/*
+   The row's files: a glyph, a name, a count. The excerpt's size and tone, because it is
+   the same kind of line — what is in the note — and only the name may shrink: the glyph
+   and the count are what make an ellipsized name still legible as "a PDF, and two more".
+*/
+.note-files {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  min-width: 0;
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+
+.note-files > svg,
+.note-files-more {
+  flex: none;
+}
+
+.note-files-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 /* The row's field values, shaped like its tags but in the muted tone: data, not filing. */
 .note-fields-line {
   font-size: 0.72rem;

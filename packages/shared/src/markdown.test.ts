@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   attachmentFilenamesInMarkdown,
+  excerptMarkdown,
   formatAttachmentMarkdown,
   removeAttachmentLinks,
   renderMarkdown,
@@ -346,5 +347,73 @@ describe('nested ordered lists', () => {
   it('nests three ordered levels', () => {
     const html = render('1. one\n   1. two\n      1. three');
     expect(html.match(/<ol>/g)).toHaveLength(3);
+  });
+});
+
+describe('excerptMarkdown', () => {
+  it('keeps the words of a heading and loses the marks', () => {
+    expect(excerptMarkdown('## Heading\n\nreal text')).toBe('Heading · real text');
+  });
+
+  it('flattens inline markup to its text', () => {
+    expect(excerptMarkdown('Paid **in full** with `card` and ~~cash~~ — see [the receipt](https://x.test)')).toBe(
+      'Paid in full with card and cash — see the receipt',
+    );
+  });
+
+  /** The row shows a note's files on its own line, so the body's link to one is not prose. */
+  it('drops attachment links and images entirely', () => {
+    expect(excerptMarkdown('[Sale Confirmation.pdf](<files/Sale Confirmation.pdf>)')).toBe('');
+    expect(excerptMarkdown('![scan.png](files/scan.png)\n\nUsed credit card.')).toBe('Used credit card.');
+    expect(excerptMarkdown('See [scan.pdf](files/scan.pdf) for the total.')).toBe('See for the total.');
+  });
+
+  it('reads a list item by item, with its boxes', () => {
+    expect(excerptMarkdown('- [x] milk\n- [ ] eggs\n- bread')).toBe('☑ milk · ☐ eggs · bread');
+  });
+
+  it('opens a nested list after its parent item', () => {
+    expect(excerptMarkdown('- fruit\n  - apple\n  - pear\n- veg')).toBe('fruit · apple · pear · veg');
+  });
+
+  it('reads a table row by row', () => {
+    expect(excerptMarkdown('| a | b |\n| - | - |\n| 1 | 2 |')).toBe('a b · 1 2');
+  });
+
+  it('reads a quote and a code block as their text', () => {
+    expect(excerptMarkdown('> quoted\n\n```\nlet x = 1\n```')).toBe('quoted · let x = 1');
+  });
+
+  it('leaves raw html and rules out', () => {
+    expect(excerptMarkdown('<div>boxed</div>\n\n---\n\nafter')).toBe('after');
+    expect(excerptMarkdown('a <b>bold</b> word')).toBe('a bold word');
+  });
+
+  it('folds a line break inside a paragraph into a space', () => {
+    expect(excerptMarkdown('one\ntwo')).toBe('one two');
+  });
+
+  /**
+   * Same grammar as the renderer: a lone `-` under a line is a list in progress, not a
+   * setext underline, so the dash stays the text it is rather than vanishing into a mark.
+   */
+  it('reads a lone dash under a line as text, as the renderer does', () => {
+    expect(excerptMarkdown('item\n-')).toBe('item -');
+  });
+
+  it('truncates with an ellipsis at the limit', () => {
+    const out = excerptMarkdown('x'.repeat(200));
+    expect(out).toHaveLength(140);
+    expect(out.endsWith('…')).toBe(true);
+  });
+
+  it('stops reading once the limit is reached', () => {
+    const many = Array.from({ length: 500 }, (_, i) => `line ${i}`).join('\n\n');
+    expect(excerptMarkdown(many).endsWith('…')).toBe(true);
+  });
+
+  it('is empty for an empty body', () => {
+    expect(excerptMarkdown('')).toBe('');
+    expect(excerptMarkdown('\n\n   \n')).toBe('');
   });
 });

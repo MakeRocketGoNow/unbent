@@ -75,9 +75,18 @@ data class NoteSummary(
     val tags: List<String> = emptyList(),
     val notebook: String? = null,
     val excerpt: String? = null,
+    /** The files the note stores, oldest first. Absent from the JSON when there are none. */
+    val attachments: List<NoteAttachment> = emptyList(),
     /** Set only on notes listed from the trash. */
     val deletedAt: Long? = null,
 )
+
+/**
+ * A file on a list row: its name and declared type. The type is the stored value,
+ * unverified, and chooses a glyph — nothing more.
+ */
+@Serializable
+data class NoteAttachment(val filename: String, val contentType: String)
 
 @Serializable
 data class Note(

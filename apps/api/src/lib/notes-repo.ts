@@ -3,6 +3,7 @@ import {
   decodeFieldValue,
   encodeFieldValue,
   endOfDay,
+  excerptMarkdown,
   expectedFieldValue,
   inferFieldType,
   InvalidFieldValue,
@@ -46,6 +47,8 @@ interface SummaryRow {
   tags: string | null;
   /** JSON array of `FieldJson`, from the correlated subquery in `list`. */
   fields: string | null;
+  /** JSON array of `{filename, contentType}`, from the correlated subquery in `list`. */
+  attachments: string | null;
 }
 
 interface FieldRow {
@@ -132,14 +135,27 @@ const FIELDS_SUBQUERY = `(SELECT json_group_array(json_object(
  */
 const TAG_SEP = '\u001F';
 
-/** First non-empty line of the body, stripped of markdown heading syntax. */
-function excerptOf(body: string, max = 140): string {
-  const line = body
-    .split('\n')
-    .map((l) => l.replace(/^#{1,6}\s+/, '').trim())
-    .find((l) => l.length > 0);
-  if (!line) return '';
-  return line.length > max ? `${line.slice(0, max - 1)}…` : line;
+/**
+ * The files a note stores, for its list row: name and declared type, in the order they
+ * were attached, so the first one shown is the first one filed.
+ *
+ * From the attachment rows rather than from links in the body. The rows are what the
+ * note actually holds — a file whose link was deleted from the text is still there, and
+ * a link can name a file that was never uploaded — and the row is the same source the
+ * attachments panel lists from, so the two agree. The excerpt drops attachment links for
+ * the same reason: the files are shown once, here.
+ *
+ * An inner SELECT for the order: `json_group_array` collects in scan order, and only a
+ * recent SQLite accepts ORDER BY inside the aggregate itself.
+ */
+const ATTACHMENTS_SUBQUERY = `(SELECT json_group_array(json_object(
+                 'filename', a.filename, 'contentType', a.content_type))
+            FROM (SELECT filename, content_type FROM attachments
+                   WHERE note_id = n.id ORDER BY created_at, filename) a) AS attachments`;
+
+function decodeAttachmentsJson(json: string | null): NonNullable<NoteSummary['attachments']> {
+  if (!json) return [];
+  return JSON.parse(json) as NonNullable<NoteSummary['attachments']>;
 }
 
 /**
@@ -404,7 +420,8 @@ export class NotesRepo extends ScopedRepo {
                 (SELECT group_concat(t.name, char(31)) FROM note_tags nt
                    JOIN tags t ON t.id = nt.tag_id
                   WHERE nt.note_id = n.id) AS tags,
-                ${FIELDS_SUBQUERY}
+                ${FIELDS_SUBQUERY},
+                ${ATTACHMENTS_SUBQUERY}
            FROM notes n
            LEFT JOIN notebooks nb ON nb.id = n.notebook_id
           WHERE ${conditions.join(' AND ')}
@@ -416,6 +433,7 @@ export class NotesRepo extends ScopedRepo {
 
     return results.map((r) => {
       const fields = decodeFieldsJson(r.fields, r.notebook_id);
+      const attachments = decodeAttachmentsJson(r.attachments);
       return {
         id: r.id,
         title: r.title,
@@ -425,9 +443,10 @@ export class NotesRepo extends ScopedRepo {
         notebook: r.notebook,
         notebookId: r.notebook_id,
         // Omitted when empty: most rows in a large archive have none, and a page of fifty
-        // should not carry fifty empty arrays.
+        // should not carry fifty empty arrays. Same for the files.
         ...(fields.length > 0 ? { fields } : {}),
-        excerpt: excerptOf(r.body),
+        ...(attachments.length > 0 ? { attachments } : {}),
+        excerpt: excerptMarkdown(r.body),
         deletedAt: r.deleted_at ?? undefined,
       };
     });
