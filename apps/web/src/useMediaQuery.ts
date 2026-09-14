@@ -26,26 +26,8 @@ export function useMediaQuery(query: string): boolean {
   );
 }
 
-/** The phone breakpoint. Kept beside the query below so the two edges cannot drift. */
+/** The one breakpoint in the app. Kept beside the query so the two cannot drift. */
 export const MOBILE_QUERY = '(max-width: 860px)';
-
-/**
- * A desktop too narrow for the fields' column.
- *
- * Between the phone and the full desktop is a width where the sidebar, the note and a
- * 19rem fields column do not fit: at 960px the editor was left about 250px, its toolbar
- * wrapped to five rows and its title truncated to a dozen characters. The sidebar is how
- * notes are reached and the note is what the screen is for, so the fields are what give
- * way — they fold above the body, closed until asked. See the fold in `Workspace`.
- *
- * Read in JS because the fields move between two containers, not because the layout is
- * JS-driven: the column is a sibling of the note's column and the fold sits inside it, and
- * CSS cannot reparent. What `useMediaQuery` guards against is untouched — the fields'
- * inputs remount at the edges, as they already do at the phone's, and the editor is not
- * among them. The upper edge is where three columns stop being cramped; the lower is the
- * phone's plus one, so the two can neither overlap nor leave a gap.
- */
-export const NARROW_DESKTOP_QUERY = '(min-width: 861px) and (max-width: 1080px)';
 
 /**
  * Whether this is a touch device, which is to say: whether focusing something raises a

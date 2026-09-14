@@ -42,6 +42,31 @@
   */
   --chip-bg: color-mix(in srgb, var(--accent) 12%, transparent);
   --chip-fg: var(--accent);
+  /*
+     Six soft tints, for the tags and the select options on a note's property list.
+
+     A word gets one of these from its own letters — see `tintIndex` — so the list reads
+     the way Notion's properties do, each option its own colour, without a colour being
+     stored anywhere. Mid-tone hues rather than pastels: the chip's wash and its ink are
+     both mixed from the hue here, at the two ratios below, and one hue then gives a pale
+     ground and a legible dark word on the light theme, and a deeper ground and a pale
+     word on the dark one. The ratios change per theme; the hues do not.
+  */
+  --tint-0: #c9566e;
+  --tint-1: #c98a2c;
+  --tint-2: #5f9a48;
+  --tint-3: #3b9a8f;
+  --tint-4: #4a7fc7;
+  --tint-5: #8b63c7;
+  --tint-wash: 16%;
+  --tint-ink: 70%;
+  /*
+     The chevron a bordered select draws for itself. A native select's arrow sits flush
+     against its border whatever the padding says, so the ones that carry a border draw
+     their own; a background image cannot read `--muted`, so the muted ink is written in,
+     once per theme.
+  */
+  --select-chevron: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%236b6560' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='m6 9 6 6 6-6'/></svg>");
   color-scheme: light;
 }
 
@@ -68,6 +93,10 @@ input[type='radio'] {
     --good: #5fbf85;
     --bad: #f2857c;
     --accent: #7fc3a0;
+    /* A deeper wash and a paler word: the same six hues, read against a dark ground. */
+    --tint-wash: 26%;
+    --tint-ink: 50%;
+    --select-chevron: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%239a938c' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='m6 9 6 6 6-6'/></svg>");
     color-scheme: dark;
   }
 }
@@ -920,91 +949,181 @@ h1 {
 .empty { padding: 0.6rem 0.7rem; }
 
 .workspace {
-  /* A row: the note's column, and on a desktop the fields' column beside it. */
+  /* A row with one column in it: the note's. The fields used to have a second; see
+     `.workspace-main` for where they went. */
   display: flex;
   min-width: 0;
   min-height: 0;
 }
 
+/*
+   The note's column: one scroll region, and the note a document in it.
+
+   The title row, the property list, the attachments strip, the formatting bar and the
+   body all scroll as one, the way Keep's and Evernote's notes do, under a title that
+   stays. This was the phone's model; the desktop kept the column as a flex box of chrome
+   around one scrolling pane, so that the formatting bar could never scroll out of reach —
+   and drew the fields in a column beside the note so a long list could not push the body
+   down. The two layouts diverged in what scrolled, where the fields were and how the
+   filing was drawn, and none of that was a difference the width required. Now the bar is
+   sticky under the title instead, and the list is the top of the note at every width.
+
+   `display: block` so nothing here is sized to fit — the list, the panes and the editor
+   grow to their content and the column overflows the way a page does. CodeMirror is happy
+   in flow: it finds the nearest scrolling ancestor for itself. `overscroll-behavior:
+   contain` so a flick past the end does not become Chrome's pull-to-refresh. The phone
+   block adds the docked bar's clearance to the bottom padding; the split view, below, is
+   the one place the column is a flex box again.
+*/
 .workspace-main {
   flex: 1 1 auto;
-  display: flex;
-  flex-direction: column;
+  display: block;
   min-width: 0;
-  /*
-     Same reason as the sidebar. Everything above the panes — the title, the tag row, the
-     attachments strip, the formatting bar — is chrome for the note being edited, and
-     scrolling it away puts the formatting buttons out of reach exactly when a long note
-     is being worked on.
-
-     On a desktop. Below the breakpoint the formatting bar is docked to the bottom of the
-     screen, so nothing above the panes needs to stay put but the title, and this column
-     becomes the note's one scroll region instead — see the phone block.
-  */
   min-height: 0;
+  /*
+     Hidden on the x axis, not left to the `auto` that `overflow-y` alone would imply.
+     Nothing here scrolls sideways — the editor wraps, and the preview's wide tables and
+     code blocks own their own `overflow-x: auto` boxes — yet with `auto` Chromium drew a
+     full-width scrollbar along the column's foot wherever scrollbars are classic, for an
+     overflow no measurement could find: no descendant reached past the column's edge and
+     `scrollWidth` matched `clientWidth`. Whatever it was counting, there is nothing to
+     scroll to, so the axis is simply closed.
+  */
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-bottom: 1rem;
+  padding-inline: 1.5rem;
+  /*
+     The title row's height, for the bar to stick under: its 2.75rem control, its 0.5rem
+     bottom padding and its 1px rule. Stated rather than measured, because the row is one
+     line at every width — the title is an input, with a line-height set so that even at
+     its desktop size it stays inside the control's height — and each of those numbers is
+     set a few rules away. If any of them changes, this must change with it.
+  */
+  --workspace-head-h: calc(3.25rem + 1px);
 }
 
 /*
-   The fields' own column, on a desktop wide enough for it. A narrower desktop folds them
-   above the body instead — see `.fields-fold`.
+   The note's measure.
 
-   Fixed width rather than a share, so the note's measure does not change with how many
-   fields its notebook has; scrolls within itself, so a long list costs the note nothing.
-   The rule on its left is the same seam the sidebar's handle draws. Inside it the name
-   column is narrower than the in-flow list's, since the panel has a fifth of the width.
+   Everything in the column — the title row, the property list, the attachments, the bar
+   and the body — is capped at a reading width and centred, so that on a wide window the
+   text stops at a line a reader can follow and the note sits in air rather than running
+   edge to edge. This is most of what makes a Notion page feel calm, taken a step tighter
+   than Notion takes it. Set on each child rather than on a wrapper, so the title row and
+   the bar go on being the column's own children — which is what lets them stick.
+
+   Not in the split view: two panes side by side are a workbench, and a workbench takes
+   the whole bench. On a phone the column is narrower than the cap, so the cap is moot and
+   the phone block only removes the inset.
 */
-.fields-panel {
-  flex: 0 0 19rem;
+.workspace-main > * {
+  width: 100%;
+  max-width: 52rem;
+  margin-inline: auto;
+}
+
+.workspace-main:has(> .panes.split) > * { max-width: none; }
+
+/* Opaque, so the note scrolls under the title rather than through it. */
+.workspace-main > .workspace-head {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--bg);
+}
+
+/*
+   The formatting bar stays in reach on a desktop by sticking under the title as the body
+   scrolls past — the reason the column used to be chrome around a scrolling pane, kept
+   without the pane. Not when docked: the phone fixes the bar to the bottom of the screen
+   instead, above the keyboard, and a sticky position would fight that.
+*/
+.workspace-main > .editor-toolbar:not(.docked) {
+  position: sticky;
+  top: var(--workspace-head-h);
+  z-index: 1;
+  background: var(--bg);
+}
+
+/* The pane no longer scrolls; the column does. `.editor-host` is `height: 100%` of a
+   box that is now auto-height, which computes to auto — the editor grows. */
+.workspace-main .pane { overflow: visible; }
+
+/*
+   The hidden editor in the preview view, whose old trick does not survive a scrolling
+   column: an absolutely positioned box still adds its height to the scrollable overflow
+   of its scroll container, and the editor is as tall as the whole note here, so preview
+   mode gained a screenful of empty scroll. Fixed boxes count toward nothing, and one the
+   size of the viewport keeps CodeMirror measuring a real height — the whole reason the
+   pane is hidden rather than removed.
+*/
+.workspace-main > .panes.reading > .editor-pane {
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+}
+
+/*
+   The split view is the exception: two panes side by side, each scrolling on its own, is
+   two scroll regions by definition, and a document that scrolled both together would
+   leave the shorter one blank under the longer. So with the split on, the column is the
+   flex box it used to be — chrome sized to fit, the pane row taking what is left and each
+   pane scrolling inside it — and the property list is capped at half the screen and
+   scrolls within itself, since here a long notebook really would push the panes off the
+   bottom. `:has()` rather than a class from the component: the view is already on the
+   pane row, and this is a fact about layout.
+*/
+.workspace-main:has(> .panes.split) {
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
-  min-height: 0;
-  margin-left: 1.25rem;
-  padding: 0.25rem 0 0 1rem;
-  overflow-y: auto;
-  border-left: 1px solid var(--border);
 }
 
-/*
-   The fields, in flow above the body: the phone's layout, the Android app's embed at any
-   width the WebView happens to have, and the narrow desktop's fold — which is why this is
-   not in the phone block.
+.workspace-main:has(> .panes.split) .pane { overflow-y: auto; }
 
-   Capped and scrolling within, because the embed's column does not scroll and the body
-   needs the rest: without the cap a notebook with thirty fields left the editor a sliver
-   under them. Half the screen is the most the list may take before it scrolls; the rule
-   beneath is the seam between the note's data and its text. The rows close ranks a
-   little, since a list this dense reads as one thing at 0.15rem and as separate items at
-   more.
-
-   The phone's own note view lifts the cap: there the whole note scrolls as one, and the
-   fields are the top of it. See `.workspace-main` in the phone block.
-*/
-.fields-inline {
+.workspace-main:has(> .panes.split) .fields-inline {
   flex: 0 1 auto;
   max-height: 45dvh;
   overflow-y: auto;
   overscroll-behavior: contain;
-  padding: 0.35rem 0;
+}
+
+/*
+   The property list — notebook, tags, then the fields — in flow above the body.
+
+   One placement at every width now: the site's phone and desktop layouts and the Android
+   app's embed all draw this block, which is why it is not in the phone block. The column
+   it sits in scrolls as one document (see `.workspace-main`), so the list is simply the
+   top of the note and takes the height it needs.
+
+   No rule of its own. Whatever follows draws the seam — the attachments row and the
+   desktop's formatting bar each carry one — and a rule here as well stacked three lines
+   within a hand's height of the title. The one case with nothing in flow after the list
+   is a docked bar, fixed to the screen's foot rather than to the list's, so there the
+   list keeps a rule between its last row and the body.
+
+   The one place it is capped is the split view, where the column is a flex box again —
+   see the split rules under `.workspace-main`.
+*/
+.fields-inline {
+  padding: 0.75rem 0 0.5rem;
+}
+
+.fields-inline:has(+ .editor-toolbar.docked) {
   border-bottom: 1px solid var(--border);
 }
 
-.fields-inline .note-fields { row-gap: 0.15rem; }
-
 /*
-   The tag row's chips start on the value column, not a chip-padding-width inside it.
-
-   Every other value on the list — a field input, the notebook chip — is pulled left by
-   its own negative margin so its text lands on the column's edge. The tag wrapper holds
-   its chips with no such pull, so the first chip's text sat ~9px right of the values
-   above and below it. This pulls the wrapper by a chip's own inline padding, putting the
-   first chip's text back on the line. `align-self: center` keeps a one-line row centred
-   in the taller label cell beside it.
+   The tag row's chips start on the value column's edge, box and all, like every chip on
+   the list — see the alignment note on the select chip. This wrapper used to be pulled
+   left by a chip's padding so the first chip's *letters* met the line; the chips then sat
+   a step left of the words above and below them. `align-self: center` keeps a one-line
+   row centred in the taller label cell beside it.
 */
 .note-fields .tag-input {
   min-width: 0;
   align-self: center;
-  margin-left: -0.55rem;
 }
 
 /*
@@ -1018,40 +1137,9 @@ h1 {
    and only the face and the palette are the host's; see `.shell.embed`.
 */
 
-/* "+ Add field" and "Manage fields" are about the notebook, not a value: a breath before
+/* "Add field" and "Manage fields" are about the notebook, not a value: a breath before
    them keeps the last field from reading as a row that happens to have two buttons. */
-.fields-inline .note-fields-foot { margin-top: 0.4rem; }
-
-/*
-   The fields folded above the body, on a desktop too narrow for their column.
-
-   The same box as the attachments disclosure directly beneath it — margin, no padding, a
-   rule below — so the two read as one stack of rows. The inline list inside gives up its
-   own bottom rule, since the fold's is the seam now, and its top padding, since the summary
-   already holds the row's height. Its cap and its scroll stay: `.workspace-main` is the
-   desktop's flex column here, and a long notebook must not push the panes off the bottom.
-*/
-.fields-fold {
-  margin: 0.35rem 0 0.15rem;
-  padding: 0;
-  border-bottom: 1px solid var(--border);
-}
-
-.fields-fold > .fields-inline {
-  padding-top: 0;
-  border-bottom: none;
-}
-
-.fields-panel-head {
-  margin: 0;
-  font-size: 0.78rem;
-  font-weight: 600;
-  color: var(--muted);
-}
-
-.fields-panel .note-fields {
-  grid-template-columns: auto minmax(4rem, 7rem) minmax(0, 1fr) auto;
-}
+.fields-inline .note-fields-foot { margin-top: 0.25rem; }
 
 /*
    The shell for a page the Android app hosts in a WebView.
@@ -1100,13 +1188,6 @@ h1 {
 */
 .embedded {
   padding: 0 0.75rem 3.5rem;
-}
-
-/* The phone block lifts the fields' cap for `.workspace-main`; the same lift here. */
-.embedded .fields-inline {
-  max-height: none;
-  overflow: visible;
-  overscroll-behavior: auto;
 }
 
 /* The pane no longer scrolls; the shell does. See the phone block for `.editor-host`. */
@@ -1300,7 +1381,10 @@ a.overflow-item { text-decoration: none; }
   min-width: 0;
   padding: 0.2rem 0;
   font: inherit;
-  font-size: 1.25rem;
+  font-size: 1.6rem;
+  /* Explicit, so the desktop size still fits inside the row's 2.75rem control and the
+     row's stated height (`--workspace-head-h`) stays true. */
+  line-height: 1.25;
   font-weight: 600;
   color: var(--fg);
   background: none;
@@ -1836,28 +1920,7 @@ a.sidebar-status:hover {
 }
 
 /*
-   One rhythm for the note's filing controls.
-
-   These stacked on ad-hoc padding — 9px between the summary and the notebook picker, 3px
-   between the picker and the tags, 14px before the closing border, with the controls
-   themselves 24, 25 and 26px tall. A flex column with a single gap makes the spacing one
-   decision instead of four, and a shared 1.65rem control height puts every row on the
-   same baseline. The block now measures 8/8/9, the last pixel being sub-pixel rounding.
-*/
-.tag-row {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 0.5rem;
-  /*
-     Top padding is the same 0.5rem as the gap, so the space under the summary matches the
-     space between the controls. Bottom too, so the run to the closing border is identical
-     — the whole block is then one number repeated, which is what makes it read as even.
-  */
-  padding: 0.5rem 0;
-}
-/*
-   Custom fields, as a property list — beside the note on a desktop, above it on a phone.
+   Custom fields, as a property list, above the note's body at every width.
 
    A grid rather than stacked label/control pairs: the labels line up in one column, so
    eight fields read as a form and not as eight rows that each found their own width. It
@@ -1873,18 +1936,28 @@ a.sidebar-status:hover {
    are picked out by it.
 
    The controls take the row's 1.65rem, the tag chips' and the picker's height, so the
-   whole filing block stays on one rhythm — see `.tag-row`.
+   whole property list stays on one rhythm.
 */
 .note-fields {
   align-self: stretch;
   display: grid;
-  /* Glyph, name, value, and the value's own action (Open, Call). The name column grows to
-     its longest word up to a cap, so thirty labels line up without one long one pushing
-     every value to the right of the block. */
-  grid-template-columns: auto minmax(5rem, 9rem) minmax(0, 1fr) auto;
+  /*
+     Glyph, name, value, and the value's own action (Open, Call). The name column is a
+     fixed width, as Notion's is, so nothing that happens to the names can move the values:
+     a field added with a long name, or a note leaving its notebook — which relabels every
+     field "Destination *from Travel*" — used to widen a column sized to its longest name
+     and step every value to the right. A name longer than the column truncates, and
+     carries its full text as a title. The phone block narrows it.
+  */
+  grid-template-columns: auto 10rem minmax(0, 1fr) auto;
   align-items: center;
-  column-gap: 0.5rem;
-  row-gap: 0.1rem;
+  /* A full rem between a name and its value, and a breath between rows: the list is set
+     at the body's size now, and at that size the old half-rem read as crammed. */
+  column-gap: 1rem;
+  row-gap: 0.2rem;
+  /* One rhythm whatever a row holds: a chip is shorter than a text value's box, and
+     without a floor the rows with chips sat visibly tighter than the rows with words. */
+  grid-auto-rows: minmax(2.1rem, auto);
 }
 
 .note-field { display: contents; }
@@ -1895,12 +1968,13 @@ a.sidebar-status:hover {
   display: inline-flex;
   align-items: center;
   color: var(--muted);
-  font-size: 0.85rem;
+  font-size: 0.95rem;
 }
 
 .note-field-label {
   display: inline-flex;
   align-items: center;
+  /* Zero, so a name longer than its fixed column truncates rather than widening it. */
   min-width: 0;
   /*
      Clearance from the value's box, which reaches into the column gap.
@@ -1913,8 +1987,8 @@ a.sidebar-status:hover {
      the gap growing: a wider gap would also move the glyph away from the name, and the
      boxes are the values' business, not the grid's.
   */
-  padding-right: 0.35rem;
-  font-size: 0.82rem;
+  padding-right: 0.5rem;
+  font-size: 0.9rem;
   color: var(--muted);
   white-space: nowrap;
   overflow: hidden;
@@ -1924,29 +1998,28 @@ a.sidebar-status:hover {
 /*
    The value is the control, drawn as the value.
 
-   No border and no fill at rest, so a row reads as name and value rather than as a form
-   field; the edge appears on hover, which is the affordance, and stays on focus, which is
-   the state. The negative inline margin puts the text where a plain value would sit, on
-   the column's edge, rather than a padding-width inside it — so a resting row and an
+   No border and no fill at rest, and none on hover either: a wash that hangs a padding's
+   width left of the letters read as a box drawn in the wrong place, and the I-beam and
+   the word "Empty" already say the value can be typed in. The box appears on focus, which
+   is the state. The negative inline margin puts the text where a plain value would sit,
+   on the column's edge, rather than a padding-width inside it — so a resting row and an
    editing row put the value in the same place.
 */
 .note-field-input {
   width: 100%;
   min-width: 0;
-  min-height: 1.75rem;
-  padding: 0.2rem 0.45rem;
-  margin-left: -0.45rem;
+  /* The body's size, near enough, in a row a little over two lines tall: a property is
+     part of the note, not small print above it. */
+  min-height: 2.1rem;
+  padding: 0.25rem 0.5rem;
+  margin-left: -0.5rem;
   font: inherit;
-  font-size: 0.85rem;
+  font-size: 0.9rem;
   line-height: 1.3;
   color: var(--fg);
   background: none;
   border: 1px solid transparent;
-  border-radius: 0.35rem;
-}
-
-.note-field-input:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--fg) 5%, transparent);
+  border-radius: 0.3rem;
 }
 
 .note-field-input:focus {
@@ -1955,7 +2028,8 @@ a.sidebar-status:hover {
   border-color: var(--accent);
 }
 
-.note-field-input::placeholder { color: var(--muted); }
+/* "Empty" a step quieter than a name: told from a value at a glance, without shouting. */
+.note-field-input::placeholder { color: color-mix(in srgb, var(--muted) 72%, transparent); }
 
 /*
    A select is a chip once it holds a value — the shape a chosen option has in every
@@ -1972,44 +2046,58 @@ select.note-field-input {
   appearance: none;
 }
 
-select.note-field-input:not([data-filled]) { color: var(--muted); }
+/*
+   An unfilled select is the chip's box with the word "Empty" in it, in muted ink and no
+   wash — not a text value. A select's slot holds chips, and drawing its empty state as
+   text put the word on the column's edge and the box a padding's width left of it, so
+   choosing a value jumped both to the right as the chip took over. With the chip's
+   geometry in both states, a choice changes the colour and nothing else moves.
+*/
+select.note-field-input:not([data-filled]) {
+  min-height: 1.75rem;
+  padding: 0.15rem 0.5rem;
+  margin-left: 0;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
 
 select.note-field-input[data-filled] {
   /*
-     A chosen notebook is a chip, and the same chip as a tag: same height, padding and
-     type, so the two rows read as one kind of control rather than as a select that
-     happens to sit above some tags. Without this the select inherited the field input's
-     taller box and larger type, and on a desktop — where neither is capped to a touch
-     target — the notebook pill stood visibly taller than the tags below it.
+     A chosen option is a chip — the shape a chosen option has in every property list,
+     Notion's included — in the option's own tint; see `.tag-chip` for the tint system the
+     two share. The notebook picker is the same chip in the neutral grey a token takes
+     with no tint, which is what tells the note's place from its tags and its values.
 
-     The margin cancels the chip's own inline padding so the label starts on the value
-     column's edge, where the field inputs and the tag chips start; the plain input's
-     smaller pull left it a few pixels further in than the tags below it.
+     No pull to the left. A text value is drawn with its letters on the column's edge and
+     its box, when it shows, hanging a padding's width to the left; a chip's box is the
+     value, so the box itself starts on the edge and the word sits inside it — Notion's
+     alignment, where "Other" and the sentence beneath it begin on one line. Pulling the
+     chip out to align its letters instead left every chip a step left of every word.
   */
-  min-height: 1.65rem;
-  padding: 0.15rem 0.55rem;
-  margin-left: -0.55rem;
-  font-size: 0.75rem;
-  color: var(--chip-fg);
-  background: var(--chip-bg);
-  border-radius: 999px;
+  min-height: 1.75rem;
+  padding: 0.15rem 0.5rem;
+  margin-left: 0;
+  font-size: 0.85rem;
+  color: var(--chip-ink);
+  background: var(--chip-wash);
+  border-radius: 0.3rem;
 }
 
 select.note-field-input[data-filled]:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--chip-bg), var(--chip-fg) 12%);
+  background: var(--chip-wash-hover);
 }
 
 .note-field-check {
   justify-self: start;
-  width: 1.05rem;
-  height: 1.05rem;
+  width: 1.1rem;
+  height: 1.1rem;
   margin: 0;
   cursor: pointer;
 }
 
 .note-field-value {
   min-width: 0;
-  font-size: 0.85rem;
+  font-size: 0.9rem;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -2028,7 +2116,7 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
 
 /* Open, Email, Call: a link beside a value that can be acted on. */
 .note-field-act {
-  font-size: 0.78rem;
+  font-size: 0.85rem;
   color: var(--muted);
   text-decoration: none;
   white-space: nowrap;
@@ -2040,86 +2128,140 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
 }
 
 /*
-   The last row of the block: the "+ Add field" chip and the way to the notebook's field
-   settings, on one line. Two things that are both about the notebook's fields rather
-   than about a value; stacked they read as two more rows of the form.
+   The last row of the list, in the list's own columns.
+
+   A subgrid row, so its cells fall into the glyph, name, value and side columns like any
+   other row's: a plus where a glyph goes, "Add field" where a name goes, the empties
+   toggle where a value goes, and "Manage fields" in the side slot where a value's own
+   action (Open, Call) goes. It used to be a flex line holding a dashed chip and a green
+   link — two more costumes in a block that already wore too many, on a line that was in
+   the list but not of it. While a field is being added the same cells hold the form.
 */
 .note-fields-foot {
   grid-column: 1 / -1;
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: subgrid;
   align-items: center;
-  gap: 0.75rem;
+  column-gap: 0.5rem;
 }
 
-/* "+ Add field": the tag entry's idle chip. */
+/* "Add field": a name-column word in the muted weight, lit on hover like a value. */
 .note-field-add-hint {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.25rem;
-  min-height: 1.65rem;
-  padding: 0.15rem 0.55rem;
+  justify-self: start;
+  min-height: 2.1rem;
+  padding: 0.25rem 0.5rem;
+  margin-left: -0.5rem;
   font: inherit;
-  font-size: 0.75rem;
-  color: var(--muted);
-  background: none;
-  border: 1px dashed var(--border);
-  border-radius: 999px;
-  cursor: pointer;
-}
-
-.note-field-add-hint:hover {
-  color: var(--accent);
-  border-color: var(--accent);
-}
-
-/* The open form takes the chip's place and the whole row. Nothing else moves. */
-.note-field-add {
-  flex: 1 1 100%;
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.4rem;
-}
-
-.note-field-add .note-field-input {
-  width: auto;
-  flex: 1 1 8rem;
-}
-
-.note-field-add .note-field-error { flex-basis: 100%; }
-
-.note-fields-manage { white-space: nowrap; }
-
-/* Hide or show the empties: a preference, drawn as quietly as the add chip beside it. */
-.note-fields-toggle {
-  padding: 0.15rem 0.2rem;
-  font: inherit;
-  font-size: 0.75rem;
+  font-size: 0.9rem;
+  line-height: 1.3;
   color: var(--muted);
   background: none;
   border: none;
+  border-radius: 0.3rem;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.note-field-add-hint:hover { color: var(--fg); }
+
+/*
+   The resting foot's right-hand cell, across the value and side columns: the empties
+   toggle at the value column's edge, "Manage fields" hard right. One spanning cell rather
+   than a value cell and a side cell, because a grid column is as wide as its widest cell
+   in any row, and a link in the side column widened that column under every row — on a
+   phone by enough to stack the tags one per line. A span that crosses the value column's
+   flexible track adds nothing to the side track's intrinsic width.
+*/
+.note-fields-foot-rest {
+  grid-column: 3 / -1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+/* The empties toggle, or nothing. */
+.note-fields-foot-mid {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+}
+
+/* Manage fields: the side slot's link, as Open and Call are drawn on a value's row. */
+.note-fields-manage {
+  font-size: 0.9rem;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.note-fields-manage:hover { color: var(--accent); }
+
+/*
+   The form's cells, while a field is being added: type and, for a select, its options in
+   the value column; Add and Cancel in the side slot. Every control here is boxed while
+   the row is open — it is one edit, and the quiet-at-rest rule that lets a value read as
+   text is for values at rest, not for a name, a type and a list of options being typed
+   together. A message that will not fit the side slot takes a line of its own beneath.
+*/
+.note-field-add-value {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  min-width: 0;
+}
+
+.note-field-add-value > .note-field-input {
+  margin-left: 0;
+  flex: 1 1 8rem;
+}
+
+.note-fields-foot .note-field-input,
+.note-fields-foot .note-notebook {
+  /* The colour alone: the type select's background is also its chevron. */
+  background-color: color-mix(in srgb, var(--fg) 4%, transparent);
+  border: 1px solid var(--border);
+}
+
+.note-fields-foot .note-field-input:focus { border-color: var(--accent); }
+
+/*
+   The name input contributes no width of its own. An input is some twenty characters
+   wide by nature, and as a grid item that width would have grown the name column the
+   moment the form opened — every value on the list stepped right to make room. Zero
+   width takes it out of the column's sizing; the percentage minimum then fills whatever
+   the names beside it have already made the column.
+*/
+.note-fields-foot > .note-field-input {
+  width: 0;
+  min-width: 100%;
+}
+
+.note-fields-foot .note-notebook {
+  min-height: 2.1rem;
+  padding: 0.25rem 1.75rem 0.25rem 0.5rem;
+  font-size: 0.9rem;
+  border-radius: 0.3rem;
+}
+
+.note-fields-foot > .note-field-side { gap: 0.25rem; }
+
+.note-fields-foot > .note-field-error { grid-column: 2 / -1; }
+
+/* Hide or show the empties: a preference, drawn as quietly as "Add field" beside it. */
+.note-fields-toggle {
+  padding: 0.25rem 0.5rem;
+  margin-left: -0.5rem;
+  font: inherit;
+  font-size: 0.9rem;
+  color: var(--muted);
+  background: none;
+  border: none;
+  border-radius: 0.3rem;
   cursor: pointer;
 }
 
-.note-fields-toggle:hover { color: var(--accent); }
-
-/*
-   The desktop filing block has no summary to show.
-
-   This is the only width that renders the disclosure at all — a phone draws the property list
-   and opens a sheet instead — and here the controls are always open, so a summary would be
-   a heading above a row that is already stating itself. `Disclosure` requires the prop, so
-   the word is hidden rather than absent, and the element keeps the accessible name.
-
-   Written as a compound selector on purpose. `.disclosure > summary` and
-   `.tag-row-wrap > summary` carry equal specificity, so which one won would be settled by
-   source order — and the shared rule sits some 800 lines above this one. Matching both
-   classes puts this a step higher, so the hide wins wherever either rule ends up.
-*/
-.disclosure.tag-row-wrap > summary {
-  display: none;
-}
+.note-fields-toggle:hover { color: var(--fg); }
 
 /* The bar docked above the keyboard: one scrolling row rather than two wrapped ones. */
 .editor-toolbar.docked {
@@ -2335,18 +2477,64 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
   cursor: text;
 }
 
+/*
+   A token's colour: the word's own tint, or a neutral wash when it has none.
+
+   Tags and chosen select options are the same kind of thing on a property list — a word
+   from a set — and they share this. Each carries `data-tint` from `tintIndex`, which maps
+   the six hues below onto it; the wash and the ink are both mixed from that one hue at the
+   ratios the theme sets, so one hue reads on both grounds. With no tint the hue is the
+   ink itself, which mixes to a plain grey wash and plain ink: Notion's default chip.
+
+   Every token used to be the accent on the accent's tint — one green for tags, chosen
+   options and the notebook alike — which made the list a form of green pills and spent
+   the brand colour on data. The accent goes back to meaning "act".
+*/
+/* `:where`, so these defaults have no specificity and the `[data-tint]` rules below win on
+   the select too, whose own selector would otherwise outrank a bare attribute. */
+:where(.tag-chip, select.note-field-input[data-filled]) {
+  --chip-hue: var(--fg);
+  --chip-wash: color-mix(in srgb, var(--chip-hue) var(--tint-wash), transparent);
+  --chip-wash-hover: color-mix(in srgb, var(--chip-hue) calc(var(--tint-wash) + 8%), transparent);
+  --chip-ink: color-mix(in srgb, var(--chip-hue) var(--tint-ink), var(--fg));
+}
+
+[data-tint='0'] { --chip-hue: var(--tint-0); }
+[data-tint='1'] { --chip-hue: var(--tint-1); }
+[data-tint='2'] { --chip-hue: var(--tint-2); }
+[data-tint='3'] { --chip-hue: var(--tint-3); }
+[data-tint='4'] { --chip-hue: var(--tint-4); }
+[data-tint='5'] { --chip-hue: var(--tint-5); }
+
+/*
+   A tag: a rounded rectangle, not a pill. The pills were part of what read as bubbly;
+   a small radius is what a token looks like in every property list people arrive from.
+*/
 .tag-chip {
   display: inline-flex;
   align-items: center;
-  gap: 0.3rem;
-  min-height: 1.65rem;
-  padding: 0.15rem 0.25rem 0.15rem 0.55rem;
-  font-size: 0.75rem;
-  color: var(--chip-fg);
-  background: var(--chip-bg);
-  border-radius: 999px;
+  /* No gap: the hash below is a flex item too, and a gap would part it from its word.
+     The × keeps its distance through its own padding. */
+  gap: 0;
+  min-height: 1.75rem;
+  padding: 0.15rem 0.2rem 0.15rem 0.5rem;
+  font-size: 0.85rem;
+  color: var(--chip-ink);
+  background: var(--chip-wash);
+  border-radius: 0.3rem;
 }
 
+/*
+   The hash, on the note's own tags only. It is how the list rows already write a tag,
+   and it is what tells the tags row from the notebook row at a glance. Not on the same chips in the notebook settings, where the editor holds a select
+   field's options — those are not tags. In the chip's own ink, a step back.
+*/
+.filing-prop .tag-chip::before {
+  content: '#';
+  opacity: 0.65;
+}
+
+/* × on pointing, so a row of tags reads as words rather than as words with buttons. */
 .tag-remove {
   padding: 0 0.25rem;
   font: inherit;
@@ -2356,10 +2544,19 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
   background: none;
   border: none;
   cursor: pointer;
-  opacity: 0.6;
+  opacity: 0;
 }
 
-.tag-remove:hover { opacity: 1; }
+.tag-chip:hover .tag-remove,
+.tag-chip:focus-within .tag-remove { opacity: 0.7; }
+
+.tag-remove:hover,
+.tag-remove:focus-visible { opacity: 1; }
+
+/* No pointer to point with: the × stays, since a thumb cannot hover for it. */
+@media (hover: none) {
+  .tag-remove { opacity: 0.6; }
+}
 
 /*
    The entry point, which has to look like one.
@@ -2388,18 +2585,23 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
      shrink-to-fit here would make the box snap open instead of growing out of the chip —
      5.5rem is the hint's own width, measured, and the label is centred in it either way.
   */
-  width: 5.5rem;
-  min-height: 1.65rem;
-  border: 1px dashed var(--border);
-  border-radius: 999px;
+  width: 6rem;
+  min-height: 1.75rem;
+  /*
+     A ghost at rest, not a dashed chip. The dashes were a third chip costume beside the
+     filled and the outlined ones; the entry now reads as the muted words "+ Add tag" that
+     go to ink on hover, like every other quiet control in the list, and only becomes a
+     box — the same solid accent edge a value gets — once it is being typed in.
+  */
+  border: 1px solid transparent;
+  /* The chips' radius, so the box it becomes is the same shape as the boxes beside it. */
+  border-radius: 0.3rem;
   transition: width 0.16s ease, border-color 0.16s ease, background-color 0.16s ease;
 }
 
-.tag-entry:hover { border-color: var(--accent); }
-
 /* Focused: the same box, wider, with a solid edge. Nothing else moves. */
 .tag-entry.active {
-  width: 9rem;
+  width: 10rem;
   background: var(--bg);
   border-style: solid;
   border-color: var(--accent);
@@ -2418,8 +2620,8 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
   justify-content: flex-start;
   gap: 0.25rem;
   width: 100%;
-  padding: 0.15rem 0.55rem;
-  font-size: 0.75rem;
+  padding: 0.15rem 0.5rem;
+  font-size: 0.85rem;
   color: var(--muted);
   white-space: nowrap;
   /* The input above it takes the clicks; this is only the picture. */
@@ -2427,7 +2629,7 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
   transition: opacity 0.12s ease;
 }
 
-.tag-entry:hover .tag-add-hint { color: var(--accent); }
+.tag-entry:hover .tag-add-hint { color: var(--fg); }
 
 .tag-add-plus { font-size: 0.85rem; line-height: 1; }
 
@@ -2470,21 +2672,24 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
   box-shadow: 0 6px 20px rgb(0 0 0 / 12%);
 }
 
-.tag-suggestions button {
-  display: block;
-  width: 100%;
+/* Rendered whenever the field is, so the combobox's `aria-controls` resolves; shown only
+   while there is something to offer. */
+.tag-suggestions.is-closed { display: none; }
+
+/*
+   An option, not a button. The list is a listbox now (Downshift's), and the item under
+   the arrow keys or the pointer is the highlighted one — one state for both, so a row
+   never shows one highlight from the keyboard and another from the mouse.
+*/
+.tag-suggestions li {
   padding: 0.3rem 0.5rem;
-  font: inherit;
-  font-size: 0.8rem;
-  text-align: left;
+  font-size: 0.85rem;
   color: var(--fg);
-  background: none;
-  border: none;
   border-radius: 0.25rem;
   cursor: pointer;
 }
 
-.tag-suggestions button:hover { background: color-mix(in srgb, var(--fg) 7%, transparent); }
+.tag-suggestions li.is-highlighted { background: color-mix(in srgb, var(--fg) 7%, transparent); }
 
 .search-field {
   width: 100%;
@@ -2727,7 +2932,7 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
   display: flex;
   align-items: center;
   gap: 0.15rem;
-  padding: 0.4rem 0;
+  padding: 0.5rem 0;
   border-bottom: 1px solid var(--border);
 }
 
@@ -3158,13 +3363,16 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
   flex-shrink: 0;
   /* Matches .tag-chip and .tag-entry, so the two rows read as one control group. */
   min-height: 1.65rem;
-  padding: 0.2rem 0.4rem;
+  /* Room on the right for the chevron, which is drawn rather than the platform's: the
+     native arrow sits on the border however much padding is asked for. */
+  padding: 0.2rem 1.75rem 0.2rem 0.5rem;
   font: inherit;
   font-size: 0.8rem;
   color: inherit;
-  background: none;
+  appearance: none;
+  background: var(--select-chevron) no-repeat right 0.5rem center / 0.75rem;
   border: 1px solid var(--border);
-  border-radius: 0.35rem;
+  border-radius: 0.3rem;
   cursor: pointer;
 }
 
@@ -4731,7 +4939,7 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
      is not enough to tell two dated notes apart.
   */
   /* The title takes the full width now, so it can afford to be a touch larger. */
-  .workspace-title-row .title-input { font-size: 1.15rem; }
+  .workspace-title-row .title-input { font-size: 1.35rem; }
 
   /*
      The actions row now holds only the save state and the ⋯ menu — the preview toggle
@@ -4852,106 +5060,78 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
   /* The sheet's own rhythm: tighter than the column its controls came from. */
   .sheet-body { gap: 0.6rem; }
   /*
-     Label and value on one line, which is how a phone states a detail.
-
-     These used to stack — label above a full-width boxed input — on the reasoning that a
-     label column would leave the control the width of a word. That held while this was a
-     form. It is a list of values now, read far more often than edited, and stacking cost
-     two lines and a box per field: eight fields filled the screen and none of them could
-     be taken in at a glance. The longest name sets the label column, and the value gets
-     the rest — the same shape as every detail list a phone has taught.
-
-     `fit-content` rather than a fixed share. A flat 32% gave "Code" the same 110px as
-     "Date Added", and every value started a third of the way across a screen with no
-     width to spare; now the column is as wide as its longest label and no wider, and the
-     cap only catches a name that is a sentence.
+     Label and value on one line, which is how a phone states a detail — and now how the
+     desktop states one too, so the grid itself lives in the base rules. The reasoning
+     that got the phone here first: the rows used to stack, label above a full-width
+     boxed input, which cost two lines and a box per field, and eight fields filled the
+     screen; and a flat 32% label share gave "Code" the same 110px as "Date Added", so
+     `fit-content` — as wide as the longest name and no wider — is what the base rule
+     draws at every width.
   */
-  .note-fields {
-    /* The glyph's column comes first; the name's is as wide as its longest label. */
-    grid-template-columns: auto fit-content(30%) minmax(0, 1fr) auto;
-    row-gap: 0.1rem;
-  }
 
   /*
      Taller, for a thumb. The quiet-at-rest drawing — no border or fill until the value is
      touched — is the base rule at every width now; only the size is the phone's.
   */
   .note-field-input {
-    min-height: 2.25rem;
-    font-size: 0.9rem;
-    padding-inline: 0.35rem;
-    margin-left: -0.35rem;
+    min-height: 2.75rem;
+    font-size: 1rem;
+    padding-inline: 0.5rem;
+    margin-left: -0.5rem;
   }
 
-  /* A chosen option is a chip at every width; its padding is its own. */
-  select.note-field-input[data-filled] { padding-inline: 0.55rem; }
+  /* The list at the phone's reading size, in the same touch height as every other row
+     here. The name column hugs its longest name — the floor the desktop puts under it
+     would take a third of this screen — and the columns sit half a rem apart. */
+  .note-fields {
+    /* A narrower fixed name column: a third of a phone, no more. Names truncate past it. */
+    grid-template-columns: auto 7.5rem minmax(0, 1fr) auto;
+    column-gap: 0.5rem;
+    grid-auto-rows: minmax(2.75rem, auto);
+  }
+  .note-field-label { font-size: 0.95rem; }
+  .tag-chip,
+  .note-fields select.note-field-input { min-height: 2rem; font-size: 0.95rem; }
+  .tag-entry { min-height: 2rem; }
+  .note-field-add-hint,
+  .note-fields-manage,
+  .note-fields-toggle { font-size: 0.95rem; }
 
-  .note-field-add .note-field-input { flex-basis: 100%; }
+  /* A select is a chip's box in both its states, at every width; its padding is its own.
+     Qualified by the list so it outranks the base rules for either state, which name the
+     state and would otherwise win over a bare `select.note-field-input` here. */
+  .note-fields select.note-field-input {
+    padding-inline: 0.55rem;
+    margin-left: 0;
+  }
+
+  /* The add-field row's type and options share a value cell that is narrow here. */
+  .note-field-add-value { flex-wrap: wrap; }
+
+  /* Add and Cancel on a line of their own under the form, for the same reason the
+     resting foot spans: two buttons in the side column would widen it under every row. */
+  .note-field-add-actions {
+    grid-column: 2 / -1;
+    justify-content: flex-start;
+    margin-top: 0.25rem;
+  }
 
   /*
-     The whole note scrolls, under a title that stays.
+     The docked bar's clearance, plus whatever the keyboard covers.
 
-     On a desktop the column is chrome around one scrolling pane: title, filing, files,
-     bar, then the editor scrolling inside the rest. On a phone that fell apart the moment
-     a keyboard opened. Android's keyboard shrinks only the visual viewport — the layout
-     viewport, and so `100dvh`, keep their full height — so the fields kept their cap
-     against a screen that was no longer there and sat over the whole visible half, and
-     the editor pane, which was the only thing that scrolled, was entirely under the keys.
-     Nothing the user could do reached it.
-
-     So below the breakpoint the column is the scroll region and the note is a document
-     in it: the filing rows, the attachments strip and the editor all scroll as one, the
-     way Keep's and Evernote's phone notes do, and the title row is sticky at the top.
-     `display: block` rather than the desktop's flex column, so nothing here is sized to
-     fit — the fields lose their cap, the panes and the editor grow to their content, and
-     the column overflows the way a page does. CodeMirror is happy in flow: it finds the
-     nearest scrolling ancestor for itself.
-
-     The bottom padding is the docked bar plus whatever the keyboard covers, from
-     `--keyboard-inset` on the column. Without the keyboard's share the note's last line
-     could be scrolled to the bottom of the layout viewport and no further, which is
-     under the keys; with it, the end of the note comes up above them.
-
-     `overscroll-behavior: contain` so a flick past the end does not become Chrome's
-     pull-to-refresh, the same reason the field list had it.
+     The column is the note's one scroll region at every width now — see `.workspace-main`
+     in the base rules, which is where this block's document model moved once the desktop
+     adopted it. What stays the phone's is the bottom padding: the bar is docked over the
+     end of the column here, and a keyboard covers more of it. Android's keyboard shrinks
+     only the visual viewport — the layout viewport, and so `100dvh`, keep their full
+     height — so without the keyboard's share, from `--keyboard-inset` on the column, the
+     note's last line could be scrolled to the bottom of the layout viewport and no
+     further, which is under the keys; with it, the end of the note comes up above them.
   */
   .workspace-main {
-    display: block;
-    overflow-y: auto;
-    overscroll-behavior: contain;
     padding-bottom: calc(3.5rem + var(--keyboard-inset, 0px));
-  }
-
-  /* Opaque, so the note scrolls under the title rather than through it. */
-  .workspace-main > .workspace-head {
-    position: sticky;
-    top: 0;
-    z-index: 2;
-    background: var(--bg);
-  }
-
-  .workspace-main > .fields-inline {
-    max-height: none;
-    overflow: visible;
-    overscroll-behavior: auto;
-  }
-
-  /* The pane no longer scrolls; the column does. `.editor-host` is `height: 100%` of a
-     box that is now auto-height, which computes to auto — the editor grows. */
-  .workspace-main .pane { overflow: visible; }
-
-  /*
-     The hidden editor in the preview view, whose desktop trick does not survive a
-     scrolling column: an absolutely positioned box still adds its height to the
-     scrollable overflow of its scroll container, and the editor is as tall as the whole
-     note here, so preview mode gained a screenful of empty scroll. Fixed boxes count
-     toward nothing, and one the size of the viewport keeps CodeMirror measuring a real
-     height — the whole reason the pane is hidden rather than removed.
-  */
-  .workspace-main > .panes.reading > .editor-pane {
-    position: fixed;
-    inset: 0;
-    overflow: hidden;
+    /* The shell's own inset is the gutter here; a second one would stack on it. */
+    padding-inline: 0;
   }
 
   /* A shade tighter still than the base bar, where vertical room is scarcest. */

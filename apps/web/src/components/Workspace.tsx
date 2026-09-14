@@ -15,7 +15,7 @@ import {
   focusEditor,
 } from '../useListKeys.js';
 import { useIsNewNote } from '../useNewNote.js';
-import { useMediaQuery, MOBILE_QUERY, NARROW_DESKTOP_QUERY, TOUCH_QUERY } from '../useMediaQuery.js';
+import { useMediaQuery, MOBILE_QUERY, TOUCH_QUERY } from '../useMediaQuery.js';
 import { useKeyboardInset } from '../useKeyboardInset.js';
 import {
   noteQuery,
@@ -29,15 +29,13 @@ import { Editor } from './Editor.js';
 import { indexUploadedFile } from '../index-files.js';
 import { Preview } from './Preview.js';
 import { usePdfAttachments } from '../usePdfAttachments.js';
-import { TagInput } from './TagInput.js';
 import { EditorToolbar, type NoteView } from './EditorToolbar.js';
 import { Attachments } from './Attachments.js';
 import { ResizeHandle } from './ResizeHandle.js';
 import { OverflowMenu } from './OverflowMenu.js';
 import { Button } from './Button';
-import { Disclosure } from './Disclosure.js';
 import { BackArrow } from './BackArrow.js';
-import { FilingRows, NotebookPicker } from './FilingRows.js';
+import { FilingRows } from './FilingRows.js';
 import { NoteFields } from './NoteFields.js';
 
 /** The editor's share of the pane row when split evenly, and the limits a drag respects. */
@@ -173,15 +171,6 @@ export function Workspace({ noteId, readOnly = false, backTo = '/notes' }: Works
    * question at every width now, so this no longer decides what renders.
    */
   const isMobile = useMediaQuery(MOBILE_QUERY);
-  /*
-   * A desktop too narrow for the fields' column. The second width read here, for the same
-   * narrow reason as the first: the fields move between two containers — the column beside
-   * the note, or a fold inside the note's column — and CSS cannot reparent. Nothing in the
-   * editor's tree is decided by it. See `NARROW_DESKTOP_QUERY`.
-   */
-  const narrowDesktop = useMediaQuery(NARROW_DESKTOP_QUERY);
-  /** What the fold's summary states while closed, the way the attachments' states its count. */
-  const fieldCount = fieldDefs.data?.length ?? 0;
 
   /**
    * Whether opening this note would raise a keyboard.
@@ -316,30 +305,7 @@ export function Workspace({ noteId, readOnly = false, backTo = '/notes' }: Works
   }
 
   /**
-   * The desktop's filing row: the notebook and the tags on a line above the body.
-   *
-   * Null until the note has loaded, which is what the render below tests: `note` is read
-   * for the carried values.
-   */
-  const filingControls = !note ? null : (
-    <div className="tag-row">
-      <NotebookPicker
-        className="note-notebook"
-        notebook={draft.notebook}
-        notebooks={notebooks.data?.notebooks}
-        readOnly={readOnly}
-        onChange={(next) => setDraft((d) => ({ ...d, notebook: next }))}
-      />
-      <TagInput
-        tags={draft.tags}
-        suggestions={tags.data?.map((t) => t.name) ?? []}
-        onChange={(next) => setDraft((d) => ({ ...d, tags: next }))}
-      />
-    </div>
-  );
-
-  /**
-   * The phone's: the same two controls as the first two rows of the property list.
+   * The notebook and the tags as the first two rows of the property list, at every width.
    *
    * They used to be a row that opened a sheet holding them — a full-height modal surface
    * for a select and a chip, once the fields had left it, and a tap that bought nothing the
@@ -359,14 +325,16 @@ export function Workspace({ noteId, readOnly = false, backTo = '/notes' }: Works
   );
 
   /**
-   * The note's fields, as a property list, for whichever place this width gives them.
+   * The note's fields, as a property list, above the body at every width.
    *
-   * Out of the filing block: the notebook and the tags are a line, and the fields are a
-   * list that is as much the note as its body is — a coupon's code, a game's rating. On a
-   * desktop they take a column of their own beside the note, so a long list never pushes
-   * the body down; on a phone they sit above the body, in flow, and the body follows, the
-   * way Notion's page does. That is a deliberate trade, chosen over the sheet the fields
-   * used to share with the notebook picker: what the sheet hid was the note's own data.
+   * The fields are a list that is as much the note as its body is — a coupon's code, a
+   * game's rating — and with the notebook and the tags as its first two rows (`lead`) it
+   * is the whole of how the note is filed, the way Notion's page states its properties
+   * before its text. They used to take a column of their own beside the note on a desktop,
+   * so a long list never pushed the body down; the column scrolls as one document now, so
+   * the list is simply the top of the note, and a desktop too narrow to spare the height
+   * starts it folded. A deliberate trade, chosen over the sheet the fields used to share
+   * with the notebook picker: what the sheet hid was the note's own data.
    */
   const fieldsBlock = (lead?: React.ReactNode) =>
     !note ? null : (
@@ -492,15 +460,14 @@ export function Workspace({ noteId, readOnly = false, backTo = '/notes' }: Works
   return (
     <section className="workspace">
       {/*
-          Two columns on a desktop: the note, and its fields beside it.
+          One column at every width: the note, with its property list above the body.
 
-          The fields used to sit above the body with the notebook and tags, which put a
-          long list between the title and the text. A column of their own means the body
-          starts at the same height whatever the notebook defines, and the list scrolls in
-          its own space rather than the note's. Notion pins its properties above; this is
-          the wider screen's better answer to the same wish. The panel is always drawn, so
-          the note's width does not change between a filed note and an unfiled one — an
-          unfiled note's panel says how to get fields instead.
+          The fields used to have a column of their own beside the note on a desktop, so a
+          long list never pushed the body down — and that put the notebook and tags in one
+          place, the fields in another, and the two drawn differently from the phone. The
+          column scrolls as one document now, under a title that stays, so the list is
+          simply the top of the note the way Notion pins a page's properties, and one
+          layout serves every width.
       */}
       <div
         className="workspace-main"
@@ -615,60 +582,26 @@ export function Workspace({ noteId, readOnly = false, backTo = '/notes' }: Works
       </div>
 
       {/*
-          The note's filing: a notebook, its tags, and the notebook's own fields.
+          The note's filing: the notebook, its tags, and the notebook's own fields, as one
+          property list above the body.
 
-          On a desktop the notebook and the tags sit in flow on a row above the body, where
-          a pair of pickers costs nothing, and the fields have a column of their own beside
-          the note. On a phone all of it is the property list, pinned above the body: the
-          notebook and the tags as its first two rows, the fields after them. That block is
-          capped and scrolls within, since `.workspace` itself does not — see
-          `.fields-inline` — so a long notebook cannot push the body off the screen.
-
-          Between the two, on a desktop too narrow for three columns, the notebook and the
-          tags keep their row and only the fields move: the same inline list, folded under a
-          `Fields` summary in the column's place. See the fold below.
+          The same list at every width — the notebook and the tags as its first two rows,
+          the fields after them — because it is one record, and a desktop that drew the
+          first two as a row of pickers and the rest in a column beside the note was the
+          same record in two hands. The column scrolls as a document (see `.workspace-main`),
+          so the list is the top of the note and takes the height it needs — open at every
+          width. It was briefly folded closed between the phone and the full desktop, a
+          habit left over from when the fields had a column of their own that a 960px
+          screen could not spare; above the body the list costs only height, which the
+          phone spends without complaint, and a fold at one width alone read as a glitch.
 
           There used to be a sheet here on a phone, opened from a row that stated the
           filing. It earned its place holding six controls; once the fields moved onto the
           page it held two, and a modal surface for two controls the row already showed
-          was ceremony. Not the overflow menu, at either width: this is what the note *is*,
+          was ceremony. Not the overflow menu, at any width: this is what the note *is*,
           and in an archive this size tags are how anything gets found again.
       */}
-      {filingControls &&
-        (isMobile ? (
-          <div className="fields-inline">{fieldsBlock(filingRows)}</div>
-        ) : (
-          <Disclosure className="tag-row-wrap" defaultOpen="wide" summary={<>Details</>}>
-            {filingControls}
-          </Disclosure>
-        ))}
-
-      {/*
-          The fields, folded above the body on a desktop too narrow for their column.
-
-          Between the phone and the full desktop the column took ~340px of a 960px screen
-          and, for a notebook with no fields, held a heading and two links over nothing,
-          while the editor was left ~250px. So here the column goes and the fields take the
-          phone's place instead — the same inline list, capped and scrolling within — but
-          closed under a summary until asked, since they are the note's data and not always
-          what the note was opened for. `never` rather than `wide`: `wide` opens on anything
-          that is not a phone, which is exactly this width; and `never` is not keyed, so a
-          fold someone opened stays open across a resize within the band.
-
-          Only with a notebook. A field can only be added to one, so an unfiled note has
-          nothing to fold, and the column's "file this note" line is not worth a row here.
-          The notebook and the tags stay on the Details row above rather than becoming the
-          list's lead rows as they do on a phone: at this width that row still costs nothing.
-      */}
-      {narrowDesktop && currentNotebook && (
-        <Disclosure
-          className="fields-fold"
-          defaultOpen="never"
-          summary={<>Fields{fieldCount > 0 ? ` (${fieldCount})` : null}</>}
-        >
-          <div className="fields-inline">{fieldsBlock()}</div>
-        </Disclosure>
-      )}
+      <div className="fields-inline">{fieldsBlock(filingRows)}</div>
 
       {!readOnly && (
         <Attachments
@@ -808,17 +741,6 @@ export function Workspace({ noteId, readOnly = false, backTo = '/notes' }: Works
         )}
       </div>
       </div>
-
-      {/* The column only where there is room for it: the narrow desktop folds the fields
-          above the body instead — see the fold beside the Details row. */}
-      {!isMobile && !narrowDesktop && (
-        <aside className="fields-panel" aria-label="Fields">
-          <h3 className="fields-panel-head">Fields</h3>
-          {fieldsBlock() ?? (
-            <p className="muted small">File this note in a notebook to give it fields.</p>
-          )}
-        </aside>
-      )}
     </section>
   );
 }

@@ -15,9 +15,12 @@ interface NotebookPickerProps {
  * The notebook picker: filing a note by picking from the notebooks that exist, rather than
  * retyping a name — which is how case-variant duplicates used to appear.
  *
- * One element, drawn two ways by its class: the desktop's own select in its row, and the
- * property list's chip, where `.note-field-input` is what a chosen value looks like. A
- * chosen notebook is a chip; the Inbox is the absence of one, drawn like "Empty".
+ * Drawn as the property list draws a chosen option: a chip, in the neutral grey a token
+ * takes when it has no tint of its own — which is what tells it from the tags and the
+ * select values beside it, all of which are coloured by their word. The Inbox is the
+ * absence of a notebook, drawn like "Empty". It was briefly the name in ink with a
+ * chevron, on the reasoning that a place is not a token; but a select is a select, and a
+ * chip already says it can be clicked, which is the only thing the chevron was saying.
  */
 export function NotebookPicker({
   notebook,

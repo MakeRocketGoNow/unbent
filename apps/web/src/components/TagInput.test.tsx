@@ -131,3 +131,69 @@ describe('TagInput as an option editor', () => {
     expect(screen.getByLabelText('Remove option GP')).toBeTruthy();
   });
 });
+
+/**
+ * The suggestions, which used to be a list of buttons under the field with no way to reach
+ * them from the keyboard and no announcement that they belonged to it. They are a combobox
+ * now. These pin the keyboard and the semantics, and the one place the library's default
+ * is overridden: leaving the field commits what was typed, never what the pointer touched.
+ */
+describe('TagInput suggestions', () => {
+  afterEach(cleanup);
+  const suggestions = ['build', 'garden', 'ideas'];
+
+  it('is a combobox over a listbox of options, for assistive tech', () => {
+    render(<TagInput tags={[]} suggestions={suggestions} onChange={() => {}} />);
+    const field = screen.getByLabelText('Add a tag');
+    expect(field.getAttribute('role')).toBe('combobox');
+    expect(field.getAttribute('aria-expanded')).toBe('false');
+    fireEvent.change(field, { target: { value: 'd' } });
+    expect(field.getAttribute('aria-expanded')).toBe('true');
+    expect(screen.getByRole('listbox')).toBeTruthy();
+    expect(screen.getAllByRole('option').map((o) => o.textContent)).toEqual(['build', 'garden', 'ideas']);
+  });
+
+  it('moves through the suggestions with the arrow keys and files the highlighted one on Enter', () => {
+    const onChange = vi.fn();
+    render(<TagInput tags={[]} suggestions={suggestions} onChange={onChange} />);
+    const field = screen.getByLabelText('Add a tag') as HTMLInputElement;
+    fireEvent.change(field, { target: { value: 'd' } });
+    fireEvent.keyDown(field, { key: 'ArrowDown' });
+    fireEvent.keyDown(field, { key: 'ArrowDown' });
+    expect(screen.getByRole('option', { name: 'garden' }).getAttribute('aria-selected')).toBe('true');
+    fireEvent.keyDown(field, { key: 'Enter' });
+    expect(onChange).toHaveBeenCalledWith(['garden']);
+    // Emptied for the next tag, as a typed commit leaves it.
+    expect(field.value).toBe('');
+  });
+
+  it('files the typed word on Enter when nothing is highlighted, suggestions or not', () => {
+    const onChange = vi.fn();
+    render(<TagInput tags={[]} suggestions={suggestions} onChange={onChange} />);
+    const field = screen.getByLabelText('Add a tag');
+    fireEvent.change(field, { target: { value: 'd' } });
+    fireEvent.keyDown(field, { key: 'Enter' });
+    expect(onChange).toHaveBeenCalledWith(['d']);
+  });
+
+  it('closes the suggestions on Escape and keeps the draft', () => {
+    render(<TagInput tags={[]} suggestions={suggestions} onChange={() => {}} />);
+    const field = screen.getByLabelText('Add a tag') as HTMLInputElement;
+    fireEvent.change(field, { target: { value: 'd' } });
+    fireEvent.keyDown(field, { key: 'Escape' });
+    expect(field.getAttribute('aria-expanded')).toBe('false');
+    expect(field.value).toBe('d');
+  });
+
+  it('commits the typed draft on blur, not the suggestion the pointer last touched', () => {
+    const onChange = vi.fn();
+    render(<TagInput tags={[]} suggestions={suggestions} onChange={onChange} />);
+    const field = screen.getByLabelText('Add a tag');
+    fireEvent.focus(field);
+    fireEvent.change(field, { target: { value: 'd' } });
+    fireEvent.mouseMove(screen.getByRole('option', { name: 'build' }));
+    fireEvent.blur(field);
+    expect(onChange).toHaveBeenCalledWith(['d']);
+    expect(onChange).not.toHaveBeenCalledWith(['build']);
+  });
+});
