@@ -26,24 +26,8 @@ export function useMediaQuery(query: string): boolean {
   );
 }
 
-/** The phone breakpoint. Kept beside the query below so the two edges cannot drift. */
+/** The one breakpoint in the app. Kept beside the query so the two cannot drift. */
 export const MOBILE_QUERY = '(max-width: 860px)';
-
-/**
- * A desktop too narrow to keep the note's property list open above its body.
- *
- * Between the phone and the full desktop the sidebar and the note share a width that a
- * 960px screen makes tight. The list of notebook, tags and fields stays where it is at
- * every width, but here it starts closed under a summary — the notebook, the tags and a
- * field count — so the body is on screen when the note opens. See the fold in `Workspace`.
- *
- * Read in JS because the list is wrapped in a `Disclosure` here and drawn bare elsewhere:
- * a different element, which CSS cannot conjure. What `useMediaQuery` guards against is
- * untouched — the list's inputs remount at the band's edges, as they already do at the
- * phone's, and the editor is not among them. The lower edge is the phone's plus one, so
- * the two can neither overlap nor leave a gap.
- */
-export const NARROW_DESKTOP_QUERY = '(min-width: 861px) and (max-width: 1080px)';
 
 /**
  * Whether this is a touch device, which is to say: whether focusing something raises a

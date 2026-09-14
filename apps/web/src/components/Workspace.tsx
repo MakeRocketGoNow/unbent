@@ -15,7 +15,7 @@ import {
   focusEditor,
 } from '../useListKeys.js';
 import { useIsNewNote } from '../useNewNote.js';
-import { useMediaQuery, MOBILE_QUERY, NARROW_DESKTOP_QUERY, TOUCH_QUERY } from '../useMediaQuery.js';
+import { useMediaQuery, MOBILE_QUERY, TOUCH_QUERY } from '../useMediaQuery.js';
 import { useKeyboardInset } from '../useKeyboardInset.js';
 import {
   noteQuery,
@@ -34,7 +34,6 @@ import { Attachments } from './Attachments.js';
 import { ResizeHandle } from './ResizeHandle.js';
 import { OverflowMenu } from './OverflowMenu.js';
 import { Button } from './Button';
-import { Disclosure } from './Disclosure.js';
 import { BackArrow } from './BackArrow.js';
 import { FilingRows } from './FilingRows.js';
 import { NoteFields } from './NoteFields.js';
@@ -172,16 +171,6 @@ export function Workspace({ noteId, readOnly = false, backTo = '/notes' }: Works
    * question at every width now, so this no longer decides what renders.
    */
   const isMobile = useMediaQuery(MOBILE_QUERY);
-  /*
-   * A desktop too narrow to keep the property list open above the body. The second width
-   * read here, for the same narrow reason as the first: the list is wrapped in a
-   * `Disclosure` at this width and drawn bare at every other — a different element, which
-   * CSS cannot conjure. Nothing in the editor's tree is decided by it. See
-   * `NARROW_DESKTOP_QUERY`.
-   */
-  const narrowDesktop = useMediaQuery(NARROW_DESKTOP_QUERY);
-  /** What the fold's summary states while closed, the way the attachments' states its count. */
-  const fieldCount = fieldDefs.data?.length ?? 0;
 
   /**
    * Whether opening this note would raise a keyboard.
@@ -478,7 +467,7 @@ export function Workspace({ noteId, readOnly = false, backTo = '/notes' }: Works
           place, the fields in another, and the two drawn differently from the phone. The
           column scrolls as one document now, under a title that stays, so the list is
           simply the top of the note the way Notion pins a page's properties, and one
-          layout serves every width. Where the height is scarce the list starts folded.
+          layout serves every width.
       */}
       <div
         className="workspace-main"
@@ -600,14 +589,11 @@ export function Workspace({ noteId, readOnly = false, backTo = '/notes' }: Works
           the fields after them — because it is one record, and a desktop that drew the
           first two as a row of pickers and the rest in a column beside the note was the
           same record in two hands. The column scrolls as a document (see `.workspace-main`),
-          so the list is the top of the note and takes the height it needs.
-
-          On a desktop too narrow to spare that height it starts folded: closed under a
-          summary that states the notebook, the tags and how many fields there are, until
-          asked. `never` rather than `wide`: `wide` opens on anything that is not a phone,
-          which is exactly this width; and `never` is not keyed, so a fold someone opened
-          stays open across a resize within the band. Always drawn there, even for an
-          unfiled note — the notebook and tags rows are its first two either way.
+          so the list is the top of the note and takes the height it needs — open at every
+          width. It was briefly folded closed between the phone and the full desktop, a
+          habit left over from when the fields had a column of their own that a 960px
+          screen could not spare; above the body the list costs only height, which the
+          phone spends without complaint, and a fold at one width alone read as a glitch.
 
           There used to be a sheet here on a phone, opened from a row that stated the
           filing. It earned its place holding six controls; once the fields moved onto the
@@ -615,29 +601,7 @@ export function Workspace({ noteId, readOnly = false, backTo = '/notes' }: Works
           was ceremony. Not the overflow menu, at any width: this is what the note *is*,
           and in an archive this size tags are how anything gets found again.
       */}
-      {narrowDesktop ? (
-        <Disclosure
-          className="fields-fold"
-          defaultOpen="never"
-          summary={
-            <>
-              <span className="fold-notebook">{draft.notebook ?? 'Inbox'}</span>
-              {draft.tags.length > 0 && (
-                <span className="fold-tags">{draft.tags.map((t) => `#${t}`).join(' ')}</span>
-              )}
-              {fieldCount > 0 && (
-                <span className="fold-count">
-                  {fieldCount} {fieldCount === 1 ? 'field' : 'fields'}
-                </span>
-              )}
-            </>
-          }
-        >
-          <div className="fields-inline">{fieldsBlock(filingRows)}</div>
-        </Disclosure>
-      ) : (
-        <div className="fields-inline">{fieldsBlock(filingRows)}</div>
-      )}
+      <div className="fields-inline">{fieldsBlock(filingRows)}</div>
 
       {!readOnly && (
         <Attachments

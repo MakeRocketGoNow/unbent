@@ -10,18 +10,17 @@ import {
 } from '@tanstack/react-router';
 import type { FieldDef, Note } from '@unbent/shared';
 import { keys } from '../queries.js';
-import { MOBILE_QUERY, NARROW_DESKTOP_QUERY } from '../useMediaQuery.js';
+import { MOBILE_QUERY } from '../useMediaQuery.js';
 import { Workspace } from './Workspace.js';
 
 /**
  * Where the note's filing is drawn, and how it is reached.
  *
  * One property list — the notebook, the tags, then the fields — above the body at every
- * width, edited where it is read. What differs by width is only whether it starts open: a
- * phone and a wide desktop draw it bare, and a desktop too narrow to spare the height folds
- * it closed under a summary that states what it holds. The bugs this replaced were a block
- * that grew unbounded between the title and the editor, a sheet before that, and a desktop
- * that drew the same record as a row of pickers plus a column beside the note.
+ * width, open, edited where it is read. The bugs this replaced were a block that grew
+ * unbounded between the title and the editor, a sheet before that, a desktop that drew
+ * the same record as a row of pickers plus a column beside the note, and lastly a fold
+ * that closed the list at one width alone.
  */
 const note: Note = {
   id: 'n1',
@@ -130,9 +129,7 @@ describe('the note details on a phone', () => {
 
   it('puts the notebook, the tags and the fields on the page as one list, open', async () => {
     const { container } = mount();
-    await expectPropertyList(container);
-    expect(container.querySelector('.fields-fold')).toBeNull();
-  });
+    await expectPropertyList(container);  });
 
   /* The fields are the note's own data, so they are edited where they are read. */
   it('keeps the fields editable in place', async () => {
@@ -153,31 +150,5 @@ describe('the note details on a desktop', () => {
   /* The same list the phone draws, and nothing beside the note: one layout, not two. */
   it('draws the same list above the body, open, with nothing beside the note', async () => {
     const { container } = mount();
-    await expectPropertyList(container);
-    expect(container.querySelector('.fields-fold')).toBeNull();
-  });
-});
-
-describe('the note details on a desktop too narrow to keep the list open', () => {
-  beforeEach(() => stubMedia((q) => q === NARROW_DESKTOP_QUERY));
-
-  /*
-   * The same list, folded closed under a summary that states what it holds — the notebook,
-   * the tags and how many fields — so the body is on screen when the note opens.
-   */
-  it('folds the list closed under a summary of the filing, in the note column', async () => {
-    const { container } = mount();
-    const inline = await expectPropertyList(container);
-
-    const fold = container.querySelector('.fields-fold') as HTMLDetailsElement | null;
-    expect(fold).toBeTruthy();
-    expect(fold!.open).toBe(false);
-    expect(fold!.contains(inline)).toBe(true);
-
-    const summary = fold!.querySelector('summary')!.textContent ?? '';
-    expect(summary).toContain('Coupons');
-    expect(summary).toContain('#bikes');
-    expect(summary).toContain('1 field');
-    expect(summary).not.toContain('fields');
-  });
+    await expectPropertyList(container);  });
 });

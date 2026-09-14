@@ -1142,47 +1142,6 @@ h1 {
 .fields-inline .note-fields-foot { margin-top: 0.25rem; }
 
 /*
-   The property list folded, on a desktop too narrow to keep it open above the body.
-
-   The same box as the attachments disclosure directly beneath it — margin, no padding, a
-   rule below — so the two read as one stack of rows. The list inside gives up its own
-   bottom rule, since the fold's is the seam now, and its top padding, since the summary
-   already holds the row's height.
-
-   The summary states the value, per `Disclosure`'s grammar: the notebook, then the tags
-   hashed, then the count with its noun, since a bare number would not say what it counts.
-   The tags are the part that yields — they can run long, and the count is what should
-   survive a squeeze — and the count sits hard right, the way the sidebar's counts do.
-*/
-.fields-fold {
-  margin: 0.35rem 0 0.15rem;
-  padding: 0;
-  border-bottom: 1px solid var(--border);
-}
-
-.fields-fold > .fields-inline {
-  padding-top: 0;
-  border-bottom: none;
-}
-
-.fields-fold .fold-notebook { flex: 0 0 auto; }
-
-.fields-fold .fold-tags {
-  flex: 0 1 auto;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  color: var(--muted);
-}
-
-.fields-fold .fold-count {
-  flex: 0 0 auto;
-  margin-left: auto;
-  color: var(--muted);
-}
-
-/*
    The shell for a page the Android app hosts in a WebView.
 
    No padding and no topbar: the app draws the chrome, and every pixel of the page is the
@@ -2566,9 +2525,8 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
 }
 
 /*
-   The hash, on the note's own tags only. It is how the list rows and the fold's summary
-   already write a tag, and it is what tells the tags row from the notebook row at a
-   glance. Not on the same chips in the notebook settings, where the editor holds a select
+   The hash, on the note's own tags only. It is how the list rows already write a tag,
+   and it is what tells the tags row from the notebook row at a glance. Not on the same chips in the notebook settings, where the editor holds a select
    field's options — those are not tags. In the chip's own ink, a step back.
 */
 .filing-prop .tag-chip::before {
