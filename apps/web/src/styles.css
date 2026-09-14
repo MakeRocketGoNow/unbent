@@ -1107,19 +1107,15 @@ h1 {
 }
 
 /*
-   The tag row's chips start on the value column, not a chip-padding-width inside it.
-
-   Every other value on the list — a field input, the notebook chip — is pulled left by
-   its own negative margin so its text lands on the column's edge. The tag wrapper holds
-   its chips with no such pull, so the first chip's text sat ~9px right of the values
-   above and below it. This pulls the wrapper by a chip's own inline padding, putting the
-   first chip's text back on the line. `align-self: center` keeps a one-line row centred
-   in the taller label cell beside it.
+   The tag row's chips start on the value column's edge, box and all, like every chip on
+   the list — see the alignment note on the select chip. This wrapper used to be pulled
+   left by a chip's padding so the first chip's *letters* met the line; the chips then sat
+   a step left of the words above and below them. `align-self: center` keeps a one-line
+   row centred in the taller label cell beside it.
 */
 .note-fields .tag-input {
   min-width: 0;
   align-self: center;
-  margin-left: -0.5rem;
 }
 
 /*
@@ -2089,15 +2085,20 @@ select.note-field-input:not([data-filled]) { color: var(--muted); }
 
 select.note-field-input[data-filled] {
   /*
-     A select field's chosen option is a chip — the shape a chosen option has in every
-     property list, Notion's included — in the option's own tint; see `.tag-chip` for the
-     tint system the two share. Sized like a tag chip, so the two kinds of token in the
-     list are one size. The margin cancels the chip's own inline padding so the word
-     starts on the value column's edge, where the field inputs start.
+     A chosen option is a chip — the shape a chosen option has in every property list,
+     Notion's included — in the option's own tint; see `.tag-chip` for the tint system the
+     two share. The notebook picker is the same chip in the neutral grey a token takes
+     with no tint, which is what tells the note's place from its tags and its values.
+
+     No pull to the left. A text value is drawn with its letters on the column's edge and
+     its box, when it shows, hanging a padding's width to the left; a chip's box is the
+     value, so the box itself starts on the edge and the word sits inside it — Notion's
+     alignment, where "Other" and the sentence beneath it begin on one line. Pulling the
+     chip out to align its letters instead left every chip a step left of every word.
   */
   min-height: 1.75rem;
   padding: 0.15rem 0.5rem;
-  margin-left: -0.5rem;
+  margin-left: 0;
   font-size: 0.85rem;
   color: var(--chip-ink);
   background: var(--chip-wash);
@@ -2106,55 +2107,6 @@ select.note-field-input[data-filled] {
 
 select.note-field-input[data-filled]:hover:not(:disabled) {
   background: var(--chip-wash-hover);
-}
-
-/*
-   The notebook picker is not a chip. A notebook is a place the note is filed in, one of
-   N, and a chip said "one of a set" about it — the tags' shape, on the one property that
-   is not a tag. So it is drawn as a value: the name in ink at the field inputs' size, with
-   the chevron `FilingRows` places over its right padding to say it opens. Inbox, the
-   absence of a notebook, keeps the muted "Empty" treatment the select rule above gives an
-   unfilled select.
-
-   The wrapper is the grid item, so it takes the start alignment the bare select used to,
-   and the chevron is positioned against it rather than against the cell.
-*/
-.notebook-pick {
-  position: relative;
-  display: inline-flex;
-  align-items: center;
-  min-width: 0;
-  max-width: 100%;
-  justify-self: start;
-}
-
-.notebook-pick > svg {
-  position: absolute;
-  right: 0.5rem;
-  top: 50%;
-  translate: 0 -50%;
-  width: 0.85rem;
-  height: 0.85rem;
-  color: var(--muted);
-  pointer-events: none;
-}
-
-.notebook-pick > select.note-field-input {
-  padding-right: 1.5rem;
-}
-
-.notebook-pick > select.note-field-input[data-filled] {
-  min-height: 2.1rem;
-  padding: 0.25rem 1.5rem 0.25rem 0.5rem;
-  margin-left: -0.5rem;
-  font-size: 0.9rem;
-  color: var(--fg);
-  background: none;
-  border-radius: 0.3rem;
-}
-
-.notebook-pick > select.note-field-input[data-filled]:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--fg) 5%, transparent);
 }
 
 .note-field-check {
@@ -5153,15 +5105,6 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
 
   /* A chosen option is a chip at every width; its padding is its own. */
   select.note-field-input[data-filled] { padding-inline: 0.55rem; }
-
-  /* The notebook is a value, not a chip, so it takes the row's touch height. Its right
-     padding is the chevron's room and stays. */
-  .notebook-pick > select.note-field-input[data-filled] {
-    min-height: 2.75rem;
-    padding-inline: 0.5rem 1.5rem;
-    margin-left: -0.5rem;
-    font-size: 1rem;
-  }
 
   /* The add-field row's type and options share a value cell that is narrow here. */
   .note-field-add-value { flex-wrap: wrap; }

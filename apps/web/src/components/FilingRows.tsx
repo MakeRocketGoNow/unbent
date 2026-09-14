@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import { TagInput } from './TagInput.js';
-import { NotebookRowIcon, TagIcon, ChevronDownIcon } from './icons.js';
+import { NotebookRowIcon, TagIcon } from './icons.js';
 
 interface NotebookPickerProps {
   notebook: string | null;
@@ -15,10 +15,12 @@ interface NotebookPickerProps {
  * The notebook picker: filing a note by picking from the notebooks that exist, rather than
  * retyping a name — which is how case-variant duplicates used to appear.
  *
- * Drawn as the property list's value: a chosen notebook is its name in ink, the way a
- * field's value is text, with the chevron `FilingRows` sets beside it saying it can be
- * changed; the Inbox is the absence of one, drawn like "Empty". It used to be a chip, the
- * same chip as a tag, which said "one of a set" about the one property that is a place.
+ * Drawn as the property list draws a chosen option: a chip, in the neutral grey a token
+ * takes when it has no tint of its own — which is what tells it from the tags and the
+ * select values beside it, all of which are coloured by their word. The Inbox is the
+ * absence of a notebook, drawn like "Empty". It was briefly the name in ink with a
+ * chevron, on the reasoning that a place is not a token; but a select is a select, and a
+ * chip already says it can be clicked, which is the only thing the chevron was saying.
  */
 export function NotebookPicker({
   notebook,
@@ -90,24 +92,14 @@ export function FilingRows({
         <label className="note-field-label" htmlFor="filing-notebook">
           Notebook
         </label>
-        {/*
-            The picker with a chevron over its right padding. A notebook is a place the note
-            can be moved to, and its name alone — drawn in ink like any value — gave no sign
-            it opened anything. The glyph sits beside the select rather than in it: a select
-            takes no pseudo-elements, and a background image cannot follow the theme's ink.
-            It takes no pointer events, so the click lands on the select beneath.
-        */}
-        <span className="notebook-pick">
-          <NotebookPicker
-            id="filing-notebook"
-            className="note-field-input"
-            notebook={notebook}
-            notebooks={notebooks}
-            readOnly={readOnly}
-            onChange={onNotebook}
-          />
-          <ChevronDownIcon />
-        </span>
+        <NotebookPicker
+          id="filing-notebook"
+          className="note-field-input"
+          notebook={notebook}
+          notebooks={notebooks}
+          readOnly={readOnly}
+          onChange={onNotebook}
+        />
         <span className="note-field-side" />
       </div>
       <div className="note-field filing-prop">
