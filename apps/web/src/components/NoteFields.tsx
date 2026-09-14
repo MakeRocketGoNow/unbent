@@ -11,6 +11,7 @@ import {
 import { Button } from './Button';
 import { FieldTypeIcon, PlusRowIcon } from './icons.js';
 import { usePersistentState } from '../usePersistentState.js';
+import { tintIndex } from '../tint.js';
 
 export interface NoteFieldsProps {
   /** The note's notebook's definitions, in order. Undefined while they load. */
@@ -185,19 +186,29 @@ export function NoteFields({
               ) : (
                 <span />
               )}
-              <span className="note-fields-foot-mid">
-                {offerHide && (
-                  <button
-                    type="button"
-                    className="note-fields-toggle"
-                    aria-pressed={hideEmpty}
-                    onClick={() => setHideEmpty(!hideEmpty)}
-                  >
-                    {hideEmpty ? `Show ${empties} empty` : `Hide ${empties} empty`}
-                  </button>
-                )}
+              {/*
+                  One cell across the value and side columns, not a value cell and a side
+                  cell. A grid column is as wide as its widest cell in any row, and "Manage
+                  fields" in the side column widened that column for every row — on a phone
+                  by enough to stack the tags one per line. A cell that spans the value
+                  column's flexible track adds nothing to the side track's width, and the
+                  link still sits hard right, where a value's own action would.
+              */}
+              <span className="note-fields-foot-rest">
+                <span className="note-fields-foot-mid">
+                  {offerHide && (
+                    <button
+                      type="button"
+                      className="note-fields-toggle"
+                      aria-pressed={hideEmpty}
+                      onClick={() => setHideEmpty(!hideEmpty)}
+                    >
+                      {hideEmpty ? `Show ${empties} empty` : `Hide ${empties} empty`}
+                    </button>
+                  )}
+                </span>
+                {canAdd && manage}
               </span>
-              <span className="note-field-side">{canAdd && manage}</span>
             </>
           )}
         </div>
@@ -278,8 +289,10 @@ function FieldRow({ def, value, readOnly, onChange }: FieldRowProps) {
       control = (
         <select
           {...common}
-          // The stylesheet draws a chosen option as a chip; an unchosen one as "Empty".
+          // The stylesheet draws a chosen option as a chip in the option's own tint — the
+          // same tint the tag editor gives the word — and an unchosen one as "Empty".
           data-filled={text !== '' || undefined}
+          data-tint={text !== '' ? tintIndex(text) : undefined}
           value={text}
           onChange={(e) => setText(e.target.value)}
         >
@@ -464,7 +477,9 @@ function AddFieldRow({ onAdd, onDone }: AddFieldRowProps) {
           />
         )}
       </span>
-      <span className="note-field-side">
+      {/* In the side slot on a desktop; a phone moves the pair to a line of their own, so
+          two buttons do not widen the side column under every row while the form is open. */}
+      <span className="note-field-side note-field-add-actions">
         <Button variant="primary" size="small" disabled={busy || !name.trim()} onClick={() => void submit()}>
           Add
         </Button>

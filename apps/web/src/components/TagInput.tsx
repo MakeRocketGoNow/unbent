@@ -1,4 +1,5 @@
 import { useRef, useState } from 'react';
+import { tintIndex } from '../tint.js';
 
 interface TagInputProps {
   tags: string[];
@@ -55,8 +56,9 @@ export function TagInput({ tags, suggestions, onChange, label = 'tag' }: TagInpu
 
   return (
     <div className="tag-input" onClick={() => inputRef.current?.focus()}>
+      {/* Each chip's tint is the word's own — see `tintIndex` — so a tag keeps its colour everywhere. */}
       {tags.map((t) => (
-        <span key={t} className="tag-chip">
+        <span key={t} className="tag-chip" data-tint={tintIndex(t)}>
           {t}
           <button
             type="button"
