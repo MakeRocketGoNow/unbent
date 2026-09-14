@@ -142,7 +142,7 @@ export function NoteFields({
           <span className="note-field-glyph" aria-hidden="true">
             <FieldTypeIcon type={v.type} />
           </span>
-          <span className="note-field-label">
+          <span className="note-field-label" title={`${v.name} from ${v.notebook}`}>
             {v.name}
             <span className="note-field-origin">from {v.notebook}</span>
           </span>
@@ -355,7 +355,8 @@ function FieldRow({ def, value, readOnly, onChange }: FieldRowProps) {
       <span className="note-field-glyph" aria-hidden="true">
         <FieldTypeIcon type={def.type} />
       </span>
-      <label className="note-field-label" htmlFor={id}>
+      {/* The title carries the whole name for one the fixed name column has to cut. */}
+      <label className="note-field-label" htmlFor={id} title={def.name}>
         {def.name}
       </label>
       {control}

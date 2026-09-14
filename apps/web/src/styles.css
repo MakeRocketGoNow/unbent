@@ -1982,17 +1982,23 @@ a.sidebar-status:hover {
 .note-fields {
   align-self: stretch;
   display: grid;
-  /* Glyph, name, value, and the value's own action (Open, Call). The name column is as
-     wide as its longest name and no wider, so thirty labels line up and every value starts
-     right after them; the cap only catches a name that is a sentence. It was a 5–9rem range
-     on a desktop and `fit-content` on a phone, and the desktop's floor left a short name's
-     value adrift — "Nights" a column's width from its 3. */
-  grid-template-columns: auto fit-content(30%) minmax(0, 1fr) auto;
+  /*
+     Glyph, name, value, and the value's own action (Open, Call). The name column is a
+     fixed width, as Notion's is, so nothing that happens to the names can move the values:
+     a field added with a long name, or a note leaving its notebook — which relabels every
+     field "Destination *from Travel*" — used to widen a column sized to its longest name
+     and step every value to the right. A name longer than the column truncates, and
+     carries its full text as a title. The phone block narrows it.
+  */
+  grid-template-columns: auto 10rem minmax(0, 1fr) auto;
   align-items: center;
   /* A full rem between a name and its value, and a breath between rows: the list is set
      at the body's size now, and at that size the old half-rem read as crammed. */
   column-gap: 1rem;
   row-gap: 0.2rem;
+  /* One rhythm whatever a row holds: a chip is shorter than a text value's box, and
+     without a floor the rows with chips sat visibly tighter than the rows with words. */
+  grid-auto-rows: minmax(2.1rem, auto);
 }
 
 .note-field { display: contents; }
@@ -2009,13 +2015,8 @@ a.sidebar-status:hover {
 .note-field-label {
   display: inline-flex;
   align-items: center;
-  /*
-     A floor on the name column, so every value in the list starts on one vertical line
-     rather than wherever the longest name happens to end — Notion's fixed name column,
-     which is what makes a list of mixed values read as a table. The phone lifts the floor:
-     there the column has no width to spare, and the names hug instead.
-  */
-  min-width: 9rem;
+  /* Zero, so a name longer than its fixed column truncates rather than widening it. */
+  min-width: 0;
   /*
      Clearance from the value's box, which reaches into the column gap.
 
@@ -2086,7 +2087,20 @@ select.note-field-input {
   appearance: none;
 }
 
-select.note-field-input:not([data-filled]) { color: var(--muted); }
+/*
+   An unfilled select is the chip's box with the word "Empty" in it, in muted ink and no
+   wash — not a text value. A select's slot holds chips, and drawing its empty state as
+   text put the word on the column's edge and the box a padding's width left of it, so
+   choosing a value jumped both to the right as the chip took over. With the chip's
+   geometry in both states, a choice changes the colour and nothing else moves.
+*/
+select.note-field-input:not([data-filled]) {
+  min-height: 1.75rem;
+  padding: 0.15rem 0.5rem;
+  margin-left: 0;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
 
 select.note-field-input[data-filled] {
   /*
@@ -5108,17 +5122,27 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
   /* The list at the phone's reading size, in the same touch height as every other row
      here. The name column hugs its longest name — the floor the desktop puts under it
      would take a third of this screen — and the columns sit half a rem apart. */
-  .note-fields { column-gap: 0.5rem; }
-  .note-field-label { min-width: 0; font-size: 0.95rem; }
+  .note-fields {
+    /* A narrower fixed name column: a third of a phone, no more. Names truncate past it. */
+    grid-template-columns: auto 7.5rem minmax(0, 1fr) auto;
+    column-gap: 0.5rem;
+    grid-auto-rows: minmax(2.75rem, auto);
+  }
+  .note-field-label { font-size: 0.95rem; }
   .tag-chip,
-  select.note-field-input[data-filled] { min-height: 2rem; font-size: 0.95rem; }
+  .note-fields select.note-field-input { min-height: 2rem; font-size: 0.95rem; }
   .tag-entry { min-height: 2rem; }
   .note-field-add-hint,
   .note-fields-manage,
   .note-fields-toggle { font-size: 0.95rem; }
 
-  /* A chosen option is a chip at every width; its padding is its own. */
-  select.note-field-input[data-filled] { padding-inline: 0.55rem; }
+  /* A select is a chip's box in both its states, at every width; its padding is its own.
+     Qualified by the list so it outranks the base rules for either state, which name the
+     state and would otherwise win over a bare `select.note-field-input` here. */
+  .note-fields select.note-field-input {
+    padding-inline: 0.55rem;
+    margin-left: 0;
+  }
 
   /* The add-field row's type and options share a value cell that is narrow here. */
   .note-field-add-value { flex-wrap: wrap; }
