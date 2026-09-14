@@ -10,13 +10,15 @@ import {
 } from '@tanstack/react-router';
 import type { FieldDef, Note } from '@unbent/shared';
 import { keys } from '../queries.js';
-import { MOBILE_QUERY } from '../useMediaQuery.js';
+import { MOBILE_QUERY, NARROW_DESKTOP_QUERY } from '../useMediaQuery.js';
 import { Workspace } from './Workspace.js';
 
 /**
  * Where the note's filing is drawn, and how it is reached.
  *
- * One set of controls with two containers: in flow on a desktop, in a sheet on a phone.
+ * One set of controls with three containers: a column beside the note on a desktop, a
+ * closed fold above the body on a desktop too narrow for that column, and the property
+ * list above the body on a phone.
  * The thing worth asserting is that both really render the same controls and that the
  * phone's row is a way in rather than a label — the bug this replaced was a block that
  * grew unbounded between the title and the editor.
@@ -166,5 +168,30 @@ describe('the note details on a desktop', () => {
     expect(panel.contains(screen.getByLabelText('Code'))).toBe(true);
     expect(container.querySelector('.tag-row .note-fields')).toBeNull();
     expect(container.querySelector('.workspace-main')!.contains(panel)).toBe(false);
+  });
+});
+
+describe('the note details on a desktop too narrow for the fields column', () => {
+  beforeEach(() => stubMedia((q) => q === NARROW_DESKTOP_QUERY));
+
+  /*
+   * The column goes and the fields fold above the body, closed: the same inline list the
+   * phone draws, but under a summary that states what it holds. The notebook and the tags
+   * keep their own row rather than leading the list — at this width that row still fits.
+   */
+  it('folds the fields above the body, closed, and keeps the filing row in flow', async () => {
+    const { container } = mount();
+
+    await waitFor(() => expect(container.querySelector('.fields-fold')).toBeTruthy());
+    expect(container.querySelector('.fields-panel')).toBeNull();
+
+    const fold = container.querySelector('.fields-fold') as HTMLDetailsElement;
+    expect(fold.open).toBe(false);
+    expect(fold.querySelector('summary')!.textContent).toBe('Fields (1)');
+    expect(container.querySelector('.workspace-main')!.contains(fold)).toBe(true);
+    expect(fold.querySelector('.fields-inline')!.contains(screen.getByLabelText('Code'))).toBe(true);
+
+    expect(container.querySelector('.tag-row')).toBeTruthy();
+    expect(screen.getByLabelText('Notebook').closest('.fields-inline')).toBeNull();
   });
 });
