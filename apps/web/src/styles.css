@@ -1042,19 +1042,24 @@ h1 {
    One placement at every width now: the site's phone and desktop layouts and the Android
    app's embed all draw this block, which is why it is not in the phone block. The column
    it sits in scrolls as one document (see `.workspace-main`), so the list is simply the
-   top of the note and takes the height it needs; the rule beneath is the seam between the
-   note's data and its text. The rows close ranks a little, since a list this dense reads
-   as one thing at 0.15rem and as separate items at more.
+   top of the note and takes the height it needs.
+
+   No rule of its own. Whatever follows draws the seam — the attachments row and the
+   desktop's formatting bar each carry one — and a rule here as well stacked three lines
+   within a hand's height of the title. The one case with nothing in flow after the list
+   is a docked bar, fixed to the screen's foot rather than to the list's, so there the
+   list keeps a rule between its last row and the body.
 
    The one place it is capped is the split view, where the column is a flex box again —
    see the split rules under `.workspace-main`.
 */
 .fields-inline {
-  padding: 0.35rem 0;
-  border-bottom: 1px solid var(--border);
+  padding: 0.5rem 0 0.35rem;
 }
 
-.fields-inline .note-fields { row-gap: 0.15rem; }
+.fields-inline:has(+ .editor-toolbar.docked) {
+  border-bottom: 1px solid var(--border);
+}
 
 /*
    The tag row's chips start on the value column, not a chip-padding-width inside it.
@@ -1069,7 +1074,7 @@ h1 {
 .note-fields .tag-input {
   min-width: 0;
   align-self: center;
-  margin-left: -0.55rem;
+  margin-left: -0.5rem;
 }
 
 /*
@@ -1083,9 +1088,9 @@ h1 {
    and only the face and the palette are the host's; see `.shell.embed`.
 */
 
-/* "+ Add field" and "Manage fields" are about the notebook, not a value: a breath before
+/* "Add field" and "Manage fields" are about the notebook, not a value: a breath before
    them keeps the last field from reading as a row that happens to have two buttons. */
-.fields-inline .note-fields-foot { margin-top: 0.4rem; }
+.fields-inline .note-fields-foot { margin-top: 0.25rem; }
 
 /*
    The property list folded, on a desktop too narrow to keep it open above the body.
@@ -1925,10 +1930,12 @@ a.sidebar-status:hover {
 .note-fields {
   align-self: stretch;
   display: grid;
-  /* Glyph, name, value, and the value's own action (Open, Call). The name column grows to
-     its longest word up to a cap, so thirty labels line up without one long one pushing
-     every value to the right of the block. */
-  grid-template-columns: auto minmax(5rem, 9rem) minmax(0, 1fr) auto;
+  /* Glyph, name, value, and the value's own action (Open, Call). The name column is as
+     wide as its longest name and no wider, so thirty labels line up and every value starts
+     right after them; the cap only catches a name that is a sentence. It was a 5–9rem range
+     on a desktop and `fit-content` on a phone, and the desktop's floor left a short name's
+     value adrift — "Nights" a column's width from its 3. */
+  grid-template-columns: auto fit-content(30%) minmax(0, 1fr) auto;
   align-items: center;
   column-gap: 0.5rem;
   row-gap: 0.1rem;
@@ -1980,16 +1987,16 @@ a.sidebar-status:hover {
 .note-field-input {
   width: 100%;
   min-width: 0;
-  min-height: 1.75rem;
-  padding: 0.2rem 0.45rem;
-  margin-left: -0.45rem;
+  min-height: 1.6rem;
+  padding: 0.15rem 0.4rem;
+  margin-left: -0.4rem;
   font: inherit;
   font-size: 0.85rem;
   line-height: 1.3;
   color: var(--fg);
   background: none;
   border: 1px solid transparent;
-  border-radius: 0.35rem;
+  border-radius: 0.3rem;
 }
 
 .note-field-input:hover:not(:disabled) {
@@ -2002,7 +2009,8 @@ a.sidebar-status:hover {
   border-color: var(--accent);
 }
 
-.note-field-input::placeholder { color: var(--muted); }
+/* "Empty" a step quieter than a name: told from a value at a glance, without shouting. */
+.note-field-input::placeholder { color: color-mix(in srgb, var(--muted) 72%, transparent); }
 
 /*
    A select is a chip once it holds a value — the shape a chosen option has in every
@@ -2023,15 +2031,10 @@ select.note-field-input:not([data-filled]) { color: var(--muted); }
 
 select.note-field-input[data-filled] {
   /*
-     A chosen notebook is a chip, and the same chip as a tag: same height, padding and
-     type, so the two rows read as one kind of control rather than as a select that
-     happens to sit above some tags. Without this the select inherited the field input's
-     taller box and larger type, and on a desktop — where neither is capped to a touch
-     target — the notebook pill stood visibly taller than the tags below it.
-
-     The margin cancels the chip's own inline padding so the label starts on the value
-     column's edge, where the field inputs and the tag chips start; the plain input's
-     smaller pull left it a few pixels further in than the tags below it.
+     A select field's chosen option is a chip — the shape a chosen option has in every
+     property list, Notion's included. Sized like a tag chip, so the two kinds of token in
+     the list are one size. The margin cancels the chip's own inline padding so the word
+     starts on the value column's edge, where the field inputs start.
   */
   min-height: 1.65rem;
   padding: 0.15rem 0.55rem;
@@ -2044,6 +2047,54 @@ select.note-field-input[data-filled] {
 
 select.note-field-input[data-filled]:hover:not(:disabled) {
   background: color-mix(in srgb, var(--chip-bg), var(--chip-fg) 12%);
+}
+
+/*
+   The notebook picker is not a chip. A notebook is a place the note is filed in, one of
+   N, and a chip said "one of a set" about it — the tags' shape, on the one property that
+   is not a tag. So it is drawn as a value: the name in ink at the field inputs' size, with
+   the chevron `FilingRows` places over its right padding to say it opens. Inbox, the
+   absence of a notebook, keeps the muted "Empty" treatment the select rule above gives an
+   unfilled select.
+
+   The wrapper is the grid item, so it takes the start alignment the bare select used to,
+   and the chevron is positioned against it rather than against the cell.
+*/
+.notebook-pick {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+  max-width: 100%;
+  justify-self: start;
+}
+
+.notebook-pick > svg {
+  position: absolute;
+  right: 0.4rem;
+  top: 50%;
+  translate: 0 -50%;
+  width: 0.8rem;
+  height: 0.8rem;
+  color: var(--muted);
+  pointer-events: none;
+}
+
+.notebook-pick > select.note-field-input {
+  padding-right: 1.35rem;
+}
+
+.notebook-pick > select.note-field-input[data-filled] {
+  padding: 0.15rem 1.35rem 0.15rem 0.4rem;
+  margin-left: -0.4rem;
+  font-size: 0.85rem;
+  color: var(--fg);
+  background: none;
+  border-radius: 0.3rem;
+}
+
+.notebook-pick > select.note-field-input[data-filled]:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--fg) 5%, transparent);
 }
 
 .note-field-check {
@@ -2087,69 +2138,116 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
 }
 
 /*
-   The last row of the block: the "+ Add field" chip and the way to the notebook's field
-   settings, on one line. Two things that are both about the notebook's fields rather
-   than about a value; stacked they read as two more rows of the form.
+   The last row of the list, in the list's own columns.
+
+   A subgrid row, so its cells fall into the glyph, name, value and side columns like any
+   other row's: a plus where a glyph goes, "Add field" where a name goes, the empties
+   toggle where a value goes, and "Manage fields" in the side slot where a value's own
+   action (Open, Call) goes. It used to be a flex line holding a dashed chip and a green
+   link — two more costumes in a block that already wore too many, on a line that was in
+   the list but not of it. While a field is being added the same cells hold the form.
 */
 .note-fields-foot {
   grid-column: 1 / -1;
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: subgrid;
   align-items: center;
-  gap: 0.75rem;
+  column-gap: 0.5rem;
 }
 
-/* "+ Add field": the tag entry's idle chip. */
+/* "Add field": a name-column word in the muted weight, lit on hover like a value. */
 .note-field-add-hint {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.25rem;
-  min-height: 1.65rem;
-  padding: 0.15rem 0.55rem;
+  justify-self: start;
+  min-height: 1.6rem;
+  padding: 0.15rem 0.4rem;
+  margin-left: -0.4rem;
   font: inherit;
-  font-size: 0.75rem;
-  color: var(--muted);
-  background: none;
-  border: 1px dashed var(--border);
-  border-radius: 999px;
-  cursor: pointer;
-}
-
-.note-field-add-hint:hover {
-  color: var(--accent);
-  border-color: var(--accent);
-}
-
-/* The open form takes the chip's place and the whole row. Nothing else moves. */
-.note-field-add {
-  flex: 1 1 100%;
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.4rem;
-}
-
-.note-field-add .note-field-input {
-  width: auto;
-  flex: 1 1 8rem;
-}
-
-.note-field-add .note-field-error { flex-basis: 100%; }
-
-.note-fields-manage { white-space: nowrap; }
-
-/* Hide or show the empties: a preference, drawn as quietly as the add chip beside it. */
-.note-fields-toggle {
-  padding: 0.15rem 0.2rem;
-  font: inherit;
-  font-size: 0.75rem;
+  font-size: 0.8rem;
+  line-height: 1.3;
   color: var(--muted);
   background: none;
   border: none;
+  border-radius: 0.3rem;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.note-field-add-hint:hover {
+  color: var(--fg);
+  background: color-mix(in srgb, var(--fg) 5%, transparent);
+}
+
+/* The value cell of the resting foot: the empties toggle, or nothing. */
+.note-fields-foot-mid {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+}
+
+/* Manage fields: the side slot's link, as Open and Call are drawn on a value's row. */
+.note-fields-manage {
+  font-size: 0.8rem;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.note-fields-manage:hover { color: var(--accent); }
+
+/*
+   The form's cells, while a field is being added: type and, for a select, its options in
+   the value column; Add and Cancel in the side slot. Every control here is boxed while
+   the row is open — it is one edit, and the quiet-at-rest rule that lets a value read as
+   text is for values at rest, not for a name, a type and a list of options being typed
+   together. A message that will not fit the side slot takes a line of its own beneath.
+*/
+.note-field-add-value {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  min-width: 0;
+}
+
+.note-field-add-value > .note-field-input {
+  margin-left: 0;
+  flex: 1 1 8rem;
+}
+
+.note-fields-foot .note-field-input,
+.note-fields-foot .note-notebook {
+  background: color-mix(in srgb, var(--fg) 4%, transparent);
+  border: 1px solid var(--border);
+}
+
+.note-fields-foot .note-field-input:focus { border-color: var(--accent); }
+
+.note-fields-foot .note-notebook {
+  min-height: 1.6rem;
+  padding: 0.15rem 0.5rem;
+  font-size: 0.85rem;
+  border-radius: 0.3rem;
+}
+
+.note-fields-foot > .note-field-side { gap: 0.25rem; }
+
+.note-fields-foot > .note-field-error { grid-column: 2 / -1; }
+
+/* Hide or show the empties: a preference, drawn as quietly as "Add field" beside it. */
+.note-fields-toggle {
+  padding: 0.15rem 0.4rem;
+  margin-left: -0.4rem;
+  font: inherit;
+  font-size: 0.8rem;
+  color: var(--muted);
+  background: none;
+  border: none;
+  border-radius: 0.3rem;
   cursor: pointer;
 }
 
-.note-fields-toggle:hover { color: var(--accent); }
+.note-fields-toggle:hover {
+  color: var(--fg);
+  background: color-mix(in srgb, var(--fg) 5%, transparent);
+}
 
 /* The bar docked above the keyboard: one scrolling row rather than two wrapped ones. */
 .editor-toolbar.docked {
@@ -2365,18 +2463,41 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
   cursor: text;
 }
 
+/*
+   A tag is a token of a set, and it is drawn as one: an outlined chip, not a filled one.
+   The fill was the accent at 12%, the same fill as a chosen select option and as the
+   notebook once had, so every token in the list was the same green pill and the block
+   read as a form of pills. An outline in the rule's colour, ink for the word, keeps a tag
+   a chip — removable, one of several — without a colour that means "chosen" elsewhere.
+   Keep's own labels on a note are outlined chips, so the phone agrees with itself.
+*/
 .tag-chip {
   display: inline-flex;
   align-items: center;
-  gap: 0.3rem;
+  /* No gap: the hash below is a flex item too, and a gap would part it from its word.
+     The × keeps its distance through its own padding. */
+  gap: 0;
   min-height: 1.65rem;
-  padding: 0.15rem 0.25rem 0.15rem 0.55rem;
-  font-size: 0.75rem;
-  color: var(--chip-fg);
-  background: var(--chip-bg);
+  padding: 0.15rem 0.2rem 0.15rem 0.5rem;
+  font-size: 0.78rem;
+  color: var(--fg);
+  background: none;
+  border: 1px solid var(--border);
   border-radius: 999px;
 }
 
+/*
+   The hash, on the note's own tags only. It is how the list rows and the fold's summary
+   already write a tag, and it is what tells the tags row from the notebook row at a
+   glance now that both are ink. Not on the same chips in the notebook settings, where
+   the editor holds a select field's options — those are not tags.
+*/
+.filing-prop .tag-chip::before {
+  content: '#';
+  color: var(--muted);
+}
+
+/* × on pointing, so a row of tags reads as words rather than as words with buttons. */
 .tag-remove {
   padding: 0 0.25rem;
   font: inherit;
@@ -2386,10 +2507,19 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
   background: none;
   border: none;
   cursor: pointer;
-  opacity: 0.6;
+  opacity: 0;
 }
 
-.tag-remove:hover { opacity: 1; }
+.tag-chip:hover .tag-remove,
+.tag-chip:focus-within .tag-remove { opacity: 0.7; }
+
+.tag-remove:hover,
+.tag-remove:focus-visible { opacity: 1; }
+
+/* No pointer to point with: the × stays, since a thumb cannot hover for it. */
+@media (hover: none) {
+  .tag-remove { opacity: 0.6; }
+}
 
 /*
    The entry point, which has to look like one.
@@ -2420,12 +2550,18 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
   */
   width: 5.5rem;
   min-height: 1.65rem;
-  border: 1px dashed var(--border);
+  /*
+     A ghost at rest, not a dashed chip. The dashes were a third chip costume beside the
+     filled and the outlined ones; the entry now reads as the muted words "+ Add tag" that
+     take a wash on hover, like every other quiet control in the list, and only becomes a
+     box — the same solid accent edge a value gets — once it is being typed in.
+  */
+  border: 1px solid transparent;
   border-radius: 999px;
   transition: width 0.16s ease, border-color 0.16s ease, background-color 0.16s ease;
 }
 
-.tag-entry:hover { border-color: var(--accent); }
+.tag-entry:hover { background: color-mix(in srgb, var(--fg) 5%, transparent); }
 
 /* Focused: the same box, wider, with a solid edge. Nothing else moves. */
 .tag-entry.active {
@@ -2448,8 +2584,8 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
   justify-content: flex-start;
   gap: 0.25rem;
   width: 100%;
-  padding: 0.15rem 0.55rem;
-  font-size: 0.75rem;
+  padding: 0.15rem 0.5rem;
+  font-size: 0.78rem;
   color: var(--muted);
   white-space: nowrap;
   /* The input above it takes the clicks; this is only the picture. */
@@ -2457,7 +2593,7 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
   transition: opacity 0.12s ease;
 }
 
-.tag-entry:hover .tag-add-hint { color: var(--accent); }
+.tag-entry:hover .tag-add-hint { color: var(--fg); }
 
 .tag-add-plus { font-size: 0.85rem; line-height: 1; }
 
@@ -4882,25 +5018,14 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
   /* The sheet's own rhythm: tighter than the column its controls came from. */
   .sheet-body { gap: 0.6rem; }
   /*
-     Label and value on one line, which is how a phone states a detail.
-
-     These used to stack — label above a full-width boxed input — on the reasoning that a
-     label column would leave the control the width of a word. That held while this was a
-     form. It is a list of values now, read far more often than edited, and stacking cost
-     two lines and a box per field: eight fields filled the screen and none of them could
-     be taken in at a glance. The longest name sets the label column, and the value gets
-     the rest — the same shape as every detail list a phone has taught.
-
-     `fit-content` rather than a fixed share. A flat 32% gave "Code" the same 110px as
-     "Date Added", and every value started a third of the way across a screen with no
-     width to spare; now the column is as wide as its longest label and no wider, and the
-     cap only catches a name that is a sentence.
+     Label and value on one line, which is how a phone states a detail — and now how the
+     desktop states one too, so the grid itself lives in the base rules. The reasoning
+     that got the phone here first: the rows used to stack, label above a full-width
+     boxed input, which cost two lines and a box per field, and eight fields filled the
+     screen; and a flat 32% label share gave "Code" the same 110px as "Date Added", so
+     `fit-content` — as wide as the longest name and no wider — is what the base rule
+     draws at every width.
   */
-  .note-fields {
-    /* The glyph's column comes first; the name's is as wide as its longest label. */
-    grid-template-columns: auto fit-content(30%) minmax(0, 1fr) auto;
-    row-gap: 0.1rem;
-  }
 
   /*
      Taller, for a thumb. The quiet-at-rest drawing — no border or fill until the value is
@@ -4916,7 +5041,16 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
   /* A chosen option is a chip at every width; its padding is its own. */
   select.note-field-input[data-filled] { padding-inline: 0.55rem; }
 
-  .note-field-add .note-field-input { flex-basis: 100%; }
+  /* The notebook is a value, not a chip, so it takes the row's touch height. Its right
+     padding is the chevron's room and stays. */
+  .notebook-pick > select.note-field-input[data-filled] {
+    min-height: 2.25rem;
+    padding-inline: 0.35rem 1.35rem;
+    margin-left: -0.35rem;
+  }
+
+  /* The add-field row's type and options share a value cell that is narrow here. */
+  .note-field-add-value { flex-wrap: wrap; }
 
   /*
      The docked bar's clearance, plus whatever the keyboard covers.

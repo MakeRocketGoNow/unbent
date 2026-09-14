@@ -9,7 +9,7 @@ import {
   type NoteFieldValue,
 } from '@unbent/shared';
 import { Button } from './Button';
-import { FieldTypeIcon } from './icons.js';
+import { FieldTypeIcon, PlusRowIcon } from './icons.js';
 import { usePersistentState } from '../usePersistentState.js';
 
 export interface NoteFieldsProps {
@@ -71,8 +71,8 @@ export interface NoteFieldsProps {
  * way to do that.
  *
  * Adding a field happens here as well as in settings, because the moment someone wants a
- * field is the moment they are looking at the note that needs it. The chip opens into the
- * form in place, the way the tag entry does.
+ * field is the moment they are looking at the note that needs it. The form opens as one
+ * more row of the list, in the list's own columns — see `AddFieldRow`.
  */
 /** From this many fields, hiding the empty ones is offered. */
 const HIDE_EMPTY_FROM = 8;
@@ -96,6 +96,12 @@ export function NoteFields({
     false,
     (raw) => (typeof raw === 'boolean' ? raw : undefined),
   );
+  /*
+   * Whether the add-field row is open. Held here rather than in the row, because the
+   * foot draws different cells in each state — the "+ Add field" row at rest, the form's
+   * cells while open — and the cells are the foot's to arrange.
+   */
+  const [adding, setAdding] = useState(false);
   // Not yet known which fields the notebook has: showing every value as foreign for a
   // frame and then re-sorting it under a label would be exactly the jump to avoid.
   if (!defs) return null;
@@ -149,20 +155,51 @@ export function NoteFields({
           </span>
         </div>
       ))}
+      {/*
+          The last row of the list, in the list's own columns.
+
+          At rest: a plus where a row's glyph goes, "Add field" where its name goes, the
+          empties toggle where its value goes, and "Manage fields" in the side slot where a
+          value's own action (Open, Call) goes — the way Notion ends a page's properties
+          with "Add a property" in the property column. It used to be a dashed chip and a
+          green link on a line of their own, two more costumes in a block that already had
+          too many. While a field is being added the same four cells hold the form.
+      */}
       {(canAdd || offerHide) && (
         <div className="note-fields-foot">
-          {canAdd && <AddField onAdd={onAddField} />}
-          {offerHide && (
-            <button
-              type="button"
-              className="note-fields-toggle"
-              aria-pressed={hideEmpty}
-              onClick={() => setHideEmpty(!hideEmpty)}
-            >
-              {hideEmpty ? `Show ${empties} empty` : `Hide ${empties} empty`}
-            </button>
+          {canAdd && adding ? (
+            <AddFieldRow onAdd={onAddField} onDone={() => setAdding(false)} />
+          ) : (
+            <>
+              <span className="note-field-glyph" aria-hidden="true">
+                {canAdd && <PlusRowIcon />}
+              </span>
+              {canAdd ? (
+                <button
+                  type="button"
+                  className="note-field-add-hint"
+                  onClick={() => setAdding(true)}
+                >
+                  Add field
+                </button>
+              ) : (
+                <span />
+              )}
+              <span className="note-fields-foot-mid">
+                {offerHide && (
+                  <button
+                    type="button"
+                    className="note-fields-toggle"
+                    aria-pressed={hideEmpty}
+                    onClick={() => setHideEmpty(!hideEmpty)}
+                  >
+                    {hideEmpty ? `Show ${empties} empty` : `Hide ${empties} empty`}
+                  </button>
+                )}
+              </span>
+              <span className="note-field-side">{canAdd && manage}</span>
+            </>
           )}
-          {canAdd && manage}
         </div>
       )}
     </div>
@@ -314,18 +351,28 @@ function FieldRow({ def, value, readOnly, onChange }: FieldRowProps) {
   );
 }
 
-interface AddFieldProps {
+interface AddFieldRowProps {
   onAdd: (input: { name: string; type: FieldType; options: string[] }) => Promise<void>;
+  /** Called once the field is added or the form is dismissed. */
+  onDone: () => void;
 }
 
 /**
- * "+ Add field", opening in place into a name, a type, and — for a select — its options.
+ * The add-field form, as a row of the list: the cells of the foot while a field is being
+ * added.
+ *
+ * The type's glyph where a row's glyph goes — it changes as the type is chosen, so the
+ * row previews itself — the name where a name goes, the type and, for a select, its
+ * options where the value goes, and Add and Cancel in the side slot. It used to be a run
+ * of controls dropped into the list, with the name boxed because it had focus and the
+ * options bare because they did not: the quiet-at-rest rule applied per control inside a
+ * form where every control is being edited. Here the stylesheet boxes all of them while
+ * the row is open, since it is one edit, not three.
  *
  * The name is checked here before it is sent, so a reserved name is refused with the
  * same words the server would use, without the round trip.
  */
-function AddField({ onAdd }: AddFieldProps) {
-  const [open, setOpen] = useState(false);
+function AddFieldRow({ onAdd, onDone }: AddFieldRowProps) {
   const [name, setName] = useState('');
   const [type, setType] = useState<FieldType>('text');
   const [options, setOptions] = useState('');
@@ -333,11 +380,11 @@ function AddField({ onAdd }: AddFieldProps) {
   const [busy, setBusy] = useState(false);
 
   function reset() {
-    setOpen(false);
     setName('');
     setType('text');
     setOptions('');
     setError(null);
+    onDone();
   }
 
   async function submit() {
@@ -376,16 +423,11 @@ function AddField({ onAdd }: AddFieldProps) {
     if (e.key === 'Escape') reset();
   };
 
-  if (!open) {
-    return (
-      <button type="button" className="note-field-add-hint" onClick={() => setOpen(true)}>
-        <span className="tag-add-plus">+</span> Add field
-      </button>
-    );
-  }
-
   return (
-    <div className="note-field-add">
+    <>
+      <span className="note-field-glyph" aria-hidden="true">
+        <FieldTypeIcon type={type} />
+      </span>
       <input
         className="note-field-input"
         placeholder="Field name"
@@ -396,37 +438,41 @@ function AddField({ onAdd }: AddFieldProps) {
         onChange={(e) => setName(e.target.value)}
         onKeyDown={onKeyDown}
       />
-      <select
-        className="note-notebook"
-        aria-label="Field type"
-        value={type}
-        disabled={busy}
-        onChange={(e) => setType(e.target.value as FieldType)}
-      >
-        {FIELD_TYPES.map((t) => (
-          <option key={t} value={t}>
-            {FIELD_TYPE_LABELS[t]}
-          </option>
-        ))}
-      </select>
-      {type === 'select' && (
-        <input
-          className="note-field-input"
-          placeholder="Options, separated by commas"
-          aria-label="Options"
-          value={options}
+      <span className="note-field-add-value">
+        <select
+          className="note-notebook"
+          aria-label="Field type"
+          value={type}
           disabled={busy}
-          onChange={(e) => setOptions(e.target.value)}
-          onKeyDown={onKeyDown}
-        />
-      )}
-      <Button variant="primary" size="small" disabled={busy || !name.trim()} onClick={() => void submit()}>
-        Add
-      </Button>
-      <Button variant="quiet" size="small" disabled={busy} onClick={reset}>
-        Cancel
-      </Button>
+          onChange={(e) => setType(e.target.value as FieldType)}
+        >
+          {FIELD_TYPES.map((t) => (
+            <option key={t} value={t}>
+              {FIELD_TYPE_LABELS[t]}
+            </option>
+          ))}
+        </select>
+        {type === 'select' && (
+          <input
+            className="note-field-input"
+            placeholder="Options, separated by commas"
+            aria-label="Options"
+            value={options}
+            disabled={busy}
+            onChange={(e) => setOptions(e.target.value)}
+            onKeyDown={onKeyDown}
+          />
+        )}
+      </span>
+      <span className="note-field-side">
+        <Button variant="primary" size="small" disabled={busy || !name.trim()} onClick={() => void submit()}>
+          Add
+        </Button>
+        <Button variant="quiet" size="small" disabled={busy} onClick={reset}>
+          Cancel
+        </Button>
+      </span>
       {error && <span className="note-field-error bad small">{error}</span>}
-    </div>
+    </>
   );
 }

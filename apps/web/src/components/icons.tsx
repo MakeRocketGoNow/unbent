@@ -7,6 +7,7 @@ import {
   Book,
   Calendar,
   Check,
+  ChevronDown,
   FileText,
   Film,
   Funnel,
@@ -221,6 +222,17 @@ export function PlusIcon() {
  */
 export function TagIcon() {
   return <RowIcon icon={Tag} />;
+}
+
+/**
+ * A chevron, for the notebook picker on the property list.
+ *
+ * The picker is a native select drawn as a value — its name in ink — and a select drawn
+ * that way gives no sign it opens; this is the sign. Not a `RowIcon`: those are sized
+ * against a row's words, and this sits inside a control, so the stylesheet sizes it.
+ */
+export function ChevronDownIcon() {
+  return <ChevronDown size="1em" strokeWidth={2} aria-hidden="true" focusable="false" />;
 }
 
 /**
