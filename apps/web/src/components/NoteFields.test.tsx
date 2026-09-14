@@ -78,7 +78,8 @@ describe('NoteFields', () => {
     });
     expect(input('Merchant').type).toBe('text');
     expect(input('Merchant').value).toBe('Acme');
-    expect(input('Amount').type).toBe('number');
+    expect(input('Amount').type).toBe('text');
+    expect(input('Amount').inputMode).toBe('decimal');
     expect(input('Amount').value).toBe('12.5');
     expect(input('Paid on').type).toBe('date');
     expect(input('Reimbursed').type).toBe('checkbox');
@@ -103,6 +104,20 @@ describe('NoteFields', () => {
     expect(onChange).toHaveBeenLastCalledWith('f-check', true);
     fireEvent.change(screen.getByLabelText('Category'), { target: { value: 'Travel' } });
     expect(onChange).toHaveBeenLastCalledWith('f-sel', 'Travel');
+  });
+
+  /*
+     A number input reports "" for "12." and for "-", and this block maps "" to null, so
+     the stored amount would be cleared mid-keystroke. The control is a text field so
+     those strings reach the draft, where `buildNotePatch` holds them until they are a
+     number rather than sending a clear.
+  */
+  it('keeps a half-typed number as text, not as a clear', () => {
+    const { onChange } = mount({ values: { 'f-num': 12 } });
+    fireEvent.change(input('Amount'), { target: { value: '12.' } });
+    expect(onChange).toHaveBeenLastCalledWith('f-num', '12.');
+    fireEvent.change(input('Amount'), { target: { value: '-' } });
+    expect(onChange).toHaveBeenLastCalledWith('f-num', '-');
   });
 
   it('keeps a select value that is no longer an option selectable, and says so', () => {

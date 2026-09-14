@@ -205,12 +205,22 @@ function FieldRow({ def, value, readOnly, onChange }: FieldRowProps) {
   let side: ReactNode = null;
   switch (def.type) {
     case 'number':
+      /*
+         Not `type="number"`. A number input reports "" for any value that is not yet a
+         valid float — "12.", "-", "12.5e" — and `setText` maps "" to null, which the
+         draft treats as a clear. Autosave then deletes the stored amount while the user
+         is still typing the decimal. `buildNotePatch` is written to *hold* "12." until it
+         is a number; that only works if the string actually reaches the draft.
+
+         `inputMode="decimal"` still brings up the numeric keypad on a phone. The
+         property list also has no use for spinner buttons, which is the other thing
+         `type="number"` would have drawn.
+      */
       control = (
         <input
           {...common}
           {...blank}
-          type="number"
-          step="any"
+          type="text"
           inputMode="decimal"
           value={text}
           onChange={(e) => setText(e.target.value)}
