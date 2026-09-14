@@ -945,7 +945,8 @@ h1 {
 }
 
 /*
-   The fields' own column, on a desktop.
+   The fields' own column, on a desktop wide enough for it. A narrower desktop folds them
+   above the body instead — see `.fields-fold`.
 
    Fixed width rather than a share, so the note's measure does not change with how many
    fields its notebook has; scrolls within itself, so a long list costs the note nothing.
@@ -965,8 +966,9 @@ h1 {
 }
 
 /*
-   The fields, in flow above the body: the phone's layout, and the Android app's embed at
-   any width the WebView happens to have — which is why this is not in the phone block.
+   The fields, in flow above the body: the phone's layout, the Android app's embed at any
+   width the WebView happens to have, and the narrow desktop's fold — which is why this is
+   not in the phone block.
 
    Capped and scrolling within, because the embed's column does not scroll and the body
    needs the rest: without the cap a notebook with thirty fields left the editor a sliver
@@ -1019,6 +1021,26 @@ h1 {
 /* "+ Add field" and "Manage fields" are about the notebook, not a value: a breath before
    them keeps the last field from reading as a row that happens to have two buttons. */
 .fields-inline .note-fields-foot { margin-top: 0.4rem; }
+
+/*
+   The fields folded above the body, on a desktop too narrow for their column.
+
+   The same box as the attachments disclosure directly beneath it — margin, no padding, a
+   rule below — so the two read as one stack of rows. The inline list inside gives up its
+   own bottom rule, since the fold's is the seam now, and its top padding, since the summary
+   already holds the row's height. Its cap and its scroll stay: `.workspace-main` is the
+   desktop's flex column here, and a long notebook must not push the panes off the bottom.
+*/
+.fields-fold {
+  margin: 0.35rem 0 0.15rem;
+  padding: 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.fields-fold > .fields-inline {
+  padding-top: 0;
+  border-bottom: none;
+}
 
 .fields-panel-head {
   margin: 0;

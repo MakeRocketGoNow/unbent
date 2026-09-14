@@ -15,7 +15,7 @@ import {
   focusEditor,
 } from '../useListKeys.js';
 import { useIsNewNote } from '../useNewNote.js';
-import { useMediaQuery, MOBILE_QUERY, TOUCH_QUERY } from '../useMediaQuery.js';
+import { useMediaQuery, MOBILE_QUERY, NARROW_DESKTOP_QUERY, TOUCH_QUERY } from '../useMediaQuery.js';
 import { useKeyboardInset } from '../useKeyboardInset.js';
 import {
   noteQuery,
@@ -173,6 +173,15 @@ export function Workspace({ noteId, readOnly = false, backTo = '/notes' }: Works
    * question at every width now, so this no longer decides what renders.
    */
   const isMobile = useMediaQuery(MOBILE_QUERY);
+  /*
+   * A desktop too narrow for the fields' column. The second width read here, for the same
+   * narrow reason as the first: the fields move between two containers — the column beside
+   * the note, or a fold inside the note's column — and CSS cannot reparent. Nothing in the
+   * editor's tree is decided by it. See `NARROW_DESKTOP_QUERY`.
+   */
+  const narrowDesktop = useMediaQuery(NARROW_DESKTOP_QUERY);
+  /** What the fold's summary states while closed, the way the attachments' states its count. */
+  const fieldCount = fieldDefs.data?.length ?? 0;
 
   /**
    * Whether opening this note would raise a keyboard.
@@ -615,6 +624,10 @@ export function Workspace({ noteId, readOnly = false, backTo = '/notes' }: Works
           capped and scrolls within, since `.workspace` itself does not — see
           `.fields-inline` — so a long notebook cannot push the body off the screen.
 
+          Between the two, on a desktop too narrow for three columns, the notebook and the
+          tags keep their row and only the fields move: the same inline list, folded under a
+          `Fields` summary in the column's place. See the fold below.
+
           There used to be a sheet here on a phone, opened from a row that stated the
           filing. It earned its place holding six controls; once the fields moved onto the
           page it held two, and a modal surface for two controls the row already showed
@@ -629,6 +642,33 @@ export function Workspace({ noteId, readOnly = false, backTo = '/notes' }: Works
             {filingControls}
           </Disclosure>
         ))}
+
+      {/*
+          The fields, folded above the body on a desktop too narrow for their column.
+
+          Between the phone and the full desktop the column took ~340px of a 960px screen
+          and, for a notebook with no fields, held a heading and two links over nothing,
+          while the editor was left ~250px. So here the column goes and the fields take the
+          phone's place instead — the same inline list, capped and scrolling within — but
+          closed under a summary until asked, since they are the note's data and not always
+          what the note was opened for. `never` rather than `wide`: `wide` opens on anything
+          that is not a phone, which is exactly this width; and `never` is not keyed, so a
+          fold someone opened stays open across a resize within the band.
+
+          Only with a notebook. A field can only be added to one, so an unfiled note has
+          nothing to fold, and the column's "file this note" line is not worth a row here.
+          The notebook and the tags stay on the Details row above rather than becoming the
+          list's lead rows as they do on a phone: at this width that row still costs nothing.
+      */}
+      {narrowDesktop && currentNotebook && (
+        <Disclosure
+          className="fields-fold"
+          defaultOpen="never"
+          summary={<>Fields{fieldCount > 0 ? ` (${fieldCount})` : null}</>}
+        >
+          <div className="fields-inline">{fieldsBlock()}</div>
+        </Disclosure>
+      )}
 
       {!readOnly && (
         <Attachments
@@ -769,7 +809,9 @@ export function Workspace({ noteId, readOnly = false, backTo = '/notes' }: Works
       </div>
       </div>
 
-      {!isMobile && (
+      {/* The column only where there is room for it: the narrow desktop folds the fields
+          above the body instead — see the fold beside the Details row. */}
+      {!isMobile && !narrowDesktop && (
         <aside className="fields-panel" aria-label="Fields">
           <h3 className="fields-panel-head">Fields</h3>
           {fieldsBlock() ?? (
