@@ -920,71 +920,136 @@ h1 {
 .empty { padding: 0.6rem 0.7rem; }
 
 .workspace {
-  /* A row: the note's column, and on a desktop the fields' column beside it. */
+  /* A row with one column in it: the note's. The fields used to have a second; see
+     `.workspace-main` for where they went. */
   display: flex;
   min-width: 0;
   min-height: 0;
 }
 
+/*
+   The note's column: one scroll region, and the note a document in it.
+
+   The title row, the property list, the attachments strip, the formatting bar and the
+   body all scroll as one, the way Keep's and Evernote's notes do, under a title that
+   stays. This was the phone's model; the desktop kept the column as a flex box of chrome
+   around one scrolling pane, so that the formatting bar could never scroll out of reach —
+   and drew the fields in a column beside the note so a long list could not push the body
+   down. The two layouts diverged in what scrolled, where the fields were and how the
+   filing was drawn, and none of that was a difference the width required. Now the bar is
+   sticky under the title instead, and the list is the top of the note at every width.
+
+   `display: block` so nothing here is sized to fit — the list, the panes and the editor
+   grow to their content and the column overflows the way a page does. CodeMirror is happy
+   in flow: it finds the nearest scrolling ancestor for itself. `overscroll-behavior:
+   contain` so a flick past the end does not become Chrome's pull-to-refresh. The phone
+   block adds the docked bar's clearance to the bottom padding; the split view, below, is
+   the one place the column is a flex box again.
+*/
 .workspace-main {
   flex: 1 1 auto;
-  display: flex;
-  flex-direction: column;
+  display: block;
   min-width: 0;
-  /*
-     Same reason as the sidebar. Everything above the panes — the title, the tag row, the
-     attachments strip, the formatting bar — is chrome for the note being edited, and
-     scrolling it away puts the formatting buttons out of reach exactly when a long note
-     is being worked on.
-
-     On a desktop. Below the breakpoint the formatting bar is docked to the bottom of the
-     screen, so nothing above the panes needs to stay put but the title, and this column
-     becomes the note's one scroll region instead — see the phone block.
-  */
   min-height: 0;
+  /*
+     Hidden on the x axis, not left to the `auto` that `overflow-y` alone would imply.
+     Nothing here scrolls sideways — the editor wraps, and the preview's wide tables and
+     code blocks own their own `overflow-x: auto` boxes — yet with `auto` Chromium drew a
+     full-width scrollbar along the column's foot wherever scrollbars are classic, for an
+     overflow no measurement could find: no descendant reached past the column's edge and
+     `scrollWidth` matched `clientWidth`. Whatever it was counting, there is nothing to
+     scroll to, so the axis is simply closed.
+  */
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-bottom: 1rem;
+  /*
+     The title row's height, for the bar to stick under: its 2.75rem control, its 0.5rem
+     bottom padding and its 1px rule. Stated rather than measured, because the row is one
+     line at every width — the title is an input — and each of those three numbers is set
+     a few rules away. If any of them changes, this must change with it.
+  */
+  --workspace-head-h: calc(3.25rem + 1px);
+}
+
+/* Opaque, so the note scrolls under the title rather than through it. */
+.workspace-main > .workspace-head {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--bg);
 }
 
 /*
-   The fields' own column, on a desktop wide enough for it. A narrower desktop folds them
-   above the body instead — see `.fields-fold`.
-
-   Fixed width rather than a share, so the note's measure does not change with how many
-   fields its notebook has; scrolls within itself, so a long list costs the note nothing.
-   The rule on its left is the same seam the sidebar's handle draws. Inside it the name
-   column is narrower than the in-flow list's, since the panel has a fifth of the width.
+   The formatting bar stays in reach on a desktop by sticking under the title as the body
+   scrolls past — the reason the column used to be chrome around a scrolling pane, kept
+   without the pane. Not when docked: the phone fixes the bar to the bottom of the screen
+   instead, above the keyboard, and a sticky position would fight that.
 */
-.fields-panel {
-  flex: 0 0 19rem;
+.workspace-main > .editor-toolbar:not(.docked) {
+  position: sticky;
+  top: var(--workspace-head-h);
+  z-index: 1;
+  background: var(--bg);
+}
+
+/* The pane no longer scrolls; the column does. `.editor-host` is `height: 100%` of a
+   box that is now auto-height, which computes to auto — the editor grows. */
+.workspace-main .pane { overflow: visible; }
+
+/*
+   The hidden editor in the preview view, whose old trick does not survive a scrolling
+   column: an absolutely positioned box still adds its height to the scrollable overflow
+   of its scroll container, and the editor is as tall as the whole note here, so preview
+   mode gained a screenful of empty scroll. Fixed boxes count toward nothing, and one the
+   size of the viewport keeps CodeMirror measuring a real height — the whole reason the
+   pane is hidden rather than removed.
+*/
+.workspace-main > .panes.reading > .editor-pane {
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+}
+
+/*
+   The split view is the exception: two panes side by side, each scrolling on its own, is
+   two scroll regions by definition, and a document that scrolled both together would
+   leave the shorter one blank under the longer. So with the split on, the column is the
+   flex box it used to be — chrome sized to fit, the pane row taking what is left and each
+   pane scrolling inside it — and the property list is capped at half the screen and
+   scrolls within itself, since here a long notebook really would push the panes off the
+   bottom. `:has()` rather than a class from the component: the view is already on the
+   pane row, and this is a fact about layout.
+*/
+.workspace-main:has(> .panes.split) {
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
-  min-height: 0;
-  margin-left: 1.25rem;
-  padding: 0.25rem 0 0 1rem;
-  overflow-y: auto;
-  border-left: 1px solid var(--border);
 }
 
-/*
-   The fields, in flow above the body: the phone's layout, the Android app's embed at any
-   width the WebView happens to have, and the narrow desktop's fold — which is why this is
-   not in the phone block.
+.workspace-main:has(> .panes.split) .pane { overflow-y: auto; }
 
-   Capped and scrolling within, because the embed's column does not scroll and the body
-   needs the rest: without the cap a notebook with thirty fields left the editor a sliver
-   under them. Half the screen is the most the list may take before it scrolls; the rule
-   beneath is the seam between the note's data and its text. The rows close ranks a
-   little, since a list this dense reads as one thing at 0.15rem and as separate items at
-   more.
-
-   The phone's own note view lifts the cap: there the whole note scrolls as one, and the
-   fields are the top of it. See `.workspace-main` in the phone block.
-*/
-.fields-inline {
+.workspace-main:has(> .panes.split) .fields-inline {
   flex: 0 1 auto;
   max-height: 45dvh;
   overflow-y: auto;
   overscroll-behavior: contain;
+}
+
+/*
+   The property list — notebook, tags, then the fields — in flow above the body.
+
+   One placement at every width now: the site's phone and desktop layouts and the Android
+   app's embed all draw this block, which is why it is not in the phone block. The column
+   it sits in scrolls as one document (see `.workspace-main`), so the list is simply the
+   top of the note and takes the height it needs; the rule beneath is the seam between the
+   note's data and its text. The rows close ranks a little, since a list this dense reads
+   as one thing at 0.15rem and as separate items at more.
+
+   The one place it is capped is the split view, where the column is a flex box again —
+   see the split rules under `.workspace-main`.
+*/
+.fields-inline {
   padding: 0.35rem 0;
   border-bottom: 1px solid var(--border);
 }
@@ -1023,13 +1088,17 @@ h1 {
 .fields-inline .note-fields-foot { margin-top: 0.4rem; }
 
 /*
-   The fields folded above the body, on a desktop too narrow for their column.
+   The property list folded, on a desktop too narrow to keep it open above the body.
 
    The same box as the attachments disclosure directly beneath it — margin, no padding, a
-   rule below — so the two read as one stack of rows. The inline list inside gives up its
-   own bottom rule, since the fold's is the seam now, and its top padding, since the summary
-   already holds the row's height. Its cap and its scroll stay: `.workspace-main` is the
-   desktop's flex column here, and a long notebook must not push the panes off the bottom.
+   rule below — so the two read as one stack of rows. The list inside gives up its own
+   bottom rule, since the fold's is the seam now, and its top padding, since the summary
+   already holds the row's height.
+
+   The summary states the value, per `Disclosure`'s grammar: the notebook, then the tags
+   hashed, then the count with its noun, since a bare number would not say what it counts.
+   The tags are the part that yields — they can run long, and the count is what should
+   survive a squeeze — and the count sits hard right, the way the sidebar's counts do.
 */
 .fields-fold {
   margin: 0.35rem 0 0.15rem;
@@ -1042,15 +1111,21 @@ h1 {
   border-bottom: none;
 }
 
-.fields-panel-head {
-  margin: 0;
-  font-size: 0.78rem;
-  font-weight: 600;
+.fields-fold .fold-notebook { flex: 0 0 auto; }
+
+.fields-fold .fold-tags {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   color: var(--muted);
 }
 
-.fields-panel .note-fields {
-  grid-template-columns: auto minmax(4rem, 7rem) minmax(0, 1fr) auto;
+.fields-fold .fold-count {
+  flex: 0 0 auto;
+  margin-left: auto;
+  color: var(--muted);
 }
 
 /*
@@ -1100,13 +1175,6 @@ h1 {
 */
 .embedded {
   padding: 0 0.75rem 3.5rem;
-}
-
-/* The phone block lifts the fields' cap for `.workspace-main`; the same lift here. */
-.embedded .fields-inline {
-  max-height: none;
-  overflow: visible;
-  overscroll-behavior: auto;
 }
 
 /* The pane no longer scrolls; the shell does. See the phone block for `.editor-host`. */
@@ -1836,28 +1904,7 @@ a.sidebar-status:hover {
 }
 
 /*
-   One rhythm for the note's filing controls.
-
-   These stacked on ad-hoc padding — 9px between the summary and the notebook picker, 3px
-   between the picker and the tags, 14px before the closing border, with the controls
-   themselves 24, 25 and 26px tall. A flex column with a single gap makes the spacing one
-   decision instead of four, and a shared 1.65rem control height puts every row on the
-   same baseline. The block now measures 8/8/9, the last pixel being sub-pixel rounding.
-*/
-.tag-row {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 0.5rem;
-  /*
-     Top padding is the same 0.5rem as the gap, so the space under the summary matches the
-     space between the controls. Bottom too, so the run to the closing border is identical
-     — the whole block is then one number repeated, which is what makes it read as even.
-  */
-  padding: 0.5rem 0;
-}
-/*
-   Custom fields, as a property list — beside the note on a desktop, above it on a phone.
+   Custom fields, as a property list, above the note's body at every width.
 
    A grid rather than stacked label/control pairs: the labels line up in one column, so
    eight fields read as a form and not as eight rows that each found their own width. It
@@ -1873,7 +1920,7 @@ a.sidebar-status:hover {
    are picked out by it.
 
    The controls take the row's 1.65rem, the tag chips' and the picker's height, so the
-   whole filing block stays on one rhythm — see `.tag-row`.
+   whole property list stays on one rhythm.
 */
 .note-fields {
   align-self: stretch;
@@ -2103,23 +2150,6 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
 }
 
 .note-fields-toggle:hover { color: var(--accent); }
-
-/*
-   The desktop filing block has no summary to show.
-
-   This is the only width that renders the disclosure at all — a phone draws the property list
-   and opens a sheet instead — and here the controls are always open, so a summary would be
-   a heading above a row that is already stating itself. `Disclosure` requires the prop, so
-   the word is hidden rather than absent, and the element keeps the accessible name.
-
-   Written as a compound selector on purpose. `.disclosure > summary` and
-   `.tag-row-wrap > summary` carry equal specificity, so which one won would be settled by
-   source order — and the shared rule sits some 800 lines above this one. Matching both
-   classes puts this a step higher, so the hide wins wherever either rule ends up.
-*/
-.disclosure.tag-row-wrap > summary {
-  display: none;
-}
 
 /* The bar docked above the keyboard: one scrolling row rather than two wrapped ones. */
 .editor-toolbar.docked {
@@ -4889,69 +4919,19 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
   .note-field-add .note-field-input { flex-basis: 100%; }
 
   /*
-     The whole note scrolls, under a title that stays.
+     The docked bar's clearance, plus whatever the keyboard covers.
 
-     On a desktop the column is chrome around one scrolling pane: title, filing, files,
-     bar, then the editor scrolling inside the rest. On a phone that fell apart the moment
-     a keyboard opened. Android's keyboard shrinks only the visual viewport — the layout
-     viewport, and so `100dvh`, keep their full height — so the fields kept their cap
-     against a screen that was no longer there and sat over the whole visible half, and
-     the editor pane, which was the only thing that scrolled, was entirely under the keys.
-     Nothing the user could do reached it.
-
-     So below the breakpoint the column is the scroll region and the note is a document
-     in it: the filing rows, the attachments strip and the editor all scroll as one, the
-     way Keep's and Evernote's phone notes do, and the title row is sticky at the top.
-     `display: block` rather than the desktop's flex column, so nothing here is sized to
-     fit — the fields lose their cap, the panes and the editor grow to their content, and
-     the column overflows the way a page does. CodeMirror is happy in flow: it finds the
-     nearest scrolling ancestor for itself.
-
-     The bottom padding is the docked bar plus whatever the keyboard covers, from
-     `--keyboard-inset` on the column. Without the keyboard's share the note's last line
-     could be scrolled to the bottom of the layout viewport and no further, which is
-     under the keys; with it, the end of the note comes up above them.
-
-     `overscroll-behavior: contain` so a flick past the end does not become Chrome's
-     pull-to-refresh, the same reason the field list had it.
+     The column is the note's one scroll region at every width now — see `.workspace-main`
+     in the base rules, which is where this block's document model moved once the desktop
+     adopted it. What stays the phone's is the bottom padding: the bar is docked over the
+     end of the column here, and a keyboard covers more of it. Android's keyboard shrinks
+     only the visual viewport — the layout viewport, and so `100dvh`, keep their full
+     height — so without the keyboard's share, from `--keyboard-inset` on the column, the
+     note's last line could be scrolled to the bottom of the layout viewport and no
+     further, which is under the keys; with it, the end of the note comes up above them.
   */
   .workspace-main {
-    display: block;
-    overflow-y: auto;
-    overscroll-behavior: contain;
     padding-bottom: calc(3.5rem + var(--keyboard-inset, 0px));
-  }
-
-  /* Opaque, so the note scrolls under the title rather than through it. */
-  .workspace-main > .workspace-head {
-    position: sticky;
-    top: 0;
-    z-index: 2;
-    background: var(--bg);
-  }
-
-  .workspace-main > .fields-inline {
-    max-height: none;
-    overflow: visible;
-    overscroll-behavior: auto;
-  }
-
-  /* The pane no longer scrolls; the column does. `.editor-host` is `height: 100%` of a
-     box that is now auto-height, which computes to auto — the editor grows. */
-  .workspace-main .pane { overflow: visible; }
-
-  /*
-     The hidden editor in the preview view, whose desktop trick does not survive a
-     scrolling column: an absolutely positioned box still adds its height to the
-     scrollable overflow of its scroll container, and the editor is as tall as the whole
-     note here, so preview mode gained a screenful of empty scroll. Fixed boxes count
-     toward nothing, and one the size of the viewport keeps CodeMirror measuring a real
-     height — the whole reason the pane is hidden rather than removed.
-  */
-  .workspace-main > .panes.reading > .editor-pane {
-    position: fixed;
-    inset: 0;
-    overflow: hidden;
   }
 
   /* A shade tighter still than the base bar, where vertical room is scarcest. */

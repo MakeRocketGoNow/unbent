@@ -30,20 +30,18 @@ export function useMediaQuery(query: string): boolean {
 export const MOBILE_QUERY = '(max-width: 860px)';
 
 /**
- * A desktop too narrow for the fields' column.
+ * A desktop too narrow to keep the note's property list open above its body.
  *
- * Between the phone and the full desktop is a width where the sidebar, the note and a
- * 19rem fields column do not fit: at 960px the editor was left about 250px, its toolbar
- * wrapped to five rows and its title truncated to a dozen characters. The sidebar is how
- * notes are reached and the note is what the screen is for, so the fields are what give
- * way — they fold above the body, closed until asked. See the fold in `Workspace`.
+ * Between the phone and the full desktop the sidebar and the note share a width that a
+ * 960px screen makes tight. The list of notebook, tags and fields stays where it is at
+ * every width, but here it starts closed under a summary — the notebook, the tags and a
+ * field count — so the body is on screen when the note opens. See the fold in `Workspace`.
  *
- * Read in JS because the fields move between two containers, not because the layout is
- * JS-driven: the column is a sibling of the note's column and the fold sits inside it, and
- * CSS cannot reparent. What `useMediaQuery` guards against is untouched — the fields'
- * inputs remount at the edges, as they already do at the phone's, and the editor is not
- * among them. The upper edge is where three columns stop being cramped; the lower is the
- * phone's plus one, so the two can neither overlap nor leave a gap.
+ * Read in JS because the list is wrapped in a `Disclosure` here and drawn bare elsewhere:
+ * a different element, which CSS cannot conjure. What `useMediaQuery` guards against is
+ * untouched — the list's inputs remount at the band's edges, as they already do at the
+ * phone's, and the editor is not among them. The lower edge is the phone's plus one, so
+ * the two can neither overlap nor leave a gap.
  */
 export const NARROW_DESKTOP_QUERY = '(min-width: 861px) and (max-width: 1080px)';
 
