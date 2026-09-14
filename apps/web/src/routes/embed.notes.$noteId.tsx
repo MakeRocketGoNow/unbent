@@ -1,6 +1,6 @@
 import { createFileRoute, useLocation } from '@tanstack/react-router';
 import { z } from 'zod';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { EditorView } from '@codemirror/view';
@@ -10,8 +10,8 @@ import { indexUploadedFile } from '../index-files.js';
 import { useAutosave } from '../useAutosave.js';
 import { usePersistentState } from '../usePersistentState.js';
 import { noteQuery, notebooksQuery, notebookFieldsQuery, tagsQuery, keys } from '../queries.js';
-import type { FieldType, FieldValue } from '@unbent/shared';
-import { buildNotePatch } from '../note-patch.js';
+import type { FieldDef, FieldType, FieldValue } from '@unbent/shared';
+import { buildNotePatch, rememberFieldDefs } from '../note-patch.js';
 import { NoteFields } from '../components/NoteFields.js';
 import { FilingRows } from '../components/FilingRows.js';
 import { Editor } from '../components/Editor.js';
@@ -167,6 +167,14 @@ function EmbeddedNote({ noteId }: { noteId: string }) {
     (nb) => nb.name.toLowerCase() === filing.notebook?.toLowerCase(),
   );
   const fieldDefs = useQuery(notebookFieldsQuery(currentNotebook?.id));
+  /*
+     Every definition this session has loaded, not only the current notebook's. See
+     `rememberFieldDefs`: a just-typed value and a notebook change in the same breath
+     used to drop the value, because the new notebook's list (or a load in progress)
+     no longer had the type. The editor still renders `fieldDefs.data`.
+  */
+  const seenFieldDefs = useRef(new Map<string, FieldDef>());
+  const knownFieldDefs = rememberFieldDefs(seenFieldDefs.current, fieldDefs.data);
   const [seededFor, setSeededFor] = useState<string | null>(null);
   /**
    * Editor is uncontrolled. After deleting a still-linked attachment the panel rewrites
@@ -224,7 +232,7 @@ function EmbeddedNote({ noteId }: { noteId: string }) {
     const patch = buildNotePatch(
       { title: note.title, body: note.body, tags: value.tags, notebook: value.notebook, fields: value.fields },
       note,
-      fieldDefs.data,
+      knownFieldDefs,
     );
     if (!patch) return;
     try {
