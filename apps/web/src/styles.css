@@ -995,6 +995,23 @@ h1 {
   padding-bottom: 1rem;
   padding-inline: 1.5rem;
   /*
+     Reach the window's right edge, so the scrollbar sits against the glass.
+
+     This is the column's own scroll region, and its scrollbar draws on its right edge.
+     `.shell.wide` insets the whole notes grid by 1.5rem, which put that edge — and so the
+     bar — a gutter's width in from the window, with the shell's padding stranded to the
+     *right* of the scrollbar and the note's text pressed against its left. Pulling the
+     right edge back out by exactly that inset lands the scrollbar on the window edge and
+     moves the gutter inside it, where `padding-inline` already holds the text a clear
+     1.5rem off the bar. Only the right edge: the left is the sidebar's channel and stays.
+
+     In the split view the panes are the scroll regions, not this box, so the reach only
+     widens the column and the pane row keeps its 1.5rem inset through `padding-inline` — a
+     gutter the preview pane and the capped property list share on that side. The phone
+     block undoes the reach; there the shell runs the column to the glass already.
+  */
+  margin-right: -1.5rem;
+  /*
      The title row's height, for the bar to stick under: its 2.75rem control, its 0.5rem
      bottom padding and its 1px rule. Stated rather than measured, because the row is one
      line at every width — the title is an input, with a line-height set so that even at
@@ -5130,8 +5147,15 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
   */
   .workspace-main {
     padding-bottom: calc(3.5rem + var(--keyboard-inset, 0px));
-    /* The shell's own inset is the gutter here; a second one would stack on it. */
+    /*
+       The shell's own inset is the gutter here; a second one would stack on it. And the
+       base rule's reach to the window edge — a negative right margin sized to the desktop
+       shell's 1.5rem — is undone with it: the phone shell insets by less than that, so the
+       margin would drag the column past the glass. Edge-to-edge is already the phone's, by
+       way of the shell running the column full width; nothing here needs to reach for it.
+    */
     padding-inline: 0;
+    margin-right: 0;
   }
 
   /* A shade tighter still than the base bar, where vertical room is scarcest. */
