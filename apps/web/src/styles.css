@@ -60,6 +60,13 @@
   --tint-5: #8b63c7;
   --tint-wash: 16%;
   --tint-ink: 70%;
+  /*
+     The chevron a bordered select draws for itself. A native select's arrow sits flush
+     against its border whatever the padding says, so the ones that carry a border draw
+     their own; a background image cannot read `--muted`, so the muted ink is written in,
+     once per theme.
+  */
+  --select-chevron: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%236b6560' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='m6 9 6 6 6-6'/></svg>");
   color-scheme: light;
 }
 
@@ -89,6 +96,7 @@ input[type='radio'] {
     /* A deeper wash and a paler word: the same six hues, read against a dark ground. */
     --tint-wash: 26%;
     --tint-ink: 50%;
+    --select-chevron: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%239a938c' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='m6 9 6 6 6-6'/></svg>");
     color-scheme: dark;
   }
 }
@@ -2030,10 +2038,11 @@ a.sidebar-status:hover {
 /*
    The value is the control, drawn as the value.
 
-   No border and no fill at rest, so a row reads as name and value rather than as a form
-   field; the edge appears on hover, which is the affordance, and stays on focus, which is
-   the state. The negative inline margin puts the text where a plain value would sit, on
-   the column's edge, rather than a padding-width inside it — so a resting row and an
+   No border and no fill at rest, and none on hover either: a wash that hangs a padding's
+   width left of the letters read as a box drawn in the wrong place, and the I-beam and
+   the word "Empty" already say the value can be typed in. The box appears on focus, which
+   is the state. The negative inline margin puts the text where a plain value would sit,
+   on the column's edge, rather than a padding-width inside it — so a resting row and an
    editing row put the value in the same place.
 */
 .note-field-input {
@@ -2051,10 +2060,6 @@ a.sidebar-status:hover {
   background: none;
   border: 1px solid transparent;
   border-radius: 0.3rem;
-}
-
-.note-field-input:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--fg) 5%, transparent);
 }
 
 .note-field-input:focus {
@@ -2184,10 +2189,7 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
   white-space: nowrap;
 }
 
-.note-field-add-hint:hover {
-  color: var(--fg);
-  background: color-mix(in srgb, var(--fg) 5%, transparent);
-}
+.note-field-add-hint:hover { color: var(--fg); }
 
 /*
    The resting foot's right-hand cell, across the value and side columns: the empties
@@ -2243,15 +2245,28 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
 
 .note-fields-foot .note-field-input,
 .note-fields-foot .note-notebook {
-  background: color-mix(in srgb, var(--fg) 4%, transparent);
+  /* The colour alone: the type select's background is also its chevron. */
+  background-color: color-mix(in srgb, var(--fg) 4%, transparent);
   border: 1px solid var(--border);
 }
 
 .note-fields-foot .note-field-input:focus { border-color: var(--accent); }
 
+/*
+   The name input contributes no width of its own. An input is some twenty characters
+   wide by nature, and as a grid item that width would have grown the name column the
+   moment the form opened — every value on the list stepped right to make room. Zero
+   width takes it out of the column's sizing; the percentage minimum then fills whatever
+   the names beside it have already made the column.
+*/
+.note-fields-foot > .note-field-input {
+  width: 0;
+  min-width: 100%;
+}
+
 .note-fields-foot .note-notebook {
   min-height: 2.1rem;
-  padding: 0.25rem 0.5rem;
+  padding: 0.25rem 1.75rem 0.25rem 0.5rem;
   font-size: 0.9rem;
   border-radius: 0.3rem;
 }
@@ -2273,10 +2288,7 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
   cursor: pointer;
 }
 
-.note-fields-toggle:hover {
-  color: var(--fg);
-  background: color-mix(in srgb, var(--fg) 5%, transparent);
-}
+.note-fields-toggle:hover { color: var(--fg); }
 
 /* The bar docked above the keyboard: one scrolling row rather than two wrapped ones. */
 .editor-toolbar.docked {
@@ -2606,15 +2618,14 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
   /*
      A ghost at rest, not a dashed chip. The dashes were a third chip costume beside the
      filled and the outlined ones; the entry now reads as the muted words "+ Add tag" that
-     take a wash on hover, like every other quiet control in the list, and only becomes a
+     go to ink on hover, like every other quiet control in the list, and only becomes a
      box — the same solid accent edge a value gets — once it is being typed in.
   */
   border: 1px solid transparent;
-  border-radius: 999px;
+  /* The chips' radius, so the box it becomes is the same shape as the boxes beside it. */
+  border-radius: 0.3rem;
   transition: width 0.16s ease, border-color 0.16s ease, background-color 0.16s ease;
 }
-
-.tag-entry:hover { background: color-mix(in srgb, var(--fg) 5%, transparent); }
 
 /* Focused: the same box, wider, with a solid edge. Nothing else moves. */
 .tag-entry.active {
@@ -3377,13 +3388,16 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
   flex-shrink: 0;
   /* Matches .tag-chip and .tag-entry, so the two rows read as one control group. */
   min-height: 1.65rem;
-  padding: 0.2rem 0.4rem;
+  /* Room on the right for the chevron, which is drawn rather than the platform's: the
+     native arrow sits on the border however much padding is asked for. */
+  padding: 0.2rem 1.75rem 0.2rem 0.5rem;
   font: inherit;
   font-size: 0.8rem;
   color: inherit;
-  background: none;
+  appearance: none;
+  background: var(--select-chevron) no-repeat right 0.5rem center / 0.75rem;
   border: 1px solid var(--border);
-  border-radius: 0.35rem;
+  border-radius: 0.3rem;
   cursor: pointer;
 }
 
