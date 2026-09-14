@@ -1,4 +1,5 @@
 import { useRef, useState } from 'react';
+import { useCombobox } from 'downshift';
 import { tintIndex } from '../tint.js';
 
 interface TagInputProps {
@@ -15,7 +16,7 @@ interface TagInputProps {
 }
 
 /**
- * Token-style tag editor.
+ * Token-style tag editor: a combobox over the note's existing tags.
  *
  * Commits on Enter, Tab, and comma, and on blur — committing only on Enter silently drops
  * a tag the user typed and then clicked away from, which reads as the app losing data.
@@ -24,6 +25,14 @@ interface TagInputProps {
  * adding tags comes in runs, and a soft keyboard's action key would otherwise carry focus
  * out of the field after the first. `enterKeyHint` asks that key to read "done" rather than
  * "next", and the handler refocuses to make it so even where the hint is ignored.
+ *
+ * The suggestions are Downshift's `useCombobox`, not a hand-rolled list. The first version
+ * was one — an input over a list of buttons — and it had no arrow keys, no Escape, and none
+ * of the roles a screen reader needs to know a list is attached to a field. Downshift owns
+ * the highlighted item, the arrow, Home and End keys, Escape, and the combobox, listbox and
+ * option semantics, and hands back plain props to spread on our own markup, so the row's
+ * chips, hint and styling are untouched. What stays ours is the commit vocabulary above,
+ * which its `stateReducer` and prop-getter handlers let this component keep.
  */
 export function TagInput({ tags, suggestions, onChange, label = 'tag' }: TagInputProps) {
   const [draft, setDraft] = useState('');
@@ -33,7 +42,7 @@ export function TagInput({ tags, suggestions, onChange, label = 'tag' }: TagInpu
    * The entry point used to be an unstyled transparent input that only announced itself
    * through a placeholder — and that placeholder was hidden as soon as the note had one
    * tag, leaving an invisible target you had to know to click. Idle, it now renders as a
-   * dashed "+ Add tag" chip beside the real ones; focused, it becomes a field.
+   * "+ Add tag" hint beside the real chips; focused, it becomes a field.
    */
   const [active, setActive] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -53,6 +62,44 @@ export function TagInput({ tags, suggestions, onChange, label = 'tag' }: TagInpu
   function remove(name: string) {
     onChange(tags.filter((t) => t !== name));
   }
+
+  const { isOpen, highlightedIndex, getInputProps, getMenuProps, getItemProps } = useCombobox({
+    items: available,
+    itemToString: (item) => item ?? '',
+    // The draft is ours: the field's text is this component's state, and Downshift reads it.
+    inputValue: draft,
+    onInputValueChange: ({ inputValue }) => setDraft(inputValue ?? ''),
+    // Nothing is ever "selected" in the field: picking a suggestion commits it as a chip
+    // and empties the field for the next one, so the selection is reported and dropped.
+    selectedItem: null,
+    onSelectedItemChange: ({ selectedItem }) => {
+      if (selectedItem) commit(selectedItem);
+    },
+    stateReducer: (state, { type, changes }) => {
+      switch (type) {
+        /*
+           Leaving the field commits what was typed, not what was highlighted. Downshift's
+           default selects the highlighted item on blur, and the pointer highlights whatever
+           it passes over — so typing "d", brushing "build" on the way to click elsewhere,
+           and leaving would have filed the note under "build". The blur handler below
+           commits the draft instead.
+        */
+        case useCombobox.stateChangeTypes.InputBlur:
+          return { ...changes, selectedItem: null, inputValue: state.inputValue, isOpen: false };
+        /* Escape dismisses the suggestions and keeps the draft; it does not undo typing. */
+        case useCombobox.stateChangeTypes.InputKeyDownEscape:
+          return { ...changes, inputValue: state.inputValue };
+        /* A picked suggestion becomes a chip, and the field empties for the next one. */
+        case useCombobox.stateChangeTypes.InputKeyDownEnter:
+        case useCombobox.stateChangeTypes.ItemClick:
+          return { ...changes, inputValue: '' };
+        default:
+          return changes;
+      }
+    },
+  });
+
+  const open = isOpen && available.length > 0;
 
   return (
     <div className="tag-input" onClick={() => inputRef.current?.focus()}>
@@ -82,56 +129,60 @@ export function TagInput({ tags, suggestions, onChange, label = 'tag' }: TagInpu
           Add {label}
         </span>
         <input
-          ref={inputRef}
-          className="tag-field"
-          value={draft}
-          // The visible label is the hint above; this names the field for screen readers,
-          // which never see it.
-          aria-label={`Add a ${label}`}
-          onFocus={() => setActive(true)}
-          onChange={(e) => setDraft(e.target.value)}
-          onBlur={() => {
-            setActive(false);
-            commit(draft);
-          }}
-          // Not "next": Enter adds a tag and stays, so the key that does it should not
-          // promise a jump to the next field.
-          enterKeyHint="done"
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' || e.key === 'Tab' || e.key === ',') {
-              if (draft.trim() === '') return;
-              e.preventDefault();
+          {...getInputProps({
+            ref: inputRef,
+            className: 'tag-field',
+            // The visible label is the hint above; this names the field for screen
+            // readers, which never see it.
+            'aria-label': `Add a ${label}`,
+            // Not "next": Enter adds a tag and stays, so the key that does it should not
+            // promise a jump to the next field.
+            enterKeyHint: 'done',
+            onFocus: () => setActive(true),
+            onBlur: () => {
+              setActive(false);
               commit(draft);
-              // Tab is meant to leave; Enter and comma are mid-run, so hold the caret in
-              // the field the commit just emptied. A soft keyboard's own action key can
-              // still move focus despite preventDefault, so this puts it back.
-              if (e.key !== 'Tab') inputRef.current?.focus();
-            } else if (e.key === 'Backspace' && draft === '' && tags.length > 0) {
-              // Backspace on an empty field removes the last tag, as chips usually behave.
-              remove(tags[tags.length - 1]!);
-            }
-          }}
+            },
+            onKeyDown: (e) => {
+              // A highlighted suggestion is Downshift's to select on Enter; the draft is
+              // committed only when nothing is highlighted, so arrowing to "build" and
+              // pressing Enter files "build", and Enter on a bare draft files the draft.
+              const picking = open && highlightedIndex >= 0;
+              if (e.key === 'Enter' || e.key === 'Tab' || e.key === ',') {
+                if (draft.trim() === '' || (e.key === 'Enter' && picking)) return;
+                e.preventDefault();
+                commit(draft);
+                // Tab is meant to leave; Enter and comma are mid-run, so hold the caret in
+                // the field the commit just emptied. A soft keyboard's own action key can
+                // still move focus despite preventDefault, so this puts it back.
+                if (e.key !== 'Tab') inputRef.current?.focus();
+              } else if (e.key === 'Backspace' && draft === '' && tags.length > 0) {
+                // Backspace on an empty field removes the last tag, as chips usually behave.
+                remove(tags[tags.length - 1]!);
+              }
+            },
+          })}
         />
 
-        {available.length > 0 && (
-          <ul className="tag-suggestions">
-            {available.map((s) => (
-              <li key={s}>
-                <button
-                  type="button"
-                  // onMouseDown, not onClick: blur fires first and would commit the draft
-                  // before a click ever lands.
-                  onMouseDown={(e) => {
-                    e.preventDefault();
-                    commit(s);
-                  }}
-                >
-                  {s}
-                </button>
+        {/* Always rendered, so the field's `aria-controls` has something to point at; the
+            list only shows while there is something in it. */}
+        <ul
+          {...getMenuProps({ className: open ? 'tag-suggestions' : 'tag-suggestions is-closed' })}
+        >
+          {open &&
+            available.map((s, index) => (
+              <li
+                key={s}
+                {...getItemProps({
+                  item: s,
+                  index,
+                  className: highlightedIndex === index ? 'is-highlighted' : undefined,
+                })}
+              >
+                {s}
               </li>
             ))}
-          </ul>
-        )}
+        </ul>
       </span>
     </div>
   );

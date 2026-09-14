@@ -2714,21 +2714,24 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
   box-shadow: 0 6px 20px rgb(0 0 0 / 12%);
 }
 
-.tag-suggestions button {
-  display: block;
-  width: 100%;
+/* Rendered whenever the field is, so the combobox's `aria-controls` resolves; shown only
+   while there is something to offer. */
+.tag-suggestions.is-closed { display: none; }
+
+/*
+   An option, not a button. The list is a listbox now (Downshift's), and the item under
+   the arrow keys or the pointer is the highlighted one — one state for both, so a row
+   never shows one highlight from the keyboard and another from the mouse.
+*/
+.tag-suggestions li {
   padding: 0.3rem 0.5rem;
-  font: inherit;
-  font-size: 0.8rem;
-  text-align: left;
+  font-size: 0.85rem;
   color: var(--fg);
-  background: none;
-  border: none;
   border-radius: 0.25rem;
   cursor: pointer;
 }
 
-.tag-suggestions button:hover { background: color-mix(in srgb, var(--fg) 7%, transparent); }
+.tag-suggestions li.is-highlighted { background: color-mix(in srgb, var(--fg) 7%, transparent); }
 
 .search-field {
   width: 100%;
