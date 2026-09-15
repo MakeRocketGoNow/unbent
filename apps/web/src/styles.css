@@ -4628,8 +4628,19 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
   display: flex;
   align-items: center;
   gap: 0.5rem;
-  width: 100%;
-  padding: 0.75rem 0.2rem;
+  /*
+     The hover fill needs air at both ends.
+
+     Inline padding was 0.2rem, which put the chevron 3px from the fill's right edge and
+     the glyph 3px from its left — on hover the row read as a box drawn too tight around
+     its contents. The sub-pages' rows (`.date-option`, `.sort-option`) already use 0.5rem
+     inside. Matching that here, and pulling the box out by the difference, gives the
+     ends their room without moving the label: its text edge stays 0.2rem in, in line
+     with the summary and the chips above it.
+  */
+  width: calc(100% + 0.6rem);
+  margin-inline: -0.3rem;
+  padding: 0.75rem 0.5rem;
   font: inherit;
   font-size: 1rem;
   text-align: left;
