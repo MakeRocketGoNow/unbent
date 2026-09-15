@@ -96,6 +96,17 @@ export function Settings({ onChanged }: SettingsProps) {
           const nb = byId(item);
           if (nb) setPendingDelete(nb);
         }}
+        /* The note count sits right after the name, the way a field's value count sits
+           after the field name on the notebook's own page. It said at the far right, a
+           second bare number beside "Fields N", read as more fields; against the name it
+           is plainly the notebook's size. Silent at zero, as it is there. */
+        renderNameCount={(item) =>
+          item.count > 0 ? (
+            <span className="tag-count" title={`${item.count} note${item.count === 1 ? '' : 's'}`}>
+              {item.count}
+            </span>
+          ) : null
+        }
         /* Navigation to the notebook's own page, so a link. The count says at a glance
            which notebooks are collections of records. */
         renderExtra={(item) => {
