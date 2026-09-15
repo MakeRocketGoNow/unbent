@@ -149,7 +149,7 @@ export function Settings({ onChanged }: SettingsProps) {
             {
               label: 'Delete notebook',
               busyLabel: 'Deleting…',
-              tone: 'primary',
+              tone: 'danger',
               onConfirm: () => confirmDelete(false),
             },
             ...(noteLabel
