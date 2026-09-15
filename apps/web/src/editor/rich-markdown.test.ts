@@ -153,7 +153,25 @@ describe('syntax hiding', () => {
   it('classes a revealed mark as punctuation', () => {
     const v = mount('# Heading\n\na **bold** b', 3);
     const marks = [...v.dom.querySelectorAll('.cm-md-mark')].map((el) => el.textContent);
-    expect(marks).toEqual(['#']);
+    // A heading mark's span takes its separating space with it; see the hanging tests.
+    expect(marks).toEqual(['# ']);
+  });
+
+  /**
+   * The heading mark hangs in the margin so the text does not move on reveal. Its span
+   * takes the separating space with it: that space is the gap between hashes and text.
+   */
+  it('hangs a revealed heading mark together with its space', () => {
+    const v = mount('## Heading\n\nplain', 3);
+    const hung = v.dom.querySelector('.cm-md-headmark');
+    expect(hung?.textContent).toBe('## ');
+    expect(hung?.classList.contains('cm-md-mark')).toBe(true);
+  });
+
+  it('hangs nothing but heading marks', () => {
+    const v = mount('> quote **bold**', 3);
+    expect(v.dom.querySelector('.cm-md-headmark')).toBeNull();
+    expect(v.dom.querySelectorAll('.cm-md-mark').length).toBe(3);
   });
 
   it('classes every revealed mark on the line, and none elsewhere', () => {

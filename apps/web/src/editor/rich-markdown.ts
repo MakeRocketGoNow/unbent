@@ -83,6 +83,23 @@ const CODE_BLOCK_ONLY = Decoration.line({
   class: 'cm-md-codeblock cm-md-codeblock-first cm-md-codeblock-last',
 });
 
+/**
+ * A heading line positions its own hanging mark, and keeps its height while the mark is
+ * the only thing on it: an absolutely positioned span leaves no in-flow content, and a
+ * line with none is zero pixels tall — the caret would then sit beside the line below
+ * while `## ` is being typed. `lh` is the line's own line-height, whatever the level.
+ */
+const HEADING_LINE = { position: 'relative', minHeight: '1lh' } as const;
+
+/**
+ * Below this viewport width the heading mark stays in the line; see the theme.
+ *
+ * A proxy for the room beside the note: with the 19rem sidebar and the shell's insets,
+ * the column reaches the note's 52rem measure at about 1250px, and a `### ` at heading
+ * size needs a little more than the column's own 1.5rem gutter to sit in.
+ */
+const HANG_MIN_WIDTH = 1200;
+
 const hiddenMark = Decoration.mark({ class: 'cm-md-hidden' });
 /**
  * A syntax mark on the line being edited.
@@ -94,6 +111,17 @@ const hiddenMark = Decoration.mark({ class: 'cm-md-hidden' });
  * lets someone who has never seen markdown click into a heading without a jolt.
  */
 const revealedMark = Decoration.mark({ class: 'cm-md-mark' });
+/**
+ * A revealed heading mark hangs in the margin, so the heading's text does not move.
+ *
+ * Hidden, `## ` takes no room and the heading starts at the column's edge. Revealed in
+ * flow, it pushes the whole heading three characters to the right and back again when
+ * the caret leaves — the jump is the thing people notice, more than the hashes. iA
+ * Writer's answer is to hang the marks to the left of the text, and that is what this
+ * does: the span covers the mark and its separating space, and the theme takes it out
+ * of the flow and sets its right edge on the line's left edge.
+ */
+const revealedHeaderMark = Decoration.mark({ class: 'cm-md-mark cm-md-headmark' });
 /** The alignment row hides as a collapsed line rather than as zero-width text. */
 const hiddenAlignRow = Decoration.mark({ class: 'cm-md-hidden' });
 const listBullet = Decoration.mark({ class: 'cm-md-bullet' });
@@ -1048,15 +1076,19 @@ function buildDecorations(view: EditorView, options: RichMarkdownOptions): Decor
 
           const scope = revealScope(state, node.node);
 
-          if (!selectionTouches(state, scope.from, scope.to)) {
-            let end = node.to;
-            if (MARKS_WITH_TRAILING_SPACE.has(node.name)) {
-              // Consume the separating whitespace so the content aligns with body text.
-              while (end < state.doc.length && /[ \t]/.test(state.doc.sliceString(end, end + 1))) {
-                end += 1;
-              }
+          let end = node.to;
+          if (MARKS_WITH_TRAILING_SPACE.has(node.name)) {
+            // Consume the separating whitespace so the content aligns with body text.
+            while (end < state.doc.length && /[ \t]/.test(state.doc.sliceString(end, end + 1))) {
+              end += 1;
             }
+          }
+
+          if (!selectionTouches(state, scope.from, scope.to)) {
             marks.push(hiddenMark.range(node.from, end));
+          } else if (node.name === 'HeaderMark') {
+            // The space hangs with the mark: it is the gap between the hashes and the text.
+            marks.push(revealedHeaderMark.range(node.from, end));
           } else {
             marks.push(revealedMark.range(node.from, node.to));
           }
@@ -1114,12 +1146,33 @@ export function richMarkdown(options: RichMarkdownOptions = {}): Extension {
         lineHeight: '0',
       },
 
-      '.cm-md-h1': { fontSize: '1.6em', fontWeight: '600', lineHeight: '1.35' },
-      '.cm-md-h2': { fontSize: '1.35em', fontWeight: '600', lineHeight: '1.35' },
-      '.cm-md-h3': { fontSize: '1.15em', fontWeight: '600' },
-      '.cm-md-h4': { fontSize: '1.05em', fontWeight: '600' },
-      '.cm-md-h5': { fontWeight: '600' },
-      '.cm-md-h6': { fontWeight: '600', opacity: '0.8' },
+      '.cm-md-h1': { ...HEADING_LINE, fontSize: '1.6em', fontWeight: '600', lineHeight: '1.35' },
+      '.cm-md-h2': { ...HEADING_LINE, fontSize: '1.35em', fontWeight: '600', lineHeight: '1.35' },
+      '.cm-md-h3': { ...HEADING_LINE, fontSize: '1.15em', fontWeight: '600' },
+      '.cm-md-h4': { ...HEADING_LINE, fontSize: '1.05em', fontWeight: '600' },
+      '.cm-md-h5': { ...HEADING_LINE, fontWeight: '600' },
+      '.cm-md-h6': { ...HEADING_LINE, fontWeight: '600', opacity: '0.8' },
+
+      /**
+       * The hanging heading mark, see `revealedHeaderMark`.
+       *
+       * `right: 100%` of the line puts the span's right edge on the line's left edge, so
+       * the mark ends where the text begins; `pre` keeps the trailing space that is the
+       * gap between them. The scroller's overflow is opened so the margin can hold it:
+       * this editor grows with its note and the column does the scrolling, so the
+       * scroller was never clipping anything that needed to scroll.
+       */
+      '.cm-scroller': { overflow: 'visible' },
+      '.cm-md-headmark': { position: 'absolute', right: '100%', whiteSpace: 'pre' },
+      /**
+       * Where there is no margin to hang into, the mark takes its place in the line
+       * instead and the heading shifts, as every mark did before. The cut is where the
+       * note column loses the air around its measure; at a phone's width the column
+       * runs to the glass and `### ` would be clipped rather than read.
+       */
+      [`@media (max-width: ${HANG_MIN_WIDTH}px)`]: {
+        '.cm-md-headmark': { position: 'static' },
+      },
 
       '.cm-md-strong': { fontWeight: '700' },
       '.cm-md-em': { fontStyle: 'italic' },
