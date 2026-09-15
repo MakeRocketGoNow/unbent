@@ -416,7 +416,15 @@ h1 {
      stop a drag short of the edge on a wide monitor. Routes that do want a measured
      column set their own — see .settings and .panel. */
   max-width: none;
-  padding: 2rem 1.5rem 1rem;
+  /*
+     Less above the wordmark than the plain shell's 4rem, and less than the 2rem this had:
+     the topbar's row is the 44px avatar, so 2rem above it put the wordmark's cap 43px
+     from the top of the window while the count under the divider sat 27px below it —
+     more air over the bar than under it, on the one view where the bar is a fixture
+     rather than a heading. 1.25rem brings the two within a few pixels of each other.
+     The filter panel's `--panel-top` is derived from this number; change both.
+  */
+  padding: 1.25rem 1.5rem 1rem;
 
   /*
      The notes view fills the viewport exactly and never scrolls as a page.
@@ -4724,7 +4732,7 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
    its phone shape because it does not exist above the breakpoint at all.
 
    The dialog is in the top layer, so it cannot be positioned relative to the sidebar and
-   `--panel-top` is a measurement rather than a reference: the wide shell's 2rem top
+   `--panel-top` is a measurement rather than a reference: the wide shell's 1.25rem top
    padding plus the topbar — whose height is the 2.75rem avatar button, not the wordmark
    beside it — with its 0.6rem padding, 1px rule and 1.2rem margin below. Measured against
    `.sidebar.getBoundingClientRect().top`, which it matches to the pixel. Anchor
@@ -4743,7 +4751,7 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
    --------------------------------------------------------------------------------- */
 @media (width > 860px) {
   .sheet:not(.sheet-side) {
-    --panel-top: calc(2rem + 2.75rem + 0.6rem + 1px + 1.2rem);
+    --panel-top: calc(1.25rem + 2.75rem + 0.6rem + 1px + 1.2rem);
     margin: 0;
     inset: auto;
     top: var(--panel-top);
@@ -5152,7 +5160,7 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
   }
 
   /*
-     Reclaimed whitespace: 2rem of padding above the wordmark is a desktop luxury. The
+     Reclaimed whitespace: 1.25rem of padding above the wordmark is a desktop luxury. The
      note view spends 43% of a phone screen on chrome before its first character, and this
      is the cheapest quarter of it.
   */
