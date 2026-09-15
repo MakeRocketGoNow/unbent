@@ -95,13 +95,45 @@ export function Editor({
   const pdfFilenamesRef = useRef(pdfFilenames);
   pdfFilenamesRef.current = pdfFilenames;
   const viewRef = useRef<EditorView | null>(null);
+  /**
+   * The live document, held across a rebuild that is only a change of clothes.
+   *
+   * The view is torn down when `rich` flips: the two modes are different extensions, not
+   * a decoration that can be swapped in place. `initialValue` is the last *saved* body
+   * the parent knows, so seeding the new view from it used to throw away whatever had
+   * been typed since — switching Rich → Source before the debounce landed put the saved
+   * text back on screen, and the next keystroke then saved *that*, losing the edit.
+   * Carrying the live document across is what makes the toggle a change of mode rather
+   * than a revert.
+   *
+   * Not used when `noteId` changes: that is a different note, and the saved seed is the
+   * right one. Workspace also remounts on note id, so this ref is empty on that path in
+   * practice; the id check is what makes the invariant hold even without that key.
+   *
+   * The caret rides along with the text. A mode toggle that dropped the selection back to
+   * the document start would be exactly the unasked-for motion the rest of this file works
+   * to avoid — you flip to Source to fix a pipe and the cursor is suddenly three paragraphs
+   * up. The offsets stay valid because the same doc string is carried across; a note change
+   * clears both together, so a stale caret is never applied to a different note.
+   */
+  const preservedDoc = useRef<string | null>(null);
+  const preservedSelection = useRef<{ anchor: number; head: number } | null>(null);
+  const lastNoteId = useRef(noteId);
 
   useEffect(() => {
     if (!host.current) return;
 
+    const sameNote = lastNoteId.current === noteId;
+    lastNoteId.current = noteId;
+    const doc = sameNote && preservedDoc.current !== null ? preservedDoc.current : initialValue;
+    const selection = sameNote ? (preservedSelection.current ?? undefined) : undefined;
+    preservedDoc.current = null;
+    preservedSelection.current = null;
+
     const view = new EditorView({
       state: EditorState.create({
-        doc: initialValue,
+        doc,
+        selection,
         extensions: [
           history(),
           // Markdown shortcuts come first so Mod-b and Mod-i win over any default binding.
@@ -218,12 +250,21 @@ export function Editor({
     onViewReadyRef.current?.(view);
 
     return () => {
+      // Written on every teardown, the last unmount included — where it is a dead store,
+      // since the ref goes with the component. Only a same-note rebuild that runs straight
+      // after this cleanup ever reads it back; a note change clears it first.
+      preservedDoc.current = view.state.doc.toString();
+      preservedSelection.current = {
+        anchor: view.state.selection.main.anchor,
+        head: view.state.selection.main.head,
+      };
       onViewReadyRef.current?.(null);
       viewRef.current = null;
       view.destroy();
     };
     // initialValue is intentionally not a dependency: the view owns the document after
-    // mount, and re-running on every keystroke would rebuild the editor.
+    // mount, and re-running on every keystroke would rebuild the editor. A rebuild for
+    // `rich` reuses `preservedDoc` rather than the saved seed; see that ref.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [noteId, rich]);
 
