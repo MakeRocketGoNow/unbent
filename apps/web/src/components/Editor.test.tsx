@@ -8,7 +8,8 @@ import { Editor } from './Editor.js';
  * because the two modes are different extensions. The seed it is handed is the last saved
  * body, so a rebuild that used that seed would throw away whatever had been typed since —
  * and the next keystroke would then save the reverted text. These pin that the live
- * document survives the rebuild, and that a different note still starts from its seed.
+ * document and the caret survive the rebuild, and that a different note still starts from
+ * its seed.
  */
 describe('Editor across Rich / Source', () => {
   afterEach(cleanup);
@@ -49,6 +50,41 @@ describe('Editor across Rich / Source', () => {
 
     expect(view).not.toBeNull();
     expect(view!.state.doc.toString()).toBe('saved body typed');
+  });
+
+  it('keeps the caret where it was when switching between rich and source', () => {
+    let view: EditorView | null = null;
+    const { rerender } = render(
+      <Editor
+        noteId="n1"
+        initialValue="saved body"
+        rich
+        onChange={() => {}}
+        onViewReady={(v) => {
+          view = v;
+        }}
+      />,
+    );
+
+    // Put the caret inside the word, not at the document edge the reseed would default to.
+    act(() => {
+      view!.dispatch({ selection: { anchor: 3 } });
+    });
+
+    rerender(
+      <Editor
+        noteId="n1"
+        initialValue="saved body"
+        rich={false}
+        onChange={() => {}}
+        onViewReady={(v) => {
+          view = v;
+        }}
+      />,
+    );
+
+    expect(view).not.toBeNull();
+    expect(view!.state.selection.main.head).toBe(3);
   });
 
   it('seeds from the saved body when the note changes, not the previous note\'s typing', () => {

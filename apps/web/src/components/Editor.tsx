@@ -109,8 +109,15 @@ export function Editor({
    * Not used when `noteId` changes: that is a different note, and the saved seed is the
    * right one. Workspace also remounts on note id, so this ref is empty on that path in
    * practice; the id check is what makes the invariant hold even without that key.
+   *
+   * The caret rides along with the text. A mode toggle that dropped the selection back to
+   * the document start would be exactly the unasked-for motion the rest of this file works
+   * to avoid — you flip to Source to fix a pipe and the cursor is suddenly three paragraphs
+   * up. The offsets stay valid because the same doc string is carried across; a note change
+   * clears both together, so a stale caret is never applied to a different note.
    */
   const preservedDoc = useRef<string | null>(null);
+  const preservedSelection = useRef<{ anchor: number; head: number } | null>(null);
   const lastNoteId = useRef(noteId);
 
   useEffect(() => {
@@ -119,11 +126,14 @@ export function Editor({
     const sameNote = lastNoteId.current === noteId;
     lastNoteId.current = noteId;
     const doc = sameNote && preservedDoc.current !== null ? preservedDoc.current : initialValue;
+    const selection = sameNote ? (preservedSelection.current ?? undefined) : undefined;
     preservedDoc.current = null;
+    preservedSelection.current = null;
 
     const view = new EditorView({
       state: EditorState.create({
         doc,
+        selection,
         extensions: [
           history(),
           // Markdown shortcuts come first so Mod-b and Mod-i win over any default binding.
@@ -240,7 +250,14 @@ export function Editor({
     onViewReadyRef.current?.(view);
 
     return () => {
+      // Written on every teardown, the last unmount included — where it is a dead store,
+      // since the ref goes with the component. Only a same-note rebuild that runs straight
+      // after this cleanup ever reads it back; a note change clears it first.
       preservedDoc.current = view.state.doc.toString();
+      preservedSelection.current = {
+        anchor: view.state.selection.main.anchor,
+        head: view.state.selection.main.head,
+      };
       onViewReadyRef.current?.(null);
       viewRef.current = null;
       view.destroy();
