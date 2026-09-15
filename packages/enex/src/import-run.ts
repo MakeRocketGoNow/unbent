@@ -186,7 +186,14 @@ export class ImportRun {
     options.signal?.addEventListener('abort', this.cancel, { once: true });
   }
 
-  /** Imports one note, recording the outcome either way. */
+  /**
+   * Imports one note, recording the outcome either way.
+   *
+   * `title` is what the driver knows before the work starts. A driver that only learns
+   * the real title partway through — an archive names a note inside the file it has yet
+   * to read — may overwrite `progress.currentTitle` from inside `work`, and a failure is
+   * reported under whichever name is current when it happens.
+   */
   async attempt(title: string, work: () => Promise<void>): Promise<void> {
     const { options, progress } = this;
 
@@ -202,7 +209,7 @@ export class ImportRun {
     } catch (err) {
       if (options.signal?.aborted) return;
       progress.failed += 1;
-      options.onFailure?.({ title, reason: (err as Error).message });
+      options.onFailure?.({ title: progress.currentTitle, reason: (err as Error).message });
 
       const status = statusOf(err);
       this.streak =
@@ -260,9 +267,13 @@ export interface ImportFile {
  * The server suffixes a name that is already taken on the note, so the stored name can
  * differ from the requested one; the map is `requested → stored` for every file that
  * happened to, so the caller can repoint the body's links.
+ *
+ * Takes an async iterable as readily as an array so a driver that can read its files
+ * lazily — an archive, where each is a byte range — holds one attachment in memory at a
+ * time rather than a note's worth.
  */
 export async function uploadFiles(
-  files: ImportFile[],
+  files: Iterable<ImportFile> | AsyncIterable<ImportFile>,
   noteId: string,
   client: ImportClient,
   progress: ImportProgress,
@@ -270,7 +281,7 @@ export async function uploadFiles(
 ): Promise<Map<string, string>> {
   const renames = new Map<string, string>();
 
-  for (const file of files) {
+  for await (const file of files) {
     const uploaded = await client.uploadFile(noteId, file.filename, file.mime, file.bytes);
     progress.filesUploaded += 1;
 

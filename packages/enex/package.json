@@ -15,6 +15,8 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@unbent/shared": "workspace:*",
+    "@zip.js/zip.js": "^2.13.1",
     "hast-util-from-html": "^2.0.3",
     "hast-util-to-mdast": "^10.1.2",
     "mdast-util-gfm": "^3.1.0",
@@ -25,7 +27,6 @@
   },
   "devDependencies": {
     "@types/node": "^26.5.0",
-    "@unbent/shared": "workspace:*",
     "typescript": "^7.0.2",
     "vitest": "^5.0.0"
   }
