@@ -84,6 +84,16 @@ const CODE_BLOCK_ONLY = Decoration.line({
 });
 
 const hiddenMark = Decoration.mark({ class: 'cm-md-hidden' });
+/**
+ * A syntax mark on the line being edited.
+ *
+ * Revealed rather than hidden, but drawn as punctuation the editor owns — dimmed, at
+ * normal weight — instead of in the style of the text it marks. A `##` set at heading
+ * size and weight reads as two characters of the heading; the same `##` in light grey
+ * reads as the control that made it one, which is what Bear and iA Writer draw and what
+ * lets someone who has never seen markdown click into a heading without a jolt.
+ */
+const revealedMark = Decoration.mark({ class: 'cm-md-mark' });
 /** The alignment row hides as a collapsed line rather than as zero-width text. */
 const hiddenAlignRow = Decoration.mark({ class: 'cm-md-hidden' });
 const listBullet = Decoration.mark({ class: 'cm-md-bullet' });
@@ -1002,6 +1012,8 @@ function buildDecorations(view: EditorView, options: RichMarkdownOptions): Decor
               }
             }
             marks.push(hiddenMark.range(node.from, end));
+          } else {
+            marks.push(revealedMark.range(node.from, node.to));
           }
         }
       },
@@ -1175,6 +1187,11 @@ export function richMarkdown(options: RichMarkdownOptions = {}): Extension {
         cursor: 'pointer',
       },
       '.cm-md-punct': { opacity: '0.35' },
+      /**
+       * Revealed syntax, see `revealedMark`. Opacity rather than a colour so it dims
+       * whatever the mark sits in — a heading, a quote, a link — by the same amount.
+       */
+      '.cm-md-mark': { opacity: '0.35', fontWeight: '400' },
 
       /**
        * The inline PDF page.

@@ -145,6 +145,23 @@ describe('syntax hiding', () => {
     const v = mount('a **bold** b', 5);
     expect(visibleText(v, 1)).toBe('a **bold** b');
   });
+
+  /**
+   * Revealed syntax is the editor's punctuation, not the text's: it is classed so the
+   * theme can dim it, rather than left to inherit the heading or emphasis it marks.
+   */
+  it('classes a revealed mark as punctuation', () => {
+    const v = mount('# Heading\n\na **bold** b', 3);
+    const marks = [...v.dom.querySelectorAll('.cm-md-mark')].map((el) => el.textContent);
+    expect(marks).toEqual(['#']);
+  });
+
+  it('classes every revealed mark on the line, and none elsewhere', () => {
+    const v = mount('# Heading\n\na **bold** _it_ b', 16);
+    const marks = [...v.dom.querySelectorAll('.cm-md-mark')].map((el) => el.textContent);
+    expect(marks).toEqual(['**', '**', '_', '_']);
+    expect(visibleText(v, 1)).toBe('Heading');
+  });
 });
 
 /**
