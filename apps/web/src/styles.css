@@ -3604,6 +3604,50 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
 .settings-section p { margin: 0 0 0.7rem; max-width: 46rem; }
 
 /*
+ * The MCP server URL and its copy button, inline in a paragraph.
+ *
+ * The wrap keeps them on one line — flex rather than inline-flex so the code can shrink
+ * with `overflow-wrap: anywhere` on narrow screens rather than pushing the button off.
+ * The button is a quiet target: the URL is the point, and the copy is a convenience that
+ * should not draw the eye before the user reads what it copies.
+ */
+.mcp-url-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  max-width: 100%;
+}
+
+.mcp-url {
+  padding: 0.25rem 0.5rem;
+  font-size: 0.9em;
+  background: color-mix(in srgb, var(--fg) 8%, transparent);
+  border-radius: 0.3rem;
+  overflow-wrap: anywhere;
+}
+
+.mcp-copy {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  padding: 0;
+  color: var(--muted);
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 0.3rem;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+}
+
+.mcp-copy:hover {
+  color: var(--fg);
+  border-color: var(--accent);
+}
+
+/*
  * The export link, shaped as a button. It stays an <a href download> so the browser
  * streams the archive straight to disk — a fetch would buffer a multi-gigabyte zip inside
  * the Worker — while looking like the deliberate action it is.

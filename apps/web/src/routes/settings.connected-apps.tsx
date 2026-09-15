@@ -2,6 +2,7 @@ import { createFileRoute } from '@tanstack/react-router';
 import { useEffect, useState } from 'react';
 import { Button } from '../components/Button.js';
 import { Confirm } from '../components/Confirm.js';
+import { CopyIcon } from '../components/icons.js';
 import { oauth2 } from '../auth-client.js';
 
 export const Route = createFileRoute('/settings/connected-apps')({
@@ -13,6 +14,44 @@ interface Grant {
   clientId: string;
   name: string | null;
   grantedAt: string | null;
+}
+
+/**
+ * The MCP server URL for this instance, with a button that copies it.
+ *
+ * The URL is built from the current origin rather than hardcoded, because the same page
+ * serves unbent.app and every self-hosted instance — and a self-hosted user pasting a
+ * production URL into Claude would get someone else's consent screen.
+ */
+function McpUrl() {
+  const [copied, setCopied] = useState(false);
+  const url = `${window.location.origin}/api/mcp`;
+
+  async function copy() {
+    try {
+      await navigator.clipboard.writeText(url);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      // Clipboard access can fail in older browsers or non-https contexts; the URL is
+      // still visible to select and copy by hand, so this is not worth an error message.
+    }
+  }
+
+  return (
+    <span className="mcp-url-wrap">
+      <code className="mcp-url">{url}</code>
+      <button
+        type="button"
+        className="mcp-copy"
+        onClick={() => void copy()}
+        aria-label="Copy URL"
+        title={copied ? 'Copied' : 'Copy'}
+      >
+        {copied ? '✓' : <CopyIcon />}
+      </button>
+    </span>
+  );
 }
 
 /**
@@ -103,6 +142,25 @@ function ConnectedAppsPage() {
         example. Each can read, create and change notes, and move them to the trash, until
         you disconnect it here.
       </p>
+
+      <section className="settings-section">
+        <h3>Connect an app</h3>
+        <p className="muted">
+          Unbent speaks{' '}
+          <a href="https://modelcontextprotocol.io" target="_blank" rel="noopener noreferrer">
+            MCP
+          </a>
+          , so Claude, Cursor, ChatGPT and other assistants can work with your notes
+          directly. Point the client at this server:
+        </p>
+        <p>
+          <McpUrl />
+        </p>
+        <p className="muted small">
+          The client will open a browser window to ask for permission. Once approved, it
+          appears above and stays connected until you disconnect it here.
+        </p>
+      </section>
 
       {error && <p className="bad">{error}</p>}
 

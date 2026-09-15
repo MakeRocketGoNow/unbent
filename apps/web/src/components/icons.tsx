@@ -7,6 +7,7 @@ import {
   Book,
   Calendar,
   Check,
+  Copy,
   FileText,
   Film,
   Funnel,
@@ -297,4 +298,14 @@ export function MoveDownIcon() {
  */
 export function CloseIcon() {
   return <X size="0.85em" strokeWidth={2.5} aria-hidden="true" focusable="false" />;
+}
+
+/**
+ * Two overlapping rectangles, for copying text to the clipboard.
+ *
+ * Used beside a copiable value like the MCP server URL, where clicking copies. Small and
+ * button-sized so it sits beside inline content without overwhelming it.
+ */
+export function CopyIcon() {
+  return <Copy size="1em" strokeWidth={2} aria-hidden="true" focusable="false" />;
 }
