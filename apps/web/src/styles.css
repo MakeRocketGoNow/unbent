@@ -3883,12 +3883,34 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
 
    The gap before it separates the one control that *makes* something from the ones that
    change what is on screen. It used to be stretched to the icons' 44px as well, when this
-   row was a phone's and the button a thumb target; on a desktop `.btn`'s own height beside
-   the icons is the same pairing the old head row had, and a 44px-tall word beside a
-   pointer-sized count reads as a button from a different app.
+   row was a phone's and the button a thumb target; a 44px-tall word beside a pointer-sized
+   count reads as a button from a different app.
 */
 .list-head-actions .btn {
   margin-left: 0.4rem;
+}
+
+/*
+   One height across the row at desktop width.
+
+   The icons sit in 44px squares, which is the thumb target the phone needs and the size
+   every `.icon-btn` in the app takes. Beside a 36px New on a desktop that left three
+   heights on one row — the count's line, the icons' boxes, the button — and the hover
+   fill drew the icon's box at its full size, so the row read as controls from two
+   different apps. A pointer needs no 44px, so above the breakpoint the icons take the
+   button's height and the button states it, and the fill matches the box it is on.
+   The glyphs themselves do not change size: `HeaderIcon` sizes them against the row's
+   text, not against the box.
+*/
+@media (width > 860px) {
+  .list-head-actions .icon-btn {
+    min-width: 2.25rem;
+    height: 2.25rem;
+  }
+
+  .list-head-actions .btn {
+    min-height: 2.25rem;
+  }
 }
 
 /* The count yields before the controls do: at the narrowest the sidebar can be dragged to,
