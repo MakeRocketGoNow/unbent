@@ -4,6 +4,7 @@ import { markdown } from '@codemirror/lang-markdown';
 import { GFM } from '@lezer/markdown';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
+  bulletGlyph,
   orderedMarker,
   pdfNamesChanged,
   resetExpandedPdfs,
@@ -122,11 +123,10 @@ describe('syntax hiding', () => {
     expect(visibleText(v, 1)).toBe('quoted');
   });
 
-  /** A list without its bullet is unreadable, so the mark stays. */
-  it('keeps list markers visible', () => {
+  /** A list without its bullet is unreadable, so the mark stays — as a bullet. */
+  it('renders a list marker as a bullet', () => {
     const v = mount('- item\n\nplain', 10);
-    expect(visibleText(v, 1)).toContain('-');
-    expect(visibleText(v, 1)).toContain('item');
+    expect(visibleText(v, 1)).toBe('• item');
   });
 
   it('hides inline emphasis marks without eating following spaces', () => {
@@ -318,6 +318,61 @@ describe('ordered list markers', () => {
     const doc = '1. one\n2. two\n   3. three';
     const v = mount(doc, doc.lastIndexOf('3.') + 1);
     expect(visibleText(v, 3)).toContain('3.');
+  });
+});
+
+describe('bullet markers', () => {
+  it.each([
+    [1, '•'],
+    [2, '◦'],
+    [3, '▪'],
+    [4, '•'],
+  ])('renders depth %d as %s', (depth, glyph) => {
+    expect(bulletGlyph(depth)).toBe(glyph);
+  });
+
+  it.each(['-', '*', '+'])('renders a `%s` item as a bullet', (mark) => {
+    const v = mount(`${mark} item\n\nplain`, 10);
+    expect(visibleText(v, 1)).toBe('• item');
+  });
+
+  it('cycles the glyph by nesting depth', () => {
+    const doc = '- one\n  - two\n    - three\n\nplain';
+    const v = mount(doc, doc.length);
+    expect(visibleText(v, 1)).toBe('• one');
+    expect(visibleText(v, 2)).toBe('  ◦ two');
+    expect(visibleText(v, 3)).toBe('    ▪ three');
+  });
+
+  it('counts only bullet ancestors, so a bullet under a number is top level', () => {
+    const doc = '1. one\n   - two\n\nplain';
+    const v = mount(doc, doc.length);
+    expect(visibleText(v, 2)).toBe('   • two');
+  });
+
+  /** You cannot edit a dash the editor has replaced with a bullet. */
+  it('reveals the dash when the cursor is on the line', () => {
+    const v = mount('- item\n- other', 3);
+    expect(visibleText(v, 1)).toBe('- item');
+    expect(visibleText(v, 2)).toBe('• other');
+  });
+
+  it('never rewrites the document', () => {
+    const v = mount('- item\n\nplain', 10);
+    expect(v.state.doc.toString()).toBe('- item\n\nplain');
+  });
+
+  /** The checkbox is the task's marker; a bullet in front of it would be a second one. */
+  it('hides the marker of a task item', () => {
+    const v = mount('- [ ] task\n\nplain', 14);
+    // The checkbox widget has no text of its own; the space after `[ ]` is the text's.
+    expect(visibleText(v, 1)).toBe(' task');
+    expect(v.dom.querySelector('.cm-md-task')).not.toBeNull();
+  });
+
+  it('reveals the marker of a task item on the caret line', () => {
+    const v = mount('- [ ] task\n\nplain', 8);
+    expect(visibleText(v, 1)).toBe('-  task');
   });
 });
 
