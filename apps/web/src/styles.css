@@ -4100,6 +4100,36 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
   transform: translateY(-15%) rotate(45deg);
 }
 
+/*
+   The fields page: a control per definition, each under its name.
+
+   Stacked rather than label-beside-control, because the sheet is a phone's width and a
+   range is two inputs — a name plus two dated fields does not fit on one 320px line, and
+   a page where some rows wrap and some do not reads as broken. The name carries the type's
+   glyph, as the note's own property list does, so "Amount" reads as a number without
+   saying so.
+*/
+.fields-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.fields-picker-row {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  min-width: 0;
+}
+
+.fields-picker-name {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.9rem;
+  color: var(--muted);
+}
+
 /* The custom fields sit under the row that reveals them, indented to read as its content
    rather than as two more options. */
 .date-picker .date-range {

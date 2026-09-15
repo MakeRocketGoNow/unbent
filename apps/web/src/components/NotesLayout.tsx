@@ -26,9 +26,10 @@ import { ExportLink } from './ExportLink.js';
 import { TagPicker } from './TagPicker.js';
 import { FilterRow } from './FilterRow.js';
 import { DatePicker } from './DatePicker.js';
+import { FieldsPicker } from './FieldsPicker.js';
 import { rangeLabel } from './format-when.js';
 import { NotebookDrawer } from './NotebookDrawer.js';
-import { PlusIcon, TagIcon, CalendarIcon } from './icons.js';
+import { PlusIcon, TagIcon, CalendarIcon, FieldsIcon } from './icons.js';
 import { Sheet } from './Sheet.js';
 import { NoteListHead } from './NoteListHead.js';
 import { NotesSort } from './NotesSort.js';
@@ -145,7 +146,7 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
    * second sheet over the first, which would dim the first behind the second and leave two
    * scrims on screen — Android's `FilterSheet` records the same choice.
    */
-  const [sheetPage, setSheetPage] = useState<'root' | 'tags' | 'dates'>('root');
+  const [sheetPage, setSheetPage] = useState<'root' | 'tags' | 'dates' | 'fields'>('root');
 
   /*
    * Closing always returns to the root. A sheet reopening on the page it was last closed
@@ -354,7 +355,13 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
           open={sheetOpen}
           onClose={closeSheet}
           title={
-            sheetPage === 'tags' ? 'Tags' : sheetPage === 'dates' ? 'Dates' : 'Filter notes'
+            sheetPage === 'tags'
+              ? 'Tags'
+              : sheetPage === 'dates'
+                ? 'Dates'
+                : sheetPage === 'fields'
+                  ? 'Fields'
+                  : 'Filter notes'
           }
           onBack={sheetPage === 'root' ? undefined : () => setSheetPage('root')}
           headAction={
@@ -393,6 +400,10 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
             <DatePicker from={from} to={to} onDone={() => setSheetPage('root')} />
           )}
 
+          {sheetPage === 'fields' && (
+            <FieldsPicker defs={fieldDefs.data ?? []} selected={fieldFilters} />
+          )}
+
           {sheetPage === 'root' && (
             <>
               {/*
@@ -419,11 +430,12 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
               <hr className="sheet-rule" />
 
               {/*
-                  Two rows, each opening a page of its own — the shape Android's sheet
-                  settled on, and for the reason its root page stays readable: the tag
-                  picker is a find field and an unbounded list, and the dates are five
-                  pills plus two labelled fields. Inlined, either one is taller than
-                  everything else here put together.
+                  A row per filter, each opening a page of its own — the shape Android's
+                  sheet settled on, and for the reason its root page stays readable: the
+                  tag picker is a find field and an unbounded list, the dates are five
+                  rows plus two labelled fields, and the fields page is a control per
+                  definition. Inlined, any one is taller than everything else here put
+                  together.
 
                   Neither the notebook nor the sort is among them. The notebook is a
                   place you go, so it is in the drawer or the select; sort changes the
@@ -439,6 +451,26 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
                       : undefined
                   }
                   onClick={() => setSheetPage('tags')}
+                />
+              )}
+
+              {/*
+                  Fields, between tags and dates, and only inside a notebook that has any.
+                  Field definitions belong to a notebook, so outside one there is nothing
+                  to offer, and a row that opened onto an empty page would be a control
+                  that does nothing. The value counts filters rather than naming them:
+                  the chips above already name them, and a row has one line.
+              */}
+              {!searching && (fieldDefs.data?.length ?? 0) > 0 && (
+                <FilterRow
+                  icon={<FieldsIcon />}
+                  label="Fields"
+                  value={
+                    fieldFilters.length > 0
+                      ? `${fieldFilters.length} ${fieldFilters.length === 1 ? 'filter' : 'filters'}`
+                      : undefined
+                  }
+                  onClick={() => setSheetPage('fields')}
                 />
               )}
 
