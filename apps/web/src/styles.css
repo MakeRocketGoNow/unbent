@@ -3839,11 +3839,12 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
 }
 
 /* ---------------------------------------------------------------------------------
-   The note list header, on a phone.
+   The note list header, at every width.
 
-   A count and four controls where the sidebar has a count, a New button, a search field,
+   A count and a few controls where the sidebar had a count, a New button, a search field,
    two selects, two date inputs and a tag row. Everything is still reachable; what changed
-   is that it is reachable rather than permanently on screen.
+   is that it is reachable rather than permanently on screen. It was the phone's header
+   first, and the desktop took it once its own stack had left the list a few rows tall.
    --------------------------------------------------------------------------------- */
 .list-head {
   display: flex;
@@ -3890,19 +3891,25 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
 }
 
 /*
-   New is the same height as the icons beside it.
+   New, at the end of the row on a desktop.
 
-   `.btn` sizes itself from its padding and text, which came to 35px against the icons' 44,
-   and four controls in a row at two heights is the "spacing is really inconsistent"
-   feedback this project keeps getting. The button keeps its own horizontal padding — it is
-   a word, not a glyph, and squaring it off would make it as wide as it is tall.
-
-   The gap before it separates the one control that *makes* something from the three that
-   change what is on screen.
+   The gap before it separates the one control that *makes* something from the ones that
+   change what is on screen. It used to be stretched to the icons' 44px as well, when this
+   row was a phone's and the button a thumb target; on a desktop `.btn`'s own height beside
+   the icons is the same pairing the old head row had, and a 44px-tall word beside a
+   pointer-sized count reads as a button from a different app.
 */
 .list-head-actions .btn {
-  min-height: 2.75rem;
   margin-left: 0.4rem;
+}
+
+/* The count yields before the controls do: at the narrowest the sidebar can be dragged to,
+   "12 of 340 notes" and four controls do not both fit, and the controls are the ones that
+   have to be hit. */
+.list-title .count {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
 /*

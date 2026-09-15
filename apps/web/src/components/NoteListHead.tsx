@@ -11,19 +11,26 @@ interface NoteListHeadProps {
    * The heading this view did not have. It is what lets the topbar go on a phone — the
    * wordmark was saying which app you were in, on the one screen where that was never in
    * doubt, while the thing actually in doubt was which notebook you were looking at.
+   *
+   * Absent at desktop width, where the notebook picker sits one row down and names the
+   * notebook itself; a heading above it would be the same word twice on adjacent lines.
    */
-  title: string;
+  title?: string;
   /** The search box's value, which is the URL's `q`. */
   query: string;
   onQuery: (next: string) => void;
-  /** Whether the field has taken over the row. */
+  /** Whether the field has taken over the row. Ignored when the field is always on screen. */
   searchOpen: boolean;
-  onOpenSearch: () => void;
+  /**
+   * Opens the field over the row. When absent, the field is not behind an icon at all:
+   * it is a permanent row under the header, which is the desktop's shape — see below.
+   */
+  onOpenSearch?: () => void;
   /** Closes the field *and* clears the query — see the comment on the back arrow. */
   onCloseSearch: () => void;
   onOpenFilters: () => void;
-  /** Opens the drawer of notebooks. */
-  onOpenMenu: () => void;
+  /** Opens the drawer of notebooks. Absent where there is no drawer. */
+  onOpenMenu?: () => void;
   /** Lights the dot on the filter icon: a narrowed list should never look like the whole archive. */
   filtered: boolean;
   /**
@@ -34,29 +41,48 @@ interface NoteListHeadProps {
    * floor now, so the corner goes back to the control people reach for daily.
    */
   sort: ReactNode;
+  /**
+   * The last thing in the row: the desktop's New button.
+   *
+   * On a phone New floats over the list, so nothing is passed here. On a desktop a
+   * floating button over a column has nothing to float clear of, and the primary action
+   * belongs where the old head row kept it — at the end of the row, after the controls
+   * that are about what is already on screen.
+   */
+  action?: ReactNode;
 }
 
 /**
- * The note list's header on a phone: where you are, and four icons.
+ * The note list's header: where you are, and the controls that are about what is on screen.
  *
- * The controls these replace cost about half a small screen before a single note was
+ * The controls this replaces cost about half a small screen before a single note was
  * visible — a search field, two selects, a pair of date inputs and a tag row, all present
  * on every visit and most of them used on few. They are all still here; they are one tap
  * away instead of permanently open, which is the trade the Android app makes and the one
  * every notes app people arrive from has settled on.
  *
- * Search takes the whole row rather than sitting beside the icons, because a field sharing
- * a 375px row with four controls is a field you cannot read what you typed into. That is
- * also why the arrow that closes it clears the query: a closed field with a live `q` is a
- * list filtered by something invisible, which is the failure this whole change is about.
- * The Android app's search bar does the same.
+ * It was the phone's alone, on the reasoning that a desktop sidebar had room for the
+ * controls themselves. It had room for them and nothing else: on a 19rem column those
+ * rows left the note list a few entries tall, on the screen whose entire job is listing
+ * notes. So the desktop takes this row too, and the difference between the two widths
+ * is two props rather than two headers.
  *
- * New is not here. It is a floating button over the list, which is where every notes app
- * people arrive from puts it, and it leaves this row to the four controls that are about
- * what is on screen rather than about adding to it.
+ * **Search on a phone takes the whole row**, because a field sharing a 375px row with four
+ * controls is a field you cannot read what you typed into. That is also why the arrow
+ * that closes it clears the query: a closed field with a live `q` is a list filtered by
+ * something invisible, which is the failure this whole change is about. The Android app's
+ * search bar does the same.
  *
- * Above the breakpoint none of this renders — the sidebar has room for the controls
- * themselves, and one-click filtering there is a strength rather than clutter.
+ * **Search on a desktop is a permanent row under the header.** It is the one control used
+ * on most visits, the column has the width for it, and every notes app with a desktop
+ * keeps its search visible there; putting it behind an icon would trade a click for
+ * nothing. The caller says which shape it wants by passing `onOpenSearch` or not — the
+ * field is then either something to open or something that is simply there.
+ *
+ * New is not in the row on a phone. It is a floating button over the list, which is where
+ * every notes app people arrive from puts it, and it leaves this row to the four controls
+ * that are about what is on screen rather than about adding to it. The desktop passes it
+ * back in through `action`, at the end of the row.
  */
 export function NoteListHead({
   count,
@@ -70,19 +96,40 @@ export function NoteListHead({
   onOpenMenu,
   filtered,
   sort,
+  action,
 }: NoteListHeadProps) {
   const field = useRef<HTMLInputElement>(null);
+  /** Whether the field is a permanent row (desktop) rather than something the row opens into. */
+  const fieldAlways = onOpenSearch === undefined;
 
   /*
    * Focus follows the field being opened, but not a field that was already open — a deep
    * link arriving with `?q=` should show its results, not the keyboard. `searchOpen` only
-   * transitions here, so the effect keying off it does exactly that.
+   * transitions here, so the effect keying off it does exactly that. A permanent field is
+   * never "opened", so this never fires for it.
    */
   useEffect(() => {
-    if (searchOpen) field.current?.focus();
-  }, [searchOpen]);
+    if (searchOpen && !fieldAlways) field.current?.focus();
+  }, [searchOpen, fieldAlways]);
 
-  if (searchOpen) {
+  const input = (
+    <input
+      ref={field}
+      className="search-field"
+      type="search"
+      value={query}
+      placeholder="Search notes…"
+      aria-label="Search notes"
+      onChange={(e) => onQuery(e.target.value)}
+      onKeyDown={(e) => {
+        // Escape leaves the search the way it does everywhere else in the app. For the
+        // permanent field that means clearing it — there is nothing to close.
+        if (e.key === 'Escape') onCloseSearch();
+      }}
+    />
+  );
+
+  if (searchOpen && !fieldAlways) {
     /*
      * One row, the same height as the row it replaces.
      *
@@ -107,60 +154,53 @@ export function NoteListHead({
         >
           <BackArrow />
         </button>
-        <input
-          ref={field}
-          className="search-field"
-          type="search"
-          value={query}
-          placeholder="Search notes…"
-          aria-label="Search notes"
-          onChange={(e) => onQuery(e.target.value)}
-          onKeyDown={(e) => {
-            // Escape leaves the search the way it does everywhere else in the app.
-            if (e.key === 'Escape') onCloseSearch();
-          }}
-        />
+        {input}
       </div>
     );
   }
 
   return (
-    <div className="list-head">
-      <button
-        type="button"
-        className="icon-btn"
-        aria-label="Notebooks"
-        onClick={onOpenMenu}
-      >
-        <MenuIcon />
-      </button>
-      {/* Two lines in one column: where you are, and how much of it there is. The count
-          was the whole header before, which said how many without ever saying of what. */}
-      <div className="list-title">
-        <h2>{title}</h2>
-        <span className="count">{count}</span>
+    <>
+      <div className="list-head">
+        {onOpenMenu && (
+          <button type="button" className="icon-btn" aria-label="Notebooks" onClick={onOpenMenu}>
+            <MenuIcon />
+          </button>
+        )}
+        {/* Two lines in one column: where you are, and how much of it there is. The count
+            was the whole header before, which said how many without ever saying of what.
+            Without a title it is the count alone again — at desktop width the notebook
+            picker under this row is what says of what. */}
+        <div className="list-title">
+          {title && <h2>{title}</h2>}
+          <span className="count">{count}</span>
+        </div>
+        <div className="list-head-actions">
+          {onOpenSearch && (
+            <button type="button" className="icon-btn" aria-label="Search notes" onClick={onOpenSearch}>
+              <SearchIcon />
+            </button>
+          )}
+          <button
+            type="button"
+            className="icon-btn"
+            /*
+             * The state goes in the name, not only in the dot. The dot is the glanceable half
+             * and it is invisible to a screen reader; a control that reads "Filter notes"
+             * either way would leave the one fact worth knowing — that the list is already
+             * narrowed — available to sighted users alone.
+             */
+            aria-label={filtered ? 'Filter notes, filters are active' : 'Filter notes'}
+            onClick={onOpenFilters}
+          >
+            <FilterIcon />
+            {filtered && <span className="badge-dot" aria-hidden="true" />}
+          </button>
+          {sort}
+          {action}
+        </div>
       </div>
-      <div className="list-head-actions">
-        <button type="button" className="icon-btn" aria-label="Search notes" onClick={onOpenSearch}>
-          <SearchIcon />
-        </button>
-        <button
-          type="button"
-          className="icon-btn"
-          /*
-           * The state goes in the name, not only in the dot. The dot is the glanceable half
-           * and it is invisible to a screen reader; a control that reads "Filter notes"
-           * either way would leave the one fact worth knowing — that the list is already
-           * narrowed — available to sighted users alone.
-           */
-          aria-label={filtered ? 'Filter notes, filters are active' : 'Filter notes'}
-          onClick={onOpenFilters}
-        >
-          <FilterIcon />
-          {filtered && <span className="badge-dot" aria-hidden="true" />}
-        </button>
-        {sort}
-      </div>
-    </div>
+      {fieldAlways && <div className="list-search">{input}</div>}
+    </>
   );
 }
