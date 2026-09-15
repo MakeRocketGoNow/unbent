@@ -9,6 +9,11 @@ import { describe, expect, it } from 'vitest';
 import { importEnex, type ImportClient } from '../src/import.js';
 
 const DIR = process.env['ENEX_DIR'];
+/**
+ * The export's notebook of scanned PDFs, by file name. Configurable because the notebook
+ * this was measured against is a real one, and its name does not belong in the repo.
+ */
+const PDF_FILE = process.env['ENEX_PDF_FILE'] ?? 'Scans.enex';
 const BASE = process.env['API_URL'] ?? 'http://localhost:8787';
 const ORIGIN = process.env['APP_URL'] ?? 'http://localhost:5173';
 const enabled = process.env['LIVE_IMPORT'] === '1' && DIR !== undefined && existsSync(DIR);
@@ -115,9 +120,9 @@ describe.skipIf(!enabled)('live import', () => {
     const cookie = await signUp();
     const client = liveClient(cookie);
 
-    const progress = await importEnex(fileHandle('Appliance Manuals.enex'), client);
+    const progress = await importEnex(fileHandle(PDF_FILE), client);
 
-    expect(progress.created).toBe(93);
+    expect(progress.created).toBeGreaterThan(0);
     expect(progress.failed).toBe(0);
     expect(progress.filesUploaded).toBeGreaterThan(0);
 
@@ -155,7 +160,7 @@ describe.skipIf(!enabled)('live import', () => {
     const cookie = await signUp();
     const client = liveClient(cookie);
 
-    const progress = await importEnex(fileHandle('Appliance Manuals.enex'), client, {
+    const progress = await importEnex(fileHandle(PDF_FILE), client, {
       extractText: true,
     });
 

@@ -42,7 +42,7 @@ export interface DisclosureProps {
  * not just the web.
  *
  * **The summary states the value.** A noun is added only when the value cannot identify
- * itself. `Appliance Manuals  #Blood Pressure` needs none — a notebook name and hashed tags say
+ * itself. `Coupons  #Groceries` needs none — a notebook name and hashed tags say
  * what they are. `(4)` does, so it is `Attachments (4)`. `Tags` earns its noun because when
  * nothing is filtering, the value is a bare count.
  *

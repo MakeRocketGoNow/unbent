@@ -106,14 +106,14 @@ describe('importEnex', () => {
 
   it('stores the notebook name separately from evernote tags', async () => {
     const { client, notes } = fakeClient();
-    const file = enexFile('Appliance Manuals.enex', [
-      note({ title: 'Visit', content: '<div>x</div>', tags: ['Doctor Visit', 'Medical'] }),
+    const file = enexFile('Podcast Bookmarks.enex', [
+      note({ title: 'Episode 12', content: '<div>x</div>', tags: ['Interview', 'Listen Later'] }),
     ]);
 
     await importEnex(file, client);
-    expect(notes[0]!.tags.sort()).toEqual(['Doctor Visit', 'Medical']);
+    expect(notes[0]!.tags.sort()).toEqual(['Interview', 'Listen Later']);
     expect(client.createNote).toHaveBeenCalledWith(
-      expect.objectContaining({ notebook: 'Appliance Manuals' }),
+      expect.objectContaining({ notebook: 'Podcast Bookmarks' }),
     );
   });
 

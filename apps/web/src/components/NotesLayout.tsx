@@ -345,7 +345,7 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
                       surface. There it is the one filter the sheet reports but does not
                       set, because its drawer is the only place naming it; here the list
                       header names it permanently, one line above, so a chip for it was the
-                      third place saying "Appliance Manuals" on one screen.
+                      third place saying "Coupons" on one screen.
                   */}
                   {sheetFiltered ? (
                     <ActiveFilters tags={selectedTags} from={from} to={to} />

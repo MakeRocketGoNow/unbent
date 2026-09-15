@@ -287,7 +287,7 @@ describe('filtered export', () => {
 
   it('names the file after the slice it contains', async () => {
     const actor = await signUp(`namedexport-${Date.now()}@example.test`, 'named-pass-12', 'F');
-    const notebook = 'Appliance Manuals';
+    const notebook = 'Podcast Bookmarks';
     await createNote(actor, { title: 'Only', body: 'a', notebook });
 
     const res = await rawExport(actor, { notebook, from: '2020-01-01' });
@@ -295,7 +295,7 @@ describe('filtered export', () => {
     await res.body?.cancel();
 
     // Several slices land in one downloads folder; the name has to say which is which.
-    expect(disposition).toContain('unbent-medical-history-2020-01-01-to-now');
+    expect(disposition).toContain('unbent-podcast-bookmarks-2020-01-01-to-now');
   });
 
   it('keeps the original filename when unfiltered', async () => {

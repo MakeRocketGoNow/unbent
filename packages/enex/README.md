@@ -40,6 +40,7 @@ attachments and list item text. They are rewritten to `img`/`input` before parsi
 ```bash
 pnpm test                                    # unit tests and fixtures
 ENEX_DIR=~/Downloads/export pnpm test        # also parse real export files
+ENEX_PDF_FILE='Scans.enex' …                 # which file there is the notebook of scanned PDFs
 ENEX_DIR=… ENEX_BENCH=1 pnpm test            # also the multi-gigabyte benchmark
 ```
 

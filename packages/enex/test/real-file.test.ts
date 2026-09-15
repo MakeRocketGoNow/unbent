@@ -11,6 +11,11 @@ import { parseEnexStream } from '../src/parse.js';
 import type { EnexNote } from '../src/types.js';
 
 const DIR = process.env['ENEX_DIR'];
+/**
+ * The export's notebook of scanned PDFs, by file name. Configurable because the notebook
+ * this was measured against is a real one, and its name does not belong in the repo.
+ */
+const PDF_FILE = process.env['ENEX_PDF_FILE'] ?? 'Scans.enex';
 const available = DIR !== undefined && existsSync(DIR);
 
 function streamOf(path: string): ReadableStream<Uint8Array> {
@@ -46,7 +51,7 @@ describe.skipIf(!available)('real export files', () => {
   /** The end-to-end property: en-media hashes must resolve against decoded resources. */
   it('resolves attachments by computed md5 in a notebook full of PDFs', async () => {
     const notes: EnexNote[] = [];
-    await parseEnexStream(streamOf(`${DIR}/Appliance Manuals.enex`), {
+    await parseEnexStream(streamOf(`${DIR}/${PDF_FILE}`), {
       onNote: (n) => {
         if (n.resources.length > 0 && notes.length < 20) notes.push(n);
       },
