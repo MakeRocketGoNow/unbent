@@ -1,15 +1,23 @@
 # @unbent/migrate
 
-`unbent-migrate` — import Evernote `.enex` files into Unbent from the command line.
+`unbent-migrate` — import Evernote `.enex` files, or Unbent's own exports, into Unbent from
+the command line.
 
 The in-app importer handles a single file well. This is for the case a browser is bad at:
 a whole account's worth of exports, run unattended, resumed after an interruption, without
-dragging dozens of multi-gigabyte files through a file picker.
+dragging dozens of multi-gigabyte files through a file picker — or a backup restored from
+a shell.
 
 ```bash
 unbent-migrate login
 unbent-migrate import ~/evernote/*.enex
+unbent-migrate import ~/backups/unbent-export-2026-09-15.zip
 ```
+
+An Unbent export — the library zip, a notebook's, or a single note's zip or `.md` — arrives
+with each note's own notebook, tags, dates, fields, files and id, exactly as Settings →
+Import takes it in the browser. Nothing is read into memory whole: the zip is opened as a
+lazily read `Blob` and each entry pulled by byte range.
 
 The first command asks which instance to use and remembers the answer, so nothing after it
 needs a URL. There is deliberately no default: a guessed instance means a forgotten flag can
@@ -44,11 +52,11 @@ same command again.
 | Flag | Meaning |
 | --- | --- |
 | `--url <url>` | Which Unbent instance to import into |
-| `--notebook <name>` | File notes under this notebook instead of the filename |
+| `--notebook <name>` | File every note under this notebook instead |
 | `--no-text` | Skip PDF text extraction — faster, but scans stay title-only |
 
-By default the filename becomes each note's notebook, so `Recipes.enex` lands in a notebook
-called `Recipes`.
+By default an `.enex` file's name becomes its notes' notebook, so `Recipes.enex` lands in a
+notebook called `Recipes`; an Unbent export's notes each name their own.
 
 ## Getting the .enex files
 
