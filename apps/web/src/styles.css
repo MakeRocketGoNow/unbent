@@ -2358,7 +2358,16 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
 
 /* Attachment inventory for the open note */
 .attachments {
-  margin: 0.35rem 0 0.15rem;
+  /*
+     `margin-block`, not the four-value `margin` shorthand it used to be: the shorthand also
+     sets the inline margins to 0, and those are how this panel is centred. Every direct
+     child of `.workspace-main` is capped at the reading measure and centred by a
+     `margin-inline: auto` there; the shorthand quietly overrode it, so on a window wider
+     than the cap the attachments panel alone sat flush left while the title, the property
+     list and the body were centred around it. Setting only the block margins leaves the
+     inline pair to that `auto`, and the panel lines up with the rest of the note.
+  */
+  margin-block: 0.35rem 0.15rem;
   /* No padding: the summary carries its own height, and the list its own bottom gap. */
   padding: 0;
   border-bottom: 1px solid var(--border);
