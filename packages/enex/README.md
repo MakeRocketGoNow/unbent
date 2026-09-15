@@ -1,7 +1,14 @@
 # @unbent/enex
 
-Evernote `.enex` parsing and ENML → Markdown conversion. Runtime-agnostic: no DOM, no node
-built-ins, so the same code runs in a browser Web Worker and in tests.
+Evernote `.enex` parsing and ENML → Markdown conversion, and the import drivers built on it.
+Runtime-agnostic: no DOM, no node built-ins, so the same code runs in a browser Web Worker
+and in tests.
+
+The name predates the second format. `importEnex` reads Evernote's files; `importArchive`
+reads Unbent's own export — the library zip, a single note's zip, or its bare `.md` — through
+`@unbent/shared`'s frontmatter codec. Everything past the reader is shared (`import-run.ts`):
+the request per note, the upload per file, PDF text extraction, and the breaker that ends a
+run when the server has gone away.
 
 ## Streaming
 
@@ -33,6 +40,7 @@ attachments and list item text. They are rewritten to `img`/`input` before parsi
 ```bash
 pnpm test                                    # unit tests and fixtures
 ENEX_DIR=~/Downloads/export pnpm test        # also parse real export files
+ENEX_PDF_FILE='Scans.enex' …                 # which file there is the notebook of scanned PDFs
 ENEX_DIR=… ENEX_BENCH=1 pnpm test            # also the multi-gigabyte benchmark
 ```
 

@@ -122,9 +122,9 @@ describe('round-trip', () => {
 
 describe('notebook', () => {
   it('round-trips a notebook name', () => {
-    const withNotebook = { ...base, notebook: 'Appliance Manuals' };
+    const withNotebook = { ...base, notebook: 'Coupons' };
     const out = parse(serialize(withNotebook));
-    expect(out.notebook).toBe('Appliance Manuals');
+    expect(out.notebook).toBe('Coupons');
   });
 
   it('omits the field entirely when there is no notebook', () => {

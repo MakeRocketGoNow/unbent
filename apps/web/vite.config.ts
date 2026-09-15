@@ -52,13 +52,16 @@ export default defineConfig({
   },
   optimizeDeps: {
     /**
-     * The ENEX worker is created only after Start import is clicked, so Vite cannot discover
-     * its dependencies during its initial crawl. Discovering them mid-import makes Vite
-     * optimize them and reload the page, resetting the UI while uploads are in progress.
+     * The import worker is created only after Start import is clicked, so Vite cannot
+     * discover its dependencies during its initial crawl. Discovering them mid-import makes
+     * Vite optimize them and reload the page, resetting the UI while uploads are in progress.
      *
-     * Keep this list aligned with runtime package imports in `packages/enex/src`.
+     * Keep this list aligned with runtime package imports in `packages/enex/src`. The
+     * frontmatter codec's `yaml` is not here because `@unbent/shared` is imported by the
+     * page itself, so the crawl already finds it.
      */
     include: [
+      '@unbent/enex > @zip.js/zip.js',
       '@unbent/enex > hast-util-from-html',
       '@unbent/enex > hast-util-to-mdast',
       '@unbent/enex > mdast-util-gfm',

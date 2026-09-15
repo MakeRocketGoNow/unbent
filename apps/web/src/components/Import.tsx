@@ -3,6 +3,7 @@ import type { ImportFailure, ImportProgress } from '@unbent/enex';
 import type { ImportEvent, ImportRequest } from '../import-worker.js';
 import { startIndexing, useIndexing, type IndexingState } from '../index-files.js';
 import { Button } from './Button.js';
+import { describeImportFile } from './import-file.js';
 import { useSettingsBusy } from './SettingsLayout.js';
 
 interface ImportProps {
@@ -88,8 +89,11 @@ export function Import({ onImported }: ImportProps) {
     return () => clearInterval(timer);
   }, [status]);
 
+  // What the picked file is, and so whether Start does anything. Null until one is picked.
+  const picked = file ? describeImportFile(file.name) : null;
+
   const start = useCallback(() => {
-    if (!file) return;
+    if (!file || describeImportFile(file.name).format === null) return;
 
     setStatus('running');
     setFailures([]);
@@ -176,22 +180,36 @@ export function Import({ onImported }: ImportProps) {
   return (
     <div className="panel">
       <div className="panel-head">
-        <h2>Import from Evernote</h2>
+        <h2>Import</h2>
       </div>
 
       {status === 'idle' && (
         <>
           <p className="muted small">
-            Select one <code>.enex</code> file. The file name becomes each note&apos;s
-            notebook so notebooks survive the move. Re-running an import skips notes that already
-            landed, so an interrupted run is safe to repeat.
+            Bring notes in from Evernote, or from another Unbent. Notes that are already here
+            are skipped, so an interrupted run is safe to repeat and a backup can be restored
+            over what you have.
           </p>
 
-          {/* Parsing happens here in the browser, not on the server: a multi-GB file is
+          {/* One line per file kind, because the one thing that differs between them is
+              worth knowing before choosing: an .enex file's name becomes the notebook, an
+              archive's is ignored because every note inside names its own. */}
+          <ul className="import-formats small">
+            <li>
+              <code>.enex</code> — an Evernote export. The file name becomes each note&apos;s
+              notebook, so notebooks survive the move.
+            </li>
+            <li>
+              <code>.zip</code> or <code>.md</code> — an Unbent export, from this app or any
+              other. Each note keeps its notebook, tags, dates, fields and files.
+            </li>
+          </ul>
+
+          {/* Reading happens here in the browser, not on the server: a multi-GB file is
               minutes of local CPU with no server-side progress to fall back on. Saying so
               up front is what stops a slow import reading as a hung one. */}
           <p className="muted small">
-            Large files are parsed on this machine, so a multi-gigabyte export can take
+            Large files are read on this machine, so a multi-gigabyte export can take
             several minutes and the tab needs to stay open. If it does get interrupted, start
             the same file again — nothing duplicates.
           </p>
@@ -226,13 +244,17 @@ export function Import({ onImported }: ImportProps) {
 
           <input
             type="file"
-            accept=".enex,application/xml,text/xml"
+            accept=".enex,.zip,.md,application/xml,text/xml,application/zip,text/markdown"
             onChange={(e) => setFile(e.target.files?.[0] ?? null)}
           />
 
-          {file && (
-            <p className="small">
-              {file.name} · {formatBytes(file.size)}
+          {file && picked && (
+            <p className="import-file small">
+              <span>
+                {file.name} · {formatBytes(file.size)}
+              </span>
+              {/* Says what the run will do with this file — or why it will not start. */}
+              <span className={picked.format === null ? 'bad' : 'muted'}>{picked.text}</span>
             </p>
           )}
 
@@ -243,13 +265,14 @@ export function Import({ onImported }: ImportProps) {
               onChange={(e) => setExtractText(e.target.checked)}
             />
             <span className="small">
-              Search inside PDFs — reads the text Evernote already OCR'd into scanned
-              attachments. Most scanned notes have no body text, so without this they are
-              only findable by title. Adds roughly a second per PDF.
+              Search inside PDFs — reads the text already embedded in scanned attachments,
+              by Evernote&apos;s OCR or a scanner&apos;s. Most scanned notes have no body
+              text, so without this they are only findable by title. Adds roughly a second
+              per PDF.
             </span>
           </label>
 
-          <Button variant="primary" disabled={!file} onClick={start}>
+          <Button variant="primary" disabled={!picked || picked.format === null} onClick={start}>
             Start import
           </Button>
         </>

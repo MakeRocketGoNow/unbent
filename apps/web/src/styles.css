@@ -2899,6 +2899,19 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
 .owned-list li > :first-child { flex: 1; min-width: 0; overflow-wrap: anywhere; }
 .owned-list li > :last-child { flex: none; margin-left: auto; }
 
+/* The files the picker takes, before one is chosen. A list rather than a sentence each:
+   the reader is matching the file they have against a shape, and a list scans. Same
+   measure and colour as the paragraphs around it, so it reads as part of the same run. */
+.import-formats { margin: 0; padding-left: 1.2rem; max-width: 46rem; color: var(--muted); }
+.import-formats li { margin-bottom: 0.3rem; }
+.import-formats li:last-child { margin-bottom: 0; }
+
+/* The chosen file: its name on one line, what will be done with it beneath. The second
+   line is muted because it restates the list above for this one file; it turns `.bad`
+   when the file is one neither importer takes, and that is the line Start is disabled by. */
+.import-file { margin: 0; }
+.import-file span { display: block; }
+
 /* Collapsed by default: the answer is only needed once, and open by default would push
    the file picker — the thing a returning user wants — below the fold. */
 .enex-help { width: 100%; max-width: 46rem; }

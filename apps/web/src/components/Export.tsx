@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Link } from '@tanstack/react-router';
 
 /**
  * The export page.
@@ -59,6 +60,16 @@ export function Export() {
         This page exports everything. To export part of your library — one notebook, a tag,
         a range of dates — filter the note list and use <em>Export these notes</em> beneath
         the filters. The archive has the same shape either way.
+      </p>
+
+      {/* The other half of the promise, said where the first half is made: a backup that
+          cannot be put back is a copy, not a backup, and a notebook exported to move it
+          somewhere needs the somewhere to take it. */}
+      <p className="muted small">
+        The zip goes back in through <Link to="/settings/import" className="link">Import</Link>,
+        into this Unbent or any other. Notes keep their ids, notebooks, tags, dates and
+        fields, and notes that are already there are skipped — so restoring a backup over
+        what you have never duplicates anything.
       </p>
 
       <a className="primary export-button" href="/api/export" download onClick={() => setStarted(true)}>

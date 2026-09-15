@@ -1,8 +1,16 @@
 #!/usr/bin/env node
-import { open } from 'node:fs/promises';
+import { openAsBlob } from 'node:fs';
+import { open, type FileHandle } from 'node:fs/promises';
 import { basename, resolve } from 'node:path';
 import { Readable } from 'node:stream';
-import { importEnex, type ImportFailure, type ImportProgress } from '@unbent/enex';
+import {
+  importArchive,
+  importEnex,
+  importFormat,
+  type ImportFailure,
+  type ImportOptions,
+  type ImportProgress,
+} from '@unbent/enex';
 import { requestDeviceCode, waitForToken } from './auth.js';
 import { ApiError, checkToken, createClient } from './client.js';
 import { clearAll, clearToken, readToken, writeToken } from './token-store.js';
@@ -10,27 +18,33 @@ import { configPath, normalizeUrl, readUrl, writeUrl } from './config-store.js';
 import { createInterface } from 'node:readline/promises';
 
 /**
- * `unbent-migrate` — import an Evernote export from the command line.
+ * `unbent-migrate` — import an Evernote export, or an Unbent one, from the command line.
  *
  * The browser importer already does this well for a single file, and this is not trying to
  * replace it. It exists for the case the browser is bad at: a whole account's worth of
  * .enex files, run unattended, resumed after an interruption, on a machine where dragging
- * dozens of multi-gigabyte files through a file picker is the worst part of the job.
+ * dozens of multi-gigabyte files through a file picker is the worst part of the job. An
+ * Unbent export is taken for the same reason — a backup restored from a shell, or a
+ * library moved between instances without a browser in the loop.
  */
 
 function usage(): string {
-  return `unbent-migrate — import Evernote .enex files into Unbent
+  return `unbent-migrate — import Evernote .enex files, or Unbent exports, into Unbent
 
 Usage:
-  unbent-migrate import <file.enex...> [options]
+  unbent-migrate import <file...> [options]
   unbent-migrate login [options]
   unbent-migrate logout [--all]
   unbent-migrate set-url <url>
   unbent-migrate show-config
 
+Files are .enex (Evernote), or .zip and .md (an Unbent export — the library, a
+notebook, or one note). An .enex file's name becomes its notes' notebook; an
+Unbent export's notes each carry their own.
+
 Options:
   --url <url>       Use this instance for one command, without storing it
-  --notebook <name> File the notes under this notebook, overriding the filename
+  --notebook <name> File every note under this notebook instead
   --no-text         Skip PDF text extraction (faster; scans stay title-only)
   -h, --help        Show this
 
@@ -163,7 +177,7 @@ async function login(url: string): Promise<string> {
 
 async function runImport(args: Args): Promise<number> {
   if (args.files.length === 0) {
-    process.stderr.write('Nothing to import: pass one or more .enex files.\n');
+    process.stderr.write('Nothing to import: pass one or more .enex, .zip or .md files.\n');
     return 1;
   }
 
@@ -178,34 +192,44 @@ async function runImport(args: Args): Promise<number> {
     const name = basename(full);
     process.stdout.write(`\n${name}\n`);
 
-    const started = Date.now();
-    let handle;
-    try {
-      handle = await open(full, 'r');
-    } catch {
-      process.stderr.write(`  Could not read ${full}\n`);
+    const format = importFormat(name);
+    if (format === null) {
+      process.stderr.write('  Skipped: not an .enex, .zip or .md file.\n');
       exitCode = 1;
       continue;
     }
 
+    const started = Date.now();
+    const options: ImportOptions = {
+      notebookTag: args.notebook,
+      extractText: args.extractText,
+      onProgress: (p) => renderProgress(p, Date.now() - started),
+      onFailure: (f) => failures.push(f),
+    };
+
+    let handle: FileHandle | undefined;
     try {
       const before = failures.length;
-      const progress = await importEnex(
-        {
-          name,
-          // Node's file stream, adapted to the web stream importEnex expects. Streaming
-          // rather than reading the file in: these are routinely larger than memory.
-          stream: () =>
-            Readable.toWeb(handle.createReadStream()) as ReadableStream<Uint8Array>,
-        },
-        client,
-        {
-          notebookTag: args.notebook,
-          extractText: args.extractText,
-          onProgress: (p) => renderProgress(p, Date.now() - started),
-          onFailure: (f) => failures.push(f),
-        },
-      );
+      let progress: ImportProgress;
+      if (format === 'enex') {
+        handle = await open(full, 'r');
+        const stream = handle;
+        progress = await importEnex(
+          {
+            name,
+            // Node's file stream, adapted to the web stream importEnex expects. Streaming
+            // rather than reading the file in: these are routinely larger than memory.
+            stream: () =>
+              Readable.toWeb(stream.createReadStream()) as ReadableStream<Uint8Array>,
+          },
+          client,
+          options,
+        );
+      } else {
+        // A lazily read Blob, not the file's bytes: zip.js reads the central directory
+        // and then each entry by byte range, so an archive is never held in memory whole.
+        progress = await importArchive({ name, blob: await openAsBlob(full) }, client, options);
+      }
 
       const failed = failures.length - before;
       process.stdout.write(
@@ -215,6 +239,11 @@ async function runImport(args: Args): Promise<number> {
       if (failed) exitCode = 1;
     } catch (err) {
       process.stdout.write('\r\x1b[2K');
+      if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
+        process.stderr.write(`  Could not read ${full}\n`);
+        exitCode = 1;
+        continue;
+      }
       if (err instanceof ApiError && err.status === 401) {
         process.stderr.write('  Session expired. Run `unbent-migrate login` and try again.\n');
         return 1;
@@ -222,7 +251,7 @@ async function runImport(args: Args): Promise<number> {
       process.stderr.write(`  ${err instanceof Error ? err.message : String(err)}\n`);
       exitCode = 1;
     } finally {
-      await handle.close();
+      await handle?.close();
     }
   }
 

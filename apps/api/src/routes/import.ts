@@ -26,6 +26,7 @@ export const importRoutes = new Hono<AppEnv>().post(
     const input = c.req.valid('json');
 
     const { id, created, skippedFields } = await c.get('notes').importNote({
+      id: input.id,
       title: input.title,
       body: input.body,
       tags: input.tags,

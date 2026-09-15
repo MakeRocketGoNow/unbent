@@ -3,8 +3,9 @@
 A personal note app that keeps your notes in Markdown and hands them back whenever you ask.
 
 Notes are Markdown with YAML frontmatter. Attachments are ordinary files. Export produces a
-plain folder tree — one directory per note, containing `note.md` and a `files/` subdirectory —
-that you can read, grep, and back up without this app existing.
+plain folder tree — one directory per note, containing the note's markdown and a `files/`
+subdirectory — that you can read, grep, and back up without this app existing, and import
+back into any Unbent.
 
 The Markdown is the note, not a serialization of one. A note you save is byte-identical to
 what you typed: no reflowed lists, no `_italic_` quietly rewritten to `*italic*`, no escaped
@@ -1081,13 +1082,17 @@ would otherwise swamp the suite it belongs to.
 `GET /api/export` streams a zip of the whole account as a plain folder tree:
 
 ```
-first-note-2382e420/note.md
-untitled-e080eb5b/note.md
+first-note-2382e420/first-note-2382e420.md
+first-note-2382e420/files/agenda.pdf
+untitled-e080eb5b/untitled-e080eb5b.md
 ```
 
-Each `note.md` is markdown with YAML frontmatter (id, title, created, updated, tags). The
-directory name is a slug plus an id fragment, so two notes with the same title do not
-collide. Standard `unzip` reads it; no part of this app is needed to get your notes back.
+Each markdown file carries YAML frontmatter — id, title, created, updated, tags, notebook,
+and any custom field values by name — above the body exactly as written. The directory name
+is a slug plus an id fragment, so two notes with the same title do not collide, and the
+markdown repeats it so a search of the unpacked tree finds one file per title rather than a
+thousand `note.md`s. Standard `unzip` reads it; no part of this app is needed to get your
+notes back.
 
 `/api/export` also takes the note list's `tag`, `notebook`, `from`, and `to`, so an export
 can be a slice rather than the whole library — a year of records for a doctor, the receipts
@@ -1101,6 +1106,28 @@ This is the backup mechanism, not a convenience feature: `wrangler d1 export` fa
 database containing an FTS5 table and leaves the database wedged in a "processing export"
 state ([workers-sdk#9519](https://github.com/cloudflare/workers-sdk/issues/9519)). Do not
 run it.
+
+### Restoring, or moving to another Unbent
+
+The same zip goes back in through Settings → Import, on the instance that wrote it or any
+other — as does a single note's download, zip or bare `.md`. Every note's metadata is in its
+own frontmatter, so a notebook exported with `?notebook=` arrives as that notebook, with its
+tags, dates, custom fields and files; nothing about the notes lives outside the archive.
+
+Each note keeps the id it had when the id is free, so a restore puts notes back at their old
+addresses and links between them keep working. A note that is already present — by id, or
+by content hash for archives without ids — is skipped, so restoring a backup over a live
+library duplicates nothing and never overwrites an edit made since. The trash is not
+consulted: a note deleted on purpose stays deleted, and importing it again brings back a
+fresh live copy under a new id.
+
+The archive is read in the browser, one note and one attachment at a time, by the same
+worker that reads ENEX files — the requests, the resumability and the per-note failure log
+are all the ENEX import's. Attachment types are recovered from the bytes and then the
+extension, since a zip carries neither, and PDF text is re-extracted so search works after a
+restore. Only the layout is assumed: markdown with frontmatter, and a `files/` directory
+beside it. Directory names are ignored, so an archive unpacked, rearranged and zipped again
+by hand reads the same as the original.
 
 ## License
 
