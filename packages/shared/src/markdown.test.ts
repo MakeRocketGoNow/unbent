@@ -64,7 +64,7 @@ describe('attachmentFilenamesInMarkdown', () => {
    * flagged "not linked" while the body renders it fine.
    */
   it('keeps parentheses inside an angle-bracket destination', () => {
-    const name = 'GLUCOSE METER (HEMOCUE) OP Test Results.pdf';
+    const name = 'SAMPLE INVOICE (ACME) Final Copy.pdf';
     const md = formatAttachmentMarkdown(name, `files/${name}`);
     expect(attachmentFilenamesInMarkdown(md).has(name)).toBe(true);
   });
