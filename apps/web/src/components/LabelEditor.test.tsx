@@ -131,4 +131,29 @@ describe('LabelEditor', () => {
     expect(queryByText('A hint.')).toBeNull();
     expect(queryByText('None.')).toBeNull();
   });
+
+  /* The tag list wants the trailing number alone: in an archive the count is the information. */
+  it('draws the trailing count when no renderNameCount is given', () => {
+    const { getByText } = harness({ kind: 'tag', onCreate: undefined });
+    expect(getByText('5')).toBeTruthy();
+    expect(getByText('12')).toBeTruthy();
+  });
+
+  /* A caller that gives renderNameCount puts the count against the name and takes the
+     trailing number off — a notebook's note count, hard against the notebook name. */
+  it('moves the count against the name and drops the trailing one', () => {
+    const items: LabelItem[] = [
+      { id: '1', name: 'Coupons', count: 5 },
+      { id: '2', name: 'Travel', count: 0 },
+    ];
+    const { getByText, queryAllByText } = harness({
+      items,
+      renderNameCount: (item) => (item.count > 0 ? <span>{item.count}</span> : null),
+    });
+    // The count for Coupons sits inside its name button, not as a trailing sibling.
+    const nameButton = getByText('Coupons').closest('button');
+    expect(nameButton?.textContent).toContain('5');
+    // The empty notebook shows no count at all, not a bare zero, anywhere on its row.
+    expect(queryAllByText('0')).toHaveLength(0);
+  });
 });

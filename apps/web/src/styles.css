@@ -3241,8 +3241,11 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
   color: var(--muted);
 }
 
-/* The name is the row's target. A button, since it acts, drawn as the text it is. */
+/* The name is the row's target. A button, since it acts, drawn as the text it is. A flex
+   row so a count can sit against the name and hold its width while the name truncates. */
 .label-name {
+  display: flex;
+  align-items: baseline;
   flex: 1;
   min-width: 0;
   padding: 0.6rem 0;
@@ -3252,10 +3255,15 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
   color: var(--fg);
   background: none;
   border: 0;
+  cursor: pointer;
+}
+
+/* The name text alone ellipses; the count beside it is a separate, fixed flex item. */
+.label-name-text {
+  min-width: 0;
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
-  cursor: pointer;
 }
 
 .label-name:disabled { cursor: default; }
@@ -3285,6 +3293,11 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
 .label-row > .icon-btn:last-child { margin-right: -0.75rem; }
 
 .label-extra { flex: 0 0 auto; }
+
+/* The count that hugs the name, when a caller puts one there — a notebook's note count,
+   like a field's value count on the notebook's own page. A small gap off the name, and it
+   does not stretch, so the name's ellipsis still takes the slack on a narrow row. */
+.label-name .tag-count { margin-left: 0.4rem; flex: 0 0 auto; }
 
 .label-empty {
   padding: 0.75rem 0;

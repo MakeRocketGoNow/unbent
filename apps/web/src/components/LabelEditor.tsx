@@ -34,6 +34,16 @@ interface LabelEditorProps {
   onDelete: (item: LabelItem) => void;
   /** Anything else a resting row should carry between its name and its count. */
   renderExtra?: (item: LabelItem) => ReactNode;
+  /**
+   * A count that sits against the name rather than at the row's right edge. Given this, a
+   * caller takes over the count entirely — the trailing bare number is dropped. It is how
+   * the notebook list carries its note count: hard against the name, the way a field's
+   * value count sits against the field name on the notebook's own page, so it is not a
+   * second number stranded beside "Fields N" reading as more fields. Returning null shows
+   * nothing, so an empty notebook is not a grey zero. Tags leave it unset and keep the
+   * trailing number, which is the information a tag row is mostly for.
+   */
+  renderNameCount?: (item: LabelItem) => ReactNode;
   /** The item, if any, whose row should be in its editing state — the caller keeps it there under a confirm. */
   editingId?: string | null;
   /** The find field, offered once a list is long enough to need one. */
@@ -75,6 +85,7 @@ export function LabelEditor({
   onRename,
   onDelete,
   renderExtra,
+  renderNameCount,
   editingId,
   findable = false,
   emptyText,
@@ -228,10 +239,14 @@ export function LabelEditor({
                 disabled={busy}
                 onClick={() => startRename(item)}
               >
-                {item.name}
+                {/* The name takes the ellipsis; a count against it keeps its width, so a
+                    long name truncates before the number does. */}
+                <span className="label-name-text">{item.name}</span>
+                {renderNameCount?.(item)}
               </button>
               {renderExtra?.(item)}
-              <span className="tag-count">{item.count}</span>
+              {/* The trailing number, unless the count moved against the name. */}
+              {!renderNameCount && <span className="tag-count">{item.count}</span>}
               <button
                 type="button"
                 className="icon-btn"
