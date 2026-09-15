@@ -57,6 +57,24 @@ describe('attachmentFilenamesInMarkdown', () => {
       new Set(),
     );
   });
+
+  /**
+   * A bracketed destination ends at `>`, not the first `)`. Imported PDFs really are named
+   * like this, and the whole name must match the attachment row or the file is wrongly
+   * flagged "not linked" while the body renders it fine.
+   */
+  it('keeps parentheses inside an angle-bracket destination', () => {
+    const name = 'GLUCOSE METER (HEMOCUE) OP Test Results.pdf';
+    const md = formatAttachmentMarkdown(name, `files/${name}`);
+    expect(attachmentFilenamesInMarkdown(md).has(name)).toBe(true);
+  });
+
+  it('matches what formatAttachmentMarkdown emits, both link and image', () => {
+    const name = 'Report (final) v2.pdf';
+    const link = formatAttachmentMarkdown(name, `files/${name}`);
+    const image = formatAttachmentMarkdown(name, `files/${name}`, { image: true });
+    expect(attachmentFilenamesInMarkdown(`${link}\n\n${image}`)).toEqual(new Set([name]));
+  });
 });
 
 describe('removeAttachmentLinks', () => {
