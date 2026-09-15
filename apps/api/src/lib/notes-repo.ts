@@ -722,6 +722,8 @@ export class NotesRepo extends ScopedRepo {
    * a no-op while a genuinely edited note still comes through as new.
    */
   async importNote(input: {
+    /** The id to keep if it is free, and to recognise the note by if it is already here. */
+    id?: string | undefined;
     title: string;
     body: string;
     tags: string[];
@@ -733,14 +735,26 @@ export class NotesRepo extends ScopedRepo {
     /** By field name; see `applyImportedFields`. */
     fields?: Record<string, FieldValue>;
   }): Promise<{ id: string; created: boolean; skippedFields: string[] }> {
-    const existing = await this.db
-      .prepare(
-        `SELECT id FROM notes
-          WHERE user_id = ?1 AND content_hash = ?2 AND deleted_at IS NULL
-          LIMIT 1`,
-      )
-      .bind(this.userId, input.contentHash)
-      .first<{ id: string }>();
+    /**
+     * Two ways a note can already be here, checked in order of confidence.
+     *
+     * By id first: an Unbent export names each note, and a live note with that id is
+     * this note whatever has happened to its text since — a restore must not lay a
+     * second copy beside a note the person edited after backing up. Then by content
+     * hash, which is what an ENEX import has and what catches an archive whose ids were
+     * stripped. The trash is not consulted by either: a note deleted on purpose stays
+     * deleted, and importing it again brings back a fresh live copy under a new id.
+     */
+    const existing =
+      (input.id ? await this.liveNoteById(input.id) : null) ??
+      (await this.db
+        .prepare(
+          `SELECT id FROM notes
+            WHERE user_id = ?1 AND content_hash = ?2 AND deleted_at IS NULL
+            LIMIT 1`,
+        )
+        .bind(this.userId, input.contentHash)
+        .first<{ id: string }>());
 
     if (existing) {
       /**
@@ -772,7 +786,14 @@ export class NotesRepo extends ScopedRepo {
       return { id: existing.id, created: false, skippedFields };
     }
 
-    const id = crypto.randomUUID();
+    /**
+     * Keep the exported id when nothing holds it. The check spans every user and the
+     * trash, because the column is the table's primary key: the same archive imported
+     * by two people on one instance — a notebook shared as a zip — gives the second a
+     * fresh id rather than a constraint error, and a trashed note keeps its id so it can
+     * still be restored from the trash.
+     */
+    const id = input.id && !(await this.idTaken(input.id)) ? input.id : crypto.randomUUID();
     const notebookId = await this.resolveNotebook(input.notebook);
     await this.db
       .prepare(
@@ -804,6 +825,23 @@ export class NotesRepo extends ScopedRepo {
     }
 
     return { id, created: true, skippedFields };
+  }
+
+  /** The caller's live note with this id, if there is one. */
+  private async liveNoteById(id: string): Promise<{ id: string } | null> {
+    return this.db
+      .prepare(`SELECT id FROM notes WHERE id = ?1 AND user_id = ?2 AND deleted_at IS NULL`)
+      .bind(id, this.userId)
+      .first<{ id: string }>();
+  }
+
+  /** True when any row — anyone's, trashed or not — already has this id. */
+  private async idTaken(id: string): Promise<boolean> {
+    const row = await this.db
+      .prepare(`SELECT 1 AS hit FROM notes WHERE id = ?1`)
+      .bind(id)
+      .first<{ hit: number }>();
+    return row !== null;
   }
 
   /** Replaces a note's body after its attachment links are known. */

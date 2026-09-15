@@ -270,6 +270,17 @@ export const exportQuerySchema = z.object({
  * interrupted import can be re-run without duplicating notes.
  */
 export const importNoteSchema = z.object({
+  /**
+   * The id the note had where it came from, when the source was another Unbent.
+   *
+   * An export writes each note's id into its frontmatter, and a restore should put the
+   * note back at the same address: bookmarks, links from other notes and anything an MCP
+   * client remembered keep working. It is also the only reliable way to tell "this note is
+   * already here" — a note created in the editor has no content hash to match on, and one
+   * edited since the export would not match anyway. The server keeps it when it is free
+   * and mints a fresh one otherwise, so it is a request, not a claim.
+   */
+  id: noteIdSchema.optional(),
   title: z.string().max(MAX_TITLE_LENGTH).default(''),
   body: z.string().max(MAX_BODY_BYTES).default(''),
   tags: z.array(tagNameSchema).max(100).default([]),
