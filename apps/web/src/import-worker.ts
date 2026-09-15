@@ -1,5 +1,13 @@
 /// <reference lib="webworker" />
-import { importEnex, type ImportFailure, type ImportProgress } from '@unbent/enex';
+import {
+  importArchive,
+  importEnex,
+  importFormat,
+  type ImportClient,
+  type ImportFailure,
+  type ImportOptions,
+  type ImportProgress,
+} from '@unbent/enex';
 import {
   apiFetch as api,
   indexFileBytes,
@@ -8,11 +16,14 @@ import {
 } from './attachment-text.js';
 
 /**
- * Runs an ENEX import off the main thread.
+ * Runs an import off the main thread.
  *
  * Parsing 3.6GB takes ~70s of solid CPU; on the main thread that is 70 seconds of frozen
  * UI with no progress and no way to cancel. The worker also owns the fetch calls, so
  * uploads do not compete with rendering.
+ *
+ * Two formats arrive here — Evernote's ENEX and this app's own export — and they share
+ * everything past the reader: the same client below, the same progress, the same events.
  *
  * Cookies travel with `credentials: 'include'` — a worker shares the document's cookie
  * jar but does not send them by default.
@@ -59,6 +70,54 @@ self.onmessage = (event: MessageEvent<ImportRequest>) => {
   queue = queue.then(() => handle(request));
 };
 
+/** The API, as both importers see it. */
+const client: ImportClient = {
+  createNote: async (input) => {
+    const res = await api('/api/import/note', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(input),
+    });
+    return res.json() as Promise<{ id: string; created: boolean }>;
+  },
+
+  uploadFile: async (noteId, filename, mime, bytes) => {
+    const res = await api(`/api/notes/${noteId}/files`, {
+      method: 'PUT',
+      headers: {
+        'X-Filename': encodeURIComponent(filename),
+        'Content-Type': mime,
+      },
+      // Bytes, not base64: sending the encoded form would add 33% to a multi-GB
+      // upload for no benefit.
+      body: bytes as unknown as BodyInit,
+    });
+    return res.json() as Promise<{ filename: string; indexing?: 'server' | 'client' }>;
+  },
+
+  listFiles: async (noteId) => {
+    const res = await api(`/api/notes/${noteId}/files`, { method: 'GET' });
+    const { files } = (await res.json()) as { files: Array<{ filename: string }> };
+    return files.map((f) => f.filename);
+  },
+
+  updateBody: async (noteId, body) => {
+    await api(`/api/notes/${noteId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ body }),
+    });
+  },
+
+  saveFileText: async (noteId, filename, text) => {
+    await api(`/api/notes/${noteId}/files/${encodeURIComponent(filename)}/text`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text }),
+    });
+  },
+};
+
 async function handle(request: Exclude<ImportRequest, { type: 'abort' }>): Promise<void> {
   if (request.type === 'backfill') {
     await runBackfill(request.auto ?? false);
@@ -76,64 +135,27 @@ async function handle(request: Exclude<ImportRequest, { type: 'abort' }>): Promi
   }
 
   const { file, extractText } = request;
+  const format = importFormat(file.name);
+  if (format === null) {
+    // The picker already refuses these; this is the message for a caller that did not ask.
+    post({ type: 'error', message: 'Choose an .enex, .zip or .md file.' });
+    return;
+  }
+
   controller = new AbortController();
+  const options: ImportOptions = {
+    extractText,
+    signal: controller.signal,
+    onProgress: (progress) => post({ type: 'progress', progress }),
+    onFailure: (failure) => post({ type: 'failure', failure }),
+  };
 
   try {
-    const progress = await importEnex(
-      { name: file.name, stream: () => file.stream() },
-      {
-        createNote: async (input) => {
-          const res = await api('/api/import/note', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(input),
-          });
-          return res.json() as Promise<{ id: string; created: boolean }>;
-        },
-
-        uploadFile: async (noteId, filename, mime, bytes) => {
-          const res = await api(`/api/notes/${noteId}/files`, {
-            method: 'PUT',
-            headers: {
-              'X-Filename': encodeURIComponent(filename),
-              'Content-Type': mime,
-            },
-            // Bytes, not base64: sending the encoded form would add 33% to a multi-GB
-            // upload for no benefit.
-            body: bytes as unknown as BodyInit,
-          });
-          return res.json() as Promise<{ filename: string; indexing?: 'server' | 'client' }>;
-        },
-
-        listFiles: async (noteId) => {
-          const res = await api(`/api/notes/${noteId}/files`, { method: 'GET' });
-          const { files } = (await res.json()) as { files: Array<{ filename: string }> };
-          return files.map((f) => f.filename);
-        },
-
-        updateBody: async (noteId, body) => {
-          await api(`/api/notes/${noteId}`, {
-            method: 'PATCH',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ body }),
-          });
-        },
-
-        saveFileText: async (noteId, filename, text) => {
-          await api(`/api/notes/${noteId}/files/${encodeURIComponent(filename)}/text`, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ text }),
-          });
-        },
-      },
-      {
-        extractText,
-        signal: controller.signal,
-        onProgress: (progress) => post({ type: 'progress', progress }),
-        onFailure: (failure) => post({ type: 'failure', failure }),
-      },
-    );
+    const progress =
+      format === 'enex'
+        ? await importEnex({ name: file.name, stream: () => file.stream() }, client, options)
+        : // A File is a Blob: zip.js reads it by byte range, so nothing is copied here.
+          await importArchive({ name: file.name, blob: file }, client, options);
 
     post({ type: 'done', progress });
   } catch (err) {
