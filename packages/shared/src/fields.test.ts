@@ -5,10 +5,13 @@ import {
   encodeFieldValue,
   expectedFieldValue,
   fieldNameSchema,
+  fieldRangeBound,
   fieldsByName,
+  formatFieldFilter,
   inferFieldType,
   isHeldSelectValue,
   isReservedFieldName,
+  parseFieldFilter,
   planConversion,
   type FieldType,
   type NoteFieldValue,
@@ -190,5 +193,58 @@ describe('fieldsByName', () => {
 
   it('keeps a foreign field bare when nothing collides, and on an unfiled note', () => {
     expect(fieldsByName([v('Vendor', 'Acme', 'nb2', 'Coupons')], null)).toEqual({ Vendor: 'Acme' });
+  });
+});
+
+/**
+ * The field filter's wire form: `<fieldId>:<op>[:<value>]`.
+ *
+ * The id and the op can hold no `:`, so the first two are the separators and the value
+ * is whatever follows — which is what lets a select option with a colon in it travel
+ * unescaped. Everything unreadable is null, so the route can refuse it rather than
+ * silently list an unfiltered archive.
+ */
+describe('field filters', () => {
+  const id = '6f4c1b2e-9c1d-4a6e-8b7f-0123456789ab';
+
+  it('round-trips each op', () => {
+    for (const f of [
+      { fieldId: id, op: 'eq' as const, value: 'Food' },
+      { fieldId: id, op: 'gte' as const, value: '20' },
+      { fieldId: id, op: 'lte' as const, value: '2026-01-10' },
+      { fieldId: id, op: 'set' as const },
+      { fieldId: id, op: 'empty' as const },
+    ]) {
+      expect(parseFieldFilter(formatFieldFilter(f))).toEqual(f);
+    }
+  });
+
+  it('keeps every character of the value, colons included', () => {
+    expect(parseFieldFilter(`${id}:eq:Time: 10:30`)).toEqual({ fieldId: id, op: 'eq', value: 'Time: 10:30' });
+  });
+
+  it('refuses what it cannot read', () => {
+    for (const bad of [
+      'nonsense',
+      `${id}`,
+      `${id}:between:1:2`,
+      `${id}:eq`,
+      `${id}:eq:`,
+      `${id}:set:extra`,
+      `${id}:gte:soon`,
+      `not an id:eq:Food`,
+      `${id}:eq:${'x'.repeat(1001)}`,
+    ]) {
+      expect(parseFieldFilter(bad), bad).toBeNull();
+    }
+  });
+
+  it('reads a range bound as a number, or as a day with two ends', () => {
+    expect(fieldRangeBound('gte', '20')).toBe(20);
+    expect(fieldRangeBound('lte', '-1.5')).toBe(-1.5);
+    const start = fieldRangeBound('gte', '2026-01-10')!;
+    const end = fieldRangeBound('lte', '2026-01-10')!;
+    expect(end - start).toBe(24 * 60 * 60 * 1000 - 1);
+    expect(fieldRangeBound('gte', 'soon')).toBeNull();
   });
 });

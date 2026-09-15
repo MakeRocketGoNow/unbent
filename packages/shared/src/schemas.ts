@@ -8,6 +8,7 @@ import {
   MAX_FIELD_NAME_LENGTH,
   fieldValueInputSchema,
   noteFieldsPatchSchema,
+  parseFieldFilter,
   type NoteFieldValue,
 } from './fields.js';
 
@@ -80,6 +81,35 @@ export const tagFilterSchema = z
   .optional()
   .transform((v) => (v === undefined ? undefined : Array.isArray(v) ? v : [v]))
   .pipe(z.array(tagNameSchema).max(20).optional());
+
+/**
+ * The `field` filter, which may be given more than once — the same wire shape as `tag`.
+ *
+ * Each value is `<fieldId>:<op>[:<value>]`, read by `parseFieldFilter`; several narrow
+ * conjunctively. Field definitions belong to a notebook, so this only means anything
+ * alongside a `notebook` filter, but the server does not insist on it: a field id is
+ * unique on its own, and a filter on a field from a notebook the list is not scoped to
+ * simply matches nothing.
+ */
+export const fieldFilterSchema = z
+  .union([z.string(), z.array(z.string())])
+  .optional()
+  .transform((v) => (v === undefined ? undefined : Array.isArray(v) ? v : [v]))
+  .pipe(
+    z
+      .array(
+        z.string().transform((raw, ctx) => {
+          const parsed = parseFieldFilter(raw);
+          if (!parsed) {
+            ctx.addIssue({ code: 'custom', message: `Unreadable field filter: ${raw}` });
+            return z.NEVER;
+          }
+          return parsed;
+        }),
+      )
+      .max(10)
+      .optional(),
+  );
 
 /**
  * Notebook filter value meaning "notes in no notebook".
@@ -220,6 +250,7 @@ export const listNotesQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).default(50),
   tag: tagFilterSchema,
   notebook: z.string().optional(),
+  field: fieldFilterSchema,
   sort: noteSortSchema,
   order: noteOrderSchema,
   /** Inclusive date range, filtering the same column the sort uses. */
@@ -245,6 +276,7 @@ export const searchQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).default(50),
   tag: tagFilterSchema,
   notebook: z.string().optional(),
+  field: fieldFilterSchema,
   from: dateOnlySchema.optional(),
   to: dateOnlySchema.optional(),
 });
@@ -260,6 +292,7 @@ export const searchQuerySchema = z.object({
 export const exportQuerySchema = z.object({
   tag: tagFilterSchema,
   notebook: z.string().optional(),
+  field: fieldFilterSchema,
   from: dateOnlySchema.optional(),
   to: dateOnlySchema.optional(),
   sort: noteSortSchema,

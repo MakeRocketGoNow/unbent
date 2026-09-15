@@ -8,7 +8,7 @@
  * module is the only place that produces or reads those two columns.
  */
 import { z } from 'zod';
-import { dateOnlySchema, startOfDay } from './dates.js';
+import { dateOnlySchema, startOfDay, endOfDay } from './dates.js';
 
 export const FIELD_TYPES = [
   'text',
@@ -205,6 +205,81 @@ export function encodeFieldValue(
       return def.options.includes(text) ? { text, num: null } : null;
     }
   }
+}
+
+// --- Filtering by a field ------------------------------------------------------------
+
+/**
+ * The comparisons a list can be narrowed by, on one field.
+ *
+ * `eq` compares the stored text — a select's option, a checkbox's `true`/`false`, a date
+ * as written. `gte`/`lte` compare the numeric shadow that migration 0014 keeps for every
+ * number and date, so a range never has to parse text in SQL. `set`/`empty` ask whether
+ * the note holds a value at all, which for a record-like notebook — "coupons with no
+ * expiry" — is the question asked most.
+ *
+ * Text "contains" is deliberately not here: search already covers field values, and a
+ * substring filter would be a second, worse search box.
+ */
+export const FIELD_FILTER_OPS = ['eq', 'gte', 'lte', 'set', 'empty'] as const;
+export type FieldFilterOp = (typeof FIELD_FILTER_OPS)[number];
+
+export interface FieldFilter {
+  fieldId: string;
+  op: FieldFilterOp;
+  /** Present for `eq`, `gte` and `lte`; absent for `set` and `empty`. */
+  value?: string;
+}
+
+/** Field ids are UUIDs, which is what lets the wire form below use `:` unescaped. */
+const FIELD_ID_RE = /^[A-Za-z0-9-]{1,64}$/;
+
+/**
+ * One field filter as it travels in a URL: `<fieldId>:<op>` or `<fieldId>:<op>:<value>`.
+ *
+ * The id and the op can contain no `:`, so the first two are the separators and the value
+ * is everything after them, whatever it contains — a select option with a colon in it is
+ * fine. Repeated `field=` params carry several, ANDed, the way `tag=` does. Returns null
+ * for anything unreadable: a bad id, an unknown op, a missing or over-long value, or a
+ * range bound that is neither a number nor a date.
+ */
+export function parseFieldFilter(raw: string): FieldFilter | null {
+  const a = raw.indexOf(':');
+  if (a < 0) return null;
+  const fieldId = raw.slice(0, a);
+  if (!FIELD_ID_RE.test(fieldId)) return null;
+  const rest = raw.slice(a + 1);
+  const b = rest.indexOf(':');
+  const op = b < 0 ? rest : rest.slice(0, b);
+  if (!(FIELD_FILTER_OPS as readonly string[]).includes(op)) return null;
+  if (op === 'set' || op === 'empty') return b < 0 ? { fieldId, op } : null;
+  if (b < 0) return null;
+  const value = rest.slice(b + 1);
+  if (value === '' || value.length > MAX_FIELD_VALUE_LENGTH) return null;
+  if ((op === 'gte' || op === 'lte') && fieldRangeBound(op, value) === null) return null;
+  return { fieldId, op: op as FieldFilterOp, value };
+}
+
+export function formatFieldFilter(f: FieldFilter): string {
+  return f.value === undefined ? `${f.fieldId}:${f.op}` : `${f.fieldId}:${f.op}:${f.value}`;
+}
+
+/**
+ * The number a range bound compares against `value_num`.
+ *
+ * A date bound is a day, and a day has two ends: "on or after the 10th" starts at its
+ * first instant and "on or before the 10th" runs to its last, which is what `startOfDay`
+ * and `endOfDay` are for. A number is itself. Anything else is not a bound.
+ */
+export function fieldRangeBound(op: 'gte' | 'lte', value: string): number | null {
+  if (dateOnlySchema.safeParse(value).success) {
+    return op === 'gte' ? startOfDay(value) : endOfDay(value);
+  }
+  if (NUMBER_RE.test(value.trim())) {
+    const n = Number(value.trim());
+    return Number.isFinite(n) ? n : null;
+  }
+  return null;
 }
 
 /**

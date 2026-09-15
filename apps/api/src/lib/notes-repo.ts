@@ -5,6 +5,7 @@ import {
   endOfDay,
   excerptMarkdown,
   expectedFieldValue,
+  fieldRangeBound,
   inferFieldType,
   InvalidFieldValue,
   isHeldSelectValue,
@@ -14,6 +15,7 @@ import {
   startOfDay,
   UNFILED,
   type FieldDef,
+  type FieldFilter,
   type FieldType,
   type FieldValue,
   type Note,
@@ -200,6 +202,7 @@ function filterConditions(
   opts: {
     tags?: string[] | undefined;
     notebook?: string | undefined;
+    fields?: FieldFilter[] | undefined;
     from?: string | undefined;
     to?: string | undefined;
     /** Column the date range applies to. */
@@ -253,6 +256,50 @@ function filterConditions(
       `EXISTS (SELECT 1 FROM note_tags nt2 JOIN tags t2 ON t2.id = nt2.tag_id
                WHERE nt2.note_id = n.id AND t2.name = ?${binds.length - 1} AND t2.user_id = ?${binds.length})`,
     );
+  }
+
+  /*
+   * One EXISTS per field filter, in the tags' shape, against the value row for that field.
+   *
+   * Type-agnostic on purpose. This is a synchronous SQL builder and looking a definition
+   * up to learn its type would make it neither; instead `eq` compares the stored text,
+   * which is canonical for every type (`encodeFieldValue` is the only writer), and a
+   * range compares the numeric shadow that every number and date carries. A filter on a
+   * field of the wrong type for its op matches nothing, which is the right answer to a
+   * question that does not apply. The `user_id` on the value row is what keeps a guessed
+   * field id from reading across tenants; the indexes are 0014's.
+   */
+  for (const f of opts.fields ?? []) {
+    binds.push(f.fieldId, userId);
+    const held =
+      `SELECT 1 FROM note_fields nf3 WHERE nf3.note_id = n.id` +
+      ` AND nf3.field_id = ?${binds.length - 1} AND nf3.user_id = ?${binds.length}`;
+    switch (f.op) {
+      case 'set':
+        conditions.push(`EXISTS (${held})`);
+        break;
+      case 'empty':
+        conditions.push(`NOT EXISTS (${held})`);
+        break;
+      case 'eq':
+        binds.push(f.value ?? '');
+        conditions.push(`EXISTS (${held} AND nf3.value_text = ?${binds.length})`);
+        break;
+      case 'gte':
+      case 'lte': {
+        const bound = fieldRangeBound(f.op, f.value ?? '');
+        // The schema has already refused an unreadable bound; this is belt and braces.
+        if (bound === null) {
+          conditions.push('0');
+          break;
+        }
+        binds.push(bound);
+        conditions.push(
+          `EXISTS (${held} AND nf3.value_num ${f.op === 'gte' ? '>=' : '<='} ?${binds.length})`,
+        );
+        break;
+      }
+    }
   }
 
   return conditions;
@@ -366,6 +413,7 @@ export class NotesRepo extends ScopedRepo {
     cursor?: string;
     tags?: string[];
     notebook?: string;
+    fields?: FieldFilter[];
     sort?: NoteSort;
     order?: 'asc' | 'desc';
     from?: string;
@@ -373,7 +421,7 @@ export class NotesRepo extends ScopedRepo {
     /** List trashed notes instead of live ones. */
     trashed?: boolean;
   }): Promise<NoteSummary[]> {
-    const { limit, cursor, tags, notebook, trashed, from, to } = opts;
+    const { limit, cursor, tags, notebook, fields, trashed, from, to } = opts;
     const sort = opts.sort ?? 'updated';
     // Trash has one meaningful order — most recently deleted first — so it ignores both.
     const spec = trashed ? TRASH_SORT : SORTS[sort];
@@ -407,7 +455,11 @@ export class NotesRepo extends ScopedRepo {
     }
     conditions.push(
       // The range applies to the column being sorted, so the filter and the order agree.
-      ...filterConditions({ tags, notebook, from, to, dateColumn: spec.dateColumn }, binds, this.userId),
+      ...filterConditions(
+        { tags, notebook, fields, from, to, dateColumn: spec.dateColumn },
+        binds,
+        this.userId,
+      ),
     );
     binds.push(limit);
 
@@ -461,6 +513,7 @@ export class NotesRepo extends ScopedRepo {
   async count(opts?: {
     tags?: string[];
     notebook?: string;
+    fields?: FieldFilter[];
     trashed?: boolean;
     from?: string;
     to?: string;
@@ -477,6 +530,7 @@ export class NotesRepo extends ScopedRepo {
         {
           tags: opts?.tags,
           notebook: opts?.notebook,
+          fields: opts?.fields,
           from: opts?.from,
           to: opts?.to,
           dateColumn: opts?.trashed ? TRASH_SORT.dateColumn : SORTS[opts?.sort ?? 'updated'].dateColumn,
@@ -864,6 +918,7 @@ export class NotesRepo extends ScopedRepo {
     filters: {
       tags?: string[] | undefined;
       notebook?: string | undefined;
+      fields?: FieldFilter[] | undefined;
       from?: string | undefined;
       to?: string | undefined;
     } = {},
