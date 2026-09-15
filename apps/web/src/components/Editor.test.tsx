@@ -70,6 +70,9 @@ describe('Editor across Rich / Source', () => {
         changes: { from: view!.state.doc.length, insert: ' typed' },
       });
     });
+    // The typing landed on n1's view, so the reseed below is dropping *this* text, not a
+    // no-op on an already-saved body.
+    expect(view!.state.doc.toString()).toBe('first note typed');
 
     rerender(
       <Editor
