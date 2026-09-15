@@ -54,8 +54,13 @@ function decodePathSegment(segment: string): string {
  */
 export function attachmentFilenamesInMarkdown(markdown: string): Set<string> {
   const names = new Set<string>();
-  // Covers `[…](files/x)`, `[…](<files/x y>)`, and image forms with a leading `!`.
-  const re = /!\[[^\]]*]\(\s*<?files\/([^)\n>]+)>?\s*\)|\[[^\]]*]\(\s*<?files\/([^)\n>]+)>?\s*\)/g;
+  // Two destination forms, and the delimiter that ends the filename differs between them.
+  // Angle-bracket `[…](<files/x (y).pdf>)`: the name runs to the closing `>`, so a `)` in
+  // the name — a real thing in imported filenames — is content, not the end. Bare
+  // `[…](files/x)`: CommonMark forbids whitespace, so the name ends at the `)`. Both cover
+  // image forms via the leading `!?`.
+  const re =
+    /!?\[[^\]]*]\(\s*<files\/([^>\n]+)>\s*\)|!?\[[^\]]*]\(\s*files\/([^)\s<>]+)\s*\)/g;
   for (const match of markdown.matchAll(re)) {
     const raw = (match[1] ?? match[2] ?? '').trim();
     if (!raw) continue;
