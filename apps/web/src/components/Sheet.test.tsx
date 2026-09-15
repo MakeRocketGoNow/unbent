@@ -28,8 +28,26 @@ function stubDialog() {
 
 const dialogOf = (c: HTMLElement) => c.querySelector('dialog') as HTMLDialogElement;
 
+/**
+ * The breakpoint, which the sheet reads to decide whether the head is a drag handle.
+ * jsdom ships no `matchMedia` either. Phone width unless a test says otherwise: the drag
+ * suite below is about the phone gesture, and the one desktop test stubs `false` itself.
+ */
+function stubWidth(phone: boolean) {
+  vi.stubGlobal('matchMedia', (query: string) => ({
+    matches: phone,
+    media: query,
+    addEventListener: () => {},
+    removeEventListener: () => {},
+  }));
+}
+
 describe('Sheet', () => {
-  afterEach(cleanup);
+  beforeEach(() => stubWidth(true));
+  afterEach(() => {
+    cleanup();
+    vi.unstubAllGlobals();
+  });
 
   /*
      The visible way out.
@@ -134,6 +152,27 @@ describe('Sheet', () => {
       );
       drag(getByText('Filter notes'), 100, 200, 600);
       expect(onClose).toHaveBeenCalledTimes(1);
+    });
+
+    /*
+       Above the breakpoint the dialog is a floating panel with no floor to be pulled back
+       to (see the `width > 860px` block in styles.css). The grip is hidden there by CSS,
+       but the head would still carry the handlers, and a mouse dragging the title would
+       slide the panel down the screen and close it. So the handlers come off entirely.
+    */
+    it('does not drag at desktop width, even from the title', () => {
+      stubWidth(false);
+      stubDialog();
+      const onClose = vi.fn();
+      const { container, getByText } = render(
+        <Sheet open onClose={onClose} title="Filter notes">
+          body
+        </Sheet>,
+      );
+      drag(getByText('Filter notes'), 100, 200, 600);
+      expect(onClose).not.toHaveBeenCalled();
+      expect(dialogOf(container).style.translate).toBe('');
+      expect(dialogOf(container).hasAttribute('data-dragging')).toBe(false);
     });
 
     /* A press on the ✕ has to stay a click: capturing it would retarget the pointerup. */

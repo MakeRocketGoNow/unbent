@@ -1,4 +1,4 @@
-import { describe, it, expect, afterEach, vi } from 'vitest';
+import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest';
 import { render, cleanup, fireEvent, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
@@ -78,7 +78,20 @@ const rows = (c: HTMLElement) =>
   [...c.querySelectorAll('.drawer-item')].map((e) => e.textContent);
 
 describe('NotebookDrawer', () => {
-  afterEach(cleanup);
+  // The sheet reads the breakpoint to decide whether its head drags; jsdom has no
+  // matchMedia. Phone width, which is where this surface lives.
+  beforeEach(() => {
+    vi.stubGlobal('matchMedia', (query: string) => ({
+      matches: true,
+      media: query,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+    }));
+  });
+  afterEach(() => {
+    cleanup();
+    vi.unstubAllGlobals();
+  });
 
   /* Keep's order: the places, the way to make another, then on the floor the two
      destinations that are not places — Trash, and Settings, which used to hide behind
