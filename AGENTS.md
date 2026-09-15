@@ -115,6 +115,29 @@ person doesn't re-litigate it or silently undo it. `Topbar.tsx`, `OverflowMenu.t
 Write them for the reader who is about to change the code. If a line looks arbitrary and
 isn't, say why. If something was tried and didn't work, that belongs in the comment.
 
+## Real notes stay out of the repo
+
+**This repository is open source; the notes it is built against are private.** The real
+corpus — the Evernote export, the notes on unbent.app, anything read through the MCP tools,
+a screenshot or a pasted bug report — is someone's personal archive. Nothing from it goes
+into anything that gets pushed: code, tests, fixtures, comments, docs, commit messages, PR
+titles and descriptions, or review comments.
+
+That is broader than it sounds. A filename, a note title, a notebook or tag name, a person's
+or business's name, an address, an amount: any of them can say something about someone's
+life they never chose to publish. A commit message is as public and as permanent as the
+code, and harder to take back — rewriting history on `main` is a much bigger job than
+editing a file.
+
+When a real note is what exposed a bug, keep its *shape* and invent the content. What
+matters to a parser is "capitals with a parenthesized word in the middle, inside an
+angle-bracket destination", and `SAMPLE INVOICE (ACME) Final Copy.pdf` proves that as well
+as the original did. In prose, say "an imported PDF" or "a note in the real corpus" rather
+than quoting it. Prefer placeholders that are obviously made up — `Acme`, `example.com`,
+`Report (final) v2.pdf` — over ones that merely sound plausible.
+
+If you find real content already in the repo, say so rather than quietly working around it.
+
 ## Commits
 
 Atomic commits, one logical change each. This has been asked for explicitly and more than
@@ -128,6 +151,9 @@ The subject line says what changed **for the user**, in plain language, as a sen
 
 Not `feat(editor): add PDF expansion`. The body explains what was wrong before, what the
 change does, and any non-obvious reasoning — the same "why" standard as the comments.
+Describe the case that broke without quoting a real note; see
+[Real notes stay out of the repo](#real-notes-stay-out-of-the-repo), which applies to PR
+descriptions as much as to commits.
 
 **Commit atomically as you go.** Don't accumulate a session's work into one commit at the
 end, and don't wait to be asked for each one — when a logical change is complete and
