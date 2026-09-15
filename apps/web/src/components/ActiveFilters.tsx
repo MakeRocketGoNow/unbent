@@ -1,8 +1,9 @@
 import { useNavigate } from '@tanstack/react-router';
-import { UNFILED } from '@unbent/shared';
+import { UNFILED, type FieldDef } from '@unbent/shared';
 import { CloseIcon } from './icons.js';
 import { rangeLabel } from './format-when.js';
-import { writeTagFilter } from '../routes/notes.js';
+import { fieldFilterLabel } from './field-filter.js';
+import { writeTagFilter, writeFieldFilter } from '../routes/notes.js';
 
 interface ActiveFiltersProps {
   /**
@@ -16,6 +17,10 @@ interface ActiveFiltersProps {
    */
   notebook?: string | undefined;
   tags: string[];
+  /** Custom-field filters as the URL carries them, named through `fieldDefs`. */
+  fields?: string[];
+  /** The selected notebook's definitions, for naming the field chips. */
+  fieldDefs?: FieldDef[];
   from: string | undefined;
   to: string | undefined;
 }
@@ -34,14 +39,21 @@ interface ActiveFiltersProps {
  * off.
  *
  * The order matches the sheet and the Android app: notebook, then tags in their selected
- * order, then the range. It is the order the controls appear in, so the eye moving between
- * the chips and the sheet is not re-sorting them.
+ * order, then the field filters, then the range. It is the order the controls appear in,
+ * so the eye moving between the chips and the sheet is not re-sorting them.
  *
  * Renders nothing at all when it has nothing to report, so a caller can mount it without
  * first working out whether this particular combination leaves anything to say — which the
  * header does, now that the notebook alone is not enough to fill it.
  */
-export function ActiveFilters({ notebook, tags, from, to }: ActiveFiltersProps) {
+export function ActiveFilters({
+  notebook,
+  tags,
+  fields = [],
+  fieldDefs = [],
+  from,
+  to,
+}: ActiveFiltersProps) {
   const navigate = useNavigate();
   const range = rangeLabel(from, to);
 
@@ -49,7 +61,7 @@ export function ActiveFilters({ notebook, tags, from, to }: ActiveFiltersProps) 
     void navigate({ to: '/notes', search: (prev) => ({ ...prev, ...search }) });
 
   // An empty strip is a gap above the notes with nothing in it.
-  if (!notebook && tags.length === 0 && !range) return null;
+  if (!notebook && tags.length === 0 && fields.length === 0 && !range) return null;
 
   return (
     <div className="filter-chips">
@@ -63,9 +75,9 @@ export function ActiveFilters({ notebook, tags, from, to }: ActiveFiltersProps) 
           /*
            * Drops the tags with it, the same rule the notebook select follows: tags cross
            * notebook boundaries, so leaving one selected here routinely yields an empty list
-           * with no visible cause.
+           * with no visible cause. The field filters too — they belong to this notebook.
            */
-          onClick={() => drop({ notebook: undefined, tag: undefined })}
+          onClick={() => drop({ notebook: undefined, tag: undefined, field: undefined })}
         >
           {notebook === UNFILED ? 'Inbox' : notebook}
           <CloseIcon />
@@ -84,6 +96,22 @@ export function ActiveFilters({ notebook, tags, from, to }: ActiveFiltersProps) 
           <CloseIcon />
         </button>
       ))}
+
+      {fields.map((raw) => {
+        const label = fieldFilterLabel(raw, fieldDefs);
+        return (
+          <button
+            key={raw}
+            type="button"
+            className="filter-chip"
+            aria-label={`Remove field filter: ${label}`}
+            onClick={() => drop({ field: writeFieldFilter(fields.filter((f) => f !== raw)) })}
+          >
+            {label}
+            <CloseIcon />
+          </button>
+        );
+      })}
 
       {range && (
         <button

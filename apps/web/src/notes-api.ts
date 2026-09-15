@@ -96,6 +96,7 @@ export async function listNotes(
   opts: {
     tag?: string[];
     notebook?: string;
+    field?: string[];
     cursor?: string;
     trashed?: boolean;
     limit?: number;
@@ -109,6 +110,7 @@ export async function listNotes(
   // Repeated rather than joined: a tag name may contain any delimiter we'd pick.
   for (const t of opts.tag ?? []) params.append('tag', t);
   if (opts.notebook) params.set('notebook', opts.notebook);
+  for (const f of opts.field ?? []) params.append('field', f);
   if (opts.cursor) params.set('cursor', opts.cursor);
   if (opts.sort) params.set('sort', opts.sort);
   if (opts.order) params.set('order', opts.order);
@@ -435,6 +437,7 @@ export async function deleteAttachment(noteId: string, filename: string): Promis
 export function exportUrl(filter: {
   tag?: string[];
   notebook?: string;
+  field?: string[];
   from?: string;
   to?: string;
   /**
@@ -446,6 +449,7 @@ export function exportUrl(filter: {
   const params = new URLSearchParams();
   for (const t of filter.tag ?? []) params.append('tag', t);
   if (filter.notebook) params.set('notebook', filter.notebook);
+  for (const f of filter.field ?? []) params.append('field', f);
   if (filter.from) params.set('from', filter.from);
   if (filter.to) params.set('to', filter.to);
   if (filter.sort && (filter.from || filter.to)) params.set('sort', filter.sort);
@@ -455,11 +459,12 @@ export function exportUrl(filter: {
 
 export async function searchNotes(
   q: string,
-  filter: { tag?: string[]; notebook?: string; from?: string; to?: string } = {},
+  filter: { tag?: string[]; notebook?: string; field?: string[]; from?: string; to?: string } = {},
 ): Promise<SearchResult[]> {
   const params = new URLSearchParams({ q });
   for (const t of filter.tag ?? []) params.append('tag', t);
   if (filter.notebook) params.set('notebook', filter.notebook);
+  for (const f of filter.field ?? []) params.append('field', f);
   if (filter.from) params.set('from', filter.from);
   if (filter.to) params.set('to', filter.to);
   const { results } = await json<{ results: SearchResult[] }>(

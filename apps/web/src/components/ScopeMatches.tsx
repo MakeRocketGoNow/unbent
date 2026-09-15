@@ -44,8 +44,8 @@ interface ScopeMatchesProps {
  * Selected tags and the current notebook are left out — offering a filter that is already
  * on would be a control that does nothing. Tags keep the API's order, by count, so the
  * likeliest pick is first. Notebooks come after tags: a tag is added to the scope and a
- * notebook replaces it (clearing the tags, the rule the select and the drawer follow), and
- * the smaller step is offered first.
+ * notebook replaces it (clearing the tags and field filters, the rule the select and the
+ * drawer follow), and the smaller step is offered first.
  *
  * Renders nothing for an empty needle, so the caller mounts it whenever results are shown.
  */
@@ -100,7 +100,7 @@ export function ScopeMatches({
             type="button"
             className="scope-match-btn"
             aria-label={`Show notebook: ${nb.name}`}
-            onClick={() => pick({ notebook: nb.name, tag: undefined })}
+            onClick={() => pick({ notebook: nb.name, tag: undefined, field: undefined })}
           >
             <span className="scope-match-icon">
               <NotebookRowIcon />

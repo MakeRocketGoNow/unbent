@@ -8,6 +8,7 @@ import {
   notesQuery,
   tagsQuery,
   notebooksQuery,
+  notebookFieldsQuery,
   searchQuery,
   trashCountQuery,
   invalidateNoteMembership,
@@ -39,9 +40,11 @@ import { useSignOut } from '../useSignOut.js';
 
 /** Sidebar plus the routed workspace. Filters come from the URL; nothing here is mirrored into state. */
 export function NotesLayout({ children }: { children: React.ReactNode }) {
-  const { notebook, tag, q = '', sort, order, from, to } = Route.useSearch();
+  const { notebook, tag, field, q = '', sort, order, from, to } = Route.useSearch();
   /** The tag filter as a list, so the sidebar never has to care that it may be absent. */
   const selectedTags = tag ?? [];
+  /** Likewise the field filters, as the wire strings the URL carries. */
+  const fieldFilters = field ?? [];
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const layout = useNotesLayout('/notes/$noteId');
@@ -57,6 +60,7 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
   const filter = {
     ...(notebook ? { notebook } : {}),
     ...(tag ? { tag } : {}),
+    ...(field ? { field } : {}),
     ...(from ? { from } : {}),
     ...(to ? { to } : {}),
   };
@@ -67,7 +71,7 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
    * is the current filter serialized, and because the filters already live in the URL
    * there is no separate state to keep in step — the link is the view.
    */
-  const isFiltered = Boolean(notebook || selectedTags.length || from || to);
+  const isFiltered = Boolean(notebook || selectedTags.length || fieldFilters.length || from || to);
 
   /*
    * What the filter icon speaks for: the tags and the dates, not the notebook.
@@ -81,11 +85,22 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
    * `isFiltered` is still the whole scope, and still what the export link reads: that is
    * about the slice of the archive on screen, which the notebook is very much part of.
    */
-  const sheetFiltered = Boolean(selectedTags.length || from || to);
+  const sheetFiltered = Boolean(selectedTags.length || fieldFilters.length || from || to);
 
   const list = useInfiniteQuery(notesQuery(filter, ordering));
   const tags = useQuery(tagsQuery());
   const notebooks = useQuery(notebooksQuery());
+  /*
+   * The selected notebook's field definitions, which name the field chips and are what
+   * the sheet's Fields page offers. Field definitions belong to a notebook, so with no
+   * notebook selected there is nothing to ask for and the query stays disabled; the id
+   * is looked up from the name, because the URL carries the name.
+   */
+  const notebookId =
+    notebook && notebook !== UNFILED
+      ? notebooks.data?.notebooks.find((nb) => nb.name === notebook)?.id
+      : undefined;
+  const fieldDefs = useQuery(notebookFieldsQuery(notebookId));
   const trashCount = useQuery(trashCountQuery());
   const trashed = trashCount.data ?? 0;
 
@@ -314,7 +329,13 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
             a row of a phone screen to say it twice. The sheet still shows it, because a
             surface that claims to list everything applied has to.
         */}
-        <ActiveFilters tags={selectedTags} from={from} to={to} />
+        <ActiveFilters
+          tags={selectedTags}
+          fields={fieldFilters}
+          fieldDefs={fieldDefs.data ?? []}
+          from={from}
+          to={to}
+        />
 
         {isMobile && (
           <NotebookDrawer
@@ -354,6 +375,7 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
                     search: (prev) => ({
                       ...prev,
                       tag: undefined,
+                      field: undefined,
                       from: undefined,
                       to: undefined,
                     }),
@@ -383,7 +405,13 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
                   third place saying "Coupons" on one screen.
               */}
               {sheetFiltered ? (
-                <ActiveFilters tags={selectedTags} from={from} to={to} />
+                <ActiveFilters
+                  tags={selectedTags}
+                  fields={fieldFilters}
+                  fieldDefs={fieldDefs.data ?? []}
+                  from={from}
+                  to={to}
+                />
               ) : (
                 <p className="sheet-summary small">Nothing is filtered.</p>
               )}
@@ -508,7 +536,9 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
             <li className="muted small empty">
               {tag
                 ? `No notes tagged ${tag}.`
-                : notebook === UNFILED
+                : fieldFilters.length > 0
+                  ? 'No notes match those fields.'
+                  : notebook === UNFILED
                   ? 'Nothing in your inbox.'
                   : notebook
                     ? `No notes in ${notebook}.`

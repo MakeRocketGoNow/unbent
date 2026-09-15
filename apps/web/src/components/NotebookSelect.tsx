@@ -54,7 +54,9 @@ export function NotebookSelect({ notebook, notebooks }: NotebookSelectProps) {
           className="notebook-scope"
           value={notebook ?? ''}
           // Clearing the tag matters: tags cross notebook boundaries, so keeping one
-          // selected here routinely yields an empty list with no visible cause.
+          // selected here routinely yields an empty list with no visible cause. Field
+          // filters go too, for the stronger reason that a field belongs to the notebook
+          // being left.
           onChange={(e) =>
             void navigate({
               to: '/notes',
@@ -62,6 +64,7 @@ export function NotebookSelect({ notebook, notebooks }: NotebookSelectProps) {
                 ...prev,
                 notebook: e.target.value || undefined,
                 tag: undefined,
+                field: undefined,
               }),
             })
           }

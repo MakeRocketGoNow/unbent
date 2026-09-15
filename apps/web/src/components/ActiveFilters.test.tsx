@@ -156,6 +156,31 @@ describe('ActiveFilters', () => {
     });
   });
 
+  /* A field filter is named through the notebook's definitions, sits between the tags and
+     the range, and comes off on its own like a tag does. */
+  it('names a field filter and removes only that one', async () => {
+    const defs = [
+      { id: 'cat', notebookId: 'nb', name: 'Category', type: 'select' as const, options: ['Food'], position: 0 },
+      { id: 'amt', notebookId: 'nb', name: 'Amount', type: 'number' as const, options: [], position: 1 },
+    ];
+    const { container, findByLabelText, history } = harness({
+      notebook: undefined,
+      tags: ['Receipt'],
+      fields: ['cat:eq:Food', 'amt:gte:20'],
+      fieldDefs: defs,
+      from: '2026-01-01',
+      to: undefined,
+    });
+    await findByLabelText('Remove field filter: Category: Food');
+    const labels = [...container.querySelectorAll('.filter-chip')].map((c) => c.textContent);
+    expect(labels).toEqual(['#Receipt', 'Category: Food', 'Amount ≥ 20', labels[3]]);
+    fireEvent.click(await findByLabelText('Remove field filter: Category: Food'));
+    await waitFor(() => {
+      expect(decodeURIComponent(url(history))).toContain('amt:gte:20');
+      expect(decodeURIComponent(url(history))).not.toContain('cat:eq:Food');
+    });
+  });
+
   /* One chip for the range, not one per end: "since March" and "until June" are one
      question, and removing half of it is not something anyone asks for. */
   it('removes both ends of the range at once', async () => {
