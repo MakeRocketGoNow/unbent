@@ -51,6 +51,9 @@ export function SearchResults({ results }: SearchResultsProps) {
             {r.matchedFile && <span className="matched-file">in {r.matchedFile}</span>}
             {/* Same reason, same treatment: the term was in a field's value. */}
             {r.matchedField && <span className="matched-file">in {r.matchedField}</span>}
+            {/* And in a tag, where the snippet is the tag's name and would otherwise read
+                as a body that happens to contain it. */}
+            {r.matchedTag && <span className="matched-file">tagged {r.matchedTag}</span>}
             <Snippet text={r.snippet} />
           </Link>
         </li>

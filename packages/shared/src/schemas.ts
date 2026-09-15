@@ -397,4 +397,6 @@ export interface SearchResult {
   matchedFile?: string;
   /** Set when the match came from a custom field's value; the field's name. */
   matchedField?: string;
+  /** Set when the match came from one of the note's tags; the tag's name. */
+  matchedTag?: string;
 }

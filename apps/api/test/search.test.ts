@@ -702,3 +702,132 @@ describe('custom field values', () => {
     expect(ids.indexOf(inBody.id)).toBeLessThan(ids.indexOf(inField.id));
   });
 });
+
+/**
+ * Tag names.
+ *
+ * A note filed under a tag is found by the tag's name even when the name appears nowhere
+ * in the note — which is how an archive filed by tag is looked up. The index is external
+ * content over `tags`, so the cases that matter are the same as for fields: the match
+ * names its source, it follows a rename, it stops on removal from the note and on the
+ * tag's deletion or merge, and it never crosses users.
+ */
+describe('tag names', () => {
+  const headers = (actor: Actor) => ({
+    'Content-Type': 'application/json',
+    Cookie: actor.cookie,
+    Origin: ORIGIN,
+  });
+
+  async function raw(actor: Actor, q: string) {
+    const res = await fetch(`${BASE}/api/search?q=${encodeURIComponent(q)}`, {
+      headers: { Cookie: actor.cookie, Origin: ORIGIN },
+    });
+    const { results } = (await res.json()) as {
+      results: Array<{
+        id: string;
+        snippet: string;
+        matchedTag?: string;
+        matchedField?: string;
+        matchedFile?: string;
+      }>;
+    };
+    return results;
+  }
+
+  async function tagIdOf(actor: Actor, name: string): Promise<string> {
+    const res = await fetch(`${BASE}/api/tags`, { headers: { Cookie: actor.cookie, Origin: ORIGIN } });
+    const { tags } = (await res.json()) as { tags: Array<{ id: string; name: string }> };
+    const tag = tags.find((t) => t.name === name);
+    if (!tag) throw new Error(`no tag ${name}`);
+    return tag.id;
+  }
+
+  it('finds a note by a tag whose name is nowhere in its text, and names the tag', async () => {
+    const tag = `Marlin${unique}`;
+    const note = await createNote(alice, { title: 'Untitled', body: 'nothing here', tags: [tag] });
+    const hits = await raw(alice, tag);
+    expect(hits.map((h) => h.id)).toContain(note.id);
+    const hit = hits.find((h) => h.id === note.id)!;
+    expect(hit.matchedTag).toBe(tag);
+    expect(hit.matchedField).toBeUndefined();
+    expect(hit.matchedFile).toBeUndefined();
+    expect(hit.snippet).toContain(`<<${tag}>>`);
+  });
+
+  it('matches a prefix of the name, so results appear while typing', async () => {
+    const tag = `Osprey${unique}`;
+    const note = await createNote(alice, { title: 'Untitled', body: '', tags: [tag] });
+    expect((await raw(alice, `Ospr`)).map((h) => h.id)).toContain(note.id);
+  });
+
+  it('stops matching once the tag is taken off the note', async () => {
+    const tag = `Plover${unique}`;
+    const note = await createNote(alice, { title: 'Untitled', body: '', tags: [tag] });
+    expect((await raw(alice, tag)).map((h) => h.id)).toContain(note.id);
+    await fetch(`${BASE}/api/notes/${note.id}`, {
+      method: 'PATCH',
+      headers: headers(alice),
+      body: JSON.stringify({ tags: [] }),
+    });
+    expect((await raw(alice, tag)).map((h) => h.id)).not.toContain(note.id);
+  });
+
+  it('follows a rename and stops on a merge', async () => {
+    const before = `Quail${unique}`;
+    const after = `Raven${unique}`;
+    const other = `Shrike${unique}`;
+    const note = await createNote(alice, { title: 'Untitled', body: '', tags: [before] });
+    const id = await tagIdOf(alice, before);
+
+    await fetch(`${BASE}/api/tags/${id}`, {
+      method: 'PATCH',
+      headers: headers(alice),
+      body: JSON.stringify({ name: after }),
+    });
+    expect((await raw(alice, before)).map((h) => h.id)).not.toContain(note.id);
+    expect((await raw(alice, after)).map((h) => h.id)).toContain(note.id);
+
+    // Merging into another tag deletes this row; the note is then found by the survivor.
+    await createNote(alice, { title: 'Holder', body: '', tags: [other] });
+    await fetch(`${BASE}/api/tags/${id}?merge=1`, {
+      method: 'PATCH',
+      headers: headers(alice),
+      body: JSON.stringify({ name: other }),
+    });
+    expect((await raw(alice, after)).map((h) => h.id)).not.toContain(note.id);
+    expect((await raw(alice, other)).map((h) => h.id)).toContain(note.id);
+  });
+
+  it('stops matching when the tag is deleted', async () => {
+    const tag = `Teal${unique}`;
+    const note = await createNote(alice, { title: 'Untitled', body: '', tags: [tag] });
+    const id = await tagIdOf(alice, tag);
+    await fetch(`${BASE}/api/tags/${id}`, { method: 'DELETE', headers: headers(alice) });
+    expect((await raw(alice, tag)).map((h) => h.id)).not.toContain(note.id);
+  });
+
+  it('does not leak a tag across users', async () => {
+    const tag = `Vireo${unique}`;
+    await createNote(alice, { title: 'Private', body: '', tags: [tag] });
+    expect(await raw(bob, tag)).toEqual([]);
+  });
+
+  it('respects the tag and notebook scope like every other source', async () => {
+    const tag = `Wren${unique}`;
+    const scope = `Scope${unique}`;
+    const inScope = await createNote(alice, { title: 'a', body: '', tags: [tag, scope] });
+    const outOfScope = await createNote(alice, { title: 'b', body: '', tags: [tag] });
+    const ids = (await find(alice, tag, { tag: scope })).map((h) => h.id);
+    expect(ids).toContain(inScope.id);
+    expect(ids).not.toContain(outOfScope.id);
+  });
+
+  it('ranks a tag match below a body match and above a field match', async () => {
+    const term = `Yellowhammer${unique}`;
+    const inBody = await createNote(alice, { title: 'In the body', body: `${term} written down` });
+    const inTag = await createNote(alice, { title: 'Tagged', body: '', tags: [term] });
+    const ids = (await raw(alice, term)).map((h) => h.id);
+    expect(ids.indexOf(inBody.id)).toBeLessThan(ids.indexOf(inTag.id));
+  });
+});
