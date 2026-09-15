@@ -4393,95 +4393,6 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
   }
 }
 
-/* ------------------------------------------------------------------------------------
-   The sheet at desktop width: a panel beside the list, not a sheet from the floor.
-
-   The controls behind the filter and sort icons are the same at every width, and so is
-   the dialog that holds them; only its shape changes. A sheet rising from the floor of a
-   1440px window reads as a phone app running in a desktop one, so above the breakpoint
-   the dialog is pinned where the sidebar's head row is — it appears where the control
-   that opened it was — sized to the sidebar, and drawn as a card.
-
-   `width > 860px` is the complement of `MOBILE_QUERY`'s `max-width: 860px` in
-   `useMediaQuery.ts`, written in range syntax so there is no fractional-width hole
-   between the two. Everything in here is scoped to `:not(.sheet-side)`: the drawer keeps
-   its phone shape because it does not exist above the breakpoint at all.
-
-   The dialog is in the top layer, so it cannot be positioned relative to the sidebar and
-   `--panel-top` is a measurement rather than a reference: the wide shell's 2rem top
-   padding plus the topbar (a 1.35rem wordmark at 1.6 line-height, 0.6rem padding, a 1px
-   rule and 1.2rem margin below it). Anchor positioning would make it a reference; it is
-   not yet in every browser this app supports, so the number is pinned here instead, and
-   the topbar is the thing to re-measure if it moves.
-
-   `--sidebar-width` reaches the dialog through inheritance — it is set inline on `.notes`,
-   which is the dialog's DOM ancestor, and inheritance follows the DOM rather than the top
-   layer — so the panel tracks a dragged sidebar. The floor of 20rem is for the narrowest
-   drag (`SIDEBAR_MIN` is 200px), where the sidebar is too narrow for a page of controls.
-   --------------------------------------------------------------------------------- */
-@media (width > 860px) {
-  .sheet:not(.sheet-side) {
-    --panel-top: calc(2rem + 1.35rem * 1.6 + 0.6rem + 1px + 1.2rem);
-    margin: 0;
-    inset: auto;
-    top: var(--panel-top);
-    /* The wide shell's inline padding: flush with the sidebar's box, not its text edge. */
-    left: 1.5rem;
-    width: min(max(var(--sidebar-width, 19rem), 20rem), calc(100vw - 3rem));
-    max-height: calc(100dvh - var(--panel-top) - 1rem);
-    border: 1px solid var(--border);
-    border-radius: 0.75rem;
-    /*
-       Fixed black ink, as `.overflow-list` should have and `.sheet::backdrop` does: a
-       shadow mixed from `--fg` is near-white in dark mode, and a card that glows is a
-       card that has come unstuck from the page.
-    */
-    box-shadow: 0 8px 28px rgb(0 0 0 / 22%);
-  }
-
-  /*
-     Light, not absent. The page behind the panel is inert while it is open — that is
-     what `showModal` means — and a scrim that cannot be seen leaves clicks on the list
-     dying for no visible reason. 12% is enough to say "this is on top of that" without
-     dimming the notes the filters are about.
-  */
-  .sheet:not(.sheet-side)::backdrop { background: rgb(0 0 0 / 12%); }
-
-  /* No grip: there is no floor for the panel to be pulled back to, and Sheet.tsx takes the
-     drag handlers off the head at the same width. */
-  .sheet:not(.sheet-side) .sheet-grip { display: none; }
-
-  /* The head is the first thing in the column now; the pull-up that cancelled the grip's
-     margins would cancel the body's padding instead. */
-  .sheet:not(.sheet-side) .sheet-head { margin-top: 0; }
-
-  /* Done is a thumb's way out of a sheet that filled the screen. A panel with a ✕ in its
-     head and Escape does not need a third exit, and a button that only closes what a
-     click anywhere outside already closes is a row of nothing. */
-  .sheet:not(.sheet-side) .sheet-foot { display: none; }
-
-  /*
-     The tag picker claims 70dvh on a phone, where the sheet is capped at 85dvh. The panel
-     is capped lower, so in a short window the page would be taller than its box and the
-     panel would scroll instead of the list inside it. 8rem is the head, the chips and the
-     find field, which is what the list has to leave room for.
-  */
-  .sheet:not(.sheet-side) .tag-picker {
-    height: min(70dvh, calc(100dvh - var(--panel-top) - 8rem));
-  }
-
-  /* A panel drops from the head it belongs to rather than rising from a floor it does
-     not have. Same distance, same timing, the other way. Equal specificity to the phone
-     rules above, so source order is what makes these win. */
-  @media (prefers-reduced-motion: no-preference) {
-    @starting-style {
-      .sheet:not(.sheet-side)[open] { translate: 0 -0.35rem; }
-    }
-
-    .sheet:not(.sheet-side):not([open]) { translate: 0 -0.35rem; }
-  }
-}
-
 /*
    The padding lives here rather than on the dialog.
 
@@ -4831,6 +4742,101 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
   border-bottom: none;
 }
 
+
+/* ------------------------------------------------------------------------------------
+   The sheet at desktop width: a panel beside the list, not a sheet from the floor.
+
+   The controls behind the filter and sort icons are the same at every width, and so is
+   the dialog that holds them; only its shape changes. A sheet rising from the floor of a
+   1440px window reads as a phone app running in a desktop one, so above the breakpoint
+   the dialog is pinned where the sidebar's head row is — it appears where the control
+   that opened it was — sized to the sidebar, and drawn as a card.
+
+   `width > 860px` is the complement of `MOBILE_QUERY`'s `max-width: 860px` in
+   `useMediaQuery.ts`, written in range syntax so there is no fractional-width hole
+   between the two. Everything in here is scoped to `:not(.sheet-side)`: the drawer keeps
+   its phone shape because it does not exist above the breakpoint at all.
+
+   The dialog is in the top layer, so it cannot be positioned relative to the sidebar and
+   `--panel-top` is a measurement rather than a reference: the wide shell's 2rem top
+   padding plus the topbar — whose height is the 2.75rem avatar button, not the wordmark
+   beside it — with its 0.6rem padding, 1px rule and 1.2rem margin below. Measured against
+   `.sidebar.getBoundingClientRect().top`, which it matches to the pixel. Anchor
+   positioning would make it a reference; it is not yet in every browser this app
+   supports, so the number is pinned here instead, and the topbar is the thing to
+   re-measure if it moves.
+
+   Placed after every other `.sheet` rule on purpose: these override the phone's by source
+   order at equal specificity, and the head's grip-cancel in particular would win if this
+   block sat above it.
+
+   `--sidebar-width` reaches the dialog through inheritance — it is set inline on `.notes`,
+   which is the dialog's DOM ancestor, and inheritance follows the DOM rather than the top
+   layer — so the panel tracks a dragged sidebar. The floor of 20rem is for the narrowest
+   drag (`SIDEBAR_MIN` is 200px), where the sidebar is too narrow for a page of controls.
+   --------------------------------------------------------------------------------- */
+@media (width > 860px) {
+  .sheet:not(.sheet-side) {
+    --panel-top: calc(2rem + 2.75rem + 0.6rem + 1px + 1.2rem);
+    margin: 0;
+    inset: auto;
+    top: var(--panel-top);
+    /* The wide shell's inline padding: flush with the sidebar's box, not its text edge. */
+    left: 1.5rem;
+    width: min(max(var(--sidebar-width, 19rem), 20rem), calc(100vw - 3rem));
+    max-height: calc(100dvh - var(--panel-top) - 1rem);
+    border: 1px solid var(--border);
+    border-radius: 0.75rem;
+    /*
+       Fixed black ink, as `.overflow-list` should have and `.sheet::backdrop` does: a
+       shadow mixed from `--fg` is near-white in dark mode, and a card that glows is a
+       card that has come unstuck from the page.
+    */
+    box-shadow: 0 8px 28px rgb(0 0 0 / 22%);
+  }
+
+  /*
+     Light, not absent. The page behind the panel is inert while it is open — that is
+     what `showModal` means — and a scrim that cannot be seen leaves clicks on the list
+     dying for no visible reason. 12% is enough to say "this is on top of that" without
+     dimming the notes the filters are about.
+  */
+  .sheet:not(.sheet-side)::backdrop { background: rgb(0 0 0 / 12%); }
+
+  /* No grip: there is no floor for the panel to be pulled back to, and Sheet.tsx takes the
+     drag handlers off the head at the same width. */
+  .sheet:not(.sheet-side) .sheet-grip { display: none; }
+
+  /* The head is the first thing in the column now; the pull-up that cancelled the grip's
+     margins would cancel the body's padding instead. */
+  .sheet:not(.sheet-side) .sheet-head { margin-top: 0; }
+
+  /* Done is a thumb's way out of a sheet that filled the screen. A panel with a ✕ in its
+     head and Escape does not need a third exit, and a button that only closes what a
+     click anywhere outside already closes is a row of nothing. */
+  .sheet:not(.sheet-side) .sheet-foot { display: none; }
+
+  /*
+     The tag picker claims 70dvh on a phone, where the sheet is capped at 85dvh. The panel
+     is capped lower, so in a short window the page would be taller than its box and the
+     panel would scroll instead of the list inside it. 8rem is the head, the chips and the
+     find field, which is what the list has to leave room for.
+  */
+  .sheet:not(.sheet-side) .tag-picker {
+    height: min(70dvh, calc(100dvh - var(--panel-top) - 8rem));
+  }
+
+  /* A panel drops from the head it belongs to rather than rising from a floor it does
+     not have. Same distance, same timing, the other way. Equal specificity to the phone
+     rules above, so source order is what makes these win. */
+  @media (prefers-reduced-motion: no-preference) {
+    @starting-style {
+      .sheet:not(.sheet-side)[open] { translate: 0 -0.35rem; }
+    }
+
+    .sheet:not(.sheet-side):not([open]) { translate: 0 -0.35rem; }
+  }
+}
 
 /* ------------------------------------------------------------------------------------
    Mobile overrides.
