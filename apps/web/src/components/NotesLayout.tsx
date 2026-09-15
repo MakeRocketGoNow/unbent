@@ -32,6 +32,7 @@ import { Sheet } from './Sheet.js';
 import { NoteListHead } from './NoteListHead.js';
 import { NotesSort } from './NotesSort.js';
 import { ActiveFilters } from './ActiveFilters.js';
+import { ScopeMatches } from './ScopeMatches.js';
 import { useMediaQuery, MOBILE_QUERY } from '../useMediaQuery.js';
 import { useSession } from '../auth-client.js';
 import { useSignOut } from '../useSignOut.js';
@@ -460,6 +461,23 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
         )}
 
         <ul className="note-list" aria-busy={stale || undefined} onKeyDown={onListKeys}>
+          {/*
+              Tags and notebooks whose names match, before the notes that do. The needle is
+              the debounced query so they arrive together with the results rather than a
+              beat ahead of them. Picking one clears the query, and on a phone closes the
+              field — the same close the back arrow does, minus the clearing it has already
+              done.
+          */}
+          {results !== null && (
+            <ScopeMatches
+              query={debounced}
+              tags={tags.data ?? []}
+              notebooks={notebooks.data}
+              selectedTags={selectedTags}
+              notebook={notebook}
+              onPick={() => setSearchOpen(false)}
+            />
+          )}
           {results !== null && <SearchResults results={results} />}
 
           {results === null &&

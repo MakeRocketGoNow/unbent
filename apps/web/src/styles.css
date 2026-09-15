@@ -2849,6 +2849,65 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
 .enex-help > div { margin: 0.5rem 0 0; }
 .enex-help p { margin: 0 0 0.5rem; color: var(--muted); }
 .enex-help p:last-child { margin-bottom: 0; }
+/* ---------------------------------------------------------------------------------
+   Scope matches: tags and notebooks whose names match a search, above the notes that do.
+
+   Drawn as the tag picker's rows — an icon, a name, a count — rather than as note entries,
+   because they are not notes: picking one applies a filter. The horizontal padding is the
+   note entry's, so the icon starts on the notes' text edge and the column stays one edge.
+   The rule under the last one is what separates "things to pick" from "things found"
+   without a heading, which would cost a row on a phone to say what the icons already say.
+   --------------------------------------------------------------------------------- */
+.scope-match-btn {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  min-height: 2.25rem;
+  padding: 0.25rem 0.7rem;
+  font: inherit;
+  font-size: 0.9rem;
+  text-align: left;
+  color: var(--fg);
+  background: none;
+  border: none;
+  border-radius: 0.45rem;
+  cursor: pointer;
+}
+
+.scope-match-btn:hover { background: color-mix(in srgb, var(--fg) 8%, transparent); }
+
+.scope-match-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+/* Muted and fixed-width like `.filter-row-icon`: wayfinding, not content. */
+.scope-match-icon {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.35rem;
+  color: var(--muted);
+}
+
+.scope-match-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* The seam between the picks and the notes, on the first note rather than the last pick,
+   so it is only drawn when there is something under it. */
+.scope-match + li:not(.scope-match) {
+  margin-top: 0.4rem;
+  padding-top: 0.4rem;
+  border-top: 1px solid var(--border);
+}
+
 /* Underlined because this one sits mid-sentence in muted body text, where the link colour
    alone is too quiet for the only thing on the page a user has to go and fetch. */
 .enex-help a { text-decoration: underline; }
