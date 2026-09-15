@@ -10,8 +10,6 @@ export interface NotebookData {
 interface NotebookSelectProps {
   notebook: string | undefined;
   notebooks: { data: NotebookData | undefined; isSuccess: boolean };
-  /** Whether a rule belongs under it — true when it is the last control before the list. */
-  endsFilters?: boolean;
 }
 
 /**
@@ -21,11 +19,13 @@ interface NotebookSelectProps {
  * written wherever one is needed: the desync warning above it, clearing the tag on change,
  * and when the Inbox option is worth offering at all. Each is explained where it happens.
  *
- * Desktop only, now. On a phone the notebook is picked from the drawer — it is a place you
- * go rather than a filter you apply, which is what the tag-clearing rule below has been
- * saying all along.
+ * Desktop only. On a phone the notebook is picked from the drawer — it is a place you go
+ * rather than a filter you apply, which is what the tag-clearing rule below has been
+ * saying all along. On a desktop it is the one control left in the column now that the
+ * filters sit behind the header's icon: the desktop has no drawer, and a rail for it is a
+ * separate decision.
  */
-export function NotebookSelect({ notebook, notebooks, endsFilters }: NotebookSelectProps) {
+export function NotebookSelect({ notebook, notebooks }: NotebookSelectProps) {
   const navigate = useNavigate();
   if ((notebooks.data?.notebooks.length ?? 0) === 0) return null;
 
@@ -49,7 +49,7 @@ export function NotebookSelect({ notebook, notebooks, endsFilters }: NotebookSel
           </p>
         )}
 
-      <div className={`notebook-scope-wrap${endsFilters ? ' filters-end' : ''}`}>
+      <div className="notebook-scope-wrap">
         <select
           className="notebook-scope"
           value={notebook ?? ''}

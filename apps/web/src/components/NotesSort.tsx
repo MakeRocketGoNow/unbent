@@ -12,7 +12,7 @@ interface NotesSortProps {
 }
 
 /**
- * The note list's sort control on a phone: one icon, and the sheet of orders behind it.
+ * The note list's sort control: one icon, and the sheet of orders behind it.
  *
  * This was a ⋯ menu holding "Sort: …" and Settings. Settings was here only because the
  * phone hides the topbar over the list and the avatar menu that carried it went with it —
@@ -31,6 +31,12 @@ interface NotesSortProps {
  *
  * The caller decides whether this renders at all: while searching, results come back ranked
  * by relevance and reordering them would throw that ranking away, so the icon goes.
+ *
+ * At every width, since the desktop sidebar took the phone's header. The desktop had a
+ * `<select>` in its column for this, which showed the current order without a tap and
+ * was the better control for a mouse; it went with the rest of that column, because the
+ * column's whole problem was rows of controls above a list with no room left for notes.
+ * Above the breakpoint the sheet is drawn as a panel beside the list — see `Sheet`.
  */
 export function NotesSort({ sort, order }: NotesSortProps) {
   const navigate = useNavigate();

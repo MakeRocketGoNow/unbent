@@ -14,7 +14,7 @@ import { NotesSort } from './NotesSort.js';
  * It was a ⋯ menu with Settings in it, and Settings is what these used to pin. Settings
  * lives on the drawer's floor now, so what is left to pin is that the icon says what the
  * order *is* without being opened, and that the sheet behind it writes the choice to the
- * URL the way the desktop select does.
+ * URL the way the desktop's select did before this replaced it there too.
  *
  * jsdom has no `showModal`; stubbed as in `Sheet.test.tsx`.
  */
