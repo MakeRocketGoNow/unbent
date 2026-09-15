@@ -1,4 +1,4 @@
-import { useEffect, useRef, type ReactNode } from 'react';
+import { useEffect, useRef, type ReactNode, type RefObject } from 'react';
 import { SearchIcon, FilterIcon, MenuIcon } from './icons.js';
 import { BackArrow } from './BackArrow.js';
 
@@ -19,6 +19,13 @@ interface NoteListHeadProps {
   /** The search box's value, which is the URL's `q`. */
   query: string;
   onQuery: (next: string) => void;
+  /**
+   * Arrow Down in the field, which is how the results under it are reached by keyboard.
+   * The caller moves focus into its list; the field itself has nothing below to offer.
+   */
+  onArrowDown?: () => void;
+  /** The field's element, for a caller that needs to put focus back on it. */
+  fieldRef?: RefObject<HTMLInputElement | null>;
   /** Whether the field has taken over the row. Ignored when the field is always on screen. */
   searchOpen: boolean;
   /**
@@ -89,6 +96,8 @@ export function NoteListHead({
   title,
   query,
   onQuery,
+  onArrowDown,
+  fieldRef,
   searchOpen,
   onOpenSearch,
   onCloseSearch,
@@ -98,7 +107,8 @@ export function NoteListHead({
   sort,
   action,
 }: NoteListHeadProps) {
-  const field = useRef<HTMLInputElement>(null);
+  const own = useRef<HTMLInputElement>(null);
+  const field = fieldRef ?? own;
   /** Whether the field is a permanent row (desktop) rather than something the row opens into. */
   const fieldAlways = onOpenSearch === undefined;
 
@@ -125,6 +135,13 @@ export function NoteListHead({
         // Escape leaves the search the way it does everywhere else in the app. For the
         // permanent field that means clearing it — there is nothing to close.
         if (e.key === 'Escape') onCloseSearch();
+        // Arrow Down goes to the results, the way it does in Apple Notes and Finder: the
+        // list under the field is what the typing produced, and a search should be one
+        // keyboard path from the first keystroke to the note.
+        if (e.key === 'ArrowDown' && onArrowDown) {
+          e.preventDefault();
+          onArrowDown();
+        }
       }}
     />
   );

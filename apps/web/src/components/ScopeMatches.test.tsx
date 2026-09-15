@@ -73,6 +73,14 @@ describe('ScopeMatches', () => {
     expect(names(container)).toEqual(['Ash']);
   });
 
+  /* The word over the group is what keeps a tag row among note rows from reading as a
+     note with something wrong with it. */
+  it('captions the group', async () => {
+    const { container, findByLabelText } = harness({ query: 'ash' });
+    await findByLabelText('Filter by tag: Ash');
+    expect(container.querySelector('.list-caption')?.textContent).toBe('Tags and notebooks');
+  });
+
   it('matches anywhere in the name, not only at the start', async () => {
     const { findByLabelText } = harness({ query: 'reck', tags: [{ name: 'Wreck', count: 2 }] });
     await findByLabelText('Filter by tag: Wreck');

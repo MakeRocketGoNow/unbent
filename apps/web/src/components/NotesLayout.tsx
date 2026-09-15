@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate } from '@tanstack/react-router';
 import { useQuery, useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
 import { UNFILED } from '@unbent/shared';
@@ -16,7 +16,7 @@ import {
 import { useNotesLayout, SIDEBAR_DEFAULT, SIDEBAR_MIN, SIDEBAR_MAX } from '../useNotesLayout.js';
 import { ResizeHandle } from './ResizeHandle.js';
 import { NoteListItem } from './NoteListItem.js';
-import { useListKeys } from '../useListKeys.js';
+import { useListKeys, enterList } from '../useListKeys.js';
 import { markNewNote } from '../useNewNote.js';
 import { SearchResults } from './SearchResults.js';
 import { IndexingStatus } from './IndexingStatus.js';
@@ -34,7 +34,7 @@ import { Sheet } from './Sheet.js';
 import { NoteListHead } from './NoteListHead.js';
 import { NotesSort } from './NotesSort.js';
 import { ActiveFilters } from './ActiveFilters.js';
-import { ScopeMatches } from './ScopeMatches.js';
+import { ScopeMatches, scopeMatches } from './ScopeMatches.js';
 import { useMediaQuery, MOBILE_QUERY } from '../useMediaQuery.js';
 import { useSession } from '../auth-client.js';
 import { useSignOut } from '../useSignOut.js';
@@ -49,7 +49,13 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const layout = useNotesLayout('/notes/$noteId');
-  const onListKeys = useListKeys();
+  /*
+   * The search field and the list, so the arrow keys can pass between them: Down in the
+   * field enters the list on its first row, Up on that row returns to the field.
+   */
+  const searchRef = useRef<HTMLInputElement>(null);
+  const listRef = useRef<HTMLUListElement>(null);
+  const onListKeys = useListKeys({ onLeaveTop: () => searchRef.current?.focus() });
   /*
    * The account, for the drawer's floor. The topbar carries it at desktop width and is
    * hidden over the phone's list, so this is where it is reached there — the root layout
@@ -187,6 +193,9 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
 
   /** Null means "not searching", which is distinct from searching and finding nothing. */
   const results = debounced.trim() === '' ? null : (search.data ?? null);
+  /** Whether the results will be headed by picks, which is when the notes need a caption too. */
+  const picks = scopeMatches(debounced, tags.data ?? [], notebooks.data, selectedTags, notebook);
+  const hasPicks = picks.tags.length > 0 || picks.notebooks.length > 0;
 
   const notes = list.data?.pages.flatMap((p) => p.items) ?? [];
   const total = list.data?.pages[0]?.total ?? null;
@@ -274,6 +283,8 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
           title={isMobile ? scopeLabel : undefined}
           query={q}
           onQuery={setQuery}
+          onArrowDown={() => enterList(listRef.current)}
+          fieldRef={searchRef}
           searchOpen={searchOpen}
           /* Behind an icon on a phone; a permanent row on a desktop. Passing the opener or
              not is how the header is told which — see `NoteListHead`. */
@@ -520,7 +531,7 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
           </button>
         )}
 
-        <ul className="note-list" aria-busy={stale || undefined} onKeyDown={onListKeys}>
+        <ul className="note-list" ref={listRef} aria-busy={stale || undefined} onKeyDown={onListKeys}>
           {/*
               Tags and notebooks whose names match, before the notes that do. The needle is
               the debounced query so they arrive together with the results rather than a
@@ -538,6 +549,7 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
               onPick={() => setSearchOpen(false)}
             />
           )}
+          {results !== null && hasPicks && <li className="list-caption">Notes</li>}
           {results !== null && <SearchResults results={results} />}
 
           {results === null &&

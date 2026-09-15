@@ -109,6 +109,17 @@ describe('NoteListHead', () => {
     expect(queryByText('more')).toBeNull();
   });
 
+  /* Down from the field goes to the results — the list under it is what typing produced. */
+  it('hands Arrow Down to the caller, which enters the list', () => {
+    const onArrowDown = vi.fn();
+    const { getByLabelText } = render(
+      <NoteListHead {...props} searchOpen query="derm" onArrowDown={onArrowDown} />,
+    );
+    const prevented = !fireEvent.keyDown(getByLabelText('Search notes'), { key: 'ArrowDown' });
+    expect(onArrowDown).toHaveBeenCalledTimes(1);
+    expect(prevented).toBe(true);
+  });
+
   it('reports typing so the URL stays the one source of the query', () => {
     const onQuery = vi.fn();
     const { getByLabelText } = render(<NoteListHead {...props} searchOpen onQuery={onQuery} />);

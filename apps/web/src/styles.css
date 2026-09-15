@@ -2863,9 +2863,29 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
    Drawn as the tag picker's rows — an icon, a name, a count — rather than as note entries,
    because they are not notes: picking one applies a filter. The horizontal padding is the
    note entry's, so the icon starts on the notes' text edge and the column stays one edge.
-   The rule under the last one is what separates "things to pick" from "things found"
-   without a heading, which would cost a row on a phone to say what the icons already say.
+
+   Captioned, in the note list's own quiet voice: "Tags and notebooks" over the picks and
+   "Notes" over the results. A tag row among note rows without a word over it read as a
+   note with something wrong with it; the captions say what each group is, and the rule
+   between them is the seam. Neither is drawn unless there are picks, so an ordinary
+   search is not headed by a word for the only thing on it. They are not coloured: a tint
+   was tried, and made the picks look like a different control rather than a labelled
+   part of this one.
    --------------------------------------------------------------------------------- */
+.list-caption {
+  padding: 0.35rem 0.7rem 0.1rem;
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+
+/* The seam between the picks and the notes: on the notes' caption, so it is only drawn
+   when there is something under it. */
+.scope-match + .list-caption {
+  margin-top: 0.4rem;
+  padding-top: 0.6rem;
+  border-top: 1px solid var(--border);
+}
+
 .scope-match-btn {
   display: flex;
   align-items: center;
@@ -2908,12 +2928,11 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
   text-overflow: ellipsis;
 }
 
-/* The seam between the picks and the notes, on the first note rather than the last pick,
-   so it is only drawn when there is something under it. */
-.scope-match + li:not(.scope-match) {
-  margin-top: 0.4rem;
-  padding-top: 0.4rem;
-  border-top: 1px solid var(--border);
+/* Reached by the arrow keys from the field, so the ring has to be there — the row's own
+   fill on hover is not a focus state. Inset like the note entries' and the sheet rows'. */
+.scope-match-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
 }
 
 /* Underlined because this one sits mid-sentence in muted body text, where the link colour

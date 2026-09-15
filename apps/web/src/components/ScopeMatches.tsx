@@ -39,7 +39,16 @@ interface ScopeMatchesProps {
  * people remember a word from the middle of a name as readily as its first letter.
  *
  * The rows are buttons, not links. Picking one applies a filter, which is an action; a
- * link here would promise a page to open in a new tab.
+ * link here would promise a page to open in a new tab. They are rows of the note list
+ * rather than a menu under the field, and the arrow keys reach them from the field the
+ * way they reach the notes — see `useListKeys`. A combobox was tried in between: a menu
+ * of tags over a list of notes answered the same keystrokes in two places, and a palette
+ * that held the notes too would have drawn the results twice. One list, captioned.
+ *
+ * The captions are what say these are not a glitch. A row that looks like a note but
+ * carries a tag icon reads as a note with something wrong with it; "Tags and notebooks"
+ * over the picks and "Notes" over the results is what Apple Notes' "Suggested" does, and
+ * costs one line each only while there is something to caption.
  *
  * Selected tags and the current notebook are left out — offering a filter that is already
  * on would be a control that does nothing. Tags keep the API's order, by count, so the
@@ -49,6 +58,25 @@ interface ScopeMatchesProps {
  *
  * Renders nothing for an empty needle, so the caller mounts it whenever results are shown.
  */
+/** What the search would offer as picks — exported so the caller can caption the notes below. */
+export function scopeMatches(
+  query: string,
+  tags: TagCount[],
+  notebooks: NotebookData | undefined,
+  selectedTags: string[],
+  notebook: string | undefined,
+): { tags: TagCount[]; notebooks: NotebookData['notebooks'] } {
+  const needle = query.trim().toLowerCase();
+  if (needle === '') return { tags: [], notebooks: [] };
+  const matches = (name: string) => name.toLowerCase().includes(needle);
+  return {
+    tags: tags.filter((t) => !selectedTags.includes(t.name) && matches(t.name)).slice(0, MAX_TAGS),
+    notebooks: (notebooks?.notebooks ?? [])
+      .filter((nb) => nb.name !== notebook && matches(nb.name))
+      .slice(0, MAX_NOTEBOOKS),
+  };
+}
+
 export function ScopeMatches({
   query,
   tags,
@@ -58,17 +86,13 @@ export function ScopeMatches({
   onPick,
 }: ScopeMatchesProps) {
   const navigate = useNavigate();
-  const needle = query.trim().toLowerCase();
-  if (needle === '') return null;
-
-  const matches = (name: string) => name.toLowerCase().includes(needle);
-  const tagHits = tags
-    .filter((t) => !selectedTags.includes(t.name) && matches(t.name))
-    .slice(0, MAX_TAGS);
-  const notebookHits = (notebooks?.notebooks ?? [])
-    .filter((nb) => nb.name !== notebook && matches(nb.name))
-    .slice(0, MAX_NOTEBOOKS);
-
+  const { tags: tagHits, notebooks: notebookHits } = scopeMatches(
+    query,
+    tags,
+    notebooks,
+    selectedTags,
+    notebook,
+  );
   if (tagHits.length === 0 && notebookHits.length === 0) return null;
 
   const pick = (search: Record<string, unknown>) => {
@@ -78,6 +102,7 @@ export function ScopeMatches({
 
   return (
     <>
+      <li className="list-caption">Tags and notebooks</li>
       {tagHits.map((t) => (
         <li key={`tag:${t.name}`} className="scope-match">
           <button
