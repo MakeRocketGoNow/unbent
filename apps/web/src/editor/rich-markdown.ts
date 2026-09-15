@@ -83,7 +83,45 @@ const CODE_BLOCK_ONLY = Decoration.line({
   class: 'cm-md-codeblock cm-md-codeblock-first cm-md-codeblock-last',
 });
 
+/**
+ * A heading line positions its own hanging mark, and keeps its height while the mark is
+ * the only thing on it: an absolutely positioned span leaves no in-flow content, and a
+ * line with none is zero pixels tall — the caret would then sit beside the line below
+ * while `## ` is being typed. `lh` is the line's own line-height, whatever the level.
+ */
+const HEADING_LINE = { position: 'relative', minHeight: '1lh' } as const;
+
+/**
+ * Below this viewport width the heading mark stays in the line; see the theme.
+ *
+ * A proxy for the room beside the note: with the 19rem sidebar and the shell's insets,
+ * the column reaches the note's 52rem measure at about 1250px, and a `### ` at heading
+ * size needs a little more than the column's own 1.5rem gutter to sit in.
+ */
+const HANG_MIN_WIDTH = 1200;
+
 const hiddenMark = Decoration.mark({ class: 'cm-md-hidden' });
+/**
+ * A syntax mark on the line being edited.
+ *
+ * Revealed rather than hidden, but drawn as punctuation the editor owns — dimmed, at
+ * normal weight — instead of in the style of the text it marks. A `##` set at heading
+ * size and weight reads as two characters of the heading; the same `##` in light grey
+ * reads as the control that made it one, which is what Bear and iA Writer draw and what
+ * lets someone who has never seen markdown click into a heading without a jolt.
+ */
+const revealedMark = Decoration.mark({ class: 'cm-md-mark' });
+/**
+ * A revealed heading mark hangs in the margin, so the heading's text does not move.
+ *
+ * Hidden, `## ` takes no room and the heading starts at the column's edge. Revealed in
+ * flow, it pushes the whole heading three characters to the right and back again when
+ * the caret leaves — the jump is the thing people notice, more than the hashes. iA
+ * Writer's answer is to hang the marks to the left of the text, and that is what this
+ * does: the span covers the mark and its separating space, and the theme takes it out
+ * of the flow and sets its right edge on the line's left edge.
+ */
+const revealedHeaderMark = Decoration.mark({ class: 'cm-md-mark cm-md-headmark' });
 /** The alignment row hides as a collapsed line rather than as zero-width text. */
 const hiddenAlignRow = Decoration.mark({ class: 'cm-md-hidden' });
 const listBullet = Decoration.mark({ class: 'cm-md-bullet' });
@@ -176,27 +214,47 @@ export function orderedMarker(ordinal: number, depth: number, delimiter: string)
   return `${style === 'alpha' ? toAlpha(ordinal) : toRoman(ordinal)}${delimiter}`;
 }
 
-/** How many ordered lists enclose this node; 0 when it is not in one. */
-function orderedDepth(node: { parent: { name: string; parent: unknown } | null }): number {
+/** How many lists of the given kind enclose this node; 0 when it is not in one. */
+function listDepth(
+  node: { parent: { name: string; parent: unknown } | null },
+  kind: 'OrderedList' | 'BulletList',
+): number {
   let depth = 0;
   for (let p = node.parent; p; p = p.parent as typeof p) {
-    if (p.name === 'OrderedList') depth += 1;
+    if (p.name === kind) depth += 1;
   }
   return depth;
 }
 
 /**
- * Displays a converted ordered marker in place of the digits in the buffer.
+ * Bullet glyphs by depth, cycling the way word processors do: `•` → `◦` → `▪`.
+ *
+ * A markdown bullet is a `-`, `*` or `+` in the buffer, and a dash is not a bullet to
+ * anyone who has not written markdown — it was the one piece of syntax visible on every
+ * list line whether or not the caret was anywhere near it. Same rule as the ordered
+ * markers above: the glyph is a rendering, the buffer keeps the dash, and the dash comes
+ * back on the line being edited.
+ */
+const BULLET_GLYPHS = ['•', '◦', '▪'] as const;
+
+/** The glyph to display for a bullet at a given depth, 1 being the top level. */
+export function bulletGlyph(depth: number): string {
+  return BULLET_GLYPHS[(Math.max(depth, 1) - 1) % BULLET_GLYPHS.length] ?? '•';
+}
+
+/**
+ * Displays a rendered list marker in place of the one in the buffer — a letter or numeral
+ * for a nested ordered item, a bullet glyph for a dash.
  *
  * A widget rather than CSS: the marker lives in the text, so there is no list element to
  * hand `list-style-type` to.
  */
-class OrderedMarkerWidget extends WidgetType {
+class ListMarkerWidget extends WidgetType {
   constructor(private readonly label: string) {
     super();
   }
 
-  override eq(other: OrderedMarkerWidget): boolean {
+  override eq(other: ListMarkerWidget): boolean {
     return other.label === this.label;
   }
 
@@ -931,25 +989,50 @@ function buildDecorations(view: EditorView, options: RichMarkdownOptions): Decor
         if (node.name === 'ListMark') {
           const raw = state.doc.sliceString(node.from, node.to);
           const ordered = /^(\d+)([.)])$/.exec(raw);
-          const depth = ordered ? orderedDepth(node.node) : 0;
 
           /**
-           * Show the depth's marker style, but only while the cursor is elsewhere.
+           * Show the depth's marker, but only while the cursor is elsewhere.
            *
-           * On the active line the real digits come back, for the same reason `**` does:
-           * you cannot edit a marker you cannot see, and typing `2.` over a displayed `b.`
-           * would otherwise look like the editor was fighting you.
+           * On the active line the real characters come back, for the same reason `**`
+           * does: you cannot edit a marker you cannot see, and typing `2.` over a
+           * displayed `b.` would otherwise look like the editor was fighting you.
+           *
+           * Top-level ordered items are left as their own digits, which already read as
+           * a list; every bullet is rendered, because a dash never does.
            */
           const scope = revealScope(state, node.node);
-          if (ordered && depth > 1 && !selectionTouches(state, scope.from, scope.to)) {
-            const label = orderedMarker(Number(ordered[1]), depth, ordered[2] ?? '.');
-            marks.push(
-              Decoration.replace({ widget: new OrderedMarkerWidget(label) }).range(
-                node.from,
-                node.to,
-              ),
-            );
-            return;
+          if (!selectionTouches(state, scope.from, scope.to)) {
+            /**
+             * A task item is its checkbox: a bullet in front of it is a second marker
+             * for the same item, which is how no checklist anywhere is drawn. The dash
+             * and its space hide the way a heading's `##` does, and come back with the
+             * caret.
+             */
+            if (node.node.nextSibling?.name === 'Task') {
+              let end = node.to;
+              while (end < state.doc.length && /[ \t]/.test(state.doc.sliceString(end, end + 1))) {
+                end += 1;
+              }
+              marks.push(hiddenMark.range(node.from, end));
+              return;
+            }
+
+            let label: string | undefined;
+            if (ordered) {
+              const depth = listDepth(node.node, 'OrderedList');
+              if (depth > 1) label = orderedMarker(Number(ordered[1]), depth, ordered[2] ?? '.');
+            } else {
+              label = bulletGlyph(listDepth(node.node, 'BulletList'));
+            }
+            if (label !== undefined) {
+              marks.push(
+                Decoration.replace({ widget: new ListMarkerWidget(label) }).range(
+                  node.from,
+                  node.to,
+                ),
+              );
+              return;
+            }
           }
 
           marks.push(listBullet.range(node.from, node.to));
@@ -993,15 +1076,21 @@ function buildDecorations(view: EditorView, options: RichMarkdownOptions): Decor
 
           const scope = revealScope(state, node.node);
 
-          if (!selectionTouches(state, scope.from, scope.to)) {
-            let end = node.to;
-            if (MARKS_WITH_TRAILING_SPACE.has(node.name)) {
-              // Consume the separating whitespace so the content aligns with body text.
-              while (end < state.doc.length && /[ \t]/.test(state.doc.sliceString(end, end + 1))) {
-                end += 1;
-              }
+          let end = node.to;
+          if (MARKS_WITH_TRAILING_SPACE.has(node.name)) {
+            // Consume the separating whitespace so the content aligns with body text.
+            while (end < state.doc.length && /[ \t]/.test(state.doc.sliceString(end, end + 1))) {
+              end += 1;
             }
+          }
+
+          if (!selectionTouches(state, scope.from, scope.to)) {
             marks.push(hiddenMark.range(node.from, end));
+          } else if (node.name === 'HeaderMark') {
+            // The space hangs with the mark: it is the gap between the hashes and the text.
+            marks.push(revealedHeaderMark.range(node.from, end));
+          } else {
+            marks.push(revealedMark.range(node.from, node.to));
           }
         }
       },
@@ -1057,12 +1146,33 @@ export function richMarkdown(options: RichMarkdownOptions = {}): Extension {
         lineHeight: '0',
       },
 
-      '.cm-md-h1': { fontSize: '1.6em', fontWeight: '600', lineHeight: '1.35' },
-      '.cm-md-h2': { fontSize: '1.35em', fontWeight: '600', lineHeight: '1.35' },
-      '.cm-md-h3': { fontSize: '1.15em', fontWeight: '600' },
-      '.cm-md-h4': { fontSize: '1.05em', fontWeight: '600' },
-      '.cm-md-h5': { fontWeight: '600' },
-      '.cm-md-h6': { fontWeight: '600', opacity: '0.8' },
+      '.cm-md-h1': { ...HEADING_LINE, fontSize: '1.6em', fontWeight: '600', lineHeight: '1.35' },
+      '.cm-md-h2': { ...HEADING_LINE, fontSize: '1.35em', fontWeight: '600', lineHeight: '1.35' },
+      '.cm-md-h3': { ...HEADING_LINE, fontSize: '1.15em', fontWeight: '600' },
+      '.cm-md-h4': { ...HEADING_LINE, fontSize: '1.05em', fontWeight: '600' },
+      '.cm-md-h5': { ...HEADING_LINE, fontWeight: '600' },
+      '.cm-md-h6': { ...HEADING_LINE, fontWeight: '600', opacity: '0.8' },
+
+      /**
+       * The hanging heading mark, see `revealedHeaderMark`.
+       *
+       * `right: 100%` of the line puts the span's right edge on the line's left edge, so
+       * the mark ends where the text begins; `pre` keeps the trailing space that is the
+       * gap between them. The scroller's overflow is opened so the margin can hold it:
+       * this editor grows with its note and the column does the scrolling, so the
+       * scroller was never clipping anything that needed to scroll.
+       */
+      '.cm-scroller': { overflow: 'visible' },
+      '.cm-md-headmark': { position: 'absolute', right: '100%', whiteSpace: 'pre' },
+      /**
+       * Where there is no margin to hang into, the mark takes its place in the line
+       * instead and the heading shifts, as every mark did before. The cut is where the
+       * note column loses the air around its measure; at a phone's width the column
+       * runs to the glass and `### ` would be clipped rather than read.
+       */
+      [`@media (max-width: ${HANG_MIN_WIDTH}px)`]: {
+        '.cm-md-headmark': { position: 'static' },
+      },
 
       '.cm-md-strong': { fontWeight: '700' },
       '.cm-md-em': { fontStyle: 'italic' },
@@ -1175,6 +1285,11 @@ export function richMarkdown(options: RichMarkdownOptions = {}): Extension {
         cursor: 'pointer',
       },
       '.cm-md-punct': { opacity: '0.35' },
+      /**
+       * Revealed syntax, see `revealedMark`. Opacity rather than a colour so it dims
+       * whatever the mark sits in — a heading, a quote, a link — by the same amount.
+       */
+      '.cm-md-mark': { opacity: '0.35', fontWeight: '400' },
 
       /**
        * The inline PDF page.

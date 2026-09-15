@@ -4,6 +4,7 @@ import { markdown } from '@codemirror/lang-markdown';
 import { GFM } from '@lezer/markdown';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
+  bulletGlyph,
   orderedMarker,
   pdfNamesChanged,
   resetExpandedPdfs,
@@ -122,11 +123,10 @@ describe('syntax hiding', () => {
     expect(visibleText(v, 1)).toBe('quoted');
   });
 
-  /** A list without its bullet is unreadable, so the mark stays. */
-  it('keeps list markers visible', () => {
+  /** A list without its bullet is unreadable, so the mark stays — as a bullet. */
+  it('renders a list marker as a bullet', () => {
     const v = mount('- item\n\nplain', 10);
-    expect(visibleText(v, 1)).toContain('-');
-    expect(visibleText(v, 1)).toContain('item');
+    expect(visibleText(v, 1)).toBe('• item');
   });
 
   it('hides inline emphasis marks without eating following spaces', () => {
@@ -144,6 +144,41 @@ describe('syntax hiding', () => {
   it('reveals emphasis marks when the cursor is inside them', () => {
     const v = mount('a **bold** b', 5);
     expect(visibleText(v, 1)).toBe('a **bold** b');
+  });
+
+  /**
+   * Revealed syntax is the editor's punctuation, not the text's: it is classed so the
+   * theme can dim it, rather than left to inherit the heading or emphasis it marks.
+   */
+  it('classes a revealed mark as punctuation', () => {
+    const v = mount('# Heading\n\na **bold** b', 3);
+    const marks = [...v.dom.querySelectorAll('.cm-md-mark')].map((el) => el.textContent);
+    // A heading mark's span takes its separating space with it; see the hanging tests.
+    expect(marks).toEqual(['# ']);
+  });
+
+  /**
+   * The heading mark hangs in the margin so the text does not move on reveal. Its span
+   * takes the separating space with it: that space is the gap between hashes and text.
+   */
+  it('hangs a revealed heading mark together with its space', () => {
+    const v = mount('## Heading\n\nplain', 3);
+    const hung = v.dom.querySelector('.cm-md-headmark');
+    expect(hung?.textContent).toBe('## ');
+    expect(hung?.classList.contains('cm-md-mark')).toBe(true);
+  });
+
+  it('hangs nothing but heading marks', () => {
+    const v = mount('> quote **bold**', 3);
+    expect(v.dom.querySelector('.cm-md-headmark')).toBeNull();
+    expect(v.dom.querySelectorAll('.cm-md-mark').length).toBe(3);
+  });
+
+  it('classes every revealed mark on the line, and none elsewhere', () => {
+    const v = mount('# Heading\n\na **bold** _it_ b', 16);
+    const marks = [...v.dom.querySelectorAll('.cm-md-mark')].map((el) => el.textContent);
+    expect(marks).toEqual(['**', '**', '_', '_']);
+    expect(visibleText(v, 1)).toBe('Heading');
   });
 });
 
@@ -301,6 +336,61 @@ describe('ordered list markers', () => {
     const doc = '1. one\n2. two\n   3. three';
     const v = mount(doc, doc.lastIndexOf('3.') + 1);
     expect(visibleText(v, 3)).toContain('3.');
+  });
+});
+
+describe('bullet markers', () => {
+  it.each([
+    [1, '•'],
+    [2, '◦'],
+    [3, '▪'],
+    [4, '•'],
+  ])('renders depth %d as %s', (depth, glyph) => {
+    expect(bulletGlyph(depth)).toBe(glyph);
+  });
+
+  it.each(['-', '*', '+'])('renders a `%s` item as a bullet', (mark) => {
+    const v = mount(`${mark} item\n\nplain`, 10);
+    expect(visibleText(v, 1)).toBe('• item');
+  });
+
+  it('cycles the glyph by nesting depth', () => {
+    const doc = '- one\n  - two\n    - three\n\nplain';
+    const v = mount(doc, doc.length);
+    expect(visibleText(v, 1)).toBe('• one');
+    expect(visibleText(v, 2)).toBe('  ◦ two');
+    expect(visibleText(v, 3)).toBe('    ▪ three');
+  });
+
+  it('counts only bullet ancestors, so a bullet under a number is top level', () => {
+    const doc = '1. one\n   - two\n\nplain';
+    const v = mount(doc, doc.length);
+    expect(visibleText(v, 2)).toBe('   • two');
+  });
+
+  /** You cannot edit a dash the editor has replaced with a bullet. */
+  it('reveals the dash when the cursor is on the line', () => {
+    const v = mount('- item\n- other', 3);
+    expect(visibleText(v, 1)).toBe('- item');
+    expect(visibleText(v, 2)).toBe('• other');
+  });
+
+  it('never rewrites the document', () => {
+    const v = mount('- item\n\nplain', 10);
+    expect(v.state.doc.toString()).toBe('- item\n\nplain');
+  });
+
+  /** The checkbox is the task's marker; a bullet in front of it would be a second one. */
+  it('hides the marker of a task item', () => {
+    const v = mount('- [ ] task\n\nplain', 14);
+    // The checkbox widget has no text of its own; the space after `[ ]` is the text's.
+    expect(visibleText(v, 1)).toBe(' task');
+    expect(v.dom.querySelector('.cm-md-task')).not.toBeNull();
+  });
+
+  it('reveals the marker of a task item on the caret line', () => {
+    const v = mount('- [ ] task\n\nplain', 8);
+    expect(visibleText(v, 1)).toBe('-  task');
   });
 });
 
