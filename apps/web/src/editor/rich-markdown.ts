@@ -642,6 +642,41 @@ function unwrapUrl(raw: string): string {
   return raw.startsWith('<') && raw.endsWith('>') ? raw.slice(1, -1) : raw;
 }
 
+/**
+ * The http(s) schemes the preview pane's sanitizer permits for an image `src`.
+ *
+ * The two panes must agree on what is a picture. Preview renders through rehype-sanitize,
+ * whose default schema allows an `<img src>` only over `http`/`https` — `data:` and
+ * `javascript:` are dropped there. The rich editor sets `img.src` itself, with no sanitizer
+ * in the path, so it repeats the same allowlist rather than trusting whatever the note
+ * wrote. Matched case-insensitively because a scheme is.
+ */
+const REMOTE_IMAGE_SCHEME = /^https?:\/\//i;
+
+/**
+ * The URL to load for an image, or `undefined` for one the rich editor should not draw.
+ *
+ * Two kinds of destination become a picture, mirroring the preview pane:
+ *
+ * - A stored attachment (`files/…`), resolved through the caller's callback to a URL the
+ *   browser can fetch. Without a resolver there is nothing to load, so it stays as markdown.
+ * - A remote `http(s)` image, loaded at its own address — the case the preview pane already
+ *   rendered and the editor did not, which is what this brings into line.
+ *
+ * Everything else — a `data:` or `javascript:` URL, a bare relative path — returns
+ * `undefined` and keeps its markdown visible, the same outcome the sanitizer produces in
+ * preview by stripping the tag.
+ */
+function resolveImageSrc(
+  url: string,
+  resolveAttachment: RichMarkdownOptions['resolveAttachment'],
+): string | undefined {
+  if (url.startsWith(ATTACHMENT_PREFIX)) {
+    return resolveAttachment?.(url.slice(ATTACHMENT_PREFIX.length));
+  }
+  return REMOTE_IMAGE_SCHEME.test(url) ? url : undefined;
+}
+
 export interface RichMarkdownOptions {
   /** Resolves a relative `files/…` path to a URL the browser can load. */
   resolveAttachment?: (filename: string) => string;
@@ -815,19 +850,20 @@ function buildDecorations(view: EditorView, options: RichMarkdownOptions): Decor
         }
 
         if (node.name === 'Image') {
-          const resolve = options.resolveAttachment;
-          if (!resolve) return;
-
           const text = state.doc.sliceString(node.from, node.to);
           const match = /^!\[([^\]]*)\]\((.+)\)$/.exec(text);
           if (!match) return;
 
           const url = unwrapUrl(match[2]!.trim());
-          if (!url.startsWith(ATTACHMENT_PREFIX)) return;
+          const src = resolveImageSrc(url, options.resolveAttachment);
+          // No source we are willing to load — a stored file with no resolver, or a
+          // destination outside the http(s)/attachment set the preview pane renders.
+          // Leaving early keeps the markdown on screen so the source stays readable and
+          // editable, exactly as before an image was ever drawn.
+          if (src === undefined) return;
 
-          // A file that did not load gets no widget and keeps its source on screen, so the
-          // note still says what belongs there. See `failedImages`.
-          const src = resolve(url.slice(ATTACHMENT_PREFIX.length));
+          // A source that did not load gets no widget and keeps its markdown on screen, so
+          // the note still says what belongs there. See `failedImages`.
           if (failedImages.has(src)) return;
 
           const widget = new ImageWidget(src, match[1] ?? '');

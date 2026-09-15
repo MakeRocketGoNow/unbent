@@ -680,18 +680,39 @@ describe('inline images', () => {
     expect(lineClasses(v, 1)).not.toContain('cm-md-image-line');
   });
 
-  /** Without a widget there is nothing to stand in for the source, so it stays. */
-  it('leaves an external image alone', () => {
+  /** A remote image loads at its own address, matching what the preview pane renders. */
+  it('draws a remote image at its own URL', () => {
     const doc = '![logo](https://example.com/logo.png)\n\nplain';
     const v = mountWithAttachments(doc, doc.length);
-    expect(visibleText(v, 1)).toBe(doc.split('\n')[0]);
+    expect(image(v)?.getAttribute('src')).toBe('https://example.com/logo.png');
+    expect(image(v)?.alt).toBe('logo');
+    expect(visibleText(v, 1)).toBe('');
+  });
+
+  /** No resolver is needed for a remote image: its address is already absolute. */
+  it('draws a remote image without an attachment resolver', () => {
+    const doc = '![logo](https://example.com/logo.png)\n\nplain';
+    const v = mount(doc, doc.length);
+    expect(image(v)?.getAttribute('src')).toBe('https://example.com/logo.png');
+  });
+
+  /**
+   * The sanitizer strips a `data:` image src in preview; the editor sets `img.src` itself,
+   * so it applies the same http(s)-only rule rather than drawing whatever the note wrote.
+   */
+  it('leaves a data-URL image as source', () => {
+    const doc = '![x](data:image/png;base64,AAAA)\n\nplain';
+    const v = mountWithAttachments(doc, doc.length);
+    expect(visibleText(v, 1)).toBe('![x](data:image/png;base64,AAAA)');
     expect(image(v)).toBeNull();
   });
 
+  /** An attachment still needs a resolver; without one the source stays visible. */
   it('leaves the source visible when no resolver is configured', () => {
     const doc = '![scan](files/scan.jpg)\n\nplain';
     const v = mount(doc, doc.length);
     expect(visibleText(v, 1)).toBe('![scan](files/scan.jpg)');
+    expect(image(v)).toBeNull();
   });
 
   /**
