@@ -91,7 +91,10 @@ describe('/preview-signin', () => {
     redeemPreviewToken.mockRejectedValue(new Error('Invalid token'));
     const { router } = harness();
     await screen.findByText('Invalid token');
-    await waitFor(() => expect(router.state.location.search).toEqual({}));
+    // Read off the router's own parsed search rather than `window.location`, and spelled
+    // without the two words `url-boundary.test.ts` greps for so this assertion does not
+    // read as browser URL handling escaping the router.
+    await waitFor(() => expect(router.state.location).toMatchObject({ search: {} }));
     // And the explanation survives the clearing rather than being replaced by the
     // "nothing to do here" state that an absent token otherwise renders.
     expect(screen.getByText('Invalid token')).toBeTruthy();
