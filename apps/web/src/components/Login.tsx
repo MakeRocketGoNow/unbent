@@ -100,6 +100,29 @@ export function Login({ redirectTo }: LoginProps) {
   const password = providers.includes('password');
   const passkeys = providers.includes('passkey');
   const otp = providers.includes('email-otp');
+  // Set only on a preview, where it names the dev instance that can sign in with Google on
+  // this preview's behalf. See the relay button below and routes/preview-signin.tsx.
+  const relayOrigin = config.data?.previewRelay?.origin;
+
+  /**
+   * Start the preview sign-in relay: hand off to the dev instance to sign in there.
+   *
+   * A preview cannot register an OAuth callback for a hostname that changes every PR, so it
+   * borrows a Google session from the standing dev instance instead. This sends the browser
+   * to that instance's `/api/preview-relay/start`, naming this origin as where to come back
+   * to; the dev instance signs the user in (if they are not already), mints a one-time
+   * token, and redirects to `/preview-signin` here, which redeems it.
+   *
+   * A full-page navigation like the social buttons, and for the same reason — it leaves this
+   * origin entirely — so it uses `location` rather than the router, the way `/connect` hands
+   * off to an app scheme. The return origin goes through `encodeURIComponent` rather than the
+   * query-string builder that `url-boundary.test.ts` reserves for outbound API queries.
+   */
+  function startRelay(origin: string) {
+    setPending('preview-relay');
+    setError(null);
+    window.location.href = `${origin}/api/preview-relay/start?return=${encodeURIComponent(window.location.origin)}`;
+  }
 
   async function startSocial(provider: string) {
     setPending(provider);
@@ -186,6 +209,23 @@ export function Login({ redirectTo }: LoginProps) {
    * one thing to be remembered, so they come last in that order.
    */
   const sections = [
+    // First on a preview, because it is the one method that gives a preview a Google session
+    // at all; the local methods below stay for anyone who would rather sign in directly.
+    relayOrigin && {
+      key: 'preview-relay',
+      node: (
+        <div className="login-actions">
+          <button
+            type="button"
+            className="provider"
+            disabled={pending !== null}
+            onClick={() => startRelay(relayOrigin)}
+          >
+            {pending === 'preview-relay' ? 'Redirecting…' : 'Continue on the dev instance'}
+          </button>
+        </div>
+      ),
+    },
     social.length > 0 && {
       key: 'social',
       node: (

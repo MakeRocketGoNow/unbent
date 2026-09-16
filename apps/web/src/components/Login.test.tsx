@@ -369,4 +369,67 @@ describe('Login', () => {
     expect(screen.getByText('Terms').getAttribute('href')).toBe('https://example.com/t');
     expect(screen.getByText('Privacy Policy').getAttribute('href')).toBe('https://example.com/p');
   });
+
+  /**
+   * The preview sign-in relay button. It appears only when the server reports a relay
+   * origin, which it does only on a preview — the same "the server decides which buttons to
+   * draw" contract as every other method here. A preview offers the local methods too, so
+   * this is an addition rather than a replacement, and it comes first because it is the only
+   * one that gives a preview a Google session at all.
+   */
+  it('offers the relay button when the instance reports a preview relay', async () => {
+    harness(['password'], { legal: BUILT_IN, previewRelay: { origin: 'https://dev.unbent.app' } });
+    await waitFor(() =>
+      expect(screen.getByText('Continue on the dev instance')).toBeTruthy(),
+    );
+  });
+
+  it('offers no relay button when the instance reports none', async () => {
+    harness(['password']);
+    await waitFor(() => expect(screen.getByLabelText('Email')).toBeTruthy());
+    expect(screen.queryByText('Continue on the dev instance')).toBeNull();
+  });
+
+  it('puts the relay first, above the local methods a preview still offers', async () => {
+    harness(['password', 'email-otp'], {
+      legal: BUILT_IN,
+      previewRelay: { origin: 'https://dev.unbent.app' },
+    });
+    await waitFor(() =>
+      expect(screen.getByText('Continue on the dev instance')).toBeTruthy(),
+    );
+    const order = [...document.querySelectorAll('button, label')]
+      .map((el) => el.textContent ?? '')
+      .filter((t) => /dev instance|Email/.test(t));
+    expect(order[0]).toContain('dev instance');
+  });
+
+  /**
+   * Clicking it hands off to the dev instance's relay endpoint, naming this origin as where
+   * to return. The whole-page navigation is the point — it leaves this origin — so the test
+   * pins the URL it sends the browser to rather than any in-app state.
+   */
+  it('hands off to the dev instance with this origin as the return', async () => {
+    // jsdom's window.location is read-only; replace it with a plain object for this case so
+    // the assignment the handler makes is observable.
+    const original = window.location;
+    const location = { origin: 'https://unbent-pr-120.of2668.workers.dev', href: '' };
+    Object.defineProperty(window, 'location', { value: location, configurable: true, writable: true });
+    try {
+      harness(['password'], {
+        legal: BUILT_IN,
+        previewRelay: { origin: 'https://dev.unbent.app' },
+      });
+      await waitFor(() =>
+        expect(screen.getByText('Continue on the dev instance')).toBeTruthy(),
+      );
+      fireEvent.click(screen.getByText('Continue on the dev instance'));
+      expect(location.href).toBe(
+        'https://dev.unbent.app/api/preview-relay/start?return=' +
+          encodeURIComponent('https://unbent-pr-120.of2668.workers.dev'),
+      );
+    } finally {
+      Object.defineProperty(window, 'location', { value: original, configurable: true, writable: true });
+    }
+  });
 });
