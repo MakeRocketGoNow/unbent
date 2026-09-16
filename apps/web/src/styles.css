@@ -3185,6 +3185,34 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
   margin: 0.5rem 0.6rem;
 }
 
+/*
+   The page is the way in: a click on it opens the viewer. In a pane for reading nothing
+   else competes for that click, and it is what people try first — the icon in the head
+   is there for the keyboard and for anyone who did not think to.
+*/
+.pdf-preview-canvas { cursor: zoom-in; }
+
+/* Denser than the standard icon button: it sits in the viewer's small head, beside text
+   of 0.85rem, and a 44px square there would be taller than the bar. */
+.pdf-preview-expand {
+  min-width: 2rem;
+  height: 2rem;
+  font-size: 1rem;
+}
+
+/*
+   Images in the preview pane are links to themselves (`rehypeLinkImages`), which the pane
+   intercepts to open the viewer. Kept looking like the bare image did: no underline, no
+   accent colour, and the radius the image already had so the focus ring follows it.
+*/
+.preview a.unbent-zoom {
+  display: inline-block;
+  max-width: 100%;
+  line-height: 0;
+  border-radius: 0.3rem;
+  cursor: zoom-in;
+}
+
 /* ---------------------------------------------------------------------------------
    Opening an attachment at full size.
 

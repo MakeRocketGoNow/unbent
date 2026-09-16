@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { type LoadedPdf, loadPdf } from '../pdf/render.js';
+import { openAttachmentViewer } from '../attachment-viewer.js';
 import { Button } from './Button';
+import { ExpandIcon } from './icons.js';
 
 interface PdfPreviewProps {
   /** Attachment API URL, produced by the markdown pipeline. */
@@ -99,6 +101,14 @@ export function PdfPreview({ src, label }: PdfPreviewProps) {
 
   const remaining = pageCount - shown;
 
+  /**
+   * The full-screen viewer, from the head's button or a click on the page itself.
+   *
+   * The page is the target people reach for — see `.pdf-preview-canvas` — and the button
+   * is the one the keyboard can reach and the one that says what a click would do.
+   */
+  const expand = () => openAttachmentViewer({ kind: 'pdf', src, label });
+
   return (
     <div className="pdf-preview">
       <div className="pdf-preview-head">
@@ -118,6 +128,17 @@ export function PdfPreview({ src, label }: PdfPreviewProps) {
           <a href={src} target="_blank" rel="noreferrer noopener" className="link small">
             Open
           </a>
+          {status === 'ready' && (
+            <button
+              type="button"
+              className="icon-btn pdf-preview-expand"
+              aria-label="Full screen"
+              title="Full screen"
+              onClick={expand}
+            >
+              <ExpandIcon />
+            </button>
+          )}
         </span>
       </div>
 
@@ -127,7 +148,12 @@ export function PdfPreview({ src, label }: PdfPreviewProps) {
       <div className="pdf-preview-pages" ref={host}>
         {status === 'ready' &&
           Array.from({ length: Math.min(shown, pageCount) }, (_, i) => (
-            <canvas key={i + 1} data-page={i + 1} className="pdf-preview-canvas" />
+            <canvas
+              key={i + 1}
+              data-page={i + 1}
+              className="pdf-preview-canvas"
+              onClick={expand}
+            />
           ))}
       </div>
     </div>

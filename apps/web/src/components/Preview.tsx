@@ -1,6 +1,7 @@
-import { Fragment, useMemo } from 'react';
-import { PDF_EMBED_CLASS, renderMarkdown } from '@unbent/shared';
+import { Fragment, useMemo, type MouseEvent } from 'react';
+import { IMAGE_ZOOM_CLASS, PDF_EMBED_CLASS, renderMarkdown } from '@unbent/shared';
 import { usePdfAttachments } from '../usePdfAttachments.js';
+import { openAttachmentViewer } from '../attachment-viewer.js';
 import { PdfPreview } from './PdfPreview.js';
 
 interface PreviewProps {
@@ -50,6 +51,29 @@ function splitOnPdfLinks(html: string): Segment[] {
 }
 
 /**
+ * A click on an image opens it in the viewer.
+ *
+ * Delegated from the pane rather than bound per image: the images are in HTML the pane
+ * renders as a string, so there is no element to hand a listener to. The pipeline wrapped
+ * each in a link to itself (`rehypeLinkImages`); an ordinary click on that link becomes
+ * the viewer, and a modified one — middle, ⌘, ctrl, shift — is left to the browser, which
+ * is what those modifiers mean on any link.
+ */
+function onPreviewClick(event: MouseEvent<HTMLDivElement>) {
+  if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) {
+    return;
+  }
+  const link = (event.target as Element).closest<HTMLAnchorElement>(`a.${IMAGE_ZOOM_CLASS}`);
+  if (!link || !event.currentTarget.contains(link)) return;
+  const img = link.querySelector('img');
+  const src = link.getAttribute('href');
+  if (!src) return;
+
+  event.preventDefault();
+  openAttachmentViewer({ kind: 'image', src, alt: img?.alt ?? '' });
+}
+
+/**
  * Rendered markdown. The HTML is produced by the shared pipeline, which runs
  * rehype-sanitize — dangerouslySetInnerHTML is safe here only because of that, so the two
  * must never be separated.
@@ -68,7 +92,7 @@ export function Preview({ markdown, noteId }: PreviewProps) {
   );
 
   return (
-    <div className="preview">
+    <div className="preview" onClick={onPreviewClick}>
       {segments.map((seg, i) => (
         <Fragment key={i}>
           {seg.html && <div dangerouslySetInnerHTML={{ __html: seg.html }} />}
