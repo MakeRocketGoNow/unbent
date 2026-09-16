@@ -50,7 +50,15 @@ function PreviewSignInPage() {
     void (async () => {
       try {
         await redeemPreviewToken(token);
-        await refreshSession();
+        // Confirm the redeem actually established a session before sending the browser at a
+        // gated route. A 200 from verify that somehow left no cookie — a cookie the browser
+        // refused, a store hiccup — would otherwise bounce off the guard on `/notes` back to
+        // `/login`, a loop with nothing on screen explaining it. Better to say so here.
+        const session = await refreshSession();
+        if (!session) {
+          setError('Signed in on the dev instance, but this preview did not receive a session.');
+          return;
+        }
         await navigate({ href: HOME, replace: true });
       } catch (e) {
         setError(e instanceof Error ? e.message : 'Could not complete sign-in.');
