@@ -86,6 +86,15 @@ export function mintConnectToken(): Promise<string> {
  * here — the preview's own host-only cookie — which is the whole point: previews share the
  * dev instance's database, so a token minted there names a session valid here.
  *
+ * The session is *shared*, not copied, and that is worth knowing before it surprises
+ * someone. Verify does not mint anything: it looks the dev session up by the token the
+ * one-time token names and sets that same session token as this origin's cookie. So the
+ * preview and the dev instance hold one session row between them — signing out on either
+ * deletes it and silently signs the other out, and the preview's session expires when
+ * dev's does rather than starting a fresh window. That is acceptable for a scratch
+ * environment and is not worth a second session row to fix, but it reads as a bug the
+ * first time it happens, so it is written down here and in the README.
+ *
  * Plain fetch rather than the client plugin for the same reason `mintConnectToken` is: the
  * one-time-token client methods only map paths to names and leave the call shape to
  * inference. `credentials: 'include'` so the response's cookie is stored.

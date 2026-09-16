@@ -539,6 +539,11 @@ token is handed only to a host that matches `unbent-pr-<N>.<subdomain>.workers.d
 configured subdomain — the check in `apps/api/src/lib/preview-relay.ts`, which is why the
 dev deploy is given `PREVIEW_RELAY_SUBDOMAIN` and the preview deploy `PREVIEW_RELAY_ORIGIN`.
 
+The session is shared rather than copied: redeeming the token sets the *dev instance's own*
+session token as the preview's cookie, so the two hold one session between them. Signing out
+on either signs you out of both, and the preview's session expires when dev's does. That is
+a fair trade for a scratch environment, but it is surprising the first time it happens.
+
 A password with an allowlisted address still works too — the default any instance falls
 back to, as ["Choosing sign-in methods"](#choosing-sign-in-methods) describes — as do
 passkeys, each bound to the one preview host it was created on. The relay is the fast path;
