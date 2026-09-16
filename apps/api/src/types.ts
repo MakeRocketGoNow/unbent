@@ -145,10 +145,10 @@ export interface Env {
    * preview's login screen.
    *
    * `PREVIEW_RELAY_SUBDOMAIN` is set on the *dev instance* and names the account's
-   * workers.dev subdomain, e.g. of2668. It is the allowlist `/connect-preview` checks a
-   * return origin against before handing it a one-time token — a security boundary, so it is
-   * configured rather than inferred: anyone can own a `*.workers.dev` account, and only
-   * configuration knows which subdomain is ours.
+   * workers.dev subdomain, e.g. of2668. It is the allowlist `/api/preview-relay/start`
+   * checks a return origin against before handing it a one-time token — a security
+   * boundary, so it is configured rather than inferred: anyone can own a `*.workers.dev`
+   * account, and only configuration knows which subdomain is ours.
    */
   PREVIEW_RELAY_ORIGIN?: string;
   PREVIEW_RELAY_SUBDOMAIN?: string;

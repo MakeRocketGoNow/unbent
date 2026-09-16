@@ -19,9 +19,9 @@ import type { Env } from '../types.js';
  *                            people. Absent means the preview offers no relay button.
  *
  *   PREVIEW_RELAY_SUBDOMAIN  the account's workers.dev subdomain, e.g. of2668. Set on the
- *                            *dev* env so `/connect-preview` can recognise a legitimate
- *                            preview host to hand a token to. Absent means the dev instance
- *                            relays to nothing.
+ *                            *dev* env so `/api/preview-relay/start` can recognise a
+ *                            legitimate preview host to hand a token to. Absent means the
+ *                            dev instance relays to nothing.
  *
  * The subdomain is configured rather than inferred precisely because this is a security
  * boundary: the token minted here grants a session, so the host it is handed to must be one
@@ -69,8 +69,8 @@ export function previewRelayOrigin(env: Env): string | undefined {
 /**
  * Whether `origin` is a preview host this dev instance may hand a session token to.
  *
- * This is the load-bearing check of the whole relay. `/connect-preview` mints a one-time
- * token against the caller's dev session and redirects it to `origin`; a lax check here
+ * This is the load-bearing check of the whole relay. `/api/preview-relay/start` mints a
+ * one-time token against the caller's dev session and redirects it to `origin`; a lax check
  * would let any site that could get a signed-in user to click a link collect that token and
  * with it a session. So the rules are deliberately strict and exact, the same lesson the
  * Android `/connect` route's `ALLOWED_REDIRECTS` learned — an exact match, never a prefix,
