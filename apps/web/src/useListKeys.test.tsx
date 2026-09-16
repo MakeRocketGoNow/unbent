@@ -38,6 +38,26 @@ function List({ onActivate }: { onActivate?: (id: string) => void }) {
   );
 }
 
+/**
+ * A side-by-side list: its rows carry `data-keep-focus`, so clicking one is browsing and
+ * the flag it sets is `true`, the same as arrowing to it.
+ */
+function DesktopList() {
+  const cameFromList = useCameFromList();
+  return (
+    <div>
+      <span data-testid="flag">{String(cameFromList)}</span>
+      <ul className="note-list">
+        <li>
+          <a href="#a" className="note-item" data-keep-focus="" data-testid="desktop">
+            a
+          </a>
+        </li>
+      </ul>
+    </div>
+  );
+}
+
 afterEach(() => {
   cleanup();
   registerEditorFocus(null);
@@ -101,8 +121,23 @@ describe('useListKeys', () => {
     fireEvent.keyDown(screen.getByRole('list'), { key: 'ArrowDown' });
     expect(screen.getByTestId('flag').textContent).toBe('true');
 
-    // A click on a different note must not inherit the arrow keys' no-focus rule.
+    // A click on a phone row — one whose list is replaced by the note — opens the editor,
+    // so it must not inherit the arrow keys' keep-focus rule.
     fireEvent.pointerDown(screen.getByTestId('c'));
+    expect(screen.getByTestId('flag').textContent).toBe('false');
+  });
+
+  /*
+     Clicking a note in a side-by-side list is browsing: the row keeps focus and the editor
+     stands down, the same as arrowing to it. The row says so with `data-keep-focus`.
+  */
+  it('keeps focus on the row when a side-by-side note is clicked', () => {
+    render(<DesktopList />);
+    fireEvent.pointerDown(screen.getByTestId('desktop'));
+    expect(screen.getByTestId('flag').textContent).toBe('true');
+
+    // A press outside any note — the editor, the New button — still opens ready to type.
+    fireEvent.pointerDown(document.body);
     expect(screen.getByTestId('flag').textContent).toBe('false');
   });
 
