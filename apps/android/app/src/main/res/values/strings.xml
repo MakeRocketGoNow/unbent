@@ -74,6 +74,21 @@
     <string name="field_filter_not">Not %1$s</string>
     <string name="field_unknown">Unknown field</string>
     <string name="field_filter_unreadable">Unreadable field filter</string>
+    <string name="fields_label">Fields</string>
+    <plurals name="fields_selected">
+        <item quantity="one">%d filter</item>
+        <item quantity="other">%d filters</item>
+    </plurals>
+    <string name="field_any">Any</string>
+    <string name="field_set">Is set</string>
+    <string name="field_empty">Is empty</string>
+    <string name="field_checked">Checked</string>
+    <string name="field_unchecked">Unchecked</string>
+    <string name="field_min">Min</string>
+    <string name="field_max">Max</string>
+    <string name="field_from">From</string>
+    <string name="field_to">To</string>
+    <string name="field_bound_clear">Clear %1$s</string>
     <string name="search">Search</string>
     <string name="search_hint">Search notes…</string>
     <string name="close_search">Close search</string>
