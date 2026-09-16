@@ -4,6 +4,8 @@ import type { ImportEvent, ImportRequest } from '../import-worker.js';
 import { startIndexing, useIndexing, type IndexingState } from '../index-files.js';
 import { Button } from './Button.js';
 import { describeImportFile } from './import-file.js';
+import { ImportSkips } from './ImportSkips.js';
+import { emptySkipLog, recordSkip, type SkipLog } from './import-skips.js';
 import { useSettingsBusy } from './SettingsLayout.js';
 
 interface ImportProps {
@@ -62,6 +64,7 @@ export function Import({ onImported }: ImportProps) {
   const [status, setStatus] = useState<Status>('idle');
   const [progress, setProgress] = useState<ImportProgress | null>(null);
   const [failures, setFailures] = useState<ImportFailure[]>([]);
+  const [skips, setSkips] = useState<SkipLog>(emptySkipLog);
   const [error, setError] = useState<string | null>(null);
   const [elapsed, setElapsed] = useState(0);
   const [extractText, setExtractText] = useState(true);
@@ -97,6 +100,7 @@ export function Import({ onImported }: ImportProps) {
 
     setStatus('running');
     setFailures([]);
+    setSkips(emptySkipLog);
     setError(null);
     // Show the running state before the worker module finishes loading. This also keeps a
     // worker startup failure visible instead of leaving the user on an unchanged form.
@@ -115,6 +119,8 @@ export function Import({ onImported }: ImportProps) {
         // Cap the retained list: a bad file could otherwise produce thousands of entries
         // and push the tab into swap.
         setFailures((prev) => (prev.length >= 200 ? prev : [...prev, data.failure]));
+      } else if (data.type === 'skip') {
+        setSkips((prev) => recordSkip(prev, data.skip));
       } else if (data.type === 'done') {
         setProgress(data.progress);
         setStatus('done');
@@ -158,6 +164,7 @@ export function Import({ onImported }: ImportProps) {
     setFile(null);
     setProgress(null);
     setFailures([]);
+    setSkips(emptySkipLog);
     setError(null);
     setElapsed(0);
     setStatus('idle');
@@ -333,8 +340,13 @@ export function Import({ onImported }: ImportProps) {
           <p className="good small">
             Finished in {Math.max(1, Math.round(elapsed / 1000))}s.{' '}
             {progress?.created.toLocaleString()} notes imported
-            {progress && progress.skipped > 0
-              ? `, ${progress.skipped.toLocaleString()} already present`
+            {/* Told apart because they are not the same news: a duplicate inside the file
+                is a note that did not come through, one already here is a resume working. */}
+            {skips.duplicateCount > 0
+              ? `, ${skips.duplicateCount.toLocaleString()} duplicate${skips.duplicateCount === 1 ? '' : 's'} skipped`
+              : ''}
+            {skips.presentCount > 0
+              ? `, ${skips.presentCount.toLocaleString()} already present`
               : ''}
             {progress && progress.filesUploaded > 0
               ? `, ${progress.filesUploaded.toLocaleString()} files`
@@ -387,6 +399,8 @@ export function Import({ onImported }: ImportProps) {
           </ul>
         </details>
       )}
+
+      <ImportSkips log={skips} />
     </div>
   );
 }

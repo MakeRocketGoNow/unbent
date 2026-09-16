@@ -7,6 +7,7 @@ import {
   type ImportFailure,
   type ImportOptions,
   type ImportProgress,
+  type ImportSkip,
 } from '@unbent/enex';
 import {
   apiFetch as api,
@@ -44,6 +45,7 @@ export type ImportEvent =
   | { type: 'backfill-deferred'; remaining: number }
   | { type: 'progress'; progress: ImportProgress }
   | { type: 'failure'; failure: ImportFailure }
+  | { type: 'skip'; skip: ImportSkip }
   | { type: 'done'; progress: ImportProgress }
   | { type: 'error'; message: string };
 
@@ -148,6 +150,7 @@ async function handle(request: Exclude<ImportRequest, { type: 'abort' }>): Promi
     signal: controller.signal,
     onProgress: (progress) => post({ type: 'progress', progress }),
     onFailure: (failure) => post({ type: 'failure', failure }),
+    onSkip: (skip) => post({ type: 'skip', skip }),
   };
 
   try {
