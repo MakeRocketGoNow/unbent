@@ -673,11 +673,8 @@ describe('inline images', () => {
     expect(image(v)?.alt).toBe('scan');
   });
 
-  /**
-   * The corner control is the whole affordance here: a click on the picture itself is
-   * how the mouse reaches the markdown it stands in for, so it stays the editor's.
-   */
-  it('offers the full-screen viewer on the picture', () => {
+  /** The visible control, and the one the keyboard can reach. */
+  it('offers the full-screen viewer from the corner button', () => {
     openAttachmentViewer.mockClear();
     const doc = '![scan](files/scan.jpg)\n\nplain';
     const v = mountWithAttachments(doc, doc.length);
@@ -690,6 +687,26 @@ describe('inline images', () => {
       alt: 'scan',
     });
     // Opening the viewer is not an edit, and must not reveal the source either.
+    expect(v.state.doc.toString()).toBe(doc);
+    expect(visibleText(v, 1)).toBe('');
+  });
+
+  /**
+   * The same rule as a PDF page and as the preview pane: a click on the picture opens it.
+   * The markdown it stands in for is reached by arrowing onto the line, as every other
+   * hidden syntax is, so opening must not reveal it.
+   */
+  it('opens the viewer from a click on the picture', () => {
+    openAttachmentViewer.mockClear();
+    const doc = '![scan](files/scan.jpg)\n\nplain';
+    const v = mountWithAttachments(doc, doc.length);
+    image(v)?.click();
+    expect(openAttachmentViewer).toHaveBeenCalledTimes(1);
+    expect(openAttachmentViewer).toHaveBeenCalledWith({
+      kind: 'image',
+      src: '/api/notes/n1/files/scan.jpg',
+      alt: 'scan',
+    });
     expect(v.state.doc.toString()).toBe(doc);
     expect(visibleText(v, 1)).toBe('');
   });

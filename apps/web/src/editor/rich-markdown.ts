@@ -352,9 +352,8 @@ function ownEvents(control: HTMLElement): void {
  *
  * A real `<button>`, for the keyboard and the screen reader, and the same glyph in the
  * same corner on an image and on a page — see `.zoom-btn` in styles.css for how it shows
- * and hides. It is the whole affordance for an image: a click on the picture itself is
- * the mouse's one way to reach the markdown the picture stands in for, so it stays the
- * editor's, and this is what opens the viewer.
+ * and hides. A click on the picture or the page opens the viewer too; this is the control
+ * that can be seen before it is tried, and the one a Tab can land on.
  */
 function zoomButton(target: ViewerTarget): HTMLButtonElement {
   const button = document.createElement('button');
@@ -416,12 +415,39 @@ class ImageWidget extends WidgetType {
       view.dispatch({ effects: imageFailed.of(null) });
     };
 
+    /**
+     * A click on the picture opens the viewer, as it does on a PDF page and in the
+     * preview pane: one rule everywhere, and the one Keep has for an image in an open
+     * note.
+     *
+     * This used to be the editor's click, on the grounds that it was the mouse's way to
+     * the markdown the picture stands in for. That was the wrong trade. Two attachments
+     * in one note answered a click differently, revealing an image's source is a rare
+     * edit, and the reveal itself moved the picture down under a line of text — the
+     * motion this file otherwise works to avoid. The source is still reached the way
+     * every other hidden syntax here is, by arrowing onto its line, and by a click beside
+     * the picture when it does not fill the width. The mousedown is kept from the editor
+     * so the caret does not jump and the note does not scroll under the opening dialog.
+     */
+    const target: ViewerTarget = { kind: 'image', src: this.url, alt: this.alt };
+    ownEvents(img);
+    img.addEventListener('click', (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      openAttachmentViewer(target);
+    });
+
     frame.appendChild(img);
-    frame.appendChild(zoomButton({ kind: 'image', src: this.url, alt: this.alt }));
+    frame.appendChild(zoomButton(target));
     return wrap;
   }
 
-  /** Clicks belong to the editor, not the widget. */
+  /**
+   * Clicks belong to the editor, not the widget.
+   *
+   * The picture and the corner button stop their own events above; what is left is the
+   * space around them on the line, which should behave like the rest of the note.
+   */
   override ignoreEvent(): boolean {
     return false;
   }
@@ -500,13 +526,11 @@ class PdfWidget extends WidgetType {
   }
 
   /**
-   * A page, which opens the viewer when clicked.
-   *
-   * Unlike an image, a page has no markdown standing behind it to reveal: the link that
-   * references it sits above and is where the caret goes. So a click on the page costs the
-   * editor nothing and can do the one thing a reader clicking a scan means — read it.
-   * The mousedown is kept from the editor, or the caret would jump to the link and the
-   * note would scroll under the opening dialog.
+   * A page, which opens the viewer when clicked — the same rule as an image, see
+   * `ImageWidget`. A page has no markdown standing behind it at all: the link that
+   * references it sits above and is where the caret goes, so the click costs the editor
+   * nothing. The mousedown is kept from the editor, or the caret would jump to the link
+   * and the note would scroll under the opening dialog.
    */
   private pageCanvas(): HTMLCanvasElement {
     const canvas = document.createElement('canvas');
@@ -1507,6 +1531,8 @@ export function richMarkdown(options: RichMarkdownOptions = {}): Extension {
       '.cm-md-image img': {
         maxWidth: '100%',
         height: 'auto',
+        // A click opens the viewer — see `ImageWidget.toDOM`.
+        cursor: 'zoom-in',
         borderRadius: '0.35rem',
         border: '1px solid color-mix(in srgb, currentColor 15%, transparent)',
       },
