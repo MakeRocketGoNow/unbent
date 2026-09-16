@@ -5113,6 +5113,17 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
   }
 
   /*
+     The filter chips align with the note text below them.
+
+     The note list pulls itself out by 3px for focus rings, then each note item adds 0.7rem
+     of internal padding. That puts the text at `0.7rem - 3px` from the sidebar edge, which
+     is what this rule matches. Only in the sidebar — the sheet has its own body padding.
+  */
+  .sidebar > .filter-chips {
+    padding-inline: calc(0.7rem - 3px);
+  }
+
+  /*
      Room for the floating button, so the last note is not left under it.
 
      `.note-list` is the scroller, so the padding belongs there rather than on the sidebar —
