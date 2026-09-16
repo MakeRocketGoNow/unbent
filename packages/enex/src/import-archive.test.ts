@@ -49,7 +49,7 @@ const bytes = (s: string) => new TextEncoder().encode(s);
 
 /**
  * A server that dedupes the way the real one does: by the id the note came with, then by
- * content hash.
+ * content hash — but a hash hit does not swallow a different note whose id is still free.
  */
 function fakeClient(over: Partial<ImportClient> = {}) {
   const notes: Array<{
@@ -62,15 +62,20 @@ function fakeClient(over: Partial<ImportClient> = {}) {
   }> = [];
   const files: Array<{ noteId: string; filename: string; mime: string; size: number }> = [];
   const byHash = new Map<string, string>();
+  const taken = new Set<string>();
 
   const client: ImportClient = {
     createNote: vi.fn(async (input) => {
       const byId = input.id ? notes.find((n) => n.id === input.id) : undefined;
       if (byId) return { id: byId.id, created: false };
       const hashed = byHash.get(input.contentHash);
-      if (hashed) return { id: hashed, created: false };
+      // Same rule as NotesRepo.importNote: a free id is a different note, even when
+      // the text (and so an older title+body hash) matches something already stored.
+      if (hashed && (!input.id || taken.has(input.id))) return { id: hashed, created: false };
 
-      const id = input.id ?? `note-${notes.length + 1}`;
+      const id = input.id && !taken.has(input.id) ? input.id : `note-${notes.length + 1}`;
+      taken.add(id);
+      if (input.id) taken.add(input.id);
       byHash.set(input.contentHash, id);
       notes.push({
         id,
@@ -135,6 +140,40 @@ describe('the library archive', () => {
     );
     // A note the export left unfiled arrives unfiled — not in some default notebook.
     expect(notes[1]).not.toHaveProperty('notebook');
+  });
+
+  it('keeps two notes that share their text, because the export named them apart', async () => {
+    const { client, notes } = fakeClient();
+    const zip = await zipFile('lib.zip', {
+      'a-0191c2a0/a-0191c2a0.md': noteMarkdown({
+        id: '0191c2a0-0000-7000-8000-000000000001',
+        title: 'Untitled',
+        body: '',
+        tags: [],
+      }),
+      'b-0191c2b0/b-0191c2b0.md': noteMarkdown({
+        id: '0191c2b0-0000-7000-8000-000000000002',
+        title: 'Untitled',
+        body: '',
+        tags: [],
+      }),
+    });
+
+    const progress = await importArchive(zip, client);
+
+    expect(progress.created).toBe(2);
+    expect(progress.skipped).toBe(0);
+    expect(notes.map((n) => n.id)).toEqual([
+      '0191c2a0-0000-7000-8000-000000000001',
+      '0191c2b0-0000-7000-8000-000000000002',
+    ]);
+    const hashes = vi.mocked(client.createNote).mock.calls.map((c) => c[0]?.contentHash);
+    expect(new Set(hashes).size).toBe(2);
+
+    const again = await importArchive(zip, client);
+    expect(again.created).toBe(0);
+    expect(again.skipped).toBe(2);
+    expect(notes).toHaveLength(2);
   });
 
   it('uploads what sits in files/ and leaves the body exactly as exported', async () => {
