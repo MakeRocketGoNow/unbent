@@ -251,6 +251,43 @@ class UnbentApiTest {
         assertEquals("/api/notes?notebook=Taxes&limit=50", server.takeRequest().path)
     }
 
+    /**
+     * Field filters go up the same way, as `field` repeated, and only when there are any.
+     * The value is sent as given: the server parses `<fieldId>:<op>[:<value>]` itself.
+     */
+    @Test
+    fun `listNotes and search repeat the field parameter for each filter`() {
+        server.enqueue(MockResponse().setResponseCode(200).setBody("""{"items":[],"cursor":null,"total":0}"""))
+        api.listNotes(notebook = "Taxes", fields = listOf("f1:eq:Food", "f2:gte:20"))
+        assertEquals(
+            "/api/notes?notebook=Taxes&field=f1%3Aeq%3AFood&field=f2%3Agte%3A20&limit=50",
+            server.takeRequest().path,
+        )
+
+        server.enqueue(MockResponse().setResponseCode(200).setBody("""{"results":[]}"""))
+        api.search("lunch", notebook = "Taxes", fields = listOf("f1:set"))
+        assertEquals("/api/search?q=lunch&notebook=Taxes&field=f1%3Aset", server.takeRequest().path)
+    }
+
+    @Test
+    fun `listNotebookFields reads a notebook's definitions`() {
+        server.enqueue(
+            MockResponse().setResponseCode(200).setBody(
+                """{"fields":[
+                  {"id":"f1","notebookId":"nb-1","name":"Category","type":"select","options":["Food","Travel"],"position":0,"valueCount":2},
+                  {"id":"f2","notebookId":"nb-1","name":"Amount","type":"number","options":[],"position":1}
+                ]}""",
+            ),
+        )
+
+        val fields = api.listNotebookFields("nb-1")
+
+        assertEquals("/api/notebooks/nb-1/fields", server.takeRequest().path)
+        assertEquals(listOf("Category", "Amount"), fields.map { it.name })
+        assertEquals(listOf("Food", "Travel"), fields[0].options)
+        assertEquals("number", fields[1].type)
+    }
+
     @Test
     fun `search repeats the tag parameter too`() {
         server.enqueue(MockResponse().setResponseCode(200).setBody("""{"results":[]}"""))
@@ -276,6 +313,30 @@ class UnbentApiTest {
         api.search("insurance", notebook = "Taxes", from = "2023-01-01", to = "2023-12-31")
 
         assertEquals("/api/search?q=insurance&notebook=Taxes&from=2023-01-01&to=2023-12-31", server.takeRequest().path)
+    }
+
+    /**
+     * A hit says where it matched. The server names a file, a custom field or a tag; the
+     * row shows whichever it is, so the model has to carry all three.
+     */
+    @Test
+    fun `search results carry where the match came from`() {
+        server.enqueue(
+            MockResponse().setResponseCode(200).setBody(
+                """{"results":[
+                  {"id":"a","title":"A","updatedAt":1,"snippet":"<<x>>","matchedFile":"scan.pdf"},
+                  {"id":"b","title":"B","updatedAt":1,"snippet":"<<x>>","matchedField":"Vendor"},
+                  {"id":"c","title":"C","updatedAt":1,"snippet":"<<x>>","matchedTag":"Stelvio"}
+                ]}""",
+            ),
+        )
+
+        val hits = api.search("x")
+
+        assertEquals("scan.pdf", hits[0].matchedFile)
+        assertEquals("Vendor", hits[1].matchedField)
+        assertEquals("Stelvio", hits[2].matchedTag)
+        assertNull(hits[2].matchedFile)
     }
 
     @Test

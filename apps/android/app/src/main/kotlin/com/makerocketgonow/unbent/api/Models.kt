@@ -123,6 +123,28 @@ data class UploadedFile(val filename: String, val indexing: String? = null) {
 @Serializable
 data class Notebook(val id: String, val name: String, val count: Int = 0)
 
+/**
+ * A custom field a notebook defines: `GET /api/notebooks/:id/fields`.
+ *
+ * Only what the filter needs. The values themselves are edited on the web page the note
+ * screen embeds, so the phone never reads or writes one; it reads the definitions to
+ * offer a filter per field and to name a filter's chip.
+ */
+@Serializable
+data class FieldDef(
+    val id: String,
+    val notebookId: String,
+    val name: String,
+    /** One of the shared package's `FIELD_TYPES`; unknown ones are offered set/empty only. */
+    val type: String,
+    /** Empty for every type but `select`. */
+    val options: List<String> = emptyList(),
+    val position: Int = 0,
+)
+
+@Serializable
+internal data class FieldList(val fields: List<FieldDef> = emptyList())
+
 /** What a purge actually removed, so the result can say rather than imply. */
 @Serializable
 data class PurgeResult(val notesDeleted: Int = 0, val filesDeleted: Int = 0)
@@ -145,6 +167,15 @@ data class SearchResult(
     val snippet: String = "",
     /** Set when the match came from an attachment's extracted text rather than the note. */
     val matchedFile: String? = null,
+    /** Set when the match came from a custom field's value; the field's name. */
+    val matchedField: String? = null,
+    /**
+     * Set when the match came from one of the note's tags; the tag's name. The server
+     * searches tag names since the web's filtering work, so a note filed under
+     * "Alfa Romeo Stelvio" is found by "stelvio" with the word nowhere in its text — and
+     * the row has to say so, or the hit looks like a mistake.
+     */
+    val matchedTag: String? = null,
 )
 
 @Serializable

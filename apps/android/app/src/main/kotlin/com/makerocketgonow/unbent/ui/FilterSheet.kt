@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -23,16 +24,22 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material3.DatePicker
+import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.InputChip
 import androidx.compose.material3.LocalMinimumInteractiveComponentSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
@@ -42,14 +49,18 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.makerocketgonow.unbent.R
+import com.makerocketgonow.unbent.api.FieldDef
+import com.makerocketgonow.unbent.api.FieldFilter
 import com.makerocketgonow.unbent.api.UNFILED
 import com.makerocketgonow.unbent.ui.theme.Shapes
 import com.makerocketgonow.unbent.ui.theme.Space
@@ -61,7 +72,7 @@ import com.makerocketgonow.unbent.ui.theme.Space
  * over a sheet dims the first one behind the second and leaves two scrims on screen, and
  * on the way back out the phone's back gesture has to unwind both.
  */
-private enum class FilterPage { ROOT, TAGS, DATES }
+private enum class FilterPage { ROOT, TAGS, FIELDS, DATES }
 
 /**
  * Everything that narrows the list, in one place.
@@ -88,11 +99,14 @@ fun FilterSheet(state: NotesState, onDismiss: () -> Unit) {
             FilterPage.ROOT -> FilterRoot(
                 state = state,
                 onTags = { page = FilterPage.TAGS },
+                onFields = { page = FilterPage.FIELDS },
                 onDates = { page = FilterPage.DATES },
                 onDone = onDismiss,
             )
 
             FilterPage.TAGS -> TagPicker(state = state, onBack = { page = FilterPage.ROOT })
+
+            FilterPage.FIELDS -> FieldsPicker(state = state, onBack = { page = FilterPage.ROOT })
 
             FilterPage.DATES -> DatePicker(
                 state = state,
@@ -129,6 +143,7 @@ fun FilterSheet(state: NotesState, onDismiss: () -> Unit) {
 private fun FilterRoot(
     state: NotesState,
     onTags: () -> Unit,
+    onFields: () -> Unit,
     onDates: () -> Unit,
     onDone: () -> Unit,
 ) {
@@ -169,6 +184,11 @@ private fun FilterRoot(
                 for (tag in state.selectedTags) {
                     FilterChipRemovable("#$tag") { state.toggleTag(tag) }
                 }
+                for (raw in state.fieldFilters) {
+                    FilterChipRemovable(fieldFilterLabel(raw, state.fieldDefs)) {
+                        state.filterByFields(state.fieldFilters - raw)
+                    }
+                }
                 val range = rangeLabel(state.from, state.to)
                 if (range != null) {
                     FilterChipRemovable(range) { state.dateRange(null, null) }
@@ -193,6 +213,23 @@ private fun FilterRoot(
             },
             onClick = onTags,
         )
+        /*
+         * Fields, between tags and dates, and only inside a notebook that defines any.
+         * Field definitions belong to a notebook, so outside one there is nothing to
+         * offer, and a row that opened onto an empty page would be a control that does
+         * nothing. The value counts filters rather than naming them: the chips above
+         * already name them, and a row has one line. The web's sheet has the same row.
+         */
+        if (state.fieldDefs.isNotEmpty()) {
+            FilterRow(
+                icon = { Icon(painterResource(R.drawable.ic_sliders), contentDescription = null) },
+                label = stringResource(R.string.fields_label),
+                value = state.fieldFilters.takeIf { it.isNotEmpty() }?.let {
+                    pluralStringResource(R.plurals.fields_selected, it.size, it.size)
+                },
+                onClick = onFields,
+            )
+        }
         FilterRow(
             icon = { Icon(Icons.Default.DateRange, contentDescription = null) },
             label = stringResource(R.string.dates_label),
@@ -414,6 +451,194 @@ private fun TagRow(name: String, count: Int, onClick: () -> Unit) {
         }
         Spacer(Modifier.width(Space.Medium))
         CountBadge(count)
+    }
+}
+
+/**
+ * Narrow the list by the selected notebook's fields: a control per definition.
+ *
+ * A select, a checkbox and the text-like types get a row of chips — "Any", the values it
+ * can equal, then whether it is set or empty at all. A number gets a pair of bounds and a
+ * date a pair of days, either end open, the way the date range's custom fields work: a
+ * range is two values, and a page that closed after the first would take the second away
+ * mid-edit. Text "contains" is not offered; the search box already reads field values.
+ *
+ * Every change writes the filter at once, as the dates page does; there is no Apply. The
+ * chips on the root and the title's second line report what is set, so a change is
+ * visible the moment it is made. The rows are the definitions, not the filters: a page
+ * listing only what is set would have nothing on it the first time, which is when it is
+ * opened. The web's Fields page is the same shape.
+ */
+@Composable
+@OptIn(ExperimentalLayoutApi::class)
+private fun FieldsPicker(state: NotesState, onBack: () -> Unit) {
+    val current = remember(state.fieldFilters) { state.fieldFilters.mapNotNull(FieldFilter::parse) }
+
+    /** Replaces this field's filters of the given ops with `next`, keeping everything else. */
+    fun write(fieldId: String, ops: Set<FieldFilter.Op>, next: List<FieldFilter>) {
+        val kept = current.filter { !(it.fieldId == fieldId && it.op in ops) }
+        state.filterByFields((kept + next).map(FieldFilter::format))
+    }
+
+    Column(
+        Modifier
+            .verticalScroll(rememberScrollState())
+            .padding(horizontal = Space.Screen)
+            .padding(bottom = Space.Screen),
+    ) {
+        PickerHeader(stringResource(R.string.fields_label), onBack)
+
+        for (def in state.fieldDefs) {
+            val mine = current.filter { it.fieldId == def.id }
+            Text(
+                def.name,
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = Space.Medium, bottom = Space.Small),
+            )
+            when (def.type) {
+                "number" -> NumberBounds(def, mine, ::write)
+                "date" -> DateBounds(def, mine, ::write)
+                else -> ChoiceChips(def, mine, ::write)
+            }
+        }
+    }
+}
+
+private typealias WriteFilter = (fieldId: String, ops: Set<FieldFilter.Op>, next: List<FieldFilter>) -> Unit
+
+private val CHOICE_OPS = setOf(FieldFilter.Op.EQ, FieldFilter.Op.SET, FieldFilter.Op.EMPTY, FieldFilter.Op.GTE, FieldFilter.Op.LTE)
+
+/** The ways a select, checkbox or text-like field can be narrowed, as one row of chips. */
+@Composable
+@OptIn(ExperimentalLayoutApi::class)
+private fun ChoiceChips(def: FieldDef, mine: List<FieldFilter>, write: WriteFilter) {
+    val one = mine.firstOrNull()
+    val choices: List<Pair<String, FieldFilter?>> = buildList {
+        add(stringResource(R.string.field_any) to null)
+        when (def.type) {
+            "select" -> for (o in def.options) add(o to FieldFilter(def.id, FieldFilter.Op.EQ, o))
+            "checkbox" -> {
+                add(stringResource(R.string.field_checked) to FieldFilter(def.id, FieldFilter.Op.EQ, "true"))
+                add(stringResource(R.string.field_unchecked) to FieldFilter(def.id, FieldFilter.Op.EQ, "false"))
+            }
+        }
+        add(stringResource(R.string.field_set) to FieldFilter(def.id, FieldFilter.Op.SET))
+        add(stringResource(R.string.field_empty) to FieldFilter(def.id, FieldFilter.Op.EMPTY))
+    }
+    FlowRow(
+        horizontalArrangement = Arrangement.spacedBy(Space.Small),
+        verticalArrangement = Arrangement.spacedBy(Space.Small),
+    ) {
+        for ((label, filter) in choices) {
+            FilterChip(
+                selected = one == filter,
+                onClick = { write(def.id, CHOICE_OPS, listOfNotNull(filter)) },
+                shape = Shapes.Pill,
+                label = { Text(label, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+            )
+        }
+    }
+}
+
+/**
+ * A number's two bounds, either end open.
+ *
+ * Written when the field is left or Done is pressed rather than on every keystroke: a
+ * bound typed as "20" would otherwise reload the list at "2" on the way, and a filter
+ * that flickers through values nobody asked for is worse than one that waits a beat.
+ */
+@Composable
+private fun NumberBounds(def: FieldDef, mine: List<FieldFilter>, write: WriteFilter) {
+    Row(horizontalArrangement = Arrangement.spacedBy(Space.Medium)) {
+        for (op in listOf(FieldFilter.Op.GTE, FieldFilter.Op.LTE)) {
+            val applied = mine.firstOrNull { it.op == op }?.value.orEmpty()
+            var draft by rememberSaveable(applied) { mutableStateOf(applied) }
+            val commit = {
+                val trimmed = draft.trim()
+                if (trimmed != applied) {
+                    write(def.id, setOf(op), listOfNotNull(FieldFilter.parse("${def.id}:${op.wire}:$trimmed")))
+                }
+            }
+            OutlinedTextField(
+                value = draft,
+                onValueChange = { draft = it },
+                label = { Text(stringResource(if (op == FieldFilter.Op.GTE) R.string.field_min else R.string.field_max)) },
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Done),
+                keyboardActions = KeyboardActions(onDone = { commit() }),
+                shape = Shapes.Row,
+                modifier = Modifier
+                    .weight(1f)
+                    .onFocusChanged { if (!it.isFocused) commit() },
+            )
+        }
+    }
+}
+
+/** A date's two bounds, each a day picked from a calendar; a picked day can be cleared. */
+@Composable
+private fun DateBounds(def: FieldDef, mine: List<FieldFilter>, write: WriteFilter) {
+    var picking by rememberSaveable { mutableStateOf<FieldFilter.Op?>(null) }
+    Row(horizontalArrangement = Arrangement.spacedBy(Space.Medium)) {
+        for (op in listOf(FieldFilter.Op.GTE, FieldFilter.Op.LTE)) {
+            val applied = mine.firstOrNull { it.op == op }?.value
+            val caption = stringResource(if (op == FieldFilter.Op.GTE) R.string.field_from else R.string.field_to)
+            Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
+                OutlinedButton(
+                    onClick = { picking = op },
+                    shape = Shapes.Row,
+                    modifier = Modifier.weight(1f),
+                ) {
+                    Text(
+                        applied?.let { runCatching { formatDay(it) }.getOrDefault(it) } ?: caption,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+                if (applied != null) {
+                    IconButton(onClick = { write(def.id, setOf(op), emptyList()) }) {
+                        Icon(
+                            Icons.Default.Close,
+                            contentDescription = stringResource(R.string.field_bound_clear, caption),
+                        )
+                    }
+                }
+            }
+        }
+    }
+    picking?.let { op ->
+        DayPickerDialog(
+            initial = mine.firstOrNull { it.op == op }?.value,
+            onDismiss = { picking = null },
+            onPick = { day ->
+                picking = null
+                write(def.id, setOf(op), listOf(FieldFilter(def.id, op, day)))
+            },
+        )
+    }
+}
+
+/** One day from the calendar, as the API's `YYYY-MM-DD`; the conversions are DateRange.kt's. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun DayPickerDialog(initial: String?, onDismiss: () -> Unit, onPick: (String) -> Unit) {
+    val picker = rememberDatePickerState(initialSelectedDateMillis = initial?.let(::dayMillis))
+    DatePickerDialog(
+        onDismissRequest = onDismiss,
+        confirmButton = {
+            TextButton(
+                enabled = picker.selectedDateMillis != null,
+                onClick = { picker.selectedDateMillis?.let { onPick(utcDay(it)) } },
+            ) {
+                Text(stringResource(R.string.dates_apply))
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text(stringResource(android.R.string.cancel)) }
+        },
+    ) {
+        DatePicker(state = picker)
     }
 }
 

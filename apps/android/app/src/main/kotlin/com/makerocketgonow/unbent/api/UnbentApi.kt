@@ -109,6 +109,8 @@ class UnbentApi(
         cursor: String? = null,
         notebook: String? = null,
         tags: List<String> = emptyList(),
+        /** Custom-field filters as their wire strings; see [FieldFilter]. Repeated, ANDed. */
+        fields: List<String> = emptyList(),
         sort: String? = null,
         order: String? = null,
         from: String? = null,
@@ -123,6 +125,7 @@ class UnbentApi(
             "cursor" to cursor,
             "notebook" to notebook,
             "tag" to tags,
+            "field" to fields,
             "trashed" to if (trashed) "1" else null,
             "sort" to sort,
             "order" to order,
@@ -140,12 +143,21 @@ class UnbentApi(
         q: String,
         notebook: String? = null,
         tags: List<String> = emptyList(),
+        fields: List<String> = emptyList(),
         from: String? = null,
         to: String? = null,
     ): List<SearchResult> =
         get<SearchResults>(
             "Search",
-            url("/api/search", "q" to q, "notebook" to notebook, "tag" to tags, "from" to from, "to" to to),
+            url(
+                "/api/search",
+                "q" to q,
+                "notebook" to notebook,
+                "tag" to tags,
+                "field" to fields,
+                "from" to from,
+                "to" to to,
+            ),
         ).results
 
     fun getNote(id: String): Note = get("Load note", noteUrl(id))
@@ -267,6 +279,13 @@ class UnbentApi(
     }
 
     fun listTags(): List<Tag> = get<TagList>("List tags", url("/api/tags")).tags
+
+    /** A notebook's custom field definitions, in display order. 404 when it is not this user's. */
+    fun listNotebookFields(notebookId: String): List<FieldDef> =
+        get<FieldList>(
+            "List fields",
+            notebookUrl(notebookId).newBuilder().addPathSegment("fields").build(),
+        ).fields
 
     /**
      * Revokes the session on the server. Best effort: a phone that has lost its network

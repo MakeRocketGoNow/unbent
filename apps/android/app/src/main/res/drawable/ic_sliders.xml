@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The fields row's icon: three sliders, each with its knob at a different place.
+
+  Drawn here for the reason `ic_filter` and `ic_sort` are: the core Material set has no
+  such glyph and the extended set is thousands of icons for one shape. Traced from
+  lucide's `sliders-horizontal`, which is what the web's filter sheet draws on the same
+  row (`FieldsIcon` in icons.tsx) — one product, one picture for one idea. Sliders rather
+  than a funnel because the page behind it is a set of values to adjust, one control per
+  field, rather than one list to pick from.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24"
+    android:tint="?attr/colorControlNormal">
+    <path
+        android:pathData="M21,4h-7M10,4H3M21,12h-9M8,12H3M21,20h-5M12,20H3M14,2v4M8,10v4M16,18v4"
+        android:strokeColor="@android:color/white"
+        android:strokeWidth="2"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:fillColor="@android:color/transparent" />
+</vector>

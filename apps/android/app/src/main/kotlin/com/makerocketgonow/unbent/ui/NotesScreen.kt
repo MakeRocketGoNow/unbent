@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.rememberScrollState
@@ -92,6 +93,8 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.makerocketgonow.unbent.R
 import com.makerocketgonow.unbent.api.ApiException
+import com.makerocketgonow.unbent.api.FieldDef
+import com.makerocketgonow.unbent.api.FieldFilter
 import com.makerocketgonow.unbent.api.NoteSummary
 import com.makerocketgonow.unbent.api.Notebook
 import com.makerocketgonow.unbent.api.SearchResult
@@ -167,10 +170,14 @@ fun NotesScreen(
      * — which is the reset this state was hoisted to avoid. `loaded` covers the very first
      * run, when there is nothing on screen yet.
      */
-    LaunchedEffect(state.notebook, state.selectedTags, state.sort, state.from, state.to) {
+    LaunchedEffect(state.notebook, state.selectedTags, state.fieldFilters, state.sort, state.from, state.to) {
         if (!state.loaded || state.filterChanged) state.load()
     }
     LaunchedEffect(state) { if (state.notebooks.isEmpty() && state.tags.isEmpty()) state.loadFilters() }
+    // The selected notebook's field definitions, which the sheet offers and the chips are
+    // named by. Keyed on the directory too: the notebook arrives by name and the
+    // definitions are fetched by id, which the directory is what supplies.
+    LaunchedEffect(state.notebook, state.notebooks) { state.loadFieldDefs() }
 
     // The new notebook's rows start at the top. Only once the state says so: a key that
     // fired on re-entering the screen would throw away the place a reader left.
@@ -271,10 +278,12 @@ fun NotesScreen(
                              * poor home for something reached this often. The badge says a
                              * filter is on without naming it — the title does the naming —
                              * so a narrowed list is never mistaken for the whole archive.
+                             * It speaks for what the sheet sets, not for the notebook the
+                             * drawer chose; see [NotesState.sheetFiltered].
                              */
                             IconButton(onClick = { filtering = true }) {
                                 BadgedBox(
-                                    badge = { if (state.filtered) Badge() },
+                                    badge = { if (state.sheetFiltered) Badge() },
                                 ) {
                                     Icon(
                                         painterResource(R.drawable.ic_filter),
@@ -351,7 +360,25 @@ fun NotesScreen(
                 val results = state.results
                 val error = state.error
                 when {
-                    results != null -> SearchList(results, onOpen)
+                    results != null -> SearchList(
+                        results = results,
+                        /*
+                         * From the live query rather than the debounced one that produced
+                         * the results: the lists are already in hand, so the picks can keep
+                         * up with typing where the results cannot.
+                         */
+                        picks = scopePicks(state.query, state.tags, state.notebooks, state.selectedTags, state.notebook),
+                        onOpen = onOpen,
+                        onPick = { pick ->
+                            when (pick) {
+                                is ScopePick.ForTag -> state.toggleTag(pick.name)
+                                is ScopePick.ForNotebook -> state.filterBy(pick.name, emptyList())
+                            }
+                            // The pick is the answer to the search, so the search is over.
+                            searchOpen = false
+                            state.changeQuery("")
+                        },
+                    )
 
                     error != null && state.items.isEmpty() -> Column(
                         Modifier.fillMaxSize().padding(Space.Screen),
@@ -430,7 +457,13 @@ private fun ListTitle(state: NotesState) {
     // rather than claiming a number for a list that has not arrived.
     val count = state.total?.let { pluralStringResource(R.plurals.notes_count, it, it) }
         ?: if (state.stale) stringResource(R.string.loading) else null
-    val detail = listOfNotNull(count, rangeLabel(state.from, state.to)).joinToString(" · ")
+    // Field filters go here with the range: the phone has no chip strip under its header,
+    // so the title's second line is the one place a filter shows without opening anything.
+    val detail = (
+        listOfNotNull(count) +
+            state.fieldFilters.map { fieldFilterLabel(it, state.fieldDefs) } +
+            listOfNotNull(rangeLabel(state.from, state.to))
+        ).joinToString(" · ")
     Column {
         Text(title, maxLines = 1, overflow = TextOverflow.Ellipsis)
         if (detail.isNotEmpty()) {
@@ -926,8 +959,14 @@ private fun fileKindDrawable(contentType: String): Int {
  * body is user content; the same reason the web never interpolates a snippet as markup.
  */
 @Composable
-private fun SearchList(results: List<SearchResult>, onOpen: (String) -> Unit) {
-    if (results.isEmpty()) {
+private fun SearchList(
+    results: List<SearchResult>,
+    /** Tags and notebooks whose names match, offered above the notes that do. */
+    picks: List<ScopePick>,
+    onOpen: (String) -> Unit,
+    onPick: (ScopePick) -> Unit,
+) {
+    if (results.isEmpty() && picks.isEmpty()) {
         Box(Modifier.fillMaxSize().padding(Space.Screen), contentAlignment = Alignment.TopCenter) {
             Text(stringResource(R.string.no_matches), color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
@@ -935,14 +974,68 @@ private fun SearchList(results: List<SearchResult>, onOpen: (String) -> Unit) {
     }
     val highlight = SpanStyle(background = MaterialTheme.colorScheme.primaryContainer)
     LazyColumn(Modifier.fillMaxSize()) {
+        /*
+         * The picks, captioned, then the notes, captioned. A tag row among note rows with
+         * no word over it reads as a note with something wrong with it; "Tags and
+         * notebooks" over the picks and "Notes" over the results is what the web draws and
+         * what Apple Notes' "Suggested" does, and it costs a line each only while there
+         * is something to caption. The rows are not coloured: they are part of this list,
+         * not a different control.
+         */
+        if (picks.isNotEmpty()) {
+            item(key = "picks-caption") { ListCaption(stringResource(R.string.search_picks_caption)) }
+            items(picks, key = { "pick:${it.javaClass.simpleName}:${it.name}" }) { pick ->
+                ListItem(
+                    modifier = Modifier.clickable { onPick(pick) },
+                    leadingContent = {
+                        Icon(
+                            painterResource(
+                                if (pick is ScopePick.ForTag) R.drawable.ic_tag else R.drawable.ic_notebook,
+                            ),
+                            contentDescription = stringResource(
+                                if (pick is ScopePick.ForTag) R.string.search_pick_tag else R.string.search_pick_notebook,
+                                pick.name,
+                            ),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    },
+                    headlineContent = { Text(pick.name, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                    trailingContent = { CountBadge(pick.count) },
+                )
+            }
+            item(key = "notes-caption") {
+                HorizontalDivider()
+                if (results.isNotEmpty()) ListCaption(stringResource(R.string.search_notes_caption))
+            }
+        }
+        if (results.isEmpty()) {
+            item(key = "no-matches") {
+                Text(
+                    stringResource(R.string.no_matches),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(Space.Screen),
+                )
+            }
+        }
         itemsIndexed(results, key = { _, r -> r.id }) { index, r ->
             ListItem(
                 modifier = Modifier.clickable { onOpen(r.id) },
                 headlineContent = {
                     Text(r.title.ifBlank { stringResource(R.string.untitled) }, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 },
-                overlineContent = r.matchedFile?.let { file ->
-                    { Text(stringResource(R.string.matched_in, file), maxLines = 1, overflow = TextOverflow.Ellipsis) }
+                /*
+                 * Where the match came from, when it was not the note's own text. Naming
+                 * the file, the field or the tag makes an otherwise puzzling hit
+                 * explicable: the body may not contain the term at all. The same three
+                 * labels the web's results carry.
+                 */
+                overlineContent = when {
+                    r.matchedFile != null -> stringResource(R.string.matched_in, r.matchedFile)
+                    r.matchedField != null -> stringResource(R.string.matched_in, r.matchedField)
+                    r.matchedTag != null -> stringResource(R.string.matched_tagged, r.matchedTag)
+                    else -> null
+                }?.let { label ->
+                    { Text(label, maxLines = 1, overflow = TextOverflow.Ellipsis) }
                 },
                 supportingContent = {
                     Text(
@@ -964,6 +1057,17 @@ private fun SearchList(results: List<SearchResult>, onOpen: (String) -> Unit) {
         }
         item { Spacer(Modifier.height(Space.FabClearance)) }
     }
+}
+
+/** A word over a group of rows, in the list's quiet voice: what the rows under it are. */
+@Composable
+private fun ListCaption(text: String) {
+    Text(
+        text,
+        style = MaterialTheme.typography.labelMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.padding(start = Space.Large, top = Space.Medium, end = Space.Large, bottom = Space.Hair),
+    )
 }
 
 /** The list's data: the current filter and sort, the pages fetched under them, the search. */
@@ -1000,6 +1104,8 @@ class NotesState(private val api: UnbentApi) {
         val sort: String,
         val from: String?,
         val to: String?,
+        /** Custom-field filters as their wire strings; see [FieldFilter]. */
+        val fields: List<String> = emptyList(),
     )
 
     var items by mutableStateOf<List<NoteSummary>>(emptyList())
@@ -1050,8 +1156,33 @@ class NotesState(private val api: UnbentApi) {
         private set
     var to by mutableStateOf<String?>(null)
         private set
+    /**
+     * Custom-field filters, ANDed, as the `<fieldId>:<op>[:<value>]` strings the server
+     * reads — kept as strings for the reason the web's URL keeps them: one spelling per
+     * filter, parsed by the server. Field definitions belong to a notebook, so these only
+     * mean anything alongside one, and go when it does.
+     */
+    var fieldFilters by mutableStateOf<List<String>>(emptyList())
+        private set
+    /** The selected notebook's definitions, for the sheet's Fields page and the chips' names. */
+    var fieldDefs by mutableStateOf<List<FieldDef>>(emptyList())
+        private set
+    /** Whether anything narrows the list, the notebook included: the whole scope on screen. */
     val filtered: Boolean get() =
-        notebook != null || selectedTags.isNotEmpty() || from != null || to != null
+        notebook != null || selectedTags.isNotEmpty() || fieldFilters.isNotEmpty() || from != null || to != null
+
+    /**
+     * What the filter icon's badge speaks for: the tags and the dates, not the notebook.
+     *
+     * The two were one predicate, and keeping them one lit the badge for a notebook the
+     * filter sheet does not choose — a dot saying "something is narrowing this" beside a
+     * title that had already said what, pointing at a surface where nothing was set. A
+     * badge has to be about the control it sits on. The web draws the same line, and
+     * [filtered] is still the whole scope for the sheet's chips and its Clear all, which
+     * are about everything applied.
+     */
+    val sheetFiltered: Boolean get() =
+        selectedTags.isNotEmpty() || fieldFilters.isNotEmpty() || from != null || to != null
 
     var notebooks by mutableStateOf<List<Notebook>>(emptyList())
         private set
@@ -1085,10 +1216,11 @@ class NotesState(private val api: UnbentApi) {
         sort = NoteSort.entries.firstOrNull { it.name == saved.sort } ?: NoteSort.UPDATED
         from = saved.from
         to = saved.to
+        fieldFilters = saved.fields
     }
 
     /** The filter as it stands, for [Saved]. */
-    fun save(): Saved = Saved(notebook, selectedTags, sort.name, from, to)
+    fun save(): Saved = Saved(notebook, selectedTags, sort.name, from, to, fieldFilters)
 
     suspend fun load() = fetch(reset = true)
 
@@ -1142,6 +1274,7 @@ class NotesState(private val api: UnbentApi) {
                         cursor = next,
                         notebook = notebook,
                         tags = selectedTags,
+                        fields = fieldFilters,
                         sort = sort.key,
                         order = sort.order,
                         from = from,
@@ -1167,8 +1300,18 @@ class NotesState(private val api: UnbentApi) {
     fun filterBy(notebook: String?, tags: List<String>) {
         if (this.notebook == notebook && this.selectedTags == tags) return
         droppedTags = emptyList()
+        // A field belongs to the notebook being left, so its filters go with it. Only on
+        // a real move: toggling a tag comes through here with the notebook unchanged.
+        if (this.notebook != notebook) fieldFilters = emptyList()
         this.notebook = notebook
         this.selectedTags = tags
+        clearForReload()
+    }
+
+    /** Replaces the field filters wholesale; the sheet's controls each rebuild the list. */
+    fun filterByFields(next: List<String>) {
+        if (fieldFilters == next) return
+        fieldFilters = next
         clearForReload()
     }
 
@@ -1186,6 +1329,7 @@ class NotesState(private val api: UnbentApi) {
         if (!filtered) return
         notebook = null
         selectedTags = emptyList()
+        fieldFilters = emptyList()
         from = null
         to = null
         clearForReload()
@@ -1257,7 +1401,11 @@ class NotesState(private val api: UnbentApi) {
             results = null
             return
         }
-        val result = withContext(Dispatchers.IO) { runCatching { api.search(q, notebook, selectedTags, from, to) } }
+        val result = withContext(Dispatchers.IO) {
+            runCatching {
+                api.search(q, notebook = notebook, tags = selectedTags, fields = fieldFilters, from = from, to = to)
+            }
+        }
         // Only if the box still says what was searched for; a stale answer is worse than none.
         if (query.trim() != q) return
         result.onSuccess { results = it }.onFailure { e ->
@@ -1307,6 +1455,31 @@ class NotesState(private val api: UnbentApi) {
         }
     }
 
+    /**
+     * The selected notebook's field definitions, or none outside a notebook.
+     *
+     * Looked up by id from the directory, since the filter carries the name. A filter on a
+     * field that is no longer defined — deleted on the web while the phone slept — is
+     * dropped the way a tag that no longer exists is: it cannot be turned off from a
+     * picker that no longer lists it.
+     */
+    suspend fun loadFieldDefs() {
+        val id = notebook?.takeIf { it != UNFILED }?.let { name -> notebooks.firstOrNull { it.name == name }?.id }
+        if (id == null) {
+            fieldDefs = emptyList()
+            return
+        }
+        withContext(Dispatchers.IO) { runCatching { api.listNotebookFields(id) } }.onSuccess { defs ->
+            fieldDefs = defs
+            val known = defs.map { it.id }.toSet()
+            val kept = fieldFilters.filter { FieldFilter.parse(it)?.fieldId in known }
+            if (kept != fieldFilters) {
+                fieldFilters = kept
+                clearForReload()
+            }
+        }
+    }
+
     private suspend fun fetch(reset: Boolean) {
         val mine = ++generation
         loading = true
@@ -1317,6 +1490,7 @@ class NotesState(private val api: UnbentApi) {
                     cursor = if (reset) null else cursor,
                     notebook = notebook,
                     tags = selectedTags,
+                    fields = fieldFilters,
                     sort = sort.key,
                     order = sort.order,
                     from = from,
