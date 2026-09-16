@@ -62,6 +62,10 @@
     <string name="no_matches">No matches.</string>
     <string name="matched_in">in %1$s</string>
     <string name="matched_tagged">tagged %1$s</string>
+    <string name="search_picks_caption">Tags and notebooks</string>
+    <string name="search_notes_caption">Notes</string>
+    <string name="search_pick_tag">Filter by tag %1$s</string>
+    <string name="search_pick_notebook">Show notebook %1$s</string>
     <string name="search">Search</string>
     <string name="search_hint">Search notes…</string>
     <string name="close_search">Close search</string>

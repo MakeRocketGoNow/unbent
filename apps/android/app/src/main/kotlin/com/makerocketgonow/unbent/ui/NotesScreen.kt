@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.rememberScrollState
@@ -353,7 +354,25 @@ fun NotesScreen(
                 val results = state.results
                 val error = state.error
                 when {
-                    results != null -> SearchList(results, onOpen)
+                    results != null -> SearchList(
+                        results = results,
+                        /*
+                         * From the live query rather than the debounced one that produced
+                         * the results: the lists are already in hand, so the picks can keep
+                         * up with typing where the results cannot.
+                         */
+                        picks = scopePicks(state.query, state.tags, state.notebooks, state.selectedTags, state.notebook),
+                        onOpen = onOpen,
+                        onPick = { pick ->
+                            when (pick) {
+                                is ScopePick.ForTag -> state.toggleTag(pick.name)
+                                is ScopePick.ForNotebook -> state.filterBy(pick.name, emptyList())
+                            }
+                            // The pick is the answer to the search, so the search is over.
+                            searchOpen = false
+                            state.changeQuery("")
+                        },
+                    )
 
                     error != null && state.items.isEmpty() -> Column(
                         Modifier.fillMaxSize().padding(Space.Screen),
@@ -928,8 +947,14 @@ private fun fileKindDrawable(contentType: String): Int {
  * body is user content; the same reason the web never interpolates a snippet as markup.
  */
 @Composable
-private fun SearchList(results: List<SearchResult>, onOpen: (String) -> Unit) {
-    if (results.isEmpty()) {
+private fun SearchList(
+    results: List<SearchResult>,
+    /** Tags and notebooks whose names match, offered above the notes that do. */
+    picks: List<ScopePick>,
+    onOpen: (String) -> Unit,
+    onPick: (ScopePick) -> Unit,
+) {
+    if (results.isEmpty() && picks.isEmpty()) {
         Box(Modifier.fillMaxSize().padding(Space.Screen), contentAlignment = Alignment.TopCenter) {
             Text(stringResource(R.string.no_matches), color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
@@ -937,6 +962,49 @@ private fun SearchList(results: List<SearchResult>, onOpen: (String) -> Unit) {
     }
     val highlight = SpanStyle(background = MaterialTheme.colorScheme.primaryContainer)
     LazyColumn(Modifier.fillMaxSize()) {
+        /*
+         * The picks, captioned, then the notes, captioned. A tag row among note rows with
+         * no word over it reads as a note with something wrong with it; "Tags and
+         * notebooks" over the picks and "Notes" over the results is what the web draws and
+         * what Apple Notes' "Suggested" does, and it costs a line each only while there
+         * is something to caption. The rows are not coloured: they are part of this list,
+         * not a different control.
+         */
+        if (picks.isNotEmpty()) {
+            item(key = "picks-caption") { ListCaption(stringResource(R.string.search_picks_caption)) }
+            items(picks, key = { "pick:${it.javaClass.simpleName}:${it.name}" }) { pick ->
+                ListItem(
+                    modifier = Modifier.clickable { onPick(pick) },
+                    leadingContent = {
+                        Icon(
+                            painterResource(
+                                if (pick is ScopePick.ForTag) R.drawable.ic_tag else R.drawable.ic_notebook,
+                            ),
+                            contentDescription = stringResource(
+                                if (pick is ScopePick.ForTag) R.string.search_pick_tag else R.string.search_pick_notebook,
+                                pick.name,
+                            ),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    },
+                    headlineContent = { Text(pick.name, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                    trailingContent = { CountBadge(pick.count) },
+                )
+            }
+            item(key = "notes-caption") {
+                HorizontalDivider()
+                if (results.isNotEmpty()) ListCaption(stringResource(R.string.search_notes_caption))
+            }
+        }
+        if (results.isEmpty()) {
+            item(key = "no-matches") {
+                Text(
+                    stringResource(R.string.no_matches),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(Space.Screen),
+                )
+            }
+        }
         itemsIndexed(results, key = { _, r -> r.id }) { index, r ->
             ListItem(
                 modifier = Modifier.clickable { onOpen(r.id) },
@@ -977,6 +1045,17 @@ private fun SearchList(results: List<SearchResult>, onOpen: (String) -> Unit) {
         }
         item { Spacer(Modifier.height(Space.FabClearance)) }
     }
+}
+
+/** A word over a group of rows, in the list's quiet voice: what the rows under it are. */
+@Composable
+private fun ListCaption(text: String) {
+    Text(
+        text,
+        style = MaterialTheme.typography.labelMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.padding(start = Space.Large, top = Space.Medium, end = Space.Large, bottom = Space.Hair),
+    )
 }
 
 /** The list's data: the current filter and sort, the pages fetched under them, the search. */
