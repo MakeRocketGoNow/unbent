@@ -19,6 +19,15 @@ import { fileURLToPath } from 'node:url';
  * location — to keep the Android app's colour values as the strings they were written
  * as; the router's parsed search had turned an all-digit colour into a number. Reading a
  * string is not navigating either.
+ *
+ * `attachment-viewer.ts` is allowed because its one `pushState` pushes a throwaway entry
+ * that never changes the URL — it exists so the back gesture dismisses the full-screen
+ * viewer instead of the note behind it, which is the browser-native pattern for a
+ * dismissible overlay. It is not navigation: no route matches, the location is untouched,
+ * and the entry is popped again the moment the viewer closes. The router owns no primitive
+ * for this, and the viewer is deliberately framework-free so the CodeMirror widgets can
+ * open it, so it cannot reach for `useRouter` either. If a later stage puts the attachment
+ * in the URL, *that* is navigation and belongs in a real route, not here.
  */
 describe('url boundary', () => {
   it('leaves navigation to the router', () => {
@@ -44,7 +53,12 @@ describe('url boundary', () => {
       out = '';
     }
 
-    const allowed = ['notes-api.ts', 'embed.notes.$noteId.tsx', 'url-boundary.test.ts'];
+    const allowed = [
+      'notes-api.ts',
+      'embed.notes.$noteId.tsx',
+      'attachment-viewer.ts',
+      'url-boundary.test.ts',
+    ];
     const offenders = out
       .split('\n')
       .filter(Boolean)
