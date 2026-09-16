@@ -278,6 +278,30 @@ class UnbentApiTest {
         assertEquals("/api/search?q=insurance&notebook=Taxes&from=2023-01-01&to=2023-12-31", server.takeRequest().path)
     }
 
+    /**
+     * A hit says where it matched. The server names a file, a custom field or a tag; the
+     * row shows whichever it is, so the model has to carry all three.
+     */
+    @Test
+    fun `search results carry where the match came from`() {
+        server.enqueue(
+            MockResponse().setResponseCode(200).setBody(
+                """{"results":[
+                  {"id":"a","title":"A","updatedAt":1,"snippet":"<<x>>","matchedFile":"scan.pdf"},
+                  {"id":"b","title":"B","updatedAt":1,"snippet":"<<x>>","matchedField":"Vendor"},
+                  {"id":"c","title":"C","updatedAt":1,"snippet":"<<x>>","matchedTag":"Stelvio"}
+                ]}""",
+            ),
+        )
+
+        val hits = api.search("x")
+
+        assertEquals("scan.pdf", hits[0].matchedFile)
+        assertEquals("Vendor", hits[1].matchedField)
+        assertEquals("Stelvio", hits[2].matchedTag)
+        assertNull(hits[2].matchedFile)
+    }
+
     @Test
     fun `a field the server adds later does not break decoding`() {
         server.enqueue(

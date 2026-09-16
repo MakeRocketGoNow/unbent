@@ -941,8 +941,19 @@ private fun SearchList(results: List<SearchResult>, onOpen: (String) -> Unit) {
                 headlineContent = {
                     Text(r.title.ifBlank { stringResource(R.string.untitled) }, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 },
-                overlineContent = r.matchedFile?.let { file ->
-                    { Text(stringResource(R.string.matched_in, file), maxLines = 1, overflow = TextOverflow.Ellipsis) }
+                /*
+                 * Where the match came from, when it was not the note's own text. Naming
+                 * the file, the field or the tag makes an otherwise puzzling hit
+                 * explicable: the body may not contain the term at all. The same three
+                 * labels the web's results carry.
+                 */
+                overlineContent = when {
+                    r.matchedFile != null -> stringResource(R.string.matched_in, r.matchedFile)
+                    r.matchedField != null -> stringResource(R.string.matched_in, r.matchedField)
+                    r.matchedTag != null -> stringResource(R.string.matched_tagged, r.matchedTag)
+                    else -> null
+                }?.let { label ->
+                    { Text(label, maxLines = 1, overflow = TextOverflow.Ellipsis) }
                 },
                 supportingContent = {
                     Text(

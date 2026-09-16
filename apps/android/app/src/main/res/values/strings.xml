@@ -61,6 +61,7 @@
     <string name="no_notes_filtered">No notes here.</string>
     <string name="no_matches">No matches.</string>
     <string name="matched_in">in %1$s</string>
+    <string name="matched_tagged">tagged %1$s</string>
     <string name="search">Search</string>
     <string name="search_hint">Search notes…</string>
     <string name="close_search">Close search</string>
