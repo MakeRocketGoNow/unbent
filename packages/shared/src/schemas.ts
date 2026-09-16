@@ -209,6 +209,18 @@ export interface AppConfig {
    * because its API traffic is proxied through this Worker rather than sent direct.
    */
   posthog?: { key: string; uiHost: string };
+  /**
+   * The dev instance a preview borrows a Google session from, when this instance is a
+   * preview at all.
+   *
+   * Present only on a per-PR preview, whose own hostname changes every PR and so can never
+   * have an OAuth callback registered against it. `origin` is the standing dev instance —
+   * e.g. `https://dev.unbent.app` — that a preview's login screen sends people to to sign
+   * in, and which redirects them back with a one-time token. Absent everywhere else,
+   * including production and the dev instance itself, which have their own sign-in and read
+   * this as "draw no relay button". See `previewRelayOrigin` in the API.
+   */
+  previewRelay?: { origin: string };
 }
 
 export const noteIdSchema = z.string().uuid();

@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import type { AppConfig } from '@unbent/shared';
 import { accountDeletionOffered, getAuth, offeredProviders } from '../auth.js';
 import { legalLinksOf, operatorOf, posthogOf } from '../lib/instance.js';
+import { previewRelayOrigin } from '../lib/preview-relay.js';
 import type { AppEnv } from '../types.js';
 
 export const authRoutes = new Hono<AppEnv>()
@@ -26,16 +27,22 @@ export const authRoutes = new Hono<AppEnv>()
    * be constants naming one company. A self-hosted instance that has not said who runs it
    * publishes no documents and draws no links to them — see lib/instance.ts.
    *
+   * `previewRelay` is the same convention again: set only on a per-PR preview, where it
+   * names the dev instance the login screen can borrow a Google session from — see
+   * `previewRelayOrigin`. Absent everywhere else, and read as "no relay button".
+   *
    * `satisfies` rather than a return annotation: the fields whose value is `undefined` are
    * dropped by `JSON.stringify` on the way out, which is exactly the "absent means not
    * offered" reading the client already applies to `accountDeletion`.
    */
-  .get('/config', (c) =>
-    c.json({
+  .get('/config', (c) => {
+    const relayOrigin = previewRelayOrigin(c.env);
+    return c.json({
       providers: offeredProviders(c.env),
       accountDeletion: accountDeletionOffered(c.env),
       operator: operatorOf(c.env),
       legal: legalLinksOf(c.env),
       posthog: posthogOf(c.env),
-    } satisfies AppConfig),
-  );
+      previewRelay: relayOrigin ? { origin: relayOrigin } : undefined,
+    } satisfies AppConfig);
+  });
