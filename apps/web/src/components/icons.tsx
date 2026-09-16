@@ -346,6 +346,8 @@ export function ExpandIcon() {
  */
 const EXPAND_PATHS = ['M15 3h6v6', 'm21 3-7 7', 'm3 21 7-7', 'M9 21H3v-6'];
 const CLOSE_PATHS = ['M18 6 6 18', 'm6 6 12 12'];
+const CHEVRON_LEFT_PATHS = ['m15 18-6-6 6-6'];
+const CHEVRON_RIGHT_PATHS = ['m9 18 6-6-6-6'];
 
 function iconMarkup(paths: readonly string[], size: number): string {
   return [
@@ -365,4 +367,13 @@ export function expandIconMarkup(): string {
 /** A cross, for the attachment viewer's close button. */
 export function closeIconMarkup(): string {
   return iconMarkup(CLOSE_PATHS, 22);
+}
+
+/** Chevrons, for paging the attachment viewer through a note's attachments. */
+export function chevronLeftMarkup(): string {
+  return iconMarkup(CHEVRON_LEFT_PATHS, 22);
+}
+
+export function chevronRightMarkup(): string {
+  return iconMarkup(CHEVRON_RIGHT_PATHS, 22);
 }

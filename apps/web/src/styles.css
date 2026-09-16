@@ -3310,6 +3310,7 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
 }
 
 .viewer-name {
+  flex: 1 1 auto;
   min-width: 0;
   font-size: 0.9rem;
   font-weight: 600;
@@ -3318,11 +3319,53 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
   white-space: nowrap;
 }
 
+/*
+   Paging between a note's attachments: ‹ 2 of 5 ›.
+
+   In the head with the rest of the controls rather than floated over the picture's
+   edges, so it is one bar to read and the arrows are where a Tab expects them. Tabular
+   figures keep "9 of 12" from shifting the arrows as the count changes.
+*/
+.viewer-nav {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.viewer-position {
+  min-width: 3.5rem;
+  font-size: 0.85rem;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+  opacity: 0.85;
+}
+
+.viewer-prev,
+.viewer-next {
+  color: #fff;
+}
+
+.viewer-prev:hover,
+.viewer-next:hover { color: #fff; background: rgb(255 255 255 / 0.15); }
+
+/* The end of the set: still drawn, so the bar does not rearrange, but plainly inert. */
+.viewer-prev:disabled,
+.viewer-next:disabled {
+  opacity: 0.3;
+  cursor: default;
+  background: none;
+}
+
 .viewer-meta {
   flex-shrink: 0;
-  margin-left: auto;
   font-size: 0.85rem;
   opacity: 0.7;
+}
+
+/* A phone's head has room for the name, the paging and the ways out; the page count is
+   the one thing there that is not a control. */
+@media (width < 480px) {
+  .viewer-meta { display: none; }
 }
 
 .viewer-download {

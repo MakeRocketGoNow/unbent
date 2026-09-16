@@ -183,6 +183,131 @@ describe('openAttachmentViewer', () => {
   });
 });
 
+describe('paging', () => {
+  const three = [
+    { kind: 'image' as const, src: '/api/notes/n/files/one.png', alt: 'one' },
+    { kind: 'pdf' as const, src: '/api/notes/n/files/two.pdf', label: 'two' },
+    { kind: 'image' as const, src: 'https://example.com/three.png', alt: 'three' },
+  ];
+
+  /** Opens on the middle attachment of three, with the scroll jsdom lacks stubbed. */
+  function openPaged(at = 1) {
+    const dialog = openAttachmentViewer(three[at]!, three);
+    const body = dialog.querySelector<HTMLElement>('.viewer-body') as HTMLElement;
+    body.scrollTo = vi.fn();
+    return dialog;
+  }
+
+  const position = (d: HTMLDialogElement) => d.querySelector('.viewer-position')?.textContent;
+  const prevButton = (d: HTMLDialogElement) =>
+    d.querySelector<HTMLButtonElement>('.viewer-prev') as HTMLButtonElement;
+  const nextButton = (d: HTMLDialogElement) =>
+    d.querySelector<HTMLButtonElement>('.viewer-next') as HTMLButtonElement;
+  const key = (d: HTMLDialogElement, k: string) =>
+    d.dispatchEvent(new KeyboardEvent('keydown', { key: k, bubbles: true, cancelable: true }));
+
+  beforeEach(() => {
+    stubDialog();
+    acquirePdf.mockClear();
+    releasePdf.mockClear();
+    pageCount = 1;
+  });
+
+  afterEach(() => {
+    for (const d of dialogs()) (d as HTMLDialogElement).close();
+    document.body.innerHTML = '';
+  });
+
+  it('shows no paging for a lone attachment', () => {
+    const dialog = openAttachmentViewer(three[0]!);
+    expect(dialog.querySelector('.viewer-nav')).toBeNull();
+  });
+
+  it('shows where it is in the set', () => {
+    const dialog = openPaged(1);
+    expect(position(dialog)).toBe('2 of 3');
+    expect(dialog.getAttribute('aria-label')).toBe('two');
+  });
+
+  it('pages with the buttons and stops at the ends', () => {
+    const dialog = openPaged(1);
+    nextButton(dialog).click();
+    expect(position(dialog)).toBe('3 of 3');
+    expect(dialog.getAttribute('aria-label')).toBe('three');
+    expect(nextButton(dialog).disabled).toBe(true);
+    expect(prevButton(dialog).disabled).toBe(false);
+
+    prevButton(dialog).click();
+    prevButton(dialog).click();
+    expect(position(dialog)).toBe('1 of 3');
+    expect(prevButton(dialog).disabled).toBe(true);
+  });
+
+  it('pages with the arrow keys', () => {
+    const dialog = openPaged(0);
+    key(dialog, 'ArrowRight');
+    expect(position(dialog)).toBe('2 of 3');
+    key(dialog, 'ArrowLeft');
+    expect(position(dialog)).toBe('1 of 3');
+    key(dialog, 'ArrowLeft');
+    expect(position(dialog)).toBe('1 of 3');
+  });
+
+  it('pages with a horizontal swipe, and not with a vertical one', () => {
+    const dialog = openPaged(0);
+    const body = dialog.querySelector<HTMLElement>('.viewer-body') as HTMLElement;
+    const swipe = (dx: number, dy: number) => {
+      const start = new Event('touchstart');
+      Object.defineProperty(start, 'touches', { value: [{ clientX: 200, clientY: 300 }] });
+      body.dispatchEvent(start);
+      const end = new Event('touchend');
+      Object.defineProperty(end, 'changedTouches', {
+        value: [{ clientX: 200 + dx, clientY: 300 + dy }],
+      });
+      body.dispatchEvent(end);
+    };
+    swipe(0, -200);
+    expect(position(dialog)).toBe('1 of 3');
+    swipe(-120, 10);
+    expect(position(dialog)).toBe('2 of 3');
+    swipe(120, -10);
+    expect(position(dialog)).toBe('1 of 3');
+  });
+
+  it('swaps the content and the download link as it pages', () => {
+    const dialog = openPaged(0);
+    expect(dialog.querySelector('img.viewer-image')).not.toBeNull();
+    expect(dialog.querySelector('a.viewer-download')?.getAttribute('download')).toBe('one.png');
+
+    nextButton(dialog).click();
+    expect(dialog.querySelector('img.viewer-image')).toBeNull();
+    expect(dialog.querySelector('.viewer-pages')).not.toBeNull();
+    expect(dialog.querySelector('a.viewer-download')?.getAttribute('download')).toBe('two.pdf');
+
+    // The remote image has no download to offer.
+    nextButton(dialog).click();
+    expect(dialog.querySelector('a.viewer-download')).toBeNull();
+  });
+
+  it('releases a PDF when paging away from it', async () => {
+    const dialog = openPaged(1);
+    await settle();
+    expect(acquirePdf).toHaveBeenCalledWith('/api/notes/n/files/two.pdf');
+    expect(releasePdf).not.toHaveBeenCalled();
+    nextButton(dialog).click();
+    expect(releasePdf).toHaveBeenCalledWith('/api/notes/n/files/two.pdf');
+  });
+
+  it('falls back to the lone attachment when it is not in the set', () => {
+    const dialog = openAttachmentViewer(
+      { kind: 'image', src: '/api/notes/n/files/elsewhere.png', alt: '' },
+      three,
+    );
+    expect(dialog.querySelector('.viewer-nav')).toBeNull();
+    expect(dialog.getAttribute('aria-label')).toBe('elsewhere.png');
+  });
+});
+
 describe('downloadUrl', () => {
   it('asks the API to save rather than show', () => {
     expect(downloadUrl('/api/n/files/x.pdf')).toBe('/api/n/files/x.pdf?download=1');
