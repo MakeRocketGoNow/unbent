@@ -29,6 +29,16 @@ vi.mock('../pdf/render.js', () => ({
 }));
 
 /**
+ * The full-screen viewer is a `<dialog>` jsdom cannot open. What the widgets owe it is a
+ * call with the right attachment, which is all that is recorded here.
+ */
+const openAttachmentViewer = vi.fn();
+
+vi.mock('../attachment-viewer.js', () => ({
+  openAttachmentViewer: (target: unknown) => openAttachmentViewer(target),
+}));
+
+/**
  * These mount a real EditorView because the behaviour under test is which ranges get
  * hidden, and that only exists once decorations are applied to a document.
  */
@@ -443,6 +453,36 @@ describe('inline PDF', () => {
     expect(visibleText(v, 1)).toContain('report');
   });
 
+  /**
+   * The way to read a scan large. The control arrives with the first page rather than
+   * with the widget, so it never sits on a page that has not drawn.
+   */
+  it('offers the full-screen viewer once the first page has drawn', async () => {
+    openAttachmentViewer.mockClear();
+    const v = mountWithAttachments('[report](files/report.pdf)');
+    expect(v.dom.querySelector('.cm-md-pdf .zoom-btn')).toBeNull();
+    await settle();
+    const button = v.dom.querySelector<HTMLButtonElement>('.cm-md-pdf .zoom-btn');
+    expect(button).not.toBeNull();
+    expect(button?.getAttribute('aria-label')).toBe('Full screen');
+    button?.click();
+    expect(openAttachmentViewer).toHaveBeenCalledWith({
+      kind: 'pdf',
+      src: '/api/notes/n1/files/report.pdf',
+      label: '',
+    });
+  });
+
+  /** A page has no markdown behind it to reveal, so a click on it can open the viewer. */
+  it('opens the viewer from a click on the page', async () => {
+    openAttachmentViewer.mockClear();
+    const v = mountWithAttachments('[report](files/report.pdf)');
+    await settle();
+    v.dom.querySelector<HTMLCanvasElement>('.cm-md-pdf-canvas')?.click();
+    expect(openAttachmentViewer).toHaveBeenCalledTimes(1);
+    expect(v.state.doc.toString()).toBe('[report](files/report.pdf)');
+  });
+
   it.each([
     ['an external URL', '[docs](https://example.com/a.pdf)'],
     ['a non-PDF attachment', '[sheet](files/budget.xlsx)'],
@@ -631,6 +671,27 @@ describe('inline images', () => {
     const v = mountWithAttachments('![scan](files/scan.jpg)\n\nplain', 0);
     expect(image(v)?.getAttribute('src')).toBe('/api/notes/n1/files/scan.jpg');
     expect(image(v)?.alt).toBe('scan');
+  });
+
+  /**
+   * The corner control is the whole affordance here: a click on the picture itself is
+   * how the mouse reaches the markdown it stands in for, so it stays the editor's.
+   */
+  it('offers the full-screen viewer on the picture', () => {
+    openAttachmentViewer.mockClear();
+    const doc = '![scan](files/scan.jpg)\n\nplain';
+    const v = mountWithAttachments(doc, doc.length);
+    const button = v.dom.querySelector<HTMLButtonElement>('.cm-md-image .zoom-btn');
+    expect(button).not.toBeNull();
+    button?.click();
+    expect(openAttachmentViewer).toHaveBeenCalledWith({
+      kind: 'image',
+      src: '/api/notes/n1/files/scan.jpg',
+      alt: 'scan',
+    });
+    // Opening the viewer is not an edit, and must not reveal the source either.
+    expect(v.state.doc.toString()).toBe(doc);
+    expect(visibleText(v, 1)).toBe('');
   });
 
   /** The picture is the label: unlike a link there is nothing in the source worth keeping. */
