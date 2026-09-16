@@ -5,6 +5,7 @@ import {
   ImportStoppedError,
   importEnex,
   type ImportClient,
+  type ImportSkip,
 } from './import.js';
 
 /** Builds an in-memory ENEX file with the given notes. */
@@ -280,6 +281,37 @@ describe('resume', () => {
     expect(progress.skipped).toBe(1);
     expect(progress.created).toBe(0);
     expect(files).toEqual(['b.txt']);
+  });
+});
+
+describe('skips', () => {
+  it('names a copy inside the file and the earlier note it was matched to', async () => {
+    const { client, notes } = fakeClient();
+    const skips: ImportSkip[] = [];
+
+    await importEnex(
+      enexFile('N.enex', [
+        note({ title: 'Parking receipt', content: '<div>same</div>' }),
+        note({ title: 'Other', content: '<div>different</div>' }),
+        note({ title: 'Parking receipt', content: '<div>same</div>' }),
+      ]),
+      client,
+      { onSkip: (s) => skips.push(s) },
+    );
+
+    expect(notes.map((n) => n.title)).toEqual(['Parking receipt', 'Other']);
+    expect(skips).toEqual([{ title: 'Parking receipt', noteId: notes[0]!.id, earlierInFile: true }]);
+  });
+
+  it('tells a note that was here before the run from a copy inside the file', async () => {
+    const { client, notes } = fakeClient();
+    const file = () => enexFile('N.enex', [note({ title: 'Kept', content: '<div>x</div>' })]);
+    await importEnex(file(), client);
+
+    const skips: ImportSkip[] = [];
+    await importEnex(file(), client, { onSkip: (s) => skips.push(s) });
+
+    expect(skips).toEqual([{ title: 'Kept', noteId: notes[0]!.id, earlierInFile: false }]);
   });
 });
 
