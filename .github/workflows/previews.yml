@@ -53,6 +53,14 @@ jobs:
       # in apps/api/src/lib/preview-relay.ts. The same variable the preview job reads to
       # build a preview's URL; unset, the relay simply stays off.
       WORKERS_SUBDOMAIN: ${{ vars.CLOUDFLARE_WORKERS_SUBDOMAIN }}
+      # Google on the dev instance, which is what the preview sign-in relay bounces to — a
+      # preview cannot register its own OAuth callback, so the relay is only useful if
+      # dev.unbent.app can actually sign in with Google. Both or neither, the same shape as
+      # every other OAuth pair here; unset, the dev instance simply offers no Google button
+      # and the relay falls back to the dev instance's other methods. Named `DEV_` so it can
+      # be a separate client from production's, the way `DEV_BETTER_AUTH_SECRET` is.
+      DEV_GOOGLE_CLIENT_ID: ${{ secrets.DEV_GOOGLE_CLIENT_ID }}
+      DEV_GOOGLE_CLIENT_SECRET: ${{ secrets.DEV_GOOGLE_CLIENT_SECRET }}
       # Optional; the same document production serves, so the Android app's passkeys work
       # against the dev instance and previews too.
       ANDROID_ASSET_LINKS: ${{ secrets.ANDROID_ASSET_LINKS }}
@@ -119,6 +127,14 @@ jobs:
             "$DEV_BETTER_AUTH_SECRET" "$DEV_ALLOWED_EMAILS" > "$RUNNER_TEMP/dev-secrets.env"
           if [ -n "$ANDROID_ASSET_LINKS" ]; then
             printf 'ANDROID_ASSET_LINKS=%s\n' "$(printf '%s' "$ANDROID_ASSET_LINKS" | jq -c .)" >> "$RUNNER_TEMP/dev-secrets.env"
+          fi
+          # Google, both halves or neither — a lone id with no secret is not a working
+          # provider, and `configuredSocials` ignores it, so sending only one would advertise
+          # a button that fails when pressed. Mapped to the plain GOOGLE_* names the Worker
+          # reads.
+          if [ -n "$DEV_GOOGLE_CLIENT_ID" ] && [ -n "$DEV_GOOGLE_CLIENT_SECRET" ]; then
+            printf 'GOOGLE_CLIENT_ID=%s\nGOOGLE_CLIENT_SECRET=%s\n' \
+              "$DEV_GOOGLE_CLIENT_ID" "$DEV_GOOGLE_CLIENT_SECRET" >> "$RUNNER_TEMP/dev-secrets.env"
           fi
           # The subdomain is what lets the dev instance validate a preview's return origin
           # before minting a sign-in token for it. A plain var rather than a secret: it is

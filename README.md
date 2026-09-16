@@ -446,6 +446,25 @@ Unlike a preview it carries the `ai` binding, so it extracts a PDF's text on the
 production does. An instance is only worth having if the path it exercises is production's,
 and extraction is the half of an import that differs most between the two.
 
+#### Google on the dev instance
+
+The [preview sign-in relay](#preview-deployments) bounces to the dev instance for OAuth, so
+the relay is only useful if the dev instance can sign in with Google. Two `DEV_GOOGLE_*`
+repository secrets configure it, mapped to the plain `GOOGLE_*` names the Worker reads — the
+`DEV_` prefix so the dev instance can use a separate OAuth client from production, the way
+`DEV_BETTER_AUTH_SECRET` already does. Both or neither: a lone client id with no secret is
+not a working provider, so the deploy sends them only as a pair.
+
+The OAuth client — whichever one these secrets name — has to list the dev instance, since a
+callback is matched exactly:
+
+- Authorized redirect URI: `https://dev.unbent.app/api/auth/callback/google`
+- Authorized JavaScript origin: `https://dev.unbent.app`
+
+Without both secrets the dev instance offers no Google button and the relay falls back to
+whatever else the dev instance is configured for (a password, a code by email); without the
+console entries the button is there but Google refuses the callback.
+
 #### DNS for `dev.unbent.app`
 
 There is no record to create by hand. `[[env.dev.routes]]` sets `custom_domain = true`, the
@@ -552,6 +571,7 @@ summary rather than failing.
 | `DEV_ALLOWED_EMAILS` | secret | who may sign in to a preview or the dev instance |
 | `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID` | secret | the same pair production deploys with, needing D1 and R2 edit scopes, plus the DNS scope [the dev instance](#dns-for-devunbentapp) describes |
 | `DEV_INSTANCE_ORIGIN` | variable, optional | where a preview's sign-in relay sends people; defaults to `https://dev.unbent.app`. Set it only if your dev instance has a different name |
+| `DEV_GOOGLE_CLIENT_ID`, `DEV_GOOGLE_CLIENT_SECRET` | secret, optional | Google on the dev instance, so the relay can sign in with it; both or neither, and the client must list `dev.unbent.app` — see [Google on the dev instance](#google-on-the-dev-instance) |
 
 The subdomain is a variable rather than a secret because the workflow has to build the URL
 before deploying — `APP_URL` is baked in at deploy time — and a masked value would arrive
