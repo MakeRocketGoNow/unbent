@@ -1363,7 +1363,9 @@ class NotesState(private val api: UnbentApi) {
             results = null
             return
         }
-        val result = withContext(Dispatchers.IO) { runCatching { api.search(q, notebook, selectedTags, from, to) } }
+        val result = withContext(Dispatchers.IO) {
+            runCatching { api.search(q, notebook = notebook, tags = selectedTags, from = from, to = to) }
+        }
         // Only if the box still says what was searched for; a stale answer is worse than none.
         if (query.trim() != q) return
         result.onSuccess { results = it }.onFailure { e ->
