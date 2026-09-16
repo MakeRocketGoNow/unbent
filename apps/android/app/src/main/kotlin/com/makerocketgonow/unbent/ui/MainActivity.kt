@@ -144,15 +144,19 @@ class MainActivity : ComponentActivity() {
 private fun NotesStateSaver(api: UnbentApi): Saver<NotesState, Any> = listSaver(
     save = { state ->
         val saved = state.save()
-        // The tag list is last so it can be any length without the fixed fields moving.
+        // Two lists of any length after the fixed fields: the field filters, counted, then
+        // the tags, which run to the end. A count rather than a delimiter because a field
+        // filter's value may contain anything.
         listOf(
             saved.notebook.orEmpty(),
             saved.sort,
             saved.from.orEmpty(),
             saved.to.orEmpty(),
-        ) + saved.tags
+            saved.fields.size.toString(),
+        ) + saved.fields + saved.tags
     },
     restore = { values: List<String> ->
+        val fieldCount = values[4].toIntOrNull() ?: 0
         NotesState(api).apply {
             restore(
                 NotesState.Saved(
@@ -160,7 +164,8 @@ private fun NotesStateSaver(api: UnbentApi): Saver<NotesState, Any> = listSaver(
                     sort = values[1],
                     from = values[2].ifEmpty { null },
                     to = values[3].ifEmpty { null },
-                    tags = values.drop(4),
+                    fields = values.drop(5).take(fieldCount),
+                    tags = values.drop(5 + fieldCount),
                 ),
             )
         }

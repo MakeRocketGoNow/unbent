@@ -93,6 +93,8 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.makerocketgonow.unbent.R
 import com.makerocketgonow.unbent.api.ApiException
+import com.makerocketgonow.unbent.api.FieldDef
+import com.makerocketgonow.unbent.api.FieldFilter
 import com.makerocketgonow.unbent.api.NoteSummary
 import com.makerocketgonow.unbent.api.Notebook
 import com.makerocketgonow.unbent.api.SearchResult
@@ -168,10 +170,14 @@ fun NotesScreen(
      * — which is the reset this state was hoisted to avoid. `loaded` covers the very first
      * run, when there is nothing on screen yet.
      */
-    LaunchedEffect(state.notebook, state.selectedTags, state.sort, state.from, state.to) {
+    LaunchedEffect(state.notebook, state.selectedTags, state.fieldFilters, state.sort, state.from, state.to) {
         if (!state.loaded || state.filterChanged) state.load()
     }
     LaunchedEffect(state) { if (state.notebooks.isEmpty() && state.tags.isEmpty()) state.loadFilters() }
+    // The selected notebook's field definitions, which the sheet offers and the chips are
+    // named by. Keyed on the directory too: the notebook arrives by name and the
+    // definitions are fetched by id, which the directory is what supplies.
+    LaunchedEffect(state.notebook, state.notebooks) { state.loadFieldDefs() }
 
     // The new notebook's rows start at the top. Only once the state says so: a key that
     // fired on re-entering the screen would throw away the place a reader left.
@@ -451,7 +457,13 @@ private fun ListTitle(state: NotesState) {
     // rather than claiming a number for a list that has not arrived.
     val count = state.total?.let { pluralStringResource(R.plurals.notes_count, it, it) }
         ?: if (state.stale) stringResource(R.string.loading) else null
-    val detail = listOfNotNull(count, rangeLabel(state.from, state.to)).joinToString(" · ")
+    // Field filters go here with the range: the phone has no chip strip under its header,
+    // so the title's second line is the one place a filter shows without opening anything.
+    val detail = (
+        listOfNotNull(count) +
+            state.fieldFilters.map { fieldFilterLabel(it, state.fieldDefs) } +
+            listOfNotNull(rangeLabel(state.from, state.to))
+        ).joinToString(" · ")
     Column {
         Text(title, maxLines = 1, overflow = TextOverflow.Ellipsis)
         if (detail.isNotEmpty()) {
@@ -1092,6 +1104,8 @@ class NotesState(private val api: UnbentApi) {
         val sort: String,
         val from: String?,
         val to: String?,
+        /** Custom-field filters as their wire strings; see [FieldFilter]. */
+        val fields: List<String> = emptyList(),
     )
 
     var items by mutableStateOf<List<NoteSummary>>(emptyList())
@@ -1142,9 +1156,20 @@ class NotesState(private val api: UnbentApi) {
         private set
     var to by mutableStateOf<String?>(null)
         private set
+    /**
+     * Custom-field filters, ANDed, as the `<fieldId>:<op>[:<value>]` strings the server
+     * reads — kept as strings for the reason the web's URL keeps them: one spelling per
+     * filter, parsed by the server. Field definitions belong to a notebook, so these only
+     * mean anything alongside one, and go when it does.
+     */
+    var fieldFilters by mutableStateOf<List<String>>(emptyList())
+        private set
+    /** The selected notebook's definitions, for the sheet's Fields page and the chips' names. */
+    var fieldDefs by mutableStateOf<List<FieldDef>>(emptyList())
+        private set
     /** Whether anything narrows the list, the notebook included: the whole scope on screen. */
     val filtered: Boolean get() =
-        notebook != null || selectedTags.isNotEmpty() || from != null || to != null
+        notebook != null || selectedTags.isNotEmpty() || fieldFilters.isNotEmpty() || from != null || to != null
 
     /**
      * What the filter icon's badge speaks for: the tags and the dates, not the notebook.
@@ -1157,7 +1182,7 @@ class NotesState(private val api: UnbentApi) {
      * are about everything applied.
      */
     val sheetFiltered: Boolean get() =
-        selectedTags.isNotEmpty() || from != null || to != null
+        selectedTags.isNotEmpty() || fieldFilters.isNotEmpty() || from != null || to != null
 
     var notebooks by mutableStateOf<List<Notebook>>(emptyList())
         private set
@@ -1191,10 +1216,11 @@ class NotesState(private val api: UnbentApi) {
         sort = NoteSort.entries.firstOrNull { it.name == saved.sort } ?: NoteSort.UPDATED
         from = saved.from
         to = saved.to
+        fieldFilters = saved.fields
     }
 
     /** The filter as it stands, for [Saved]. */
-    fun save(): Saved = Saved(notebook, selectedTags, sort.name, from, to)
+    fun save(): Saved = Saved(notebook, selectedTags, sort.name, from, to, fieldFilters)
 
     suspend fun load() = fetch(reset = true)
 
@@ -1248,6 +1274,7 @@ class NotesState(private val api: UnbentApi) {
                         cursor = next,
                         notebook = notebook,
                         tags = selectedTags,
+                        fields = fieldFilters,
                         sort = sort.key,
                         order = sort.order,
                         from = from,
@@ -1273,8 +1300,18 @@ class NotesState(private val api: UnbentApi) {
     fun filterBy(notebook: String?, tags: List<String>) {
         if (this.notebook == notebook && this.selectedTags == tags) return
         droppedTags = emptyList()
+        // A field belongs to the notebook being left, so its filters go with it. Only on
+        // a real move: toggling a tag comes through here with the notebook unchanged.
+        if (this.notebook != notebook) fieldFilters = emptyList()
         this.notebook = notebook
         this.selectedTags = tags
+        clearForReload()
+    }
+
+    /** Replaces the field filters wholesale; the sheet's controls each rebuild the list. */
+    fun filterByFields(next: List<String>) {
+        if (fieldFilters == next) return
+        fieldFilters = next
         clearForReload()
     }
 
@@ -1292,6 +1329,7 @@ class NotesState(private val api: UnbentApi) {
         if (!filtered) return
         notebook = null
         selectedTags = emptyList()
+        fieldFilters = emptyList()
         from = null
         to = null
         clearForReload()
@@ -1364,7 +1402,9 @@ class NotesState(private val api: UnbentApi) {
             return
         }
         val result = withContext(Dispatchers.IO) {
-            runCatching { api.search(q, notebook = notebook, tags = selectedTags, from = from, to = to) }
+            runCatching {
+                api.search(q, notebook = notebook, tags = selectedTags, fields = fieldFilters, from = from, to = to)
+            }
         }
         // Only if the box still says what was searched for; a stale answer is worse than none.
         if (query.trim() != q) return
@@ -1415,6 +1455,31 @@ class NotesState(private val api: UnbentApi) {
         }
     }
 
+    /**
+     * The selected notebook's field definitions, or none outside a notebook.
+     *
+     * Looked up by id from the directory, since the filter carries the name. A filter on a
+     * field that is no longer defined — deleted on the web while the phone slept — is
+     * dropped the way a tag that no longer exists is: it cannot be turned off from a
+     * picker that no longer lists it.
+     */
+    suspend fun loadFieldDefs() {
+        val id = notebook?.takeIf { it != UNFILED }?.let { name -> notebooks.firstOrNull { it.name == name }?.id }
+        if (id == null) {
+            fieldDefs = emptyList()
+            return
+        }
+        withContext(Dispatchers.IO) { runCatching { api.listNotebookFields(id) } }.onSuccess { defs ->
+            fieldDefs = defs
+            val known = defs.map { it.id }.toSet()
+            val kept = fieldFilters.filter { FieldFilter.parse(it)?.fieldId in known }
+            if (kept != fieldFilters) {
+                fieldFilters = kept
+                clearForReload()
+            }
+        }
+    }
+
     private suspend fun fetch(reset: Boolean) {
         val mine = ++generation
         loading = true
@@ -1425,6 +1490,7 @@ class NotesState(private val api: UnbentApi) {
                     cursor = if (reset) null else cursor,
                     notebook = notebook,
                     tags = selectedTags,
+                    fields = fieldFilters,
                     sort = sort.key,
                     order = sort.order,
                     from = from,
