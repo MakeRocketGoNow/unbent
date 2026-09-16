@@ -72,6 +72,18 @@ export function labelFor(target: ViewerTarget): string {
   }
 }
 
+/**
+ * The attachment's URL in the form that saves the file.
+ *
+ * The API serves an attachment inline unless asked otherwise, and `?download=1` is the
+ * ask — the same form the Attachments panel links to. A plain link rather than a fetch:
+ * it middle-clicks, it copies, and the Android app's WebView hands it to the platform's
+ * download manager with the session attached, which is how that app downloads anything.
+ */
+export function downloadUrl(src: string): string {
+  return `${src}${src.includes('?') ? '&' : '?'}download=1`;
+}
+
 function el<K extends keyof HTMLElementTagNameMap>(tag: K, className: string) {
   const node = document.createElement(tag);
   node.className = className;
@@ -92,12 +104,20 @@ export function openAttachmentViewer(target: ViewerTarget): HTMLDialogElement {
   name.textContent = label;
   name.title = label;
   const meta = el('span', 'viewer-meta');
+  // Once per view rather than on every inline attachment: saving is the rarer action,
+  // and a second control on every picture's corner would turn a note of photographs
+  // into a note of buttons. Here it is the natural next step after looking.
+  const download = el('a', 'link viewer-download');
+  download.href = downloadUrl(target.src);
+  download.setAttribute('download', label);
+  download.textContent = 'Download';
   const close = el('button', 'icon-btn viewer-close');
   close.type = 'button';
   close.setAttribute('aria-label', 'Close');
   close.innerHTML = closeIconMarkup();
   head.appendChild(name);
   head.appendChild(meta);
+  head.appendChild(download);
   head.appendChild(close);
 
   /**

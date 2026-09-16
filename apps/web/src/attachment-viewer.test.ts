@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { labelFor, openAttachmentViewer } from './attachment-viewer.js';
+import { downloadUrl, labelFor, openAttachmentViewer } from './attachment-viewer.js';
 
 /**
  * pdf.js never runs here — jsdom has no canvas — so the document is a stub that reports a
@@ -68,6 +68,14 @@ describe('openAttachmentViewer', () => {
     expect(dialog.querySelector<HTMLImageElement>('img.viewer-image')?.getAttribute('src')).toBe(
       '/api/x/photo.png',
     );
+  });
+
+  it('offers the file as a download', () => {
+    const dialog = openAttachmentViewer({ kind: 'pdf', src: '/api/x/scan.pdf', label: 'Scan' });
+    const link = dialog.querySelector<HTMLAnchorElement>('a.viewer-download');
+    expect(link?.getAttribute('href')).toBe('/api/x/scan.pdf?download=1');
+    expect(link?.getAttribute('download')).toBe('Scan');
+    expect(link?.textContent).toBe('Download');
   });
 
   it('removes itself from the document when closed', () => {
@@ -158,6 +166,13 @@ describe('openAttachmentViewer', () => {
     const dialog = openAttachmentViewer({ kind: 'pdf', src: '/api/x/gone.pdf', label: 'Gone' });
     await settle();
     expect(dialog.querySelector('.viewer-status')?.textContent).toContain('404 Not Found');
+  });
+});
+
+describe('downloadUrl', () => {
+  it('asks the API to save rather than show', () => {
+    expect(downloadUrl('/api/n/files/x.pdf')).toBe('/api/n/files/x.pdf?download=1');
+    expect(downloadUrl('/api/n/files/x.pdf?v=2')).toBe('/api/n/files/x.pdf?v=2&download=1');
   });
 });
 

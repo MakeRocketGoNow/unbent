@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { type LoadedPdf, loadPdf } from '../pdf/render.js';
-import { openAttachmentViewer } from '../attachment-viewer.js';
+import { downloadUrl, openAttachmentViewer } from '../attachment-viewer.js';
 import { Button } from './Button';
 import { ExpandIcon } from './icons.js';
 
@@ -124,9 +124,15 @@ export function PdfPreview({ src, label }: PdfPreviewProps) {
               Show all {pageCount} pages
             </Button>
           )}
-          {/* Always available: the browser's own viewer has search and print. */}
-          <a href={src} target="_blank" rel="noreferrer noopener" className="link small">
-            Open
+          {/*
+              This said "Open" and pointed at the inline URL, on the theory that the
+              browser's own viewer had search and print. It never did here: attachment
+              responses carry a sandbox CSP, under which Chrome refuses to render a PDF
+              and saves it instead. So it was a download wearing another name. Now it
+              says what it does, and the full-screen viewer is the way to read the file.
+          */}
+          <a href={downloadUrl(src)} download={label} className="link small">
+            Download
           </a>
           {status === 'ready' && (
             <button
