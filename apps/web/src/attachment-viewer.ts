@@ -1,5 +1,10 @@
 import { acquirePdf, releasePdf } from './pdf/render.js';
-import { chevronLeftMarkup, chevronRightMarkup, closeIconMarkup } from './components/icons.js';
+import {
+  chevronLeftMarkup,
+  chevronRightMarkup,
+  closeIconMarkup,
+  downloadIconMarkup,
+} from './components/icons.js';
 
 /**
  * An attachment shown on its own, at the size of the screen.
@@ -153,7 +158,10 @@ export function openAttachmentViewer(
   // and a second control on every picture's corner would turn a note of photographs
   // into a note of buttons. Here it is the natural next step after looking.
   const download = el('a', 'link viewer-download');
-  download.textContent = 'Download';
+  // A glyph and a hover surface like the controls it sits among, so it reads as one of
+  // them rather than as a stray word — but still a link, because it navigates: it can
+  // be middle-clicked and its address copied, which a button could not offer.
+  download.innerHTML = `${downloadIconMarkup()}<span>Download</span>`;
 
   /**
    * The paging controls, only when there is somewhere to page to.

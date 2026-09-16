@@ -3309,8 +3309,16 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
   padding: 0.25rem 0.5rem 0.25rem 1rem;
 }
 
+/*
+   The bar reads left to right as information, then controls.
+
+   The name and the page count are about the file and sit together on the left; the
+   download link, the pager and the close button are things to do and sit together on
+   the right. The page count's trailing auto margin is the divide: it takes the slack,
+   so the name shrinks to an ellipsis before anything on the right moves.
+*/
 .viewer-name {
-  flex: 1 1 auto;
+  flex: 0 1 auto;
   min-width: 0;
   font-size: 0.9rem;
   font-weight: 600;
@@ -3360,6 +3368,7 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
 
 .viewer-meta {
   flex-shrink: 0;
+  margin-right: auto;
   font-size: 0.85rem;
   opacity: 0.7;
 }
@@ -3370,14 +3379,29 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
   .viewer-meta { display: none; }
 }
 
+/*
+   Drawn like the icon buttons beside it — a glyph, and a surface on hover — so it reads
+   as a control and not as a stray word after the page count. Still an anchor: it
+   navigates, so it middle-clicks and copies, which is what a link is for.
+*/
 .viewer-download {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
   flex-shrink: 0;
+  height: 2.25rem;
+  padding: 0 0.7rem;
   font-size: 0.85rem;
   color: #fff;
+  border-radius: 0.3rem;
   opacity: 0.85;
 }
 
-.viewer-download:hover { opacity: 1; }
+.viewer-download:hover {
+  opacity: 1;
+  text-decoration: none;
+  background: rgb(255 255 255 / 0.15);
+}
 
 .viewer-close {
   flex-shrink: 0;
