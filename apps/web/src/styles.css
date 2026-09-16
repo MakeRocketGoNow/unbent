@@ -3185,6 +3185,253 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
   margin: 0.5rem 0.6rem;
 }
 
+/*
+   The page is the way in: a click on it opens the viewer. In a pane for reading nothing
+   else competes for that click, and it is what people try first — the icon in the head
+   is there for the keyboard and for anyone who did not think to.
+*/
+.pdf-preview-canvas { cursor: zoom-in; }
+
+/* Denser than the standard icon button: it sits in the viewer's small head, beside text
+   of 0.85rem, and a 44px square there would be taller than the bar. */
+.pdf-preview-expand {
+  min-width: 2rem;
+  height: 2rem;
+  font-size: 1rem;
+}
+
+/*
+   Images in the preview pane are links to themselves (`rehypeLinkImages`), which the pane
+   intercepts to open the viewer. Kept looking like the bare image did: no underline, no
+   accent colour, and the radius the image already had so the focus ring follows it.
+*/
+.preview a.unbent-zoom {
+  display: inline-block;
+  max-width: 100%;
+  line-height: 0;
+  border-radius: 0.3rem;
+  cursor: zoom-in;
+}
+
+/* ---------------------------------------------------------------------------------
+   Opening an attachment at full size.
+
+   The corner control, shared by the rich editor's image and PDF widgets. Positioned by a
+   host that is `position: relative` and shrink-wrapped to the picture, so it sits on the
+   picture's corner rather than the line's. Fixed ink on a translucent disc rather than the
+   theme's tokens, because it sits on the attachment and not on the page — a scan is white
+   in both themes.
+
+   Hidden until the picture is hovered, so a note of photographs is not a note of buttons;
+   always shown, quieter, where there is no pointer to hover with. Keyboard focus shows it
+   too, or a Tab stop would land on something invisible.
+   --------------------------------------------------------------------------------- */
+.zoom-host {
+  position: relative;
+  display: inline-block;
+  max-width: 100%;
+}
+
+.zoom-btn {
+  position: absolute;
+  top: 0.5rem;
+  right: 0.5rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  padding: 0;
+  margin: 0;
+  /* Reset explicitly: an image alone on its line has its font size zeroed. */
+  font-size: 1rem;
+  line-height: 1;
+  color: #fff;
+  background: rgb(0 0 0 / 0.55);
+  border: none;
+  border-radius: 50%;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+.zoom-host:hover .zoom-btn,
+.zoom-btn:focus-visible { opacity: 1; }
+
+.zoom-btn:hover { background: rgb(0 0 0 / 0.72); }
+
+/* No pointer to point with: the control stays, since a thumb cannot hover for it. */
+@media (hover: none) {
+  .zoom-btn { opacity: 0.85; }
+}
+
+/*
+   The viewer: a `<dialog>` that is the whole screen.
+
+   Full-bleed rather than a box in the middle, because the thing inside it is the size of
+   the screen — a page fitted to the viewport, or an image at its own pixels scrolled
+   around. The scrim is the dialog itself; there is nothing of the page to see around it,
+   and it is opaque rather than the usual translucent black because at 92% the wordmark
+   and the avatar still ghosted through behind the head. Fixed near-black in both themes
+   for the same reason the sheet's backdrop is: a scan read against a light surround at
+   night is a lamp.
+*/
+.viewer {
+  width: 100vw;
+  height: 100dvh;
+  max-width: none;
+  max-height: none;
+  margin: 0;
+  padding: 0;
+  border: none;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  color: #fff;
+  background: #111;
+}
+
+.viewer::backdrop { background: transparent; }
+
+/*
+   A bar in the flow, not a gradient over the content.
+
+   The usual lightbox floats its title over the picture and fades it out. Here the content
+   is mostly white paper, and white text over a fading black over a white page was muddy
+   the moment a page scrolled under it. A solid bar the pages scroll beneath is plainer
+   and always legible.
+*/
+.viewer-head {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.25rem 0.5rem 0.25rem 1rem;
+}
+
+.viewer-name {
+  min-width: 0;
+  font-size: 0.9rem;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.viewer-meta {
+  flex-shrink: 0;
+  margin-left: auto;
+  font-size: 0.85rem;
+  opacity: 0.7;
+}
+
+.viewer-download {
+  flex-shrink: 0;
+  font-size: 0.85rem;
+  color: #fff;
+  opacity: 0.85;
+}
+
+.viewer-download:hover { opacity: 1; }
+
+.viewer-close {
+  flex-shrink: 0;
+  color: #fff;
+}
+
+.viewer-close:hover { color: #fff; background: rgb(255 255 255 / 0.15); }
+
+/*
+   The scrolling area, and the content centred in it.
+
+   `margin: auto` on the content rather than `place-items: center` on the container: with
+   content taller than the container, centring pushes its top out of reach above the
+   scroll start, and an image toggled to actual size would open with its first rows cut
+   off. Auto margins collapse to zero when there is no room to centre in, which is the
+   behaviour wanted.
+*/
+.viewer-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  overflow: auto;
+  padding: 0.5rem 1rem 1rem;
+  outline: none;
+}
+
+.viewer-status {
+  margin: auto;
+  font-size: 0.9rem;
+  opacity: 0.7;
+}
+
+.viewer-image {
+  display: block;
+  margin: auto;
+  max-width: 100%;
+  /* The body's height less its padding: the head is in the flow above it. */
+  max-height: calc(100dvh - 3.25rem - 1.5rem);
+  object-fit: contain;
+  border-radius: 0.3rem;
+  box-shadow: 0 2px 16px rgb(0 0 0 / 0.5);
+}
+
+.viewer-zoomable { cursor: zoom-in; }
+
+/* At its own pixels, and scrolled: the image sets the size and the body scrolls to it. */
+.viewer-image.viewer-actual {
+  max-width: none;
+  max-height: none;
+  cursor: zoom-out;
+}
+
+.viewer-pages {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.75rem;
+  margin: auto;
+  width: 100%;
+  max-width: 1200px;
+}
+
+/*
+   A page, or the space for one.
+
+   A page not yet drawn holds a letter-sized placeholder — see the viewer — so the column
+   has its full height before anything is rasterized. The ratio comes off once the page is
+   drawn, and the canvas's own proportions take over: a landscape page forced into a
+   portrait box would be squashed. The `!important` on the height is what lets a drawn
+   page scale on a pane narrower than the width it was rasterized at, since `renderPage`
+   sets its height inline.
+*/
+.viewer-page {
+  display: block;
+  max-width: 100%;
+  height: auto !important;
+  background: #fff;
+  box-shadow: 0 2px 12px rgb(0 0 0 / 0.5);
+}
+
+.viewer-page:not(.viewer-page-drawn) { aspect-ratio: 8.5 / 11; }
+
+@media (prefers-reduced-motion: no-preference) {
+  .viewer {
+    transition:
+      opacity 0.15s ease,
+      overlay 0.15s allow-discrete,
+      display 0.15s allow-discrete;
+  }
+
+  .viewer[open] { opacity: 1; }
+
+  @starting-style {
+    .viewer[open] { opacity: 0; }
+  }
+
+  .viewer:not([open]) { opacity: 0; }
+}
+
 /* Finished import: the summary stays until dismissed, with the next action beside it. */
 .import-finished {
   display: flex;

@@ -292,6 +292,31 @@ describe('pdf embed marker', () => {
   });
 });
 
+describe('image links', () => {
+  it('wraps an attachment image in a link to itself', () => {
+    const out = render('![diagram](files/diagram.png)');
+    expect(out).toContain(
+      `<a href="/api/notes/${NOTE}/files/diagram.png" class="unbent-zoom"><img src="/api/notes/${NOTE}/files/diagram.png" alt="diagram"></a>`,
+    );
+  });
+
+  it('wraps a remote image too', () => {
+    const out = render('![](https://example.com/a.png)');
+    expect(out).toContain('<a href="https://example.com/a.png" class="unbent-zoom"><img');
+  });
+
+  it('leaves an image that is already a link alone', () => {
+    const out = render('[![badge](files/badge.png)](https://example.com)');
+    expect(out).not.toContain('unbent-zoom');
+    expect(out).toContain('<a href="https://example.com"><img');
+  });
+
+  it('cannot be forged by an author-supplied class', () => {
+    const out = render('<a class="unbent-zoom" href="https://evil.test/x">click</a>');
+    expect(out).not.toContain('unbent-zoom');
+  });
+});
+
 /**
  * A file's extension is the usual signal, but an imported one may not have a truthful
  * name: Evernote writes `<file-name>` as a display label, so a real export carries PDFs

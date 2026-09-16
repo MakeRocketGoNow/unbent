@@ -16,6 +16,8 @@ import {
 } from '@codemirror/view';
 import { ATTACHMENT_PREFIX } from '@unbent/shared';
 import { acquirePdf, type LoadedPdf, releasePdf } from '../pdf/render.js';
+import { openAttachmentViewer, type ViewerTarget } from '../attachment-viewer.js';
+import { expandIconMarkup } from '../components/icons.js';
 
 /**
  * Rich markdown rendering inside CodeMirror.
@@ -330,6 +332,46 @@ export function resetFailedImages(): void {
 }
 
 /**
+ * Keeps a control inside a widget from being a click on the editor.
+ *
+ * CodeMirror would otherwise move the caret to the click — which scrolls the note,
+ * reveals the markdown under the widget, and steals the focus a button needs to stay
+ * keyboard-operable. `contentEditable = false` keeps the caret from entering the
+ * control's text as document content.
+ */
+function ownEvents(control: HTMLElement): void {
+  control.contentEditable = 'false';
+  control.addEventListener('mousedown', (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+  });
+}
+
+/**
+ * The corner control that opens an attachment in the full-screen viewer.
+ *
+ * A real `<button>`, for the keyboard and the screen reader, and the same glyph in the
+ * same corner on an image and on a page — see `.zoom-btn` in styles.css for how it shows
+ * and hides. A click on the picture or the page opens the viewer too; this is the control
+ * that can be seen before it is tried, and the one a Tab can land on.
+ */
+function zoomButton(target: ViewerTarget): HTMLButtonElement {
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = 'zoom-btn';
+  button.setAttribute('aria-label', 'Full screen');
+  button.title = 'Full screen';
+  button.innerHTML = expandIconMarkup();
+  ownEvents(button);
+  button.addEventListener('click', (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    openAttachmentViewer(target);
+  });
+  return button;
+}
+
+/**
  * Inline preview for an attachment image.
  *
  * Stands in for the `![alt](url)` while the cursor is elsewhere and sits after it once the
@@ -354,6 +396,12 @@ class ImageWidget extends WidgetType {
     const wrap = document.createElement('span');
     wrap.className = 'cm-md-image';
 
+    // Shrink-wrapped to the picture, so the corner control sits on the picture's corner
+    // and not the line's — the wrap is as wide as the line.
+    const frame = document.createElement('span');
+    frame.className = 'cm-md-image-frame zoom-host';
+    wrap.appendChild(frame);
+
     const img = document.createElement('img');
     img.src = this.url;
     img.alt = this.alt;
@@ -367,11 +415,39 @@ class ImageWidget extends WidgetType {
       view.dispatch({ effects: imageFailed.of(null) });
     };
 
-    wrap.appendChild(img);
+    /**
+     * A click on the picture opens the viewer, as it does on a PDF page and in the
+     * preview pane: one rule everywhere, and the one Keep has for an image in an open
+     * note.
+     *
+     * This used to be the editor's click, on the grounds that it was the mouse's way to
+     * the markdown the picture stands in for. That was the wrong trade. Two attachments
+     * in one note answered a click differently, revealing an image's source is a rare
+     * edit, and the reveal itself moved the picture down under a line of text — the
+     * motion this file otherwise works to avoid. The source is still reached the way
+     * every other hidden syntax here is, by arrowing onto its line, and by a click beside
+     * the picture when it does not fill the width. The mousedown is kept from the editor
+     * so the caret does not jump and the note does not scroll under the opening dialog.
+     */
+    const target: ViewerTarget = { kind: 'image', src: this.url, alt: this.alt };
+    ownEvents(img);
+    img.addEventListener('click', (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      openAttachmentViewer(target);
+    });
+
+    frame.appendChild(img);
+    frame.appendChild(zoomButton(target));
     return wrap;
   }
 
-  /** Clicks belong to the editor, not the widget. */
+  /**
+   * Clicks belong to the editor, not the widget.
+   *
+   * The picture and the corner button stop their own events above; what is left is the
+   * space around them on the line, which should behave like the rest of the note.
+   */
   override ignoreEvent(): boolean {
     return false;
   }
@@ -440,16 +516,43 @@ class PdfWidget extends WidgetType {
     return other.url === this.url;
   }
 
+  /**
+   * What the viewer opens: the same URL, and no label — the viewer falls back to the
+   * filename, which is what the link text nearly always is anyway. The widget is built
+   * from the destination alone and does not carry the link's text.
+   */
+  private viewerTarget(): ViewerTarget {
+    return { kind: 'pdf', src: this.url, label: '' };
+  }
+
+  /**
+   * A page, which opens the viewer when clicked — the same rule as an image, see
+   * `ImageWidget`. A page has no markdown standing behind it at all: the link that
+   * references it sits above and is where the caret goes, so the click costs the editor
+   * nothing. The mousedown is kept from the editor, or the caret would jump to the link
+   * and the note would scroll under the opening dialog.
+   */
+  private pageCanvas(): HTMLCanvasElement {
+    const canvas = document.createElement('canvas');
+    canvas.className = 'cm-md-pdf-canvas';
+    ownEvents(canvas);
+    canvas.addEventListener('click', (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      openAttachmentViewer(this.viewerTarget());
+    });
+    return canvas;
+  }
+
   toDOM(): HTMLElement {
     const wrap = document.createElement('span');
     wrap.className = 'cm-md-pdf';
 
     const pages = document.createElement('span');
-    pages.className = 'cm-md-pdf-pages';
+    pages.className = 'cm-md-pdf-pages zoom-host';
     wrap.appendChild(pages);
 
-    const canvas = document.createElement('canvas');
-    canvas.className = 'cm-md-pdf-canvas';
+    const canvas = this.pageCanvas();
     pages.appendChild(canvas);
 
     const status = document.createElement('span');
@@ -465,6 +568,9 @@ class PdfWidget extends WidgetType {
         await doc.renderPage(1, canvas, EDITOR_PDF_WIDTH);
         if (!wrap.isConnected) return;
         status.remove();
+        // On the first page's corner, after it has drawn: a control on a blank page
+        // would promise a view of nothing. The same viewer the preview pane opens.
+        pages.appendChild(zoomButton(this.viewerTarget()));
         if (doc.pageCount > 1) this.addMore(wrap, pages, doc);
       })
       .catch(() => {
@@ -517,8 +623,7 @@ class PdfWidget extends WidgetType {
       drawn = true;
 
       for (let n = 2; n <= doc.pageCount; n += 1) {
-        const canvas = document.createElement('canvas');
-        canvas.className = 'cm-md-pdf-canvas';
+        const canvas = this.pageCanvas();
         pages.appendChild(canvas);
         try {
           await doc.renderPage(n, canvas, EDITOR_PDF_WIDTH);
@@ -1341,7 +1446,17 @@ export function richMarkdown(options: RichMarkdownOptions = {}): Extension {
        * Pages after the first are hidden with CSS rather than removed, so collapsing and
        * expanding again costs nothing after the one rasterizing pass.
        */
-      '.cm-md-pdf-pages': { display: 'block' },
+      /*
+         Shrink-wrapped to the page rather than the line, so the corner control the pages
+         carry (`.zoom-host` in styles.css) lands on the page's corner. Top-aligned, or
+         the inline-block would leave a descender's gap under the last page.
+      */
+      '.cm-md-pdf-pages': {
+        display: 'inline-block',
+        position: 'relative',
+        maxWidth: '100%',
+        verticalAlign: 'top',
+      },
       '.cm-md-pdf-pages > .cm-md-pdf-canvas ~ .cm-md-pdf-canvas': { display: 'none' },
       '.cm-md-pdf-expanded > .cm-md-pdf-canvas ~ .cm-md-pdf-canvas': {
         display: 'block',
@@ -1356,6 +1471,8 @@ export function richMarkdown(options: RichMarkdownOptions = {}): Extension {
       '.cm-md-pdf-canvas': {
         display: 'block',
         maxWidth: '100%',
+        // A click opens the viewer — see `pageCanvas`.
+        cursor: 'zoom-in',
         borderRadius: '0.35rem',
         border: '1px solid color-mix(in srgb, currentColor 15%, transparent)',
         // A scan is nearly always on white; on a dark theme an unbacked canvas shows the
@@ -1414,6 +1531,8 @@ export function richMarkdown(options: RichMarkdownOptions = {}): Extension {
       '.cm-md-image img': {
         maxWidth: '100%',
         height: 'auto',
+        // A click opens the viewer — see `ImageWidget.toDOM`.
+        cursor: 'zoom-in',
         borderRadius: '0.35rem',
         border: '1px solid color-mix(in srgb, currentColor 15%, transparent)',
       },

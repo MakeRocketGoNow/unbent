@@ -197,6 +197,57 @@ export function rehypeMarkPdfEmbeds(opts: { pdfFilenames?: ReadonlySet<string> }
   };
 }
 
+/**
+ * Marker on the link the renderer wraps each image in, which the preview pane turns into
+ * a way to open the image at full size.
+ */
+export const IMAGE_ZOOM_CLASS = 'unbent-zoom';
+
+interface HastParent extends HastNode {
+  children?: HastNode[];
+}
+
+/**
+ * Wraps every image in a link to itself.
+ *
+ * The preview pane is for reading, and an image in it should open when clicked — that is
+ * what every notes app does, and it is what people try. The pane renders the pipeline's
+ * HTML as a string it does not own node by node, so the control has to be in the markup:
+ * a link around the image is the one that is honest without any script at all. It
+ * focuses and activates from the keyboard, it can be middle-clicked into a new tab, and
+ * the pane intercepts an ordinary click to open its viewer instead.
+ *
+ * An image already inside a link is left alone — `[![alt](img)](url)` is a picture that
+ * goes somewhere, and a link inside a link is not HTML. Runs after sanitization, so the
+ * marker cannot be forged from note content, and the `href` it writes is an image source
+ * the sanitizer has already passed.
+ */
+export function rehypeLinkImages() {
+  const walk = (node: HastParent, insideLink: boolean) => {
+    const children = node.children;
+    if (!children) return;
+    for (let i = 0; i < children.length; i += 1) {
+      const child = children[i] as HastParent;
+      if (child.type !== 'element') continue;
+
+      if (child.tagName === 'img' && !insideLink) {
+        const src = child.properties?.['src'];
+        if (typeof src !== 'string' || !src) continue;
+        children[i] = {
+          type: 'element',
+          tagName: 'a',
+          properties: { href: src, className: [IMAGE_ZOOM_CLASS] },
+          children: [child],
+        } as HastParent;
+        continue;
+      }
+
+      walk(child, insideLink || child.tagName === 'a');
+    }
+  };
+  return (tree: unknown) => walk(tree as HastParent, false);
+}
+
 /** Permits the classes remark-gfm emits for task lists, which the default schema drops. */
 const schema = {
   ...defaultSchema,
@@ -375,6 +426,7 @@ export function renderMarkdown(markdown: string, opts: RenderOptions): string {
     .use(rehypeSanitize, schema)
     // After sanitize, so a forged marker in the source is already gone.
     .use(rehypeMarkPdfEmbeds, { pdfFilenames: opts.pdfFilenames })
+    .use(rehypeLinkImages)
     .use(rehypeStringify)
     .processSync(markdown)
     .toString();
