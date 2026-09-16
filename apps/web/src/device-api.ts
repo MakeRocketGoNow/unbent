@@ -105,13 +105,7 @@ export function redeemPreviewToken(token: string): Promise<void> {
     headers: { 'Content-Type': 'application/json' },
     credentials: 'include',
     body: JSON.stringify({ token }),
-  }).then(async (res) => {
-    if (!res.ok) {
-      const detail = await res.text().catch(() => '');
-      throw new ApiError(
-        res.status,
-        `${res.status} ${res.statusText}${detail ? `: ${detail}` : ''}`,
-      );
-    }
-  });
+  })
+    .then(json<unknown>)
+    .then(() => undefined);
 }
