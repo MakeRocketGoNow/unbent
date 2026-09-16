@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, type SyntheticEvent } from 'react';
 import { type LoadedPdf, loadPdf } from '../pdf/render.js';
 import { downloadUrl, openAttachmentViewer } from '../attachment-viewer.js';
 import { Button } from './Button';
 import { ExpandIcon } from './icons.js';
+import { collectPreviewTargets } from './preview-targets.js';
 
 interface PdfPreviewProps {
   /** Attachment API URL, produced by the markdown pipeline. */
@@ -105,12 +106,18 @@ export function PdfPreview({ src, label }: PdfPreviewProps) {
    * The full-screen viewer, from the head's button or a click on the page itself.
    *
    * The page is the target people reach for — see `.pdf-preview-canvas` — and the button
-   * is the one the keyboard can reach and the one that says what a click would do.
+   * is the one the keyboard can reach and the one that says what a click would do. The
+   * viewer is handed every attachment in the pane, found from the pane this sits in, so
+   * it can page to the others.
    */
-  const expand = () => openAttachmentViewer({ kind: 'pdf', src, label });
+  const expand = (event: SyntheticEvent<HTMLElement>) =>
+    openAttachmentViewer(
+      { kind: 'pdf', src, label },
+      collectPreviewTargets(event.currentTarget.closest('.preview')),
+    );
 
   return (
-    <div className="pdf-preview">
+    <div className="pdf-preview" data-src={src} data-label={label}>
       <div className="pdf-preview-head">
         <span className="pdf-preview-name">{label}</span>
         <span className="pdf-preview-actions">

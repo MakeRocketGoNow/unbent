@@ -3,6 +3,7 @@ import { IMAGE_ZOOM_CLASS, PDF_EMBED_CLASS, renderMarkdown } from '@unbent/share
 import { usePdfAttachments } from '../usePdfAttachments.js';
 import { openAttachmentViewer } from '../attachment-viewer.js';
 import { PdfPreview } from './PdfPreview.js';
+import { collectPreviewTargets } from './preview-targets.js';
 
 interface PreviewProps {
   markdown: string;
@@ -70,7 +71,10 @@ function onPreviewClick(event: MouseEvent<HTMLDivElement>) {
   if (!src) return;
 
   event.preventDefault();
-  openAttachmentViewer({ kind: 'image', src, alt: img?.alt ?? '' });
+  openAttachmentViewer(
+    { kind: 'image', src, alt: img?.alt ?? '' },
+    collectPreviewTargets(event.currentTarget),
+  );
 }
 
 /**

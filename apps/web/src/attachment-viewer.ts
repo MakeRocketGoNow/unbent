@@ -1,5 +1,10 @@
 import { acquirePdf, releasePdf } from './pdf/render.js';
-import { closeIconMarkup } from './components/icons.js';
+import {
+  chevronLeftMarkup,
+  chevronRightMarkup,
+  closeIconMarkup,
+  downloadIconMarkup,
+} from './components/icons.js';
 
 /**
  * An attachment shown on its own, at the size of the screen.
@@ -107,40 +112,95 @@ function el<K extends keyof HTMLElementTagNameMap>(tag: K, className: string) {
   return node;
 }
 
-/** Opens the viewer on one attachment. Closing it removes it; nothing persists. */
-export function openAttachmentViewer(target: ViewerTarget): HTMLDialogElement {
+/**
+ * A horizontal swipe has to travel this far, in CSS pixels, to turn a page.
+ *
+ * Long enough that a thumb settling on the screen is not a page turn; short enough that
+ * the gesture people know from every photo viewer works without being exaggerated.
+ */
+const SWIPE_MIN_PX = 60;
+
+/**
+ * Opens the viewer on one attachment, with the others it can page to.
+ *
+ * `siblings` is every attachment the note shows, in reading order, and `target` is one of
+ * them; a caller with only the one passes nothing and gets no paging. A paperless-office
+ * note is often several scans of one thing — the receipts from a trip, a form scanned as
+ * three pictures — and closing, scrolling and reopening between them is the friction a
+ * viewer exists to remove. Keep and legacy Evernote both page across a note's images.
+ *
+ * The set is what the *body* renders, not the Attachments panel's list: that list carries
+ * files the body never references and types the viewer cannot show. Closing removes the
+ * dialog; nothing persists.
+ */
+export function openAttachmentViewer(
+  target: ViewerTarget,
+  siblings: readonly ViewerTarget[] = [target],
+): HTMLDialogElement {
   current?.close();
 
-  const label = labelFor(target);
+  // The target is found by URL, which is how the set was built; a caller whose set does
+  // not contain it is handed the single-attachment viewer rather than a wrong neighbour.
+  let index = siblings.findIndex((s) => s.src === target.src);
+  const set = index === -1 ? [target] : siblings;
+  if (index === -1) index = 0;
+  const paged = set.length > 1;
 
   const dialog = el('dialog', 'viewer');
-  dialog.setAttribute('aria-label', label);
 
   const head = el('div', 'viewer-head');
   const name = el('span', 'viewer-name');
-  name.textContent = label;
-  name.title = label;
+  head.appendChild(name);
+
   const meta = el('span', 'viewer-meta');
+  head.appendChild(meta);
   // Once per view rather than on every inline attachment: saving is the rarer action,
   // and a second control on every picture's corner would turn a note of photographs
   // into a note of buttons. Here it is the natural next step after looking.
+  const download = el('a', 'link viewer-download');
+  // A glyph and a hover surface like the controls it sits among, so it reads as one of
+  // them rather than as a stray word — but still a link, because it navigates: it can
+  // be middle-clicked and its address copied, which a button could not offer.
+  download.innerHTML = `${downloadIconMarkup()}<span>Download</span>`;
+
+  /**
+   * The paging controls, only when there is somewhere to page to.
+   *
+   * Most notes in a real export are a single scan, and arrows beside a count of one read
+   * as clutter. Real buttons rather than overlays on the picture's edges: a control that
+   * says where it goes, and one a Tab can reach. No wrap-around — a disabled arrow at the
+   * end says "this is the last one", where wrapping would silently start over.
+   *
+   * Last before the close button, to the right of the page count and the download link.
+   * Those two come and go as the attachments change — a PDF has a page count, a remote
+   * image has no download — and anything to their left would shift with them. A control
+   * that is about to be clicked again should stay where it was.
+   */
+  const prev = el('button', 'icon-btn viewer-prev');
+  const next = el('button', 'icon-btn viewer-next');
+  const position = el('span', 'viewer-position');
+  const nav = el('span', 'viewer-nav');
+  if (paged) {
+    prev.type = 'button';
+    prev.setAttribute('aria-label', 'Previous attachment');
+    prev.innerHTML = chevronLeftMarkup();
+    next.type = 'button';
+    next.setAttribute('aria-label', 'Next attachment');
+    next.innerHTML = chevronRightMarkup();
+    nav.appendChild(prev);
+    nav.appendChild(position);
+    nav.appendChild(next);
+    head.appendChild(nav);
+  }
+
   const close = el('button', 'icon-btn viewer-close');
   close.type = 'button';
   close.setAttribute('aria-label', 'Close');
   close.innerHTML = closeIconMarkup();
-  head.appendChild(name);
-  head.appendChild(meta);
-  if (isAttachment(target.src)) {
-    const download = el('a', 'link viewer-download');
-    download.href = downloadUrl(target.src);
-    // Saved under the stored filename, not the caption: an image's alt text is a
-    // description, and a file called "Scan of a sample invoice" with no extension is
-    // not what anyone asked for.
-    download.setAttribute('download', filenameOf(target.src));
-    download.textContent = 'Download';
-    head.appendChild(download);
-  }
   head.appendChild(close);
+
+  /** Where the download link goes when the attachment has one: before the pager. */
+  const afterDownload = paged ? nav : close;
 
   /**
    * The scrollable area, and the thing that takes focus when the viewer opens.
@@ -168,10 +228,102 @@ export function openAttachmentViewer(target: ViewerTarget): HTMLDialogElement {
   });
   close.addEventListener('click', () => dialog.close());
 
-  const teardown =
-    target.kind === 'image'
-      ? mountImage(body, target, stillOpening)
-      : mountPdf(body, meta, target);
+  let teardown = () => {};
+
+  /**
+   * Shows the attachment at `i`, replacing whatever the body held.
+   *
+   * The dialog itself stays: paging must not close and reopen it, which would drop the
+   * platform's focus return and let the back gesture's state slip. A PDF's document is
+   * released before the next attachment is acquired, so a note of nine scans never holds
+   * nine parsed documents in the worker at once.
+   */
+  const show = (i: number) => {
+    teardown();
+    body.replaceChildren();
+    index = i;
+    const item = set[i]!;
+    const label = labelFor(item);
+
+    dialog.setAttribute('aria-label', label);
+    name.textContent = label;
+    name.title = label;
+    meta.textContent = '';
+
+    // Saved under the stored filename, not the caption: an image's alt text is a
+    // description, and a file called "Scan of a sample invoice" with no extension is
+    // not what anyone asked for. Only for this note's stored files — see `isAttachment`.
+    if (isAttachment(item.src)) {
+      download.href = downloadUrl(item.src);
+      download.setAttribute('download', filenameOf(item.src));
+      head.insertBefore(download, afterDownload);
+    } else {
+      download.remove();
+    }
+
+    if (paged) {
+      position.textContent = `${i + 1} of ${set.length}`;
+      prev.disabled = i === 0;
+      next.disabled = i === set.length - 1;
+    }
+
+    teardown =
+      item.kind === 'image' ? mountImage(body, item, stillOpening) : mountPdf(body, meta, item);
+  };
+
+  const step = (by: number) => {
+    const to = index + by;
+    if (to < 0 || to >= set.length) return;
+    show(to);
+    body.scrollTo(0, 0);
+  };
+
+  if (paged) {
+    prev.addEventListener('click', () => step(-1));
+    next.addEventListener('click', () => step(1));
+
+    /**
+     * Left and right page; up and down still scroll. Not while the body scrolls
+     * sideways — an image at actual size is panned with the arrow keys, and stealing
+     * them there would trade a pan for a page turn nobody asked for.
+     */
+    dialog.addEventListener('keydown', (event) => {
+      if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
+      if (body.scrollWidth > body.clientWidth) return;
+      event.preventDefault();
+      step(event.key === 'ArrowLeft' ? -1 : 1);
+    });
+
+    /**
+     * A horizontal swipe pages, the gesture every photo viewer has taught. Judged on the
+     * whole gesture rather than as it goes, so a vertical scroll through a PDF is never
+     * mistaken for it, and only while the body has no sideways scroll of its own, for the
+     * same reason as the arrow keys.
+     */
+    let touchStart: { x: number; y: number } | null = null;
+    body.addEventListener(
+      'touchstart',
+      (event) => {
+        const t = event.touches[0];
+        touchStart = t && event.touches.length === 1 ? { x: t.clientX, y: t.clientY } : null;
+      },
+      { passive: true },
+    );
+    body.addEventListener(
+      'touchend',
+      (event) => {
+        const start = touchStart;
+        touchStart = null;
+        const t = event.changedTouches[0];
+        if (!start || !t || body.scrollWidth > body.clientWidth) return;
+        const dx = t.clientX - start.x;
+        const dy = t.clientY - start.y;
+        if (Math.abs(dx) < SWIPE_MIN_PX || Math.abs(dx) < Math.abs(dy) * 2) return;
+        step(dx < 0 ? 1 : -1);
+      },
+      { passive: true },
+    );
+  }
 
   dialog.addEventListener('close', () => {
     teardown();
@@ -179,6 +331,7 @@ export function openAttachmentViewer(target: ViewerTarget): HTMLDialogElement {
     if (current === dialog) current = null;
   });
 
+  show(index);
   document.body.appendChild(dialog);
   current = dialog;
   dialog.showModal();

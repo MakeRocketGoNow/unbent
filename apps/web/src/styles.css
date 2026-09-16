@@ -3309,7 +3309,16 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
   padding: 0.25rem 0.5rem 0.25rem 1rem;
 }
 
+/*
+   The bar reads left to right as information, then controls.
+
+   The name and the page count are about the file and sit together on the left; the
+   download link, the pager and the close button are things to do and sit together on
+   the right. The page count's trailing auto margin is the divide: it takes the slack,
+   so the name shrinks to an ellipsis before anything on the right moves.
+*/
 .viewer-name {
+  flex: 0 1 auto;
   min-width: 0;
   font-size: 0.9rem;
   font-weight: 600;
@@ -3318,21 +3327,81 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
   white-space: nowrap;
 }
 
+/*
+   Paging between a note's attachments: ‹ 2 of 5 ›.
+
+   In the head with the rest of the controls rather than floated over the picture's
+   edges, so it is one bar to read and the arrows are where a Tab expects them. Beside
+   the close button, to the right of the page count and the download link, which come
+   and go with the attachment — see the viewer for why. Tabular figures keep "9 of 12"
+   from shifting the arrows as the count changes.
+*/
+.viewer-nav {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.viewer-position {
+  min-width: 3.5rem;
+  font-size: 0.85rem;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+  opacity: 0.85;
+}
+
+.viewer-prev,
+.viewer-next {
+  color: #fff;
+}
+
+.viewer-prev:hover,
+.viewer-next:hover { color: #fff; background: rgb(255 255 255 / 0.15); }
+
+/* The end of the set: still drawn, so the bar does not rearrange, but plainly inert. */
+.viewer-prev:disabled,
+.viewer-next:disabled {
+  opacity: 0.3;
+  cursor: default;
+  background: none;
+}
+
 .viewer-meta {
   flex-shrink: 0;
-  margin-left: auto;
+  margin-right: auto;
   font-size: 0.85rem;
   opacity: 0.7;
 }
 
+/* A phone's head has room for the name, the paging and the ways out; the page count is
+   the one thing there that is not a control. */
+@media (width < 480px) {
+  .viewer-meta { display: none; }
+}
+
+/*
+   Drawn like the icon buttons beside it — a glyph, and a surface on hover — so it reads
+   as a control and not as a stray word after the page count. Still an anchor: it
+   navigates, so it middle-clicks and copies, which is what a link is for.
+*/
 .viewer-download {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
   flex-shrink: 0;
+  height: 2.25rem;
+  padding: 0 0.7rem;
   font-size: 0.85rem;
   color: #fff;
+  border-radius: 0.3rem;
   opacity: 0.85;
 }
 
-.viewer-download:hover { opacity: 1; }
+.viewer-download:hover {
+  opacity: 1;
+  text-decoration: none;
+  background: rgb(255 255 255 / 0.15);
+}
 
 .viewer-close {
   flex-shrink: 0;
