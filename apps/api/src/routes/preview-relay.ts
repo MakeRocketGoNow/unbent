@@ -25,11 +25,13 @@ import type { AppEnv } from '../types.js';
 export const previewRelay = new Hono<AppEnv>().get(
   '/preview-relay/start',
   /**
-   * Off unless this instance is a relay source. The route is mounted unconditionally so the
-   * SPA's typed client sees it, but where the relay is not configured — production, and every
-   * instance that is not the dev one — it answers 404, the same as an unmounted path. The
-   * check is before `requireAuth` on purpose: an instance that does not have this feature
-   * should not even disclose that the path wants a session. See `previewRelayEnabled`.
+   * Off unless this instance is a relay source. The route is mounted unconditionally and
+   * refuses at request time rather than being conditionally mounted, which keeps the wiring
+   * in index.ts uniform with every other route; where the relay is not configured —
+   * production, and every instance that is not the dev one — it answers 404, the same as an
+   * unmounted path. The check is before `requireAuth` on purpose: an instance that does not
+   * have this feature should not even disclose that the path wants a session. See
+   * `previewRelayEnabled`.
    */
   async (c, next) => {
     if (!previewRelayEnabled(c.env)) return c.json({ error: 'Not found' }, 404);

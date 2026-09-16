@@ -263,8 +263,10 @@ interface AuthInstance {
      * `/one-time-token/generate` endpoint returns. Called in-process by the preview relay
      * so it can validate the return origin and mint in one handler, rather than the browser
      * fetching a token and then being trusted to redirect it somewhere safe — see
-     * routes/preview-relay.ts. Requires a session on the passed headers, and throws
-     * otherwise, which the relay route turns into its own 401.
+     * routes/preview-relay.ts. Requires a session on the passed headers and throws
+     * otherwise — though the relay route runs `requireAuth` first, so by the time it calls
+     * this a session is already proven and a throw means the token store, which it reports
+     * as a 500.
      */
     generateOneTimeToken: (context: { headers: Headers }) => Promise<{ token: string }>;
   };
