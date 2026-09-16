@@ -405,8 +405,10 @@ describe('Login', () => {
   });
 
   /**
-   * Clicking it hands off to the dev instance's relay endpoint, naming this origin as where
-   * to return. The whole-page navigation is the point — it leaves this origin — so the test
+   * Clicking it hands off to the dev instance's session-gated `/preview-relay` route, naming
+   * this origin as where to return. The route rather than the API endpoint behind it, so a
+   * visitor with no dev session is sent through that instance's `/login` instead of meeting a
+   * JSON 401. The whole-page navigation is the point — it leaves this origin — so the test
    * pins the URL it sends the browser to rather than any in-app state.
    */
   it('hands off to the dev instance with this origin as the return', async () => {
@@ -425,7 +427,7 @@ describe('Login', () => {
       );
       fireEvent.click(screen.getByText('Continue on the dev instance'));
       expect(location.href).toBe(
-        'https://dev.unbent.app/api/preview-relay/start?return=' +
+        'https://dev.unbent.app/preview-relay?return=' +
           encodeURIComponent('https://unbent-pr-120.of2668.workers.dev'),
       );
     } finally {

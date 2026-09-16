@@ -19,6 +19,7 @@ import { Route as GoodbyeRouteImport } from './routes/goodbye'
 import { Route as ImportRouteImport } from './routes/import'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as NotesRouteImport } from './routes/notes'
+import { Route as PreviewRelayRouteImport } from './routes/preview-relay'
 import { Route as PreviewSigninRouteImport } from './routes/preview-signin'
 import { Route as PrivacyRouteImport } from './routes/privacy'
 import { Route as ResetPasswordRouteImport } from './routes/reset-password'
@@ -89,6 +90,11 @@ const LoginRoute = LoginRouteImport.update({
 const NotesRoute = NotesRouteImport.update({
   id: '/notes',
   path: '/notes',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PreviewRelayRoute = PreviewRelayRouteImport.update({
+  id: '/preview-relay',
+  path: '/preview-relay',
   getParentRoute: () => rootRouteImport,
 } as any)
 const PreviewSigninRoute = PreviewSigninRouteImport.update({
@@ -209,6 +215,7 @@ export interface FileRoutesByFullPath {
   '/import': typeof ImportRoute
   '/login': typeof LoginRoute
   '/notes': typeof NotesRouteWithChildren
+  '/preview-relay': typeof PreviewRelayRoute
   '/preview-signin': typeof PreviewSigninRoute
   '/privacy': typeof PrivacyRoute
   '/reset-password': typeof ResetPasswordRoute
@@ -241,6 +248,7 @@ export interface FileRoutesByTo {
   '/goodbye': typeof GoodbyeRoute
   '/import': typeof ImportRoute
   '/login': typeof LoginRoute
+  '/preview-relay': typeof PreviewRelayRoute
   '/preview-signin': typeof PreviewSigninRoute
   '/privacy': typeof PrivacyRoute
   '/reset-password': typeof ResetPasswordRoute
@@ -273,6 +281,7 @@ export interface FileRoutesById {
   '/import': typeof ImportRoute
   '/login': typeof LoginRoute
   '/notes': typeof NotesRouteWithChildren
+  '/preview-relay': typeof PreviewRelayRoute
   '/preview-signin': typeof PreviewSigninRoute
   '/privacy': typeof PrivacyRoute
   '/reset-password': typeof ResetPasswordRoute
@@ -308,6 +317,7 @@ export interface FileRouteTypes {
     | '/import'
     | '/login'
     | '/notes'
+    | '/preview-relay'
     | '/preview-signin'
     | '/privacy'
     | '/reset-password'
@@ -340,6 +350,7 @@ export interface FileRouteTypes {
     | '/goodbye'
     | '/import'
     | '/login'
+    | '/preview-relay'
     | '/preview-signin'
     | '/privacy'
     | '/reset-password'
@@ -371,6 +382,7 @@ export interface FileRouteTypes {
     | '/import'
     | '/login'
     | '/notes'
+    | '/preview-relay'
     | '/preview-signin'
     | '/privacy'
     | '/reset-password'
@@ -405,6 +417,7 @@ export interface RootRouteChildren {
   ImportRoute: typeof ImportRoute
   LoginRoute: typeof LoginRoute
   NotesRoute: typeof NotesRouteWithChildren
+  PreviewRelayRoute: typeof PreviewRelayRoute
   PreviewSigninRoute: typeof PreviewSigninRoute
   PrivacyRoute: typeof PrivacyRoute
   ResetPasswordRoute: typeof ResetPasswordRoute
@@ -485,6 +498,13 @@ declare module '@tanstack/react-router' {
       path: '/notes'
       fullPath: '/notes'
       preLoaderRoute: typeof NotesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/preview-relay': {
+      id: '/preview-relay'
+      path: '/preview-relay'
+      fullPath: '/preview-relay'
+      preLoaderRoute: typeof PreviewRelayRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/preview-signin': {
@@ -700,6 +720,7 @@ const rootRouteChildren: RootRouteChildren = {
   ImportRoute: ImportRoute,
   LoginRoute: LoginRoute,
   NotesRoute: NotesRouteWithChildren,
+  PreviewRelayRoute: PreviewRelayRoute,
   PreviewSigninRoute: PreviewSigninRoute,
   PrivacyRoute: PrivacyRoute,
   ResetPasswordRoute: ResetPasswordRoute,

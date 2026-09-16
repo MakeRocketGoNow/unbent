@@ -36,8 +36,10 @@ export const previewRelay = new Hono<AppEnv>().get(
     await next();
   },
   // A relay is a signed-in action: only a real dev session can mint a token to hand onward.
-  // An unauthenticated hit gets 401, and the SPA route in front of this sends people to
-  // /login (where Google works) first, so this is reached with a session in hand.
+  // An unauthenticated hit gets 401, which is a backstop rather than the path anyone takes:
+  // the preview's button points at the SPA's `/preview-relay` route, and that route is
+  // gated, so a signed-out visitor goes through /login (where Google works) and is returned
+  // to it before this endpoint is ever reached. See apps/web/src/routes/preview-relay.tsx.
   requireAuth,
   async (c) => {
     const returnOrigin = c.req.query('return');

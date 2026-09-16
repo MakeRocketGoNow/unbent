@@ -113,6 +113,12 @@ export function Login({ redirectTo }: LoginProps) {
    * to; the dev instance signs the user in (if they are not already), mints a one-time
    * token, and redirects to `/preview-signin` here, which redeems it.
    *
+   * It lands on the dev instance's `/preview-relay` *route*, not the API endpoint behind
+   * it. That route is session-gated, so a visitor with no dev session is sent through
+   * `/login` there and returned to it once they have one; going straight at the endpoint
+   * answered that same visitor with a JSON 401, which is precisely the person the relay
+   * exists for.
+   *
    * A full-page navigation like the social buttons, and for the same reason — it leaves this
    * origin entirely — so it uses `location` rather than the router, the way `/connect` hands
    * off to an app scheme. The return origin goes through `encodeURIComponent` rather than the
@@ -121,7 +127,7 @@ export function Login({ redirectTo }: LoginProps) {
   function startRelay(origin: string) {
     setPending('preview-relay');
     setError(null);
-    window.location.href = `${origin}/api/preview-relay/start?return=${encodeURIComponent(window.location.origin)}`;
+    window.location.href = `${origin}/preview-relay?return=${encodeURIComponent(window.location.origin)}`;
   }
 
   async function startSocial(provider: string) {
