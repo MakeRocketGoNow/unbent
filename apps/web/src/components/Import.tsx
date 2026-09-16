@@ -52,6 +52,11 @@ function indexingText(state: IndexingState): string {
   }
 }
 
+/** `1 note`, `3,325 notes`. */
+function count(n: number, noun: string): string {
+  return `${n.toLocaleString()} ${noun}${n === 1 ? '' : 's'}`;
+}
+
 function formatBytes(n: number): string {
   if (n < 1024) return `${n} B`;
   if (n < 1024 ** 2) return `${(n / 1024).toFixed(0)} KB`;
@@ -339,17 +344,17 @@ export function Import({ onImported }: ImportProps) {
         <div className="import-finished">
           <p className="good small">
             Finished in {Math.max(1, Math.round(elapsed / 1000))}s.{' '}
-            {progress?.created.toLocaleString()} notes imported
+            {count(progress?.created ?? 0, 'note')} imported
             {/* Told apart because they are not the same news: a duplicate inside the file
                 is a note that did not come through, one already here is a resume working. */}
             {skips.duplicateCount > 0
-              ? `, ${skips.duplicateCount.toLocaleString()} duplicate${skips.duplicateCount === 1 ? '' : 's'} skipped`
+              ? `, ${count(skips.duplicateCount, 'duplicate')} skipped`
               : ''}
             {skips.presentCount > 0
               ? `, ${skips.presentCount.toLocaleString()} already present`
               : ''}
             {progress && progress.filesUploaded > 0
-              ? `, ${progress.filesUploaded.toLocaleString()} files`
+              ? `, ${count(progress.filesUploaded, 'file')}`
               : ''}
             .
           </p>
