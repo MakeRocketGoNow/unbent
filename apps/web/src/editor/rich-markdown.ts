@@ -1,4 +1,4 @@
-import { syntaxTree } from '@codemirror/language';
+import { ensureSyntaxTree, syntaxTree } from '@codemirror/language';
 import {
   type EditorState,
   type Extension,
@@ -355,7 +355,7 @@ function ownEvents(control: HTMLElement): void {
  * and hides. A click on the picture or the page opens the viewer too; this is the control
  * that can be seen before it is tried, and the one a Tab can land on.
  */
-function zoomButton(target: ViewerTarget): HTMLButtonElement {
+function zoomButton(target: ViewerTarget, siblings: Siblings): HTMLButtonElement {
   const button = document.createElement('button');
   button.type = 'button';
   button.className = 'zoom-btn';
@@ -366,10 +366,19 @@ function zoomButton(target: ViewerTarget): HTMLButtonElement {
   button.addEventListener('click', (event) => {
     event.preventDefault();
     event.stopPropagation();
-    openAttachmentViewer(target);
+    openAttachmentViewer(target, siblings());
   });
   return button;
 }
+
+/**
+ * Every attachment the note shows, for the viewer to page through.
+ *
+ * A function rather than a list: it is read when the viewer opens, not when the widget
+ * was built, so an attachment added since is in the set. Widgets are compared by `eq`,
+ * which looks at the URL alone, so the function's identity never forces a rebuild.
+ */
+type Siblings = () => readonly ViewerTarget[];
 
 /**
  * Inline preview for an attachment image.
@@ -384,6 +393,7 @@ class ImageWidget extends WidgetType {
   constructor(
     private readonly url: string,
     private readonly alt: string,
+    private readonly siblings: Siblings,
   ) {
     super();
   }
@@ -434,11 +444,11 @@ class ImageWidget extends WidgetType {
     img.addEventListener('click', (event) => {
       event.preventDefault();
       event.stopPropagation();
-      openAttachmentViewer(target);
+      openAttachmentViewer(target, this.siblings());
     });
 
     frame.appendChild(img);
-    frame.appendChild(zoomButton(target));
+    frame.appendChild(zoomButton(target, this.siblings));
     return wrap;
   }
 
@@ -499,7 +509,10 @@ export function resetExpandedPdfs(): void {
  * and back does not re-parse the file.
  */
 class PdfWidget extends WidgetType {
-  constructor(private readonly url: string) {
+  constructor(
+    private readonly url: string,
+    private readonly siblings: Siblings,
+  ) {
     super();
   }
 
@@ -539,7 +552,7 @@ class PdfWidget extends WidgetType {
     canvas.addEventListener('click', (event) => {
       event.preventDefault();
       event.stopPropagation();
-      openAttachmentViewer(this.viewerTarget());
+      openAttachmentViewer(this.viewerTarget(), this.siblings());
     });
     return canvas;
   }
@@ -570,7 +583,7 @@ class PdfWidget extends WidgetType {
         status.remove();
         // On the first page's corner, after it has drawn: a control on a blank page
         // would promise a view of nothing. The same viewer the preview pane opens.
-        pages.appendChild(zoomButton(this.viewerTarget()));
+        pages.appendChild(zoomButton(this.viewerTarget(), this.siblings));
         if (doc.pageCount > 1) this.addMore(wrap, pages, doc);
       })
       .catch(() => {
@@ -782,6 +795,58 @@ function resolveImageSrc(
   return REMOTE_IMAGE_SCHEME.test(url) ? url : undefined;
 }
 
+/**
+ * Every attachment the rich editor would draw, in reading order, for the viewer to page
+ * through.
+ *
+ * From the syntax tree rather than the DOM: CodeMirror only builds widgets for the lines
+ * in and around the viewport, so a walk of the rendered note would miss every scan that
+ * is scrolled away. The same rules as the decoration builder decide what counts — an image
+ * with a source the editor would load, a link to a stored PDF — and an image that failed
+ * to load is left out, since it is not on screen to page to.
+ *
+ * `ensureSyntaxTree` finishes the parse of a long note before the walk, within a bound;
+ * the incremental parser may have stopped short of the end, and a set that ended where
+ * the parser did would silently lose the last attachments.
+ */
+export function collectAttachmentTargets(
+  state: EditorState,
+  options: RichMarkdownOptions,
+): ViewerTarget[] {
+  const tree = ensureSyntaxTree(state, state.doc.length, 200) ?? syntaxTree(state);
+  const targets: ViewerTarget[] = [];
+
+  tree.iterate({
+    enter(node) {
+      if (node.name === 'Image') {
+        const text = state.doc.sliceString(node.from, node.to);
+        const match = /^!\[([^\]]*)\]\((.+)\)$/.exec(text);
+        if (!match) return;
+        const src = resolveImageSrc(unwrapUrl(match[2]!.trim()), options.resolveAttachment);
+        if (src === undefined || failedImages.has(src)) return;
+        targets.push({ kind: 'image', src, alt: match[1] ?? '' });
+        return;
+      }
+
+      if (node.name === 'Link') {
+        const resolve = options.resolveAttachment;
+        if (!resolve) return;
+        const text = state.doc.sliceString(node.from, node.to);
+        const match = /^\[([^\]]*)\]\((.+)\)$/.exec(text);
+        if (!match) return;
+        const url = unwrapUrl(match[2]!.trim());
+        if (!url.startsWith(ATTACHMENT_PREFIX)) return;
+        const filename = url.slice(ATTACHMENT_PREFIX.length);
+        const decoded = decodePath(filename).split('?')[0] ?? '';
+        if (!PDF_PATH.test(decoded) && !options.isPdfAttachment?.(decoded)) return;
+        targets.push({ kind: 'pdf', src: resolve(filename), label: match[1] ?? '' });
+      }
+    },
+  });
+
+  return targets;
+}
+
 export interface RichMarkdownOptions {
   /** Resolves a relative `files/…` path to a URL the browser can load. */
   resolveAttachment?: (filename: string) => string;
@@ -825,6 +890,8 @@ function buildDecorations(view: EditorView, options: RichMarkdownOptions): Decor
   const builder = new RangeSetBuilder<Decoration>();
   const marks: Array<Range<Decoration>> = [];
   const state = view.state;
+  // Read from the view at click time, so the set is the note as it stands then.
+  const siblings: Siblings = () => collectAttachmentTargets(view.state, options);
 
   for (const { from, to } of view.visibleRanges) {
     syntaxTree(state).iterate({
@@ -971,7 +1038,7 @@ function buildDecorations(view: EditorView, options: RichMarkdownOptions): Decor
           // the note still says what belongs there. See `failedImages`.
           if (failedImages.has(src)) return;
 
-          const widget = new ImageWidget(src, match[1] ?? '');
+          const widget = new ImageWidget(src, match[1] ?? '', siblings);
 
           /**
            * The image stands in for its source while the cursor is elsewhere.
@@ -1122,7 +1189,10 @@ function buildDecorations(view: EditorView, options: RichMarkdownOptions): Decor
           if (!PDF_PATH.test(decoded) && !options.isPdfAttachment?.(decoded)) return;
 
           marks.push(
-            Decoration.widget({ widget: new PdfWidget(resolve(filename)), side: 1 }).range(node.to),
+            Decoration.widget({
+              widget: new PdfWidget(resolve(filename), siblings),
+              side: 1,
+            }).range(node.to),
           );
           return;
         }

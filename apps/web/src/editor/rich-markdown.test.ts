@@ -5,6 +5,7 @@ import { GFM } from '@lezer/markdown';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   bulletGlyph,
+  collectAttachmentTargets,
   orderedMarker,
   pdfNamesChanged,
   resetExpandedPdfs,
@@ -35,7 +36,8 @@ vi.mock('../pdf/render.js', () => ({
 const openAttachmentViewer = vi.fn();
 
 vi.mock('../attachment-viewer.js', () => ({
-  openAttachmentViewer: (target: unknown) => openAttachmentViewer(target),
+  openAttachmentViewer: (target: unknown, siblings: unknown) =>
+    openAttachmentViewer(target, siblings),
 }));
 
 /**
@@ -466,7 +468,7 @@ describe('inline PDF', () => {
     expect(button).not.toBeNull();
     expect(button?.getAttribute('aria-label')).toBe('Full screen');
     button?.click();
-    expect(openAttachmentViewer).toHaveBeenCalledWith({
+    expect(openAttachmentViewer.mock.calls.at(-1)?.[0]).toEqual({
       kind: 'pdf',
       src: '/api/notes/n1/files/report.pdf',
       label: '',
@@ -681,7 +683,7 @@ describe('inline images', () => {
     const button = v.dom.querySelector<HTMLButtonElement>('.cm-md-image .zoom-btn');
     expect(button).not.toBeNull();
     button?.click();
-    expect(openAttachmentViewer).toHaveBeenCalledWith({
+    expect(openAttachmentViewer.mock.calls.at(-1)?.[0]).toEqual({
       kind: 'image',
       src: '/api/notes/n1/files/scan.jpg',
       alt: 'scan',
@@ -702,7 +704,7 @@ describe('inline images', () => {
     const v = mountWithAttachments(doc, doc.length);
     image(v)?.click();
     expect(openAttachmentViewer).toHaveBeenCalledTimes(1);
-    expect(openAttachmentViewer).toHaveBeenCalledWith({
+    expect(openAttachmentViewer.mock.calls.at(-1)?.[0]).toEqual({
       kind: 'image',
       src: '/api/notes/n1/files/scan.jpg',
       alt: 'scan',
@@ -820,6 +822,59 @@ describe('inline images', () => {
 
     expect(visibleText(v, 1)).toBe('![scan](files/missing.jpg)');
     expect(image(v)).toBeNull();
+  });
+});
+
+/**
+ * What the viewer pages through: every attachment the editor would draw, in the order
+ * the note has them, whether or not its line is anywhere near the viewport.
+ */
+describe('attachment set', () => {
+  const options = {
+    resolveAttachment: (name: string) => `/api/notes/n1/files/${name}`,
+    isPdfAttachment: (name: string) => name === 'Menu Card',
+  };
+
+  const note = [
+    '# Trip',
+    '![front](files/front.jpg)',
+    'notes',
+    '[receipt](<files/Receipt 1.pdf>)',
+    '![logo](https://example.com/logo.png)',
+    '[menu](<files/Menu Card>)',
+    '[sheet](files/budget.xlsx)',
+    '![bad](data:image/png;base64,AAAA)',
+    '![back](files/back.jpg)',
+  ].join('\n\n');
+
+  beforeEach(() => resetFailedImages());
+
+  it('lists images and PDFs in reading order', () => {
+    const v = mountWithAttachments(note, 0, ['Menu Card']);
+    expect(collectAttachmentTargets(v.state, options)).toEqual([
+      { kind: 'image', src: '/api/notes/n1/files/front.jpg', alt: 'front' },
+      { kind: 'pdf', src: '/api/notes/n1/files/Receipt 1.pdf', label: 'receipt' },
+      { kind: 'image', src: 'https://example.com/logo.png', alt: 'logo' },
+      { kind: 'pdf', src: '/api/notes/n1/files/Menu Card', label: 'menu' },
+      { kind: 'image', src: '/api/notes/n1/files/back.jpg', alt: 'back' },
+    ]);
+  });
+
+  it('lists nothing without a resolver but remote images', () => {
+    const v = mount(note, 0);
+    expect(collectAttachmentTargets(v.state, {})).toEqual([
+      { kind: 'image', src: 'https://example.com/logo.png', alt: 'logo' },
+    ]);
+  });
+
+  it('hands the set to the viewer with the clicked attachment', () => {
+    openAttachmentViewer.mockClear();
+    const v = mountWithAttachments(note, note.length, ['Menu Card']);
+    v.dom.querySelector<HTMLImageElement>('.cm-md-image img')?.click();
+    expect(openAttachmentViewer).toHaveBeenCalledTimes(1);
+    const [target, siblings] = openAttachmentViewer.mock.calls[0] as [unknown, unknown[]];
+    expect(target).toEqual({ kind: 'image', src: '/api/notes/n1/files/front.jpg', alt: 'front' });
+    expect(siblings).toHaveLength(5);
   });
 });
 
