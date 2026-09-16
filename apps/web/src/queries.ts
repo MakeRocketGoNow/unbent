@@ -28,6 +28,13 @@ export interface NoteFilter {
    * change the user did not make. The URL is that order: it is where the filter lives.
    */
   tag?: string[];
+  /**
+   * Custom-field filters, ANDed, as the `<fieldId>:<op>[:<value>]` strings the URL and
+   * the API both carry — kept as strings rather than parsed here for the same reason the
+   * tags keep the URL's order: the key hash wants one spelling per filter, and the URL is
+   * that spelling. `parseFieldFilter` reads one when a label is needed.
+   */
+  field?: string[];
   /** Inclusive `YYYY-MM-DD` bounds. A range narrows membership, so it is a filter. */
   from?: string;
   to?: string;

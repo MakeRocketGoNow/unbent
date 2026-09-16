@@ -1,6 +1,7 @@
 import { useEffect, useRef, type ReactNode } from 'react';
 import { BackArrow } from './BackArrow.js';
 import { CloseIcon } from './icons.js';
+import { useMediaQuery, MOBILE_QUERY } from '../useMediaQuery.js';
 
 export interface SheetProps {
   open: boolean;
@@ -65,6 +66,15 @@ export interface SheetProps {
  * The ✕ stays on the bottom sheet. Not everyone finds the grip, a mouse on a desktop has
  * no swipe, and a control that says "close" costs nothing beside a handle that only
  * implies it.
+ *
+ * Above the breakpoint the same element is a floating panel beside the list — see the
+ * `@media (width > 860px)` block on `.sheet` in styles.css. That is CSS deciding the shape;
+ * nothing here changes but the drag, which is switched off there. The grip is hidden at
+ * that width, but the head is part of the handle, and a mouse pulling the title 72px down
+ * would translate the panel and close it — a gesture no floating panel has, and one that
+ * looks like the window is broken. The ✕ and Escape are the ways out of the panel, and
+ * the scrim: it is still a modal dialog, so a click outside closes it the way it does on
+ * a phone.
  *
  * The drawer has none. Its head is the wordmark and the account, which is what Keep's
  * drawer is headed by, and a ✕ beside them made a navigation panel read as a dialog about
@@ -152,7 +162,14 @@ export function Sheet({
   children,
 }: SheetProps) {
   const ref = useRef<HTMLDialogElement>(null);
-  const grip = useGripDrag(ref, onClose);
+  const drag = useGripDrag(ref, onClose);
+  /*
+   * The drag is a phone gesture. Reading the breakpoint in JS is allowed for exactly this:
+   * the same head means "pull me down" on a phone and nothing at all on a desktop, and CSS
+   * can hide the grip but cannot take the handlers off the title.
+   */
+  const phone = useMediaQuery(MOBILE_QUERY);
+  const grip = phone ? drag : {};
 
   useEffect(() => {
     const el = ref.current;

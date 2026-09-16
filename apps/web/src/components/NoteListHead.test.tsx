@@ -109,10 +109,79 @@ describe('NoteListHead', () => {
     expect(queryByText('more')).toBeNull();
   });
 
+  /* Down from the field goes to the results — the list under it is what typing produced. */
+  it('hands Arrow Down to the caller, which enters the list', () => {
+    const onArrowDown = vi.fn();
+    const { getByLabelText } = render(
+      <NoteListHead {...props} searchOpen query="derm" onArrowDown={onArrowDown} />,
+    );
+    const prevented = !fireEvent.keyDown(getByLabelText('Search notes'), { key: 'ArrowDown' });
+    expect(onArrowDown).toHaveBeenCalledTimes(1);
+    expect(prevented).toBe(true);
+  });
+
   it('reports typing so the URL stays the one source of the query', () => {
     const onQuery = vi.fn();
     const { getByLabelText } = render(<NoteListHead {...props} searchOpen onQuery={onQuery} />);
     fireEvent.change(getByLabelText('Search notes'), { target: { value: 'receipts' } });
     expect(onQuery).toHaveBeenCalledWith('receipts');
+  });
+
+  /*
+   * The desktop's shape, which is the same row with two props withheld and one added.
+   *
+   * No `onOpenSearch` means the field is not behind an icon: it is a permanent row under
+   * the header, because a desktop column has the width for the one control used on most
+   * visits. No `onOpenMenu` and no `title` because the notebook picker sits one row down
+   * and names the notebook itself. `action` is the desktop's New, at the end of the row.
+   */
+  describe('at desktop width', () => {
+    const desktop = {
+      ...props,
+      title: undefined,
+      onOpenSearch: undefined,
+      onOpenMenu: undefined,
+      action: <button>New</button>,
+    };
+
+    it('keeps the field on screen beside the controls', () => {
+      const { container, getByLabelText, queryByLabelText } = render(
+        <NoteListHead {...desktop} query="derm" />,
+      );
+      expect((getByLabelText('Search notes') as HTMLInputElement).value).toBe('derm');
+      expect(container.querySelector('.list-head-actions')).toBeTruthy();
+      // Nothing to open, so nothing to close: the arrow is a phone control.
+      expect(queryByLabelText('Close search and clear the query')).toBeNull();
+    });
+
+    it('ignores the phone\'s open state, since there is nothing to open', () => {
+      const { container } = render(<NoteListHead {...desktop} searchOpen />);
+      expect(container.querySelector('.list-head-actions')).toBeTruthy();
+    });
+
+    it('has no drawer button and no heading, only the count', () => {
+      const { container, queryByLabelText, getByText } = render(<NoteListHead {...desktop} />);
+      expect(queryByLabelText('Notebooks')).toBeNull();
+      expect(container.querySelector('h2')).toBeNull();
+      expect(getByText('30 notes')).toBeTruthy();
+    });
+
+    it('puts the action after the controls', () => {
+      const { container } = render(<NoteListHead {...desktop} />);
+      const actions = container.querySelector('.list-head-actions') as HTMLElement;
+      const labels = [...actions.querySelectorAll('button')].map(
+        (b) => b.getAttribute('aria-label') ?? b.textContent,
+      );
+      expect(labels).toEqual(['Filter notes', 'more', 'New']);
+    });
+
+    it('clears on Escape, the one thing Escape can mean for a field that stays', () => {
+      const onCloseSearch = vi.fn();
+      const { getByLabelText } = render(
+        <NoteListHead {...desktop} query="derm" onCloseSearch={onCloseSearch} />,
+      );
+      fireEvent.keyDown(getByLabelText('Search notes'), { key: 'Escape' });
+      expect(onCloseSearch).toHaveBeenCalled();
+    });
   });
 });

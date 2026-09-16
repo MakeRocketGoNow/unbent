@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate } from '@tanstack/react-router';
 import { useQuery, useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
 import { UNFILED } from '@unbent/shared';
@@ -8,6 +8,7 @@ import {
   notesQuery,
   tagsQuery,
   notebooksQuery,
+  notebookFieldsQuery,
   searchQuery,
   trashCountQuery,
   invalidateNoteMembership,
@@ -15,39 +16,50 @@ import {
 import { useNotesLayout, SIDEBAR_DEFAULT, SIDEBAR_MIN, SIDEBAR_MAX } from '../useNotesLayout.js';
 import { ResizeHandle } from './ResizeHandle.js';
 import { NoteListItem } from './NoteListItem.js';
-import { useListKeys } from '../useListKeys.js';
+import { useListKeys, enterList } from '../useListKeys.js';
+import { useFocusSearch } from '../useFocusSearch.js';
 import { markNewNote } from '../useNewNote.js';
 import { SearchResults } from './SearchResults.js';
 import { IndexingStatus } from './IndexingStatus.js';
 import { Button } from './Button';
 import { NotebookSelect } from './NotebookSelect.js';
-import { SortSelect } from './SortSelect.js';
-import { DateRange } from './DateRange.js';
 import { ExportLink } from './ExportLink.js';
-import { TagFilter } from './TagFilter.js';
 import { TagPicker } from './TagPicker.js';
 import { FilterRow } from './FilterRow.js';
 import { DatePicker } from './DatePicker.js';
+import { FieldsPicker } from './FieldsPicker.js';
 import { rangeLabel } from './format-when.js';
 import { NotebookDrawer } from './NotebookDrawer.js';
-import { PlusIcon, TagIcon, CalendarIcon } from './icons.js';
+import { PlusIcon, TagIcon, CalendarIcon, FieldsIcon } from './icons.js';
 import { Sheet } from './Sheet.js';
 import { NoteListHead } from './NoteListHead.js';
 import { NotesSort } from './NotesSort.js';
 import { ActiveFilters } from './ActiveFilters.js';
+import { ScopeMatches, scopeMatches } from './ScopeMatches.js';
 import { useMediaQuery, MOBILE_QUERY } from '../useMediaQuery.js';
 import { useSession } from '../auth-client.js';
 import { useSignOut } from '../useSignOut.js';
 
 /** Sidebar plus the routed workspace. Filters come from the URL; nothing here is mirrored into state. */
 export function NotesLayout({ children }: { children: React.ReactNode }) {
-  const { notebook, tag, q = '', sort, order, from, to } = Route.useSearch();
+  const { notebook, tag, field, q = '', sort, order, from, to } = Route.useSearch();
   /** The tag filter as a list, so the sidebar never has to care that it may be absent. */
   const selectedTags = tag ?? [];
+  /** Likewise the field filters, as the wire strings the URL carries. */
+  const fieldFilters = field ?? [];
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const layout = useNotesLayout('/notes/$noteId');
-  const onListKeys = useListKeys();
+  /*
+   * The search field and the list, so the arrow keys can pass between them: Down in the
+   * field enters the list on its first row, Up on that row returns to the field.
+   */
+  const searchRef = useRef<HTMLInputElement>(null);
+  const listRef = useRef<HTMLUListElement>(null);
+  const onListKeys = useListKeys({ onLeaveTop: () => searchRef.current?.focus() });
+  // Cmd/Ctrl+F focuses search from anywhere in the view; a second press falls through to
+  // the browser's find. See the hook.
+  useFocusSearch(searchRef);
   /*
    * The account, for the drawer's floor. The topbar carries it at desktop width and is
    * hidden over the phone's list, so this is where it is reached there — the root layout
@@ -59,16 +71,18 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
   const filter = {
     ...(notebook ? { notebook } : {}),
     ...(tag ? { tag } : {}),
+    ...(field ? { field } : {}),
     ...(from ? { from } : {}),
     ...(to ? { to } : {}),
   };
   const ordering = { ...(sort ? { sort } : {}), ...(order ? { order } : {}) };
 
   /**
-   * The export link is the current filter, serialized. Because the filters already live in
-   * the URL there is no separate state to keep in step — the link is the view.
+   * Whether anything narrows the list, notebook included. The export link reads this: it
+   * is the current filter serialized, and because the filters already live in the URL
+   * there is no separate state to keep in step — the link is the view.
    */
-  const isFiltered = Boolean(notebook || selectedTags.length || from || to);
+  const isFiltered = Boolean(notebook || selectedTags.length || fieldFilters.length || from || to);
 
   /*
    * What the filter icon speaks for: the tags and the dates, not the notebook.
@@ -79,15 +93,25 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
    * pointing at a surface where nothing was set. A badge has to be about the control it
    * sits on.
    *
-   * `isFiltered` is still the whole scope, and still what the export link and the desktop
-   * stack read: those are about the slice of the archive on screen, which the notebook is
-   * very much part of.
+   * `isFiltered` is still the whole scope, and still what the export link reads: that is
+   * about the slice of the archive on screen, which the notebook is very much part of.
    */
-  const sheetFiltered = Boolean(selectedTags.length || from || to);
+  const sheetFiltered = Boolean(selectedTags.length || fieldFilters.length || from || to);
 
   const list = useInfiniteQuery(notesQuery(filter, ordering));
   const tags = useQuery(tagsQuery());
   const notebooks = useQuery(notebooksQuery());
+  /*
+   * The selected notebook's field definitions, which name the field chips and are what
+   * the sheet's Fields page offers. Field definitions belong to a notebook, so with no
+   * notebook selected there is nothing to ask for and the query stays disabled; the id
+   * is looked up from the name, because the URL carries the name.
+   */
+  const notebookId =
+    notebook && notebook !== UNFILED
+      ? notebooks.data?.notebooks.find((nb) => nb.name === notebook)?.id
+      : undefined;
+  const fieldDefs = useQuery(notebookFieldsQuery(notebookId));
   const trashCount = useQuery(trashCountQuery());
   const trashed = trashCount.data ?? 0;
 
@@ -95,21 +119,37 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
    * The search term, debounced.
    *
    * The URL updates on every keystroke so the field stays a controlled input and the
-   * query is shareable, but the request waits until typing settles.
+   * query is shareable, but the request waits until typing settles. 300ms: the archive
+   * is thousands of notes over a network, so a request fired mid-word is usually thrown
+   * away before it lands, and the wait is short enough that a settled query still feels
+   * immediate.
    */
   const [debounced, setDebounced] = useState(q);
   useEffect(() => {
-    const timer = setTimeout(() => setDebounced(q), 180);
+    const timer = setTimeout(() => setDebounced(q), 300);
     return () => clearTimeout(timer);
   }, [q]);
   const search = useQuery(searchQuery(debounced, filter));
 
   /*
-   * The phone's header is a different set of controls, not the same ones restyled, so this
-   * is one of the few places the app reads the breakpoint in JS rather than in CSS. The
-   * policy in `useMediaQuery` allows exactly this — a control whose *meaning* changes with
-   * width — and what it protects against is elsewhere: the editor is an uncontrolled
-   * CodeMirror view that must not be rebuilt, and nothing here is in its tree.
+   * One sidebar at every width, with the breakpoint deciding a handful of props rather
+   * than which tree to render.
+   *
+   * It was two trees: the phone's header, chips and sheet, and a desktop stack of
+   * permanently open controls — a search field, two selects, five date pills, a pair of
+   * date inputs, an export link and a tag disclosure — that on a 19rem column left the
+   * note list a few rows tall, on the screen whose entire job is listing notes. The
+   * phone's shape is the one every notes app has settled on, so the desktop takes it
+   * too, and what is left of the difference is: the search field is a permanent row
+   * rather than behind an icon, New is a button in the head rather than floating, the
+   * notebook is picked from a select rather than a drawer, and the sheet is a panel
+   * beside the list rather than one from the floor (CSS decides that last one).
+   *
+   * This is one of the few places the app reads the breakpoint in JS rather than in
+   * CSS. The policy in `useMediaQuery` allows exactly this — a control whose *meaning*
+   * changes with width — and what it protects against is elsewhere: the editor is an
+   * uncontrolled CodeMirror view that must not be rebuilt, and nothing here is in its
+   * tree.
    */
   const isMobile = useMediaQuery(MOBILE_QUERY);
   const [sheetOpen, setSheetOpen] = useState(false);
@@ -119,7 +159,7 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
    * second sheet over the first, which would dim the first behind the second and leave two
    * scrims on screen — Android's `FilterSheet` records the same choice.
    */
-  const [sheetPage, setSheetPage] = useState<'root' | 'tags' | 'dates'>('root');
+  const [sheetPage, setSheetPage] = useState<'root' | 'tags' | 'dates' | 'fields'>('root');
 
   /*
    * Closing always returns to the root. A sheet reopening on the page it was last closed
@@ -137,16 +177,15 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
   const [searchOpen, setSearchOpen] = useState(q !== '');
 
   /*
-   * The sheet cannot outlive the width that justifies it. Rotating a phone to landscape
-   * crosses the breakpoint, and a modal dialog left open over the desktop layout would sit
-   * on top of the very controls it contains, now visible in the sidebar behind it.
+   * The drawer cannot outlive the width that justifies it. Rotating a phone to landscape
+   * crosses the breakpoint, and above it there is no ☰ to have opened the drawer from
+   * and a notebook select in the sidebar doing its job — a phone's drawer left open over
+   * the desktop grid is a panel nothing on screen explains. The filter sheet is not
+   * closed with it any more: it has a desktop shape of its own, and the controls it holds
+   * are no longer duplicated in the sidebar behind it.
    */
   useEffect(() => {
-    if (!isMobile) {
-      setSheetOpen(false);
-      setSheetPage('root');
-      setDrawerOpen(false);
-    }
+    if (!isMobile) setDrawerOpen(false);
   }, [isMobile]);
 
   /** Writes the search box's value to the URL. Shared by both breakpoints' fields. */
@@ -161,6 +200,9 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
 
   /** Null means "not searching", which is distinct from searching and finding nothing. */
   const results = debounced.trim() === '' ? null : (search.data ?? null);
+  /** Whether the results will be headed by picks, which is when the notes need a caption too. */
+  const picks = scopeMatches(debounced, tags.data ?? [], notebooks.data, selectedTags, notebook);
+  const hasPicks = picks.tags.length > 0 || picks.notebooks.length > 0;
 
   const notes = list.data?.pages.flatMap((p) => p.items) ?? [];
   const total = list.data?.pages[0]?.total ?? null;
@@ -240,215 +282,246 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
   return (
     <div className={layout.className} style={layout.style} ref={layout.containerRef}>
       <aside className="sidebar">
-        {isMobile ? (
-          <>
-            <NoteListHead
-              count={countLabel}
-              title={scopeLabel}
-              query={q}
-              onQuery={setQuery}
-              searchOpen={searchOpen}
-              onOpenSearch={() => setSearchOpen(true)}
-              /*
-               * Closing clears the query. A closed field over a live `q` is a list narrowed
-               * by something with nothing on screen to say so — the same invisible-filter
-               * failure the chips below exist to prevent.
-               */
-              onCloseSearch={() => {
-                setSearchOpen(false);
-                setQuery('');
-              }}
-              onOpenFilters={() => setSheetOpen(true)}
-              onOpenMenu={() => setDrawerOpen(true)}
-              filtered={sheetFiltered}
-              /* Hidden while searching — results come back ranked by relevance, and
-                 reordering them by date would throw away that ranking. Nothing else is
-                 lost with it: Settings, which used to share this corner, is on the
-                 drawer's floor. */
-              sort={results === null ? <NotesSort sort={sort} order={order} /> : null}
-            />
-
-            {error && <p className="bad small">{(error as Error).message}</p>}
-
-            {/*
-                Under the header rather than only inside the sheet, so what is narrowing the
-                list is readable without opening anything — and removable without it too.
-
-                No notebook chip here: the heading above already names it, and the chip
-                repeated that word for word on the next line, spending a row of a phone
-                screen to say it twice. The sheet still shows it, because a surface that
-                claims to list everything applied has to.
-            */}
-            <ActiveFilters tags={selectedTags} from={from} to={to} />
-
-            <NotebookDrawer
-              open={drawerOpen}
-              onClose={() => setDrawerOpen(false)}
-              notebook={notebook}
-              selectedTags={selectedTags}
-              notebooks={notebooks}
-              trashed={trashed}
-              email={session?.user.email ?? ''}
-              onSignOut={signOutAndLeave}
-            />
-
-            <Sheet
-              open={sheetOpen}
-              onClose={closeSheet}
-              title={
-                sheetPage === 'tags' ? 'Tags' : sheetPage === 'dates' ? 'Dates' : 'Filter notes'
-              }
-              onBack={sheetPage === 'root' ? undefined : () => setSheetPage('root')}
-              headAction={
-                // Offered only when it would do something: a permanently visible Clear all
-                // on an unfiltered list promises an effect it cannot have. Not on the tags
-                // page, where the chips are the way back out and "all" would mean the
-                // dates too — a button whose blast radius is off screen.
-                sheetPage === 'root' && sheetFiltered ? (
-                  <Button
-                    variant="quiet"
-                    size="small"
-                    onClick={() =>
-                      void navigate({
-                        to: '/notes',
-                        // The notebook is not cleared: it is where you are, not something
-                        // this sheet applied, and "Clear all" walking you out of a notebook
-                        // into the whole archive is a bigger effect than the words promise.
-                        search: (prev) => ({
-                          ...prev,
-                          tag: undefined,
-                          from: undefined,
-                          to: undefined,
-                        }),
-                      })
-                    }
-                  >
-                    Clear all
-                  </Button>
-                ) : null
-              }
-            >
-              {sheetPage === 'tags' && (
-                <TagPicker tags={tags.data ?? []} selected={selectedTags} />
-              )}
-
-              {sheetPage === 'dates' && (
-                <DatePicker from={from} to={to} onDone={() => setSheetPage('root')} />
-              )}
-
-              {sheetPage === 'root' && (
-                <>
-                  {/*
-                      What this sheet has applied, and how each of it comes off.
-
-                      The notebook is deliberately absent, unlike Android's version of this
-                      surface. There it is the one filter the sheet reports but does not
-                      set, because its drawer is the only place naming it; here the list
-                      header names it permanently, one line above, so a chip for it was the
-                      third place saying "Coupons" on one screen.
-                  */}
-                  {sheetFiltered ? (
-                    <ActiveFilters tags={selectedTags} from={from} to={to} />
-                  ) : (
-                    <p className="sheet-summary small">Nothing is filtered.</p>
-                  )}
-
-                  <hr className="sheet-rule" />
-
-                  {/*
-                      Two rows, each opening a page of its own — the shape Android's sheet
-                      settled on, and for the reason its root page stays readable: the tag
-                      picker is a find field and an unbounded list, and the dates are five
-                      pills plus two labelled fields. Inlined, either one is taller than
-                      everything else here put together.
-
-                      Neither the notebook nor the sort is among them. The notebook is a
-                      place you go, so it is in the drawer; sort changes the order rather
-                      than the membership, so it is under the ⋯ with Settings.
-                  */}
-                  {!searching && (tags.data?.length ?? 0) > 0 && (
-                    <FilterRow
-                      icon={<TagIcon />}
-                      label="Tags"
-                      value={
-                        selectedTags.length > 0
-                          ? `${selectedTags.length} ${selectedTags.length === 1 ? 'tag' : 'tags'}`
-                          : undefined
-                      }
-                      onClick={() => setSheetPage('tags')}
-                    />
-                  )}
-
-                  <FilterRow
-                    icon={<CalendarIcon />}
-                    label="Dates"
-                    value={rangeLabel(from, to) ?? undefined}
-                    onClick={() => setSheetPage('dates')}
-                  />
-
-                  {!searching && isFiltered && (
-                    <ExportLink filter={filter} sort={sort} total={total} />
-                  )}
-                </>
-              )}
-
-              {/*
-                  Done only on the root.
-
-                  A sub-page had one too, which offered two ways out that did different
-                  things — back to the filters, or out of the sheet entirely — from two
-                  controls a thumb's width apart. The phone app has the same pages and puts
-                  the way out only where the sheet itself ends; the arrow is how a page ends.
-              */}
-              {sheetPage === 'root' && (
-                <div className="sheet-foot">
-                  <Button variant="quiet" onClick={closeSheet}>
-                    Done
-                  </Button>
-                </div>
-              )}
-            </Sheet>
-          </>
-        ) : (
-          <>
-            <div className="sidebar-head">
-              <span className="count">{countLabel}</span>
+        <NoteListHead
+          count={countLabel}
+          /* Where the list is, on a phone. At desktop width the notebook select one row
+             down says it, and a heading over a select saying the same word is the "third
+             place saying Coupons" the chip strip's comment describes. */
+          title={isMobile ? scopeLabel : undefined}
+          query={q}
+          onQuery={setQuery}
+          onArrowDown={() => enterList(listRef.current)}
+          fieldRef={searchRef}
+          searchOpen={searchOpen}
+          /* Behind an icon on a phone; a permanent row on a desktop. Passing the opener or
+             not is how the header is told which — see `NoteListHead`. */
+          onOpenSearch={isMobile ? () => setSearchOpen(true) : undefined}
+          /*
+           * Closing clears the query. A closed field over a live `q` is a list narrowed
+           * by something with nothing on screen to say so — the same invisible-filter
+           * failure the chips below exist to prevent. On a desktop the field never closes,
+           * and this is what Escape in it does.
+           */
+          onCloseSearch={() => {
+            setSearchOpen(false);
+            setQuery('');
+          }}
+          onOpenFilters={() => setSheetOpen(true)}
+          onOpenMenu={isMobile ? () => setDrawerOpen(true) : undefined}
+          filtered={sheetFiltered}
+          /* Hidden while searching — results come back ranked by relevance, and
+             reordering them by date would throw away that ranking. Nothing else is
+             lost with it: Settings, which used to share this corner, is on the
+             drawer's floor. */
+          sort={results === null ? <NotesSort sort={sort} order={order} /> : null}
+          /* New is a floating button on a phone (below) and the end of this row on a
+             desktop, where a column has nothing for a button to float clear of. */
+          action={
+            isMobile ? undefined : (
               <Button variant="primary" onClick={() => void newNote()}>
                 New
               </Button>
-            </div>
+            )
+          }
+        />
 
-            {error && <p className="bad small">{(error as Error).message}</p>}
+        {error && <p className="bad small">{(error as Error).message}</p>}
 
-            <input
-              className="search-field"
-              type="search"
-              value={q}
-              placeholder="Search notes…"
-              onChange={(e) => setQuery(e.target.value)}
-            />
+        {/*
+            The notebook, as a select, at desktop width only.
 
-            {!searching && (
-              <NotebookSelect
-                notebook={notebook}
-                notebooks={notebooks}
-                endsFilters={(tags.data?.length ?? 0) === 0}
-              />
-            )}
+            It is navigation rather than a filter — a place you go — which is why the phone
+            keeps it in the drawer and the sheet does not offer it. The desktop has no
+            drawer; a rail for it is a separate decision, and until then the select is the
+            one control that stays in the column. Hidden while searching, like the sort:
+            search is scoped to the notebook, but a select above relevance-ranked results
+            invites being read as something that reorders them.
+        */}
+        {!isMobile && !searching && <NotebookSelect notebook={notebook} notebooks={notebooks} />}
 
-            {/* Hidden while searching: results come back ranked by relevance, and
-                reordering them by date would throw away that ranking. */}
-            {!searching && <SortSelect sort={sort} order={order} />}
+        {/*
+            Under the header rather than only inside the sheet, so what is narrowing the
+            list is readable without opening anything — and removable without it too.
 
-            <DateRange from={from} to={to} />
+            No notebook chip here: the heading above (or the select, on a desktop) already
+            names it, and the chip repeated that word for word on the next line, spending
+            a row of a phone screen to say it twice. The sheet still shows it, because a
+            surface that claims to list everything applied has to.
+        */}
+        <ActiveFilters
+          tags={selectedTags}
+          fields={fieldFilters}
+          fieldDefs={fieldDefs.data ?? []}
+          from={from}
+          to={to}
+        />
 
-            {!searching && isFiltered && (
-              <ExportLink filter={filter} sort={sort} total={total} />
-            )}
-
-            {!searching && <TagFilter tags={tags.data ?? []} selected={selectedTags} />}
-          </>
+        {isMobile && (
+          <NotebookDrawer
+            open={drawerOpen}
+            onClose={() => setDrawerOpen(false)}
+            notebook={notebook}
+            selectedTags={selectedTags}
+            notebooks={notebooks}
+            trashed={trashed}
+            email={session?.user.email ?? ''}
+            onSignOut={signOutAndLeave}
+          />
         )}
+
+        <Sheet
+          open={sheetOpen}
+          onClose={closeSheet}
+          title={
+            sheetPage === 'tags'
+              ? 'Tags'
+              : sheetPage === 'dates'
+                ? 'Dates'
+                : sheetPage === 'fields'
+                  ? 'Fields'
+                  : 'Filter notes'
+          }
+          onBack={sheetPage === 'root' ? undefined : () => setSheetPage('root')}
+          headAction={
+            // Offered only when it would do something: a permanently visible Clear all
+            // on an unfiltered list promises an effect it cannot have. Not on the tags
+            // page, where the chips are the way back out and "all" would mean the
+            // dates too — a button whose blast radius is off screen.
+            sheetPage === 'root' && sheetFiltered ? (
+              <Button
+                variant="quiet"
+                size="small"
+                onClick={() =>
+                  void navigate({
+                    to: '/notes',
+                    // The notebook is not cleared: it is where you are, not something
+                    // this sheet applied, and "Clear all" walking you out of a notebook
+                    // into the whole archive is a bigger effect than the words promise.
+                    search: (prev) => ({
+                      ...prev,
+                      tag: undefined,
+                      field: undefined,
+                      from: undefined,
+                      to: undefined,
+                    }),
+                  })
+                }
+              >
+                Clear all
+              </Button>
+            ) : null
+          }
+        >
+          {sheetPage === 'tags' && <TagPicker tags={tags.data ?? []} selected={selectedTags} />}
+
+          {sheetPage === 'dates' && (
+            <DatePicker from={from} to={to} onDone={() => setSheetPage('root')} />
+          )}
+
+          {sheetPage === 'fields' && (
+            <FieldsPicker defs={fieldDefs.data ?? []} selected={fieldFilters} />
+          )}
+
+          {sheetPage === 'root' && (
+            <>
+              {/*
+                  What this sheet has applied, and how each of it comes off.
+
+                  The notebook is deliberately absent, unlike Android's version of this
+                  surface. There it is the one filter the sheet reports but does not
+                  set, because its drawer is the only place naming it; here the list
+                  header names it permanently, one line above, so a chip for it was the
+                  third place saying "Coupons" on one screen.
+              */}
+              {sheetFiltered ? (
+                <ActiveFilters
+                  tags={selectedTags}
+                  fields={fieldFilters}
+                  fieldDefs={fieldDefs.data ?? []}
+                  from={from}
+                  to={to}
+                />
+              ) : (
+                <p className="sheet-summary small">Nothing is filtered.</p>
+              )}
+
+              <hr className="sheet-rule" />
+
+              {/*
+                  A row per filter, each opening a page of its own — the shape Android's
+                  sheet settled on, and for the reason its root page stays readable: the
+                  tag picker is a find field and an unbounded list, the dates are five
+                  rows plus two labelled fields, and the fields page is a control per
+                  definition. Inlined, any one is taller than everything else here put
+                  together.
+
+                  Neither the notebook nor the sort is among them. The notebook is a
+                  place you go, so it is in the drawer or the select; sort changes the
+                  order rather than the membership, so it is under its own icon.
+              */}
+              {!searching && (tags.data?.length ?? 0) > 0 && (
+                <FilterRow
+                  icon={<TagIcon />}
+                  label="Tags"
+                  value={
+                    selectedTags.length > 0
+                      ? `${selectedTags.length} ${selectedTags.length === 1 ? 'tag' : 'tags'}`
+                      : undefined
+                  }
+                  onClick={() => setSheetPage('tags')}
+                />
+              )}
+
+              {/*
+                  Fields, between tags and dates, and only inside a notebook that has any.
+                  Field definitions belong to a notebook, so outside one there is nothing
+                  to offer, and a row that opened onto an empty page would be a control
+                  that does nothing. The value counts filters rather than naming them:
+                  the chips above already name them, and a row has one line.
+              */}
+              {!searching && (fieldDefs.data?.length ?? 0) > 0 && (
+                <FilterRow
+                  icon={<FieldsIcon />}
+                  label="Fields"
+                  value={
+                    fieldFilters.length > 0
+                      ? `${fieldFilters.length} ${fieldFilters.length === 1 ? 'filter' : 'filters'}`
+                      : undefined
+                  }
+                  onClick={() => setSheetPage('fields')}
+                />
+              )}
+
+              <FilterRow
+                icon={<CalendarIcon />}
+                label="Dates"
+                value={rangeLabel(from, to) ?? undefined}
+                onClick={() => setSheetPage('dates')}
+              />
+
+              {!searching && isFiltered && (
+                <ExportLink filter={filter} sort={sort} total={total} />
+              )}
+            </>
+          )}
+
+          {/*
+              Done only on the root.
+
+              A sub-page had one too, which offered two ways out that did different
+              things — back to the filters, or out of the sheet entirely — from two
+              controls a thumb's width apart. The phone app has the same pages and puts
+              the way out only where the sheet itself ends; the arrow is how a page ends.
+              (Hidden at desktop width, where the panel's ✕ and Escape are the ways out.)
+          */}
+          {sheetPage === 'root' && (
+            <div className="sheet-foot">
+              <Button variant="quiet" onClick={closeSheet}>
+                Done
+              </Button>
+            </div>
+          )}
+        </Sheet>
 
         {/*
           * New, as a button floating over the list.
@@ -465,7 +538,25 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
           </button>
         )}
 
-        <ul className="note-list" aria-busy={stale || undefined} onKeyDown={onListKeys}>
+        <ul className="note-list" ref={listRef} aria-busy={stale || undefined} onKeyDown={onListKeys}>
+          {/*
+              Tags and notebooks whose names match, before the notes that do. The needle is
+              the debounced query so they arrive together with the results rather than a
+              beat ahead of them. Picking one clears the query, and on a phone closes the
+              field — the same close the back arrow does, minus the clearing it has already
+              done.
+          */}
+          {results !== null && (
+            <ScopeMatches
+              query={debounced}
+              tags={tags.data ?? []}
+              notebooks={notebooks.data}
+              selectedTags={selectedTags}
+              notebook={notebook}
+              onPick={() => setSearchOpen(false)}
+            />
+          )}
+          {results !== null && hasPicks && <li className="list-caption">Notes</li>}
           {results !== null && <SearchResults results={results} />}
 
           {results === null &&
@@ -496,7 +587,9 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
             <li className="muted small empty">
               {tag
                 ? `No notes tagged ${tag}.`
-                : notebook === UNFILED
+                : fieldFilters.length > 0
+                  ? 'No notes match those fields.'
+                  : notebook === UNFILED
                   ? 'Nothing in your inbox.'
                   : notebook
                     ? `No notes in ${notebook}.`

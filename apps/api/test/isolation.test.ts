@@ -1684,3 +1684,133 @@ describe('tags', () => {
     expect((await listTags(alice)).find((t) => t.name === name)?.count).toBe(1);
   });
 });
+
+/**
+ * Filtering by a custom field.
+ *
+ * Field definitions belong to a notebook, so these filters are asked alongside a notebook
+ * scope, and the predicate is one clause shared by the list, its count, search and export
+ * — the same choke point the tag filter goes through, so a case here covers all four.
+ * What is pinned: each op against the type it is for, that the count agrees with the rows,
+ * that search is scoped the same way, that an unreadable filter is refused rather than
+ * ignored, and that another user's field id matches nothing.
+ */
+describe('filtering by field', () => {
+  function json(actor: Actor, method: string, path: string, body?: unknown): Promise<Response> {
+    return fetch(`${BASE}${path}`, {
+      method,
+      headers: { 'Content-Type': 'application/json', Cookie: actor.cookie, Origin: ORIGIN },
+      ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
+    });
+  }
+
+  let nb: { id: string; name: string };
+  let f: Record<string, { id: string }>;
+  let a: { id: string };
+  let b: { id: string };
+  let c: { id: string };
+  let word: string;
+
+  async function listWith(actor: Actor, filters: string[], extra: Record<string, string> = {}) {
+    const params = new URLSearchParams({ notebook: nb.name, ...extra });
+    for (const x of filters) params.append('field', x);
+    const res = await fetch(`${BASE}/api/notes?${params}`, asUser(actor));
+    if (!res.ok) throw new Error(`list failed: ${res.status} ${await res.text()}`);
+    const { items, total } = (await res.json()) as { items: Array<{ id: string }>; total: number };
+    return { ids: items.map((n) => n.id).sort(), total };
+  }
+
+  beforeAll(async () => {
+    word = `Falcon${Date.now()}`;
+    nb = (await json(alice, 'POST', '/api/notebooks', { name: `Filtered ${Date.now()}` }).then(
+      (r) => r.json(),
+    )) as { id: string; name: string };
+    f = {};
+    for (const def of [
+      { name: 'Merchant', type: 'text' },
+      { name: 'Amount', type: 'number' },
+      { name: 'Paid on', type: 'date' },
+      { name: 'Reimbursed', type: 'checkbox' },
+      { name: 'Category', type: 'select', options: ['Food', 'Travel'] },
+    ]) {
+      f[def.name] = (await json(alice, 'POST', `/api/notebooks/${nb.id}/fields`, def).then((r) =>
+        r.json(),
+      )) as { id: string };
+    }
+    const make = (title: string, fields: Record<string, unknown>) =>
+      json(alice, 'POST', '/api/notes', { title, body: word, notebook: nb.name, fields }).then(
+        (r) => r.json() as Promise<{ id: string }>,
+      );
+    a = await make('Lunch', {
+      [f['Merchant']!.id]: 'Acme Deli',
+      [f['Amount']!.id]: 12,
+      [f['Paid on']!.id]: '2026-01-10',
+      [f['Reimbursed']!.id]: true,
+      [f['Category']!.id]: 'Food',
+    });
+    b = await make('Train', {
+      [f['Amount']!.id]: 40,
+      [f['Paid on']!.id]: '2026-03-05',
+      [f['Reimbursed']!.id]: false,
+      [f['Category']!.id]: 'Travel',
+    });
+    c = await make('Blank', {});
+  }, 30_000);
+
+  it('narrows by a select option', async () => {
+    expect((await listWith(alice, [`${f['Category']!.id}:eq:Food`])).ids).toEqual([a.id]);
+  });
+
+  it('narrows by a checkbox state', async () => {
+    expect((await listWith(alice, [`${f['Reimbursed']!.id}:eq:false`])).ids).toEqual([b.id]);
+  });
+
+  it('narrows a number by range, either end open', async () => {
+    expect((await listWith(alice, [`${f['Amount']!.id}:gte:20`])).ids).toEqual([a.id, b.id].filter((id) => id === b.id));
+    expect((await listWith(alice, [`${f['Amount']!.id}:lte:20`])).ids).toEqual([a.id]);
+    // Both ends: a window that holds one of them.
+    expect(
+      (await listWith(alice, [`${f['Amount']!.id}:gte:10`, `${f['Amount']!.id}:lte:15`])).ids,
+    ).toEqual([a.id]);
+  });
+
+  it('narrows a date by range, inclusive at both ends', async () => {
+    expect((await listWith(alice, [`${f['Paid on']!.id}:lte:2026-01-10`])).ids).toEqual([a.id]);
+    expect((await listWith(alice, [`${f['Paid on']!.id}:gte:2026-03-05`])).ids).toEqual([b.id]);
+  });
+
+  it('asks whether a value is held at all', async () => {
+    expect((await listWith(alice, [`${f['Merchant']!.id}:set`])).ids).toEqual([a.id]);
+    expect((await listWith(alice, [`${f['Merchant']!.id}:empty`])).ids).toEqual([b.id, c.id].sort());
+  });
+
+  it('counts what it lists', async () => {
+    const { ids, total } = await listWith(alice, [`${f['Merchant']!.id}:empty`]);
+    expect(total).toBe(ids.length);
+  });
+
+  it('scopes search the same way', async () => {
+    const params = new URLSearchParams({ q: word, notebook: nb.name });
+    params.append('field', `${f['Category']!.id}:eq:Travel`);
+    const res = await fetch(`${BASE}/api/search?${params}`, asUser(alice));
+    const { results } = (await res.json()) as { results: Array<{ id: string }> };
+    expect(results.map((r) => r.id)).toEqual([b.id]);
+  });
+
+  it('refuses a filter it cannot read rather than ignoring it', async () => {
+    for (const bad of ['nonsense', `${f['Amount']!.id}:between:1:2`, `${f['Amount']!.id}:gte:soon`, `${f['Merchant']!.id}:eq`]) {
+      const params = new URLSearchParams({ notebook: nb.name, field: bad });
+      const res = await fetch(`${BASE}/api/notes?${params}`, asUser(alice));
+      expect(res.status, bad).toBe(400);
+    }
+  });
+
+  it("matches nothing for another user's field", async () => {
+    const own = await createNote(bob, { title: 'Mine', body: word });
+    const params = new URLSearchParams({ field: `${f['Merchant']!.id}:set` });
+    const res = await fetch(`${BASE}/api/notes?${params}`, asUser(bob));
+    const { items } = (await res.json()) as { items: Array<{ id: string }> };
+    expect(items.map((n) => n.id)).not.toContain(own.id);
+    expect(items).toEqual([]);
+  });
+});

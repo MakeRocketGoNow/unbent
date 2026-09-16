@@ -5,6 +5,7 @@ import {
   endOfDay,
   excerptMarkdown,
   expectedFieldValue,
+  fieldRangeBound,
   inferFieldType,
   InvalidFieldValue,
   isHeldSelectValue,
@@ -14,6 +15,7 @@ import {
   startOfDay,
   UNFILED,
   type FieldDef,
+  type FieldFilter,
   type FieldType,
   type FieldValue,
   type Note,
@@ -200,6 +202,7 @@ function filterConditions(
   opts: {
     tags?: string[] | undefined;
     notebook?: string | undefined;
+    fields?: FieldFilter[] | undefined;
     from?: string | undefined;
     to?: string | undefined;
     /** Column the date range applies to. */
@@ -253,6 +256,50 @@ function filterConditions(
       `EXISTS (SELECT 1 FROM note_tags nt2 JOIN tags t2 ON t2.id = nt2.tag_id
                WHERE nt2.note_id = n.id AND t2.name = ?${binds.length - 1} AND t2.user_id = ?${binds.length})`,
     );
+  }
+
+  /*
+   * One EXISTS per field filter, in the tags' shape, against the value row for that field.
+   *
+   * Type-agnostic on purpose. This is a synchronous SQL builder and looking a definition
+   * up to learn its type would make it neither; instead `eq` compares the stored text,
+   * which is canonical for every type (`encodeFieldValue` is the only writer), and a
+   * range compares the numeric shadow that every number and date carries. A filter on a
+   * field of the wrong type for its op matches nothing, which is the right answer to a
+   * question that does not apply. The `user_id` on the value row is what keeps a guessed
+   * field id from reading across tenants; the indexes are 0014's.
+   */
+  for (const f of opts.fields ?? []) {
+    binds.push(f.fieldId, userId);
+    const held =
+      `SELECT 1 FROM note_fields nf3 WHERE nf3.note_id = n.id` +
+      ` AND nf3.field_id = ?${binds.length - 1} AND nf3.user_id = ?${binds.length}`;
+    switch (f.op) {
+      case 'set':
+        conditions.push(`EXISTS (${held})`);
+        break;
+      case 'empty':
+        conditions.push(`NOT EXISTS (${held})`);
+        break;
+      case 'eq':
+        binds.push(f.value ?? '');
+        conditions.push(`EXISTS (${held} AND nf3.value_text = ?${binds.length})`);
+        break;
+      case 'gte':
+      case 'lte': {
+        const bound = fieldRangeBound(f.op, f.value ?? '');
+        // The schema has already refused an unreadable bound; this is belt and braces.
+        if (bound === null) {
+          conditions.push('0');
+          break;
+        }
+        binds.push(bound);
+        conditions.push(
+          `EXISTS (${held} AND nf3.value_num ${f.op === 'gte' ? '>=' : '<='} ?${binds.length})`,
+        );
+        break;
+      }
+    }
   }
 
   return conditions;
@@ -366,6 +413,7 @@ export class NotesRepo extends ScopedRepo {
     cursor?: string;
     tags?: string[];
     notebook?: string;
+    fields?: FieldFilter[];
     sort?: NoteSort;
     order?: 'asc' | 'desc';
     from?: string;
@@ -373,7 +421,7 @@ export class NotesRepo extends ScopedRepo {
     /** List trashed notes instead of live ones. */
     trashed?: boolean;
   }): Promise<NoteSummary[]> {
-    const { limit, cursor, tags, notebook, trashed, from, to } = opts;
+    const { limit, cursor, tags, notebook, fields, trashed, from, to } = opts;
     const sort = opts.sort ?? 'updated';
     // Trash has one meaningful order — most recently deleted first — so it ignores both.
     const spec = trashed ? TRASH_SORT : SORTS[sort];
@@ -407,7 +455,11 @@ export class NotesRepo extends ScopedRepo {
     }
     conditions.push(
       // The range applies to the column being sorted, so the filter and the order agree.
-      ...filterConditions({ tags, notebook, from, to, dateColumn: spec.dateColumn }, binds, this.userId),
+      ...filterConditions(
+        { tags, notebook, fields, from, to, dateColumn: spec.dateColumn },
+        binds,
+        this.userId,
+      ),
     );
     binds.push(limit);
 
@@ -461,6 +513,7 @@ export class NotesRepo extends ScopedRepo {
   async count(opts?: {
     tags?: string[];
     notebook?: string;
+    fields?: FieldFilter[];
     trashed?: boolean;
     from?: string;
     to?: string;
@@ -477,6 +530,7 @@ export class NotesRepo extends ScopedRepo {
         {
           tags: opts?.tags,
           notebook: opts?.notebook,
+          fields: opts?.fields,
           from: opts?.from,
           to: opts?.to,
           dateColumn: opts?.trashed ? TRASH_SORT.dateColumn : SORTS[opts?.sort ?? 'updated'].dateColumn,
@@ -864,6 +918,7 @@ export class NotesRepo extends ScopedRepo {
     filters: {
       tags?: string[] | undefined;
       notebook?: string | undefined;
+      fields?: FieldFilter[] | undefined;
       from?: string | undefined;
       to?: string | undefined;
     } = {},
@@ -881,18 +936,30 @@ export class NotesRepo extends ScopedRepo {
     const scoped = scope.length > 0 ? `AND ${scope.join(' AND ')}` : '';
 
     /**
-     * Three indexes, one result set.
+     * Four indexes, one result set.
      *
      * Most notes in an imported Evernote corpus are a scanned PDF with an empty body, so
      * searching note text alone misses the majority of them. attachment_text_fts carries
      * the OCR text those files already contained; a match there surfaces the note and
      * names the file it came from. note_fields_fts carries custom field values — a vendor,
      * a policy number — which are in neither the body nor the file; a match there names
-     * the field.
+     * the field. tags_fts carries tag names, so a note filed under "Alfa Romeo Stelvio"
+     * is found by "stelvio" even when the word appears nowhere in it — which is how an
+     * archive filed by tag is actually looked up, and what Evernote does; a match there
+     * names the tag.
      *
      * Tiers order the sources at equal relevance: what the user wrote, then what they
-     * filed under a field, then what a scanner read. A field value is a deliberate,
-     * exact statement about the note, so it outranks OCR text.
+     * filed it under, then what they filed under a field, then what a scanner read. A tag
+     * and a field value are both deliberate, exact statements about the note, so both
+     * outrank OCR text; the tag comes first because it is the coarser, more often used
+     * classification, and a search for a tag name is usually looking for the tag.
+     *
+     * One row per note, and it is the best-tier one. This was a GROUP BY with MIN(tier)
+     * and MIN(rank), which relied on SQLite's bare-column rule to pick the snippet — and
+     * that rule follows the *last* aggregate, so a note matching in its body and in a
+     * tag came back with the tag's snippet and "tagged X" under it whenever the tag's
+     * bm25 happened to be the smaller number. The window function says which row is
+     * meant.
      */
     const { results } = await this.db
       .prepare(
@@ -901,6 +968,7 @@ export class NotesRepo extends ScopedRepo {
                   snippet(notes_fts, 1, '<<', '>>', '…', 24) AS snippet,
                   NULL AS matched_file,
                   NULL AS matched_field,
+                  NULL AS matched_tag,
                   bm25(notes_fts, 10.0, 1.0) AS rank,
                   0 AS tier
              FROM notes_fts
@@ -908,13 +976,30 @@ export class NotesRepo extends ScopedRepo {
             WHERE notes_fts MATCH ?1 AND n.user_id = ?2 AND n.deleted_at IS NULL
               ${scoped}
          ),
+         tag_hits AS (
+           SELECT n.id, n.title, n.updated_at,
+                  snippet(tags_fts, 0, '<<', '>>', '…', 24) AS snippet,
+                  NULL AS matched_file,
+                  NULL AS matched_field,
+                  t.name AS matched_tag,
+                  bm25(tags_fts) AS rank,
+                  1 AS tier
+             FROM tags_fts
+             JOIN tags t ON t.rowid = tags_fts.rowid
+             JOIN note_tags nt ON nt.tag_id = t.id
+             JOIN notes n ON n.id = nt.note_id
+            WHERE tags_fts MATCH ?1 AND t.user_id = ?2
+              AND n.user_id = ?2 AND n.deleted_at IS NULL
+              ${scoped}
+         ),
          field_hits AS (
            SELECT n.id, n.title, n.updated_at,
                   snippet(note_fields_fts, 0, '<<', '>>', '…', 24) AS snippet,
                   NULL AS matched_file,
                   f.name AS matched_field,
+                  NULL AS matched_tag,
                   bm25(note_fields_fts) AS rank,
-                  1 AS tier
+                  2 AS tier
              FROM note_fields_fts
              JOIN note_fields nf ON nf.rowid = note_fields_fts.rowid
              JOIN notebook_fields f ON f.id = nf.field_id
@@ -928,8 +1013,9 @@ export class NotesRepo extends ScopedRepo {
                   snippet(attachment_text_fts, 0, '<<', '>>', '…', 24) AS snippet,
                   at.filename AS matched_file,
                   NULL AS matched_field,
+                  NULL AS matched_tag,
                   bm25(attachment_text_fts) AS rank,
-                  2 AS tier
+                  3 AS tier
              FROM attachment_text_fts
              JOIN attachment_text at ON at.rowid = attachment_text_fts.rowid
              JOIN notes n ON n.id = at.note_id
@@ -939,13 +1025,18 @@ export class NotesRepo extends ScopedRepo {
          ),
          combined AS (
            SELECT * FROM note_hits
+           UNION ALL SELECT * FROM tag_hits
            UNION ALL SELECT * FROM field_hits
            UNION ALL SELECT * FROM file_hits
+         ),
+         best AS (
+           SELECT *, ROW_NUMBER() OVER (PARTITION BY id ORDER BY tier, rank) AS place
+             FROM combined
          )
-         SELECT id, title, updated_at, snippet, matched_file, matched_field,
-                MIN(tier) AS tier, MIN(rank) AS rank
-           FROM combined
-          GROUP BY id
+         SELECT id, title, updated_at, snippet, matched_file, matched_field, matched_tag,
+                tier, rank
+           FROM best
+          WHERE place = 1
           ORDER BY tier, rank
           LIMIT ?3`,
       )
@@ -957,6 +1048,7 @@ export class NotesRepo extends ScopedRepo {
         snippet: string;
         matched_file: string | null;
         matched_field: string | null;
+        matched_tag: string | null;
       }>();
 
     return results.map((r) => ({
@@ -966,6 +1058,7 @@ export class NotesRepo extends ScopedRepo {
       snippet: r.snippet,
       ...(r.matched_file ? { matchedFile: r.matched_file } : {}),
       ...(r.matched_field ? { matchedField: r.matched_field } : {}),
+      ...(r.matched_tag ? { matchedTag: r.matched_tag } : {}),
     }));
   }
 

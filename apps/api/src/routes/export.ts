@@ -23,7 +23,9 @@ import type { AppEnv } from '../types.js';
  * a filesystem.
  */
 function exportFilename(filter: ExportFilter, stamp: string): string {
-  const scoped = Boolean(filter.notebook || filter.tags?.length || filter.from || filter.to);
+  const scoped = Boolean(
+    filter.notebook || filter.tags?.length || filter.fields?.length || filter.from || filter.to,
+  );
   // An unfiltered export keeps the name it has always had, so existing habits and any
   // backup script pointing at it are undisturbed.
   const parts = ['unbent', ...(scoped ? [] : ['export'])];
@@ -40,8 +42,10 @@ function exportFilename(filter: ExportFilter, stamp: string): string {
 export const exportRoutes = new Hono<AppEnv>()
   .get('/export', requireAuth, withRepos, zValidator('query', exportQuerySchema), (c) => {
     const stamp = new Date().toISOString().slice(0, 10);
-    const { tag: tags, notebook, from, to, sort } = c.req.valid('query');
-    const filter = { tags, notebook, from, to, sort };
+    // Field filters are in the set but not in the name: a filename has no room for
+    // "<uuid>:gte:20", and the notebook that scopes them is already there.
+    const { tag: tags, notebook, field: fields, from, to, sort } = c.req.valid('query');
+    const filter = { tags, notebook, fields, from, to, sort };
 
     // Returned immediately, before any note is read: the archive is produced as the
     // client consumes it, so nothing is ever held in the Worker's 128MB of memory.

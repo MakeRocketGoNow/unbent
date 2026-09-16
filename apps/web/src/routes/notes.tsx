@@ -1,6 +1,6 @@
 import { createFileRoute, Outlet } from '@tanstack/react-router';
 import { z } from 'zod';
-import { NOTE_SORTS, UNFILED, dateOnlySchema } from '@unbent/shared';
+import { NOTE_SORTS, UNFILED, dateOnlySchema, parseFieldFilter } from '@unbent/shared';
 import { NotesLayout } from '../components/NotesLayout.js';
 import { notesQuery, tagsQuery, notebooksQuery, trashCountQuery } from '../queries.js';
 
@@ -70,9 +70,35 @@ export function writeTagFilter(tags: string[]): string[] | undefined {
   return tags.length > 0 ? tags : undefined;
 }
 
+/**
+ * The field filters, in the tag filter's shape: a bare string or a list, normalised to a
+ * list, and carried as the `<fieldId>:<op>[:<value>]` strings the API reads. Kept as
+ * strings rather than parsed: the URL is the one spelling the query key hashes, and the
+ * API parses them itself. One that cannot be read is dropped here rather than sent, since
+ * the API would refuse the whole request for it and a stale link should still open.
+ */
+const fieldFilter = z
+  .union([z.string(), z.array(z.string())])
+  .optional()
+  .catch(undefined)
+  .transform((v) => (v === undefined ? undefined : Array.isArray(v) ? v : [v]))
+  .pipe(
+    z
+      .array(z.string().refine((raw) => parseFieldFilter(raw) !== null))
+      .max(10)
+      .optional()
+      .catch(undefined),
+  );
+
+/** The field selection as the URL should carry it — `writeTagFilter`'s rule, for fields. */
+export function writeFieldFilter(fields: string[]): string[] | undefined {
+  return fields.length > 0 ? fields : undefined;
+}
+
 export const filters = z.object({
   notebook: z.union([z.literal(UNFILED), name]).optional().catch(undefined),
   tag: tagFilter,
+  field: fieldFilter,
   q: z.string().max(500).optional().catch(undefined),
   /**
    * Ordering, left undefined at the default so a plain `/notes` URL stays clean and the
@@ -92,6 +118,7 @@ export const Route = createFileRoute('/notes')({
   loaderDeps: ({ search }) => ({
     notebook: search.notebook,
     tag: search.tag,
+    field: search.field,
     sort: search.sort,
     order: search.order,
     from: search.from,
@@ -101,6 +128,7 @@ export const Route = createFileRoute('/notes')({
     const filter = {
       ...(deps.notebook ? { notebook: deps.notebook } : {}),
       ...(deps.tag?.length ? { tag: deps.tag } : {}),
+      ...(deps.field?.length ? { field: deps.field } : {}),
       ...(deps.from ? { from: deps.from } : {}),
       ...(deps.to ? { to: deps.to } : {}),
     };

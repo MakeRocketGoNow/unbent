@@ -33,14 +33,14 @@ export const notes = new Hono<AppEnv>()
   .use('/notes', requireAuth, withRepos)
 
   .get('/notes', zValidator('query', listNotesQuerySchema), async (c) => {
-    const { cursor, limit, tag: tags, notebook, trashed, sort, order, from, to } =
+    const { cursor, limit, tag: tags, notebook, field: fields, trashed, sort, order, from, to } =
       c.req.valid('query');
     const repo = c.get('notes');
     // The count has to see the same range as the list, or the header contradicts the rows.
-    const filter = { tags, notebook, trashed, from, to, sort };
+    const filter = { tags, notebook, fields, trashed, from, to, sort };
 
     const [items, total] = await Promise.all([
-      repo.list({ limit, cursor, tags, notebook, trashed, sort, order, from, to }),
+      repo.list({ limit, cursor, tags, notebook, fields, trashed, sort, order, from, to }),
       // Only counted on the first page: a paging client already knows the total, and this
       // is a second query on a hot path.
       cursor ? Promise.resolve<number | null>(null) : repo.count(filter),

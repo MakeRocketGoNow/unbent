@@ -416,7 +416,15 @@ h1 {
      stop a drag short of the edge on a wide monitor. Routes that do want a measured
      column set their own — see .settings and .panel. */
   max-width: none;
-  padding: 2rem 1.5rem 1rem;
+  /*
+     Less above the wordmark than the plain shell's 4rem, and less than the 2rem this had:
+     the topbar's row is the 44px avatar, so 2rem above it put the wordmark's cap 43px
+     from the top of the window while the count under the divider sat 27px below it —
+     more air over the bar than under it, on the one view where the bar is a fixture
+     rather than a heading. 1.25rem brings the two within a few pixels of each other.
+     The filter panel's `--panel-top` is derived from this number; change both.
+  */
+  padding: 1.25rem 1.5rem 1rem;
 
   /*
      The notes view fills the viewport exactly and never scrolls as a page.
@@ -834,9 +842,9 @@ h1 {
 
      `flex: 1` on its own made this last in line: the controls above are content-sized, they
      summed to less than the column, so nothing overflowed and this got the remainder — which
-     came to 20px once the tag picker and the date presets were above it. A `flex-basis` is a
-     claim rather than a leftover, so the space is taken from the one box above that can give
-     it (see `.tag-filter-wrap`) instead of from the notes.
+     came to 20px back when a tag picker and a row of date presets sat above it. Those are
+     behind the header's filter icon now, so the claim is rarely contested, but a
+     `flex-basis` is a claim rather than a leftover and it stays as the list's floor.
 
      `min-height: 0` still matters and is not redundant with the basis: it is what permits
      the box to be *shorter* than its content and scroll, which is what makes it a list
@@ -1575,10 +1583,12 @@ a.overflow-item { text-decoration: none; }
 }
 
 /*
- * Date range — the same tier as the notebook and sort controls.
+ * Date range — the custom From/To pair on the sheet's dates page.
  *
  * Two inputs side by side rather than a single "period" control: an archive question is
  * usually open at one end ("anything before 2020"), which a preset list cannot express.
+ * They used to sit in the desktop sidebar under a row of presets; the presets are the
+ * page's rows now (`.date-option`) and these are what "Custom…" reveals.
  */
 .date-range {
   display: flex;
@@ -1632,72 +1642,44 @@ a.overflow-item { text-decoration: none; }
   text-decoration: underline;
 }
 
-.filters-end {
-  padding-bottom: 0.6rem;
-  border-bottom: 1px solid var(--border);
-}
-
-/* ---------------------------------------------------------------------------------
-   Pills.
-
-   A small, rounded, outlined control for a value in a set — one of several date ranges, a
-   choice among a handful. Outlined when off, filled with the accent when on, which is the
-   same "reported" fill `.filter-chip` uses: a pill offers a value, a chip says one is
-   already applied, and the filled pill is the moment they are the same thing.
-
-   Named for the shape rather than for tags, which is what it used to be called. The tag
-   list outgrew pills — see `.tag-picker` — and what was left was a shape worth keeping.
-   --------------------------------------------------------------------------------- */
-.pill {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.35rem;
-  padding: 0.2rem 0.5rem;
-  font: inherit;
-  font-size: 0.75rem;
-  color: var(--muted);
-  background: none;
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  cursor: pointer;
-}
-
-.pill:hover { color: var(--fg); border-color: var(--accent); }
-
-.pill.active {
-  color: var(--bg);
-  background: var(--accent);
-  border-color: var(--accent);
-}
-
-.pill-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.3rem;
-}
-
-/*
-   The presets sit directly above the From/To inputs they fill in, with the column's own
-   gap between them rather than a larger one: they are two ways of answering one question,
-   not two questions, and spacing them apart would say otherwise.
-*/
-.date-presets { margin-bottom: -0.35rem; }
-
 /* ---------------------------------------------------------------------------------
    The tag picker.
 
-   Selected tags as chips, a find field, then the rest as rows in a capped scroll box. It
+   Selected tags as chips, a find field, then the rest as rows in a scroll box. It
    replaced a wrapped field of pills, which was fine at sixteen tags and had no answer at
    326 — it simply got taller. See `TagPicker.tsx` for the rest of that reasoning.
+
+   It is a page of the filter sheet at every width — it was also a disclosure in the
+   desktop sidebar once, and these rules carried a second set of sizes for that. The
+   sheet's are the only ones left.
+
+   The picker owns a fixed page, and the list inside it does the yielding. Left to size
+   itself, the sheet grew by the height of the chip row the moment a tag was picked — the
+   list stayed at its cap and the chips were added on top, so the surface got taller under
+   the thumb that had just tapped. The phone app holds the sheet still and pushes its own
+   content down instead, which is what these rules reproduce: the page claims a height,
+   the chips and the field keep theirs, and the list takes what is left.
+
+   `70dvh` rather than a fixed number of rows: the sheet is capped at 85dvh, so this stays
+   inside it on any screen, and `dvh` is right for the same reason it is right there — the
+   mobile URL bar changes the viewport, and `vh` measures the tallest state. The desktop
+   panel is capped lower and overrides this — see the `width > 860px` block on `.sheet`.
+
+   The gap matches the sheet body's, so header, chips and field are one evenly spaced
+   stack: the first space in the column used to be the body's and the rest this box's
+   own smaller one, which is the "spacing is really inconsistent" reading.
    --------------------------------------------------------------------------------- */
 .tag-picker {
   display: flex;
   flex-direction: column;
-  gap: 0.4rem;
+  gap: 0.6rem;
   min-width: 0;
-  padding-bottom: 0.6rem;
-  border-bottom: 1px solid var(--border);
+  height: 70dvh;
 }
+
+/* The field is a fixed row between two boxes that flex; without this it is the one that
+   gets squeezed when the selection grows. */
+.tag-picker .search-field { flex: 0 0 auto; }
 
 /*
    The selection, bounded.
@@ -1716,29 +1698,43 @@ a.overflow-item { text-decoration: none; }
 }
 
 /*
-   The candidates.
+   The candidates: the rest of the page, growing and shrinking as the chips do.
 
-   A definite height rather than a natural one, because the whole point is that the list is
-   unbounded. `overscroll-behavior: contain` stops a flick at the end of this list from
-   scrolling the sheet or the page behind it, which on a phone reads as the picker leaking.
+   `flex: 1` with a zero basis rather than `auto`: on `auto` the list's own content is its
+   starting size, so with more tags than fit it claimed the whole page and left 144px of
+   dead space below the last row instead of filling it. From zero it is sized by what
+   remains, which is what makes it absorb the chip row exactly.
+
+   `min-height: 0` is what lets it be shorter than its content and scroll at all — a flex
+   item's floor is its content, and without it the list refuses to shrink and pushes the
+   sheet taller again. No `max-height` beside it: a cap and a flex claim are two answers
+   to one question, and when both were set the cap won on source order — the list stayed
+   at its old size while the page around it grew, leaving 173px of nothing under the last
+   row.
+
+   `overscroll-behavior: contain` stops a flick at the end of this list from scrolling the
+   sheet or the page behind it, which on a phone reads as the picker leaking.
 */
 .tag-picker-list {
   list-style: none;
   margin: 0;
   padding: 0;
-  /*
-     Bounded twice: a fixed ceiling, and a share of the viewport.
-
-     14rem is the comfortable size in a tall window. The `vh` term is what stops the picker
-     from taking the note list's room in a short one — the sidebar is a column of controls
-     above a list, and on a laptop at 850px the controls had grown to leave the notes 20px.
-     `min()` takes whichever is smaller, so the picker gives way rather than the notes.
-  */
-  max-height: min(14rem, 28vh);
+  flex: 1 1 0;
+  min-height: 0;
   overflow-y: auto;
   overscroll-behavior: contain;
 }
 
+/*
+   A row: denser than the 44px the phone gives every other control, and deliberately.
+
+   44px is the floor for a control you must not miss. These are a scrolling list of
+   alternatives where the cost of a mis-tap is one more tap — the same trade the note list
+   itself makes, whose rows are shorter still. At 44px only eleven tags were on screen out
+   of hundreds, which is the problem the picker exists to solve, so the rows give up the
+   eight pixels the list needs to show two more. The same size at both widths: beside the
+   sheet's other 1rem rows a smaller desktop size read as a different control.
+*/
 .tag-picker-item {
   display: flex;
   align-items: center;
@@ -1746,9 +1742,9 @@ a.overflow-item { text-decoration: none; }
   gap: 0.5rem;
   width: 100%;
   min-height: 2.25rem;
-  padding: 0.25rem 0.4rem;
+  padding: 0.25rem 0.5rem;
   font: inherit;
-  font-size: 0.8rem;
+  font-size: 0.9rem;
   text-align: left;
   color: var(--fg);
   background: none;
@@ -1824,65 +1820,6 @@ a.overflow-item { text-decoration: none; }
 a.sidebar-status:hover {
   color: var(--fg);
   text-decoration: underline;
-}
-
-/*
-   The tag list, behind a disclosure.
-
-   Open on a desktop, where the sidebar has the room; closed on a phone, where sixteen
-   tags filled the screen before a note was visible. The summary keeps the active tag on
-   screen either way, so a filter is never applied invisibly.
-*/
-/*
-   The tag filter yields before the note list does.
-
-   The picker is a bounded box rather than a wrapped pill field, so with the date presets
-   added above it the sidebar's controls came to 660px on an 850px viewport and left the
-   note list 20px — one row of nothing, below the fold, on a laptop.
-
-   `flex-shrink` alone could not fix that: the children summed to less than the column's
-   height, so nothing was overflowing and nothing was asked to shrink — the note list was
-   simply last in line for what was left. The fix is to make the list ask. It claims a floor
-   through `flex-basis` below, and this box is the one that gives it up, because it is the
-   only control here that scrolls inside itself; every other row is fixed and has nothing to
-   give.
-*/
-.tag-filter-wrap {
-  min-height: 0;
-  overflow: hidden;
-  padding-bottom: 0.6rem;
-  border-bottom: 1px solid var(--border);
-}
-
-/* The summary — chevron, marker suppression, focus ring, touch target — is `.disclosure`. */
-
-/* How many tags there are, so a collapsed row says what it is hiding. */
-.tag-filter-summary-count {
-  margin-left: auto;
-  font-size: 0.75rem;
-  font-weight: 400;
-  opacity: 0.75;
-}
-
-/* The active tag, shown on the summary so a collapsed list still says what it is doing. */
-.tag-filter-active {
-  margin-left: auto;
-  /* Truncates rather than pushing the chevron off the row. */
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  padding: 0.1rem 0.45rem;
-  font-size: 0.72rem;
-  color: var(--bg);
-  background: var(--accent);
-  border-radius: 999px;
-}
-
-/* The list already had this border; it belongs on the wrapper now. */
-.tag-filter-wrap .tag-picker {
-  padding-top: 0.5rem;
-  padding-bottom: 0;
-  border-bottom: none;
 }
 
 /*
@@ -2920,6 +2857,84 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
 .enex-help > div { margin: 0.5rem 0 0; }
 .enex-help p { margin: 0 0 0.5rem; color: var(--muted); }
 .enex-help p:last-child { margin-bottom: 0; }
+/* ---------------------------------------------------------------------------------
+   Scope matches: tags and notebooks whose names match a search, above the notes that do.
+
+   Drawn as the tag picker's rows — an icon, a name, a count — rather than as note entries,
+   because they are not notes: picking one applies a filter. The horizontal padding is the
+   note entry's, so the icon starts on the notes' text edge and the column stays one edge.
+
+   Captioned, in the note list's own quiet voice: "Tags and notebooks" over the picks and
+   "Notes" over the results. A tag row among note rows without a word over it read as a
+   note with something wrong with it; the captions say what each group is, and the rule
+   between them is the seam. Neither is drawn unless there are picks, so an ordinary
+   search is not headed by a word for the only thing on it. They are not coloured: a tint
+   was tried, and made the picks look like a different control rather than a labelled
+   part of this one.
+   --------------------------------------------------------------------------------- */
+.list-caption {
+  padding: 0.35rem 0.7rem 0.1rem;
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+
+/* The seam between the picks and the notes: on the notes' caption, so it is only drawn
+   when there is something under it. */
+.scope-match + .list-caption {
+  margin-top: 0.4rem;
+  padding-top: 0.6rem;
+  border-top: 1px solid var(--border);
+}
+
+.scope-match-btn {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  min-height: 2.25rem;
+  padding: 0.25rem 0.7rem;
+  font: inherit;
+  font-size: 0.9rem;
+  text-align: left;
+  color: var(--fg);
+  background: none;
+  border: none;
+  border-radius: 0.45rem;
+  cursor: pointer;
+}
+
+.scope-match-btn:hover { background: color-mix(in srgb, var(--fg) 8%, transparent); }
+
+.scope-match-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+/* Muted and fixed-width like `.filter-row-icon`: wayfinding, not content. */
+.scope-match-icon {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.35rem;
+  color: var(--muted);
+}
+
+.scope-match-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* Reached by the arrow keys from the field, so the ring has to be there — the row's own
+   fill on hover is not a focus state. Inset like the note entries' and the sheet rows'. */
+.scope-match-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
 /* Underlined because this one sits mid-sentence in muted body text, where the link colour
    alone is too quiet for the only thing on the page a user has to go and fetch. */
 .enex-help a { text-decoration: underline; }
@@ -3575,7 +3590,7 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
   border-bottom: 1px solid var(--border);
 }
 
-/* Shaped like the tag filters — the same "pick one of these" gesture. */
+/* Small outlined pills: the "pick one of these" gesture the sidebar's tag filters once used. */
 .settings-nav-item,
 .settings-nav-disabled {
   display: inline-flex;
@@ -3839,11 +3854,12 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
 }
 
 /* ---------------------------------------------------------------------------------
-   The note list header, on a phone.
+   The note list header, at every width.
 
-   A count and four controls where the sidebar has a count, a New button, a search field,
+   A count and a few controls where the sidebar had a count, a New button, a search field,
    two selects, two date inputs and a tag row. Everything is still reachable; what changed
-   is that it is reachable rather than permanently on screen.
+   is that it is reachable rather than permanently on screen. It was the phone's header
+   first, and the desktop took it once its own stack had left the list a few rows tall.
    --------------------------------------------------------------------------------- */
 .list-head {
   display: flex;
@@ -3890,19 +3906,47 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
 }
 
 /*
-   New is the same height as the icons beside it.
+   New, at the end of the row on a desktop.
 
-   `.btn` sizes itself from its padding and text, which came to 35px against the icons' 44,
-   and four controls in a row at two heights is the "spacing is really inconsistent"
-   feedback this project keeps getting. The button keeps its own horizontal padding — it is
-   a word, not a glyph, and squaring it off would make it as wide as it is tall.
-
-   The gap before it separates the one control that *makes* something from the three that
-   change what is on screen.
+   The gap before it separates the one control that *makes* something from the ones that
+   change what is on screen. It used to be stretched to the icons' 44px as well, when this
+   row was a phone's and the button a thumb target; a 44px-tall word beside a pointer-sized
+   count reads as a button from a different app.
 */
 .list-head-actions .btn {
-  min-height: 2.75rem;
   margin-left: 0.4rem;
+}
+
+/*
+   One height across the row at desktop width.
+
+   The icons sit in 44px squares, which is the thumb target the phone needs and the size
+   every `.icon-btn` in the app takes. Beside a 36px New on a desktop that left three
+   heights on one row — the count's line, the icons' boxes, the button — and the hover
+   fill drew the icon's box at its full size, so the row read as controls from two
+   different apps. A pointer needs no 44px, so above the breakpoint the icons take the
+   button's height and the button states it, and the fill matches the box it is on.
+   The glyphs themselves do not change size: `HeaderIcon` sizes them against the row's
+   text, not against the box.
+*/
+@media (width > 860px) {
+  .list-head-actions .icon-btn {
+    min-width: 2.25rem;
+    height: 2.25rem;
+  }
+
+  .list-head-actions .btn {
+    min-height: 2.25rem;
+  }
+}
+
+/* The count yields before the controls do: at the narrowest the sidebar can be dragged to,
+   "12 of 340 notes" and four controls do not both fit, and the controls are the ones that
+   have to be hit. */
+.list-title .count {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
 /*
@@ -4086,8 +4130,8 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
    The one in effect, marked with a tick at the end of its row.
 
    A tick rather than a fill: these are a choice among alternatives, not a set of things
-   switched on, and the filled treatment is what `.pill.active` and `.filter-chip` use for
-   "this is applied". Drawn as a rotated box with two borders — the same construction as the
+   switched on, and the filled treatment is what `.filter-chip` uses for "this is
+   applied". Drawn as a rotated box with two borders — the same construction as the
    disclosure chevron, so it needs no glyph and is correct in dark mode for free.
 */
 .sort-option.current,
@@ -4103,6 +4147,36 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
   border-right: 2px solid currentColor;
   border-bottom: 2px solid currentColor;
   transform: translateY(-15%) rotate(45deg);
+}
+
+/*
+   The fields page: a control per definition, each under its name.
+
+   Stacked rather than label-beside-control, because the sheet is a phone's width and a
+   range is two inputs — a name plus two dated fields does not fit on one 320px line, and
+   a page where some rows wrap and some do not reads as broken. The name carries the type's
+   glyph, as the note's own property list does, so "Amount" reads as a number without
+   saying so.
+*/
+.fields-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.fields-picker-row {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  min-width: 0;
+}
+
+.fields-picker-name {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.9rem;
+  color: var(--muted);
 }
 
 /* The custom fields sit under the row that reveals them, indented to read as its content
@@ -4396,7 +4470,11 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
 .sheet-body {
   display: flex;
   flex-direction: column;
-  gap: 0.75rem;
+  /* Tighter than the sidebar column its controls came from: a sheet's rows are all of
+     one kind, and 0.75rem between them read as a list with gaps in it. The same at both
+     widths — the phone used to override this, and the head's pull-up below was written
+     against the desktop's number, so it over-pulled by 0.15rem on every phone. */
+  gap: 0.6rem;
   padding: 0.5rem 1rem 1rem;
   /* Clear of the home indicator on an iPhone; resolves to 0px everywhere else. */
   padding-bottom: calc(1rem + env(safe-area-inset-bottom));
@@ -4482,7 +4560,7 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
    `.sheet-grip + .sheet-head` still matches it.
 */
 .sheet:not(.sheet-side) .sheet-head {
-  margin-top: calc(-0.75rem - 0.25rem);
+  margin-top: calc(-0.6rem - 0.25rem);
 }
 
 /* The title takes the room; the action sits hard right. */
@@ -4543,22 +4621,13 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
    The rule under the summary.
 
    It separates what is applied from what can be changed — the two halves of this page — and
-   it is the same seam `.filters-end` and `.trash-link` draw elsewhere. `margin: 0` because
+   it is the same seam `.trash-link` draws under the note list. `margin: 0` because
    the sheet body's own gap is the spacing; an `hr`'s default margin would double it.
 */
 .sheet-rule {
   margin: 0;
   border: none;
   border-top: 1px solid var(--border);
-}
-
-/* A titled group inside the sheet — the label plus the controls it names, kept together so
-   the body's gap does not separate a heading from what it heads. */
-.filter-section {
-  display: flex;
-  flex-direction: column;
-  gap: 0.4rem;
-  min-width: 0;
 }
 
 /*
@@ -4586,8 +4655,19 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
   display: flex;
   align-items: center;
   gap: 0.5rem;
-  width: 100%;
-  padding: 0.75rem 0.2rem;
+  /*
+     The hover fill needs air at both ends.
+
+     Inline padding was 0.2rem, which put the chevron 3px from the fill's right edge and
+     the glyph 3px from its left — on hover the row read as a box drawn too tight around
+     its contents. The sub-pages' rows (`.date-option`, `.sort-option`) already use 0.5rem
+     inside. Matching that here, and pulling the box out by the difference, gives the
+     ends their room without moving the label: its text edge stays 0.2rem in, in line
+     with the summary and the chips above it.
+  */
+  width: calc(100% + 0.6rem);
+  margin-inline: -0.3rem;
+  padding: 0.75rem 0.5rem;
   font: inherit;
   font-size: 1rem;
   text-align: left;
@@ -4656,85 +4736,100 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
   justify-content: flex-end;
 }
 
-/* A label for a group of controls inside the sheet, matching a disclosure's summary
-   weight — these are the same tier of thing, one collapsed and one not. */
-.filter-section-label {
-  display: block;
-  font-size: 0.78rem;
-  color: var(--muted);
-}
+/* ------------------------------------------------------------------------------------
+   The sheet at desktop width: a panel beside the list, not a sheet from the floor.
 
-.tag-filter-open {
-  display: flex;
-  flex-direction: column;
-  gap: 0.4rem;
-}
+   The controls behind the filter and sort icons are the same at every width, and so is
+   the dialog that holds them; only its shape changes. A sheet rising from the floor of a
+   1440px window reads as a phone app running in a desktop one, so above the breakpoint
+   the dialog is pinned where the sidebar's head row is — it appears where the control
+   that opened it was — sized to the sidebar, and drawn as a card.
 
-/*
-   In a sheet the picker owns a fixed page, and the list inside it does the yielding.
+   `width > 860px` is the complement of `MOBILE_QUERY`'s `max-width: 860px` in
+   `useMediaQuery.ts`, written in range syntax so there is no fractional-width hole
+   between the two. Everything in here is scoped to `:not(.sheet-side)`: the drawer keeps
+   its phone shape because it does not exist above the breakpoint at all.
 
-   Left to size itself, the sheet grew by the height of the chip row the moment a tag was
-   picked — the list stayed at its cap and the chips were added on top, so the surface got
-   taller under the thumb that had just tapped. The phone app holds the sheet still and
-   pushes its own content down instead, which is what these three rules reproduce: the page
-   claims a height, the chips and the field keep theirs, and the list takes what is left.
+   The dialog is in the top layer, so it cannot be positioned relative to the sidebar and
+   `--panel-top` is a measurement rather than a reference: the wide shell's 1.25rem top
+   padding plus the topbar — whose height is the 2.75rem avatar button, not the wordmark
+   beside it — with its 0.6rem padding, 1px rule and 1.2rem margin below. Measured against
+   `.sidebar.getBoundingClientRect().top`, which it matches to the pixel. Anchor
+   positioning would make it a reference; it is not yet in every browser this app
+   supports, so the number is pinned here instead, and the topbar is the thing to
+   re-measure if it moves.
 
-   `70dvh` rather than a fixed number of rows: the sheet is capped at 85dvh, so this stays
-   inside it on any screen, and `dvh` is right for the same reason it is right there — the
-   mobile URL bar changes the viewport, and `vh` measures the tallest state.
-*/
-.sheet .tag-picker {
-  height: 70dvh;
-  padding-bottom: 0;
-  border-bottom: none;
+   Placed after every other `.sheet` rule on purpose: these override the phone's by source
+   order at equal specificity, and the head's grip-cancel in particular would win if this
+   block sat above it.
+
+   `--sidebar-width` reaches the dialog through inheritance — it is set inline on `.notes`,
+   which is the dialog's DOM ancestor, and inheritance follows the DOM rather than the top
+   layer — so the panel tracks a dragged sidebar. The floor of 20rem is for the narrowest
+   drag (`SIDEBAR_MIN` is 200px), where the sidebar is too narrow for a page of controls.
+   --------------------------------------------------------------------------------- */
+@media (width > 860px) {
+  .sheet:not(.sheet-side) {
+    --panel-top: calc(1.25rem + 2.75rem + 0.6rem + 1px + 1.2rem);
+    margin: 0;
+    inset: auto;
+    top: var(--panel-top);
+    /* The wide shell's inline padding: flush with the sidebar's box, not its text edge. */
+    left: 1.5rem;
+    width: min(max(var(--sidebar-width, 19rem), 20rem), calc(100vw - 3rem));
+    max-height: calc(100dvh - var(--panel-top) - 1rem);
+    border: 1px solid var(--border);
+    border-radius: 0.75rem;
+    /*
+       Fixed black ink, as `.overflow-list` should have and `.sheet::backdrop` does: a
+       shadow mixed from `--fg` is near-white in dark mode, and a card that glows is a
+       card that has come unstuck from the page.
+    */
+    box-shadow: 0 8px 28px rgb(0 0 0 / 22%);
+  }
+
   /*
-     One rhythm from the header down.
-
-     The gap above the chips was the sheet body's 0.75rem and the two below it were this
-     box's 0.4rem, so the first space in the column was nearly double the others — the
-     "spacing is really inconsistent" reading, and it came from the two gaps being set in
-     different rules that never had to agree. Matching the body's gap here is what makes
-     header, chips and field one evenly spaced stack.
+     Light, not absent. The page behind the panel is inert while it is open — that is
+     what `showModal` means — and a scrim that cannot be seen leaves clicks on the list
+     dying for no visible reason. 12% is enough to say "this is on top of that" without
+     dimming the notes the filters are about.
   */
-  gap: 0.75rem;
+  .sheet:not(.sheet-side)::backdrop { background: rgb(0 0 0 / 12%); }
+
+  /* No grip: there is no floor for the panel to be pulled back to, and Sheet.tsx takes the
+     drag handlers off the head at the same width. */
+  .sheet:not(.sheet-side) .sheet-grip { display: none; }
+
+  /* The head is the first thing in the column now; the pull-up that cancelled the grip's
+     margins would cancel the body's padding instead. */
+  .sheet:not(.sheet-side) .sheet-head { margin-top: 0; }
+
+  /* Done is a thumb's way out of a sheet that filled the screen. A panel with a ✕ in its
+     head and Escape does not need a third exit, and a button that only closes what a
+     click anywhere outside already closes is a row of nothing. */
+  .sheet:not(.sheet-side) .sheet-foot { display: none; }
+
+  /*
+     The tag picker claims 70dvh on a phone, where the sheet is capped at 85dvh. The panel
+     is capped lower, so in a short window the page would be taller than its box and the
+     panel would scroll instead of the list inside it. 8rem is the head, the chips and the
+     find field, which is what the list has to leave room for.
+  */
+  .sheet:not(.sheet-side) .tag-picker {
+    height: min(70dvh, calc(100dvh - var(--panel-top) - 8rem));
+  }
+
+  /* A panel drops from the head it belongs to rather than rising from a floor it does
+     not have. Same distance, same timing, the other way. Equal specificity to the phone
+     rules above, so source order is what makes these win. */
+  @media (prefers-reduced-motion: no-preference) {
+    @starting-style {
+      .sheet:not(.sheet-side)[open] { translate: 0 -0.35rem; }
+    }
+
+    .sheet:not(.sheet-side):not([open]) { translate: 0 -0.35rem; }
+  }
 }
-
-/*
-   This replaced a `max-height` on the list itself, which had to go rather than sit beside
-   it: a cap and a flex claim are two answers to one question, and the cap won on source
-   order — the list stayed at its old size while the page around it grew, leaving 173px of
-   nothing under the last row.
-*/
-
-/* The field is a fixed row between two boxes that flex; without this it is the one that
-   gets squeezed when the selection grows. */
-.sheet .tag-picker .search-field { flex: 0 0 auto; }
-
-/*
-   The list takes the rest of the page, growing and shrinking as the chips do.
-
-   `flex: 1` with a zero basis rather than `auto`: on `auto` the list's own content is its
-   starting size, so with more tags than fit it claimed the whole page and left 144px of
-   dead space below the last row instead of filling it. From zero it is sized by what
-   remains, which is what makes it absorb the chip row exactly.
-
-   `min-height: 0` is what lets it be shorter than its content and scroll at all — a flex
-   item's floor is its content, and without it the list refuses to shrink and pushes the
-   sheet taller again, which is the bug this whole rule exists to fix.
-*/
-.sheet .tag-picker-list {
-  flex: 1 1 0;
-  max-height: none;
-  min-height: 0;
-}
-
-/* In the sheet the picker is the last thing before Done, and the rule that separates it
-   from the note list in the sidebar has nothing to separate it from here. */
-.tag-filter-open .tag-picker {
-  padding-bottom: 0;
-  border-bottom: none;
-}
-
 
 /* ------------------------------------------------------------------------------------
    Mobile overrides.
@@ -5073,7 +5168,7 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
   /*
      Every disclosure is a thumb target here, not just the one that was noticed.
 
-     This started as a fix for the sidebar's tag filter, the one control left under 44px.
+     This started as a fix for the sidebar's old tag disclosure, the one control left under 44px.
      The note's filing row was 36px and the attachments summary about 19px — a line of
      0.78rem text with no height of its own — because each had been styled where it was
      written rather than as the same kind of thing. One rule now, so the next one cannot
@@ -5084,7 +5179,7 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
   }
 
   /*
-     Reclaimed whitespace: 2rem of padding above the wordmark is a desktop luxury. The
+     Reclaimed whitespace: 1.25rem of padding above the wordmark is a desktop luxury. The
      note view spends 43% of a phone screen on chrome before its first character, and this
      is the cheapest quarter of it.
   */
@@ -5152,9 +5247,6 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
      uses to mean "different thing", said it at a glance. Sameness of style is what makes
      them a family; the rule is what keeps them countable.
   */
-
-  /* The sheet's own rhythm: tighter than the column its controls came from. */
-  .sheet-body { gap: 0.6rem; }
   /*
      Label and value on one line, which is how a phone states a detail — and now how the
      desktop states one too, so the grid itself lives in the base rules. The reasoning
@@ -5261,46 +5353,23 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
      block sets everywhere else, and they are now the ones most likely to be tapped, since
      reaching them at all means being on a phone.
 
-     The date inputs get it through their own rule rather than the shared one, because they
+     The date inputs get it through their own rule rather than a shared one, because they
      sit in a flex row whose label and field are separate boxes: a min-height on the label
      would stretch the caption rather than the field.
   */
-  .sheet .notebook-scope,
   .sheet .date-range input {
     min-height: 2.75rem;
   }
 
   /*
-     A tag row is a full-width target, so it gets the full 44px — unlike the pills and chips
-     below, which wrap and would push the notes down a row for every one of them.
+     A tag row is a full-width target, so it gets the full 44px — unlike the chips below,
+     which wrap and would push the notes down a row for every one of them.
   */
   /*
-     Denser than the 44px this block gives every other control, and deliberately.
-
-     44px is the floor for a control you must not miss. These are a scrolling list of
-     alternatives where the cost of a mis-tap is one more tap — the same trade the note list
-     itself makes, whose rows are shorter still. At 44px only eleven tags were on screen out
-     of hundreds, which is the problem the picker exists to solve, so the rows give up the
-     eight pixels the list needs to show two more.
-  */
-  .sheet .tag-picker-item {
-    min-height: 2.25rem;
-    padding-inline: 0.5rem;
-    font-size: 0.9rem;
-  }
-
-  /* Pills wrap, so they take the compromise height rather than the full target: a row of
-     44px date presets would be three rows deep on a phone. */
-  .pill {
-    min-height: 2.25rem;
-    padding-inline: 0.7rem;
-  }
-
-  /*
-     The chips are the same compromise, and for the same reason: they wrap, and a row of
-     44px chips would push the notes down as far as the controls this change removed. They
-     each remove a filter on one tap, so they need to be certain of — 36px with the × inside
-     the target is the same size the pills above settle on.
+     The chips take a compromise height rather than the full target: they wrap, and a row
+     of 44px chips would push the notes down as far as the controls this change removed.
+     They each remove a filter on one tap, so they need to be certain of — 36px with the ×
+     inside the target.
   */
   .filter-chip {
     min-height: 2.25rem;

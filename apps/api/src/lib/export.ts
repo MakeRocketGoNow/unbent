@@ -1,6 +1,6 @@
 import { ZipWriter } from '@zip.js/zip.js';
 import { fieldsByName, serialize } from '@unbent/shared';
-import type { Note, NoteSort } from '@unbent/shared';
+import type { FieldFilter, Note, NoteSort } from '@unbent/shared';
 import { nextCursor, type NotesRepo } from './notes-repo.js';
 import type { AttachmentsRepo } from './attachments-repo.js';
 
@@ -57,6 +57,7 @@ export interface ExportDeps {
 export interface ExportFilter {
   tags?: string[] | undefined;
   notebook?: string | undefined;
+  fields?: FieldFilter[] | undefined;
   from?: string | undefined;
   to?: string | undefined;
   /**

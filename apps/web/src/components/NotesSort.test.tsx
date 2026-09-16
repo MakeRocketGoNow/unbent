@@ -1,4 +1,4 @@
-import { describe, it, expect, afterEach } from 'vitest';
+import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest';
 import { render, cleanup, fireEvent, waitFor } from '@testing-library/react';
 import {
   createMemoryHistory,
@@ -14,7 +14,7 @@ import { NotesSort } from './NotesSort.js';
  * It was a ⋯ menu with Settings in it, and Settings is what these used to pin. Settings
  * lives on the drawer's floor now, so what is left to pin is that the icon says what the
  * order *is* without being opened, and that the sheet behind it writes the choice to the
- * URL the way the desktop select does.
+ * URL the way the desktop's select did before this replaced it there too.
  *
  * jsdom has no `showModal`; stubbed as in `Sheet.test.tsx`.
  */
@@ -42,7 +42,20 @@ const sortSheet = (c: HTMLElement) =>
   c.querySelector<HTMLDialogElement>('dialog[aria-label="Sort notes"]');
 
 describe('NotesSort', () => {
-  afterEach(cleanup);
+  // The sheet reads the breakpoint to decide whether its head drags; jsdom has no
+  // matchMedia. Phone width, which is where this surface lives.
+  beforeEach(() => {
+    vi.stubGlobal('matchMedia', (query: string) => ({
+      matches: true,
+      media: query,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+    }));
+  });
+  afterEach(() => {
+    cleanup();
+    vi.unstubAllGlobals();
+  });
 
   /* An order you cannot see is a list arranged in a way you did not ask for, and the icon
      has no room for a caption — so the name carries it. */

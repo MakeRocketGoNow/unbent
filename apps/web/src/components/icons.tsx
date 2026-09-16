@@ -25,6 +25,7 @@ import {
   Plus,
   Search,
   Settings,
+  SlidersHorizontal,
   SquareCheck,
   StickyNote,
   Tag,
@@ -222,6 +223,14 @@ export function PlusIcon() {
  */
 export function TagIcon() {
   return <RowIcon icon={Tag} />;
+}
+
+/**
+ * Sliders, for the fields row: a set of values to adjust, which is what the page behind
+ * it is — one control per field rather than one list to pick from.
+ */
+export function FieldsIcon() {
+  return <RowIcon icon={SlidersHorizontal} />;
 }
 
 /**

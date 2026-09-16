@@ -1,6 +1,12 @@
 import { describe, it, expect, afterEach, vi } from 'vitest';
 import { render, screen, cleanup, fireEvent } from '@testing-library/react';
-import { useListKeys, useCameFromList, registerEditorFocus, focusActiveListItem } from './useListKeys.js';
+import {
+  useListKeys,
+  useCameFromList,
+  registerEditorFocus,
+  focusActiveListItem,
+  enterList,
+} from './useListKeys.js';
 
 /**
  * Arrow-key navigation over the sidebar list.
@@ -126,5 +132,71 @@ describe('focusActiveListItem', () => {
     );
     expect(focusActiveListItem()).toBe(true);
     expect(document.activeElement).toBe(screen.getByTestId('b'));
+  });
+});
+
+/**
+ * The search's picks are rows too, and the field above is where the list is entered from.
+ *
+ * A pick is a button: arrowing onto it focuses it and nothing more, because applying a
+ * filter is not something a glance should do, and Enter presses it. A note is opened as
+ * it is reached, as before. Up from the first row goes back to the field.
+ */
+function Searching({ onLeaveTop, onPick }: { onLeaveTop?: () => void; onPick?: () => void }) {
+  const onKeyDown = useListKeys({ onLeaveTop });
+  return (
+    <ul className="note-list" data-testid="list" onKeyDown={onKeyDown}>
+      <li className="list-caption">Tags and notebooks</li>
+      <li className="scope-match">
+        <button type="button" className="scope-match-btn" data-testid="pick" onClick={onPick}>
+          Receipt
+        </button>
+      </li>
+      <li className="list-caption">Notes</li>
+      <li>
+        <a href="#a" className="note-item" data-testid="a">
+          a
+        </a>
+      </li>
+    </ul>
+  );
+}
+
+describe('useListKeys with search picks', () => {
+  it('focuses a pick without pressing it, and opens a note as it reaches it', () => {
+    const onPick = vi.fn();
+    render(<Searching onPick={onPick} />);
+    screen.getByTestId('a').focus();
+    fireEvent.keyDown(screen.getByTestId('list'), { key: 'ArrowUp' });
+    expect(document.activeElement).toBe(screen.getByTestId('pick'));
+    expect(onPick).not.toHaveBeenCalled();
+    fireEvent.keyDown(screen.getByTestId('list'), { key: 'ArrowDown' });
+    expect(document.activeElement).toBe(screen.getByTestId('a'));
+  });
+
+  it('presses a pick on Enter', () => {
+    const onPick = vi.fn();
+    render(<Searching onPick={onPick} />);
+    screen.getByTestId('pick').focus();
+    fireEvent.keyDown(screen.getByTestId('list'), { key: 'Enter' });
+    expect(onPick).toHaveBeenCalledTimes(1);
+  });
+
+  it('goes back up to the field from the first row', () => {
+    const onLeaveTop = vi.fn();
+    render(<Searching onLeaveTop={onLeaveTop} />);
+    screen.getByTestId('pick').focus();
+    const prevented = !fireEvent.keyDown(screen.getByTestId('list'), { key: 'ArrowUp' });
+    expect(onLeaveTop).toHaveBeenCalledTimes(1);
+    expect(prevented).toBe(true);
+  });
+
+  it('is entered on its first row, whichever kind that is', () => {
+    const onPick = vi.fn();
+    render(<Searching onPick={onPick} />);
+    expect(enterList(screen.getByTestId('list'))).toBe(true);
+    expect(document.activeElement).toBe(screen.getByTestId('pick'));
+    expect(onPick).not.toHaveBeenCalled();
+    expect(enterList(null)).toBe(false);
   });
 });

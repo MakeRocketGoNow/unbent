@@ -1,19 +1,60 @@
 import { useCallback, useSyncExternalStore, type KeyboardEvent } from 'react';
 
 /**
- * Arrow-key navigation for a list of links.
+ * Arrow-key navigation for the sidebar's list.
  *
  * Kept in the DOM rather than in React state. The sidebar's list is three sources at once
  * — the paged note list, search results, and the trash — plus a "Load more" button sitting
  * in the same `ul`, and the rendered order is the only place those agree. Asking the DOM
- * for "the next `.note-item`" is therefore both simpler and harder to get wrong than
- * threading an index through every caller, and it cannot drift out of sync with what is
- * actually on screen.
+ * for "the next row" is therefore both simpler and harder to get wrong than threading an
+ * index through every caller, and it cannot drift out of sync with what is actually on
+ * screen.
  *
- * Moving focus is all this does. The entries are real links, so focusing one and pressing
- * Enter already navigates — this adds no routing of its own, and inherits middle-click,
- * copy-link-address and the browser's own focus ring for free.
+ * Two kinds of row. A note entry is a link: arrowing onto it opens it, because browsing
+ * is what the arrows are for, and Enter then hands the note over to be written in. A
+ * search pick — a tag or a notebook offered above the results — is a button: arrowing
+ * onto it only focuses it, since applying a filter is a commitment a glance should not
+ * make, and Enter is the button's own. Both are real controls, so the browser's focus
+ * ring, middle-click and copy-link-address come for free and this adds no routing.
+ *
+ * The list is entered from the search field with Arrow Down and left from its first row
+ * with Arrow Up — `enterList` and `onLeaveTop` — so a search is one keyboard path from
+ * the first keystroke to the note: type, arrow into the picks and the results, Enter.
+ * That is Apple Notes' and Finder's shape rather than a combobox's, because the results
+ * are the list under the field, not a menu of their own.
  */
+
+/** The rows the arrows move between, in the order they are on screen. */
+const ROW = '.scope-match-btn, .note-item';
+
+function isNote(el: HTMLElement): boolean {
+  return el.classList.contains('note-item');
+}
+
+/** Moves to a row: a note is opened as it is reached, a pick is only focused. */
+function reach(row: HTMLElement) {
+  if (isNote(row)) {
+    // Set before the click so the workspace's editor sees it during the mount it triggers.
+    setCameFromList(true);
+    row.focus();
+    // The entry is a link, so focusing it is not opening it. Click is what navigates,
+    // and it carries the router's own handling of the search params the list is scoped to.
+    row.click();
+  } else {
+    row.focus();
+  }
+}
+
+/**
+ * Enters the list from above — the search field's Arrow Down — on its first row.
+ * Returns whether there was one to land on.
+ */
+export function enterList(list: HTMLElement | null): boolean {
+  const first = list?.querySelector<HTMLElement>(ROW);
+  if (!first) return false;
+  reach(first);
+  return true;
+}
 /**
  * Whether the note on screen was reached with the arrow keys.
  *
@@ -55,51 +96,64 @@ if (typeof document !== 'undefined') {
   document.addEventListener('pointerdown', () => setCameFromList(false), true);
 }
 
-export function useListKeys() {
-  return useCallback((event: KeyboardEvent<HTMLElement>) => {
-    if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp' && event.key !== 'Enter') {
-      return;
-    }
+export function useListKeys(opts: {
+  /** Arrow Up on the first row: where focus goes instead, when the list has something above it. */
+  onLeaveTop?: () => void;
+} = {}) {
+  const { onLeaveTop } = opts;
+  return useCallback(
+    (event: KeyboardEvent<HTMLElement>) => {
+      if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp' && event.key !== 'Enter') {
+        return;
+      }
 
-    // Only when an entry has focus. Arrows inside the filter box or the "Load more"
-    // button belong to those controls, and stealing them would break text editing.
-    const active = document.activeElement;
-    if (!(active instanceof HTMLElement) || !active.classList.contains('note-item')) return;
+      // Only when a row has focus. Arrows inside the filter box or the "Load more"
+      // button belong to those controls, and stealing them would break text editing.
+      const active = document.activeElement;
+      if (!(active instanceof HTMLElement) || !active.matches(ROW)) return;
 
-    /*
-       Enter commits: it hands the note over to be written in.
+      /*
+         Enter on a note commits: it hands the note over to be written in.
 
-       The link is already on the right note — arrowing opened it — so this is a focus
-       move, not a navigation. It is what separates the two modes: arrows browse, Enter
-       edits, and without it the only way out of the list is the mouse or a Tab through
-       whatever sits between.
-    */
-    if (event.key === 'Enter') {
+         The link is already on the right note — arrowing opened it — so this is a focus
+         move, not a navigation. It is what separates the two modes: arrows browse, Enter
+         edits, and without it the only way out of the list is the mouse or a Tab through
+         whatever sits between. Enter on a pick presses it — which a button does on its own,
+         but said here so the list's Enter means one thing on every row rather than
+         depending on which element happens to carry the focus.
+      */
+      if (event.key === 'Enter') {
+        event.preventDefault();
+        if (!isNote(active)) {
+          active.click();
+          return;
+        }
+        setCameFromList(false);
+        focusEditor();
+        return;
+      }
+
+      const items = Array.from(event.currentTarget.querySelectorAll<HTMLElement>(ROW));
+      const index = items.indexOf(active);
+      if (index === -1) return;
+
+      const next = items[index + (event.key === 'ArrowDown' ? 1 : -1)];
+      if (!next) {
+        // Up from the first row goes back to the field the list was entered from.
+        if (event.key === 'ArrowUp' && onLeaveTop) {
+          event.preventDefault();
+          onLeaveTop();
+        }
+        // Otherwise let the key through: on a long list the browser scrolling the sidebar
+        // is more useful than the selection refusing to move with no explanation.
+        return;
+      }
+
       event.preventDefault();
-      setCameFromList(false);
-      focusEditor();
-      return;
-    }
-
-    const items = Array.from(
-      event.currentTarget.querySelectorAll<HTMLElement>('.note-item'),
-    );
-    const index = items.indexOf(active);
-    if (index === -1) return;
-
-    const next = items[index + (event.key === 'ArrowDown' ? 1 : -1)];
-    // At either end, let the key through: on a long list the browser scrolling the
-    // sidebar is more useful than the selection refusing to move with no explanation.
-    if (!next) return;
-
-    event.preventDefault();
-    // Set before the click so the workspace's editor sees it during the mount it triggers.
-    setCameFromList(true);
-    next.focus();
-    // The entry is a link, so focusing it is not opening it. Click is what navigates,
-    // and it carries the router's own handling of the search params the list is scoped to.
-    next.click();
-  }, []);
+      reach(next);
+    },
+    [onLeaveTop],
+  );
 }
 
 /**
