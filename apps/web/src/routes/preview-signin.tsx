@@ -1,9 +1,9 @@
-import { createFileRoute, useNavigate } from '@tanstack/react-router';
+import { createFileRoute, Link, useNavigate } from '@tanstack/react-router';
 import { z } from 'zod';
 import { useEffect, useRef, useState } from 'react';
 import { redeemPreviewToken } from '../device-api.js';
 import { refreshSession } from '../auth-client.js';
-import { takeRelayRedirect } from '../auth-gate.js';
+import { LOGIN, takeRelayRedirect } from '../auth-gate.js';
 
 /**
  * The token the dev instance minted, carried back in the URL. Bounded and optional so a
@@ -45,6 +45,14 @@ function PreviewSignInPage() {
   const started = useRef(false);
 
   useEffect(() => {
+    /**
+     * Take the spent token out of the address bar before anything renders an error beside
+     * it. It is burned either way by this point, but a one-time token has no business
+     * sitting in history, in a referrer, or in whatever the user copies when they paste the
+     * URL into a bug report.
+     */
+    const spend = () => navigate({ href: '/preview-signin', replace: true });
+
     if (!token || started.current) return;
     started.current = true;
     void (async () => {
@@ -56,17 +64,22 @@ function PreviewSignInPage() {
         // `/login`, a loop with nothing on screen explaining it. Better to say so here.
         const session = await refreshSession();
         if (!session) {
+          await spend();
           setError('Signed in on the dev instance, but this preview did not receive a session.');
           return;
         }
         await navigate({ href: takeRelayRedirect(), replace: true });
       } catch (e) {
+        await spend();
         setError(e instanceof Error ? e.message : 'Could not complete sign-in.');
       }
     })();
   }, [token, navigate]);
 
-  if (!token) {
+  // `!error` as well as `!token`: a failed redeem clears the token from the URL, and without
+  // that second condition the very next render would fall into this branch and replace the
+  // explanation with "there is nothing to do here".
+  if (!token && !error) {
     return (
       <div className="panel device-panel">
         <div className="panel-head">
@@ -75,6 +88,9 @@ function PreviewSignInPage() {
         <p className="small muted">
           This page finishes signing in to a preview. Start from the preview's own sign-in
           screen — there is nothing to do here directly.
+        </p>
+        <p className="small">
+          <Link to={LOGIN}>Go to sign-in</Link>
         </p>
       </div>
     );
@@ -86,7 +102,14 @@ function PreviewSignInPage() {
         <h2>{error ? 'Preview sign-in' : 'Signing you in…'}</h2>
       </div>
       {error ? (
-        <p className="small bad">{error}</p>
+        <>
+          <p className="small bad">{error}</p>
+          {/* A relay that failed is not the end of the road: a preview still offers a
+              password and a code by mail, and a second try at the relay starts there too. */}
+          <p className="small">
+            <Link to={LOGIN}>Back to sign-in</Link>
+          </p>
+        </>
       ) : (
         <p className="small muted">Finishing sign-in from the dev instance.</p>
       )}
