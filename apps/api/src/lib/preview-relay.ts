@@ -71,7 +71,11 @@ export function previewRelayOrigin(env: Env): string | undefined {
  * not a preview sign-in, and keeping the two apart means this function has exactly one job.
  */
 export function isTrustedPreviewOrigin(env: Env, origin: string): boolean {
-  const subdomain = env.PREVIEW_RELAY_SUBDOMAIN?.trim();
+  // Lowercased because the comparison below is against `URL.hostname`, which the URL parser
+  // has already lowercased. workers.dev subdomains are lowercase to begin with, so this only
+  // ever rescues a config typo — an operator who set `Of2668` would otherwise have every
+  // legitimate preview silently rejected, with nothing pointing at the capitalization.
+  const subdomain = env.PREVIEW_RELAY_SUBDOMAIN?.trim().toLowerCase();
   if (!subdomain) return false;
 
   let url: URL;

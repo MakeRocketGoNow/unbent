@@ -113,6 +113,18 @@ describe('isTrustedPreviewOrigin', () => {
     ).toBe(false);
   });
 
+  it('accepts a mixed-case configured subdomain', () => {
+    // `URL.hostname` is always lowercased by the parser, so a subdomain configured with any
+    // capitalization must still match — otherwise a typo like `Of2668` would silently reject
+    // every legitimate preview.
+    expect(
+      isTrustedPreviewOrigin(
+        env({ PREVIEW_RELAY_SUBDOMAIN: 'Of2668' }),
+        'https://unbent-pr-1.of2668.workers.dev',
+      ),
+    ).toBe(true);
+  });
+
   it('refuses http', () => {
     expect(
       isTrustedPreviewOrigin(withSub(), `http://unbent-pr-1.${SUBDOMAIN}.workers.dev`),
