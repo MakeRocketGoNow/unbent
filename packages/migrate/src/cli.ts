@@ -268,8 +268,8 @@ async function runImport(args: Args): Promise<number> {
 
   if (duplicates.length > 0) {
     process.stdout.write(
-      `\n${duplicates.length} note(s) had the same title and text as an earlier note in ` +
-        `the same file, so only that earlier note was imported:\n`,
+      `\n${duplicates.length} note(s) were identical to an earlier note in the same file — ` +
+        `title, text, tags, dates and attachments — so only that earlier note was imported:\n`,
     );
     for (const d of duplicates.slice(0, 20)) {
       process.stdout.write(`  ${d.title} — ${d.file}, kept as ${d.noteId}\n`);
@@ -277,10 +277,6 @@ async function runImport(args: Args): Promise<number> {
     if (duplicates.length > 20) {
       process.stdout.write(`  …and ${duplicates.length - 20} more\n`);
     }
-    process.stdout.write(
-      "\nA copy's own tags and dates were not kept, nor any attachment named like one " +
-        "the earlier note already had.\n",
-    );
   }
 
   if (failures.length > 0) {

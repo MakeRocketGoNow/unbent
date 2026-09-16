@@ -43,8 +43,8 @@ export interface ImportSkip {
   noteId: string;
   /**
    * The match is a note this run created from earlier in the same file, rather than one
-   * that was here before the run started. The first is a duplicate inside the file and
-   * worth a second look; the second is a resumed or repeated import doing its job.
+   * that was here before the run started. The first is a note the file holds twice; the
+   * second is a resumed or repeated import doing its job.
    */
   earlierInFile: boolean;
 }

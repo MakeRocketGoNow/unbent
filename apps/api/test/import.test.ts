@@ -286,3 +286,48 @@ describe('an export imported into another account', () => {
     expect(again.filesUploaded).toBe(0);
   });
 });
+
+/**
+ * A syncing client sends Evernote's own markup and the server converts it. The key it
+ * files the note under has to tell apart the same notes the ENEX importer does, or a note
+ * with its own attachment under a shared file name is lost on this path too.
+ */
+describe('an Evernote note sent as ENML', () => {
+  async function importEnml(actor: Actor, over: { md5: string; tags?: string[] }) {
+    const res = await api(actor, '/api/import/enml', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        title: `Parking receipt ${runStamp}`,
+        enml: `<en-note><en-media hash="${over.md5}" type="image/jpeg"/></en-note>`,
+        tags: over.tags ?? [],
+        createdAt: Date.parse('2024-01-15T09:30:00Z'),
+        updatedAt: Date.parse('2024-01-15T09:30:00Z'),
+        resources: [{ md5: over.md5, filename: 'scan.jpg', mime: 'image/jpeg' }],
+      }),
+    });
+    return json<{ id: string; created: boolean }>(res);
+  }
+
+  const runStamp = Date.now();
+  const first = '5d41402abc4b2a76b9719d911017c592';
+  const second = '7d793037a0760186574b0282f2f435e7';
+
+  it('keeps two notes whose text matches but whose attachment does not', async () => {
+    const a = await importEnml(alice, { md5: first });
+    const b = await importEnml(alice, { md5: second });
+
+    expect(a.created).toBe(true);
+    expect(b.created).toBe(true);
+    expect(b.id).not.toBe(a.id);
+  });
+
+  it('recognises the same note sent again, whatever order its tags arrive in', async () => {
+    const a = await importEnml(alice, { md5: first, tags: ['car', 'receipts'] });
+    const again = await importEnml(alice, { md5: first, tags: ['receipts', 'car'] });
+
+    expect(a.created).toBe(true);
+    expect(again.created).toBe(false);
+    expect(again.id).toBe(a.id);
+  });
+});

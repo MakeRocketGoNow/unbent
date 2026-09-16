@@ -56,9 +56,11 @@ function note(opts: {
 <en-note>${opts.content}</en-note>]]></content>${resources}</note>`;
 }
 
-/** base64 of "hello" and its md5, precomputed. */
+/** base64 of "hello" and "world" and their md5s, precomputed. */
 const HELLO_B64 = 'aGVsbG8=';
 const HELLO_MD5 = '5d41402abc4b2a76b9719d911017c592';
+const WORLD_B64 = 'd29ybGQ=';
+const WORLD_MD5 = '7d793037a0760186574b0282f2f435e7';
 
 function fakeClient(over: Partial<ImportClient> = {}) {
   const notes: Array<{ id: string; title: string; body: string; tags: string[] }> = [];
@@ -281,6 +283,81 @@ describe('resume', () => {
     expect(progress.skipped).toBe(1);
     expect(progress.created).toBe(0);
     expect(files).toEqual(['b.txt']);
+  });
+});
+
+/**
+ * A note is only skipped when the one already here is the same note in every part the import
+ * keeps. Title and body alone let a copy with its own attachments or tags be skipped, and
+ * what it carried was never imported.
+ */
+describe('telling notes apart', () => {
+  it('imports both notes when they share title and text but not their attachments', async () => {
+    const { client, notes, files } = fakeClient();
+    const scan = (md5: string, base64: string) =>
+      note({
+        title: 'Parking receipt',
+        content: `<en-media hash="${md5}" type="text/plain"/>`,
+        resources: [{ base64, mime: 'text/plain', filename: 'scan.txt' }],
+      });
+
+    const progress = await importEnex(
+      enexFile('N.enex', [scan(HELLO_MD5, HELLO_B64), scan(WORLD_MD5, WORLD_B64)]),
+      client,
+    );
+
+    expect(progress.created).toBe(2);
+    expect(progress.skipped).toBe(0);
+    // The two bodies are the same text; only the bytes behind the link differ.
+    expect(notes[0]!.body).toBe(notes[1]!.body);
+    expect(files).toEqual([
+      { noteId: notes[0]!.id, filename: 'scan.txt', size: 5 },
+      { noteId: notes[1]!.id, filename: 'scan.txt', size: 5 },
+    ]);
+  });
+
+  it('imports both notes when they differ only in their tags', async () => {
+    const { client, notes } = fakeClient();
+
+    await importEnex(
+      enexFile('N.enex', [
+        note({ title: 'Untitled', content: '' }),
+        note({ title: 'Untitled', content: '', tags: ['Garden'] }),
+      ]),
+      client,
+    );
+
+    expect(notes.map((n) => n.tags)).toEqual([[], ['Garden']]);
+  });
+
+  it('imports both notes when they differ only in when they were made', async () => {
+    const { client, notes } = fakeClient();
+
+    await importEnex(
+      enexFile('N.enex', [
+        note({ title: 'Untitled', content: '', created: '20200601T080000Z' }),
+        note({ title: 'Untitled', content: '', created: '20210914T170000Z' }),
+      ]),
+      client,
+    );
+
+    expect(notes).toHaveLength(2);
+  });
+
+  it('keys a note without dates the same way on every run', async () => {
+    const { client } = fakeClient();
+    const undated = () =>
+      enexFile('N.enex', [
+        `<note><title>Undated</title><content><![CDATA[<en-note>x</en-note>]]></content></note>`,
+      ]);
+
+    await importEnex(undated(), client);
+    const again = await importEnex(undated(), client);
+
+    // The note is given the import time as its date, which differs between runs; the key
+    // must not be, or a resumed run would import it again.
+    expect(again.created).toBe(0);
+    expect(again.skipped).toBe(1);
   });
 });
 

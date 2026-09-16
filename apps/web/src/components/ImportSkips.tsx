@@ -6,10 +6,8 @@ import { groupByMatch, type SkipGroup, type SkipLog } from './import-skips.js';
  *
  * A count alone raised a question nothing on screen could answer. Importing a notebook
  * into an empty one reported ten notes "already present", and they turned out to be
- * copies inside the file: the importer recognises a note by its title and text, so a
- * second note with both the same is matched to the first even when its tags or
- * attachments differ. Listing them with that reason, and a way to open the note that was
- * kept, turns the question into something the person can check.
+ * copies inside the file. Listing them with the reason, and a way to open the note that
+ * was kept, turns the question into something the person can check.
  */
 export function ImportSkips({ log }: { log: SkipLog }) {
   const total = log.duplicateCount + log.presentCount;
@@ -24,10 +22,10 @@ export function ImportSkips({ log }: { log: SkipLog }) {
       {log.duplicateCount > 0 && (
         <div>
           <p className="small muted">
-            {notes(log.duplicateCount)} had the same title and text as a note earlier in
-            this file, so only that earlier note was imported. A copy&apos;s own
-            tags and dates were not kept, and neither was an attachment with the same name
-            as one of the earlier note&apos;s. Each link opens the note that was kept.
+            {notes(log.duplicateCount)} {log.duplicateCount === 1 ? 'was' : 'were'}{' '}
+            identical to a note earlier in this file — the same title, text, tags, dates
+            and attachments — so only that earlier note was imported and nothing was lost.
+            Each link opens the note that was kept.
             {listedNote(log.duplicates.length, log.duplicateCount)}
           </p>
           <SkipList groups={groupByMatch(log.duplicates)} />

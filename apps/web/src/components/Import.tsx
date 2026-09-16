@@ -346,7 +346,7 @@ export function Import({ onImported }: ImportProps) {
             Finished in {Math.max(1, Math.round(elapsed / 1000))}s.{' '}
             {count(progress?.created ?? 0, 'note')} imported
             {/* Told apart because they are not the same news: a duplicate inside the file
-                is a note that did not come through, one already here is a resume working. */}
+                is the export repeating itself, one already here is a resume working. */}
             {skips.duplicateCount > 0
               ? `, ${count(skips.duplicateCount, 'duplicate')} skipped`
               : ''}

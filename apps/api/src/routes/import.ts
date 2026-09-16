@@ -4,7 +4,7 @@ import { MAX_BODY_BYTES, importEnmlSchema, importNoteSchema } from '@unbent/shar
 // Deep import rather than the package root: the barrel re-exports pdf-text, which pulls
 // pdfjs into the Worker bundle for a conversion that never touches a PDF.
 import { enmlToMarkdown } from '@unbent/enex/enml';
-import { contentHash, withSourceLink } from '@unbent/enex/note-body';
+import { enexNoteHash, withSourceLink } from '@unbent/enex/note-body';
 import { requireAuth } from '../lib/session.js';
 import { withRepos } from '../lib/repos-middleware.js';
 import type { AppEnv } from '../types.js';
@@ -91,7 +91,16 @@ export const importEnmlRoutes = new Hono<AppEnv>().post(
       notebook: input.notebook,
       createdAt: input.createdAt,
       updatedAt: input.updatedAt,
-      contentHash: await contentHash(input.title, body),
+      // The same key the ENEX importer sends, from the same parts, so a note that arrives
+      // both ways is recognised the second time.
+      contentHash: await enexNoteHash({
+        title: input.title,
+        body,
+        tags: input.tags,
+        created: input.createdAt,
+        updated: input.updatedAt,
+        attachments: input.resources.map((r) => r.md5),
+      }),
       sourceEnex: input.sourceEnex,
     });
 

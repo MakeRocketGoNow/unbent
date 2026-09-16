@@ -1,6 +1,6 @@
 import { enmlToMarkdown } from './enml-to-markdown.js';
 import { parseEnexStream } from './parse.js';
-import { contentHash, withSourceLink } from './note-body.js';
+import { enexNoteHash, withSourceLink } from './note-body.js';
 import {
   ImportRun,
   applyRenames,
@@ -30,7 +30,7 @@ export {
   type ImportProgress,
   type ImportSkip,
 } from './import-run.js';
-export { contentHash, withSourceLink } from './note-body.js';
+export { contentHash, enexNoteHash, withSourceLink } from './note-body.js';
 
 export async function importEnex(
   file: { name: string; stream: () => ReadableStream<Uint8Array> },
@@ -84,7 +84,14 @@ async function importOne(
     notebook: notebookTag || undefined,
     createdAt: created,
     updatedAt: note.updated?.getTime() ?? created,
-    contentHash: await contentHash(note.title, body),
+    contentHash: await enexNoteHash({
+      title: note.title,
+      body,
+      tags,
+      created: note.created?.getTime(),
+      updated: note.updated?.getTime(),
+      attachments: note.resources.map((r) => r.md5),
+    }),
     sourceEnex,
     sourceUrl: note.sourceUrl,
   });
