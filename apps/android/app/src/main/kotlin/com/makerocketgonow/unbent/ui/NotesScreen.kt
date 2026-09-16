@@ -271,10 +271,12 @@ fun NotesScreen(
                              * poor home for something reached this often. The badge says a
                              * filter is on without naming it — the title does the naming —
                              * so a narrowed list is never mistaken for the whole archive.
+                             * It speaks for what the sheet sets, not for the notebook the
+                             * drawer chose; see [NotesState.sheetFiltered].
                              */
                             IconButton(onClick = { filtering = true }) {
                                 BadgedBox(
-                                    badge = { if (state.filtered) Badge() },
+                                    badge = { if (state.sheetFiltered) Badge() },
                                 ) {
                                     Icon(
                                         painterResource(R.drawable.ic_filter),
@@ -1061,8 +1063,22 @@ class NotesState(private val api: UnbentApi) {
         private set
     var to by mutableStateOf<String?>(null)
         private set
+    /** Whether anything narrows the list, the notebook included: the whole scope on screen. */
     val filtered: Boolean get() =
         notebook != null || selectedTags.isNotEmpty() || from != null || to != null
+
+    /**
+     * What the filter icon's badge speaks for: the tags and the dates, not the notebook.
+     *
+     * The two were one predicate, and keeping them one lit the badge for a notebook the
+     * filter sheet does not choose — a dot saying "something is narrowing this" beside a
+     * title that had already said what, pointing at a surface where nothing was set. A
+     * badge has to be about the control it sits on. The web draws the same line, and
+     * [filtered] is still the whole scope for the sheet's chips and its Clear all, which
+     * are about everything applied.
+     */
+    val sheetFiltered: Boolean get() =
+        selectedTags.isNotEmpty() || from != null || to != null
 
     var notebooks by mutableStateOf<List<Notebook>>(emptyList())
         private set
