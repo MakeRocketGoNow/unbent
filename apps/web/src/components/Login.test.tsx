@@ -11,6 +11,7 @@ import type { AppConfig, AuthProvider } from '@unbent/shared';
 import { Login } from './Login.js';
 import { emailOtp, signIn } from '../auth-client.js';
 import * as api from '../notes-api.js';
+import { takeRelayRedirect } from '../auth-gate.js';
 
 // No network in a unit test: the config is what each case says it is.
 vi.mock('../notes-api.js', async (importOriginal) => ({
@@ -44,11 +45,16 @@ vi.mock('../auth-client.js', () => ({
  */
 const BUILT_IN = { privacy: '/privacy', terms: '/terms' };
 
-function harness(providers: AuthProvider[], config: Partial<AppConfig> = { legal: BUILT_IN }) {
+function harness(
+  providers: AuthProvider[],
+  config: Partial<AppConfig> = { legal: BUILT_IN },
+  // `redirectTo` is the route's job in the app; here it only has to be somewhere, except
+  // in the relay cases, which are about carrying a *particular* destination across.
+  redirectTo = '/notes',
+) {
   vi.mocked(api.getConfig).mockResolvedValue({ providers, ...config });
 
-  // `redirectTo` is the route's job in the app; here it only has to be somewhere.
-  const rootRoute = createRootRoute({ component: () => <Login redirectTo="/notes" /> });
+  const rootRoute = createRootRoute({ component: () => <Login redirectTo={redirectTo} /> });
   const history = createMemoryHistory({ initialEntries: ['/login'] });
   const router = createRouter({ routeTree: rootRoute, history });
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -433,5 +439,38 @@ describe('Login', () => {
     } finally {
       Object.defineProperty(window, 'location', { value: original, configurable: true, writable: true });
     }
+  });
+
+  /**
+   * The destination survives the relay. It cannot travel in the URL — the dev instance
+   * validates `return` as a bare origin — so it waits in `sessionStorage` for
+   * `/preview-signin` to pick it up. Without this, opening a note signed out on a preview
+   * came back to the note list instead of the note.
+   */
+  it('parks the destination for the return leg', async () => {
+    const original = window.location;
+    const location = { origin: 'https://unbent-pr-120.of2668.workers.dev', href: '' };
+    Object.defineProperty(window, 'location', { value: location, configurable: true, writable: true });
+    sessionStorage.clear();
+    try {
+      harness(
+        ['password'],
+        { legal: BUILT_IN, previewRelay: { origin: 'https://dev.unbent.app' } },
+        '/notes/abc-123',
+      );
+      await waitFor(() =>
+        expect(screen.getByText('Continue on the dev instance')).toBeTruthy(),
+      );
+      fireEvent.click(screen.getByText('Continue on the dev instance'));
+      expect(takeRelayRedirect()).toBe('/notes/abc-123');
+    } finally {
+      Object.defineProperty(window, 'location', { value: original, configurable: true, writable: true });
+    }
+  });
+
+  /** Nothing parked — a direct visit to the landing page — lands on the notes list. */
+  it('falls back to the notes list when nothing was parked', () => {
+    sessionStorage.clear();
+    expect(takeRelayRedirect()).toBe('/notes');
   });
 });

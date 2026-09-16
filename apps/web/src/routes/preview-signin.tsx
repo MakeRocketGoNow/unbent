@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { useEffect, useRef, useState } from 'react';
 import { redeemPreviewToken } from '../device-api.js';
 import { refreshSession } from '../auth-client.js';
-import { HOME } from '../auth-gate.js';
+import { takeRelayRedirect } from '../auth-gate.js';
 
 /**
  * The token the dev instance minted, carried back in the URL. Bounded and optional so a
@@ -59,7 +59,7 @@ function PreviewSignInPage() {
           setError('Signed in on the dev instance, but this preview did not receive a session.');
           return;
         }
-        await navigate({ href: HOME, replace: true });
+        await navigate({ href: takeRelayRedirect(), replace: true });
       } catch (e) {
         setError(e instanceof Error ? e.message : 'Could not complete sign-in.');
       }

@@ -10,6 +10,7 @@ import {
   signUp,
 } from '../auth-client.js';
 import { configQuery } from '../queries.js';
+import { rememberRelayRedirect } from '../auth-gate.js';
 import { Button } from './Button.js';
 import { LegalLink } from './LegalLink.js';
 import { ProviderIcon } from './provider-icons.js';
@@ -127,6 +128,9 @@ export function Login({ redirectTo }: LoginProps) {
   function startRelay(origin: string) {
     setPending('preview-relay');
     setError(null);
+    // `return` is validated as a bare origin on the other side, so the destination cannot
+    // travel in the URL. It waits here instead and `/preview-signin` picks it up.
+    rememberRelayRedirect(redirectTo);
     window.location.href = `${origin}/preview-relay?return=${encodeURIComponent(window.location.origin)}`;
   }
 

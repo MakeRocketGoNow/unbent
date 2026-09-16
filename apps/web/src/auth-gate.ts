@@ -154,6 +154,42 @@ export function safeRedirect(value: string | undefined): string | undefined {
 }
 
 /**
+ * Where the browser was heading before the preview sign-in relay took it away, parked
+ * across the round trip through the dev instance.
+ *
+ * It cannot ride in the URL. The dev instance validates the relay's `return` as a *bare*
+ * origin — no path, no query — and relaxing that to carry a destination would widen the one
+ * check the whole relay's safety rests on. Storage instead, and `sessionStorage` rather than
+ * the `localStorage` `usePersistentState` uses, because this belongs to one handoff in one
+ * tab rather than to the person.
+ *
+ * Every access is wrapped: a browser with storage disabled must still be able to sign in,
+ * and losing the destination costs only a landing on `/notes`. It lives here rather than in
+ * the route that reads it so the sign-in screen does not have to import a route module to
+ * write it.
+ */
+const RELAY_REDIRECT_KEY = 'unbent.preview-relay.redirect';
+
+export function rememberRelayRedirect(path: string): void {
+  try {
+    sessionStorage.setItem(RELAY_REDIRECT_KEY, path);
+  } catch {
+    // Storage disabled or full. The destination is a nicety; signing in is not.
+  }
+}
+
+/** Reads and clears it. Through `safeRedirect` for the same reason `/login`'s is. */
+export function takeRelayRedirect(): string {
+  try {
+    const stored = sessionStorage.getItem(RELAY_REDIRECT_KEY);
+    sessionStorage.removeItem(RELAY_REDIRECT_KEY);
+    return safeRedirect(stored ?? undefined) ?? HOME;
+  } catch {
+    return HOME;
+  }
+}
+
+/**
  * The gate in front of everything that needs a session.
  *
  * It runs in the root route's `beforeLoad`, which is the only place early enough to
