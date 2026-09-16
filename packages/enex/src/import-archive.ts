@@ -98,10 +98,12 @@ async function importOne(
     notebook: options.notebookTag ?? note.notebook,
     createdAt: note.created.getTime(),
     updatedAt: note.updated.getTime(),
-    // The same hash the ENEX path sends, over the same body that will be stored, so an
-    // archive re-imported into the instance that wrote it is matched by content as well
-    // as by id.
-    contentHash: await contentHash(note.title, note.body),
+    // The id belongs in the hash. Title and body alone made two empty Untitled drafts
+    // (or two receipts typed the same way) look like one note, and the second was
+    // skipped — its files uploaded onto the first, or dropped when the names matched.
+    // Re-import still matches: same id, same hash, even if a prior run had to mint a
+    // fresh row because this id was taken.
+    contentHash: await contentHash(note.title, note.body, note.id),
     sourceEnex: sourceFile,
     ...(note.fields ? { fields: note.fields } : {}),
   });

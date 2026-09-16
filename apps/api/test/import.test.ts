@@ -181,6 +181,22 @@ describe('an imported note keeps its id', () => {
     expect(second.created).toBe(false);
     expect(second.id).toBe(first.id);
   });
+
+  it('does not collapse two notes that share their text when each has its own id', async () => {
+    const firstId = crypto.randomUUID();
+    const secondId = crypto.randomUUID();
+    const first = await importNote(alice, { id: firstId, title: 'Untitled', body: '' });
+    const second = await importNote(alice, { id: secondId, title: 'Untitled', body: '' });
+
+    expect(first.created).toBe(true);
+    expect(first.id).toBe(firstId);
+    expect(second.created).toBe(true);
+    expect(second.id).toBe(secondId);
+
+    const again = await importNote(alice, { id: firstId, title: 'Untitled', body: '' });
+    expect(again.created).toBe(false);
+    expect(again.id).toBe(firstId);
+  });
 });
 
 describe('an export imported into another account', () => {

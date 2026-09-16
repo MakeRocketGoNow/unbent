@@ -772,8 +772,9 @@ export class NotesRepo extends ScopedRepo {
    *
    * Idempotency is what makes a large import resumable. A 3GB file takes tens of minutes
    * and will be interrupted; re-running must not duplicate the thousands of notes that
-   * already landed. The hash covers title and body, so re-importing an unchanged export is
-   * a no-op while a genuinely edited note still comes through as new.
+   * already landed. The hash covers title and body (and the exported id, when there is
+   * one), so re-importing an unchanged export is a no-op while a genuinely edited note
+   * still comes through as new.
    */
   async importNote(input: {
     /** The id to keep if it is free, and to recognise the note by if it is already here. */
@@ -798,17 +799,25 @@ export class NotesRepo extends ScopedRepo {
      * hash, which is what an ENEX import has and what catches an archive whose ids were
      * stripped. The trash is not consulted by either: a note deleted on purpose stays
      * deleted, and importing it again brings back a fresh live copy under a new id.
+     *
+     * A hash hit is not "already here" when the requested id is free. Two empty
+     * Untitled drafts share their text and would otherwise collapse: the second was
+     * skipped, and its attachments landed on the first or vanished. A free id is a
+     * different note. A taken id with a hash hit is a remint from a prior run of
+     * *this* note, and skipping it is what makes that resume work.
      */
-    const existing =
-      (input.id ? await this.liveNoteById(input.id) : null) ??
-      (await this.db
-        .prepare(
-          `SELECT id FROM notes
-            WHERE user_id = ?1 AND content_hash = ?2 AND deleted_at IS NULL
-            LIMIT 1`,
-        )
-        .bind(this.userId, input.contentHash)
-        .first<{ id: string }>());
+    // Whether the id is already held is settled once here: the guard below reads it, and
+    // so does the mint at the foot of this method, which used to ask the database again.
+    const idIsTaken = input.id ? await this.idTaken(input.id) : false;
+    const existingById = input.id ? await this.liveNoteById(input.id) : null;
+    // A free id is a different note however its text hashes, so there is nothing for a
+    // hash hit to swallow — don't even look. The hash lookup only earns its round-trip
+    // when the id is absent (an ENEX import) or taken (a remint resuming a prior run).
+    const existingByHash =
+      existingById || (input.id && !idIsTaken)
+        ? null
+        : await this.liveNoteByHash(input.contentHash);
+    const existing = existingById ?? existingByHash;
 
     if (existing) {
       /**
@@ -847,7 +856,7 @@ export class NotesRepo extends ScopedRepo {
      * fresh id rather than a constraint error, and a trashed note keeps its id so it can
      * still be restored from the trash.
      */
-    const id = input.id && !(await this.idTaken(input.id)) ? input.id : crypto.randomUUID();
+    const id = input.id && !idIsTaken ? input.id : crypto.randomUUID();
     const notebookId = await this.resolveNotebook(input.notebook);
     await this.db
       .prepare(
@@ -886,6 +895,18 @@ export class NotesRepo extends ScopedRepo {
     return this.db
       .prepare(`SELECT id FROM notes WHERE id = ?1 AND user_id = ?2 AND deleted_at IS NULL`)
       .bind(id, this.userId)
+      .first<{ id: string }>();
+  }
+
+  /** The caller's live note carrying this content hash, if there is one. */
+  private async liveNoteByHash(contentHash: string): Promise<{ id: string } | null> {
+    return this.db
+      .prepare(
+        `SELECT id FROM notes
+          WHERE user_id = ?1 AND content_hash = ?2 AND deleted_at IS NULL
+          LIMIT 1`,
+      )
+      .bind(this.userId, contentHash)
       .first<{ id: string }>();
   }
 

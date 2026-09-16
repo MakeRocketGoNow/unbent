@@ -8,9 +8,17 @@
  * differently depending on how it arrived would import twice.
  */
 
-/** sha256 of title and body — the server's idempotency key. */
-export async function contentHash(title: string, body: string): Promise<string> {
-  const data = new TextEncoder().encode(`${title}\n${body}`);
+/**
+ * sha256 of title and body — the server's idempotency key.
+ *
+ * `id` is included when the source named the note (an Unbent export). Two empty
+ * Untitled drafts are two notes; hashing title and body alone treated the second
+ * as a duplicate of the first and dropped it, attachments and all. ENEX has no
+ * stable id and omits this, so two identical Evernote notes still collapse the
+ * way they always have.
+ */
+export async function contentHash(title: string, body: string, id?: string): Promise<string> {
+  const data = new TextEncoder().encode(id ? `${id}\n${title}\n${body}` : `${title}\n${body}`);
   const digest = await crypto.subtle.digest('SHA-256', data);
   return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join('');
 }
