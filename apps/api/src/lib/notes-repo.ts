@@ -844,7 +844,7 @@ export class NotesRepo extends ScopedRepo {
       .first<{ id: string }>();
   }
 
-  /** The caller's live note imported with this content hash, if there is one. */
+  /** The caller's live note carrying this content hash, if there is one. */
   private async liveNoteByHash(contentHash: string): Promise<{ id: string } | null> {
     return this.db
       .prepare(
