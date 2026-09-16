@@ -75,3 +75,34 @@ export function mintConnectToken(): Promise<string> {
     .then(json<{ token: string }>)
     .then((r) => r.token);
 }
+
+/**
+ * Trades a one-time token from the dev instance for a session on *this* origin.
+ *
+ * The redeeming half of the preview sign-in relay: a preview reaches `/preview-signin` with
+ * a token minted by the dev instance's `/api/preview-relay/start`, and this hands it to
+ * Better Auth's verify endpoint. Because the relay's `oneTimeToken()` sets the session
+ * cookie on the verifying origin, the `Set-Cookie` that comes back establishes the session
+ * here — the preview's own host-only cookie — which is the whole point: previews share the
+ * dev instance's database, so a token minted there names a session valid here.
+ *
+ * Plain fetch rather than the client plugin for the same reason `mintConnectToken` is: the
+ * one-time-token client methods only map paths to names and leave the call shape to
+ * inference. `credentials: 'include'` so the response's cookie is stored.
+ */
+export function redeemPreviewToken(token: string): Promise<void> {
+  return fetch('/api/auth/one-time-token/verify', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify({ token }),
+  }).then(async (res) => {
+    if (!res.ok) {
+      const detail = await res.text().catch(() => '');
+      throw new ApiError(
+        res.status,
+        `${res.status} ${res.statusText}${detail ? `: ${detail}` : ''}`,
+      );
+    }
+  });
+}

@@ -79,6 +79,11 @@ const PUBLIC: ReadonlySet<string> = new Set([
   '/privacy',
   '/terms',
   HOW_TO_DELETE,
+  // The preview sign-in relay's landing point. Public for the same reason as the sign-in
+  // screen: it is reached with no session — a token from the dev instance is about to
+  // establish one — so gating it would redirect the token to /login and lose it. See
+  // routes/preview-signin.tsx.
+  '/preview-signin',
 ]);
 
 export function shellFor(pathname: string): Shell {
