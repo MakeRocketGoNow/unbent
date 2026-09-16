@@ -17,6 +17,7 @@ import {
   Link as LinkGlyph,
   List,
   Mail,
+  Maximize2,
   Menu,
   Music,
   Paperclip,
@@ -317,4 +318,51 @@ export function CloseIcon() {
  */
 export function CopyIcon() {
   return <Copy size="1em" strokeWidth={2} aria-hidden="true" focusable="false" />;
+}
+
+/**
+ * Four arrows out of a corner, for opening an attachment at full size.
+ *
+ * On the inline PDF viewer's head, beside its other actions, and sized to sit in a small
+ * icon button there. The same glyph the rich editor's widgets draw by hand below, so the
+ * control reads as one thing wherever it appears.
+ */
+export function ExpandIcon() {
+  return <Maximize2 size="1.1em" strokeWidth={2} aria-hidden="true" focusable="false" />;
+}
+
+/**
+ * The same glyphs as markup, for the parts of the app that build their DOM by hand.
+ *
+ * The rich editor's image and PDF widgets live inside CodeMirror, and the attachment
+ * viewer is a `<dialog>` built without React; neither can render a component. The path
+ * data is lucide's own (`maximize-2` and `x`), copied rather than imported: the package
+ * publishes each icon as a component and not as data, and shipping `react-dom/server` to
+ * stringify two glyphs is the wrong trade. Kept in this file so it is the one seam still —
+ * if the library changes, this is where the copies change with it.
+ *
+ * Sized in pixels rather than `em`. An image standing alone on its line has its font size
+ * zeroed (`.cm-md-image-line`), which would zero an em-sized glyph with it.
+ */
+const EXPAND_PATHS = ['M15 3h6v6', 'm21 3-7 7', 'm3 21 7-7', 'M9 21H3v-6'];
+const CLOSE_PATHS = ['M18 6 6 18', 'm6 6 12 12'];
+
+function iconMarkup(paths: readonly string[], size: number): string {
+  return [
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"',
+    ` width="${size}" height="${size}" fill="none" stroke="currentColor" stroke-width="2"`,
+    ' stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">',
+    ...paths.map((d) => `<path d="${d}"/>`),
+    '</svg>',
+  ].join('');
+}
+
+/** `ExpandIcon` as a string, for a button built with `innerHTML`. */
+export function expandIconMarkup(): string {
+  return iconMarkup(EXPAND_PATHS, 18);
+}
+
+/** A cross, for the attachment viewer's close button. */
+export function closeIconMarkup(): string {
+  return iconMarkup(CLOSE_PATHS, 22);
 }
