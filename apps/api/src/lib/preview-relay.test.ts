@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { isTrustedPreviewOrigin, previewRelayOrigin } from './preview-relay.js';
+import {
+  isTrustedPreviewOrigin,
+  previewRelayEnabled,
+  previewRelayOrigin,
+} from './preview-relay.js';
 import type { Env } from '../types.js';
 
 /** Only the fields these functions read; the bindings are irrelevant here. */
@@ -8,6 +12,19 @@ function env(vars: Record<string, string | undefined>): Env {
 }
 
 const SUBDOMAIN = 'of2668';
+
+describe('previewRelayEnabled', () => {
+  it('is on only where the relay subdomain is configured', () => {
+    expect(previewRelayEnabled(env({ PREVIEW_RELAY_SUBDOMAIN: 'of2668' }))).toBe(true);
+  });
+
+  it('is off with no subdomain — production, and previews, which only set the origin', () => {
+    expect(previewRelayEnabled(env({}))).toBe(false);
+    expect(previewRelayEnabled(env({ PREVIEW_RELAY_SUBDOMAIN: '  ' }))).toBe(false);
+    // A preview carries the origin but not the subdomain, so it is not a relay source itself.
+    expect(previewRelayEnabled(env({ PREVIEW_RELAY_ORIGIN: 'https://dev.unbent.app' }))).toBe(false);
+  });
+});
 
 describe('previewRelayOrigin', () => {
   it('normalises a configured origin to a bare origin', () => {

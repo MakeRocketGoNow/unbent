@@ -1,38 +1,37 @@
 /**
  * The dev instance's half of the preview sign-in relay.
  *
- * This is a security boundary: `/api/preview-relay/start` mints a bearer-grade one-time
- * token against the caller's session and redirects it to the `return` origin, so the two
- * things that must hold are that it refuses without a session, and that it refuses a return
- * origin it cannot prove is one of our previews. Both are checked here against the live
- * Worker.
+ * The relay is off unless the instance is configured as a relay source
+ * (`PREVIEW_RELAY_SUBDOMAIN` set — the dev deploy alone). The local dev server the live
+ * suite runs against sets neither relay variable, so what a live test proves here is the
+ * gate: an unconfigured instance answers 404 on the endpoint, so it does not exist on
+ * production rather than existing and refusing every request.
  *
- * The happy-path redirect needs `PREVIEW_RELAY_SUBDOMAIN` configured on the Worker, which
- * the local dev server does not set, so it is not exercised here; `isTrustedPreviewOrigin`'s
- * acceptance is unit-tested exhaustively in src/lib/preview-relay.test.ts, and the token
- * mint is Better Auth's own. What a live test can prove without that config is that the
- * refusals fire, which is the half that fails dangerous.
+ * The behaviour once configured — the session requirement, the trusted-origin check, the
+ * mint and redirect — is covered where it can be exercised deterministically:
+ * `isTrustedPreviewOrigin` and `previewRelayEnabled` are unit-tested in
+ * src/lib/preview-relay.test.ts, and the full mint-and-redeem path was verified end to end
+ * against a Worker with the subdomain set.
  */
 import { describe, expect, it } from 'vitest';
 
 const BASE = process.env['API_URL'] ?? 'http://localhost:8787';
 
 describe('GET /api/preview-relay/start', () => {
-  it('refuses without a session', async () => {
+  /**
+   * 404, not 401, on an instance that is not a relay source — the gate runs before the
+   * session check, so the endpoint gives no sign it exists or wants a session.
+   */
+  it('does not exist where the relay is not configured', async () => {
     const res = await fetch(
       `${BASE}/api/preview-relay/start?return=${encodeURIComponent('https://unbent-pr-1.of2668.workers.dev')}`,
       { redirect: 'manual' },
     );
-    expect(res.status).toBe(401);
+    expect(res.status).toBe(404);
   });
 
-  /**
-   * No session, but also a bad origin. It must still refuse rather than redirect — checked
-   * because the order of the guards is easy to get wrong, and "unauthenticated but the URL
-   * was malformed" must never be the case that slips a token out.
-   */
-  it('refuses without a session even for a malformed request', async () => {
+  it('404s a malformed request too, rather than disclosing the endpoint', async () => {
     const res = await fetch(`${BASE}/api/preview-relay/start`, { redirect: 'manual' });
-    expect(res.status).toBe(401);
+    expect(res.status).toBe(404);
   });
 });

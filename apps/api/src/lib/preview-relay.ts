@@ -30,6 +30,23 @@ import type { Env } from '../types.js';
  */
 
 /**
+ * Whether this instance is a relay *source* — the dev instance that mints tokens for
+ * previews. True only where `PREVIEW_RELAY_SUBDOMAIN` is set, which is the dev deploy alone:
+ * production sets neither relay variable, and a preview sets only `PREVIEW_RELAY_ORIGIN`.
+ *
+ * This is the switch the `/api/preview-relay/*` route is gated on. Where it is false the
+ * route answers 404, so the endpoint does not exist on production rather than existing and
+ * refusing every request — the same "off means off, not hidden" line the auth plugins draw,
+ * and what keeps `config.test.ts`'s "advertisement and endpoints agree" reading true.
+ *
+ * It is exactly the same condition `isTrustedPreviewOrigin` short-circuits on, named once so
+ * the mount gate and the trust check cannot drift apart.
+ */
+export function previewRelayEnabled(env: Env): boolean {
+  return Boolean(env.PREVIEW_RELAY_SUBDOMAIN?.trim());
+}
+
+/**
  * The dev instance a preview's login screen bounces to, or undefined if this instance
  * offers no relay. Read into `/api/config` so the SPA draws the button only where it works,
  * the same "absent means not offered" contract the rest of the config uses.

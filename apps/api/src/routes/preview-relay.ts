@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import { getAuth } from '../auth.js';
-import { isTrustedPreviewOrigin } from '../lib/preview-relay.js';
+import { isTrustedPreviewOrigin, previewRelayEnabled } from '../lib/preview-relay.js';
 import { requireAuth } from '../lib/session.js';
 import type { AppEnv } from '../types.js';
 
@@ -24,6 +24,17 @@ import type { AppEnv } from '../types.js';
  */
 export const previewRelay = new Hono<AppEnv>().get(
   '/preview-relay/start',
+  /**
+   * Off unless this instance is a relay source. The route is mounted unconditionally so the
+   * SPA's typed client sees it, but where the relay is not configured — production, and every
+   * instance that is not the dev one — it answers 404, the same as an unmounted path. The
+   * check is before `requireAuth` on purpose: an instance that does not have this feature
+   * should not even disclose that the path wants a session. See `previewRelayEnabled`.
+   */
+  async (c, next) => {
+    if (!previewRelayEnabled(c.env)) return c.json({ error: 'Not found' }, 404);
+    await next();
+  },
   // A relay is a signed-in action: only a real dev session can mint a token to hand onward.
   // An unauthenticated hit gets 401, and the SPA route in front of this sends people to
   // /login (where Google works) first, so this is reached with a session in hand.
