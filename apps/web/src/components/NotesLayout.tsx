@@ -17,6 +17,7 @@ import { useNotesLayout, SIDEBAR_DEFAULT, SIDEBAR_MIN, SIDEBAR_MAX } from '../us
 import { ResizeHandle } from './ResizeHandle.js';
 import { NoteListItem } from './NoteListItem.js';
 import { useListKeys, enterList } from '../useListKeys.js';
+import { useFocusSearch } from '../useFocusSearch.js';
 import { markNewNote } from '../useNewNote.js';
 import { SearchResults } from './SearchResults.js';
 import { IndexingStatus } from './IndexingStatus.js';
@@ -56,6 +57,9 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
   const searchRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLUListElement>(null);
   const onListKeys = useListKeys({ onLeaveTop: () => searchRef.current?.focus() });
+  // Cmd/Ctrl+F focuses search from anywhere in the view; a second press falls through to
+  // the browser's find. See the hook.
+  useFocusSearch(searchRef);
   /*
    * The account, for the drawer's floor. The topbar carries it at desktop width and is
    * hidden over the phone's list, so this is where it is reached there — the root layout
@@ -115,11 +119,14 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
    * The search term, debounced.
    *
    * The URL updates on every keystroke so the field stays a controlled input and the
-   * query is shareable, but the request waits until typing settles.
+   * query is shareable, but the request waits until typing settles. 300ms: the archive
+   * is thousands of notes over a network, so a request fired mid-word is usually thrown
+   * away before it lands, and the wait is short enough that a settled query still feels
+   * immediate.
    */
   const [debounced, setDebounced] = useState(q);
   useEffect(() => {
-    const timer = setTimeout(() => setDebounced(q), 180);
+    const timer = setTimeout(() => setDebounced(q), 300);
     return () => clearTimeout(timer);
   }, [q]);
   const search = useQuery(searchQuery(debounced, filter));
