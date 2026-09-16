@@ -147,6 +147,14 @@ export function openAttachmentViewer(
   const name = el('span', 'viewer-name');
   head.appendChild(name);
 
+  const meta = el('span', 'viewer-meta');
+  head.appendChild(meta);
+  // Once per view rather than on every inline attachment: saving is the rarer action,
+  // and a second control on every picture's corner would turn a note of photographs
+  // into a note of buttons. Here it is the natural next step after looking.
+  const download = el('a', 'link viewer-download');
+  download.textContent = 'Download';
+
   /**
    * The paging controls, only when there is somewhere to page to.
    *
@@ -154,12 +162,17 @@ export function openAttachmentViewer(
    * as clutter. Real buttons rather than overlays on the picture's edges: a control that
    * says where it goes, and one a Tab can reach. No wrap-around — a disabled arrow at the
    * end says "this is the last one", where wrapping would silently start over.
+   *
+   * Last before the close button, to the right of the page count and the download link.
+   * Those two come and go as the attachments change — a PDF has a page count, a remote
+   * image has no download — and anything to their left would shift with them. A control
+   * that is about to be clicked again should stay where it was.
    */
   const prev = el('button', 'icon-btn viewer-prev');
   const next = el('button', 'icon-btn viewer-next');
   const position = el('span', 'viewer-position');
+  const nav = el('span', 'viewer-nav');
   if (paged) {
-    const nav = el('span', 'viewer-nav');
     prev.type = 'button';
     prev.setAttribute('aria-label', 'Previous attachment');
     prev.innerHTML = chevronLeftMarkup();
@@ -172,18 +185,14 @@ export function openAttachmentViewer(
     head.appendChild(nav);
   }
 
-  const meta = el('span', 'viewer-meta');
-  head.appendChild(meta);
-  // Once per view rather than on every inline attachment: saving is the rarer action,
-  // and a second control on every picture's corner would turn a note of photographs
-  // into a note of buttons. Here it is the natural next step after looking.
-  const download = el('a', 'link viewer-download');
-  download.textContent = 'Download';
   const close = el('button', 'icon-btn viewer-close');
   close.type = 'button';
   close.setAttribute('aria-label', 'Close');
   close.innerHTML = closeIconMarkup();
   head.appendChild(close);
+
+  /** Where the download link goes when the attachment has one: before the pager. */
+  const afterDownload = paged ? nav : close;
 
   /**
    * The scrollable area, and the thing that takes focus when the viewer opens.
@@ -239,7 +248,7 @@ export function openAttachmentViewer(
     if (isAttachment(item.src)) {
       download.href = downloadUrl(item.src);
       download.setAttribute('download', filenameOf(item.src));
-      head.insertBefore(download, close);
+      head.insertBefore(download, afterDownload);
     } else {
       download.remove();
     }

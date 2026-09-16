@@ -3323,8 +3323,10 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
    Paging between a note's attachments: ‹ 2 of 5 ›.
 
    In the head with the rest of the controls rather than floated over the picture's
-   edges, so it is one bar to read and the arrows are where a Tab expects them. Tabular
-   figures keep "9 of 12" from shifting the arrows as the count changes.
+   edges, so it is one bar to read and the arrows are where a Tab expects them. Beside
+   the close button, to the right of the page count and the download link, which come
+   and go with the attachment — see the viewer for why. Tabular figures keep "9 of 12"
+   from shifting the arrows as the count changes.
 */
 .viewer-nav {
   display: inline-flex;

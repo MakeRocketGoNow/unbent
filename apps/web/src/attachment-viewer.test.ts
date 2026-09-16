@@ -274,6 +274,28 @@ describe('paging', () => {
     expect(position(dialog)).toBe('1 of 3');
   });
 
+  /**
+   * The pager is the control about to be used again, so it must not move when the page
+   * count or the download link appear or vanish: those sit to its left, and it sits
+   * against the close button.
+   */
+  it('keeps the pager beside the close button, after the items that come and go', () => {
+    const dialog = openPaged(0);
+    const order = () =>
+      [...(dialog.querySelector('.viewer-head')?.children ?? [])].map((c) => c.className);
+    expect(order()).toEqual([
+      'viewer-name',
+      'viewer-meta',
+      'link viewer-download',
+      'viewer-nav',
+      'icon-btn viewer-close',
+    ]);
+    // The remote image drops its download link; the pager stays where it was.
+    nextButton(dialog).click();
+    nextButton(dialog).click();
+    expect(order()).toEqual(['viewer-name', 'viewer-meta', 'viewer-nav', 'icon-btn viewer-close']);
+  });
+
   it('swaps the content and the download link as it pages', () => {
     const dialog = openPaged(0);
     expect(dialog.querySelector('img.viewer-image')).not.toBeNull();
