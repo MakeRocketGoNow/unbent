@@ -47,6 +47,18 @@ const MAX_PAGE_WIDTH = 1200;
  */
 let current: HTMLDialogElement | null = null;
 
+/**
+ * How long after opening a click inside the viewer is ignored, in milliseconds.
+ *
+ * The viewer opens synchronously on the click that asked for it, so the second click of
+ * a double-click lands inside the dialog at the same spot on the screen — on the image,
+ * where it would jump to actual size, or beside it, where it would close what had only
+ * just opened. People who double-click out of habit saw it flash and vanish. Longer than
+ * the platform's double-click interval, which is 500ms on most systems, and short enough
+ * that a deliberate second click after looking is never swallowed.
+ */
+const OPENING_GRACE_MS = 600;
+
 /** The label for an attachment whose markdown gave it none: its filename, decoded. */
 export function labelFor(target: ViewerTarget): string {
   const given = target.kind === 'image' ? target.alt : target.label;
@@ -102,15 +114,22 @@ export function openAttachmentViewer(target: ViewerTarget): HTMLDialogElement {
   dialog.appendChild(head);
   dialog.appendChild(body);
 
+  const openedAt = Date.now();
+  /** True while the click that opened the viewer may still be echoing — see the grace. */
+  const stillOpening = () => Date.now() - openedAt < OPENING_GRACE_MS;
+
   // The empty space around the content is the backdrop here, since the dialog itself
   // fills the screen: a click on it closes, the way a lightbox's scrim does. A click on
   // the content does not — for an image, that is the zoom toggle.
   body.addEventListener('click', (event) => {
-    if (event.target === body) dialog.close();
+    if (event.target === body && !stillOpening()) dialog.close();
   });
   close.addEventListener('click', () => dialog.close());
 
-  const teardown = target.kind === 'image' ? mountImage(body, target) : mountPdf(body, meta, target);
+  const teardown =
+    target.kind === 'image'
+      ? mountImage(body, target, stillOpening)
+      : mountPdf(body, meta, target);
 
   dialog.addEventListener('close', () => {
     teardown();
@@ -133,7 +152,11 @@ export function openAttachmentViewer(target: ViewerTarget): HTMLDialogElement {
  * it is offered only when there is more to see — a small image toggled to "actual size"
  * would not change, and a cursor promising zoom on it would be a lie.
  */
-function mountImage(body: HTMLElement, target: { src: string; alt: string }): () => void {
+function mountImage(
+  body: HTMLElement,
+  target: { src: string; alt: string },
+  stillOpening: () => boolean,
+): () => void {
   const img = el('img', 'viewer-image');
   img.alt = target.alt;
 
@@ -155,6 +178,7 @@ function mountImage(body: HTMLElement, target: { src: string; alt: string }): ()
   });
 
   img.addEventListener('click', (event) => {
+    if (stillOpening()) return;
     const actual = img.classList.contains('viewer-actual');
     if (!actual && !zoomable()) return;
 

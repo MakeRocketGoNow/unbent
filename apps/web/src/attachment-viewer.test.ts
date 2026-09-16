@@ -35,6 +35,16 @@ function stubDialog() {
 const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
 const dialogs = () => document.querySelectorAll('dialog.viewer');
 
+/**
+ * Moves the clock past the opening grace, during which the viewer ignores clicks on its
+ * body and image so the tail of a double-click cannot close or zoom it. Only `Date` is
+ * faked: `settle` still needs a real `setTimeout`.
+ */
+function afterOpening() {
+  vi.useFakeTimers({ toFake: ['Date'] });
+  vi.setSystemTime(Date.now() + 1_000);
+}
+
 describe('openAttachmentViewer', () => {
   beforeEach(() => {
     stubDialog();
@@ -47,6 +57,7 @@ describe('openAttachmentViewer', () => {
   afterEach(() => {
     for (const d of dialogs()) (d as HTMLDialogElement).close();
     document.body.innerHTML = '';
+    vi.useRealTimers();
   });
 
   it('opens a modal dialog named for the attachment', () => {
@@ -75,10 +86,36 @@ describe('openAttachmentViewer', () => {
 
   it('closes on a click beside the content, not on it', () => {
     const dialog = openAttachmentViewer({ kind: 'image', src: '/api/x/photo.png', alt: '' });
+    afterOpening();
     dialog.querySelector<HTMLImageElement>('.viewer-image')?.click();
     expect(dialog.open).toBe(true);
     dialog.querySelector<HTMLElement>('.viewer-body')?.click();
     expect(dialog.open).toBe(false);
+  });
+
+  /**
+   * The second click of a double-click arrives after the viewer has opened and lands
+   * inside it. Beside the image it would close the viewer; on the image it would zoom.
+   * Neither may happen while the opening click is still echoing.
+   */
+  it('ignores the tail of the click that opened it', () => {
+    const dialog = openAttachmentViewer({ kind: 'image', src: '/api/x/photo.png', alt: '' });
+    const img = dialog.querySelector<HTMLImageElement>('.viewer-image') as HTMLImageElement;
+    const body = dialog.querySelector<HTMLElement>('.viewer-body') as HTMLElement;
+    Object.defineProperty(img, 'naturalWidth', { value: 4000 });
+    Object.defineProperty(img, 'naturalHeight', { value: 3000 });
+    // jsdom has no `scrollTo` on elements; the zoom scrolls to the clicked point.
+    body.scrollTo = vi.fn();
+
+    img.click();
+    expect(img.classList.contains('viewer-actual')).toBe(false);
+    body.click();
+    expect(dialog.open).toBe(true);
+
+    afterOpening();
+    img.click();
+    expect(img.classList.contains('viewer-actual')).toBe(true);
+    expect(body.scrollTo).toHaveBeenCalled();
   });
 
   it('replaces an open viewer rather than stacking a second', () => {
