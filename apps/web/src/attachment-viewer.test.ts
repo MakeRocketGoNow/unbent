@@ -330,6 +330,92 @@ describe('paging', () => {
   });
 });
 
+/**
+ * The viewer is a place you navigated to, so the back gesture leaves it and not the note.
+ *
+ * These spy on the history push and back calls rather than reading `history.length`:
+ * jsdom caps that length at 2 and never shrinks it on `back()` (a probe established this),
+ * so it cannot witness a pop. The spies witness the contract directly — one push on open,
+ * one back on a control-close, no back when the gesture already popped. `popstate` is fired
+ * by hand, which is what a real back press does and what jsdom does from `back()`, only
+ * synchronously here so the tests need no waiting.
+ */
+describe('history', () => {
+  const img = { kind: 'image' as const, src: '/api/notes/n/files/one.png', alt: 'one' };
+  const pop = () => window.dispatchEvent(new PopStateEvent('popstate'));
+
+  let pushSpy: ReturnType<typeof vi.spyOn>;
+  let backSpy: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    stubDialog();
+    pushSpy = vi.spyOn(history, 'pushState');
+    // `back()` is stubbed rather than left real: real `back()` fires `popstate`
+    // asynchronously and would close the dialog a second time mid-assertion. The tests
+    // that want the gesture fire `popstate` themselves through `pop()`.
+    backSpy = vi.spyOn(history, 'back').mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    for (const d of dialogs()) (d as HTMLDialogElement).close();
+    document.body.innerHTML = '';
+    pushSpy.mockRestore();
+    backSpy.mockRestore();
+  });
+
+  it('pushes one entry when it opens', () => {
+    openAttachmentViewer(img);
+    expect(pushSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('pops its entry when a control closes it', () => {
+    const dialog = openAttachmentViewer(img);
+    dialog.querySelector<HTMLButtonElement>('.viewer-close')?.click();
+    expect(dialog.open).toBe(false);
+    expect(backSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('closes when the back gesture pops its entry, without popping again', () => {
+    const dialog = openAttachmentViewer(img);
+    pop();
+    expect(dialog.open).toBe(false);
+    expect(dialogs()).toHaveLength(0);
+    // The gesture already left the entry; a second `back()` would walk past it and leave
+    // the note. So the close that `popstate` triggers must not call `back()`.
+    expect(backSpy).not.toHaveBeenCalled();
+  });
+
+  it('stops listening for the gesture once it is closed', () => {
+    const dialog = openAttachmentViewer(img);
+    dialog.querySelector<HTMLButtonElement>('.viewer-close')?.click();
+    // A stray popstate after closing must do nothing — the listener is gone.
+    expect(() => pop()).not.toThrow();
+    expect(backSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('reuses the entry when one viewer replaces another', () => {
+    openAttachmentViewer(img);
+    pushSpy.mockClear();
+    backSpy.mockClear();
+    openAttachmentViewer({ kind: 'image', src: '/api/notes/n/files/two.png', alt: 'two' });
+    // Still one dialog; the replacement pushed no second entry and popped none.
+    expect(dialogs()).toHaveLength(1);
+    expect(pushSpy).not.toHaveBeenCalled();
+    expect(backSpy).not.toHaveBeenCalled();
+  });
+
+  it('leaves the replaced viewer without disturbing the new one on a later gesture', () => {
+    openAttachmentViewer(img);
+    openAttachmentViewer({ kind: 'image', src: '/api/notes/n/files/two.png', alt: 'two' });
+    const dialog = dialogs()[0] as HTMLDialogElement;
+    expect(dialog.open).toBe(true);
+    // The one entry both viewers shared is popped: the surviving viewer closes.
+    pop();
+    expect(dialog.open).toBe(false);
+    expect(backSpy).not.toHaveBeenCalled();
+  });
+});
+
 describe('downloadUrl', () => {
   it('asks the API to save rather than show', () => {
     expect(downloadUrl('/api/n/files/x.pdf')).toBe('/api/n/files/x.pdf?download=1');

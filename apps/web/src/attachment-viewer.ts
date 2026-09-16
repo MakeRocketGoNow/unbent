@@ -64,6 +64,13 @@ let current: HTMLDialogElement | null = null;
  */
 const OPENING_GRACE_MS = 600;
 
+/**
+ * A marker put on the history entry the viewer pushes, so a `popstate` can tell that
+ * *this* is the entry being left. Nothing else in the app pushes state, but a value the
+ * viewer recognises is cheaper insurance than assuming so.
+ */
+const HISTORY_MARKER = 'unbent:attachment-viewer';
+
 /** The last segment of a URL's path, decoded — the stored filename, for an attachment. */
 function filenameOf(src: string): string {
   const path = src.split('?')[0] ?? '';
@@ -137,6 +144,12 @@ export function openAttachmentViewer(
   target: ViewerTarget,
   siblings: readonly ViewerTarget[] = [target],
 ): HTMLDialogElement {
+  // Replacing an already-open viewer, not stacking one. The old dialog keeps the history
+  // entry it pushed and the new one below reuses it rather than pushing a second, so the
+  // stack stays one deep and `history.back()` never has two entries to walk. `replace`
+  // is what tells the outgoing close handler to leave the entry in place.
+  const replacing = current !== null;
+  current?.dispatchEvent(new CustomEvent('unbent:replace'));
   current?.close();
 
   // The target is found by URL, which is how the set was built; a caller whose set does
@@ -219,6 +232,41 @@ export function openAttachmentViewer(
   const openedAt = Date.now();
   /** True while the click that opened the viewer may still be echoing — see the grace. */
   const stillOpening = () => Date.now() - openedAt < OPENING_GRACE_MS;
+
+  /**
+   * The viewer is a place you navigated to, so the back gesture leaves it rather than the
+   * note behind it.
+   *
+   * Opening pushes one history entry; every way out — the ✕, the backdrop, Escape — calls
+   * `dialog.close()`, and the close handler pops that entry with `history.back()`. Pressing
+   * back instead fires `popstate`, which closes the dialog directly. `owned` is what keeps
+   * the two from chasing each other: it is true while our entry is on the stack, so the
+   * close handler pops only when a control closed the dialog, not when `popstate` already
+   * did. On a phone this is the whole point — back is the universal way out, and it should
+   * dismiss the thing on top, not the note under it.
+   *
+   * One entry for the whole viewing session, not one per attachment. Paging does not touch
+   * history — nothing here changes the URL yet — so ten pages deep is still a single press
+   * to leave rather than ten. (A later stage that puts the attachment in the URL would use
+   * `replaceState` on each page to keep that true.)
+   */
+  let owned = true;
+  // Reusing the entry the viewer we replaced left in place, rather than pushing a second.
+  if (!replacing) history.pushState({ [HISTORY_MARKER]: true }, '');
+
+  const onPopState = () => {
+    // The user pressed back: our entry is already gone, so just close, and tell the close
+    // handler not to pop an entry that is no longer there.
+    owned = false;
+    dialog.close();
+  };
+  window.addEventListener('popstate', onPopState);
+
+  // A newer viewer is taking our place. Hand it the history entry: stop owning it, so the
+  // close below neither pops it nor lets a stray `popstate` reach the new viewer.
+  dialog.addEventListener('unbent:replace', () => {
+    owned = false;
+  });
 
   // The empty space around the content is the backdrop here, since the dialog itself
   // fills the screen: a click on it closes, the way a lightbox's scrim does. A click on
@@ -326,6 +374,15 @@ export function openAttachmentViewer(
   }
 
   dialog.addEventListener('close', () => {
+    window.removeEventListener('popstate', onPopState);
+    // A control closed the dialog, so our history entry is still on the stack: pop it, so
+    // the address bar and the back stack match what is on screen. When `popstate` closed
+    // us the entry is already gone and `owned` is false, so we must not `back()` again —
+    // that would leave the note itself.
+    if (owned) {
+      owned = false;
+      history.back();
+    }
     teardown();
     dialog.remove();
     if (current === dialog) current = null;
