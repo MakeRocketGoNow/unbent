@@ -50,6 +50,12 @@ export function NoteListItem({ note, to, actions, sort, transition = false }: No
         search={(prev) => prev}
         className="note-item"
         activeProps={{ className: 'note-item active' }}
+        // On a side-by-side list a click is browsing, not editing: the row keeps focus and
+        // the editor stands down so the arrow keys keep working, the same as arrowing to it.
+        // Marked only where the list survives the open — a phone replaces it with the note,
+        // so there focus has nowhere to stay and the note opens ready to write in. Read by
+        // the pointerdown handler in `useListKeys`.
+        {...(transition ? {} : { 'data-keep-focus': '' })}
         viewTransition={transition ? { types: ['note-open'] } : undefined}
         /*
          * Which entry is opening, for the transition to grow from.

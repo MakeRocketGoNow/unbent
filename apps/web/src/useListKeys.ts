@@ -85,15 +85,29 @@ export function useCameFromList(): boolean {
 }
 
 /*
-   Any pointer press ends the keyboard's claim on focus.
+   A pointer press sets the flag from where it landed.
 
-   Without this, arrowing to a note and then clicking a different one left the flag set,
-   so the click opened a note whose editor refused to focus — the arrow keys' rule
-   outliving the arrow keys. Captured at the document, before the click reaches the link,
-   so the flag is already false by the time the new editor mounts.
+   Clicking a note in a side-by-side list is browsing, the same as arrowing to it: focus
+   stays on the row and the editor stands down, so the arrows keep working and the note
+   opens to be read, not written in. So a press inside such a row *sets* the flag, exactly
+   as `reach` does for the keyboard. Every other press clears it — the editor, the New
+   button, a row in a list that is about to replace itself with the note (a phone, where
+   there is no list left to keep focus on) — so those still open ready to type.
+
+   The row marks itself with `data-keep-focus` when it is one whose list survives the open;
+   see `NoteListItem`. Captured at the document, before the press reaches the link, so the
+   flag is already right by the time the new editor mounts.
 */
 if (typeof document !== 'undefined') {
-  document.addEventListener('pointerdown', () => setCameFromList(false), true);
+  document.addEventListener(
+    'pointerdown',
+    (e) => {
+      const row =
+        e.target instanceof Element ? e.target.closest<HTMLElement>('.note-item') : null;
+      setCameFromList(row?.hasAttribute('data-keep-focus') ?? false);
+    },
+    true,
+  );
 }
 
 export function useListKeys(opts: {
