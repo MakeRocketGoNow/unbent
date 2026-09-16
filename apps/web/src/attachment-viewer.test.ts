@@ -70,12 +70,26 @@ describe('openAttachmentViewer', () => {
     );
   });
 
-  it('offers the file as a download', () => {
-    const dialog = openAttachmentViewer({ kind: 'pdf', src: '/api/x/scan.pdf', label: 'Scan' });
+  it('offers a stored file as a download, under its filename', () => {
+    const dialog = openAttachmentViewer({
+      kind: 'image',
+      src: '/api/notes/n/files/my%20scan.png',
+      alt: 'Scan of a sample invoice',
+    });
     const link = dialog.querySelector<HTMLAnchorElement>('a.viewer-download');
-    expect(link?.getAttribute('href')).toBe('/api/x/scan.pdf?download=1');
-    expect(link?.getAttribute('download')).toBe('Scan');
+    expect(link?.getAttribute('href')).toBe('/api/notes/n/files/my%20scan.png?download=1');
+    expect(link?.getAttribute('download')).toBe('my scan.png');
     expect(link?.textContent).toBe('Download');
+  });
+
+  /** Another host ignores our query and the browser ignores `download` across origins. */
+  it('offers no download for a remote image', () => {
+    const dialog = openAttachmentViewer({
+      kind: 'image',
+      src: 'https://example.com/logo.png',
+      alt: 'logo',
+    });
+    expect(dialog.querySelector('a.viewer-download')).toBeNull();
   });
 
   it('removes itself from the document when closed', () => {

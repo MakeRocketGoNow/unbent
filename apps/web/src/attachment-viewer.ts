@@ -59,17 +59,34 @@ let current: HTMLDialogElement | null = null;
  */
 const OPENING_GRACE_MS = 600;
 
+/** The last segment of a URL's path, decoded — the stored filename, for an attachment. */
+function filenameOf(src: string): string {
+  const path = src.split('?')[0] ?? '';
+  const name = path.slice(path.lastIndexOf('/') + 1);
+  try {
+    return decodeURIComponent(name);
+  } catch {
+    return name;
+  }
+}
+
 /** The label for an attachment whose markdown gave it none: its filename, decoded. */
 export function labelFor(target: ViewerTarget): string {
   const given = target.kind === 'image' ? target.alt : target.label;
   if (given.trim()) return given.trim();
-  const path = target.src.split('?')[0] ?? '';
-  const name = path.slice(path.lastIndexOf('/') + 1);
-  try {
-    return decodeURIComponent(name) || 'Attachment';
-  } catch {
-    return name || 'Attachment';
-  }
+  return filenameOf(target.src) || 'Attachment';
+}
+
+/**
+ * Whether the URL is one of this note's stored files, served by the API.
+ *
+ * A rich-mode image can also be a remote one — a web clip's picture at its own address.
+ * The API's `?download=1` means nothing to another host, and a browser ignores the
+ * `download` attribute across origins, so a Download link for one would open the picture
+ * in a tab and call it a download. Better no link than a lying one.
+ */
+function isAttachment(src: string): boolean {
+  return src.startsWith('/api/notes/');
 }
 
 /**
@@ -107,17 +124,22 @@ export function openAttachmentViewer(target: ViewerTarget): HTMLDialogElement {
   // Once per view rather than on every inline attachment: saving is the rarer action,
   // and a second control on every picture's corner would turn a note of photographs
   // into a note of buttons. Here it is the natural next step after looking.
-  const download = el('a', 'link viewer-download');
-  download.href = downloadUrl(target.src);
-  download.setAttribute('download', label);
-  download.textContent = 'Download';
   const close = el('button', 'icon-btn viewer-close');
   close.type = 'button';
   close.setAttribute('aria-label', 'Close');
   close.innerHTML = closeIconMarkup();
   head.appendChild(name);
   head.appendChild(meta);
-  head.appendChild(download);
+  if (isAttachment(target.src)) {
+    const download = el('a', 'link viewer-download');
+    download.href = downloadUrl(target.src);
+    // Saved under the stored filename, not the caption: an image's alt text is a
+    // description, and a file called "Scan of a sample invoice" with no extension is
+    // not what anyone asked for.
+    download.setAttribute('download', filenameOf(target.src));
+    download.textContent = 'Download';
+    head.appendChild(download);
+  }
   head.appendChild(close);
 
   /**
