@@ -3474,7 +3474,7 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
 }
 
 .confirm p {
-  margin: 0 0 0.45rem;
+  margin: 0 0 0.5rem;
   /*
      `anywhere` rather than `break-word`: only the former lets an unbreakable word count
      toward the element's min-content width, which is what stops the panel being sized by
@@ -3495,28 +3495,27 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
   flex-wrap: wrap;
   gap: 0.75rem;
   align-items: center;
-  margin-top: 0.7rem;
+  margin-top: 0.75rem;
 }
 
 /*
-   The demoted destructive option: its own line, well clear of the primary.
+   The demoted destructive option: its own line below the primary.
 
    `flex-basis: 100%` rather than the `display: block` this used to say. A flex item's
    display is blockified either way, so `block` never broke the line — the cascade sat on
    the same row as the safe option it is meant to be demoted below, 7px lower, reading as a
    misalignment rather than a demotion. Taking the whole line is the only thing a flex child
-   can do to force the break. `max-width: max-content` trims the box back to its text but
-   hands the break straight back at any width where it still fits, which is most of them.
+   can do to force the break.
 
    Full width is not a cost here: the hover fill says how far the cascade's hit area goes,
-   and on a phone it is the tap target the rule in the media query below asks for.
+   and on a phone it is the tap target the rule in the media query below asks for. The gap
+   provides consistent spacing; extra margin would break the rhythm.
 */
 .confirm-actions .confirm-secondary {
   flex-basis: 100%;
   /* Beats the centring in `.confirm-actions button` below, which is meant for buttons
      sized to their own text, not for one spanning the row. */
   justify-content: flex-start;
-  margin-top: 0.85rem;
 }
 
 /*
