@@ -48,6 +48,19 @@ jobs:
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
       DEV_BETTER_AUTH_SECRET: ${{ secrets.DEV_BETTER_AUTH_SECRET }}
       DEV_ALLOWED_EMAILS: ${{ secrets.DEV_ALLOWED_EMAILS }}
+      # The account's workers.dev subdomain, which the dev instance uses to recognise a
+      # legitimate preview host before handing it a sign-in token — see the preview relay
+      # in apps/api/src/lib/preview-relay.ts. The same variable the preview job reads to
+      # build a preview's URL; unset, the relay simply stays off.
+      WORKERS_SUBDOMAIN: ${{ vars.CLOUDFLARE_WORKERS_SUBDOMAIN }}
+      # Google on the dev instance, which is what the preview sign-in relay bounces to — a
+      # preview cannot register its own OAuth callback, so the relay is only useful if
+      # dev.unbent.app can actually sign in with Google. Both or neither, the same shape as
+      # every other OAuth pair here; unset, the dev instance simply offers no Google button
+      # and the relay falls back to the dev instance's other methods. Named `DEV_` so it can
+      # be a separate client from production's, the way `DEV_BETTER_AUTH_SECRET` is.
+      DEV_GOOGLE_CLIENT_ID: ${{ secrets.DEV_GOOGLE_CLIENT_ID }}
+      DEV_GOOGLE_CLIENT_SECRET: ${{ secrets.DEV_GOOGLE_CLIENT_SECRET }}
       # Optional; the same document production serves, so the Android app's passkeys work
       # against the dev instance and previews too.
       ANDROID_ASSET_LINKS: ${{ secrets.ANDROID_ASSET_LINKS }}
@@ -115,7 +128,23 @@ jobs:
           if [ -n "$ANDROID_ASSET_LINKS" ]; then
             printf 'ANDROID_ASSET_LINKS=%s\n' "$(printf '%s' "$ANDROID_ASSET_LINKS" | jq -c .)" >> "$RUNNER_TEMP/dev-secrets.env"
           fi
-          pnpm exec wrangler deploy --env dev --secrets-file "$RUNNER_TEMP/dev-secrets.env"
+          # Google, both halves or neither — a lone id with no secret is not a working
+          # provider, and `configuredSocials` ignores it, so sending only one would advertise
+          # a button that fails when pressed. Mapped to the plain GOOGLE_* names the Worker
+          # reads.
+          if [ -n "$DEV_GOOGLE_CLIENT_ID" ] && [ -n "$DEV_GOOGLE_CLIENT_SECRET" ]; then
+            printf 'GOOGLE_CLIENT_ID=%s\nGOOGLE_CLIENT_SECRET=%s\n' \
+              "$DEV_GOOGLE_CLIENT_ID" "$DEV_GOOGLE_CLIENT_SECRET" >> "$RUNNER_TEMP/dev-secrets.env"
+          fi
+          # The subdomain is what lets the dev instance validate a preview's return origin
+          # before minting a sign-in token for it. A plain var rather than a secret: it is
+          # public (it is in every preview's URL) and it is not per-PR. Omitted when the
+          # repository runs no previews, which leaves the relay off with nothing to trust.
+          relay_var=()
+          if [ -n "$WORKERS_SUBDOMAIN" ]; then
+            relay_var=(--var "PREVIEW_RELAY_SUBDOMAIN:$WORKERS_SUBDOMAIN")
+          fi
+          pnpm exec wrangler deploy --env dev "${relay_var[@]}" --secrets-file "$RUNNER_TEMP/dev-secrets.env"
           rm -f "$RUNNER_TEMP/dev-secrets.env"
 
   # One Worker per PR, at a URL of its own, so a branch can be tried out rather than read.
@@ -156,6 +185,12 @@ jobs:
       # Optional; the same document production serves, so the Android app's passkeys work
       # against the dev instance and previews too.
       ANDROID_ASSET_LINKS: ${{ secrets.ANDROID_ASSET_LINKS }}
+      # The standing dev instance a preview borrows a Google session from — the origin its
+      # login screen sends people to. unbent.app's own is dev.unbent.app, which is the
+      # default; a fork with a differently-named dev instance overrides it with the
+      # `DEV_INSTANCE_ORIGIN` repository variable. It only draws the relay button on the
+      # preview; the dev side's own trust check is the subdomain the dev deploy sets.
+      DEV_INSTANCE_ORIGIN: ${{ vars.DEV_INSTANCE_ORIGIN || 'https://dev.unbent.app' }}
     steps:
       # The subdomain is set but the secrets may not be; same gate as the dev job.
       - name: Are the preview secrets set?
@@ -211,8 +246,15 @@ jobs:
           if [ -n "$ANDROID_ASSET_LINKS" ]; then
             printf 'ANDROID_ASSET_LINKS=%s\n' "$(printf '%s' "$ANDROID_ASSET_LINKS" | jq -c .)" >> "$RUNNER_TEMP/preview-secrets.env"
           fi
+          # Point the preview's login screen at the dev instance for a Google session. Only
+          # drawn when there is a dev instance to point at, which for this repository there
+          # always is; a fork without one leaves DEV_INSTANCE_ORIGIN empty and the button off.
+          relay_var=()
+          if [ -n "$DEV_INSTANCE_ORIGIN" ]; then
+            relay_var=(--var "PREVIEW_RELAY_ORIGIN:$DEV_INSTANCE_ORIGIN")
+          fi
           pnpm exec wrangler deploy --env preview --name "$WORKER_NAME" --var "APP_URL:$PREVIEW_URL" \
-            --secrets-file "$RUNNER_TEMP/preview-secrets.env"
+            "${relay_var[@]}" --secrets-file "$RUNNER_TEMP/preview-secrets.env"
           rm -f "$RUNNER_TEMP/preview-secrets.env"
 
       # Edited in place rather than appended to, so a PR with thirty pushes has one comment.
@@ -222,12 +264,23 @@ jobs:
         with:
           script: |
             const marker = '<!-- unbent-preview -->';
+            const relay = process.env.DEV_INSTANCE_ORIGIN;
+            const signIn = relay
+              ? [
+                  `Sign in with **Continue on the dev instance** — a preview cannot register`,
+                  `its own OAuth callback (its host changes every PR), so it borrows a Google`,
+                  `session from ${relay} and comes back signed in. A password with an`,
+                  `allowlisted address still works too.`,
+                ]
+              : [
+                  'Sign in with a password and an allowlisted address — a preview offers no OAuth,',
+                  'because a callback URL cannot be registered for a host that changes every PR.',
+                ];
             const body = [
               marker,
               `### Preview: ${process.env.PREVIEW_URL}`,
               '',
-              'Sign in with a password and an allowlisted address — a preview offers no OAuth,',
-              'because a callback URL cannot be registered for a host that changes every PR.',
+              ...signIn,
               '',
               `Runs against the shared \`unbent-dev\` database and bucket, which every preview`,
               'writes to. Production is untouched. The Worker is deleted when this PR closes.',

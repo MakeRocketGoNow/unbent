@@ -258,6 +258,17 @@ interface AuthInstance {
      * endpoint publishes, without a Worker having to make an HTTP request to itself.
      */
     getJwks: () => Promise<{ keys: Array<Record<string, unknown>> }>;
+    /**
+     * Mints a one-time token against the request's session, the same value the
+     * `/one-time-token/generate` endpoint returns. Called in-process by the preview relay
+     * so it can validate the return origin and mint in one handler, rather than the browser
+     * fetching a token and then being trusted to redirect it somewhere safe — see
+     * routes/preview-relay.ts. Requires a session on the passed headers and throws
+     * otherwise — though the relay route runs `requireAuth` first, so by the time it calls
+     * this a session is already proven and a throw means the token store, which it reports
+     * as a 500.
+     */
+    generateOneTimeToken: (context: { headers: Headers }) => Promise<{ token: string }>;
   };
   /**
    * Needed by the MCP route for the base URL it verifies tokens against, and for the

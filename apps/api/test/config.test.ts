@@ -127,4 +127,18 @@ describe('advertisement and endpoints agree', () => {
     const { accountDeletion } = (await res.json()) as { accountDeletion: boolean };
     expect(accountDeletion).toBe(true);
   });
+
+  /**
+   * The preview sign-in relay is a preview-only field: it names the dev instance a preview
+   * borrows a Google session from, so it is set only where `PREVIEW_RELAY_ORIGIN` is. The
+   * suite runs a plain local Worker with none configured, so the honest answer here is that
+   * the field is absent — a login screen that draws no relay button. `previewRelayOrigin`'s
+   * own behaviour is unit-tested in lib/preview-relay.test.ts; this pins that the config
+   * route drops the field rather than sending `previewRelay: null`.
+   */
+  it('omits the preview relay when none is configured', async () => {
+    const res = await fetch(`${BASE}/api/config`);
+    const body = (await res.json()) as Record<string, unknown>;
+    expect('previewRelay' in body).toBe(false);
+  });
 });

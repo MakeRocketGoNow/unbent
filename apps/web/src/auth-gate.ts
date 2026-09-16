@@ -79,6 +79,11 @@ const PUBLIC: ReadonlySet<string> = new Set([
   '/privacy',
   '/terms',
   HOW_TO_DELETE,
+  // The preview sign-in relay's landing point. Public for the same reason as the sign-in
+  // screen: it is reached with no session — a token from the dev instance is about to
+  // establish one — so gating it would redirect the token to /login and lose it. See
+  // routes/preview-signin.tsx.
+  '/preview-signin',
 ]);
 
 export function shellFor(pathname: string): Shell {
@@ -146,6 +151,42 @@ export function safeRedirect(value: string | undefined): string | undefined {
   if (!value || !value.startsWith('/') || /^\/[/\\]/.test(value)) return undefined;
   const [path = ''] = value.split('?');
   return path.replace(/\/$/, '') === LOGIN ? undefined : value;
+}
+
+/**
+ * Where the browser was heading before the preview sign-in relay took it away, parked
+ * across the round trip through the dev instance.
+ *
+ * It cannot ride in the URL. The dev instance validates the relay's `return` as a *bare*
+ * origin — no path, no query — and relaxing that to carry a destination would widen the one
+ * check the whole relay's safety rests on. Storage instead, and `sessionStorage` rather than
+ * the `localStorage` `usePersistentState` uses, because this belongs to one handoff in one
+ * tab rather than to the person.
+ *
+ * Every access is wrapped: a browser with storage disabled must still be able to sign in,
+ * and losing the destination costs only a landing on `/notes`. It lives here rather than in
+ * the route that reads it so the sign-in screen does not have to import a route module to
+ * write it.
+ */
+const RELAY_REDIRECT_KEY = 'unbent.preview-relay.redirect';
+
+export function rememberRelayRedirect(path: string): void {
+  try {
+    sessionStorage.setItem(RELAY_REDIRECT_KEY, path);
+  } catch {
+    // Storage disabled or full. The destination is a nicety; signing in is not.
+  }
+}
+
+/** Reads and clears it. Through `safeRedirect` for the same reason `/login`'s is. */
+export function takeRelayRedirect(): string {
+  try {
+    const stored = sessionStorage.getItem(RELAY_REDIRECT_KEY);
+    sessionStorage.removeItem(RELAY_REDIRECT_KEY);
+    return safeRedirect(stored ?? undefined) ?? HOME;
+  } catch {
+    return HOME;
+  }
 }
 
 /**

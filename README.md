@@ -446,6 +446,25 @@ Unlike a preview it carries the `ai` binding, so it extracts a PDF's text on the
 production does. An instance is only worth having if the path it exercises is production's,
 and extraction is the half of an import that differs most between the two.
 
+#### Google on the dev instance
+
+The [preview sign-in relay](#preview-deployments) bounces to the dev instance for OAuth, so
+the relay is only useful if the dev instance can sign in with Google. Two `DEV_GOOGLE_*`
+repository secrets configure it, mapped to the plain `GOOGLE_*` names the Worker reads — the
+`DEV_` prefix so the dev instance can use a separate OAuth client from production, the way
+`DEV_BETTER_AUTH_SECRET` already does. Both or neither: a lone client id with no secret is
+not a working provider, so the deploy sends them only as a pair.
+
+The OAuth client — whichever one these secrets name — has to list the dev instance, since a
+callback is matched exactly:
+
+- Authorized redirect URI: `https://dev.unbent.app/api/auth/callback/google`
+- Authorized JavaScript origin: `https://dev.unbent.app`
+
+Without both secrets the dev instance offers no Google button and the relay falls back to
+whatever else the dev instance is configured for (a password, a code by email); without the
+console entries the button is there but Google refuses the callback.
+
 #### DNS for `dev.unbent.app`
 
 There is no record to create by hand. `[[env.dev.routes]]` sets `custom_domain = true`, the
@@ -509,12 +528,26 @@ The environment is called `preview` rather than `dev` because the custom domain 
 in a block previews reuse: `--name` changes which script a deploy targets but not which
 hostname it claims, so a route here would be taken over by whichever preview deployed last.
 
-Sign-in on a preview is a password and an allowlisted address. That is not a special case
-but the default any instance falls back to with no OAuth and no mail configured, as
-["Choosing sign-in methods"](#choosing-sign-in-methods) describes. OAuth is not offered
-because a callback URL cannot be registered for a host that changes with every PR. Passkeys
-work, each bound to the one preview host it was created on. Both are what the dev instance
-is for — same data, hostname that stays put.
+Sign-in on a preview leans on the dev instance, through the **preview sign-in relay**. A
+callback URL still cannot be registered for a host that changes every PR, so a preview
+cannot run OAuth itself — but it does not have to. Its login screen shows **Continue on the
+dev instance**, which sends the browser to `dev.unbent.app`, signs in there with Google (or
+whatever the dev instance offers), and comes back with a one-time token the preview redeems
+for a session of its own. It works because a preview and the dev instance share the
+`unbent-dev` database, so a session minted on one is valid on the other, and because the
+token is handed only to a host that matches `unbent-pr-<N>.<subdomain>.workers.dev` on the
+configured subdomain — the check in `apps/api/src/lib/preview-relay.ts`, which is why the
+dev deploy is given `PREVIEW_RELAY_SUBDOMAIN` and the preview deploy `PREVIEW_RELAY_ORIGIN`.
+
+The session is shared rather than copied: redeeming the token sets the *dev instance's own*
+session token as the preview's cookie, so the two hold one session between them. Signing out
+on either signs you out of both, and the preview's session expires when dev's does. That is
+a fair trade for a scratch environment, but it is surprising the first time it happens.
+
+A password with an allowlisted address still works too — the default any instance falls
+back to, as ["Choosing sign-in methods"](#choosing-sign-in-methods) describes — as do
+passkeys, each bound to the one preview host it was created on. The relay is the fast path;
+these are the ones that need no round trip.
 
 Migrations are the sharp edge. A PR that adds one applies it to the shared database on its
 first preview deploy, and nothing rolls it back when the PR is abandoned. Wrangler tracks
@@ -542,10 +575,13 @@ summary rather than failing.
 | `DEV_BETTER_AUTH_SECRET` | secret | a fresh `openssl rand -base64 32`, not production's |
 | `DEV_ALLOWED_EMAILS` | secret | who may sign in to a preview or the dev instance |
 | `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID` | secret | the same pair production deploys with, needing D1 and R2 edit scopes, plus the DNS scope [the dev instance](#dns-for-devunbentapp) describes |
+| `DEV_INSTANCE_ORIGIN` | variable, optional | where a preview's sign-in relay sends people; defaults to `https://dev.unbent.app`. Set it only if your dev instance has a different name |
+| `DEV_GOOGLE_CLIENT_ID`, `DEV_GOOGLE_CLIENT_SECRET` | secret, optional | Google on the dev instance, so the relay can sign in with it; both or neither, and the client must list `dev.unbent.app` — see [Google on the dev instance](#google-on-the-dev-instance) |
 
 The subdomain is a variable rather than a secret because the workflow has to build the URL
 before deploying — `APP_URL` is baked in at deploy time — and a masked value would arrive
-in the PR comment as `***`.
+in the PR comment as `***`. It doubles as the dev instance's `PREVIEW_RELAY_SUBDOMAIN`, the
+allowlist its end of the sign-in relay checks a preview's return origin against.
 
 Fork PRs get no preview. `pull_request` withholds secrets from them, so there would be
 nothing to deploy with; the job skips rather than failing halfway.

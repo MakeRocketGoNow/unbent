@@ -11,6 +11,7 @@ import type { AppConfig, AuthProvider } from '@unbent/shared';
 import { Login } from './Login.js';
 import { emailOtp, signIn } from '../auth-client.js';
 import * as api from '../notes-api.js';
+import { takeRelayRedirect } from '../auth-gate.js';
 
 // No network in a unit test: the config is what each case says it is.
 vi.mock('../notes-api.js', async (importOriginal) => ({
@@ -44,11 +45,16 @@ vi.mock('../auth-client.js', () => ({
  */
 const BUILT_IN = { privacy: '/privacy', terms: '/terms' };
 
-function harness(providers: AuthProvider[], config: Partial<AppConfig> = { legal: BUILT_IN }) {
+function harness(
+  providers: AuthProvider[],
+  config: Partial<AppConfig> = { legal: BUILT_IN },
+  // `redirectTo` is the route's job in the app; here it only has to be somewhere, except
+  // in the relay cases, which are about carrying a *particular* destination across.
+  redirectTo = '/notes',
+) {
   vi.mocked(api.getConfig).mockResolvedValue({ providers, ...config });
 
-  // `redirectTo` is the route's job in the app; here it only has to be somewhere.
-  const rootRoute = createRootRoute({ component: () => <Login redirectTo="/notes" /> });
+  const rootRoute = createRootRoute({ component: () => <Login redirectTo={redirectTo} /> });
   const history = createMemoryHistory({ initialEntries: ['/login'] });
   const router = createRouter({ routeTree: rootRoute, history });
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -368,5 +374,103 @@ describe('Login', () => {
     await waitFor(() => expect(screen.getByText('Terms')).toBeTruthy());
     expect(screen.getByText('Terms').getAttribute('href')).toBe('https://example.com/t');
     expect(screen.getByText('Privacy Policy').getAttribute('href')).toBe('https://example.com/p');
+  });
+
+  /**
+   * The preview sign-in relay button. It appears only when the server reports a relay
+   * origin, which it does only on a preview — the same "the server decides which buttons to
+   * draw" contract as every other method here. A preview offers the local methods too, so
+   * this is an addition rather than a replacement, and it comes first because it is the only
+   * one that gives a preview a Google session at all.
+   */
+  it('offers the relay button when the instance reports a preview relay', async () => {
+    harness(['password'], { legal: BUILT_IN, previewRelay: { origin: 'https://dev.unbent.app' } });
+    await waitFor(() =>
+      expect(screen.getByText('Continue on the dev instance')).toBeTruthy(),
+    );
+  });
+
+  it('offers no relay button when the instance reports none', async () => {
+    harness(['password']);
+    await waitFor(() => expect(screen.getByLabelText('Email')).toBeTruthy());
+    expect(screen.queryByText('Continue on the dev instance')).toBeNull();
+  });
+
+  it('puts the relay first, above the local methods a preview still offers', async () => {
+    harness(['password', 'email-otp'], {
+      legal: BUILT_IN,
+      previewRelay: { origin: 'https://dev.unbent.app' },
+    });
+    await waitFor(() =>
+      expect(screen.getByText('Continue on the dev instance')).toBeTruthy(),
+    );
+    const order = [...document.querySelectorAll('button, label')]
+      .map((el) => el.textContent ?? '')
+      .filter((t) => /dev instance|Email/.test(t));
+    expect(order[0]).toContain('dev instance');
+  });
+
+  /**
+   * Clicking it hands off to the dev instance's session-gated `/preview-relay` route, naming
+   * this origin as where to return. The route rather than the API endpoint behind it, so a
+   * visitor with no dev session is sent through that instance's `/login` instead of meeting a
+   * JSON 401. The whole-page navigation is the point — it leaves this origin — so the test
+   * pins the URL it sends the browser to rather than any in-app state.
+   */
+  it('hands off to the dev instance with this origin as the return', async () => {
+    // jsdom's window.location is read-only; replace it with a plain object for this case so
+    // the assignment the handler makes is observable.
+    const original = window.location;
+    const location = { origin: 'https://unbent-pr-120.of2668.workers.dev', href: '' };
+    Object.defineProperty(window, 'location', { value: location, configurable: true, writable: true });
+    try {
+      harness(['password'], {
+        legal: BUILT_IN,
+        previewRelay: { origin: 'https://dev.unbent.app' },
+      });
+      await waitFor(() =>
+        expect(screen.getByText('Continue on the dev instance')).toBeTruthy(),
+      );
+      fireEvent.click(screen.getByText('Continue on the dev instance'));
+      expect(location.href).toBe(
+        'https://dev.unbent.app/preview-relay?return=' +
+          encodeURIComponent('https://unbent-pr-120.of2668.workers.dev'),
+      );
+    } finally {
+      Object.defineProperty(window, 'location', { value: original, configurable: true, writable: true });
+    }
+  });
+
+  /**
+   * The destination survives the relay. It cannot travel in the URL — the dev instance
+   * validates `return` as a bare origin — so it waits in `sessionStorage` for
+   * `/preview-signin` to pick it up. Without this, opening a note signed out on a preview
+   * came back to the note list instead of the note.
+   */
+  it('parks the destination for the return leg', async () => {
+    const original = window.location;
+    const location = { origin: 'https://unbent-pr-120.of2668.workers.dev', href: '' };
+    Object.defineProperty(window, 'location', { value: location, configurable: true, writable: true });
+    sessionStorage.clear();
+    try {
+      harness(
+        ['password'],
+        { legal: BUILT_IN, previewRelay: { origin: 'https://dev.unbent.app' } },
+        '/notes/abc-123',
+      );
+      await waitFor(() =>
+        expect(screen.getByText('Continue on the dev instance')).toBeTruthy(),
+      );
+      fireEvent.click(screen.getByText('Continue on the dev instance'));
+      expect(takeRelayRedirect()).toBe('/notes/abc-123');
+    } finally {
+      Object.defineProperty(window, 'location', { value: original, configurable: true, writable: true });
+    }
+  });
+
+  /** Nothing parked — a direct visit to the landing page — lands on the notes list. */
+  it('falls back to the notes list when nothing was parked', () => {
+    sessionStorage.clear();
+    expect(takeRelayRedirect()).toBe('/notes');
   });
 });

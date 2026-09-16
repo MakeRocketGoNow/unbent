@@ -135,6 +135,23 @@ export interface Env {
    * this origin, which is what keeps content blockers from dropping the reports.
    */
   POSTHOG_HOST?: string;
+  /**
+   * The preview sign-in relay, which lets a per-PR preview borrow a Google session from the
+   * standing dev instance without registering an OAuth callback for a hostname that changes
+   * every PR. Two origins, one on each side of the handoff; see lib/preview-relay.ts.
+   *
+   * `PREVIEW_RELAY_ORIGIN` is set on a *preview* and names the dev instance it bounces to,
+   * e.g. https://dev.unbent.app. Its presence is what draws the relay button on that
+   * preview's login screen.
+   *
+   * `PREVIEW_RELAY_SUBDOMAIN` is set on the *dev instance* and names the account's
+   * workers.dev subdomain, e.g. of2668. It is the allowlist `/api/preview-relay/start`
+   * checks a return origin against before handing it a one-time token — a security
+   * boundary, so it is configured rather than inferred: anyone can own a `*.workers.dev`
+   * account, and only configuration knows which subdomain is ours.
+   */
+  PREVIEW_RELAY_ORIGIN?: string;
+  PREVIEW_RELAY_SUBDOMAIN?: string;
 }
 
 export interface SessionUser {
