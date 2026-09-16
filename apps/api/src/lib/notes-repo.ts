@@ -752,11 +752,18 @@ export class NotesRepo extends ScopedRepo {
      * different note. A taken id with a hash hit is a remint from a prior run of
      * *this* note, and skipping it is what makes that resume work.
      */
+    // Whether the id is already held is settled once here: the guard below reads it, and
+    // so does the mint at the foot of this method, which used to ask the database again.
+    const idIsTaken = input.id ? await this.idTaken(input.id) : false;
     const existingById = input.id ? await this.liveNoteById(input.id) : null;
-    const existingByHash = existingById ? null : await this.liveNoteByHash(input.contentHash);
-    const existing =
-      existingById ??
-      (existingByHash && (!input.id || (await this.idTaken(input.id))) ? existingByHash : null);
+    // A free id is a different note however its text hashes, so there is nothing for a
+    // hash hit to swallow — don't even look. The hash lookup only earns its round-trip
+    // when the id is absent (an ENEX import) or taken (a remint resuming a prior run).
+    const existingByHash =
+      existingById || (input.id && !idIsTaken)
+        ? null
+        : await this.liveNoteByHash(input.contentHash);
+    const existing = existingById ?? existingByHash;
 
     if (existing) {
       /**
@@ -795,7 +802,7 @@ export class NotesRepo extends ScopedRepo {
      * fresh id rather than a constraint error, and a trashed note keeps its id so it can
      * still be restored from the trash.
      */
-    const id = input.id && !(await this.idTaken(input.id)) ? input.id : crypto.randomUUID();
+    const id = input.id && !idIsTaken ? input.id : crypto.randomUUID();
     const notebookId = await this.resolveNotebook(input.notebook);
     await this.db
       .prepare(
