@@ -2848,7 +2848,11 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
    that means nothing next to a name, and no separation between one row and the next.
    The control sits right, away from the label, because that is where a per-row action
    belongs and because it then lines up down the list instead of moving with the name. */
-.owned-list { list-style: none; margin: 0.75rem 0 0; padding: 0; max-width: 46rem; }
+/* `width: 100%` alongside the cap: a flex column's child otherwise shrinks to its own
+   content, which for a short name like "Claude" left the list a fraction of the measure
+   the text above it uses — narrow enough to read as an afterthought rather than the
+   point of the page. */
+.owned-list { list-style: none; width: 100%; margin: 0.75rem 0 0; padding: 0; max-width: 46rem; }
 .owned-list li {
   display: flex;
   align-items: center;
