@@ -760,7 +760,11 @@ export class NotesRepo extends ScopedRepo {
     }
 
     if (patch.tags !== undefined) await this.setTags(id, patch.tags);
-    if (fieldWrites.length > 0) await this.db.batch(fieldWrites);
+    if (fieldWrites.length > 0) {
+      await this.db.batch(fieldWrites);
+      // Clearing a value can retire the last one a tombstoned definition was holding.
+      await this.sweepTombstonedFields();
+    }
     if (patch.tags !== undefined || fieldWrites.length > 0) {
       await this.db
         .prepare(`UPDATE notes SET updated_at = ?1 WHERE id = ?2 AND user_id = ?3`)
@@ -841,6 +845,9 @@ export class NotesRepo extends ScopedRepo {
       .prepare(`DELETE FROM notes WHERE id = ?1 AND user_id = ?2 AND deleted_at IS NOT NULL`)
       .bind(id, this.userId)
       .run();
+
+    // This note may have held the last value a tombstoned definition was keeping alive.
+    if (res.meta.changes > 0) await this.sweepTombstonedFields();
 
     return { deleted: res.meta.changes > 0, keys: results.map((r) => r.r2_key) };
   }
@@ -1213,6 +1220,9 @@ export class NotesRepo extends ScopedRepo {
       .bind(this.userId)
       .run();
 
+    // The same for field definitions kept alive only by the values on these notes.
+    await this.sweepTombstonedFields();
+
     return { notes: ids.length, keys: keyRows.map((r) => r.r2_key) };
   }
 
@@ -1463,6 +1473,18 @@ export class NotesRepo extends ScopedRepo {
    * Notes are unfiled explicitly rather than relying on `ON DELETE SET NULL`, because D1
    * does not guarantee foreign key enforcement is on for a given connection. Batched so a
    * note can never be left pointing at a notebook row that is gone.
+   *
+   * No value is destroyed, whichever branch runs. The field definitions are tombstoned
+   * (0017) rather than deleted, so every value keyed to them stays readable on the note
+   * that holds it — including on a note cascaded to the trash, which is what makes that
+   * cascade the recoverable operation its button claims. The definitions carry the
+   * notebook's name with them so the values keep their "from Coupons" label after this
+   * row is gone.
+   *
+   * Deleting the values here was the older behaviour and was wrong twice: it was scoped
+   * by field rather than by note, so it also stripped notes that had left the notebook
+   * long before, contradicting 0014's promise that a note keeps the values it has when
+   * it moves.
    */
   async deleteNotebook(id: string, opts?: { trashNotes?: boolean }): Promise<boolean> {
     const owned = await this.db
@@ -1485,22 +1507,49 @@ export class NotesRepo extends ScopedRepo {
 
     await this.db.batch([
       noteUpdate,
-      // The notebook's fields and their values go with it, explicitly, for the same
-      // reason the notes are unfiled by hand rather than by ON DELETE.
+      // The definitions are tombstoned rather than deleted, taking the notebook's name
+      // with them: it is the label the values are read back with, and the row that
+      // carried it is about to go. Batched with that delete so a definition is never
+      // briefly live with no notebook behind it.
       this.db
         .prepare(
-          `DELETE FROM note_fields
-            WHERE user_id = ?1
-              AND field_id IN (SELECT id FROM notebook_fields WHERE notebook_id = ?2)`,
+          `UPDATE notebook_fields
+              SET deleted_at = ?1,
+                  notebook_name = (SELECT name FROM notebooks WHERE id = ?2)
+            WHERE notebook_id = ?2 AND user_id = ?3 AND deleted_at IS NULL`,
         )
-        .bind(this.userId, id),
-      this.db
-        .prepare(`DELETE FROM notebook_fields WHERE notebook_id = ?1 AND user_id = ?2`)
-        .bind(id, this.userId),
+        .bind(Date.now(), id, this.userId),
       this.db.prepare(`DELETE FROM notebooks WHERE id = ?1 AND user_id = ?2`).bind(id, this.userId),
     ]);
 
+    // A notebook with no values to preserve leaves nothing worth keeping, so its
+    // tombstones go at once rather than waiting for a note that will never reference them.
+    await this.sweepTombstonedFields();
+
     return true;
+  }
+
+  /**
+   * Drops tombstoned definitions no value refers to any more.
+   *
+   * A tombstone exists only to keep the values it keys readable — its name, its type, and
+   * the notebook name they are labelled with. Once the last of those values is gone,
+   * whether cleared from a note, purged with one, or never there at all, it is holding
+   * nothing and goes. That is the whole lifecycle: no expiry, no UI, nothing for the
+   * person to tidy up.
+   *
+   * Run after any delete that can drop the last reference. It is a single statement over
+   * this user's rows, and a no-op when there is nothing to sweep.
+   */
+  private async sweepTombstonedFields(): Promise<void> {
+    await this.db
+      .prepare(
+        `DELETE FROM notebook_fields
+          WHERE user_id = ?1 AND deleted_at IS NOT NULL
+            AND NOT EXISTS (SELECT 1 FROM note_fields nf WHERE nf.field_id = notebook_fields.id)`,
+      )
+      .bind(this.userId)
+      .run();
   }
 
   // --- Custom fields -------------------------------------------------------------------
