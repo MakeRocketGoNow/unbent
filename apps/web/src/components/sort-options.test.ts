@@ -1,5 +1,12 @@
 import { describe, it, expect } from 'vitest';
-import { SORT_OPTIONS, sortKey, parseSortKey, sortLabel } from './sort-options.js';
+import {
+  SORT_OPTIONS,
+  sortKey,
+  parseSortKey,
+  sortLabel,
+  columnSortState,
+  nextColumnSort,
+} from './sort-options.js';
 
 /**
  * The sort key round trip.
@@ -44,5 +51,76 @@ describe('sort options', () => {
       const { sort, order } = parseSortKey(o.key);
       expect(sortKey(sort, order)).toBe(o.key);
     }
+  });
+});
+
+/**
+ * Sorting from a table column header.
+ *
+ * The header is the only control that can choose a sort by a custom field, and the two
+ * kinds of sort share one URL: what the cases pin is that choosing either kind removes the
+ * other, that a first click lands on the order that column is wanted in, and that the
+ * defaults still stay out of the URL.
+ */
+describe('column sorting', () => {
+  const name = { kind: 'note', sort: 'title' } as const;
+  const updated = { kind: 'note', sort: 'updated' } as const;
+  const amount = { kind: 'field', fieldId: 'f-amount' } as const;
+
+  it('reports which column the URL is sorted by, filling in the default', () => {
+    expect(columnSortState(updated, {})).toBe('desc');
+    expect(columnSortState(name, {})).toBeNull();
+    expect(columnSortState(name, { sort: 'title', order: 'asc' })).toBe('asc');
+    expect(columnSortState(amount, { sortField: 'f-amount', order: 'asc' })).toBe('asc');
+    expect(columnSortState(amount, { sortField: 'f-amount' })).toBe('desc');
+    // A field sort outranks the named one, so the default column is not marked either.
+    expect(columnSortState(updated, { sortField: 'f-amount' })).toBeNull();
+  });
+
+  it('starts names and fields ascending, dates newest first', () => {
+    expect(nextColumnSort(name, {})).toEqual({ sort: 'title', order: 'asc', sortField: undefined });
+    expect(nextColumnSort(amount, {})).toEqual({ sort: undefined, order: 'asc', sortField: 'f-amount' });
+    expect(nextColumnSort({ kind: 'note', sort: 'created' }, {})).toEqual({
+      sort: 'created',
+      order: undefined,
+      sortField: undefined,
+    });
+  });
+
+  it('flips the column already in charge, and never cycles to no order', () => {
+    // Descending is the wire's default, so Z–A is `sort=title` alone.
+    expect(nextColumnSort(name, { sort: 'title', order: 'asc' })).toEqual({
+      sort: 'title',
+      order: undefined,
+      sortField: undefined,
+    });
+    expect(nextColumnSort(name, { sort: 'title' })).toEqual({
+      sort: 'title',
+      order: 'asc',
+      sortField: undefined,
+    });
+    expect(nextColumnSort(amount, { sortField: 'f-amount', order: 'asc' })).toEqual({
+      sort: undefined,
+      order: undefined,
+      sortField: 'f-amount',
+    });
+    expect(nextColumnSort(amount, { sortField: 'f-amount' })).toEqual({
+      sort: undefined,
+      order: 'asc',
+      sortField: 'f-amount',
+    });
+  });
+
+  it('writes the default named sort as absence, from a field sort too', () => {
+    expect(nextColumnSort(updated, { sortField: 'f-amount', order: 'asc' })).toEqual({
+      sort: undefined,
+      order: undefined,
+      sortField: undefined,
+    });
+  });
+
+  it('names a field sort from the field and its direction', () => {
+    expect(sortLabel(undefined, 'asc', 'Amount')).toBe('Amount ascending');
+    expect(sortLabel(undefined, undefined, 'Amount')).toBe('Amount descending');
   });
 });

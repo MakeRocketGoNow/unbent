@@ -25,6 +25,8 @@ import {
   type NoteSummary,
   type NotebookSummary,
   type SearchResult,
+  fieldSortKey,
+  fieldSortsNumerically,
 } from '@unbent/shared';
 
 interface NoteRow {
@@ -352,6 +354,27 @@ const TRASH_SORT = {
 };
 
 /**
+ * A sort by one custom field's value, built per request from its definition.
+ *
+ * Not an entry in `SORTS` because the column depends on the type: the numeric types
+ * order by their `value_num` shadow and the rest by `value_text`, the same split
+ * `fieldSortsNumerically` draws for the cursor. The value comes in through a LEFT JOIN
+ * aliased `sf`, so notes without one are still rows — ordered last, whichever direction,
+ * by the `IS NULL` term the ORDER BY leads with. The rows show their updated date under
+ * this sort, as under the title sort, so that is what a date range reads.
+ */
+function fieldSort(def: FieldDef) {
+  const numeric = fieldSortsNumerically(def.type);
+  return {
+    column: numeric ? 'sf.value_num' : 'sf.value_text',
+    dateColumn: 'n.updated_at',
+    collate: numeric ? '' : ' COLLATE NOCASE',
+    text: !numeric,
+    keyOf: (r: NoteSummary) => fieldSortKey(def, r.fields),
+  };
+}
+
+/**
  * The cursor is the sort key *and* the id of the last row.
  *
  * Comparing the sort key alone is only safe when it is unique. Titles are not — an
@@ -382,11 +405,21 @@ function decodeCursor(cursor: string): { key: string; id: string } | null {
  */
 export function nextCursor(
   items: NoteSummary[],
-  opts: { limit: number; sort: NoteSort; trashed?: boolean | undefined },
+  opts: {
+    limit: number;
+    sort: NoteSort;
+    trashed?: boolean | undefined;
+    /** The field the page was sorted by, when it was; see `fieldSort`. */
+    sortField?: FieldDef | undefined;
+  },
 ): string | null {
   const last = items[items.length - 1];
   if (items.length < opts.limit || !last) return null;
-  const spec = opts.trashed ? TRASH_SORT : SORTS[opts.sort];
+  const spec = opts.trashed
+    ? TRASH_SORT
+    : opts.sortField
+      ? fieldSort(opts.sortField)
+      : SORTS[opts.sort];
   return encodeCursor(spec.keyOf(last), last.id);
 }
 
@@ -420,19 +453,36 @@ export class NotesRepo extends ScopedRepo {
     to?: string;
     /** List trashed notes instead of live ones. */
     trashed?: boolean;
+    /**
+     * Order by this field's value instead of `sort`. The resolved definition rather than
+     * an id, so the SQL is built knowing the type — the same reason `filterConditions`
+     * takes definitions. Ignored for the trash.
+     */
+    sortField?: FieldDef;
   }): Promise<NoteSummary[]> {
     const { limit, cursor, tags, notebook, fields, trashed, from, to } = opts;
     const sort = opts.sort ?? 'updated';
     // Trash has one meaningful order — most recently deleted first — so it ignores both.
-    const spec = trashed ? TRASH_SORT : SORTS[sort];
+    const byField = !trashed && opts.sortField ? opts.sortField : undefined;
+    const spec = trashed ? TRASH_SORT : byField ? fieldSort(byField) : SORTS[sort];
     const descending = trashed || (opts.order ?? 'desc') === 'desc';
-    const collate = 'collate' in spec && spec.collate ? ` ${spec.collate}` : '';
+    const collate = 'collate' in spec && spec.collate ? ` ${spec.collate.trim()}` : '';
 
     const conditions = [
       'n.user_id = ?1',
       trashed ? 'n.deleted_at IS NOT NULL' : 'n.deleted_at IS NULL',
     ];
     const binds: unknown[] = [this.userId];
+    /*
+     * The value being sorted by, one row per note or none. Bound second, straight after
+     * the user id, so the join can name it as ?2 whatever else the filters bind later.
+     */
+    let sortJoin = '';
+    if (byField) {
+      binds.push(byField.id);
+      sortJoin = `LEFT JOIN note_fields sf
+             ON sf.note_id = n.id AND sf.field_id = ?2 AND sf.user_id = ?1`;
+    }
 
     const decoded = cursor ? decodeCursor(cursor) : null;
     if (decoded) {
@@ -445,13 +495,27 @@ export class NotesRepo extends ScopedRepo {
        */
       const isText = !trashed && 'text' in spec && spec.text === true;
       const op = descending ? '<' : '>';
-      binds.push(isText ? decoded.key : Number(decoded.key), decoded.id);
-      const keyBind = `?${binds.length - 1}`;
-      const idBind = `?${binds.length}`;
-      conditions.push(
-        `(${spec.column}${collate} ${op} ${keyBind}` +
-          ` OR (${spec.column}${collate} = ${keyBind} AND n.id ${op} ${idBind}))`,
-      );
+      if (byField && decoded.key === '') {
+        /*
+         * The boundary row had no value. Those rows come after every row with one, in
+         * both directions (see `fieldSort`), so the rest of the page is the remaining
+         * valueless rows past that id — never a row with a value, which is why the
+         * key is not compared at all. `''` is the marker `fieldSortKey` writes.
+         */
+        binds.push(decoded.id);
+        conditions.push(`(${spec.column} IS NULL AND n.id ${op} ?${binds.length})`);
+      } else {
+        binds.push(isText ? decoded.key : Number(decoded.key), decoded.id);
+        const keyBind = `?${binds.length - 1}`;
+        const idBind = `?${binds.length}`;
+        // Past the boundary in the sort's own order; for a field sort the valueless
+        // rows still lie ahead, so a NULL passes too.
+        const nullsAhead = byField ? `${spec.column} IS NULL OR ` : '';
+        conditions.push(
+          `(${nullsAhead}${spec.column}${collate} ${op} ${keyBind}` +
+            ` OR (${spec.column}${collate} = ${keyBind} AND n.id ${op} ${idBind}))`,
+        );
+      }
     }
     conditions.push(
       // The range applies to the column being sorted, so the filter and the order agree.
@@ -476,8 +540,9 @@ export class NotesRepo extends ScopedRepo {
                 ${ATTACHMENTS_SUBQUERY}
            FROM notes n
            LEFT JOIN notebooks nb ON nb.id = n.notebook_id
+           ${sortJoin}
           WHERE ${conditions.join(' AND ')}
-          ORDER BY ${spec.column}${collate} ${direction}, n.id ${direction}
+          ORDER BY ${byField ? `(${spec.column} IS NULL) ASC, ` : ''}${spec.column}${collate} ${direction}, n.id ${direction}
           LIMIT ?${binds.length}`,
       )
       .bind(...binds)
@@ -518,6 +583,8 @@ export class NotesRepo extends ScopedRepo {
     from?: string;
     to?: string;
     sort?: NoteSort;
+    /** Sorting by a field, which decides the column a date range reads; see `fieldSort`. */
+    sortField?: FieldDef;
   }): Promise<number> {
     const conditions = [
       'n.user_id = ?1',
@@ -533,7 +600,11 @@ export class NotesRepo extends ScopedRepo {
           fields: opts?.fields,
           from: opts?.from,
           to: opts?.to,
-          dateColumn: opts?.trashed ? TRASH_SORT.dateColumn : SORTS[opts?.sort ?? 'updated'].dateColumn,
+          dateColumn: opts?.trashed
+            ? TRASH_SORT.dateColumn
+            : opts?.sortField
+              ? fieldSort(opts.sortField).dateColumn
+              : SORTS[opts?.sort ?? 'updated'].dateColumn,
         },
         binds,
         this.userId,
@@ -1449,6 +1520,22 @@ export class NotesRepo extends ScopedRepo {
       .bind(notebookId, this.userId)
       .all<FieldRow>();
     return results.map(rowToField);
+  }
+
+  /**
+   * One field definition by id, or null when it is not this user's. Resolved by the list
+   * route so a sort by a field is built from its type and an unknown id is a 400 before
+   * any note is read.
+   */
+  async fieldById(id: string): Promise<FieldDef | null> {
+    const row = await this.db
+      .prepare(
+        `SELECT id, notebook_id, name, type, options, position
+           FROM notebook_fields WHERE id = ?1 AND user_id = ?2`,
+      )
+      .bind(id, this.userId)
+      .first<FieldRow>();
+    return row ? rowToField(row) : null;
   }
 
   /** Every field this user has defined, across notebooks, for a listing that shows them all. */

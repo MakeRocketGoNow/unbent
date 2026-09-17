@@ -29,6 +29,7 @@ import {
   SlidersHorizontal,
   SquareCheck,
   StickyNote,
+  Table2,
   Tag,
   Trash2,
   Type,
@@ -158,6 +159,23 @@ export function TrashIcon() {
 /** A magnifier, for opening the search field. */
 export function SearchIcon() {
   return <HeaderIcon icon={Search} />;
+}
+
+/**
+ * The two ways the note list is drawn, for the view toggle beside the filter and sort
+ * icons: rows of entries, or a grid of a notebook's fields.
+ */
+export function ListViewIcon() {
+  return <HeaderIcon icon={List} />;
+}
+
+export function TableViewIcon() {
+  return <HeaderIcon icon={Table2} />;
+}
+
+/** The arrow beside a sorted column's heading, the way a spreadsheet draws it. */
+export function SortDirectionIcon({ direction }: { direction: 'asc' | 'desc' }) {
+  return <RowIcon icon={direction === 'asc' ? ArrowUp : ArrowDown} />;
 }
 
 /**

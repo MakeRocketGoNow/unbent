@@ -90,6 +90,19 @@ describe('NotesSort', () => {
     });
   });
 
+  /* A sort by a field is chosen from the table, not here; the icon still has to say so,
+     and no named order may claim to be current over a list ordered by something else. */
+  it('names a field sort and marks no named order while it holds', async () => {
+    const { findByLabelText, container } = harness({
+      sortField: 'f-amount',
+      fieldName: 'Amount',
+      order: 'asc',
+    });
+    fireEvent.click(await findByLabelText('Sort notes, currently Amount ascending'));
+    await waitFor(() => expect(sortSheet(container)?.open).toBe(true));
+    expect(container.querySelectorAll('.sort-option.current')).toHaveLength(0);
+  });
+
   /* The default stays out of the URL, so a plain /notes link is clean. */
   it('writes the default order as absence', async () => {
     const { findByLabelText, findByText, history } = harness({ sort: 'title', order: 'asc' });

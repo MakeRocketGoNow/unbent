@@ -49,6 +49,8 @@ export interface NoteFilter {
 export interface NoteOrdering {
   sort?: NoteSort;
   order?: 'asc' | 'desc';
+  /** A custom field's id, which outranks `sort` — see the API's `listNotesQuerySchema`. */
+  sortField?: string;
 }
 
 export const keys = {

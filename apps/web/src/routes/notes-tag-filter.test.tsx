@@ -69,6 +69,20 @@ describe('the notes route tag filter', () => {
     expect(parse({ tag: '' }).tag).toBeUndefined();
   });
 
+  it('reads a view it knows and drops one it does not', () => {
+    expect(parse({ view: 'table' }).view).toBe('table');
+    expect(parse({ view: 'list' }).view).toBe('list');
+    expect(parse({ view: 'board' }).view).toBeUndefined();
+    expect(parse({}).view).toBeUndefined();
+  });
+
+  it('reads a field sort by id and drops one that is not an id', () => {
+    const id = '0f0f0ae3-5038-432b-aafd-bb4043f5743b';
+    expect(parse({ sortField: id }).sortField).toBe(id);
+    expect(parse({ sortField: 'amount' }).sortField).toBeUndefined();
+    expect(parse({}).sortField).toBeUndefined();
+  });
+
   /**
    * The API query, which is a different wire from the browser URL above.
    *

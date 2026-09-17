@@ -106,6 +106,27 @@ export const filters = z.object({
    */
   sort: z.enum(NOTE_SORTS).optional().catch(undefined),
   order: z.enum(['asc', 'desc']).optional().catch(undefined),
+  /**
+   * A custom field to order by instead of `sort`, by id — what the table view's field
+   * columns write. Only its shape is checked here; whether it is one of this user's
+   * fields is only known once the notebook's definitions load, and `NotesLayout` drops a
+   * stale one then, the way `NotebookSelect` reports a notebook that no longer exists.
+   */
+  sortField: z.string().uuid().optional().catch(undefined),
+  /**
+   * How the list is drawn: the sidebar of entries, or the table of a notebook's fields.
+   *
+   * In the URL for the reason the sort is: it is how you are looking, and "Coupons as a
+   * table, by expiry" is a thing worth bookmarking — a sidebar width is not, which is why
+   * that one lives in storage alone. Absent means "not said yet": inside a notebook on a
+   * desktop `NotesLayout` writes in the view last seen, in place, so that every history
+   * entry names the view it showed and Back returns to it. Outside a notebook and on a
+   * phone it stays absent, and `/notes` stays a clean link.
+   * Not among the loader's dependencies: it changes what is drawn, never what is fetched.
+   * Where a table cannot be drawn — a phone, outside a notebook, over search results —
+   * it is ignored rather than stripped, so the link still means it on a screen that can.
+   */
+  view: z.enum(['list', 'table']).optional().catch(undefined),
   /** Inclusive `YYYY-MM-DD` bounds, filtering the column the sort uses. */
   from: dateOnlySchema.optional().catch(undefined),
   to: dateOnlySchema.optional().catch(undefined),
@@ -121,6 +142,7 @@ export const Route = createFileRoute('/notes')({
     field: search.field,
     sort: search.sort,
     order: search.order,
+    sortField: search.sortField,
     from: search.from,
     to: search.to,
   }),
@@ -135,6 +157,7 @@ export const Route = createFileRoute('/notes')({
     const ordering = {
       ...(deps.sort ? { sort: deps.sort } : {}),
       ...(deps.order ? { order: deps.order } : {}),
+      ...(deps.sortField ? { sortField: deps.sortField } : {}),
     };
     /*
      * Warmed, none of it awaited — the list included.

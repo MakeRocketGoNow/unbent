@@ -10,8 +10,8 @@ import {
 } from '@unbent/shared';
 import { Button } from './Button';
 import { FieldTypeIcon, PlusRowIcon } from './icons.js';
+import { FieldCellInput } from './FieldCellInput.js';
 import { usePersistentState } from '../usePersistentState.js';
-import { tintIndex } from '../tint.js';
 
 export interface NoteFieldsProps {
   /** The note's notebook's definitions, in order. Undefined while they load. */
@@ -281,42 +281,12 @@ function FieldRow({ def, value, readOnly, onChange }: FieldRowProps) {
       );
       break;
     case 'checkbox':
+    case 'select':
+      // Shared with the table's cells, retired-option rule included; see `FieldCellInput`.
       control = (
-        <input
-          id={id}
-          className="note-field-check"
-          type="checkbox"
-          disabled={readOnly}
-          checked={value === true || value === 'true'}
-          onChange={(e) => onChange(e.target.checked)}
-        />
+        <FieldCellInput id={id} def={def} value={value} readOnly={readOnly} onChange={onChange} />
       );
       break;
-    case 'select': {
-      // A value that is no longer among the options stays selectable rather than being
-      // blanked: the note said it, and the option list changing is not the note's edit.
-      const stale = text !== '' && !def.options.includes(text);
-      control = (
-        <select
-          {...common}
-          // The stylesheet draws a chosen option as a chip in the option's own tint — the
-          // same tint the tag editor gives the word — and an unchosen one as "Empty".
-          data-filled={text !== '' || undefined}
-          data-tint={text !== '' ? tintIndex(text) : undefined}
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-        >
-          <option value="">Empty</option>
-          {def.options.map((o) => (
-            <option key={o} value={o}>
-              {o}
-            </option>
-          ))}
-          {stale && <option value={text}>{text} (no longer an option)</option>}
-        </select>
-      );
-      break;
-    }
     case 'url':
       control = (
         <input {...common} {...blank} type="url" value={text} onChange={(e) => setText(e.target.value)} />

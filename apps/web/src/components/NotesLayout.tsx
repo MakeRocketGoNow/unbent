@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate } from '@tanstack/react-router';
-import { useQuery, useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
-import { UNFILED } from '@unbent/shared';
+import { useQuery, useInfiniteQuery, useQueryClient, useMutation } from '@tanstack/react-query';
+import { UNFILED, type FieldDef, type FieldValue } from '@unbent/shared';
 import * as api from '../notes-api.js';
 import { Route } from '../routes/notes.js';
 import {
@@ -13,7 +13,7 @@ import {
   trashCountQuery,
   invalidateNoteMembership,
 } from '../queries.js';
-import { useNotesLayout, SIDEBAR_DEFAULT, SIDEBAR_MIN, SIDEBAR_MAX } from '../useNotesLayout.js';
+import { useNotesLayout } from '../useNotesLayout.js';
 import { ResizeHandle } from './ResizeHandle.js';
 import { NoteListItem } from './NoteListItem.js';
 import { useListKeys, enterList } from '../useListKeys.js';
@@ -34,6 +34,15 @@ import { PlusIcon, TagIcon, CalendarIcon, FieldsIcon } from './icons.js';
 import { Sheet } from './Sheet.js';
 import { NoteListHead } from './NoteListHead.js';
 import { NotesSort } from './NotesSort.js';
+import { NotesViewToggle } from './NotesViewToggle.js';
+import { NoteTable } from './NoteTable.js';
+import { noteColumns } from './note-columns.js';
+import { nextColumnSort, type SortTarget } from './sort-options.js';
+import { patchNoteFields, patchNotePages } from './note-table-edit.js';
+import { loadMoreLabel } from './load-more.js';
+import { useNotesView } from '../useNotesView.js';
+import { editOpenNoteField } from '../open-note-fields.js';
+import { keys } from '../queries.js';
 import { ActiveFilters } from './ActiveFilters.js';
 import { ScopeMatches, scopeMatches } from './ScopeMatches.js';
 import { useMediaQuery, MOBILE_QUERY } from '../useMediaQuery.js';
@@ -42,20 +51,32 @@ import { useSignOut } from '../useSignOut.js';
 
 /** Sidebar plus the routed workspace. Filters come from the URL; nothing here is mirrored into state. */
 export function NotesLayout({ children }: { children: React.ReactNode }) {
-  const { notebook, tag, field, q = '', sort, order, from, to } = Route.useSearch();
+  const {
+    notebook,
+    tag,
+    field,
+    q = '',
+    sort,
+    order,
+    sortField,
+    view: viewParam,
+    from,
+    to,
+  } = Route.useSearch();
   /** The tag filter as a list, so the sidebar never has to care that it may be absent. */
   const selectedTags = tag ?? [];
   /** Likewise the field filters, as the wire strings the URL carries. */
   const fieldFilters = field ?? [];
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const layout = useNotesLayout('/notes/$noteId');
   /*
    * The search field and the list, so the arrow keys can pass between them: Down in the
-   * field enters the list on its first row, Up on that row returns to the field.
+   * field enters the list on its first row, Up on that row returns to the field. The
+   * list is one of two elements, the sidebar's `<ul>` or the table; only one exists.
    */
   const searchRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLUListElement>(null);
+  const tableRef = useRef<HTMLDivElement>(null);
   const onListKeys = useListKeys({ onLeaveTop: () => searchRef.current?.focus() });
   // Cmd/Ctrl+F focuses search from anywhere in the view; a second press falls through to
   // the browser's find. See the hook.
@@ -75,7 +96,11 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
     ...(from ? { from } : {}),
     ...(to ? { to } : {}),
   };
-  const ordering = { ...(sort ? { sort } : {}), ...(order ? { order } : {}) };
+  const ordering = {
+    ...(sort ? { sort } : {}),
+    ...(order ? { order } : {}),
+    ...(sortField ? { sortField } : {}),
+  };
 
   /**
    * Whether anything narrows the list, notebook included. The export link reads this: it
@@ -112,6 +137,26 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
       ? notebooks.data?.notebooks.find((nb) => nb.name === notebook)?.id
       : undefined;
   const fieldDefs = useQuery(notebookFieldsQuery(notebookId));
+  /** The definition behind a sort by a field, once the notebook's fields have loaded. */
+  const sortFieldDef = sortField ? fieldDefs.data?.find((d) => d.id === sortField) : undefined;
+  /*
+   * A sort by a field the notebook does not have — or by any field outside a notebook —
+   * is a stale or hand-edited link. Dropped once that is known rather than sent, since the
+   * API refuses the whole list for it and a link should still open. Replaced, not pushed:
+   * Back should not return to the broken order.
+   */
+  const sortFieldStale =
+    sortField !== undefined &&
+    ((notebooks.isSuccess && notebookId === undefined) ||
+      (fieldDefs.isSuccess && sortFieldDef === undefined));
+  useEffect(() => {
+    if (!sortFieldStale) return;
+    void navigate({
+      to: '/notes',
+      search: (prev) => ({ ...prev, sortField: undefined }),
+      replace: true,
+    });
+  }, [sortFieldStale, navigate]);
   const trashCount = useQuery(trashCountQuery());
   const trashed = trashCount.data ?? 0;
 
@@ -206,7 +251,54 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
 
   const notes = list.data?.pages.flatMap((p) => p.items) ?? [];
   const total = list.data?.pages[0]?.total ?? null;
-  const error = list.error ?? search.error;
+
+  /*
+   * A field edited from a table cell.
+   *
+   * The row changes at once and the save follows, the way the note's own property list
+   * behaves; a failure puts the row back and says so on the error line. The rest of the
+   * list is refetched afterwards rather than patched, because the edit bumps the note's
+   * updated date — under the default sort the row then moves to the top, which is what
+   * any edit does to the list today and not something a table should quietly hide.
+   *
+   * The open note is the exception: its editor holds a draft that would write the old
+   * value back over a direct save, so its edits go to that draft (`editOpenNoteField`)
+   * and the editor saves them. The row is still patched here so the two agree at once.
+   */
+  const listKey = keys.notes(filter, ordering);
+  const patchRow = (noteId: string, def: FieldDef, value: FieldValue | null) =>
+    queryClient.setQueryData(listKey, (data: Parameters<typeof patchNotePages>[0]) =>
+      patchNotePages(data, noteId, (n) => patchNoteFields(n, def, notebook ?? '', value)),
+    );
+  const editField = useMutation({
+    mutationFn: ({ noteId, def, value }: { noteId: string; def: FieldDef; value: FieldValue | null }) =>
+      api.updateNote(noteId, { fields: { [def.id]: value } }),
+    onMutate: async ({ noteId, def, value }) => {
+      await queryClient.cancelQueries({ queryKey: listKey });
+      const previous = queryClient.getQueryData(listKey);
+      patchRow(noteId, def, value);
+      return { previous };
+    },
+    onError: (_err, _vars, context) => {
+      if (context?.previous) queryClient.setQueryData(listKey, context.previous);
+    },
+    onSuccess: (updated) => {
+      // Only a note already in the cache: reopening it should show what the table saved.
+      if (queryClient.getQueryData(keys.note(updated.id))) {
+        queryClient.setQueryData(keys.note(updated.id), updated);
+      }
+    },
+    onSettled: () => void queryClient.invalidateQueries({ queryKey: ['notes'] }),
+  });
+  const onEditCell = (noteId: string, def: FieldDef, value: FieldValue | null) => {
+    if (editOpenNoteField(noteId, def.id, value)) {
+      patchRow(noteId, def, value);
+      return;
+    }
+    editField.mutate({ noteId, def, value });
+  };
+
+  const error = list.error ?? search.error ?? editField.error;
 
   /*
    * Whether the rows on screen are the rows for the heading above them.
@@ -224,6 +316,80 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
   /** Search results are on screen, which changes what is worth offering beside them. */
   const searching = results !== null;
 
+  /*
+   * The list as a table of the notebook's fields — the URL's `view`, seeded from the
+   * last one seen when the URL has not said yet (`useNotesView`), honoured only where a
+   * table makes sense: inside one notebook (columns are its fields), at desktop width (a phone has no room
+   * for columns), and not over search results (which are ranked, not columned).
+   * Everywhere else the list is drawn, the toggle shows that, and the choice is kept —
+   * the table is back the moment there is a notebook to draw it for.
+   */
+  const view = useNotesView(viewParam);
+  const tableMode = view === 'table' && !isMobile && !searching && notebookId !== undefined;
+  const layout = useNotesLayout('/notes/$noteId', { mode: tableMode ? 'table' : 'list' });
+  /*
+   * The table with no note open is the whole window wide, and a header laid out for a
+   * sidebar stretched with it: a search field and a notebook select a window wide each.
+   * There the header is one toolbar row holding both — see `NoteListHead`. Beside an open
+   * note the table is a column again and keeps the stacked header, which is what fits.
+   */
+  const toolbarHead = tableMode && !layout.open;
+  /*
+   * Where the list is, as a navigation target: the open note when there is one. Changing
+   * how the list is drawn must not close a note, unlike a filter, which can take the note
+   * out of the list and so goes back to `/notes`.
+   */
+  const withView = (next: 'list' | 'table', replace: boolean) => {
+    const search = (prev: Record<string, unknown>) => ({ ...prev, view: next });
+    return layout.open
+      ? ({ to: '/notes/$noteId', params: { noteId: layout.open }, search, replace, resetScroll: false } as const)
+      : ({ to: '/notes', search, replace, resetScroll: false } as const);
+  };
+  /*
+   * A URL that does not name a view is given the one on screen, in place.
+   *
+   * This is what makes Back work. A silent URL means "the view last seen", and that
+   * changes every time the toggle is pressed — so a silent history entry would come back
+   * drawn the new way, not the way it was left. Once each entry names its own view,
+   * Back, Forward, a reload and a jump through the history menu all land on what was
+   * there. Replaced, not pushed: it records the entry, it is not a move.
+   *
+   * Only where a view means anything — a desktop, inside a notebook. Outside one the
+   * list is the only drawing there is, so `/notes` stays the clean link it was and a
+   * phone's URLs are never touched.
+   */
+  const viewUnsaid = viewParam === undefined && !isMobile && notebookId !== undefined;
+  useEffect(() => {
+    if (viewUnsaid) void navigate(withView(view, true));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [viewUnsaid, view, layout.open]);
+  /*
+   * The toggle is a move of its own, pushed, so Back undoes it — which it can, now that
+   * the entry it goes back to says which view it had. The remembered view follows the
+   * URL (`useNotesView`), so there is nothing else to write.
+   */
+  const chooseView = (next: 'list' | 'table') => void navigate(withView(next, false));
+  const columns = noteColumns(fieldDefs.data ?? []);
+  /** A column header was clicked: write the order it asks for. */
+  const sortBy = (target: SortTarget) =>
+    void navigate({
+      to: '/notes',
+      search: (prev) => ({ ...prev, ...nextColumnSort(target, prev) }),
+    });
+  /** The list's empty state, in words; both renderings say the same thing. */
+  const emptyMessage =
+    notes.length === 0 && !error && !list.isPending
+      ? tag
+        ? `No notes tagged ${tag}.`
+        : fieldFilters.length > 0
+          ? 'No notes match those fields.'
+          : notebook === UNFILED
+            ? 'Nothing in your inbox.'
+            : notebook
+              ? `No notes in ${notebook}.`
+              : 'No notes yet.'
+      : null;
+
   /**
    * Where the list is, for the phone's heading.
    *
@@ -237,15 +403,19 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
   const scopeLabel =
     notebook === UNFILED ? 'Inbox' : (notebook ?? 'All notes');
 
-  /** What the list is showing, in three forms. Both breakpoints' headers read it. */
+  /**
+   * What the list is showing, in three forms. Both breakpoints' headers read it.
+   *
+   * The total, not "50 of 900 notes": how many are loaded so far is a paging detail and
+   * the Load more button says it — see `loadMoreLabel`. The header shares its row with
+   * four controls, and the longer string was the one thing in it that truncated.
+   */
   const countLabel =
     results !== null
       ? `${results.length} matches`
       : loading
         ? 'Loading…'
-        : total !== null && total > notes.length
-          ? `${notes.length} of ${total} notes`
-          : `${notes.length} notes`;
+        : `${total ?? notes.length} notes`;
 
   async function newNote() {
     try {
@@ -290,7 +460,7 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
           title={isMobile ? scopeLabel : undefined}
           query={q}
           onQuery={setQuery}
-          onArrowDown={() => enterList(listRef.current)}
+          onArrowDown={() => enterList(listRef.current ?? tableRef.current)}
           fieldRef={searchRef}
           searchOpen={searchOpen}
           /* Behind an icon on a phone; a permanent row on a desktop. Passing the opener or
@@ -306,6 +476,8 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
             setSearchOpen(false);
             setQuery('');
           }}
+          toolbar={toolbarHead}
+          scope={toolbarHead ? <NotebookSelect notebook={notebook} notebooks={notebooks} /> : undefined}
           onOpenFilters={() => setSheetOpen(true)}
           onOpenMenu={isMobile ? () => setDrawerOpen(true) : undefined}
           filtered={sheetFiltered}
@@ -313,7 +485,31 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
              reordering them by date would throw away that ranking. Nothing else is
              lost with it: Settings, which used to share this corner, is on the
              drawer's floor. */
-          sort={results === null ? <NotesSort sort={sort} order={order} /> : null}
+          sort={
+            results === null ? (
+              <NotesSort
+                sort={sort}
+                order={order}
+                sortField={sortField}
+                fieldName={sortFieldDef?.name}
+              />
+            ) : null
+          }
+          /* Hidden where the table is never drawn — a phone, a search — and disabled with
+             the reason outside a notebook, where there are no fields to column. */
+          view={
+            !isMobile && !searching ? (
+              <NotesViewToggle
+                value={tableMode ? 'table' : 'list'}
+                onChange={chooseView}
+                tableDisabledReason={
+                  notebookId === undefined
+                    ? 'choose a notebook to see its fields as columns'
+                    : undefined
+                }
+              />
+            ) : undefined
+          }
           /* New is a floating button on a phone (below) and the end of this row on a
              desktop, where a column has nothing for a button to float clear of. */
           action={
@@ -337,7 +533,9 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
             search is scoped to the notebook, but a select above relevance-ranked results
             invites being read as something that reorders them.
         */}
-        {!isMobile && !searching && <NotebookSelect notebook={notebook} notebooks={notebooks} />}
+        {!isMobile && !searching && !toolbarHead && (
+          <NotebookSelect notebook={notebook} notebooks={notebooks} />
+        )}
 
         {/*
             Under the header rather than only inside the sheet, so what is narrowing the
@@ -538,6 +736,24 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
           </button>
         )}
 
+        {tableMode ? (
+          <NoteTable
+            notes={notes}
+            columns={columns}
+            search={{ sort, order, sortField }}
+            notebook={notebook ?? ''}
+            total={total}
+            busy={stale}
+            hasNextPage={list.hasNextPage}
+            isFetchingNextPage={list.isFetchingNextPage}
+            onLoadMore={() => void list.fetchNextPage()}
+            onSort={sortBy}
+            onKeyDown={onListKeys}
+            tableRef={tableRef}
+            empty={emptyMessage}
+            onEdit={onEditCell}
+          />
+        ) : (
         <ul className="note-list" ref={listRef} aria-busy={stale || undefined} onKeyDown={onListKeys}>
           {/*
               Tags and notebooks whose names match, before the notes that do. The needle is
@@ -578,25 +794,16 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
                 disabled={list.isFetchingNextPage}
                 onClick={() => void list.fetchNextPage()}
               >
-                {list.isFetchingNextPage ? 'Loading…' : 'Load more'}
+                {loadMoreLabel(notes.length, total, list.isFetchingNextPage)}
               </button>
             </li>
           )}
 
-          {results === null && notes.length === 0 && !error && !list.isPending && (
-            <li className="muted small empty">
-              {tag
-                ? `No notes tagged ${tag}.`
-                : fieldFilters.length > 0
-                  ? 'No notes match those fields.'
-                  : notebook === UNFILED
-                  ? 'Nothing in your inbox.'
-                  : notebook
-                    ? `No notes in ${notebook}.`
-                    : 'No notes yet.'}
-            </li>
+          {results === null && emptyMessage && (
+            <li className="muted small empty">{emptyMessage}</li>
           )}
         </ul>
+        )}
 
         {/*
           * Trash, pinned under the note list.
@@ -634,10 +841,10 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
          */
         toValue={(clientX, rect, gap) => clientX - rect.left - gap}
         value={layout.width}
-        min={SIDEBAR_MIN}
-        max={SIDEBAR_MAX}
+        min={layout.min}
+        max={layout.max}
         step={16}
-        defaultValue={SIDEBAR_DEFAULT}
+        defaultValue={layout.defaultValue}
         onResize={layout.onResize}
         onCommit={layout.onResizeCommit}
       />

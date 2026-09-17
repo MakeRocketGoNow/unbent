@@ -33,14 +33,33 @@ export const notes = new Hono<AppEnv>()
   .use('/notes', requireAuth, withRepos)
 
   .get('/notes', zValidator('query', listNotesQuerySchema), async (c) => {
-    const { cursor, limit, tag: tags, notebook, field: fields, trashed, sort, order, from, to } =
-      c.req.valid('query');
+    const {
+      cursor,
+      limit,
+      tag: tags,
+      notebook,
+      field: fields,
+      trashed,
+      sort,
+      order,
+      from,
+      to,
+      sortField: sortFieldId,
+    } = c.req.valid('query');
     const repo = c.get('notes');
+    /*
+     * A field sort is built from the definition, so it is looked up here, once, and
+     * shared by the list, the count and the cursor. An id that is not this user's reads
+     * as missing, the way a value write to one does — never a 403 that confirms it exists.
+     */
+    const sortField = sortFieldId ? await repo.fieldById(sortFieldId) : null;
+    if (sortFieldId && !sortField) return c.json({ error: 'No such field' }, 400);
+    const bySort = sortField ? { sortField } : {};
     // The count has to see the same range as the list, or the header contradicts the rows.
-    const filter = { tags, notebook, fields, trashed, from, to, sort };
+    const filter = { tags, notebook, fields, trashed, from, to, sort, ...bySort };
 
     const [items, total] = await Promise.all([
-      repo.list({ limit, cursor, tags, notebook, fields, trashed, sort, order, from, to }),
+      repo.list({ limit, cursor, tags, notebook, fields, trashed, sort, order, from, to, ...bySort }),
       // Only counted on the first page: a paging client already knows the total, and this
       // is a second query on a hot path.
       cursor ? Promise.resolve<number | null>(null) : repo.count(filter),
@@ -48,7 +67,11 @@ export const notes = new Hono<AppEnv>()
 
     // The cursor is derived from the sort that produced the page, so the two cannot
     // disagree; see `nextCursor`.
-    return c.json({ items, cursor: nextCursor(items, { limit, sort, trashed }), total });
+    return c.json({
+      items,
+      cursor: nextCursor(items, { limit, sort, trashed, ...bySort }),
+      total,
+    });
   })
 
   .post('/notes', zValidator('json', createNoteSchema), async (c) => {

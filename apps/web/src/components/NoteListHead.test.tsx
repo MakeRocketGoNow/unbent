@@ -44,6 +44,65 @@ describe('NoteListHead', () => {
 
   /* New floats over the list now, where every notes app people arrive from puts it, so
      this row is only the controls that are about what is already on screen. */
+  it('draws the view toggle between the sort and the action', () => {
+    const { container } = render(
+      <NoteListHead
+        {...props}
+        onOpenMenu={undefined}
+        view={<span data-testid="view">view</span>}
+        action={<button>New</button>}
+      />,
+    );
+    const actions = container.querySelector('.list-head-actions')!;
+    const order = [...actions.children].map((el) => el.textContent);
+    expect(order.slice(-3)).toEqual(['more', 'view', 'New']);
+  });
+
+  /* Over the full-width table the header is one row: picker, count, search, controls.
+     The search field must move into that row, not be drawn a second time under it. */
+  it('draws one toolbar row holding the scope and the search field', () => {
+    const { container, getAllByLabelText } = render(
+      <NoteListHead
+        {...props}
+        onOpenMenu={undefined}
+        onOpenSearch={undefined}
+        toolbar
+        scope={<span data-testid="scope">Travel (5)</span>}
+      />,
+    );
+    const row = container.querySelector('.list-head-toolbar')!;
+    expect([...row.children].map((el) => el.className || el.getAttribute('data-testid'))).toEqual([
+      'scope',
+      'list-title',
+      'list-search',
+      'list-head-actions',
+    ]);
+    expect(getAllByLabelText('Search notes')).toHaveLength(1);
+    expect(container.querySelectorAll('.list-search')).toHaveLength(1);
+  });
+
+  /* Typing in the table's toolbar leaves the table — results are a list — which swaps
+     this header's layout under the caret. The field is a new element; focus must follow. */
+  it('keeps focus in the search field when the layout changes under it', () => {
+    const base = { ...props, onOpenMenu: undefined, onOpenSearch: undefined };
+    const { getByLabelText, rerender } = render(<NoteListHead {...base} toolbar />);
+    const before = getByLabelText('Search notes');
+    before.focus();
+    rerender(<NoteListHead {...base} query="s" />);
+    const after = getByLabelText('Search notes');
+    expect(after).not.toBe(before);
+    expect(document.activeElement).toBe(after);
+  });
+
+  it('keeps the stacked header when the toolbar is not asked for', () => {
+    const { container } = render(
+      <NoteListHead {...props} onOpenSearch={undefined} scope={<span>ignored</span>} />,
+    );
+    expect(container.querySelector('.list-head-toolbar')).toBeNull();
+    expect(container.textContent).not.toContain('ignored');
+    expect(container.querySelector('.list-head + .list-search')).toBeTruthy();
+  });
+
   it('leaves making a note to the floating button', () => {
     const { queryByText } = render(<NoteListHead {...props} />);
     expect(queryByText('New')).toBeNull();

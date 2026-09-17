@@ -282,6 +282,50 @@ export function fieldRangeBound(op: 'gte' | 'lte', value: string): number | null
   return null;
 }
 
+// --- Sorting by a field --------------------------------------------------------------
+
+/**
+ * Whether a type orders by its numeric shadow rather than its text.
+ *
+ * Numbers, dates and checkboxes all store a `value_num` (see `encodeFieldValue`), and it
+ * is the column that puts 9 before 10 and March before April. Every other type is text and
+ * orders as text. The API's ORDER BY and the cursor it pages with both ask this, so the
+ * column that sorted a page is the column that resumes it.
+ */
+export function fieldSortsNumerically(type: FieldType): boolean {
+  return type === 'number' || type === 'date' || type === 'checkbox';
+}
+
+/**
+ * The value the API sorted a row by, as it rides on the row: the numeric shadow for a
+ * numeric type, the text otherwise, or `''` when the note holds no value for the field.
+ *
+ * This is what the keyset cursor carries for a field sort. `''` is unambiguous as the
+ * "no value" marker because a stored text is never empty — `encodeFieldValue` turns an
+ * empty string into a clear rather than a value. Deliberately not `encodeFieldValue`: a
+ * select option retired after the note stored it would come back `null` from that, and a
+ * row the API just returned under that value still has to page past it.
+ */
+export function fieldSortKey(
+  def: Pick<FieldDef, 'id' | 'type'>,
+  fields: readonly NoteFieldValue[] | undefined,
+): string | number {
+  const held = fields?.find((f) => f.fieldId === def.id);
+  if (!held) return '';
+  switch (def.type) {
+    case 'number': {
+      const n = typeof held.value === 'number' ? held.value : Number(held.value);
+      return Number.isFinite(n) ? n : '';
+    }
+    case 'date':
+      return startOfDay(String(held.value));
+    case 'checkbox':
+      return held.value === true ? 1 : 0;
+    default:
+      return String(held.value);
+  }
+}
+
 /**
  * Whether a select value that `encodeFieldValue` rejected should still be left on the note.
  *

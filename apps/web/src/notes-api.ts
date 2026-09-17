@@ -102,6 +102,7 @@ export async function listNotes(
     limit?: number;
     sort?: NoteSort;
     order?: 'asc' | 'desc';
+    sortField?: string;
     from?: string;
     to?: string;
   } = {},
@@ -114,6 +115,7 @@ export async function listNotes(
   if (opts.cursor) params.set('cursor', opts.cursor);
   if (opts.sort) params.set('sort', opts.sort);
   if (opts.order) params.set('order', opts.order);
+  if (opts.sortField) params.set('sortField', opts.sortField);
   if (opts.from) params.set('from', opts.from);
   if (opts.to) params.set('to', opts.to);
   if (opts.trashed) params.set('trashed', '1');

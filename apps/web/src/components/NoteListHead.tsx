@@ -1,4 +1,4 @@
-import { useEffect, useRef, type ReactNode, type RefObject } from 'react';
+import { useEffect, useLayoutEffect, useRef, type ReactNode, type RefObject } from 'react';
 import { SearchIcon, FilterIcon, MenuIcon } from './icons.js';
 import { BackArrow } from './BackArrow.js';
 
@@ -48,6 +48,26 @@ interface NoteListHeadProps {
    * floor now, so the corner goes back to the control people reach for daily.
    */
   sort: ReactNode;
+  /**
+   * The list/table toggle, after the sort and before New, or nothing where the table is
+   * not on offer — a phone, or a search. Passed in like the sort so this owns no routing
+   * and no storage.
+   */
+  view?: ReactNode;
+  /**
+   * One row instead of two, for a header that spans the whole window.
+   *
+   * Over the sidebar the search field is a row of its own and the notebook picker another
+   * under it, which suits a 19rem column. Over the full-width table the same three rows
+   * became a search field and a select each a window wide — controls sized by the space
+   * they were in rather than by what they hold. So there the header is a toolbar: the
+   * picker (`scope`), the count, then a search field capped at a width a query needs, and
+   * the icons and New. Only meaningful where the field is permanent; a phone's header
+   * already is one row.
+   */
+  toolbar?: boolean;
+  /** The notebook picker, drawn at the start of the toolbar row. Ignored without `toolbar`. */
+  scope?: ReactNode;
   /**
    * The last thing in the row: the desktop's New button.
    *
@@ -105,6 +125,9 @@ export function NoteListHead({
   onOpenMenu,
   filtered,
   sort,
+  view,
+  toolbar = false,
+  scope,
   action,
 }: NoteListHeadProps) {
   const own = useRef<HTMLInputElement>(null);
@@ -121,6 +144,33 @@ export function NoteListHead({
   useEffect(() => {
     if (searchOpen && !fieldAlways) field.current?.focus();
   }, [searchOpen, fieldAlways]);
+
+  const inToolbar = toolbar && fieldAlways;
+  /*
+   * The field keeps focus across the two layouts.
+   *
+   * The toolbar draws it inside the row and the stacked header draws it under, so a
+   * change between them is a new element — and the first keystroke of a search is exactly
+   * such a change: results are never drawn as a table, so typing in the table's toolbar
+   * puts the list and its stacked header back. Without this the field would drop focus
+   * after one character. Whether it had focus is read during the render that makes the
+   * change, before the old element is removed; removal does not reliably fire a blur to
+   * track it by. The caret goes to the end, where typing left it.
+   */
+  const lastLayout = useRef(inToolbar);
+  const refocus = useRef(false);
+  if (lastLayout.current !== inToolbar) {
+    lastLayout.current = inToolbar;
+    refocus.current = typeof document !== 'undefined' && document.activeElement === field.current;
+  }
+  useLayoutEffect(() => {
+    if (!refocus.current) return;
+    refocus.current = false;
+    const el = field.current;
+    if (!el) return;
+    el.focus();
+    el.setSelectionRange(el.value.length, el.value.length);
+  }, [inToolbar]);
 
   const input = (
     <input
@@ -178,7 +228,8 @@ export function NoteListHead({
 
   return (
     <>
-      <div className="list-head">
+      <div className={inToolbar ? 'list-head list-head-toolbar' : 'list-head'}>
+        {inToolbar && scope}
         {onOpenMenu && (
           <button type="button" className="icon-btn" aria-label="Notebooks" onClick={onOpenMenu}>
             <MenuIcon />
@@ -192,6 +243,7 @@ export function NoteListHead({
           {title && <h2>{title}</h2>}
           <span className="count">{count}</span>
         </div>
+        {inToolbar && <div className="list-search">{input}</div>}
         <div className="list-head-actions">
           {onOpenSearch && (
             <button type="button" className="icon-btn" aria-label="Search notes" onClick={onOpenSearch}>
@@ -214,10 +266,11 @@ export function NoteListHead({
             {filtered && <span className="badge-dot" aria-hidden="true" />}
           </button>
           {sort}
+          {view}
           {action}
         </div>
       </div>
-      {fieldAlways && <div className="list-search">{input}</div>}
+      {fieldAlways && !inToolbar && <div className="list-search">{input}</div>}
     </>
   );
 }
