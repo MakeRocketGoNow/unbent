@@ -261,16 +261,20 @@ export function Workspace({ noteId, readOnly = false, backTo = '/notes' }: Works
   }, [noteId, note !== undefined]);
 
   async function save(value: typeof draft) {
-    if (!note) return;
+    if (!note) return 'unchanged';
     /*
        Only the keys that actually changed, and only field values the type can store.
        Sending the whole draft used to 400 a body save on a half-typed number, and to
        write the stale title back over a rename the phone had already saved — see
        `buildNotePatch`. Nothing storeable is a successful no-op: the debounce fired
        because the draft moved, but the movement was not yet a value the server can hold.
+
+       Reported as 'unchanged' rather than returning bare, so the head does not flash
+       "Saved" for a save that never left the browser — a space typed and deleted is the
+       ordinary way to get here.
     */
     const patch = buildNotePatch(value, note, knownFieldDefs);
-    if (!patch) return;
+    if (!patch) return 'unchanged';
     const updated = await api.updateNote(noteId, patch);
     queryClient.setQueryData(keys.note(noteId), updated);
     // A tag or notebook edit changes the sidebar counts, and the title and ordering

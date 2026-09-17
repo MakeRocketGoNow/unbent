@@ -17,7 +17,18 @@ export type SaveState = 'idle' | 'dirty' | 'saving' | 'saved' | 'error';
  */
 export function useAutosave<T>(
   value: T,
-  save: (value: T) => Promise<void>,
+  /**
+   * Writes the value, or answers `'unchanged'` when it finds nothing to write.
+   *
+   * The debounce fires on time elapsed, not on a change, so a draft can arrive here
+   * identical to what the server already holds — a space typed and deleted is the usual
+   * way. The callers diff before sending (see `buildNotePatch`) and return early when the
+   * patch is empty; without a way to say so, that early return looked exactly like a
+   * successful write and the head flashed "Saved" for a save that never happened.
+   *
+   * Returning nothing still means "written", so a save that does not care keeps working.
+   */
+  save: (value: T) => Promise<void | 'unchanged'>,
   opts: { delay?: number; enabled?: boolean; resetKey?: string } = {},
 ) {
   const { delay = 800, enabled = true, resetKey } = opts;
@@ -35,7 +46,7 @@ export function useAutosave<T>(
    */
   const pending = useRef<{
     value: T;
-    save: (value: T) => Promise<void>;
+    save: (value: T) => Promise<void | 'unchanged'>;
     epoch: number;
   } | null>(null);
   const epoch = useRef(0);
@@ -70,7 +81,31 @@ export function useAutosave<T>(
     const baselineKey = baseline.current?.key;
     setState('saving');
     try {
-      await next.save(next.value);
+      const outcome = await next.save(next.value);
+      if (outcome === 'unchanged') {
+        /*
+           The save found nothing to write, so 'Saved' would be announcing work that never
+           happened — the flash this exists to stop. 'idle' renders no label at all, which
+           is the honest answer for a draft that matches what the server holds, and it also
+           clears the 'Unsaved' a round-trip through an edit leaves behind.
+
+           'saving' is still set above rather than held back until the outcome is known:
+           the Android back handler waits for the state to leave 'saving'/'dirty' before
+           letting the user leave the screen, so a real write must be visible there for the
+           whole round-trip. 'idle' satisfies that wait, correctly — there is nothing to
+           finish.
+
+           The baseline still moves to this value. It is what the server has, so the next
+           edit is measured against it; leaving it behind would make an identical draft
+           look unsaved forever.
+        */
+        setState('idle');
+        setError(null);
+        if (baseline.current && baseline.current.key === baselineKey) {
+          baseline.current.value = next.value;
+        }
+        return;
+      }
       setState('saved');
       setError(null);
       /*

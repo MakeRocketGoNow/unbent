@@ -81,6 +81,7 @@ import com.makerocketgonow.unbent.api.UnbentApi
 import com.makerocketgonow.unbent.ui.theme.Space
 import kotlin.concurrent.thread
 import kotlin.coroutines.resume
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -599,6 +600,11 @@ class NoteState(
     private val api: UnbentApi,
     val noteId: String,
     private val saves: CoroutineScope,
+    /**
+     * Where the blocking HTTP calls run. Injectable only so a test can await them on its
+     * own scheduler; production always takes the default.
+     */
+    private val io: CoroutineDispatcher = Dispatchers.IO,
 ) {
     var note by mutableStateOf<Note?>(null)
         private set
@@ -627,10 +633,11 @@ class NoteState(
 
     suspend fun load() {
         error = null
-        val result = withContext(Dispatchers.IO) { runCatching { api.getNote(noteId) } }
+        val result = withContext(io) { runCatching { api.getNote(noteId) } }
         result.onSuccess {
             note = it
             title = it.title
+            savedTitle = it.title
         }.onFailure { e ->
             when ((e as? ApiException)?.status) {
                 401 -> unauthorized = true
@@ -640,14 +647,32 @@ class NoteState(
         }
     }
 
+    /**
+     * The title as the server last confirmed it, so a debounce that fires on a title
+     * that came back to what was stored sends nothing.
+     *
+     * The debounce fires on time elapsed, not on a change, so typing a space and deleting
+     * it used to PATCH the unchanged title. The server drops that key now, but the
+     * request is still pointless — and on a phone that is a radio wake and a spinner in
+     * the header for a save with nothing in it.
+     */
+    private var savedTitle: String = ""
+
     /** Debounced like the web's autosave, and flushed by [flushTitle] when leaving. */
     fun changeTitle(value: String) {
         title = value
+        if (value == savedTitle) {
+            // Back to what is stored: cancel the pending save rather than letting it fire.
+            titleJob?.cancel()
+            titleJob = null
+            headerSave = "saved"
+            return
+        }
         headerSave = "dirty"
         titleJob?.cancel()
         titleJob = saves.launch {
             delay(800)
-            patch { api.updateNote(noteId, title = title) }
+            saveTitle()
         }
     }
 
@@ -655,7 +680,24 @@ class NoteState(
         val pending = titleJob ?: return
         if (!pending.isActive) return
         pending.cancel()
-        patch { api.updateNote(noteId, title = title) }
+        saveTitle()
+    }
+
+    /**
+     * Sends the title only when it differs from what the server holds.
+     *
+     * Checked here as well as in [changeTitle] because a flush races the debounce: a
+     * keystroke that restored the stored title can land while a save is already queued.
+     */
+    private suspend fun saveTitle() {
+        val sending = title
+        if (sending == savedTitle) {
+            headerSave = "saved"
+            return
+        }
+        patch { api.updateNote(noteId, title = sending) }
+        // Only once the write succeeded, so a failed save stays dirty and retries.
+        if (headerSave == "saved") savedTitle = sending
     }
 
     fun onBridge(message: BridgeMessage) {
@@ -674,7 +716,7 @@ class NoteState(
     /** One request, never cancelled mid-flight: a half-sent save is worse than a late one. */
     private suspend fun patch(block: () -> Note) {
         headerSave = "saving"
-        val result = withContext(Dispatchers.IO + NonCancellable) { runCatching(block) }
+        val result = withContext(io + NonCancellable) { runCatching(block) }
         result.onSuccess {
             headerSave = "saved"
         }.onFailure { e ->

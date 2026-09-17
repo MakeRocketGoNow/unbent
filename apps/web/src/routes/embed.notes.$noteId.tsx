@@ -206,6 +206,13 @@ function EmbeddedNote({ noteId }: { noteId: string }) {
   }, [noteId, note !== undefined]);
 
   async function save(value: string) {
+    /*
+       The body the phone is showing already matches the note, so there is nothing to
+       write. The editor's debounce fires on time elapsed, so this happens whenever a
+       character is typed and taken back out again — and without it the app's save
+       indicator blinks for a save that changed nothing.
+    */
+    if (note && value === note.body) return 'unchanged';
     try {
       const updated = await api.updateNote(noteId, { body: value });
       queryClient.setQueryData(keys.note(noteId), updated);
@@ -228,13 +235,14 @@ function EmbeddedNote({ noteId }: { noteId: string }) {
    * values for both in the draft is what keeps them out of the patch.
    */
   async function saveFiling(value: Filing) {
-    if (!note) return;
+    if (!note) return 'unchanged';
     const patch = buildNotePatch(
       { title: note.title, body: note.body, tags: value.tags, notebook: value.notebook, fields: value.fields },
       note,
       knownFieldDefs,
     );
-    if (!patch) return;
+    // Nothing storeable changed, so the app is not told a save happened — see `useAutosave`.
+    if (!patch) return 'unchanged';
     try {
       const updated = await api.updateNote(noteId, patch);
       queryClient.setQueryData(keys.note(noteId), updated);

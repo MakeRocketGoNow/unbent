@@ -436,6 +436,19 @@ function splitTags(joined: string | null): string[] {
 }
 
 /**
+ * Whether a patch's tag list would leave the stored tags exactly as they are.
+ *
+ * Order is not significant — `note_tags` has none and `get` returns them sorted — so this
+ * compares sets. Blanks and duplicates are normalized away first, matching what `setTags`
+ * would have written, so `['work', 'work', ' ']` against a stored `['work']` is no edit.
+ */
+function sameTagSet(patch: string[], stored: string[]): boolean {
+  const next = new Set(patch.map((t) => t.trim()).filter((t) => t.length > 0));
+  if (next.size !== stored.length) return false;
+  return stored.every((t) => next.has(t));
+}
+
+/**
  * All note access for one user.
  *
  * Every method injects `this.userId` — no method accepts a user id as a parameter, which
@@ -702,7 +715,32 @@ export class NotesRepo extends ScopedRepo {
     };
   }
 
-  /** Returns null when the note does not exist *or* belongs to someone else. */
+  /**
+   * Returns null when the note does not exist *or* belongs to someone else.
+   *
+   * A key whose value already equals what is stored is dropped before anything is
+   * written, and a patch with nothing left after that returns the note untouched — no
+   * `UPDATE`, and no new `updated_at`.
+   *
+   * That guard lives here rather than in each client because `updated_at` is a date the
+   * user reads and sorts by, and for an imported note it is a real modification date
+   * carried over from Evernote. A client can only diff against what it last saw, which is
+   * stale the moment another device writes; the row is the only place that knows what is
+   * actually stored. Every writer also gets it for free, which the clients demonstrably
+   * do not: the web editor diffs (see `buildNotePatch`), the phone's title field sends
+   * every settled keystroke, and `update_note_tags` promises over MCP that tags already
+   * present are "left alone" while re-dating the note anyway.
+   *
+   * Costs nothing on top of what this already did. The note was always read at the end to
+   * build the return value, and a tags- or fields-only patch did a separate ownership
+   * SELECT that this read replaces — it returns null for a note the user does not own. A
+   * no-op patch is now strictly cheaper than before: it reads and stops, where it used to
+   * write and then read.
+   *
+   * Comparison is exact, deliberately. Trimming the body would make a genuine edit that
+   * only adds trailing space vanish silently, and in Markdown two trailing spaces are a
+   * line break.
+   */
   async update(
     id: string,
     patch: {
@@ -713,24 +751,31 @@ export class NotesRepo extends ScopedRepo {
       fields?: NoteFieldsPatch;
     },
   ): Promise<Note | null> {
+    const current = await this.get(id);
+    if (!current) return null;
+
+    const effective = this.changedKeysOnly(patch, current);
+    // Nothing in the patch differs from what is stored, so the note keeps its date.
+    if (effective === null) return current;
+
     // Field values are validated before anything is written: a value the field cannot
     // hold fails the whole patch rather than landing after the title has changed.
     const fieldWrites =
-      patch.fields !== undefined ? await this.prepareFieldWrites(id, patch.fields) : [];
+      effective.fields !== undefined ? await this.prepareFieldWrites(id, effective.fields) : [];
 
     const sets: string[] = [];
     const binds: unknown[] = [];
 
-    if (patch.title !== undefined) {
-      binds.push(patch.title);
+    if (effective.title !== undefined) {
+      binds.push(effective.title);
       sets.push(`title = ?${binds.length}`);
     }
-    if (patch.body !== undefined) {
-      binds.push(patch.body);
+    if (effective.body !== undefined) {
+      binds.push(effective.body);
       sets.push(`body = ?${binds.length}`);
     }
-    if (patch.notebook !== undefined) {
-      binds.push(await this.resolveNotebook(patch.notebook));
+    if (effective.notebook !== undefined) {
+      binds.push(await this.resolveNotebook(effective.notebook));
       sets.push(`notebook_id = ?${binds.length}`);
     }
 
@@ -748,24 +793,18 @@ export class NotesRepo extends ScopedRepo {
         .run();
 
       // No rows changed means no such note for this user — do not fall through to tags.
+      // The read above already established ownership; this catches a delete that landed
+      // in between.
       if (res.meta.changes === 0) return null;
-    } else {
-      // A tags- or fields-only edit still needs an ownership check before touching the
-      // side tables.
-      const owned = await this.db
-        .prepare(`SELECT 1 FROM notes WHERE id = ?1 AND user_id = ?2 AND deleted_at IS NULL`)
-        .bind(id, this.userId)
-        .first();
-      if (!owned) return null;
     }
 
-    if (patch.tags !== undefined) await this.setTags(id, patch.tags);
+    if (effective.tags !== undefined) await this.setTags(id, effective.tags);
     if (fieldWrites.length > 0) {
       await this.db.batch(fieldWrites);
       // Clearing a value can retire the last one a tombstoned definition was holding.
       await this.sweepTombstonedFields();
     }
-    if (patch.tags !== undefined || fieldWrites.length > 0) {
+    if (effective.tags !== undefined || fieldWrites.length > 0) {
       await this.db
         .prepare(`UPDATE notes SET updated_at = ?1 WHERE id = ?2 AND user_id = ?3`)
         .bind(Date.now(), id, this.userId)
@@ -773,6 +812,67 @@ export class NotesRepo extends ScopedRepo {
     }
 
     return this.get(id);
+  }
+
+  /**
+   * The patch with every key that matches what is stored removed, or null if that leaves
+   * nothing to do.
+   *
+   * Only keys the caller actually sent are considered — a merge PATCH means an absent key
+   * is "leave alone", never "clear" — so this can only ever remove keys, and a patch it
+   * returns unchanged behaves exactly as it did before this existed.
+   *
+   * `notebook` is compared by name, which is what the patch carries and what `get`
+   * returns. Filing a note into the notebook it is already in is the no-op that
+   * `move_notes` performs 50 at a time.
+   *
+   * Tags are compared as sets: they are stored unordered and `get` returns them sorted by
+   * name, so a client resending them in its own order is not an edit. Duplicates and
+   * blanks are dropped first, the way `setTags` would drop them before writing.
+   */
+  private changedKeysOnly(
+    patch: {
+      title?: string;
+      body?: string;
+      tags?: string[];
+      notebook?: string | null;
+      fields?: NoteFieldsPatch;
+    },
+    current: Note,
+  ): typeof patch | null {
+    const next: typeof patch = {};
+
+    if (patch.title !== undefined && patch.title !== current.title) next.title = patch.title;
+    if (patch.body !== undefined && patch.body !== current.body) next.body = patch.body;
+
+    if (patch.notebook !== undefined) {
+      const stored = current.notebook ?? null;
+      if ((patch.notebook ?? null) !== stored) next.notebook = patch.notebook;
+    }
+
+    if (patch.tags !== undefined && !sameTagSet(patch.tags, current.tags)) next.tags = patch.tags;
+
+    if (patch.fields !== undefined) {
+      const held = new Map((current.fields ?? []).map((v) => [v.fieldId, v.value]));
+      const fields: NoteFieldsPatch = {};
+      for (const [fieldId, value] of Object.entries(patch.fields)) {
+        const stands = held.get(fieldId);
+        if (value === null || value === undefined) {
+          // A clear is only a change when there is something to clear. An id the note
+          // never held is dropped rather than sent, which also keeps a stale id from
+          // failing the patch in `prepareFieldWrites` with "No such field".
+          if (stands !== undefined) fields[fieldId] = value ?? null;
+          continue;
+        }
+        // Compared as text: a number the client re-sends as "12" is the stored 12, and
+        // the far end is going to encode it to a string column either way.
+        if (stands !== undefined && String(stands) === String(value)) continue;
+        fields[fieldId] = value;
+      }
+      if (Object.keys(fields).length > 0) next.fields = fields;
+    }
+
+    return Object.keys(next).length > 0 ? next : null;
   }
 
   /**
