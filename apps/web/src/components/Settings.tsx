@@ -133,13 +133,12 @@ export function Settings({ onChanged }: SettingsProps) {
               Delete the notebook <strong>{pendingDelete.name}</strong>?
             </>
           }
+          /* Nothing is said about custom fields because nothing happens to their values:
+             the definitions go with the notebook, but every value already entered stays
+             on the note that holds it, labelled with this notebook's name. A warning
+             would be describing a loss that no longer occurs. */
           detail={
-            (noteLabel
-              ? `Its ${noteLabel} will become unfiled, not deleted.`
-              : 'It has no notes.') +
-            (pendingDelete.fields > 0
-              ? ` Its ${pendingDelete.fields} custom field${pendingDelete.fields === 1 ? '' : 's'} and their values will be deleted.`
-              : '')
+            noteLabel ? `Its ${noteLabel} will become unfiled, not deleted.` : 'It has no notes.'
           }
           busy={busy}
           onCancel={() => setPendingDelete(null)}
