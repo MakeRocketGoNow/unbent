@@ -44,6 +44,20 @@ describe('NoteListHead', () => {
 
   /* New floats over the list now, where every notes app people arrive from puts it, so
      this row is only the controls that are about what is already on screen. */
+  it('draws the view toggle between the sort and the action', () => {
+    const { container } = render(
+      <NoteListHead
+        {...props}
+        onOpenMenu={undefined}
+        view={<span data-testid="view">view</span>}
+        action={<button>New</button>}
+      />,
+    );
+    const actions = container.querySelector('.list-head-actions')!;
+    const order = [...actions.children].map((el) => el.textContent);
+    expect(order.slice(-3)).toEqual(['more', 'view', 'New']);
+  });
+
   it('leaves making a note to the floating button', () => {
     const { queryByText } = render(<NoteListHead {...props} />);
     expect(queryByText('New')).toBeNull();

@@ -1306,6 +1306,23 @@ h1 {
 .overflow-trigger:hover,
 .icon-btn:hover { color: var(--fg); background: color-mix(in srgb, var(--fg) 7%, transparent); }
 
+/*
+   List or table, as two pressed-state icons. The pressed one is drawn the way a hovered
+   one is, a shade darker, so the row reads "this is how the list is drawn" rather than
+   offering two equal buttons; the disabled one fades rather than hides, and its name
+   carries the reason — see `NotesViewToggle`.
+*/
+.view-toggle { display: inline-flex; }
+.view-toggle .icon-btn[aria-pressed='true'] {
+  color: var(--fg);
+  background: color-mix(in srgb, var(--fg) 11%, transparent);
+}
+.view-toggle .icon-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+  background: none;
+}
+
 .overflow-list {
   position: absolute;
   top: calc(100% + 0.25rem);

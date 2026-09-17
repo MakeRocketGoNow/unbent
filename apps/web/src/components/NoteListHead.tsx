@@ -49,6 +49,12 @@ interface NoteListHeadProps {
    */
   sort: ReactNode;
   /**
+   * The list/table toggle, after the sort and before New, or nothing where the table is
+   * not on offer — a phone, or a search. Passed in like the sort so this owns no routing
+   * and no storage.
+   */
+  view?: ReactNode;
+  /**
    * The last thing in the row: the desktop's New button.
    *
    * On a phone New floats over the list, so nothing is passed here. On a desktop a
@@ -105,6 +111,7 @@ export function NoteListHead({
   onOpenMenu,
   filtered,
   sort,
+  view,
   action,
 }: NoteListHeadProps) {
   const own = useRef<HTMLInputElement>(null);
@@ -214,6 +221,7 @@ export function NoteListHead({
             {filtered && <span className="badge-dot" aria-hidden="true" />}
           </button>
           {sort}
+          {view}
           {action}
         </div>
       </div>
