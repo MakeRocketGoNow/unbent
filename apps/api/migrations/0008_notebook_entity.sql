@@ -18,9 +18,13 @@ CREATE TABLE notebooks (
   UNIQUE(user_id, name COLLATE NOCASE)
 );
 
--- ON DELETE SET NULL is what implements "deleting a notebook unfiles its notes". Putting
--- it in the schema rather than in application code means no future call path can delete a
--- notebook and take its notes with it.
+-- ON DELETE SET NULL is what "deleting a notebook unfiles its notes" was built on.
+--
+-- Two things have since qualified it. `deleteNotebook` unfiles the notes by hand rather
+-- than relying on this, because D1 does not promise foreign keys are enforced on a given
+-- connection; and the cascade option added later does take the notes with the notebook, to
+-- the trash, where they are recoverable. So this clause is the backstop, not the rule --
+-- the rule is in application code, which is the only place that can offer the choice.
 ALTER TABLE notes ADD COLUMN notebook_id TEXT REFERENCES notebooks(id) ON DELETE SET NULL;
 
 -- Backfill one row per distinct (user, notebook). Deliberately not filtered on deleted_at:
