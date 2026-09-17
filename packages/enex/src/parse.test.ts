@@ -6,7 +6,9 @@ import {
   parseEnexDate,
   parseEnexStream,
   resourceFilename,
+  uniqueResourceFilenames,
 } from './parse.js';
+import type { EnexResource } from './types.js';
 
 /**
  * MD5 is implemented here because WebCrypto omits it and en-media hashes are MD5s.
@@ -196,6 +198,63 @@ describe('resourceFilename', () => {
       const out = resourceFilename(c, MD5, 'application/pdf');
       expect(filenameSchema.safeParse(out).success, `rejected: ${out.slice(0, 60)}`).toBe(true);
     }
+  });
+});
+
+describe('uniqueResourceFilenames', () => {
+  const file = (filename: string, md5: string): EnexResource => ({
+    filename,
+    md5,
+    mime: 'image/jpeg',
+    bytes: new Uint8Array(),
+  });
+
+  it('leaves a single file, and distinct names, alone', () => {
+    const one = [file('scan.jpg', '1'.repeat(32))];
+    expect(uniqueResourceFilenames(one)).toBe(one);
+
+    const distinct = [file('a.jpg', '1'.repeat(32)), file('b.jpg', '2'.repeat(32))];
+    expect(uniqueResourceFilenames(distinct)).toEqual(distinct);
+  });
+
+  it('suffixes a second file that shares its name, the way the upload would', () => {
+    const out = uniqueResourceFilenames([
+      file('image.png', '1'.repeat(32)),
+      file('image.png', '2'.repeat(32)),
+      file('image.png', '3'.repeat(32)),
+    ]);
+    expect(out.map((r) => r.filename)).toEqual(['image.png', 'image-2.png', 'image-3.png']);
+    expect(out[0]?.md5).toBe('1'.repeat(32));
+    expect(out[1]?.md5).toBe('2'.repeat(32));
+  });
+
+  it('does not steal a name that is already a neighbour', () => {
+    // `image-2.png` is already in the note, so the colliding second `image.png` has to
+    // skip it rather than overwrite that neighbour's link — even when the neighbour
+    // appears after the duplicates in the ENEX.
+    const after = uniqueResourceFilenames([
+      file('image.png', '1'.repeat(32)),
+      file('image.png', '2'.repeat(32)),
+      file('image-2.png', '3'.repeat(32)),
+    ]);
+    expect(after.map((r) => r.filename)).toEqual(['image.png', 'image-3.png', 'image-2.png']);
+
+    const before = uniqueResourceFilenames([
+      file('image.png', '1'.repeat(32)),
+      file('image-2.png', '2'.repeat(32)),
+      file('image.png', '3'.repeat(32)),
+    ]);
+    expect(before.map((r) => r.filename)).toEqual(['image.png', 'image-2.png', 'image-3.png']);
+  });
+
+  it('keeps two labels that sanitizing would otherwise collapse', () => {
+    // `resourceFilename` replaces separators so `a/b.png` and `a-b.png` become the same
+    // string; without this pass they would share a link and one of the files would vanish.
+    const out = uniqueResourceFilenames([
+      file('a-b.png', '1'.repeat(32)),
+      file('a-b.png', '2'.repeat(32)),
+    ]);
+    expect(out.map((r) => r.filename)).toEqual(['a-b.png', 'a-b-2.png']);
   });
 });
 
