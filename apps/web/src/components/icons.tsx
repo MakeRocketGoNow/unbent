@@ -173,6 +173,11 @@ export function TableViewIcon() {
   return <HeaderIcon icon={Table2} />;
 }
 
+/** The arrow beside a sorted column's heading, the way a spreadsheet draws it. */
+export function SortDirectionIcon({ direction }: { direction: 'asc' | 'desc' }) {
+  return <RowIcon icon={direction === 'asc' ? ArrowUp : ArrowDown} />;
+}
+
 /**
  * A funnel, for the filter sheet.
  *

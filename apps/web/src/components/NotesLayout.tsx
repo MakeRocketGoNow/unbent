@@ -34,6 +34,11 @@ import { PlusIcon, TagIcon, CalendarIcon, FieldsIcon } from './icons.js';
 import { Sheet } from './Sheet.js';
 import { NoteListHead } from './NoteListHead.js';
 import { NotesSort } from './NotesSort.js';
+import { NotesViewToggle } from './NotesViewToggle.js';
+import { NoteTable } from './NoteTable.js';
+import { noteColumns } from './note-columns.js';
+import { nextColumnSort, type SortTarget } from './sort-options.js';
+import { useNotesView } from '../useNotesView.js';
 import { ActiveFilters } from './ActiveFilters.js';
 import { ScopeMatches, scopeMatches } from './ScopeMatches.js';
 import { useMediaQuery, MOBILE_QUERY } from '../useMediaQuery.js';
@@ -49,13 +54,14 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
   const fieldFilters = field ?? [];
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const layout = useNotesLayout('/notes/$noteId');
   /*
    * The search field and the list, so the arrow keys can pass between them: Down in the
-   * field enters the list on its first row, Up on that row returns to the field.
+   * field enters the list on its first row, Up on that row returns to the field. The
+   * list is one of two elements, the sidebar's `<ul>` or the table; only one exists.
    */
   const searchRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLUListElement>(null);
+  const tableRef = useRef<HTMLDivElement>(null);
   const onListKeys = useListKeys({ onLeaveTop: () => searchRef.current?.focus() });
   // Cmd/Ctrl+F focuses search from anywhere in the view; a second press falls through to
   // the browser's find. See the hook.
@@ -248,6 +254,37 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
   /** Search results are on screen, which changes what is worth offering beside them. */
   const searching = results !== null;
 
+  /*
+   * The list as a table of the notebook's fields — the notebook's own choice, remembered
+   * by `useNotesView`, and honoured only where a table makes sense: inside one notebook
+   * (columns are its fields), at desktop width (a phone has no room for columns), and
+   * not over search results (which are ranked, not columned). Everywhere else the list is
+   * drawn, and the toggle shows that.
+   */
+  const [view, setView] = useNotesView(notebookId);
+  const tableMode = view === 'table' && !isMobile && !searching && notebookId !== undefined;
+  const layout = useNotesLayout('/notes/$noteId', { mode: tableMode ? 'table' : 'list' });
+  const columns = noteColumns(fieldDefs.data ?? []);
+  /** A column header was clicked: write the order it asks for. */
+  const sortBy = (target: SortTarget) =>
+    void navigate({
+      to: '/notes',
+      search: (prev) => ({ ...prev, ...nextColumnSort(target, prev) }),
+    });
+  /** The list's empty state, in words; both renderings say the same thing. */
+  const emptyMessage =
+    notes.length === 0 && !error && !list.isPending
+      ? tag
+        ? `No notes tagged ${tag}.`
+        : fieldFilters.length > 0
+          ? 'No notes match those fields.'
+          : notebook === UNFILED
+            ? 'Nothing in your inbox.'
+            : notebook
+              ? `No notes in ${notebook}.`
+              : 'No notes yet.'
+      : null;
+
   /**
    * Where the list is, for the phone's heading.
    *
@@ -314,7 +351,7 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
           title={isMobile ? scopeLabel : undefined}
           query={q}
           onQuery={setQuery}
-          onArrowDown={() => enterList(listRef.current)}
+          onArrowDown={() => enterList(listRef.current ?? tableRef.current)}
           fieldRef={searchRef}
           searchOpen={searchOpen}
           /* Behind an icon on a phone; a permanent row on a desktop. Passing the opener or
@@ -346,6 +383,21 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
                 fieldName={sortFieldDef?.name}
               />
             ) : null
+          }
+          /* Hidden where the table is never drawn — a phone, a search — and disabled with
+             the reason outside a notebook, where there are no fields to column. */
+          view={
+            !isMobile && !searching ? (
+              <NotesViewToggle
+                value={tableMode ? 'table' : 'list'}
+                onChange={setView}
+                tableDisabledReason={
+                  notebookId === undefined
+                    ? 'choose a notebook to see its fields as columns'
+                    : undefined
+                }
+              />
+            ) : undefined
           }
           /* New is a floating button on a phone (below) and the end of this row on a
              desktop, where a column has nothing for a button to float clear of. */
@@ -571,6 +623,23 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
           </button>
         )}
 
+        {tableMode ? (
+          <NoteTable
+            notes={notes}
+            columns={columns}
+            search={{ sort, order, sortField }}
+            notebook={notebook ?? ''}
+            total={total}
+            busy={stale}
+            hasNextPage={list.hasNextPage}
+            isFetchingNextPage={list.isFetchingNextPage}
+            onLoadMore={() => void list.fetchNextPage()}
+            onSort={sortBy}
+            onKeyDown={onListKeys}
+            tableRef={tableRef}
+            empty={emptyMessage}
+          />
+        ) : (
         <ul className="note-list" ref={listRef} aria-busy={stale || undefined} onKeyDown={onListKeys}>
           {/*
               Tags and notebooks whose names match, before the notes that do. The needle is
@@ -616,20 +685,11 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
             </li>
           )}
 
-          {results === null && notes.length === 0 && !error && !list.isPending && (
-            <li className="muted small empty">
-              {tag
-                ? `No notes tagged ${tag}.`
-                : fieldFilters.length > 0
-                  ? 'No notes match those fields.'
-                  : notebook === UNFILED
-                  ? 'Nothing in your inbox.'
-                  : notebook
-                    ? `No notes in ${notebook}.`
-                    : 'No notes yet.'}
-            </li>
+          {results === null && emptyMessage && (
+            <li className="muted small empty">{emptyMessage}</li>
           )}
         </ul>
+        )}
 
         {/*
           * Trash, pinned under the note list.
