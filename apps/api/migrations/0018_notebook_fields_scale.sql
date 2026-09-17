@@ -1,0 +1,32 @@
+-- A `number` field can carry a scale, which makes it a rating.
+--
+-- A rating is not a ninth type. Under the storage model it already is a number: the value
+-- is the same canonical text plus numeric shadow 0014 defines, `value_num` is the column
+-- that already sorts it, and the `gte`/`lte` range filters added since already compare
+-- against it. So "rated 4 and up" works the day the scale lands, with no new filter op, no
+-- new sort path, and no change to export or import. What a rating adds over a number is a
+-- bound and a step -- nothing about how a value is stored.
+--
+-- Two columns rather than one JSON blob, because they are asked about separately: the star
+-- renderer needs the max to know how many glyphs to draw, and the encode path needs the
+-- step to know whether 3.5 is legal. A `scale` TEXT column holding `{"max":5,"step":0.5}`
+-- would have to be parsed by both, and SQLite could not CHECK either value.
+--
+-- `options` was the other candidate and is deliberately not reused. It is a JSON array of
+-- strings, nulled for every type but `select` (see `optionsColumn`), and when a field is
+-- converted *to* select its existing values are seeded into it. A max stored there would
+-- come back out as a select option.
+--
+-- Both NULL for every field that is not a rating, which is every field that exists today:
+-- a plain number stays unbounded, and no backfill is needed.
+--
+-- Two ADD COLUMNs and nothing else. 0017 had to rebuild this table to drop a foreign key,
+-- and doing so on D1 cascaded every row of `note_fields` away, because D1 enforces foreign
+-- keys whatever `PRAGMA foreign_keys = OFF` claims. A scale needs no rebuild, so there is
+-- no drop for a cascade to follow and no pragma to be ignored: the columns are added to
+-- the table in place and every existing value stays where it is.
+ALTER TABLE notebook_fields ADD COLUMN scale_max INTEGER;
+
+-- 1 for whole ratings, 0.5 when halves are allowed. Stored as REAL beside `value_num`'s
+-- REAL so a value and the step that validates it are the same kind of number.
+ALTER TABLE notebook_fields ADD COLUMN scale_step REAL;

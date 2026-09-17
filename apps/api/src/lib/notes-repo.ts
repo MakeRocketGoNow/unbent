@@ -16,6 +16,7 @@ import {
   UNFILED,
   type FieldDef,
   type FieldFilter,
+  type FieldScale,
   type FieldType,
   type FieldValue,
   type Note,
@@ -61,6 +62,8 @@ interface FieldRow {
   name: string;
   type: string;
   options: string | null;
+  scale_max: number | null;
+  scale_step: number | null;
   position: number;
   value_count?: number;
 }
@@ -83,6 +86,11 @@ function rowToField(row: FieldRow): FieldDef {
     name: row.name,
     type: row.type as FieldType,
     options: row.options ? (JSON.parse(row.options) as string[]) : [],
+    // Both columns or neither: a half-written scale would make the star control guess.
+    scale:
+      row.scale_max !== null && row.scale_step !== null
+        ? { max: row.scale_max, step: row.scale_step === 0.5 ? 0.5 : 1 }
+        : null,
     position: row.position,
     ...(row.value_count !== undefined ? { valueCount: row.value_count } : {}),
   };
@@ -91,6 +99,35 @@ function rowToField(row: FieldRow): FieldDef {
 /** Options are only stored for `select`; every other type carries NULL, whatever was sent. */
 function optionsColumn(type: FieldType, options: string[]): string | null {
   return type === 'select' ? JSON.stringify(options) : null;
+}
+
+/**
+ * A scale belongs only to a `number`. A field converted away from number drops it, the
+ * same way `optionsColumn` drops options when a field stops being a select — otherwise a
+ * scale would lie in wait and re-bound the field if it ever became a number again.
+ */
+function scaleColumns(type: FieldType, scale: FieldScale | null | undefined) {
+  return type === 'number' && scale
+    ? { max: scale.max, step: scale.step }
+    : { max: null, step: null };
+}
+
+/**
+ * Whether moving to `next` can invalidate a value that was legal under `prev`.
+ *
+ * Only a tightening needs the values re-planned, and re-planning is a read plus a write of
+ * every row — worth skipping when nothing can fail. A lower max cuts the top off, and a
+ * coarser step (0.5 to 1) outlaws every half. Gaining a scale where there was none tightens
+ * by definition, since a plain number is unbounded and may hold 0, 12 or -3. Losing one
+ * never does, and neither does widening.
+ */
+function scaleTightens(
+  prev: FieldScale | null,
+  next: { max: number | null; step: number | null },
+): boolean {
+  if (next.max === null || next.step === null) return false;
+  if (!prev) return true;
+  return next.max < prev.max || next.step > prev.step;
 }
 
 /**
@@ -1572,7 +1609,7 @@ export class NotesRepo extends ScopedRepo {
 
     const { results } = await this.db
       .prepare(
-        `SELECT f.id, f.notebook_id, f.name, f.type, f.options, f.position,
+        `SELECT f.id, f.notebook_id, f.name, f.type, f.options, f.scale_max, f.scale_step, f.position,
                 (SELECT COUNT(*) FROM note_fields nf WHERE nf.field_id = f.id) AS value_count
            FROM notebook_fields f
           WHERE f.notebook_id = ?1 AND f.user_id = ?2 AND f.deleted_at IS NULL
@@ -1595,7 +1632,7 @@ export class NotesRepo extends ScopedRepo {
   async fieldById(id: string): Promise<FieldDef | null> {
     const row = await this.db
       .prepare(
-        `SELECT id, notebook_id, name, type, options, position
+        `SELECT id, notebook_id, name, type, options, scale_max, scale_step, position
            FROM notebook_fields WHERE id = ?1 AND user_id = ?2 AND deleted_at IS NULL`,
       )
       .bind(id, this.userId)
@@ -1611,7 +1648,7 @@ export class NotesRepo extends ScopedRepo {
   async listAllFields(): Promise<FieldDef[]> {
     const { results } = await this.db
       .prepare(
-        `SELECT id, notebook_id, name, type, options, position
+        `SELECT id, notebook_id, name, type, options, scale_max, scale_step, position
            FROM notebook_fields WHERE user_id = ?1 AND deleted_at IS NULL
           ORDER BY notebook_id, position`,
       )
@@ -1629,7 +1666,7 @@ export class NotesRepo extends ScopedRepo {
    */
   async createField(
     notebookId: string,
-    input: { name: string; type: FieldType; options: string[] },
+    input: { name: string; type: FieldType; options: string[]; scale?: FieldScale | null },
   ): Promise<FieldDef | 'missing' | 'conflict' | 'full'> {
     const owned = await this.db
       .prepare(`SELECT 1 FROM notebooks WHERE id = ?1 AND user_id = ?2`)
@@ -1656,13 +1693,15 @@ export class NotesRepo extends ScopedRepo {
     if (clash) return 'conflict';
 
     const id = crypto.randomUUID();
+    const scale = scaleColumns(input.type, input.scale);
     await this.db
       .prepare(
-        `INSERT INTO notebook_fields (id, user_id, notebook_id, name, type, options, position, created_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6,
+        `INSERT INTO notebook_fields
+           (id, user_id, notebook_id, name, type, options, scale_max, scale_step, position, created_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8,
                  (SELECT COALESCE(MAX(position) + 1, 0) FROM notebook_fields
                    WHERE notebook_id = ?3 AND deleted_at IS NULL),
-                 ?7)`,
+                 ?9)`,
       )
       .bind(
         id,
@@ -1671,6 +1710,8 @@ export class NotesRepo extends ScopedRepo {
         input.name,
         input.type,
         optionsColumn(input.type, input.options),
+        scale.max,
+        scale.step,
         Date.now(),
       )
       .run();
@@ -1679,17 +1720,23 @@ export class NotesRepo extends ScopedRepo {
   }
 
   /**
-   * Renames a field, replaces its options, or changes its type.
+   * Renames a field, replaces its options, changes its type, or re-scales a rating.
    *
    * A type change converts the values first (see `convertFieldValues`) and reports how
    * many it had to clear. Converting to `select` seeds the options from the existing
    * values, which then take precedence over any options in the same patch: a caller
    * cannot both pick a new type and hand-write an option list that would orphan values.
+   *
+   * Tightening a scale converts too, and for the same reason: dropping a rating from 10 to
+   * 5 cannot keep a 7, and dropping half steps cannot keep a 3.5. Those are cleared and
+   * counted in `cleared`, exactly as a type change's casualties are, so one confirmation
+   * covers both. Widening keeps everything, because every value legal on the old scale is
+   * legal on the wider one.
    */
   async updateField(
     notebookId: string,
     fieldId: string,
-    patch: { name?: string; type?: FieldType; options?: string[] },
+    patch: { name?: string; type?: FieldType; options?: string[]; scale?: FieldScale | null },
   ): Promise<{ field: FieldDef; cleared: number } | 'missing' | 'conflict'> {
     const current = await this.getField(notebookId, fieldId);
     if (!current) return 'missing';
@@ -1709,18 +1756,30 @@ export class NotesRepo extends ScopedRepo {
     let options = patch.options ?? current.options;
     let cleared = 0;
     const type = patch.type ?? current.type;
-    if (type !== current.type) {
-      const converted = await this.convertFieldValues(fieldId, current.type, type);
+    // `undefined` leaves the scale alone; `null` clears it back to a plain number.
+    const scale = patch.scale === undefined ? current.scale : patch.scale;
+    const stored = scaleColumns(type, scale);
+    if (type !== current.type || scaleTightens(current.scale, stored)) {
+      const converted = await this.convertFieldValues(fieldId, current.type, type, scale);
       cleared = converted.cleared;
       if (converted.seededOptions) options = converted.seededOptions;
     }
 
     await this.db
       .prepare(
-        `UPDATE notebook_fields SET name = ?1, type = ?2, options = ?3
-          WHERE id = ?4 AND notebook_id = ?5 AND user_id = ?6`,
+        `UPDATE notebook_fields SET name = ?1, type = ?2, options = ?3, scale_max = ?4, scale_step = ?5
+          WHERE id = ?6 AND notebook_id = ?7 AND user_id = ?8`,
       )
-      .bind(patch.name ?? current.name, type, optionsColumn(type, options), fieldId, notebookId, this.userId)
+      .bind(
+        patch.name ?? current.name,
+        type,
+        optionsColumn(type, options),
+        stored.max,
+        stored.step,
+        fieldId,
+        notebookId,
+        this.userId,
+      )
       .run();
 
     const field = await this.getField(notebookId, fieldId);
@@ -1735,11 +1794,14 @@ export class NotesRepo extends ScopedRepo {
     notebookId: string,
     fieldId: string,
     to: FieldType,
+    toScale?: FieldScale | null,
   ): Promise<{ values: number; incompatible: number } | null> {
     const field = await this.getField(notebookId, fieldId);
     if (!field) return null;
     const rows = await this.fieldValueRows(fieldId);
-    const plan = planConversion(field.type, to, rows);
+    // Matches `updateField`: an absent scale in the patch means the current one stands, so
+    // previewing a rename or a pure type change does not silently unbound the field.
+    const plan = planConversion(field.type, to, rows, toScale === undefined ? field.scale : toScale);
     return { values: rows.length, incompatible: plan.drop.length };
   }
 
@@ -1791,7 +1853,7 @@ export class NotesRepo extends ScopedRepo {
   private async getField(notebookId: string, fieldId: string): Promise<FieldDef | null> {
     const row = await this.db
       .prepare(
-        `SELECT id, notebook_id, name, type, options, position
+        `SELECT id, notebook_id, name, type, options, scale_max, scale_step, position
            FROM notebook_fields
           WHERE id = ?1 AND notebook_id = ?2 AND user_id = ?3 AND deleted_at IS NULL`,
       )
@@ -1821,9 +1883,10 @@ export class NotesRepo extends ScopedRepo {
     fieldId: string,
     from: FieldType,
     to: FieldType,
+    toScale?: FieldScale | null,
   ): Promise<{ cleared: number; seededOptions?: string[] }> {
     const rows = await this.fieldValueRows(fieldId);
-    const plan = planConversion(from, to, rows);
+    const plan = planConversion(from, to, rows, toScale);
 
     const statements: D1PreparedStatement[] = [
       ...plan.keep.map((k) =>
@@ -1884,7 +1947,7 @@ export class NotesRepo extends ScopedRepo {
 
     const { results } = await this.db
       .prepare(
-        `SELECT id, notebook_id, name, type, options, position
+        `SELECT id, notebook_id, name, type, options, scale_max, scale_step, position
            FROM notebook_fields
           WHERE user_id = ?1 AND id IN (${ids.map((_, i) => `?${i + 2}`).join(', ')})`,
       )
@@ -1957,7 +2020,7 @@ export class NotesRepo extends ScopedRepo {
 
       let def = await this.db
         .prepare(
-          `SELECT id, notebook_id, name, type, options, position
+          `SELECT id, notebook_id, name, type, options, scale_max, scale_step, position
              FROM notebook_fields
             WHERE notebook_id = ?1 AND name = ?2 COLLATE NOCASE AND deleted_at IS NULL`,
         )

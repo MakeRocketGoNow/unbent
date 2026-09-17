@@ -18,9 +18,9 @@ import { noteColumns } from './note-columns.js';
  * deciding it, that the name is a real link, and that a row with nothing in a field shows
  * nothing rather than a word.
  */
-const cost: FieldDef = { id: 'f-cost', notebookId: 'nb', name: 'Cost', type: 'number', options: [], position: 0 };
-const packed: FieldDef = { id: 'f-packed', notebookId: 'nb', name: 'Packed', type: 'checkbox', options: [], position: 1 };
-const status: FieldDef = { id: 'f-status', notebookId: 'nb', name: 'Status', type: 'select', options: ['Booked', 'Done'], position: 2 };
+const cost: FieldDef = { id: 'f-cost', notebookId: 'nb', name: 'Cost', type: 'number', options: [], scale: null, position: 0 };
+const packed: FieldDef = { id: 'f-packed', notebookId: 'nb', name: 'Packed', type: 'checkbox', options: [], scale: null, position: 1 };
+const status: FieldDef = { id: 'f-status', notebookId: 'nb', name: 'Status', type: 'select', options: ['Booked', 'Done'], scale: null, position: 2 };
 
 const note = (id: string, title: string, fields: NoteSummary['fields']): NoteSummary => ({
   id,
