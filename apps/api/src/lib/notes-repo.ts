@@ -123,13 +123,20 @@ function decodeFieldsJson(json: string | null, ownNotebookId: string | null): No
  * column — the same shape as the tags subquery beside it, so the per-row cost is one
  * primary-key lookup rather than a join that multiplies rows. `json_object` rather than
  * a delimited string because a value can contain any character a delimiter could be.
+ *
+ * The notebook join is LEFT and the name falls back to `f.notebook_name`, because a
+ * definition outlives the notebook it belonged to (0017). An inner join here would have
+ * dropped the value from the note entirely once the notebook row went, which is the data
+ * loss the tombstone exists to prevent — a value is a note's own data, and a deleted
+ * notebook is not a reason to stop showing it.
  */
 const FIELDS_SUBQUERY = `(SELECT json_group_array(json_object(
                  'fieldId', f.id, 'name', f.name, 'type', f.type, 'text', nf.value_text,
-                 'position', f.position, 'notebookId', f.notebook_id, 'notebook', fnb.name))
+                 'position', f.position, 'notebookId', f.notebook_id,
+                 'notebook', COALESCE(fnb.name, f.notebook_name)))
             FROM note_fields nf
             JOIN notebook_fields f ON f.id = nf.field_id
-            JOIN notebooks fnb ON fnb.id = f.notebook_id
+            LEFT JOIN notebooks fnb ON fnb.id = f.notebook_id
            WHERE nf.note_id = n.id) AS fields`;
 
 /**
@@ -1346,7 +1353,8 @@ export class NotesRepo extends ScopedRepo {
       .prepare(
         `SELECT nb.id, nb.name,
                 COUNT(n.id) AS count,
-                (SELECT COUNT(*) FROM notebook_fields f WHERE f.notebook_id = nb.id) AS fields
+                (SELECT COUNT(*) FROM notebook_fields f
+                  WHERE f.notebook_id = nb.id AND f.deleted_at IS NULL) AS fields
            FROM notebooks nb
            LEFT JOIN notes n
              ON n.notebook_id = nb.id AND n.deleted_at IS NULL AND n.user_id = ?1
@@ -1501,6 +1509,10 @@ export class NotesRepo extends ScopedRepo {
    * A notebook's field definitions in display order, with how many notes hold a value for
    * each (the management page names that count before a delete). Null when the notebook
    * is not this user's, so the route can answer 404 without a second query.
+   *
+   * Tombstones cannot reach here — the notebook they belonged to is gone, so the guard
+   * above already answers null — but they are excluded explicitly so the query reads as
+   * what it means rather than relying on that.
    */
   async listFields(notebookId: string): Promise<FieldDef[] | null> {
     const owned = await this.db
@@ -1514,7 +1526,7 @@ export class NotesRepo extends ScopedRepo {
         `SELECT f.id, f.notebook_id, f.name, f.type, f.options, f.position,
                 (SELECT COUNT(*) FROM note_fields nf WHERE nf.field_id = f.id) AS value_count
            FROM notebook_fields f
-          WHERE f.notebook_id = ?1 AND f.user_id = ?2
+          WHERE f.notebook_id = ?1 AND f.user_id = ?2 AND f.deleted_at IS NULL
           ORDER BY f.position`,
       )
       .bind(notebookId, this.userId)
@@ -1526,24 +1538,32 @@ export class NotesRepo extends ScopedRepo {
    * One field definition by id, or null when it is not this user's. Resolved by the list
    * route so a sort by a field is built from its type and an unknown id is a 400 before
    * any note is read.
+   *
+   * A tombstone answers null: sorting or filtering by a field whose notebook was deleted
+   * is a 400, the same as an id that never existed. The values it still keys are readable
+   * on the notes that hold them, but it is no longer something to query by.
    */
   async fieldById(id: string): Promise<FieldDef | null> {
     const row = await this.db
       .prepare(
         `SELECT id, notebook_id, name, type, options, position
-           FROM notebook_fields WHERE id = ?1 AND user_id = ?2`,
+           FROM notebook_fields WHERE id = ?1 AND user_id = ?2 AND deleted_at IS NULL`,
       )
       .bind(id, this.userId)
       .first<FieldRow>();
     return row ? rowToField(row) : null;
   }
 
-  /** Every field this user has defined, across notebooks, for a listing that shows them all. */
+  /**
+   * Every field this user has defined, across notebooks, for a listing that shows them
+   * all. Tombstones are excluded: their notebook is gone, so there is nothing to list
+   * them under.
+   */
   async listAllFields(): Promise<FieldDef[]> {
     const { results } = await this.db
       .prepare(
         `SELECT id, notebook_id, name, type, options, position
-           FROM notebook_fields WHERE user_id = ?1
+           FROM notebook_fields WHERE user_id = ?1 AND deleted_at IS NULL
           ORDER BY notebook_id, position`,
       )
       .bind(this.userId)
@@ -1569,14 +1589,18 @@ export class NotesRepo extends ScopedRepo {
     if (!owned) return 'missing';
 
     const count = await this.db
-      .prepare(`SELECT COUNT(*) AS n FROM notebook_fields WHERE notebook_id = ?1`)
+      .prepare(
+        `SELECT COUNT(*) AS n FROM notebook_fields
+          WHERE notebook_id = ?1 AND deleted_at IS NULL`,
+      )
       .bind(notebookId)
       .first<{ n: number }>();
     if ((count?.n ?? 0) >= MAX_FIELDS_PER_NOTEBOOK) return 'full';
 
     const clash = await this.db
       .prepare(
-        `SELECT 1 FROM notebook_fields WHERE notebook_id = ?1 AND name = ?2 COLLATE NOCASE`,
+        `SELECT 1 FROM notebook_fields
+          WHERE notebook_id = ?1 AND name = ?2 COLLATE NOCASE AND deleted_at IS NULL`,
       )
       .bind(notebookId, input.name)
       .first();
@@ -1587,7 +1611,8 @@ export class NotesRepo extends ScopedRepo {
       .prepare(
         `INSERT INTO notebook_fields (id, user_id, notebook_id, name, type, options, position, created_at)
          VALUES (?1, ?2, ?3, ?4, ?5, ?6,
-                 (SELECT COALESCE(MAX(position) + 1, 0) FROM notebook_fields WHERE notebook_id = ?3),
+                 (SELECT COALESCE(MAX(position) + 1, 0) FROM notebook_fields
+                   WHERE notebook_id = ?3 AND deleted_at IS NULL),
                  ?7)`,
       )
       .bind(
@@ -1624,7 +1649,8 @@ export class NotesRepo extends ScopedRepo {
       const clash = await this.db
         .prepare(
           `SELECT 1 FROM notebook_fields
-            WHERE notebook_id = ?1 AND name = ?2 COLLATE NOCASE AND id <> ?3`,
+            WHERE notebook_id = ?1 AND name = ?2 COLLATE NOCASE AND id <> ?3
+              AND deleted_at IS NULL`,
         )
         .bind(notebookId, patch.name, fieldId)
         .first();
@@ -1671,7 +1697,8 @@ export class NotesRepo extends ScopedRepo {
   /** Sets a notebook's field order. `ids` must be exactly its fields, each once. */
   async reorderFields(notebookId: string, ids: string[]): Promise<boolean> {
     const { results } = await this.db
-      .prepare(`SELECT id FROM notebook_fields WHERE notebook_id = ?1 AND user_id = ?2`)
+      .prepare(`SELECT id FROM notebook_fields
+            WHERE notebook_id = ?1 AND user_id = ?2 AND deleted_at IS NULL`)
       .bind(notebookId, this.userId)
       .all<{ id: string }>();
     const have = new Set(results.map((r) => r.id));
@@ -1717,7 +1744,7 @@ export class NotesRepo extends ScopedRepo {
       .prepare(
         `SELECT id, notebook_id, name, type, options, position
            FROM notebook_fields
-          WHERE id = ?1 AND notebook_id = ?2 AND user_id = ?3`,
+          WHERE id = ?1 AND notebook_id = ?2 AND user_id = ?3 AND deleted_at IS NULL`,
       )
       .bind(fieldId, notebookId, this.userId)
       .first<FieldRow>();
@@ -1792,6 +1819,11 @@ export class NotesRepo extends ScopedRepo {
    * the reason `isHeldSelectValue` gives: the editor resends every field, and failing that
    * resend would refuse the title and body too. Looked up here so a new choice that is not
    * in the list is still a 400.
+   *
+   * Tombstoned definitions resolve here, deliberately, where every listing excludes them:
+   * a value they key is still the note's own data, and clearing it is the only way to take
+   * it off the note short of deleting the note. The editor shows such a value read-only
+   * with a Clear, so the write that reaches this point is that Clear.
    */
   private async prepareFieldWrites(
     noteId: string,
@@ -1877,7 +1909,8 @@ export class NotesRepo extends ScopedRepo {
       let def = await this.db
         .prepare(
           `SELECT id, notebook_id, name, type, options, position
-             FROM notebook_fields WHERE notebook_id = ?1 AND name = ?2 COLLATE NOCASE`,
+             FROM notebook_fields
+            WHERE notebook_id = ?1 AND name = ?2 COLLATE NOCASE AND deleted_at IS NULL`,
         )
         .bind(notebookId, name)
         .first<FieldRow>()
