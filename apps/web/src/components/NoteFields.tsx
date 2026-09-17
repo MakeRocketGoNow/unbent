@@ -3,6 +3,7 @@ import {
   FIELD_TYPES,
   FIELD_TYPE_LABELS,
   fieldNameSchema,
+  isRatingField,
   type FieldDef,
   type FieldType,
   type FieldValue,
@@ -253,6 +254,14 @@ function FieldRow({ def, value, readOnly, onChange }: FieldRowProps) {
   let side: ReactNode = null;
   switch (def.type) {
     case 'number':
+      if (isRatingField(def)) {
+        // A rating is picked rather than typed, so it goes where the other picked
+        // controls live and the table's cells get it for nothing.
+        control = (
+          <FieldCellInput id={id} def={def} value={value} readOnly={readOnly} onChange={onChange} />
+        );
+        break;
+      }
       /*
          Not `type="number"`. A number input reports "" for any value that is not yet a
          valid float — "12.", "-", "12.5e" — and `setText` maps "" to null, which the
@@ -333,7 +342,7 @@ function FieldRow({ def, value, readOnly, onChange }: FieldRowProps) {
   return (
     <div className="note-field" data-type={def.type}>
       <span className="note-field-glyph" aria-hidden="true">
-        <FieldTypeIcon type={def.type} />
+        <FieldTypeIcon type={def.type} rating={isRatingField(def)} />
       </span>
       {/* The title carries the whole name for one the fixed name column has to cut. */}
       <label className="note-field-label" htmlFor={id} title={def.name}>

@@ -2,6 +2,7 @@ import type {
   AppConfig,
   AttachmentInfo,
   FieldDef,
+  FieldScale,
   FieldType,
   Note,
   NoteFieldsPatch,
@@ -298,7 +299,7 @@ export async function listNotebookFields(notebookId: string): Promise<FieldDef[]
 /** Adds a field. Throws with a readable message when the name is taken. */
 export async function createNotebookField(
   notebookId: string,
-  input: { name: string; type: FieldType; options: string[] },
+  input: { name: string; type: FieldType; options: string[]; scale?: FieldScale | null },
 ): Promise<FieldDef> {
   const res = await fetch(`/api/notebooks/${notebookId}/fields`, {
     method: 'POST',
@@ -316,7 +317,7 @@ export async function createNotebookField(
 export async function updateNotebookField(
   notebookId: string,
   fieldId: string,
-  patch: { name?: string; type?: FieldType; options?: string[] },
+  patch: { name?: string; type?: FieldType; options?: string[]; scale?: FieldScale | null },
 ): Promise<{ field: FieldDef; cleared: number }> {
   const res = await fetch(`/api/notebooks/${notebookId}/fields/${fieldId}`, {
     method: 'PATCH',
@@ -331,9 +332,14 @@ export async function previewFieldConversion(
   notebookId: string,
   fieldId: string,
   type: FieldType,
+  scale?: FieldScale | null,
 ): Promise<{ values: number; incompatible: number }> {
+  const query = new URLSearchParams({ type });
+  // Absent means "whatever the field has now", which is what the repo assumes; an
+  // explicit empty scale is how a rating becoming a plain number asks for the count.
+  if (scale !== undefined) query.set('scale', scale ? `${scale.max}:${scale.step}` : '');
   return json(
-    await fetch(`/api/notebooks/${notebookId}/fields/${fieldId}/conversion?type=${type}`),
+    await fetch(`/api/notebooks/${notebookId}/fields/${fieldId}/conversion?${query}`),
   );
 }
 
