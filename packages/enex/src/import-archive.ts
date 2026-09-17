@@ -77,7 +77,35 @@ export async function importArchive(
   return run.finish();
 }
 
+/**
+ * One note, with its whole footprint counted as read however it turns out.
+ *
+ * The counting inside `importNote` is what moves the bar during a 90MB attachment, so it
+ * stays; this only fills the gap it leaves behind. Two paths leave one: a note the server
+ * already had, whose existing files are never opened, and a note that failed, which stops
+ * wherever it stopped. Both used to strand their bytes for the rest of the run, so
+ * re-importing a library — where every note is a skip — crawled the bar across a file it
+ * had in fact finished reading. Taking the high-water mark rather than adding to it keeps
+ * what was counted inside from being counted twice.
+ */
 async function importOne(
+  source: NoteSource,
+  client: ImportClient,
+  run: ImportRun,
+  sourceFile: string,
+  options: ImportOptions,
+): Promise<void> {
+  const { progress } = run;
+  const before = progress.bytesRead;
+  const footprint = source.files.reduce((n, f) => n + f.size, source.size);
+  try {
+    await importNote(source, client, run, sourceFile, options);
+  } finally {
+    progress.bytesRead = Math.max(progress.bytesRead, before + footprint);
+  }
+}
+
+async function importNote(
   source: NoteSource,
   client: ImportClient,
   run: ImportRun,

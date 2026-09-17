@@ -518,6 +518,39 @@ describe('what the progress bar divides by', () => {
     expect(progress.bytesRead).toBe(progress.bytesTotal);
   });
 
+  it('is reached on a re-import, where every note is skipped and no file is reopened', async () => {
+    const { client } = fakeClient();
+    const content = {
+      ...library(3),
+      'n-x/n-x.md': noteMarkdown({ id: 'x', title: 'With a file', body: '[a](files/a.txt)\n' }),
+      'n-x/files/a.txt': bytes('hello'),
+    };
+
+    await importArchive(await zipFile('lib.zip', content), client);
+    const again = await importArchive(await zipFile('lib.zip', content), client);
+
+    expect(again.skipped).toBe(4);
+    expect(again.created).toBe(0);
+    expect(again.bytesRead).toBe(again.bytesTotal);
+  });
+
+  it('is reached past a note that failed partway through', async () => {
+    const { client } = fakeClient({
+      createNote: vi.fn(async () => {
+        throw new Error('nope');
+      }),
+    });
+    const zip = await zipFile('lib.zip', {
+      'n-1/n-1.md': noteMarkdown({ body: '[a](files/a.txt)\n' }),
+      'n-1/files/a.txt': bytes('hello'),
+    });
+
+    const progress = await importArchive(zip, client);
+
+    expect(progress.failed).toBe(1);
+    expect(progress.bytesRead).toBe(progress.bytesTotal);
+  });
+
   it('is the file itself for a bare markdown note', async () => {
     const { client } = fakeClient();
     const md = markdownFile('meeting-notes-0191c2a0.md', noteMarkdown());
