@@ -237,15 +237,14 @@ export function RatingInput({
         {stars.map((star) => {
           const fill = fillAt(star, shown ?? 0);
           /*
-             A preview is drawn as the hollow glyph in accent ink rather than the solid
-             one, which is the row's own vocabulary: `☆` already means "this shape, not
-             filled". Dimming was the first attempt and it was wrong — the app fades a
-             control to 0.55 to say *disabled*, so a faded preview read as unavailable
-             rather than as provisional. Shape carries this instead of strength, which
-             also survives greyscale and red-green colour blindness.
+             The glyph says only how full the star is, never whether the rating is
+             committed or previewed. Two earlier attempts put that distinction here and
+             both were worse: dimming the preview read as *disabled*, since the app fades
+             a control to 0.55 to mean exactly that, and drawing it hollow made a preview
+             of 5 look like an empty rating. The row's own wash says "you are pointing at
+             this" instead, which leaves the stars free to say one thing.
           */
-          // Solid only for a committed full star; a preview stays hollow whatever it holds.
-          const glyph = fill === 'full' && !preview ? '★' : '☆';
+          const glyph = fill === 'full' ? '★' : '☆';
           /*
              One radio per star. Its own value is the whole star, which is what a keyboard
              gets: arrows move by a half where the scale allows them, so tabbing does not

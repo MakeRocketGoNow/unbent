@@ -2271,31 +2271,29 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
   align-items: center;
   touch-action: none;
   cursor: pointer;
+  /*
+     Room for the hover wash to sit around the glyphs rather than crop to them, pulled
+     back on the left by the same amount so the first star still lands on the column's
+     edge — the alignment `.note-field-input` keeps with its own negative margin.
+  */
+  padding: 0.1rem 0.35rem;
+  margin-left: -0.35rem;
 }
 
 /*
-   A preview is the same ink as a chosen rating, in a different shape: the stars it would
-   set are drawn hollow (see `glyph` in RatingInput) and coloured accent, so the row reads
-   as "this outline, not yet yours" rather than as a weaker version of the value.
-   Deliberately not dimmed — the app fades a control to 0.55 to mean *disabled*, and a
-   faded preview read as unavailable. Shape also survives greyscale and colour blindness,
-   which a hue or strength difference does not.
+   A preview is drawn exactly as a chosen rating — same glyphs, same ink — and the *row*
+   says it is provisional by lifting under the pointer. Nothing about the stars changes,
+   which is the point: the two earlier attempts both put the distinction on the glyphs and
+   both misread. Dimming them to 55% accent was the app's own `:disabled` signal, so the
+   stars a click would set looked unavailable; drawing them hollow made a preview of five
+   indistinguishable from an empty rating.
 
-   Only while the pointer is over the row or dragging it; the moment it leaves, the stars
-   are the value again.
-*/
-.note-field-stars[data-preview] .note-field-star[data-fill='full'],
-.note-field-stars[data-preview] .note-field-star[data-fill='half'] {
-  color: var(--accent);
-}
-
-/*
-   The row itself says it is live, faintly, the way a hovered select does. It carries the
-   "you are pointing at this" half of the message so the glyphs only have to carry the
-   "not yet chosen" half.
+   Saying it with the row instead means the fill is always just the fill. The wash is the
+   hover state every other control here has, and it is on only while the pointer is over
+   the row or dragging it.
 */
 .note-field-stars[data-preview] {
-  background: color-mix(in srgb, var(--accent) 7%, transparent);
+  background: color-mix(in srgb, var(--accent) 9%, transparent);
   border-radius: 0.3rem;
 }
 

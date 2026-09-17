@@ -231,16 +231,26 @@ describe('a half by pointer position (mouse)', () => {
     expect(document.querySelector('.note-field-stars')?.hasAttribute('data-preview')).toBe(true);
   });
 
-  it('draws a preview hollow, so it cannot read as a dimmed chosen value', () => {
-    render(<RatingInput scale={halves} value={null} onChange={vi.fn()} label="Rating" />);
+  it('draws a preview with the same glyphs a chosen rating uses', () => {
+    /*
+       The row, not the stars, says a rating is provisional — `data-preview` drives a wash
+       in the stylesheet. Two earlier attempts marked the glyphs instead: dimming them hit
+       the app's own `:disabled` look, and hollowing them made a preview of five read as an
+       empty rating. So a previewed 3 and a stored 3 draw identically, on purpose.
+    */
+    const { unmount } = render(
+      <RatingInput scale={halves} value={null} onChange={vi.fn()} label="Rating" />,
+    );
     const row = measureRow();
     fireEvent.pointerMove(row, { clientX: 55, pointerId: 1, pointerType: 'mouse' });
-    const stars = [...document.querySelectorAll('.note-field-star')];
-    // Full stars under a preview keep the hollow glyph; the CSS colours them accent.
-    expect(stars[0]?.textContent).toBe('☆');
-    expect(stars[1]?.textContent).toBe('☆');
-    // The half keeps its filled overlay: an outline clipped in two reads as nothing.
-    expect(stars[2]?.querySelector('.note-field-star-half')).toBeNull();
+    const previewed = [...document.querySelectorAll('.note-field-star')].map((s) => s.textContent);
+    expect(row.hasAttribute('data-preview')).toBe(true);
+    unmount();
+
+    render(<RatingInput scale={halves} value={3} onChange={vi.fn()} label="Rating" />);
+    const committed = [...document.querySelectorAll('.note-field-star')].map((s) => s.textContent);
+    expect(previewed).toEqual(committed);
+    expect(committed[0]).toBe('★');
   });
 
   it('draws a committed rating solid', () => {
