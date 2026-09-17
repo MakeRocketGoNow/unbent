@@ -16,37 +16,38 @@ interface NotesViewToggleProps {
 /**
  * List or table: how the notes under the header are drawn.
  *
- * Two pressed-state buttons rather than one that flips, so the current view is readable
- * without knowing what the other icon would have meant. It sits with the filter and sort
- * icons because it is, like them, about what is on screen rather than about adding to it.
- * The caller decides whether it renders at all: a phone never draws the table, and a
- * search result is ranked rather than columned.
+ * One button that flips between the two. It was a pair of pressed-state buttons, which
+ * read well but spent two slots of a 19rem sidebar's header on one bit of state — and
+ * outside a notebook one of the two was a disabled icon offering nothing. Evernote and
+ * Apple Notes both make this a single control, and the row it sits in needs the slot.
+ *
+ * The icon is the view on screen, the way a sort icon shows the current order rather than
+ * the next one; what a press will do is in the name, which is also why there is no
+ * `aria-pressed` — a name that changes and a pressed state that changes are two answers
+ * to one question. It sits with the filter and sort icons because it is, like them, about
+ * what is on screen rather than about adding to it. The caller decides whether it renders
+ * at all: a phone never draws the table, and a search result is ranked, not columned.
  */
 export function NotesViewToggle({ value, onChange, tableDisabledReason }: NotesViewToggleProps) {
-  return (
-    <div className="view-toggle" role="group" aria-label="View">
-      <button
-        type="button"
-        className="icon-btn"
-        aria-pressed={value === 'list'}
-        aria-label="List view"
-        onClick={() => onChange('list')}
-      >
-        <ListViewIcon />
-      </button>
-      <button
-        type="button"
-        className="icon-btn"
-        aria-pressed={value === 'table'}
-        // The reason goes in the name, not only in the tooltip: a disabled button with no
+  const next: NotesViewMode = value === 'table' ? 'list' : 'table';
+  const label =
+    tableDisabledReason !== undefined
+      ? // The reason goes in the name, not only in the tooltip: a disabled button with no
         // explanation reads as broken, and the tooltip is invisible to a screen reader.
-        aria-label={tableDisabledReason ? `Table view, ${tableDisabledReason}` : 'Table view'}
-        title={tableDisabledReason}
-        disabled={tableDisabledReason !== undefined}
-        onClick={() => onChange('table')}
-      >
-        <TableViewIcon />
-      </button>
-    </div>
+        `Table view, ${tableDisabledReason}`
+      : value === 'table'
+        ? 'Showing as a table, switch to list'
+        : 'Showing as a list, switch to table';
+  return (
+    <button
+      type="button"
+      className="icon-btn view-toggle"
+      aria-label={label}
+      title={tableDisabledReason ?? (next === 'table' ? 'Table view' : 'List view')}
+      disabled={tableDisabledReason !== undefined}
+      onClick={() => onChange(next)}
+    >
+      {value === 'table' ? <TableViewIcon /> : <ListViewIcon />}
+    </button>
   );
 }
