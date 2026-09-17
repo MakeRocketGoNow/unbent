@@ -3,6 +3,7 @@ import { zValidator } from '@hono/zod-validator';
 import { z } from 'zod';
 import {
   createFieldSchema,
+  fieldScaleSchema,
   fieldTypeSchema,
   notebookNameSchema,
   reorderFieldsSchema,
@@ -133,14 +134,40 @@ export const notebooks = new Hono<AppEnv>()
     return c.json(result);
   })
 
-  /** What a type change would clear, so the client can say so before doing it. */
+  /**
+   * What a type change — or a re-scale — would clear, so the client can say so first.
+   *
+   * `scale` is `max:step`, or empty for a rating becoming a plain number. Omitting it
+   * means the field keeps whatever scale it has, which is what a pure type change wants:
+   * the repo reads an absent scale as "unchanged" rather than as "none".
+   */
   .get(
     '/notebooks/:id/fields/:fieldId/conversion',
-    zValidator('query', z.object({ type: fieldTypeSchema })),
+    zValidator(
+      'query',
+      z.object({
+        type: fieldTypeSchema,
+        scale: z
+          .string()
+          .optional()
+          .transform((raw, ctx) => {
+            if (raw === undefined) return undefined;
+            if (raw === '') return null;
+            const [max, step] = raw.split(':').map(Number);
+            const parsed = fieldScaleSchema.safeParse({ max, step });
+            if (!parsed.success) {
+              ctx.addIssue({ code: 'custom', message: 'scale must be max:step' });
+              return undefined;
+            }
+            return parsed.data;
+          }),
+      }),
+    ),
     async (c) => {
+      const { type, scale } = c.req.valid('query');
       const preview = await c
         .get('notes')
-        .previewConversion(c.req.param('id'), c.req.param('fieldId'), c.req.valid('query').type);
+        .previewConversion(c.req.param('id'), c.req.param('fieldId'), type, scale);
       if (!preview) return c.json({ error: 'Not found' }, 404);
       return c.json(preview);
     },

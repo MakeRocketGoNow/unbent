@@ -223,6 +223,12 @@ export interface NoteFieldValue {
   name: string;
   type: FieldType;
   value: FieldValue;
+  /**
+   * The scale, when the field is a rating. Here for the same reason `type` is: a list row
+   * draws `★★★★☆` rather than `4`, and without the scale it could not know how many
+   * glyphs the row has — or that the number is a rating at all.
+   */
+  scale?: FieldScale | null;
   notebookId: string;
   notebook: string;
 }

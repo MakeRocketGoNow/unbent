@@ -74,6 +74,8 @@ interface FieldJson {
   name: string;
   type: string;
   text: string;
+  scaleMax: number | null;
+  scaleStep: number | null;
   position: number;
   notebookId: string;
   notebook: string;
@@ -150,6 +152,12 @@ function decodeFieldsJson(json: string | null, ownNotebookId: string | null): No
       name: r.name,
       type: r.type as FieldType,
       value: decodeFieldValue(r.type as FieldType, r.text),
+      // Both columns or neither, as `rowToField` does: a list row would otherwise have to
+      // guess how many glyphs a half-written scale means.
+      scale:
+        r.scaleMax !== null && r.scaleStep !== null
+          ? { max: r.scaleMax, step: r.scaleStep === 0.5 ? (0.5 as const) : (1 as const) }
+          : null,
       notebookId: r.notebookId,
       notebook: r.notebook,
     }));
@@ -169,6 +177,7 @@ function decodeFieldsJson(json: string | null, ownNotebookId: string | null): No
  */
 const FIELDS_SUBQUERY = `(SELECT json_group_array(json_object(
                  'fieldId', f.id, 'name', f.name, 'type', f.type, 'text', nf.value_text,
+                 'scaleMax', f.scale_max, 'scaleStep', f.scale_step,
                  'position', f.position, 'notebookId', f.notebook_id,
                  'notebook', COALESCE(fnb.name, f.notebook_name)))
             FROM note_fields nf
