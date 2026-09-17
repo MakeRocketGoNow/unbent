@@ -3,47 +3,42 @@ import { renderHook, act } from '@testing-library/react';
 import { useNotesView } from './useNotesView.js';
 
 /**
- * The view is a property of the notebook, so what these pin is the keying: turning on the
- * table for one notebook must not turn it on for the next, and a notebook opened later
- * must still find its choice.
+ * The view is one choice that holds across notebooks. What these pin is that it is stored
+ * as itself, survives a reload, and that a browser still holding the short-lived
+ * per-notebook shape keeps the table it had chosen.
  */
 describe('useNotesView', () => {
   beforeEach(() => localStorage.clear());
 
-  it('is the list until a notebook is made a table', () => {
-    const { result } = renderHook(() => useNotesView('nb-1'));
-    expect(result.current[0]).toBe('list');
-    act(() => result.current[1]('table'));
-    expect(result.current[0]).toBe('table');
-    expect(JSON.parse(localStorage.getItem('unbent.notesView') ?? '{}')).toEqual({ 'nb-1': 'table' });
+  it('is the list until the table is chosen, and remembers the choice', () => {
+    const first = renderHook(() => useNotesView());
+    expect(first.result.current[0]).toBe('list');
+    act(() => first.result.current[1]('table'));
+    expect(first.result.current[0]).toBe('table');
+    expect(localStorage.getItem('unbent.notesView')).toBe('"table"');
+
+    // A second mount — another notebook, a reload — finds the same view.
+    const second = renderHook(() => useNotesView());
+    expect(second.result.current[0]).toBe('table');
   });
 
-  it('remembers each notebook on its own', () => {
-    localStorage.setItem('unbent.notesView', JSON.stringify({ 'nb-1': 'table' }));
-    const one = renderHook(() => useNotesView('nb-1'));
-    const two = renderHook(() => useNotesView('nb-2'));
-    expect(one.result.current[0]).toBe('table');
-    expect(two.result.current[0]).toBe('list');
-  });
-
-  it('forgets a notebook set back to the list rather than storing the default', () => {
-    localStorage.setItem('unbent.notesView', JSON.stringify({ 'nb-1': 'table' }));
-    const { result } = renderHook(() => useNotesView('nb-1'));
+  it('goes back to the list when asked', () => {
+    localStorage.setItem('unbent.notesView', '"table"');
+    const { result } = renderHook(() => useNotesView());
     act(() => result.current[1]('list'));
-    expect(JSON.parse(localStorage.getItem('unbent.notesView') ?? '{}')).toEqual({});
+    expect(result.current[0]).toBe('list');
+    expect(localStorage.getItem('unbent.notesView')).toBe('"list"');
   });
 
-  it('is the list outside a notebook, whatever is stored, and cannot be set there', () => {
+  it('reads the earlier per-notebook shape as the table it had chosen', () => {
     localStorage.setItem('unbent.notesView', JSON.stringify({ 'nb-1': 'table' }));
-    const { result } = renderHook(() => useNotesView(undefined));
-    expect(result.current[0]).toBe('list');
-    act(() => result.current[1]('table'));
-    expect(JSON.parse(localStorage.getItem('unbent.notesView') ?? '{}')).toEqual({ 'nb-1': 'table' });
+    expect(renderHook(() => useNotesView()).result.current[0]).toBe('table');
+    localStorage.setItem('unbent.notesView', JSON.stringify({}));
+    expect(renderHook(() => useNotesView()).result.current[0]).toBe('list');
   });
 
-  it('drops a stored shape it does not recognise', () => {
+  it('drops a stored value it does not recognise', () => {
     localStorage.setItem('unbent.notesView', JSON.stringify(['nb-1']));
-    const { result } = renderHook(() => useNotesView('nb-1'));
-    expect(result.current[0]).toBe('list');
+    expect(renderHook(() => useNotesView()).result.current[0]).toBe('list');
   });
 });

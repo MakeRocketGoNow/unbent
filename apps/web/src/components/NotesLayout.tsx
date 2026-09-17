@@ -306,13 +306,14 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
   const searching = results !== null;
 
   /*
-   * The list as a table of the notebook's fields — the notebook's own choice, remembered
-   * by `useNotesView`, and honoured only where a table makes sense: inside one notebook
-   * (columns are its fields), at desktop width (a phone has no room for columns), and
-   * not over search results (which are ranked, not columned). Everywhere else the list is
-   * drawn, and the toggle shows that.
+   * The list as a table of the notebook's fields — one remembered choice that holds from
+   * notebook to notebook (`useNotesView`), honoured only where a table makes sense:
+   * inside one notebook (columns are its fields), at desktop width (a phone has no room
+   * for columns), and not over search results (which are ranked, not columned).
+   * Everywhere else the list is drawn, the toggle shows that, and the choice is kept —
+   * the table is back the moment there is a notebook to draw it for.
    */
-  const [view, setView] = useNotesView(notebookId);
+  const [view, setView] = useNotesView();
   const tableMode = view === 'table' && !isMobile && !searching && notebookId !== undefined;
   const layout = useNotesLayout('/notes/$noteId', { mode: tableMode ? 'table' : 'list' });
   /*
