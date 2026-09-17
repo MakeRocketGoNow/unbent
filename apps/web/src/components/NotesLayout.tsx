@@ -317,14 +317,14 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
   const searching = results !== null;
 
   /*
-   * The list as a table of the notebook's fields — the URL's `view`, or this device's
-   * usual one when the URL is silent (`useNotesView`), honoured only where a table makes
-   * sense: inside one notebook (columns are its fields), at desktop width (a phone has no room
+   * The list as a table of the notebook's fields — the URL's `view`, seeded from the
+   * last one seen when the URL has not said yet (`useNotesView`), honoured only where a
+   * table makes sense: inside one notebook (columns are its fields), at desktop width (a phone has no room
    * for columns), and not over search results (which are ranked, not columned).
    * Everywhere else the list is drawn, the toggle shows that, and the choice is kept —
    * the table is back the moment there is a notebook to draw it for.
    */
-  const [view, rememberView] = useNotesView(viewParam);
+  const view = useNotesView(viewParam);
   const tableMode = view === 'table' && !isMobile && !searching && notebookId !== undefined;
   const layout = useNotesLayout('/notes/$noteId', { mode: tableMode ? 'table' : 'list' });
   /*
@@ -335,27 +335,40 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
    */
   const toolbarHead = tableMode && !layout.open;
   /*
-   * The toggle writes the view to the URL, so the address bar is always the view on
-   * screen and can be copied, and remembers it as this device's usual one.
-   *
-   * Replaced, not pushed. Flipping a view is not going somewhere, and a pushed entry
-   * would also lie: Back would land on the earlier URL, which says nothing about the
-   * view and so means "this device's usual one" — the very thing the toggle just
-   * changed — and the list would not flip back. With no entry of its own, Back leaves
-   * the page the way it would have before the toggle was touched.
-   *
-   * Unlike the filters it keeps an open note open: a filter can take the note out of the
-   * list, which is why those go back to `/notes`, but how the list is drawn cannot.
+   * Where the list is, as a navigation target: the open note when there is one. Changing
+   * how the list is drawn must not close a note, unlike a filter, which can take the note
+   * out of the list and so goes back to `/notes`.
    */
-  const chooseView = (next: 'list' | 'table') => {
-    rememberView(next);
+  const withView = (next: 'list' | 'table', replace: boolean) => {
     const search = (prev: Record<string, unknown>) => ({ ...prev, view: next });
-    void navigate(
-      layout.open
-        ? { to: '/notes/$noteId', params: { noteId: layout.open }, search, replace: true }
-        : { to: '/notes', search, replace: true },
-    );
+    return layout.open
+      ? ({ to: '/notes/$noteId', params: { noteId: layout.open }, search, replace, resetScroll: false } as const)
+      : ({ to: '/notes', search, replace, resetScroll: false } as const);
   };
+  /*
+   * A URL that does not name a view is given the one on screen, in place.
+   *
+   * This is what makes Back work. A silent URL means "the view last seen", and that
+   * changes every time the toggle is pressed — so a silent history entry would come back
+   * drawn the new way, not the way it was left. Once each entry names its own view,
+   * Back, Forward, a reload and a jump through the history menu all land on what was
+   * there. Replaced, not pushed: it records the entry, it is not a move.
+   *
+   * Only where a view means anything — a desktop, inside a notebook. Outside one the
+   * list is the only drawing there is, so `/notes` stays the clean link it was and a
+   * phone's URLs are never touched.
+   */
+  const viewUnsaid = viewParam === undefined && !isMobile && notebookId !== undefined;
+  useEffect(() => {
+    if (viewUnsaid) void navigate(withView(view, true));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [viewUnsaid, view, layout.open]);
+  /*
+   * The toggle is a move of its own, pushed, so Back undoes it — which it can, now that
+   * the entry it goes back to says which view it had. The remembered view follows the
+   * URL (`useNotesView`), so there is nothing else to write.
+   */
+  const chooseView = (next: 'list' | 'table') => void navigate(withView(next, false));
   const columns = noteColumns(fieldDefs.data ?? []);
   /** A column header was clicked: write the order it asks for. */
   const sortBy = (target: SortTarget) =>

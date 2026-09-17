@@ -1,55 +1,56 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { renderHook, act } from '@testing-library/react';
+import { renderHook } from '@testing-library/react';
 import { useNotesView } from './useNotesView.js';
 
 /**
- * The view comes from the URL when it names one and from storage when it does not. What
- * these pin is that order, that the stored half survives a reload, and that a browser
- * still holding the short-lived per-notebook shape keeps the table it had chosen.
+ * The view is the URL's when the URL names one, and the last one seen when it does not.
+ * What these pin is that order, that the last view seen is what a silent URL is seeded
+ * with — however it was seen — and that a browser still holding the short-lived
+ * per-notebook shape keeps the table it had chosen.
  */
 describe('useNotesView', () => {
   beforeEach(() => localStorage.clear());
 
-  it('is the list until the table is chosen, and remembers the choice', () => {
-    const first = renderHook(() => useNotesView(undefined));
-    expect(first.result.current[0]).toBe('list');
-    act(() => first.result.current[1]('table'));
-    expect(first.result.current[0]).toBe('table');
-    expect(localStorage.getItem('unbent.notesView')).toBe('"table"');
-
-    // A second mount — another notebook, a reload — finds the same view.
-    const second = renderHook(() => useNotesView(undefined));
-    expect(second.result.current[0]).toBe('table');
+  it('is the list when nothing has said otherwise', () => {
+    expect(renderHook(() => useNotesView(undefined)).result.current).toBe('list');
   });
 
-  /* A link that names a view means it, whatever this device usually shows — and opening
-     one is not choosing: the remembered view is untouched. */
-  it('lets the URL outrank the remembered view without changing it', () => {
+  it('takes the view the URL names, over the one remembered', () => {
     localStorage.setItem('unbent.notesView', '"table"');
-    expect(renderHook(() => useNotesView('list')).result.current[0]).toBe('list');
-    expect(localStorage.getItem('unbent.notesView')).toBe('"table"');
-
-    localStorage.setItem('unbent.notesView', '"list"');
-    expect(renderHook(() => useNotesView('table')).result.current[0]).toBe('table');
+    expect(renderHook(() => useNotesView('list')).result.current).toBe('list');
   });
 
-  it('goes back to the list when asked', () => {
-    localStorage.setItem('unbent.notesView', '"table"');
-    const { result } = renderHook(() => useNotesView(undefined));
-    act(() => result.current[1]('list'));
-    expect(result.current[0]).toBe('list');
-    expect(localStorage.getItem('unbent.notesView')).toBe('"list"');
+  /* Whatever view was last on screen is the one a silent URL opens in — so following a
+     bookmark, or pressing Back, and then a plain link does not change the view again. */
+  it('remembers the view the URL showed, for the next URL that does not say', () => {
+    renderHook(() => useNotesView('table'));
+    expect(localStorage.getItem('unbent.notesView')).toBe('"table"');
+    expect(renderHook(() => useNotesView(undefined)).result.current).toBe('table');
+
+    renderHook(() => useNotesView('list'));
+    expect(renderHook(() => useNotesView(undefined)).result.current).toBe('list');
+  });
+
+  it('follows the URL as it changes', () => {
+    const { result, rerender } = renderHook(({ v }) => useNotesView(v), {
+      initialProps: { v: 'table' as 'list' | 'table' | undefined },
+    });
+    expect(result.current).toBe('table');
+    rerender({ v: 'list' });
+    expect(result.current).toBe('list');
+    rerender({ v: undefined });
+    expect(result.current).toBe('list');
   });
 
   it('reads the earlier per-notebook shape as the table it had chosen', () => {
     localStorage.setItem('unbent.notesView', JSON.stringify({ 'nb-1': 'table' }));
-    expect(renderHook(() => useNotesView(undefined)).result.current[0]).toBe('table');
+    expect(renderHook(() => useNotesView(undefined)).result.current).toBe('table');
     localStorage.setItem('unbent.notesView', JSON.stringify({}));
-    expect(renderHook(() => useNotesView(undefined)).result.current[0]).toBe('list');
+    expect(renderHook(() => useNotesView(undefined)).result.current).toBe('list');
   });
 
   it('drops a stored value it does not recognise', () => {
     localStorage.setItem('unbent.notesView', JSON.stringify(['nb-1']));
-    expect(renderHook(() => useNotesView(undefined)).result.current[0]).toBe('list');
+    expect(renderHook(() => useNotesView(undefined)).result.current).toBe('list');
   });
 });

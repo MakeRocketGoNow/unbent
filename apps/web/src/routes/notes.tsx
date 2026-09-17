@@ -118,8 +118,10 @@ export const filters = z.object({
    *
    * In the URL for the reason the sort is: it is how you are looking, and "Coupons as a
    * table, by expiry" is a thing worth bookmarking — a sidebar width is not, which is why
-   * that one lives in storage alone. Absent means "this device's usual view", which
-   * `useNotesView` supplies, so a plain `/notes` link opens the way you last left it.
+   * that one lives in storage alone. Absent means "not said yet": inside a notebook on a
+   * desktop `NotesLayout` writes in the view last seen, in place, so that every history
+   * entry names the view it showed and Back returns to it. Outside a notebook and on a
+   * phone it stays absent, and `/notes` stays a clean link.
    * Not among the loader's dependencies: it changes what is drawn, never what is fetched.
    * Where a table cannot be drawn — a phone, outside a notebook, over search results —
    * it is ignored rather than stripped, so the link still means it on a screen that can.
