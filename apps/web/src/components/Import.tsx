@@ -4,6 +4,8 @@ import type { ImportEvent, ImportRequest } from '../import-worker.js';
 import { startIndexing, useIndexing, type IndexingState } from '../index-files.js';
 import { Button } from './Button.js';
 import { describeImportFile } from './import-file.js';
+import { ImportSkips } from './ImportSkips.js';
+import { emptySkipLog, recordSkip, type SkipLog } from './import-skips.js';
 import { useSettingsBusy } from './SettingsLayout.js';
 
 interface ImportProps {
@@ -50,6 +52,11 @@ function indexingText(state: IndexingState): string {
   }
 }
 
+/** `1 note`, `3,325 notes`. */
+function count(n: number, noun: string): string {
+  return `${n.toLocaleString()} ${noun}${n === 1 ? '' : 's'}`;
+}
+
 function formatBytes(n: number): string {
   if (n < 1024) return `${n} B`;
   if (n < 1024 ** 2) return `${(n / 1024).toFixed(0)} KB`;
@@ -62,6 +69,7 @@ export function Import({ onImported }: ImportProps) {
   const [status, setStatus] = useState<Status>('idle');
   const [progress, setProgress] = useState<ImportProgress | null>(null);
   const [failures, setFailures] = useState<ImportFailure[]>([]);
+  const [skips, setSkips] = useState<SkipLog>(emptySkipLog);
   const [error, setError] = useState<string | null>(null);
   const [elapsed, setElapsed] = useState(0);
   const [extractText, setExtractText] = useState(true);
@@ -97,6 +105,7 @@ export function Import({ onImported }: ImportProps) {
 
     setStatus('running');
     setFailures([]);
+    setSkips(emptySkipLog);
     setError(null);
     // Show the running state before the worker module finishes loading. This also keeps a
     // worker startup failure visible instead of leaving the user on an unchanged form.
@@ -115,6 +124,8 @@ export function Import({ onImported }: ImportProps) {
         // Cap the retained list: a bad file could otherwise produce thousands of entries
         // and push the tab into swap.
         setFailures((prev) => (prev.length >= 200 ? prev : [...prev, data.failure]));
+      } else if (data.type === 'skip') {
+        setSkips((prev) => recordSkip(prev, data.skip));
       } else if (data.type === 'done') {
         setProgress(data.progress);
         setStatus('done');
@@ -158,6 +169,7 @@ export function Import({ onImported }: ImportProps) {
     setFile(null);
     setProgress(null);
     setFailures([]);
+    setSkips(emptySkipLog);
     setError(null);
     setElapsed(0);
     setStatus('idle');
@@ -332,12 +344,17 @@ export function Import({ onImported }: ImportProps) {
         <div className="import-finished">
           <p className="good small">
             Finished in {Math.max(1, Math.round(elapsed / 1000))}s.{' '}
-            {progress?.created.toLocaleString()} notes imported
-            {progress && progress.skipped > 0
-              ? `, ${progress.skipped.toLocaleString()} already present`
+            {count(progress?.created ?? 0, 'note')} imported
+            {/* Told apart because they are not the same news: a duplicate inside the file
+                is the export repeating itself, one already here is a resume working. */}
+            {skips.duplicateCount > 0
+              ? `, ${count(skips.duplicateCount, 'duplicate')} skipped`
+              : ''}
+            {skips.presentCount > 0
+              ? `, ${skips.presentCount.toLocaleString()} already present`
               : ''}
             {progress && progress.filesUploaded > 0
-              ? `, ${progress.filesUploaded.toLocaleString()} files`
+              ? `, ${count(progress.filesUploaded, 'file')}`
               : ''}
             .
           </p>
@@ -387,6 +404,8 @@ export function Import({ onImported }: ImportProps) {
           </ul>
         </details>
       )}
+
+      <ImportSkips log={skips} />
     </div>
   );
 }

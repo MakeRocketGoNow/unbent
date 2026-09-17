@@ -2,7 +2,12 @@ import { BlobWriter, TextReader, Uint8ArrayReader, ZipWriter } from '@zip.js/zip
 import { serialize } from '@unbent/shared';
 import { describe, expect, it, vi } from 'vitest';
 import { importArchive } from './import-archive.js';
-import { FAILURE_STREAK_LIMIT, ImportStoppedError, type ImportClient } from './import-run.js';
+import {
+  FAILURE_STREAK_LIMIT,
+  ImportStoppedError,
+  type ImportClient,
+  type ImportSkip,
+} from './import-run.js';
 
 /** One exported note's markdown, as the API writes it. */
 function noteMarkdown(
@@ -319,6 +324,21 @@ describe('importing again', () => {
     expect(second.skipped).toBe(1);
     expect(notes).toHaveLength(1);
     expect(files).toHaveLength(1);
+  });
+
+  it('reports each note it skips under its title, as already here', async () => {
+    const { client, notes } = fakeClient();
+    const content = { 'n-1/n-1.md': noteMarkdown({ title: 'Quarterly plan' }) };
+    await importArchive(await zipFile('lib.zip', content), client);
+
+    const skips: ImportSkip[] = [];
+    await importArchive(await zipFile('lib.zip', content), client, {
+      onSkip: (s) => skips.push(s),
+    });
+
+    expect(skips).toEqual([
+      { title: 'Quarterly plan', noteId: notes[0]!.id, earlierInFile: false },
+    ]);
   });
 
   it('is matched by id even when the note has since been edited', async () => {

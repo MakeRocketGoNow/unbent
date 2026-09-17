@@ -67,7 +67,7 @@ export async function importArchive(
     for await (const source of noteSources(file, progress)) {
       if (run.halt.signal.aborted) break;
       await run.attempt(source.path, () =>
-        importOne(source, client, progress, file.name, options),
+        importOne(source, client, run, file.name, options),
       );
     }
   } finally {
@@ -80,10 +80,11 @@ export async function importArchive(
 async function importOne(
   source: NoteSource,
   client: ImportClient,
-  progress: ImportProgress,
+  run: ImportRun,
   sourceFile: string,
   options: ImportOptions,
 ): Promise<void> {
+  const { progress } = run;
   const text = await source.markdown();
   progress.bytesRead += source.size;
 
@@ -112,7 +113,7 @@ async function importOne(
   // The same rule as the ENEX importer, for the same reason — a run that died mid-upload
   // must be repairable by running it again.
   if (!result.created) {
-    progress.skipped += 1;
+    run.skipped(result.id);
     if (source.files.length > 0 && client.listFiles) {
       const existing = new Set(await client.listFiles(result.id));
       const missing = source.files.filter((f) => !existing.has(f.filename));
@@ -123,7 +124,7 @@ async function importOne(
     return;
   }
 
-  progress.created += 1;
+  run.created(result.id);
   if (source.files.length === 0) return;
 
   /**

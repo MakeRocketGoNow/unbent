@@ -2756,10 +2756,15 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
   white-space: nowrap;
 }
 
-.failures { width: 100%; max-width: 46rem; }
-.failures summary { cursor: pointer; color: var(--muted); }
-.failures ul { max-height: 12rem; overflow-y: auto; margin: 0.5rem 0 0; padding-left: 1.2rem; }
-.failures li { margin-bottom: 0.25rem; color: var(--muted); }
+.failures, .import-skips { width: 100%; max-width: 46rem; }
+.failures summary, .import-skips summary { cursor: pointer; color: var(--muted); }
+.failures ul, .import-skips ul { max-height: 12rem; overflow-y: auto; margin: 0.5rem 0 0; padding-left: 1.2rem; }
+.failures li, .import-skips li { margin-bottom: 0.25rem; color: var(--muted); }
+
+/* A note title is unbounded, and an unbroken one would push the panel wider than a phone. */
+.import-skips li { overflow-wrap: anywhere; }
+.import-skips p { margin-top: 0.5rem; }
+.import-skips > div + div { margin-top: 1rem; }
 
 /* The device page is a single decision with nothing else on it, so the panel is narrow and
    centred rather than taking the full settings width. */

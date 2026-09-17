@@ -1,6 +1,6 @@
 import { enmlToMarkdown } from './enml-to-markdown.js';
 import { parseEnexStream } from './parse.js';
-import { contentHash, withSourceLink } from './note-body.js';
+import { enexNoteHash, withSourceLink } from './note-body.js';
 import {
   ImportRun,
   applyRenames,
@@ -28,8 +28,9 @@ export {
   type ImportFailure,
   type ImportOptions,
   type ImportProgress,
+  type ImportSkip,
 } from './import-run.js';
-export { contentHash, withSourceLink } from './note-body.js';
+export { contentHash, enexNoteHash, withSourceLink } from './note-body.js';
 
 export async function importEnex(
   file: { name: string; stream: () => ReadableStream<Uint8Array> },
@@ -51,7 +52,7 @@ export async function importEnex(
 
       onNote: (note: EnexNote) =>
         run.attempt(note.title || 'Untitled', () =>
-          importOne(note, notebookTag, client, progress, file.name, options),
+          importOne(note, notebookTag, client, run, file.name, options),
         ),
     });
   } finally {
@@ -65,10 +66,11 @@ async function importOne(
   note: EnexNote,
   notebookTag: string,
   client: ImportClient,
-  progress: ImportProgress,
+  run: ImportRun,
   sourceEnex: string,
   options: ImportOptions,
 ): Promise<void> {
+  const { progress } = run;
   const { markdown, usedMd5 } = enmlToMarkdown(note.enml, note.resources);
   const body = withSourceLink(markdown, note.sourceUrl);
 
@@ -82,7 +84,14 @@ async function importOne(
     notebook: notebookTag || undefined,
     createdAt: created,
     updatedAt: note.updated?.getTime() ?? created,
-    contentHash: await contentHash(note.title, body),
+    contentHash: await enexNoteHash({
+      title: note.title,
+      body,
+      tags,
+      created: note.created?.getTime(),
+      updated: note.updated?.getTime(),
+      attachments: note.resources.map((r) => r.md5),
+    }),
     sourceEnex,
     sourceUrl: note.sourceUrl,
   });
@@ -91,7 +100,7 @@ async function importOne(
   // missed. Without this, a worker crash mid-PDF leaves a permanent hole — re-import
   // sees the content hash, returns skipped, and never retries the upload.
   if (!result.created) {
-    progress.skipped += 1;
+    run.skipped(result.id);
     if (note.resources.length > 0 && client.listFiles) {
       const existing = new Set(await client.listFiles(result.id));
       const missing = note.resources.filter((r) => !existing.has(r.filename));
@@ -102,7 +111,7 @@ async function importOne(
     return;
   }
 
-  progress.created += 1;
+  run.created(result.id);
   if (note.resources.length === 0) return;
 
   /**

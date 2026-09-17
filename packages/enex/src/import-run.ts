@@ -30,6 +30,26 @@ export interface ImportFailure {
 }
 
 /**
+ * A note the server said it already had.
+ *
+ * Reported one by one because a bare count could not be explained. Re-importing a
+ * notebook after deleting it said "10 already present" into a notebook that held nothing,
+ * and there was no way to find out what those ten were: they were copies inside the file
+ * itself, matched against notes the same run had just created.
+ */
+export interface ImportSkip {
+  title: string;
+  /** The note it was matched to, which is where anyone wondering why should look. */
+  noteId: string;
+  /**
+   * The match is a note this run created from earlier in the same file, rather than one
+   * that was here before the run started. The first is a note the file holds twice; the
+   * second is a resumed or repeated import doing its job.
+   */
+  earlierInFile: boolean;
+}
+
+/**
  * Consecutive failures carrying the same HTTP status that end a run.
  *
  * Low on purpose. The failures this catches are not a property of the notes — they are the
@@ -148,10 +168,11 @@ export interface ImportOptions {
   signal?: AbortSignal;
   onProgress?: (progress: ImportProgress) => void;
   onFailure?: (failure: ImportFailure) => void;
+  onSkip?: (skip: ImportSkip) => void;
 }
 
 /**
- * One run's accounting: progress, per-note failures, and the breaker.
+ * One run's accounting: progress, per-note failures and skips, and the breaker.
  *
  * A driver wraps each note in `attempt` and calls `finish` when its file is exhausted.
  * `halt` is what the driver's reader should stop on — it fires for either reason a run
@@ -179,6 +200,14 @@ export class ImportRun {
   };
 
   private stopped: ImportStoppedError | null = null;
+
+  /**
+   * Every note this run created, so a skip can say whether it matched one of them.
+   *
+   * Ids only: the largest real export is about 13,000 notes, which is around a megabyte
+   * of strings held for the length of a run.
+   */
+  private readonly createdIds = new Set<string>();
 
   private readonly cancel = () => this.halt.abort();
 
@@ -236,6 +265,27 @@ export class ImportRun {
 
     progress.processed += 1;
     options.onProgress?.({ ...progress });
+  }
+
+  /** Counts a note the server created. Drivers call this rather than bumping the count. */
+  created(noteId: string): void {
+    this.progress.created += 1;
+    this.createdIds.add(noteId);
+  }
+
+  /**
+   * Counts a note the server already had, and reports which note it matched.
+   *
+   * Named by `progress.currentTitle`, the same as a failure, so an archive's note is
+   * reported under its real title rather than its path.
+   */
+  skipped(noteId: string): void {
+    this.progress.skipped += 1;
+    this.options.onSkip?.({
+      title: this.progress.currentTitle,
+      noteId,
+      earlierInFile: this.createdIds.has(noteId),
+    });
   }
 
   /**

@@ -10,6 +10,7 @@ import {
   type ImportFailure,
   type ImportOptions,
   type ImportProgress,
+  type ImportSkip,
 } from '@unbent/enex';
 import { requestDeviceCode, waitForToken } from './auth.js';
 import { ApiError, checkToken, createClient } from './client.js';
@@ -185,6 +186,9 @@ async function runImport(args: Args): Promise<number> {
   const token = await ensureToken(url);
   const client = createClient(url, token);
   const failures: ImportFailure[] = [];
+  // Copies inside a file, kept apart from notes that were here before the run: a count of
+  // "already present" cannot explain skips into a notebook that was empty when it started.
+  const duplicates: Array<ImportSkip & { file: string }> = [];
   let exitCode = 0;
 
   for (const path of args.files) {
@@ -205,11 +209,15 @@ async function runImport(args: Args): Promise<number> {
       extractText: args.extractText,
       onProgress: (p) => renderProgress(p, Date.now() - started),
       onFailure: (f) => failures.push(f),
+      onSkip: (s) => {
+        if (s.earlierInFile) duplicates.push({ ...s, file: name });
+      },
     };
 
     let handle: FileHandle | undefined;
     try {
       const before = failures.length;
+      const duplicatesBefore = duplicates.length;
       let progress: ImportProgress;
       if (format === 'enex') {
         handle = await open(full, 'r');
@@ -232,8 +240,11 @@ async function runImport(args: Args): Promise<number> {
       }
 
       const failed = failures.length - before;
+      const duplicated = duplicates.length - duplicatesBefore;
       process.stdout.write(
-        `\r\x1b[2K  ${progress.created} imported, ${progress.skipped} already present, ` +
+        `\r\x1b[2K  ${progress.created} imported, ` +
+          (duplicated ? `${duplicated} duplicate${duplicated === 1 ? '' : 's'} skipped, ` : '') +
+          `${progress.skipped - duplicated} already present, ` +
           `${progress.filesUploaded} files${failed ? `, ${failed} failed` : ''}.\n`,
       );
       if (failed) exitCode = 1;
@@ -252,6 +263,19 @@ async function runImport(args: Args): Promise<number> {
       exitCode = 1;
     } finally {
       await handle?.close();
+    }
+  }
+
+  if (duplicates.length > 0) {
+    process.stdout.write(
+      `\n${duplicates.length} note(s) were identical to an earlier note in the same file — ` +
+        `title, text, tags, dates and attachments — so only that earlier note was imported:\n`,
+    );
+    for (const d of duplicates.slice(0, 20)) {
+      process.stdout.write(`  ${d.title} — ${d.file}, kept as ${d.noteId}\n`);
+    }
+    if (duplicates.length > 20) {
+      process.stdout.write(`  …and ${duplicates.length - 20} more\n`);
     }
   }
 
