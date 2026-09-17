@@ -315,6 +315,13 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
   const [view, setView] = useNotesView(notebookId);
   const tableMode = view === 'table' && !isMobile && !searching && notebookId !== undefined;
   const layout = useNotesLayout('/notes/$noteId', { mode: tableMode ? 'table' : 'list' });
+  /*
+   * The table with no note open is the whole window wide, and a header laid out for a
+   * sidebar stretched with it: a search field and a notebook select a window wide each.
+   * There the header is one toolbar row holding both — see `NoteListHead`. Beside an open
+   * note the table is a column again and keeps the stacked header, which is what fits.
+   */
+  const toolbarHead = tableMode && !layout.open;
   const columns = noteColumns(fieldDefs.data ?? []);
   /** A column header was clicked: write the order it asks for. */
   const sortBy = (target: SortTarget) =>
@@ -422,6 +429,8 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
             setSearchOpen(false);
             setQuery('');
           }}
+          toolbar={toolbarHead}
+          scope={toolbarHead ? <NotebookSelect notebook={notebook} notebooks={notebooks} /> : undefined}
           onOpenFilters={() => setSheetOpen(true)}
           onOpenMenu={isMobile ? () => setDrawerOpen(true) : undefined}
           filtered={sheetFiltered}
@@ -477,7 +486,9 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
             search is scoped to the notebook, but a select above relevance-ranked results
             invites being read as something that reorders them.
         */}
-        {!isMobile && !searching && <NotebookSelect notebook={notebook} notebooks={notebooks} />}
+        {!isMobile && !searching && !toolbarHead && (
+          <NotebookSelect notebook={notebook} notebooks={notebooks} />
+        )}
 
         {/*
             Under the header rather than only inside the sheet, so what is narrowing the

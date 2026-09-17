@@ -4443,6 +4443,44 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
   }
 }
 
+/*
+   The header as one toolbar row, over the full-width table — see `NoteListHead`.
+
+   Each control takes the width of what it holds rather than of the window: the notebook
+   picker up to 14rem, the search field up to 18rem and pushed to the icons' side, where a
+   table's search sits in every app that has one. Both shrink before anything wraps, and
+   both take the row's height — the icons' 36px, or 32px under a mouse — instead of the
+   taller box they have as rows of their own in the sidebar.
+*/
+.list-head-toolbar { gap: 0.75rem; }
+
+.list-head-toolbar .list-title { flex: 0 1 auto; }
+
+.list-head-toolbar .notebook-scope-wrap {
+  flex: 0 1 14rem;
+  min-width: 8rem;
+}
+
+.list-head-toolbar .list-search {
+  flex: 0 1 18rem;
+  min-width: 10rem;
+  min-height: 0;
+  margin-left: auto;
+}
+
+.list-head-toolbar .notebook-scope,
+.list-head-toolbar .search-field {
+  height: 2.25rem;
+  padding-block: 0;
+}
+
+@media (width > 860px) and (hover: hover) and (pointer: fine) {
+  .list-head-toolbar .notebook-scope,
+  .list-head-toolbar .search-field {
+    height: 2rem;
+  }
+}
+
 /* The count yields before the controls do: the controls are the ones that have to be hit.
    It rarely has to now — it states the total alone ("340 notes"), and how much of that is
    loaded is the Load more button's to say — but a sidebar dragged to its narrowest can
