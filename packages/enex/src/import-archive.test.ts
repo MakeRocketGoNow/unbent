@@ -1,4 +1,11 @@
-import { BlobWriter, TextReader, Uint8ArrayReader, ZipWriter } from '@zip.js/zip.js';
+import {
+  BlobReader,
+  BlobWriter,
+  TextReader,
+  Uint8ArrayReader,
+  ZipReader,
+  ZipWriter,
+} from '@zip.js/zip.js';
 import { serialize } from '@unbent/shared';
 import { describe, expect, it, vi } from 'vitest';
 import { importArchive } from './import-archive.js';
@@ -451,5 +458,73 @@ describe('failures', () => {
     await expect(run).rejects.toBeInstanceOf(ImportStoppedError);
     await expect(run).rejects.toMatchObject({ status: 502, streak: FAILURE_STREAK_LIMIT });
     expect(client.createNote).toHaveBeenCalledTimes(FAILURE_STREAK_LIMIT);
+  });
+});
+
+describe('what the progress bar divides by', () => {
+  /** The bytes an archive's entries actually hold, which is what a run counts as read. */
+  async function entryBytes(blob: Blob): Promise<number> {
+    const reader = new ZipReader(new BlobReader(blob), { useWebWorkers: false });
+    const total = (await reader.getEntries()).reduce(
+      (n, e) => (e.directory ? n : n + e.compressedSize),
+      0,
+    );
+    await reader.close();
+    return total;
+  }
+
+  /** A library of text notes, the shape the export writes: `{dir}/{dir}.md`. */
+  function library(n: number): ZipContent {
+    const content: ZipContent = {};
+    for (let i = 0; i < n; i += 1) {
+      const dir = `a-rather-long-note-directory-name-${i}`;
+      content[`${dir}/${dir}.md`] = noteMarkdown({
+        id: `0191c2a0-0000-7000-8000-00000000000${i}`,
+        title: `Note ${i}`,
+      });
+    }
+    return content;
+  }
+
+  it('is the bytes the entries hold, not the size of the zip', async () => {
+    const { client } = fakeClient();
+    const zip = await zipFile('lib.zip', library(20));
+
+    const progress = await importArchive(zip, client);
+
+    expect(progress.created).toBe(20);
+    expect(progress.bytesTotal).toBe(await entryBytes(zip.blob));
+    // The gap is the point: per-entry headers and the central directory are a large share
+    // of a text export, and dividing by the file's size left a finished run around half.
+    expect(progress.bytesTotal).toBeLessThan(zip.blob.size);
+  });
+
+  it('is reached exactly when the file has been read to the end', async () => {
+    const { client } = fakeClient();
+    const zip = await zipFile('lib.zip', {
+      ...library(3),
+      'n-x/n-x.md': noteMarkdown({ id: 'x', title: 'With a file', body: '[a](files/a.txt)\n' }),
+      'n-x/files/a.txt': bytes('hello'),
+      // Counted too, or the bar could never finish on an archive someone re-zipped.
+      'lib/.DS_Store': bytes('junk'),
+      '__MACOSX/lib/._n-x.md': bytes('junk'),
+      'lib/README.txt': bytes('what is this'),
+      'orphan/files/stray.txt': bytes('belongs to nothing'),
+    });
+
+    const progress = await importArchive(zip, client);
+
+    expect(progress.created).toBe(4);
+    expect(progress.bytesRead).toBe(progress.bytesTotal);
+  });
+
+  it('is the file itself for a bare markdown note', async () => {
+    const { client } = fakeClient();
+    const md = markdownFile('meeting-notes-0191c2a0.md', noteMarkdown());
+
+    const progress = await importArchive(md, client);
+
+    expect(progress.bytesTotal).toBe(md.blob.size);
+    expect(progress.bytesRead).toBe(md.blob.size);
   });
 });
