@@ -1308,7 +1308,7 @@ describe('notebook fields', () => {
     expect((await getFields(alice, nb.id)).some((x) => x.id === gone.id)).toBe(false);
   });
 
-  it('deletes a notebook together with its fields and their values', async () => {
+  it('deletes a notebook and its field definitions, but keeps their values', async () => {
     const doomed = await makeNotebook(alice, `Doomed ${Date.now()}`);
     const field = await makeField(alice, doomed.id, { name: 'X', type: 'text' });
     const note = await json(alice, 'POST', '/api/notes', { title: 'In doomed', body: '', notebook: doomed.name, fields: { [field.id]: 'v' } }).then((r) => r.json());
@@ -1317,7 +1317,11 @@ describe('notebook fields', () => {
     expect((await json(alice, 'GET', `/api/notebooks/${doomed.id}/fields`)).status).toBe(404);
     const after = await getNote(alice, note.id);
     expect(after.notebook).toBeNull();
-    expect(after.fields).toBeUndefined();
+    // The definition is gone from every listing, but the value it keyed is the note's own
+    // data and survives, labelled with the notebook that no longer exists. See
+    // test/notebook-delete-fields.test.ts for the cases that motivated it.
+    expect(byName(after.fields)).toEqual({ X: 'v' });
+    expect(after.fields[0].notebook).toBe(doomed.name);
   });
 
   it('imports values by name, creating the definitions it lacks and naming what it skipped', async () => {
