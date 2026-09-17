@@ -13,7 +13,7 @@ import {
   trashCountQuery,
   invalidateNoteMembership,
 } from '../queries.js';
-import { useNotesLayout, SIDEBAR_DEFAULT, SIDEBAR_MIN, SIDEBAR_MAX } from '../useNotesLayout.js';
+import { useNotesLayout } from '../useNotesLayout.js';
 import { ResizeHandle } from './ResizeHandle.js';
 import { NoteListItem } from './NoteListItem.js';
 import { useListKeys, enterList } from '../useListKeys.js';
@@ -667,10 +667,10 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
          */
         toValue={(clientX, rect, gap) => clientX - rect.left - gap}
         value={layout.width}
-        min={SIDEBAR_MIN}
-        max={SIDEBAR_MAX}
+        min={layout.min}
+        max={layout.max}
         step={16}
-        defaultValue={SIDEBAR_DEFAULT}
+        defaultValue={layout.defaultValue}
         onResize={layout.onResize}
         onCommit={layout.onResizeCommit}
       />

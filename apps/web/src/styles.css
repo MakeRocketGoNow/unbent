@@ -473,6 +473,32 @@ h1 {
   min-height: 0;
 }
 
+/*
+   The list drawn as a table: `NoteTable`, inside a notebook, at desktop width only.
+
+   Two shapes. With no note open the table is the whole grid — one track, the handle and
+   the empty workspace gone — because a table of a notebook's fields is the thing to look
+   at, and "Select a note" beside it would be a pane saying nothing next to one saying
+   everything. With a note open the table keeps its own dragged width on the left and the
+   note takes the rest, which is the side-by-side the list already has; `24rem` is the
+   floor the note keeps whatever was dragged, so a wide table never squeezes it below a
+   phone's width. The width arrives as `--table-width` from useNotesLayout, the way the
+   sidebar's does, and for the same reason.
+
+   Inside the desktop query rather than beside the phone rules further down: these
+   selectors outrank the phone block's `.notes`, and a phone must never get a table.
+*/
+@media (width > 860px) {
+  .notes.table-view {
+    grid-template-columns: min(var(--table-width, 40rem), calc(100% - 24rem)) 1px 1fr;
+  }
+
+  .notes.table-view:not(.note-open) { grid-template-columns: 1fr; }
+
+  .notes.table-view:not(.note-open) > .resize-handle,
+  .notes.table-view:not(.note-open) > .workspace.empty { display: none; }
+}
+
 /* Text selection while dragging a divider reads as a bug rather than a feature. */
 .notes[data-resizing] { user-select: none; }
 

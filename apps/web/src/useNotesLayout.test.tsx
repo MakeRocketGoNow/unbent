@@ -21,11 +21,11 @@ import { useNotesLayout } from './useNotesLayout.js';
  * The routes are rebuilt rather than imported from the generated tree so the test needs no
  * session gate, no API and no loaders — the same approach as settings-routing.test.tsx.
  */
-function harness(initial: string) {
+function harness(initial: string, mode: 'list' | 'table' = 'list') {
   const rootRoute = createRootRoute({ component: Outlet });
 
   function Shell() {
-    const layout = useNotesLayout('/notes/$noteId');
+    const layout = useNotesLayout('/notes/$noteId', { mode });
     return (
       <div data-testid="grid" className={layout.className} style={layout.style}>
         <Outlet />
@@ -112,5 +112,34 @@ describe('useNotesLayout', () => {
     harness('/notes');
     await waitFor(() => expect(screen.getByText('empty workspace')).toBeTruthy());
     expect(screen.getByTestId('grid').style.getPropertyValue('--sidebar-width')).toBe('304px');
+  });
+
+  /*
+   * Table mode is a class on the same grid, so the stylesheet can give the table the
+   * whole width with no note open and its own dragged width beside one. Both widths
+   * always reach the grid: the desktop filter panel reads the sidebar's over a table too.
+   */
+  it('marks the grid in table mode and keeps both widths on it', async () => {
+    localStorage.setItem('unbent.sidebarWidth', '360');
+    localStorage.setItem('unbent.tableWidth', '800');
+    const router = harness('/notes', 'table');
+    await waitFor(() => expect(screen.getByText('empty workspace')).toBeTruthy());
+    const grid = screen.getByTestId('grid');
+    expect(grid.className).toBe('notes table-view');
+    expect(grid.style.getPropertyValue('--table-width')).toBe('800px');
+    expect(grid.style.getPropertyValue('--sidebar-width')).toBe('360px');
+    expect(grid.style.gridTemplateColumns).toBe('');
+
+    await router.navigate({ to: '/notes/$noteId', params: { noteId: 'abc123' } });
+    await waitFor(() =>
+      expect(screen.getByTestId('grid').className).toBe('notes note-open table-view'),
+    );
+  });
+
+  it('clamps the table width on its own range', async () => {
+    localStorage.setItem('unbent.tableWidth', '200');
+    harness('/notes', 'table');
+    await waitFor(() => expect(screen.getByText('empty workspace')).toBeTruthy());
+    expect(screen.getByTestId('grid').style.getPropertyValue('--table-width')).toBe('640px');
   });
 });
