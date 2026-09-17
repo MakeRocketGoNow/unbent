@@ -268,7 +268,7 @@ function Reverify({ onVerified, onCancel }: ReverifyProps) {
   if (otp) {
     if (codeSent) {
       return (
-        <form className="login-form" onSubmit={(e) => void verifyCode(e)}>
+        <form className="login-form reverify-form" onSubmit={(e) => void verifyCode(e)}>
           {intro}
           <p className="muted">We sent a code to {email}. It expires in five minutes.</p>
           <label>
@@ -305,7 +305,7 @@ function Reverify({ onVerified, onCancel }: ReverifyProps) {
       );
     }
     return (
-      <div className="login-form">
+      <div className="login-form reverify-form">
         {intro}
         <Button variant="primary" disabled={busy} onClick={() => void sendCode()}>
           {busy ? 'Sending…' : `Email me a code`}
@@ -320,7 +320,7 @@ function Reverify({ onVerified, onCancel }: ReverifyProps) {
 
   if (password) {
     return (
-      <form className="login-form" onSubmit={(e) => void verifyPassword(e)}>
+      <form className="login-form reverify-form" onSubmit={(e) => void verifyPassword(e)}>
         {intro}
         <label>
           Password
@@ -348,7 +348,7 @@ function Reverify({ onVerified, onCancel }: ReverifyProps) {
   // provider. The redirect lands here and the fresh session it brings lets Add through.
   if (social.length > 0) {
     return (
-      <div className="login-form">
+      <div className="login-form reverify-form">
         {intro}
         <p className="muted small">
           Sign in again to continue. You will come back to this page, and the passkey can be
@@ -378,7 +378,7 @@ function Reverify({ onVerified, onCancel }: ReverifyProps) {
   // Nothing to re-verify with — shouldn't happen, since the account signed in somehow, but
   // an honest dead end beats a blank panel.
   return (
-    <div className="login-form">
+    <div className="login-form reverify-form">
       {intro}
       <p className="bad small">
         Sign out and back in, then add a passkey — this instance has no way to re-verify in

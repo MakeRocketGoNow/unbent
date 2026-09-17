@@ -254,6 +254,18 @@ h1 {
   text-align: left;
 }
 
+/*
+ * The re-verification form on Security, which reuses `.login-form` outside the narrow
+ * `.login` column that normally caps it. Without a width of its own it grew to whatever
+ * the widest line of intro text needed, then stretched its button to match — full-bleed
+ * on a wide monitor. Capped like `.login` and `.device-panel` are, with `align-items` so
+ * the button reads as a control sized to its label instead of a bar sized to the form.
+ */
+.reverify-form {
+  max-width: 22rem;
+  align-items: flex-start;
+}
+
 .login-form label {
   display: flex;
   flex-direction: column;
@@ -2679,10 +2691,18 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
  * The panel every settings page sits in.
  *
  * Named for the import when that was the only one; it now holds notebooks, export and
- * maintenance too.
+ * maintenance too. `.settings-panel` is the same card for Security and Connected apps,
+ * which needed their own name because they already had a `.settings-section` inside them
+ * and a class cannot describe both a page's outer card and an element nested in it.
+ *
+ * `align-items: flex-start` is the part that matters most here: without it, a flex column
+ * stretches every child to the container's full width, which is what sent a plain `<Button>`
+ * edge-to-edge on a wide monitor before this had a rule at all — see the passkey
+ * re-verification form and its "Email me a code" button.
  */
 /* Also formerly capped by .shell.wide; see the note on .settings. */
-.panel {
+.panel,
+.settings-panel {
   max-width: 78rem;
   margin-inline: auto;
   display: flex;
@@ -2705,7 +2725,8 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
 
 .panel-head h2 { margin: 0; font-size: 1.05rem; }
 
-.panel p { margin: 0; max-width: 46rem; }
+.panel p,
+.settings-panel p { margin: 0; max-width: 46rem; }
 .panel code {
   padding: 0.05em 0.3em;
   font-size: 0.9em;
@@ -2827,7 +2848,11 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
    that means nothing next to a name, and no separation between one row and the next.
    The control sits right, away from the label, because that is where a per-row action
    belongs and because it then lines up down the list instead of moving with the name. */
-.owned-list { list-style: none; margin: 0.75rem 0 0; padding: 0; max-width: 46rem; }
+/* `width: 100%` alongside the cap: a flex column's child otherwise shrinks to its own
+   content, which for a short name like "Claude" left the list a fraction of the measure
+   the text above it uses — narrow enough to read as an afterthought rather than the
+   point of the page. */
+.owned-list { list-style: none; width: 100%; margin: 0.75rem 0 0; padding: 0; max-width: 46rem; }
 .owned-list li {
   display: flex;
   align-items: center;
