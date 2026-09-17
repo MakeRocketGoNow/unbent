@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react';
 import { MAX_STAR_GLYPHS, ratingRendersAsStars, type FieldScale } from '@unbent/shared';
+import { TOUCH_QUERY, useMediaQuery } from '../useMediaQuery.js';
 
 interface RatingInputProps {
   scale: FieldScale;
@@ -15,11 +16,33 @@ interface RatingInputProps {
 /**
  * How far a pointer must travel before the gesture counts as a drag rather than a click.
  *
- * A click has to keep working through the radio underneath, because a star's own centre
- * falls inside one of its two half-zones — so committing the position on a plain click
- * would read the middle of the third star as 2.5 where the radio, and the person, say 3.
+ * Below this a press is a click, which is handled per input type — by position with a
+ * mouse, by repeat with a thumb. See `HALF_BY_POSITION` and `HALF_BY_REPEAT`.
  */
 const DRAG_SLOP = 6;
+
+/**
+ * How a half is asked for, which is not the same question on a mouse as on a thumb.
+ *
+ * `HALF_BY_POSITION` (mouse): which half of the star the pointer is over decides, and
+ * hovering previews it before the click. This is Letterboxd's desktop behaviour, and it
+ * works because a mouse has a hover state and lands where it is aimed.
+ *
+ * `HALF_BY_REPEAT` (touch): tapping a star sets the whole; tapping the *same* star again
+ * drops it to the half, and again returns it to the whole. This is Letterboxd's mobile
+ * behaviour, and it exists because position does not survive a thumb — a half zone is
+ * about 13px on a phone, well under the 44px a finger wants, while the whole star is a
+ * target worth aiming at.
+ *
+ * One mechanic per input rather than both everywhere: a device that previews on hover
+ * needs no timer, and a device with no hover cannot show what a position would mean
+ * before it commits. Offering both on both would make a tap near a star's midpoint
+ * unpredictable, which is the failure each of these avoids in its own way.
+ *
+ * Decided by `TOUCH_QUERY` — hover and pointer, not width — because that is the question
+ * being asked: a tablet at 1024px has a thumb and a desktop window dragged narrow does
+ * not. Dragging works on both regardless, and is unaffected by either.
+ */
 
 /** The glyphs a star can be drawn as, given how much of it the rating fills. */
 type Fill = 'full' | 'half' | 'empty';
@@ -65,10 +88,13 @@ function ratingAt(clientX: number, row: HTMLElement, scale: FieldScale): number 
  * the accessible control; the pointer handlers on the row are an addition for mice and
  * thumbs, not the mechanism.
  *
- * Dragging is why the half-star target is usable at all. Half of a star is around 20px
- * wide, under the 44px a finger wants, so tapping exactly is hard — but sliding along the
- * row and watching it fill is easy, and lands on the same values. `pointermove` is only
- * read while a pointer is down, so hovering does not rewrite the note.
+ * Dragging works on every input and is the third way in: sliding along the row fills it as
+ * the pointer moves and commits on release. A drag is told from a click by `DRAG_SLOP`, so
+ * neither half-star mechanic has to guess whether a press was meant to slide.
+ *
+ * So four routes to a half, each the natural one for its input: the pointer's position on
+ * a mouse (previewed on hover), a repeat tap on a thumb, the arrow keys on a keyboard, and
+ * a drag on any of them.
  */
 export function RatingInput({
   scale,
@@ -85,6 +111,10 @@ export function RatingInput({
   // What the pointer is currently over mid-drag, so the row can show the value it would
   // commit before the pointer is lifted. Null whenever no drag is in progress.
   const [dragging, setDragging] = useState<number | null>(null);
+  // What a click at the current mouse position would set, shown before it is clicked.
+  // Touch never sets this: there is no hover to preview from.
+  const [hovering, setHovering] = useState<number | null>(null);
+  const byRepeat = useMediaQuery(TOUCH_QUERY);
 
   if (!ratingRendersAsStars(scale)) {
     return (
@@ -114,11 +144,30 @@ export function RatingInput({
     );
   }
 
-  const shown = dragging ?? value;
+  // A drag beats a hover beats the stored value: each is a better answer to "what would
+  // happen if I let go right now" than the one behind it.
+  const shown = dragging ?? hovering ?? value;
   const stars = Array.from({ length: Math.min(scale.max, MAX_STAR_GLYPHS) }, (_, i) => i + 1);
 
   const commit = (next: number) => {
     if (!readOnly) onChange(next);
+  };
+
+  /**
+   * What clicking `star` means, given how this input asks for halves.
+   *
+   * On touch, a repeat tap on the star the rating already sits on toggles to its half and
+   * back — `value` rather than `shown`, so the comparison is against what is stored and
+   * not against a preview. On a mouse the pointer's own position has already been read
+   * into `hovering`, so a click takes that; the radio's `star` is the fallback for a
+   * click with no pointer behind it, which is what a keyboard's Space produces.
+   */
+  const clickValue = (star: number): number => {
+    // A whole-step scale has no half to toggle to or position onto, so every click is
+    // the star itself and both mechanics collapse to the same thing.
+    if (scale.step !== 0.5) return star;
+    if (byRepeat) return value === star ? star - 0.5 : star;
+    return hovering ?? star;
   };
 
   return (
@@ -129,6 +178,9 @@ export function RatingInput({
         role="radiogroup"
         aria-label={label ?? 'Rating'}
         data-dragging={dragging !== null || undefined}
+        // Drawn a shade lighter while either preview is live, so the row never shows a
+        // provisional rating in the same ink as a chosen one.
+        data-preview={dragging !== null || hovering !== null || undefined}
         onPointerDown={(e) => {
           if (readOnly || e.button !== 0) return;
           // Only the origin is recorded here. Committing on a press would take every
@@ -139,7 +191,16 @@ export function RatingInput({
           down.current = { x: e.clientX, id: e.pointerId };
         }}
         onPointerMove={(e) => {
-          if (readOnly || !down.current || !rowRef.current) return;
+          if (readOnly || !rowRef.current) return;
+          // No button down: this is a mouse moving across the row, so preview what a
+          // click here would set. Guarded off touch, where a "move" arrives with the tap
+          // itself and would turn the repeat mechanic back into the position one.
+          if (!down.current) {
+            if (!byRepeat && scale.step === 0.5 && e.pointerType !== 'touch') {
+              setHovering(ratingAt(e.clientX, rowRef.current, scale));
+            }
+            return;
+          }
           const moved = Math.abs(e.clientX - down.current.x);
           // Past the slop a finger or a mouse wobbles by on a click, this is a drag: the
           // row takes the pointer so leaving it mid-gesture cannot strand the fill, and
@@ -167,14 +228,17 @@ export function RatingInput({
           down.current = null;
           setDragging(null);
         }}
+        // The preview belongs to the pointer, so it goes when the pointer does — otherwise
+        // a row left mid-hover keeps showing a rating nobody chose.
+        onPointerLeave={() => setHovering(null)}
       >
         {stars.map((star) => {
           const fill = fillAt(star, shown ?? 0);
           /*
-             One radio per star, and its value is the whole star. A half is reachable by
-             pointer, where the position says which half is meant, and by the left arrow
-             from the star above — not by tabbing, which would double the stops in the
-             group for a distinction the keyboard has no way to express.
+             One radio per star. Its own value is the whole star, which is what a keyboard
+             gets: arrows move by a half where the scale allows them, so tabbing does not
+             need a stop per half as well. What a *click* on it means is `clickValue` —
+             the pointer's position with a mouse, a toggle with a thumb.
           */
           return (
             <label key={star} className="note-field-star" data-fill={fill}>
@@ -183,9 +247,37 @@ export function RatingInput({
                 name={`rating-${id ?? label ?? 'field'}`}
                 className="note-field-star-radio"
                 disabled={readOnly}
-                checked={shown === star}
+                /*
+                   The stored value, not `shown`. The fill previews what a drag or a hover
+                   would set, but which radio is *checked* is what the note actually holds
+                   — tying it to the preview would move the checked control under the
+                   mouse and have a screen reader announce a value nobody chose yet.
+                */
+                checked={value === star}
+                /*
+                   Always the whole star this radio is, never what tapping it again would
+                   do. A name that changed with the value would leave the group's names
+                   disagreeing with its values — arrowing onto the third star and hearing
+                   "2.5 of 5" is a worse bug than the repeat toggle being undiscoverable
+                   by ear. The half is reachable from the keyboard with the arrows, which
+                   is the route that does not need this name to lie.
+                */
                 aria-label={`${star} of ${scale.max}`}
-                onChange={() => commit(star)}
+                /*
+                   `onClick`, not `onChange`. A radio that is already checked fires no
+                   change event — there is nothing to change — so the repeat tap that
+                   halves it would have done silently nothing, which is the whole
+                   mechanic. Click fires either way. Space and Enter on a focused radio
+                   also arrive here, so the keyboard keeps working; a first activation of
+                   an unchecked radio fires both, and `commit` with the same value twice
+                   is harmless because the parent stores a value, not an event.
+                */
+                onClick={() => {
+                  commit(clickValue(star));
+                  // The click has consumed the preview; leaving it set would keep drawing
+                  // a hover fill over the value that was just chosen.
+                  setHovering(null);
+                }}
                 onKeyDown={(e) => {
                   // Halves need a keyboard route, and the arrows are already moving
                   // within the group: a step of 0.5 rather than a whole star where the

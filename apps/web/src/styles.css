@@ -2273,6 +2273,16 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
   cursor: pointer;
 }
 
+/*
+   A preview reads a shade lighter than a committed rating, so "what I would get" and
+   "what the note holds" are never the same picture. Only while the pointer is over the
+   row or dragging it — the moment it leaves, the fill is the value again.
+*/
+.note-field-stars[data-preview] .note-field-star[data-fill='full'],
+.note-field-stars[data-preview] .note-field-star-half {
+  color: color-mix(in srgb, var(--accent) 55%, transparent);
+}
+
 /* The glyph is the control's whole hit area, sized for a thumb rather than for the text
    around it: a half star is about half of this, which is why dragging exists. */
 .note-field-star {

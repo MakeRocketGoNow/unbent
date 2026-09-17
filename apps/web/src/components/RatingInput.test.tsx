@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, afterEach } from 'vitest';
+import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest';
 import { render, screen, fireEvent, cleanup } from '@testing-library/react';
 import type { FieldScale } from '@unbent/shared';
 import { RatingInput } from './RatingInput.js';
@@ -15,6 +15,29 @@ import { RatingInput } from './RatingInput.js';
  */
 const halves: FieldScale = { max: 5, step: 0.5 };
 const wholes: FieldScale = { max: 5, step: 1 };
+
+/**
+ * jsdom ships no `matchMedia`, and the control asks `TOUCH_QUERY` which half-star
+ * mechanic to use — so this is both the switch between them and what keeps the component
+ * mountable at all. `false` is a mouse, which is the default every test here assumes
+ * unless it is about the touch behaviour.
+ */
+function stubTouch(isTouch: boolean) {
+  vi.stubGlobal('matchMedia', (query: string) => ({
+    matches: isTouch,
+    media: query,
+    addEventListener: () => {},
+    removeEventListener: () => {},
+  }));
+}
+
+beforeEach(() => stubTouch(false));
+
+/** How each star is drawn, left to right. */
+const fills = () =>
+  [...document.querySelectorAll('.note-field-star')].map(
+    (s) => (s as HTMLElement).dataset['fill'],
+  );
 
 /** Puts a 100px-wide row at x=0, so each of ten half-zones is 10px. */
 function measureRow() {
@@ -174,5 +197,141 @@ describe('read-only', () => {
     fireEvent.click(screen.getByRole('radio', { name: '5 of 5' }));
     expect(onChange).not.toHaveBeenCalled();
     expect(screen.queryByRole('button', { name: /clear/i })).toBeNull();
+  });
+});
+
+describe('a half by pointer position (mouse)', () => {
+  it('takes the half when the mouse is over a star\'s left side', () => {
+    const onChange = vi.fn();
+    render(<RatingInput scale={halves} value={null} onChange={onChange} label="Rating" />);
+    const row = measureRow();
+    // 45px of 100 is the 5th of ten zones — the left half of star 3.
+    fireEvent.pointerMove(row, { clientX: 45, pointerId: 1, pointerType: 'mouse' });
+    fireEvent.click(screen.getByRole('radio', { name: '3 of 5' }));
+    expect(onChange).toHaveBeenCalledWith(2.5);
+  });
+
+  it('takes the whole star when the mouse is over its right side', () => {
+    const onChange = vi.fn();
+    render(<RatingInput scale={halves} value={null} onChange={onChange} label="Rating" />);
+    const row = measureRow();
+    fireEvent.pointerMove(row, { clientX: 55, pointerId: 1, pointerType: 'mouse' });
+    fireEvent.click(screen.getByRole('radio', { name: '3 of 5' }));
+    expect(onChange).toHaveBeenCalledWith(3);
+  });
+
+  it('previews what a click would set, before it is clicked', () => {
+    const onChange = vi.fn();
+    render(<RatingInput scale={halves} value={null} onChange={onChange} label="Rating" />);
+    const row = measureRow();
+    fireEvent.pointerMove(row, { clientX: 45, pointerId: 1, pointerType: 'mouse' });
+    expect(onChange).not.toHaveBeenCalled();
+    expect(fills()).toEqual(['full', 'full', 'half', 'empty', 'empty']);
+    // And the preview is drawn as provisional, not as a chosen value.
+    expect(document.querySelector('.note-field-stars')?.hasAttribute('data-preview')).toBe(true);
+  });
+
+  it('gives the row back to the stored value when the mouse leaves', () => {
+    render(<RatingInput scale={halves} value={4} onChange={vi.fn()} label="Rating" />);
+    const row = measureRow();
+    fireEvent.pointerMove(row, { clientX: 15, pointerId: 1, pointerType: 'mouse' });
+    expect(fills()).toEqual(['full', 'empty', 'empty', 'empty', 'empty']);
+    fireEvent.pointerLeave(row);
+    expect(fills()).toEqual(['full', 'full', 'full', 'full', 'empty']);
+    expect(document.querySelector('.note-field-stars')?.hasAttribute('data-preview')).toBe(false);
+  });
+
+  it('does not preview from a touch pointer, which has no hover', () => {
+    render(<RatingInput scale={halves} value={null} onChange={vi.fn()} label="Rating" />);
+    const row = measureRow();
+    fireEvent.pointerMove(row, { clientX: 45, pointerId: 1, pointerType: 'touch' });
+    expect(fills()).toEqual(['empty', 'empty', 'empty', 'empty', 'empty']);
+  });
+
+  it('keeps a whole-star scale on whole stars wherever the mouse is', () => {
+    const onChange = vi.fn();
+    render(<RatingInput scale={wholes} value={null} onChange={onChange} label="Rating" />);
+    const row = measureRow();
+    fireEvent.pointerMove(row, { clientX: 45, pointerId: 1, pointerType: 'mouse' });
+    fireEvent.click(screen.getByRole('radio', { name: '3 of 5' }));
+    expect(onChange).toHaveBeenCalledWith(3);
+  });
+});
+
+describe('a half by repeat tap (touch)', () => {
+  beforeEach(() => stubTouch(true));
+
+  it('sets the whole star on the first tap', () => {
+    const onChange = vi.fn();
+    render(<RatingInput scale={halves} value={null} onChange={onChange} label="Rating" />);
+    fireEvent.click(screen.getByRole('radio', { name: '3 of 5' }));
+    expect(onChange).toHaveBeenCalledWith(3);
+  });
+
+  it('drops to the half when the same star is tapped again', () => {
+    const onChange = vi.fn();
+    // `value` is what the note holds, so tapping the star it already sits on toggles.
+    render(<RatingInput scale={halves} value={3} onChange={onChange} label="Rating" />);
+    fireEvent.click(screen.getByRole('radio', { name: '3 of 5' }));
+    expect(onChange).toHaveBeenCalledWith(2.5);
+  });
+
+  it('returns to the whole star on the tap after that', () => {
+    const onChange = vi.fn();
+    // At 2.5 the rating no longer equals star 3, so the next tap is a plain set.
+    render(<RatingInput scale={halves} value={2.5} onChange={onChange} label="Rating" />);
+    fireEvent.click(screen.getByRole('radio', { name: '3 of 5' }));
+    expect(onChange).toHaveBeenCalledWith(3);
+  });
+
+  it('sets the whole star when a different star is tapped', () => {
+    const onChange = vi.fn();
+    render(<RatingInput scale={halves} value={3} onChange={onChange} label="Rating" />);
+    fireEvent.click(screen.getByRole('radio', { name: '5 of 5' }));
+    expect(onChange).toHaveBeenCalledWith(5);
+  });
+
+  it('can reach the lowest half, on the first star', () => {
+    const onChange = vi.fn();
+    render(<RatingInput scale={halves} value={1} onChange={onChange} label="Rating" />);
+    fireEvent.click(screen.getByRole('radio', { name: '1 of 5' }));
+    expect(onChange).toHaveBeenCalledWith(0.5);
+  });
+
+  it('does not toggle on a scale with no halves', () => {
+    const onChange = vi.fn();
+    render(<RatingInput scale={wholes} value={3} onChange={onChange} label="Rating" />);
+    fireEvent.click(screen.getByRole('radio', { name: '3 of 5' }));
+    expect(onChange).toHaveBeenCalledWith(3);
+  });
+
+  it('ignores pointer position entirely, so a thumb anywhere on the star works', () => {
+    const onChange = vi.fn();
+    render(<RatingInput scale={halves} value={null} onChange={onChange} label="Rating" />);
+    const row = measureRow();
+    // A position that would mean 2.5 on a mouse; on touch the star decides, not the x.
+    fireEvent.pointerMove(row, { clientX: 45, pointerId: 1, pointerType: 'touch' });
+    fireEvent.click(screen.getByRole('radio', { name: '3 of 5' }));
+    expect(onChange).toHaveBeenCalledWith(3);
+  });
+});
+
+describe('which radio is checked', () => {
+  it('follows the stored value, not a hover preview', () => {
+    render(<RatingInput scale={halves} value={4} onChange={vi.fn()} label="Rating" />);
+    const row = measureRow();
+    fireEvent.pointerMove(row, { clientX: 15, pointerId: 1, pointerType: 'mouse' });
+    // The fill previews 1, but the checked radio is still the value the note holds.
+    expect(fills()[0]).toBe('full');
+    expect(screen.getByRole('radio', { name: '4 of 5' })).toHaveProperty('checked', true);
+    expect(screen.getByRole('radio', { name: '1 of 5' })).toHaveProperty('checked', false);
+  });
+
+  it('names every star for what it is, whatever the value', () => {
+    stubTouch(true);
+    render(<RatingInput scale={halves} value={3} onChange={vi.fn()} label="Rating" />);
+    // Not "2.5 of 5" on the star a repeat tap would halve: a radio's name says what it
+    // is, so the group's names cannot disagree with its values.
+    expect(screen.getByRole('radio', { name: '3 of 5' })).toBeTruthy();
   });
 });
