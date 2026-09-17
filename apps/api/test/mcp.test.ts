@@ -353,3 +353,115 @@ describe('mcp cross-tenant isolation', () => {
     expect((await mcp(alice.token, 'tools/list')).status).toBe(200);
   });
 });
+
+/**
+ * An agent's write that changes nothing leaves the note's date alone.
+ *
+ * Worth checking through MCP specifically, and not just over the REST route, because these
+ * tools are the writers most likely to re-send what is already there: `update_note_tags`
+ * promises in its own description that tags already present are "left alone",
+ * `move_notes` files up to fifty notes at a time into a notebook many already belong to,
+ * and an agent re-running a step it already ran is ordinary. Before the repo compared
+ * values, every one of those re-dated the note.
+ */
+describe('a write through MCP that changes nothing', () => {
+  /** A fresh note, plus a tick so a same-millisecond write could not be mistaken for none. */
+  async function note(args: Record<string, unknown>) {
+    const created = await mcp(alice.token, 'tools/call', {
+      name: 'create_note',
+      arguments: args,
+    });
+    const ref = JSON.parse(toolText(created.body));
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    return ref as { id: string; updatedAt: string; tags: string[]; notebook: string | null };
+  }
+
+  it('leaves the date alone when update_note re-sends the stored title and body', async () => {
+    const before = await note({ title: 'Coupons', body: 'Line one' });
+
+    const after = JSON.parse(
+      toolText(
+        (
+          await mcp(alice.token, 'tools/call', {
+            name: 'update_note',
+            arguments: { noteId: before.id, title: 'Coupons', body: 'Line one' },
+          })
+        ).body,
+      ),
+    );
+    expect(after.updatedAt).toBe(before.updatedAt);
+  });
+
+  it('keeps update_note_tags honest about leaving present tags alone', async () => {
+    const before = await note({ title: 'Coupons', body: 'Body', tags: ['deals'] });
+
+    // Adding a tag the note already carries, and removing one it never had.
+    const after = await mcp(alice.token, 'tools/call', {
+      name: 'update_note_tags',
+      arguments: { noteIds: [before.id], add: ['deals'], remove: ['absent'] },
+    });
+    const result = JSON.parse(toolText(after.body)).results[0];
+    expect(result.ok).toBe(true);
+    expect(result.tags).toEqual(['deals']);
+
+    const read = JSON.parse(
+      toolText(
+        (await mcp(alice.token, 'tools/call', { name: 'get_note', arguments: { noteId: before.id } }))
+          .body,
+      ),
+    );
+    expect(read.updatedAt).toBe(before.updatedAt);
+  });
+
+  it('leaves the date alone when move_notes re-files a note where it already is', async () => {
+    const before = await note({ title: 'Coupons', body: 'Body', notebook: 'Podcast Bookmarks' });
+
+    const after = await mcp(alice.token, 'tools/call', {
+      name: 'move_notes',
+      arguments: { noteIds: [before.id], notebook: 'Podcast Bookmarks' },
+    });
+    expect(JSON.parse(toolText(after.body)).results[0].ok).toBe(true);
+
+    const read = JSON.parse(
+      toolText(
+        (await mcp(alice.token, 'tools/call', { name: 'get_note', arguments: { noteId: before.id } }))
+          .body,
+      ),
+    );
+    expect(read.updatedAt).toBe(before.updatedAt);
+  });
+
+  it('still bumps the date for an edit_note replace that changes the body', async () => {
+    const before = await note({ title: 'Coupons', body: 'Line one' });
+
+    const after = JSON.parse(
+      toolText(
+        (
+          await mcp(alice.token, 'tools/call', {
+            name: 'edit_note',
+            arguments: { noteId: before.id, mode: 'replace', find: 'one', content: 'two' },
+          })
+        ).body,
+      ),
+    );
+    expect(new Date(after.updatedAt).getTime()).toBeGreaterThan(new Date(before.updatedAt).getTime());
+  });
+
+  it('leaves the date alone when an edit_note replace substitutes text for itself', async () => {
+    const before = await note({ title: 'Coupons', body: 'Line one' });
+
+    // An agent retrying a replace it already applied: the body it writes back is the body
+    // already stored.
+    const after = JSON.parse(
+      toolText(
+        (
+          await mcp(alice.token, 'tools/call', {
+            name: 'edit_note',
+            arguments: { noteId: before.id, mode: 'replace', find: 'one', content: 'one' },
+          })
+        ).body,
+      ),
+    );
+    expect(after.updatedAt).toBe(before.updatedAt);
+  });
+});
