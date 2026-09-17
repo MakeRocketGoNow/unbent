@@ -1093,6 +1093,13 @@ th[aria-sort] .note-th-sort { color: var(--fg); }
 
 .note-table .load-more { margin: 0.5rem 0; }
 
+/* A cell's control is the value, sized to it, not a full-width field as in the property list. */
+.note-table td > select.note-field-input {
+  width: auto;
+  max-width: 100%;
+}
+.note-table td > .note-field-check { vertical-align: middle; }
+
 .workspace {
   /* A row with one column in it: the note's. The fields used to have a second; see
      `.workspace-main` for where they went. */

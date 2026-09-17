@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate } from '@tanstack/react-router';
-import { useQuery, useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
-import { UNFILED } from '@unbent/shared';
+import { useQuery, useInfiniteQuery, useQueryClient, useMutation } from '@tanstack/react-query';
+import { UNFILED, type FieldDef, type FieldValue } from '@unbent/shared';
 import * as api from '../notes-api.js';
 import { Route } from '../routes/notes.js';
 import {
@@ -38,7 +38,10 @@ import { NotesViewToggle } from './NotesViewToggle.js';
 import { NoteTable } from './NoteTable.js';
 import { noteColumns } from './note-columns.js';
 import { nextColumnSort, type SortTarget } from './sort-options.js';
+import { patchNoteFields, patchNotePages } from './note-table-edit.js';
 import { useNotesView } from '../useNotesView.js';
+import { editOpenNoteField } from '../open-note-fields.js';
+import { keys } from '../queries.js';
 import { ActiveFilters } from './ActiveFilters.js';
 import { ScopeMatches, scopeMatches } from './ScopeMatches.js';
 import { useMediaQuery, MOBILE_QUERY } from '../useMediaQuery.js';
@@ -236,7 +239,54 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
 
   const notes = list.data?.pages.flatMap((p) => p.items) ?? [];
   const total = list.data?.pages[0]?.total ?? null;
-  const error = list.error ?? search.error;
+
+  /*
+   * A field edited from a table cell.
+   *
+   * The row changes at once and the save follows, the way the note's own property list
+   * behaves; a failure puts the row back and says so on the error line. The rest of the
+   * list is refetched afterwards rather than patched, because the edit bumps the note's
+   * updated date — under the default sort the row then moves to the top, which is what
+   * any edit does to the list today and not something a table should quietly hide.
+   *
+   * The open note is the exception: its editor holds a draft that would write the old
+   * value back over a direct save, so its edits go to that draft (`editOpenNoteField`)
+   * and the editor saves them. The row is still patched here so the two agree at once.
+   */
+  const listKey = keys.notes(filter, ordering);
+  const patchRow = (noteId: string, def: FieldDef, value: FieldValue | null) =>
+    queryClient.setQueryData(listKey, (data: Parameters<typeof patchNotePages>[0]) =>
+      patchNotePages(data, noteId, (n) => patchNoteFields(n, def, notebook ?? '', value)),
+    );
+  const editField = useMutation({
+    mutationFn: ({ noteId, def, value }: { noteId: string; def: FieldDef; value: FieldValue | null }) =>
+      api.updateNote(noteId, { fields: { [def.id]: value } }),
+    onMutate: async ({ noteId, def, value }) => {
+      await queryClient.cancelQueries({ queryKey: listKey });
+      const previous = queryClient.getQueryData(listKey);
+      patchRow(noteId, def, value);
+      return { previous };
+    },
+    onError: (_err, _vars, context) => {
+      if (context?.previous) queryClient.setQueryData(listKey, context.previous);
+    },
+    onSuccess: (updated) => {
+      // Only a note already in the cache: reopening it should show what the table saved.
+      if (queryClient.getQueryData(keys.note(updated.id))) {
+        queryClient.setQueryData(keys.note(updated.id), updated);
+      }
+    },
+    onSettled: () => void queryClient.invalidateQueries({ queryKey: ['notes'] }),
+  });
+  const onEditCell = (noteId: string, def: FieldDef, value: FieldValue | null) => {
+    if (editOpenNoteField(noteId, def.id, value)) {
+      patchRow(noteId, def, value);
+      return;
+    }
+    editField.mutate({ noteId, def, value });
+  };
+
+  const error = list.error ?? search.error ?? editField.error;
 
   /*
    * Whether the rows on screen are the rows for the heading above them.
@@ -638,6 +688,7 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
             onKeyDown={onListKeys}
             tableRef={tableRef}
             empty={emptyMessage}
+            onEdit={onEditCell}
           />
         ) : (
         <ul className="note-list" ref={listRef} aria-busy={stale || undefined} onKeyDown={onListKeys}>

@@ -20,6 +20,7 @@ import { noteColumns } from './note-columns.js';
  */
 const cost: FieldDef = { id: 'f-cost', notebookId: 'nb', name: 'Cost', type: 'number', options: [], position: 0 };
 const packed: FieldDef = { id: 'f-packed', notebookId: 'nb', name: 'Packed', type: 'checkbox', options: [], position: 1 };
+const status: FieldDef = { id: 'f-status', notebookId: 'nb', name: 'Status', type: 'select', options: ['Booked', 'Done'], position: 2 };
 
 const note = (id: string, title: string, fields: NoteSummary['fields']): NoteSummary => ({
   id,
@@ -109,6 +110,31 @@ describe('NoteTable', () => {
     const { findByRole } = harness({ hasNextPage: true, onLoadMore });
     fireEvent.click(await findByRole('button', { name: 'Load more' }));
     expect(onLoadMore).toHaveBeenCalled();
+  });
+
+  /* The single-choice types edit in place; the row's own click must not swallow them. */
+  it('edits a checkbox and a select in the cell, and clears a select back to nothing', async () => {
+    const onEdit = vi.fn();
+    const { findByRole, getByRole } = harness({
+      columns: noteColumns([cost, packed, status]),
+      onEdit,
+    });
+    await findByRole('table');
+    fireEvent.click(getByRole('checkbox', { name: 'Packed for Ski trip' }));
+    expect(onEdit).toHaveBeenCalledWith('n1', packed, true);
+    const select = getByRole('combobox', { name: 'Status for Ski trip' }) as HTMLSelectElement;
+    fireEvent.change(select, { target: { value: 'Booked' } });
+    expect(onEdit).toHaveBeenCalledWith('n1', status, 'Booked');
+    fireEvent.change(select, { target: { value: '' } });
+    expect(onEdit).toHaveBeenCalledWith('n1', status, null);
+  });
+
+  it('keeps a number cell as text, even when editing is on', async () => {
+    const { findByRole, getAllByRole } = harness({ onEdit: () => {} });
+    await findByRole('table');
+    const first = getAllByRole('row')[1]!;
+    expect(first.querySelectorAll('td')[1]?.textContent).toBe('2,100');
+    expect(first.querySelectorAll('input, select')).toHaveLength(1);
   });
 
   it('says so when there is nothing to show', async () => {

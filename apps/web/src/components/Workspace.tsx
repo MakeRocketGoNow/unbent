@@ -14,6 +14,7 @@ import {
   focusActiveListItem,
   focusEditor,
 } from '../useListKeys.js';
+import { registerOpenNoteFieldEdit } from '../open-note-fields.js';
 import { useIsNewNote } from '../useNewNote.js';
 import { useMediaQuery, MOBILE_QUERY, TOUCH_QUERY } from '../useMediaQuery.js';
 import { useKeyboardInset } from '../useKeyboardInset.js';
@@ -279,6 +280,19 @@ export function Workspace({ noteId, readOnly = false, backTo = '/notes' }: Works
   }
 
   const editing = note !== undefined && !readOnly && draftFor === noteId;
+
+  /*
+     Lets the table beside this note change one of its fields. The edit lands in the draft
+     and saves like one typed in the property list below — see `open-note-fields.ts` for
+     why the table cannot save it directly. Withdrawn when this stops being the note
+     being edited.
+  */
+  useEffect(() => {
+    if (!editing) return;
+    return registerOpenNoteFieldEdit(noteId, (fieldId, value) =>
+      setDraft((d) => ({ ...d, fields: { ...d.fields, [fieldId]: value } })),
+    );
+  }, [editing, noteId]);
 
   const { state: saveState } = useAutosave(draft, save, {
     // Never autosave while viewing the trash: a note in the bin is a record of what was

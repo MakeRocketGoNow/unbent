@@ -1,6 +1,7 @@
 import type { KeyboardEvent, ReactNode, RefObject } from 'react';
 import { Link } from '@tanstack/react-router';
-import type { NoteSummary } from '@unbent/shared';
+import type { FieldDef, FieldValue, NoteSummary } from '@unbent/shared';
+import { FieldCellInput } from './FieldCellInput.js';
 import type { NoteColumn } from './note-columns.js';
 import { columnSortState, type SortSearch, type SortTarget } from './sort-options.js';
 import { formatFieldValue } from './format-field.js';
@@ -27,6 +28,11 @@ interface NoteTableProps {
   tableRef: RefObject<HTMLDivElement | null>;
   /** What to say when there are no rows, or nothing while the first page loads. */
   empty: ReactNode;
+  /**
+   * A cell was edited. Only the single-choice types edit in place — a checkbox, a select;
+   * the rest open the note. Absent, every cell is read-only.
+   */
+  onEdit?: ((noteId: string, def: FieldDef, value: FieldValue | null) => void) | undefined;
 }
 
 /**
@@ -61,6 +67,7 @@ export function NoteTable({
   onKeyDown,
   tableRef,
   empty,
+  onEdit,
 }: NoteTableProps) {
   return (
     <div
@@ -125,7 +132,7 @@ export function NoteTable({
             >
               {columns.map((col) => (
                 <td key={col.id} data-align={col.align}>
-                  {cell(col, note)}
+                  {cell(col, note, onEdit)}
                 </td>
               ))}
             </tr>
@@ -159,7 +166,11 @@ export function NoteTable({
   );
 }
 
-function cell(col: NoteColumn, note: NoteSummary): ReactNode {
+function cell(
+  col: NoteColumn,
+  note: NoteSummary,
+  onEdit: NoteTableProps['onEdit'],
+): ReactNode {
   switch (col.kind) {
     case 'name':
       return (
@@ -176,10 +187,21 @@ function cell(col: NoteColumn, note: NoteSummary): ReactNode {
         </Link>
       );
     case 'field': {
-      const held = note.fields?.find((f) => f.fieldId === col.def!.id);
+      const def = col.def!;
+      const held = note.fields?.find((f) => f.fieldId === def.id);
+      if (onEdit && (def.type === 'checkbox' || def.type === 'select')) {
+        return (
+          <FieldCellInput
+            def={def}
+            value={held?.value ?? null}
+            label={`${def.name} for ${note.title || 'Untitled'}`}
+            onChange={(value) => onEdit(note.id, def, value)}
+          />
+        );
+      }
       // Blank, not "Empty": a table cell with nothing in it is legible on its own, and the
       // word is the property list's for a control that would otherwise draw nothing.
-      return held ? formatFieldValue(col.def!.type, held.value) : '';
+      return held ? formatFieldValue(def.type, held.value) : '';
     }
     case 'tags':
       return note.tags.map((t) => `#${t}`).join(' ');
