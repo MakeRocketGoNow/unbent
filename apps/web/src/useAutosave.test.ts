@@ -263,3 +263,144 @@ describe('useAutosave in-flight failure', () => {
     expect(save.mock.calls.at(-1)?.[0]).not.toBe('first edit');
   });
 });
+
+/**
+ * A flush that turns out to have nothing to write must not claim it saved.
+ *
+ * The debounce fires on time elapsed rather than on a change, so a draft can reach the
+ * save identical to what the server already holds — typing a space and deleting it is the
+ * ordinary way. The callers diff before sending and answer `'unchanged'`; without that,
+ * their early return looked exactly like a successful write and the head flashed "Saved"
+ * for a save that never left the browser.
+ *
+ * The value here is an object, because that is what the workspace holds: a draft rebuilt
+ * on every keystroke. The hook's own `Object.is` guard only catches a value handed back
+ * by identity — a refetch — so a draft that returns to the stored *content* in a fresh
+ * object still reaches the save, and only the save can tell there is nothing in it. (The
+ * embed's body is a plain string and so is caught earlier, which is why that path never
+ * flashed.)
+ */
+describe('useAutosave with nothing to save', () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  interface Draft {
+    body: string;
+  }
+
+  /** Drives the hook the way the workspace does: off until loaded, then seeded. */
+  function seeded(save: (value: Draft) => Promise<void | 'unchanged'>) {
+    const view = renderHook(
+      ({ value, enabled }) => useAutosave(value, save, { delay: 10, enabled, resetKey: 'note-1' }),
+      { initialProps: { value: { body: 'empty' } as Draft, enabled: false } },
+    );
+    view.rerender({ value: { body: 'Line one' }, enabled: true });
+    return view;
+  }
+
+  it('does not say "saved" when the save reports it wrote nothing', async () => {
+    const save = vi.fn().mockResolvedValue('unchanged');
+    const { result, rerender } = seeded(save);
+
+    // A space typed and taken back out: the draft moved, so the debounce fires...
+    rerender({ value: { body: 'Line one ' }, enabled: true });
+    rerender({ value: { body: 'Line one' }, enabled: true });
+    await act(async () => {
+      vi.advanceTimersByTime(50);
+    });
+
+    // ...the save is consulted, and answers that there was nothing to write.
+    expect(save).toHaveBeenCalledTimes(1);
+    expect(result.current.state).toBe('idle');
+    expect(result.current.error).toBeNull();
+  });
+
+  it('still says "saved" when the save actually wrote', async () => {
+    const save = vi.fn().mockResolvedValue(undefined);
+    const { result, rerender } = seeded(save);
+
+    rerender({ value: { body: 'Line two' }, enabled: true });
+    await act(async () => {
+      vi.advanceTimersByTime(50);
+    });
+
+    expect(save).toHaveBeenCalledTimes(1);
+    expect(result.current.state).toBe('saved');
+  });
+
+  it('clears the "unsaved" left by a round-trip rather than leaving it on screen', async () => {
+    const save = vi.fn().mockResolvedValue('unchanged');
+    const { result, rerender } = seeded(save);
+
+    rerender({ value: { body: 'Line one!' }, enabled: true });
+    // Mid-debounce the head honestly says there is unsaved work.
+    expect(result.current.state).toBe('dirty');
+
+    rerender({ value: { body: 'Line one' }, enabled: true });
+    await act(async () => {
+      vi.advanceTimersByTime(50);
+    });
+
+    // And once the save reports nothing to write, there is nothing outstanding to warn about.
+    expect(result.current.state).toBe('idle');
+  });
+
+  it('reports an error even when the previous flush wrote nothing', async () => {
+    const save = vi
+      .fn()
+      .mockResolvedValueOnce('unchanged')
+      .mockRejectedValueOnce(new Error('network down'));
+    const { result, rerender } = seeded(save);
+
+    rerender({ value: { body: 'Line one ' }, enabled: true });
+    rerender({ value: { body: 'Line one' }, enabled: true });
+    await act(async () => {
+      vi.advanceTimersByTime(50);
+    });
+    expect(result.current.state).toBe('idle');
+
+    // A failure after a no-op must still surface; the no-op path must not swallow it.
+    rerender({ value: { body: 'Line three' }, enabled: true });
+    await act(async () => {
+      vi.advanceTimersByTime(50);
+    });
+    expect(result.current.state).toBe('error');
+    expect(result.current.error).toBe('network down');
+  });
+
+  it('leaves the state settled and still saves the next real edit', async () => {
+    const save = vi
+      .fn<(value: Draft) => Promise<void | 'unchanged'>>()
+      .mockResolvedValue('unchanged');
+    const { result, rerender } = seeded(save);
+
+    rerender({ value: { body: 'Line one ' }, enabled: true });
+    rerender({ value: { body: 'Line one' }, enabled: true });
+    await act(async () => {
+      vi.advanceTimersByTime(50);
+    });
+    expect(result.current.state).toBe('idle');
+
+    /*
+       A further draft object holding that same content still reaches the save: the
+       baseline compares by identity, so only a value handed back by reference (a refetch)
+       is skipped here. The save answers 'unchanged' again and nothing goes to the network,
+       which is the property that matters — the workspace only rebuilds its draft on a
+       keystroke, so this is not a render loop.
+    */
+    rerender({ value: { body: 'Line one' }, enabled: true });
+    await act(async () => {
+      vi.advanceTimersByTime(50);
+    });
+    expect(result.current.state).toBe('idle');
+
+    // And a genuine edit after any number of no-ops still saves.
+    save.mockResolvedValue(undefined);
+    rerender({ value: { body: 'Line four' }, enabled: true });
+    await act(async () => {
+      vi.advanceTimersByTime(50);
+    });
+    expect(save).toHaveBeenLastCalledWith({ body: 'Line four' });
+    expect(result.current.state).toBe('saved');
+  });
+});
