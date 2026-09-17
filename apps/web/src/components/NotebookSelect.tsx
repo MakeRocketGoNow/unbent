@@ -56,7 +56,7 @@ export function NotebookSelect({ notebook, notebooks }: NotebookSelectProps) {
           // Clearing the tag matters: tags cross notebook boundaries, so keeping one
           // selected here routinely yields an empty list with no visible cause. Field
           // filters go too, for the stronger reason that a field belongs to the notebook
-          // being left.
+          // being left — and so does a sort by one of its fields.
           onChange={(e) =>
             void navigate({
               to: '/notes',
@@ -65,6 +65,7 @@ export function NotebookSelect({ notebook, notebooks }: NotebookSelectProps) {
                 notebook: e.target.value || undefined,
                 tag: undefined,
                 field: undefined,
+                sortField: undefined,
               }),
             })
           }

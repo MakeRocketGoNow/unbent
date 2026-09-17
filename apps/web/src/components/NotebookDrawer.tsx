@@ -66,13 +66,19 @@ export function NotebookDrawer({
    * Picking a scope clears the tags, the same rule the notebook select follows: tags cross
    * notebook boundaries, so carrying one into a new notebook routinely lands on an empty
    * list with no visible cause. Field filters go with them — a field belongs to the
-   * notebook being left. Sort and the date range are kept: they are how you are looking,
-   * not what at.
+   * notebook being left, as does a sort by one of its fields. The named sort and the date
+   * range are kept: they are how you are looking, not what at.
    */
   const scope = (next: string | undefined) => {
     void navigate({
       to: '/notes',
-      search: (prev) => ({ ...prev, notebook: next, tag: undefined, field: undefined }),
+      search: (prev) => ({
+        ...prev,
+        notebook: next,
+        tag: undefined,
+        field: undefined,
+        sortField: undefined,
+      }),
     });
     onClose();
   };

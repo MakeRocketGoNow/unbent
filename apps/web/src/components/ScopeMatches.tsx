@@ -125,7 +125,9 @@ export function ScopeMatches({
             type="button"
             className="scope-match-btn"
             aria-label={`Show notebook: ${nb.name}`}
-            onClick={() => pick({ notebook: nb.name, tag: undefined, field: undefined })}
+            onClick={() =>
+              pick({ notebook: nb.name, tag: undefined, field: undefined, sortField: undefined })
+            }
           >
             <span className="scope-match-icon">
               <NotebookRowIcon />

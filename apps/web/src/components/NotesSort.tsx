@@ -9,6 +9,10 @@ import { SORT_OPTIONS, sortKey, parseSortKey, sortLabel } from './sort-options.j
 interface NotesSortProps {
   sort: NoteSort | undefined;
   order: 'asc' | 'desc' | undefined;
+  /** The custom field the list is sorted by instead, if any; see `sortLabel`. */
+  sortField?: string | undefined;
+  /** That field's name, once its definition has loaded. */
+  fieldName?: string | undefined;
 }
 
 /**
@@ -38,17 +42,22 @@ interface NotesSortProps {
  * column's whole problem was rows of controls above a list with no room left for notes.
  * Above the breakpoint the sheet is drawn as a panel beside the list — see `Sheet`.
  */
-export function NotesSort({ sort, order }: NotesSortProps) {
+export function NotesSort({ sort, order, sortField, fieldName }: NotesSortProps) {
   const navigate = useNavigate();
   const [picking, setPicking] = useState(false);
-  const current = sortKey(sort, order);
+  /*
+   * A field sort is none of the named orders, so none is marked: the table's column
+   * header is where it shows. Picking a named order here is how it is left again.
+   */
+  const current = sortField ? null : sortKey(sort, order);
+  const label = sortField ? sortLabel(sort, order, fieldName ?? 'a field') : sortLabel(sort, order);
 
   return (
     <>
       <button
         type="button"
         className="icon-btn"
-        aria-label={`Sort notes, currently ${sortLabel(sort, order)}`}
+        aria-label={`Sort notes, currently ${label}`}
         onClick={() => setPicking(true)}
       >
         <SortIcon />
@@ -74,7 +83,7 @@ export function NotesSort({ sort, order }: NotesSortProps) {
                 onClick={() => {
                   void navigate({
                     to: '/notes',
-                    search: (prev) => ({ ...prev, ...parseSortKey(o.key) }),
+                    search: (prev) => ({ ...prev, ...parseSortKey(o.key), sortField: undefined }),
                   });
                   setPicking(false);
                 }}

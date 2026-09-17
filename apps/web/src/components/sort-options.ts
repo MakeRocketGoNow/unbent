@@ -56,8 +56,72 @@ export function parseSortKey(key: string): {
   };
 }
 
-/** What the current sort is called, for a control that shows its value rather than a list. */
-export function sortLabel(sort: NoteSort | undefined, order: 'asc' | 'desc' | undefined): string {
+/**
+ * What the current sort is called, for a control that shows its value rather than a list.
+ *
+ * A sort by a custom field has no named option — the table's column headers are how it is
+ * chosen — so it is named from the field, with the direction spelled out, rather than
+ * falling back to "Recently updated" over a list that is ordered by something else.
+ */
+export function sortLabel(
+  sort: NoteSort | undefined,
+  order: 'asc' | 'desc' | undefined,
+  fieldName?: string,
+): string {
+  if (fieldName !== undefined) {
+    return `${fieldName} ${(order ?? DEFAULT_ORDER) === 'asc' ? 'ascending' : 'descending'}`;
+  }
   const key = sortKey(sort, order);
   return SORT_OPTIONS.find((o) => o.key === key)?.label ?? SORT_OPTIONS[0]!.label;
+}
+
+// --- Sorting from a column header ---------------------------------------------------
+
+/** What a table column orders by: one of the named note sorts, or a custom field. */
+export type SortTarget = { kind: 'note'; sort: NoteSort } | { kind: 'field'; fieldId: string };
+
+/** The URL's ordering as the table reads it. `sortField` outranks `sort` when both are set. */
+export interface SortSearch {
+  sort?: NoteSort | undefined;
+  order?: 'asc' | 'desc' | undefined;
+  sortField?: string | undefined;
+}
+
+/** The direction a column is currently sorted in, or null when it is not the sort. */
+export function columnSortState(target: SortTarget, search: SortSearch): 'asc' | 'desc' | null {
+  const order = search.order ?? DEFAULT_ORDER;
+  if (target.kind === 'field') return search.sortField === target.fieldId ? order : null;
+  if (search.sortField) return null;
+  return (search.sort ?? DEFAULT_SORT) === target.sort ? order : null;
+}
+
+/**
+ * The search params a click on a column header writes.
+ *
+ * A first click sorts the way that column is usually wanted — names and field values
+ * A–Z or low to high, dates newest first — and a click on the column already in charge
+ * flips it. There is no third state: the list always has *some* order, and a header that
+ * cycled to "none" would silently put "Recently updated" back under a column that no
+ * longer said so. The two kinds of sort are exclusive on the wire, so choosing one
+ * clears the other, and the defaults are dropped the way `parseSortKey` drops them.
+ */
+export function nextColumnSort(
+  target: SortTarget,
+  search: SortSearch,
+): {
+  sort: NoteSort | undefined;
+  order: 'asc' | 'desc' | undefined;
+  sortField: string | undefined;
+} {
+  const current = columnSortState(target, search);
+  const first = target.kind === 'note' && target.sort !== 'title' ? 'desc' : 'asc';
+  const order = current ? (current === 'asc' ? 'desc' : 'asc') : first;
+  if (target.kind === 'field') {
+    return {
+      sort: undefined,
+      order: order === DEFAULT_ORDER ? undefined : order,
+      sortField: target.fieldId,
+    };
+  }
+  return { ...parseSortKey(`${target.sort}:${order}`), sortField: undefined };
 }

@@ -106,6 +106,13 @@ export const filters = z.object({
    */
   sort: z.enum(NOTE_SORTS).optional().catch(undefined),
   order: z.enum(['asc', 'desc']).optional().catch(undefined),
+  /**
+   * A custom field to order by instead of `sort`, by id — what the table view's field
+   * columns write. Only its shape is checked here; whether it is one of this user's
+   * fields is only known once the notebook's definitions load, and `NotesLayout` drops a
+   * stale one then, the way `NotebookSelect` reports a notebook that no longer exists.
+   */
+  sortField: z.string().uuid().optional().catch(undefined),
   /** Inclusive `YYYY-MM-DD` bounds, filtering the column the sort uses. */
   from: dateOnlySchema.optional().catch(undefined),
   to: dateOnlySchema.optional().catch(undefined),
@@ -121,6 +128,7 @@ export const Route = createFileRoute('/notes')({
     field: search.field,
     sort: search.sort,
     order: search.order,
+    sortField: search.sortField,
     from: search.from,
     to: search.to,
   }),
@@ -135,6 +143,7 @@ export const Route = createFileRoute('/notes')({
     const ordering = {
       ...(deps.sort ? { sort: deps.sort } : {}),
       ...(deps.order ? { order: deps.order } : {}),
+      ...(deps.sortField ? { sortField: deps.sortField } : {}),
     };
     /*
      * Warmed, none of it awaited — the list included.

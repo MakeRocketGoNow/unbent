@@ -42,7 +42,7 @@ import { useSignOut } from '../useSignOut.js';
 
 /** Sidebar plus the routed workspace. Filters come from the URL; nothing here is mirrored into state. */
 export function NotesLayout({ children }: { children: React.ReactNode }) {
-  const { notebook, tag, field, q = '', sort, order, from, to } = Route.useSearch();
+  const { notebook, tag, field, q = '', sort, order, sortField, from, to } = Route.useSearch();
   /** The tag filter as a list, so the sidebar never has to care that it may be absent. */
   const selectedTags = tag ?? [];
   /** Likewise the field filters, as the wire strings the URL carries. */
@@ -75,7 +75,11 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
     ...(from ? { from } : {}),
     ...(to ? { to } : {}),
   };
-  const ordering = { ...(sort ? { sort } : {}), ...(order ? { order } : {}) };
+  const ordering = {
+    ...(sort ? { sort } : {}),
+    ...(order ? { order } : {}),
+    ...(sortField ? { sortField } : {}),
+  };
 
   /**
    * Whether anything narrows the list, notebook included. The export link reads this: it
@@ -112,6 +116,26 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
       ? notebooks.data?.notebooks.find((nb) => nb.name === notebook)?.id
       : undefined;
   const fieldDefs = useQuery(notebookFieldsQuery(notebookId));
+  /** The definition behind a sort by a field, once the notebook's fields have loaded. */
+  const sortFieldDef = sortField ? fieldDefs.data?.find((d) => d.id === sortField) : undefined;
+  /*
+   * A sort by a field the notebook does not have — or by any field outside a notebook —
+   * is a stale or hand-edited link. Dropped once that is known rather than sent, since the
+   * API refuses the whole list for it and a link should still open. Replaced, not pushed:
+   * Back should not return to the broken order.
+   */
+  const sortFieldStale =
+    sortField !== undefined &&
+    ((notebooks.isSuccess && notebookId === undefined) ||
+      (fieldDefs.isSuccess && sortFieldDef === undefined));
+  useEffect(() => {
+    if (!sortFieldStale) return;
+    void navigate({
+      to: '/notes',
+      search: (prev) => ({ ...prev, sortField: undefined }),
+      replace: true,
+    });
+  }, [sortFieldStale, navigate]);
   const trashCount = useQuery(trashCountQuery());
   const trashed = trashCount.data ?? 0;
 
@@ -313,7 +337,16 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
              reordering them by date would throw away that ranking. Nothing else is
              lost with it: Settings, which used to share this corner, is on the
              drawer's floor. */
-          sort={results === null ? <NotesSort sort={sort} order={order} /> : null}
+          sort={
+            results === null ? (
+              <NotesSort
+                sort={sort}
+                order={order}
+                sortField={sortField}
+                fieldName={sortFieldDef?.name}
+              />
+            ) : null
+          }
           /* New is a floating button on a phone (below) and the end of this row on a
              desktop, where a column has nothing for a button to float clear of. */
           action={

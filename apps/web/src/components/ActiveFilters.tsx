@@ -77,7 +77,9 @@ export function ActiveFilters({
            * notebook boundaries, so leaving one selected here routinely yields an empty list
            * with no visible cause. The field filters too — they belong to this notebook.
            */
-          onClick={() => drop({ notebook: undefined, tag: undefined, field: undefined })}
+          onClick={() =>
+            drop({ notebook: undefined, tag: undefined, field: undefined, sortField: undefined })
+          }
         >
           {notebook === UNFILED ? 'Inbox' : notebook}
           <CloseIcon />
