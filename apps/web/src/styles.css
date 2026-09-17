@@ -4421,6 +4421,35 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
   }
 }
 
+/*
+   Smaller again under a mouse: 32px boxes around 18px glyphs, and New at the same 32px.
+
+   Keyed to the pointer rather than to the width, because the width was never the reason.
+   36px was a compromise for every wide screen, and a wide screen is two different
+   devices: a tablet in landscape is still a finger and keeps the rule above, while a
+   mouse can hit 32px without trying — Notion's toolbars are 28px — and three of these
+   plus New are what leave the count room to be read in a 19rem column. Here the glyph
+   does shrink with its box: 22px of icon in a 32px square is all icon and no button.
+
+   New is given the height outright rather than a floor, with its block padding dropped,
+   so the row is one height by construction instead of by its font size happening to
+   agree.
+*/
+@media (width > 860px) and (hover: hover) and (pointer: fine) {
+  .list-head-actions .icon-btn {
+    min-width: 2rem;
+    height: 2rem;
+    /* `HeaderIcon` draws at 1.25em of this. */
+    font-size: 0.9rem;
+  }
+
+  .list-head-actions .btn {
+    min-height: 0;
+    height: 2rem;
+    padding-block: 0;
+  }
+}
+
 /* The count yields before the controls do: the controls are the ones that have to be hit.
    It rarely has to now — it states the total alone ("340 notes"), and how much of that is
    loaded is the Load more button's to say — but a sidebar dragged to its narrowest can
