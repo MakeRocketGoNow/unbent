@@ -122,7 +122,7 @@ describe('NoteTable', () => {
     await findByRole('table');
     fireEvent.click(getByRole('checkbox', { name: 'Packed for Ski trip' }));
     expect(onEdit).toHaveBeenCalledWith('n1', packed, true);
-    const select = getByRole('combobox', { name: 'Status for Ski trip' }) as HTMLSelectElement;
+    const select = getByRole('combobox', { name: 'Status for Ski trip' });
     fireEvent.change(select, { target: { value: 'Booked' } });
     expect(onEdit).toHaveBeenCalledWith('n1', status, 'Booked');
     fireEvent.change(select, { target: { value: '' } });

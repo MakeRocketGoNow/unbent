@@ -181,7 +181,6 @@ function cell(
           search={(prev) => prev}
           className="note-row-link"
           activeProps={{ className: 'note-row-link active' }}
-          data-keep-focus=""
         >
           {note.title || 'Untitled'}
         </Link>

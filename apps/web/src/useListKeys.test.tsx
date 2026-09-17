@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach, vi } from 'vitest';
-import { render, screen, cleanup, fireEvent } from '@testing-library/react';
+import { render, screen, cleanup, fireEvent, act } from '@testing-library/react';
 import {
   useListKeys,
   useCameFromList,
@@ -152,6 +152,76 @@ describe('useListKeys', () => {
     expect(focus).toHaveBeenCalled();
     // The editor now owns focus, so a later mount must be allowed to take it.
     expect(screen.getByTestId('flag').textContent).toBe('false');
+  });
+});
+
+/**
+ * The same list drawn as a table: the rows are `<tr>`s whose name cell holds the link.
+ * The keys must browse those links exactly as they browse sidebar entries, and a press
+ * anywhere on a row — not only on its link — is browsing.
+ */
+function Table({ onActivate }: { onActivate?: (id: string) => void }) {
+  const onKeyDown = useListKeys();
+  const cameFromList = useCameFromList();
+  return (
+    <div>
+      <span data-testid="flag">{String(cameFromList)}</span>
+      <div className="note-table-wrap" onKeyDown={onKeyDown} data-testid="table">
+        <table>
+          <tbody>
+            {['a', 'b'].map((id) => (
+              <tr key={id} className="note-row" data-keep-focus="">
+                <td>
+                  <a
+                    href={`#${id}`}
+                    className={id === 'b' ? 'note-row-link active' : 'note-row-link'}
+                    data-testid={id}
+                    onClick={() => onActivate?.(id)}
+                  >
+                    {id}
+                  </a>
+                </td>
+                <td data-testid={`cell-${id}`}>
+                  <input type="checkbox" aria-label={`Packed for ${id}`} />
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+describe('useListKeys over the table', () => {
+  afterEach(cleanup);
+
+  it('browses the rows by their name links, opening each as it is reached', () => {
+    const onActivate = vi.fn();
+    render(<Table onActivate={onActivate} />);
+    // Called directly rather than through an event, so the flag's re-render is wrapped.
+    act(() => {
+      expect(enterList(screen.getByTestId('table'))).toBe(true);
+    });
+    expect(document.activeElement).toBe(screen.getByTestId('a'));
+    expect(onActivate).toHaveBeenCalledWith('a');
+
+    fireEvent.keyDown(screen.getByTestId('table'), { key: 'ArrowDown' });
+    expect(document.activeElement).toBe(screen.getByTestId('b'));
+    expect(onActivate).toHaveBeenCalledWith('b');
+    expect(screen.getByTestId('flag').textContent).toBe('true');
+  });
+
+  it('treats a press anywhere on a row as browsing', () => {
+    render(<Table />);
+    fireEvent.pointerDown(screen.getByTestId('cell-a'));
+    expect(screen.getByTestId('flag').textContent).toBe('true');
+  });
+
+  it('puts focus back on the open row', () => {
+    render(<Table />);
+    expect(focusActiveListItem()).toBe(true);
+    expect(document.activeElement).toBe(screen.getByTestId('b'));
   });
 });
 

@@ -24,11 +24,14 @@ import { useCallback, useSyncExternalStore, type KeyboardEvent } from 'react';
  * are the list under the field, not a menu of their own.
  */
 
-/** The rows the arrows move between, in the order they are on screen. */
-const ROW = '.scope-match-btn, .note-item';
+/**
+ * The rows the arrows move between, in the order they are on screen. A note is a sidebar
+ * entry or a table row's name link — the list drawn two ways, browsed by one set of keys.
+ */
+const ROW = '.scope-match-btn, .note-item, .note-row-link';
 
 function isNote(el: HTMLElement): boolean {
-  return el.classList.contains('note-item');
+  return el.classList.contains('note-item') || el.classList.contains('note-row-link');
 }
 
 /** Moves to a row: a note is opened as it is reached, a pick is only focused. */
@@ -95,15 +98,18 @@ export function useCameFromList(): boolean {
    there is no list left to keep focus on) — so those still open ready to type.
 
    The row marks itself with `data-keep-focus` when it is one whose list survives the open;
-   see `NoteListItem`. Captured at the document, before the press reaches the link, so the
-   flag is already right by the time the new editor mounts.
+   see `NoteListItem`, and the table's `<tr>`, whose whole width opens the note. Captured
+   at the document, before the press reaches the link, so the flag is already right by
+   the time the new editor mounts.
 */
 if (typeof document !== 'undefined') {
   document.addEventListener(
     'pointerdown',
     (e) => {
       const row =
-        e.target instanceof Element ? e.target.closest<HTMLElement>('.note-item') : null;
+        e.target instanceof Element
+          ? e.target.closest<HTMLElement>('.note-item, .note-row')
+          : null;
       setCameFromList(row?.hasAttribute('data-keep-focus') ?? false);
     },
     true,
@@ -201,7 +207,7 @@ export function focusEditor() {
  * something invisible.
  */
 export function focusActiveListItem(): boolean {
-  const active = document.querySelector<HTMLElement>('.note-item.active');
+  const active = document.querySelector<HTMLElement>('.note-item.active, .note-row-link.active');
   if (!active) return false;
   setCameFromList(true);
   active.focus();
