@@ -21,6 +21,16 @@ export interface ImportProgress {
   /** Attachments whose embedded text was extracted and indexed. */
   filesIndexed: number;
   bytesRead: number;
+  /**
+   * What `bytesRead` is counted against, when the driver knows something the file's own
+   * size does not say.
+   *
+   * Zero means "the file's size is the total", which is the ENEX case: the parser counts
+   * the bytes it pulls off the file's own stream, so the two already agree. An archive
+   * cannot say that — see `importArchive`, where a zip's size and the bytes its entries
+   * hold are two different numbers — so it fills this in and the bar divides by it.
+   */
+  bytesTotal: number;
   currentTitle: string;
 }
 
@@ -188,6 +198,7 @@ export class ImportRun {
     filesUploaded: 0,
     filesIndexed: 0,
     bytesRead: 0,
+    bytesTotal: 0,
     currentTitle: '',
   };
 

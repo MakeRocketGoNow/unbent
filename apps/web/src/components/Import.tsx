@@ -4,6 +4,7 @@ import type { ImportEvent, ImportRequest } from '../import-worker.js';
 import { startIndexing, useIndexing, type IndexingState } from '../index-files.js';
 import { Button } from './Button.js';
 import { describeImportFile } from './import-file.js';
+import { importPercent } from './import-progress.js';
 import { ImportSkips } from './ImportSkips.js';
 import { emptySkipLog, recordSkip, type SkipLog } from './import-skips.js';
 import { useSettingsBusy } from './SettingsLayout.js';
@@ -24,6 +25,7 @@ function initialProgress(): ImportProgress {
     filesUploaded: 0,
     filesIndexed: 0,
     bytesRead: 0,
+    bytesTotal: 0,
     currentTitle: 'Starting import…',
   };
 }
@@ -175,19 +177,7 @@ export function Import({ onImported }: ImportProps) {
     setStatus('idle');
   }
 
-  /**
-   * Progress bar fill.
-   *
-   * Pinned to 100% once the run finishes: the last bytes are read before the final notes
-   * finish uploading, so a byte-based bar can otherwise sit at 99% on a completed import
-   * and read as stalled.
-   */
-  const pct =
-    status === 'done'
-      ? 100
-      : file && progress && file.size > 0
-        ? Math.min(100, Math.round((progress.bytesRead / file.size) * 100))
-        : 0;
+  const pct = importPercent(progress, file?.size ?? 0, status === 'done');
 
   return (
     <div className="panel">
