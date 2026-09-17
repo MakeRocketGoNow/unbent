@@ -231,6 +231,26 @@ describe('a half by pointer position (mouse)', () => {
     expect(document.querySelector('.note-field-stars')?.hasAttribute('data-preview')).toBe(true);
   });
 
+  it('draws a preview hollow, so it cannot read as a dimmed chosen value', () => {
+    render(<RatingInput scale={halves} value={null} onChange={vi.fn()} label="Rating" />);
+    const row = measureRow();
+    fireEvent.pointerMove(row, { clientX: 55, pointerId: 1, pointerType: 'mouse' });
+    const stars = [...document.querySelectorAll('.note-field-star')];
+    // Full stars under a preview keep the hollow glyph; the CSS colours them accent.
+    expect(stars[0]?.textContent).toBe('☆');
+    expect(stars[1]?.textContent).toBe('☆');
+    // The half keeps its filled overlay: an outline clipped in two reads as nothing.
+    expect(stars[2]?.querySelector('.note-field-star-half')).toBeNull();
+  });
+
+  it('draws a committed rating solid', () => {
+    render(<RatingInput scale={halves} value={2} onChange={vi.fn()} label="Rating" />);
+    const stars = [...document.querySelectorAll('.note-field-star')];
+    expect(stars[0]?.textContent).toBe('★');
+    expect(stars[1]?.textContent).toBe('★');
+    expect(stars[2]?.textContent).toBe('☆');
+  });
+
   it('gives the row back to the stored value when the mouse leaves', () => {
     render(<RatingInput scale={halves} value={4} onChange={vi.fn()} label="Rating" />);
     const row = measureRow();

@@ -147,6 +147,8 @@ export function RatingInput({
   // A drag beats a hover beats the stored value: each is a better answer to "what would
   // happen if I let go right now" than the one behind it.
   const shown = dragging ?? hovering ?? value;
+  // Whether what the row is drawing is provisional rather than what the note holds.
+  const preview = dragging !== null || hovering !== null;
   const stars = Array.from({ length: Math.min(scale.max, MAX_STAR_GLYPHS) }, (_, i) => i + 1);
 
   const commit = (next: number) => {
@@ -178,9 +180,9 @@ export function RatingInput({
         role="radiogroup"
         aria-label={label ?? 'Rating'}
         data-dragging={dragging !== null || undefined}
-        // Drawn a shade lighter while either preview is live, so the row never shows a
-        // provisional rating in the same ink as a chosen one.
-        data-preview={dragging !== null || hovering !== null || undefined}
+        // Hollow while either preview is live, so the row never draws a provisional
+        // rating in the same shape as a chosen one.
+        data-preview={preview || undefined}
         onPointerDown={(e) => {
           if (readOnly || e.button !== 0) return;
           // Only the origin is recorded here. Committing on a press would take every
@@ -234,6 +236,16 @@ export function RatingInput({
       >
         {stars.map((star) => {
           const fill = fillAt(star, shown ?? 0);
+          /*
+             A preview is drawn as the hollow glyph in accent ink rather than the solid
+             one, which is the row's own vocabulary: `☆` already means "this shape, not
+             filled". Dimming was the first attempt and it was wrong — the app fades a
+             control to 0.55 to say *disabled*, so a faded preview read as unavailable
+             rather than as provisional. Shape carries this instead of strength, which
+             also survives greyscale and red-green colour blindness.
+          */
+          // Solid only for a committed full star; a preview stays hollow whatever it holds.
+          const glyph = fill === 'full' && !preview ? '★' : '☆';
           /*
              One radio per star. Its own value is the whole star, which is what a keyboard
              gets: arrows move by a half where the scale allows them, so tabbing does not
@@ -297,7 +309,13 @@ export function RatingInput({
                  same glyph at the same size in the same place.
               */}
               <span className="note-field-star-glyph" aria-hidden="true">
-                {fill === 'full' ? '★' : '☆'}
+                {glyph}
+                {/*
+                   The half stays solid even in a preview. A hollow glyph clipped down the
+                   middle is just the left edge of an outline, which reads as nothing at
+                   all — the half needs a filled area to be a half. The whole stars going
+                   hollow is what says "provisional"; this one keeps saying "half".
+                */}
                 {fill === 'half' && <span className="note-field-star-half">★</span>}
               </span>
             </label>
