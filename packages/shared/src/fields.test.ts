@@ -6,6 +6,8 @@ import {
   expectedFieldValue,
   fieldNameSchema,
   fieldRangeBound,
+  fieldSortKey,
+  fieldSortsNumerically,
   fieldsByName,
   formatFieldFilter,
   inferFieldType,
@@ -246,5 +248,44 @@ describe('field filters', () => {
     const end = fieldRangeBound('lte', '2026-01-10')!;
     expect(end - start).toBe(24 * 60 * 60 * 1000 - 1);
     expect(fieldRangeBound('gte', 'soon')).toBeNull();
+  });
+});
+
+describe('fieldSortKey', () => {
+  const held = (fieldId: string, type: FieldType, value: NoteFieldValue['value']): NoteFieldValue => ({
+    fieldId,
+    name: 'F',
+    type,
+    value,
+    notebookId: 'nb',
+    notebook: 'Coupons',
+  });
+
+  it('numeric types sort by their shadow', () => {
+    expect(fieldSortsNumerically('number')).toBe(true);
+    expect(fieldSortsNumerically('date')).toBe(true);
+    expect(fieldSortsNumerically('checkbox')).toBe(true);
+    for (const t of ['text', 'url', 'email', 'phone', 'select'] as const) {
+      expect(fieldSortsNumerically(t)).toBe(false);
+    }
+  });
+
+  it('reads the shadow a numeric type stores', () => {
+    expect(fieldSortKey({ id: 'a', type: 'number' }, [held('a', 'number', 12.5)])).toBe(12.5);
+    expect(fieldSortKey({ id: 'a', type: 'date' }, [held('a', 'date', '2024-03-01')])).toBe(
+      Date.parse('2024-03-01T00:00:00Z'),
+    );
+    expect(fieldSortKey({ id: 'a', type: 'checkbox' }, [held('a', 'checkbox', true)])).toBe(1);
+    expect(fieldSortKey({ id: 'a', type: 'checkbox' }, [held('a', 'checkbox', false)])).toBe(0);
+  });
+
+  it('reads the text for everything else, including a retired select option', () => {
+    expect(fieldSortKey({ id: 'a', type: 'select' }, [held('a', 'select', 'Travel')])).toBe('Travel');
+    expect(fieldSortKey({ id: 'a', type: 'text' }, [held('a', 'text', 'hello')])).toBe('hello');
+  });
+
+  it('is the empty string when the note holds no value', () => {
+    expect(fieldSortKey({ id: 'a', type: 'number' }, undefined)).toBe('');
+    expect(fieldSortKey({ id: 'a', type: 'text' }, [held('b', 'text', 'other')])).toBe('');
   });
 });

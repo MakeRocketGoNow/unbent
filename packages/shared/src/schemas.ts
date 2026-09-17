@@ -265,6 +265,14 @@ export const listNotesQuerySchema = z.object({
   field: fieldFilterSchema,
   sort: noteSortSchema,
   order: noteOrderSchema,
+  /**
+   * Sort by a custom field's value instead of `sort`. Wins over `sort` when both arrive;
+   * `order` still applies. Notes without a value come last either way. The date range
+   * then reads `updated_at`, as it does under the title sort — the rows show that date.
+   * The web table's sortable field columns are what send this; the phone and the MCP
+   * tool keep to the named sorts.
+   */
+  sortField: z.string().uuid().optional(),
   /** Inclusive date range, filtering the same column the sort uses. */
   from: dateOnlySchema.optional(),
   to: dateOnlySchema.optional(),
