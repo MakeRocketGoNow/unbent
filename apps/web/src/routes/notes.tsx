@@ -113,6 +113,18 @@ export const filters = z.object({
    * stale one then, the way `NotebookSelect` reports a notebook that no longer exists.
    */
   sortField: z.string().uuid().optional().catch(undefined),
+  /**
+   * How the list is drawn: the sidebar of entries, or the table of a notebook's fields.
+   *
+   * In the URL for the reason the sort is: it is how you are looking, and "Coupons as a
+   * table, by expiry" is a thing worth bookmarking — a sidebar width is not, which is why
+   * that one lives in storage alone. Absent means "this device's usual view", which
+   * `useNotesView` supplies, so a plain `/notes` link opens the way you last left it.
+   * Not among the loader's dependencies: it changes what is drawn, never what is fetched.
+   * Where a table cannot be drawn — a phone, outside a notebook, over search results —
+   * it is ignored rather than stripped, so the link still means it on a screen that can.
+   */
+  view: z.enum(['list', 'table']).optional().catch(undefined),
   /** Inclusive `YYYY-MM-DD` bounds, filtering the column the sort uses. */
   from: dateOnlySchema.optional().catch(undefined),
   to: dateOnlySchema.optional().catch(undefined),

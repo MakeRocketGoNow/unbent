@@ -51,7 +51,18 @@ import { useSignOut } from '../useSignOut.js';
 
 /** Sidebar plus the routed workspace. Filters come from the URL; nothing here is mirrored into state. */
 export function NotesLayout({ children }: { children: React.ReactNode }) {
-  const { notebook, tag, field, q = '', sort, order, sortField, from, to } = Route.useSearch();
+  const {
+    notebook,
+    tag,
+    field,
+    q = '',
+    sort,
+    order,
+    sortField,
+    view: viewParam,
+    from,
+    to,
+  } = Route.useSearch();
   /** The tag filter as a list, so the sidebar never has to care that it may be absent. */
   const selectedTags = tag ?? [];
   /** Likewise the field filters, as the wire strings the URL carries. */
@@ -306,14 +317,14 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
   const searching = results !== null;
 
   /*
-   * The list as a table of the notebook's fields — one remembered choice that holds from
-   * notebook to notebook (`useNotesView`), honoured only where a table makes sense:
-   * inside one notebook (columns are its fields), at desktop width (a phone has no room
+   * The list as a table of the notebook's fields — the URL's `view`, or this device's
+   * usual one when the URL is silent (`useNotesView`), honoured only where a table makes
+   * sense: inside one notebook (columns are its fields), at desktop width (a phone has no room
    * for columns), and not over search results (which are ranked, not columned).
    * Everywhere else the list is drawn, the toggle shows that, and the choice is kept —
    * the table is back the moment there is a notebook to draw it for.
    */
-  const [view, setView] = useNotesView();
+  const [view, rememberView] = useNotesView(viewParam);
   const tableMode = view === 'table' && !isMobile && !searching && notebookId !== undefined;
   const layout = useNotesLayout('/notes/$noteId', { mode: tableMode ? 'table' : 'list' });
   /*
@@ -323,6 +334,28 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
    * note the table is a column again and keeps the stacked header, which is what fits.
    */
   const toolbarHead = tableMode && !layout.open;
+  /*
+   * The toggle writes the view to the URL, so the address bar is always the view on
+   * screen and can be copied, and remembers it as this device's usual one.
+   *
+   * Replaced, not pushed. Flipping a view is not going somewhere, and a pushed entry
+   * would also lie: Back would land on the earlier URL, which says nothing about the
+   * view and so means "this device's usual one" — the very thing the toggle just
+   * changed — and the list would not flip back. With no entry of its own, Back leaves
+   * the page the way it would have before the toggle was touched.
+   *
+   * Unlike the filters it keeps an open note open: a filter can take the note out of the
+   * list, which is why those go back to `/notes`, but how the list is drawn cannot.
+   */
+  const chooseView = (next: 'list' | 'table') => {
+    rememberView(next);
+    const search = (prev: Record<string, unknown>) => ({ ...prev, view: next });
+    void navigate(
+      layout.open
+        ? { to: '/notes/$noteId', params: { noteId: layout.open }, search, replace: true }
+        : { to: '/notes', search, replace: true },
+    );
+  };
   const columns = noteColumns(fieldDefs.data ?? []);
   /** A column header was clicked: write the order it asks for. */
   const sortBy = (target: SortTarget) =>
@@ -455,7 +488,7 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
             !isMobile && !searching ? (
               <NotesViewToggle
                 value={tableMode ? 'table' : 'list'}
-                onChange={setView}
+                onChange={chooseView}
                 tableDisabledReason={
                   notebookId === undefined
                     ? 'choose a notebook to see its fields as columns'
