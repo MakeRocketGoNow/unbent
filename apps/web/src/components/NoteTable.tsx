@@ -7,6 +7,7 @@ import { columnSortState, type SortSearch, type SortTarget } from './sort-option
 import { formatFieldValue } from './format-field.js';
 import { formatWhen } from './format-when.js';
 import { SortDirectionIcon } from './icons.js';
+import { loadMoreLabel } from './load-more.js';
 
 interface NoteTableProps {
   notes: NoteSummary[];
@@ -147,7 +148,7 @@ export function NoteTable({
                   disabled={isFetchingNextPage}
                   onClick={onLoadMore}
                 >
-                  {isFetchingNextPage ? 'Loading…' : 'Load more'}
+                  {loadMoreLabel(notes.length, total, isFetchingNextPage)}
                 </button>
               </td>
             </tr>

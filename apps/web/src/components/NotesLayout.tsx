@@ -39,6 +39,7 @@ import { NoteTable } from './NoteTable.js';
 import { noteColumns } from './note-columns.js';
 import { nextColumnSort, type SortTarget } from './sort-options.js';
 import { patchNoteFields, patchNotePages } from './note-table-edit.js';
+import { loadMoreLabel } from './load-more.js';
 import { useNotesView } from '../useNotesView.js';
 import { editOpenNoteField } from '../open-note-fields.js';
 import { keys } from '../queries.js';
@@ -348,15 +349,19 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
   const scopeLabel =
     notebook === UNFILED ? 'Inbox' : (notebook ?? 'All notes');
 
-  /** What the list is showing, in three forms. Both breakpoints' headers read it. */
+  /**
+   * What the list is showing, in three forms. Both breakpoints' headers read it.
+   *
+   * The total, not "50 of 900 notes": how many are loaded so far is a paging detail and
+   * the Load more button says it — see `loadMoreLabel`. The header shares its row with
+   * four controls, and the longer string was the one thing in it that truncated.
+   */
   const countLabel =
     results !== null
       ? `${results.length} matches`
       : loading
         ? 'Loading…'
-        : total !== null && total > notes.length
-          ? `${notes.length} of ${total} notes`
-          : `${notes.length} notes`;
+        : `${total ?? notes.length} notes`;
 
   async function newNote() {
     try {
@@ -731,7 +736,7 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
                 disabled={list.isFetchingNextPage}
                 onClick={() => void list.fetchNextPage()}
               >
-                {list.isFetchingNextPage ? 'Loading…' : 'Load more'}
+                {loadMoreLabel(notes.length, total, list.isFetchingNextPage)}
               </button>
             </li>
           )}

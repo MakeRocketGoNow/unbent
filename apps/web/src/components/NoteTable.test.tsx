@@ -107,8 +107,9 @@ describe('NoteTable', () => {
 
   it('offers the next page the way the list does', async () => {
     const onLoadMore = vi.fn();
-    const { findByRole } = harness({ hasNextPage: true, onLoadMore });
-    fireEvent.click(await findByRole('button', { name: 'Load more' }));
+    const { findByRole } = harness({ hasNextPage: true, total: 40, onLoadMore });
+    // The button says how much is loaded; the header above the table states the total.
+    fireEvent.click(await findByRole('button', { name: 'Load more · 2 of 40' }));
     expect(onLoadMore).toHaveBeenCalled();
   });
 

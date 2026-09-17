@@ -4421,9 +4421,10 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
   }
 }
 
-/* The count yields before the controls do: at the narrowest the sidebar can be dragged to,
-   "12 of 340 notes" and four controls do not both fit, and the controls are the ones that
-   have to be hit. */
+/* The count yields before the controls do: the controls are the ones that have to be hit.
+   It rarely has to now — it states the total alone ("340 notes"), and how much of that is
+   loaded is the Load more button's to say — but a sidebar dragged to its narrowest can
+   still ask it to. */
 .list-title .count {
   overflow: hidden;
   white-space: nowrap;
