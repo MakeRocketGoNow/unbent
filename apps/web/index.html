@@ -8,6 +8,12 @@
     <meta name="color-scheme" content="light dark" />
     <title>Unbent</title>
     <meta name="description" content="Notes in Markdown that you can always take with you." />
+    <!-- Installable as an app. On desktop Chrome that also registers it as a handler for
+         the file types in the manifest, which is what lets a scanner or Finder hand a
+         file straight to it; see launch-files.ts for what happens when one arrives. -->
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <meta name="theme-color" content="#2F6B4F" />
+    <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
   </head>
   <body>
     <div id="root"></div>
