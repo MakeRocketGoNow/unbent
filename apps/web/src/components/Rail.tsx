@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link, useRouterState, useSearch } from '@tanstack/react-router';
 import { AccountMenu } from './AccountMenu.js';
@@ -5,6 +6,23 @@ import { notebooksQuery, tagsQuery, trashCountQuery } from '../queries.js';
 import { useMediaQuery, RAIL_WIDE_QUERY } from '../useMediaQuery.js';
 import { NotebookNav, type NavPlace } from './NotebookNav.js';
 import { useSettingsBusy } from './SettingsLayout.js';
+import { ResizeHandle } from './ResizeHandle.js';
+import { usePersistentState, clamp } from '../usePersistentState.js';
+
+/**
+ * The open rail's width, in px: 15rem at the root font size, between 11rem and 20rem.
+ *
+ * Below 11rem the labels stop being labels, and the strip is what "small" means here;
+ * above 20rem the rail is eating the note, and a longer name is what the tooltip is for.
+ * A drag that goes on past the floor collapses the rail instead of stopping at it — the
+ * gesture Apple Notes and Evernote both honour — so the toggle is the discoverable way
+ * to a strip and the drag is the fast one, with no dead zone between them.
+ */
+export const RAIL_DEFAULT = 240;
+export const RAIL_MIN = 176;
+export const RAIL_MAX = 320;
+/** Dragging or stepping under this collapses the rail rather than clamping. */
+export const RAIL_COLLAPSE_BELOW = 144;
 import { RailToggleIcon } from './icons.js';
 
 /**
@@ -58,8 +76,13 @@ function placeOf(pathname: string): NavPlace {
  * Collapsed, it is a strip of icons rather than nothing: the way to expand it again, the
  * places that have a glyph of their own, Trash, Settings, and the account, all still one
  * click away on every screen, with no drawer over a desktop. The notebooks drop out of
- * the strip because they all share one glyph. Not resizable: one drag handle on the
- * screen is enough, and a rail's width is its labels' width.
+ * the strip because they all share one glyph.
+ *
+ * Open, its width is dragged, like the list's — see `useRailWidth`. It was fixed at
+ * first, on the reasoning that one drag handle on the screen was enough and a rail's
+ * width is its labels' width; the labels are notebook and tag names, which are anyone's
+ * length, and every three-column app this is compared against lets the first column be
+ * sized. The strip is not draggable: it is the width of its icons.
  *
  * It also took over what the desktop's top bar held — the wordmark, the way to Settings,
  * the account — which retired that bar above the breakpoint and gave every screen its
@@ -132,5 +155,75 @@ export function Rail({ pref, onPref, email, onSignOut }: RailProps) {
         />
       </div>
     </aside>
+  );
+}
+
+/**
+ * The open rail's dragged width: the live value, and the stored one it settles to.
+ *
+ * The same split the list's width makes (`useNotesLayout`): a drag re-renders without
+ * writing, and the release writes once. The width reaches the stylesheet as a custom
+ * property on the shell rather than on the rail, because the filter panel — in the top
+ * layer, and positioned past the rail — can only inherit it from a shared ancestor. It is
+ * consumed only while the rail is open; the strip's width is the stylesheet's own.
+ */
+export function useRailWidth() {
+  const [stored, setStored] = usePersistentState('railWidth', RAIL_DEFAULT, (raw) =>
+    typeof raw === 'number' && raw >= RAIL_MIN && raw <= RAIL_MAX ? raw : undefined,
+  );
+  const [width, setWidth] = useState(stored);
+  useEffect(() => setWidth(stored), [stored]);
+  return {
+    width,
+    style: { '--rail-open-width': `${width}px` } as React.CSSProperties,
+    /** Every pointermove: state only. Clamped, so the rail never draws narrower than its floor mid-drag. */
+    onResize: (next: number) => setWidth(clamp(next, RAIL_MIN, RAIL_MAX)),
+    /**
+     * Release, arrow key, or reset. A value past the floor is a request to collapse, not a
+     * width; the caller decides what collapsing means, since it owns the rail's state.
+     */
+    onCommit: (next: number, collapse: () => void) => {
+      if (next < RAIL_COLLAPSE_BELOW) {
+        setWidth(stored);
+        collapse();
+        return;
+      }
+      setStored(clamp(next, RAIL_MIN, RAIL_MAX));
+    },
+  };
+}
+
+interface RailHandleProps {
+  /** The shell row the rail sits in: what the pointer is measured against. */
+  containerRef: React.RefObject<HTMLDivElement | null>;
+  width: ReturnType<typeof useRailWidth>;
+  /** Collapses the rail; a drag past the floor asks for this. */
+  onCollapse: () => void;
+}
+
+/**
+ * The divider between the rail and the content, and the handle that sizes the rail.
+ *
+ * A sibling of the rail in the shell's row, as the list's handle is a sibling in the
+ * grid, so its geometry is measured against what it divides. The rail's own edge is
+ * drawn by this line while it shows; the stylesheet hides it over the strip and gives the
+ * rail its border back there, so there is one line either way.
+ */
+export function RailHandle({ containerRef, width, onCollapse }: RailHandleProps) {
+  return (
+    <ResizeHandle
+      label="Resize navigation"
+      containerRef={containerRef}
+      // The rail starts at the row's left edge and the handle sits flush on it, so the
+      // pointer's distance from the row's edge is the width itself.
+      toValue={(clientX, rect, gap) => clientX - rect.left - gap}
+      value={width.width}
+      min={RAIL_MIN}
+      max={RAIL_MAX}
+      step={16}
+      defaultValue={RAIL_DEFAULT}
+      onResize={width.onResize}
+      onCommit={(next) => width.onCommit(next, onCollapse)}
+    />
   );
 }

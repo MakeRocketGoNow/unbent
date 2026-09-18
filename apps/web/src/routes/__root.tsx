@@ -1,10 +1,10 @@
 import { createRootRouteWithContext, Outlet, useNavigate } from '@tanstack/react-router';
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { useSession } from '../auth-client.js';
 import { useSignOut } from '../useSignOut.js';
 import { requireSession, useShell } from '../auth-gate.js';
-import { Rail, type RailPref } from '../components/Rail.js';
+import { Rail, RailHandle, useRailWidth, type RailPref } from '../components/Rail.js';
 import { SettingsBusyProvider } from '../components/SettingsLayout.js';
 import { usePersistentState } from '../usePersistentState.js';
 import { useMediaQuery, MOBILE_QUERY } from '../useMediaQuery.js';
@@ -106,6 +106,8 @@ function AppShell() {
    * not in this subtree, so nothing it must not rebuild is rebuilt.
    */
   const isMobile = useMediaQuery(MOBILE_QUERY);
+  const railWidth = useRailWidth();
+  const shellRef = useRef<HTMLDivElement>(null);
 
   /**
    * Index whatever is pending, once there is someone to index for.
@@ -155,15 +157,22 @@ function AppShell() {
     // The import-running flag sits above the rail and the content alike: both are ways
     // out of a running import, and both have to go inert together. See `SettingsLayout`.
     <SettingsBusyProvider>
-    <div className={`shell wide rail-${railPref}`}>
+    <div className={`shell wide rail-${railPref}`} style={railWidth.style} ref={shellRef}>
       {/* The chain sign-out runs, and why its order matters, is in `useSignOut`. */}
       {!isMobile && (
-        <Rail
-          pref={railPref}
-          onPref={setRailPref}
-          email={session.user.email}
-          onSignOut={signOutAndLeave}
-        />
+        <>
+          <Rail
+            pref={railPref}
+            onPref={setRailPref}
+            email={session.user.email}
+            onSignOut={signOutAndLeave}
+          />
+          <RailHandle
+            containerRef={shellRef}
+            width={railWidth}
+            onCollapse={() => setRailPref('collapsed')}
+          />
+        </>
       )}
       <main className="shell-main">
         {/* The phone's chrome, on the pages that have no heading of their own; the

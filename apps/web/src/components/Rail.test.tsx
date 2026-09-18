@@ -13,7 +13,8 @@ import { useState } from 'react';
 import { keys } from '../queries.js';
 import { filters } from '../routes/notes.js';
 import { usePersistentState } from '../usePersistentState.js';
-import { Rail, type RailPref } from './Rail.js';
+import { Rail, RailHandle, useRailWidth, type RailPref } from './Rail.js';
+import { useRef } from 'react';
 import { SettingsBusyProvider, useSettingsBusy } from './SettingsLayout.js';
 import { useEffect } from 'react';
 
@@ -58,10 +59,18 @@ function Shell() {
   const [pref, setPref] = usePersistentState<RailPref>('rail', 'auto', (raw) =>
     raw === 'open' || raw === 'collapsed' ? raw : undefined,
   );
+  const width = useRailWidth();
+  const shellRef = useRef<HTMLDivElement>(null);
   return (
     <SettingsBusyProvider>
-      <div data-testid="shell" className={`shell wide rail-${pref}`}>
+      <div
+        data-testid="shell"
+        className={`shell wide rail-${pref}`}
+        style={width.style}
+        ref={shellRef}
+      >
         <Rail pref={pref} onPref={setPref} email="someone@example.com" onSignOut={() => {}} />
+        <RailHandle containerRef={shellRef} width={width} onCollapse={() => setPref('collapsed')} />
         <Outlet />
       </div>
     </SettingsBusyProvider>
@@ -211,6 +220,36 @@ describe('Rail', () => {
     const { findByText, container } = harness('/settings/import');
     await findByText('importing');
     await waitFor(() => expect(container.querySelector('.rail')?.hasAttribute('inert')).toBe(true));
+  });
+
+  /* The open rail is sized by its handle, like the list; the width reaches the
+     stylesheet as a custom property on the shell, where the filter panel can inherit it. */
+  it('is sized by its handle, remembered, and exposed to the shell as a custom property', async () => {
+    const { findByRole, getByTestId } = harness('/notes');
+    const handle = await findByRole('separator', { name: 'Resize navigation' });
+    expect(handle.getAttribute('aria-valuenow')).toBe('240');
+    expect(getByTestId('shell').style.getPropertyValue('--rail-open-width')).toBe('240px');
+
+    fireEvent.keyDown(handle, { key: 'ArrowRight', shiftKey: true });
+    await waitFor(() => expect(handle.getAttribute('aria-valuenow')).toBe('320'));
+    expect(localStorage.getItem('unbent.railWidth')).toBe('320');
+    expect(getByTestId('shell').style.getPropertyValue('--rail-open-width')).toBe('320px');
+
+    // Past the ceiling is clamped, not stored past it.
+    fireEvent.keyDown(handle, { key: 'ArrowRight' });
+    await waitFor(() => expect(localStorage.getItem('unbent.railWidth')).toBe('320'));
+  });
+
+  /* Dragging on past the floor is a request to collapse, not a width of zero. */
+  it('collapses when dragged past its floor, keeping the width it had', async () => {
+    localStorage.setItem('unbent.railWidth', '176');
+    const { findByRole, getByTestId } = harness('/notes');
+    const handle = await findByRole('separator', { name: 'Resize navigation' });
+    fireEvent.keyDown(handle, { key: 'ArrowLeft', shiftKey: true });
+    await waitFor(() => expect(getByTestId('shell').className).toContain('rail-collapsed'));
+    expect(localStorage.getItem('unbent.rail')).toBe('"collapsed"');
+    expect(localStorage.getItem('unbent.railWidth')).toBe('176');
+    expect(getByTestId('shell').style.getPropertyValue('--rail-open-width')).toBe('176px');
   });
 
   it('picks a notebook without closing anything, from any screen', async () => {

@@ -4646,8 +4646,10 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
 .rail { display: none; }
 
 @media (width > 860px) {
+  /* The open width is the dragged one, set inline on the shell by `useRailWidth`; the
+     15rem fallback is what a browser with nothing stored draws. */
   .shell.wide.rail-auto,
-  .shell.wide.rail-open { --rail-width: 15rem; }
+  .shell.wide.rail-open { --rail-width: var(--rail-open-width, 15rem); }
   .shell.wide.rail-collapsed { --rail-width: 3.25rem; }
 
   .rail {
@@ -4664,8 +4666,27 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
     position: relative;
     z-index: 25;
     background: color-mix(in srgb, var(--fg) 3%, transparent);
-    border-right: 1px solid var(--border);
   }
+
+  /*
+     The rail's edge is the handle that sizes it, as the list's edge is the handle that
+     sizes the list: the same 1px line, tinted when reached for. As a flex item rather
+     than a grid track it needs its width stated as a basis. Over the strip there is
+     nothing to size, so the handle goes and the rail draws the line itself — one line
+     either way, and the strip's width is the stylesheet's alone.
+  */
+  .shell.wide > .resize-handle {
+    flex: 0 0 1px;
+    /* On the rail's last pixel rather than after it, so the rail is exactly `--rail-width`
+       wide with its edge drawn, and the content — and the filter panel that measures
+       from the rail's width — start where the rail ends. Above the rail's own stacking
+       context, or the rail would paint over the line. */
+    margin-left: -1px;
+    z-index: 26;
+  }
+  .shell.wide.rail-collapsed > .resize-handle { display: none; }
+  .shell.wide.rail-collapsed > .rail { border-right: 1px solid var(--border); }
+  .shell.wide[data-resizing] { user-select: none; }
 
   .rail-inner {
     /* The rows' inset from the rail's edges; the strip narrows it. One number, because the
@@ -4730,6 +4751,8 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
 
 @media (860px < width < 1200px) {
   .shell.wide.rail-auto { --rail-width: 3.25rem; }
+  .shell.wide.rail-auto > .resize-handle { display: none; }
+  .shell.wide.rail-auto > .rail { border-right: 1px solid var(--border); }
 }
 
 @container rail (width < 8rem) {
