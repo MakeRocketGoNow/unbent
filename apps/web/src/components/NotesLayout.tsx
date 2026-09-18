@@ -40,6 +40,7 @@ import { noteColumns } from './note-columns.js';
 import { nextColumnSort, type SortTarget } from './sort-options.js';
 import { patchNoteFields, patchNotePages } from './note-table-edit.js';
 import { loadMoreLabel } from './load-more.js';
+import { scopeLabel, tagPlace } from './scope-label.js';
 import { useNotesView } from '../useNotesView.js';
 import { editOpenNoteField } from '../open-note-fields.js';
 import { keys } from '../queries.js';
@@ -393,19 +394,21 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
       : null;
 
   /**
-   * Where the list is, for the phone's heading.
+   * Where the list is, for the heading — see `scopeLabel` for the rule, which is the
+   * rail's rule, so the heading and the row you picked agree. At every width: on a desktop
+   * the rail marks the place, but the rail can be a strip of icons, and the column has to
+   * say what it holds on its own.
    *
-   * The notebook names itself; "Inbox" is what the UNFILED sentinel is called everywhere
-   * the user can see it; "All notes" is the unnarrowed list, and it matches the first row
-   * of the drawer and the rail, so the heading and the place you picked it from agree.
-   * At every width now: on a desktop the rail marks the notebook, but the rail can be a
-   * strip of icons, and the column has to say what it holds on its own.
-   *
-   * Tags are deliberately not in it. They are already under the header as chips that can be
-   * taken off, and a heading listing them would either duplicate that or truncate it.
+   * A lone tag with no notebook is a place, and then it is the heading rather than a chip:
+   * the chip under the header would be the same word twice on adjacent lines, the reason
+   * a notebook has no chip. The sheet still lists it, since a surface that claims to show
+   * everything applied has to, and All notes in the rail is the way out of it. Every other
+   * tag stays a chip: the chips are what can be taken off, and a heading listing several
+   * would either duplicate them or truncate.
    */
-  const scopeLabel =
-    notebook === UNFILED ? 'Inbox' : (notebook ?? 'All notes');
+  const heading = scopeLabel(notebook, selectedTags);
+  const tagAsPlace = tagPlace(notebook, selectedTags);
+  const chipTags = tagAsPlace ? [] : selectedTags;
 
   /**
    * What the list is showing, in three forms. Both breakpoints' headers read it.
@@ -458,7 +461,7 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
       <aside className="sidebar">
         <NoteListHead
           count={countLabel}
-          title={scopeLabel}
+          title={heading}
           query={q}
           onQuery={setQuery}
           onArrowDown={() => enterList(listRef.current ?? tableRef.current)}
@@ -534,7 +537,7 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
             list everything applied has to.
         */}
         <ActiveFilters
-          tags={selectedTags}
+          tags={chipTags}
           fields={fieldFilters}
           fieldDefs={fieldDefs.data ?? []}
           from={from}
