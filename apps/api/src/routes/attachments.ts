@@ -3,11 +3,13 @@ import { zValidator } from '@hono/zod-validator';
 import {
   MAX_ATTACHMENT_BYTES,
   copyAttachmentsSchema,
+  fetchWebImageSchema,
   filenameSchema,
   serveContentType,
   serveDisposition,
 } from '@unbent/shared';
 import { copyAttachments } from '../lib/copy-attachments.js';
+import { fetchWebImage } from '../lib/web-image.js';
 import { requireAuth } from '../lib/session.js';
 import { withRepos } from '../lib/repos-middleware.js';
 import { storeAttachment } from '../lib/store-attachment.js';
@@ -121,6 +123,44 @@ export const attachments = new Hono<AppEnv>()
       { from, to, filenames, move, link },
     );
     return c.json(result);
+  })
+
+  /**
+   * Fetches a picture off the web and stores it on the note.
+   *
+   * What "Save web images" calls, once per address. The Worker fetches because the
+   * browser cannot — see `lib/web-image.ts` for that and for the address policy. The body
+   * is not rewritten here: the client holds the draft and puts `files/<name>` in place of
+   * the address itself, from the name in the answer, which may be suffixed.
+   */
+  .post('/notes/:id/files/fetch', zValidator('json', fetchWebImageSchema), async (c) => {
+    const noteId = c.req.param('id');
+    const repo = c.get('attachments');
+    if (!(await repo.ownsNote(noteId))) return c.json({ error: 'Not found' }, 404);
+
+    const { url } = c.req.valid('json');
+    const fetched = await fetchWebImage(url, {
+      allowLoopback: c.env.ALLOW_TEST_CREDENTIALS === '1',
+    });
+    if (!fetched.ok) return c.json({ error: fetched.error }, fetched.status);
+
+    const filename = await repo.availableFilename(noteId, fetched.filename);
+    const id = crypto.randomUUID();
+    const key = repo.buildKey(noteId, id, filename);
+    const object = await c.env.BLOBS.put(key, fetched.bytes, {
+      httpMetadata: { contentType: fetched.contentType },
+    });
+    if (!object) return c.json({ error: 'Upload failed' }, 500);
+
+    const info = await repo.record({
+      id,
+      noteId,
+      filename,
+      contentType: fetched.contentType,
+      size: object.size,
+      r2Key: key,
+    });
+    return c.json({ ...info, path: `files/${filename}`, url }, 201);
   })
 
   .get('/notes/:id/files/:filename', async (c) => {

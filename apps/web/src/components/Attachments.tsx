@@ -86,7 +86,23 @@ export function Attachments({
   const [sent, setSent] = useState<ReactNode>(null);
 
   const linked = useMemo(() => attachmentFilenamesInMarkdown(body), [body]);
-  const unlinkedCount = files.filter((f) => !linked.has(f.filename)).length;
+  const unlinked = files.filter((f) => !linked.has(f.filename));
+  const unlinkedCount = unlinked.length;
+  const unlinkedBytes = unlinked.reduce((sum, f) => sum + f.size, 0);
+  /**
+   * Once a note has shown a file that is not linked, the panel stays open for the visit.
+   *
+   * Latched rather than derived, so deleting the last leftover does not collapse the
+   * panel under the pointer that just clicked in it. The red count in the summary was
+   * already the warning; this puts the files it counts on screen, since the point of the
+   * warning is that they should be looked at.
+   */
+  const [hadUnlinked, setHadUnlinked] = useState(false);
+  useEffect(() => {
+    if (unlinkedCount > 0) setHadUnlinked(true);
+  }, [unlinkedCount]);
+  /** Whether the "delete all not linked" confirmation is showing. */
+  const [cleaning, setCleaning] = useState(false);
 
   function insertLink(file: AttachmentInfo) {
     const markdown = formatAttachmentMarkdown(file.filename, `files/${file.filename}`, {
@@ -175,6 +191,28 @@ export function Attachments({
     }
   }
 
+  /**
+   * Every file the note no longer links, gone in one confirmation.
+   *
+   * What a cut, an abandoned paste, or a note converted by an assistant leaves behind,
+   * which used to be one confirmation per file. Sequential, and stopping at the first
+   * failure with the error shown: the list refetches either way, so what remains is
+   * what is still stored.
+   */
+  async function removeUnlinked() {
+    setCleaning(false);
+    setBusy('*');
+    setDeleteError(null);
+    try {
+      for (const file of unlinked) await api.deleteAttachment(noteId, file.filename);
+    } catch (err) {
+      setDeleteError((err as Error).message);
+    } finally {
+      await queryClient.invalidateQueries({ queryKey: keys.attachments(noteId) });
+      setBusy(null);
+    }
+  }
+
   async function remove(filename: string) {
     const stillLinked = linked.has(filename);
     setPending(null);
@@ -208,6 +246,7 @@ export function Attachments({
        note has files, and every row of it carries a delete. */
     <Disclosure
       className="attachments"
+      defaultOpen={hadUnlinked ? 'always' : 'never'}
       summary={
         <>
           Attachments ({files.length})
@@ -220,6 +259,44 @@ export function Attachments({
         </>
       }
     >
+      {unlinkedCount > 1 && (
+        <div className="attachments-cleanup">
+          <span className="muted small">
+            {unlinkedCount} files not linked in the note, {formatBytes(unlinkedBytes)}.
+          </span>
+          <Button
+            variant="quiet"
+            tone="danger"
+            size="small"
+            disabled={busy !== null}
+            onClick={() => {
+              setPending(null);
+              setSending(null);
+              setCleaning(true);
+            }}
+          >
+            {busy === '*' ? 'Deleting…' : `Delete ${unlinkedCount} not linked`}
+          </Button>
+          {cleaning && (
+            <Confirm
+              label="Confirm delete not linked files"
+              question={<>Permanently delete the {unlinkedCount} files not linked in this note?</>}
+              detail={`${formatBytes(unlinkedBytes)} in total. This cannot be undone.`}
+              busy={busy === '*'}
+              onCancel={() => setCleaning(false)}
+              actions={[
+                {
+                  label: `Delete ${unlinkedCount} files`,
+                  busyLabel: 'Deleting…',
+                  tone: 'danger',
+                  onConfirm: () => void removeUnlinked(),
+                },
+              ]}
+            />
+          )}
+        </div>
+      )}
+
       <ul className="attachments-list">
         {files.map((file) => {
           const isLinked = linked.has(file.filename);

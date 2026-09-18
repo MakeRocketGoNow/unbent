@@ -14,7 +14,12 @@ import { useMediaQuery, MOBILE_QUERY } from '../useMediaQuery.js';
  * breakpoint changes. Naming the policy lets this component own both. See the note on
  * `key` below for why that pairing is not optional.
  */
-export type DisclosureDefault = 'wide' | 'never';
+/**
+ * `always` opens the panel whatever the width, and re-opens it if the caller switches to
+ * it later: the attachments panel asks for it the moment a note has files that are no
+ * longer linked, which is the case worth putting on screen.
+ */
+export type DisclosureDefault = 'wide' | 'never' | 'always';
 
 export interface DisclosureProps {
   /** What the disclosure is hiding, stated. See the grammar note above. */
@@ -67,6 +72,7 @@ export function Disclosure({
 }: DisclosureProps) {
   const isMobile = useMediaQuery(MOBILE_QUERY);
   const byBreakpoint = defaultOpen === 'wide';
+  const always = defaultOpen === 'always';
 
   return (
     <details
@@ -82,10 +88,10 @@ export function Disclosure({
          had opened every time the viewport crossed the breakpoint — a rotation closing the
          attachments list out from under them.
       */
-      key={byBreakpoint ? String(isMobile) : undefined}
+      key={always ? 'always' : byBreakpoint ? String(isMobile) : undefined}
       className={className ? `disclosure ${className}` : 'disclosure'}
       /* `undefined` rather than `false`, so the attribute stays off the element entirely. */
-      open={byBreakpoint ? !isMobile : undefined}
+      open={always ? true : byBreakpoint ? !isMobile : undefined}
     >
       <summary>
         {/* The label is a separate box because that is where truncation lives: it yields, so

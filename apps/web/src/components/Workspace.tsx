@@ -1,8 +1,9 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate } from '@tanstack/react-router';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { EditorView } from '@codemirror/view';
 import type { FieldDef, FieldType, FieldValue } from '@unbent/shared';
+import { localizeImageLinks, remoteImageUrls } from '@unbent/shared';
 import * as api from '../notes-api.js';
 import { isStatus } from '../notes-api.js';
 import { buildNotePatch, rememberFieldDefs, unstoreableFieldIds } from '../note-patch.js';
@@ -414,6 +415,56 @@ export function Workspace({ noteId, readOnly = false, backTo = '/notes' }: Works
     void navigate({ to: '/notes/$noteId', params: { noteId: copy.id }, search: (p) => p });
   }
 
+  /** The addresses the draft's images are drawn from; what "Save web images" counts. */
+  const remoteImages = useMemo(() => remoteImageUrls(draft.body), [draft.body]);
+  const draftBodyRef = useRef(draft.body);
+  draftBodyRef.current = draft.body;
+  /** What the last "Save web images" is doing or did, in the head where "Saved" goes. */
+  const [webImagesStatus, setWebImagesStatus] = useState<string | null>(null);
+
+  /** One web image into the note, for the toolbar on the picture. */
+  async function saveRemoteImage(url: string): Promise<string> {
+    const saved = await api.fetchWebImage(noteId, url);
+    void queryClient.invalidateQueries({ queryKey: keys.attachments(noteId) });
+    return saved.filename;
+  }
+
+  /**
+   * Every web image in the note, in one pass.
+   *
+   * One request per address, in sequence, so a note with thirty pictures does not open
+   * thirty fetches against one site at once. The body is rewritten once at the end from
+   * the draft as it stands then, not as it stood when the pass began, so anything typed
+   * meanwhile survives; an address the site refused keeps its web link, and the count
+   * in the head says how many did.
+   */
+  async function saveWebImages() {
+    await flush();
+    const urls = remoteImageUrls(draftBodyRef.current);
+    const stored = new Map<string, string>();
+    let failed = 0;
+    for (const [i, url] of urls.entries()) {
+      setWebImagesStatus(`Saving ${i + 1} of ${urls.length}…`);
+      try {
+        stored.set(url, (await api.fetchWebImage(noteId, url)).filename);
+      } catch {
+        failed += 1;
+      }
+    }
+    if (stored.size > 0) {
+      rewriteBody(localizeImageLinks(draftBodyRef.current, (url) => stored.get(url) ?? null));
+      void queryClient.invalidateQueries({ queryKey: keys.attachments(noteId) });
+    }
+    // Short, because it sits beside the title, which a phone gives little room. A count
+    // short of the total says a fetch failed; the picture that kept its web link is the
+    // one still drawn from the web, with its save control still offered.
+    const noun = (n: number) => `${n} image${n === 1 ? '' : 's'}`;
+    setWebImagesStatus(
+      failed === 0 ? `Saved ${noun(stored.size)}` : `Saved ${stored.size} of ${noun(urls.length)}`,
+    );
+    setTimeout(() => setWebImagesStatus(null), 5000);
+  }
+
   function rewriteBody(nextBody: string) {
     setDraft((d) => ({ ...d, body: nextBody }));
     setEditorOverride(nextBody);
@@ -584,7 +635,7 @@ export function Workspace({ noteId, readOnly = false, backTo = '/notes' }: Works
 
         <div className="workspace-actions">
           <span className={saveState === 'error' ? 'bad small' : 'muted small'}>
-            {readOnly ? 'In trash' : saveLabel}
+            {readOnly ? 'In trash' : (webImagesStatus ?? saveLabel)}
           </span>
 
           {/*
@@ -610,6 +661,15 @@ export function Workspace({ noteId, readOnly = false, backTo = '/notes' }: Works
               <OverflowMenu
                 label="More actions"
                 items={[
+                  // Only when there is something to save; the count says how much.
+                  ...(remoteImages.length > 0
+                    ? [
+                        {
+                          label: `Save ${remoteImages.length} web image${remoteImages.length === 1 ? '' : 's'}`,
+                          onSelect: () => void saveWebImages(),
+                        },
+                      ]
+                    : []),
                   { label: 'Duplicate', onSelect: () => void duplicateNote() },
                   { label: 'Download', href: api.noteDownloadUrl(noteId) },
                   {
@@ -741,6 +801,15 @@ export function Workspace({ noteId, readOnly = false, backTo = '/notes' }: Works
                     // A move changed the source note's list too.
                     if (move) void queryClient.invalidateQueries({ queryKey: keys.attachments(from) });
                     return new Map(files.map((f) => [f.from, f.filename]));
+                  }
+            }
+            onSaveRemoteImage={readOnly ? undefined : saveRemoteImage}
+            onDeleteAttachment={
+              readOnly
+                ? undefined
+                : async (filename) => {
+                    await api.deleteAttachment(note.id, filename);
+                    void queryClient.invalidateQueries({ queryKey: keys.attachments(note.id) });
                   }
             }
             rich={noteView === 'rich'}

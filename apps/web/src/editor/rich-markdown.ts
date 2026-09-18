@@ -14,10 +14,17 @@ import {
   type ViewUpdate,
   WidgetType,
 } from '@codemirror/view';
-import { ATTACHMENT_PREFIX } from '@unbent/shared';
+import { ATTACHMENT_PREFIX, formatAttachmentMarkdown } from '@unbent/shared';
 import { acquirePdf, type LoadedPdf, releasePdf } from '../pdf/render.js';
-import { openAttachmentViewer, type ViewerTarget } from '../attachment-viewer.js';
-import { checkIconMarkup, copyIconMarkup, expandIconMarkup } from '../components/icons.js';
+import { downloadUrl, openAttachmentViewer, type ViewerTarget } from '../attachment-viewer.js';
+import {
+  checkIconMarkup,
+  copyIconMarkup,
+  downloadIconMarkup,
+  expandIconMarkup,
+  imageDownIconMarkup,
+  trashIconMarkup,
+} from '../components/icons.js';
 
 /**
  * Rich markdown rendering inside CodeMirror.
@@ -128,6 +135,15 @@ const revealedHeaderMark = Decoration.mark({ class: 'cm-md-mark cm-md-headmark' 
 const hiddenAlignRow = Decoration.mark({ class: 'cm-md-hidden' });
 const listBullet = Decoration.mark({ class: 'cm-md-bullet' });
 const linkLabel = Decoration.mark({ class: 'cm-md-link' });
+/**
+ * An unfocused image's alt text, kept on screen as the picture's caption.
+ *
+ * Its own class rather than the link label's: this is not a link, and it should not move
+ * if link styling ever changes. Drawn quiet — dimmed and a touch smaller — so it reads as
+ * metadata belonging to the picture below it, not as a line of body text that happens to
+ * sit above an image. See the `Image` branch for why the alt is kept at all.
+ */
+const imageAlt = Decoration.mark({ class: 'cm-md-image-alt' });
 
 /**
  * Table decorations.
@@ -347,52 +363,232 @@ function ownEvents(control: HTMLElement): void {
   });
 }
 
-/**
- * The corner control that opens an attachment in the full-screen viewer.
- *
- * A real `<button>`, for the keyboard and the screen reader, and the same glyph in the
- * same corner on an image and on a page — see `.zoom-btn` in styles.css for how it shows
- * and hides. A click on the picture or the page opens the viewer too; this is the control
- * that can be seen before it is tried, and the one a Tab can land on.
- */
-function zoomButton(target: ViewerTarget, siblings: Siblings): HTMLButtonElement {
-  const button = document.createElement('button');
-  button.type = 'button';
-  button.className = 'corner-btn zoom-btn';
-  button.setAttribute('aria-label', 'Full screen');
-  button.title = 'Full screen';
-  button.innerHTML = expandIconMarkup();
-  ownEvents(button);
-  button.addEventListener('click', (event) => {
-    event.preventDefault();
-    event.stopPropagation();
-    openAttachmentViewer(target, siblings());
-  });
-  return button;
-}
-
 /** What the copy control does; see `RichMarkdownOptions.copyAttachment`. */
 type CopyAttachment = NonNullable<RichMarkdownOptions['copyAttachment']>;
+/** What the save control does; see `RichMarkdownOptions.saveRemoteImage`. */
+type SaveRemoteImage = NonNullable<RichMarkdownOptions['saveRemoteImage']>;
+/** What the delete control does; see `RichMarkdownOptions.deleteAttachment`. */
+type DeleteAttachment = NonNullable<RichMarkdownOptions['deleteAttachment']>;
 
-/** How long the control says "Copied" before offering to copy again. */
+/** How long a control says "Copied" before offering to copy again. */
 const COPIED_FOR_MS = 1500;
 
 /**
- * The corner control that puts an attachment on the clipboard.
+ * One button in the attachment toolbar. A real `<button>`, for the keyboard and the
+ * screen reader; its events are its own, see `ownEvents`.
+ */
+function toolButton(className: string, label: string, glyph: string): HTMLButtonElement {
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = `attachment-tool ${className}`;
+  button.setAttribute('aria-label', label);
+  button.title = label;
+  button.innerHTML = glyph;
+  ownEvents(button);
+  return button;
+}
+
+/**
+ * The toolbar on an attachment: what you can do with the thing you are looking at.
  *
- * Beside the full-screen control rather than under the attachment, and for the same
- * reason that control lives in the corner: it shows on hover, so a note of photographs
- * does not become a note of buttons. The line under a PDF was the other candidate, but it
- * belongs to the pages ("+2 more pages"), exists only for a PDF with more than one, and
- * an image would have had to grow a caption to match. One cluster, one place, both kinds.
+ * One pill in the picture's corner, shown on hover, holding every action in a fixed
+ * order — full screen, download, copy, remove — rather than a disc per action: two discs
+ * were already crowding the corner, and a third would have been a row of circles. The
+ * shape is Linear's image toolbar, which people have seen. It shows on hover so a note of
+ * photographs does not become a note of buttons, and stays, quieter, where there is no
+ * pointer to hover with (`.attachment-tools` in styles.css).
+ *
+ * The same pill on an image and on a PDF page. A remote image gets less of it: no copy,
+ * because there is no stored file to name, and no download, because a browser ignores
+ * the `download` attribute across origins and would open the picture in a tab instead —
+ * see `attachment-viewer.ts` for the same reasoning.
+ *
+ * The bin deletes the file, confirmed in place: the pill itself becomes the question,
+ * "Delete file? Delete · Cancel", so the second click is where the first was. It began as
+ * "remove from note", which only cut the markdown and left the file for the Attachments
+ * panel to delete behind its own confirmation — safe, and four clicks to get rid of a
+ * picture. Every note app people know deletes on the spot; the confirmation here is the
+ * one concession, because a blob in R2 has no ⌘Z. Cutting only the markdown needs no
+ * button: select the line and press Backspace, and the file waits in the panel. A remote
+ * image has no file, so its bin removes the markdown at once, which ⌘Z undoes.
+ */
+function attachmentToolbar(
+  view: EditorView,
+  host: HTMLElement,
+  opts: {
+    target: ViewerTarget;
+    siblings: Siblings;
+    /** The stored file, or null for a remote image. */
+    stored: { filename: string; kind: 'image' | 'pdf' } | null;
+    copy?: CopyAttachment;
+    save?: SaveRemoteImage;
+    remove?: DeleteAttachment;
+    /** The syntax node the widget stands for, for the bin. */
+    source: 'Image' | 'Link';
+  },
+): HTMLElement {
+  const tools = document.createElement('span');
+  tools.className = 'attachment-tools';
+  tools.contentEditable = 'false';
+
+  const zoom = toolButton('zoom-btn', 'Full screen', expandIconMarkup());
+  zoom.addEventListener('click', (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    openAttachmentViewer(opts.target, opts.siblings());
+  });
+  tools.appendChild(zoom);
+
+  if (opts.stored) {
+    // A real link: the browser streams the file to disk itself, and Save Link As and
+    // middle-click keep working. Only the mousedown is kept from the editor.
+    const download = document.createElement('a');
+    download.className = 'attachment-tool zoom-download';
+    download.href = downloadUrl(opts.target.src);
+    download.download = opts.stored.filename;
+    download.setAttribute('aria-label', 'Download');
+    download.title = 'Download';
+    download.innerHTML = downloadIconMarkup();
+    ownEvents(download);
+    download.addEventListener('click', (event) => event.stopPropagation());
+    tools.appendChild(download);
+
+    if (opts.copy) tools.appendChild(copyButton(opts.stored.filename, opts.stored.kind, opts.copy));
+  } else if (opts.save) {
+    tools.appendChild(saveButton(view, host, opts.target.src, opts.save));
+  }
+
+  const stored = opts.stored;
+  const remove = toolButton(
+    'zoom-remove danger',
+    stored ? 'Delete file' : 'Remove from note',
+    trashIconMarkup(),
+  );
+  remove.addEventListener('click', (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    if (stored && opts.remove) {
+      askToDelete(tools, () => deleteStored(view, host, opts.source, stored.filename, opts.remove!));
+    } else {
+      removeWidgetSource(view, host, opts.source);
+    }
+  });
+  tools.appendChild(remove);
+
+  return tools;
+}
+
+/**
+ * Turns the pill into the question, and back.
+ *
+ * The buttons that were there are kept aside and put back on Cancel, on Escape, and on
+ * a press anywhere else on the page — which is how the inline `Confirm` behaves, and
+ * what a person who has changed their mind tries first. While asking, the pill stays
+ * visible whether or not the pointer is still over the picture (`.confirming`), since a
+ * question that vanished when the mouse drifted would be a question nobody could answer.
+ */
+function askToDelete(tools: HTMLElement, onConfirm: () => Promise<void>): void {
+  const kept = [...tools.childNodes];
+  tools.replaceChildren();
+  tools.classList.add('confirming');
+
+  const question = document.createElement('span');
+  question.className = 'attachment-tools-question';
+  question.textContent = 'Delete file?';
+
+  const yes = document.createElement('button');
+  yes.type = 'button';
+  yes.className = 'attachment-tool-confirm danger';
+  yes.textContent = 'Delete';
+  const no = document.createElement('button');
+  no.type = 'button';
+  no.className = 'attachment-tool-confirm';
+  no.textContent = 'Cancel';
+  for (const el of [question, yes, no]) ownEvents(el);
+
+  const restore = () => {
+    document.removeEventListener('pointerdown', outside, true);
+    tools.classList.remove('confirming');
+    tools.replaceChildren(...kept);
+  };
+  const outside = (event: PointerEvent) => {
+    if (!tools.contains(event.target as Node)) restore();
+  };
+  document.addEventListener('pointerdown', outside, true);
+
+  tools.addEventListener(
+    'keydown',
+    (event) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        event.stopPropagation();
+        restore();
+      }
+    },
+    { once: true },
+  );
+  no.addEventListener('click', (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    restore();
+  });
+  yes.addEventListener('click', (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    yes.disabled = true;
+    no.disabled = true;
+    yes.textContent = 'Deleting…';
+    onConfirm().then(
+      () => {
+        // The widget is gone with its markdown; nothing to restore into.
+        document.removeEventListener('pointerdown', outside, true);
+      },
+      () => {
+        restore();
+        const bin = kept.find((n) => (n as HTMLElement).classList?.contains('zoom-remove')) as
+          | HTMLButtonElement
+          | undefined;
+        if (bin) {
+          bin.setAttribute('aria-label', 'Couldn’t delete');
+          bin.title = 'Couldn’t delete';
+          setTimeout(() => {
+            bin.setAttribute('aria-label', 'Delete file');
+            bin.title = 'Delete file';
+          }, COPIED_FOR_MS);
+        }
+      },
+    );
+  });
+
+  for (const el of [question, yes, no]) tools.appendChild(el);
+  yes.focus();
+}
+
+/**
+ * The file first, then the markdown. A delete the server refused leaves the picture and
+ * its link exactly as they were, which is the truth; the other order would leave a link
+ * to a file that is still there but no longer drawn.
+ */
+async function deleteStored(
+  view: EditorView,
+  host: HTMLElement,
+  source: 'Image' | 'Link',
+  filename: string,
+  remove: DeleteAttachment,
+): Promise<void> {
+  await remove(filename);
+  removeWidgetSource(view, host, source);
+}
+
+/**
+ * The control that puts a stored file on the clipboard.
  *
  * A clipboard write has nothing to show for itself, so the glyph becomes a tick for a
  * moment and the label says so — the same feedback the Attachments panel's Copy gives.
  */
 function copyButton(filename: string, kind: 'image' | 'pdf', copy: CopyAttachment): HTMLButtonElement {
-  const button = document.createElement('button');
-  button.type = 'button';
-  button.className = 'corner-btn zoom-copy';
+  const button = toolButton('zoom-copy', 'Copy', copyIconMarkup());
+  button.title = 'Copy, to paste into another note';
   const idle = () => {
     button.innerHTML = copyIconMarkup();
     button.setAttribute('aria-label', 'Copy');
@@ -403,8 +599,6 @@ function copyButton(filename: string, kind: 'image' | 'pdf', copy: CopyAttachmen
     button.setAttribute('aria-label', label);
     button.title = label;
   };
-  idle();
-  ownEvents(button);
   let timer: ReturnType<typeof setTimeout> | null = null;
   button.addEventListener('click', (event) => {
     event.preventDefault();
@@ -417,6 +611,111 @@ function copyButton(filename: string, kind: 'image' | 'pdf', copy: CopyAttachmen
     timer = setTimeout(idle, COPIED_FOR_MS);
   });
   return button;
+}
+
+/**
+ * The control that brings a web image into the note as a stored file.
+ *
+ * In the slot copy and download would take on a stored image: the one thing to do with
+ * a remote picture is to stop it being remote. The fetch happens on the server — the
+ * browser cannot read a cross-origin image — and on success the markdown under the
+ * picture is rewritten in place to `files/<name>`, at which point the widget is rebuilt
+ * as a stored image with the full toolbar. A fetch the site refused leaves the address
+ * as it was and says so for a moment.
+ */
+function saveButton(
+  view: EditorView,
+  host: HTMLElement,
+  url: string,
+  save: SaveRemoteImage,
+): HTMLButtonElement {
+  const button = toolButton('zoom-save', 'Save to note', imageDownIconMarkup());
+  let busy = false;
+  button.addEventListener('click', (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    if (busy) return;
+    busy = true;
+    button.setAttribute('aria-label', 'Saving…');
+    button.title = 'Saving…';
+    save(url).then(
+      (filename) => {
+        const node = findWidgetNode(view, host, 'Image');
+        if (!node) return;
+        const text = view.state.doc.sliceString(node.from, node.to);
+        const alt = /^!\[([^\]]*)\]/.exec(text)?.[1] ?? '';
+        view.dispatch({
+          changes: {
+            from: node.from,
+            to: node.to,
+            insert: formatAttachmentMarkdown(alt, `${ATTACHMENT_PREFIX}${filename}`, { image: true }),
+          },
+        });
+      },
+      () => {
+        busy = false;
+        button.setAttribute('aria-label', 'Couldn’t save');
+        button.title = 'Couldn’t save';
+        setTimeout(() => {
+          button.setAttribute('aria-label', 'Save to note');
+          button.title = 'Save to note';
+        }, COPIED_FOR_MS);
+      },
+    );
+  });
+  return button;
+}
+
+/**
+ * The syntax node a widget stands for, found from the DOM at click time.
+ *
+ * Not remembered from the build: the widget is reused across edits (`eq`), so any offset
+ * it kept would be stale. The widget sits at one end of its node — an image replaces it,
+ * or follows it while the line is revealed; a PDF page always follows its link — so the
+ * node is looked for on both sides.
+ */
+function findWidgetNode(view: EditorView, host: HTMLElement, source: 'Image' | 'Link') {
+  const pos = view.posAtDOM(host);
+  const tree = syntaxTree(view.state);
+  const find = (side: -1 | 1) => {
+    let node: ReturnType<typeof tree.resolveInner> | null = tree.resolveInner(pos, side);
+    while (node && node.name !== source) node = node.parent;
+    return node;
+  };
+  return find(1) ?? find(-1);
+}
+
+/**
+ * Deletes the markdown a widget stands for: the `![alt](url)` an image replaces, or the
+ * `[label](files/x.pdf)` a PDF page hangs under.
+ *
+ * A line left holding only whitespace goes too, and one of the blank lines around it,
+ * or every removed picture would leave a double gap in the paragraph rhythm.
+ */
+function removeWidgetSource(view: EditorView, host: HTMLElement, source: 'Image' | 'Link'): void {
+  const node = findWidgetNode(view, host, source);
+  if (!node) return;
+
+  const doc = view.state.doc;
+  const line = doc.lineAt(node.from);
+  const rest = line.text.slice(0, node.from - line.from) + line.text.slice(node.to - line.from);
+  if (rest.trim() !== '') {
+    view.dispatch({ changes: { from: node.from, to: node.to }, userEvent: 'delete' });
+    return;
+  }
+
+  let from = line.from;
+  let to = line.to;
+  if (to < doc.length) {
+    to += 1; // the line's own break
+    // Blank on both sides (or at the top): keep one blank line, not two.
+    const blankBefore = from === 0 || doc.sliceString(from - 2, from) === '\n\n';
+    if (blankBefore && doc.sliceString(to, to + 1) === '\n') to += 1;
+  } else if (from > 0) {
+    from -= 1; // the break before the last line
+    if (from > 0 && doc.sliceString(from - 1, from) === '\n') from -= 1;
+  }
+  view.dispatch({ changes: { from, to }, userEvent: 'delete' });
 }
 
 /**
@@ -445,6 +744,8 @@ class ImageWidget extends WidgetType {
     /** The stored name, for the copy control; null for a remote image, which has none. */
     private readonly filename: string | null = null,
     private readonly copy?: CopyAttachment,
+    private readonly save?: SaveRemoteImage,
+    private readonly remove?: DeleteAttachment,
   ) {
     super();
   }
@@ -499,17 +800,24 @@ class ImageWidget extends WidgetType {
     });
 
     frame.appendChild(img);
-    if (this.filename !== null && this.copy) {
-      frame.appendChild(copyButton(this.filename, 'image', this.copy));
-    }
-    frame.appendChild(zoomButton(target, this.siblings));
+    frame.appendChild(
+      attachmentToolbar(view, wrap, {
+        target,
+        siblings: this.siblings,
+        stored: this.filename === null ? null : { filename: this.filename, kind: 'image' },
+        copy: this.copy,
+        save: this.save,
+        remove: this.remove,
+        source: 'Image',
+      }),
+    );
     return wrap;
   }
 
   /**
    * Clicks belong to the editor, not the widget.
    *
-   * The picture and the corner button stop their own events above; what is left is the
+   * The picture and the toolbar stop their own events above; what is left is the
    * space around them on the line, which should behave like the rest of the note.
    */
   override ignoreEvent(): boolean {
@@ -568,6 +876,7 @@ class PdfWidget extends WidgetType {
     private readonly siblings: Siblings,
     private readonly filename: string = '',
     private readonly copy?: CopyAttachment,
+    private readonly remove?: DeleteAttachment,
   ) {
     super();
   }
@@ -613,7 +922,7 @@ class PdfWidget extends WidgetType {
     return canvas;
   }
 
-  toDOM(): HTMLElement {
+  toDOM(view: EditorView): HTMLElement {
     const wrap = document.createElement('span');
     wrap.className = 'cm-md-pdf';
 
@@ -639,8 +948,16 @@ class PdfWidget extends WidgetType {
         status.remove();
         // On the first page's corner, after it has drawn: a control on a blank page
         // would promise a view of nothing. The same viewer the preview pane opens.
-        if (this.copy) pages.appendChild(copyButton(this.filename, 'pdf', this.copy));
-        pages.appendChild(zoomButton(this.viewerTarget(), this.siblings));
+        pages.appendChild(
+          attachmentToolbar(view, wrap, {
+            target: this.viewerTarget(),
+            siblings: this.siblings,
+            stored: { filename: this.filename, kind: 'pdf' },
+            copy: this.copy,
+            remove: this.remove,
+            source: 'Link',
+          }),
+        );
         if (doc.pageCount > 1) this.addMore(wrap, pages, doc);
       })
       .catch(() => {
@@ -741,7 +1058,7 @@ class PdfWidget extends WidgetType {
   /**
    * Clicks belong to the editor, not the widget.
    *
-   * The one exception is the expand button, which stops its own events above; everything
+   * The exceptions are the expand button and the toolbar, which stop their own events; everything
    * else here is a rendered page that should behave like the rest of the note.
    */
   override ignoreEvent(): boolean {
@@ -928,6 +1245,17 @@ export interface RichMarkdownOptions {
    * and what kind of thing it is drawing. Absent, the control is not drawn.
    */
   copyAttachment?: (filename: string, kind: 'image' | 'pdf') => Promise<void>;
+  /**
+   * Fetches a web image into the note as a stored file, resolving to its filename, for
+   * the save control on a remote image. Absent, the control is not drawn.
+   */
+  saveRemoteImage?: (url: string) => Promise<string>;
+  /**
+   * Permanently deletes a stored file, for the bin on an image or a PDF. The widget
+   * removes the markdown itself once this resolves. Absent, the bin only removes the
+   * markdown, as it does for a remote image.
+   */
+  deleteAttachment?: (filename: string) => Promise<void>;
 }
 
 /**
@@ -1111,38 +1439,66 @@ function buildDecorations(view: EditorView, options: RichMarkdownOptions): Decor
             siblings,
             stored,
             options.copyAttachment,
+            options.saveRemoteImage,
+            options.deleteAttachment,
           );
 
           /**
            * The image stands in for its source while the cursor is elsewhere.
            *
            * Same reveal rule as a link: the cursor on the line brings `![alt](url)` back to
-           * be edited, and anywhere else the picture is the whole of what a reader sees —
-           * the source is a filename repeated above its own image, which is noise in the
-           * one mode meant for reading. Unlike a link there is no label to keep, because
-           * the image is the label.
+           * be edited, and anywhere else the picture is what a reader sees. But the alt text
+           * is kept on screen the way a link keeps its label — hidden entirely, the image is
+           * an object with no text beside it, and there is nowhere to click to put a cursor
+           * before typing a caption or editing the alt. Showing it gives the reader that
+           * seam and names the picture. It is drawn in its own quiet caption style
+           * (`cm-md-image-alt`) rather than as plain text, so it reads as metadata belonging
+           * to the picture below it, not as a line of body copy above an image.
            *
-           * Replaced, not hidden at zero size like every other mark here, because of how
-           * the caret travels. Moving down, CodeMirror probes a little below the caret and
-           * asks the line it lands in for the coordinates of its last position; if the
-           * probe is below those, it decides it hit the line's padding and skips on. Hidden
-           * text is a zero-height point at the top of its line, and on a line collapsed
-           * around a picture — see below — the probe is always below it, so the caret
-           * stepped straight over the image from above while reaching it from below. A
-           * replacing widget answers that question with the picture's own rectangle, in
-           * both directions. The source is still in the document: the caret lands on
-           * either side of the picture, that touches the line, and the next build puts
-           * the text back with the picture after it.
-           *
-           * The line has to give up its text height too: even with nothing but a widget
-           * in it, the buffers CodeMirror places around an inline widget keep the strut of
-           * an ordinary text line, and the image would sit under a blank one. When the
-           * image is all the line holds, the line collapses that height — the same trick
-           * as a code fence row. A line mixing text and an image keeps its height for the
-           * text.
+           * The syntax around the alt hides at zero size like every other mark, and the
+           * picture is appended after it as an inline widget — the same shape as the focused
+           * branch below, minus the raw `![` / `](url)`, and in source order so the caption
+           * sits before its picture. The line keeps its text height for the alt, so none of
+           * the caret-traversal trouble of a collapsed image-only line (see the empty-alt
+           * branch) applies here.
            */
           const scope = revealScope(state, node.node);
           if (!selectionTouches(state, scope.from, scope.to)) {
+            const alt = match[1] ?? '';
+            if (alt) {
+              // `![` before the alt, `](url)` after it — hidden, with the alt itself drawn
+              // as a caption and the picture appended after the whole node.
+              const altStart = node.from + 2;
+              const altEnd = altStart + alt.length;
+              marks.push(hiddenMark.range(node.from, altStart));
+              marks.push(imageAlt.range(altStart, altEnd));
+              marks.push(hiddenMark.range(altEnd, node.to));
+              marks.push(Decoration.widget({ widget, side: 1 }).range(node.to));
+              return;
+            }
+
+            /**
+             * No alt to keep: replace the whole `![](url)` with the picture.
+             *
+             * Replaced, not hidden at zero size like every other mark here, because of how
+             * the caret travels. Moving down, CodeMirror probes a little below the caret and
+             * asks the line it lands in for the coordinates of its last position; if the
+             * probe is below those, it decides it hit the line's padding and skips on. Hidden
+             * text is a zero-height point at the top of its line, and on a line collapsed
+             * around a picture — see below — the probe is always below it, so the caret
+             * stepped straight over the image from above while reaching it from below. A
+             * replacing widget answers that question with the picture's own rectangle, in
+             * both directions. The source is still in the document: the caret lands on
+             * either side of the picture, that touches the line, and the next build puts
+             * the text back with the picture after it.
+             *
+             * The line has to give up its text height too: even with nothing but a widget
+             * in it, the buffers CodeMirror places around an inline widget keep the strut of
+             * an ordinary text line, and the image would sit under a blank one. When the
+             * image is all the line holds, the line collapses that height — the same trick
+             * as a code fence row. A line mixing text and an image keeps its height for the
+             * text.
+             */
             marks.push(Decoration.replace({ widget }).range(node.from, node.to));
             const line = state.doc.lineAt(node.from);
             if (line.text.trim() === text) marks.push(imageOnlyLine.range(line.from));
@@ -1263,7 +1619,13 @@ function buildDecorations(view: EditorView, options: RichMarkdownOptions): Decor
 
           marks.push(
             Decoration.widget({
-              widget: new PdfWidget(resolve(filename), siblings, decoded, options.copyAttachment),
+              widget: new PdfWidget(
+                resolve(filename),
+                siblings,
+                decoded,
+                options.copyAttachment,
+                options.deleteAttachment,
+              ),
               side: 1,
             }).range(node.to),
           );
@@ -1567,6 +1929,19 @@ export function richMarkdown(options: RichMarkdownOptions = {}): Extension {
         textDecoration: 'underline',
         textUnderlineOffset: '0.15em',
         cursor: 'pointer',
+      },
+      /**
+       * An unfocused image's alt, kept as a caption — see `imageAlt`.
+       *
+       * Quiet on purpose: dimmed by opacity so it reads the same against either theme (the
+       * same reasoning as `.cm-md-mark`), a touch smaller, and italic so it reads as a
+       * caption for the picture rather than as body text. No underline or accent — it is not
+       * a link, and it must not be mistaken for one.
+       */
+      '.cm-md-image-alt': {
+        opacity: '0.6',
+        fontSize: '0.9em',
+        fontStyle: 'italic',
       },
       '.cm-md-punct': { opacity: '0.35' },
       /**
