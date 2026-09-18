@@ -57,17 +57,20 @@ describe('Confirm', () => {
       />,
     );
 
-    // The safe outcome is the filled one; the cascade is still a button — quiet, and on its
-    // own line below. Asserted by variant class rather than the whole className, so adding
-    // a layout class to either one is not a test failure.
+    // The safe outcome is the filled one; the cascade is demoted to an outlined danger
+    // button — bordered and the same height, quieter than the fill it must not be mistaken
+    // for — dropped onto its own line by its wrapper. Asserted by variant class rather than
+    // the whole className, so adding a layout class to either one is not a test failure.
     const safe = screen.getByRole('button', { name: 'Delete notebook' });
     expect(safe.classList.contains('btn-primary')).toBe(true);
     const cascade = screen.getByRole('button', {
       name: 'Delete notebook and move 47 notes to Trash',
     });
-    expect(cascade.classList.contains('confirm-secondary')).toBe(true);
+    expect(cascade.classList.contains('btn-secondary')).toBe(true);
+    expect(cascade.classList.contains('btn-danger')).toBe(true);
     expect(cascade.classList.contains('btn-primary')).toBe(false);
-    expect(cascade.classList.contains('btn-quiet')).toBe(true);
+    // Its own line is the wrapper's job, not a full-width button that spans the panel.
+    expect(cascade.parentElement?.classList.contains('confirm-action-own-line')).toBe(true);
   });
 
   it('fills a lone destructive action, since destroying is the point', () => {
