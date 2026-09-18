@@ -198,10 +198,14 @@ export function NotebookFields({ notebookId, onChanged }: NotebookFieldsProps) {
 
   function confirmType() {
     if (!pendingType) return;
-    const { field, to, scale } = pendingType;
+    const pending = pendingType;
+    const { field, to, scale } = pending;
     void run(async () => {
       await api.updateNotebookField(notebookId, field.id, {
-        type: to,
+        // A scale tighten is not a type change, and `changeScale` writes it without a
+        // `type`. Sending one here anyway is a no-op server-side, but it would make the
+        // two paths for one intent send different bodies.
+        ...(scaleOnlyConfirm(pending) ? {} : { type: to }),
         ...(scale !== undefined ? { scale } : {}),
       });
       setPendingType(null);

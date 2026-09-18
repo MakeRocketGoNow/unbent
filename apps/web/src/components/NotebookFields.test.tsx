@@ -162,7 +162,9 @@ describe('NotebookFields', () => {
 
     fireEvent.click(screen.getByText('Change and clear 2 values'));
     await waitFor(() =>
-      expect(api.updateNotebookField).toHaveBeenCalledWith('nb1', 'f4', { type: 'number', scale: { max: 5, step: 0.5 } }),
+      // A tighten writes the scale alone, the same body `changeScale` sends when nothing
+      // needs confirming — one intent, one shape.
+      expect(api.updateNotebookField).toHaveBeenCalledWith('nb1', 'f4', { scale: { max: 5, step: 0.5 } }),
     );
   });
 
@@ -185,6 +187,32 @@ describe('NotebookFields', () => {
     fireEvent.click(screen.getByRole('checkbox'));
     expect(await screen.findByText((_, node) => node?.textContent === 'Drop half steps on Stars?')).toBeTruthy();
     expect(api.updateNotebookField).not.toHaveBeenCalled();
+  });
+
+  /*
+     A plain number gaining a scale is a type change in the picker's terms, not a tighten:
+     `field.scale` is null, so the confirm keeps sending `type` and the field is written as
+     a rating rather than just re-scaled.
+  */
+  it('still sends the type when a plain number becomes a rating', async () => {
+    const plain: FieldDef = { ...rating, scale: null };
+    vi.mocked(api.previewFieldConversion).mockResolvedValue({ values: 4, incompatible: 1 });
+    vi.mocked(api.updateNotebookField).mockResolvedValue({
+      field: { ...plain, scale: { max: 5, step: 0.5 } },
+      cleared: 1,
+    });
+    mount([plain]);
+    await screen.findByText('Stars');
+    fireEvent.change(screen.getByLabelText('Type of Stars'), { target: { value: 'rating' } });
+
+    await screen.findByText((_, node) => node?.textContent === 'Change Stars to Rating?');
+    fireEvent.click(screen.getByText('Change and clear 1 value'));
+    await waitFor(() =>
+      expect(api.updateNotebookField).toHaveBeenCalledWith('nb1', 'f4', {
+        type: 'number',
+        scale: { max: 5, step: 0.5 },
+      }),
+    );
   });
 
   /*
