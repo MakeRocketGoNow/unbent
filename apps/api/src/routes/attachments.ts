@@ -1,13 +1,16 @@
 import { Hono } from 'hono';
+import { zValidator } from '@hono/zod-validator';
 import {
   FALLBACK_CONTENT_TYPE,
   MAX_ATTACHMENT_BYTES,
+  copyAttachmentsSchema,
   filenameSchema,
   formatAttachmentMarkdown,
   normalizeContentType,
   serveContentType,
   serveDisposition,
 } from '@unbent/shared';
+import { copyAttachments } from '../lib/copy-attachments.js';
 import { canExtractOnServer, extractOnServer } from '../lib/extract-text.js';
 import { requireAuth } from '../lib/session.js';
 import { withRepos } from '../lib/repos-middleware.js';
@@ -151,6 +154,36 @@ export const attachments = new Hono<AppEnv>()
 
     // The relative path the editor inserts into the markdown.
     return c.json({ ...info, path, indexing }, 201);
+  })
+
+  /**
+   * Copies files from another of the user's notes into this one.
+   *
+   * What a paste across notes calls, and what the Attachments panel's copy-to and move-to
+   * call. The editor could have downloaded the bytes and re-uploaded them, but a scan is
+   * tens of megabytes and the phone's radio is slow; a copy between two keys in R2 is one
+   * request and no bytes through the client. Both notes must be this user's and live —
+   * the source check is inside `copyAttachments`, through the same scoped resolve the
+   * download uses, so a note id from another account reads as missing.
+   *
+   * Under `/files/copy` rather than a verb on the source: the destination is what changes,
+   * and the panel reads its own note's list after this, so the URL names that note.
+   */
+  .post('/notes/:id/files/copy', zValidator('json', copyAttachmentsSchema), async (c) => {
+    const to = c.req.param('id');
+    const { from, filenames, move } = c.req.valid('json');
+    const attachments = c.get('attachments');
+
+    if (!(await attachments.ownsNote(to))) return c.json({ error: 'Not found' }, 404);
+    if (from === to) return c.json({ error: 'Source and destination are the same note' }, 400);
+    if (!(await attachments.ownsNote(from))) return c.json({ error: 'Source note not found' }, 404);
+
+    const result = await copyAttachments(
+      c.env.BLOBS,
+      { attachments, notes: c.get('notes') },
+      { from, to, filenames, move },
+    );
+    return c.json(result);
   })
 
   .get('/notes/:id/files/:filename', async (c) => {

@@ -225,6 +225,21 @@ export interface AppConfig {
 
 export const noteIdSchema = z.string().uuid();
 
+/**
+ * Files to copy into a note from another note of the same user's.
+ *
+ * `from` is not `noteIdSchema`: imported notes keep the ids their export carried, which
+ * need not be UUIDs, and ownership is what the repo checks anyway. `move` deletes each
+ * source file once it is copied — but only one the source body no longer links, so a
+ * paste after a cut that has not yet saved falls back to a copy rather than taking a file
+ * the source still shows.
+ */
+export const copyAttachmentsSchema = z.object({
+  from: z.string().min(1).max(128),
+  filenames: z.array(filenameSchema).min(1).max(200),
+  move: z.boolean().default(false),
+});
+
 export const createNoteSchema = z.object({
   title: z.string().max(MAX_TITLE_LENGTH).default(''),
   body: z.string().max(MAX_BODY_BYTES).default(''),

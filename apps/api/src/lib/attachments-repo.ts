@@ -154,6 +154,29 @@ export class AttachmentsRepo extends ScopedRepo {
   }
 
   /**
+   * Carries one attachment's extracted text over to a copy of it.
+   *
+   * The copy is a new row with a new id, and `attachment_text` is keyed on that id, so
+   * without this a copied PDF would drop out of search until a backfill pass re-read it —
+   * on the client, from the bytes, for a result the source row already holds. A source
+   * with no text yet leaves the copy without one too, and the backfill finds it there.
+   */
+  async copyText(
+    fromAttachmentId: string,
+    to: { attachmentId: string; noteId: string; filename: string },
+  ): Promise<void> {
+    await this.db
+      .prepare(
+        `INSERT INTO attachment_text (attachment_id, note_id, user_id, filename, text, created_at)
+         SELECT ?1, ?2, user_id, ?3, text, ?4
+           FROM attachment_text
+          WHERE attachment_id = ?5 AND user_id = ?6`,
+      )
+      .bind(to.attachmentId, to.noteId, to.filename, Date.now(), fromAttachmentId, this.userId)
+      .run();
+  }
+
+  /**
    * Attachments that could carry searchable text but have none stored yet.
    *
    * Drives backfill for notes imported before extraction existed, and for any upload where

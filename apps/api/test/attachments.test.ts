@@ -359,6 +359,136 @@ describe('linking an upload into the body', () => {
   });
 });
 
+/**
+ * Copying files between notes: the server-side half of a paste across notes and of the
+ * panel's copy-to and move-to. What matters is that a copy is a new row and a new object
+ * (deleting the source afterwards must not touch it), that a name already taken in the
+ * destination is suffixed rather than overwritten, and that a move never takes a file the
+ * source body still links.
+ */
+describe('copying between notes', () => {
+  let source: { id: string };
+  let target: { id: string };
+
+  async function copy(
+    actor: Actor,
+    to: string,
+    body: { from: string; filenames: string[]; move?: boolean },
+  ): Promise<Response> {
+    return fetch(`${BASE}/api/notes/${to}/files/copy`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Cookie: actor.cookie, Origin: ORIGIN },
+      body: JSON.stringify(body),
+    });
+  }
+
+  async function serve(actor: Actor, noteId: string, filename: string): Promise<Response> {
+    return fetch(`${BASE}/api/notes/${noteId}/files/${encodeURIComponent(filename)}`, {
+      headers: { Cookie: actor.cookie, Origin: ORIGIN },
+    });
+  }
+
+  async function setBody(actor: Actor, noteId: string, body: string): Promise<void> {
+    const res = await fetch(`${BASE}/api/notes/${noteId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', Cookie: actor.cookie, Origin: ORIGIN },
+      body: JSON.stringify({ body }),
+    });
+    if (!res.ok) throw new Error(`patch failed: ${res.status}`);
+  }
+
+  beforeAll(async () => {
+    source = await createNote(alice, 'Copy source');
+    target = await createNote(alice, 'Copy target');
+    await upload(alice, source.id, 'doc.txt', 'doc contents');
+    await upload(alice, source.id, 'pic.png', new Uint8Array([1, 2, 3]), 'image/png');
+  }, 30_000);
+
+  it('copies the bytes and the type, and names what it could not find', async () => {
+    const res = await copy(alice, target.id, {
+      from: source.id,
+      filenames: ['doc.txt', 'pic.png', 'nope.txt'],
+    });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.files).toEqual([
+      expect.objectContaining({ from: 'doc.txt', filename: 'doc.txt', path: 'files/doc.txt', moved: false }),
+      expect.objectContaining({ from: 'pic.png', filename: 'pic.png', contentType: 'image/png', size: 3 }),
+    ]);
+    expect(body.missing).toEqual(['nope.txt']);
+
+    const copied = await serve(alice, target.id, 'doc.txt');
+    expect(copied.status).toBe(200);
+    expect(await copied.text()).toBe('doc contents');
+    // A copy, not a move: the source still serves it.
+    expect((await serve(alice, source.id, 'doc.txt')).status).toBe(200);
+  });
+
+  it('suffixes a name the destination already holds and reports the new one', async () => {
+    const body = await (await copy(alice, target.id, { from: source.id, filenames: ['doc.txt'] })).json();
+    expect(body.files[0]).toEqual(
+      expect.objectContaining({ from: 'doc.txt', filename: 'doc-2.txt', path: 'files/doc-2.txt' }),
+    );
+    expect(await (await serve(alice, target.id, 'doc-2.txt')).text()).toBe('doc contents');
+  });
+
+  /**
+   * Deleting the copy's source must leave the copy readable. This is the invariant the
+   * whole endpoint exists to keep — R2 keys embed the note id and every delete path assumes
+   * one object per row — so it is asserted directly rather than trusted.
+   */
+  it('gives the copy its own object, so deleting the source leaves it intact', async () => {
+    await fetch(`${BASE}/api/notes/${source.id}/files/pic.png`, {
+      method: 'DELETE',
+      headers: { Cookie: alice.cookie, Origin: ORIGIN },
+    });
+    expect((await serve(alice, source.id, 'pic.png')).status).toBe(404);
+    const copied = await serve(alice, target.id, 'pic.png');
+    expect(copied.status).toBe(200);
+    expect(new Uint8Array(await copied.arrayBuffer())).toEqual(new Uint8Array([1, 2, 3]));
+  });
+
+  it('will not move a file the source body still links', async () => {
+    await upload(alice, source.id, 'linked.txt', 'still here', 'text/plain', { link: true });
+    const body = await (await copy(alice, target.id, {
+      from: source.id,
+      filenames: ['linked.txt'],
+      move: true,
+    })).json();
+    expect(body.files[0]).toEqual(expect.objectContaining({ filename: 'linked.txt', moved: false }));
+    expect((await serve(alice, source.id, 'linked.txt')).status).toBe(200);
+    expect((await serve(alice, target.id, 'linked.txt')).status).toBe(200);
+  });
+
+  it('moves a file once the source body no longer links it', async () => {
+    await setBody(alice, source.id, 'the link is gone');
+    const body = await (await copy(alice, target.id, {
+      from: source.id,
+      filenames: ['linked.txt'],
+      move: true,
+    })).json();
+    expect(body.files[0]).toEqual(
+      expect.objectContaining({ from: 'linked.txt', filename: 'linked-2.txt', moved: true }),
+    );
+    expect((await serve(alice, source.id, 'linked.txt')).status).toBe(404);
+    expect(await (await serve(alice, target.id, 'linked-2.txt')).text()).toBe('still here');
+  });
+
+  it('refuses a note as its own source', async () => {
+    const res = await copy(alice, target.id, { from: target.id, filenames: ['doc.txt'] });
+    expect(res.status).toBe(400);
+  });
+
+  it('cannot reach another user notes as a source or a destination', async () => {
+    const bobNote = await createNote(bob, 'Bob target');
+    const asSource = await copy(bob, bobNote.id, { from: source.id, filenames: ['doc.txt'] });
+    expect(asSource.status).toBe(404);
+    const asTarget = await copy(bob, target.id, { from: bobNote.id, filenames: ['doc.txt'] });
+    expect(asTarget.status).toBe(404);
+    expect((await serve(alice, target.id, 'doc.txt')).status).toBe(200);
+  });
+});
+
 describe('filename validation', () => {
   const bad = [
     '../../../etc/passwd',
