@@ -25,7 +25,7 @@ function initialProgress(): ImportProgress {
     filesUploaded: 0,
     filesIndexed: 0,
     bytesRead: 0,
-    bytesTotal: 0,
+    notesTotal: 0,
     currentTitle: 'Starting import…',
   };
 }

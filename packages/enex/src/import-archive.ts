@@ -77,35 +77,7 @@ export async function importArchive(
   return run.finish();
 }
 
-/**
- * One note, with its whole footprint counted as read however it turns out.
- *
- * The counting inside `importNote` is what moves the bar during a 90MB attachment, so it
- * stays; this only fills the gap it leaves behind. Two paths leave one: a note the server
- * already had, whose existing files are never opened, and a note that failed, which stops
- * wherever it stopped. Both used to strand their bytes for the rest of the run, so
- * re-importing a library — where every note is a skip — crawled the bar across a file it
- * had in fact finished reading. Taking the high-water mark rather than adding to it keeps
- * what was counted inside from being counted twice.
- */
 async function importOne(
-  source: NoteSource,
-  client: ImportClient,
-  run: ImportRun,
-  sourceFile: string,
-  options: ImportOptions,
-): Promise<void> {
-  const { progress } = run;
-  const before = progress.bytesRead;
-  const footprint = source.files.reduce((n, f) => n + f.size, source.size);
-  try {
-    await importNote(source, client, run, sourceFile, options);
-  } finally {
-    progress.bytesRead = Math.max(progress.bytesRead, before + footprint);
-  }
-}
-
-async function importNote(
   source: NoteSource,
   client: ImportClient,
   run: ImportRun,
@@ -203,7 +175,7 @@ async function* noteSources(
   progress: ImportProgress,
 ): AsyncGenerator<NoteSource> {
   if (importFormat(file.name) === 'markdown') {
-    progress.bytesTotal = file.blob.size;
+    progress.notesTotal = 1;
     yield {
       path: file.name,
       size: file.blob.size,
@@ -217,31 +189,15 @@ async function* noteSources(
   // otherwise need its inflate worker's URL resolved by the bundler that built this one.
   const reader = new ZipReader(new BlobReader(file.blob), { useWebWorkers: false });
   try {
-    const entries = await reader.getEntries();
+    const groups = groupEntries(await reader.getEntries(), progress);
 
-    /*
-       The bar divides by the bytes the entries hold, not by the size of the zip.
+    // The note count is known now, before the first note is touched — every group that
+    // holds a markdown file is one note. This is what the bar divides by, so it measures
+    // notes done rather than bytes read. Set once, not per note, or the bar's denominator
+    // would grow as the run went and it could never reach the end.
+    progress.notesTotal = groups.reduce((n, group) => n + group.notes.length, 0);
 
-       They are not the same number, and for this app's own export they are not close.
-       Every entry costs a local header, a data descriptor and a central-directory record,
-       each carrying the full path — and an export's paths are long, because a note's
-       directory and its markdown are both named for the note. The markdown itself deflates
-       to about a fifth of what it was. So in a library of text notes well over half the
-       file is structure that is never read as content, and dividing by the file's size
-       left a complete import of 73 such notes sitting under 40%, looking like a run that
-       had stalled with most of the file still to go. An export of scans hid it:
-       attachments are stored uncompressed and dwarf the headers, so there the same
-       arithmetic came out about right, as it does for an ENEX.
-
-       Read from the central directory, which `getEntries` has already parsed, so this
-       costs nothing and is exact rather than an estimate.
-    */
-    progress.bytesTotal = entries.reduce(
-      (n, entry) => (entry.directory ? n : n + entry.compressedSize),
-      0,
-    );
-
-    for (const group of groupEntries(entries, progress)) {
+    for (const group of groups) {
       for (const entry of group.notes) {
         yield {
           path: entry.filename,

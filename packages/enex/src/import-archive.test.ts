@@ -1,11 +1,4 @@
-import {
-  BlobReader,
-  BlobWriter,
-  TextReader,
-  Uint8ArrayReader,
-  ZipReader,
-  ZipWriter,
-} from '@zip.js/zip.js';
+import { BlobWriter, TextReader, Uint8ArrayReader, ZipWriter } from '@zip.js/zip.js';
 import { serialize } from '@unbent/shared';
 import { describe, expect, it, vi } from 'vitest';
 import { importArchive } from './import-archive.js';
@@ -461,23 +454,12 @@ describe('failures', () => {
   });
 });
 
-describe('what the progress bar divides by', () => {
-  /** The bytes an archive's entries actually hold, which is what a run counts as read. */
-  async function entryBytes(blob: Blob): Promise<number> {
-    const reader = new ZipReader(new BlobReader(blob), { useWebWorkers: false });
-    const total = (await reader.getEntries()).reduce(
-      (n, e) => (e.directory ? n : n + e.compressedSize),
-      0,
-    );
-    await reader.close();
-    return total;
-  }
-
+describe('how far along the run is', () => {
   /** A library of text notes, the shape the export writes: `{dir}/{dir}.md`. */
   function library(n: number): ZipContent {
     const content: ZipContent = {};
     for (let i = 0; i < n; i += 1) {
-      const dir = `a-rather-long-note-directory-name-${i}`;
+      const dir = `note-directory-${i}`;
       content[`${dir}/${dir}.md`] = noteMarkdown({
         id: `0191c2a0-0000-7000-8000-00000000000${i}`,
         title: `Note ${i}`,
@@ -486,78 +468,60 @@ describe('what the progress bar divides by', () => {
     return content;
   }
 
-  it('is the bytes the entries hold, not the size of the zip', async () => {
+  it('counts the notes it will import, so the bar tracks notes rather than bytes', async () => {
     const { client } = fakeClient();
-    const zip = await zipFile('lib.zip', library(20));
-
-    const progress = await importArchive(zip, client);
-
-    expect(progress.created).toBe(20);
-    expect(progress.bytesTotal).toBe(await entryBytes(zip.blob));
-    // The gap is the point: per-entry headers and the central directory are a large share
-    // of a text export, and dividing by the file's size left a finished run around half.
-    expect(progress.bytesTotal).toBeLessThan(zip.blob.size);
-  });
-
-  it('is reached exactly when the file has been read to the end', async () => {
-    const { client } = fakeClient();
+    // The shape that broke the bar: most notes are text, a couple carry an image that is
+    // almost the whole file. The count must not be swayed by where the bytes are.
     const zip = await zipFile('lib.zip', {
-      ...library(3),
-      'n-x/n-x.md': noteMarkdown({ id: 'x', title: 'With a file', body: '[a](files/a.txt)\n' }),
-      'n-x/files/a.txt': bytes('hello'),
-      // Counted too, or the bar could never finish on an archive someone re-zipped.
-      'lib/.DS_Store': bytes('junk'),
-      '__MACOSX/lib/._n-x.md': bytes('junk'),
-      'lib/README.txt': bytes('what is this'),
-      'orphan/files/stray.txt': bytes('belongs to nothing'),
+      ...library(20),
+      'big-1/big-1.md': noteMarkdown({ id: 'b1', title: 'With an image', body: '[i](files/image.png)\n' }),
+      'big-1/files/image.png': new Uint8Array(600_000).fill(7),
+      'big-2/big-2.md': noteMarkdown({ id: 'b2', title: 'With a bigger image', body: '[i](files/image.png)\n' }),
+      'big-2/files/image.png': new Uint8Array(1_600_000).fill(9),
     });
 
     const progress = await importArchive(zip, client);
 
-    expect(progress.created).toBe(4);
-    expect(progress.bytesRead).toBe(progress.bytesTotal);
+    expect(progress.notesTotal).toBe(22);
+    expect(progress.processed).toBe(22);
+    expect(progress.created).toBe(22);
   });
 
-  it('is reached on a re-import, where every note is skipped and no file is reopened', async () => {
+  it('counts only note directories, not the junk a re-zipped archive carries', async () => {
     const { client } = fakeClient();
-    const content = {
-      ...library(3),
-      'n-x/n-x.md': noteMarkdown({ id: 'x', title: 'With a file', body: '[a](files/a.txt)\n' }),
-      'n-x/files/a.txt': bytes('hello'),
-    };
-
-    await importArchive(await zipFile('lib.zip', content), client);
-    const again = await importArchive(await zipFile('lib.zip', content), client);
-
-    expect(again.skipped).toBe(4);
-    expect(again.created).toBe(0);
-    expect(again.bytesRead).toBe(again.bytesTotal);
-  });
-
-  it('is reached past a note that failed partway through', async () => {
-    const { client } = fakeClient({
-      createNote: vi.fn(async () => {
-        throw new Error('nope');
-      }),
-    });
-    const zip = await zipFile('lib.zip', {
-      'n-1/n-1.md': noteMarkdown({ body: '[a](files/a.txt)\n' }),
-      'n-1/files/a.txt': bytes('hello'),
+    const zip = await zipFile('Archive.zip', {
+      'export/n-1/n-1.md': noteMarkdown({ id: '1', title: 'One' }),
+      'export/n-2/n-2.md': noteMarkdown({ id: '2', title: 'Two' }),
+      'export/.DS_Store': bytes('junk'),
+      '__MACOSX/export/._n-1.md': bytes('junk'),
+      'export/README.txt': bytes('what is this'),
+      'export/orphan/files/stray.txt': bytes('belongs to nothing'),
     });
 
     const progress = await importArchive(zip, client);
 
-    expect(progress.failed).toBe(1);
-    expect(progress.bytesRead).toBe(progress.bytesTotal);
+    expect(progress.notesTotal).toBe(2);
+    expect(progress.processed).toBe(2);
   });
 
-  it('is the file itself for a bare markdown note', async () => {
+  it('is one note for a bare markdown file', async () => {
     const { client } = fakeClient();
     const md = markdownFile('meeting-notes-0191c2a0.md', noteMarkdown());
 
     const progress = await importArchive(md, client);
 
-    expect(progress.bytesTotal).toBe(md.blob.size);
-    expect(progress.bytesRead).toBe(md.blob.size);
+    expect(progress.notesTotal).toBe(1);
+    expect(progress.processed).toBe(1);
+  });
+
+  it('still reaches its note total when the notes are already present', async () => {
+    const { client } = fakeClient();
+    const content = library(5);
+
+    await importArchive(await zipFile('lib.zip', content), client);
+    const again = await importArchive(await zipFile('lib.zip', content), client);
+
+    expect(again.skipped).toBe(5);
+    expect(again.processed).toBe(again.notesTotal);
   });
 });
