@@ -127,12 +127,19 @@ function AppShell() {
     );
   }
 
+  /*
+   * The shell is a row and the routed content is one column of it, so that navigation can
+   * stand beside the content rather than above it. `<main>` is the column, not the row:
+   * a landmark should hold the page's content and nothing that is chrome for every page.
+   */
   return (
-    <main className="shell wide">
-      {/* The chain this runs, and why its order matters, is in `useSignOut` — the drawer
-          offers the same action on a phone, where there is no topbar over the list. */}
-      <Topbar email={session.user.email} onSignOut={signOutAndLeave} />
-      <Outlet />
-    </main>
+    <div className="shell wide">
+      <main className="shell-main">
+        {/* The chain this runs, and why its order matters, is in `useSignOut` — the drawer
+            offers the same action on a phone, where there is no topbar over the list. */}
+        <Topbar email={session.user.email} onSignOut={signOutAndLeave} />
+        <Outlet />
+      </main>
+    </div>
   );
 }

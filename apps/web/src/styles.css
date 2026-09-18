@@ -429,14 +429,16 @@ h1 {
      column set their own — see .settings and .panel. */
   max-width: none;
   /*
-     Less above the wordmark than the plain shell's 4rem, and less than the 2rem this had:
-     the topbar's row is the 44px avatar, so 2rem above it put the wordmark's cap 43px
-     from the top of the window while the count under the divider sat 27px below it —
-     more air over the bar than under it, on the one view where the bar is a fixture
-     rather than a heading. 1.25rem brings the two within a few pixels of each other.
-     The filter panel's `--panel-top` is derived from this number; change both.
+     A row, with the routed content one column of it (`.shell-main`, which carries the
+     padding this used to). The row exists so navigation can stand beside the content at
+     full height, flush with the window's edge, on a desktop; the two custom properties
+     are what such a column would set. Declared here, and not on the column, because the
+     filter panel reads them from the top layer — it can only inherit from a DOM ancestor,
+     and this is the ancestor both the panel and the column share.
   */
-  padding: 1.25rem 1.5rem 1rem;
+  --rail-width: 0px;
+  --shell-pad-top: 1.25rem;
+  padding: 0;
 
   /*
      The notes view fills the viewport exactly and never scrolls as a page.
@@ -450,8 +452,35 @@ h1 {
   height: 100vh;
   height: 100dvh;
   display: flex;
-  flex-direction: column;
   overflow: hidden;
+}
+
+/*
+   The routed content's column: what `.shell.wide` was before it became a row.
+
+   The column is the flex chain the panes scroll inside — `flex: 1` and `min-height: 0`
+   here are what let it be shorter than its content and hand a definite height down — and
+   it carries the frame's padding, so the notes grid, settings and the trash all keep the
+   gutters they had. No `overflow` of its own: the note column reaches into the right
+   gutter for its scrollbar (see `.workspace-main`), and the row above already clips at
+   the window.
+  */
+.shell-main {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  /*
+     Less above the wordmark than the plain shell's 4rem, and less than the 2rem this had:
+     the topbar's row is the 44px avatar, so 2rem above it put the wordmark's cap 43px
+     from the top of the window while the count under the divider sat 27px below it —
+     more air over the bar than under it, on the one view where the bar is a fixture
+     rather than a heading. 1.25rem brings the two within a few pixels of each other.
+     The filter panel's `--panel-top` is derived from this number, which is why it is a
+     custom property on the row rather than a literal here; change it there.
+  */
+  padding: var(--shell-pad-top) 1.5rem 1rem;
 }
 
 .notes {
@@ -1162,7 +1191,7 @@ th[aria-sort] .note-th-sort { color: var(--fg); }
      Reach the window's right edge, so the scrollbar sits against the glass.
 
      This is the column's own scroll region, and its scrollbar draws on its right edge.
-     `.shell.wide` insets the whole notes grid by 1.5rem, which put that edge — and so the
+     `.shell-main` insets the whole notes grid by 1.5rem, which put that edge — and so the
      bar — a gutter's width in from the window, with the shell's padding stranded to the
      *right* of the scrollbar and the note's text pressed against its left. Pulling the
      right edge back out by exactly that inset lands the scrollbar on the window edge and
@@ -4207,9 +4236,9 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
 /*
    The settings section scrolls itself.
 
-   `.shell.wide` is the notes view's frame: a viewport-height flex column with
-   `overflow: hidden`, so that the note list and editor can scroll inside it while the page
-   never does. Every signed-in route shares that shell, so settings inherited a clipped box
+   `.shell.wide` is the notes view's frame — a viewport-height row that clips at the window,
+   with `.shell-main` the flex column inside it — so that the note list and editor can
+   scroll inside it while the page never does. Every signed-in route shares that shell, so settings inherited a clipped box
    it had no way to scroll — the foot of a long panel (122px of Maintenance on a phone) was
    simply unreachable, with no page scrollbar to reach it.
 
@@ -5803,9 +5832,9 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
      uses the same layout hook — and its sidebar, `.trash-head` included, is hidden by the
      rule above, so only one back arrow is ever on screen.
   */
-  .shell.wide:has(.notes) > .topbar,
-  .shell.wide:has(.settings) > .topbar,
-  .shell.wide:has(.trash-head) > .topbar {
+  .shell-main:has(.notes) > .topbar,
+  .shell-main:has(.settings) > .topbar,
+  .shell-main:has(.trash-head) > .topbar {
     display: none;
   }
 
@@ -5934,7 +5963,7 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
      note view spends 43% of a phone screen on chrome before its first character, and this
      is the cheapest quarter of it.
   */
-  .shell.wide { padding-top: 0.5rem; }
+  .shell.wide { --shell-pad-top: 0.5rem; }
 
   /*
      The side margins come in too, for the same reason the top one did.
@@ -5952,19 +5981,21 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
      brings the text to 23px: still clear of the rounded corners of a modern phone, and
      24px of width per side handed back to the content.
 
-     Written to cover `.shell.wide` as well as bare `.shell`, so the notes view narrows
-     along with login, settings and import rather than keeping a gutter twice the width of
-     its neighbours. The compound selector is not redundant: `.shell.wide` sets `padding`
-     as a shorthand, which beats a bare `.shell` here on specificity — the notes view, the
-     one this is for, would otherwise have kept all 24px.
+     Written to cover the signed-in column (`.shell-main`, which carries the wide shell's
+     padding) as well as the bare `.shell` of login and the legal pages, so the notes view
+     narrows along with them rather than keeping a gutter twice the width of its
+     neighbours. `.shell-main` sets `padding` as a shorthand at the same specificity as
+     this rule and earlier in the file, so this wins by source order alone; the bare rule
+     excludes `.wide` because the row itself has no padding to narrow, and a rule that
+     tied with `.shell-main` on specificity would otherwise inset the notes twice.
 
      `:not(.embed)` because the WebView shell deliberately runs to the edge — the Android
      app draws the chrome and every pixel of the page is the note. Its rule sits earlier in
      this file at the same specificity, so without this it would be a source-order accident
      that the two never collide.
   */
-  .shell:not(.embed),
-  .shell.wide:not(.embed) { padding-inline: 0.75rem; }
+  .shell:not(.embed):not(.wide),
+  .shell-main { padding-inline: 0.75rem; }
 
   /*
      The notes list runs closer to the edge than the rest.
@@ -5979,13 +6010,13 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
      it is the list view alone that changes and nothing else moves. `.notes` gains
      `.note-open` when a note is open and the grid swaps the list for the editor — a reading
      view like settings, which wants the full gutter — so the selector deliberately stops
-     matching there and the shell falls back to the shared 0.75rem. The compound outweighs
-     `.shell.wide` on specificity, which is what lets it win on the list while the bare rule
-     keeps every other route, the open note included, at 0.75rem. The row keeps its own
-     0.7rem, so a note's text still sits inside the fill the way it always has — see
+     matching there and the column falls back to the shared 0.75rem. The compound outweighs
+     `.shell-main` on specificity, which is what lets it win on the list while the shared
+     rule keeps every other route, the open note included, at 0.75rem. The row keeps its
+     own 0.7rem, so a note's text still sits inside the fill the way it always has — see
      `.note-item`.
   */
-  .shell.wide:not(.embed):has(.notes:not(.note-open)) { padding-inline: 0.25rem; }
+  .shell-main:has(.notes:not(.note-open)) { padding-inline: 0.25rem; }
 
   /*
      The border above is that divider, and it is deliberate.
@@ -6094,7 +6125,7 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
   .tb-seg { height: 2.75rem; padding: 0 0.55rem; font-size: 0.85rem; }
 
   /* Home-indicator clearance on iPhone; resolves to 0px everywhere else. */
-  .shell.wide { padding-bottom: calc(1rem + env(safe-area-inset-bottom)); }
+  .shell-main { padding-bottom: calc(1rem + env(safe-area-inset-bottom)); }
 
   /*
      The filter sheet's own controls are thumb targets like everything else here.
