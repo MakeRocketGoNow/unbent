@@ -137,11 +137,10 @@ export function NotebookFields({ notebookId, onChanged }: NotebookFieldsProps) {
   }
 
   /**
-   * Asks first. The select snaps back to the current type while the confirmation is
-   * open, because the type has not changed yet — the confirmation is what changes it.
-   */
-  /**
    * Changes a field's type, or turns a number into a rating and back.
+   *
+   * Asks first. The select snaps back to the current type while the confirmation is open,
+   * because the type has not changed yet — the confirmation is what changes it.
    *
    * `scale` is what the picker's "Rating" and "Number" entries differ by: both are the
    * `number` type, so a switch between them is a scale arriving or going away rather than
@@ -177,11 +176,16 @@ export function NotebookFields({ notebookId, onChanged }: NotebookFieldsProps) {
    * be cleared — widening 5 to 10, or narrowing past values nobody used — and only stop
    * for confirmation when the server names a count.
    *
-   * The picker stays on the current scale while that confirmation is open, the same snap-
-   * back the type select does: the scale has not changed yet.
+   * Both controls stay on the current scale while that confirmation is open — the select
+   * and the half-steps checkbox alike, since each draws from `field.scale`. That is the
+   * same snap-back the type select does: the scale has not changed yet, and the
+   * confirmation is what changes it.
+   *
+   * Only reached from `ScalePicker`, which renders only for a field that has a scale, so
+   * `field.scale` is non-null here.
    */
   async function changeScale(field: FieldDef, scale: FieldScale) {
-    if (field.scale && field.scale.max === scale.max && field.scale.step === scale.step) return;
+    if (field.scale?.max === scale.max && field.scale.step === scale.step) return;
     setError(null);
     try {
       const preview = await api.previewFieldConversion(notebookId, field.id, field.type, scale);
@@ -502,12 +506,12 @@ function scaleOnlyConfirm(
 
 function scaleConfirmQuestion(pending: PendingType & { scale: FieldScale; field: FieldDef & { scale: FieldScale } }) {
   const prev = pending.field.scale;
-  const lowerMax = pending.scale.max !== prev.max;
+  const maxChanged = pending.scale.max !== prev.max;
   const losingHalves = pending.scale.step > prev.step;
 
   // Both controls can be in play at once. Naming only the max would read as though the
   // halves survive, and they are exactly what gets cleared.
-  if (losingHalves && !lowerMax) {
+  if (losingHalves && !maxChanged) {
     return (
       <>
         Drop half steps on <strong>{pending.field.name}</strong>?

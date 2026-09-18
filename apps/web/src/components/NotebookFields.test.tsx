@@ -178,6 +178,8 @@ describe('NotebookFields', () => {
     await waitFor(() => expect(screen.queryByText((_, node) => node?.textContent === 'Change Stars to out of 5?')).toBeNull());
     expect(api.updateNotebookField).not.toHaveBeenCalled();
     expect((screen.getByLabelText('Rating scale maximum') as unknown as { value: string }).value).toBe('10');
+    // The checkbox draws from the same `field.scale`, so it snaps back with the select.
+    expect((screen.getByRole('checkbox') as HTMLInputElement).checked).toBe(true);
   });
 
   it('asks before dropping half steps', async () => {
