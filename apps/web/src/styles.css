@@ -6113,21 +6113,21 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
   */
   .settings { padding-inline: 0.75rem; margin-inline: -0.75rem; width: auto; }
 
-  /*
-     Only on a phone — see `.trash-head`.
-
-     Pulled out through `.sidebar`'s own inset, because this row sits inside it and the
-     arrow's pull only cancels the shell's padding. Without this the two stack and the
-     arrow lands 11px in, which is neither flush to the edge nor on the text line — the
-     one position that reads as a mistake rather than a choice. Negative margin on both
-     sides so the row still spans the full width once it is pulled left.
-  */
   .trash-head {
     display: flex;
     align-items: center;
     gap: 0.25rem;
-    margin-inline: -0.7rem;
     margin-bottom: 0.5rem;
+  }
+
+  /*
+     On a desktop the sidebar's own 0.7rem padding aligns the count with the note titles
+     (the note items carry 0.7rem of their own and the list pulls through the sidebar's).
+     On a phone that sidebar padding is zeroed, but the count still needs to sit on the
+     same line as the note text below it.
+  */
+  .sidebar:has(.trash-head) .sidebar-head {
+    padding-inline: 0.7rem;
   }
 
   /*
@@ -6336,8 +6336,12 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
      rule keeps every other route, the open note included, at 0.75rem. The row keeps its
      own 0.7rem, so a note's text still sits inside the fill the way it always has — see
      `.note-item`.
+
+     `:not(:has(.trash-head))` keeps the trash out: it shares the `.notes` grid but is a
+     reading-width view like settings, and the tight inset puts its heading and count text
+     against the glass where the notes list's filled rows would be.
   */
-  .shell-main:has(.notes:not(.note-open)) { padding-inline: 0.25rem; }
+  .shell-main:has(.notes:not(.note-open)):not(:has(.trash-head)) { padding-inline: 0.25rem; }
 
   /*
      The border above is that divider, and it is deliberate.
