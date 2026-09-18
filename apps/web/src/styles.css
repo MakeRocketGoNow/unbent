@@ -2794,6 +2794,22 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
 .attachments-sent { margin: 0 0 0.5rem; }
 
 /*
+   The one-confirmation cleanup of every file the note no longer links: a sentence with
+   the count and the bytes, the button beside it, and the confirmation on its own line
+   below when asked. Above the list because it is about the list as a whole.
+*/
+.attachments-cleanup {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.35rem 0.75rem;
+  margin-top: 0.45rem;
+}
+
+.attachments-cleanup > .confirm { flex: 1 0 100%; margin-top: 0.35rem; }
+
+/*
    The per-file ⋯: sized to the row's small quiet buttons rather than the 44px head
    trigger it borrows its markup from, so it reads as one of the row's controls.
 */
@@ -3812,8 +3828,48 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
   outline-offset: -2px;
 }
 
-/* Remove is tinted like every other destructive control, and stays last in the row. */
+/* The bin is tinted like every other destructive control, and stays last in the row. */
 .attachment-tool.danger { color: var(--bad); }
+
+/*
+   The pill as the question: "Delete file? Delete · Cancel". Stays visible while asking,
+   pointer over the picture or not — a question that hid when the mouse drifted would be
+   one nobody could answer.
+*/
+.attachment-tools.confirming { opacity: 1; }
+
+.attachment-tools-question {
+  padding: 0 0.35rem 0 0.5rem;
+  font-size: 0.85rem;
+  white-space: nowrap;
+}
+
+.attachment-tool-confirm {
+  height: 2rem;
+  padding: 0 0.6rem;
+  font: inherit;
+  font-size: 0.85rem;
+  line-height: 1;
+  color: var(--fg);
+  background: none;
+  border: none;
+  border-radius: 0.4rem;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.attachment-tool-confirm:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--fg) 8%, transparent);
+}
+
+.attachment-tool-confirm:disabled { cursor: default; opacity: 0.6; }
+
+.attachment-tool-confirm.danger { color: var(--bad); font-weight: 600; }
+
+.attachment-tool-confirm:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
 
 /*
    The viewer: a `<dialog>` that is the whole screen.

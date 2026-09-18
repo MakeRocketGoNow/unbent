@@ -358,6 +358,8 @@ function ownEvents(control: HTMLElement): void {
 type CopyAttachment = NonNullable<RichMarkdownOptions['copyAttachment']>;
 /** What the save control does; see `RichMarkdownOptions.saveRemoteImage`. */
 type SaveRemoteImage = NonNullable<RichMarkdownOptions['saveRemoteImage']>;
+/** What the delete control does; see `RichMarkdownOptions.deleteAttachment`. */
+type DeleteAttachment = NonNullable<RichMarkdownOptions['deleteAttachment']>;
 
 /** How long a control says "Copied" before offering to copy again. */
 const COPIED_FOR_MS = 1500;
@@ -392,12 +394,14 @@ function toolButton(className: string, label: string, glyph: string): HTMLButton
  * the `download` attribute across origins and would open the picture in a tab instead —
  * see `attachment-viewer.ts` for the same reasoning.
  *
- * Remove takes the attachment out of the note — the markdown that draws it — and nothing
- * more. The file stays in the Attachments panel, marked "Not linked", where it can be
- * permanently deleted behind a confirmation. Two reasons that split: a control on a
- * picture is a single click away from a misclick, and this way the click is undone with
- * ⌘Z like any other edit; and a permanent delete is the one irreversible act here, which
- * the panel already handles with the blast radius named.
+ * The bin deletes the file, confirmed in place: the pill itself becomes the question,
+ * "Delete file? Delete · Cancel", so the second click is where the first was. It began as
+ * "remove from note", which only cut the markdown and left the file for the Attachments
+ * panel to delete behind its own confirmation — safe, and four clicks to get rid of a
+ * picture. Every note app people know deletes on the spot; the confirmation here is the
+ * one concession, because a blob in R2 has no ⌘Z. Cutting only the markdown needs no
+ * button: select the line and press Backspace, and the file waits in the panel. A remote
+ * image has no file, so its bin removes the markdown at once, which ⌘Z undoes.
  */
 function attachmentToolbar(
   view: EditorView,
@@ -409,7 +413,8 @@ function attachmentToolbar(
     stored: { filename: string; kind: 'image' | 'pdf' } | null;
     copy?: CopyAttachment;
     save?: SaveRemoteImage;
-    /** The syntax node the widget stands for, for Remove. */
+    remove?: DeleteAttachment;
+    /** The syntax node the widget stands for, for the bin. */
     source: 'Image' | 'Link';
   },
 ): HTMLElement {
@@ -444,15 +449,126 @@ function attachmentToolbar(
     tools.appendChild(saveButton(view, host, opts.target.src, opts.save));
   }
 
-  const remove = toolButton('zoom-remove danger', 'Remove from note', trashIconMarkup());
+  const stored = opts.stored;
+  const remove = toolButton(
+    'zoom-remove danger',
+    stored ? 'Delete file' : 'Remove from note',
+    trashIconMarkup(),
+  );
   remove.addEventListener('click', (event) => {
     event.preventDefault();
     event.stopPropagation();
-    removeWidgetSource(view, host, opts.source);
+    if (stored && opts.remove) {
+      askToDelete(tools, () => deleteStored(view, host, opts.source, stored.filename, opts.remove!));
+    } else {
+      removeWidgetSource(view, host, opts.source);
+    }
   });
   tools.appendChild(remove);
 
   return tools;
+}
+
+/**
+ * Turns the pill into the question, and back.
+ *
+ * The buttons that were there are kept aside and put back on Cancel, on Escape, and on
+ * a press anywhere else on the page — which is how the inline `Confirm` behaves, and
+ * what a person who has changed their mind tries first. While asking, the pill stays
+ * visible whether or not the pointer is still over the picture (`.confirming`), since a
+ * question that vanished when the mouse drifted would be a question nobody could answer.
+ */
+function askToDelete(tools: HTMLElement, onConfirm: () => Promise<void>): void {
+  const kept = [...tools.childNodes];
+  tools.replaceChildren();
+  tools.classList.add('confirming');
+
+  const question = document.createElement('span');
+  question.className = 'attachment-tools-question';
+  question.textContent = 'Delete file?';
+
+  const yes = document.createElement('button');
+  yes.type = 'button';
+  yes.className = 'attachment-tool-confirm danger';
+  yes.textContent = 'Delete';
+  const no = document.createElement('button');
+  no.type = 'button';
+  no.className = 'attachment-tool-confirm';
+  no.textContent = 'Cancel';
+  for (const el of [question, yes, no]) ownEvents(el);
+
+  const restore = () => {
+    document.removeEventListener('pointerdown', outside, true);
+    tools.classList.remove('confirming');
+    tools.replaceChildren(...kept);
+  };
+  const outside = (event: PointerEvent) => {
+    if (!tools.contains(event.target as Node)) restore();
+  };
+  document.addEventListener('pointerdown', outside, true);
+
+  tools.addEventListener(
+    'keydown',
+    (event) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        event.stopPropagation();
+        restore();
+      }
+    },
+    { once: true },
+  );
+  no.addEventListener('click', (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    restore();
+  });
+  yes.addEventListener('click', (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    yes.disabled = true;
+    no.disabled = true;
+    yes.textContent = 'Deleting…';
+    onConfirm().then(
+      () => {
+        // The widget is gone with its markdown; nothing to restore into.
+        document.removeEventListener('pointerdown', outside, true);
+      },
+      () => {
+        restore();
+        const bin = kept.find((n) => (n as HTMLElement).classList?.contains('zoom-remove')) as
+          | HTMLButtonElement
+          | undefined;
+        if (bin) {
+          bin.setAttribute('aria-label', 'Couldn’t delete');
+          bin.title = 'Couldn’t delete';
+          setTimeout(() => {
+            bin.setAttribute('aria-label', 'Delete file');
+            bin.title = 'Delete file';
+          }, COPIED_FOR_MS);
+        }
+      },
+    );
+  });
+
+  for (const el of [question, yes, no]) tools.appendChild(el);
+  yes.focus();
+}
+
+/**
+ * The file first, then the markdown. A delete the server refused leaves the picture and
+ * its link exactly as they were, which is the truth; the other order would leave a link
+ * to a file that is still there but no longer drawn.
+ */
+async function deleteStored(
+  view: EditorView,
+  host: HTMLElement,
+  source: 'Image' | 'Link',
+  filename: string,
+  remove: DeleteAttachment,
+): Promise<void> {
+  await remove(filename);
+  removeWidgetSource(view, host, source);
 }
 
 /**
@@ -620,6 +736,7 @@ class ImageWidget extends WidgetType {
     private readonly filename: string | null = null,
     private readonly copy?: CopyAttachment,
     private readonly save?: SaveRemoteImage,
+    private readonly remove?: DeleteAttachment,
   ) {
     super();
   }
@@ -681,6 +798,7 @@ class ImageWidget extends WidgetType {
         stored: this.filename === null ? null : { filename: this.filename, kind: 'image' },
         copy: this.copy,
         save: this.save,
+        remove: this.remove,
         source: 'Image',
       }),
     );
@@ -749,6 +867,7 @@ class PdfWidget extends WidgetType {
     private readonly siblings: Siblings,
     private readonly filename: string = '',
     private readonly copy?: CopyAttachment,
+    private readonly remove?: DeleteAttachment,
   ) {
     super();
   }
@@ -826,6 +945,7 @@ class PdfWidget extends WidgetType {
             siblings: this.siblings,
             stored: { filename: this.filename, kind: 'pdf' },
             copy: this.copy,
+            remove: this.remove,
             source: 'Link',
           }),
         );
@@ -1121,6 +1241,12 @@ export interface RichMarkdownOptions {
    * the save control on a remote image. Absent, the control is not drawn.
    */
   saveRemoteImage?: (url: string) => Promise<string>;
+  /**
+   * Permanently deletes a stored file, for the bin on an image or a PDF. The widget
+   * removes the markdown itself once this resolves. Absent, the bin only removes the
+   * markdown, as it does for a remote image.
+   */
+  deleteAttachment?: (filename: string) => Promise<void>;
 }
 
 /**
@@ -1305,6 +1431,7 @@ function buildDecorations(view: EditorView, options: RichMarkdownOptions): Decor
             stored,
             options.copyAttachment,
             options.saveRemoteImage,
+            options.deleteAttachment,
           );
 
           /**
@@ -1457,7 +1584,13 @@ function buildDecorations(view: EditorView, options: RichMarkdownOptions): Decor
 
           marks.push(
             Decoration.widget({
-              widget: new PdfWidget(resolve(filename), siblings, decoded, options.copyAttachment),
+              widget: new PdfWidget(
+                resolve(filename),
+                siblings,
+                decoded,
+                options.copyAttachment,
+                options.deleteAttachment,
+              ),
               side: 1,
             }).range(node.to),
           );

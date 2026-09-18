@@ -411,6 +411,10 @@ function EmbeddedNote({ noteId }: { noteId: string }) {
             // The app shows "Attaching…" and asks before Back while this is above zero.
             onUploadsPending={(pending) => postToApp({ type: 'upload', pending })}
             // The same paste-across-notes the web editor has; the phone's editor is this one.
+            onDeleteAttachment={async (filename) => {
+              await api.deleteAttachment(note.id, filename);
+              void queryClient.invalidateQueries({ queryKey: keys.attachments(note.id) });
+            }}
             onSaveRemoteImage={async (url) => {
               const saved = await api.fetchWebImage(note.id, url);
               void queryClient.invalidateQueries({ queryKey: keys.attachments(note.id) });

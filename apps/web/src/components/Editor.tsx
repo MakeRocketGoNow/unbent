@@ -43,6 +43,11 @@ interface EditorProps {
    * Absent — a read-only note — remote images offer no save control.
    */
   onSaveRemoteImage?: (url: string) => Promise<string>;
+  /**
+   * Permanently deletes a stored file, for the bin on a rendered attachment. The editor
+   * removes the markdown itself afterwards. Absent, the bin only removes the markdown.
+   */
+  onDeleteAttachment?: (filename: string) => Promise<void>;
   /** Style markdown inline instead of showing plain source. */
   rich?: boolean;
   /**
@@ -89,6 +94,7 @@ export function Editor({
   onUploadsPending,
   onCopyAttachments,
   onSaveRemoteImage,
+  onDeleteAttachment,
   rich = false,
   pdfFilenames,
   autoFocus = true,
@@ -112,6 +118,8 @@ export function Editor({
   onCopyAttachmentsRef.current = onCopyAttachments;
   const onSaveRemoteImageRef = useRef(onSaveRemoteImage);
   onSaveRemoteImageRef.current = onSaveRemoteImage;
+  const onDeleteAttachmentRef = useRef(onDeleteAttachment);
+  onDeleteAttachmentRef.current = onDeleteAttachment;
   const onViewReadyRef = useRef(onViewReady);
   onViewReadyRef.current = onViewReady;
   // Read on every decoration rebuild rather than captured, so a list that arrives after
@@ -205,6 +213,13 @@ export function Editor({
                         const save = onSaveRemoteImageRef.current;
                         if (!save) throw new Error('Saving web images is switched off for this note');
                         return save(url);
+                      }
+                    : undefined,
+                  deleteAttachment: onDeleteAttachment
+                    ? (filename) => {
+                        const del = onDeleteAttachmentRef.current;
+                        if (!del) throw new Error('Deleting files is switched off for this note');
+                        return del(filename);
                       }
                     : undefined,
                 }),

@@ -804,6 +804,14 @@ export function Workspace({ noteId, readOnly = false, backTo = '/notes' }: Works
                   }
             }
             onSaveRemoteImage={readOnly ? undefined : saveRemoteImage}
+            onDeleteAttachment={
+              readOnly
+                ? undefined
+                : async (filename) => {
+                    await api.deleteAttachment(note.id, filename);
+                    void queryClient.invalidateQueries({ queryKey: keys.attachments(note.id) });
+                  }
+            }
             rich={noteView === 'rich'}
             /*
                Stands down for a note that was just created: the title has the caret, and
