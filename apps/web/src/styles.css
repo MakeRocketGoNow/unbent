@@ -4667,6 +4667,9 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
     right: auto;
   }
 
+  /* Refusing to leave a running import, like the settings sub-nav — see `Rail.tsx`. */
+  .rail[inert] { opacity: 0.45; }
+
   /* A pointer's density: the phone's 44px rows are thumb targets, and this is a mouse's column. */
   .rail .drawer-item {
     min-height: 2.25rem;

@@ -4,6 +4,7 @@ import { AccountMenu } from './AccountMenu.js';
 import { notebooksQuery, tagsQuery, trashCountQuery } from '../queries.js';
 import { useMediaQuery, RAIL_WIDE_QUERY } from '../useMediaQuery.js';
 import { NotebookNav, type NavPlace } from './NotebookNav.js';
+import { useSettingsBusy } from './SettingsLayout.js';
 import { RailToggleIcon } from './icons.js';
 
 /**
@@ -88,9 +89,17 @@ export function Rail({ pref, onPref, email, onSignOut }: RailProps) {
 
   const wide = useMediaQuery(RAIL_WIDE_QUERY);
   const open = pref === 'auto' ? wide : pref === 'open';
+  /*
+   * Inert while an import runs. The import lives in the browser and dies with its page,
+   * and every row here leaves that page; the settings sub-nav already refuses for the
+   * same reason (`useSettingsBusy`), and a rail that did not would be the loophole.
+   * `inert` takes the rows out of the Tab order and off the pointer at once; the dimming
+   * says so to the eye.
+   */
+  const { importRunning } = useSettingsBusy();
 
   return (
-    <aside className="rail" aria-label="Navigation">
+    <aside className="rail" aria-label="Navigation" inert={importRunning || undefined}>
       <div className="rail-inner">
         <div className="rail-head">
           {/* The wordmark, as it was in the top bar: a link home. Gone in the strip —

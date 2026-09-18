@@ -14,15 +14,30 @@ const SettingsBusy = createContext<BusyContext>({
 });
 
 /**
- * Lets the import tell the sub-nav it is mid-run.
+ * Lets the import tell the navigation it is mid-run.
  *
  * The import lives entirely in the browser, so navigating away unmounts it and terminates
  * its worker — losing however many thousand notes were left to go. It had a route of its
  * own for exactly that reason; putting it in a section with siblings hands the same foot
- * gun back unless the links go inert while it runs.
+ * gun back unless the links go inert while it runs. The desktop's rail is a dozen more
+ * ways out beside the page, so it reads this too.
  */
 export function useSettingsBusy() {
   return useContext(SettingsBusy);
+}
+
+/**
+ * Owns the flag, above everything that reads it.
+ *
+ * The section used to own it, which was enough while the section's own sub-nav was the
+ * only navigation on screen beside a running import. The rail stands outside the section,
+ * so the flag has to be held where both can reach it: the signed-in shell mounts this
+ * around the rail and the routed content alike.
+ */
+export function SettingsBusyProvider({ children }: { children: ReactNode }) {
+  const [importRunning, setImportRunning] = useState(false);
+  const busy = useMemo(() => ({ importRunning, setImportRunning }), [importRunning]);
+  return <SettingsBusy.Provider value={busy}>{children}</SettingsBusy.Provider>;
 }
 
 const TABS = [
@@ -44,11 +59,10 @@ const TABS = [
  * their own nav.
  */
 export function SettingsLayout({ children }: { children: ReactNode }) {
-  const [importRunning, setImportRunning] = useState(false);
-  const busy = useMemo(() => ({ importRunning, setImportRunning }), [importRunning]);
+  const { importRunning } = useSettingsBusy();
 
   return (
-    <SettingsBusy.Provider value={busy}>
+    <>
       <div className="settings">
         <div className="settings-head">
           {/*
@@ -100,6 +114,6 @@ export function SettingsLayout({ children }: { children: ReactNode }) {
 
         <div className="settings-body">{children}</div>
       </div>
-    </SettingsBusy.Provider>
+    </>
   );
 }

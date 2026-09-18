@@ -5,6 +5,7 @@ import { useSession } from '../auth-client.js';
 import { useSignOut } from '../useSignOut.js';
 import { requireSession, useShell } from '../auth-gate.js';
 import { Rail, type RailPref } from '../components/Rail.js';
+import { SettingsBusyProvider } from '../components/SettingsLayout.js';
 import { usePersistentState } from '../usePersistentState.js';
 import { useMediaQuery, MOBILE_QUERY } from '../useMediaQuery.js';
 import { claimCacheFor } from '../queries.js';
@@ -151,6 +152,9 @@ function AppShell() {
    * a landmark should hold the page's content and nothing that is chrome for every page.
    */
   return (
+    // The import-running flag sits above the rail and the content alike: both are ways
+    // out of a running import, and both have to go inert together. See `SettingsLayout`.
+    <SettingsBusyProvider>
     <div className={`shell wide rail-${railPref}`}>
       {/* The chain sign-out runs, and why its order matters, is in `useSignOut`. */}
       {!isMobile && (
@@ -168,5 +172,6 @@ function AppShell() {
         <Outlet />
       </main>
     </div>
+    </SettingsBusyProvider>
   );
 }

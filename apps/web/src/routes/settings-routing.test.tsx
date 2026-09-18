@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { describe, it, expect, afterEach, beforeAll, vi } from 'vitest';
 import { render, screen, cleanup, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -10,7 +11,11 @@ import {
   Outlet,
   redirect,
 } from '@tanstack/react-router';
-import { SettingsLayout } from '../components/SettingsLayout.js';
+import {
+  SettingsBusyProvider,
+  SettingsLayout,
+  useSettingsBusy,
+} from '../components/SettingsLayout.js';
 
 /**
  * The section's navigation, exercised against a real router.
@@ -23,8 +28,25 @@ import { SettingsLayout } from '../components/SettingsLayout.js';
  * The routes are rebuilt rather than imported from the generated tree so the test needs
  * no session gate, no API, and no loaders.
  */
-function harness(initial: string) {
-  const rootRoute = createRootRoute({ component: Outlet });
+/** An import page that reports itself running, the way `Import` does while its worker runs. */
+function RunningImport() {
+  const { setImportRunning } = useSettingsBusy();
+  useEffect(() => {
+    setImportRunning(true);
+    return () => setImportRunning(false);
+  }, [setImportRunning]);
+  return <p>import page</p>;
+}
+
+function harness(initial: string, importPage: () => React.ReactElement = () => <p>import page</p>) {
+  // The flag lives above the section now, where the shell mounts it beside the rail.
+  const rootRoute = createRootRoute({
+    component: () => (
+      <SettingsBusyProvider>
+        <Outlet />
+      </SettingsBusyProvider>
+    ),
+  });
 
   const settingsRoute = createRoute({
     getParentRoute: () => rootRoute,
@@ -63,7 +85,7 @@ function harness(initial: string) {
       indexRoute,
       child('/notebooks', 'notebooks page'),
       child('/notebooks/$notebookId', 'fields page'),
-      child('/import', 'import page'),
+      createRoute({ getParentRoute: () => settingsRoute, path: '/import', component: importPage }),
       child('/export', 'export page'),
       child('/maintenance', 'maintenance page'),
     ]),
@@ -126,5 +148,20 @@ describe('settings section routing', () => {
     const active = document.querySelectorAll('.settings-nav-item.active');
     expect(active.length).toBe(1);
     expect(active[0]?.textContent).toBe('Maintenance');
+  });
+
+  /*
+   * A running import dies with its page, and the sub-nav refuses to leave it. The flag
+   * that says so is held above the section now, so the rail can refuse too; this pins
+   * that lifting it changed nothing for the sub-nav.
+   */
+  it('makes the sub-nav inert while an import is running', async () => {
+    harness('/settings/import', RunningImport);
+    await waitFor(() => expect(screen.getByText('import page')).toBeTruthy());
+    await waitFor(() =>
+      expect(document.querySelectorAll('.settings-nav-disabled').length).toBeGreaterThan(0),
+    );
+    // The import's own entry stays a link, so the page does not lose its own tab.
+    expect(screen.getByRole('link', { name: 'Import' })).toBeTruthy();
   });
 });

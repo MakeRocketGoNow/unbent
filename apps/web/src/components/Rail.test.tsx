@@ -14,6 +14,8 @@ import { keys } from '../queries.js';
 import { filters } from '../routes/notes.js';
 import { usePersistentState } from '../usePersistentState.js';
 import { Rail, type RailPref } from './Rail.js';
+import { SettingsBusyProvider, useSettingsBusy } from './SettingsLayout.js';
+import { useEffect } from 'react';
 
 /**
  * The desktop's navigation rail.
@@ -41,16 +43,28 @@ function stubMatchMedia(initial: boolean) {
   };
 }
 
+/** A page that reports a running import, the way the import page does while its worker runs. */
+function RunningImport() {
+  const { setImportRunning } = useSettingsBusy();
+  useEffect(() => {
+    setImportRunning(true);
+    return () => setImportRunning(false);
+  }, [setImportRunning]);
+  return <p>importing</p>;
+}
+
 /** The shell's share of the arrangement: the stored preference and the class it sets. */
 function Shell() {
   const [pref, setPref] = usePersistentState<RailPref>('rail', 'auto', (raw) =>
     raw === 'open' || raw === 'collapsed' ? raw : undefined,
   );
   return (
-    <div data-testid="shell" className={`shell wide rail-${pref}`}>
-      <Rail pref={pref} onPref={setPref} email="someone@example.com" onSignOut={() => {}} />
-      <Outlet />
-    </div>
+    <SettingsBusyProvider>
+      <div data-testid="shell" className={`shell wide rail-${pref}`}>
+        <Rail pref={pref} onPref={setPref} email="someone@example.com" onSignOut={() => {}} />
+        <Outlet />
+      </div>
+    </SettingsBusyProvider>
   );
 }
 
@@ -73,7 +87,12 @@ function harness(initial: string, wide = true) {
     path: '/settings',
     component: () => <p>settings</p>,
   });
-  const routeTree = rootRoute.addChildren([notesRoute, trashRoute, settingsRoute]);
+  const importRoute = createRoute({
+    getParentRoute: () => rootRoute,
+    path: '/settings/import',
+    component: RunningImport,
+  });
+  const routeTree = rootRoute.addChildren([notesRoute, trashRoute, settingsRoute, importRoute]);
   const history = createMemoryHistory({ initialEntries: [initial] });
   const router = createRouter({ routeTree, history });
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -184,6 +203,14 @@ describe('Rail', () => {
     const foot = container.querySelector('.drawer-foot')!;
     expect(foot.lastElementChild?.contains(account)).toBe(true);
     expect(account.textContent).toContain('someone@example.com');
+  });
+
+  /* Every row here leaves the page a running import lives on; the rail goes inert with
+     the settings sub-nav rather than being the one way out that still works. */
+  it('goes inert while an import is running', async () => {
+    const { findByText, container } = harness('/settings/import');
+    await findByText('importing');
+    await waitFor(() => expect(container.querySelector('.rail')?.hasAttribute('inert')).toBe(true));
   });
 
   it('picks a notebook without closing anything, from any screen', async () => {
