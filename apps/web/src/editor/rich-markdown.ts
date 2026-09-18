@@ -135,6 +135,15 @@ const revealedHeaderMark = Decoration.mark({ class: 'cm-md-mark cm-md-headmark' 
 const hiddenAlignRow = Decoration.mark({ class: 'cm-md-hidden' });
 const listBullet = Decoration.mark({ class: 'cm-md-bullet' });
 const linkLabel = Decoration.mark({ class: 'cm-md-link' });
+/**
+ * An unfocused image's alt text, kept on screen as the picture's caption.
+ *
+ * Its own class rather than the link label's: this is not a link, and it should not move
+ * if link styling ever changes. Drawn quiet — dimmed and a touch smaller — so it reads as
+ * metadata belonging to the picture below it, not as a line of body text that happens to
+ * sit above an image. See the `Image` branch for why the alt is kept at all.
+ */
+const imageAlt = Decoration.mark({ class: 'cm-md-image-alt' });
 
 /**
  * Table decorations.
@@ -1438,32 +1447,58 @@ function buildDecorations(view: EditorView, options: RichMarkdownOptions): Decor
            * The image stands in for its source while the cursor is elsewhere.
            *
            * Same reveal rule as a link: the cursor on the line brings `![alt](url)` back to
-           * be edited, and anywhere else the picture is the whole of what a reader sees —
-           * the source is a filename repeated above its own image, which is noise in the
-           * one mode meant for reading. Unlike a link there is no label to keep, because
-           * the image is the label.
+           * be edited, and anywhere else the picture is what a reader sees. But the alt text
+           * is kept on screen the way a link keeps its label — hidden entirely, the image is
+           * an object with no text beside it, and there is nowhere to click to put a cursor
+           * before typing a caption or editing the alt. Showing it gives the reader that
+           * seam and names the picture. It is drawn in its own quiet caption style
+           * (`cm-md-image-alt`) rather than as plain text, so it reads as metadata belonging
+           * to the picture below it, not as a line of body copy above an image.
            *
-           * Replaced, not hidden at zero size like every other mark here, because of how
-           * the caret travels. Moving down, CodeMirror probes a little below the caret and
-           * asks the line it lands in for the coordinates of its last position; if the
-           * probe is below those, it decides it hit the line's padding and skips on. Hidden
-           * text is a zero-height point at the top of its line, and on a line collapsed
-           * around a picture — see below — the probe is always below it, so the caret
-           * stepped straight over the image from above while reaching it from below. A
-           * replacing widget answers that question with the picture's own rectangle, in
-           * both directions. The source is still in the document: the caret lands on
-           * either side of the picture, that touches the line, and the next build puts
-           * the text back with the picture after it.
-           *
-           * The line has to give up its text height too: even with nothing but a widget
-           * in it, the buffers CodeMirror places around an inline widget keep the strut of
-           * an ordinary text line, and the image would sit under a blank one. When the
-           * image is all the line holds, the line collapses that height — the same trick
-           * as a code fence row. A line mixing text and an image keeps its height for the
-           * text.
+           * The syntax around the alt hides at zero size like every other mark, and the
+           * picture is appended after it as an inline widget — the same shape as the focused
+           * branch below, minus the raw `![` / `](url)`, and in source order so the caption
+           * sits before its picture. The line keeps its text height for the alt, so none of
+           * the caret-traversal trouble of a collapsed image-only line (see the empty-alt
+           * branch) applies here.
            */
           const scope = revealScope(state, node.node);
           if (!selectionTouches(state, scope.from, scope.to)) {
+            const alt = match[1] ?? '';
+            if (alt) {
+              // `![` before the alt, `](url)` after it — hidden, with the alt itself drawn
+              // as a caption and the picture appended after the whole node.
+              const altStart = node.from + 2;
+              const altEnd = altStart + alt.length;
+              marks.push(hiddenMark.range(node.from, altStart));
+              marks.push(imageAlt.range(altStart, altEnd));
+              marks.push(hiddenMark.range(altEnd, node.to));
+              marks.push(Decoration.widget({ widget, side: 1 }).range(node.to));
+              return;
+            }
+
+            /**
+             * No alt to keep: replace the whole `![](url)` with the picture.
+             *
+             * Replaced, not hidden at zero size like every other mark here, because of how
+             * the caret travels. Moving down, CodeMirror probes a little below the caret and
+             * asks the line it lands in for the coordinates of its last position; if the
+             * probe is below those, it decides it hit the line's padding and skips on. Hidden
+             * text is a zero-height point at the top of its line, and on a line collapsed
+             * around a picture — see below — the probe is always below it, so the caret
+             * stepped straight over the image from above while reaching it from below. A
+             * replacing widget answers that question with the picture's own rectangle, in
+             * both directions. The source is still in the document: the caret lands on
+             * either side of the picture, that touches the line, and the next build puts
+             * the text back with the picture after it.
+             *
+             * The line has to give up its text height too: even with nothing but a widget
+             * in it, the buffers CodeMirror places around an inline widget keep the strut of
+             * an ordinary text line, and the image would sit under a blank one. When the
+             * image is all the line holds, the line collapses that height — the same trick
+             * as a code fence row. A line mixing text and an image keeps its height for the
+             * text.
+             */
             marks.push(Decoration.replace({ widget }).range(node.from, node.to));
             const line = state.doc.lineAt(node.from);
             if (line.text.trim() === text) marks.push(imageOnlyLine.range(line.from));
@@ -1894,6 +1929,19 @@ export function richMarkdown(options: RichMarkdownOptions = {}): Extension {
         textDecoration: 'underline',
         textUnderlineOffset: '0.15em',
         cursor: 'pointer',
+      },
+      /**
+       * An unfocused image's alt, kept as a caption — see `imageAlt`.
+       *
+       * Quiet on purpose: dimmed by opacity so it reads the same against either theme (the
+       * same reasoning as `.cm-md-mark`), a touch smaller, and italic so it reads as a
+       * caption for the picture rather than as body text. No underline or accent — it is not
+       * a link, and it must not be mistaken for one.
+       */
+      '.cm-md-image-alt': {
+        opacity: '0.6',
+        fontSize: '0.9em',
+        fontStyle: 'italic',
       },
       '.cm-md-punct': { opacity: '0.35' },
       /**
