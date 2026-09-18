@@ -6336,8 +6336,12 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
      rule keeps every other route, the open note included, at 0.75rem. The row keeps its
      own 0.7rem, so a note's text still sits inside the fill the way it always has — see
      `.note-item`.
+
+     `:not(:has(.trash-head))` keeps the trash out: it shares the `.notes` grid but is a
+     reading-width view like settings, and the tight inset puts its heading and count text
+     against the glass where the notes list's filled rows would be.
   */
-  .shell-main:has(.notes:not(.note-open)) { padding-inline: 0.25rem; }
+  .shell-main:has(.notes:not(.note-open)):not(:has(.trash-head)) { padding-inline: 0.25rem; }
 
   /*
      The border above is that divider, and it is deliberate.
