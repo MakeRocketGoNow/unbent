@@ -385,10 +385,10 @@ export function storedName(renames: Map<string, string>, requested: string): str
 export function applyRenames(body: string, renames: Map<string, string>): string {
   if (renames.size === 0) return body;
   let out = body;
-  const froms = [...renames.keys()].sort((a, b) => b.length - a.length);
-  for (const from of froms) {
-    const to = renames.get(from);
-    if (!to) continue;
+  // Longest first so a name that is a prefix of another is not rewritten out from under
+  // it; entries rather than keys so the value does not need a second lookup.
+  const entries = [...renames.entries()].sort(([a], [b]) => b.length - a.length);
+  for (const [from, to] of entries) {
     const escaped = `files/${from}`.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     out = out.replace(new RegExp(`${escaped}(?=$|[)\\n\\r>\\]])`, 'g'), `files/${to}`);
   }
