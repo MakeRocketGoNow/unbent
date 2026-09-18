@@ -165,6 +165,13 @@ export async function updateNote(
   );
 }
 
+/** A new note with this one's title, body, filing and files. */
+export async function duplicateNote(id: string): Promise<Note> {
+  return json<Note>(
+    await fetch(`/api/notes/${encodeURIComponent(id)}/duplicate`, { method: 'POST' }),
+  );
+}
+
 export async function deleteNote(id: string): Promise<void> {
   const res = await fetch(`/api/notes/${id}`, { method: 'DELETE' });
   if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);

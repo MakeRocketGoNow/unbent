@@ -489,6 +489,51 @@ describe('copying between notes', () => {
   });
 });
 
+describe('duplicating a note', () => {
+  it('makes a new note with the same content and its own copies of the files', async () => {
+    const original = await createNote(alice, 'Template');
+    await upload(alice, original.id, 'list.txt', 'bring a torch', 'text/plain', { link: true });
+    await upload(alice, original.id, 'spare.txt', 'not linked');
+
+    const res = await fetch(`${BASE}/api/notes/${original.id}/duplicate`, {
+      method: 'POST',
+      headers: { Cookie: alice.cookie, Origin: ORIGIN },
+    });
+    expect(res.status).toBe(201);
+    const copy = (await res.json()) as { id: string; title: string; body: string };
+    expect(copy.id).not.toBe(original.id);
+    expect(copy.title).toBe('Template');
+    // The body is carried as stored: the relative link resolves in the copy too.
+    expect(copy.body).toBe(await noteBody(alice, original.id));
+    expect(copy.body).toContain('[list.txt](files/list.txt)');
+
+    const files = (await (
+      await fetch(`${BASE}/api/notes/${copy.id}/files`, {
+        headers: { Cookie: alice.cookie, Origin: ORIGIN },
+      })
+    ).json()) as { files: { filename: string }[] };
+    expect(files.files.map((f) => f.filename).sort()).toEqual(['list.txt', 'spare.txt']);
+
+    // Its own objects: deleting the original's file leaves the copy's readable.
+    await fetch(`${BASE}/api/notes/${original.id}/files/list.txt`, {
+      method: 'DELETE',
+      headers: { Cookie: alice.cookie, Origin: ORIGIN },
+    });
+    const kept = await fetch(`${BASE}/api/notes/${copy.id}/files/list.txt`, {
+      headers: { Cookie: alice.cookie, Origin: ORIGIN },
+    });
+    expect(await kept.text()).toBe('bring a torch');
+  });
+
+  it('is 404 for a note that is not this user', async () => {
+    const res = await fetch(`${BASE}/api/notes/${aliceNote.id}/duplicate`, {
+      method: 'POST',
+      headers: { Cookie: bob.cookie, Origin: ORIGIN },
+    });
+    expect(res.status).toBe(404);
+  });
+});
+
 describe('filename validation', () => {
   const bad = [
     '../../../etc/passwd',
