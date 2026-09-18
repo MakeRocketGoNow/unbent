@@ -218,6 +218,52 @@ export function relativizeAttachmentLinks(
 }
 
 /**
+ * A remote image: `![alt](http…)`, in either destination spelling. As with the relative
+ * form, a bracketed address runs to the `>` and may hold spaces; a bare one ends at the `)`.
+ */
+const REMOTE_IMAGE_LINK_RE =
+  /(!\[[^\]]*\])\(\s*(?:<(https?:\/\/[^>\n]+)>|(https?:\/\/[^\s<>)]+))\s*\)/gi;
+
+/**
+ * The distinct web addresses a note's images are drawn from.
+ *
+ * A note converted from a bookmark by an assistant, or clipped from a page, links its
+ * pictures to the site they came from. Those rot, get hotlink-blocked, are in no export
+ * and no search — Evernote never left an image on the web, and neither should a note
+ * here. This is what "Save web images" counts and fetches; `localizeImageLinks` is how
+ * the links are rewritten once the files are stored.
+ */
+export function remoteImageUrls(markdown: string): string[] {
+  const seen = new Set<string>();
+  for (const match of markdown.matchAll(REMOTE_IMAGE_LINK_RE)) {
+    const url = (match[2] ?? match[3] ?? '').trim();
+    if (url) seen.add(url);
+  }
+  return [...seen];
+}
+
+/**
+ * Points remote images at the files they were saved as.
+ *
+ * `stored` answers, for a web address, the filename the file now has in this note, or
+ * null to leave that image where it was — a fetch that failed stays a working web link
+ * rather than becoming a broken local one. The label is kept; only the destination
+ * changes, bracketed when the name needs it.
+ */
+export function localizeImageLinks(
+  markdown: string,
+  stored: (url: string) => string | null,
+): string {
+  return markdown.replace(REMOTE_IMAGE_LINK_RE, (whole, label: string, bracketed, bare) => {
+    const filename = stored(((bracketed ?? bare ?? '') as string).trim());
+    if (filename === null) return whole;
+    return formatAttachmentMarkdown(label.slice(2, -1), `${ATTACHMENT_PREFIX}${filename}`, {
+      image: true,
+    });
+  });
+}
+
+/**
  * Rewrites relative attachment paths to API URLs at render time.
  *
  * The markdown stored in D1 is never mutated — `files/diagram.png` stays relative on disk
