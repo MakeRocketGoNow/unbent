@@ -234,6 +234,11 @@ export const noteIdSchema = z.string().uuid();
  * paste after a cut that has not yet saved falls back to a copy rather than taking a file
  * the source still shows.
  */
+/** A web image to fetch into a note as an attachment; the Worker checks the address. */
+export const fetchWebImageSchema = z.object({
+  url: z.string().min(1).max(2048),
+});
+
 export const copyAttachmentsSchema = z.object({
   from: z.string().min(1).max(128),
   filenames: z.array(filenameSchema).min(1).max(200),
