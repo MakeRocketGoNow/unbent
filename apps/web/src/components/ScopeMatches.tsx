@@ -2,7 +2,7 @@ import { useNavigate } from '@tanstack/react-router';
 import { TagIcon, NotebookRowIcon } from './icons.js';
 import { writeTagFilter } from '../routes/notes.js';
 import type { TagCount } from './TagPicker.js';
-import type { NotebookData } from './NotebookSelect.js';
+import type { NotebookData } from './NotebookNav.js';
 
 /** How many of each are offered. Enough to disambiguate, few enough to stay above the notes. */
 const MAX_TAGS = 5;

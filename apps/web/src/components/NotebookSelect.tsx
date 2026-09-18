@@ -1,11 +1,6 @@
 import { Link, useNavigate } from '@tanstack/react-router';
 import { UNFILED } from '@unbent/shared';
-
-/** What the picker needs. Shaped by the API, narrowed to what is drawn. */
-export interface NotebookData {
-  notebooks: { id: string; name: string; count: number }[];
-  unfiled: number;
-}
+import type { NotebookData } from './NotebookNav.js';
 
 interface NotebookSelectProps {
   notebook: string | undefined;
