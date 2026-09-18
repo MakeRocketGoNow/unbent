@@ -1,5 +1,5 @@
 import { ScopedRepo } from './repo.js';
-import type { AttachmentInfo } from '@unbent/shared';
+import { type AttachmentInfo, splitExt } from '@unbent/shared';
 
 interface AttachmentRow {
   id: string;
@@ -7,13 +7,6 @@ interface AttachmentRow {
   content_type: string;
   size: number;
   r2_key: string;
-}
-
-/** Splits `name.ext` so a collision can be suffixed as `name-2.ext`. */
-function splitExt(filename: string): [string, string] {
-  const dot = filename.lastIndexOf('.');
-  if (dot <= 0) return [filename, ''];
-  return [filename.slice(0, dot), filename.slice(dot)];
 }
 
 /**

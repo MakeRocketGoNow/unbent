@@ -1,3 +1,4 @@
+import { splitExt } from '@unbent/shared';
 import { SaxesParser } from 'saxes';
 import type { EnexNote, EnexResource } from './types.js';
 
@@ -120,6 +121,51 @@ function truncate(name: string, ext: string): string {
   return `${stem.trimEnd()}${ext}`;
 }
 
+/**
+ * Makes each resource's filename unique within the note, the way the upload suffixes a
+ * collision (`name-2.ext`, `name-3.ext`, …).
+ *
+ * Evernote's `<file-name>` is a label, and a real note often repeats one: two camera
+ * photos both called `IMG_1234.jpg`, two screenshots both `image.png`, or two labels
+ * that only differed by a slash and became the same after `resourceFilename` replaced
+ * the separator. The markdown is written from these names (`files/<filename>`), and
+ * the upload then suffixes the second. A later substring rewrite of `files/image.png`
+ * would retarget *every* link — including the first file's, and including a neighbour
+ * like `files/image.png.bak` — so both attachments have to carry distinct names before
+ * either the conversion or the upload sees them.
+ *
+ * Same algorithm as `availableFilename` in the API, and deterministic, so a resumed
+ * import assigns the same names the first run stored and can still fill in a miss.
+ */
+export function uniqueResourceFilenames(resources: EnexResource[]): EnexResource[] {
+  if (resources.length <= 1) return resources;
+  // Every original name is reserved so a suffix never steals a neighbour that already
+  // held `image-2.png` — that file is a different attachment, and renaming it would
+  // retarget its link the same way a substring replace used to.
+  const reserved = new Set(resources.map((r) => r.filename));
+  const assigned = new Set<string>();
+  return resources.map((resource) => {
+    if (!assigned.has(resource.filename)) {
+      assigned.add(resource.filename);
+      return resource;
+    }
+    const filename = nextAvailableFilename(resource.filename, reserved);
+    reserved.add(filename);
+    assigned.add(filename);
+    return { ...resource, filename };
+  });
+}
+
+function nextAvailableFilename(desired: string, taken: Set<string>): string {
+  if (!taken.has(desired)) return desired;
+  const [stem, ext] = splitExt(desired);
+  for (let n = 2; n < Number.MAX_SAFE_INTEGER; n += 1) {
+    const candidate = `${stem}-${n}${ext}`;
+    if (!taken.has(candidate)) return candidate;
+  }
+  return `${stem}-${taken.size}${ext}`;
+}
+
 interface PendingResource {
   base64: string[];
   mime: string;
@@ -237,7 +283,7 @@ export async function parseEnexStream(
           updated: note.updated,
           tags: note.tags ?? [],
           sourceUrl: note.sourceUrl,
-          resources: note.resources,
+          resources: uniqueResourceFilenames(note.resources),
         });
         note = { resources: [], tags: [] };
         break;
