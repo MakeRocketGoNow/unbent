@@ -215,7 +215,7 @@ export function SortIcon() {
 /**
  * A gear, for the way to Settings.
  *
- * On a desktop it sits in the topbar beside the avatar, which is where Keep's web app puts
+ * On a desktop it is a row on the rail's floor above the account, where Keep's web app puts
  * its own: Settings is about the app, and the avatar menu is about the account, and one
  * gear beside one avatar keeps the two from being confused for each other.
  */

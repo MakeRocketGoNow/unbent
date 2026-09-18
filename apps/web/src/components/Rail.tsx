@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
-import { useRouterState, useSearch } from '@tanstack/react-router';
+import { Link, useRouterState, useSearch } from '@tanstack/react-router';
+import { AccountMenu } from './AccountMenu.js';
 import { notebooksQuery, trashCountQuery } from '../queries.js';
 import { useMediaQuery, RAIL_WIDE_QUERY } from '../useMediaQuery.js';
 import { NotebookNav, type NavPlace } from './NotebookNav.js';
@@ -19,6 +20,8 @@ export type RailPref = 'auto' | 'open' | 'collapsed';
 interface RailProps {
   pref: RailPref;
   onPref: (next: RailPref) => void;
+  email: string;
+  onSignOut: () => void;
 }
 
 /** Which screen the rail is beside, from the path the router has actually committed to. */
@@ -56,8 +59,20 @@ function placeOf(pathname: string): NavPlace {
  * click away on every screen, with no drawer over a desktop. The notebooks drop out of
  * the strip because they all share one glyph. Not resizable: one drag handle on the
  * screen is enough, and a rail's width is its labels' width.
+ *
+ * It also took over what the desktop's top bar held — the wordmark, the way to Settings,
+ * the account — which retired that bar above the breakpoint and gave every screen its
+ * height back. Settings is a row on the floor rather than an item in the account menu,
+ * as it was a gear beside the avatar before: the two are different kinds of thing, the
+ * row is about the app and the menu about the account, and Keep draws exactly this
+ * pair. It also keeps the desktop honest with the phone, where Settings is the same row
+ * on the drawer's floor — one click at both widths, never a menu to open first. The
+ * account sits under Settings, on the floor, rather than in the head beside the
+ * wordmark as it does in the drawer: the strip's head has room for one control, which
+ * has to be the way to expand it, and the floor is outside the scrolling rows, so the
+ * menu it opens is never clipped by them.
  */
-export function Rail({ pref, onPref }: RailProps) {
+export function Rail({ pref, onPref, email, onSignOut }: RailProps) {
   const notebooks = useQuery(notebooksQuery());
   const trashCount = useQuery(trashCountQuery());
   /*
@@ -77,6 +92,13 @@ export function Rail({ pref, onPref }: RailProps) {
     <aside className="rail" aria-label="Navigation">
       <div className="rail-inner">
         <div className="rail-head">
+          {/* The wordmark, as it was in the top bar: a link home. Gone in the strip —
+              hidden rather than clipped, so it is not an invisible stop on the Tab path. */}
+          <h1 className="rail-wordmark">
+            <Link to="/notes" className="plain">
+              Unbent
+            </Link>
+          </h1>
           <button
             type="button"
             className="icon-btn rail-toggle"
@@ -95,6 +117,7 @@ export function Rail({ pref, onPref }: RailProps) {
           notebooks={notebooks}
           trashed={trashCount.data ?? 0}
           labelsHidden={!open}
+          footer={<AccountMenu email={email} onSignOut={onSignOut} withAddress />}
         />
       </div>
     </aside>

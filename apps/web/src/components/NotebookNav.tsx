@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import { Link, useNavigate } from '@tanstack/react-router';
 import { UNFILED } from '@unbent/shared';
 import {
@@ -40,6 +41,8 @@ interface NotebookNavProps {
    * word; the stylesheet does the clipping, this only adds the titles.
    */
   labelsHidden?: boolean | undefined;
+  /** The last thing on the floor: the desktop rail puts the account here. */
+  footer?: ReactNode;
 }
 
 /**
@@ -71,6 +74,7 @@ export function NotebookNav({
   trashed,
   onNavigate,
   labelsHidden = false,
+  footer,
 }: NotebookNavProps) {
   const navigate = useNavigate();
 
@@ -228,6 +232,7 @@ export function NotebookNav({
           <SettingsRowIcon />
           <span className="drawer-item-label">Settings</span>
         </Link>
+        {footer}
       </div>
     </>
   );

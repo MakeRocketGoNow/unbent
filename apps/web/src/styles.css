@@ -331,6 +331,11 @@ h1 {
   font-size: 1.35rem;
 }
 
+/* The rail is the desktop's chrome; see `Topbar.tsx` for what the bar still does on a phone. */
+@media (width > 860px) {
+  .topbar { display: none; }
+}
+
 .account {
   display: flex;
   align-items: center;
@@ -437,7 +442,7 @@ h1 {
      and this is the ancestor both the panel and the column share.
   */
   --rail-width: 0px;
-  --shell-pad-top: 1.25rem;
+  --shell-pad-top: 0.75rem;
   padding: 0;
 
   /*
@@ -472,11 +477,10 @@ h1 {
   display: flex;
   flex-direction: column;
   /*
-     Less above the wordmark than the plain shell's 4rem, and less than the 2rem this had:
-     the topbar's row is the 44px avatar, so 2rem above it put the wordmark's cap 43px
-     from the top of the window while the count under the divider sat 27px below it —
-     more air over the bar than under it, on the one view where the bar is a fixture
-     rather than a heading. 1.25rem brings the two within a few pixels of each other.
+     0.75rem above the list's head row, now that no bar sits between it and the window:
+     the head is a row of 32px controls and a two-line title, and the rail's own head sits
+     at the same height beside it, so this one number is the top edge of everything on a
+     desktop. It was 1.25rem while the top bar was there, sized to the bar's 44px avatar.
      The filter panel's `--panel-top` is derived from this number, which is why it is a
      custom property on the row rather than a literal here; change it there.
   */
@@ -1576,8 +1580,8 @@ a.overflow-item { text-decoration: none; }
    This is that one. It pairs with the heading beside it — the note's title, "Settings",
    "Trash" — which is what lets the arrow stay a bare glyph and say where it goes.
 
-   Hidden above the breakpoint: on a desktop the wordmark and the avatar menu are both in
-   the chrome and both lead home, so a third way out is clutter. `display` is what the
+   Hidden above the breakpoint: on a desktop the rail's wordmark and every place in it
+   lead home, at every rail width, so a third way out is clutter. `display` is what the
    breakpoint switches, so the control is always in the tree — making it conditional would
    rebuild the note's uncontrolled CodeMirror view on resize.
 */
@@ -3852,10 +3856,11 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
 /*
    The trash view's heading row, on a phone only.
 
-   Hidden above the breakpoint, heading and all: there the topbar marks Trash active, so
-   the view already says what it is and already offers the way out. This exists because
-   below the breakpoint that chrome is gone — the arrow needs a heading beside it to say
-   where it goes, the same pairing the note's title and "Settings" provide.
+   Hidden above the breakpoint, heading and all: there the rail marks Trash current, so
+   the view already says what it is and already offers the way out — as a strip too, since
+   the strip keeps Trash and every place. This exists because below the breakpoint that
+   chrome is gone — the arrow needs a heading beside it to say where it goes, the same
+   pairing the note's title and "Settings" provide.
 
    Matches `.settings-head`: same centring, same small gap, for the same reasons.
 */
@@ -4602,6 +4607,23 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
     padding-left: 0.7rem;
   }
 
+  .rail-wordmark {
+    margin: 0;
+    font-size: 1.35rem;
+  }
+
+  /*
+     The account menu opens up and to the right, into the page: the rail is on the left
+     edge, so the row's popup — which is right-anchored under a top-bar avatar — would hang
+     off the window from here, and it sits on the floor, so above is where the room is.
+  */
+  .rail .overflow-list {
+    top: auto;
+    bottom: calc(100% + 0.25rem);
+    left: 0;
+    right: auto;
+  }
+
   /* A pointer's density: the phone's 44px rows are thumb targets, and this is a mouse's column. */
   .rail .drawer-item {
     min-height: 2.25rem;
@@ -4638,7 +4660,8 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
   .rail .drawer-section,
   .rail .drawer-place-notebook,
   .rail .drawer-new,
-  .rail .drawer-list > .drawer-rule { display: none; }
+  .rail .drawer-list > .drawer-rule,
+  .rail-wordmark { display: none; }
 }
 
 /* ---------------------------------------------------------------------------------
@@ -5597,14 +5620,14 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
    between the two. Everything in here is scoped to `:not(.sheet-side)`: the drawer keeps
    its phone shape because it does not exist above the breakpoint at all.
 
-   The dialog is in the top layer, so it cannot be positioned relative to the sidebar and
-   `--panel-top` is a measurement rather than a reference: the wide shell's 1.25rem top
-   padding plus the topbar — whose height is the 2.75rem avatar button, not the wordmark
-   beside it — with its 0.6rem padding, 1px rule and 1.2rem margin below. Measured against
-   `.sidebar.getBoundingClientRect().top`, which it matches to the pixel. Anchor
-   positioning would make it a reference; it is not yet in every browser this app
-   supports, so the number is pinned here instead, and the topbar is the thing to
-   re-measure if it moves.
+   The dialog is in the top layer, so it cannot be positioned relative to the sidebar;
+   `--panel-top` is a reference to the content column's top padding (`--shell-pad-top`,
+   set on the shell so the top layer can inherit it), which is where the sidebar's head row
+   begins now that no bar sits above it. It was a measurement while the top bar was there
+   — the padding plus the bar's avatar, rule and margin, pinned as a sum — and the bar is
+   what the number stopped counting when the rail replaced it. Anchor positioning would
+   make it a reference to the sidebar itself; it is not yet in every browser this app
+   supports.
 
    Placed after every other `.sheet` rule on purpose: these override the phone's by source
    order at equal specificity, and the head's grip-cancel in particular would win if this
@@ -5617,7 +5640,7 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
    --------------------------------------------------------------------------------- */
 @media (width > 860px) {
   .sheet:not(.sheet-side) {
-    --panel-top: calc(1.25rem + 2.75rem + 0.6rem + 1px + 1.2rem);
+    --panel-top: var(--shell-pad-top, 1.25rem);
     margin: 0;
     inset: auto;
     top: var(--panel-top);

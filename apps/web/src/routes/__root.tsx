@@ -80,7 +80,7 @@ function PlainShell() {
  * The signed-in app: chrome, and the background work that only makes sense for a user.
  *
  * There is no gate here any more. The route guard has established a session before this
- * renders, so `useSession` is read for two things: the address in the topbar, and
+ * renders, so `useSession` is read for two things: the address in the chrome, and
  * liveness — a session that expires, or a sign-out in another tab, arrives through this
  * hook and nowhere else, and has to move the user off a screen they can no longer load.
  */
@@ -152,10 +152,18 @@ function AppShell() {
    */
   return (
     <div className={`shell wide rail-${railPref}`}>
-      {!isMobile && <Rail pref={railPref} onPref={setRailPref} />}
+      {/* The chain sign-out runs, and why its order matters, is in `useSignOut`. */}
+      {!isMobile && (
+        <Rail
+          pref={railPref}
+          onPref={setRailPref}
+          email={session.user.email}
+          onSignOut={signOutAndLeave}
+        />
+      )}
       <main className="shell-main">
-        {/* The chain this runs, and why its order matters, is in `useSignOut` — the drawer
-            offers the same action on a phone, where there is no topbar over the list. */}
+        {/* The phone's chrome, on the pages that have no heading of their own; the
+            stylesheet hides it above the breakpoint, where the rail is the chrome. */}
         <Topbar email={session.user.email} onSignOut={signOutAndLeave} />
         <Outlet />
       </main>

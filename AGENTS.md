@@ -109,7 +109,7 @@ override the classes.
 
 Comments here explain **why**, and they are unusually thorough — read a few before writing
 any. The house style records the decision and the alternative that was rejected, so the next
-person doesn't re-litigate it or silently undo it. `Topbar.tsx`, `OverflowMenu.tsx` and
+person doesn't re-litigate it or silently undo it. `Rail.tsx`, `OverflowMenu.tsx` and
 `Confirm.tsx` are good examples.
 
 Write them for the reader who is about to change the code. If a line looks arbitrary and

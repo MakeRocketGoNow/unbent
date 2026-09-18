@@ -4,8 +4,9 @@ import { signOut, refreshSession } from './auth-client.js';
 /**
  * Sign out, and land somewhere that makes sense afterwards.
  *
- * Extracted from the root layout because two places offer the action now: the topbar's
- * account menu, and the drawer's, which is the only one on a phone. The order below is the
+ * Extracted from the root layout because more than one place offers the action: the rail's
+ * account menu, the drawer's, which is the only one on a phone, and the phone's top bar on
+ * the pages that keep one. The order below is the
  * whole reason this is not three lines written twice.
  *
  * Leaving a note id in the address bar would expose it to the next person and reapply it on

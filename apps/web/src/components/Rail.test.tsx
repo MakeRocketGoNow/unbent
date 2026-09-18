@@ -48,7 +48,7 @@ function Shell() {
   );
   return (
     <div data-testid="shell" className={`shell wide rail-${pref}`}>
-      <Rail pref={pref} onPref={setPref} />
+      <Rail pref={pref} onPref={setPref} email="someone@example.com" onSignOut={() => {}} />
       <Outlet />
     </div>
   );
@@ -83,6 +83,8 @@ function harness(initial: string, wide = true) {
   });
   // The query selects `total` out of a page, so the cache holds the page shape.
   client.setQueryData(keys.trashCount(), { items: [], cursor: null, total: 2 });
+  // The account menu reads the instance config for legal links; seeded, jsdom has no server.
+  client.setQueryData(keys.config(), { providers: ['password'] });
   return {
     ...render(
       <QueryClientProvider client={client}>
@@ -169,6 +171,19 @@ describe('Rail', () => {
     const trash = await findByRole('link', { name: /^Trash/ });
     expect(trash.getAttribute('title')).toBe('Trash');
     expect(trash.textContent).toContain('Trash');
+  });
+
+  /* What the top bar held: the wordmark home, and the account, on the floor under
+     Settings so the menu it opens is never clipped by the scrolling rows. */
+  it('carries the wordmark and the account, the account last on the floor', async () => {
+    const { findByRole, container } = harness('/notes');
+    const home = await findByRole('link', { name: 'Unbent' });
+    expect(home.getAttribute('href')).toBe('/notes');
+    const account = await findByRole('button', { name: 'Account: someone@example.com' });
+    expect(account.closest('.drawer-foot')).toBeTruthy();
+    const foot = container.querySelector('.drawer-foot')!;
+    expect(foot.lastElementChild?.contains(account)).toBe(true);
+    expect(account.textContent).toContain('someone@example.com');
   });
 
   it('picks a notebook without closing anything, from any screen', async () => {

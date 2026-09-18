@@ -8,25 +8,24 @@ interface TopbarProps {
 }
 
 /**
- * App chrome: the wordmark, the way to Settings, and the account menu.
+ * The phone's chrome, on the pages that have no heading of their own.
  *
- * Notebooks, Import and Export each used to sit here as their own link, which made the
- * topbar a list of unrelated verbs and still left maintenance without an entry at all.
- * They are all ways of configuring the app, so they live behind one Settings entry with a
- * sub-nav of their own.
+ * This was the desktop's chrome too: the wordmark, a gear for Settings and the account
+ * menu across the top of every signed-in screen. The navigation rail carries all three
+ * now, so above the breakpoint the stylesheet hides this bar, and every screen gets the
+ * bar's height back. The reasoning that shaped it — Settings as its own control beside the
+ * account rather than inside its menu, Trash leaving for the notes' own navigation —
+ * moved to `Rail.tsx` with the controls.
  *
- * That entry is a gear beside the avatar rather than an item inside its menu. The two are
- * different kinds of thing — the gear is about the app, the avatar about the account — and
- * Keep's web app draws exactly this pair in exactly this corner. It also keeps the desktop
- * honest with the phone, where Settings is a row on the drawer's floor: one tap at both
- * widths, never a menu to open first.
+ * Below the breakpoint it still has a job. The notes, a note, Settings and Trash each
+ * carry a heading and a way back of their own and hide it (see the phone rules in the
+ * stylesheet), but the hand-off pages — connecting another app, consenting to one,
+ * signing in a device, relaying a preview sign-in — have no heading, no back arrow and
+ * no drawer, and this is the only thing that says which app they belong to and offers a
+ * way out. Rejected: deleting it and giving those four pages a small header each, four
+ * new headers for flows most people see once.
  *
- * Trash used to sit here too and was the reason the row needed splitting: it is a view of
- * notes, not of the account, and it now lives on the sidebar floor with the notes it
- * holds — and in the drawer, on a phone.
- *
- * The menu itself is `AccountMenu`, which the phone's drawer also draws. This row is the
- * wordmark and a place to hang the two controls.
+ * The menu itself is `AccountMenu`, which the drawer and the rail also draw.
  */
 export function Topbar({ email, onSignOut }: TopbarProps) {
   return (

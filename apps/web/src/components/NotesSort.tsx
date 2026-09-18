@@ -19,7 +19,7 @@ interface NotesSortProps {
  * The note list's sort control: one icon, and the sheet of orders behind it.
  *
  * This was a ⋯ menu holding "Sort: …" and Settings. Settings was here only because the
- * phone hides the topbar over the list and the avatar menu that carried it went with it —
+ * phone hid the topbar over the list and the avatar menu that carried it went with it —
  * a view with no route to Settings was the bigger problem, so sort paid for it with an
  * extra tap. The drawer's floor carries Settings now, as a row beside Trash, which is
  * where Keep puts it and where a thumb that opened the ☰ already is. That frees this

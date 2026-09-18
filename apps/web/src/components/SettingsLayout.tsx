@@ -55,8 +55,8 @@ export function SettingsLayout({ children }: { children: ReactNode }) {
               The way back, on a phone only.
 
               This was a "← Back to notes" text link on the right of this row at every
-              width. On a desktop it was a third route to a list the wordmark and the
-              avatar menu both already reach from the chrome beside it. On a phone it was
+              width. On a desktop it was a third route to a list the rail beside it already
+              reaches from every place it lists, strip or open. On a phone it was
               a 25px target in the top-right corner — the corner a phone reserves for
               forward actions — while every other full-screen view here puts a 44px arrow
               top-left.
