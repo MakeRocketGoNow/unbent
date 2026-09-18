@@ -443,6 +443,9 @@ h1 {
   */
   --rail-width: 0px;
   --shell-pad-top: 0.75rem;
+  /* The column's left gutter: the page margin on a phone, and beside a rail just enough
+     for the list's pull-out to land on the divider — see the rail's block. */
+  --shell-pad-left: 1.5rem;
   padding: 0;
 
   /*
@@ -484,7 +487,7 @@ h1 {
      The filter panel's `--panel-top` is derived from this number, which is why it is a
      custom property on the row rather than a literal here; change it there.
   */
-  padding: var(--shell-pad-top) 1.5rem 1rem;
+  padding: var(--shell-pad-top) 1.5rem 1rem var(--shell-pad-left);
 }
 
 .notes {
@@ -4675,6 +4678,19 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
      nothing to size, so the handle goes and the rail draws the line itself — one line
      either way, and the strip's width is the stylesheet's alone.
   */
+  /*
+     Beside the rail the column's left gutter is not a page margin any more: the divider is
+     the edge, and 1.5rem of air past it — plus the sidebar's own 0.7rem — put the list's
+     heading 35px from the line while the rail's heading sat 19px from its own edge. The
+     gutter is the rail's own inset now, the 0.5rem its rows sit in from its edges, so the
+     two columns share one rhythm across the divider: a selected row's fill and a marked
+     notebook's begin the same 8px from their edge, and the heading over the list and the
+     wordmark over the rail sit the same 19px in. The list's 3px ring gutter still fits
+     inside. The right gutter is unchanged: it is the note's reading margin, and the note's
+     scrollbar reaches through it.
+  */
+  .shell.wide { --shell-pad-left: 0.5rem; }
+
   .shell.wide > .resize-handle {
     flex: 0 0 1px;
     /* On the rail's last pixel rather than after it, so the rail is exactly `--rail-width`
@@ -5767,7 +5783,7 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
     top: var(--panel-top);
     /* The rail, then the content column's inline padding: flush with the sidebar's box,
        not its text edge. `--rail-width` is the shell's, inherited like `--sidebar-width`. */
-    left: calc(var(--rail-width, 0px) + 1.5rem);
+    left: calc(var(--rail-width, 0px) + var(--shell-pad-left, 1.5rem));
     width: min(
       max(var(--sidebar-width, 19rem), 20rem),
       calc(100vw - var(--rail-width, 0px) - 3rem)
