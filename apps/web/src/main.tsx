@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { routeTree } from './routeTree.gen.js';
 import { installErrorReporting } from './report-error.js';
 import { installPosthog } from './posthog.js';
+import { installLaunchFiles } from './launch-files.js';
 import { configQuery } from './queries.js';
 import './styles.css';
 
@@ -53,6 +54,14 @@ const router = createRouter({
   // React Query owns staleness; letting the router cache loader results too would mean
   // two caches to invalidate and one of them silently winning.
   defaultPreloadStaleTime: 0,
+});
+
+/*
+ * Files the operating system opened with the installed app; see `launch-files.ts`. After
+ * the router exists, because the note that results is opened through it.
+ */
+installLaunchFiles(queryClient, (noteId) => {
+  void router.navigate({ to: '/notes/$noteId', params: { noteId } });
 });
 
 declare module '@tanstack/react-router' {

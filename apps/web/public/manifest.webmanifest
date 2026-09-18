@@ -1,0 +1,28 @@
+{
+  "name": "Unbent",
+  "short_name": "Unbent",
+  "description": "Notes in Markdown that you can always take with you.",
+  "id": "/",
+  "start_url": "/notes",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#2F6B4F",
+  "theme_color": "#2F6B4F",
+  "icons": [
+    { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "file_handlers": [
+    {
+      "action": "/notes",
+      "accept": {
+        "application/pdf": [".pdf"],
+        "image/jpeg": [".jpg", ".jpeg"],
+        "image/png": [".png"]
+      },
+      "launch_type": "single-client"
+    }
+  ],
+  "launch_handler": { "client_mode": "focus-existing" }
+}
