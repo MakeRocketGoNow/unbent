@@ -6116,17 +6116,16 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
   /*
      Only on a phone — see `.trash-head`.
 
-     Pulled out through `.sidebar`'s own inset, because this row sits inside it and the
-     arrow's pull only cancels the shell's padding. Without this the two stack and the
-     arrow lands 11px in, which is neither flush to the edge nor on the text line — the
-     one position that reads as a mistake rather than a choice. Negative margin on both
-     sides so the row still spans the full width once it is pulled left.
+     No negative margin here: the sidebar's own padding is zeroed on a phone (see the
+     `.sidebar` rule below), so the arrow's `-0.75rem` pull reaches the glass on its own —
+     the same chain as `.settings-head`, whose heading has no pull either. The earlier
+     `-0.7rem` predated the sidebar-padding reset and was cancelling an inset that no
+     longer exists; with it gone the arrow and heading land where settings' do.
   */
   .trash-head {
     display: flex;
     align-items: center;
     gap: 0.25rem;
-    margin-inline: -0.7rem;
     margin-bottom: 0.5rem;
   }
 
