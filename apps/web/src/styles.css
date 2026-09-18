@@ -2235,25 +2235,19 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
 }
 
 /*
-   Open, Email, Call, Clear: a quiet action beside a value that can be acted on.
+   Open, Email, Call: a link beside a value that can be acted on.
 
-   Mostly links, but Clear is a `<button>` — it acts on the note rather than going
-   anywhere, and a link that goes nowhere is the wrong element for that. The reset is
-   what lets one class cover both: a button carries a border, a background and its own
-   font by default, none of which a link has, and all of which drew Clear as a boxed
-   control in a row that has no other boxes in it.
+   Links only, and deliberately so. A control that acts on the note is a `Button` with the
+   `quiet` variant — the rating's Clear was briefly styled by this class and read as a
+   boxed control, because a button arrives with chrome a link does not have. Restyling the
+   button to match the links was the wrong direction: `Button` exists precisely so actions
+   stop being drawn as links.
 */
 .note-field-act {
   font-size: 0.85rem;
   color: var(--muted);
   text-decoration: none;
   white-space: nowrap;
-  padding: 0;
-  border: none;
-  background: none;
-  font-family: inherit;
-  line-height: inherit;
-  cursor: pointer;
 }
 
 .note-field-act:hover {
@@ -2262,10 +2256,9 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
 }
 
 /*
-   The button variant has no border of its own to show focus with, so it takes the ring
-   every other focusable control here uses. A link gets it too, which it did not have
-   before — the browser's default ring was being drawn on an element with no border
-   either, so this is the same fix twice.
+   The app's own focus ring rather than the browser's default, which these links were
+   getting by omission — the same ring `.btn` and the star radios use, so a keyboard moving
+   through a note's properties is marked the same way throughout.
 */
 .note-field-act:focus-visible {
   outline: 2px solid var(--accent);

@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react';
 import { MAX_STAR_GLYPHS, ratingRendersAsStars, type FieldScale } from '@unbent/shared';
+import { Button } from './Button';
 import { TOUCH_QUERY, useMediaQuery } from '../useMediaQuery.js';
 
 interface RatingInputProps {
@@ -327,19 +328,24 @@ export function RatingInput({
          There is no zero star to click twice, by design — an unlit row means "no value"
          and nothing else — so clearing needs its own affordance. It shows only when there
          is something to clear, so an empty row is the word "Empty" and nothing more.
+
+         `Button` with `quiet`, not the `.note-field-act` the Open/Email/Call links use.
+         Those navigate and are anchors; this changes the note, and `Button` exists to stop
+         actions being drawn as links — quiet is the variant for one in a dense row, and it
+         keeps the padding and hit area that make it a real target rather than bare text.
       */}
       {value === null ? (
         <span className="note-field-rating-empty">Empty</span>
       ) : (
         !readOnly && (
-          <button
-            type="button"
-            className="note-field-act"
+          <Button
+            variant="quiet"
+            size="small"
             onClick={() => onChange(null)}
             aria-label={`Clear ${label ?? 'rating'}`}
           >
             Clear
-          </button>
+          </Button>
         )
       )}
     </span>
