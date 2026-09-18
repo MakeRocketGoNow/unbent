@@ -69,12 +69,39 @@ describe('NotebookNav', () => {
   /* All notes is the unnarrowed list, not merely "no notebook" — a tag is still a
      narrowing, so the row must not claim to be where you are while one is applied. */
   it('marks All notes only when nothing at all is narrowing the list', async () => {
-    const { findByText } = harness();
-    expect((await findByText('All notes')).className).toContain('current');
+    const { findByRole } = harness();
+    expect((await findByRole('button', { name: 'All notes' })).className).toContain('current');
 
     cleanup();
     const tagged = harness({ selectedTags: ['Receipt'] });
-    expect((await tagged.findByText('All notes')).className).not.toContain('current');
+    expect((await tagged.findByRole('button', { name: 'All notes' })).className).not.toContain(
+      'current',
+    );
+  });
+
+  /*
+   * Beside the trash or settings the URL still names a notebook, and lighting its row
+   * there would say the trash is in it. The destination lights instead — by the screen,
+   * never by the router's own `active`, which is the phone drawer's test to keep.
+   */
+  it('marks the destination it stands beside, and no place, off the notes', async () => {
+    const { findByRole } = harness({ place: 'trash', notebook: 'Coupons' });
+    const trash = await findByRole('link', { name: /^Trash/ });
+    expect(trash.className).toContain('current');
+    expect(trash.getAttribute('aria-current')).toBe('page');
+    expect((await findByRole('button', { name: /^Coupons/ })).className).not.toContain('current');
+    expect((await findByRole('button', { name: 'All notes' })).className).not.toContain('current');
+  });
+
+  /* A strip of icons keeps the words as tooltips, and keeps them in the DOM as names. */
+  it('adds tooltips to the rows a strip keeps, without losing their names', async () => {
+    const { findByRole } = harness({ labelsHidden: true });
+    const trash = await findByRole('link', { name: /^Trash/ });
+    expect(trash.getAttribute('title')).toBe('Trash');
+    expect((await findByRole('button', { name: 'All notes' })).getAttribute('title')).toBe('All notes');
+    // Notebook rows are hidden by the stylesheet in a strip, so they only ever carry
+    // their own name, which is what a truncated label needs anyway.
+    expect((await findByRole('button', { name: /^Coupons/ })).getAttribute('title')).toBe('Coupons');
   });
 
   it('marks the notebook you are in', async () => {
@@ -139,10 +166,10 @@ describe('NotebookNav', () => {
   /* Trash, Settings and New notebook navigate, so they are links: middle-click and copy
      keep working, which a button would lose. */
   it('draws the destinations as links rather than buttons', async () => {
-    const { findByText } = harness();
-    expect((await findByText('Trash')).tagName).toBe('A');
-    expect((await findByText('Settings')).tagName).toBe('A');
-    expect((await findByText('New notebook')).tagName).toBe('A');
+    const { findByRole } = harness();
+    expect((await findByRole('link', { name: /^Trash/ })).tagName).toBe('A');
+    expect((await findByRole('link', { name: 'Settings' })).tagName).toBe('A');
+    expect((await findByRole('link', { name: 'New notebook' })).tagName).toBe('A');
   });
 
   /* The rows are places to go, so the way to change them lives outside the rows. */

@@ -4,6 +4,9 @@ import { useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { useSession } from '../auth-client.js';
 import { useSignOut } from '../useSignOut.js';
 import { requireSession, useShell } from '../auth-gate.js';
+import { Rail, type RailPref } from '../components/Rail.js';
+import { usePersistentState } from '../usePersistentState.js';
+import { useMediaQuery, MOBILE_QUERY } from '../useMediaQuery.js';
 import { claimCacheFor } from '../queries.js';
 import { startIndexing, subscribeIndexing } from '../index-files.js';
 import { Topbar } from '../components/Topbar.js';
@@ -87,6 +90,21 @@ function AppShell() {
   const signOutAndLeave = useSignOut();
   const queryClient = useQueryClient();
   const userId = session?.user?.id;
+  /*
+   * The rail's state lives here, with the shell that carries the class the stylesheet
+   * reads, rather than in the rail: storage hooks do not sync between instances, and the
+   * class has to change with the button.
+   */
+  const [railPref, setRailPref] = usePersistentState<RailPref>('rail', 'auto', (raw) =>
+    raw === 'open' || raw === 'collapsed' ? raw : undefined,
+  );
+  /*
+   * The rail is mounted only above the breakpoint, the way the drawer is mounted only
+   * below it (see `NotesLayout`): the two are one set of rows, and exactly one of them
+   * should exist. One of the few places the breakpoint is read in JS, and the editor is
+   * not in this subtree, so nothing it must not rebuild is rebuilt.
+   */
+  const isMobile = useMediaQuery(MOBILE_QUERY);
 
   /**
    * Index whatever is pending, once there is someone to index for.
@@ -133,7 +151,8 @@ function AppShell() {
    * a landmark should hold the page's content and nothing that is chrome for every page.
    */
   return (
-    <div className="shell wide">
+    <div className={`shell wide rail-${railPref}`}>
+      {!isMobile && <Rail pref={railPref} onPref={setRailPref} />}
       <main className="shell-main">
         {/* The chain this runs, and why its order matters, is in `useSignOut` — the drawer
             offers the same action on a phone, where there is no topbar over the list. */}

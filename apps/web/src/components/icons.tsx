@@ -20,6 +20,8 @@ import {
   Maximize2,
   Menu,
   Music,
+  PanelLeftClose,
+  PanelLeftOpen,
   Paperclip,
   Pencil,
   Phone,
@@ -177,6 +179,15 @@ export function TableViewIcon() {
 /** The arrow beside a sorted column's heading, the way a spreadsheet draws it. */
 export function SortDirectionIcon({ direction }: { direction: 'asc' | 'desc' }) {
   return <RowIcon icon={direction === 'asc' ? ArrowUp : ArrowDown} />;
+}
+
+/**
+ * The navigation rail's collapse control: a panel with its left edge drawn, and an arrow
+ * that says which way the next press moves it. The state is in the glyph *and* in the
+ * button's name; the glyph alone would read the same to someone who cannot see it.
+ */
+export function RailToggleIcon({ open }: { open: boolean }) {
+  return <HeaderIcon icon={open ? PanelLeftClose : PanelLeftOpen} />;
 }
 
 /**

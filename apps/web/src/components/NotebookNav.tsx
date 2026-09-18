@@ -15,7 +15,15 @@ export interface NotebookData {
   unfiled: number;
 }
 
+/**
+ * Which screen the rows are drawn beside. The places at the top mark themselves only
+ * over the notes; the destinations on the floor mark themselves when they are the screen.
+ */
+export type NavPlace = 'notes' | 'trash' | 'settings' | 'other';
+
 interface NotebookNavProps {
+  /** Defaults to the notes: the phone's drawer only exists over them. */
+  place?: NavPlace | undefined;
   notebook: string | undefined;
   /** Selected tags, only to know whether "All notes" is the current scope. */
   selectedTags: string[];
@@ -26,6 +34,12 @@ interface NotebookNavProps {
    * list behind it has changed; a surface that is always on screen passes nothing.
    */
   onNavigate?: (() => void) | undefined;
+  /**
+   * The labels are clipped from view — a desktop's rail drawn as a strip of icons. The
+   * rows then carry their label as a tooltip too, since a glyph alone says less than a
+   * word; the stylesheet does the clipping, this only adds the titles.
+   */
+  labelsHidden?: boolean | undefined;
 }
 
 /**
@@ -50,11 +64,13 @@ interface NotebookNavProps {
  * knows which.
  */
 export function NotebookNav({
+  place = 'notes',
   notebook,
   selectedTags,
   notebooks,
   trashed,
   onNavigate,
+  labelsHidden = false,
 }: NotebookNavProps) {
   const navigate = useNavigate();
 
@@ -79,8 +95,16 @@ export function NotebookNav({
     onNavigate?.();
   };
 
-  /** All notes means no notebook *and* no tags — the unnarrowed list, not merely unfiled. */
-  const allActive = !notebook && selectedTags.length === 0;
+  /*
+   * All notes means no notebook *and* no tags — the unnarrowed list, not merely unfiled.
+   * Every place is gated on being over the notes at all: on the trash or in settings the
+   * URL still carries a notebook, and lighting its row there would say the trash is in it.
+   */
+  const here = place === 'notes';
+  const allActive = here && !notebook && selectedTags.length === 0;
+  const inboxActive = here && notebook === UNFILED;
+  /** The tooltip a strip's row needs, and a full-width row does not. */
+  const tip = (label: string) => (labelsHidden ? label : undefined);
 
   return (
     <>
@@ -89,10 +113,11 @@ export function NotebookNav({
           type="button"
           className={allActive ? 'drawer-item current' : 'drawer-item'}
           aria-current={allActive ? 'true' : undefined}
+          title={tip('All notes')}
           onClick={() => scope(undefined)}
         >
           <NotesRowIcon />
-          All notes
+          <span className="drawer-item-label">All notes</span>
         </button>
 
         {/*
@@ -104,12 +129,13 @@ export function NotebookNav({
         {((notebooks.data?.unfiled ?? 0) > 0 || notebook === UNFILED) && (
           <button
             type="button"
-            className={notebook === UNFILED ? 'drawer-item current' : 'drawer-item'}
-            aria-current={notebook === UNFILED ? 'true' : undefined}
+            className={inboxActive ? 'drawer-item current' : 'drawer-item'}
+            aria-current={inboxActive ? 'true' : undefined}
+            title={tip('Inbox')}
             onClick={() => scope(UNFILED)}
           >
             <InboxRowIcon />
-            Inbox
+            <span className="drawer-item-label">Inbox</span>
             <span className="tag-count">{notebooks.data?.unfiled ?? 0}</span>
           </button>
         )}
@@ -133,13 +159,19 @@ export function NotebookNav({
         </div>
 
         {notebooks.data?.notebooks.map((nb) => {
-          const on = notebook === nb.name;
+          const on = here && notebook === nb.name;
           return (
             <button
               key={nb.id}
               type="button"
-              className={on ? 'drawer-item current' : 'drawer-item'}
+              // `drawer-place-notebook` is how a strip knows to hide these: every notebook
+              // has the same glyph, so as icons alone they would be a column of identical
+              // squares, and the strip is opened to tell them apart.
+              className={on ? 'drawer-item drawer-place-notebook current' : 'drawer-item drawer-place-notebook'}
               aria-current={on ? 'true' : undefined}
+              // A name can be longer than the column; the row ellipsises it and the
+              // tooltip carries the rest, the way `.overflow-email` does for an address.
+              title={nb.name}
               onClick={() => scope(nb.name)}
             >
               <NotebookRowIcon />
@@ -157,7 +189,7 @@ export function NotebookNav({
         */}
         <Link to="/settings/notebooks" className="drawer-item drawer-new">
           <PlusRowIcon />
-          New notebook
+          <span className="drawer-item-label">New notebook</span>
         </Link>
       </nav>
 
@@ -168,16 +200,33 @@ export function NotebookNav({
           than a narrowing of this one — and a link can be middle-clicked and copied, which
           a button cannot. Both navigate away, so neither closes a drawer by hand.
       */}
+      {/*
+          Marked `current` by which screen this is beside, never by the router's own
+          `active` class on the link: the router would light Trash from the moment the
+          trash opened whatever the rest of the page said, and the phone's drawer, which
+          only ever exists over the notes, marks neither. `aria-current="page"` rather than
+          the places' `"true"`, because a destination is a page and a place is a scope.
+      */}
       <div className="drawer-foot">
         <hr className="drawer-rule" />
-        <Link to="/trash" className="drawer-item">
+        <Link
+          to="/trash"
+          className={place === 'trash' ? 'drawer-item current' : 'drawer-item'}
+          aria-current={place === 'trash' ? 'page' : undefined}
+          title={tip('Trash')}
+        >
           <TrashRowIcon />
-          Trash
+          <span className="drawer-item-label">Trash</span>
           {trashed > 0 && <span className="tag-count">{trashed}</span>}
         </Link>
-        <Link to="/settings" className="drawer-item">
+        <Link
+          to="/settings"
+          className={place === 'settings' ? 'drawer-item current' : 'drawer-item'}
+          aria-current={place === 'settings' ? 'page' : undefined}
+          title={tip('Settings')}
+        >
           <SettingsRowIcon />
-          Settings
+          <span className="drawer-item-label">Settings</span>
         </Link>
       </div>
     </>

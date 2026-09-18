@@ -104,8 +104,8 @@ describe('NotebookDrawer', () => {
    * caught, and the reason the class is spelled the way it is.
    */
   it('does not mark a destination as the current scope', async () => {
-    const { findByText } = harness({ notebook: 'Coupons' });
-    const trash = await findByText('Trash');
+    const { findByRole } = harness({ notebook: 'Coupons' });
+    const trash = await findByRole('link', { name: /^Trash/ });
     expect(trash.className).not.toContain('current');
     expect(trash.getAttribute('aria-current')).toBeNull();
   });

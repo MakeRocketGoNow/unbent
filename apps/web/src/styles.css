@@ -4555,6 +4555,114 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
 }
 
 /* ---------------------------------------------------------------------------------
+   The navigation rail: the drawer's rows, pinned open down the left on a desktop.
+
+   A sibling of the content column in `.shell.wide`, flush with the window's left edge at
+   full height — see `Rail.tsx` for why it is not a track of the notes grid. Its width is
+   the shell's `--rail-width`, set by the class the shell carries (`rail-auto`,
+   `rail-open`, `rail-collapsed`) and read by the filter panel too, which is in the top
+   layer and can only inherit it.
+
+   Two widths. Open, 15rem: the labels' width, and the same 20rem-ish column Keep and
+   Evernote give it less a little. Collapsed, 3.25rem: a strip of 2.75rem targets — the
+   size every `.icon-btn` in the app takes — with a quarter-rem either side. `auto` is
+   open on a wide window and the strip on a narrow one, at the 1200px `RAIL_WIDE_QUERY`
+   reads in JS; written here in range syntax as the exact complement, so no width lands
+   in neither. Below the phone breakpoint the rail does not exist: the drawer is the
+   phone's rail.
+
+   The strip is styled by the rail's own width, through a container query, rather than by
+   the shell's class: under `rail-auto` the class does not say which width is showing.
+   Labels are clipped, not `display: none`d, so a row's accessible name survives; what is
+   removed outright are the things a strip cannot show at all — the notebooks (one glyph
+   each, indistinguishable as icons), the section head, New notebook.
+
+   The surface is a mix over `--fg`, the idiom every second surface here uses, so it
+   inverts with the theme; the border on its right is the divider, as the resize handle
+   is between the list and the note. No width transition: nothing should slide when a
+   window is resized across 1200px, and the toggle is a choice, not an animation.
+   --------------------------------------------------------------------------------- */
+.rail { display: none; }
+
+@media (width > 860px) {
+  .shell.wide.rail-auto,
+  .shell.wide.rail-open { --rail-width: 15rem; }
+  .shell.wide.rail-collapsed { --rail-width: 3.25rem; }
+
+  .rail {
+    display: block;
+    flex: 0 0 var(--rail-width);
+    width: var(--rail-width);
+    min-height: 0;
+    container: rail / inline-size;
+    /*
+       Above the content column. The rail comes first in the DOM, so without a context of
+       its own anything it pops out — the account menu — would paint under the list's
+       sticky heads, which carry z-indexes of their own.
+    */
+    position: relative;
+    z-index: 25;
+    background: color-mix(in srgb, var(--fg) 3%, transparent);
+    border-right: 1px solid var(--border);
+  }
+
+  .rail-inner {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    gap: 0.6rem;
+    min-height: 0;
+    padding: var(--shell-pad-top) 0.5rem 1rem;
+  }
+
+  .rail-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    min-height: 2.75rem;
+    padding-left: 0.7rem;
+  }
+
+  /* A pointer's density: the phone's 44px rows are thumb targets, and this is a mouse's column. */
+  .rail .drawer-item {
+    min-height: 2.25rem;
+    gap: 0.7rem;
+  }
+}
+
+@media (860px < width < 1200px) {
+  .shell.wide.rail-auto { --rail-width: 3.25rem; }
+}
+
+@container rail (width < 8rem) {
+  .rail-inner { padding-inline: 0.25rem; }
+  .rail-head {
+    justify-content: center;
+    padding-left: 0;
+  }
+  .rail .drawer-item {
+    justify-content: center;
+    gap: 0;
+    padding-inline: 0;
+    min-height: 2.75rem;
+  }
+  /* Clipped, not removed: the label is still the row's name to a screen reader. */
+  .rail .drawer-item-label,
+  .rail .drawer-item > .tag-count {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+  .rail .drawer-section,
+  .rail .drawer-place-notebook,
+  .rail .drawer-new,
+  .rail .drawer-list > .drawer-rule { display: none; }
+}
+
+/* ---------------------------------------------------------------------------------
    The note list header, at every width.
 
    A count and a few controls where the sidebar had a count, a New button, a search field,
@@ -5543,9 +5651,13 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
     margin: 0;
     inset: auto;
     top: var(--panel-top);
-    /* The wide shell's inline padding: flush with the sidebar's box, not its text edge. */
-    left: 1.5rem;
-    width: min(max(var(--sidebar-width, 19rem), 20rem), calc(100vw - 3rem));
+    /* The rail, then the content column's inline padding: flush with the sidebar's box,
+       not its text edge. `--rail-width` is the shell's, inherited like `--sidebar-width`. */
+    left: calc(var(--rail-width, 0px) + 1.5rem);
+    width: min(
+      max(var(--sidebar-width, 19rem), 20rem),
+      calc(100vw - var(--rail-width, 0px) - 3rem)
+    );
     max-height: calc(100dvh - var(--panel-top) - 1rem);
     border: 1px solid var(--border);
     border-radius: 0.75rem;
