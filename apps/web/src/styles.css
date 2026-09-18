@@ -5346,6 +5346,14 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
   padding-top: 1rem;
 }
 
+/* The rows' scrollbar on the drawer's edge, not a padding's width in from it: the same
+   reach the rail's list makes through its inset, sized to the body's 1rem here. The rows
+   keep their place; only the bar moves. */
+.sheet-side .drawer-list {
+  margin-right: -1rem;
+  padding-right: 1rem;
+}
+
 /*
    The drawer's head is the wordmark, not a dialog title.
 
