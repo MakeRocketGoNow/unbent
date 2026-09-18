@@ -70,6 +70,15 @@ export function createClient(baseUrl: string, token: string): ImportClient {
       return res.json() as Promise<{ filename: string; indexing?: 'server' | 'client' }>;
     },
 
+    importNotebook: async (definition) => {
+      const res = await api('/api/import/notebook', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(definition),
+      });
+      return res.json() as Promise<{ id: string; skipped: Array<{ name: string; reason: string }> }>;
+    },
+
     listFiles: async (noteId) => {
       const res = await api(`/api/notes/${noteId}/files`, { method: 'GET' });
       const { files } = (await res.json()) as { files: Array<{ filename: string }> };

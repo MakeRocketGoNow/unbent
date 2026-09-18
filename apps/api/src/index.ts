@@ -14,7 +14,7 @@ import { exportRoutes } from './routes/export.js';
 import { attachments } from './routes/attachments.js';
 import { admin } from './routes/admin.js';
 import { search } from './routes/search.js';
-import { importEnmlRoutes, importRoutes } from './routes/import.js';
+import { importEnmlRoutes, importNotebookRoutes, importRoutes } from './routes/import.js';
 import { connectedApps } from './routes/connected-apps.js';
 import { previewRelay } from './routes/preview-relay.js';
 import { mcpRoutes } from './routes/mcp.js';
@@ -57,6 +57,7 @@ const routes = app
   .route('/api', admin)
   .route('/api', search)
   .route('/api', importRoutes)
+  .route('/api', importNotebookRoutes)
   .route('/api', importEnmlRoutes)
   .route('/api', mcpRoutes)
   .route('/api', connectedApps)

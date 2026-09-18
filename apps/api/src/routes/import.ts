@@ -1,6 +1,11 @@
 import { Hono } from 'hono';
 import { zValidator } from '@hono/zod-validator';
-import { MAX_BODY_BYTES, importEnmlSchema, importNoteSchema } from '@unbent/shared';
+import {
+  MAX_BODY_BYTES,
+  importEnmlSchema,
+  importNoteSchema,
+  notebookDefinitionSchema,
+} from '@unbent/shared';
 // Deep import rather than the package root: the barrel re-exports pdf-text, which pulls
 // pdfjs into the Worker bundle for a conversion that never touches a PDF.
 import { enmlToMarkdown } from '@unbent/enex/enml';
@@ -43,6 +48,27 @@ export const importRoutes = new Hono<AppEnv>().post(
     // `skippedFields` names any custom field values that could not be stored, so the
     // client can report them rather than the import quietly dropping data.
     return c.json({ id, created, skippedFields }, created ? 201 : 200);
+  },
+);
+
+/**
+ * A notebook's definitions from an export's `notebooks/<slug>.yaml`, applied before the
+ * notes that hold values for them — see `NotesRepo.importNotebook` for what "applied"
+ * means. One request per notebook, for the same reason the note import is one per note:
+ * it is idempotent, so a run that stopped can simply be run again.
+ *
+ * `skipped` names each field the definition could not apply and why, so the client can
+ * report a field that already exists here under another type rather than quietly leaving
+ * the person to discover it on the notebook's settings page.
+ */
+export const importNotebookRoutes = new Hono<AppEnv>().post(
+  '/import/notebook',
+  requireAuth,
+  withRepos,
+  zValidator('json', notebookDefinitionSchema),
+  async (c) => {
+    const { id, skipped } = await c.get('notes').importNotebook(c.req.valid('json'));
+    return c.json({ id, skipped });
   },
 );
 

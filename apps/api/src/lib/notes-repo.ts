@@ -11,6 +11,7 @@ import {
   isHeldSelectValue,
   isReservedFieldName,
   MAX_FIELDS_PER_NOTEBOOK,
+  MAX_SELECT_OPTIONS,
   planConversion,
   startOfDay,
   UNFILED,
@@ -24,6 +25,7 @@ import {
   type NoteFieldValue,
   type NoteSort,
   type NoteSummary,
+  type NotebookDefinition,
   type NotebookSummary,
   type SearchResult,
   fieldSortKey,
@@ -2170,6 +2172,77 @@ export class NotesRepo extends ScopedRepo {
         .run();
     }
     return skipped;
+  }
+
+  /**
+   * Applies a notebook's definitions from an export's `notebooks/<slug>.yaml`, ahead of
+   * the notes that will carry values for them.
+   *
+   * The rule is *add, never alter*. A field the notebook does not have is created as the
+   * file describes it — that is the whole point, and how a URL comes back a URL and a
+   * rating a rating. A field it already has keeps its type and its scale, because
+   * changing either clears every value that cannot be read the new way, and an import is
+   * not the place to decide that on someone's behalf; the mismatch is reported instead,
+   * so the person can convert it themselves with the confirmation that step deserves.
+   * The one merge is a select's options: the file's are added after the notebook's own,
+   * which cannot lose anything and lets the incoming values land.
+   *
+   * Existing fields keep their positions and new ones append in file order, so a fresh
+   * notebook comes out in exactly the exported order and an existing one is not shuffled
+   * under the person who arranged it. The notebook itself is created if it is new.
+   */
+  async importNotebook(
+    definition: NotebookDefinition,
+  ): Promise<{ id: string; skipped: Array<{ name: string; reason: string }> }> {
+    const notebookId = await this.resolveNotebook(definition.name);
+    if (!notebookId) throw new Error('Notebook name is empty');
+
+    const existing = (await this.listFields(notebookId)) ?? [];
+    const byName = new Map(existing.map((f) => [f.name.toLowerCase(), f]));
+    const skipped: Array<{ name: string; reason: string }> = [];
+
+    for (const field of definition.fields) {
+      const current = byName.get(field.name.toLowerCase());
+
+      if (!current) {
+        const created = await this.createField(notebookId, {
+          name: field.name,
+          type: field.type,
+          options: field.options ?? [],
+          scale: field.scale ?? null,
+        });
+        if (created === 'full') {
+          skipped.push({ name: field.name, reason: 'This notebook has as many fields as it can hold' });
+        } else if (typeof created === 'string') {
+          skipped.push({ name: field.name, reason: 'Could not be created' });
+        } else {
+          byName.set(field.name.toLowerCase(), created);
+        }
+        continue;
+      }
+
+      if (current.type !== field.type) {
+        skipped.push({
+          name: field.name,
+          reason: `Already here as ${current.type}, not ${field.type}; left as it is`,
+        });
+        continue;
+      }
+
+      if (field.type === 'select') {
+        const have = new Set(current.options.map((o) => o.toLowerCase()));
+        const added = (field.options ?? []).filter((o) => !have.has(o.toLowerCase()));
+        if (added.length > 0) {
+          const options = [...current.options, ...added].slice(0, MAX_SELECT_OPTIONS);
+          const result = await this.updateField(notebookId, current.id, { options });
+          if (typeof result === 'string') {
+            skipped.push({ name: field.name, reason: 'Options could not be added' });
+          }
+        }
+      }
+    }
+
+    return { id: notebookId, skipped };
   }
 
   private async setTags(noteId: string, tags: string[]): Promise<void> {

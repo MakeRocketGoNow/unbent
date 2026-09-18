@@ -1,5 +1,5 @@
 import { BlobWriter, TextReader, Uint8ArrayReader, ZipWriter } from '@zip.js/zip.js';
-import { serialize } from '@unbent/shared';
+import { serialize, serializeNotebook } from '@unbent/shared';
 import { describe, expect, it, vi } from 'vitest';
 import { importArchive } from './import-archive.js';
 import {
@@ -523,5 +523,115 @@ describe('how far along the run is', () => {
 
     expect(again.skipped).toBe(5);
     expect(again.processed).toBe(again.notesTotal);
+  });
+});
+
+describe('notebook definitions in the archive', () => {
+  const shopping = serializeNotebook('Shopping', [
+    { id: 'f1', notebookId: 'nb', name: 'Url', type: 'url', options: [], scale: null, position: 0 },
+    {
+      id: 'f2',
+      notebookId: 'nb',
+      name: 'Status',
+      type: 'select',
+      options: ['Want', 'Ordered'],
+      scale: null,
+      position: 1,
+    },
+    {
+      id: 'f3',
+      notebookId: 'nb',
+      name: 'Priority',
+      type: 'number',
+      options: [],
+      scale: { max: 5, step: 0.5 },
+      position: 2,
+    },
+  ]);
+
+  it('applies every notebook before the first note, typed as the file says', async () => {
+    const order: string[] = [];
+    const importNotebook = vi.fn(async (def: { name: string }) => {
+      order.push(`notebook:${def.name}`);
+      return { id: 'nb', skipped: [] };
+    });
+    const { client } = fakeClient({ importNotebook });
+    const createNote = client.createNote as ReturnType<typeof vi.fn>;
+    createNote.mockImplementation(async (input: { title: string }) => {
+      order.push(`note:${input.title}`);
+      return { id: 'n', created: true };
+    });
+
+    const zip = await zipFile('unbent-shopping-2026-09-18.zip', {
+      // Notes listed first: the export writes definitions last, and the importer must
+      // not depend on where in the zip they landed.
+      'bike-0191c2a0/bike-0191c2a0.md': noteMarkdown({
+        title: 'Bike',
+        notebook: 'Shopping',
+        fields: { Url: 'https://x.test', Status: 'Want', Priority: 4.5 },
+      }),
+      'notebooks/shopping.yaml': shopping,
+      'notebooks/coupons.yaml': serializeNotebook('Coupons', []),
+    });
+    const progress = await importArchive(zip, client);
+
+    expect(order).toEqual(['notebook:Shopping', 'notebook:Coupons', 'note:Bike']);
+    expect(importNotebook).toHaveBeenCalledWith({
+      name: 'Shopping',
+      fields: [
+        { name: 'Url', type: 'url' },
+        { name: 'Status', type: 'select', options: ['Want', 'Ordered'] },
+        { name: 'Priority', type: 'number', scale: { max: 5, step: 0.5 } },
+      ],
+    });
+    expect(progress).toMatchObject({ created: 1, failed: 0, notesTotal: 1, processed: 1 });
+  });
+
+  it('finds them under a folder a re-pack added, and never mistakes one for a note', async () => {
+    const importNotebook = vi.fn(async () => ({ id: 'nb', skipped: [] }));
+    const { client, notes } = fakeClient({ importNotebook });
+    const zip = await zipFile('repacked.zip', {
+      'unbent-export/notebooks/shopping.yaml': shopping,
+      'unbent-export/bike-0191c2a0/bike-0191c2a0.md': noteMarkdown({ title: 'Bike' }),
+    });
+    const progress = await importArchive(zip, client);
+    expect(importNotebook).toHaveBeenCalledTimes(1);
+    expect(notes.map((n) => n.title)).toEqual(['Bike']);
+    expect(progress.notesTotal).toBe(1);
+  });
+
+  it('is ignored by a host that cannot apply them, and the notes still import', async () => {
+    const { client, notes } = fakeClient();
+    delete client.importNotebook;
+    const zip = await zipFile('unbent-export.zip', {
+      'notebooks/shopping.yaml': shopping,
+      'bike-0191c2a0/bike-0191c2a0.md': noteMarkdown({ title: 'Bike' }),
+    });
+    const progress = await importArchive(zip, client);
+    expect(notes.map((n) => n.title)).toEqual(['Bike']);
+    expect(progress).toMatchObject({ created: 1, failed: 0 });
+  });
+
+  it('reports a file it cannot read, and a field the server would not apply, by name', async () => {
+    const failures: Array<{ title: string; reason: string }> = [];
+    const importNotebook = vi.fn(async () => ({
+      id: 'nb',
+      skipped: [{ name: 'Priority', reason: 'Already here as text, not number; left as it is' }],
+    }));
+    const { client, notes } = fakeClient({ importNotebook });
+    const zip = await zipFile('unbent-export.zip', {
+      'notebooks/shopping.yaml': shopping,
+      'notebooks/broken.yaml': 'name: Broken\nfields:\n  - name: A\n    type: colour\n',
+      'bike-0191c2a0/bike-0191c2a0.md': noteMarkdown({ title: 'Bike' }),
+    });
+    const progress = await importArchive(zip, client, { onFailure: (f) => failures.push(f) });
+
+    expect(failures).toEqual([
+      { title: 'Field "Priority" in Shopping', reason: 'Already here as text, not number; left as it is' },
+      { title: 'Notebook notebooks/broken.yaml', reason: expect.stringMatching(/^Definitions not applied: /) },
+    ]);
+    // Counted as failures, not as notes: the bar still measures the one note.
+    expect(progress).toMatchObject({ created: 1, failed: 2, processed: 1, notesTotal: 1 });
+    expect(notes.map((n) => n.title)).toEqual(['Bike']);
   });
 });
