@@ -6354,14 +6354,17 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
   .workspace-main {
     padding-bottom: calc(3.5rem + var(--keyboard-inset, 0px));
     /*
-       The shell's own inset is the gutter here; a second one would stack on it. And the
-       base rule's reach to the window edge — a negative right margin sized to the desktop
-       shell's 1.5rem — is undone with it: the phone shell insets by less than that, so the
-       margin would drag the column past the glass. Edge-to-edge is already the phone's, by
-       way of the shell running the column full width; nothing here needs to reach for it.
+       The shell's own inset is the gutter on the left; a second one would stack on it.
+       On the right the column reaches through that inset to the glass and takes it back
+       as padding, the way the base rule does with the desktop shell's 1.5rem: sized to
+       the phone shell's 0.75rem here, since the base's reach would drag the column past
+       the window. This used to be undone outright, on the reasoning that the phone was
+       edge-to-edge already — it was not: the column stopped at the shell's padding, so
+       its scrollbar sat 12px in from the glass with dead space beyond it, and the text
+       was 12px in from a bar that should have been the edge.
     */
-    padding-inline: 0;
-    margin-right: 0;
+    padding-inline: 0 0.75rem;
+    margin-right: -0.75rem;
   }
 
   /* A shade tighter still than the base bar, where vertical room is scarcest. */
