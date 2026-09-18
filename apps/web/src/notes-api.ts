@@ -429,6 +429,28 @@ export async function listAttachments(noteId: string): Promise<AttachmentInfo[]>
   return files;
 }
 
+/** A web image fetched into a note by the server; `url` is the address it came from. */
+export interface FetchedWebImage extends AttachmentInfo {
+  path: string;
+  url: string;
+}
+
+/**
+ * Asks the server to fetch a picture off the web and store it on the note. The server
+ * fetches because the browser cannot read a cross-origin image; see the route for the
+ * address policy. Rejections carry a reason worth showing: not an image, too large, the
+ * site refused.
+ */
+export async function fetchWebImage(noteId: string, url: string): Promise<FetchedWebImage> {
+  return json(
+    await fetch(`/api/notes/${encodeURIComponent(noteId)}/files/fetch`, {
+      method: 'POST',
+      headers: jsonHeaders,
+      body: JSON.stringify({ url }),
+    }),
+  );
+}
+
 /** One file after a copy between notes: the name asked for, and the name it has now. */
 export interface CopiedAttachment extends AttachmentInfo {
   from: string;

@@ -38,6 +38,7 @@ const openAttachmentViewer = vi.fn();
 vi.mock('../attachment-viewer.js', () => ({
   openAttachmentViewer: (target: unknown, siblings: unknown) =>
     openAttachmentViewer(target, siblings),
+  downloadUrl: (src: string) => `${src}?download=1`,
 }));
 
 /**
@@ -61,8 +62,12 @@ function mount(doc: string, cursor = doc.length): EditorView {
 }
 
 /** Mounts with attachment resolution on; the shared `mount` deliberately has none. */
-/** What the corner copy control was asked to copy, across a test. */
+/** What the toolbar's copy control was asked to copy, across a test. */
 const copyAttachment = vi.fn(async (_filename: string, _kind: 'image' | 'pdf') => {});
+/** What the save control was asked to fetch; answers with the stored name. */
+const saveRemoteImage = vi.fn(async (_url: string) => 'saved.png');
+/** What the bin was asked to delete, across a test. */
+const deleteAttachment = vi.fn(async (_filename: string) => {});
 
 function mountWithAttachments(doc: string, cursor = 0, pdfNames: string[] = []): EditorView {
   const parent = document.createElement('div');
@@ -78,6 +83,8 @@ function mountWithAttachments(doc: string, cursor = 0, pdfNames: string[] = []):
           resolveAttachment: (name) => `/api/notes/n1/files/${name}`,
           isPdfAttachment: (name) => names.has(name),
           copyAttachment,
+          saveRemoteImage,
+          deleteAttachment,
         }),
       ],
     }),
@@ -463,6 +470,19 @@ describe('inline PDF', () => {
    * The way to read a scan large. The control arrives with the first page rather than
    * with the widget, so it never sits on a page that has not drawn.
    */
+  it('deletes the file and removes the link the page hangs under', async () => {
+    deleteAttachment.mockClear();
+    const v = mountWithAttachments('intro\n\n[report](files/report.pdf)');
+    await settle();
+    v.dom.querySelector<HTMLButtonElement>('.cm-md-pdf .zoom-remove')?.click();
+    [...v.dom.querySelectorAll<HTMLButtonElement>('.cm-md-pdf .attachment-tool-confirm')]
+      .find((b) => b.textContent === 'Delete')
+      ?.click();
+    expect(deleteAttachment).toHaveBeenCalledWith('report.pdf');
+    await settle();
+    expect(v.state.doc.toString()).toBe('intro');
+  });
+
   it('offers to copy the file once the first page has drawn', async () => {
     copyAttachment.mockClear();
     const v = mountWithAttachments('[report](files/report.pdf)');
@@ -725,12 +745,122 @@ describe('inline images', () => {
     expect(v.state.doc.toString()).toBe(doc);
   });
 
-  /** A remote picture is not a stored file; there is nothing of the note's to copy. */
-  it('offers no copy for a remote image', () => {
+  /**
+   * A remote picture is not a stored file: nothing of the note's to copy, and no download,
+   * which a browser would turn into a tab across origins. In their place, the one thing
+   * to do with a web image — bring it in.
+   */
+  it('offers save instead of copy and download for a remote image', () => {
     const doc = '![web](https://example.com/a.png)\n\nplain';
     const v = mountWithAttachments(doc, doc.length);
-    expect(v.dom.querySelector('.cm-md-image .zoom-btn')).not.toBeNull();
-    expect(v.dom.querySelector('.cm-md-image .zoom-copy')).toBeNull();
+    const tools = [...v.dom.querySelectorAll('.cm-md-image .attachment-tool')].map((t) =>
+      t.getAttribute('aria-label'),
+    );
+    expect(tools).toEqual(['Full screen', 'Save to note', 'Remove from note']);
+  });
+
+  /** No file behind a remote image, so its bin is an ordinary edit: gone at once, ⌘Z undoes. */
+  it('removes a remote image from the note without asking', () => {
+    deleteAttachment.mockClear();
+    const doc = 'before\n\n![web](https://example.com/a.png)\n\nafter';
+    const v = mountWithAttachments(doc, doc.length);
+    v.dom.querySelector<HTMLButtonElement>('.cm-md-image .zoom-remove')?.click();
+    expect(v.state.doc.toString()).toBe('before\n\nafter');
+    expect(deleteAttachment).not.toHaveBeenCalled();
+  });
+
+  /** Saving rewrites the picture's own markdown to the stored file, keeping its alt. */
+  it('saves a web image and points the markdown at the stored file', async () => {
+    saveRemoteImage.mockClear();
+    const doc = 'intro\n\n![web pic](https://example.com/a.png)\n\nplain';
+    const v = mountWithAttachments(doc, 0);
+    v.dom.querySelector<HTMLButtonElement>('.cm-md-image .zoom-save')?.click();
+    expect(saveRemoteImage).toHaveBeenCalledWith('https://example.com/a.png');
+    await new Promise((r) => setTimeout(r, 0));
+    expect(v.state.doc.toString()).toBe('intro\n\n![web pic](files/saved.png)\n\nplain');
+  });
+
+  it('keeps the web link when the save fails', async () => {
+    saveRemoteImage.mockRejectedValueOnce(new Error('403'));
+    const doc = '![web](https://example.com/a.png)\n\nplain';
+    const v = mountWithAttachments(doc, doc.length);
+    const button = v.dom.querySelector<HTMLButtonElement>('.cm-md-image .zoom-save');
+    button?.click();
+    await new Promise((r) => setTimeout(r, 0));
+    expect(v.state.doc.toString()).toBe(doc);
+    expect(button?.getAttribute('aria-label')).toBe('Couldn’t save');
+  });
+
+  /** A real link, so the browser saves the file itself; named for the stored file. */
+  it('downloads the stored file from the toolbar', () => {
+    const doc = '![scan](<files/my scan.jpg>)\n\nplain';
+    const v = mountWithAttachments(doc, doc.length);
+    const link = v.dom.querySelector<HTMLAnchorElement>('.cm-md-image a.zoom-download');
+    expect(link?.getAttribute('href')).toBe('/api/notes/n1/files/my scan.jpg?download=1');
+    expect(link?.getAttribute('download')).toBe('my scan.jpg');
+  });
+
+  const question = (v: EditorView) =>
+    v.dom.querySelector<HTMLElement>('.cm-md-image .attachment-tools-question')?.textContent;
+  const answer = (v: EditorView, label: string) =>
+    [...v.dom.querySelectorAll<HTMLButtonElement>('.cm-md-image .attachment-tool-confirm')]
+      .find((b) => b.textContent === label)
+      ?.click();
+
+  /**
+   * The bin on a stored picture deletes the file, confirmed in the pill itself: the file
+   * goes first, then the markdown and the blank line it would leave.
+   */
+  it('asks in place, then deletes the file and takes the picture out of the note', async () => {
+    deleteAttachment.mockClear();
+    const doc = 'before\n\n![scan](<files/my scan.jpg>)\n\nafter';
+    const v = mountWithAttachments(doc, doc.length);
+    v.dom.querySelector<HTMLButtonElement>('.cm-md-image .zoom-remove')?.click();
+    expect(question(v)).toBe('Delete file?');
+    expect(v.state.doc.toString()).toBe(doc);
+    answer(v, 'Delete');
+    expect(deleteAttachment).toHaveBeenCalledWith('my scan.jpg');
+    await new Promise((r) => setTimeout(r, 0));
+    expect(v.state.doc.toString()).toBe('before\n\nafter');
+  });
+
+  it('puts the toolbar back on Cancel and on Escape', () => {
+    const doc = '![scan](files/scan.jpg)\n\nplain';
+    const v = mountWithAttachments(doc, doc.length);
+    const bin = () => v.dom.querySelector<HTMLButtonElement>('.cm-md-image .zoom-remove');
+    bin()?.click();
+    answer(v, 'Cancel');
+    expect(question(v)).toBeUndefined();
+    expect(bin()).not.toBeNull();
+    bin()?.click();
+    v.dom
+      .querySelector('.cm-md-image .attachment-tools')
+      ?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    expect(question(v)).toBeUndefined();
+    expect(v.state.doc.toString()).toBe(doc);
+  });
+
+  /** A delete the server refused leaves the picture and its link as they were. */
+  it('keeps the picture when the delete fails', async () => {
+    deleteAttachment.mockRejectedValueOnce(new Error('offline'));
+    const doc = '![scan](files/scan.jpg)\n\nplain';
+    const v = mountWithAttachments(doc, doc.length);
+    v.dom.querySelector<HTMLButtonElement>('.cm-md-image .zoom-remove')?.click();
+    answer(v, 'Delete');
+    await new Promise((r) => setTimeout(r, 0));
+    expect(v.state.doc.toString()).toBe(doc);
+    expect(v.dom.querySelector('.cm-md-image .zoom-remove')?.getAttribute('aria-label')).toBe(
+      'Couldn’t delete',
+    );
+  });
+
+  it('removes only the picture when text shares its line', async () => {
+    const doc = 'see ![scan](files/scan.jpg) here';
+    const v = mountWithAttachments(doc, 0);
+    v.dom.querySelector<HTMLButtonElement>('.cm-md-image .zoom-remove')?.click();
+    answer(v, 'Delete');
+    await new Promise((r) => setTimeout(r, 0));
+    expect(v.state.doc.toString()).toBe('see  here');
   });
 
   /**

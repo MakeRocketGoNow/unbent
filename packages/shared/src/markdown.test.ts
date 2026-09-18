@@ -7,7 +7,9 @@ import {
   excerptMarkdown,
   findAbsoluteAttachmentLinks,
   formatAttachmentMarkdown,
+  localizeImageLinks,
   relativizeAttachmentLinks,
+  remoteImageUrls,
   removeAttachmentLinks,
   renderMarkdown,
 } from './markdown.js';
@@ -142,6 +144,40 @@ describe('findAbsoluteAttachmentLinks', () => {
       { noteId: 'n1', filename: 'a.pdf' },
       { noteId: 'n2', filename: 'a.pdf' },
     ]);
+  });
+});
+
+describe('remote images', () => {
+  const md = [
+    '![a](https://cdn.example/a.jpg) and ![again](https://cdn.example/a.jpg)',
+    '![b](<http://example.com/pics/b c.png>)',
+    '[not an image](https://example.com/x.png) ![local](files/x.png)',
+  ].join('\n');
+
+  it('lists each web image once, in order, and nothing else', () => {
+    expect(remoteImageUrls(md)).toEqual([
+      'https://cdn.example/a.jpg',
+      'http://example.com/pics/b c.png',
+    ]);
+  });
+
+  it('points saved images at their files and leaves the rest', () => {
+    const out = localizeImageLinks(md, (url) =>
+      url.endsWith('a.jpg') ? 'a.jpg' : url.endsWith('b c.png') ? 'b c-2.png' : null,
+    );
+    expect(out).toBe(
+      [
+        '![a](files/a.jpg) and ![again](files/a.jpg)',
+        '![b](<files/b c-2.png>)',
+        '[not an image](https://example.com/x.png) ![local](files/x.png)',
+      ].join('\n'),
+    );
+  });
+
+  it('keeps a web link a fetch could not replace', () => {
+    expect(localizeImageLinks('![a](https://cdn.example/a.jpg)', () => null)).toBe(
+      '![a](https://cdn.example/a.jpg)',
+    );
   });
 });
 

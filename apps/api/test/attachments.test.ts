@@ -6,7 +6,8 @@
  * content-type downgrade (an uploaded type is never echoed back if a browser would execute
  * it).
  */
-import { beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { createServer, type Server } from 'node:http';
 
 const BASE = process.env['API_URL'] ?? 'http://localhost:8787';
 const ORIGIN = process.env['APP_URL'] ?? 'http://localhost:5173';
@@ -543,6 +544,105 @@ describe('duplicating a note', () => {
       headers: { Cookie: bob.cookie, Origin: ORIGIN },
     });
     expect(res.status).toBe(404);
+  });
+});
+
+/**
+ * Fetching a web image into a note. The picture server is this test process, on
+ * loopback — which the Worker accepts only under the local-dev flag, so the address
+ * policy is exercised on its own in `src/lib/web-image.test.ts`. What is asserted here
+ * is the round trip: the bytes land, the type is kept, the name follows the rules, and a
+ * page or an oversized answer is refused with a reason.
+ */
+describe('fetching a web image', () => {
+  let server: Server;
+  let origin: string;
+  let note: { id: string };
+  const png = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3]);
+
+  beforeAll(async () => {
+    server = createServer((req, res) => {
+      switch (req.url?.split('?')[0]) {
+        case '/pics/photo.png':
+          res.writeHead(200, { 'Content-Type': 'image/png' });
+          return res.end(Buffer.from(png));
+        case '/hop':
+          res.writeHead(302, { Location: '/pics/photo.png' });
+          return res.end();
+        case '/named':
+          res.writeHead(200, {
+            'Content-Type': 'image/jpeg',
+            'Content-Disposition': 'inline; filename="Holiday (1).jpg"',
+          });
+          return res.end(Buffer.from(png));
+        case '/page':
+          res.writeHead(200, { 'Content-Type': 'text/html' });
+          return res.end('<html></html>');
+        case '/huge':
+          res.writeHead(200, { 'Content-Type': 'image/png', 'Content-Length': String(40 * 1024 * 1024) });
+          return res.end();
+        default:
+          res.writeHead(404);
+          return res.end();
+      }
+    });
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+    const address = server.address();
+    if (!address || typeof address === 'string') throw new Error('no port');
+    origin = `http://127.0.0.1:${address.port}`;
+    note = await createNote(alice, 'Bookmarks');
+  }, 30_000);
+
+  afterAll(() => {
+    server.close();
+  });
+
+  async function fetchInto(actor: Actor, noteId: string, url: string): Promise<Response> {
+    return fetch(`${BASE}/api/notes/${noteId}/files/fetch`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Cookie: actor.cookie, Origin: ORIGIN },
+      body: JSON.stringify({ url }),
+    });
+  }
+
+  it('stores the picture under the address last segment and reports the path', async () => {
+    const res = await fetchInto(alice, note.id, `${origin}/pics/photo.png?w=800`);
+    expect(res.status).toBe(201);
+    const body = await res.json();
+    expect(body).toEqual(
+      expect.objectContaining({ filename: 'photo.png', path: 'files/photo.png', contentType: 'image/png', size: png.length }),
+    );
+    const served = await fetch(`${BASE}/api/notes/${note.id}/files/photo.png`, {
+      headers: { Cookie: alice.cookie, Origin: ORIGIN },
+    });
+    expect(new Uint8Array(await served.arrayBuffer())).toEqual(png);
+  });
+
+  it('follows a redirect and suffixes a name already taken', async () => {
+    const body = await (await fetchInto(alice, note.id, `${origin}/hop`)).json();
+    expect(body.filename).toBe('photo-2.png');
+  });
+
+  it('takes the name the server sends', async () => {
+    const body = await (await fetchInto(alice, note.id, `${origin}/named`)).json();
+    expect(body.filename).toBe('Holiday (1).jpg');
+    expect(body.contentType).toBe('image/jpeg');
+  });
+
+  it('refuses a page, an oversized picture, and a missing one, each with a reason', async () => {
+    expect((await fetchInto(alice, note.id, `${origin}/page`)).status).toBe(415);
+    expect((await fetchInto(alice, note.id, `${origin}/huge`)).status).toBe(413);
+    const missing = await fetchInto(alice, note.id, `${origin}/nope.png`);
+    expect(missing.status).toBe(502);
+    expect(((await missing.json()) as { error: string }).error).toContain('404');
+  });
+
+  it('refuses an address that is not http(s)', async () => {
+    expect((await fetchInto(alice, note.id, 'file:///etc/passwd')).status).toBe(400);
+  });
+
+  it('is 404 for a note that is not this user', async () => {
+    expect((await fetchInto(bob, note.id, `${origin}/pics/photo.png`)).status).toBe(404);
   });
 });
 

@@ -424,6 +424,21 @@ const COPY_PATHS = [
   'M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2',
 ];
 const CHECK_PATHS = ['M20 6 9 17l-5-5'];
+// lucide `image-down`, its circle written as a path.
+const IMAGE_DOWN_PATHS = [
+  'M10.3 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v10l-3.1-3.1a2 2 0 0 0-2.814.014L6 21',
+  'm14 19 3 3v-5.5',
+  'm17 22 3-3',
+  'M11 9a2 2 0 1 1-4 0 2 2 0 0 1 4 0z',
+];
+// lucide `trash-2`.
+const TRASH_PATHS = [
+  'M3 6h18',
+  'M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6',
+  'M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2',
+  'M10 11v6',
+  'M14 11v6',
+];
 
 function iconMarkup(paths: readonly string[], size: number): string {
   return [
@@ -447,6 +462,16 @@ export function copyIconMarkup(): string {
 
 export function checkIconMarkup(): string {
   return iconMarkup(CHECK_PATHS, 18);
+}
+
+/** A picture with an arrow, for saving a web image into the note. */
+export function imageDownIconMarkup(): string {
+  return iconMarkup(IMAGE_DOWN_PATHS, 18);
+}
+
+/** A bin, for the attachment toolbar's remove control. */
+export function trashIconMarkup(): string {
+  return iconMarkup(TRASH_PATHS, 18);
 }
 
 /** A cross, for the attachment viewer's close button. */
