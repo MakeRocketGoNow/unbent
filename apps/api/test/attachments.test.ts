@@ -373,7 +373,7 @@ describe('copying between notes', () => {
   async function copy(
     actor: Actor,
     to: string,
-    body: { from: string; filenames: string[]; move?: boolean },
+    body: { from: string; filenames: string[]; move?: boolean; link?: boolean },
   ): Promise<Response> {
     return fetch(`${BASE}/api/notes/${to}/files/copy`, {
       method: 'POST',
@@ -472,6 +472,18 @@ describe('copying between notes', () => {
     );
     expect((await serve(alice, source.id, 'linked.txt')).status).toBe(404);
     expect(await (await serve(alice, target.id, 'linked-2.txt')).text()).toBe('still here');
+  });
+
+  it('links the copy into the destination body when asked, under its stored name', async () => {
+    const dest = await createNote(alice, 'Linked destination');
+    await upload(alice, dest.id, 'doc.txt', 'already here');
+    const body = await (await copy(alice, dest.id, {
+      from: source.id,
+      filenames: ['doc.txt'],
+      link: true,
+    })).json();
+    expect(body.files[0].filename).toBe('doc-2.txt');
+    expect(await noteBody(alice, dest.id)).toBe('[doc-2.txt](files/doc-2.txt)');
   });
 
   it('refuses a note as its own source', async () => {

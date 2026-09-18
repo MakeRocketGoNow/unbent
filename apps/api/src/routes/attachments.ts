@@ -171,7 +171,7 @@ export const attachments = new Hono<AppEnv>()
    */
   .post('/notes/:id/files/copy', zValidator('json', copyAttachmentsSchema), async (c) => {
     const to = c.req.param('id');
-    const { from, filenames, move } = c.req.valid('json');
+    const { from, filenames, move, link } = c.req.valid('json');
     const attachments = c.get('attachments');
 
     if (!(await attachments.ownsNote(to))) return c.json({ error: 'Not found' }, 404);
@@ -181,7 +181,7 @@ export const attachments = new Hono<AppEnv>()
     const result = await copyAttachments(
       c.env.BLOBS,
       { attachments, notes: c.get('notes') },
-      { from, to, filenames, move },
+      { from, to, filenames, move, link },
     );
     return c.json(result);
   })

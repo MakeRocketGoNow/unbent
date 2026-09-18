@@ -444,7 +444,7 @@ export interface CopiedAttachment extends AttachmentInfo {
  */
 export async function copyAttachments(
   toNoteId: string,
-  input: { from: string; filenames: string[]; move?: boolean },
+  input: { from: string; filenames: string[]; move?: boolean; link?: boolean },
 ): Promise<{ files: CopiedAttachment[]; missing: string[] }> {
   return json(
     await fetch(`/api/notes/${encodeURIComponent(toNoteId)}/files/copy`, {

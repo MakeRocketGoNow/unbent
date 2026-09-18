@@ -238,6 +238,12 @@ export const copyAttachmentsSchema = z.object({
   from: z.string().min(1).max(128),
   filenames: z.array(filenameSchema).min(1).max(200),
   move: z.boolean().default(false),
+  /**
+   * Also append a markdown link for each copied file to the destination body, for a
+   * caller with no editor open on that note — the panel's copy-to. The editor's paste
+   * writes its own links and leaves this off, as the upload's `?link=1` does.
+   */
+  link: z.boolean().default(false),
 });
 
 export const createNoteSchema = z.object({

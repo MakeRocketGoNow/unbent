@@ -1,4 +1,8 @@
-import { attachmentFilenamesInMarkdown, type AttachmentInfo } from '@unbent/shared';
+import {
+  attachmentFilenamesInMarkdown,
+  formatAttachmentMarkdown,
+  type AttachmentInfo,
+} from '@unbent/shared';
 import type { AttachmentsRepo } from './attachments-repo.js';
 import type { NotesRepo } from './notes-repo.js';
 
@@ -40,7 +44,7 @@ export interface CopyAttachmentsResult {
 export async function copyAttachments(
   blobs: R2Bucket,
   repos: { attachments: AttachmentsRepo; notes: NotesRepo },
-  input: { from: string; to: string; filenames: string[]; move?: boolean },
+  input: { from: string; to: string; filenames: string[]; move?: boolean; link?: boolean },
 ): Promise<CopyAttachmentsResult> {
   const { attachments } = repos;
   const files: CopiedAttachment[] = [];
@@ -97,7 +101,18 @@ export async function copyAttachments(
       }
     }
 
-    files.push({ ...info, from: requested, path: `files/${filename}`, moved });
+    const path = `files/${filename}`;
+    // `filename`, not `requested`: a suffixed name is the one the link must point at.
+    if (input.link) {
+      await repos.notes.appendToBody(
+        input.to,
+        formatAttachmentMarkdown(filename, path, {
+          image: source.content_type.startsWith('image/'),
+        }),
+      );
+    }
+
+    files.push({ ...info, from: requested, path, moved });
   }
 
   return { files, missing };
