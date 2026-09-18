@@ -110,7 +110,7 @@ export const filters = z.object({
    * A custom field to order by instead of `sort`, by id — what the table view's field
    * columns write. Only its shape is checked here; whether it is one of this user's
    * fields is only known once the notebook's definitions load, and `NotesLayout` drops a
-   * stale one then, the way `NotebookSelect` reports a notebook that no longer exists.
+   * stale one then, the way `NotebookMissing` reports a notebook that no longer exists.
    */
   sortField: z.string().uuid().optional().catch(undefined),
   /**

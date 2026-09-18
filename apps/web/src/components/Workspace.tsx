@@ -422,7 +422,8 @@ export function Workspace({ noteId, readOnly = false, backTo = '/notes' }: Works
 
             It returned an error card and nothing else, on the reasoning that the topbar
             above it already offered a way out. Below the breakpoint that topbar is hidden
-            now, so on a phone this state had no route anywhere except the "Clear" link in
+            (and above it the rail has taken its place), so on a phone this state had no
+            route anywhere except the "Clear" link in
             the card — and "Clear" reads as dismissing a message, not as leaving the view.
 
             The same row the loaded note draws, minus the controls that need a note to act

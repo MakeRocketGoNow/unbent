@@ -2,7 +2,7 @@ import { useNavigate } from '@tanstack/react-router';
 import { TagIcon, NotebookRowIcon } from './icons.js';
 import { writeTagFilter } from '../routes/notes.js';
 import type { TagCount } from './TagPicker.js';
-import type { NotebookData } from './NotebookSelect.js';
+import type { NotebookData } from './NotebookNav.js';
 
 /** How many of each are offered. Enough to disambiguate, few enough to stay above the notes. */
 const MAX_TAGS = 5;
@@ -34,7 +34,7 @@ interface ScopeMatchesProps {
  * notes — is the API's, and comes back with the results below.)
  *
  * Computed here rather than asked of the server: every tag and every notebook is already
- * in hand for the picker and the select, and a substring match over a few hundred names
+ * in hand for the drawer and the rail, and a substring match over a few hundred names
  * is nothing. Substring rather than prefix for the reason the tag picker's find field is:
  * people remember a word from the middle of a name as readily as its first letter.
  *
@@ -53,7 +53,7 @@ interface ScopeMatchesProps {
  * Selected tags and the current notebook are left out — offering a filter that is already
  * on would be a control that does nothing. Tags keep the API's order, by count, so the
  * likeliest pick is first. Notebooks come after tags: a tag is added to the scope and a
- * notebook replaces it (clearing the tags and field filters, the rule the select and the
+ * notebook replaces it (clearing the tags and field filters, the rule the rail and the
  * drawer follow), and the smaller step is offered first.
  *
  * Renders nothing for an empty needle, so the caller mounts it whenever results are shown.
@@ -95,6 +95,13 @@ export function ScopeMatches({
   );
   if (tagHits.length === 0 && notebookHits.length === 0) return null;
 
+  /*
+   * A tag picked here is added to where you are — the notebook stays, and so do the tags
+   * already applied — because search narrows the current view. The rail's tag rows do the
+   * opposite, replacing the scope with the one tag across every notebook: those are
+   * places, this is a refinement. From All notes with nothing applied the two land on the
+   * same URL, and the rail marks that tag as where you are.
+   */
   const pick = (search: Record<string, unknown>) => {
     void navigate({ to: '/notes', search: (prev) => ({ ...prev, ...search, q: undefined }) });
     onPick();

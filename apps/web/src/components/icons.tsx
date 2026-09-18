@@ -22,6 +22,8 @@ import {
   Maximize2,
   Menu,
   Music,
+  PanelLeftClose,
+  PanelLeftOpen,
   Paperclip,
   Pencil,
   Phone,
@@ -182,6 +184,15 @@ export function SortDirectionIcon({ direction }: { direction: 'asc' | 'desc' }) 
 }
 
 /**
+ * The navigation rail's collapse control: a panel with its left edge drawn, and an arrow
+ * that says which way the next press moves it. The state is in the glyph *and* in the
+ * button's name; the glyph alone would read the same to someone who cannot see it.
+ */
+export function RailToggleIcon({ open }: { open: boolean }) {
+  return <HeaderIcon icon={open ? PanelLeftClose : PanelLeftOpen} />;
+}
+
+/**
  * A funnel, for the filter sheet.
  *
  * The funnel rather than the three-slider "tune" glyph: sliders say adjust, and these
@@ -206,7 +217,7 @@ export function SortIcon() {
 /**
  * A gear, for the way to Settings.
  *
- * On a desktop it sits in the topbar beside the avatar, which is where Keep's web app puts
+ * On a desktop it is a row on the rail's floor above the account, where Keep's web app puts
  * its own: Settings is about the app, and the avatar menu is about the account, and one
  * gear beside one avatar keeps the two from being confused for each other.
  */

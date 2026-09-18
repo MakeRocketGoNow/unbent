@@ -75,10 +75,10 @@ export function TrashLayout({ children }: { children: React.ReactNode }) {
             the view because a control that leaves belongs before the thing it leaves, not
             buried in the middle of it.
 
-            Above the breakpoint it is hidden: the topbar marks Trash active while you are
-            here, so the link that got you in is also the way out. That was already true
-            when this was a button — the button was the old toggle's leftover, from when
-            there was nothing in the chrome to go back to.
+            Above the breakpoint it is hidden: the rail marks Trash current while you are
+            here, strip or open, so the row that got you in is also the way out. That was
+            already true when this was a button — the button was the old toggle's
+            leftover, from when there was nothing in the chrome to go back to.
         */}
         <div className="trash-head">
           <Link to="/notes" className="view-back" aria-label="Back to notes">

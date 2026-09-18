@@ -25,9 +25,10 @@ function harness(
   email = 'someone@example.com',
   onSignOut = () => {},
   config: Partial<AppConfig> = { legal: BUILT_IN },
+  withAddress = false,
 ) {
   const rootRoute = createRootRoute({
-    component: () => <AccountMenu email={email} onSignOut={onSignOut} />,
+    component: () => <AccountMenu email={email} onSignOut={onSignOut} withAddress={withAddress} />,
   });
   const history = createMemoryHistory({ initialEntries: ['/notes'] });
   const router = createRouter({ routeTree: rootRoute, history });
@@ -45,6 +46,15 @@ function harness(
 
 describe('AccountMenu', () => {
   afterEach(cleanup);
+
+  /* On the rail's floor the trigger is a row with room for the address; its name is the
+     same either way, so nothing that reads it aloud notices the difference. */
+  it('draws the address beside the avatar when asked, under the same name', async () => {
+    const { findByLabelText } = harness('someone@example.com', () => {}, { legal: BUILT_IN }, true);
+    const trigger = await findByLabelText('Account: someone@example.com');
+    expect(trigger.textContent).toContain('someone@example.com');
+    expect(trigger.className).toContain('drawer-item');
+  });
 
   it('shows the first letter of the address, which is all a small circle carries', async () => {
     const { findByText } = harness('casey@example.com');

@@ -1,9 +1,13 @@
 import { createRootRouteWithContext, Outlet, useNavigate } from '@tanstack/react-router';
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { useSession } from '../auth-client.js';
 import { useSignOut } from '../useSignOut.js';
 import { requireSession, useShell } from '../auth-gate.js';
+import { Rail, RailHandle, useRailWidth, type RailPref } from '../components/Rail.js';
+import { SettingsBusyProvider } from '../components/SettingsLayout.js';
+import { usePersistentState } from '../usePersistentState.js';
+import { useMediaQuery, MOBILE_QUERY } from '../useMediaQuery.js';
 import { claimCacheFor } from '../queries.js';
 import { startIndexing, subscribeIndexing } from '../index-files.js';
 import { Topbar } from '../components/Topbar.js';
@@ -77,7 +81,7 @@ function PlainShell() {
  * The signed-in app: chrome, and the background work that only makes sense for a user.
  *
  * There is no gate here any more. The route guard has established a session before this
- * renders, so `useSession` is read for two things: the address in the topbar, and
+ * renders, so `useSession` is read for two things: the address in the chrome, and
  * liveness — a session that expires, or a sign-out in another tab, arrives through this
  * hook and nowhere else, and has to move the user off a screen they can no longer load.
  */
@@ -87,6 +91,23 @@ function AppShell() {
   const signOutAndLeave = useSignOut();
   const queryClient = useQueryClient();
   const userId = session?.user?.id;
+  /*
+   * The rail's state lives here, with the shell that carries the class the stylesheet
+   * reads, rather than in the rail: storage hooks do not sync between instances, and the
+   * class has to change with the button.
+   */
+  const [railPref, setRailPref] = usePersistentState<RailPref>('rail', 'auto', (raw) =>
+    raw === 'open' || raw === 'collapsed' ? raw : undefined,
+  );
+  /*
+   * The rail is mounted only above the breakpoint, the way the drawer is mounted only
+   * below it (see `NotesLayout`): the two are one set of rows, and exactly one of them
+   * should exist. One of the few places the breakpoint is read in JS, and the editor is
+   * not in this subtree, so nothing it must not rebuild is rebuilt.
+   */
+  const isMobile = useMediaQuery(MOBILE_QUERY);
+  const railWidth = useRailWidth();
+  const shellRef = useRef<HTMLDivElement>(null);
 
   /**
    * Index whatever is pending, once there is someone to index for.
@@ -127,12 +148,39 @@ function AppShell() {
     );
   }
 
+  /*
+   * The shell is a row and the routed content is one column of it, so that navigation can
+   * stand beside the content rather than above it. `<main>` is the column, not the row:
+   * a landmark should hold the page's content and nothing that is chrome for every page.
+   */
   return (
-    <main className="shell wide">
-      {/* The chain this runs, and why its order matters, is in `useSignOut` — the drawer
-          offers the same action on a phone, where there is no topbar over the list. */}
-      <Topbar email={session.user.email} onSignOut={signOutAndLeave} />
-      <Outlet />
-    </main>
+    // The import-running flag sits above the rail and the content alike: both are ways
+    // out of a running import, and both have to go inert together. See `SettingsLayout`.
+    <SettingsBusyProvider>
+    <div className={`shell wide rail-${railPref}`} style={railWidth.style} ref={shellRef}>
+      {/* The chain sign-out runs, and why its order matters, is in `useSignOut`. */}
+      {!isMobile && (
+        <>
+          <Rail
+            pref={railPref}
+            onPref={setRailPref}
+            email={session.user.email}
+            onSignOut={signOutAndLeave}
+          />
+          <RailHandle
+            containerRef={shellRef}
+            width={railWidth}
+            onCollapse={() => setRailPref('collapsed')}
+          />
+        </>
+      )}
+      <main className="shell-main">
+        {/* The phone's chrome, on the pages that have no heading of their own; the
+            stylesheet hides it above the breakpoint, where the rail is the chrome. */}
+        <Topbar email={session.user.email} onSignOut={signOutAndLeave} />
+        <Outlet />
+      </main>
+    </div>
+    </SettingsBusyProvider>
   );
 }

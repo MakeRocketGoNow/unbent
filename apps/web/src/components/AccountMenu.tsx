@@ -5,6 +5,13 @@ import { OverflowMenu, type OverflowItem } from './OverflowMenu.js';
 interface AccountMenuProps {
   email: string;
   onSignOut: () => void;
+  /**
+   * Draw the address beside the avatar, as a row: the rail's floor, where the trigger
+   * has a whole width to itself and an initial in a circle would be an unlabelled dot at
+   * the bottom of a column of labelled rows. The head of a topbar or a drawer keeps the
+   * avatar alone; there the row has other things in it.
+   */
+  withAddress?: boolean | undefined;
 }
 
 /** A legal document as a menu item: a route for the built-in ones, an anchor for the rest. */
@@ -24,20 +31,20 @@ function initialOf(email: string): string {
  * only on a phone: what it holds is account chrome, not navigation. Trash used to sit here
  * and was the reason the row needed splitting — it is a view of notes, not of the account.
  * Settings went the same way later: it is about the app, not the account, and it has a
- * place of its own at both widths — a gear beside this avatar in the topbar, and a row on
- * the drawer's floor on a phone, which is where Keep puts it. Leaving it here as well would
- * have been two routes to one page a thumb's width apart.
+ * place of its own at both widths — a row on the floor of the rail and of the drawer,
+ * which is where Keep puts it. Leaving it here as well would have been two routes to one
+ * page a thumb's width apart.
  *
  * Lifted out of `Topbar` because the phone no longer shows a topbar over the note list: the
  * list has a heading of its own now, and this menu is reached from the drawer's head
- * instead. Two callers, one menu, so the two cannot come to disagree about what the account
- * can do.
+ * instead — and on a desktop from the rail's floor. Three callers, one menu, so they cannot
+ * come to disagree about what the account can do.
  *
  * The avatar is drawn locally from the address rather than fetched from Gravatar: this app
  * is otherwise entirely self-hosted, and an avatar is not worth announcing a stable hash of
  * the user's email to a third party on every page load.
  */
-export function AccountMenu({ email, onSignOut }: AccountMenuProps) {
+export function AccountMenu({ email, onSignOut, withAddress = false }: AccountMenuProps) {
   const config = useQuery(configQuery());
   const legal = config.data?.legal;
 
@@ -45,11 +52,20 @@ export function AccountMenu({ email, onSignOut }: AccountMenuProps) {
     <OverflowMenu
       label={`Account: ${email}`}
       className="overflow-account"
-      triggerClassName="avatar-trigger"
+      // As a row it takes the rail's own row class, so it is the same target as the rows
+      // above it and the address truncates the way a long notebook name does.
+      triggerClassName={withAddress ? 'avatar-trigger drawer-item' : 'avatar-trigger'}
       trigger={
-        <span className="avatar" aria-hidden="true">
-          {initialOf(email)}
-        </span>
+        <>
+          <span className="avatar" aria-hidden="true">
+            {initialOf(email)}
+          </span>
+          {withAddress && (
+            <span className="drawer-item-label" aria-hidden="true">
+              {email}
+            </span>
+          )}
+        </>
       }
       items={[
         // The address itself, so the menu says which account it belongs to. Static

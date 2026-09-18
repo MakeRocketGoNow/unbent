@@ -60,23 +60,17 @@ describe('NoteListHead', () => {
 
   /* Over the full-width table the header is one row: picker, count, search, controls.
      The search field must move into that row, not be drawn a second time under it. */
-  it('draws one toolbar row holding the scope and the search field', () => {
+  it('draws one toolbar row holding the title and the search field', () => {
     const { container, getAllByLabelText } = render(
-      <NoteListHead
-        {...props}
-        onOpenMenu={undefined}
-        onOpenSearch={undefined}
-        toolbar
-        scope={<span data-testid="scope">Travel (5)</span>}
-      />,
+      <NoteListHead {...props} title="Travel" onOpenMenu={undefined} onOpenSearch={undefined} toolbar />,
     );
     const row = container.querySelector('.list-head-toolbar')!;
-    expect([...row.children].map((el) => el.className || el.getAttribute('data-testid'))).toEqual([
-      'scope',
+    expect([...row.children].map((el) => el.className)).toEqual([
       'list-title',
       'list-search',
       'list-head-actions',
     ]);
+    expect(row.querySelector('h2')?.textContent).toBe('Travel');
     expect(getAllByLabelText('Search notes')).toHaveLength(1);
     expect(container.querySelectorAll('.list-search')).toHaveLength(1);
   });
@@ -95,11 +89,8 @@ describe('NoteListHead', () => {
   });
 
   it('keeps the stacked header when the toolbar is not asked for', () => {
-    const { container } = render(
-      <NoteListHead {...props} onOpenSearch={undefined} scope={<span>ignored</span>} />,
-    );
+    const { container } = render(<NoteListHead {...props} onOpenSearch={undefined} />);
     expect(container.querySelector('.list-head-toolbar')).toBeNull();
-    expect(container.textContent).not.toContain('ignored');
     expect(container.querySelector('.list-head + .list-search')).toBeTruthy();
   });
 
@@ -191,13 +182,12 @@ describe('NoteListHead', () => {
    *
    * No `onOpenSearch` means the field is not behind an icon: it is a permanent row under
    * the header, because a desktop column has the width for the one control used on most
-   * visits. No `onOpenMenu` and no `title` because the notebook picker sits one row down
-   * and names the notebook itself. `action` is the desktop's New, at the end of the row.
+   * visits. No `onOpenMenu`, because the notebooks are a rail beside the column rather
+   * than a drawer behind a button. `action` is the desktop's New, at the end of the row.
    */
   describe('at desktop width', () => {
     const desktop = {
       ...props,
-      title: undefined,
       onOpenSearch: undefined,
       onOpenMenu: undefined,
       action: <button>New</button>,
@@ -218,10 +208,13 @@ describe('NoteListHead', () => {
       expect(container.querySelector('.list-head-actions')).toBeTruthy();
     });
 
-    it('has no drawer button and no heading, only the count', () => {
+    /* The heading stays: the rail beside the column can be a strip of icons, so the
+       column has to say what it holds on its own. */
+    it('has no drawer button, and keeps the heading and the count', () => {
       const { container, queryByLabelText, getByText } = render(<NoteListHead {...desktop} />);
       expect(queryByLabelText('Notebooks')).toBeNull();
-      expect(container.querySelector('h2')).toBeNull();
+      expect(container.querySelector('h2')?.textContent).toBe('All notes');
+      expect(container.querySelector('h2')?.getAttribute('title')).toBe('All notes');
       expect(getByText('30 notes')).toBeTruthy();
     });
 

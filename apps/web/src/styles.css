@@ -331,6 +331,11 @@ h1 {
   font-size: 1.35rem;
 }
 
+/* The rail is the desktop's chrome; see `Topbar.tsx` for what the bar still does on a phone. */
+@media (width > 860px) {
+  .topbar { display: none; }
+}
+
 .account {
   display: flex;
   align-items: center;
@@ -384,7 +389,7 @@ h1 {
 /*
    Links written inside a sentence.
 
-   Every other link in this app carries a class — `.link`, `.trash-link`, `.note-item` —
+   Every other link in this app carries a class — `.link`, `.drawer-item`, `.note-item` —
    so a bare `<a>` in prose was never styled and fell back to the browser's default blue,
    which is not a colour this palette contains. There are only a few (the confirms offer
    "Review the trash" and "Export first"; the trash section offers the same review link
@@ -429,14 +434,19 @@ h1 {
      column set their own — see .settings and .panel. */
   max-width: none;
   /*
-     Less above the wordmark than the plain shell's 4rem, and less than the 2rem this had:
-     the topbar's row is the 44px avatar, so 2rem above it put the wordmark's cap 43px
-     from the top of the window while the count under the divider sat 27px below it —
-     more air over the bar than under it, on the one view where the bar is a fixture
-     rather than a heading. 1.25rem brings the two within a few pixels of each other.
-     The filter panel's `--panel-top` is derived from this number; change both.
+     A row, with the routed content one column of it (`.shell-main`, which carries the
+     padding this used to). The row exists so navigation can stand beside the content at
+     full height, flush with the window's edge, on a desktop; the two custom properties
+     are what such a column would set. Declared here, and not on the column, because the
+     filter panel reads them from the top layer — it can only inherit from a DOM ancestor,
+     and this is the ancestor both the panel and the column share.
   */
-  padding: 1.25rem 1.5rem 1rem;
+  --rail-width: 0px;
+  --shell-pad-top: 0.75rem;
+  /* The column's left gutter: the page margin on a phone, and beside a rail just enough
+     for the list's pull-out to land on the divider — see the rail's block. */
+  --shell-pad-left: 1.5rem;
+  padding: 0;
 
   /*
      The notes view fills the viewport exactly and never scrolls as a page.
@@ -450,8 +460,34 @@ h1 {
   height: 100vh;
   height: 100dvh;
   display: flex;
-  flex-direction: column;
   overflow: hidden;
+}
+
+/*
+   The routed content's column: what `.shell.wide` was before it became a row.
+
+   The column is the flex chain the panes scroll inside — `flex: 1` and `min-height: 0`
+   here are what let it be shorter than its content and hand a definite height down — and
+   it carries the frame's padding, so the notes grid, settings and the trash all keep the
+   gutters they had. No `overflow` of its own: the note column reaches into the right
+   gutter for its scrollbar (see `.workspace-main`), and the row above already clips at
+   the window.
+  */
+.shell-main {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  /*
+     0.75rem above the list's head row, now that no bar sits between it and the window:
+     the head is a row of 32px controls and a two-line title, and the rail's own head sits
+     at the same height beside it, so this one number is the top edge of everything on a
+     desktop. It was 1.25rem while the top bar was there, sized to the bar's 44px avatar.
+     The filter panel's `--panel-top` is derived from this number, which is why it is a
+     custom property on the row rather than a literal here; change it there.
+  */
+  padding: var(--shell-pad-top) 1.5rem 1rem var(--shell-pad-left);
 }
 
 .notes {
@@ -466,13 +502,16 @@ h1 {
   */
   grid-template-columns: var(--sidebar-width, 19rem) 1px 1fr;
   /*
-     Halved, as the gap falls either side of the handle track.
+     The channel either side of the handle track.
 
      Narrower than it was: the old 0.75rem existed to give a floating highlight room to
-     sit in without touching either column. The highlight is the divider now, so the
-     channel only needs the breathing space the content actually wants.
+     sit in without touching either column, and the 1rem after that was breathing space
+     from when the sidebar's other edge sat against a 1.5rem page margin. Beside the rail
+     that margin is 0.5rem, and this is the same 0.5rem, so the sidebar's two edges
+     match: its inset plus this channel on the right is its inset plus the gutter on the
+     left, 19px each. The note's own margin adds what a reading column wants.
   */
-  gap: 0 1rem;
+  gap: 0 0.5rem;
   /*
      Fills the space the topbar leaves, rather than growing past it.
 
@@ -1015,6 +1054,40 @@ h1 {
   transition: opacity 0.15s ease;
 }
 
+/*
+   The list's scrollbar sits on the divider, not a gap's width in from it.
+
+   The list and the table scroll inside the sidebar, whose right edge is a grid gap
+   short of the handle that divides it from the note, so their scrollbar floated inside
+   the column — a bar with nothing beside it, on a screen where the divider a
+   gap away is exactly where a bar belongs. The scroller reaches out through the gap and
+   takes it back as padding, the pull `.workspace-main` makes to land its bar on the
+   window: the rows do not move, only the bar. Over the full-width table there is no
+   handle to reach, and the pull is the column's own padding, so the bar lands on the
+   window edge as the note's does.
+
+   Desktop only: on a phone the sidebar is the whole width, and the list already reaches
+   the glass through the column's narrowed inset. After both scrollers' own rules, which
+   set the margins this overrides at the same specificity.
+*/
+@media (width > 860px) {
+  .notes { --list-pull: 0.5rem; }
+  .notes.table-view:not(.note-open) { --list-pull: 1.5rem; }
+
+  /* The list's rows keep ending at the sidebar's edge; the 3px ring gutter they had on
+     this side is inside the pull now. The table's rows keep ending at the sidebar's
+     text edge, as they did. Both boxes end on the divider. */
+  .note-list {
+    margin-right: calc(-0.7rem - var(--list-pull));
+    padding-right: var(--list-pull);
+  }
+  .note-table-wrap {
+    margin-right: calc(-0.7rem - var(--list-pull));
+    padding-right: calc(0.7rem + var(--list-pull));
+  }
+}
+
+
 .note-table-wrap[aria-busy='true'] {
   opacity: 0.45;
   transition: opacity 0.15s ease 0.15s;
@@ -1162,7 +1235,7 @@ th[aria-sort] .note-th-sort { color: var(--fg); }
      Reach the window's right edge, so the scrollbar sits against the glass.
 
      This is the column's own scroll region, and its scrollbar draws on its right edge.
-     `.shell.wide` insets the whole notes grid by 1.5rem, which put that edge — and so the
+     `.shell-main` insets the whole notes grid by 1.5rem, which put that edge — and so the
      bar — a gutter's width in from the window, with the shell's padding stranded to the
      *right* of the scrollbar and the note's text pressed against its left. Pulling the
      right edge back out by exactly that inset lands the scrollbar on the window edge and
@@ -1547,8 +1620,8 @@ a.overflow-item { text-decoration: none; }
    This is that one. It pairs with the heading beside it — the note's title, "Settings",
    "Trash" — which is what lets the arrow stay a bare glyph and say where it goes.
 
-   Hidden above the breakpoint: on a desktop the wordmark and the avatar menu are both in
-   the chrome and both lead home, so a third way out is clutter. `display` is what the
+   Hidden above the breakpoint: on a desktop the rail's wordmark and every place in it
+   lead home, at every rail width, so a third way out is clutter. `display` is what the
    breakpoint switches, so the control is always in the tree — making it conditional would
    rebuild the note's uncontrolled CodeMirror view on resize.
 */
@@ -1939,42 +2012,21 @@ a.overflow-item { text-decoration: none; }
 .tag-count { opacity: 0.7; font-variant-numeric: tabular-nums; }
 
 /*
-   Trash, on the sidebar floor.
-
-   Muted and separated by a rule, which is what keeps it from reading as one more filter —
-   the reason it did not work in the filter stack above. There is no active state: /trash
-   replaces this whole sidebar with its own. The border is the seam between "your notes"
-   and "notes you threw away", so it stays even when the count is zero and the link is the
-   only thing below the list.
-*/
-.trash-link {
-  display: flex;
-  align-items: center;
-  gap: 0.35rem;
-  padding: 0.6rem 0.7rem 0;
-  margin-top: 0.15rem;
-  font-size: 0.85rem;
-  color: var(--muted);
-  text-decoration: none;
-  border-top: 1px solid var(--border);
-}
-
-.trash-link:hover { color: var(--fg); }
-
-/*
-   What the indexing pass is doing, under Trash on the sidebar floor.
+   What the indexing pass is doing, on the sidebar floor.
 
    Here rather than in the topbar, which is account chrome and nothing else, and here
    rather than only in Settings, because this is the column people search from: a search
    that cannot yet see inside a PDF is a fact about this list. Rendered only while there
    is something to say — a pass running, or a backlog left for the Import panel — so the
-   floor is Trash alone the rest of the time. Sized a step under `.trash-link` so it reads
-   as status beneath a destination, not a second destination; one line, clipped, because
-   the sidebar can be narrowed to less than the sentence.
+   floor is empty the rest of the time. The rule above it is the seam Trash used to draw
+   under the list, before Trash moved to the rail; one line, clipped, because the sidebar
+   can be narrowed to less than the sentence.
 */
 .sidebar-status {
   display: block;
-  padding: 0.45rem 0.7rem 0;
+  margin-top: 0.15rem;
+  padding: 0.6rem 0.7rem 0;
+  border-top: 1px solid var(--border);
   font-size: 0.8rem;
   color: var(--muted);
   text-decoration: none;
@@ -3896,10 +3948,11 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
 /*
    The trash view's heading row, on a phone only.
 
-   Hidden above the breakpoint, heading and all: there the topbar marks Trash active, so
-   the view already says what it is and already offers the way out. This exists because
-   below the breakpoint that chrome is gone — the arrow needs a heading beside it to say
-   where it goes, the same pairing the note's title and "Settings" provide.
+   Hidden above the breakpoint, heading and all: there the rail marks Trash current, so
+   the view already says what it is and already offers the way out — as a strip too, since
+   the strip keeps Trash and every place. This exists because below the breakpoint that
+   chrome is gone — the arrow needs a heading beside it to say where it goes, the same
+   pairing the note's title and "Settings" provide.
 
    Matches `.settings-head`: same centring, same small gap, for the same reasons.
 */
@@ -4259,9 +4312,9 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
 /*
    The settings section scrolls itself.
 
-   `.shell.wide` is the notes view's frame: a viewport-height flex column with
-   `overflow: hidden`, so that the note list and editor can scroll inside it while the page
-   never does. Every signed-in route shares that shell, so settings inherited a clipped box
+   `.shell.wide` is the notes view's frame — a viewport-height row that clips at the window,
+   with `.shell-main` the flex column inside it — so that the note list and editor can
+   scroll inside it while the page never does. Every signed-in route shares that shell, so settings inherited a clipped box
    it had no way to scroll — the foot of a long panel (122px of Maintenance on a phone) was
    simply unreachable, with no page scrollbar to reach it.
 
@@ -4560,6 +4613,49 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
   color: var(--muted);
 }
 
+/*
+   A section head that opens and closes its rows — the tags — drawn as the label the
+   notebooks' head is, with the chevron `.disclosure` draws: right when closed, down when
+   open. A button rather than a `<details>`, because its state is remembered, which
+   `Disclosure` is not for. The whole word is the target; the chevron only says the state.
+*/
+.drawer-section-toggle {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.3rem 0;
+  font: inherit;
+  color: var(--muted);
+  background: none;
+  border: none;
+  cursor: pointer;
+}
+.drawer-section-toggle:hover { color: var(--fg); }
+.drawer-section-toggle:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 0.25rem;
+}
+.drawer-section-toggle::after {
+  content: '';
+  flex: 0 0 auto;
+  width: 0.36rem;
+  height: 0.36rem;
+  margin-left: 0.5rem;
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  transform: rotate(-45deg) translate(-0.05rem, -0.05rem);
+  transition: transform 0.15s ease;
+}
+.drawer-section-toggle[aria-expanded='true']::after {
+  transform: rotate(45deg) translate(-0.05rem, -0.05rem);
+}
+
+.drawer-tags {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+}
+
 /* A link, drawn as a word rather than a row: it leaves the drawer for the settings page. */
 .drawer-section-action {
   padding: 0.3rem 0.4rem;
@@ -4575,6 +4671,202 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
 .drawer-section-action:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: -2px;
+}
+
+/* ---------------------------------------------------------------------------------
+   The navigation rail: the drawer's rows, pinned open down the left on a desktop.
+
+   A sibling of the content column in `.shell.wide`, flush with the window's left edge at
+   full height — see `Rail.tsx` for why it is not a track of the notes grid. Its width is
+   the shell's `--rail-width`, set by the class the shell carries (`rail-auto`,
+   `rail-open`, `rail-collapsed`) and read by the filter panel too, which is in the top
+   layer and can only inherit it.
+
+   Two widths. Open, 15rem: the labels' width, and the same 20rem-ish column Keep and
+   Evernote give it less a little. Collapsed, 3.25rem: a strip of 2.75rem targets — the
+   size every `.icon-btn` in the app takes — with a quarter-rem either side. `auto` is
+   open on a wide window and the strip on a narrow one, at the 1200px `RAIL_WIDE_QUERY`
+   reads in JS; written here in range syntax as the exact complement, so no width lands
+   in neither. Below the phone breakpoint the rail does not exist: the drawer is the
+   phone's rail.
+
+   The strip is styled by the rail's own width, through a container query, rather than by
+   the shell's class: under `rail-auto` the class does not say which width is showing.
+   Labels are clipped, not `display: none`d, so a row's accessible name survives; what is
+   removed outright are the things a strip cannot show at all — the notebooks (one glyph
+   each, indistinguishable as icons), the section head, New notebook.
+
+   The surface is a mix over `--fg`, the idiom every second surface here uses, so it
+   inverts with the theme; the border on its right is the divider, as the resize handle
+   is between the list and the note. No width transition: nothing should slide when a
+   window is resized across 1200px, and the toggle is a choice, not an animation.
+   --------------------------------------------------------------------------------- */
+.rail { display: none; }
+
+@media (width > 860px) {
+  /* The open width is the dragged one, set inline on the shell by `useRailWidth`; the
+     15rem fallback is what a browser with nothing stored draws. */
+  .shell.wide.rail-auto,
+  .shell.wide.rail-open { --rail-width: var(--rail-open-width, 15rem); }
+  .shell.wide.rail-collapsed { --rail-width: 3.25rem; }
+
+  .rail {
+    display: block;
+    flex: 0 0 var(--rail-width);
+    width: var(--rail-width);
+    min-height: 0;
+    container: rail / inline-size;
+    /*
+       Above the content column. The rail comes first in the DOM, so without a context of
+       its own anything it pops out — the account menu — would paint under the list's
+       sticky heads, which carry z-indexes of their own.
+    */
+    position: relative;
+    z-index: 25;
+    background: color-mix(in srgb, var(--fg) 3%, transparent);
+  }
+
+  /*
+     The rail's edge is the handle that sizes it, as the list's edge is the handle that
+     sizes the list: the same 1px line, tinted when reached for. As a flex item rather
+     than a grid track it needs its width stated as a basis. Over the strip there is
+     nothing to size, so the handle goes and the rail draws the line itself — one line
+     either way, and the strip's width is the stylesheet's alone.
+  */
+  /*
+     Beside the rail the column's left gutter is not a page margin any more: the divider is
+     the edge, and 1.5rem of air past it — plus the sidebar's own 0.7rem — put the list's
+     heading 35px from the line while the rail's heading sat 19px from its own edge. The
+     gutter is the rail's own inset now, the 0.5rem its rows sit in from its edges, so the
+     two columns share one rhythm across the divider: a selected row's fill and a marked
+     notebook's begin the same 8px from their edge, and the heading over the list and the
+     wordmark over the rail sit the same 19px in. The list's 3px ring gutter still fits
+     inside. The right gutter is unchanged: it is the note's reading margin, and the note's
+     scrollbar reaches through it.
+  */
+  .shell.wide { --shell-pad-left: 0.5rem; }
+
+  /*
+     The note keeps the same rhythm on its side of its divider. The grid's channel after
+     the handle plus the column's 1.5rem reading margin put the title 40px from the line;
+     the 0.5rem channel plus 0.75rem puts it 20px in, where the list's heading and the
+     rail's wordmark sit from theirs. The right margin is the same 20px, from the
+     scrollbar the column lands on the window edge: 1.25rem of padding inside a reach of
+     1.5rem, which stays the shell's padding so the bar still lands on the glass.
+  */
+  .workspace-main {
+    padding-left: 0.75rem;
+    padding-right: 1.25rem;
+  }
+
+  .shell.wide > .resize-handle {
+    flex: 0 0 1px;
+    /* On the rail's last pixel rather than after it, so the rail is exactly `--rail-width`
+       wide with its edge drawn, and the content — and the filter panel that measures
+       from the rail's width — start where the rail ends. Above the rail's own stacking
+       context, or the rail would paint over the line. */
+    margin-left: -1px;
+    z-index: 26;
+  }
+  .shell.wide.rail-collapsed > .resize-handle { display: none; }
+  .shell.wide.rail-collapsed > .rail { border-right: 1px solid var(--border); }
+  .shell.wide[data-resizing] { user-select: none; }
+
+  .rail-inner {
+    /* The rows' inset from the rail's edges; the strip narrows it. One number, because the
+       scroller below reaches out through it and has to reach exactly this far. */
+    --rail-inset: 0.5rem;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    gap: 0.6rem;
+    min-height: 0;
+    padding: var(--shell-pad-top) var(--rail-inset) 1rem;
+  }
+
+  .rail-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    min-height: 2.75rem;
+    padding-left: 0.7rem;
+  }
+
+  .rail-wordmark {
+    margin: 0;
+    font-size: 1.35rem;
+  }
+
+  /*
+     The account menu opens up and to the right, into the page: the rail is on the left
+     edge, so the row's popup — which is right-anchored under a top-bar avatar — would hang
+     off the window from here, and it sits on the floor, so above is where the room is.
+  */
+  .rail .overflow-list {
+    top: auto;
+    bottom: calc(100% + 0.25rem);
+    left: 0;
+    right: auto;
+  }
+
+  /* Refusing to leave a running import, like the settings sub-nav — see `Rail.tsx`. */
+  .rail[inert] { opacity: 0.45; }
+
+  /*
+     The rows' scrollbar sits on the divider, not a gutter's width in from it.
+
+     The rows scroll inside `.rail-inner`, which insets them by 0.5rem, so the bar was
+     drawn 8px short of the rail's own edge — a scrollbar floating inside a column reads
+     as a box within the box. The same pull `.workspace-main` makes: the scroller reaches
+     out through the inset and takes it back as padding, so the rows keep their place and
+     only the bar moves, to the edge. The right side only; the left inset is the rows'.
+  */
+  .rail .drawer-list {
+    margin-right: calc(-1 * var(--rail-inset));
+    padding-right: var(--rail-inset);
+  }
+
+  /* A pointer's density: the phone's 44px rows are thumb targets, and this is a mouse's column. */
+  .rail .drawer-item {
+    min-height: 2.25rem;
+    gap: 0.7rem;
+  }
+}
+
+@media (860px < width < 1200px) {
+  .shell.wide.rail-auto { --rail-width: 3.25rem; }
+  .shell.wide.rail-auto > .resize-handle { display: none; }
+  .shell.wide.rail-auto > .rail { border-right: 1px solid var(--border); }
+}
+
+@container rail (width < 8rem) {
+  .rail-inner { --rail-inset: 0.25rem; }
+  .rail-head {
+    justify-content: center;
+    padding-left: 0;
+  }
+  .rail .drawer-item {
+    justify-content: center;
+    gap: 0;
+    padding-inline: 0;
+    min-height: 2.75rem;
+  }
+  /* Clipped, not removed: the label is still the row's name to a screen reader. */
+  .rail .drawer-item-label,
+  .rail .drawer-item > .tag-count {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+  .rail .drawer-section,
+  .rail .drawer-place-notebook,
+  .rail .drawer-new,
+  .rail .drawer-tags,
+  .rail .drawer-list > .drawer-rule,
+  .rail-wordmark { display: none; }
 }
 
 /* ---------------------------------------------------------------------------------
@@ -4706,11 +4998,6 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
 
 .list-head-toolbar .list-title { flex: 0 1 auto; }
 
-.list-head-toolbar .notebook-scope-wrap {
-  flex: 0 1 14rem;
-  min-width: 8rem;
-}
-
 .list-head-toolbar .list-search {
   flex: 0 1 18rem;
   min-width: 10rem;
@@ -4718,17 +5005,13 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
   margin-left: auto;
 }
 
-.list-head-toolbar .notebook-scope,
 .list-head-toolbar .search-field {
   height: 2.25rem;
   padding-block: 0;
 }
 
 @media (width > 860px) and (hover: hover) and (pointer: fine) {
-  .list-head-toolbar .notebook-scope,
-  .list-head-toolbar .search-field {
-    height: 2rem;
-  }
+  .list-head-toolbar .search-field { height: 2rem; }
 }
 
 /* The count yields before the controls do: the controls are the ones that have to be hit.
@@ -5099,10 +5382,28 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
   border-radius: 0 1rem 1rem 0;
 }
 
-/* The body fills the drawer, so its own foot can sit on the floor. */
+/*
+   The body is exactly the drawer's height, so its own foot sits on the floor and the
+   rows between head and foot are the part that scrolls.
+
+   `height`, not `min-height`: a minimum let the body grow past the drawer once the rows
+   outran a phone — the tags did that — and then nothing scrolled at all. The rows' list
+   is a scroll container that had nothing to scroll, and its `overscroll-behavior:
+   contain` stopped the finger's scroll from reaching the drawer behind it, which was the
+   only thing that could have moved. With the body bounded, the list is the scroller it
+   was written to be, and the head and the floor stay put while it moves.
+*/
 .sheet-side .sheet-body {
-  min-height: 100%;
+  height: 100%;
   padding-top: 1rem;
+}
+
+/* The rows' scrollbar on the drawer's edge, not a padding's width in from it: the same
+   reach the rail's list makes through its inset, sized to the body's 1rem here. The rows
+   keep their place; only the bar moves. */
+.sheet-side .drawer-list {
+  margin-right: -1rem;
+  padding-right: 1rem;
 }
 
 /*
@@ -5413,7 +5714,7 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
    The rule under the summary.
 
    It separates what is applied from what can be changed — the two halves of this page — and
-   it is the same seam `.trash-link` draws under the note list. `margin: 0` because
+   it is the same seam the rail draws above its floor. `margin: 0` because
    the sheet body's own gap is the spacing; an `hr`'s default margin would double it.
 */
 .sheet-rule {
@@ -5542,14 +5843,14 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
    between the two. Everything in here is scoped to `:not(.sheet-side)`: the drawer keeps
    its phone shape because it does not exist above the breakpoint at all.
 
-   The dialog is in the top layer, so it cannot be positioned relative to the sidebar and
-   `--panel-top` is a measurement rather than a reference: the wide shell's 1.25rem top
-   padding plus the topbar — whose height is the 2.75rem avatar button, not the wordmark
-   beside it — with its 0.6rem padding, 1px rule and 1.2rem margin below. Measured against
-   `.sidebar.getBoundingClientRect().top`, which it matches to the pixel. Anchor
-   positioning would make it a reference; it is not yet in every browser this app
-   supports, so the number is pinned here instead, and the topbar is the thing to
-   re-measure if it moves.
+   The dialog is in the top layer, so it cannot be positioned relative to the sidebar;
+   `--panel-top` is a reference to the content column's top padding (`--shell-pad-top`,
+   set on the shell so the top layer can inherit it), which is where the sidebar's head row
+   begins now that no bar sits above it. It was a measurement while the top bar was there
+   — the padding plus the bar's avatar, rule and margin, pinned as a sum — and the bar is
+   what the number stopped counting when the rail replaced it. Anchor positioning would
+   make it a reference to the sidebar itself; it is not yet in every browser this app
+   supports.
 
    Placed after every other `.sheet` rule on purpose: these override the phone's by source
    order at equal specificity, and the head's grip-cancel in particular would win if this
@@ -5562,13 +5863,17 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
    --------------------------------------------------------------------------------- */
 @media (width > 860px) {
   .sheet:not(.sheet-side) {
-    --panel-top: calc(1.25rem + 2.75rem + 0.6rem + 1px + 1.2rem);
+    --panel-top: var(--shell-pad-top, 1.25rem);
     margin: 0;
     inset: auto;
     top: var(--panel-top);
-    /* The wide shell's inline padding: flush with the sidebar's box, not its text edge. */
-    left: 1.5rem;
-    width: min(max(var(--sidebar-width, 19rem), 20rem), calc(100vw - 3rem));
+    /* The rail, then the content column's inline padding: flush with the sidebar's box,
+       not its text edge. `--rail-width` is the shell's, inherited like `--sidebar-width`. */
+    left: calc(var(--rail-width, 0px) + var(--shell-pad-left, 1.5rem));
+    width: min(
+      max(var(--sidebar-width, 19rem), 20rem),
+      calc(100vw - var(--rail-width, 0px) - 3rem)
+    );
     max-height: calc(100dvh - var(--panel-top) - 1rem);
     border: 1px solid var(--border);
     border-radius: 0.75rem;
@@ -5855,9 +6160,9 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
      uses the same layout hook — and its sidebar, `.trash-head` included, is hidden by the
      rule above, so only one back arrow is ever on screen.
   */
-  .shell.wide:has(.notes) > .topbar,
-  .shell.wide:has(.settings) > .topbar,
-  .shell.wide:has(.trash-head) > .topbar {
+  .shell-main:has(.notes) > .topbar,
+  .shell-main:has(.settings) > .topbar,
+  .shell-main:has(.trash-head) > .topbar {
     display: none;
   }
 
@@ -5873,11 +6178,6 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
      `.notes` rather than `.notes.note-open`: the list and the open note are the same grid,
      and both have their own top-left control now — the menu button and the back arrow.
   */
-
-  /* Trash lives in the drawer at this width, with the notebooks it sits beside. Leaving it
-     on the sidebar floor as well would be two places for one destination, and the drawer is
-     the one that matches every other app. */
-  .trash-link { display: none; }
 
   /*
      The sidebar gives up its own inset here, because the shell's is already doing that job.
@@ -5986,7 +6286,7 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
      note view spends 43% of a phone screen on chrome before its first character, and this
      is the cheapest quarter of it.
   */
-  .shell.wide { padding-top: 0.5rem; }
+  .shell.wide { --shell-pad-top: 0.5rem; }
 
   /*
      The side margins come in too, for the same reason the top one did.
@@ -6004,19 +6304,21 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
      brings the text to 23px: still clear of the rounded corners of a modern phone, and
      24px of width per side handed back to the content.
 
-     Written to cover `.shell.wide` as well as bare `.shell`, so the notes view narrows
-     along with login, settings and import rather than keeping a gutter twice the width of
-     its neighbours. The compound selector is not redundant: `.shell.wide` sets `padding`
-     as a shorthand, which beats a bare `.shell` here on specificity — the notes view, the
-     one this is for, would otherwise have kept all 24px.
+     Written to cover the signed-in column (`.shell-main`, which carries the wide shell's
+     padding) as well as the bare `.shell` of login and the legal pages, so the notes view
+     narrows along with them rather than keeping a gutter twice the width of its
+     neighbours. `.shell-main` sets `padding` as a shorthand at the same specificity as
+     this rule and earlier in the file, so this wins by source order alone; the bare rule
+     excludes `.wide` because the row itself has no padding to narrow, and a rule that
+     tied with `.shell-main` on specificity would otherwise inset the notes twice.
 
      `:not(.embed)` because the WebView shell deliberately runs to the edge — the Android
      app draws the chrome and every pixel of the page is the note. Its rule sits earlier in
      this file at the same specificity, so without this it would be a source-order accident
      that the two never collide.
   */
-  .shell:not(.embed),
-  .shell.wide:not(.embed) { padding-inline: 0.75rem; }
+  .shell:not(.embed):not(.wide),
+  .shell-main { padding-inline: 0.75rem; }
 
   /*
      The notes list runs closer to the edge than the rest.
@@ -6031,13 +6333,13 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
      it is the list view alone that changes and nothing else moves. `.notes` gains
      `.note-open` when a note is open and the grid swaps the list for the editor — a reading
      view like settings, which wants the full gutter — so the selector deliberately stops
-     matching there and the shell falls back to the shared 0.75rem. The compound outweighs
-     `.shell.wide` on specificity, which is what lets it win on the list while the bare rule
-     keeps every other route, the open note included, at 0.75rem. The row keeps its own
-     0.7rem, so a note's text still sits inside the fill the way it always has — see
+     matching there and the column falls back to the shared 0.75rem. The compound outweighs
+     `.shell-main` on specificity, which is what lets it win on the list while the shared
+     rule keeps every other route, the open note included, at 0.75rem. The row keeps its
+     own 0.7rem, so a note's text still sits inside the fill the way it always has — see
      `.note-item`.
   */
-  .shell.wide:not(.embed):has(.notes:not(.note-open)) { padding-inline: 0.25rem; }
+  .shell-main:has(.notes:not(.note-open)) { padding-inline: 0.25rem; }
 
   /*
      The border above is that divider, and it is deliberate.
@@ -6122,14 +6424,17 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
   .workspace-main {
     padding-bottom: calc(3.5rem + var(--keyboard-inset, 0px));
     /*
-       The shell's own inset is the gutter here; a second one would stack on it. And the
-       base rule's reach to the window edge — a negative right margin sized to the desktop
-       shell's 1.5rem — is undone with it: the phone shell insets by less than that, so the
-       margin would drag the column past the glass. Edge-to-edge is already the phone's, by
-       way of the shell running the column full width; nothing here needs to reach for it.
+       The shell's own inset is the gutter on the left; a second one would stack on it.
+       On the right the column reaches through that inset to the glass and takes it back
+       as padding, the way the base rule does with the desktop shell's 1.5rem: sized to
+       the phone shell's 0.75rem here, since the base's reach would drag the column past
+       the window. This used to be undone outright, on the reasoning that the phone was
+       edge-to-edge already — it was not: the column stopped at the shell's padding, so
+       its scrollbar sat 12px in from the glass with dead space beyond it, and the text
+       was 12px in from a bar that should have been the edge.
     */
-    padding-inline: 0;
-    margin-right: 0;
+    padding-inline: 0 0.75rem;
+    margin-right: -0.75rem;
   }
 
   /* A shade tighter still than the base bar, where vertical room is scarcest. */
@@ -6146,7 +6451,7 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
   .tb-seg { height: 2.75rem; padding: 0 0.55rem; font-size: 0.85rem; }
 
   /* Home-indicator clearance on iPhone; resolves to 0px everywhere else. */
-  .shell.wide { padding-bottom: calc(1rem + env(safe-area-inset-bottom)); }
+  .shell-main { padding-bottom: calc(1rem + env(safe-area-inset-bottom)); }
 
   /*
      The filter sheet's own controls are thumb targets like everything else here.

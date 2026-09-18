@@ -37,7 +37,7 @@ function harness() {
       const shell = useShell();
       return (
         <main className={shell === 'app' ? 'shell wide' : 'shell centered'} data-testid="shell">
-          {shell === 'app' && <p>topbar</p>}
+          {shell === 'app' && <p>chrome</p>}
           <Outlet />
         </main>
       );
@@ -97,11 +97,11 @@ describe('the shell around a page that is still loading', () => {
     // The destination's loader is still open, so the sign-in screen is still what renders.
     await waitFor(() => expect(screen.getByText('sign-in screen')).toBeTruthy());
     expect(shellClass()).toBe('shell centered');
-    expect(screen.queryByText('topbar')).toBeNull();
+    expect(screen.queryByText('chrome')).toBeNull();
 
     release();
     await waitFor(() => expect(screen.getByText('note list')).toBeTruthy());
     expect(shellClass()).toBe('shell wide');
-    expect(screen.getByText('topbar')).toBeTruthy();
+    expect(screen.getByText('chrome')).toBeTruthy();
   });
 });

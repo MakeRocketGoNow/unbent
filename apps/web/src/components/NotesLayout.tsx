@@ -22,7 +22,7 @@ import { markNewNote } from '../useNewNote.js';
 import { SearchResults } from './SearchResults.js';
 import { IndexingStatus } from './IndexingStatus.js';
 import { Button } from './Button';
-import { NotebookSelect } from './NotebookSelect.js';
+import { NotebookMissing } from './NotebookMissing.js';
 import { ExportLink } from './ExportLink.js';
 import { TagPicker } from './TagPicker.js';
 import { FilterRow } from './FilterRow.js';
@@ -40,6 +40,7 @@ import { noteColumns } from './note-columns.js';
 import { nextColumnSort, type SortTarget } from './sort-options.js';
 import { patchNoteFields, patchNotePages } from './note-table-edit.js';
 import { loadMoreLabel } from './load-more.js';
+import { scopeLabel, tagPlace } from './scope-label.js';
 import { useNotesView } from '../useNotesView.js';
 import { editOpenNoteField } from '../open-note-fields.js';
 import { keys } from '../queries.js';
@@ -82,9 +83,9 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
   // the browser's find. See the hook.
   useFocusSearch(searchRef);
   /*
-   * The account, for the drawer's floor. The topbar carries it at desktop width and is
-   * hidden over the phone's list, so this is where it is reached there — the root layout
-   * has already established the session by the time this renders.
+   * The account, for the phone drawer's head. The desktop's rail carries it at that width
+   * and the topbar is hidden over the phone's list, so this is where it is reached there —
+   * the root layout has already established the session by the time this renders.
    */
   const { data: session } = useSession();
   const signOutAndLeave = useSignOut();
@@ -157,6 +158,7 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
       replace: true,
     });
   }, [sortFieldStale, navigate]);
+  /** For the phone drawer's floor; the desktop's rail asks for it itself. */
   const trashCount = useQuery(trashCountQuery());
   const trashed = trashCount.data ?? 0;
 
@@ -187,8 +189,9 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
    * phone's shape is the one every notes app has settled on, so the desktop takes it
    * too, and what is left of the difference is: the search field is a permanent row
    * rather than behind an icon, New is a button in the head rather than floating, the
-   * notebook is picked from a select rather than a drawer, and the sheet is a panel
-   * beside the list rather than one from the floor (CSS decides that last one).
+   * notebook is picked from a rail beside the column rather than a drawer over it, and
+   * the sheet is a panel beside the list rather than one from the floor (CSS decides
+   * that last one).
    *
    * This is one of the few places the app reads the breakpoint in JS rather than in
    * CSS. The policy in `useMediaQuery` allows exactly this — a control whose *meaning*
@@ -329,9 +332,9 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
   const layout = useNotesLayout('/notes/$noteId', { mode: tableMode ? 'table' : 'list' });
   /*
    * The table with no note open is the whole window wide, and a header laid out for a
-   * sidebar stretched with it: a search field and a notebook select a window wide each.
-   * There the header is one toolbar row holding both — see `NoteListHead`. Beside an open
-   * note the table is a column again and keeps the stacked header, which is what fits.
+   * sidebar stretched with it: a search field a window wide. There the header is one
+   * toolbar row — see `NoteListHead`. Beside an open note the table is a column again
+   * and keeps the stacked header, which is what fits.
    */
   const toolbarHead = tableMode && !layout.open;
   /*
@@ -391,17 +394,21 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
       : null;
 
   /**
-   * Where the list is, for the phone's heading.
+   * Where the list is, for the heading — see `scopeLabel` for the rule, which is the
+   * rail's rule, so the heading and the row you picked agree. At every width: on a desktop
+   * the rail marks the place, but the rail can be a strip of icons, and the column has to
+   * say what it holds on its own.
    *
-   * The notebook names itself; "Inbox" is what the UNFILED sentinel is called everywhere
-   * the user can see it; "All notes" is the unnarrowed list, and it matches the drawer's
-   * own first row so the heading and the place you picked it from agree.
-   *
-   * Tags are deliberately not in it. They are already under the header as chips that can be
-   * taken off, and a heading listing them would either duplicate that or truncate it.
+   * A lone tag with no notebook is a place, and then it is the heading rather than a chip:
+   * the chip under the header would be the same word twice on adjacent lines, the reason
+   * a notebook has no chip. The sheet still lists it, since a surface that claims to show
+   * everything applied has to, and All notes in the rail is the way out of it. Every other
+   * tag stays a chip: the chips are what can be taken off, and a heading listing several
+   * would either duplicate them or truncate.
    */
-  const scopeLabel =
-    notebook === UNFILED ? 'Inbox' : (notebook ?? 'All notes');
+  const heading = scopeLabel(notebook, selectedTags);
+  const tagAsPlace = tagPlace(notebook, selectedTags);
+  const chipTags = tagAsPlace ? [] : selectedTags;
 
   /**
    * What the list is showing, in three forms. Both breakpoints' headers read it.
@@ -454,10 +461,7 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
       <aside className="sidebar">
         <NoteListHead
           count={countLabel}
-          /* Where the list is, on a phone. At desktop width the notebook select one row
-             down says it, and a heading over a select saying the same word is the "third
-             place saying Coupons" the chip strip's comment describes. */
-          title={isMobile ? scopeLabel : undefined}
+          title={heading}
           query={q}
           onQuery={setQuery}
           onArrowDown={() => enterList(listRef.current ?? tableRef.current)}
@@ -477,7 +481,6 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
             setQuery('');
           }}
           toolbar={toolbarHead}
-          scope={toolbarHead ? <NotebookSelect notebook={notebook} notebooks={notebooks} /> : undefined}
           onOpenFilters={() => setSheetOpen(true)}
           onOpenMenu={isMobile ? () => setDrawerOpen(true) : undefined}
           filtered={sheetFiltered}
@@ -522,32 +525,19 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
         />
 
         {error && <p className="bad small">{(error as Error).message}</p>}
-
-        {/*
-            The notebook, as a select, at desktop width only.
-
-            It is navigation rather than a filter — a place you go — which is why the phone
-            keeps it in the drawer and the sheet does not offer it. The desktop has no
-            drawer; a rail for it is a separate decision, and until then the select is the
-            one control that stays in the column. Hidden while searching, like the sort:
-            search is scoped to the notebook, but a select above relevance-ranked results
-            invites being read as something that reorders them.
-        */}
-        {!isMobile && !searching && !toolbarHead && (
-          <NotebookSelect notebook={notebook} notebooks={notebooks} />
-        )}
+        <NotebookMissing notebook={notebook} notebooks={notebooks} />
 
         {/*
             Under the header rather than only inside the sheet, so what is narrowing the
             list is readable without opening anything — and removable without it too.
 
-            No notebook chip here: the heading above (or the select, on a desktop) already
-            names it, and the chip repeated that word for word on the next line, spending
-            a row of a phone screen to say it twice. The sheet still shows it, because a
-            surface that claims to list everything applied has to.
+            No notebook chip here: the heading above already names it, and the chip
+            repeated that word for word on the next line, spending a row of a phone screen
+            to say it twice. The sheet still shows it, because a surface that claims to
+            list everything applied has to.
         */}
         <ActiveFilters
-          tags={selectedTags}
+          tags={chipTags}
           fields={fieldFilters}
           fieldDefs={fieldDefs.data ?? []}
           from={from}
@@ -562,6 +552,7 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
             selectedTags={selectedTags}
             notebooks={notebooks}
             trashed={trashed}
+            tags={tags.data ?? []}
             email={session?.user.email ?? ''}
             onSignOut={signOutAndLeave}
           />
@@ -654,7 +645,7 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
                   together.
 
                   Neither the notebook nor the sort is among them. The notebook is a
-                  place you go, so it is in the drawer or the select; sort changes the
+                  place you go, so it is in the drawer or the rail; sort changes the
                   order rather than the membership, so it is under its own icon.
               */}
               {!searching && (tags.data?.length ?? 0) > 0 && (
@@ -805,25 +796,8 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
         </ul>
         )}
 
-        {/*
-          * Trash, pinned under the note list.
-          *
-          * It sits below the list rather than up in the filter stack because it is a
-          * destination, not a filter — but it belongs in this column all the same, since
-          * what it holds is notes. Every notes app people arrive here from puts deleted
-          * notes in the sidebar, and the topbar — now account chrome only — is the one
-          * place nobody would think to look for them.
-          *
-          * `.note-list` takes the leftover height, so this lands on the sidebar floor
-          * without anything here having to position it. The rule above it is what stops
-          * it reading as one more filter; the count is what stays conditional. No
-          * `activeProps`: /trash renders TrashLayout's own sidebar in place of this one,
-          * so this link is never on screen while it is the active route.
-          */}
-        <Link to="/trash" className="trash-link">
-          Trash
-          {trashed > 0 && <span className="tag-count">{trashed}</span>}
-        </Link>
+        {/* Trash is a row of the rail and of the drawer; the column is the list alone.
+            `.note-list` takes the leftover height, so the status lands on the floor. */}
         <IndexingStatus />
       </aside>
 
