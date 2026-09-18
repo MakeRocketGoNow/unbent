@@ -17,6 +17,6 @@ import type { AppEnv } from '../types.js';
  */
 export const mcpRoutes = new Hono<AppEnv>().all('/mcp', (c) =>
   protectMcp(c.env, async (request, claims) =>
-    createUnbentMcpHandler(c.env, userIdFrom(claims)).fetch(request),
+    createUnbentMcpHandler(c.env, userIdFrom(claims), c.executionCtx).fetch(request),
   )(c.req.raw),
 );

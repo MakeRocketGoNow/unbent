@@ -12,7 +12,9 @@
  *
  * Runs against a live `wrangler dev` with email/password enabled. See test/README.md.
  */
-import { beforeAll, describe, expect, it } from 'vitest';
+import { createServer, type Server } from 'node:http';
+import type { AddressInfo } from 'node:net';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 const BASE = process.env['API_URL'] ?? 'http://localhost:8787';
 const ORIGIN = process.env['APP_URL'] ?? 'http://localhost:5173';
@@ -463,5 +465,225 @@ describe('a write through MCP that changes nothing', () => {
       ),
     );
     expect(after.updatedAt).toBe(before.updatedAt);
+  });
+});
+
+/**
+ * Attaching a file by URL.
+ *
+ * The bytes come from a throwaway HTTP server in this process rather than from the
+ * internet, so the suite needs no network and can serve exactly the awkward cases —
+ * a body with no declared length, a declared length far past the cap, a generic type —
+ * and can count what was fetched, which is how the cross-tenant case proves that nothing
+ * was downloaded on a stranger's behalf. The Worker reaches it on loopback, which is
+ * where `wrangler dev` runs; nothing here would hold on the deployed instance, where
+ * loopback is the Worker itself.
+ */
+describe('add_attachment', () => {
+  const PDF = new TextEncoder().encode('%PDF-1.4\n1 0 obj << >> endobj\ntrailer << >>\n%%EOF\n');
+  const hits: Record<string, number> = {};
+  let files: Server;
+  let origin: string;
+  let carol: Actor;
+  let dave: Actor;
+  let carolNoteId: string;
+
+  beforeAll(async () => {
+    files = createServer((req, res) => {
+      const path = new URL(req.url ?? '/', 'http://x').pathname;
+      hits[path] = (hits[path] ?? 0) + 1;
+      switch (path) {
+        case '/report.pdf':
+          res.writeHead(200, { 'Content-Type': 'application/pdf', 'Content-Length': PDF.length });
+          return res.end(PDF);
+        case '/named.pdf':
+          res.writeHead(200, {
+            'Content-Type': 'application/pdf',
+            'Content-Length': PDF.length,
+            'Content-Disposition': 'attachment; filename="Lab Results (2026).pdf"',
+          });
+          return res.end(PDF);
+        case '/unsized.txt':
+          // No Content-Length: node sends this chunked.
+          res.writeHead(200, { 'Content-Type': 'text/plain' });
+          res.write('hello, ');
+          return res.end('world');
+        case '/generic':
+          res.writeHead(200, {
+            'Content-Type': 'application/octet-stream',
+            'Content-Length': PDF.length,
+          });
+          return res.end(PDF);
+        case '/huge':
+          // Declares a body it never sends; the Worker must refuse on the header alone.
+          res.writeHead(200, { 'Content-Type': 'application/pdf', 'Content-Length': 200 * 1024 * 1024 });
+          res.flushHeaders();
+          setTimeout(() => res.destroy(), 500);
+          return;
+        default:
+          res.writeHead(404, { 'Content-Type': 'text/plain' });
+          return res.end('no such file');
+      }
+    });
+    await new Promise<void>((resolve) => files.listen(0, '127.0.0.1', resolve));
+    origin = `http://127.0.0.1:${(files.address() as AddressInfo).port}`;
+
+    // Actors of this block's own, so a grant revoked by an earlier case cannot reach here.
+    const stamp = Date.now();
+    const carolCookie = await signUp(`mcp-carol-${stamp}@example.test`, 'carol-password-12', 'Carol');
+    const daveCookie = await signUp(`mcp-dave-${stamp}@example.test`, 'dave-password-123', 'Dave');
+    const clientId = await registerClient('Attachment Assistant');
+    carol = { cookie: carolCookie, userId: '', token: await tokenFor(carolCookie, clientId, RESOURCE) };
+    dave = { cookie: daveCookie, userId: '', token: await tokenFor(daveCookie, clientId, RESOURCE) };
+
+    const created = await mcp(carol.token, 'tools/call', {
+      name: 'create_note',
+      arguments: { title: 'Carol scans', body: 'Before any attachment.' },
+    });
+    carolNoteId = JSON.parse(toolText(created.body)).id;
+    expect(carolNoteId).toBeTruthy();
+  }, 60_000);
+
+  afterAll(async () => {
+    await new Promise<void>((resolve) => files.close(() => resolve()));
+  });
+
+  async function add(token: string, args: Record<string, unknown>) {
+    const { body } = await mcp(token, 'tools/call', { name: 'add_attachment', arguments: args });
+    const text = toolText(body);
+    return { isError: body.result?.isError === true, text, json: () => JSON.parse(text) };
+  }
+
+  async function noteBody(actor: Actor, noteId: string): Promise<string> {
+    const res = await fetch(`${BASE}/api/notes/${noteId}`, {
+      headers: { Cookie: actor.cookie, Origin: ORIGIN },
+    });
+    return ((await res.json()) as { body: string }).body;
+  }
+
+  async function listFiles(actor: Actor, noteId: string): Promise<string[]> {
+    const res = await fetch(`${BASE}/api/notes/${noteId}/files`, {
+      headers: { Cookie: actor.cookie, Origin: ORIGIN },
+    });
+    return ((await res.json()) as { files: Array<{ filename: string }> }).files.map((f) => f.filename);
+  }
+
+  it('is offered', async () => {
+    const { body } = await mcp(carol.token, 'tools/list');
+    const names = (body.result?.tools ?? []).map((t: { name: string }) => t.name);
+    expect(names).toContain('add_attachment');
+  });
+
+  it('fetches the file, stores it, and links it at the end of the note', async () => {
+    const result = await add(carol.token, { noteId: carolNoteId, url: `${origin}/report.pdf` });
+    expect(result.isError).toBe(false);
+    const stored = result.json();
+    expect(stored).toMatchObject({
+      noteId: carolNoteId,
+      filename: 'report.pdf',
+      path: 'files/report.pdf',
+      markdown: '[report.pdf](files/report.pdf)',
+      contentType: 'application/pdf',
+      size: PDF.length,
+      linked: true,
+    });
+    expect(['server', 'client']).toContain(stored.indexing);
+
+    expect(await noteBody(carol, carolNoteId)).toBe(
+      'Before any attachment.\n\n[report.pdf](files/report.pdf)',
+    );
+
+    // The bytes are the ones the source served, and they come back the way an upload would.
+    const served = await fetch(`${BASE}/api/notes/${carolNoteId}/files/report.pdf`, {
+      headers: { Cookie: carol.cookie, Origin: ORIGIN },
+    });
+    expect(served.status).toBe(200);
+    expect(served.headers.get('content-type')).toBe('application/pdf');
+    expect(new Uint8Array(await served.arrayBuffer())).toEqual(PDF);
+  });
+
+  it('uses the given filename, suffixes a collision, and leaves the body alone when asked', async () => {
+    const before = await noteBody(carol, carolNoteId);
+    const result = await add(carol.token, {
+      noteId: carolNoteId,
+      url: `${origin}/report.pdf`,
+      filename: 'Insurance card.pdf',
+      link: false,
+    });
+    expect(result.isError).toBe(false);
+    expect(result.json()).toMatchObject({
+      filename: 'Insurance card.pdf',
+      // Whitespace in the destination needs the angle brackets, or the link does not render.
+      markdown: '[Insurance card.pdf](<files/Insurance card.pdf>)',
+      linked: false,
+    });
+    expect(await noteBody(carol, carolNoteId)).toBe(before);
+
+    const again = await add(carol.token, {
+      noteId: carolNoteId,
+      url: `${origin}/report.pdf`,
+      filename: 'Insurance card.pdf',
+      link: false,
+    });
+    expect(again.json().filename).toBe('Insurance card-2.pdf');
+  });
+
+  it("takes the source's Content-Disposition name over the URL's", async () => {
+    const result = await add(carol.token, { noteId: carolNoteId, url: `${origin}/named.pdf`, link: false });
+    expect(result.isError).toBe(false);
+    expect(result.json().filename).toBe('Lab Results (2026).pdf');
+  });
+
+  it('takes a body whose length the source did not declare', async () => {
+    const result = await add(carol.token, { noteId: carolNoteId, url: `${origin}/unsized.txt`, link: false });
+    expect(result.isError).toBe(false);
+    expect(result.json()).toMatchObject({ filename: 'unsized.txt', contentType: 'text/plain', size: 12 });
+    const served = await fetch(`${BASE}/api/notes/${carolNoteId}/files/unsized.txt`, {
+      headers: { Cookie: carol.cookie, Origin: ORIGIN },
+    });
+    expect(await served.text()).toBe('hello, world');
+  });
+
+  it('reads the type off the filename when the source only says "binary"', async () => {
+    const result = await add(carol.token, {
+      noteId: carolNoteId,
+      url: `${origin}/generic`,
+      filename: 'scan.pdf',
+      link: false,
+    });
+    expect(result.isError).toBe(false);
+    expect(result.json().contentType).toBe('application/pdf');
+  });
+
+  it('refuses a file larger than an attachment may be, before reading it', async () => {
+    const before = await listFiles(carol, carolNoteId);
+    const result = await add(carol.token, { noteId: carolNoteId, url: `${origin}/huge` });
+    expect(result.isError).toBe(true);
+    expect(result.text).toContain('at most');
+    expect(await listFiles(carol, carolNoteId)).toEqual(before);
+  });
+
+  it('refuses a reference that is not a download link, and says what to do', async () => {
+    const result = await add(carol.token, { noteId: carolNoteId, url: 'file://abc-123/upload.pdf' });
+    expect(result.isError).toBe(true);
+    expect(result.text).toContain('Only http and https');
+    expect(result.text).toContain('download URL');
+  });
+
+  it("reports the source's refusal rather than storing its error page", async () => {
+    const before = await listFiles(carol, carolNoteId);
+    const result = await add(carol.token, { noteId: carolNoteId, url: `${origin}/missing.pdf` });
+    expect(result.isError).toBe(true);
+    expect(result.text).toContain('404');
+    expect(await listFiles(carol, carolNoteId)).toEqual(before);
+  });
+
+  it('fetches nothing for a note that is not the caller\'s', async () => {
+    const fetched = hits['/report.pdf'] ?? 0;
+    const result = await add(dave.token, { noteId: carolNoteId, url: `${origin}/report.pdf` });
+    expect(result.isError).toBe(true);
+    expect(result.text).toContain('No such note');
+    expect(hits['/report.pdf'] ?? 0).toBe(fetched);
+    expect(await listFiles(carol, carolNoteId)).not.toContain('report-2.pdf');
   });
 });
