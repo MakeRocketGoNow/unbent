@@ -58,7 +58,21 @@ function mount(doc: string, cursor = doc.length): EditorView {
     }),
     parent,
   });
+  focusAt(view, cursor);
   return view;
+}
+
+/**
+ * Puts the view in the focused, editing state these tests assume.
+ *
+ * A reveal needs focus (see `reveals` in rich-markdown): a caret alone no longer uncovers
+ * syntax, which is the whole point of the fix. `focus()` sets `hasFocus` at once but does
+ * not itself rebuild the decorations — that happens on the next update — so a selection is
+ * dispatched after it to force the focused build synchronously, the way real editing does.
+ */
+function focusAt(v: EditorView, cursor: number): void {
+  v.focus();
+  v.dispatch({ selection: EditorSelection.cursor(cursor) });
 }
 
 /** Mounts with attachment resolution on; the shared `mount` deliberately has none. */
@@ -69,7 +83,15 @@ const saveRemoteImage = vi.fn(async (_url: string) => 'saved.png');
 /** What the bin was asked to delete, across a test. */
 const deleteAttachment = vi.fn(async (_filename: string) => {});
 
-function mountWithAttachments(doc: string, cursor = 0, pdfNames: string[] = []): EditorView {
+function mountWithAttachments(
+  doc: string,
+  cursor = 0,
+  pdfNames: string[] = [],
+  // Off for the tests about how a note reads when the editor has no focus — the state a
+  // note opened by the sidebar's arrow keys is in, where the caret sits at offset 0 without
+  // anyone having put it there. See the unfocused image test.
+  focus = true,
+): EditorView {
   const parent = document.createElement('div');
   document.body.appendChild(parent);
   const names = new Set(pdfNames);
@@ -90,6 +112,8 @@ function mountWithAttachments(doc: string, cursor = 0, pdfNames: string[] = []):
     }),
     parent,
   });
+  // See `focusAt`: a reveal needs focus, and most of these tests are about the focused view.
+  if (focus) focusAt(view, cursor);
   return view;
 }
 
@@ -708,6 +732,34 @@ describe('inline images', () => {
     const v = mountWithAttachments('![scan](files/scan.jpg)\n\nplain', 0);
     expect(image(v)?.getAttribute('src')).toBe('/api/notes/n1/files/scan.jpg');
     expect(image(v)?.alt).toBe('scan');
+  });
+
+  /**
+   * The bug this fixes: an image at the very start of an unfocused note showed its raw
+   * `![alt](url)` instead of rendering.
+   *
+   * A note opened by the sidebar's arrow keys mounts its editor without focus, and
+   * CodeMirror seeds a caret at offset 0 all the same. When the note begins with an image,
+   * that caret sat on it and, treated as an edit-in-progress, the first image alone kept
+   * its markdown while every later one rendered. An editor no one is typing in should show
+   * the finished note: the picture draws, its alt stands in as the caption, and the `![` /
+   * `](url)` around it stay hidden — the same as any image the caret is nowhere near.
+   */
+  it('renders a leading image in an unfocused editor rather than its markdown', () => {
+    const v = mountWithAttachments('![scan](files/scan.jpg)\n\nplain', 0, [], false);
+    expect(image(v)?.getAttribute('src')).toBe('/api/notes/n1/files/scan.jpg');
+    expect(visibleText(v, 1)).toBe('scan');
+  });
+
+  /**
+   * The other half of the same rule: focus is what brings the source back to edit. Putting
+   * the caret on the image in a focused editor reveals `![alt](url)` in full, so the fix
+   * hides nothing the editor still needs to be editable.
+   */
+  it('reveals a leading image’s markdown once the editor is focused', () => {
+    const doc = '![scan](files/scan.jpg)\n\nplain';
+    const v = mountWithAttachments(doc, 0);
+    expect(visibleText(v, 1)).toBe(doc.split('\n')[0]);
   });
 
   /** The visible control, and the one the keyboard can reach. */
