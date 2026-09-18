@@ -277,6 +277,21 @@ describe('applyRenames', () => {
     const body = '[a](<files/Menu Card.pdf>)\n';
     expect(applyRenames(body, new Map([['Menu', 'Menu-2']]))).toBe(body);
   });
+
+  /*
+   * A guard on an assumption, not on behaviour anyone wants.
+   *
+   * The boundary above stops at the characters that end a destination in the markdown
+   * this importer writes, and a space is deliberately not one of them, so that
+   * `files/Menu` cannot eat `files/Menu Card.pdf`. That is only safe while a space
+   * cannot follow a destination — which holds because `enmlToMarkdown` emits a bare
+   * `href`/`src` and never a link title. If it ever emits one, this test fails and the
+   * boundary has to grow a case for it, rather than the rename silently not happening.
+   */
+  it('leaves a destination followed by a title alone, a shape this importer never writes', () => {
+    const body = '![a](files/image.png "caption")\n';
+    expect(applyRenames(body, new Map([['image.png', 'image-2.png']]))).toBe(body);
+  });
 });
 
 /** Resumability is the point: a 3GB import will be interrupted. */
