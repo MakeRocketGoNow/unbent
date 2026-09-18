@@ -703,9 +703,10 @@ describe('inline images', () => {
       src: '/api/notes/n1/files/scan.jpg',
       alt: 'scan',
     });
-    // Opening the viewer is not an edit, and must not reveal the source either.
+    // Opening the viewer is not an edit, and must not reveal the source either. The alt
+    // stays as its caption; the `![` and `](url)` around it stay hidden.
     expect(v.state.doc.toString()).toBe(doc);
-    expect(visibleText(v, 1)).toBe('');
+    expect(visibleText(v, 1)).toBe('scan');
   });
 
   /**
@@ -750,15 +751,35 @@ describe('inline images', () => {
       alt: 'scan',
     });
     expect(v.state.doc.toString()).toBe(doc);
-    expect(visibleText(v, 1)).toBe('');
+    expect(visibleText(v, 1)).toBe('scan');
   });
 
-  /** The picture is the label: unlike a link there is nothing in the source worth keeping. */
-  it('hides the whole source with the cursor elsewhere', () => {
+  /**
+   * The alt is kept the way a link keeps its label — a caption, and a place to click before
+   * the picture. Only the `![` and `](url)` around it hide; the picture draws after it.
+   */
+  it('keeps the alt as a caption with the cursor elsewhere', () => {
     const doc = '![scan](files/scan.jpg)\n\nplain';
+    const v = mountWithAttachments(doc, doc.length);
+    expect(visibleText(v, 1)).toBe('scan');
+    // Its own caption style, not the link label's — see `.cm-md-image-alt`.
+    expect(v.dom.querySelector('.cm-md-image-alt')?.textContent).toBe('scan');
+    expect(v.dom.querySelector('.cm-md-link')).toBeNull();
+    expect(image(v)).not.toBeNull();
+    // The alt is a caption, not the source: the line still keeps its text height.
+    expect(lineClasses(v, 1)).not.toContain('cm-md-image-line');
+  });
+
+  /**
+   * With no alt there is nothing to keep and nowhere to caption; the whole `![](url)` is
+   * replaced by the picture, and its line collapses to the picture's height.
+   */
+  it('hides the whole source of an alt-less image with the cursor elsewhere', () => {
+    const doc = '![](files/scan.jpg)\n\nplain';
     const v = mountWithAttachments(doc, doc.length);
     expect(visibleText(v, 1)).toBe('');
     expect(image(v)).not.toBeNull();
+    expect(lineClasses(v, 1)).toContain('cm-md-image-line');
   });
 
   it('reveals the source with the cursor on its line', () => {
@@ -781,9 +802,13 @@ describe('inline images', () => {
     expect(v.state.doc.toString()).toBe(doc);
   });
 
-  /** Hidden text keeps its line box; the line has to give that height up too. */
-  it('collapses a line that holds only the image', () => {
-    const doc = '![scan](files/scan.jpg)\n\nplain';
+  /**
+   * Hidden text keeps its line box; an alt-less image whose line collapses to nothing has to
+   * give that height up too. (An image with an alt keeps the alt caption, and its height —
+   * see 'keeps the alt as a caption'.)
+   */
+  it('collapses a line that holds only an alt-less image', () => {
+    const doc = '![](files/scan.jpg)\n\nplain';
     const v = mountWithAttachments(doc, doc.length);
     expect(lineClasses(v, 1)).toContain('cm-md-image-line');
   });
@@ -791,7 +816,8 @@ describe('inline images', () => {
   it('keeps the height of a line that also holds text', () => {
     const doc = 'Receipt: ![scan](files/scan.jpg)\n\nplain';
     const v = mountWithAttachments(doc, doc.length);
-    expect(visibleText(v, 1)).toBe('Receipt: ');
+    // The leading text plus the image's own alt caption; only the `![`/`](url)` are hidden.
+    expect(visibleText(v, 1)).toBe('Receipt: scan');
     expect(lineClasses(v, 1)).not.toContain('cm-md-image-line');
   });
 
@@ -818,7 +844,7 @@ describe('inline images', () => {
     const v = mountWithAttachments(doc, doc.length);
     expect(image(v)?.getAttribute('src')).toBe('https://example.com/logo.png');
     expect(image(v)?.alt).toBe('logo');
-    expect(visibleText(v, 1)).toBe('');
+    expect(visibleText(v, 1)).toBe('logo');
   });
 
   /** No resolver is needed for a remote image: its address is already absolute. */
@@ -855,7 +881,8 @@ describe('inline images', () => {
   it('brings the source back when the image fails to load', () => {
     const doc = '![scan](files/missing.jpg)\n\nplain';
     const v = mountWithAttachments(doc, doc.length);
-    expect(visibleText(v, 1)).toBe('');
+    // Before the failure only the alt caption shows; the full source is hidden.
+    expect(visibleText(v, 1)).toBe('scan');
 
     image(v)!.dispatchEvent(new Event('error'));
 
