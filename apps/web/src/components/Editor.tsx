@@ -11,6 +11,7 @@ import { tableTools } from '../editor/table-toolbar.js';
 import { fileDropCursor } from '../editor/drop-cursor.js';
 import { attachments } from '../editor/attach.js';
 import { attachmentClipboard } from '../editor/clipboard.js';
+import { copyAttachmentToClipboard } from '../attachment-clipboard.js';
 
 interface EditorProps {
   /** Changes to this remount the editor; it is not a controlled value. */
@@ -182,6 +183,15 @@ export function Editor({
                   resolveAttachment: (filename) =>
                     `/api/notes/${encodeURIComponent(noteId)}/files/${encodeURIComponent(filename)}`,
                   isPdfAttachment: (filename) => pdfFilenamesRef.current?.has(filename) ?? false,
+                  // The same clipboard payload the Attachments panel's Copy writes. The
+                  // type only decides whether a PNG goes along; the size is not used.
+                  copyAttachment: async (filename, kind) => {
+                    await copyAttachmentToClipboard(
+                      noteId,
+                      { filename, contentType: kind === 'image' ? 'image/*' : 'application/pdf', size: 0 },
+                      { origin: window.location.origin },
+                    );
+                  },
                 }),
               ]
             : []),

@@ -17,7 +17,7 @@ import {
 import { ATTACHMENT_PREFIX } from '@unbent/shared';
 import { acquirePdf, type LoadedPdf, releasePdf } from '../pdf/render.js';
 import { openAttachmentViewer, type ViewerTarget } from '../attachment-viewer.js';
-import { expandIconMarkup } from '../components/icons.js';
+import { checkIconMarkup, copyIconMarkup, expandIconMarkup } from '../components/icons.js';
 
 /**
  * Rich markdown rendering inside CodeMirror.
@@ -358,7 +358,7 @@ function ownEvents(control: HTMLElement): void {
 function zoomButton(target: ViewerTarget, siblings: Siblings): HTMLButtonElement {
   const button = document.createElement('button');
   button.type = 'button';
-  button.className = 'zoom-btn';
+  button.className = 'corner-btn zoom-btn';
   button.setAttribute('aria-label', 'Full screen');
   button.title = 'Full screen';
   button.innerHTML = expandIconMarkup();
@@ -367,6 +367,54 @@ function zoomButton(target: ViewerTarget, siblings: Siblings): HTMLButtonElement
     event.preventDefault();
     event.stopPropagation();
     openAttachmentViewer(target, siblings());
+  });
+  return button;
+}
+
+/** What the copy control does; see `RichMarkdownOptions.copyAttachment`. */
+type CopyAttachment = NonNullable<RichMarkdownOptions['copyAttachment']>;
+
+/** How long the control says "Copied" before offering to copy again. */
+const COPIED_FOR_MS = 1500;
+
+/**
+ * The corner control that puts an attachment on the clipboard.
+ *
+ * Beside the full-screen control rather than under the attachment, and for the same
+ * reason that control lives in the corner: it shows on hover, so a note of photographs
+ * does not become a note of buttons. The line under a PDF was the other candidate, but it
+ * belongs to the pages ("+2 more pages"), exists only for a PDF with more than one, and
+ * an image would have had to grow a caption to match. One cluster, one place, both kinds.
+ *
+ * A clipboard write has nothing to show for itself, so the glyph becomes a tick for a
+ * moment and the label says so — the same feedback the Attachments panel's Copy gives.
+ */
+function copyButton(filename: string, kind: 'image' | 'pdf', copy: CopyAttachment): HTMLButtonElement {
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = 'corner-btn zoom-copy';
+  const idle = () => {
+    button.innerHTML = copyIconMarkup();
+    button.setAttribute('aria-label', 'Copy');
+    button.title = 'Copy, to paste into another note';
+  };
+  const say = (label: string, glyph: string) => {
+    button.innerHTML = glyph;
+    button.setAttribute('aria-label', label);
+    button.title = label;
+  };
+  idle();
+  ownEvents(button);
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  button.addEventListener('click', (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    copy(filename, kind).then(
+      () => say('Copied', checkIconMarkup()),
+      () => say('Couldn’t copy', copyIconMarkup()),
+    );
+    if (timer) clearTimeout(timer);
+    timer = setTimeout(idle, COPIED_FOR_MS);
   });
   return button;
 }
@@ -394,6 +442,9 @@ class ImageWidget extends WidgetType {
     private readonly url: string,
     private readonly alt: string,
     private readonly siblings: Siblings,
+    /** The stored name, for the copy control; null for a remote image, which has none. */
+    private readonly filename: string | null = null,
+    private readonly copy?: CopyAttachment,
   ) {
     super();
   }
@@ -448,6 +499,9 @@ class ImageWidget extends WidgetType {
     });
 
     frame.appendChild(img);
+    if (this.filename !== null && this.copy) {
+      frame.appendChild(copyButton(this.filename, 'image', this.copy));
+    }
     frame.appendChild(zoomButton(target, this.siblings));
     return wrap;
   }
@@ -512,6 +566,8 @@ class PdfWidget extends WidgetType {
   constructor(
     private readonly url: string,
     private readonly siblings: Siblings,
+    private readonly filename: string = '',
+    private readonly copy?: CopyAttachment,
   ) {
     super();
   }
@@ -583,6 +639,7 @@ class PdfWidget extends WidgetType {
         status.remove();
         // On the first page's corner, after it has drawn: a control on a blank page
         // would promise a view of nothing. The same viewer the preview pane opens.
+        if (this.copy) pages.appendChild(copyButton(this.filename, 'pdf', this.copy));
         pages.appendChild(zoomButton(this.viewerTarget(), this.siblings));
         if (doc.pageCount > 1) this.addMore(wrap, pages, doc);
       })
@@ -864,6 +921,13 @@ export interface RichMarkdownOptions {
    * `pdfNamesChanged` for making one happen.
    */
   isPdfAttachment?: (filename: string) => boolean;
+  /**
+   * Puts a stored file on the clipboard, for the corner control on an image or a PDF.
+   *
+   * The editor supplies it with the note id in hand; the widget knows only the filename
+   * and what kind of thing it is drawing. Absent, the control is not drawn.
+   */
+  copyAttachment?: (filename: string, kind: 'image' | 'pdf') => Promise<void>;
 }
 
 /**
@@ -1038,7 +1102,16 @@ function buildDecorations(view: EditorView, options: RichMarkdownOptions): Decor
           // the note still says what belongs there. See `failedImages`.
           if (failedImages.has(src)) return;
 
-          const widget = new ImageWidget(src, match[1] ?? '', siblings);
+          const stored = url.startsWith(ATTACHMENT_PREFIX)
+            ? (decodePath(url.slice(ATTACHMENT_PREFIX.length)).split('?')[0] ?? '')
+            : null;
+          const widget = new ImageWidget(
+            src,
+            match[1] ?? '',
+            siblings,
+            stored,
+            options.copyAttachment,
+          );
 
           /**
            * The image stands in for its source while the cursor is elsewhere.
@@ -1190,7 +1263,7 @@ function buildDecorations(view: EditorView, options: RichMarkdownOptions): Decor
 
           marks.push(
             Decoration.widget({
-              widget: new PdfWidget(resolve(filename), siblings),
+              widget: new PdfWidget(resolve(filename), siblings, decoded, options.copyAttachment),
               side: 1,
             }).range(node.to),
           );

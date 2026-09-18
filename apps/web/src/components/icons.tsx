@@ -404,6 +404,12 @@ const CLOSE_PATHS = ['M18 6 6 18', 'm6 6 12 12'];
 const CHEVRON_LEFT_PATHS = ['m15 18-6-6 6-6'];
 const CHEVRON_RIGHT_PATHS = ['m9 18 6-6-6-6'];
 const DOWNLOAD_PATHS = ['M12 15V3', 'M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4', 'm7 10 5 5 5-5'];
+// lucide `copy` (its rect written as a path, since the helper draws paths) and `check`.
+const COPY_PATHS = [
+  'M10 8h10a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H10a2 2 0 0 1-2-2V10a2 2 0 0 1 2-2z',
+  'M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2',
+];
+const CHECK_PATHS = ['M20 6 9 17l-5-5'];
 
 function iconMarkup(paths: readonly string[], size: number): string {
   return [
@@ -418,6 +424,15 @@ function iconMarkup(paths: readonly string[], size: number): string {
 /** `ExpandIcon` as a string, for a button built with `innerHTML`. */
 export function expandIconMarkup(): string {
   return iconMarkup(EXPAND_PATHS, 18);
+}
+
+/** Two sheets, for the attachment widgets' copy control; `checkIconMarkup` is its "done". */
+export function copyIconMarkup(): string {
+  return iconMarkup(COPY_PATHS, 18);
+}
+
+export function checkIconMarkup(): string {
+  return iconMarkup(CHECK_PATHS, 18);
 }
 
 /** A cross, for the attachment viewer's close button. */

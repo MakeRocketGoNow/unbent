@@ -61,6 +61,9 @@ function mount(doc: string, cursor = doc.length): EditorView {
 }
 
 /** Mounts with attachment resolution on; the shared `mount` deliberately has none. */
+/** What the corner copy control was asked to copy, across a test. */
+const copyAttachment = vi.fn(async (_filename: string, _kind: 'image' | 'pdf') => {});
+
 function mountWithAttachments(doc: string, cursor = 0, pdfNames: string[] = []): EditorView {
   const parent = document.createElement('div');
   document.body.appendChild(parent);
@@ -74,6 +77,7 @@ function mountWithAttachments(doc: string, cursor = 0, pdfNames: string[] = []):
         richMarkdown({
           resolveAttachment: (name) => `/api/notes/n1/files/${name}`,
           isPdfAttachment: (name) => names.has(name),
+          copyAttachment,
         }),
       ],
     }),
@@ -459,6 +463,17 @@ describe('inline PDF', () => {
    * The way to read a scan large. The control arrives with the first page rather than
    * with the widget, so it never sits on a page that has not drawn.
    */
+  it('offers to copy the file once the first page has drawn', async () => {
+    copyAttachment.mockClear();
+    const v = mountWithAttachments('[report](files/report.pdf)');
+    expect(v.dom.querySelector('.cm-md-pdf .zoom-copy')).toBeNull();
+    await settle();
+    const button = v.dom.querySelector<HTMLButtonElement>('.cm-md-pdf .zoom-copy');
+    expect(button).not.toBeNull();
+    button?.click();
+    expect(copyAttachment).toHaveBeenCalledWith('report.pdf', 'pdf');
+  });
+
   it('offers the full-screen viewer once the first page has drawn', async () => {
     openAttachmentViewer.mockClear();
     const v = mountWithAttachments('[report](files/report.pdf)');
@@ -691,6 +706,31 @@ describe('inline images', () => {
     // Opening the viewer is not an edit, and must not reveal the source either.
     expect(v.state.doc.toString()).toBe(doc);
     expect(visibleText(v, 1)).toBe('');
+  });
+
+  /**
+   * The other corner control: the picture to the clipboard, for another note. It names
+   * the stored file, not the URL, and says "Copied" for a moment rather than nothing.
+   */
+  it('copies the stored file from the corner button and says so', async () => {
+    copyAttachment.mockClear();
+    const doc = '![scan](<files/my scan.jpg>)\n\nplain';
+    const v = mountWithAttachments(doc, doc.length);
+    const button = v.dom.querySelector<HTMLButtonElement>('.cm-md-image .zoom-copy');
+    expect(button?.getAttribute('aria-label')).toBe('Copy');
+    button?.click();
+    expect(copyAttachment).toHaveBeenCalledWith('my scan.jpg', 'image');
+    await new Promise((r) => setTimeout(r, 0));
+    expect(button?.getAttribute('aria-label')).toBe('Copied');
+    expect(v.state.doc.toString()).toBe(doc);
+  });
+
+  /** A remote picture is not a stored file; there is nothing of the note's to copy. */
+  it('offers no copy for a remote image', () => {
+    const doc = '![web](https://example.com/a.png)\n\nplain';
+    const v = mountWithAttachments(doc, doc.length);
+    expect(v.dom.querySelector('.cm-md-image .zoom-btn')).not.toBeNull();
+    expect(v.dom.querySelector('.cm-md-image .zoom-copy')).toBeNull();
   });
 
   /**

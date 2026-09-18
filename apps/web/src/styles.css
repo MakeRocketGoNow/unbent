@@ -3743,11 +3743,12 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
 /* ---------------------------------------------------------------------------------
    Opening an attachment at full size.
 
-   The corner control, shared by the rich editor's image and PDF widgets. Positioned by a
-   host that is `position: relative` and shrink-wrapped to the picture, so it sits on the
-   picture's corner rather than the line's. Fixed ink on a translucent disc rather than the
-   theme's tokens, because it sits on the attachment and not on the page — a scan is white
-   in both themes.
+   The corner controls, shared by the rich editor's image and PDF widgets: full screen
+   (`.zoom-btn`) in the corner, and copy (`.zoom-copy`) one disc to its left. Positioned by
+   a host that is `position: relative` and shrink-wrapped to the picture, so they sit on
+   the picture's corner rather than the line's. Fixed ink on a translucent disc rather than
+   the theme's tokens, because they sit on the attachment and not on the page — a scan is
+   white in both themes.
 
    Hidden until the picture is hovered, so a note of photographs is not a note of buttons;
    always shown, quieter, where there is no pointer to hover with. Keyboard focus shows it
@@ -3759,7 +3760,7 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
   max-width: 100%;
 }
 
-.zoom-btn {
+.corner-btn {
   position: absolute;
   top: 0.5rem;
   right: 0.5rem;
@@ -3782,14 +3783,17 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
   transition: opacity 0.15s ease;
 }
 
-.zoom-host:hover .zoom-btn,
-.zoom-btn:focus-visible { opacity: 1; }
+.zoom-host:hover .corner-btn,
+.corner-btn:focus-visible { opacity: 1; }
 
-.zoom-btn:hover { background: rgb(0 0 0 / 0.72); }
+.corner-btn:hover { background: rgb(0 0 0 / 0.72); }
 
-/* No pointer to point with: the control stays, since a thumb cannot hover for it. */
+/* The copy control, one disc to the left; the full-screen one keeps the corner it had. */
+.zoom-copy { right: 3.25rem; }
+
+/* No pointer to point with: the controls stay, since a thumb cannot hover for them. */
 @media (hover: none) {
-  .zoom-btn { opacity: 0.85; }
+  .corner-btn { opacity: 0.85; }
 }
 
 /*
