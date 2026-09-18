@@ -1,4 +1,4 @@
-import { describe, it, expect, afterEach, beforeAll, vi } from 'vitest';
+import { describe, it, expect, afterEach, beforeAll, beforeEach, vi } from 'vitest';
 import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
@@ -10,6 +10,7 @@ import {
 } from '@tanstack/react-router';
 import type { FieldDef } from '@unbent/shared';
 import { keys } from '../queries.js';
+import * as api from '../notes-api.js';
 import { NotebookFields } from './NotebookFields.js';
 
 /**
@@ -27,6 +28,17 @@ const fields: FieldDef[] = [
   { id: 'f2', notebookId: 'nb1', name: 'Category', type: 'select', options: ['Food', 'Travel'], scale: null, position: 1, valueCount: 0 },
   { id: 'f3', notebookId: 'nb1', name: 'Amount', type: 'number', options: [], scale: null, position: 2 },
 ];
+
+const rating: FieldDef = {
+  id: 'f4',
+  notebookId: 'nb1',
+  name: 'Stars',
+  type: 'number',
+  options: [],
+  scale: { max: 10, step: 0.5 },
+  position: 0,
+  valueCount: 5,
+};
 
 function mount(seed: FieldDef[] = fields) {
   const client = new QueryClient({
@@ -60,7 +72,14 @@ describe('NotebookFields', () => {
   beforeAll(() => {
     vi.stubGlobal('scrollTo', () => {});
   });
-  afterEach(cleanup);
+  beforeEach(() => {
+    vi.spyOn(api, 'previewFieldConversion');
+    vi.spyOn(api, 'updateNotebookField');
+  });
+  afterEach(() => {
+    vi.restoreAllMocks();
+    cleanup();
+  });
 
   it('names the notebook and lists its fields with their types and value counts', async () => {
     mount();
@@ -118,5 +137,69 @@ describe('NotebookFields', () => {
     expect(screen.queryByLabelText('Add a option')).toBeNull();
     fireEvent.change(screen.getByLabelText('New field type'), { target: { value: 'select' } });
     expect(screen.getByLabelText('Add a option')).toBeTruthy();
+  });
+
+  /*
+     Tightening a rating used to PATCH immediately. The server cleared every value that
+     no longer fit — a 7 on a scale dropped from 10 to 5, a 3.5 once half steps went —
+     and the confirmation that a type change gets never ran. The tests below are that
+     bug: the picker asks first, names the count, and writes only after Confirm.
+  */
+  it('asks before narrowing a rating, naming how many values will be cleared', async () => {
+    vi.mocked(api.previewFieldConversion).mockResolvedValue({ values: 5, incompatible: 2 });
+    vi.mocked(api.updateNotebookField).mockResolvedValue({
+      field: { ...rating, scale: { max: 5, step: 0.5 } },
+      cleared: 2,
+    });
+    mount([rating]);
+    await screen.findByText('Stars');
+    fireEvent.change(screen.getByLabelText('Rating scale maximum'), { target: { value: '5' } });
+
+    expect(await screen.findByText((_, node) => node?.textContent === 'Change Stars to out of 5?')).toBeTruthy();
+    expect(screen.getByText('5 notes have a value. 2 of them can\'t be read that way and will be cleared.')).toBeTruthy();
+    expect(screen.getByText('Change and clear 2 values')).toBeTruthy();
+    expect(api.updateNotebookField).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByText('Change and clear 2 values'));
+    await waitFor(() =>
+      expect(api.updateNotebookField).toHaveBeenCalledWith('nb1', 'f4', { type: 'number', scale: { max: 5, step: 0.5 } }),
+    );
+  });
+
+  it('does not write a narrower scale if the confirmation is cancelled', async () => {
+    vi.mocked(api.previewFieldConversion).mockResolvedValue({ values: 5, incompatible: 2 });
+    mount([rating]);
+    await screen.findByText('Stars');
+    fireEvent.change(screen.getByLabelText('Rating scale maximum'), { target: { value: '5' } });
+    await screen.findByText((_, node) => node?.textContent === 'Change Stars to out of 5?');
+    fireEvent.click(screen.getByText('Cancel'));
+    await waitFor(() => expect(screen.queryByText((_, node) => node?.textContent === 'Change Stars to out of 5?')).toBeNull());
+    expect(api.updateNotebookField).not.toHaveBeenCalled();
+    expect((screen.getByLabelText('Rating scale maximum') as unknown as { value: string }).value).toBe('10');
+  });
+
+  it('asks before dropping half steps', async () => {
+    vi.mocked(api.previewFieldConversion).mockResolvedValue({ values: 5, incompatible: 1 });
+    mount([rating]);
+    await screen.findByText('Stars');
+    fireEvent.click(screen.getByRole('checkbox'));
+    expect(await screen.findByText((_, node) => node?.textContent === 'Drop half steps on Stars?')).toBeTruthy();
+    expect(api.updateNotebookField).not.toHaveBeenCalled();
+  });
+
+  it('writes a wider scale without asking, because nothing can be cleared', async () => {
+    const five: FieldDef = { ...rating, scale: { max: 5, step: 1 } };
+    vi.mocked(api.previewFieldConversion).mockResolvedValue({ values: 3, incompatible: 0 });
+    vi.mocked(api.updateNotebookField).mockResolvedValue({
+      field: { ...five, scale: { max: 10, step: 1 } },
+      cleared: 0,
+    });
+    mount([five]);
+    await screen.findByText('Stars');
+    fireEvent.change(screen.getByLabelText('Rating scale maximum'), { target: { value: '10' } });
+    await waitFor(() =>
+      expect(api.updateNotebookField).toHaveBeenCalledWith('nb1', 'f4', { scale: { max: 10, step: 1 } }),
+    );
+    expect(screen.queryByLabelText('Confirm change rating scale')).toBeNull();
   });
 });
