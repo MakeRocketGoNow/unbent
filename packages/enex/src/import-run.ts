@@ -1,3 +1,4 @@
+import type { NotebookDefinition } from '@unbent/shared';
 import { isExtractable } from './ocr-text.js';
 import { extractPdfText } from './pdf-text.js';
 
@@ -158,6 +159,15 @@ export interface ImportClient {
   saveFileText?: (noteId: string, filename: string, text: string) => Promise<void>;
 
   /**
+   * Applies a notebook's definitions from the archive's `notebooks/<slug>.yaml`, before
+   * any of its notes. Optional because an older server has no endpoint for it; the
+   * archive still imports, with field types inferred from values as before.
+   */
+  importNotebook?: (
+    definition: NotebookDefinition,
+  ) => Promise<{ id: string; skipped: Array<{ name: string; reason: string }> }>;
+
+  /**
    * Filenames already stored for a note.
    *
    * Used when a note was created on a prior run that died mid-upload: re-import must skip
@@ -282,6 +292,18 @@ export class ImportRun {
 
     progress.processed += 1;
     options.onProgress?.({ ...progress });
+  }
+
+  /**
+   * Records something that went wrong that was not a note: a notebook's definitions the
+   * server would not take, or one field of them it could not apply. Counted with the
+   * failures and reported through the same log, since that is the list a person reads
+   * to find out what did not land — but outside `attempt`, so it never counts toward the
+   * notes processed and the bar still measures notes.
+   */
+  problem(title: string, reason: string): void {
+    this.progress.failed += 1;
+    this.options.onFailure?.({ title, reason });
   }
 
   /** Counts a note the server created. Drivers call this rather than bumping the count. */

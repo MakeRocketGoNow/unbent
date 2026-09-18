@@ -115,7 +115,31 @@ function archiveClient(actor: Actor) {
         }),
       );
     },
+    importNotebook: async (definition: object) =>
+      json<{ id: string; skipped: Array<{ name: string; reason: string }> }>(
+        await api(actor, '/api/import/notebook', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(definition),
+        }),
+      ),
   };
+}
+
+interface FieldJson {
+  id: string;
+  name: string;
+  type: string;
+  options: string[];
+  scale: { max: number; step: number } | null;
+}
+
+async function fieldsOf(actor: Actor, notebook: string): Promise<FieldJson[]> {
+  const nb = (
+    await json<{ notebooks: Array<{ id: string; name: string }> }>(await api(actor, '/api/notebooks'))
+  ).notebooks.find((n) => n.name === notebook);
+  if (!nb) throw new Error(`no notebook ${notebook}`);
+  return (await json<{ fields: FieldJson[] }>(await api(actor, `/api/notebooks/${nb.id}/fields`))).fields;
 }
 
 let alice: Actor;
@@ -284,6 +308,118 @@ describe('an export imported into another account', () => {
     expect(again.created).toBe(0);
     expect(again.skipped).toBe(1);
     expect(again.filesUploaded).toBe(0);
+  });
+});
+
+describe('notebook definitions across an import', () => {
+  it('rebuild the notebook as it was, not as its values suggest', async () => {
+    const stamp = Date.now();
+    const notebook = `Shopping ${stamp}`;
+    await json(
+      await api(alice, '/api/notebooks', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: notebook }),
+      }),
+    );
+    const nb = (
+      await json<{ notebooks: Array<{ id: string; name: string }> }>(await api(alice, '/api/notebooks'))
+    ).notebooks.find((n) => n.name === notebook)!;
+    const field = async (body: object) =>
+      json<FieldJson>(
+        await api(alice, `/api/notebooks/${nb.id}/fields`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        }),
+      );
+    const url = await field({ name: 'Url', type: 'url' });
+    const status = await field({ name: 'Status', type: 'select', options: ['Want', 'Ordered', 'Passed'] });
+    const priority = await field({ name: 'Priority', type: 'number', scale: { max: 5, step: 0.5 } });
+    await field({ name: 'Image', type: 'url' });
+    await json(
+      await api(alice, '/api/notes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: 'Bike',
+          notebook,
+          fields: { [url.id]: 'https://x.test/bike', [status.id]: 'Want', [priority.id]: 4.5 },
+        }),
+      }),
+    );
+
+    const exported = await api(alice, `/api/export?notebook=${encodeURIComponent(notebook)}`);
+    const zip = { name: 'unbent-shopping.zip', blob: await exported.blob() };
+    const progress = await importArchive(zip, archiveClient(bob));
+    expect(progress).toMatchObject({ created: 1, failed: 0 });
+
+    // Same types, options, scale and order — including the field no note had a value for,
+    // which inference from values could never have brought back.
+    const copied = await fieldsOf(bob, notebook);
+    expect(copied.map(({ name, type, options, scale }) => ({ name, type, options, scale }))).toEqual([
+      { name: 'Url', type: 'url', options: [], scale: null },
+      { name: 'Status', type: 'select', options: ['Want', 'Ordered', 'Passed'], scale: null },
+      { name: 'Priority', type: 'number', options: [], scale: { max: 5, step: 0.5 } },
+      { name: 'Image', type: 'url', options: [], scale: null },
+    ]);
+    const listed = await json<{ items: NoteJson[] }>(
+      await api(bob, `/api/notes?notebook=${encodeURIComponent(notebook)}`),
+    );
+    const copy = await json<NoteJson>(await api(bob, `/api/notes/${listed.items[0]!.id}`));
+    expect(copy.fields?.map((f) => [f.name, f.value])).toEqual([
+      ['Url', 'https://x.test/bike'],
+      ['Status', 'Want'],
+      ['Priority', 4.5],
+    ]);
+  });
+
+  it('add to a notebook that already exists, and never alter what it has', async () => {
+    const stamp = Date.now();
+    const notebook = `Receipts ${stamp}`;
+    const client = archiveClient(bob);
+    await client.importNotebook({
+      name: notebook,
+      fields: [
+        { name: 'Merchant', type: 'text' },
+        { name: 'Kind', type: 'select', options: ['Food'] },
+        { name: 'Score', type: 'number', scale: { max: 5, step: 1 } },
+      ],
+    });
+
+    const second = await client.importNotebook({
+      name: notebook,
+      fields: [
+        // Same type: nothing to do. Different type: left alone, and said so.
+        { name: 'merchant', type: 'url' },
+        // A select's options merge; a case-only duplicate is not a new option.
+        { name: 'Kind', type: 'select', options: ['food', 'Travel'] },
+        // A scale is never changed on the way in — tightening one clears values.
+        { name: 'Score', type: 'number', scale: { max: 10, step: 0.5 } },
+        // New, so it appends after what was there.
+        { name: 'Paid', type: 'checkbox' },
+      ],
+    });
+    expect(second.skipped).toEqual([
+      { name: 'merchant', reason: 'Already here as text, not url; left as it is' },
+    ]);
+
+    const fields = await fieldsOf(bob, notebook);
+    expect(fields.map(({ name, type, options, scale }) => ({ name, type, options, scale }))).toEqual([
+      { name: 'Merchant', type: 'text', options: [], scale: null },
+      { name: 'Kind', type: 'select', options: ['Food', 'Travel'], scale: null },
+      { name: 'Score', type: 'number', options: [], scale: { max: 5, step: 1 } },
+      { name: 'Paid', type: 'checkbox', options: [], scale: null },
+    ]);
+  });
+
+  it('refuse a file the field editor would refuse', async () => {
+    const res = await api(bob, '/api/import/notebook', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: 'X', fields: [{ name: 'title', type: 'text' }] }),
+    });
+    expect(res.status).toBe(400);
   });
 });
 

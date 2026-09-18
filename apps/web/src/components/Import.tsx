@@ -376,9 +376,10 @@ export function Import({ onImported }: ImportProps) {
 
       {failures.length > 0 && (
         <details className="failures">
-          <summary className="small">
-            {failures.length} note{failures.length === 1 ? '' : 's'} failed
-          </summary>
+          {/* Not "notes failed": a notebook's definitions the server would not take, or one
+              field of them it declined, are listed here too, under the notebook's or the
+              field's name — see `ImportRun.problem`. */}
+          <summary className="small">{failures.length} failed</summary>
           {/* The retry is free — importNote is idempotent per note — but nothing said so,
               so a run ending with failures looked like data lost rather than data to retry. */}
           <p className="small muted">

@@ -1121,6 +1121,7 @@ would otherwise swamp the suite it belongs to.
 first-note-2382e420/first-note-2382e420.md
 first-note-2382e420/files/agenda.pdf
 untitled-e080eb5b/untitled-e080eb5b.md
+notebooks/coupons.yaml
 ```
 
 Each markdown file carries YAML frontmatter — id, title, created, updated, tags, notebook,
@@ -1130,9 +1131,18 @@ markdown repeats it so a search of the unpacked tree finds one file per title ra
 thousand `note.md`s. Standard `unzip` reads it; no part of this app is needed to get your
 notes back.
 
+`notebooks/` holds what is about a notebook rather than a note: one `<slug>.yaml` per
+notebook naming its fields in order, each with its type and, where it has them, its select
+options or rating scale. A value in frontmatter says nothing about the field that holds it,
+and without this file a restore rebuilt every field from the first value it met — URLs and
+selects as text, ratings as plain numbers, and a field with no values not at all. An
+unfiltered export lists every notebook, empty ones included; a filtered export lists the
+notebooks its notes are in, plus the one the filter named.
+
 `/api/export` also takes the note list's `tag`, `notebook`, `from`, and `to`, so an export
 can be a slice rather than the whole library — a year of records for a doctor, the receipts
-an accountant asked for. The enumeration goes through the same `notes.list` as the list
+an accountant asked for. Settings → Notebooks offers the `notebook` slice as a download
+beside each notebook, since "a copy of this notebook" is the slice people reach for. The enumeration goes through the same `notes.list` as the list
 itself, so a filter cannot mean one thing on screen and another in the zip. There is no
 `sort` (a directory tree has no order worth choosing) and no `limit` (a partial backup is a
 trap); `sort` is accepted only to say which column a date range applies to. The filename
@@ -1149,6 +1159,15 @@ The same zip goes back in through Settings → Import, on the instance that wrot
 other — as does a single note's download, zip or bare `.md`. Every note's metadata is in its
 own frontmatter, so a notebook exported with `?notebook=` arrives as that notebook, with its
 tags, dates, custom fields and files; nothing about the notes lives outside the archive.
+
+The `notebooks/` files are applied first, through `POST /api/import/notebook`, so values
+land against the definitions they were written under. The rule there is add, never alter: a
+field the notebook lacks is created as the file describes it, a field it already has keeps
+its type and scale (changing either clears values, which an import should not decide), and
+a select's options are merged. Anything left unapplied is named in the import's failure log.
+An archive without `notebooks/` — an older export, a hand-made vault — imports as before,
+with each field's type inferred from its first value. A single note's download carries no
+definitions, since it is not a notebook.
 
 Each note keeps the id it had when the id is free, so a restore puts notes back at their old
 addresses and links between them keep working. A note that is already present — by id, or

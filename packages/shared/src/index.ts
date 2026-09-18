@@ -4,3 +4,4 @@ export * from './fields.js';
 export * from './markdown.js';
 export * from './content-type.js';
 export * from './filenames.js';
+export * from './notebook-file.js';

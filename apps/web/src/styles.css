@@ -4072,6 +4072,13 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
 /* The last button sits on the panel's right edge, like the slot sits on its left. */
 .label-row > .icon-btn:last-child { margin-right: -0.75rem; }
 
+/* Even spacing from Fields to the download glyph to the pencil. Two 44px buttons with
+   22px glyphs sit 30px apart glyph-to-glyph (11px of box each side of the row's 8px gap),
+   which is also how far apart the editing row's check, cross and trash are. Text has no
+   box, so Fields sat only 19px from the download glyph and the pair read as unevenly
+   spaced. The 11px the text lacks goes here. */
+.label-row > .label-download { margin-left: 0.6875rem; }
+
 .label-extra { flex: 0 0 auto; }
 
 /* The count that hugs the name, when a caller puts one there — a notebook's note count,

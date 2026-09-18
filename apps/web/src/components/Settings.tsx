@@ -3,6 +3,7 @@ import { Link } from '@tanstack/react-router';
 import * as api from '../notes-api.js';
 import { Confirm } from './Confirm.js';
 import { LabelEditor, type LabelItem } from './LabelEditor.js';
+import { DownloadIcon } from './icons.js';
 
 interface SettingsProps {
   /** Called after any change, so the note list and sidebar refetch. */
@@ -20,10 +21,17 @@ interface SettingsProps {
  * The list is the shared `LabelEditor`, Keep's editing screen, which the Android app
  * adopted first. What this page adds is what a notebook has that a tag does not: the
  * two-option delete, because a notebook's notes have somewhere to go, and the way to its
- * custom fields. The per-notebook Export link that used to sit on every row is gone —
- * the note list's export, filtered to the notebook, is the same archive, and a row that
- * carried Fields, Export and Delete was three verbs beside a name that mostly wanted to
- * be read.
+ * custom fields, and a download of the notebook as a zip.
+ *
+ * That download left once and came back. It went because a row carrying Fields, Export
+ * and Delete was three verbs beside a name that mostly wanted to be read, and the note
+ * list's export filtered to the notebook is the same archive. It returned because that
+ * route is buried — filter the list, then find the export beneath the filters — and this
+ * page is where a person thinking "I want a copy of this notebook" already is. It comes
+ * back as a glyph rather than a word, so the row still reads as a name — and drawn as
+ * the pencil is, a muted icon button, not as a link. In the link's green at text size it
+ * read as part of "Fields"; grey beside the pencil it reads as what it is, one of the
+ * row's two actions, with Fields left alone as the row's one navigation.
  */
 export function Settings({ onChanged }: SettingsProps) {
   const [notebooks, setNotebooks] = useState<api.Notebook[] | null>(null);
@@ -108,17 +116,32 @@ export function Settings({ onChanged }: SettingsProps) {
           ) : null
         }
         /* Navigation to the notebook's own page, so a link. The count says at a glance
-           which notebooks are collections of records. */
+           which notebooks are collections of records. The download is an anchor too, and
+           must be: the archive streams as the browser saves it, so it cannot go through a
+           fetch, and an anchor keeps Save-Link-As and copy-link. `download` with no name
+           lets the server's Content-Disposition name the file for the notebook. It wears
+           `icon-btn` for the pencil's look and 44px box; the class is only styling. */
         renderExtra={(item) => {
           const fields = byId(item)?.fields ?? 0;
           return (
-            <Link
-              to="/settings/notebooks/$notebookId"
-              params={{ notebookId: item.id }}
-              className="link small label-extra"
-            >
-              Fields{fields > 0 && <span className="tag-count"> {fields}</span>}
-            </Link>
+            <>
+              <Link
+                to="/settings/notebooks/$notebookId"
+                params={{ notebookId: item.id }}
+                className="link small label-extra"
+              >
+                Fields{fields > 0 && <span className="tag-count"> {fields}</span>}
+              </Link>
+              <a
+                href={api.exportUrl({ notebook: item.name })}
+                download
+                className="icon-btn label-download"
+                title={`Download ${item.name} as a zip`}
+                aria-label={`Download ${item.name} as a zip`}
+              >
+                <DownloadIcon />
+              </a>
+            </>
           );
         }}
         emptyText="No notebooks yet."

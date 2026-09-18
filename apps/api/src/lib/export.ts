@@ -1,5 +1,5 @@
 import { ZipWriter } from '@zip.js/zip.js';
-import { fieldsByName, serialize } from '@unbent/shared';
+import { NOTEBOOKS_DIR, UNFILED, fieldsByName, serialize, serializeNotebook } from '@unbent/shared';
 import type { FieldFilter, Note, NoteSort } from '@unbent/shared';
 import { nextCursor, type NotesRepo } from './notes-repo.js';
 import type { AttachmentsRepo } from './attachments-repo.js';
@@ -98,6 +98,8 @@ async function writeArchive(
 
   let cursor: string | undefined;
   let count = 0;
+  /** The notebooks the exported notes belong to, for a filtered export's definitions. */
+  const seenNotebooks = new Set<string>();
 
   for (;;) {
     const page = await notes.list({ limit: PAGE, cursor, ...filter });
@@ -110,6 +112,7 @@ async function writeArchive(
       // One directory per note; the writer names the markdown inside it the same way.
       await writeNoteEntry(zip, { attachments, blobs }, note, 'nested');
       count += 1;
+      if (note.notebookId) seenNotebooks.add(note.notebookId);
     }
 
     // Asked for rather than rebuilt here: a hand-written cursor is a second copy of the
@@ -118,6 +121,8 @@ async function writeArchive(
     if (!next) break;
     cursor = next;
   }
+
+  await writeNotebookEntries(zip, notes, filter, seenNotebooks);
 
   // A zip with no entries is still a valid zip; an empty account exports an empty archive
   // rather than an error.
@@ -129,6 +134,56 @@ async function writeArchive(
   }
 
   await zip.close();
+}
+
+/**
+ * Writes `notebooks/<slug>.yaml` for every notebook the archive is about.
+ *
+ * This is what makes a restore put a notebook back as it was and not as its values
+ * suggest: a note's frontmatter carries values by name and nothing about the field that
+ * holds them, so without this a URL field came back as text, a select lost its options,
+ * a rating lost its scale and a field with no values yet did not come back at all.
+ *
+ * Which notebooks: all of them for an unfiltered export, empty ones included — a backup
+ * that dropped a notebook because it happened to hold no notes that day would not be a
+ * backup of the account. A filtered export is a slice, so it carries the notebooks its
+ * notes are in, plus the one the filter named even if nothing matched inside it; a person
+ * exporting a notebook to move it wants its shape to arrive whether or not its notes did.
+ *
+ * Written after the notes rather than before, because a filtered export only learns which
+ * notebooks it touched by walking them. The importer reads the zip's central directory
+ * and takes these first whatever order they were written in, so nothing depends on it.
+ */
+async function writeNotebookEntries(
+  zip: ZipWriter<unknown>,
+  notes: NotesRepo,
+  filter: ExportFilter,
+  seenNotebooks: Set<string>,
+): Promise<void> {
+  const scoped = Boolean(
+    filter.notebook || filter.tags?.length || filter.fields?.length || filter.from || filter.to,
+  );
+  const all = await notes.listNotebooks();
+  const named = filter.notebook && filter.notebook !== UNFILED ? filter.notebook.trim().toLowerCase() : null;
+  const inScope = scoped
+    ? all.filter((nb) => seenNotebooks.has(nb.id) || nb.name.toLowerCase() === named)
+    : all;
+
+  // Two names can share a slug ("A/B" and "A B"); the name inside the file is the one the
+  // importer reads, so the filename only has to be distinct.
+  const used = new Set<string>();
+  for (const nb of inScope) {
+    const fields = (await notes.listFields(nb.id)) ?? [];
+    let base = slugify(nb.name);
+    for (let n = 2; used.has(base); n += 1) base = `${slugify(nb.name)}-${n}`;
+    used.add(base);
+
+    await zip.add(
+      `${NOTEBOOKS_DIR}/${base}.yaml`,
+      new Blob([serializeNotebook(nb.name, fields)]).stream(),
+      { level: 6, zip64: false },
+    );
+  }
 }
 
 /**

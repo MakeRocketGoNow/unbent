@@ -10,6 +10,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Copy,
+  Download,
   FileText,
   Film,
   Funnel,
@@ -373,6 +374,19 @@ export function MoveLaterIcon() {
  */
 export function CopyIcon() {
   return <Copy size="1em" strokeWidth={2} aria-hidden="true" focusable="false" />;
+}
+
+/**
+ * A tray with an arrow into it, for a link that saves a file.
+ *
+ * On the notebook list, beside the pencil, where a word would have been a third verb on
+ * a row that mostly wants to be read. `HeaderIcon`-sized like the pencil, and for the
+ * same reason: it sits alone in a 44px control. It was first drawn at text size in the
+ * link's green, and read as a suffix of "Fields" rather than as a row action. The string
+ * form below is the same glyph for the attachment viewer, which builds its DOM by hand.
+ */
+export function DownloadIcon() {
+  return <HeaderIcon icon={Download} />;
 }
 
 /**

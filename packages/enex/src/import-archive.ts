@@ -1,5 +1,5 @@
 import { BlobReader, TextWriter, Uint8ArrayWriter, ZipReader, type Entry } from '@zip.js/zip.js';
-import { parse, type ParsedNote } from '@unbent/shared';
+import { NOTEBOOKS_DIR, parse, parseNotebook, type ParsedNote } from '@unbent/shared';
 import { guessContentType } from './content-type-guess.js';
 import { importFormat } from './import-format.js';
 import {
@@ -29,6 +29,13 @@ import { contentHash } from './note-body.js';
  * fields and the id it had. That is the whole reason a zip can move a notebook between
  * two instances — nothing about the notes lives outside the files.
  *
+ * What is not about a note lives in `notebooks/`: one `<slug>.yaml` per notebook, naming
+ * its fields with their types, options and scales. Those are applied first, before any
+ * note, so that values arrive against the definitions they were written under rather
+ * than ones inferred from the first value seen — which is how a URL field used to come
+ * back as text and a rating as a plain number. An archive without that directory (an
+ * older export, or a vault someone assembled by hand) imports exactly as before.
+ *
  * Bytes are read as they are needed. `ZipReader` over a `Blob` reads the central
  * directory first and then each entry by byte range, so a multi-gigabyte archive never
  * lands in memory whole; one attachment at a time does, which the upload needs anyway.
@@ -48,11 +55,20 @@ interface NoteFileSource {
 }
 
 interface NoteSource {
+  kind: 'note';
   /** Where in the archive the markdown sits. Names the note in the log until its title is read. */
   path: string;
   size: number;
   markdown: () => Promise<string>;
   files: NoteFileSource[];
+}
+
+/** A `notebooks/<slug>.yaml` entry, yielded ahead of every note. */
+interface NotebookSource {
+  kind: 'notebook';
+  path: string;
+  size: number;
+  text: () => Promise<string>;
 }
 
 export async function importArchive(
@@ -66,6 +82,10 @@ export async function importArchive(
   try {
     for await (const source of noteSources(file, progress)) {
       if (run.halt.signal.aborted) break;
+      if (source.kind === 'notebook') {
+        await importNotebook(source, client, run);
+        continue;
+      }
       await run.attempt(source.path, () =>
         importOne(source, client, run, file.name, options),
       );
@@ -146,6 +166,37 @@ async function importOne(
   }
 }
 
+/**
+ * Applies one notebook's definitions, and reports what could not be applied.
+ *
+ * Not wrapped in `run.attempt`: that counts notes, and this is not one. A file the server
+ * refuses, or a field it declines — already here under another type, say — goes into the
+ * failure log by name, where a person looking for why a field came back wrong will find
+ * it. A host without `importNotebook` (an older CLI against a newer export) reads the
+ * entry and moves on, which leaves the import exactly as it was before this file existed.
+ */
+async function importNotebook(
+  source: NotebookSource,
+  client: ImportClient,
+  run: ImportRun,
+): Promise<void> {
+  const { progress } = run;
+  const text = await source.text();
+  progress.bytesRead += source.size;
+  if (!client.importNotebook) return;
+
+  let name = source.path;
+  try {
+    const definition = parseNotebook(text);
+    name = definition.name;
+    const { skipped } = await client.importNotebook(definition);
+    for (const s of skipped) run.problem(`Field "${s.name}" in ${name}`, s.reason);
+  } catch (err) {
+    if (run.halt.signal.aborted) return;
+    run.problem(`Notebook ${name}`, `Definitions not applied: ${(err as Error).message}`);
+  }
+}
+
 /** Reads each file's bytes only when the upload reaches it. */
 async function* loadFiles(
   files: NoteFileSource[],
@@ -169,14 +220,15 @@ function parseNote(text: string): ParsedNote {
   }
 }
 
-/** The notes an import source holds, in archive order. */
+/** What an import source holds: its notebook definitions first, then its notes in archive order. */
 async function* noteSources(
   file: ArchiveSource,
   progress: ImportProgress,
-): AsyncGenerator<NoteSource> {
+): AsyncGenerator<NoteSource | NotebookSource> {
   if (importFormat(file.name) === 'markdown') {
     progress.notesTotal = 1;
     yield {
+      kind: 'note',
       path: file.name,
       size: file.blob.size,
       markdown: () => file.blob.text(),
@@ -189,7 +241,7 @@ async function* noteSources(
   // otherwise need its inflate worker's URL resolved by the bundler that built this one.
   const reader = new ZipReader(new BlobReader(file.blob), { useWebWorkers: false });
   try {
-    const groups = groupEntries(await reader.getEntries(), progress);
+    const { groups, notebooks } = groupEntries(await reader.getEntries(), progress);
 
     // The note count is known now, before the first note is touched — every group that
     // holds a markdown file is one note. This is what the bar divides by, so it measures
@@ -197,9 +249,21 @@ async function* noteSources(
     // would grow as the run went and it could never reach the end.
     progress.notesTotal = groups.reduce((n, group) => n + group.notes.length, 0);
 
+    // Definitions before notes, whatever order the zip lists them in: the export writes
+    // them last, since a filtered export only learns its notebooks by walking the notes.
+    for (const entry of notebooks) {
+      yield {
+        kind: 'notebook',
+        path: entry.filename,
+        size: entry.compressedSize,
+        text: () => entry.getData(new TextWriter()),
+      };
+    }
+
     for (const group of groups) {
       for (const entry of group.notes) {
         yield {
+          kind: 'note',
           path: entry.filename,
           size: entry.compressedSize,
           markdown: () => entry.getData(new TextWriter()),
@@ -224,8 +288,19 @@ interface EntryGroup {
   files: Array<{ name: string; entry: FileEntry }>;
 }
 
+/** What the archive holds, sorted: note directories, and the definitions files. */
+interface ArchiveEntries {
+  groups: EntryGroup[];
+  notebooks: FileEntry[];
+}
+
 /**
- * Sorts the archive's entries into note directories.
+ * Sorts the archive's entries into note directories, setting the definitions aside.
+ *
+ * A definitions file is any `.yaml` in a directory called `notebooks` — at the root, as
+ * the export writes it, or under whatever top-level folder a re-pack added, for the same
+ * reason directory names are ignored for notes. It is never mistaken for one: a note is
+ * markdown and sits in its own `{slug}-{id}` directory.
  *
  * Grouping is by path rather than by reading in order, because nothing guarantees the
  * order: this app's own export writes a note's markdown before its files, but a zip
@@ -238,8 +313,9 @@ interface EntryGroup {
  * `.DS_Store` and its relatives — the upload would refuse the name anyway. Their bytes
  * still count as read, so the progress bar can reach the end of the file.
  */
-function groupEntries(entries: Entry[], progress: ImportProgress): EntryGroup[] {
+function groupEntries(entries: Entry[], progress: ImportProgress): ArchiveEntries {
   const groups = new Map<string, EntryGroup>();
+  const notebooks: FileEntry[] = [];
   const groupFor = (dir: string): EntryGroup => {
     let group = groups.get(dir);
     if (!group) {
@@ -267,6 +343,8 @@ function groupEntries(entries: Entry[], progress: ImportProgress): EntryGroup[] 
 
     if (segments[segments.length - 1] === 'files') {
       groupFor(segments.slice(0, -1).join('/')).files.push({ name, entry });
+    } else if (segments[segments.length - 1] === NOTEBOOKS_DIR && /\.ya?ml$/i.test(name)) {
+      notebooks.push(entry);
     } else if (/\.(md|markdown)$/i.test(name)) {
       groupFor(segments.join('/')).notes.push(entry);
     } else {
@@ -282,5 +360,5 @@ function groupEntries(entries: Entry[], progress: ImportProgress): EntryGroup[] 
       for (const f of group.files) progress.bytesRead += f.entry.compressedSize;
     }
   }
-  return result;
+  return { groups: result, notebooks };
 }
