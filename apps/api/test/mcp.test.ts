@@ -678,6 +678,23 @@ describe('add_attachment', () => {
     expect(await listFiles(carol, carolNoteId)).toEqual(before);
   });
 
+  it('tells get_note readers how to link each file', async () => {
+    const { body } = await mcp(carol.token, 'tools/call', {
+      name: 'get_note',
+      arguments: { noteId: carolNoteId },
+    });
+    const note = JSON.parse(toolText(body)) as {
+      attachments: Array<{ filename: string; path: string; markdown: string }>;
+    };
+    expect(note.attachments).toContainEqual(
+      expect.objectContaining({
+        filename: 'Insurance card.pdf',
+        path: 'files/Insurance card.pdf',
+        markdown: '[Insurance card.pdf](<files/Insurance card.pdf>)',
+      }),
+    );
+  });
+
   it('fetches nothing for a note that is not the caller\'s', async () => {
     const fetched = hits['/report.pdf'] ?? 0;
     const result = await add(dave.token, { noteId: carolNoteId, url: `${origin}/report.pdf` });
