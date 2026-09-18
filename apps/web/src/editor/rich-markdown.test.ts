@@ -760,6 +760,18 @@ describe('inline images', () => {
     expect(lineClasses(v, 1)).not.toContain('cm-md-image-line');
   });
 
+  /**
+   * With the source revealed the line keeps its height for the text, so the collapse that
+   * hides the trailing break on an image-only line is off. The break itself is hidden, so a
+   * focused image gets no extra line under it — see the `.cm-md-image + br` theme rule.
+   */
+  it('hides the trailing break under a revealed image', () => {
+    const v = mountWithAttachments('![scan](files/scan.jpg)\n\nplain', 3);
+    const br = v.dom.querySelector('.cm-md-image + br') as HTMLElement | null;
+    expect(br).not.toBeNull();
+    expect(getComputedStyle(br!).display).toBe('none');
+  });
+
   /** A remote image loads at its own address, matching what the preview pane renders. */
   it('draws a remote image at its own URL', () => {
     const doc = '![logo](https://example.com/logo.png)\n\nplain';

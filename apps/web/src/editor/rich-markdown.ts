@@ -1589,6 +1589,18 @@ export function richMarkdown(options: RichMarkdownOptions = {}): Extension {
        */
       '.cm-md-image-line': { lineHeight: '0', fontSize: '0' },
 
+      /**
+       * The empty break CodeMirror leaves after a block-shaped widget.
+       *
+       * When the image is the whole line, `.cm-md-image-line` above zeroes this along with
+       * the rest of the line. When the line also holds text — the source revealed while the
+       * cursor is on its line, or a caption sharing the line — that collapse is off, so the
+       * break keeps the line's height and hangs an empty text line under the picture. It has
+       * no content and the image's own padding already spaces the picture, so hide it and
+       * the gap below a focused image matches the gap below an unfocused one.
+       */
+      '.cm-md-image + br': { display: 'none' },
+
       '.cm-md-image': { display: 'block', padding: '0.35rem 0 0.6rem' },
       /**
        * Sized to fill the line the way the preview pane does.
