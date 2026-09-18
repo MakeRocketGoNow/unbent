@@ -31,10 +31,12 @@ export function Export() {
 
       <pre className="export-tree">
         {`unbent-export-${stamp}.zip
-└── meeting-notes-a1b2c3d4/
-    ├── meeting-notes-a1b2c3d4.md    The note, with title, dates, tags and notebook up top
-    └── files/                       Attachments, under their original names
-        └── agenda.pdf`}
+├── meeting-notes-a1b2c3d4/
+│   ├── meeting-notes-a1b2c3d4.md    The note, with title, dates, tags and notebook up top
+│   └── files/                       Attachments, under their original names
+│       └── agenda.pdf
+└── notebooks/
+    └── work.yaml                    A notebook's fields: their types, options and scales`}
       </pre>
 
       <p className="muted small">
@@ -52,14 +54,23 @@ export function Export() {
       </p>
 
       <p className="muted small">
+        A note carries its field values, but not what its fields are — whether one is a
+        URL or a select, which options a select offers, how many stars a rating has. That
+        lives in <code>notebooks/</code>, one small file per notebook, so a restore brings
+        each notebook back as it was rather than as its values suggest.
+      </p>
+
+      <p className="muted small">
         Notes in the Trash are not included. Restore anything you want to keep before
         exporting.
       </p>
 
       <p className="muted small">
-        This page exports everything. To export part of your library — one notebook, a tag,
-        a range of dates — filter the note list and use <em>Export these notes</em> beneath
-        the filters. The archive has the same shape either way.
+        This page exports everything. To export one notebook, use the download beside it
+        under <Link to="/settings/notebooks" className="link">Notebooks</Link>. For any
+        other slice — a tag, a range of dates — filter the note list and use{' '}
+        <em>Export these notes</em> beneath the filters. The archive has the same shape
+        either way.
       </p>
 
       {/* The other half of the promise, said where the first half is made: a backup that

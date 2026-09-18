@@ -10,6 +10,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Copy,
+  Download,
   FileText,
   Film,
   Funnel,
@@ -373,6 +374,18 @@ export function MoveLaterIcon() {
  */
 export function CopyIcon() {
   return <Copy size="1em" strokeWidth={2} aria-hidden="true" focusable="false" />;
+}
+
+/**
+ * A tray with an arrow into it, for a link that saves a file.
+ *
+ * On the notebook list, beside each notebook's Fields link, where a word would have been
+ * a third verb on a row that mostly wants to be read. `em`-sized so it sits on the line
+ * of the small link text beside it; the string form below is the same glyph for the
+ * attachment viewer, which builds its DOM by hand.
+ */
+export function DownloadIcon() {
+  return <Download size="1em" strokeWidth={2} aria-hidden="true" focusable="false" />;
 }
 
 /**
