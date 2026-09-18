@@ -16,8 +16,14 @@ import {
 } from '@codemirror/view';
 import { ATTACHMENT_PREFIX } from '@unbent/shared';
 import { acquirePdf, type LoadedPdf, releasePdf } from '../pdf/render.js';
-import { openAttachmentViewer, type ViewerTarget } from '../attachment-viewer.js';
-import { checkIconMarkup, copyIconMarkup, expandIconMarkup } from '../components/icons.js';
+import { downloadUrl, openAttachmentViewer, type ViewerTarget } from '../attachment-viewer.js';
+import {
+  checkIconMarkup,
+  copyIconMarkup,
+  downloadIconMarkup,
+  expandIconMarkup,
+  trashIconMarkup,
+} from '../components/icons.js';
 
 /**
  * Rich markdown rendering inside CodeMirror.
@@ -347,52 +353,111 @@ function ownEvents(control: HTMLElement): void {
   });
 }
 
-/**
- * The corner control that opens an attachment in the full-screen viewer.
- *
- * A real `<button>`, for the keyboard and the screen reader, and the same glyph in the
- * same corner on an image and on a page — see `.zoom-btn` in styles.css for how it shows
- * and hides. A click on the picture or the page opens the viewer too; this is the control
- * that can be seen before it is tried, and the one a Tab can land on.
- */
-function zoomButton(target: ViewerTarget, siblings: Siblings): HTMLButtonElement {
-  const button = document.createElement('button');
-  button.type = 'button';
-  button.className = 'corner-btn zoom-btn';
-  button.setAttribute('aria-label', 'Full screen');
-  button.title = 'Full screen';
-  button.innerHTML = expandIconMarkup();
-  ownEvents(button);
-  button.addEventListener('click', (event) => {
-    event.preventDefault();
-    event.stopPropagation();
-    openAttachmentViewer(target, siblings());
-  });
-  return button;
-}
-
 /** What the copy control does; see `RichMarkdownOptions.copyAttachment`. */
 type CopyAttachment = NonNullable<RichMarkdownOptions['copyAttachment']>;
 
-/** How long the control says "Copied" before offering to copy again. */
+/** How long a control says "Copied" before offering to copy again. */
 const COPIED_FOR_MS = 1500;
 
 /**
- * The corner control that puts an attachment on the clipboard.
+ * One button in the attachment toolbar. A real `<button>`, for the keyboard and the
+ * screen reader; its events are its own, see `ownEvents`.
+ */
+function toolButton(className: string, label: string, glyph: string): HTMLButtonElement {
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = `attachment-tool ${className}`;
+  button.setAttribute('aria-label', label);
+  button.title = label;
+  button.innerHTML = glyph;
+  ownEvents(button);
+  return button;
+}
+
+/**
+ * The toolbar on an attachment: what you can do with the thing you are looking at.
  *
- * Beside the full-screen control rather than under the attachment, and for the same
- * reason that control lives in the corner: it shows on hover, so a note of photographs
- * does not become a note of buttons. The line under a PDF was the other candidate, but it
- * belongs to the pages ("+2 more pages"), exists only for a PDF with more than one, and
- * an image would have had to grow a caption to match. One cluster, one place, both kinds.
+ * One pill in the picture's corner, shown on hover, holding every action in a fixed
+ * order — full screen, download, copy, remove — rather than a disc per action: two discs
+ * were already crowding the corner, and a third would have been a row of circles. The
+ * shape is Linear's image toolbar, which people have seen. It shows on hover so a note of
+ * photographs does not become a note of buttons, and stays, quieter, where there is no
+ * pointer to hover with (`.attachment-tools` in styles.css).
+ *
+ * The same pill on an image and on a PDF page. A remote image gets less of it: no copy,
+ * because there is no stored file to name, and no download, because a browser ignores
+ * the `download` attribute across origins and would open the picture in a tab instead —
+ * see `attachment-viewer.ts` for the same reasoning.
+ *
+ * Remove takes the attachment out of the note — the markdown that draws it — and nothing
+ * more. The file stays in the Attachments panel, marked "Not linked", where it can be
+ * permanently deleted behind a confirmation. Two reasons that split: a control on a
+ * picture is a single click away from a misclick, and this way the click is undone with
+ * ⌘Z like any other edit; and a permanent delete is the one irreversible act here, which
+ * the panel already handles with the blast radius named.
+ */
+function attachmentToolbar(
+  view: EditorView,
+  host: HTMLElement,
+  opts: {
+    target: ViewerTarget;
+    siblings: Siblings;
+    /** The stored file, or null for a remote image. */
+    stored: { filename: string; kind: 'image' | 'pdf' } | null;
+    copy?: CopyAttachment;
+    /** The syntax node the widget stands for, for Remove. */
+    source: 'Image' | 'Link';
+  },
+): HTMLElement {
+  const tools = document.createElement('span');
+  tools.className = 'attachment-tools';
+  tools.contentEditable = 'false';
+
+  const zoom = toolButton('zoom-btn', 'Full screen', expandIconMarkup());
+  zoom.addEventListener('click', (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    openAttachmentViewer(opts.target, opts.siblings());
+  });
+  tools.appendChild(zoom);
+
+  if (opts.stored) {
+    // A real link: the browser streams the file to disk itself, and Save Link As and
+    // middle-click keep working. Only the mousedown is kept from the editor.
+    const download = document.createElement('a');
+    download.className = 'attachment-tool zoom-download';
+    download.href = downloadUrl(opts.target.src);
+    download.download = opts.stored.filename;
+    download.setAttribute('aria-label', 'Download');
+    download.title = 'Download';
+    download.innerHTML = downloadIconMarkup();
+    ownEvents(download);
+    download.addEventListener('click', (event) => event.stopPropagation());
+    tools.appendChild(download);
+
+    if (opts.copy) tools.appendChild(copyButton(opts.stored.filename, opts.stored.kind, opts.copy));
+  }
+
+  const remove = toolButton('zoom-remove danger', 'Remove from note', trashIconMarkup());
+  remove.addEventListener('click', (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    removeWidgetSource(view, host, opts.source);
+  });
+  tools.appendChild(remove);
+
+  return tools;
+}
+
+/**
+ * The control that puts a stored file on the clipboard.
  *
  * A clipboard write has nothing to show for itself, so the glyph becomes a tick for a
  * moment and the label says so — the same feedback the Attachments panel's Copy gives.
  */
 function copyButton(filename: string, kind: 'image' | 'pdf', copy: CopyAttachment): HTMLButtonElement {
-  const button = document.createElement('button');
-  button.type = 'button';
-  button.className = 'corner-btn zoom-copy';
+  const button = toolButton('zoom-copy', 'Copy', copyIconMarkup());
+  button.title = 'Copy, to paste into another note';
   const idle = () => {
     button.innerHTML = copyIconMarkup();
     button.setAttribute('aria-label', 'Copy');
@@ -403,8 +468,6 @@ function copyButton(filename: string, kind: 'image' | 'pdf', copy: CopyAttachmen
     button.setAttribute('aria-label', label);
     button.title = label;
   };
-  idle();
-  ownEvents(button);
   let timer: ReturnType<typeof setTimeout> | null = null;
   button.addEventListener('click', (event) => {
     event.preventDefault();
@@ -417,6 +480,51 @@ function copyButton(filename: string, kind: 'image' | 'pdf', copy: CopyAttachmen
     timer = setTimeout(idle, COPIED_FOR_MS);
   });
   return button;
+}
+
+/**
+ * Deletes the markdown a widget stands for: the `![alt](url)` an image replaces, or the
+ * `[label](files/x.pdf)` a PDF page hangs under.
+ *
+ * Found from the DOM at click time rather than remembered from the build: the widget is
+ * reused across edits (`eq`), so any offset it kept would be stale. The widget sits at
+ * one end of its node — an image replaces it, or follows it while the line is revealed;
+ * a PDF page always follows its link — so the node is looked for on both sides.
+ *
+ * A line left holding only whitespace goes too, and one of the blank lines around it,
+ * or every removed picture would leave a double gap in the paragraph rhythm.
+ */
+function removeWidgetSource(view: EditorView, host: HTMLElement, source: 'Image' | 'Link'): void {
+  const pos = view.posAtDOM(host);
+  const tree = syntaxTree(view.state);
+  const find = (side: -1 | 1) => {
+    let node: ReturnType<typeof tree.resolveInner> | null = tree.resolveInner(pos, side);
+    while (node && node.name !== source) node = node.parent;
+    return node;
+  };
+  const node = find(1) ?? find(-1);
+  if (!node) return;
+
+  const doc = view.state.doc;
+  const line = doc.lineAt(node.from);
+  const rest = line.text.slice(0, node.from - line.from) + line.text.slice(node.to - line.from);
+  if (rest.trim() !== '') {
+    view.dispatch({ changes: { from: node.from, to: node.to }, userEvent: 'delete' });
+    return;
+  }
+
+  let from = line.from;
+  let to = line.to;
+  if (to < doc.length) {
+    to += 1; // the line's own break
+    // Blank on both sides (or at the top): keep one blank line, not two.
+    const blankBefore = from === 0 || doc.sliceString(from - 2, from) === '\n\n';
+    if (blankBefore && doc.sliceString(to, to + 1) === '\n') to += 1;
+  } else if (from > 0) {
+    from -= 1; // the break before the last line
+    if (from > 0 && doc.sliceString(from - 1, from) === '\n') from -= 1;
+  }
+  view.dispatch({ changes: { from, to }, userEvent: 'delete' });
 }
 
 /**
@@ -499,17 +607,22 @@ class ImageWidget extends WidgetType {
     });
 
     frame.appendChild(img);
-    if (this.filename !== null && this.copy) {
-      frame.appendChild(copyButton(this.filename, 'image', this.copy));
-    }
-    frame.appendChild(zoomButton(target, this.siblings));
+    frame.appendChild(
+      attachmentToolbar(view, wrap, {
+        target,
+        siblings: this.siblings,
+        stored: this.filename === null ? null : { filename: this.filename, kind: 'image' },
+        copy: this.copy,
+        source: 'Image',
+      }),
+    );
     return wrap;
   }
 
   /**
    * Clicks belong to the editor, not the widget.
    *
-   * The picture and the corner button stop their own events above; what is left is the
+   * The picture and the toolbar stop their own events above; what is left is the
    * space around them on the line, which should behave like the rest of the note.
    */
   override ignoreEvent(): boolean {
@@ -613,7 +726,7 @@ class PdfWidget extends WidgetType {
     return canvas;
   }
 
-  toDOM(): HTMLElement {
+  toDOM(view: EditorView): HTMLElement {
     const wrap = document.createElement('span');
     wrap.className = 'cm-md-pdf';
 
@@ -639,8 +752,15 @@ class PdfWidget extends WidgetType {
         status.remove();
         // On the first page's corner, after it has drawn: a control on a blank page
         // would promise a view of nothing. The same viewer the preview pane opens.
-        if (this.copy) pages.appendChild(copyButton(this.filename, 'pdf', this.copy));
-        pages.appendChild(zoomButton(this.viewerTarget(), this.siblings));
+        pages.appendChild(
+          attachmentToolbar(view, wrap, {
+            target: this.viewerTarget(),
+            siblings: this.siblings,
+            stored: { filename: this.filename, kind: 'pdf' },
+            copy: this.copy,
+            source: 'Link',
+          }),
+        );
         if (doc.pageCount > 1) this.addMore(wrap, pages, doc);
       })
       .catch(() => {
@@ -741,7 +861,7 @@ class PdfWidget extends WidgetType {
   /**
    * Clicks belong to the editor, not the widget.
    *
-   * The one exception is the expand button, which stops its own events above; everything
+   * The exceptions are the expand button and the toolbar, which stop their own events; everything
    * else here is a rendered page that should behave like the rest of the note.
    */
   override ignoreEvent(): boolean {

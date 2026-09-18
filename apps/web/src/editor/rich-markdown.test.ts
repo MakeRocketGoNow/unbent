@@ -38,6 +38,7 @@ const openAttachmentViewer = vi.fn();
 vi.mock('../attachment-viewer.js', () => ({
   openAttachmentViewer: (target: unknown, siblings: unknown) =>
     openAttachmentViewer(target, siblings),
+  downloadUrl: (src: string) => `${src}?download=1`,
 }));
 
 /**
@@ -463,6 +464,13 @@ describe('inline PDF', () => {
    * The way to read a scan large. The control arrives with the first page rather than
    * with the widget, so it never sits on a page that has not drawn.
    */
+  it('removes the link the page hangs under', async () => {
+    const v = mountWithAttachments('intro\n\n[report](files/report.pdf)');
+    await settle();
+    v.dom.querySelector<HTMLButtonElement>('.cm-md-pdf .zoom-remove')?.click();
+    expect(v.state.doc.toString()).toBe('intro');
+  });
+
   it('offers to copy the file once the first page has drawn', async () => {
     copyAttachment.mockClear();
     const v = mountWithAttachments('[report](files/report.pdf)');
@@ -725,12 +733,44 @@ describe('inline images', () => {
     expect(v.state.doc.toString()).toBe(doc);
   });
 
-  /** A remote picture is not a stored file; there is nothing of the note's to copy. */
-  it('offers no copy for a remote image', () => {
+  /**
+   * A remote picture is not a stored file: nothing of the note's to copy, and no download,
+   * which a browser would turn into a tab across origins. Full screen and Remove remain.
+   */
+  it('offers neither copy nor download for a remote image', () => {
     const doc = '![web](https://example.com/a.png)\n\nplain';
     const v = mountWithAttachments(doc, doc.length);
-    expect(v.dom.querySelector('.cm-md-image .zoom-btn')).not.toBeNull();
-    expect(v.dom.querySelector('.cm-md-image .zoom-copy')).toBeNull();
+    const tools = [...v.dom.querySelectorAll('.cm-md-image .attachment-tool')].map((t) =>
+      t.getAttribute('aria-label'),
+    );
+    expect(tools).toEqual(['Full screen', 'Remove from note']);
+  });
+
+  /** A real link, so the browser saves the file itself; named for the stored file. */
+  it('downloads the stored file from the toolbar', () => {
+    const doc = '![scan](<files/my scan.jpg>)\n\nplain';
+    const v = mountWithAttachments(doc, doc.length);
+    const link = v.dom.querySelector<HTMLAnchorElement>('.cm-md-image a.zoom-download');
+    expect(link?.getAttribute('href')).toBe('/api/notes/n1/files/my scan.jpg?download=1');
+    expect(link?.getAttribute('download')).toBe('my scan.jpg');
+  });
+
+  /**
+   * Remove takes the markdown out, and the blank line it would leave; the file itself
+   * stays for the Attachments panel. An ordinary edit, so ⌘Z brings the picture back.
+   */
+  it('removes the picture from the note, and the empty line with it', () => {
+    const doc = 'before\n\n![scan](files/scan.jpg)\n\nafter';
+    const v = mountWithAttachments(doc, doc.length);
+    v.dom.querySelector<HTMLButtonElement>('.cm-md-image .zoom-remove')?.click();
+    expect(v.state.doc.toString()).toBe('before\n\nafter');
+  });
+
+  it('removes only the picture when text shares its line', () => {
+    const doc = 'see ![scan](files/scan.jpg) here';
+    const v = mountWithAttachments(doc, 0);
+    v.dom.querySelector<HTMLButtonElement>('.cm-md-image .zoom-remove')?.click();
+    expect(v.state.doc.toString()).toBe('see  here');
   });
 
   /**
