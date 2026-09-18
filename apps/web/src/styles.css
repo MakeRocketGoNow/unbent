@@ -1048,6 +1048,40 @@ h1 {
   transition: opacity 0.15s ease;
 }
 
+/*
+   The list's scrollbar sits on the divider, not a gap's width in from it.
+
+   The list and the table scroll inside the sidebar, whose right edge is a 1rem grid gap
+   short of the handle that divides it from the note, so their scrollbar floated 19px
+   inside the column — a bar with nothing beside it, on a screen where the divider a
+   gap away is exactly where a bar belongs. The scroller reaches out through the gap and
+   takes it back as padding, the pull `.workspace-main` makes to land its bar on the
+   window: the rows do not move, only the bar. Over the full-width table there is no
+   handle to reach, and the pull is the column's own padding, so the bar lands on the
+   window edge as the note's does.
+
+   Desktop only: on a phone the sidebar is the whole width, and the list already reaches
+   the glass through the column's narrowed inset. After both scrollers' own rules, which
+   set the margins this overrides at the same specificity.
+*/
+@media (width > 860px) {
+  .notes { --list-pull: 1rem; }
+  .notes.table-view:not(.note-open) { --list-pull: 1.5rem; }
+
+  /* The list's rows keep ending at the sidebar's edge; the 3px ring gutter they had on
+     this side is inside the pull now. The table's rows keep ending at the sidebar's
+     text edge, as they did. Both boxes end on the divider. */
+  .note-list {
+    margin-right: calc(-0.7rem - var(--list-pull));
+    padding-right: var(--list-pull);
+  }
+  .note-table-wrap {
+    margin-right: calc(-0.7rem - var(--list-pull));
+    padding-right: calc(0.7rem + var(--list-pull));
+  }
+}
+
+
 .note-table-wrap[aria-busy='true'] {
   opacity: 0.45;
   transition: opacity 0.15s ease 0.15s;
