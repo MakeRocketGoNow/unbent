@@ -718,6 +718,17 @@ export function Workspace({ noteId, readOnly = false, backTo = '/notes' }: Works
                     return uploaded.path;
                   }
             }
+            onCopyAttachments={
+              readOnly
+                ? undefined
+                : async (from, filenames, move) => {
+                    const { files } = await api.copyAttachments(note.id, { from, filenames, move });
+                    void queryClient.invalidateQueries({ queryKey: keys.attachments(note.id) });
+                    // A move changed the source note's list too.
+                    if (move) void queryClient.invalidateQueries({ queryKey: keys.attachments(from) });
+                    return new Map(files.map((f) => [f.from, f.filename]));
+                  }
+            }
             rich={noteView === 'rich'}
             /*
                Stands down for a note that was just created: the title has the caret, and

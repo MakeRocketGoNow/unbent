@@ -422,6 +422,32 @@ export async function listAttachments(noteId: string): Promise<AttachmentInfo[]>
   return files;
 }
 
+/** One file after a copy between notes: the name asked for, and the name it has now. */
+export interface CopiedAttachment extends AttachmentInfo {
+  from: string;
+  path: string;
+  /** True when the source file was deleted afterwards; only ever for a move. */
+  moved: boolean;
+}
+
+/**
+ * Copies files from another note into this one, server side, and says what each is
+ * called here — a name already taken in the destination is suffixed. `move` deletes
+ * each source file the source body no longer links; see the route for why that guard.
+ */
+export async function copyAttachments(
+  toNoteId: string,
+  input: { from: string; filenames: string[]; move?: boolean },
+): Promise<{ files: CopiedAttachment[]; missing: string[] }> {
+  return json(
+    await fetch(`/api/notes/${encodeURIComponent(toNoteId)}/files/copy`, {
+      method: 'POST',
+      headers: jsonHeaders,
+      body: JSON.stringify(input),
+    }),
+  );
+}
+
 /**
  * Permanently deletes one attachment: D1 row and R2 object.
  * Does not rewrite the note body — callers strip links when needed.
