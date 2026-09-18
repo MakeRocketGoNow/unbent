@@ -79,11 +79,11 @@ describe('NotebookNav', () => {
      narrowing, so the row must not claim to be where you are while one is applied. */
   it('marks All notes only when nothing at all is narrowing the list', async () => {
     const { findByRole } = harness();
-    expect((await findByRole('button', { name: 'All notes' })).className).toContain('current');
+    expect((await findByRole('link', { name: 'All notes' })).className).toContain('current');
 
     cleanup();
     const tagged = harness({ selectedTags: ['Receipt'] });
-    expect((await tagged.findByRole('button', { name: 'All notes' })).className).not.toContain(
+    expect((await tagged.findByRole('link', { name: 'All notes' })).className).not.toContain(
       'current',
     );
   });
@@ -98,8 +98,8 @@ describe('NotebookNav', () => {
     const trash = await findByRole('link', { name: /^Trash/ });
     expect(trash.className).toContain('current');
     expect(trash.getAttribute('aria-current')).toBe('page');
-    expect((await findByRole('button', { name: /^Coupons/ })).className).not.toContain('current');
-    expect((await findByRole('button', { name: 'All notes' })).className).not.toContain('current');
+    expect((await findByRole('link', { name: /^Coupons/ })).className).not.toContain('current');
+    expect((await findByRole('link', { name: 'All notes' })).className).not.toContain('current');
   });
 
   /* A strip of icons keeps the words as tooltips, and keeps them in the DOM as names. */
@@ -107,10 +107,10 @@ describe('NotebookNav', () => {
     const { findByRole } = harness({ labelsHidden: true });
     const trash = await findByRole('link', { name: /^Trash/ });
     expect(trash.getAttribute('title')).toBe('Trash');
-    expect((await findByRole('button', { name: 'All notes' })).getAttribute('title')).toBe('All notes');
+    expect((await findByRole('link', { name: 'All notes' })).getAttribute('title')).toBe('All notes');
     // Notebook rows are hidden by the stylesheet in a strip, so they only ever carry
     // their own name, which is what a truncated label needs anyway.
-    expect((await findByRole('button', { name: /^Coupons/ })).getAttribute('title')).toBe('Coupons');
+    expect((await findByRole('link', { name: /^Coupons/ })).getAttribute('title')).toBe('Coupons');
   });
 
   it('marks the notebook you are in', async () => {
@@ -186,7 +186,7 @@ describe('NotebookNav', () => {
 
     it('has no section when there are no tags', async () => {
       const { findByRole, queryByRole } = harness({ tags: [] });
-      await findByRole('button', { name: 'All notes' });
+      await findByRole('link', { name: 'All notes' });
       expect(queryByRole('button', { name: 'Tags' })).toBeNull();
     });
 
@@ -195,9 +195,9 @@ describe('NotebookNav', () => {
       const { findByRole, queryByRole } = harness({ tags: TAGS });
       const head = await findByRole('button', { name: 'Tags' });
       expect(head.getAttribute('aria-expanded')).toBe('false');
-      expect(queryByRole('button', { name: /^Receipt/ })).toBeNull();
+      expect(queryByRole('link', { name: /^Receipt/ })).toBeNull();
       fireEvent.click(head);
-      await findByRole('button', { name: /^Receipt/ });
+      await findByRole('link', { name: /^Receipt/ });
       expect(localStorage.getItem('unbent.navTagsOpen')).toBe('true');
     });
 
@@ -209,7 +209,7 @@ describe('NotebookNav', () => {
       localStorage.setItem('unbent.navTagsOpen', 'true');
       const { findByRole, history } = harness({ tags: TAGS, notebook: 'Coupons' });
       await history.push('/notes?notebook=Coupons&sort=title&field=abc:set');
-      fireEvent.click(await findByRole('button', { name: /^Receipt/ }));
+      fireEvent.click(await findByRole('link', { name: /^Receipt/ }));
       await waitFor(() => {
         const href = history.location.href;
         expect(href).toContain('Receipt');
@@ -222,13 +222,13 @@ describe('NotebookNav', () => {
     it('marks the tag only when it is the whole scope', async () => {
       localStorage.setItem('unbent.navTagsOpen', 'true');
       const alone = harness({ tags: TAGS, selectedTags: ['Receipt'] });
-      expect((await alone.findByRole('button', { name: /^Receipt/ })).className).toContain('current');
+      expect((await alone.findByRole('link', { name: /^Receipt/ })).className).toContain('current');
       cleanup();
       const withNotebook = harness({ tags: TAGS, selectedTags: ['Receipt'], notebook: 'Coupons' });
-      expect((await withNotebook.findByRole('button', { name: /^Receipt/ })).className).not.toContain('current');
+      expect((await withNotebook.findByRole('link', { name: /^Receipt/ })).className).not.toContain('current');
       cleanup();
       const two = harness({ tags: TAGS, selectedTags: ['Receipt', 'Travel'] });
-      expect((await two.findByRole('button', { name: /^Receipt/ })).className).not.toContain('current');
+      expect((await two.findByRole('link', { name: /^Receipt/ })).className).not.toContain('current');
     });
 
     /* Hundreds of tags is normal for an imported archive; the well-used ones are the
@@ -247,7 +247,7 @@ describe('NotebookNav', () => {
     it('keeps the current tag on screen past the cap', async () => {
       localStorage.setItem('unbent.navTagsOpen', 'true');
       const { findByRole } = harness({ tags: MANY_TAGS, selectedTags: ['tag-28'] });
-      expect((await findByRole('button', { name: /^tag-28/ })).className).toContain('current');
+      expect((await findByRole('link', { name: /^tag-28/ })).className).toContain('current');
     });
 
     it('offers the way to edit the tags beside their section head', async () => {

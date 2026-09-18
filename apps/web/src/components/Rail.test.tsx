@@ -215,7 +215,7 @@ describe('Rail', () => {
 
   it('picks a notebook without closing anything, from any screen', async () => {
     const { findByRole, history } = harness('/trash');
-    fireEvent.click(await findByRole('button', { name: /^Coupons/ }));
+    fireEvent.click(await findByRole('link', { name: /^Coupons/ }));
     await waitFor(() => {
       expect(history.location.pathname).toBe('/notes');
       expect(history.location.href).toContain('Coupons');

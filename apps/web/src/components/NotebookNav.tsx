@@ -1,5 +1,5 @@
 import { useId, useState, type ReactNode } from 'react';
-import { Link, useNavigate } from '@tanstack/react-router';
+import { Link } from '@tanstack/react-router';
 import { UNFILED } from '@unbent/shared';
 import {
   NotesRowIcon,
@@ -91,7 +91,6 @@ export function NotebookNav({
   labelsHidden = false,
   footer,
 }: NotebookNavProps) {
-  const navigate = useNavigate();
   /*
    * Whether the tags are shown. Closed to begin with — the notebooks are the places most
    * people move between, and a long tag list under them would push the floor out of
@@ -104,25 +103,23 @@ export function NotebookNav({
   const tagsId = useId();
 
   /*
-   * Picking a scope clears the tags, the same rule the notebook select follows: tags cross
-   * notebook boundaries, so carrying one into a new notebook routinely lands on an empty
-   * list with no visible cause. Field filters go with them — a field belongs to the
-   * notebook being left, as does a sort by one of its fields. The named sort and the date
-   * range are kept: they are how you are looking, not what at.
+   * The places are links, like the destinations: each is a URL, and a link can be opened
+   * in a new tab, middle-clicked and copied, which a button cannot. The search each one
+   * writes is a function of the current one, so that what is kept is kept: the named sort
+   * and the date range are how you are looking, not what at, and they ride along.
+   *
+   * Picking a scope clears the tags, the same rule the notebook select followed: tags
+   * cross notebook boundaries, so carrying one into a new notebook routinely lands on an
+   * empty list with no visible cause. Field filters go with them — a field belongs to the
+   * notebook being left, as does a sort by one of its fields.
    */
-  const scope = (next: string | undefined) => {
-    void navigate({
-      to: '/notes',
-      search: (prev) => ({
-        ...prev,
-        notebook: next,
-        tag: undefined,
-        field: undefined,
-        sortField: undefined,
-      }),
-    });
-    onNavigate?.();
-  };
+  const scopeOf = (next: string | undefined) => (prev: Record<string, unknown>) => ({
+    ...prev,
+    notebook: next,
+    tag: undefined,
+    field: undefined,
+    sortField: undefined,
+  });
 
   /*
    * A tag as a place: every note carrying it, across all notebooks — Evernote's tag view.
@@ -132,19 +129,16 @@ export function NotebookNav({
    * A search pick made from All notes with nothing else set lands on this same URL, so
    * the row marks it — see `ScopeMatches`.
    */
-  const goToTag = (name: string) => {
-    void navigate({
-      to: '/notes',
-      search: (prev) => ({
-        ...prev,
-        tag: [name],
-        notebook: undefined,
-        field: undefined,
-        sortField: undefined,
-      }),
-    });
-    onNavigate?.();
-  };
+  const tagOf = (name: string) => (prev: Record<string, unknown>) => ({
+    ...prev,
+    tag: [name],
+    notebook: undefined,
+    field: undefined,
+    sortField: undefined,
+  });
+
+  /** A place was picked; a drawer closes behind it. */
+  const picked = () => onNavigate?.();
 
   /*
    * All notes means no notebook *and* no tags — the unnarrowed list, not merely unfiled.
@@ -173,16 +167,17 @@ export function NotebookNav({
   return (
     <>
       <nav className="drawer-list">
-        <button
-          type="button"
+        <Link
+          to="/notes"
+          search={scopeOf(undefined)}
           className={allActive ? 'drawer-item current' : 'drawer-item'}
           aria-current={allActive ? 'true' : undefined}
           title={tip('All notes')}
-          onClick={() => scope(undefined)}
+          onClick={picked}
         >
           <NotesRowIcon />
           <span className="drawer-item-label">All notes</span>
-        </button>
+        </Link>
 
         {/*
             "Inbox" is the label for having no notebook — the same bucket the API and the
@@ -191,17 +186,18 @@ export function NotebookNav({
             scope so the navigation never fails to show where you are.
         */}
         {((notebooks.data?.unfiled ?? 0) > 0 || notebook === UNFILED) && (
-          <button
-            type="button"
+          <Link
+            to="/notes"
+            search={scopeOf(UNFILED)}
             className={inboxActive ? 'drawer-item current' : 'drawer-item'}
             aria-current={inboxActive ? 'true' : undefined}
             title={tip('Inbox')}
-            onClick={() => scope(UNFILED)}
+            onClick={picked}
           >
             <InboxRowIcon />
             <span className="drawer-item-label">Inbox</span>
             <span className="tag-count">{notebooks.data?.unfiled ?? 0}</span>
-          </button>
+          </Link>
         )}
 
         <hr className="drawer-rule" />
@@ -225,9 +221,10 @@ export function NotebookNav({
         {notebooks.data?.notebooks.map((nb) => {
           const on = here && notebook === nb.name;
           return (
-            <button
+            <Link
               key={nb.id}
-              type="button"
+              to="/notes"
+              search={scopeOf(nb.name)}
               // `drawer-place-notebook` is how a strip knows to hide these: every notebook
               // has the same glyph, so as icons alone they would be a column of identical
               // squares, and the strip is opened to tell them apart.
@@ -236,12 +233,12 @@ export function NotebookNav({
               // A name can be longer than the column; the row ellipsises it and the
               // tooltip carries the rest, the way `.overflow-email` does for an address.
               title={nb.name}
-              onClick={() => scope(nb.name)}
+              onClick={picked}
             >
               <NotebookRowIcon />
               <span className="drawer-item-label">{nb.name}</span>
               <span className="tag-count">{nb.count}</span>
-            </button>
+            </Link>
           );
         })}
 
@@ -284,18 +281,19 @@ export function NotebookNav({
                 {shownTags.map((t) => {
                   const on = tagPlace === t.name;
                   return (
-                    <button
+                    <Link
                       key={t.name}
-                      type="button"
+                      to="/notes"
+                      search={tagOf(t.name)}
                       className={on ? 'drawer-item current' : 'drawer-item'}
                       aria-current={on ? 'true' : undefined}
                       title={t.name}
-                      onClick={() => goToTag(t.name)}
+                      onClick={picked}
                     >
                       <TagIcon />
                       <span className="drawer-item-label">{t.name}</span>
                       <span className="tag-count">{t.count}</span>
-                    </button>
+                    </Link>
                   );
                 })}
                 {!allTags && tags.length > TAG_CAP && (
@@ -314,11 +312,9 @@ export function NotebookNav({
       </nav>
 
       {/*
-          The floor: the destinations that are not places notes live.
-
-          Both are `Link`s rather than scope buttons because each is a different view rather
-          than a narrowing of this one — and a link can be middle-clicked and copied, which
-          a button cannot. Both navigate away, so neither closes a drawer by hand.
+          The floor: the destinations that are not places notes live. Each is a different
+          view rather than a narrowing of this one. Both navigate away, so neither closes a
+          drawer by hand.
       */}
       {/*
           Marked `current` by which screen this is beside, never by the router's own
