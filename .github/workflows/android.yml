@@ -13,6 +13,14 @@ on:
   # Cutting a release build on demand, without waiting for a push.
   workflow_dispatch:
 
+# A second push to a pull request makes the first one's build pointless, so don't pay to
+# finish it. Only pull requests are cancelled: a `main` build and a `workflow_dispatch`
+# release build both burn a `versionCode` Play will never see again, and neither should be
+# thrown away because something else started.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 defaults:
   run:
     working-directory: apps/android
