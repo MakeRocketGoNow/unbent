@@ -133,6 +133,62 @@ describe('TagInput as an option editor', () => {
 });
 
 /**
+ * Reordering, which only a select field's options ask for — a note's tags are a set and
+ * are left alone. These pin that the controls appear only when opted in, that each nudge
+ * hands back the whole list in its new order (the shape the field editor PATCHes), and
+ * that the ends cannot move off either edge.
+ */
+describe('TagInput reordering', () => {
+  afterEach(cleanup);
+
+  it('offers no move controls unless asked, so a tag row stays a set', () => {
+    render(<TagInput label="tag" tags={['a', 'b']} suggestions={[]} onChange={() => {}} />);
+    expect(screen.queryByLabelText('Move tag a later')).toBeNull();
+  });
+
+  it('gives each option an earlier and a later control when reorderable', () => {
+    render(
+      <TagInput label="option" tags={['Want', 'Neat']} suggestions={[]} reorderable onChange={() => {}} />,
+    );
+    expect(screen.getByLabelText('Move option Want later')).toBeTruthy();
+    expect(screen.getByLabelText('Move option Neat earlier')).toBeTruthy();
+  });
+
+  it('moves an option later by swapping it with its neighbour', () => {
+    const onChange = vi.fn();
+    render(
+      <TagInput label="option" tags={['Want', 'Neat']} suggestions={[]} reorderable onChange={onChange} />,
+    );
+    fireEvent.click(screen.getByLabelText('Move option Want later'));
+    expect(onChange).toHaveBeenCalledWith(['Neat', 'Want']);
+  });
+
+  it('moves an option earlier by swapping it with its neighbour', () => {
+    const onChange = vi.fn();
+    render(
+      <TagInput
+        label="option"
+        tags={['Want', 'Researching', 'Neat']}
+        suggestions={[]}
+        reorderable
+        onChange={onChange}
+      />,
+    );
+    fireEvent.click(screen.getByLabelText('Move option Neat earlier'));
+    expect(onChange).toHaveBeenCalledWith(['Want', 'Neat', 'Researching']);
+  });
+
+  /* The ends have nothing to swap with; their buttons are disabled rather than absent. */
+  it('disables the first option’s earlier control and the last one’s later control', () => {
+    render(
+      <TagInput label="option" tags={['Want', 'Neat']} suggestions={[]} reorderable onChange={() => {}} />,
+    );
+    expect((screen.getByLabelText('Move option Want earlier') as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByLabelText('Move option Neat later') as HTMLButtonElement).disabled).toBe(true);
+  });
+});
+
+/**
  * The suggestions, which used to be a list of buttons under the field with no way to reach
  * them from the keyboard and no announcement that they belonged to it. They are a combobox
  * now. These pin the keyboard and the semantics, and the one place the library's default
