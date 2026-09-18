@@ -298,7 +298,7 @@ export function Workspace({ noteId, readOnly = false, backTo = '/notes' }: Works
     );
   }, [editing, noteId]);
 
-  const { state: saveState } = useAutosave(draft, save, {
+  const { state: saveState, flush } = useAutosave(draft, save, {
     // Never autosave while viewing the trash: a note in the bin is a record of what was
     // deleted, and writing to it would be editing something the user believes is gone.
     // `draftFor === noteId` keeps a draft still holding the previous note's text from
@@ -399,6 +399,19 @@ export function Workspace({ noteId, readOnly = false, backTo = '/notes' }: Works
     void queryClient.invalidateQueries({ queryKey: ['search'] });
     invalidateNoteMembership(queryClient);
     void navigate({ to: '/notes', search: (p) => p });
+  }
+
+  /**
+   * Saves what is on screen first: the copy is made from the stored note, and the last
+   * edit may still be inside the autosave's delay.
+   */
+  async function duplicateNote() {
+    await flush();
+    const copy = await api.duplicateNote(noteId);
+    void queryClient.invalidateQueries({ queryKey: ['notes'] });
+    void queryClient.invalidateQueries({ queryKey: ['search'] });
+    invalidateNoteMembership(queryClient);
+    void navigate({ to: '/notes/$noteId', params: { noteId: copy.id }, search: (p) => p });
   }
 
   function rewriteBody(nextBody: string) {
@@ -597,6 +610,7 @@ export function Workspace({ noteId, readOnly = false, backTo = '/notes' }: Works
               <OverflowMenu
                 label="More actions"
                 items={[
+                  { label: 'Duplicate', onSelect: () => void duplicateNote() },
                   { label: 'Download', href: api.noteDownloadUrl(noteId) },
                   {
                     label: 'Delete',
@@ -716,6 +730,17 @@ export function Workspace({ noteId, readOnly = false, backTo = '/notes' }: Works
                     // Searchable now, from the bytes in hand, not on some later pass.
                     indexUploadedFile(note.id, uploaded, file);
                     return uploaded.path;
+                  }
+            }
+            onCopyAttachments={
+              readOnly
+                ? undefined
+                : async (from, filenames, move) => {
+                    const { files } = await api.copyAttachments(note.id, { from, filenames, move });
+                    void queryClient.invalidateQueries({ queryKey: keys.attachments(note.id) });
+                    // A move changed the source note's list too.
+                    if (move) void queryClient.invalidateQueries({ queryKey: keys.attachments(from) });
+                    return new Map(files.map((f) => [f.from, f.filename]));
                   }
             }
             rich={noteView === 'rich'}

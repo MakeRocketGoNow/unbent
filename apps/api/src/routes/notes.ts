@@ -6,6 +6,7 @@ import {
   listNotesQuerySchema,
   updateNoteSchema,
 } from '@unbent/shared';
+import { copyAttachments } from '../lib/copy-attachments.js';
 import { nextCursor } from '../lib/notes-repo.js';
 import { requireAuth } from '../lib/session.js';
 import { withRepos } from '../lib/repos-middleware.js';
@@ -112,6 +113,32 @@ export const notes = new Hono<AppEnv>()
     const ok = await c.get('notes').remove(c.req.param('id'));
     if (!ok) return c.json({ error: 'Not found' }, 404);
     return c.body(null, 204);
+  })
+
+  /**
+   * A copy of the note, files and all, opened by the client as its own note.
+   *
+   * The Evernote habit this serves is a note used as a template — a packing list, a
+   * checklist for a recurring job. The files come across as copies, never shared, for
+   * the reasons `copyAttachments` gives; every file is copied, linked or not, the same
+   * way the export includes them, so nothing the note held is lost in the duplicate.
+   */
+  .post('/notes/:id/duplicate', async (c) => {
+    const id = c.req.param('id');
+    const notes = c.get('notes');
+    const attachments = c.get('attachments');
+    const copy = await notes.duplicate(id, crypto.randomUUID());
+    if (!copy) return c.json({ error: 'Not found' }, 404);
+
+    const files = await attachments.listForNote(id);
+    if (files.length > 0) {
+      await copyAttachments(
+        c.env.BLOBS,
+        { attachments, notes },
+        { from: id, to: copy.id, filenames: files.map((f) => f.filename) },
+      );
+    }
+    return c.json(copy, 201);
   })
 
   /** Restores a trashed note. 404 when it is not this user's, or was never trashed. */

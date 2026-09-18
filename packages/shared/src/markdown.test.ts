@@ -1,8 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import {
+  absoluteAttachmentRefs,
+  absolutizeAttachmentLinks,
   attachmentFilenamesInMarkdown,
+  attachmentUrl,
   excerptMarkdown,
+  findAbsoluteAttachmentLinks,
   formatAttachmentMarkdown,
+  relativizeAttachmentLinks,
   removeAttachmentLinks,
   renderMarkdown,
 } from './markdown.js';
@@ -87,6 +92,71 @@ describe('removeAttachmentLinks', () => {
 
   it('removes angle-bracket and image forms', () => {
     expect(removeAttachmentLinks('![x](<files/my photo.png>)', 'my photo.png')).toBe('');
+  });
+});
+
+/**
+ * The round trip the clipboard makes: relative links leave a note absolute, so they say
+ * which note's file they mean, and come back relative once the file is stored in the
+ * destination — under whatever name it got there.
+ */
+describe('absolutizeAttachmentLinks', () => {
+  it('names the note in every same-note link and image', () => {
+    const md = 'See [a](files/a.pdf) and ![b](files/b.png).';
+    expect(absolutizeAttachmentLinks(md, { noteId: NOTE })).toBe(
+      `See [a](/api/notes/${NOTE}/files/a.pdf) and ![b](/api/notes/${NOTE}/files/b.png).`,
+    );
+  });
+
+  it('encodes a bracketed name and drops the brackets it no longer needs', () => {
+    const md = formatAttachmentMarkdown('Report (final) v2.pdf', 'files/Report (final) v2.pdf');
+    expect(absolutizeAttachmentLinks(md, { noteId: NOTE, origin: 'https://app.example' })).toBe(
+      `[Report (final) v2.pdf](https://app.example/api/notes/${NOTE}/files/Report%20(final)%20v2.pdf)`,
+    );
+  });
+
+  it('leaves remote links and prose alone', () => {
+    const md = 'A [site](https://example.com/files/x.pdf) and files/plain.txt in prose.';
+    expect(absolutizeAttachmentLinks(md, { noteId: NOTE })).toBe(md);
+  });
+});
+
+describe('findAbsoluteAttachmentLinks', () => {
+  it('reads the note and decoded filename, with or without an origin', () => {
+    const md = `![a](${attachmentUrl('n1', 'my photo.png', 'https://app.example')}) [b](<${attachmentUrl('n2', 'b.pdf')}>)`;
+    expect(findAbsoluteAttachmentLinks(md)).toEqual([
+      { from: 0, to: md.indexOf(' [b]'), label: '![a]', noteId: 'n1', filename: 'my photo.png' },
+      { from: md.indexOf('[b]'), to: md.length, label: '[b]', noteId: 'n2', filename: 'b.pdf' },
+    ]);
+  });
+
+  it('ignores the download query the panel link carries', () => {
+    const md = `[a](${attachmentUrl('n1', 'a.pdf')}?download=1)`;
+    expect(findAbsoluteAttachmentLinks(md)[0]?.filename).toBe('a.pdf');
+  });
+
+  it('names each file once per note', () => {
+    const url = attachmentUrl('n1', 'a.pdf');
+    const md = `[a](${url}) [again](${url}) [other](${attachmentUrl('n2', 'a.pdf')})`;
+    expect(absoluteAttachmentRefs(md)).toEqual([
+      { noteId: 'n1', filename: 'a.pdf' },
+      { noteId: 'n2', filename: 'a.pdf' },
+    ]);
+  });
+});
+
+describe('relativizeAttachmentLinks', () => {
+  it('rewrites to the name the destination gave the file, bracketed when it needs to be', () => {
+    const md = `![a](${attachmentUrl('n1', 'a.png')}) and [b](${attachmentUrl('n1', 'b.pdf')})`;
+    const out = relativizeAttachmentLinks(md, ({ filename }) =>
+      filename === 'a.png' ? 'a-2.png' : 'my b.pdf',
+    );
+    expect(out).toBe('![a](files/a-2.png) and [b](<files/my b.pdf>)');
+  });
+
+  it('leaves a link alone when told to', () => {
+    const md = `[a](${attachmentUrl('n1', 'a.pdf')}) text`;
+    expect(relativizeAttachmentLinks(md, () => null)).toBe(md);
   });
 });
 

@@ -2783,11 +2783,103 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
   flex-shrink: 0;
 }
 
-.attachments-row > .confirm {
+.attachments-row > .confirm,
+.attachments-row > .note-picker {
   /* Its own line, spanning the row. */
   flex: 1 0 100%;
   margin-top: 0.5rem;
 }
+
+/* Where the last copy-to or move-to put a file: a sentence under the list, not a toast. */
+.attachments-sent { margin: 0 0 0.5rem; }
+
+/*
+   The per-file ⋯: sized to the row's small quiet buttons rather than the 44px head
+   trigger it borrows its markup from, so it reads as one of the row's controls.
+*/
+.attachments-more .overflow-trigger {
+  min-width: 2rem;
+  min-height: 1.75rem;
+  padding: 0 0.35rem;
+  font-size: 0.85rem;
+}
+
+/*
+   Choosing another note, inline in an attachment row.
+
+   The same shape as `.confirm` — a bounded box on its own line under the file — with a
+   capped list inside, so a long archive scrolls in the box rather than pushing the note
+   body off the screen. `min-width: 0` for the same reason `.confirm` has it: a filename
+   with nowhere to break must not set the box's width.
+*/
+.note-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  max-width: 40rem;
+  min-width: 0;
+  width: 100%;
+  padding: 0.6rem 0.75rem 0.75rem;
+  background: color-mix(in srgb, var(--fg) 4%, transparent);
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+}
+
+.note-picker-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.note-picker-label { font-weight: 600; font-size: 0.9rem; }
+
+.note-picker-empty { margin: 0; }
+
+.note-picker-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 14rem;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+/* A row: the tag picker's, with a title that truncates and a date that does not. */
+.note-picker-item {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.75rem;
+  width: 100%;
+  min-height: 2.25rem;
+  padding: 0.25rem 0.5rem;
+  font: inherit;
+  font-size: 0.9rem;
+  text-align: left;
+  color: var(--fg);
+  background: none;
+  border: none;
+  border-radius: 0.3rem;
+  cursor: pointer;
+}
+
+.note-picker-item:hover:not(:disabled) { background: color-mix(in srgb, var(--fg) 8%, transparent); }
+.note-picker-item:disabled { cursor: default; opacity: 0.6; }
+
+.note-picker-item:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.note-picker-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.note-picker-item > .small { flex-shrink: 0; }
 
 .tag-input {
   display: flex;
@@ -3651,11 +3743,12 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
 /* ---------------------------------------------------------------------------------
    Opening an attachment at full size.
 
-   The corner control, shared by the rich editor's image and PDF widgets. Positioned by a
-   host that is `position: relative` and shrink-wrapped to the picture, so it sits on the
-   picture's corner rather than the line's. Fixed ink on a translucent disc rather than the
-   theme's tokens, because it sits on the attachment and not on the page — a scan is white
-   in both themes.
+   The corner controls, shared by the rich editor's image and PDF widgets: full screen
+   (`.zoom-btn`) in the corner, and copy (`.zoom-copy`) one disc to its left. Positioned by
+   a host that is `position: relative` and shrink-wrapped to the picture, so they sit on
+   the picture's corner rather than the line's. Fixed ink on a translucent disc rather than
+   the theme's tokens, because they sit on the attachment and not on the page — a scan is
+   white in both themes.
 
    Hidden until the picture is hovered, so a note of photographs is not a note of buttons;
    always shown, quieter, where there is no pointer to hover with. Keyboard focus shows it
@@ -3667,7 +3760,7 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
   max-width: 100%;
 }
 
-.zoom-btn {
+.corner-btn {
   position: absolute;
   top: 0.5rem;
   right: 0.5rem;
@@ -3690,14 +3783,17 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
   transition: opacity 0.15s ease;
 }
 
-.zoom-host:hover .zoom-btn,
-.zoom-btn:focus-visible { opacity: 1; }
+.zoom-host:hover .corner-btn,
+.corner-btn:focus-visible { opacity: 1; }
 
-.zoom-btn:hover { background: rgb(0 0 0 / 0.72); }
+.corner-btn:hover { background: rgb(0 0 0 / 0.72); }
 
-/* No pointer to point with: the control stays, since a thumb cannot hover for it. */
+/* The copy control, one disc to the left; the full-screen one keeps the corner it had. */
+.zoom-copy { right: 3.25rem; }
+
+/* No pointer to point with: the controls stay, since a thumb cannot hover for them. */
 @media (hover: none) {
-  .zoom-btn { opacity: 0.85; }
+  .corner-btn { opacity: 0.85; }
 }
 
 /*

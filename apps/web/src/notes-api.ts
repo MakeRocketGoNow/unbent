@@ -165,6 +165,13 @@ export async function updateNote(
   );
 }
 
+/** A new note with this one's title, body, filing and files. */
+export async function duplicateNote(id: string): Promise<Note> {
+  return json<Note>(
+    await fetch(`/api/notes/${encodeURIComponent(id)}/duplicate`, { method: 'POST' }),
+  );
+}
+
 export async function deleteNote(id: string): Promise<void> {
   const res = await fetch(`/api/notes/${id}`, { method: 'DELETE' });
   if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
@@ -420,6 +427,32 @@ export async function listAttachments(noteId: string): Promise<AttachmentInfo[]>
     await fetch(`/api/notes/${noteId}/files`),
   );
   return files;
+}
+
+/** One file after a copy between notes: the name asked for, and the name it has now. */
+export interface CopiedAttachment extends AttachmentInfo {
+  from: string;
+  path: string;
+  /** True when the source file was deleted afterwards; only ever for a move. */
+  moved: boolean;
+}
+
+/**
+ * Copies files from another note into this one, server side, and says what each is
+ * called here — a name already taken in the destination is suffixed. `move` deletes
+ * each source file the source body no longer links; see the route for why that guard.
+ */
+export async function copyAttachments(
+  toNoteId: string,
+  input: { from: string; filenames: string[]; move?: boolean; link?: boolean },
+): Promise<{ files: CopiedAttachment[]; missing: string[] }> {
+  return json(
+    await fetch(`/api/notes/${encodeURIComponent(toNoteId)}/files/copy`, {
+      method: 'POST',
+      headers: jsonHeaders,
+      body: JSON.stringify(input),
+    }),
+  );
 }
 
 /**

@@ -764,6 +764,33 @@ export class NotesRepo extends ScopedRepo {
   }
 
   /**
+   * A new note with this one's title, body, filing and field values. Null when the note
+   * is not this user's.
+   *
+   * The body is copied as it is, `files/…` links included: those resolve within the copy
+   * once its files exist, which is the caller's next step (`copyAttachments`), and the
+   * copy is created first so the files have a note to belong to. Values are carried by
+   * field id through the same validation a create gets, so a foreign field the note
+   * kept from an earlier notebook comes along too. The title is kept rather than marked
+   * "(copy)": the duplicate is opened at once, so which is which is never in doubt, and
+   * a name the user did not choose is one they would only have to remove.
+   */
+  async duplicate(id: string, newId: string): Promise<Note | null> {
+    const source = await this.get(id);
+    if (!source) return null;
+    const fields: NoteFieldsPatch = {};
+    for (const v of source.fields ?? []) fields[v.fieldId] = v.value;
+    return this.create({
+      id: newId,
+      title: source.title,
+      body: source.body,
+      tags: source.tags,
+      notebook: source.notebook,
+      ...(Object.keys(fields).length > 0 ? { fields } : {}),
+    });
+  }
+
+  /**
    * Returns null when the note does not exist *or* belongs to someone else.
    *
    * A key whose value already equals what is stored is dropped before anything is

@@ -1,4 +1,5 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { Link } from '@tanstack/react-router';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { EditorView } from '@codemirror/view';
 import type { AttachmentInfo } from '@unbent/shared';
@@ -8,10 +9,13 @@ import {
   removeAttachmentLinks,
 } from '@unbent/shared';
 import * as api from '../notes-api.js';
+import { copyAttachmentToClipboard } from '../attachment-clipboard.js';
 import { attachmentsQuery, keys } from '../queries.js';
 import { Confirm } from './Confirm.js';
 import { Button } from './Button';
 import { Disclosure } from './Disclosure.js';
+import { NotePicker, type PickedNote } from './NotePicker.js';
+import { OverflowMenu } from './OverflowMenu.js';
 
 interface AttachmentsProps {
   noteId: string;
@@ -56,6 +60,30 @@ export function Attachments({
   const [deleteError, setDeleteError] = useState<string | null>(null);
   /** Filename awaiting an explicit delete. */
   const [pending, setPending] = useState<string | null>(null);
+  /**
+   * The file whose Copy just succeeded, for the moment its label says so.
+   *
+   * A clipboard write has no visible result, so the button is the only place to say it
+   * happened. The label reverts on its own rather than on the next click, because the
+   * next click may be a paste in another note, which this panel never sees.
+   */
+  const [copied, setCopied] = useState<string | null>(null);
+  const copiedTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => {
+    if (copiedTimer.current) clearTimeout(copiedTimer.current);
+  }, []);
+
+  /**
+   * The file a note picker is open for, and whether it is going as a copy or a move.
+   *
+   * One at a time, like `pending`: two pickers open would be two questions with the same
+   * answer box, and the row that opened the second has already lost the first.
+   */
+  const [sending, setSending] = useState<{ filename: string; mode: 'copy' | 'move' } | null>(
+    null,
+  );
+  /** What the last copy-to or move-to did, with a link to where the file went. */
+  const [sent, setSent] = useState<ReactNode>(null);
 
   const linked = useMemo(() => attachmentFilenamesInMarkdown(body), [body]);
   const unlinkedCount = files.filter((f) => !linked.has(f.filename)).length;
@@ -78,6 +106,73 @@ export function Attachments({
     // Editor not mounted yet — append rather than drop the action.
     const next = body.trimEnd() === '' ? markdown : `${body.trimEnd()}\n\n${markdown}`;
     onBodyRewrite(next);
+  }
+
+  /**
+   * Puts a link to the file on the clipboard — and the picture too, for an image.
+   *
+   * This is how a file gets to another note: paste the link there and the editor copies
+   * the file across (see editor/clipboard.ts). A PDF cannot be put on a clipboard by a
+   * web page at all, so a link is the one form that works for every file, and it is the
+   * faster one besides.
+   */
+  async function copy(file: AttachmentInfo) {
+    setDeleteError(null);
+    try {
+      await copyAttachmentToClipboard(noteId, file, { origin: window.location.origin });
+      setCopied(file.filename);
+      if (copiedTimer.current) clearTimeout(copiedTimer.current);
+      copiedTimer.current = setTimeout(() => setCopied(null), 1500);
+    } catch (err) {
+      setDeleteError(`Couldn’t copy. ${(err as Error).message}`);
+    }
+  }
+
+  /**
+   * Sends a file to another note, as a copy or a move.
+   *
+   * Both start with the same server-side copy, linked into the destination's body since
+   * no editor is open there to do it. A move then deletes the file here — the same
+   * delete the row's Delete button does, link removal included — rather than asking the
+   * server to move it: the server's own move declines to take a file this body still
+   * links, which is right for a paste after a cut but not for an explicit "move this".
+   * Copy first, then delete, so a failure between the two leaves the file in both notes
+   * rather than in neither.
+   */
+  async function sendTo(file: AttachmentInfo, target: PickedNote, mode: 'copy' | 'move') {
+    setBusy(file.filename);
+    setDeleteError(null);
+    setSent(null);
+    try {
+      await api.copyAttachments(target.id, {
+        from: noteId,
+        filenames: [file.filename],
+        link: true,
+      });
+      void queryClient.invalidateQueries({ queryKey: keys.attachments(target.id) });
+      void queryClient.invalidateQueries({ queryKey: keys.note(target.id) });
+      if (mode === 'move') {
+        await api.deleteAttachment(noteId, file.filename);
+        if (linked.has(file.filename)) onBodyRewrite(removeAttachmentLinks(body, file.filename));
+        await queryClient.invalidateQueries({ queryKey: keys.attachments(noteId) });
+      }
+      // The list rows show what each note holds.
+      void queryClient.invalidateQueries({ queryKey: ['notes'] });
+      setSending(null);
+      setSent(
+        <>
+          {mode === 'move' ? 'Moved' : 'Copied'} “{file.filename}” to{' '}
+          <Link to="/notes/$noteId" params={{ noteId: target.id }} search={(p) => p} className="link">
+            {target.title || 'Untitled'}
+          </Link>
+          .
+        </>,
+      );
+    } catch (err) {
+      setDeleteError((err as Error).message);
+    } finally {
+      setBusy(null);
+    }
   }
 
   async function remove(filename: string) {
@@ -148,6 +243,41 @@ export function Attachments({
                 </span>
               </div>
               <div className="attachments-actions">
+                <Button
+                  variant="quiet"
+                  size="small"
+                  disabled={busy !== null}
+                  title="Copy a link to paste into another note"
+                  onClick={() => void copy(file)}
+                >
+                  {copied === file.filename ? 'Copied' : 'Copy'}
+                </Button>
+                {/*
+                    Copy-to and move-to behind a ⋯ rather than beside Copy and Delete: on a
+                    phone the row is 320px wide, and four labelled buttons on every file
+                    would leave the filename nothing. These are the two that need a second
+                    step anyway — a note to pick — so a menu costs them no extra tap.
+                */}
+                <OverflowMenu
+                  label={`More actions for ${file.filename}`}
+                  className="attachments-more"
+                  items={[
+                    {
+                      label: 'Copy to note…',
+                      onSelect: () => {
+                        setPending(null);
+                        setSending({ filename: file.filename, mode: 'copy' });
+                      },
+                    },
+                    {
+                      label: 'Move to note…',
+                      onSelect: () => {
+                        setPending(null);
+                        setSending({ filename: file.filename, mode: 'move' });
+                      },
+                    },
+                  ]}
+                />
                 {!isLinked && (
                   <Button
                     variant="quiet"
@@ -163,11 +293,24 @@ export function Attachments({
                   tone="danger"
                   size="small"
                   disabled={busy !== null}
-                  onClick={() => setPending(file.filename)}
+                  onClick={() => {
+                    setSending(null);
+                    setPending(file.filename);
+                  }}
                 >
                   {busy === file.filename ? 'Deleting…' : 'Delete'}
                 </Button>
               </div>
+
+              {sending?.filename === file.filename && (
+                <NotePicker
+                  label={sending.mode === 'move' ? 'Move to note' : 'Copy to note'}
+                  excludeId={noteId}
+                  busy={busy === file.filename}
+                  onCancel={() => setSending(null)}
+                  onPick={(target) => void sendTo(file, target, sending.mode)}
+                />
+              )}
 
               {pending === file.filename && (
                 <Confirm
@@ -195,6 +338,7 @@ export function Attachments({
         })}
       </ul>
 
+      {sent && <p className="muted small attachments-sent">{sent}</p>}
       {deleteError && <p className="bad small">{deleteError}</p>}
     </Disclosure>
   );

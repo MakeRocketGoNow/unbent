@@ -10,6 +10,8 @@ import { markdownKeymap } from '../editor/markdown-commands.js';
 import { tableTools } from '../editor/table-toolbar.js';
 import { fileDropCursor } from '../editor/drop-cursor.js';
 import { attachments } from '../editor/attach.js';
+import { attachmentClipboard } from '../editor/clipboard.js';
+import { copyAttachmentToClipboard } from '../attachment-clipboard.js';
 
 interface EditorProps {
   /** Changes to this remount the editor; it is not a controlled value. */
@@ -25,6 +27,17 @@ interface EditorProps {
   onUpload?: (file: File, signal: AbortSignal) => Promise<string>;
   /** How many uploads are in flight, whenever that changes. The Android app shows it. */
   onUploadsPending?: (count: number) => void;
+  /**
+   * Copies files from another note into this one, for a paste that links them.
+   *
+   * Resolves to the name each file has here, by the name asked for. Absent — a read-only
+   * note — pasted links to other notes' files stay absolute; see editor/clipboard.ts.
+   */
+  onCopyAttachments?: (
+    from: string,
+    filenames: string[],
+    move: boolean,
+  ) => Promise<Map<string, string>>;
   /** Style markdown inline instead of showing plain source. */
   rich?: boolean;
   /**
@@ -69,6 +82,7 @@ export function Editor({
   onChange,
   onUpload,
   onUploadsPending,
+  onCopyAttachments,
   rich = false,
   pdfFilenames,
   autoFocus = true,
@@ -88,6 +102,8 @@ export function Editor({
   onUploadRef.current = onUpload;
   const onUploadsPendingRef = useRef(onUploadsPending);
   onUploadsPendingRef.current = onUploadsPending;
+  const onCopyAttachmentsRef = useRef(onCopyAttachments);
+  onCopyAttachmentsRef.current = onCopyAttachments;
   const onViewReadyRef = useRef(onViewReady);
   onViewReadyRef.current = onViewReady;
   // Read on every decoration rebuild rather than captured, so a list that arrives after
@@ -167,6 +183,15 @@ export function Editor({
                   resolveAttachment: (filename) =>
                     `/api/notes/${encodeURIComponent(noteId)}/files/${encodeURIComponent(filename)}`,
                   isPdfAttachment: (filename) => pdfFilenamesRef.current?.has(filename) ?? false,
+                  // The same clipboard payload the Attachments panel's Copy writes. The
+                  // type only decides whether a PNG goes along; the size is not used.
+                  copyAttachment: async (filename, kind) => {
+                    await copyAttachmentToClipboard(
+                      noteId,
+                      { filename, contentType: kind === 'image' ? 'image/*' : 'application/pdf', size: 0 },
+                      { origin: window.location.origin },
+                    );
+                  },
                 }),
               ]
             : []),
@@ -194,6 +219,22 @@ export function Editor({
                 }
               : undefined,
             onPending: (count) => onUploadsPendingRef.current?.(count),
+          }),
+          /*
+             Attachment links across the clipboard: copied ones name this note, pasted
+             ones bring their files across. The same ref pattern as the uploader, and the
+             same absence rule — no handler, no copies, and foreign links stay absolute.
+          */
+          attachmentClipboard({
+            noteId,
+            origin: window.location.origin,
+            copyFrom: onCopyAttachments
+              ? (from, filenames, move) => {
+                  const copy = onCopyAttachmentsRef.current;
+                  if (!copy) throw new Error('Copying files is switched off for this note');
+                  return copy(from, filenames, move);
+                }
+              : undefined,
           }),
           /*
              The two modes are two different kinds of text, and the font is what says which.

@@ -410,6 +410,13 @@ function EmbeddedNote({ noteId }: { noteId: string }) {
             }}
             // The app shows "Attaching…" and asks before Back while this is above zero.
             onUploadsPending={(pending) => postToApp({ type: 'upload', pending })}
+            // The same paste-across-notes the web editor has; the phone's editor is this one.
+            onCopyAttachments={async (from, filenames, move) => {
+              const { files } = await api.copyAttachments(note.id, { from, filenames, move });
+              void queryClient.invalidateQueries({ queryKey: keys.attachments(note.id) });
+              if (move) void queryClient.invalidateQueries({ queryKey: keys.attachments(from) });
+              return new Map(files.map((f) => [f.from, f.filename]));
+            }}
             rich={noteView === 'rich'}
             // A note opens to be read; the keyboard comes up when the body is tapped. Focus
             // on mount would raise it over a page the user has not chosen to write in yet.
