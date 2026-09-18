@@ -38,6 +38,11 @@ interface EditorProps {
     filenames: string[],
     move: boolean,
   ) => Promise<Map<string, string>>;
+  /**
+   * Fetches a web image into this note as a stored file, resolving to its filename.
+   * Absent — a read-only note — remote images offer no save control.
+   */
+  onSaveRemoteImage?: (url: string) => Promise<string>;
   /** Style markdown inline instead of showing plain source. */
   rich?: boolean;
   /**
@@ -83,6 +88,7 @@ export function Editor({
   onUpload,
   onUploadsPending,
   onCopyAttachments,
+  onSaveRemoteImage,
   rich = false,
   pdfFilenames,
   autoFocus = true,
@@ -104,6 +110,8 @@ export function Editor({
   onUploadsPendingRef.current = onUploadsPending;
   const onCopyAttachmentsRef = useRef(onCopyAttachments);
   onCopyAttachmentsRef.current = onCopyAttachments;
+  const onSaveRemoteImageRef = useRef(onSaveRemoteImage);
+  onSaveRemoteImageRef.current = onSaveRemoteImage;
   const onViewReadyRef = useRef(onViewReady);
   onViewReadyRef.current = onViewReady;
   // Read on every decoration rebuild rather than captured, so a list that arrives after
@@ -192,6 +200,13 @@ export function Editor({
                       { origin: window.location.origin },
                     );
                   },
+                  saveRemoteImage: onSaveRemoteImage
+                    ? (url) => {
+                        const save = onSaveRemoteImageRef.current;
+                        if (!save) throw new Error('Saving web images is switched off for this note');
+                        return save(url);
+                      }
+                    : undefined,
                 }),
               ]
             : []),

@@ -62,8 +62,10 @@ function mount(doc: string, cursor = doc.length): EditorView {
 }
 
 /** Mounts with attachment resolution on; the shared `mount` deliberately has none. */
-/** What the corner copy control was asked to copy, across a test. */
+/** What the toolbar's copy control was asked to copy, across a test. */
 const copyAttachment = vi.fn(async (_filename: string, _kind: 'image' | 'pdf') => {});
+/** What the save control was asked to fetch; answers with the stored name. */
+const saveRemoteImage = vi.fn(async (_url: string) => 'saved.png');
 
 function mountWithAttachments(doc: string, cursor = 0, pdfNames: string[] = []): EditorView {
   const parent = document.createElement('div');
@@ -79,6 +81,7 @@ function mountWithAttachments(doc: string, cursor = 0, pdfNames: string[] = []):
           resolveAttachment: (name) => `/api/notes/n1/files/${name}`,
           isPdfAttachment: (name) => names.has(name),
           copyAttachment,
+          saveRemoteImage,
         }),
       ],
     }),
@@ -735,15 +738,38 @@ describe('inline images', () => {
 
   /**
    * A remote picture is not a stored file: nothing of the note's to copy, and no download,
-   * which a browser would turn into a tab across origins. Full screen and Remove remain.
+   * which a browser would turn into a tab across origins. In their place, the one thing
+   * to do with a web image — bring it in.
    */
-  it('offers neither copy nor download for a remote image', () => {
+  it('offers save instead of copy and download for a remote image', () => {
     const doc = '![web](https://example.com/a.png)\n\nplain';
     const v = mountWithAttachments(doc, doc.length);
     const tools = [...v.dom.querySelectorAll('.cm-md-image .attachment-tool')].map((t) =>
       t.getAttribute('aria-label'),
     );
-    expect(tools).toEqual(['Full screen', 'Remove from note']);
+    expect(tools).toEqual(['Full screen', 'Save to note', 'Remove from note']);
+  });
+
+  /** Saving rewrites the picture's own markdown to the stored file, keeping its alt. */
+  it('saves a web image and points the markdown at the stored file', async () => {
+    saveRemoteImage.mockClear();
+    const doc = 'intro\n\n![web pic](https://example.com/a.png)\n\nplain';
+    const v = mountWithAttachments(doc, 0);
+    v.dom.querySelector<HTMLButtonElement>('.cm-md-image .zoom-save')?.click();
+    expect(saveRemoteImage).toHaveBeenCalledWith('https://example.com/a.png');
+    await new Promise((r) => setTimeout(r, 0));
+    expect(v.state.doc.toString()).toBe('intro\n\n![web pic](files/saved.png)\n\nplain');
+  });
+
+  it('keeps the web link when the save fails', async () => {
+    saveRemoteImage.mockRejectedValueOnce(new Error('403'));
+    const doc = '![web](https://example.com/a.png)\n\nplain';
+    const v = mountWithAttachments(doc, doc.length);
+    const button = v.dom.querySelector<HTMLButtonElement>('.cm-md-image .zoom-save');
+    button?.click();
+    await new Promise((r) => setTimeout(r, 0));
+    expect(v.state.doc.toString()).toBe(doc);
+    expect(button?.getAttribute('aria-label')).toBe('Couldn’t save');
   });
 
   /** A real link, so the browser saves the file itself; named for the stored file. */

@@ -14,7 +14,7 @@ import {
   type ViewUpdate,
   WidgetType,
 } from '@codemirror/view';
-import { ATTACHMENT_PREFIX } from '@unbent/shared';
+import { ATTACHMENT_PREFIX, formatAttachmentMarkdown } from '@unbent/shared';
 import { acquirePdf, type LoadedPdf, releasePdf } from '../pdf/render.js';
 import { downloadUrl, openAttachmentViewer, type ViewerTarget } from '../attachment-viewer.js';
 import {
@@ -22,6 +22,7 @@ import {
   copyIconMarkup,
   downloadIconMarkup,
   expandIconMarkup,
+  imageDownIconMarkup,
   trashIconMarkup,
 } from '../components/icons.js';
 
@@ -355,6 +356,8 @@ function ownEvents(control: HTMLElement): void {
 
 /** What the copy control does; see `RichMarkdownOptions.copyAttachment`. */
 type CopyAttachment = NonNullable<RichMarkdownOptions['copyAttachment']>;
+/** What the save control does; see `RichMarkdownOptions.saveRemoteImage`. */
+type SaveRemoteImage = NonNullable<RichMarkdownOptions['saveRemoteImage']>;
 
 /** How long a control says "Copied" before offering to copy again. */
 const COPIED_FOR_MS = 1500;
@@ -405,6 +408,7 @@ function attachmentToolbar(
     /** The stored file, or null for a remote image. */
     stored: { filename: string; kind: 'image' | 'pdf' } | null;
     copy?: CopyAttachment;
+    save?: SaveRemoteImage;
     /** The syntax node the widget stands for, for Remove. */
     source: 'Image' | 'Link';
   },
@@ -436,6 +440,8 @@ function attachmentToolbar(
     tools.appendChild(download);
 
     if (opts.copy) tools.appendChild(copyButton(opts.stored.filename, opts.stored.kind, opts.copy));
+  } else if (opts.save) {
+    tools.appendChild(saveButton(view, host, opts.target.src, opts.save));
   }
 
   const remove = toolButton('zoom-remove danger', 'Remove from note', trashIconMarkup());
@@ -483,18 +489,67 @@ function copyButton(filename: string, kind: 'image' | 'pdf', copy: CopyAttachmen
 }
 
 /**
- * Deletes the markdown a widget stands for: the `![alt](url)` an image replaces, or the
- * `[label](files/x.pdf)` a PDF page hangs under.
+ * The control that brings a web image into the note as a stored file.
  *
- * Found from the DOM at click time rather than remembered from the build: the widget is
- * reused across edits (`eq`), so any offset it kept would be stale. The widget sits at
- * one end of its node — an image replaces it, or follows it while the line is revealed;
- * a PDF page always follows its link — so the node is looked for on both sides.
- *
- * A line left holding only whitespace goes too, and one of the blank lines around it,
- * or every removed picture would leave a double gap in the paragraph rhythm.
+ * In the slot copy and download would take on a stored image: the one thing to do with
+ * a remote picture is to stop it being remote. The fetch happens on the server — the
+ * browser cannot read a cross-origin image — and on success the markdown under the
+ * picture is rewritten in place to `files/<name>`, at which point the widget is rebuilt
+ * as a stored image with the full toolbar. A fetch the site refused leaves the address
+ * as it was and says so for a moment.
  */
-function removeWidgetSource(view: EditorView, host: HTMLElement, source: 'Image' | 'Link'): void {
+function saveButton(
+  view: EditorView,
+  host: HTMLElement,
+  url: string,
+  save: SaveRemoteImage,
+): HTMLButtonElement {
+  const button = toolButton('zoom-save', 'Save to note', imageDownIconMarkup());
+  let busy = false;
+  button.addEventListener('click', (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    if (busy) return;
+    busy = true;
+    button.setAttribute('aria-label', 'Saving…');
+    button.title = 'Saving…';
+    save(url).then(
+      (filename) => {
+        const node = findWidgetNode(view, host, 'Image');
+        if (!node) return;
+        const text = view.state.doc.sliceString(node.from, node.to);
+        const alt = /^!\[([^\]]*)\]/.exec(text)?.[1] ?? '';
+        view.dispatch({
+          changes: {
+            from: node.from,
+            to: node.to,
+            insert: formatAttachmentMarkdown(alt, `${ATTACHMENT_PREFIX}${filename}`, { image: true }),
+          },
+        });
+      },
+      () => {
+        busy = false;
+        button.setAttribute('aria-label', 'Couldn’t save');
+        button.title = 'Couldn’t save';
+        setTimeout(() => {
+          button.setAttribute('aria-label', 'Save to note');
+          button.title = 'Save to note';
+        }, COPIED_FOR_MS);
+      },
+    );
+  });
+  return button;
+}
+
+/**
+ * The syntax node a widget stands for, found from the DOM at click time.
+ *
+ * Not remembered from the build: the widget is reused across edits (`eq`), so any offset
+ * it kept would be stale. The widget sits at one end of its node — an image replaces it,
+ * or follows it while the line is revealed; a PDF page always follows its link — so the
+ * node is looked for on both sides.
+ */
+function findWidgetNode(view: EditorView, host: HTMLElement, source: 'Image' | 'Link') {
   const pos = view.posAtDOM(host);
   const tree = syntaxTree(view.state);
   const find = (side: -1 | 1) => {
@@ -502,7 +557,18 @@ function removeWidgetSource(view: EditorView, host: HTMLElement, source: 'Image'
     while (node && node.name !== source) node = node.parent;
     return node;
   };
-  const node = find(1) ?? find(-1);
+  return find(1) ?? find(-1);
+}
+
+/**
+ * Deletes the markdown a widget stands for: the `![alt](url)` an image replaces, or the
+ * `[label](files/x.pdf)` a PDF page hangs under.
+ *
+ * A line left holding only whitespace goes too, and one of the blank lines around it,
+ * or every removed picture would leave a double gap in the paragraph rhythm.
+ */
+function removeWidgetSource(view: EditorView, host: HTMLElement, source: 'Image' | 'Link'): void {
+  const node = findWidgetNode(view, host, source);
   if (!node) return;
 
   const doc = view.state.doc;
@@ -553,6 +619,7 @@ class ImageWidget extends WidgetType {
     /** The stored name, for the copy control; null for a remote image, which has none. */
     private readonly filename: string | null = null,
     private readonly copy?: CopyAttachment,
+    private readonly save?: SaveRemoteImage,
   ) {
     super();
   }
@@ -613,6 +680,7 @@ class ImageWidget extends WidgetType {
         siblings: this.siblings,
         stored: this.filename === null ? null : { filename: this.filename, kind: 'image' },
         copy: this.copy,
+        save: this.save,
         source: 'Image',
       }),
     );
@@ -1048,6 +1116,11 @@ export interface RichMarkdownOptions {
    * and what kind of thing it is drawing. Absent, the control is not drawn.
    */
   copyAttachment?: (filename: string, kind: 'image' | 'pdf') => Promise<void>;
+  /**
+   * Fetches a web image into the note as a stored file, resolving to its filename, for
+   * the save control on a remote image. Absent, the control is not drawn.
+   */
+  saveRemoteImage?: (url: string) => Promise<string>;
 }
 
 /**
@@ -1231,6 +1304,7 @@ function buildDecorations(view: EditorView, options: RichMarkdownOptions): Decor
             siblings,
             stored,
             options.copyAttachment,
+            options.saveRemoteImage,
           );
 
           /**
