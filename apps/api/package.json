@@ -21,25 +21,25 @@
     "release": "wrangler deploy --env \"\""
   },
   "dependencies": {
-    "@better-auth/mcp": "^1.7.3",
-    "@better-auth/oauth-provider": "^1.7.3",
-    "@better-auth/passkey": "1.7.3",
+    "@better-auth/mcp": "^1.7.5",
+    "@better-auth/oauth-provider": "^1.7.5",
+    "@better-auth/passkey": "1.7.5",
     "@better-auth/utils": "0.4.2",
     "@hono/zod-validator": "^0.9.1",
     "@modelcontextprotocol/server": "^2.0.0",
     "@unbent/enex": "workspace:*",
     "@unbent/shared": "workspace:*",
-    "better-auth": "^1.7.3",
-    "hono": "^4.13.7",
-    "zod": "^4.5.4"
+    "better-auth": "^1.7.5",
+    "hono": "^4.13.8",
+    "zod": "^4.6.5"
   },
   "devDependencies": {
-    "@cloudflare/workers-types": "^5.20260908.1",
-    "@zip.js/zip.js": "^2.13.1",
+    "@cloudflare/workers-types": "^5.20260915.1",
+    "@zip.js/zip.js": "^2.15.0",
     "tsx": "^4.23.13",
     "typescript": "^7.0.2",
-    "vitest": "^5.0.0",
-    "wrangler": "^4.130.0"
+    "vitest": "^5.0.1",
+    "wrangler": "^4.132.0"
   },
   "exports": {
     ".": "./src/index.ts"
