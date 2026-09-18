@@ -28,7 +28,10 @@ interface SettingsProps {
  * list's export filtered to the notebook is the same archive. It returned because that
  * route is buried — filter the list, then find the export beneath the filters — and this
  * page is where a person thinking "I want a copy of this notebook" already is. It comes
- * back as a glyph rather than a word, so the row still reads as a name.
+ * back as a glyph rather than a word, so the row still reads as a name — and drawn as
+ * the pencil is, a muted icon button, not as a link. In the link's green at text size it
+ * read as part of "Fields"; grey beside the pencil it reads as what it is, one of the
+ * row's two actions, with Fields left alone as the row's one navigation.
  */
 export function Settings({ onChanged }: SettingsProps) {
   const [notebooks, setNotebooks] = useState<api.Notebook[] | null>(null);
@@ -116,7 +119,8 @@ export function Settings({ onChanged }: SettingsProps) {
            which notebooks are collections of records. The download is an anchor too, and
            must be: the archive streams as the browser saves it, so it cannot go through a
            fetch, and an anchor keeps Save-Link-As and copy-link. `download` with no name
-           lets the server's Content-Disposition name the file for the notebook. */
+           lets the server's Content-Disposition name the file for the notebook. It wears
+           `icon-btn` for the pencil's look and 44px box; the class is only styling. */
         renderExtra={(item) => {
           const fields = byId(item)?.fields ?? 0;
           return (
@@ -131,7 +135,7 @@ export function Settings({ onChanged }: SettingsProps) {
               <a
                 href={api.exportUrl({ notebook: item.name })}
                 download
-                className="link small label-extra label-download"
+                className="icon-btn"
                 title={`Download ${item.name} as a zip`}
                 aria-label={`Download ${item.name} as a zip`}
               >

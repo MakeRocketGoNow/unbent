@@ -4074,18 +4074,6 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
 
 .label-extra { flex: 0 0 auto; }
 
-/* The download glyph is a link, not a button, but it is a one-glyph link on a row of
-   44px targets: give it a box that size so it is as easy to hit as the pencil beside it,
-   and centre the glyph in it. */
-.label-download {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 2.75rem;
-  height: 2.75rem;
-  font-size: 1.1rem;
-}
-
 /* The count that hugs the name, when a caller puts one there — a notebook's note count,
    like a field's value count on the notebook's own page. A small gap off the name, and it
    does not stretch, so the name's ellipsis still takes the slack on a narrow row. */
