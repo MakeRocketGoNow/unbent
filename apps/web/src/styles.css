@@ -4634,12 +4634,15 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
   }
 
   .rail-inner {
+    /* The rows' inset from the rail's edges; the strip narrows it. One number, because the
+       scroller below reaches out through it and has to reach exactly this far. */
+    --rail-inset: 0.5rem;
     height: 100%;
     display: flex;
     flex-direction: column;
     gap: 0.6rem;
     min-height: 0;
-    padding: var(--shell-pad-top) 0.5rem 1rem;
+    padding: var(--shell-pad-top) var(--rail-inset) 1rem;
   }
 
   .rail-head {
@@ -4670,6 +4673,20 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
   /* Refusing to leave a running import, like the settings sub-nav — see `Rail.tsx`. */
   .rail[inert] { opacity: 0.45; }
 
+  /*
+     The rows' scrollbar sits on the divider, not a gutter's width in from it.
+
+     The rows scroll inside `.rail-inner`, which insets them by 0.5rem, so the bar was
+     drawn 8px short of the rail's own edge — a scrollbar floating inside a column reads
+     as a box within the box. The same pull `.workspace-main` makes: the scroller reaches
+     out through the inset and takes it back as padding, so the rows keep their place and
+     only the bar moves, to the edge. The right side only; the left inset is the rows'.
+  */
+  .rail .drawer-list {
+    margin-right: calc(-1 * var(--rail-inset));
+    padding-right: var(--rail-inset);
+  }
+
   /* A pointer's density: the phone's 44px rows are thumb targets, and this is a mouse's column. */
   .rail .drawer-item {
     min-height: 2.25rem;
@@ -4682,7 +4699,7 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
 }
 
 @container rail (width < 8rem) {
-  .rail-inner { padding-inline: 0.25rem; }
+  .rail-inner { --rail-inset: 0.25rem; }
   .rail-head {
     justify-content: center;
     padding-left: 0;
