@@ -12,10 +12,12 @@ interface NoteListHeadProps {
    * wordmark was saying which app you were in, on the one screen where that was never in
    * doubt, while the thing actually in doubt was which notebook you were looking at.
    *
-   * Absent at desktop width, where the notebook picker sits one row down and names the
-   * notebook itself; a heading above it would be the same word twice on adjacent lines.
+   * At every width. It was the phone's alone while the desktop had a notebook picker one
+   * row down, which named the notebook itself; the picker is a rail beside the column now,
+   * and a rail can be a strip of icons, so the column says what it holds on its own — the
+   * way Evernote heads its middle column with the notebook's name and count.
    */
-  title?: string;
+  title: string;
   /** The search box's value, which is the URL's `q`. */
   query: string;
   onQuery: (next: string) => void;
@@ -61,13 +63,11 @@ interface NoteListHeadProps {
    * under it, which suits a 19rem column. Over the full-width table the same three rows
    * became a search field and a select each a window wide — controls sized by the space
    * they were in rather than by what they hold. So there the header is a toolbar: the
-   * picker (`scope`), the count, then a search field capped at a width a query needs, and
-   * the icons and New. Only meaningful where the field is permanent; a phone's header
-   * already is one row.
+   * title and count, then a search field capped at a width a query needs, and the icons
+   * and New. Only meaningful where the field is permanent; a phone's header already is
+   * one row.
    */
   toolbar?: boolean;
-  /** The notebook picker, drawn at the start of the toolbar row. Ignored without `toolbar`. */
-  scope?: ReactNode;
   /**
    * The last thing in the row: the desktop's New button.
    *
@@ -127,7 +127,6 @@ export function NoteListHead({
   sort,
   view,
   toolbar = false,
-  scope,
   action,
 }: NoteListHeadProps) {
   const own = useRef<HTMLInputElement>(null);
@@ -229,7 +228,6 @@ export function NoteListHead({
   return (
     <>
       <div className={inToolbar ? 'list-head list-head-toolbar' : 'list-head'}>
-        {inToolbar && scope}
         {onOpenMenu && (
           <button type="button" className="icon-btn" aria-label="Notebooks" onClick={onOpenMenu}>
             <MenuIcon />
@@ -237,10 +235,10 @@ export function NoteListHead({
         )}
         {/* Two lines in one column: where you are, and how much of it there is. The count
             was the whole header before, which said how many without ever saying of what.
-            Without a title it is the count alone again — at desktop width the notebook
-            picker under this row is what says of what. */}
+            The title is the notebook's own name, which can outrun a narrow column; the
+            tooltip carries what the ellipsis drops. */}
         <div className="list-title">
-          {title && <h2>{title}</h2>}
+          <h2 title={title}>{title}</h2>
           <span className="count">{count}</span>
         </div>
         {inToolbar && <div className="list-search">{input}</div>}

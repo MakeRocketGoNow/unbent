@@ -384,7 +384,7 @@ h1 {
 /*
    Links written inside a sentence.
 
-   Every other link in this app carries a class — `.link`, `.trash-link`, `.note-item` —
+   Every other link in this app carries a class — `.link`, `.drawer-item`, `.note-item` —
    so a bare `<a>` in prose was never styled and fell back to the browser's default blue,
    which is not a colour this palette contains. There are only a few (the confirms offer
    "Review the trash" and "Export first"; the trash section offers the same review link
@@ -1968,42 +1968,21 @@ a.overflow-item { text-decoration: none; }
 .tag-count { opacity: 0.7; font-variant-numeric: tabular-nums; }
 
 /*
-   Trash, on the sidebar floor.
-
-   Muted and separated by a rule, which is what keeps it from reading as one more filter —
-   the reason it did not work in the filter stack above. There is no active state: /trash
-   replaces this whole sidebar with its own. The border is the seam between "your notes"
-   and "notes you threw away", so it stays even when the count is zero and the link is the
-   only thing below the list.
-*/
-.trash-link {
-  display: flex;
-  align-items: center;
-  gap: 0.35rem;
-  padding: 0.6rem 0.7rem 0;
-  margin-top: 0.15rem;
-  font-size: 0.85rem;
-  color: var(--muted);
-  text-decoration: none;
-  border-top: 1px solid var(--border);
-}
-
-.trash-link:hover { color: var(--fg); }
-
-/*
-   What the indexing pass is doing, under Trash on the sidebar floor.
+   What the indexing pass is doing, on the sidebar floor.
 
    Here rather than in the topbar, which is account chrome and nothing else, and here
    rather than only in Settings, because this is the column people search from: a search
    that cannot yet see inside a PDF is a fact about this list. Rendered only while there
    is something to say — a pass running, or a backlog left for the Import panel — so the
-   floor is Trash alone the rest of the time. Sized a step under `.trash-link` so it reads
-   as status beneath a destination, not a second destination; one line, clipped, because
-   the sidebar can be narrowed to less than the sentence.
+   floor is empty the rest of the time. The rule above it is the seam Trash used to draw
+   under the list, before Trash moved to the rail; one line, clipped, because the sidebar
+   can be narrowed to less than the sentence.
 */
 .sidebar-status {
   display: block;
-  padding: 0.45rem 0.7rem 0;
+  margin-top: 0.15rem;
+  padding: 0.6rem 0.7rem 0;
+  border-top: 1px solid var(--border);
   font-size: 0.8rem;
   color: var(--muted);
   text-decoration: none;
@@ -4791,11 +4770,6 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
 
 .list-head-toolbar .list-title { flex: 0 1 auto; }
 
-.list-head-toolbar .notebook-scope-wrap {
-  flex: 0 1 14rem;
-  min-width: 8rem;
-}
-
 .list-head-toolbar .list-search {
   flex: 0 1 18rem;
   min-width: 10rem;
@@ -4803,17 +4777,13 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
   margin-left: auto;
 }
 
-.list-head-toolbar .notebook-scope,
 .list-head-toolbar .search-field {
   height: 2.25rem;
   padding-block: 0;
 }
 
 @media (width > 860px) and (hover: hover) and (pointer: fine) {
-  .list-head-toolbar .notebook-scope,
-  .list-head-toolbar .search-field {
-    height: 2rem;
-  }
+  .list-head-toolbar .search-field { height: 2rem; }
 }
 
 /* The count yields before the controls do: the controls are the ones that have to be hit.
@@ -5498,7 +5468,7 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
    The rule under the summary.
 
    It separates what is applied from what can be changed — the two halves of this page — and
-   it is the same seam `.trash-link` draws under the note list. `margin: 0` because
+   it is the same seam the rail draws above its floor. `margin: 0` because
    the sheet body's own gap is the spacing; an `hr`'s default margin would double it.
 */
 .sheet-rule {
@@ -5962,11 +5932,6 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
      `.notes` rather than `.notes.note-open`: the list and the open note are the same grid,
      and both have their own top-left control now — the menu button and the back arrow.
   */
-
-  /* Trash lives in the drawer at this width, with the notebooks it sits beside. Leaving it
-     on the sidebar floor as well would be two places for one destination, and the drawer is
-     the one that matches every other app. */
-  .trash-link { display: none; }
 
   /*
      The sidebar gives up its own inset here, because the shell's is already doing that job.
