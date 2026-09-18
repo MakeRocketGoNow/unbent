@@ -1,3 +1,4 @@
+import { splitExt } from '@unbent/shared';
 import { SaxesParser } from 'saxes';
 import type { EnexNote, EnexResource } from './types.js';
 
@@ -153,13 +154,6 @@ export function uniqueResourceFilenames(resources: EnexResource[]): EnexResource
     assigned.add(filename);
     return { ...resource, filename };
   });
-}
-
-/** Splits `name.ext` so a collision can be suffixed as `name-2.ext`. */
-function splitExt(filename: string): [string, string] {
-  const dot = filename.lastIndexOf('.');
-  if (dot <= 0) return [filename, ''];
-  return [filename.slice(0, dot), filename.slice(dot)];
 }
 
 function nextAvailableFilename(desired: string, taken: Set<string>): string {
