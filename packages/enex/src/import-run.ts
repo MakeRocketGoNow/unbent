@@ -22,15 +22,21 @@ export interface ImportProgress {
   filesIndexed: number;
   bytesRead: number;
   /**
-   * What `bytesRead` is counted against, when the driver knows something the file's own
-   * size does not say.
+   * How many notes the run will process in total, when that is known before it starts.
    *
-   * Zero means "the file's size is the total", which is the ENEX case: the parser counts
-   * the bytes it pulls off the file's own stream, so the two already agree. An archive
-   * cannot say that — see `importArchive`, where a zip's size and the bytes its entries
-   * hold are two different numbers — so it fills this in and the bar divides by it.
+   * Zero means unknown, which is the ENEX case: the parser streams the file and cannot say
+   * how many notes are in it without reading it first, so its progress is measured in bytes
+   * off the stream instead. An archive is the opposite — `getEntries` has already listed
+   * every note directory before the first note is touched — so it fills this in, and the
+   * bar counts notes rather than bytes.
+   *
+   * Bytes are a poor proxy for how far along an archive is: a real export is mostly its
+   * attachments, so a handful of notes with images can be nearly all of the file while the
+   * dozens of text notes after them are almost none of it. A byte bar raced to full on the
+   * first image and then crawled across everything else. Notes are what the person is
+   * watching mount up, and what the count beside the bar already shows.
    */
-  bytesTotal: number;
+  notesTotal: number;
   currentTitle: string;
 }
 
@@ -198,7 +204,7 @@ export class ImportRun {
     filesUploaded: 0,
     filesIndexed: 0,
     bytesRead: 0,
-    bytesTotal: 0,
+    notesTotal: 0,
     currentTitle: '',
   };
 
