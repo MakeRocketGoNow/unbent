@@ -1006,6 +1006,7 @@ describe('notebook fields', () => {
     name: string;
     type: string;
     options: string[];
+    scale?: { max: number; step: number } | null;
     position: number;
     valueCount?: number;
   }
@@ -1027,7 +1028,7 @@ describe('notebook fields', () => {
   async function makeField(
     actor: Actor,
     notebookId: string,
-    def: { name: string; type: string; options?: string[] },
+    def: { name: string; type: string; options?: string[]; scale?: { max: number; step: number } },
   ): Promise<Field> {
     const res = await json(actor, 'POST', `/api/notebooks/${notebookId}/fields`, def);
     if (res.status !== 201) throw new Error(`field: ${res.status} ${await res.text()}`);
@@ -1264,6 +1265,43 @@ describe('notebook fields', () => {
     expect(byName((await getNote(alice, ids[1]!)).fields).Code).toBeUndefined();
     expect(byName((await getNote(alice, ids[2]!)).fields).Code).toBe(7);
     expect((await json(alice, 'GET', `/api/notebooks/${nb.id}/fields/${code.id}/conversion?type=rollup`)).status).toBe(400);
+  });
+
+  it('previews a tighter rating scale, then applies it, clearing what no longer fits', async () => {
+    const stars = await makeField(alice, nb.id, {
+      name: `Stars ${Date.now()}`,
+      type: 'number',
+      scale: { max: 10, step: 1 },
+    });
+    const ids: string[] = [];
+    for (const value of [3, 7, 10]) {
+      const n = await json(alice, 'POST', '/api/notes', {
+        title: String(value),
+        body: '',
+        notebook: nb.name,
+        fields: { [stars.id]: value },
+      }).then((r) => r.json());
+      ids.push(n.id);
+    }
+
+    const preview = await json(
+      alice,
+      'GET',
+      `/api/notebooks/${nb.id}/fields/${stars.id}/conversion?type=number&scale=5:1`,
+    ).then((r) => r.json());
+    expect(preview).toEqual({ values: 3, incompatible: 2 });
+    // A preview writes nothing.
+    expect(byName((await getNote(alice, ids[1]!)).fields)[stars.name]).toBe(7);
+
+    const changed = await json(alice, 'PATCH', `/api/notebooks/${nb.id}/fields/${stars.id}`, {
+      scale: { max: 5, step: 1 },
+    }).then((r) => r.json());
+    expect(changed.field.scale).toEqual({ max: 5, step: 1 });
+    expect(changed.cleared).toBe(2);
+
+    expect(byName((await getNote(alice, ids[0]!)).fields)[stars.name]).toBe(3);
+    expect(byName((await getNote(alice, ids[1]!)).fields)[stars.name]).toBeUndefined();
+    expect(byName((await getNote(alice, ids[2]!)).fields)[stars.name]).toBeUndefined();
   });
 
   it('seeds the options from existing values when a field becomes a select', async () => {

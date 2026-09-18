@@ -25,11 +25,14 @@ interface NotebookFieldsProps {
   onChanged: () => void;
 }
 
-/** What a type change is about to do, held while the person decides. */
+/** What a type or scale change is about to do, held while the person decides. */
 interface PendingType {
   field: FieldDef;
   to: FieldType;
-  /** Set when the change is a scale arriving or going away; see `changeType`. */
+  /**
+   * Set when the change involves a scale: arriving, going away, or tightening. See
+   * `changeType` and `changeScale`.
+   */
   scale?: FieldScale | null;
   values: number;
   incompatible: number;
@@ -42,12 +45,14 @@ const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
  * options, reorder, delete. Modelled on the notebook list it is reached from, so the two
  * pages feel like one section.
  *
- * Two changes here can lose data and so go through `Confirm` naming what they will lose.
+ * Three changes here can lose data and so go through `Confirm` naming what they will lose.
  * Deleting a field deletes its values. Changing a type keeps every value the new type can
- * read and clears the rest — the server is asked what that would be before anything is
- * written, so the confirmation carries the real number rather than a warning in the
- * abstract. Becoming a select never loses anything: the existing values become the
- * options.
+ * read and clears the rest. Tightening a rating's scale does the same — a 7 cannot stay
+ * on a 5-point scale, and a 3.5 cannot stay once half steps are dropped. In both of those
+ * the server is asked what would be cleared before anything is written, so the confirmation
+ * carries the real number rather than a warning in the abstract. Becoming a select never
+ * loses anything: the existing values become the options. Widening a scale never loses
+ * anything either, and writes without asking.
  *
  * Order is set with up/down rather than drag. A dozen fields is the realistic maximum,
  * two buttons work with a keyboard and on a phone, and drag-to-reorder is a component
@@ -132,11 +137,10 @@ export function NotebookFields({ notebookId, onChanged }: NotebookFieldsProps) {
   }
 
   /**
-   * Asks first. The select snaps back to the current type while the confirmation is
-   * open, because the type has not changed yet — the confirmation is what changes it.
-   */
-  /**
    * Changes a field's type, or turns a number into a rating and back.
+   *
+   * Asks first. The select snaps back to the current type while the confirmation is open,
+   * because the type has not changed yet — the confirmation is what changes it.
    *
    * `scale` is what the picker's "Rating" and "Number" entries differ by: both are the
    * `number` type, so a switch between them is a scale arriving or going away rather than
@@ -166,12 +170,46 @@ export function NotebookFields({ notebookId, onChanged }: NotebookFieldsProps) {
     );
   }
 
+  /**
+   * Tightening a rating's scale can throw values away, so it uses the same preview the
+   * type picker does. The scale controls themselves write immediately when nothing would
+   * be cleared — widening 5 to 10, or narrowing past values nobody used — and only stop
+   * for confirmation when the server names a count.
+   *
+   * Both controls stay on the current scale while that confirmation is open — the select
+   * and the half-steps checkbox alike, since each draws from `field.scale`. That is the
+   * same snap-back the type select does: the scale has not changed yet, and the
+   * confirmation is what changes it.
+   *
+   * Only reached from `ScalePicker`, which renders only for a field that has a scale, so
+   * `field.scale` is non-null here.
+   */
+  async function changeScale(field: FieldDef, scale: FieldScale) {
+    if (field.scale?.max === scale.max && field.scale.step === scale.step) return;
+    setError(null);
+    try {
+      const preview = await api.previewFieldConversion(notebookId, field.id, field.type, scale);
+      if (preview.incompatible > 0) {
+        setPendingType({ field, to: field.type, scale, ...preview });
+        return;
+      }
+    } catch (err) {
+      setError((err as Error).message);
+      return;
+    }
+    void run(() => api.updateNotebookField(notebookId, field.id, { scale }));
+  }
+
   function confirmType() {
     if (!pendingType) return;
-    const { field, to, scale } = pendingType;
+    const pending = pendingType;
+    const { field, to, scale } = pending;
     void run(async () => {
       await api.updateNotebookField(notebookId, field.id, {
-        type: to,
+        // A scale tighten is not a type change, and `changeScale` writes it without a
+        // `type`. Sending one here anyway is a no-op server-side, but it would make the
+        // two paths for one intent send different bodies.
+        ...(scaleOnlyConfirm(pending) ? {} : { type: to }),
         ...(scale !== undefined ? { scale } : {}),
       });
       setPendingType(null);
@@ -331,9 +369,7 @@ export function NotebookFields({ notebookId, onChanged }: NotebookFieldsProps) {
               <ScalePicker
                 scale={field.scale}
                 disabled={busy}
-                onChange={(scale) =>
-                  void run(() => api.updateNotebookField(notebookId, field.id, { scale }))
-                }
+                onChange={(scale) => void changeScale(field, scale)}
               />
             )}
           </li>
@@ -367,13 +403,19 @@ export function NotebookFields({ notebookId, onChanged }: NotebookFieldsProps) {
 
       {pendingType && (
         <Confirm
-          label="Confirm change field type"
+          label={scaleOnlyConfirm(pendingType) ? 'Confirm change rating scale' : 'Confirm change field type'}
           question={
             <>
-              Change <strong>{pendingType.field.name}</strong> to{' '}
-              {/* Named as the picker names it: "to Number" would be the wrong word for a
-                  number gaining a scale, which is the change the person just asked for. */}
-              {pendingType.scale ? 'Rating' : FIELD_TYPE_LABELS[pendingType.to]}?
+              {scaleOnlyConfirm(pendingType) ? (
+                scaleConfirmQuestion(pendingType)
+              ) : (
+                <>
+                  Change <strong>{pendingType.field.name}</strong> to{' '}
+                  {/* Named as the picker names it: "to Number" would be the wrong word for a
+                      number gaining a scale, which is the change the person just asked for. */}
+                  {pendingType.scale ? 'Rating' : FIELD_TYPE_LABELS[pendingType.to]}?
+                </>
+              )}
             </>
           }
           detail={
@@ -441,10 +483,52 @@ export function NotebookFields({ notebookId, onChanged }: NotebookFieldsProps) {
 
       <p className="muted small">
         Fields appear on every note in this notebook. Deleting a field deletes its values.
-        Changing a field's type clears any value that can't be read as the new type. A note
-        moved to another notebook keeps the values it has.
+        Changing a field's type, or narrowing a rating's scale, clears any value that can't
+        be read that way. A note moved to another notebook keeps the values it has.
       </p>
     </div>
+  );
+}
+
+/**
+ * Whether `pending` is a scale tighten on a field that is already a rating, rather than
+ * a type change (including a number becoming a rating, which is a scale arriving).
+ *
+ * The confirm copy hangs on this: "Change to Rating" is the wrong question for dropping
+ * a 10-point scale to 5, and "out of 5" is the wrong question for turning a number into
+ * stars.
+ */
+function scaleOnlyConfirm(
+  pending: PendingType,
+): pending is PendingType & { scale: FieldScale; field: FieldDef & { scale: FieldScale } } {
+  return pending.to === pending.field.type && pending.scale != null && pending.field.scale != null;
+}
+
+function scaleConfirmQuestion(pending: PendingType & { scale: FieldScale; field: FieldDef & { scale: FieldScale } }) {
+  const prev = pending.field.scale;
+  const maxChanged = pending.scale.max !== prev.max;
+  const losingHalves = pending.scale.step > prev.step;
+
+  // Both controls can be in play at once. Naming only the max would read as though the
+  // halves survive, and they are exactly what gets cleared.
+  if (losingHalves && !maxChanged) {
+    return (
+      <>
+        Drop half steps on <strong>{pending.field.name}</strong>?
+      </>
+    );
+  }
+  if (losingHalves) {
+    return (
+      <>
+        Change <strong>{pending.field.name}</strong> to out of {pending.scale.max}, without half steps?
+      </>
+    );
+  }
+  return (
+    <>
+      Change <strong>{pending.field.name}</strong> to out of {pending.scale.max}?
+    </>
   );
 }
 
@@ -452,9 +536,10 @@ export function NotebookFields({ notebookId, onChanged }: NotebookFieldsProps) {
  * A rating's scale: how high it goes, and whether halves count.
  *
  * Two controls rather than one list of combinations, because they are two independent
- * questions and a person arrives with an answer to each. The note under them says what
- * narrowing costs, since that is the one edit here that can throw a value away — the
- * confirmation the server sends back names the count, but by then the choice is made.
+ * questions and a person arrives with an answer to each. Narrowing can throw a value
+ * away, so the caller previews first and confirms when the server names a count — the
+ * same path a type change takes, rather than writing and then saying how many were lost.
+ * The note under the controls is only how the scale will draw, not a substitute for that.
  */
 function ScalePicker({
   scale,
