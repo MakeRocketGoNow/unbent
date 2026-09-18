@@ -6113,28 +6113,21 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
   */
   .settings { padding-inline: 0.75rem; margin-inline: -0.75rem; width: auto; }
 
-  /*
-     The trash sidebar is a reading-width view, not a dense list — so on a phone it
-     extends through the shell's padding and adds its own back, the same pattern
-     `.settings` uses. Content lands at the shell edge (0.75rem from the viewport) rather
-     than stacking a second gutter on top of it.
-
-     The heading row needs no pull of its own: the `.view-back` inside it pulls through
-     the sidebar's padding the same way it pulls through `.settings`'s, landing the arrow
-     on the glass. The count, the Empty button and the note rows all start at the gutter —
-     the same line the settings nav pills land on.
-  */
-  .sidebar:has(.trash-head) {
-    padding-inline: 0.75rem;
-    margin-inline: -0.75rem;
-    width: auto;
-  }
-
   .trash-head {
     display: flex;
     align-items: center;
     gap: 0.25rem;
     margin-bottom: 0.5rem;
+  }
+
+  /*
+     On a desktop the sidebar's own 0.7rem padding aligns the count with the note titles
+     (the note items carry 0.7rem of their own and the list pulls through the sidebar's).
+     On a phone that sidebar padding is zeroed, but the count still needs to sit on the
+     same line as the note text below it.
+  */
+  .sidebar:has(.trash-head) .sidebar-head {
+    padding-inline: 0.7rem;
   }
 
   /*
