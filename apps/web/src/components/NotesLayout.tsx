@@ -549,6 +549,7 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
             selectedTags={selectedTags}
             notebooks={notebooks}
             trashed={trashed}
+            tags={tags.data ?? []}
             email={session?.user.email ?? ''}
             onSignOut={signOutAndLeave}
           />

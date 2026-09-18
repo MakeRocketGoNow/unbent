@@ -4521,6 +4521,49 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
   color: var(--muted);
 }
 
+/*
+   A section head that opens and closes its rows — the tags — drawn as the label the
+   notebooks' head is, with the chevron `.disclosure` draws: right when closed, down when
+   open. A button rather than a `<details>`, because its state is remembered, which
+   `Disclosure` is not for. The whole word is the target; the chevron only says the state.
+*/
+.drawer-section-toggle {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.3rem 0;
+  font: inherit;
+  color: var(--muted);
+  background: none;
+  border: none;
+  cursor: pointer;
+}
+.drawer-section-toggle:hover { color: var(--fg); }
+.drawer-section-toggle:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 0.25rem;
+}
+.drawer-section-toggle::after {
+  content: '';
+  flex: 0 0 auto;
+  width: 0.36rem;
+  height: 0.36rem;
+  margin-left: 0.5rem;
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  transform: rotate(-45deg) translate(-0.05rem, -0.05rem);
+  transition: transform 0.15s ease;
+}
+.drawer-section-toggle[aria-expanded='true']::after {
+  transform: rotate(45deg) translate(-0.05rem, -0.05rem);
+}
+
+.drawer-tags {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+}
+
 /* A link, drawn as a word rather than a row: it leaves the drawer for the settings page. */
 .drawer-section-action {
   padding: 0.3rem 0.4rem;
@@ -4660,6 +4703,7 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
   .rail .drawer-section,
   .rail .drawer-place-notebook,
   .rail .drawer-new,
+  .rail .drawer-tags,
   .rail .drawer-list > .drawer-rule,
   .rail-wordmark { display: none; }
 }

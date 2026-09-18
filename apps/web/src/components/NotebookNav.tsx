@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import { useId, useState, type ReactNode } from 'react';
 import { Link, useNavigate } from '@tanstack/react-router';
 import { UNFILED } from '@unbent/shared';
 import {
@@ -6,9 +6,21 @@ import {
   InboxRowIcon,
   NotebookRowIcon,
   PlusRowIcon,
+  TagIcon,
   TrashRowIcon,
   SettingsRowIcon,
 } from './icons.js';
+import type { TagCount } from './TagPicker.js';
+import { usePersistentState } from '../usePersistentState.js';
+
+/**
+ * How many tags the section lists before offering the rest.
+ *
+ * An archive imported from Evernote can carry hundreds. The section is a list of places,
+ * and the places anyone goes are the well-used ones, which is the order the API returns
+ * them in; the rest are one row away rather than a scroll of the whole navigation.
+ */
+const TAG_CAP = 25;
 
 /** What the navigation needs of the notebooks. Shaped by the API, narrowed to what is drawn. */
 export interface NotebookData {
@@ -30,6 +42,8 @@ interface NotebookNavProps {
   selectedTags: string[];
   notebooks: { data: NotebookData | undefined };
   trashed: number;
+  /** Every tag with its count, in the API's order: the most used first. */
+  tags: TagCount[];
   /**
    * Called after a scope is picked. The phone's drawer closes itself here, because the
    * list behind it has changed; a surface that is always on screen passes nothing.
@@ -72,11 +86,22 @@ export function NotebookNav({
   selectedTags,
   notebooks,
   trashed,
+  tags,
   onNavigate,
   labelsHidden = false,
   footer,
 }: NotebookNavProps) {
   const navigate = useNavigate();
+  /*
+   * Whether the tags are shown. Closed to begin with — the notebooks are the places most
+   * people move between, and a long tag list under them would push the floor out of
+   * sight — and remembered, since someone who works by tag opens it every time. Not
+   * `Disclosure`, whose own comment rules out state that anything else depends on; this
+   * is a button with `aria-expanded`, and the stylesheet draws it with the same chevron.
+   */
+  const [tagsOpen, setTagsOpen] = usePersistentState<boolean>('navTagsOpen', false);
+  const [allTags, setAllTags] = useState(false);
+  const tagsId = useId();
 
   /*
    * Picking a scope clears the tags, the same rule the notebook select follows: tags cross
@@ -100,6 +125,28 @@ export function NotebookNav({
   };
 
   /*
+   * A tag as a place: every note carrying it, across all notebooks — Evernote's tag view.
+   * The notebook goes, and with it the field filter and sort, which belong to it; the
+   * named sort and dates stay. Only ever one tag from here: narrowing to several is the
+   * filter sheet's job, where a tag is a refinement of where you are rather than a place.
+   * A search pick made from All notes with nothing else set lands on this same URL, so
+   * the row marks it — see `ScopeMatches`.
+   */
+  const goToTag = (name: string) => {
+    void navigate({
+      to: '/notes',
+      search: (prev) => ({
+        ...prev,
+        tag: [name],
+        notebook: undefined,
+        field: undefined,
+        sortField: undefined,
+      }),
+    });
+    onNavigate?.();
+  };
+
+  /*
    * All notes means no notebook *and* no tags — the unnarrowed list, not merely unfiled.
    * Every place is gated on being over the notes at all: on the trash or in settings the
    * URL still carries a notebook, and lighting its row there would say the trash is in it.
@@ -107,6 +154,19 @@ export function NotebookNav({
   const here = place === 'notes';
   const allActive = here && !notebook && selectedTags.length === 0;
   const inboxActive = here && notebook === UNFILED;
+  /** The one tag that is the place, when a tag is: no notebook, exactly one tag. */
+  const tagPlace = here && !notebook && selectedTags.length === 1 ? selectedTags[0] : undefined;
+  /*
+   * The tags listed: the first `TAG_CAP` by use, or all of them once asked. The current
+   * tag is always among them, past the cap or not — the same rule that keeps the Inbox on
+   * screen while it is where you are — so the navigation never fails to say where you are.
+   */
+  const listedTags = allTags ? tags : tags.slice(0, TAG_CAP);
+  const currentPastCap =
+    tagPlace !== undefined && !listedTags.some((t) => t.name === tagPlace)
+      ? tags.find((t) => t.name === tagPlace)
+      : undefined;
+  const shownTags = currentPastCap ? [...listedTags, currentPastCap] : listedTags;
   /** The tooltip a strip's row needs, and a full-width row does not. */
   const tip = (label: string) => (labelsHidden ? label : undefined);
 
@@ -195,6 +255,62 @@ export function NotebookNav({
           <PlusRowIcon />
           <span className="drawer-item-label">New notebook</span>
         </Link>
+
+        {/*
+            The tags, under the notebooks, as Evernote lists them. A section only when
+            there are any: an empty "Tags" head would be a promise with nothing under it.
+            Its head opens and closes the list, and carries the way to edit the tags the
+            way the notebooks' head does.
+        */}
+        {tags.length > 0 && (
+          <>
+            <hr className="drawer-rule" />
+            <div className="drawer-section">
+              <button
+                type="button"
+                className="drawer-section-toggle"
+                aria-expanded={tagsOpen}
+                aria-controls={tagsId}
+                onClick={() => setTagsOpen((open) => !open)}
+              >
+                Tags
+              </button>
+              <Link to="/settings/tags" className="drawer-section-action">
+                Edit
+              </Link>
+            </div>
+            {tagsOpen && (
+              <div id={tagsId} className="drawer-tags">
+                {shownTags.map((t) => {
+                  const on = tagPlace === t.name;
+                  return (
+                    <button
+                      key={t.name}
+                      type="button"
+                      className={on ? 'drawer-item current' : 'drawer-item'}
+                      aria-current={on ? 'true' : undefined}
+                      title={t.name}
+                      onClick={() => goToTag(t.name)}
+                    >
+                      <TagIcon />
+                      <span className="drawer-item-label">{t.name}</span>
+                      <span className="tag-count">{t.count}</span>
+                    </button>
+                  );
+                })}
+                {!allTags && tags.length > TAG_CAP && (
+                  <button
+                    type="button"
+                    className="drawer-item drawer-new"
+                    onClick={() => setAllTags(true)}
+                  >
+                    <span className="drawer-item-label">Show all {tags.length} tags</span>
+                  </button>
+                )}
+              </div>
+            )}
+          </>
+        )}
       </nav>
 
       {/*

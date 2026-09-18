@@ -95,6 +95,13 @@ export function ScopeMatches({
   );
   if (tagHits.length === 0 && notebookHits.length === 0) return null;
 
+  /*
+   * A tag picked here is added to where you are — the notebook stays, and so do the tags
+   * already applied — because search narrows the current view. The rail's tag rows do the
+   * opposite, replacing the scope with the one tag across every notebook: those are
+   * places, this is a refinement. From All notes with nothing applied the two land on the
+   * same URL, and the rail marks that tag as where you are.
+   */
   const pick = (search: Record<string, unknown>) => {
     void navigate({ to: '/notes', search: (prev) => ({ ...prev, ...search, q: undefined }) });
     onPick();

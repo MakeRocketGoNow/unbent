@@ -49,6 +49,7 @@ function harness(props: Partial<Parameters<typeof NotebookDrawer>[0]> = {}) {
     selectedTags: [],
     notebooks: NOTEBOOKS,
     trashed: 1,
+    tags: [{ name: 'Receipt', count: 3 }],
     email: 'someone@example.com',
     onSignOut: () => {},
     ...props,
@@ -116,6 +117,13 @@ describe('NotebookDrawer', () => {
     const { findByText, queryByLabelText } = harness();
     await findByText('All notes');
     expect(queryByLabelText('Close')).toBeNull();
+  });
+
+  /* The tags ride with the rows, so the phone gets the section too. */
+  it('lists the tags under the notebooks on a phone', async () => {
+    const { findByRole } = harness();
+    const head = await findByRole('button', { name: 'Tags' });
+    expect(head.getAttribute('aria-expanded')).toBe('false');
   });
 
   /* Sign out is rare and disruptive; it stays behind the avatar rather than becoming a

@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { Link, useRouterState, useSearch } from '@tanstack/react-router';
 import { AccountMenu } from './AccountMenu.js';
-import { notebooksQuery, trashCountQuery } from '../queries.js';
+import { notebooksQuery, tagsQuery, trashCountQuery } from '../queries.js';
 import { useMediaQuery, RAIL_WIDE_QUERY } from '../useMediaQuery.js';
 import { NotebookNav, type NavPlace } from './NotebookNav.js';
 import { RailToggleIcon } from './icons.js';
@@ -75,6 +75,7 @@ function placeOf(pathname: string): NavPlace {
 export function Rail({ pref, onPref, email, onSignOut }: RailProps) {
   const notebooks = useQuery(notebooksQuery());
   const trashCount = useQuery(trashCountQuery());
+  const tags = useQuery(tagsQuery());
   /*
    * The notes' search params, from wherever the rail is standing. `/notes` is the only
    * route that validates them; from the trash or settings there is no such match and this
@@ -116,6 +117,7 @@ export function Rail({ pref, onPref, email, onSignOut }: RailProps) {
           selectedTags={search?.tag ?? []}
           notebooks={notebooks}
           trashed={trashCount.data ?? 0}
+          tags={tags.data ?? []}
           labelsHidden={!open}
           footer={<AccountMenu email={email} onSignOut={onSignOut} withAddress />}
         />

@@ -1,6 +1,7 @@
 import { Sheet } from './Sheet.js';
 import { AccountMenu } from './AccountMenu.js';
 import { NotebookNav, type NotebookData } from './NotebookNav.js';
+import type { TagCount } from './TagPicker.js';
 
 interface NotebookDrawerProps {
   open: boolean;
@@ -10,6 +11,7 @@ interface NotebookDrawerProps {
   selectedTags: string[];
   notebooks: { data: NotebookData | undefined };
   trashed: number;
+  tags: TagCount[];
   email: string;
   onSignOut: () => void;
 }
@@ -35,6 +37,7 @@ export function NotebookDrawer({
   selectedTags,
   notebooks,
   trashed,
+  tags,
   email,
   onSignOut,
 }: NotebookDrawerProps) {
@@ -51,6 +54,7 @@ export function NotebookDrawer({
         selectedTags={selectedTags}
         notebooks={notebooks}
         trashed={trashed}
+        tags={tags}
         onNavigate={onClose}
       />
     </Sheet>

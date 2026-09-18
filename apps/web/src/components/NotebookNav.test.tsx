@@ -1,4 +1,4 @@
-import { describe, it, expect, afterEach, vi } from 'vitest';
+import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest';
 import { render, cleanup, fireEvent, waitFor } from '@testing-library/react';
 import {
   createMemoryHistory,
@@ -8,6 +8,14 @@ import {
 } from '@tanstack/react-router';
 import { UNFILED } from '@unbent/shared';
 import { NotebookNav } from './NotebookNav.js';
+
+const TAGS = [
+  { name: 'Receipt', count: 40 },
+  { name: 'Travel', count: 12 },
+  { name: 'Recipe', count: 3 },
+];
+/** Thirty invented tags, most used first, to run past the cap. */
+const MANY_TAGS = Array.from({ length: 30 }, (_, i) => ({ name: `tag-${i}`, count: 30 - i }));
 
 /**
  * The rows of places, wherever they are drawn.
@@ -35,6 +43,7 @@ function harness(props: Partial<Parameters<typeof NotebookNav>[0]> = {}) {
     selectedTags: [],
     notebooks: NOTEBOOKS,
     trashed: 1,
+    tags: [],
     ...props,
   };
   const rootRoute = createRootRoute({ component: () => <NotebookNav {...full} /> });
@@ -172,9 +181,85 @@ describe('NotebookNav', () => {
     expect((await findByRole('link', { name: 'New notebook' })).tagName).toBe('A');
   });
 
+  describe('tags', () => {
+    beforeEach(() => localStorage.clear());
+
+    it('has no section when there are no tags', async () => {
+      const { findByRole, queryByRole } = harness({ tags: [] });
+      await findByRole('button', { name: 'All notes' });
+      expect(queryByRole('button', { name: 'Tags' })).toBeNull();
+    });
+
+    /* Closed to begin with, and remembered: someone who works by tag opens it once. */
+    it('starts closed, and remembers being opened', async () => {
+      const { findByRole, queryByRole } = harness({ tags: TAGS });
+      const head = await findByRole('button', { name: 'Tags' });
+      expect(head.getAttribute('aria-expanded')).toBe('false');
+      expect(queryByRole('button', { name: /^Receipt/ })).toBeNull();
+      fireEvent.click(head);
+      await findByRole('button', { name: /^Receipt/ });
+      expect(localStorage.getItem('unbent.navTagsOpen')).toBe('true');
+    });
+
+    /*
+     * A tag is a place across every notebook: the notebook goes, and with it the field
+     * filter that belongs to it, while the named sort — how you are looking — stays.
+     */
+    it('goes to the tag across all notebooks, keeping only how you are looking', async () => {
+      localStorage.setItem('unbent.navTagsOpen', 'true');
+      const { findByRole, history } = harness({ tags: TAGS, notebook: 'Coupons' });
+      await history.push('/notes?notebook=Coupons&sort=title&field=abc:set');
+      fireEvent.click(await findByRole('button', { name: /^Receipt/ }));
+      await waitFor(() => {
+        const href = history.location.href;
+        expect(href).toContain('Receipt');
+        expect(href).toContain('sort=title');
+        expect(href).not.toContain('Coupons');
+        expect(href).not.toContain('field');
+      });
+    });
+
+    it('marks the tag only when it is the whole scope', async () => {
+      localStorage.setItem('unbent.navTagsOpen', 'true');
+      const alone = harness({ tags: TAGS, selectedTags: ['Receipt'] });
+      expect((await alone.findByRole('button', { name: /^Receipt/ })).className).toContain('current');
+      cleanup();
+      const withNotebook = harness({ tags: TAGS, selectedTags: ['Receipt'], notebook: 'Coupons' });
+      expect((await withNotebook.findByRole('button', { name: /^Receipt/ })).className).not.toContain('current');
+      cleanup();
+      const two = harness({ tags: TAGS, selectedTags: ['Receipt', 'Travel'] });
+      expect((await two.findByRole('button', { name: /^Receipt/ })).className).not.toContain('current');
+    });
+
+    /* Hundreds of tags is normal for an imported archive; the well-used ones are the
+       places, and the rest are one row away. */
+    it('lists the most used first, capped, with the rest one row away', async () => {
+      localStorage.setItem('unbent.navTagsOpen', 'true');
+      const { findByRole, container } = harness({ tags: MANY_TAGS });
+      const more = await findByRole('button', { name: 'Show all 30 tags' });
+      expect(container.querySelectorAll('.drawer-tags .drawer-item')).toHaveLength(26);
+      fireEvent.click(more);
+      await waitFor(() =>
+        expect(container.querySelectorAll('.drawer-tags .drawer-item')).toHaveLength(30),
+      );
+    });
+
+    it('keeps the current tag on screen past the cap', async () => {
+      localStorage.setItem('unbent.navTagsOpen', 'true');
+      const { findByRole } = harness({ tags: MANY_TAGS, selectedTags: ['tag-28'] });
+      expect((await findByRole('button', { name: /^tag-28/ })).className).toContain('current');
+    });
+
+    it('offers the way to edit the tags beside their section head', async () => {
+      const { findAllByText } = harness({ tags: TAGS });
+      const edits = await findAllByText('Edit');
+      expect(edits.map((e) => e.getAttribute('href'))).toEqual(['/settings/notebooks', '/settings/tags']);
+    });
+  });
+
   /* The rows are places to go, so the way to change them lives outside the rows. */
   it('offers the way to edit the notebooks beside their section head', async () => {
-    const { findByText } = harness();
+    const { findByText } = harness({ tags: [] });
     const edit = await findByText('Edit');
     expect(edit.tagName).toBe('A');
     expect(edit.getAttribute('href')).toBe('/settings/notebooks');
