@@ -175,6 +175,24 @@ describe('abandonUploads', () => {
 });
 
 describe('paste', () => {
+  it('declines a file that arrived beside a link to a note file', () => {
+    const { upload } = deferredUpload();
+    const view = mount('', { upload });
+    const event = new Event('paste', { bubbles: true, cancelable: true });
+    Object.defineProperty(event, 'clipboardData', {
+      value: {
+        files: [png()],
+        getData: () => '![a](/api/notes/other/files/a.png)',
+        types: ['Files', 'text/plain'],
+      },
+      configurable: true,
+    });
+    view.contentDOM.dispatchEvent(event);
+    // Not claimed here; nothing else is mounted, so no placeholder either.
+    expect(view.state.doc.toString()).not.toMatch(/uploading/);
+    view.destroy();
+  });
+
   it('routes pasted files through the same placeholder', () => {
     const { upload } = deferredUpload();
     const view = mount('', { upload });

@@ -148,24 +148,32 @@ describe('paste', () => {
     view.destroy();
   });
 
-  /**
-   * Ordinary text is CodeMirror's to insert, and a paste carrying files is the upload
-   * handler's — so neither reaches `copyFrom`, and the file case's text goes in verbatim
-   * here because nothing else in this test claims it.
-   */
-  it('leaves ordinary text and files to the other handlers', async () => {
+  it('leaves ordinary text to CodeMirror', () => {
     const copyFrom = vi.fn();
     const view = mount('', { noteId: HERE, copyFrom });
     fire(view, 'paste', clipboard({ 'text/plain': 'hello' }));
     expect(view.state.doc.toString()).toBe('hello');
-
-    const text = `[a](${attachmentUrl(THERE, 'a.pdf')})`;
-    const withFile = clipboard({ 'text/plain': text });
-    withFile.files.push(new File(['x'], 'a.png', { type: 'image/png' }));
-    fire(view, 'paste', withFile);
-    await settle();
     expect(copyFrom).not.toHaveBeenCalled();
-    expect(view.state.doc.toString()).toBe(`hello${text}`);
+    view.destroy();
+  });
+
+  /**
+   * The panel's copy of a picture puts a PNG and a link on the clipboard together. The
+   * link wins: it reaches the original bytes with one server-side copy, where the PNG
+   * would be a re-encoded upload.
+   */
+  it('prefers the link over a picture that came with it', async () => {
+    const copyFrom = vi.fn(async (_from: string, filenames: string[]) =>
+      new Map(filenames.map((name) => [name, name])),
+    );
+    const view = mount('', { noteId: HERE, copyFrom });
+    const withFile = clipboard({ 'text/plain': `![a](${attachmentUrl(THERE, 'a.png')})` });
+    withFile.files.push(new File(['x'], 'a.png', { type: 'image/png' }));
+    const event = fire(view, 'paste', withFile);
+    expect(event.defaultPrevented).toBe(true);
+    await settle();
+    expect(copyFrom).toHaveBeenCalledWith(THERE, ['a.png'], false);
+    expect(view.state.doc.toString()).toBe('![a](files/a.png)');
     view.destroy();
   });
 });

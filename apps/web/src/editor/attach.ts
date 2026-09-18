@@ -1,6 +1,6 @@
 import { Facet, type Extension } from '@codemirror/state';
 import { EditorView, ViewPlugin, type PluginValue } from '@codemirror/view';
-import { formatAttachmentMarkdown } from '@unbent/shared';
+import { findAbsoluteAttachmentLinks, formatAttachmentMarkdown } from '@unbent/shared';
 
 /**
  * Every way a file gets into the editor: a drop, a paste, and the toolbar's Attach button.
@@ -101,6 +101,15 @@ export function attachments(config: AttachConfig): Extension {
       paste(event, view) {
         const files = [...(event.clipboardData?.files ?? [])];
         if (files.length === 0) return false;
+        /*
+           A picture copied from the Attachments panel arrives twice: as a PNG, for other
+           apps, and as a link naming the note it lives in. The link is the better source
+           here — copied key to key on the server, original bytes, no upload — so the
+           clipboard handler (editor/clipboard.ts) takes that paste, and this one declines.
+        */
+        if (findAbsoluteAttachmentLinks(event.clipboardData?.getData('text/plain') ?? '').length > 0) {
+          return false;
+        }
         event.preventDefault();
         void insertUploads(view, files, view.state.selection.main.head);
         return true;

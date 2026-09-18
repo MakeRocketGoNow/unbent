@@ -73,8 +73,9 @@ export function attachmentClipboard(config: ClipboardConfig): Extension {
     },
     paste(event, view) {
       const data = event.clipboardData;
-      // Files are the upload handler's; see attach.ts.
-      if (!data || data.files.length > 0) return false;
+      if (!data) return false;
+      // Files alongside the text are the upload handler's, unless the text links a note's
+      // file — the panel's copy of a picture carries both, and the link is the one to use.
       const text = data.getData('text/plain');
       if (!text || findAbsoluteAttachmentLinks(text).length === 0) return false;
       event.preventDefault();

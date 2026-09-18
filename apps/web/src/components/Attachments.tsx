@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { EditorView } from '@codemirror/view';
 import type { AttachmentInfo } from '@unbent/shared';
@@ -8,6 +8,7 @@ import {
   removeAttachmentLinks,
 } from '@unbent/shared';
 import * as api from '../notes-api.js';
+import { copyAttachmentToClipboard } from '../attachment-clipboard.js';
 import { attachmentsQuery, keys } from '../queries.js';
 import { Confirm } from './Confirm.js';
 import { Button } from './Button';
@@ -56,6 +57,18 @@ export function Attachments({
   const [deleteError, setDeleteError] = useState<string | null>(null);
   /** Filename awaiting an explicit delete. */
   const [pending, setPending] = useState<string | null>(null);
+  /**
+   * The file whose Copy just succeeded, for the moment its label says so.
+   *
+   * A clipboard write has no visible result, so the button is the only place to say it
+   * happened. The label reverts on its own rather than on the next click, because the
+   * next click may be a paste in another note, which this panel never sees.
+   */
+  const [copied, setCopied] = useState<string | null>(null);
+  const copiedTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => {
+    if (copiedTimer.current) clearTimeout(copiedTimer.current);
+  }, []);
 
   const linked = useMemo(() => attachmentFilenamesInMarkdown(body), [body]);
   const unlinkedCount = files.filter((f) => !linked.has(f.filename)).length;
@@ -78,6 +91,26 @@ export function Attachments({
     // Editor not mounted yet — append rather than drop the action.
     const next = body.trimEnd() === '' ? markdown : `${body.trimEnd()}\n\n${markdown}`;
     onBodyRewrite(next);
+  }
+
+  /**
+   * Puts a link to the file on the clipboard — and the picture too, for an image.
+   *
+   * This is how a file gets to another note: paste the link there and the editor copies
+   * the file across (see editor/clipboard.ts). A PDF cannot be put on a clipboard by a
+   * web page at all, so a link is the one form that works for every file, and it is the
+   * faster one besides.
+   */
+  async function copy(file: AttachmentInfo) {
+    setDeleteError(null);
+    try {
+      await copyAttachmentToClipboard(noteId, file, { origin: window.location.origin });
+      setCopied(file.filename);
+      if (copiedTimer.current) clearTimeout(copiedTimer.current);
+      copiedTimer.current = setTimeout(() => setCopied(null), 1500);
+    } catch (err) {
+      setDeleteError(`Couldn’t copy. ${(err as Error).message}`);
+    }
   }
 
   async function remove(filename: string) {
@@ -148,6 +181,15 @@ export function Attachments({
                 </span>
               </div>
               <div className="attachments-actions">
+                <Button
+                  variant="quiet"
+                  size="small"
+                  disabled={busy !== null}
+                  title="Copy a link to paste into another note"
+                  onClick={() => void copy(file)}
+                >
+                  {copied === file.filename ? 'Copied' : 'Copy'}
+                </Button>
                 {!isLinked && (
                   <Button
                     variant="quiet"
