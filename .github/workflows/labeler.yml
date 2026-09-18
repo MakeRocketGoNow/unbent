@@ -1,10 +1,19 @@
 name: Label PRs
 
 on:
+  # No `synchronize`. Labelling is a six-second job that GitHub bills as a whole minute, so
+  # a run per push is most of what this workflow costs: over one recent sample it was 48
+  # billed minutes for 4.8 minutes of work. Across ten pull requests, nine had every label
+  # applied by the `opened` run and only one ever gained a label later, so the later runs
+  # were paying a per-push minute to re-apply labels that were already right.
+  #
+  # The trade is a pull request that grows into a new area after it is opened: it keeps the
+  # labels it had. Nothing is gated on them — they are informational, and no workflow reads
+  # `labels` — so the cost is a stale label until someone adds one by hand or reopens.
   pull_request_target:
-    types: [opened, synchronize, reopened]
+    types: [opened, reopened]
 
-# Prevent concurrent runs for the same PR; cancel stale runs.
+# One run per pull request; a reopen supersedes an `opened` run still in flight.
 concurrency:
   group: labeler-${{ github.event.pull_request.number }}
   cancel-in-progress: true
