@@ -6114,14 +6114,22 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
   .settings { padding-inline: 0.75rem; margin-inline: -0.75rem; width: auto; }
 
   /*
-     Only on a phone — see `.trash-head`.
+     The trash sidebar is a reading-width view, not a dense list — so on a phone it
+     extends through the shell's padding and adds its own back, the same pattern
+     `.settings` uses. Content lands at the shell edge (0.75rem from the viewport) rather
+     than stacking a second gutter on top of it.
 
-     No negative margin here: the sidebar's own padding is zeroed on a phone (see the
-     `.sidebar` rule below), so the arrow's `-0.75rem` pull reaches the glass on its own —
-     the same chain as `.settings-head`, whose heading has no pull either. The earlier
-     `-0.7rem` predated the sidebar-padding reset and was cancelling an inset that no
-     longer exists; with it gone the arrow and heading land where settings' do.
+     The heading row needs no pull of its own: the `.view-back` inside it pulls through
+     the sidebar's padding the same way it pulls through `.settings`'s, landing the arrow
+     on the glass. The count, the Empty button and the note rows all start at the gutter —
+     the same line the settings nav pills land on.
   */
+  .sidebar:has(.trash-head) {
+    padding-inline: 0.75rem;
+    margin-inline: -0.75rem;
+    width: auto;
+  }
+
   .trash-head {
     display: flex;
     align-items: center;
