@@ -34,7 +34,7 @@ const note: Note = {
 };
 
 const fieldDefs: FieldDef[] = [
-  { id: 'f-code', notebookId: 'nb1', name: 'Code', type: 'text', options: [], position: 0 },
+  { id: 'f-code', notebookId: 'nb1', name: 'Code', type: 'text', options: [], scale: null, position: 0 },
 ];
 
 /** jsdom has no `showModal`; the sheet's own tests stub it the same way. */

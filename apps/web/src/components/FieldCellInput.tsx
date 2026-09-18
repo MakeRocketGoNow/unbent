@@ -1,4 +1,5 @@
-import type { FieldDef, FieldValue } from '@unbent/shared';
+import { isRatingField, type FieldDef, type FieldValue } from '@unbent/shared';
+import { RatingInput } from './RatingInput.js';
 import { tintIndex } from '../tint.js';
 
 interface FieldCellInputProps {
@@ -14,7 +15,7 @@ interface FieldCellInputProps {
 }
 
 /**
- * The two field controls that are a single choice: a checkbox, and a select.
+ * The field controls that are a single choice: a checkbox, a select, and a rating.
  *
  * Shared by the note's property list and the table's cells, because both draw them the
  * same way and the select has a rule worth keeping in one place: a value that is no
@@ -22,6 +23,10 @@ interface FieldCellInputProps {
  * and the option list changing is not the note's edit. The stylesheet draws a chosen
  * option as a chip in the option's own tint — the tint the tag editor gives the word —
  * and an unchosen one as "Empty", which is Notion's word for it.
+ *
+ * A rating belongs here for the same reason: it is picked, not typed. It is the one
+ * control whose shape depends on its definition rather than only its type — a `number`
+ * with a scale — which is what `isRatingField` is for.
  *
  * Null for every other type: those are typed into, and a cell is not the place for that
  * yet — the note is.
@@ -34,6 +39,19 @@ export function FieldCellInput({
   id,
   label,
 }: FieldCellInputProps) {
+  if (isRatingField(def) && def.scale) {
+    const n = typeof value === 'number' ? value : Number(value);
+    return (
+      <RatingInput
+        id={id}
+        scale={def.scale}
+        value={value === null || value === undefined || !Number.isFinite(n) ? null : n}
+        readOnly={readOnly}
+        onChange={onChange}
+        label={label}
+      />
+    );
+  }
   if (def.type === 'checkbox') {
     return (
       <input

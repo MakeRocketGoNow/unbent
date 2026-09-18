@@ -2234,7 +2234,15 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
   justify-content: flex-end;
 }
 
-/* Open, Email, Call: a link beside a value that can be acted on. */
+/*
+   Open, Email, Call: a link beside a value that can be acted on.
+
+   Links only, and deliberately so. A control that acts on the note is a `Button` with the
+   `quiet` variant — the rating's Clear was briefly styled by this class and read as a
+   boxed control, because a button arrives with chrome a link does not have. Restyling the
+   button to match the links was the wrong direction: `Button` exists precisely so actions
+   stop being drawn as links.
+*/
 .note-field-act {
   font-size: 0.85rem;
   color: var(--muted);
@@ -2245,6 +2253,145 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
 .note-field-act:hover {
   color: var(--accent);
   text-decoration: underline;
+}
+
+/*
+   The app's own focus ring rather than the browser's default, which these links were
+   getting by omission — the same ring `.btn` and the star radios use, so a keyboard moving
+   through a note's properties is marked the same way throughout.
+*/
+.note-field-act:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 0.25rem;
+}
+
+/*
+   A rating: a row of stars, and beside it either the word "Empty" or a way back to it.
+
+   No border and no fill, like every other value here — the stars *are* the value, so a
+   box around them would be the second thing drawn to say the same thing. The row is
+   inline-flex so the clear link sits on the value's line rather than under it.
+*/
+.note-field-rating {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-height: 2.1rem;
+}
+
+/*
+   `touch-action: none` is what makes the drag work on a phone. Without it the browser
+   claims a horizontal drag for scrolling and the pointermove events stop arriving
+   mid-gesture, which is exactly the gesture the half-star target depends on.
+*/
+.note-field-stars {
+  display: inline-flex;
+  align-items: center;
+  touch-action: none;
+  cursor: pointer;
+  /*
+     Room for the hover wash to sit around the glyphs rather than crop to them, pulled
+     back on the left by the same amount so the first star still lands on the column's
+     edge — the alignment `.note-field-input` keeps with its own negative margin.
+  */
+  padding: 0.1rem 0.35rem;
+  margin-left: -0.35rem;
+}
+
+/*
+   A preview is drawn exactly as a chosen rating — same glyphs, same ink — and the *row*
+   says it is provisional by lifting under the pointer. Nothing about the stars changes,
+   which is the point: the two earlier attempts both put the distinction on the glyphs and
+   both misread. Dimming them to 55% accent was the app's own `:disabled` signal, so the
+   stars a click would set looked unavailable; drawing them hollow made a preview of five
+   indistinguishable from an empty rating.
+
+   Saying it with the row instead means the fill is always just the fill. The wash is the
+   hover state every other control here has, and it is on only while the pointer is over
+   the row or dragging it.
+*/
+.note-field-stars[data-preview] {
+  background: color-mix(in srgb, var(--accent) 9%, transparent);
+  border-radius: 0.3rem;
+}
+
+/* The glyph is the control's whole hit area, sized for a thumb rather than for the text
+   around it: a half star is about half of this, which is why dragging exists. */
+.note-field-star {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.6rem;
+  min-height: 1.9rem;
+  font-size: 1.2rem;
+  line-height: 1;
+  color: color-mix(in srgb, var(--muted) 60%, transparent);
+}
+
+.note-field-star[data-fill='full'] {
+  color: var(--accent);
+}
+
+/* The stacking context the half's overlay is positioned against. */
+.note-field-star-glyph {
+  position: relative;
+  display: inline-block;
+}
+
+/*
+   Half of a star: the filled glyph over the hollow one, clipped down the middle. Width
+   plus `overflow: hidden` rather than a gradient mask, so it renders the same wherever
+   masks are patchy, and the inner glyph keeps its own width so the cut lands mid-glyph
+   rather than mid-box.
+*/
+.note-field-star-half {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 50%;
+  overflow: hidden;
+  color: var(--accent);
+}
+
+/* The radio is the accessible control and the focus target, so it is placed over its
+   glyph and made invisible rather than removed: `display: none` would take it out of the
+   tab order and off the arrow keys, which is the whole reason it is a radio. */
+.note-field-star-radio {
+  position: absolute;
+  inset: 0;
+  margin: 0;
+  opacity: 0;
+  cursor: inherit;
+}
+
+.note-field-star-radio:focus-visible + .note-field-star-glyph {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 0.2rem;
+}
+
+/* Matches the select's empty state: the word where a value would be, a step quieter. */
+.note-field-rating-empty {
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+/* A scale too wide for stars: the number in its own input, with its max after it. */
+.note-field-rating-num {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.15rem;
+}
+
+.note-field-rating-num .note-field-input {
+  width: 3.5rem;
+}
+
+.note-field-rating-max {
+  font-size: 0.85rem;
+  color: var(--muted);
 }
 
 /*
@@ -3924,6 +4071,32 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
 
 .field-admin-new { flex-wrap: wrap; }
 .field-admin-new .tag-input { flex-basis: 100%; }
+
+/* A rating's scale, on its own row under the name and type, like a select's options. */
+.field-admin-scale {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.75rem;
+  flex-basis: 100%;
+  padding: 0.1rem 0 0.25rem;
+}
+
+.field-admin-scale .notebook-scope-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  flex: 0 0 auto;
+}
+
+.field-admin-scale .notebook-scope { width: auto; }
+
+.field-admin-halves {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  cursor: pointer;
+}
 
 /* Notebook picker in the note header, beside the tags. */
 .note-notebook {

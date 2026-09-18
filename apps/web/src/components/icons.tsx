@@ -28,6 +28,7 @@ import {
   Settings,
   SlidersHorizontal,
   SquareCheck,
+  Star,
   StickyNote,
   Table2,
   Tag,
@@ -280,8 +281,14 @@ const FIELD_TYPE_ICONS: Record<FieldType, LucideIcon> = {
   select: List,
 };
 
-export function FieldTypeIcon({ type }: { type: FieldType }) {
-  return <RowIcon icon={FIELD_TYPE_ICONS[type]} />;
+/**
+ * A rating takes the star rather than the hash, because the glyph is doing the same job
+ * every other one here does: saying what the row is without a type in brackets. A rating
+ * is a number under the hood, and the hash beside a row of stars would be the one glyph
+ * in the column that described the storage instead of the value.
+ */
+export function FieldTypeIcon({ type, rating }: { type: FieldType; rating?: boolean }) {
+  return <RowIcon icon={rating ? Star : FIELD_TYPE_ICONS[type]} />;
 }
 
 /**

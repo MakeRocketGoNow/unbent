@@ -13,6 +13,7 @@ const amount: FieldDef = {
   name: 'Amount',
   type: 'number',
   options: [],
+  scale: null,
   position: 0,
 };
 
@@ -22,6 +23,7 @@ const site: FieldDef = {
   name: 'Site',
   type: 'url',
   options: [],
+  scale: null,
   position: 1,
 };
 
@@ -31,6 +33,7 @@ const kind: FieldDef = {
   name: 'Kind',
   type: 'select',
   options: ['Food'],
+  scale: null,
   position: 2,
 };
 

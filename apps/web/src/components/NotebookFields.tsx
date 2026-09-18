@@ -4,8 +4,12 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   FIELD_TYPES,
   FIELD_TYPE_LABELS,
+  MAX_RATING_MAX,
+  MIN_RATING_MAX,
   fieldNameSchema,
+  isRatingField,
   type FieldDef,
+  type FieldScale,
   type FieldType,
 } from '@unbent/shared';
 import * as api from '../notes-api.js';
@@ -25,6 +29,8 @@ interface NotebookFieldsProps {
 interface PendingType {
   field: FieldDef;
   to: FieldType;
+  /** Set when the change is a scale arriving or going away; see `changeType`. */
+  scale?: FieldScale | null;
   values: number;
   incompatible: number;
 }
@@ -60,6 +66,14 @@ export function NotebookFields({ notebookId, onChanged }: NotebookFieldsProps) {
   const [newName, setNewName] = useState('');
   const [newType, setNewType] = useState<FieldType>('text');
   const [newOptions, setNewOptions] = useState<string[]>([]);
+  /*
+     "Rating" is a choice in the type picker, but not a field type: it is a `number` that
+     carries a scale. The picker is where a person looks for it — nobody adding a star
+     rating goes looking for "Number" and then a scale — so the kind is held here and
+     turned back into a type and a scale at the moment the field is created.
+  */
+  const [newIsRating, setNewIsRating] = useState(false);
+  const [newScale, setNewScale] = useState<FieldScale>({ max: 5, step: 0.5 });
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -88,10 +102,13 @@ export function NotebookFields({ notebookId, onChanged }: NotebookFieldsProps) {
         name: parsed.data,
         type: newType,
         options: newType === 'select' ? newOptions : [],
+        ...(newIsRating ? { scale: newScale } : {}),
       });
       setNewName('');
       setNewType('text');
       setNewOptions([]);
+      setNewIsRating(false);
+      setNewScale({ max: 5, step: 0.5 });
     });
   }
 
@@ -118,27 +135,45 @@ export function NotebookFields({ notebookId, onChanged }: NotebookFieldsProps) {
    * Asks first. The select snaps back to the current type while the confirmation is
    * open, because the type has not changed yet — the confirmation is what changes it.
    */
-  async function changeType(field: FieldDef, to: FieldType) {
-    if (to === field.type) return;
+  /**
+   * Changes a field's type, or turns a number into a rating and back.
+   *
+   * `scale` is what the picker's "Rating" and "Number" entries differ by: both are the
+   * `number` type, so a switch between them is a scale arriving or going away rather than
+   * a type change. It still goes through the preview, because gaining a scale can clear
+   * values — a stored 0 or 250 is no longer a legal rating — and that is exactly the
+   * confirmation a type change gets.
+   */
+  async function changeType(field: FieldDef, to: FieldType, scale?: FieldScale | null) {
+    const scaleChanged = scale !== undefined && (scale === null) !== (field.scale === null);
+    if (to === field.type && !scaleChanged) return;
     setError(null);
     try {
-      const preview = await api.previewFieldConversion(notebookId, field.id, to);
+      const preview = await api.previewFieldConversion(notebookId, field.id, to, scale);
       if (preview.incompatible > 0) {
-        setPendingType({ field, to, ...preview });
+        setPendingType({ field, to, scale, ...preview });
         return;
       }
     } catch (err) {
       setError((err as Error).message);
       return;
     }
-    void run(() => api.updateNotebookField(notebookId, field.id, { type: to }));
+    void run(() =>
+      api.updateNotebookField(notebookId, field.id, {
+        type: to,
+        ...(scale !== undefined ? { scale } : {}),
+      }),
+    );
   }
 
   function confirmType() {
     if (!pendingType) return;
-    const { field, to } = pendingType;
+    const { field, to, scale } = pendingType;
     void run(async () => {
-      await api.updateNotebookField(notebookId, field.id, { type: to });
+      await api.updateNotebookField(notebookId, field.id, {
+        type: to,
+        ...(scale !== undefined ? { scale } : {}),
+      });
       setPendingType(null);
     });
   }
@@ -208,7 +243,7 @@ export function NotebookFields({ notebookId, onChanged }: NotebookFieldsProps) {
                 title="Rename"
                 onClick={() => setEditing({ id: field.id, value: field.name })}
               >
-                <FieldTypeIcon type={field.type} />
+                <FieldTypeIcon type={field.type} rating={isRatingField(field)} />
                 {field.name}
                 {field.valueCount !== undefined && field.valueCount > 0 && (
                   <span className="tag-count" title={`${plural(field.valueCount, 'note')} with a value`}>
@@ -222,15 +257,27 @@ export function NotebookFields({ notebookId, onChanged }: NotebookFieldsProps) {
               <select
                 className="notebook-scope"
                 aria-label={`Type of ${field.name}`}
-                value={field.type}
+                value={isRatingField(field) ? 'rating' : field.type}
                 disabled={busy}
-                onChange={(e) => void changeType(field, e.target.value as FieldType)}
+                onChange={(e) => {
+                  const picked = e.target.value;
+                  if (picked === 'rating') {
+                    // Turning a number into a rating: the scale it starts on is the one
+                    // the create form offers, which is the shape most ratings want.
+                    void changeType(field, 'number', { max: 5, step: 0.5 });
+                  } else {
+                    // Away from a rating, the scale goes with it — `null` rather than
+                    // undefined, which would leave the old scale bounding the field.
+                    void changeType(field, picked as FieldType, field.scale ? null : undefined);
+                  }
+                }}
               >
                 {FIELD_TYPES.map((t) => (
                   <option key={t} value={t}>
                     {FIELD_TYPE_LABELS[t]}
                   </option>
                 ))}
+                <option value="rating">Rating</option>
               </select>
             </span>
 
@@ -279,6 +326,16 @@ export function NotebookFields({ notebookId, onChanged }: NotebookFieldsProps) {
                 />
               </div>
             )}
+
+            {isRatingField(field) && field.scale && (
+              <ScalePicker
+                scale={field.scale}
+                disabled={busy}
+                onChange={(scale) =>
+                  void run(() => api.updateNotebookField(notebookId, field.id, { scale }))
+                }
+              />
+            )}
           </li>
         ))}
 
@@ -314,7 +371,9 @@ export function NotebookFields({ notebookId, onChanged }: NotebookFieldsProps) {
           question={
             <>
               Change <strong>{pendingType.field.name}</strong> to{' '}
-              {FIELD_TYPE_LABELS[pendingType.to]}?
+              {/* Named as the picker names it: "to Number" would be the wrong word for a
+                  number gaining a scale, which is the change the person just asked for. */}
+              {pendingType.scale ? 'Rating' : FIELD_TYPE_LABELS[pendingType.to]}?
             </>
           }
           detail={
@@ -352,22 +411,31 @@ export function NotebookFields({ notebookId, onChanged }: NotebookFieldsProps) {
           <select
             className="notebook-scope"
             aria-label="New field type"
-            value={newType}
+            value={newIsRating ? 'rating' : newType}
             disabled={busy}
-            onChange={(e) => setNewType(e.target.value as FieldType)}
+            onChange={(e) => {
+              const picked = e.target.value;
+              setNewIsRating(picked === 'rating');
+              setNewType(picked === 'rating' ? 'number' : (picked as FieldType));
+            }}
           >
             {FIELD_TYPES.map((t) => (
               <option key={t} value={t}>
                 {FIELD_TYPE_LABELS[t]}
               </option>
             ))}
+            {/* Last, and named for what it is rather than for what it stores. */}
+            <option value="rating">Rating</option>
           </select>
         </span>
         <Button variant="primary" disabled={busy || !newName.trim()} onClick={create}>
           Add field
         </Button>
-        {newType === 'select' && (
+        {newType === 'select' && !newIsRating && (
           <TagInput label="option" tags={newOptions} suggestions={[]} onChange={setNewOptions} />
+        )}
+        {newIsRating && (
+          <ScalePicker scale={newScale} disabled={busy} onChange={setNewScale} />
         )}
       </div>
 
@@ -376,6 +444,66 @@ export function NotebookFields({ notebookId, onChanged }: NotebookFieldsProps) {
         Changing a field's type clears any value that can't be read as the new type. A note
         moved to another notebook keeps the values it has.
       </p>
+    </div>
+  );
+}
+
+/**
+ * A rating's scale: how high it goes, and whether halves count.
+ *
+ * Two controls rather than one list of combinations, because they are two independent
+ * questions and a person arrives with an answer to each. The note under them says what
+ * narrowing costs, since that is the one edit here that can throw a value away — the
+ * confirmation the server sends back names the count, but by then the choice is made.
+ */
+function ScalePicker({
+  scale,
+  disabled,
+  onChange,
+}: {
+  scale: FieldScale;
+  disabled?: boolean;
+  onChange: (scale: FieldScale) => void;
+}) {
+  const maxes: number[] = [];
+  for (let m = MIN_RATING_MAX; m <= MAX_RATING_MAX; m += 1) maxes.push(m);
+
+  return (
+    <div className="field-admin-scale">
+      <label className="notebook-scope-wrap">
+        <span className="muted small">Out of</span>
+        <select
+          className="notebook-scope"
+          aria-label="Rating scale maximum"
+          value={scale.max}
+          disabled={disabled}
+          onChange={(e) => onChange({ ...scale, max: Number(e.target.value) })}
+        >
+          {maxes.map((m) => (
+            <option key={m} value={m}>
+              {m}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label className="field-admin-halves">
+        <input
+          type="checkbox"
+          checked={scale.step === 0.5}
+          disabled={disabled}
+          onChange={(e) => onChange({ ...scale, step: e.target.checked ? 0.5 : 1 })}
+        />
+        <span className="muted small">Half steps</span>
+      </label>
+      {/* Five with halves is ten levels in five glyphs, which is the shape most people
+          mean by "out of ten"; above five the value is drawn as a number over its max. */}
+      <span className="muted small">
+        {scale.max > 5
+          ? `Shown as a number out of ${scale.max}.`
+          : scale.step === 0.5
+            ? `Shown as ${scale.max} stars, half steps allowed.`
+            : `Shown as ${scale.max} stars.`}
+      </span>
     </div>
   );
 }

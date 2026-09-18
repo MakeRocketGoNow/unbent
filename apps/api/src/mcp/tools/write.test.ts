@@ -164,8 +164,8 @@ describe('edit_note', () => {
 describe('update_note with custom fields', () => {
   const notebook = { id: 'nb-1', name: 'Receipts' };
   const fields: FieldDef[] = [
-    { id: '22222222-2222-4222-8222-222222222222', notebookId: 'nb-1', name: 'Merchant', type: 'text', options: [], position: 0 },
-    { id: 'bad-value', notebookId: 'nb-1', name: 'Amount', type: 'number', options: [], position: 1 },
+    { id: '22222222-2222-4222-8222-222222222222', notebookId: 'nb-1', name: 'Merchant', type: 'text', options: [], scale: null, position: 0 },
+    { id: 'bad-value', notebookId: 'nb-1', name: 'Amount', type: 'number', options: [], scale: null, position: 1 },
   ];
   const leftover: NoteFieldValue = {
     fieldId: '33333333-3333-4333-8333-333333333333',

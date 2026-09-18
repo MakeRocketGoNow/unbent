@@ -23,9 +23,9 @@ import { NotebookFields } from './NotebookFields.js';
 const selectValue = (label: string) => (screen.getByLabelText(label) as unknown as { value: string }).value;
 
 const fields: FieldDef[] = [
-  { id: 'f1', notebookId: 'nb1', name: 'Merchant', type: 'text', options: [], position: 0, valueCount: 12 },
-  { id: 'f2', notebookId: 'nb1', name: 'Category', type: 'select', options: ['Food', 'Travel'], position: 1, valueCount: 0 },
-  { id: 'f3', notebookId: 'nb1', name: 'Amount', type: 'number', options: [], position: 2 },
+  { id: 'f1', notebookId: 'nb1', name: 'Merchant', type: 'text', options: [], scale: null, position: 0, valueCount: 12 },
+  { id: 'f2', notebookId: 'nb1', name: 'Category', type: 'select', options: ['Food', 'Travel'], scale: null, position: 1, valueCount: 0 },
+  { id: 'f3', notebookId: 'nb1', name: 'Amount', type: 'number', options: [], scale: null, position: 2 },
 ];
 
 function mount(seed: FieldDef[] = fields) {

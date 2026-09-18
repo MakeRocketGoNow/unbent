@@ -201,7 +201,7 @@ function cell(
       }
       // Blank, not "Empty": a table cell with nothing in it is legible on its own, and the
       // word is the property list's for a control that would otherwise draw nothing.
-      return held ? formatFieldValue(def.type, held.value) : '';
+      return held ? formatFieldValue(def.type, held.value, def.scale) : '';
     }
     case 'tags':
       return note.tags.map((t) => `#${t}`).join(' ');

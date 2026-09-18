@@ -24,6 +24,7 @@ const def = (id: string, name: string, type: FieldDef['type'], options: string[]
   name,
   type,
   options,
+  scale: null,
   position: 0,
 });
 const DEFS = [

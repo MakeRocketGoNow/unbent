@@ -64,6 +64,85 @@ export const MAX_FIELD_VALUE_LENGTH = 1000;
 export const MAX_FIELDS_PER_NOTEBOOK = 50;
 export const MAX_SELECT_OPTIONS = 100;
 
+/**
+ * A rating: a `number` field that carries a scale.
+ *
+ * A rating is not its own type, because under the storage model it already *is* a number.
+ * `encodeFieldValue` gives it the same `{text, num}`, `fieldSortsNumerically` already
+ * orders it, and `gte`/`lte` already compare its numeric shadow — so "rated 4 and up" is a
+ * filter that exists before this feature does. What a rating adds is a bound and a step,
+ * which a plain number has neither of. A second type would have duplicated the encode,
+ * sort, filter, export and import paths to gain nothing, and would have made "5 instead of
+ * 10" a destructive type conversion (see `planConversion`) rather than an edit to a field.
+ *
+ * The scale lives in its own column rather than in `options`: that is a JSON array of
+ * strings which `optionsColumn` nulls for every type but `select`, and which
+ * `planConversion` seeds from existing values when converting *to* select. A max smuggled
+ * in there would come back out as a select option.
+ *
+ * Ratings run from 1, not 0. Zero and "no value" both draw as an unlit row, while the
+ * storage genuinely separates them — `encodeFieldValue` turns an empty string into
+ * `'clear'`. Starting at 1 keeps an unlit row meaning exactly one thing, so `set`/`empty`
+ * stay honest and the stars need no rival clear affordance beside them.
+ */
+export const MIN_RATING_MAX = 2;
+export const MAX_RATING_MAX = 10;
+
+/**
+ * Half steps buy ten levels of granularity inside five glyphs, which is what Letterboxd,
+ * Goodreads and most five-star product ratings do. A half is exactly representable and
+ * lands on half a glyph with nothing to round, so the renderer never has to interpret it;
+ * a value off the step is refused at encode time instead, where the message can say why.
+ */
+export const RATING_STEPS = [1, 0.5] as const;
+export type RatingStep = (typeof RATING_STEPS)[number];
+
+/** A `number` field's scale. Absent on a plain number, which stays unbounded. */
+export interface FieldScale {
+  /** The top of the scale; a rating runs 1..max. */
+  max: number;
+  /** `0.5` when half steps are allowed, `1` for whole steps only. */
+  step: RatingStep;
+}
+
+export const fieldScaleSchema = z.object({
+  max: z.number().int().min(MIN_RATING_MAX).max(MAX_RATING_MAX),
+  step: z.union([z.literal(1), z.literal(0.5)]),
+});
+
+/**
+ * How wide a row of stars may get before the value is drawn as text instead.
+ *
+ * Five glyphs is a comfortable row of tap targets; ten is not, and ten of them in a
+ * property row repeats the failure that turned `NoteFields` from boxed inputs into a
+ * property list. Above five, the value reads as `7/10` — honest, compact, and sorting
+ * identically. Half steps are what keep this rare rather than limiting: max 5 with halves
+ * already offers ten levels.
+ */
+export const MAX_STAR_GLYPHS = 5;
+
+export function ratingRendersAsStars(scale: FieldScale): boolean {
+  return scale.max <= MAX_STAR_GLYPHS;
+}
+
+/**
+ * Whether a field is a rating: a `number` carrying a scale.
+ *
+ * The one place that answers it, so a renderer, a filter chip and a column header cannot
+ * disagree about which numbers get stars.
+ */
+export function isRatingField(def: Pick<FieldDef, 'type' | 'scale'>): boolean {
+  return def.type === 'number' && def.scale !== null;
+}
+
+/** The values a scale allows, low to high: 1, 1.5, 2 … max. */
+export function ratingSteps(scale: FieldScale): number[] {
+  const out: number[] = [];
+  // Halves are exact in binary floating point, so accumulating needs no rounding guard.
+  for (let v = 1; v <= scale.max; v += scale.step) out.push(v);
+  return out;
+}
+
 export const fieldNameSchema = z
   .string()
   .trim()
@@ -81,12 +160,18 @@ export const createFieldSchema = z.object({
   name: fieldNameSchema,
   type: fieldTypeSchema,
   options: fieldOptionsSchema.default([]),
+  scale: fieldScaleSchema.nullish(),
 });
 
+/**
+ * `scale: null` clears one, which is how a rating becomes a plain number again. Absent
+ * leaves it alone, matching how `name`, `type` and `options` patch.
+ */
 export const updateFieldSchema = z.object({
   name: fieldNameSchema.optional(),
   type: fieldTypeSchema.optional(),
   options: fieldOptionsSchema.optional(),
+  scale: fieldScaleSchema.nullish(),
 });
 
 export const reorderFieldsSchema = z.object({
@@ -121,6 +206,8 @@ export interface FieldDef {
   type: FieldType;
   /** Empty for every type but `select`. */
   options: string[];
+  /** Set only on a `number` that is a rating; null on every other field. */
+  scale: FieldScale | null;
   position: number;
   /** How many notes hold a value. Present only on the management listing. */
   valueCount?: number;
@@ -136,6 +223,12 @@ export interface NoteFieldValue {
   name: string;
   type: FieldType;
   value: FieldValue;
+  /**
+   * The scale, when the field is a rating. Here for the same reason `type` is: a list row
+   * draws `★★★★☆` rather than `4`, and without the scale it could not know how many
+   * glyphs the row has — or that the number is a rating at all.
+   */
+  scale?: FieldScale | null;
   notebookId: string;
   notebook: string;
 }
@@ -155,7 +248,7 @@ const NUMBER_RE = /^-?\d+(\.\d+)?$/;
  * `expectedFieldValue`.
  */
 export function encodeFieldValue(
-  def: Pick<FieldDef, 'type' | 'options'>,
+  def: Pick<FieldDef, 'type' | 'options'> & Partial<Pick<FieldDef, 'scale'>>,
   value: FieldValue,
 ): EncodedFieldValue | 'clear' | null {
   if (typeof value === 'string' && value.trim() === '') return 'clear';
@@ -184,6 +277,14 @@ export function encodeFieldValue(
       else if (typeof value === 'string' && NUMBER_RE.test(value.trim())) n = Number(value.trim());
       else return null;
       if (!Number.isFinite(n)) return null;
+      // A scale bounds the number and quantises it. Enforced here rather than in the star
+      // control, so a value arriving from the API, MCP or an import is held to the same
+      // scale as one set by tapping — the module's whole reason for existing.
+      if (def.scale) {
+        if (n < 1 || n > def.scale.max) return null;
+        // Scaled to integers before the remainder: `3.3 % 0.5` is not 0 in floating point.
+        if ((n * 2) % (def.scale.step * 2) !== 0) return null;
+      }
       return { text: String(n), num: n };
     }
     case 'date': {
@@ -347,9 +448,16 @@ export function isHeldSelectValue(
 }
 
 /** What a rejected value should have looked like, for an error message. */
-export function expectedFieldValue(def: Pick<FieldDef, 'type' | 'options'>): string {
+export function expectedFieldValue(
+  def: Pick<FieldDef, 'type' | 'options'> & Partial<Pick<FieldDef, 'scale'>>,
+): string {
   switch (def.type) {
     case 'number':
+      if (def.scale) {
+        return def.scale.step === 0.5
+          ? `must be a rating from 1 to ${def.scale.max}, in halves`
+          : `must be a whole rating from 1 to ${def.scale.max}`;
+      }
       return 'must be a number';
     case 'date':
       return 'must be a date written YYYY-MM-DD';
@@ -406,16 +514,23 @@ export interface ConversionPlan<R> {
 }
 
 /**
- * What changing a field's type does to its existing values.
+ * What changing a field's type — or a rating's scale — does to its existing values.
  *
  * Shared by the preview (so the confirmation can name how many values would be cleared)
  * and by the write, so the two cannot disagree. Converting *to* select never clears:
  * the values a field already holds are the obvious option list, so they become it.
+ *
+ * `toScale` is why a scale is an edit rather than a type change. Widening 5 to 10 keeps
+ * every value, because a rating legal on the old scale is legal on the wider one. Narrowing
+ * 10 to 5, or dropping half steps, cannot keep a 7 or a 3.5 — those land in `drop` and are
+ * counted in the same confirmation that a type change gets, instead of being silently
+ * rewritten to something the person never chose.
  */
 export function planConversion<R extends { text: string }>(
   from: FieldType,
   to: FieldType,
   rows: R[],
+  toScale?: FieldScale | null,
 ): ConversionPlan<R> {
   const plan: ConversionPlan<R> = { keep: [], drop: [] };
 
@@ -429,7 +544,10 @@ export function planConversion<R extends { text: string }>(
   }
 
   for (const row of rows) {
-    const encoded = encodeFieldValue({ type: to, options }, decodeFieldValue(from, row.text));
+    const encoded = encodeFieldValue(
+      { type: to, options, scale: toScale ?? null },
+      decodeFieldValue(from, row.text),
+    );
     if (encoded === null || encoded === 'clear') plan.drop.push(row);
     else plan.keep.push({ row, text: encoded.text, num: encoded.num });
   }

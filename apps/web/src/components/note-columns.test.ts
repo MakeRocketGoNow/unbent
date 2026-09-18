@@ -8,6 +8,7 @@ const def = (id: string, name: string, type: FieldDef['type'], position: number)
   name,
   type,
   options: [],
+  scale: null,
   position,
 });
 

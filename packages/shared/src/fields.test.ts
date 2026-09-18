@@ -12,9 +12,12 @@ import {
   formatFieldFilter,
   inferFieldType,
   isHeldSelectValue,
+  isRatingField,
   isReservedFieldName,
   parseFieldFilter,
   planConversion,
+  ratingRendersAsStars,
+  ratingSteps,
   type FieldType,
   type NoteFieldValue,
 } from './fields.js';
@@ -287,5 +290,122 @@ describe('fieldSortKey', () => {
   it('is the empty string when the note holds no value', () => {
     expect(fieldSortKey({ id: 'a', type: 'number' }, undefined)).toBe('');
     expect(fieldSortKey({ id: 'a', type: 'text' }, [held('b', 'text', 'other')])).toBe('');
+  });
+});
+
+describe('ratings', () => {
+  const rated = (max: number, step: 1 | 0.5) => ({
+    type: 'number' as const,
+    options: [],
+    scale: { max, step },
+  });
+
+  it('takes a whole rating inside the scale', () => {
+    expect(encodeFieldValue(rated(5, 1), 4)).toEqual({ text: '4', num: 4 });
+    expect(encodeFieldValue(rated(5, 1), '1')).toEqual({ text: '1', num: 1 });
+    expect(encodeFieldValue(rated(10, 1), 10)).toEqual({ text: '10', num: 10 });
+  });
+
+  it('refuses a rating off either end', () => {
+    // 0 is out of range deliberately: an unlit row means "no value", never "rated zero".
+    expect(encodeFieldValue(rated(5, 1), 0)).toBeNull();
+    expect(encodeFieldValue(rated(5, 1), 6)).toBeNull();
+    expect(encodeFieldValue(rated(5, 1), -2)).toBeNull();
+  });
+
+  it('takes a half only where the scale allows halves', () => {
+    expect(encodeFieldValue(rated(5, 0.5), 3.5)).toEqual({ text: '3.5', num: 3.5 });
+    expect(encodeFieldValue(rated(5, 0.5), 1.5)).toEqual({ text: '1.5', num: 1.5 });
+    expect(encodeFieldValue(rated(5, 1), 3.5)).toBeNull();
+  });
+
+  it('refuses a value between the steps, on either step size', () => {
+    // The remainder is taken on doubled integers, so 3.3 cannot slip through the way it
+    // would with `3.3 % 0.5` in floating point.
+    expect(encodeFieldValue(rated(5, 0.5), 3.3)).toBeNull();
+    expect(encodeFieldValue(rated(5, 0.5), 2.25)).toBeNull();
+    expect(encodeFieldValue(rated(10, 1), 7.5)).toBeNull();
+  });
+
+  it('leaves a plain number unbounded', () => {
+    expect(encodeFieldValue(def('number'), 0)).toEqual({ text: '0', num: 0 });
+    expect(encodeFieldValue(def('number'), 12.5)).toEqual({ text: '12.5', num: 12.5 });
+    expect(encodeFieldValue(def('number'), -3)).toEqual({ text: '-3', num: -3 });
+  });
+
+  it('still clears on an emptied input', () => {
+    expect(encodeFieldValue(rated(5, 0.5), '')).toBe('clear');
+  });
+
+  it('says what a rejected rating should have been', () => {
+    expect(expectedFieldValue(rated(5, 1))).toBe('must be a whole rating from 1 to 5');
+    expect(expectedFieldValue(rated(10, 0.5))).toBe('must be a rating from 1 to 10, in halves');
+    expect(expectedFieldValue(def('number'))).toBe('must be a number');
+  });
+
+  it('draws five or fewer as stars, and wider scales as text', () => {
+    expect(ratingRendersAsStars({ max: 5, step: 0.5 })).toBe(true);
+    expect(ratingRendersAsStars({ max: 5, step: 1 })).toBe(true);
+    expect(ratingRendersAsStars({ max: 10, step: 1 })).toBe(false);
+  });
+
+  it('knows a rating from a plain number', () => {
+    expect(isRatingField({ type: 'number', scale: { max: 5, step: 1 } })).toBe(true);
+    expect(isRatingField({ type: 'number', scale: null })).toBe(false);
+    expect(isRatingField({ type: 'text', scale: null })).toBe(false);
+  });
+
+  it('lists the values a scale allows', () => {
+    expect(ratingSteps({ max: 3, step: 1 })).toEqual([1, 2, 3]);
+    expect(ratingSteps({ max: 3, step: 0.5 })).toEqual([1, 1.5, 2, 2.5, 3]);
+    expect(ratingSteps({ max: 5, step: 0.5 })).toHaveLength(9);
+  });
+
+  it('bounds a scale to something a row of glyphs can show', () => {
+    const scaled = (scale: unknown) =>
+      createFieldSchema.safeParse({ name: 'Rating', type: 'number', scale }).success;
+    expect(scaled({ max: 5, step: 0.5 })).toBe(true);
+    expect(scaled({ max: 11, step: 1 })).toBe(false);
+    expect(scaled({ max: 1, step: 1 })).toBe(false);
+    expect(scaled({ max: 5, step: 0.25 })).toBe(false);
+  });
+});
+
+describe('re-scaling a rating', () => {
+  const rows = (...texts: string[]) => texts.map((text) => ({ text }));
+
+  it('keeps every value when the scale widens', () => {
+    const plan = planConversion('number', 'number', rows('1', '3', '5'), { max: 10, step: 1 });
+    expect(plan.keep).toHaveLength(3);
+    expect(plan.drop).toHaveLength(0);
+  });
+
+  it('clears what no longer fits when the scale narrows', () => {
+    const plan = planConversion('number', 'number', rows('3', '7', '10'), { max: 5, step: 1 });
+    expect(plan.keep.map((k) => k.text)).toEqual(['3']);
+    expect(plan.drop).toHaveLength(2);
+  });
+
+  it('clears the halves when half steps are dropped', () => {
+    const plan = planConversion('number', 'number', rows('2', '3.5', '4'), { max: 5, step: 1 });
+    expect(plan.keep.map((k) => k.text)).toEqual(['2', '4']);
+    expect(plan.drop).toHaveLength(1);
+  });
+
+  it('clears a plain number that is out of range when a scale arrives', () => {
+    const plan = planConversion('number', 'number', rows('0', '4', '250'), { max: 5, step: 1 });
+    expect(plan.keep.map((k) => k.text)).toEqual(['4']);
+    expect(plan.drop).toHaveLength(2);
+  });
+
+  it('keeps a rating when the scale goes away', () => {
+    const plan = planConversion('number', 'number', rows('1', '3.5', '5'), null);
+    expect(plan.keep).toHaveLength(3);
+    expect(plan.drop).toHaveLength(0);
+  });
+
+  it('carries a rating into text intact', () => {
+    const plan = planConversion('number', 'text', rows('3.5'));
+    expect(plan.keep.map((k) => k.text)).toEqual(['3.5']);
   });
 });
