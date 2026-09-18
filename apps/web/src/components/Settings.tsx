@@ -135,7 +135,7 @@ export function Settings({ onChanged }: SettingsProps) {
               <a
                 href={api.exportUrl({ notebook: item.name })}
                 download
-                className="icon-btn"
+                className="icon-btn label-download"
                 title={`Download ${item.name} as a zip`}
                 aria-label={`Download ${item.name} as a zip`}
               >
