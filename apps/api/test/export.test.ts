@@ -6,7 +6,7 @@
  */
 import { BlobReader, ZipReader } from '@zip.js/zip.js';
 import { beforeAll, describe, expect, it } from 'vitest';
-import { parse } from '@unbent/shared';
+import { parse, parseNotebook } from '@unbent/shared';
 
 const BASE = process.env['API_URL'] ?? 'http://localhost:8787';
 const ORIGIN = process.env['APP_URL'] ?? 'http://localhost:5173';
@@ -594,5 +594,76 @@ describe('custom fields in the export', () => {
 
     // The single-note download is the same text.
     expect(parse(await (await fetchNote(actor, created.id)).text()).fields).toEqual(expected);
+  });
+});
+
+describe('notebook definitions in the export', () => {
+  /**
+   * What a note's frontmatter cannot say — that a field is a URL, which options a select
+   * offers, how tall a rating is, that a field with no values exists — rides in
+   * `notebooks/<slug>.yaml`, one per notebook the archive is about.
+   */
+  it('writes every notebook in scope with its fields typed, ordered and complete', async () => {
+    const actor = await signUp(`exp-nbd-${Date.now()}@example.test`, 'nbd-password-1234', 'D');
+    const headers = { 'Content-Type': 'application/json', Cookie: actor.cookie, Origin: ORIGIN };
+    const notebook = async (name: string) =>
+      fetch(`${BASE}/api/notebooks`, { method: 'POST', headers, body: JSON.stringify({ name }) })
+        .then((r) => r.json() as Promise<{ id: string }>);
+    const shopping = await notebook('Shopping');
+    const empty = await notebook('Nothing here');
+    const field = (body: object) =>
+      fetch(`${BASE}/api/notebooks/${shopping.id}/fields`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(body),
+      }).then((r) => r.json() as Promise<{ id: string }>);
+    const url = await field({ name: 'Url', type: 'url' });
+    await field({ name: 'Status', type: 'select', options: ['Want', 'Ordered'] });
+    await field({ name: 'Priority', type: 'number', scale: { max: 5, step: 0.5 } });
+    // Never valued, so no note's frontmatter could bring it back.
+    await field({ name: 'Image', type: 'url' });
+
+    await createNote(actor, { title: 'Bike', notebook: 'Shopping' });
+    await fetch(`${BASE}/api/notes`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ title: 'Tagged', tags: ['gift'], fields: { [url.id]: 'https://x.test' } }),
+    });
+
+    const expected = {
+      name: 'Shopping',
+      fields: [
+        { name: 'Url', type: 'url' },
+        { name: 'Status', type: 'select', options: ['Want', 'Ordered'] },
+        { name: 'Priority', type: 'number', scale: { max: 5, step: 0.5 } },
+        { name: 'Image', type: 'url' },
+      ],
+    };
+
+    // Everything: both notebooks, the empty one included — a backup that dropped a
+    // notebook for holding no notes that day would not be a backup of the account.
+    const all = await fetchExport(actor);
+    expect([...all.keys()].filter((k) => k.startsWith('notebooks/')).sort()).toEqual([
+      'notebooks/nothing-here.yaml',
+      'notebooks/shopping.yaml',
+    ]);
+    expect(parseNotebook(all.get('notebooks/shopping.yaml')!)).toEqual(expected);
+    expect(parseNotebook(all.get('notebooks/nothing-here.yaml')!)).toEqual({
+      name: 'Nothing here',
+      fields: [],
+    });
+
+    // A notebook slice carries that notebook — and only it — even when it is empty.
+    const slice = await fetchExport(actor, { notebook: 'Shopping' });
+    expect([...slice.keys()].filter((k) => k.startsWith('notebooks/'))).toEqual([
+      'notebooks/shopping.yaml',
+    ]);
+    const emptySlice = await fetchExport(actor, { notebook: 'Nothing here' });
+    expect([...emptySlice.keys()]).toEqual(['notebooks/nothing-here.yaml', 'README.txt']);
+
+    // A slice by tag carries the notebooks its notes are in; an unfiled note names none.
+    const tagged = await fetchExport(actor, { tag: 'gift' });
+    expect([...tagged.keys()].filter((k) => k.startsWith('notebooks/'))).toEqual([]);
+    void empty;
   });
 });
