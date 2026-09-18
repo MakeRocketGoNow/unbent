@@ -4691,6 +4691,15 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
   */
   .shell.wide { --shell-pad-left: 0.5rem; }
 
+  /*
+     The note keeps the same rhythm on its side of its divider. The grid's 1rem channel
+     after the handle plus the column's 1.5rem reading margin put the title 40px from the
+     line; the channel plus 0.25rem puts it 20px in, where the list's heading and the
+     rail's wordmark sit from theirs. The right margin stays 1.5rem: it is the note's
+     reading edge against the window, and the scrollbar reaches through it.
+  */
+  .workspace-main { padding-left: 0.25rem; }
+
   .shell.wide > .resize-handle {
     flex: 0 0 1px;
     /* On the rail's last pixel rather than after it, so the rail is exactly `--rail-width`
