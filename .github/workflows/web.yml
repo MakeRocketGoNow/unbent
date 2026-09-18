@@ -25,6 +25,14 @@ on:
       - 'pnpm-lock.yaml'
       - '.github/workflows/web.yml'
 
+# A second push to a pull request makes the first one's checks pointless, so don't pay to
+# finish them. Cancelling is scoped to pull requests deliberately: a push to `main` reaches
+# the `deploy` job below, and two merges landing close together must both ship rather than
+# the later one cancelling the earlier part-way through a deploy.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   check:
     runs-on: ubuntu-latest
