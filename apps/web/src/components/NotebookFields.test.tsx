@@ -187,6 +187,46 @@ describe('NotebookFields', () => {
     expect(api.updateNotebookField).not.toHaveBeenCalled();
   });
 
+  /*
+     Both halves of the scale can differ from what the server holds at once. The question
+     then has to name the halves as well as the max: they are exactly what gets cleared,
+     and "out of 5" alone reads as though they survive.
+  */
+  it('names the lost half steps as well as the new max when both change', async () => {
+    const halfStepTen: FieldDef = { ...rating, scale: { max: 10, step: 0.5 } };
+    vi.mocked(api.previewFieldConversion).mockResolvedValue({ values: 5, incompatible: 3 });
+    mount([halfStepTen]);
+    await screen.findByText('Stars');
+
+    // A rating drawn out of 10 with halves, moving to 5 without them.
+    fireEvent.change(screen.getByLabelText('Rating scale maximum'), { target: { value: '5' } });
+    await screen.findByText((_, node) => node?.textContent === 'Change Stars to out of 5?');
+    fireEvent.click(screen.getByText('Cancel'));
+    await waitFor(() =>
+      expect(screen.queryByText((_, node) => node?.textContent === 'Change Stars to out of 5?')).toBeNull(),
+    );
+
+    fireEvent.click(screen.getByRole('checkbox'));
+    expect(
+      await screen.findByText((_, node) => node?.textContent === 'Drop half steps on Stars?'),
+    ).toBeTruthy();
+    expect(api.updateNotebookField).not.toHaveBeenCalled();
+  });
+
+  /*
+     If the preview cannot be fetched, the count is unknown — and writing anyway is the
+     original bug, clearing values without ever naming them. The error surfaces instead.
+  */
+  it('does not write a narrower scale when the preview fails', async () => {
+    vi.mocked(api.previewFieldConversion).mockRejectedValue(new Error('Network down'));
+    mount([rating]);
+    await screen.findByText('Stars');
+    fireEvent.change(screen.getByLabelText('Rating scale maximum'), { target: { value: '5' } });
+
+    expect(await screen.findByText('Network down')).toBeTruthy();
+    expect(api.updateNotebookField).not.toHaveBeenCalled();
+  });
+
   it('writes a wider scale without asking, because nothing can be cleared', async () => {
     const five: FieldDef = { ...rating, scale: { max: 5, step: 1 } };
     vi.mocked(api.previewFieldConversion).mockResolvedValue({ values: 3, incompatible: 0 });

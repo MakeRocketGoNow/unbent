@@ -490,17 +490,30 @@ export function NotebookFields({ notebookId, onChanged }: NotebookFieldsProps) {
  * a 10-point scale to 5, and "out of 5" is the wrong question for turning a number into
  * stars.
  */
-function scaleOnlyConfirm(pending: PendingType): pending is PendingType & { scale: FieldScale } {
+function scaleOnlyConfirm(
+  pending: PendingType,
+): pending is PendingType & { scale: FieldScale; field: FieldDef & { scale: FieldScale } } {
   return pending.to === pending.field.type && pending.scale != null && pending.field.scale != null;
 }
 
-function scaleConfirmQuestion(pending: PendingType & { scale: FieldScale }) {
+function scaleConfirmQuestion(pending: PendingType & { scale: FieldScale; field: FieldDef & { scale: FieldScale } }) {
   const prev = pending.field.scale;
-  if (!prev) return null;
-  if (pending.scale.step > prev.step && pending.scale.max === prev.max) {
+  const lowerMax = pending.scale.max !== prev.max;
+  const losingHalves = pending.scale.step > prev.step;
+
+  // Both controls can be in play at once. Naming only the max would read as though the
+  // halves survive, and they are exactly what gets cleared.
+  if (losingHalves && !lowerMax) {
     return (
       <>
         Drop half steps on <strong>{pending.field.name}</strong>?
+      </>
+    );
+  }
+  if (losingHalves) {
+    return (
+      <>
+        Change <strong>{pending.field.name}</strong> to out of {pending.scale.max}, without half steps?
       </>
     );
   }
