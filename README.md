@@ -708,18 +708,27 @@ anything else that speaks the protocol can work with your notes directly. The se
 `https://unbent.app/api/mcp` — no trailing slash, and no API key to copy anywhere.
 
 Connecting runs the ordinary OAuth flow: the client registers itself, a browser opens on the
-consent screen, and approving it hands the client a token of its own. Fifteen tools are
-offered — search and list, read a note in full, create, edit, tag, move, trash and restore,
-plus notebook management. Note bodies are Markdown and pass whole in both directions, so an
-assistant writes a complete note in one call.
+consent screen, and approving it hands the client a token of its own. The tools cover
+search and list, reading a note in full, create, edit, tag, move, trash and restore,
+attaching a file, and notebook management. Note bodies are Markdown and pass whole in both
+directions, so an assistant writes a complete note in one call.
 
-Two are worth knowing about:
+Three are worth knowing about:
 
 - **`edit_note`** takes `append`, `prepend`, or `replace` with an exact `find` string, so
   changing one line of a long note does not mean resending it. A `find` matching more than
   once is refused with the count rather than guessed at.
 - **`get_attachment_text`** returns the text already extracted from a PDF, which is what
   makes a scanned bill answerable. See [Searching inside PDFs](#searching-inside-pdfs).
+- **`add_attachment`** takes a URL, not bytes. A tool call is JSON the model writes token by
+  token, so a file cannot ride in one — a scan as base64 is millions of characters, past
+  what any client carries. What an assistant can hand over is the download link another
+  system gave it when it read the page (a signed URL, typically good for an hour), and the
+  Worker fetches that itself and stores the result exactly as an upload from the editor.
+  The reply carries the filename it was stored under and the Markdown that shows it, which
+  is appended to the note unless the assistant asks to place it. There is deliberately no
+  upload tool: it would work only for files small enough not to matter, and fail silently
+  above that.
 
 **Approving a client gives it standing access to everything.** It can read every note,
 create and change notes, and move them to the trash, from then on and without asking again.
@@ -1099,6 +1108,12 @@ and previews, so passkeys made there work from the app too.
   it offers; there is no way to connect one read-only. Scopes exist in the protocol and are
   advertised, but nothing enforces a narrower grant yet, and a consent screen offering a
   choice nobody can act on would be worse than the honest sentence it shows instead.
+
+- **An assistant holding a file on disk cannot attach it.** `add_attachment` fetches by
+  URL, which is what a connector to another system can supply and what an agent on a
+  machine with the file cannot. The routes for that today are `unbent-migrate` for a whole
+  export and the HTTP upload with a session. A one-time upload URL minted by a tool, for
+  the agent to `PUT` to without ever holding the OAuth token, is the likely shape of a fix.
 
 - **iOS has no share extension yet.** Safari does not implement Web Share Target, so an iOS
   capture needs a real share extension and a paid Apple Developer account.

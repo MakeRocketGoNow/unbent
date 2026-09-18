@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { MAX_TAG_LENGTH, UNFILED } from '@unbent/shared';
+import { MAX_TAG_LENGTH, UNFILED, formatAttachmentMarkdown } from '@unbent/shared';
 import type { McpServer } from '@modelcontextprotocol/server';
 import type { AttachmentsRepo } from '../../lib/attachments-repo.js';
 import { nextCursor, type NotesRepo } from '../../lib/notes-repo.js';
@@ -127,8 +127,9 @@ export function registerReadTools(
       title: 'Get a note',
       description:
         'Read one note in full: its Markdown body, tags, notebook and timestamps, plus a list ' +
-        'of its attachments. Attachment bytes are not included — use get_attachment_text to ' +
-        'read what a PDF says.',
+        'of its attachments, each with the exact Markdown that shows it in the body. ' +
+        'Attachment bytes are not included — use get_attachment_text to read what a PDF ' +
+        'says, and add_attachment to give the note a new file.',
       inputSchema: z.object({ noteId: z.string().uuid() }),
       annotations: { readOnlyHint: true, openWorldHint: false },
     },
@@ -139,11 +140,23 @@ export function registerReadTools(
       return jsonResult({
         ...noteRef(note),
         body: note.body,
-        attachments: files.map((f) => ({
-          filename: f.filename,
-          contentType: f.contentType,
-          size: f.size,
-        })),
+        /**
+         * With the path and the Markdown, so a model can put a file back in the body, or
+         * move a link, without being told the syntax — the angle brackets a name with a
+         * space needs are the kind of thing a model gets wrong when left to infer them.
+         */
+        attachments: files.map((f) => {
+          const path = `files/${f.filename}`;
+          return {
+            filename: f.filename,
+            contentType: f.contentType,
+            size: f.size,
+            path,
+            markdown: formatAttachmentMarkdown(f.filename, path, {
+              image: f.contentType.startsWith('image/'),
+            }),
+          };
+        }),
       });
     },
   );

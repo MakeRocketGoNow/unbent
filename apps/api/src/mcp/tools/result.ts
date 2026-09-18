@@ -47,3 +47,14 @@ export function notFound(kind: string, what: string) {
     content: [{ type: 'text' as const, text: `No such ${kind}: ${what}` }],
   };
 }
+
+/**
+ * A failure the model should read and act on, rather than an exception.
+ *
+ * `isError` is how MCP says "this call failed" without ending the conversation: the text
+ * goes back to the model, which can correct itself and try again. So these read as
+ * instructions to the caller, not as log lines.
+ */
+export function toolError(message: string) {
+  return { isError: true as const, content: [{ type: 'text' as const, text: message }] };
+}

@@ -2,6 +2,7 @@ import { McpServer, createMcpHandler } from '@modelcontextprotocol/server';
 import { AttachmentsRepo } from '../lib/attachments-repo.js';
 import { NotesRepo } from '../lib/notes-repo.js';
 import type { Env } from '../types.js';
+import { registerAttachmentTools } from './tools/attachments.js';
 import { registerReadTools } from './tools/read.js';
 import { registerWriteTools } from './tools/write.js';
 
@@ -17,13 +18,20 @@ import { registerWriteTools } from './tools/write.js';
  * served. Clients are spread across both right now, and rejecting the older one would mean
  * refusing connections for no benefit to anyone.
  */
-export function createUnbentMcpHandler(env: Env, userId: string) {
+export function createUnbentMcpHandler(
+  env: Env,
+  userId: string,
+  // Structural rather than the platform's ExecutionContext: Hono hands the route a
+  // narrower type, and waitUntil is the only member anything here calls.
+  ctx: { waitUntil(promise: Promise<unknown>): void },
+) {
   return createMcpHandler(() => {
     const server = new McpServer({ name: 'unbent', version: '1.0.0' });
     const notes = new NotesRepo(env.DB, userId);
     const attachments = new AttachmentsRepo(env.DB, userId);
     registerReadTools(server, notes, attachments);
     registerWriteTools(server, notes);
+    registerAttachmentTools(server, env, ctx, { notes, attachments });
     return server;
   });
 }

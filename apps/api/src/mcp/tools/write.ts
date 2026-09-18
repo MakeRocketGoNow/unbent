@@ -18,7 +18,7 @@ import {
 } from '@unbent/shared';
 import type { McpServer } from '@modelcontextprotocol/server';
 import type { NotesRepo } from '../../lib/notes-repo.js';
-import { jsonResult, noteRef, notFound } from './result.js';
+import { jsonResult, noteRef, notFound, toolError } from './result.js';
 
 /**
  * Custom field values by field *name*, the way list_notebooks reports them and get_note
@@ -476,15 +476,4 @@ export function registerWriteTools(server: McpServer, notes: NotesRepo): void {
       return jsonResult(result);
     },
   );
-}
-
-/**
- * A failure the model should read and act on, rather than an exception.
- *
- * `isError` is how MCP says "this call failed" without ending the conversation: the text
- * goes back to the model, which can correct itself and try again. So these read as
- * instructions to the caller, not as log lines.
- */
-function toolError(message: string) {
-  return { isError: true as const, content: [{ type: 'text' as const, text: message }] };
 }

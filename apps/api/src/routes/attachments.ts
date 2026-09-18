@@ -1,21 +1,18 @@
 import { Hono } from 'hono';
 import { zValidator } from '@hono/zod-validator';
 import {
-  FALLBACK_CONTENT_TYPE,
   MAX_ATTACHMENT_BYTES,
   copyAttachmentsSchema,
   fetchWebImageSchema,
   filenameSchema,
-  formatAttachmentMarkdown,
-  normalizeContentType,
   serveContentType,
   serveDisposition,
 } from '@unbent/shared';
 import { copyAttachments } from '../lib/copy-attachments.js';
-import { canExtractOnServer, extractOnServer } from '../lib/extract-text.js';
 import { fetchWebImage } from '../lib/web-image.js';
 import { requireAuth } from '../lib/session.js';
 import { withRepos } from '../lib/repos-middleware.js';
+import { storeAttachment } from '../lib/store-attachment.js';
 import type { AppEnv } from '../types.js';
 
 /**
@@ -44,6 +41,9 @@ export const attachments = new Hono<AppEnv>()
    * Upload. The body streams straight into R2 and is never buffered, so the Worker's
    * 128MB memory ceiling does not bound attachment size — Cloudflare's 100MB request cap
    * does, and we reject above that with a clear error rather than a truncated object.
+   *
+   * What happens to the bytes once they are accepted lives in lib/store-attachment.ts,
+   * shared with the MCP server; this handler is the checks that belong to HTTP.
    */
   .put('/notes/:id/files', async (c) => {
     const noteId = c.req.param('id');
@@ -69,93 +69,30 @@ export const attachments = new Hono<AppEnv>()
 
     if (!c.req.raw.body) return c.json({ error: 'Empty body' }, 400);
 
-    const filename = await repo.availableFilename(noteId, parsed.data);
-    const id = crypto.randomUUID();
-    const key = repo.buildKey(noteId, id, filename);
-    /**
-     * Record the declared type, normalized.
-     *
-     * Kept rather than verified: the search backfill filters on `application/pdf`, and the
-     * export needs real types for the files it writes. What makes this safe is that nothing
-     * is *served* from it unchecked — see the GET handler, which decides the response type
-     * independently. Parameters are stripped here so a stored value like
-     * `text/html; charset=utf-8` cannot later differ from what the allowlist compares.
-     */
-    const contentType =
-      normalizeContentType(c.req.header('Content-Type')) || FALLBACK_CONTENT_TYPE;
-
-    const object = await c.env.BLOBS.put(key, c.req.raw.body, {
-      httpMetadata: { contentType },
-    });
-
-    if (!object) return c.json({ error: 'Upload failed' }, 500);
-
-    // R2 reports the true byte count; Content-Length is a client claim.
-    const info = await repo.record({
-      id,
-      noteId,
-      filename,
-      contentType,
-      size: object.size,
-      r2Key: key,
-    });
-
-    const path = `files/${filename}`;
-
-    /**
-     * Extract the text here, where the deployment can.
-     *
-     * Every client then gets a searchable PDF without doing anything: the editor, the
-     * phone, the import, and whatever comes next. After the response rather than before
-     * it, because the upload should return the moment the bytes are safe and conversion
-     * is a second or more of waiting on another service; `waitUntil` gives it thirty
-     * seconds. A failure of any kind leaves the row pending, and the browser's passes
-     * remain the fallback — only a conversion that read the file and found nothing writes
-     * the empty row. The response says which way it went, so a client that would extract
-     * on its own knows not to.
-     */
-    const indexing = canExtractOnServer(c.env, contentType, object.size) ? 'server' : 'client';
-    if (indexing === 'server') {
-      const ai = c.env.AI!;
-      c.executionCtx.waitUntil(
-        (async () => {
-          try {
-            const stored = await c.env.BLOBS.get(key);
-            if (!stored) return;
-            const extracted = await extractOnServer(ai, filename, await stored.blob());
-            if (!extracted) return;
-            await repo.recordText({
-              attachmentId: id,
-              noteId,
-              filename,
-              text: extracted.quality.usable ? extracted.text : '',
-            });
-          } catch {
-            // Left pending for the browser's passes.
-          }
-        })(),
-      );
-    }
-
     /**
      * Opt-in body link, for clients that cannot write the markdown themselves.
      *
      * The browser editor inserts its own link at the cursor and does not pass this; a
      * share sheet on a phone has neither a cursor nor the note body, so the server links
-     * on its behalf. `filename` rather than the requested name: availableFilename may have
-     * suffixed a collision, and a link to the name we did not store points at nothing.
+     * on its behalf.
      */
-    if (c.req.query('link') !== undefined) {
-      await c
-        .get('notes')
-        .appendToBody(
-          noteId,
-          formatAttachmentMarkdown(filename, path, { image: contentType.startsWith('image/') }),
-        );
-    }
+    const link = c.req.query('link') !== undefined;
 
-    // The relative path the editor inserts into the markdown.
-    return c.json({ ...info, path, indexing }, 201);
+    const { filename, contentType, size, path, indexing } = await storeAttachment(
+      c.env,
+      c.executionCtx,
+      { attachments: repo, notes: c.get('notes') },
+      {
+        noteId,
+        filename: parsed.data,
+        contentType: c.req.header('Content-Type'),
+        body: c.req.raw.body,
+        link,
+      },
+    );
+
+    // `path` is the relative destination the editor inserts into the markdown.
+    return c.json({ filename, contentType, size, path, indexing }, 201);
   })
 
   /**
