@@ -670,6 +670,19 @@ describe('add_attachment', () => {
     expect(result.text).toContain('download URL');
   });
 
+  it('refuses a private-network address (SSRF), before fetching anything', async () => {
+    // A link-local address is refused whatever the loopback setting — the server must not
+    // be pointed at its own metadata endpoint or a neighbour on the private network. This
+    // is the same guard the web-image fetch applies, shared so the two cannot disagree.
+    const before = await listFiles(carol, carolNoteId);
+    const result = await add(carol.token, {
+      noteId: carolNoteId,
+      url: 'http://169.254.169.254/latest/meta-data/',
+    });
+    expect(result.isError).toBe(true);
+    expect(await listFiles(carol, carolNoteId)).toEqual(before);
+  });
+
   it("reports the source's refusal rather than storing its error page", async () => {
     const before = await listFiles(carol, carolNoteId);
     const result = await add(carol.token, { noteId: carolNoteId, url: `${origin}/missing.pdf` });

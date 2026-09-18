@@ -1,4 +1,5 @@
 import { FALLBACK_CONTENT_TYPE, filenameSchema, normalizeContentType, splitExt } from '@unbent/shared';
+import { rejectWebImageUrl } from './web-image.js';
 
 /**
  * Fetching a file from a URL on an assistant's behalf, so it can be stored as an attachment.
@@ -34,15 +35,30 @@ export const MAX_UNSIZED_FETCH_BYTES = 25 * 1024 * 1024;
  */
 const FETCH_TIMEOUT_MS = 60_000;
 
+/** As many redirect hops as the web-image fetch allows, for the same reason: a CDN chain. */
+const MAX_REDIRECTS = 5;
+
 /**
  * Whether a URL is one this server will fetch.
  *
- * Only http and https. The likeliest wrong answer is not an attack but a reference from
- * inside another application — `file:` from a document store, or a scheme of its own —
- * that a model has read off a page and passed along, and the message says what to do
- * about it rather than only that it was refused.
+ * Two refusals with different shapes. A non-http scheme is almost never an attack: it is a
+ * reference from inside another application — `file:` from a document store, a scheme of
+ * its own — that a model read off a page and passed along, so the message says to read the
+ * containing page for a real download URL. A loopback or private-network host is the SSRF
+ * case, and the guard is shared with the web-image fetch (`rejectWebImageUrl`) so the two
+ * server-side fetchers cannot disagree on what is off limits — the Worker fetching an
+ * address a caller supplied is the one place this app reaches a URL it did not build, and
+ * `add_attachment` is now a second door onto it. `allowLoopback` is the same escape hatch
+ * the image fetch uses, for the test suite's own server and local development, keyed on
+ * `ALLOW_TEST_CREDENTIALS` by the caller.
+ *
+ * The host is re-checked after every redirect in `fetchSource`; this is only the entry
+ * point.
  */
-export function checkSourceUrl(raw: string): { url: URL } | { error: string } {
+export function checkSourceUrl(
+  raw: string,
+  opts: { allowLoopback?: boolean } = {},
+): { url: URL } | { error: string } {
   let url: URL;
   try {
     url = new URL(raw);
@@ -60,6 +76,8 @@ export function checkSourceUrl(raw: string): { url: URL } | { error: string } {
   if (url.username || url.password) {
     return { error: 'A URL with credentials in it is refused. Use a signed URL instead.' };
   }
+  const unroutable = rejectWebImageUrl(raw, opts);
+  if (unroutable) return { error: `${unroutable}.` };
   return { url };
 }
 
@@ -217,16 +235,45 @@ export type FetchedSource =
  * `maxBytes` refuses a source that declares more than that before a byte of it is read.
  * A source that declares nothing is read up to `MAX_UNSIZED_FETCH_BYTES` and refused
  * past it, since there is no other way to learn how large it is.
+ *
+ * Redirects are followed by hand, not by `fetch`, so that every hop's host passes the same
+ * SSRF check the entry point did: a public URL that 302s to `http://127.0.0.1` is the
+ * classic way past a check that only looked at the address the caller typed. `allowLoopback`
+ * carries that policy to each hop, the same value `checkSourceUrl` was given.
  */
 export async function fetchSource(
   url: URL,
-  limits: { maxBytes: number },
+  limits: { maxBytes: number; allowLoopback?: boolean },
 ): Promise<FetchedSource> {
+  let current = url;
   let res: Response;
-  try {
-    res = await fetch(url, { redirect: 'follow', signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
-  } catch (err) {
-    return { ok: false, error: `Could not fetch from ${url.host}: ${describe(err)}` };
+  for (let hop = 0; ; hop += 1) {
+    // Every hop after the first is an address the *previous response* chose, not the
+    // caller, so it has had no check of its own until here.
+    if (hop > 0) {
+      const unroutable = rejectWebImageUrl(current.href, { allowLoopback: limits.allowLoopback });
+      if (unroutable) return { ok: false, error: `A redirect pointed somewhere it may not: ${unroutable}.` };
+    }
+
+    try {
+      res = await fetch(current, { redirect: 'manual', signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
+    } catch (err) {
+      return { ok: false, error: `Could not fetch from ${current.host}: ${describe(err)}` };
+    }
+
+    if (res.status >= 300 && res.status < 400) {
+      await res.body?.cancel().catch(() => {});
+      const location = res.headers.get('location');
+      if (!location) return { ok: false, error: `${current.host} redirected nowhere.` };
+      if (hop >= MAX_REDIRECTS) return { ok: false, error: 'Too many redirects.' };
+      try {
+        current = new URL(location, current);
+      } catch {
+        return { ok: false, error: `${current.host} redirected to an address that is not a URL.` };
+      }
+      continue;
+    }
+    break;
   }
 
   if (!res.ok) {
@@ -235,20 +282,20 @@ export async function fetchSource(
       res.status === 403 || res.status === 401
         ? ' A signed URL may have expired; read the source again for a fresh one.'
         : '';
-    return { ok: false, error: `${url.host} answered ${res.status} ${res.statusText}.${hint}` };
+    return { ok: false, error: `${current.host} answered ${res.status} ${res.statusText}.${hint}` };
   }
-  if (!res.body) return { ok: false, error: `${url.host} sent no file.` };
+  if (!res.body) return { ok: false, error: `${current.host} sent no file.` };
 
   const contentType = res.headers.get('content-type');
   const contentDisposition = res.headers.get('content-disposition');
-  const finalUrl = new URL(res.url || url.href);
+  const finalUrl = new URL(res.url || current.href);
   const declared = res.headers.get('content-length');
   const length = declared === null ? Number.NaN : Number(declared);
 
   if (Number.isInteger(length) && length >= 0) {
     if (length === 0) {
       await res.body.cancel().catch(() => {});
-      return { ok: false, error: `${url.host} sent an empty file.` };
+      return { ok: false, error: `${current.host} sent an empty file.` };
     }
     if (length > limits.maxBytes) {
       await res.body.cancel().catch(() => {});
@@ -281,7 +328,7 @@ export async function fetchSource(
         return {
           ok: false,
           error:
-            `${url.host} did not say how large the file is, and it is over ` +
+            `${current.host} did not say how large the file is, and it is over ` +
             `${megabytes(MAX_UNSIZED_FETCH_BYTES)}MB — the most that can be taken from a ` +
             'source that does not declare a length.',
         };
@@ -289,9 +336,9 @@ export async function fetchSource(
       chunks.push(value);
     }
   } catch (err) {
-    return { ok: false, error: `Reading from ${url.host} failed: ${describe(err)}` };
+    return { ok: false, error: `Reading from ${current.host} failed: ${describe(err)}` };
   }
-  if (total === 0) return { ok: false, error: `${url.host} sent an empty file.` };
+  if (total === 0) return { ok: false, error: `${current.host} sent an empty file.` };
 
   const bytes = new Uint8Array(total);
   let offset = 0;

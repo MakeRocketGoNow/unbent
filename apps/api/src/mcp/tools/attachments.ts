@@ -28,10 +28,14 @@ import { jsonResult, notFound, toolError } from './result.js';
  */
 export function registerAttachmentTools(
   server: McpServer,
-  env: Pick<Env, 'BLOBS' | 'AI'>,
+  env: Pick<Env, 'BLOBS' | 'AI' | 'ALLOW_TEST_CREDENTIALS'>,
   ctx: { waitUntil(promise: Promise<unknown>): void },
   repos: { notes: NotesRepo; attachments: AttachmentsRepo },
 ): void {
+  // Loopback is fetchable only where the web-image route allows it too: local development,
+  // flagged the same way. Deployed, this is false, so neither server-side fetcher can be
+  // pointed at the Worker's own network.
+  const allowLoopback = env.ALLOW_TEST_CREDENTIALS === '1';
   server.registerTool(
     'add_attachment',
     {
@@ -72,10 +76,13 @@ export function registerAttachmentTools(
       // has no note to put it on, and a note that is not theirs reads as missing.
       if (!(await repos.attachments.ownsNote(noteId))) return notFound('note', noteId);
 
-      const checked = checkSourceUrl(raw);
+      const checked = checkSourceUrl(raw, { allowLoopback });
       if ('error' in checked) return toolError(checked.error);
 
-      const source = await fetchSource(checked.url, { maxBytes: MAX_ATTACHMENT_BYTES });
+      const source = await fetchSource(checked.url, {
+        maxBytes: MAX_ATTACHMENT_BYTES,
+        allowLoopback,
+      });
       if (!source.ok) return toolError(source.error);
 
       const name = chooseFilename({

@@ -16,9 +16,9 @@ import {
  */
 
 describe('checkSourceUrl', () => {
-  it('accepts http and https', () => {
+  it('accepts http and https to a routable host', () => {
     expect(checkSourceUrl('https://files.example.com/a.pdf')).toHaveProperty('url');
-    expect(checkSourceUrl('http://127.0.0.1:8080/a.pdf')).toHaveProperty('url');
+    expect(checkSourceUrl('http://files.example.com/a.pdf')).toHaveProperty('url');
   });
 
   it('refuses a scheme that is another system\'s internal reference, and says what to do', () => {
@@ -39,6 +39,21 @@ describe('checkSourceUrl', () => {
 
   it('refuses credentials in the URL', () => {
     expect(checkSourceUrl('https://user:secret@example.com/a.pdf')).toHaveProperty('error');
+  });
+
+  it('refuses loopback and private-network hosts (SSRF), the same guard the image fetch uses', () => {
+    expect(checkSourceUrl('http://127.0.0.1/secret')).toHaveProperty('error');
+    expect(checkSourceUrl('http://localhost:8809/api/mcp')).toHaveProperty('error');
+    expect(checkSourceUrl('http://169.254.169.254/latest/meta-data/')).toHaveProperty('error');
+    expect(checkSourceUrl('http://10.0.0.5/x')).toHaveProperty('error');
+    expect(checkSourceUrl('http://192.168.1.1/x')).toHaveProperty('error');
+    expect(checkSourceUrl('http://[::1]/x')).toHaveProperty('error');
+  });
+
+  it('allows loopback only when the caller opts in, for local development', () => {
+    expect(checkSourceUrl('http://127.0.0.1/a.pdf', { allowLoopback: true })).toHaveProperty('url');
+    // A private-network host is refused even then; the escape hatch is loopback only.
+    expect(checkSourceUrl('http://10.0.0.5/x', { allowLoopback: true })).toHaveProperty('error');
   });
 });
 
