@@ -37,27 +37,30 @@ export interface ConfirmProps {
 
 /**
  * Weight by position: the first action is the one being offered, and a destructive action
- * that comes *after* a safe one demotes itself to a quiet button on its own line.
+ * that comes *after* a safe one demotes itself — a quieter outlined button, dropped to its
+ * own line below the one it must not be mistaken for.
  *
  * This is the rule that keeps someone from trashing 47 notes by muscle memory, so it lives
  * in code rather than in each caller's class names — a caller passing the two notebook
  * outcomes in the right order gets the right emphasis without having to know about it.
  *
- * Returns `Button` props rather than a class string. The demoted action used to be
- * `class="link"` — demotion spelled as "stop looking like a button at all", which took a
- * control that still destroys 47 notes and gave it no padding and no hit area. `quiet`
- * demotes the same amount and stays pressable: it keeps the body and drops only the
- * border, which is the difference between quiet and disguised.
+ * Returns `Button` props rather than a class string, plus `ownLine` so the render can wrap
+ * the demoted action without spelling the demotion rule out twice. The demoted action has
+ * been three shapes: a `class="link"` with no hit area (a control that still destroys 47
+ * notes, drawn as text), then a full-width `quiet` bar on its own line — which read as odd,
+ * and on hover lit up the entire row rather than a button (MAK-88). It is now an ordinary
+ * outlined `danger` button: bordered, the same height as the primary beside it, sized to its
+ * own label, and still on its own line so it stays a deliberate reach.
  */
 function actionWeight(
   action: ConfirmAction,
   index: number,
-): { variant: ButtonVariant; tone: ButtonTone; size?: 'small'; className?: string } {
-  if (action.tone === 'primary') return { variant: 'primary', tone: 'default' };
+): { variant: ButtonVariant; tone: ButtonTone; ownLine: boolean } {
+  if (action.tone === 'primary') return { variant: 'primary', tone: 'default', ownLine: false };
   if (index > 0) {
-    return { variant: 'quiet', tone: 'danger', size: 'small', className: 'confirm-secondary' };
+    return { variant: 'secondary', tone: 'danger', ownLine: true };
   }
-  return { variant: 'primary', tone: 'danger' };
+  return { variant: 'primary', tone: 'danger', ownLine: false };
 }
 
 /**
@@ -121,16 +124,29 @@ export function Confirm({
       )}
 
       <div className="confirm-actions">
-        {actions.map((action, i) => (
-          <Button
-            key={action.label}
-            {...actionWeight(action, i)}
-            disabled={busy || locked}
-            onClick={() => void action.onConfirm()}
-          >
-            {busy ? (action.busyLabel ?? action.label) : action.label}
-          </Button>
-        ))}
+        {actions.map((action, i) => {
+          const { ownLine, ...weight } = actionWeight(action, i);
+          const button = (
+            <Button
+              key={action.label}
+              {...weight}
+              disabled={busy || locked}
+              onClick={() => void action.onConfirm()}
+            >
+              {busy ? (action.busyLabel ?? action.label) : action.label}
+            </Button>
+          );
+          // The demoted destructive option keeps its own line: the wrapper spans the row so
+          // the button drops below the safe choice, while the button itself stays its own
+          // width — its border and hover fill stop at the label, not the panel edge.
+          return ownLine ? (
+            <div key={action.label} className="confirm-action-own-line">
+              {button}
+            </div>
+          ) : (
+            button
+          );
+        })}
         <Button variant="secondary" disabled={busy} onClick={onCancel}>
           Cancel
         </Button>

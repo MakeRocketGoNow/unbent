@@ -4277,22 +4277,20 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
 }
 
 /*
-   The demoted destructive option: its own line below the primary.
+   The demoted destructive option: its own line below the primary, but only as wide as its
+   label.
 
-   `flex-basis: 100%` rather than the `display: block` this used to say. A flex item's
-   display is blockified either way, so `block` never broke the line — the cascade sat on
-   the same row as the safe option it is meant to be demoted below, 7px lower, reading as a
-   misalignment rather than a demotion. Taking the whole line is the only thing a flex child
-   can do to force the break.
-
-   Full width is not a cost here: the hover fill says how far the cascade's hit area goes,
-   and on a phone it is the tap target the rule in the media query below asks for. The gap
-   provides consistent spacing; extra margin would break the rhythm.
+   The break and the width are split across two elements on purpose. `flex-basis: 100%` on a
+   flex child is the one thing that forces the line break, so it sits on this wrapper, which
+   takes the whole row; the button inside sizes to its own text. When that `flex-basis: 100%`
+   sat on the button itself the control stretched edge to edge, so its border and its hover
+   fill spanned the panel and read as a banner rather than a button (MAK-88). `flex-start`
+   keeps it left-aligned, under the option it is demoted below, rather than centred in the
+   empty row.
 */
-.confirm-actions .confirm-secondary {
+.confirm-action-own-line {
   flex-basis: 100%;
-  /* Beats the centring in `.confirm-actions button` below, which is meant for buttons
-     sized to their own text, not for one spanning the row. */
+  display: flex;
   justify-content: flex-start;
 }
 
