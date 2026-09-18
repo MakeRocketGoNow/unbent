@@ -7,6 +7,8 @@ import {
   Book,
   Calendar,
   Check,
+  ChevronLeft,
+  ChevronRight,
   Copy,
   FileText,
   Film,
@@ -333,6 +335,23 @@ export function MoveDownIcon() {
  */
 export function CloseIcon() {
   return <X size="0.85em" strokeWidth={2.5} aria-hidden="true" focusable="false" />;
+}
+
+/**
+ * Chevrons for nudging a chip one step earlier or later in an ordered list.
+ *
+ * Sized like `CloseIcon`, and for the same reason: they ride inside a chip beside its
+ * label, so they answer to the word rather than to a touch target — the chip carries them.
+ * The select-option editor gives each option a pair, to set the order the choices appear
+ * in. Left is earlier and right is later, the reading-order direction the chips already
+ * wrap in, rather than the up/down the field list uses for its one-per-row column.
+ */
+export function MoveEarlierIcon() {
+  return <ChevronLeft size="0.85em" strokeWidth={2.5} aria-hidden="true" focusable="false" />;
+}
+
+export function MoveLaterIcon() {
+  return <ChevronRight size="0.85em" strokeWidth={2.5} aria-hidden="true" focusable="false" />;
 }
 
 /**

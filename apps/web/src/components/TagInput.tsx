@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react';
 import { useCombobox } from 'downshift';
 import { tintIndex } from '../tint.js';
+import { MoveEarlierIcon, MoveLaterIcon } from './icons.js';
 
 interface TagInputProps {
   tags: string[];
@@ -13,6 +14,17 @@ interface TagInputProps {
    * way; only the noun changes.
    */
   label?: string;
+  /**
+   * Whether each token carries controls to nudge it one step earlier or later.
+   *
+   * Off by default, because for a note's tags order is nothing — they are a set, and the
+   * list draws them in one fixed order however they were entered. A select field's options
+   * are a sequence: they are the order the choices appear in the picker, so that editor
+   * turns this on. The controls sit inside the chip, revealed on hover and focus like the
+   * remove ×, so a row of options still reads as words at rest rather than as words wearing
+   * three buttons each.
+   */
+  reorderable?: boolean;
 }
 
 /**
@@ -34,7 +46,13 @@ interface TagInputProps {
  * chips, hint and styling are untouched. What stays ours is the commit vocabulary above,
  * which its `stateReducer` and prop-getter handlers let this component keep.
  */
-export function TagInput({ tags, suggestions, onChange, label = 'tag' }: TagInputProps) {
+export function TagInput({
+  tags,
+  suggestions,
+  onChange,
+  label = 'tag',
+  reorderable = false,
+}: TagInputProps) {
   const [draft, setDraft] = useState('');
   /**
    * Whether the field is being used, as opposed to merely present.
@@ -61,6 +79,19 @@ export function TagInput({ tags, suggestions, onChange, label = 'tag' }: TagInpu
 
   function remove(name: string) {
     onChange(tags.filter((t) => t !== name));
+  }
+
+  /**
+   * Swaps a token with its neighbour one step away, the same one-step-at-a-time move the
+   * field list uses. The ends have nothing to swap with and their buttons are disabled, so
+   * `by` never carries an index out of range here.
+   */
+  function move(index: number, by: -1 | 1) {
+    const target = index + by;
+    if (target < 0 || target >= tags.length) return;
+    const next = [...tags];
+    [next[index], next[target]] = [next[target]!, next[index]!];
+    onChange(next);
   }
 
   const { isOpen, highlightedIndex, getInputProps, getMenuProps, getItemProps } = useCombobox({
@@ -104,9 +135,41 @@ export function TagInput({ tags, suggestions, onChange, label = 'tag' }: TagInpu
   return (
     <div className="tag-input" onClick={() => inputRef.current?.focus()}>
       {/* Each chip's tint is the word's own — see `tintIndex` — so a tag keeps its colour everywhere. */}
-      {tags.map((t) => (
+      {tags.map((t, index) => (
         <span key={t} className="tag-chip" data-tint={tintIndex(t)}>
           {t}
+          {/* Earlier/later before the ×, so the chip's controls read left to right as
+              "move, move, remove". The ends' buttons stay rendered but disabled, the same
+              as the field list's, so the pair never shifts under the pointer as a chip
+              reaches an end. */}
+          {reorderable && (
+            <span className="tag-move-group">
+              <button
+                type="button"
+                className="tag-move"
+                aria-label={`Move ${label} ${t} earlier`}
+                disabled={index === 0}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  move(index, -1);
+                }}
+              >
+                <MoveEarlierIcon />
+              </button>
+              <button
+                type="button"
+                className="tag-move"
+                aria-label={`Move ${label} ${t} later`}
+                disabled={index === tags.length - 1}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  move(index, 1);
+                }}
+              >
+                <MoveLaterIcon />
+              </button>
+            </span>
+          )}
           <button
             type="button"
             className="tag-remove"

@@ -2835,6 +2835,58 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
 }
 
 /*
+   The earlier/later nudge, on a select option's chip only.
+
+   Same manner as the × it sits beside: quiet at rest so a row of options reads as words,
+   surfacing on hover and focus. The pair keeps its layout space while hidden — the same
+   trick the × relies on — so a chip is the same width whether or not it is being pointed
+   at, and the row never reflows as the pointer crosses it.
+*/
+.tag-move-group {
+  display: inline-flex;
+  align-items: center;
+  /* A hair off the word, so the chevrons are the word's controls and not another token. */
+  margin-left: 0.15rem;
+}
+
+.tag-move {
+  display: inline-flex;
+  align-items: center;
+  padding: 0 0.05rem;
+  font: inherit;
+  line-height: 1;
+  color: inherit;
+  background: none;
+  border: none;
+  cursor: pointer;
+  opacity: 0;
+}
+
+.tag-chip:hover .tag-move,
+.tag-chip:focus-within .tag-move { opacity: 0.7; }
+
+.tag-move:hover,
+.tag-move:focus-visible { opacity: 1; }
+
+/*
+   An end has nothing to move toward, so its button is disabled rather than dropped: keeping
+   it in place stops the surviving one from sliding under the pointer as a chip reaches the
+   end of the row. Dimmed further than its live twin, and never a pointer, so it reads as
+   present-but-spent rather than clickable.
+*/
+.tag-move:disabled { cursor: default; }
+
+.tag-chip:hover .tag-move:disabled,
+.tag-chip:focus-within .tag-move:disabled { opacity: 0.25; }
+
+/* No pointer to reveal them: the nudges stay faintly up, as the × does, so a thumb can find
+   them. The disabled end stays dimmer still. */
+@media (hover: none) {
+  .tag-move { opacity: 0.6; }
+  .tag-move:disabled { opacity: 0.25; }
+}
+
+/*
    The entry point, which has to look like one.
 
    It was a transparent borderless input whose only hint was a placeholder — and that

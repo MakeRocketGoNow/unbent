@@ -54,9 +54,11 @@ const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
  * loses anything: the existing values become the options. Widening a scale never loses
  * anything either, and writes without asking.
  *
- * Order is set with up/down rather than drag. A dozen fields is the realistic maximum,
- * two buttons work with a keyboard and on a phone, and drag-to-reorder is a component
- * this codebase does not have yet — the list items say the same (see README).
+ * Order is set with two buttons rather than drag, for the fields here and for a select's
+ * options alike. A dozen fields is the realistic maximum, two buttons work with a keyboard
+ * and on a phone, and drag-to-reorder is a component this codebase does not have yet — the
+ * list items say the same (see README). The fields are a column and move up/down; a
+ * select's options wrap as chips and move earlier/later, but it is the same one-step nudge.
  */
 export function NotebookFields({ notebookId, onChanged }: NotebookFieldsProps) {
   const queryClient = useQueryClient();
@@ -358,6 +360,7 @@ export function NotebookFields({ notebookId, onChanged }: NotebookFieldsProps) {
                   label="option"
                   tags={field.options}
                   suggestions={[]}
+                  reorderable
                   onChange={(options) =>
                     void run(() => api.updateNotebookField(notebookId, field.id, { options }))
                   }
@@ -474,7 +477,13 @@ export function NotebookFields({ notebookId, onChanged }: NotebookFieldsProps) {
           Add field
         </Button>
         {newType === 'select' && !newIsRating && (
-          <TagInput label="option" tags={newOptions} suggestions={[]} onChange={setNewOptions} />
+          <TagInput
+            label="option"
+            tags={newOptions}
+            suggestions={[]}
+            reorderable
+            onChange={setNewOptions}
+          />
         )}
         {newIsRating && (
           <ScalePicker scale={newScale} disabled={busy} onChange={setNewScale} />
