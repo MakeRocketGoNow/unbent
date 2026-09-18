@@ -5330,9 +5330,19 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
   border-radius: 0 1rem 1rem 0;
 }
 
-/* The body fills the drawer, so its own foot can sit on the floor. */
+/*
+   The body is exactly the drawer's height, so its own foot sits on the floor and the
+   rows between head and foot are the part that scrolls.
+
+   `height`, not `min-height`: a minimum let the body grow past the drawer once the rows
+   outran a phone — the tags did that — and then nothing scrolled at all. The rows' list
+   is a scroll container that had nothing to scroll, and its `overscroll-behavior:
+   contain` stopped the finger's scroll from reaching the drawer behind it, which was the
+   only thing that could have moved. With the body bounded, the list is the scroller it
+   was written to be, and the head and the floor stay put while it moves.
+*/
 .sheet-side .sheet-body {
-  min-height: 100%;
+  height: 100%;
   padding-top: 1rem;
 }
 
