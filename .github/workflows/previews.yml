@@ -61,6 +61,10 @@ jobs:
       # be a separate client from production's, the way `DEV_BETTER_AUTH_SECRET` is.
       DEV_GOOGLE_CLIENT_ID: ${{ secrets.DEV_GOOGLE_CLIENT_ID }}
       DEV_GOOGLE_CLIENT_SECRET: ${{ secrets.DEV_GOOGLE_CLIENT_SECRET }}
+      # Auto-fill on the dev instance. Optional, and a key of its own rather than
+      # production's, so what the dev instance and the previews spend stays apart from what
+      # unbent.app does — the same reason `DEV_BETTER_AUTH_SECRET` is not the production one.
+      DEV_TYPESAFE_API_KEY: ${{ secrets.DEV_TYPESAFE_API_KEY }}
       # Optional; the same document production serves, so the Android app's passkeys work
       # against the dev instance and previews too.
       ANDROID_ASSET_LINKS: ${{ secrets.ANDROID_ASSET_LINKS }}
@@ -136,6 +140,10 @@ jobs:
             printf 'GOOGLE_CLIENT_ID=%s\nGOOGLE_CLIENT_SECRET=%s\n' \
               "$DEV_GOOGLE_CLIENT_ID" "$DEV_GOOGLE_CLIENT_SECRET" >> "$RUNNER_TEMP/dev-secrets.env"
           fi
+          # Unset, the dev instance draws no Auto-fill control and sends nothing anywhere.
+          if [ -n "$DEV_TYPESAFE_API_KEY" ]; then
+            printf 'TYPESAFE_API_KEY=%s\n' "$DEV_TYPESAFE_API_KEY" >> "$RUNNER_TEMP/dev-secrets.env"
+          fi
           # The subdomain is what lets the dev instance validate a preview's return origin
           # before minting a sign-in token for it. A plain var rather than a secret: it is
           # public (it is in every preview's URL) and it is not per-PR. Omitted when the
@@ -185,6 +193,9 @@ jobs:
       # Optional; the same document production serves, so the Android app's passkeys work
       # against the dev instance and previews too.
       ANDROID_ASSET_LINKS: ${{ secrets.ANDROID_ASSET_LINKS }}
+      # The same development key the dev job carries, so a PR that touches Auto-fill can be
+      # tried on its preview. Optional; unset, the preview draws no control.
+      DEV_TYPESAFE_API_KEY: ${{ secrets.DEV_TYPESAFE_API_KEY }}
       # The standing dev instance a preview borrows a Google session from — the origin its
       # login screen sends people to. unbent.app's own is dev.unbent.app, which is the
       # default; a fork with a differently-named dev instance overrides it with the
@@ -245,6 +256,9 @@ jobs:
             "$DEV_BETTER_AUTH_SECRET" "$DEV_ALLOWED_EMAILS" > "$RUNNER_TEMP/preview-secrets.env"
           if [ -n "$ANDROID_ASSET_LINKS" ]; then
             printf 'ANDROID_ASSET_LINKS=%s\n' "$(printf '%s' "$ANDROID_ASSET_LINKS" | jq -c .)" >> "$RUNNER_TEMP/preview-secrets.env"
+          fi
+          if [ -n "$DEV_TYPESAFE_API_KEY" ]; then
+            printf 'TYPESAFE_API_KEY=%s\n' "$DEV_TYPESAFE_API_KEY" >> "$RUNNER_TEMP/preview-secrets.env"
           fi
           # Point the preview's login screen at the dev instance for a Google session. Only
           # drawn when there is a dev instance to point at, which for this repository there

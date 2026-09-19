@@ -226,7 +226,7 @@ says otherwise; `pnpm exec wrangler secret put NAME` from `apps/api`, or the das
 | `<PROVIDER>_CLIENT_ID`, `<PROVIDER>_CLIENT_SECRET` | any of Better Auth's OAuth providers | both or neither; the callback is `/api/auth/callback/<provider>` on your origin |
 | `AUTH_PASSWORD`, `AUTH_PASSKEY` | forcing a method on or off | rarely needed; the defaults are explained in the sign-in section |
 | `POSTHOG_KEY`, `POSTHOG_HOST` | error tracking | see [Errors in the browser](#errors-in-the-browser) |
-| `TYPESAFE_API_KEY` | filing a note from what it says | see [Filing a note from what it says](#filing-a-note-from-what-it-says) |
+| `TYPESAFE_API_KEY` | filing a note from what it says | see [Filing a note from what it says](#filing-a-note-from-what-it-says); `DEV_TYPESAFE_API_KEY` as a GitHub secret carries a separate key to the dev instance and previews |
 | `ANDROID_ASSET_LINKS` | an Android build of your own | see [Android app](#android-app) |
 | Custom domain | serving from your own name | dashboard, not config |
 | `ANDROID_APPLICATION_ID`, `ANDROID_DEFAULT_INSTANCE` | the Android build in CI | GitHub repository **variables**; `unbent.applicationId` and `unbent.defaultInstance` in `local.properties` locally |
@@ -578,6 +578,7 @@ summary rather than failing.
 | `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID` | secret | the same pair production deploys with, needing D1 and R2 edit scopes, plus the DNS scope [the dev instance](#dns-for-devunbentapp) describes |
 | `DEV_INSTANCE_ORIGIN` | variable, optional | where a preview's sign-in relay sends people; defaults to `https://dev.unbent.app`. Set it only if your dev instance has a different name |
 | `DEV_GOOGLE_CLIENT_ID`, `DEV_GOOGLE_CLIENT_SECRET` | secret, optional | Google on the dev instance, so the relay can sign in with it; both or neither, and the client must list `dev.unbent.app` — see [Google on the dev instance](#google-on-the-dev-instance) |
+| `DEV_TYPESAFE_API_KEY` | secret, optional | Auto-fill on the dev instance and every preview; a key of its own, so what they spend stays apart from production's — see [Filing a note from what it says](#filing-a-note-from-what-it-says) |
 
 The subdomain is a variable rather than a secret because the workflow has to build the URL
 before deploying — `APP_URL` is baked in at deploy time — and a masked value would arrive
