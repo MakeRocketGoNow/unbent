@@ -8,11 +8,16 @@ describe('describeImportFile', () => {
     expect(d.text).toContain('“Podcast Bookmarks”');
   });
 
-  it('says an archive carries its own notebooks', () => {
+  it('says a zip is being read until the worker has said which kind it is', () => {
     expect(describeImportFile('unbent-export-2026-09-15.zip')).toEqual({
       format: 'zip',
-      text: expect.stringContaining('keeps its own notebook'),
+      text: expect.stringContaining('Reading'),
     });
+  });
+
+  it('says an archive carries its own notebooks, and a Notion export is chosen from', () => {
+    expect(describeImportFile('unbent-export-2026-09-15.zip', 'unbent').text).toContain('keeps its own notebook');
+    expect(describeImportFile('Export-3332a9d4.zip', 'notion').text).toContain('Choose what to bring in');
   });
 
   it('knows a bare markdown file is one note', () => {

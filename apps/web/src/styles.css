@@ -3424,6 +3424,51 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
 .import-file { margin: 0; }
 .import-file span { display: block; }
 
+/*
+   The Notion picker: one row per top-level database or page, each a checkbox row like
+   the options above it, in a list short enough to scan and scrollable past a dozen.
+*/
+.notion-picker {
+  width: 100%;
+  max-width: 46rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.notion-picker-head {
+  display: flex;
+  align-items: baseline;
+  gap: 0.75rem;
+  margin: 0;
+}
+
+.notion-picker-head .link { padding: 0; }
+
+.notion-units {
+  list-style: none;
+  margin: 0;
+  padding: 0.25rem 0.5rem;
+  max-height: 20rem;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: 0.4rem;
+}
+
+.notion-units li { padding: 0.25rem 0; }
+.notion-units .checkbox-row { max-width: none; }
+
+.notion-unit { display: flex; flex-direction: column; gap: 0.1rem; }
+.notion-unit-name { color: var(--fg); }
+.notion-unit .small { color: var(--muted); }
+
+.notion-pages-notebook {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  max-width: 24rem;
+}
+
 /* Collapsed by default: the answer is only needed once, and open by default would push
    the file picker — the thing a returning user wants — below the fold. */
 .enex-help { width: 100%; max-width: 46rem; }

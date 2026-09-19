@@ -1,13 +1,17 @@
 /// <reference lib="webworker" />
 import {
+  describeNotion,
+  detectArchiveKind,
   importArchive,
   importEnex,
   importFormat,
+  importNotion,
   type ImportClient,
   type ImportFailure,
   type ImportOptions,
   type ImportProgress,
   type ImportSkip,
+  type NotionUnit,
 } from '@unbent/enex';
 import {
   apiFetch as api,
@@ -23,15 +27,27 @@ import {
  * UI with no progress and no way to cancel. The worker also owns the fetch calls, so
  * uploads do not compete with rendering.
  *
- * Two formats arrive here — Evernote's ENEX and this app's own export — and they share
- * everything past the reader: the same client below, the same progress, the same events.
+ * Three formats arrive here — Evernote's ENEX, this app's own export, and Notion's — and
+ * they share everything past the reader: the same client below, the same progress, the
+ * same events. A zip is one of the last two, and only its entries say which, so a picked
+ * zip is described first: the panel learns whether it is Notion's and, if so, what it
+ * holds, before Start is pressed.
  *
  * Cookies travel with `credentials: 'include'` — a worker shares the document's cookie
  * jar but does not send them by default.
  */
 
+/** What the panel chose from a described Notion export. */
+export interface NotionChoices {
+  include: string[];
+  pagesNotebook: string;
+  tagsAsTags: boolean;
+}
+
 export type ImportRequest =
-  | { type: 'start'; file: File; extractText: boolean }
+  | { type: 'start'; file: File; extractText: boolean; notion?: NotionChoices }
+  /** Says what a picked zip is, and for a Notion export what it holds. */
+  | { type: 'describe'; file: File }
   /** Index every pending PDF. `auto` marks a pass nobody asked for, which stops short of a backlog. */
   | { type: 'backfill'; auto?: boolean }
   /** Index one file from its bytes, just uploaded under `filename`. */
@@ -39,6 +55,10 @@ export type ImportRequest =
   | { type: 'abort' };
 
 export type ImportEvent =
+  | { type: 'described'; kind: 'unbent' }
+  | { type: 'described'; kind: 'notion'; units: NotionUnit[] }
+  /** The zip could not be read; the panel says so beside the file rather than as a failed run. */
+  | { type: 'described'; kind: 'unreadable'; message: string }
   | { type: 'backfill-progress'; progress: IndexProgress }
   | { type: 'backfill-done'; progress: IndexProgress }
   /** The pass declined to start: this many files are pending. See `AUTO_INDEX_LIMIT`. */
@@ -145,6 +165,20 @@ async function handle(request: Exclude<ImportRequest, { type: 'abort' }>): Promi
     return;
   }
 
+  if (request.type === 'describe') {
+    try {
+      const source = { name: request.file.name, blob: request.file };
+      if ((await detectArchiveKind(request.file)) === 'notion') {
+        post({ type: 'described', kind: 'notion', units: (await describeNotion(source)).units });
+      } else {
+        post({ type: 'described', kind: 'unbent' });
+      }
+    } catch (err) {
+      post({ type: 'described', kind: 'unreadable', message: `Could not read the zip: ${(err as Error).message}` });
+    }
+    return;
+  }
+
   const { file, extractText } = request;
   const format = importFormat(file.name);
   if (format === null) {
@@ -163,11 +197,25 @@ async function handle(request: Exclude<ImportRequest, { type: 'abort' }>): Promi
   };
 
   try {
-    const progress =
-      format === 'enex'
-        ? await importEnex({ name: file.name, stream: () => file.stream() }, client, options)
-        : // A File is a Blob: zip.js reads it by byte range, so nothing is copied here.
-          await importArchive({ name: file.name, blob: file }, client, options);
+    let progress: ImportProgress;
+    if (format === 'enex') {
+      progress = await importEnex({ name: file.name, stream: () => file.stream() }, client, options);
+    } else if (format === 'zip' && (await detectArchiveKind(file)) === 'notion') {
+      // The panel's choices, or everything when it made none.
+      progress = await importNotion({ name: file.name, blob: file }, client, {
+        ...options,
+        ...(request.notion
+          ? {
+              include: request.notion.include,
+              pagesNotebook: request.notion.pagesNotebook,
+              tagsAsTags: request.notion.tagsAsTags,
+            }
+          : {}),
+      });
+    } else {
+      // A File is a Blob: zip.js reads it by byte range, so nothing is copied here.
+      progress = await importArchive({ name: file.name, blob: file }, client, options);
+    }
 
     post({ type: 'done', progress });
   } catch (err) {

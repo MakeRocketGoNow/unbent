@@ -1,6 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { ImportFailure, ImportProgress } from '@unbent/enex';
-import type { ImportEvent, ImportRequest } from '../import-worker.js';
+import {
+  DEFAULT_PAGES_NOTEBOOK,
+  importFormat,
+  type ImportFailure,
+  type ImportProgress,
+  type NotionUnit,
+} from '@unbent/enex';
+import type { ImportEvent, ImportRequest, NotionChoices } from '../import-worker.js';
 import { startIndexing, useIndexing, type IndexingState } from '../index-files.js';
 import { Button } from './Button.js';
 import { describeImportFile } from './import-file.js';
@@ -15,6 +21,12 @@ interface ImportProps {
 }
 
 type Status = 'idle' | 'running' | 'done' | 'error';
+
+/** What the worker said a picked zip is: this app's own export, Notion's, or neither. */
+type ZipDescription =
+  | { kind: 'unbent' }
+  | { kind: 'notion'; units: NotionUnit[] }
+  | { kind: 'unreadable'; message: string };
 
 function initialProgress(): ImportProgress {
   return {
@@ -75,6 +87,11 @@ export function Import({ onImported }: ImportProps) {
   const [error, setError] = useState<string | null>(null);
   const [elapsed, setElapsed] = useState(0);
   const [extractText, setExtractText] = useState(true);
+  const [zip, setZip] = useState<ZipDescription | null>(null);
+  /** The Notion units to import, by key; every non-empty one until the person unticks it. */
+  const [include, setInclude] = useState<ReadonlySet<string>>(new Set());
+  const [pagesNotebook, setPagesNotebook] = useState(DEFAULT_PAGES_NOTEBOOK);
+  const [tagsAsTags, setTagsAsTags] = useState(true);
   const indexing = useIndexing();
 
   const { setImportRunning } = useSettingsBusy();
@@ -100,27 +117,42 @@ export function Import({ onImported }: ImportProps) {
   }, [status]);
 
   // What the picked file is, and so whether Start does anything. Null until one is picked.
-  const picked = file ? describeImportFile(file.name) : null;
+  const picked = file ? describeImportFile(file.name, zip && zip.kind !== 'unreadable' ? zip.kind : 'reading') : null;
 
-  const start = useCallback(() => {
-    if (!file || describeImportFile(file.name).format === null) return;
+  /**
+   * Whether Start does anything: a file an importer takes, and for a zip, one the worker
+   * has read — this app's own, or Notion's with at least one unit ticked.
+   */
+  const canStart =
+    picked !== null &&
+    picked.format !== null &&
+    (picked.format !== 'zip' ||
+      (zip !== null && zip.kind !== 'unreadable' && (zip.kind === 'unbent' || include.size > 0)));
 
-    setStatus('running');
-    setFailures([]);
-    setSkips(emptySkipLog);
-    setError(null);
-    // Show the running state before the worker module finishes loading. This also keeps a
-    // worker startup failure visible instead of leaving the user on an unchanged form.
-    setProgress(initialProgress());
-    startedAt.current = Date.now();
-    setElapsed(0);
-
+  /**
+   * The worker, made on first need and kept until the panel unmounts.
+   *
+   * It used to be made at Start and thrown away when the run ended. A zip is described
+   * before Start — the panel has to know whether it is Notion's to draw the picker — so it
+   * is made at whichever comes first, and a run's end leaves it for the next file.
+   */
+  const spawn = useCallback((): Worker => {
+    if (worker.current) return worker.current;
     const w = new Worker(new URL('../import-worker.ts', import.meta.url), { type: 'module' });
     worker.current = w;
 
     w.onmessage = (event: MessageEvent<ImportEvent>) => {
       const data = event.data;
-      if (data.type === 'progress') {
+      if (data.type === 'described') {
+        if (data.kind === 'notion') {
+          setZip({ kind: 'notion', units: data.units });
+          setInclude(new Set(data.units.filter((u) => !u.empty).map((u) => u.key)));
+        } else if (data.kind === 'unbent') {
+          setZip({ kind: 'unbent' });
+        } else {
+          setZip({ kind: 'unreadable', message: data.message });
+        }
+      } else if (data.type === 'progress') {
         setProgress(data.progress);
       } else if (data.type === 'failure') {
         // Cap the retained list: a bad file could otherwise produce thousands of entries
@@ -132,14 +164,10 @@ export function Import({ onImported }: ImportProps) {
         setProgress(data.progress);
         setStatus('done');
         onImported();
-        w.terminate();
-        worker.current = null;
       } else if (data.type === 'error') {
         setError(data.message);
         setStatus('error');
         onImported();
-        w.terminate();
-        worker.current = null;
       }
     };
 
@@ -151,10 +179,38 @@ export function Import({ onImported }: ImportProps) {
       w.terminate();
       worker.current = null;
     };
+    return w;
+  }, [onImported]);
 
-    const request: ImportRequest = { type: 'start', file, extractText };
-    w.postMessage(request);
-  }, [file, extractText, onImported]);
+  /** Takes a file and, for a zip, has the worker read it so the panel can say what it is. */
+  function pick(next: File | null) {
+    setFile(next);
+    setZip(null);
+    setInclude(new Set());
+    setError(null);
+    if (next && importFormat(next.name) === 'zip') {
+      spawn().postMessage({ type: 'describe', file: next } satisfies ImportRequest);
+    }
+  }
+
+  const start = useCallback(() => {
+    if (!file || !canStart) return;
+
+    setStatus('running');
+    setFailures([]);
+    setSkips(emptySkipLog);
+    setError(null);
+    // Show the running state before the worker module finishes loading. This also keeps a
+    // worker startup failure visible instead of leaving the user on an unchanged form.
+    setProgress(initialProgress());
+    startedAt.current = Date.now();
+    setElapsed(0);
+
+    const choices: NotionChoices | undefined =
+      zip?.kind === 'notion' ? { include: [...include], pagesNotebook, tagsAsTags } : undefined;
+    const request: ImportRequest = { type: 'start', file, extractText, ...(choices ? { notion: choices } : {}) };
+    spawn().postMessage(request);
+  }, [file, canStart, extractText, zip, include, pagesNotebook, tagsAsTags, spawn]);
 
   function stop() {
     worker.current?.postMessage({ type: 'abort' } satisfies ImportRequest);
@@ -169,6 +225,8 @@ export function Import({ onImported }: ImportProps) {
    */
   function reset() {
     setFile(null);
+    setZip(null);
+    setInclude(new Set());
     setProgress(null);
     setFailures([]);
     setSkips(emptySkipLog);
@@ -188,9 +246,9 @@ export function Import({ onImported }: ImportProps) {
       {status === 'idle' && (
         <>
           <p className="muted small">
-            Bring notes in from Evernote, or from another Unbent. Notes that are already here
-            are skipped, so an interrupted run is safe to repeat and a backup can be restored
-            over what you have.
+            Bring notes in from Evernote, from Notion, or from another Unbent. Notes that are
+            already here are skipped, so an interrupted run is safe to repeat and a backup can
+            be restored over what you have.
           </p>
 
           {/* One line per file kind, because the one thing that differs between them is
@@ -204,6 +262,11 @@ export function Import({ onImported }: ImportProps) {
             <li>
               <code>.zip</code> or <code>.md</code> — an Unbent export, from this app or any
               other. Each note keeps its notebook, tags, dates, fields and files.
+            </li>
+            <li>
+              <code>.zip</code> from Notion — a Markdown &amp; CSV export. Pick the databases and
+              pages to bring in; each becomes a notebook, with a database&apos;s columns as its
+              fields.
             </li>
           </ul>
 
@@ -244,10 +307,26 @@ export function Import({ onImported }: ImportProps) {
             </div>
           </details>
 
+          {/* Notion has no export API either, and its export lives three menus deep. */}
+          <details className="enex-help">
+            <summary className="small">How do I export from Notion?</summary>
+            <div className="small">
+              <p>
+                <strong>The whole workspace.</strong> Settings → Settings → Export content → Export
+                all workspace content. Choose Markdown &amp; CSV, and include subpages. Notion emails
+                a link to the zip.
+              </p>
+              <p>
+                <strong>One database or page.</strong> Open it, then ··· → Export, with the same
+                choices. The zip imports the same way; it just holds less.
+              </p>
+            </div>
+          </details>
+
           <input
             type="file"
             accept=".enex,.zip,.md,application/xml,text/xml,application/zip,text/markdown"
-            onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+            onChange={(e) => pick(e.target.files?.[0] ?? null)}
           />
 
           {file && picked && (
@@ -256,8 +335,22 @@ export function Import({ onImported }: ImportProps) {
                 {file.name} · {formatBytes(file.size)}
               </span>
               {/* Says what the run will do with this file — or why it will not start. */}
-              <span className={picked.format === null ? 'bad' : 'muted'}>{picked.text}</span>
+              <span className={picked.format === null || zip?.kind === 'unreadable' ? 'bad' : 'muted'}>
+                {zip?.kind === 'unreadable' ? zip.message : picked.text}
+              </span>
             </p>
+          )}
+
+          {zip?.kind === 'notion' && (
+            <NotionPicker
+              units={zip.units}
+              include={include}
+              onInclude={setInclude}
+              pagesNotebook={pagesNotebook}
+              onPagesNotebook={setPagesNotebook}
+              tagsAsTags={tagsAsTags}
+              onTagsAsTags={setTagsAsTags}
+            />
           )}
 
           <label className="checkbox-row">
@@ -274,7 +367,7 @@ export function Import({ onImported }: ImportProps) {
             </span>
           </label>
 
-          <Button variant="primary" disabled={!picked || picked.format === null} onClick={start}>
+          <Button variant="primary" disabled={!canStart} onClick={start}>
             Start import
           </Button>
         </>
@@ -397,6 +490,126 @@ export function Import({ onImported }: ImportProps) {
       )}
 
       <ImportSkips log={skips} />
+    </div>
+  );
+}
+
+interface NotionPickerProps {
+  units: NotionUnit[];
+  include: ReadonlySet<string>;
+  onInclude: (next: ReadonlySet<string>) => void;
+  pagesNotebook: string;
+  onPagesNotebook: (name: string) => void;
+  tagsAsTags: boolean;
+  onTagsAsTags: (on: boolean) => void;
+}
+
+/** How a unit's kind reads in the list. */
+function unitKind(unit: NotionUnit): string {
+  switch (unit.kind) {
+    case 'database':
+      return 'Database';
+    case 'page':
+      return 'Page and its sub-pages';
+    case 'pages':
+      return 'Pages outside any database';
+  }
+}
+
+/**
+ * What a Notion export holds, one row per top-level database or page, each to tick or not.
+ *
+ * The export is read before Start so the list is real: its counts are the notes and files
+ * that would land, and a database whose rows never made it into the zip is shown and
+ * greyed rather than silently absent, since "where did my Library go" is the question a
+ * missing row would leave. Everything importable starts ticked — the common case is the
+ * whole workspace — and All and None are one click each for the rest.
+ *
+ * The two choices under the list are the two things the importer cannot decide alone:
+ * where pages that belong to no database go, and whether a column called Tags is the
+ * note's tags or a field of its own.
+ */
+function NotionPicker({
+  units,
+  include,
+  onInclude,
+  pagesNotebook,
+  onPagesNotebook,
+  tagsAsTags,
+  onTagsAsTags,
+}: NotionPickerProps) {
+  const importable = units.filter((u) => !u.empty);
+  const chosen = importable.filter((u) => include.has(u.key));
+  const notes = chosen.reduce((n, u) => n + u.notes, 0);
+  const files = chosen.reduce((n, u) => n + u.attachments, 0);
+
+  const toggle = (key: string, on: boolean) => {
+    const next = new Set(include);
+    if (on) next.add(key);
+    else next.delete(key);
+    onInclude(next);
+  };
+
+  return (
+    <div className="notion-picker">
+      <p className="notion-picker-head small">
+        <span className="muted">
+          {chosen.length} of {importable.length} chosen: {count(notes, 'note')}
+          {files > 0 ? `, ${count(files, 'file')}` : ''}.
+        </span>
+        <button type="button" className="link" onClick={() => onInclude(new Set(importable.map((u) => u.key)))}>
+          All
+        </button>
+        <button type="button" className="link" onClick={() => onInclude(new Set())}>
+          None
+        </button>
+      </p>
+      <ul className="notion-units">
+        {units.map((u) => (
+          <li key={u.key}>
+            <label className="checkbox-row">
+              <input
+                type="checkbox"
+                disabled={u.empty}
+                checked={!u.empty && include.has(u.key)}
+                onChange={(e) => toggle(u.key, e.target.checked)}
+              />
+              <span className="notion-unit">
+                <span className="notion-unit-name">{u.name}</span>
+                <span className="small">
+                  {u.empty
+                    ? 'Empty in the export: nothing to import.'
+                    : [
+                        unitKind(u),
+                        count(u.notes, 'note'),
+                        ...(u.attachments > 0 ? [count(u.attachments, 'file')] : []),
+                        ...(u.fields > 0 ? [count(u.fields, 'field')] : []),
+                      ].join(' · ')}
+                </span>
+              </span>
+            </label>
+          </li>
+        ))}
+      </ul>
+      {importable.some((u) => u.kind === 'pages') && include.has('pages') && (
+        <label className="notion-pages-notebook small">
+          <span className="muted">Notebook for the pages outside any database</span>
+          <input
+            className="search-field"
+            value={pagesNotebook}
+            placeholder="Leave empty to file them in none"
+            aria-label="Notebook for the pages outside any database"
+            onChange={(e) => onPagesNotebook(e.target.value)}
+          />
+        </label>
+      )}
+      <label className="checkbox-row">
+        <input type="checkbox" checked={tagsAsTags} onChange={(e) => onTagsAsTags(e.target.checked)} />
+        <span className="small">
+          A column named Tags becomes the note&apos;s tags. Untick to keep it as a field of the
+          notebook instead.
+        </span>
+      </label>
     </div>
   );
 }
