@@ -24,9 +24,9 @@ import { NotebookFields } from './NotebookFields.js';
 const selectValue = (label: string) => (screen.getByLabelText(label) as unknown as { value: string }).value;
 
 const fields: FieldDef[] = [
-  { id: 'f1', notebookId: 'nb1', name: 'Merchant', type: 'text', options: [], scale: null, position: 0, valueCount: 12 },
-  { id: 'f2', notebookId: 'nb1', name: 'Category', type: 'select', options: ['Food', 'Travel'], scale: null, position: 1, valueCount: 0 },
-  { id: 'f3', notebookId: 'nb1', name: 'Amount', type: 'number', options: [], scale: null, position: 2 },
+  { id: 'f1', notebookId: 'nb1', name: 'Merchant', type: 'text', options: [], scale: null, currency: null, position: 0, valueCount: 12 },
+  { id: 'f2', notebookId: 'nb1', name: 'Category', type: 'select', options: ['Food', 'Travel'], scale: null, currency: null, position: 1, valueCount: 0 },
+  { id: 'f3', notebookId: 'nb1', name: 'Amount', type: 'number', options: [], scale: null, currency: null, position: 2 },
 ];
 
 const rating: FieldDef = {
@@ -36,6 +36,7 @@ const rating: FieldDef = {
   type: 'number',
   options: [],
   scale: { max: 10, step: 0.5 },
+  currency: null,
   position: 0,
   valueCount: 5,
 };
@@ -156,12 +157,28 @@ describe('NotebookFields', () => {
     expect(await screen.findByText('That name belongs to the note itself')).toBeTruthy();
   });
 
-  it('shows the options editor in the new-field form only for a select', async () => {
+  it('shows the options editor in the new-field form only for a select or a multi-select', async () => {
     mount([]);
     expect(await screen.findByText(/No fields yet/)).toBeTruthy();
     expect(screen.queryByLabelText('Add a option')).toBeNull();
     fireEvent.change(screen.getByLabelText('New field type'), { target: { value: 'select' } });
     expect(screen.getByLabelText('Add a option')).toBeTruthy();
+    fireEvent.change(screen.getByLabelText('New field type'), { target: { value: 'multiselect' } });
+    expect(screen.getByLabelText('Add a option')).toBeTruthy();
+    fireEvent.change(screen.getByLabelText('New field type'), { target: { value: 'text' } });
+    expect(screen.queryByLabelText('Add a option')).toBeNull();
+  });
+
+  it('gives a multi-select field the same options editor a select has', async () => {
+    mount([
+      ...fields,
+      { id: 'f5', notebookId: 'nb1', name: 'Platforms', type: 'multiselect', options: ['PC', 'PS5'], scale: null, currency: null, position: 3 },
+    ]);
+    await screen.findByText('Platforms');
+    expect(screen.getByLabelText('Remove option PC')).toBeTruthy();
+    expect(screen.getByLabelText('Remove option PS5')).toBeTruthy();
+    // One per field with options: the select, the multi-select, and none for the rest.
+    expect(screen.getAllByLabelText('Add a option')).toHaveLength(2);
   });
 
   /*
@@ -170,6 +187,39 @@ describe('NotebookFields', () => {
      and the confirmation that a type change gets never ran. The tests below are that
      bug: the picker asks first, names the count, and writes only after Confirm.
   */
+  /*
+     A currency is display only, so a plain number becoming an amount clears nothing and
+     writes without the preview a type change gets; the picker under the row changes it.
+  */
+  it('turns a plain number into an amount without asking, and lets the currency be changed', async () => {
+    vi.mocked(api.updateNotebookField).mockResolvedValue({ field: { ...fields[2]!, currency: 'USD' }, cleared: 0 });
+    mount();
+    await screen.findByText('Amount');
+    fireEvent.change(screen.getByLabelText('Type of Amount'), { target: { value: 'currency' } });
+    await waitFor(() => expect(api.updateNotebookField).toHaveBeenCalledWith('nb1', 'f3', { currency: 'USD' }));
+    expect(api.previewFieldConversion).not.toHaveBeenCalled();
+
+    cleanup();
+    mount([{ ...fields[2]!, currency: 'USD' }]);
+    await screen.findByText('Amount');
+    expect(selectValue('Type of Amount')).toBe('currency');
+    fireEvent.change(screen.getByLabelText('Currency'), { target: { value: 'EUR' } });
+    await waitFor(() => expect(api.updateNotebookField).toHaveBeenCalledWith('nb1', 'f3', { currency: 'EUR' }));
+  });
+
+  it('sends a currency with a new field picked as one', async () => {
+    vi.spyOn(api, 'createNotebookField').mockResolvedValue({ ...fields[2]!, id: 'f9', name: 'Price', currency: 'USD' });
+    mount([]);
+    await screen.findByText(/No fields yet/);
+    fireEvent.change(screen.getByLabelText('New field name'), { target: { value: 'Price' } });
+    fireEvent.change(screen.getByLabelText('New field type'), { target: { value: 'currency' } });
+    expect(screen.getByLabelText('Currency')).toBeTruthy();
+    fireEvent.click(screen.getByText('Add field'));
+    await waitFor(() =>
+      expect(api.createNotebookField).toHaveBeenCalledWith('nb1', { name: 'Price', type: 'number', options: [], currency: 'USD' }),
+    );
+  });
+
   it('asks before narrowing a rating, naming how many values will be cleared', async () => {
     vi.mocked(api.previewFieldConversion).mockResolvedValue({ values: 5, incompatible: 2 });
     vi.mocked(api.updateNotebookField).mockResolvedValue({

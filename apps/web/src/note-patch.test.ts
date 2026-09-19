@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { FieldDef, Note, NoteFieldValue } from '@unbent/shared';
+import type { FieldDef, FieldValue, Note, NoteFieldValue } from '@unbent/shared';
 import {
   buildNotePatch,
   rememberFieldDefs,
@@ -14,6 +14,7 @@ const amount: FieldDef = {
   type: 'number',
   options: [],
   scale: null,
+  currency: null,
   position: 0,
 };
 
@@ -24,6 +25,7 @@ const site: FieldDef = {
   type: 'url',
   options: [],
   scale: null,
+  currency: null,
   position: 1,
 };
 
@@ -34,14 +36,26 @@ const kind: FieldDef = {
   type: 'select',
   options: ['Food'],
   scale: null,
+  currency: null,
   position: 2,
+};
+
+const platforms: FieldDef = {
+  id: '55555555-5555-5555-5555-555555555555',
+  notebookId: 'nb1',
+  name: 'Platforms',
+  type: 'multiselect',
+  options: ['PC', 'PS5', 'Switch'],
+  scale: null,
+  currency: null,
+  position: 3,
 };
 
 const gone = '44444444-4444-4444-4444-444444444444';
 
 function value(
   field: FieldDef,
-  stored: string | number | boolean,
+  stored: FieldValue,
   extras: Partial<NoteFieldValue> = {},
 ): NoteFieldValue {
   return {
@@ -172,6 +186,37 @@ describe('buildNotePatch', () => {
         [amount, kind],
       ),
     ).toEqual({ body: 'new' });
+  });
+
+  /*
+     The server stores a multi-select in the option list's order and the editor holds it
+     in the order the options were picked. The same set in another order is not an edit;
+     a different set is.
+  */
+  it('treats a multi-select resent in another order as unchanged, and a changed set as an edit', () => {
+    const withPlatforms = note({ fields: [value(amount, 12), value(platforms, ['PC', 'PS5'])] });
+    expect(
+      buildNotePatch(
+        draft({ fields: { [amount.id]: 12, [platforms.id]: ['PS5', 'PC'] } }),
+        withPlatforms,
+        [amount, platforms],
+      ),
+    ).toBeNull();
+    expect(
+      buildNotePatch(
+        draft({ fields: { [amount.id]: 12, [platforms.id]: ['PC', 'PS5', 'Switch'] } }),
+        withPlatforms,
+        [amount, platforms],
+      ),
+    ).toEqual({ fields: { [platforms.id]: ['PC', 'PS5', 'Switch'] } });
+    // A list naming something that is no option is held back, like a half-typed number.
+    expect(
+      unstoreableFieldIds(
+        draft({ fields: { [amount.id]: 12, [platforms.id]: ['PC', 'Xbox'] } }),
+        withPlatforms,
+        [amount, platforms],
+      ),
+    ).toEqual([platforms.id]);
   });
 
   /*

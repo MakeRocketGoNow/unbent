@@ -1007,6 +1007,7 @@ describe('notebook fields', () => {
     type: string;
     options: string[];
     scale?: { max: number; step: number } | null;
+    currency?: string | null;
     position: number;
     valueCount?: number;
   }
@@ -1014,7 +1015,7 @@ describe('notebook fields', () => {
     fieldId: string;
     name: string;
     type: string;
-    value: string | number | boolean;
+    value: string | number | boolean | string[];
     notebookId: string;
     notebook: string;
   }
@@ -1028,7 +1029,13 @@ describe('notebook fields', () => {
   async function makeField(
     actor: Actor,
     notebookId: string,
-    def: { name: string; type: string; options?: string[]; scale?: { max: number; step: number } },
+    def: {
+      name: string;
+      type: string;
+      options?: string[];
+      scale?: { max: number; step: number };
+      currency?: string | null;
+    },
   ): Promise<Field> {
     const res = await json(actor, 'POST', `/api/notebooks/${notebookId}/fields`, def);
     if (res.status !== 201) throw new Error(`field: ${res.status} ${await res.text()}`);
@@ -1207,6 +1214,129 @@ describe('notebook fields', () => {
     expect(byName((await cleared.json()).fields)[kind.name]).toBeUndefined();
   });
 
+  it('stores a multi-select as its chosen options in option order, and refuses an unknown one', async () => {
+    const platforms = await makeField(alice, nb.id, {
+      name: `Platforms ${Date.now()}`,
+      type: 'multiselect',
+      options: ['PC', 'PS5', 'Switch'],
+    });
+    const created = await json(alice, 'POST', '/api/notes', {
+      title: 'Game',
+      body: '',
+      notebook: nb.name,
+      fields: { [platforms.id]: ['Switch', 'PC'] },
+    });
+    expect(created.status).toBe(201);
+    const note = await created.json();
+    expect(byName(note.fields)[platforms.name]).toEqual(['PC', 'Switch']);
+
+    // One option as a bare string is a list of one — what a select's value looks like.
+    const one = await json(alice, 'PATCH', `/api/notes/${note.id}`, { fields: { [platforms.id]: 'PS5' } });
+    expect(one.status).toBe(200);
+    expect(byName((await one.json()).fields)[platforms.name]).toEqual(['PS5']);
+
+    const bad = await json(alice, 'PATCH', `/api/notes/${note.id}`, { fields: { [platforms.id]: ['PC', 'Xbox'] } });
+    expect(bad.status).toBe(400);
+    expect((await bad.json()).error).toContain('list of options from: PC, PS5, Switch');
+
+    const cleared = await json(alice, 'PATCH', `/api/notes/${note.id}`, { fields: { [platforms.id]: [] } });
+    expect(cleared.status).toBe(200);
+    expect(byName((await cleared.json()).fields)[platforms.name]).toBeUndefined();
+  });
+
+  it('keeps the retired options a note holds on a multi-select, and still takes a live one beside them', async () => {
+    const platforms = await makeField(alice, nb.id, {
+      name: `Held ${Date.now()}`,
+      type: 'multiselect',
+      options: ['PC', 'PS5', 'Switch'],
+    });
+    const note = await json(alice, 'POST', '/api/notes', {
+      title: 'Held',
+      body: '',
+      notebook: nb.name,
+      fields: { [platforms.id]: ['PC', 'PS5'] },
+    }).then((r) => r.json());
+    expect(
+      (await json(alice, 'PATCH', `/api/notebooks/${nb.id}/fields/${platforms.id}`, { options: ['PC', 'Switch'] })).status,
+    ).toBe(200);
+
+    // The editor resends what the note holds plus a live option: a real edit, and it writes.
+    const saved = await json(alice, 'PATCH', `/api/notes/${note.id}`, {
+      title: 'Still held',
+      fields: { [platforms.id]: ['PC', 'PS5', 'Switch'] },
+    });
+    expect(saved.status).toBe(200);
+    const after = await saved.json();
+    expect(after.title).toBe('Still held');
+    expect(new Set(byName(after.fields)[platforms.name] as string[])).toEqual(new Set(['PC', 'PS5', 'Switch']));
+
+    // A retired option the note never held is a new choice, and refused.
+    expect(
+      (await json(alice, 'PATCH', `/api/notes/${note.id}`, { fields: { [platforms.id]: ['PC', 'Xbox'] } })).status,
+    ).toBe(400);
+  });
+
+  it('converts a select to a multi-select and back, seeding the options and clearing only the lists', async () => {
+    const kind = await makeField(alice, nb.id, {
+      name: `Kinds ${Date.now()}`,
+      type: 'select',
+      options: ['GP', 'Dentist'],
+    });
+    const ids: string[] = [];
+    for (const value of ['GP', 'Dentist']) {
+      ids.push(
+        (await json(alice, 'POST', '/api/notes', { title: value, body: '', notebook: nb.name, fields: { [kind.id]: value } }).then(
+          (r) => r.json(),
+        )).id,
+      );
+    }
+    const toMulti = await json(alice, 'PATCH', `/api/notebooks/${nb.id}/fields/${kind.id}`, { type: 'multiselect' }).then((r) => r.json());
+    expect(toMulti.cleared).toBe(0);
+    expect(toMulti.field.type).toBe('multiselect');
+    expect(new Set(toMulti.field.options)).toEqual(new Set(['GP', 'Dentist']));
+    expect(byName((await getNote(alice, ids[0]!)).fields)[kind.name]).toEqual(['GP']);
+
+    // One note now holds two; back to a select keeps the single choices and clears that one.
+    expect((await json(alice, 'PATCH', `/api/notes/${ids[1]!}`, { fields: { [kind.id]: ['GP', 'Dentist'] } })).status).toBe(200);
+    const preview = await json(alice, 'GET', `/api/notebooks/${nb.id}/fields/${kind.id}/conversion?type=select`).then((r) => r.json());
+    expect(preview).toEqual({ values: 2, incompatible: 1 });
+    const back = await json(alice, 'PATCH', `/api/notebooks/${nb.id}/fields/${kind.id}`, { type: 'select' }).then((r) => r.json());
+    expect(back.cleared).toBe(1);
+    expect(new Set(back.field.options)).toEqual(new Set(['GP', 'Dentist']));
+    expect(byName((await getNote(alice, ids[0]!)).fields)[kind.name]).toBe('GP');
+    expect(byName((await getNote(alice, ids[1]!)).fields)[kind.name]).toBeUndefined();
+  });
+
+  it('lets a number carry a currency, which a rating cannot, and drops it with the type', async () => {
+    const price = await makeField(alice, nb.id, { name: `Price ${Date.now()}`, type: 'number', currency: 'USD' });
+    expect(price.currency).toBe('USD');
+    // The value is a number as ever; the currency is how it is drawn.
+    const note = await json(alice, 'POST', '/api/notes', { title: 'Cost', body: '', notebook: nb.name, fields: { [price.id]: 29.99 } }).then((r) => r.json());
+    expect(byName(note.fields)[price.name]).toBe(29.99);
+    expect(note.fields.find((v: Value) => v.fieldId === price.id).currency).toBe('USD');
+
+    // Both at once is refused; a lower-case or malformed code too.
+    expect((await json(alice, 'POST', `/api/notebooks/${nb.id}/fields`, { name: 'Both', type: 'number', scale: { max: 5, step: 1 }, currency: 'USD' })).status).toBe(400);
+    expect((await json(alice, 'PATCH', `/api/notebooks/${nb.id}/fields/${price.id}`, { currency: 'usd' })).status).toBe(400);
+
+    const euro = await json(alice, 'PATCH', `/api/notebooks/${nb.id}/fields/${price.id}`, { currency: 'EUR' }).then((r) => r.json());
+    expect(euro.field.currency).toBe('EUR');
+    expect(euro.cleared).toBe(0);
+
+    // A scale arriving takes the currency away; so does leaving the number type.
+    const stars = await json(alice, 'PATCH', `/api/notebooks/${nb.id}/fields/${price.id}`, { scale: { max: 5, step: 1 } }).then((r) => r.json());
+    expect(stars.field.scale).toEqual({ max: 5, step: 1 });
+    expect(stars.field.currency).toBeNull();
+    const again = await json(alice, 'PATCH', `/api/notebooks/${nb.id}/fields/${price.id}`, { scale: null, currency: 'GBP' }).then((r) => r.json());
+    expect(again.field.currency).toBe('GBP');
+    const text = await json(alice, 'PATCH', `/api/notebooks/${nb.id}/fields/${price.id}`, { type: 'text' }).then((r) => r.json());
+    expect(text.field.currency).toBeNull();
+    // And a plain number can let go of it.
+    const money = await makeField(alice, nb.id, { name: `Fee ${Date.now()}`, type: 'number', currency: 'USD' });
+    const plain = await json(alice, 'PATCH', `/api/notebooks/${nb.id}/fields/${money.id}`, { currency: null }).then((r) => r.json());
+    expect(plain.field.currency).toBeNull();
+  });
+
   it('merges a patch, and clears a value with null or an empty string', async () => {
     const created = await json(alice, 'POST', '/api/notes', {
       title: 'Merge',
@@ -1376,19 +1506,20 @@ describe('notebook fields', () => {
     const res = await json(alice, 'POST', '/api/import/note', payload);
     expect(res.status).toBe(201);
     const { id, skippedFields } = await res.json();
-    // Reserved, and a select value not among the options.
-    expect(skippedFields.sort()).toEqual(['Category', 'title']);
+    // Reserved. A select value not among the options is not skipped: the option is added.
+    expect(skippedFields).toEqual(['title']);
 
-    expect(byName((await getNote(alice, id)).fields)).toEqual({ Merchant: 'Acme', Total: 12.5 });
+    expect(byName((await getNote(alice, id)).fields)).toEqual({ Merchant: 'Acme', Total: 12.5, Category: 'Vet' });
     const total = (await getFields(alice, nb.id)).find((x) => x.name === 'Total');
     expect(total?.type).toBe('number');
+    expect((await getFields(alice, nb.id)).find((x) => x.name === 'Category')?.options).toContain('Vet');
 
     // A re-run restores a value a deleted field lost, but never overwrites an edit.
     await json(alice, 'PATCH', `/api/notes/${id}`, { fields: { [f['Merchant']!.id]: 'Edited' } });
     await json(alice, 'DELETE', `/api/notebooks/${nb.id}/fields/${total!.id}`);
     const again = await json(alice, 'POST', '/api/import/note', payload);
     expect(again.status).toBe(200);
-    expect(byName((await getNote(alice, id)).fields)).toEqual({ Merchant: 'Edited', Total: 12.5 });
+    expect(byName((await getNote(alice, id)).fields)).toEqual({ Merchant: 'Edited', Total: 12.5, Category: 'Vet' });
   });
 
   it("does not expose or accept changes to another user's fields", async () => {
@@ -1774,6 +1905,7 @@ describe('filtering by field', () => {
       { name: 'Paid on', type: 'date' },
       { name: 'Reimbursed', type: 'checkbox' },
       { name: 'Category', type: 'select', options: ['Food', 'Travel'] },
+      { name: 'Platforms', type: 'multiselect', options: ['PC', 'PS5', 'Switch'] },
     ]) {
       f[def.name] = (await json(alice, 'POST', `/api/notebooks/${nb.id}/fields`, def).then((r) =>
         r.json(),
@@ -1789,18 +1921,34 @@ describe('filtering by field', () => {
       [f['Paid on']!.id]: '2026-01-10',
       [f['Reimbursed']!.id]: true,
       [f['Category']!.id]: 'Food',
+      [f['Platforms']!.id]: ['PC', 'PS5'],
     });
     b = await make('Train', {
       [f['Amount']!.id]: 40,
       [f['Paid on']!.id]: '2026-03-05',
       [f['Reimbursed']!.id]: false,
       [f['Category']!.id]: 'Travel',
+      [f['Platforms']!.id]: ['Switch'],
     });
     c = await make('Blank', {});
   }, 30_000);
 
   it('narrows by a select option', async () => {
     expect((await listWith(alice, [`${f['Category']!.id}:eq:Food`])).ids).toEqual([a.id]);
+  });
+
+  it('narrows by an option a multi-select holds, whichever position it is in', async () => {
+    expect((await listWith(alice, [`${f['Platforms']!.id}:eq:PC`])).ids).toEqual([a.id]);
+    expect((await listWith(alice, [`${f['Platforms']!.id}:eq:PS5`])).ids).toEqual([a.id]);
+    expect((await listWith(alice, [`${f['Platforms']!.id}:eq:Switch`])).ids).toEqual([b.id]);
+    expect((await listWith(alice, [`${f['Platforms']!.id}:eq:Xbox`])).ids).toEqual([]);
+    // Two options AND together, the way two tags do.
+    expect(
+      (await listWith(alice, [`${f['Platforms']!.id}:eq:PC`, `${f['Platforms']!.id}:eq:PS5`])).ids,
+    ).toEqual([a.id]);
+    expect(
+      (await listWith(alice, [`${f['Platforms']!.id}:eq:PC`, `${f['Platforms']!.id}:eq:Switch`])).ids,
+    ).toEqual([]);
   });
 
   it('narrows by a checkbox state', async () => {

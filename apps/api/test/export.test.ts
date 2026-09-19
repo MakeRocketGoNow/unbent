@@ -575,6 +575,11 @@ describe('custom fields in the export', () => {
     const amount = await field('Amount', 'number');
     const paid = await field('Paid', 'checkbox');
     const on = await field('Paid on', 'date');
+    const platforms = await fetch(`${BASE}/api/notebooks/${nb.id}/fields`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ name: 'Platforms', type: 'multiselect', options: ['PC', 'PS5', 'Switch'] }),
+    }).then((r) => r.json() as Promise<{ id: string }>);
 
     const created = await fetch(`${BASE}/api/notes`, {
       method: 'POST',
@@ -583,11 +588,18 @@ describe('custom fields in the export', () => {
         title: 'Lunch',
         body: 'x',
         notebook: 'Receipts',
-        fields: { [merchant.id]: 'Acme', [amount.id]: 12.5, [paid.id]: true, [on.id]: '2024-03-01' },
+        fields: {
+          [merchant.id]: 'Acme',
+          [amount.id]: 12.5,
+          [paid.id]: true,
+          [on.id]: '2024-03-01',
+          [platforms.id]: ['PS5', 'PC'],
+        },
       }),
     }).then((r) => r.json());
 
-    const expected = { Merchant: 'Acme', Amount: 12.5, Paid: true, 'Paid on': '2024-03-01' };
+    // A multi-select rides out as a YAML list, in the option list's order.
+    const expected = { Merchant: 'Acme', Amount: 12.5, Paid: true, 'Paid on': '2024-03-01', Platforms: ['PC', 'PS5'] };
     const entry = [...(await fetchExport(actor)).values()][0]!;
     expect(parse(entry).fields).toEqual(expected);
     expect(parse(entry).notebook).toBe('Receipts');
@@ -622,6 +634,8 @@ describe('notebook definitions in the export', () => {
     await field({ name: 'Priority', type: 'number', scale: { max: 5, step: 0.5 } });
     // Never valued, so no note's frontmatter could bring it back.
     await field({ name: 'Image', type: 'url' });
+    await field({ name: 'Platforms', type: 'multiselect', options: ['PC', 'PS5'] });
+    await field({ name: 'Cost', type: 'number', currency: 'EUR' });
 
     await createNote(actor, { title: 'Bike', notebook: 'Shopping' });
     await fetch(`${BASE}/api/notes`, {
@@ -637,6 +651,8 @@ describe('notebook definitions in the export', () => {
         { name: 'Status', type: 'select', options: ['Want', 'Ordered'] },
         { name: 'Priority', type: 'number', scale: { max: 5, step: 0.5 } },
         { name: 'Image', type: 'url' },
+        { name: 'Platforms', type: 'multiselect', options: ['PC', 'PS5'] },
+        { name: 'Cost', type: 'number', currency: 'EUR' },
       ],
     };
 

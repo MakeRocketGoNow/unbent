@@ -113,7 +113,7 @@ export function NoteListItem({ note, to, actions, sort, transition = false }: No
             when its notebook is a collection of records rather than of prose. */}
         {note.fields && note.fields.length > 0 && (
           <span className="note-fields-line">
-            {note.fields.map((f) => `${f.name}: ${formatFieldValue(f.type, f.value, f.scale)}`).join(' · ')}
+            {note.fields.map((f) => `${f.name}: ${formatFieldValue(f.type, f.value, f.scale, f.currency)}`).join(' · ')}
           </span>
         )}
         {note.tags.length > 0 && (

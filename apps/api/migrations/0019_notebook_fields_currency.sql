@@ -1,0 +1,14 @@
+-- A `number` field can carry a currency, which draws its values as money.
+--
+-- Not a tenth type, for the reason 0018 gave for a rating: the value is a number and stays
+-- one -- stored, sorted, ranged and exported exactly as before -- and what a currency adds
+-- is how the number is shown. `$29.99` is `29.99` with a code beside it.
+--
+-- An ISO 4217 code, which is what `Intl.NumberFormat` takes and what a definitions file
+-- can carry without a lookup table. NULL for every field that exists today and for every
+-- field that is not a plain number: a rating is not an amount of money, so this and the
+-- scale columns are never both set -- the shared schema refuses a patch that asks for
+-- both, and the repo nulls the currency whenever a scale stands.
+--
+-- One ADD COLUMN, for the reason 0018 gave: no rebuild, so no cascade to fear.
+ALTER TABLE notebook_fields ADD COLUMN currency TEXT;

@@ -9,6 +9,7 @@ import {
   Check,
   ChevronLeft,
   ChevronRight,
+  Coins,
   Copy,
   Download,
   FileText,
@@ -19,6 +20,7 @@ import {
   Inbox,
   Link as LinkGlyph,
   List,
+  ListChecks,
   Mail,
   Maximize2,
   Menu,
@@ -293,6 +295,8 @@ const FIELD_TYPE_ICONS: Record<FieldType, LucideIcon> = {
   email: Mail,
   phone: Phone,
   select: List,
+  // A list with its rows ticked: the same list as a select, with more than one chosen.
+  multiselect: ListChecks,
 };
 
 /**
@@ -301,8 +305,17 @@ const FIELD_TYPE_ICONS: Record<FieldType, LucideIcon> = {
  * is a number under the hood, and the hash beside a row of stars would be the one glyph
  * in the column that described the storage instead of the value.
  */
-export function FieldTypeIcon({ type, rating }: { type: FieldType; rating?: boolean }) {
-  return <RowIcon icon={rating ? Star : FIELD_TYPE_ICONS[type]} />;
+export function FieldTypeIcon({
+  type,
+  rating,
+  currency,
+}: {
+  type: FieldType;
+  rating?: boolean;
+  /** An amount takes the coins for the same reason a rating takes the star: it says what the row is. */
+  currency?: boolean;
+}) {
+  return <RowIcon icon={rating ? Star : currency ? Coins : FIELD_TYPE_ICONS[type]} />;
 }
 
 /**

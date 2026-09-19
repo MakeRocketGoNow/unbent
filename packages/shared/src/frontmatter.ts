@@ -139,10 +139,11 @@ export function parse(source: string): ParsedNote {
     tags = [raw['tags']];
   }
 
-  // Every other scalar key is a custom field. Known keys are claimed above, and reserved
-  // names are dropped case-insensitively so a hand-written `Title:` cannot come back as
-  // a field called Title. Lists and maps are not values a field can hold; they are left
-  // behind rather than stringified into something that would round-trip as text.
+  // Every other key is a custom field. Known keys are claimed above, and reserved names
+  // are dropped case-insensitively so a hand-written `Title:` cannot come back as a field
+  // called Title. A list of scalars is a multi-select's value, read as strings. Maps and
+  // nested lists are not values a field can hold; they are left behind rather than
+  // stringified into something that would round-trip as text.
   const fields: Record<string, FieldValue> = {};
   for (const [key, value] of Object.entries(raw)) {
     if (isReservedFieldName(key)) continue;
@@ -150,6 +151,8 @@ export function parse(source: string): ParsedNote {
       fields[key] = value;
     } else if (value instanceof Date && !Number.isNaN(value.getTime())) {
       fields[key] = value.toISOString().slice(0, 10);
+    } else if (Array.isArray(value) && value.every(isScalar)) {
+      fields[key] = value.map(String);
     }
   }
 
@@ -167,6 +170,10 @@ export function parse(source: string): ParsedNote {
     // serialize() writes exactly one blank line after the fence; strip it back off.
     body: (rest ?? '').replace(/^\r?\n/, ''),
   };
+}
+
+function isScalar(value: unknown): value is string | number | boolean {
+  return typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean';
 }
 
 /** True when the document opens with a frontmatter fence. */

@@ -306,7 +306,13 @@ export async function listNotebookFields(notebookId: string): Promise<FieldDef[]
 /** Adds a field. Throws with a readable message when the name is taken. */
 export async function createNotebookField(
   notebookId: string,
-  input: { name: string; type: FieldType; options: string[]; scale?: FieldScale | null },
+  input: {
+    name: string;
+    type: FieldType;
+    options: string[];
+    scale?: FieldScale | null;
+    currency?: string | null;
+  },
 ): Promise<FieldDef> {
   const res = await fetch(`/api/notebooks/${notebookId}/fields`, {
     method: 'POST',
@@ -324,7 +330,13 @@ export async function createNotebookField(
 export async function updateNotebookField(
   notebookId: string,
   fieldId: string,
-  patch: { name?: string; type?: FieldType; options?: string[]; scale?: FieldScale | null },
+  patch: {
+    name?: string;
+    type?: FieldType;
+    options?: string[];
+    scale?: FieldScale | null;
+    currency?: string | null;
+  },
 ): Promise<{ field: FieldDef; cleared: number }> {
   const res = await fetch(`/api/notebooks/${notebookId}/fields/${fieldId}`, {
     method: 'PATCH',

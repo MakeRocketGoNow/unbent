@@ -528,7 +528,7 @@ describe('how far along the run is', () => {
 
 describe('notebook definitions in the archive', () => {
   const shopping = serializeNotebook('Shopping', [
-    { id: 'f1', notebookId: 'nb', name: 'Url', type: 'url', options: [], scale: null, position: 0 },
+    { id: 'f1', notebookId: 'nb', name: 'Url', type: 'url', options: [], scale: null, currency: null, position: 0 },
     {
       id: 'f2',
       notebookId: 'nb',
@@ -536,6 +536,7 @@ describe('notebook definitions in the archive', () => {
       type: 'select',
       options: ['Want', 'Ordered'],
       scale: null,
+      currency: null,
       position: 1,
     },
     {
@@ -545,6 +546,7 @@ describe('notebook definitions in the archive', () => {
       type: 'number',
       options: [],
       scale: { max: 5, step: 0.5 },
+      currency: null,
       position: 2,
     },
   ]);

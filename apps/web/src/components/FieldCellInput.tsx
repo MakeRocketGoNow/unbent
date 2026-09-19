@@ -1,5 +1,6 @@
 import { isRatingField, type FieldDef, type FieldValue } from '@unbent/shared';
 import { RatingInput } from './RatingInput.js';
+import { TagInput } from './TagInput.js';
 import { tintIndex } from '../tint.js';
 
 interface FieldCellInputProps {
@@ -15,7 +16,8 @@ interface FieldCellInputProps {
 }
 
 /**
- * The field controls that are a single choice: a checkbox, a select, and a rating.
+ * The field controls that are a choice rather than typing: a checkbox, a select, a
+ * multi-select, and a rating.
  *
  * Shared by the note's property list and the table's cells, because both draw them the
  * same way and the select has a rule worth keeping in one place: a value that is no
@@ -23,6 +25,11 @@ interface FieldCellInputProps {
  * and the option list changing is not the note's edit. The stylesheet draws a chosen
  * option as a chip in the option's own tint — the tint the tag editor gives the word —
  * and an unchosen one as "Empty", which is Notion's word for it.
+ *
+ * A multi-select is the tag editor over the field's options: chips for what is chosen,
+ * and a restricted entry that offers the rest. The same rule about retired options
+ * holds — a chip the list no longer offers stays, removable, until the note lets go of
+ * it. Read-only, it is the chips alone.
  *
  * A rating belongs here for the same reason: it is picked, not typed. It is the one
  * control whose shape depends on its definition rather than only its type — a `number`
@@ -87,6 +94,36 @@ export function FieldCellInput({
         ))}
         {stale && <option value={text}>{text} (no longer an option)</option>}
       </select>
+    );
+  }
+  if (def.type === 'multiselect') {
+    const chosen = Array.isArray(value)
+      ? value
+      : value === null || value === undefined || value === ''
+        ? []
+        : [String(value)];
+    if (readOnly) {
+      return (
+        <span id={id} className="note-field-multi tag-input" aria-label={label}>
+          {chosen.length === 0 && <span className="note-field-empty">Empty</span>}
+          {chosen.map((o) => (
+            <span key={o} className="tag-chip" data-tint={tintIndex(o)}>
+              {o}
+            </span>
+          ))}
+        </span>
+      );
+    }
+    return (
+      <div id={id} className="note-field-multi" role="group" aria-label={label ?? def.name}>
+        <TagInput
+          label="option"
+          tags={chosen}
+          suggestions={def.options}
+          restrict
+          onChange={(next) => onChange(next.length === 0 ? null : next)}
+        />
+      </div>
     );
   }
   return null;

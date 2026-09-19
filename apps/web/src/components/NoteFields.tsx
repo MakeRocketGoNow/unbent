@@ -2,7 +2,9 @@ import { useState, type ReactNode } from 'react';
 import {
   FIELD_TYPES,
   FIELD_TYPE_LABELS,
+  fieldHasOptions,
   fieldNameSchema,
+  isCurrencyField,
   isRatingField,
   type FieldDef,
   type FieldType,
@@ -12,6 +14,7 @@ import {
 import { Button } from './Button';
 import { FieldTypeIcon, PlusRowIcon } from './icons.js';
 import { FieldCellInput } from './FieldCellInput.js';
+import { currencySymbol, formatFieldValue } from './format-field.js';
 import { usePersistentState } from '../usePersistentState.js';
 
 export interface NoteFieldsProps {
@@ -118,7 +121,7 @@ export function NoteFields({
 
   const isEmpty = (def: FieldDef) => {
     const v = values[def.id];
-    return v === null || v === undefined || v === '';
+    return v === null || v === undefined || v === '' || (Array.isArray(v) && v.length === 0);
   };
   const empties = defs.filter(isEmpty).length;
   // The toggle is offered once the empties are worth hiding: a short list is read whole,
@@ -147,7 +150,7 @@ export function NoteFields({
             {v.name}
             <span className="note-field-origin">from {v.notebook}</span>
           </span>
-          <span className="note-field-value">{String(v.value)}</span>
+          <span className="note-field-value">{formatFieldValue(v.type, v.value, v.scale, v.currency)}</span>
           <span className="note-field-side">
             {!readOnly && (
               <Button variant="quiet" size="small" onClick={() => onChange(v.fieldId, null)}>
@@ -283,6 +286,19 @@ function FieldRow({ def, value, readOnly, onChange }: FieldRowProps) {
           onChange={(e) => setText(e.target.value)}
         />
       );
+      // An amount wears its currency's symbol before the digits, the way a price is
+      // written, so the row reads as money without the input having to format what is
+      // being typed. The input itself stays the plain number.
+      if (isCurrencyField(def) && def.currency) {
+        control = (
+          <span className="note-field-money">
+            <span className="note-field-affix" aria-hidden="true">
+              {currencySymbol(def.currency)}
+            </span>
+            {control}
+          </span>
+        );
+      }
       break;
     case 'date':
       control = (
@@ -291,6 +307,7 @@ function FieldRow({ def, value, readOnly, onChange }: FieldRowProps) {
       break;
     case 'checkbox':
     case 'select':
+    case 'multiselect':
       // Shared with the table's cells, retired-option rule included; see `FieldCellInput`.
       control = (
         <FieldCellInput id={id} def={def} value={value} readOnly={readOnly} onChange={onChange} />
@@ -342,7 +359,7 @@ function FieldRow({ def, value, readOnly, onChange }: FieldRowProps) {
   return (
     <div className="note-field" data-type={def.type}>
       <span className="note-field-glyph" aria-hidden="true">
-        <FieldTypeIcon type={def.type} rating={isRatingField(def)} />
+        <FieldTypeIcon type={def.type} rating={isRatingField(def)} currency={isCurrencyField(def)} />
       </span>
       {/* The title carries the whole name for one the fixed name column has to cut. */}
       <label className="note-field-label" htmlFor={id} title={def.name}>
@@ -403,7 +420,7 @@ function AddFieldRow({ onAdd, onDone }: AddFieldRowProps) {
         name: parsed.data,
         type,
         options:
-          type === 'select'
+          fieldHasOptions(type)
             ? options
                 .split(',')
                 .map((o) => o.trim())
@@ -455,7 +472,7 @@ function AddFieldRow({ onAdd, onDone }: AddFieldRowProps) {
             </option>
           ))}
         </select>
-        {type === 'select' && (
+        {fieldHasOptions(type) && (
           <input
             className="note-field-input"
             placeholder="Options, separated by commas"

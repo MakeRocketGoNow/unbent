@@ -7,6 +7,7 @@ const def = (over: Partial<FieldDef> & { name: string; type: FieldDef['type'] })
   notebookId: 'nb1',
   options: [],
   scale: null,
+  currency: null,
   position: 0,
   ...over,
 });
@@ -20,6 +21,8 @@ describe('the notebook definitions file', () => {
       def({ name: 'Priority', type: 'number', scale: { max: 5, step: 0.5 } }),
       def({ name: 'Captured', type: 'date' }),
       def({ name: 'Image', type: 'url' }),
+      def({ name: 'Platforms', type: 'multiselect', options: ['PC', 'PS5'] }),
+      def({ name: 'Cost', type: 'number', currency: 'EUR' }),
     ];
 
     const text = serializeNotebook('Coupons', fields);
@@ -32,16 +35,19 @@ describe('the notebook definitions file', () => {
         { name: 'Priority', type: 'number', scale: { max: 5, step: 0.5 } },
         { name: 'Captured', type: 'date' },
         { name: 'Image', type: 'url' },
+        { name: 'Platforms', type: 'multiselect', options: ['PC', 'PS5'] },
+        { name: 'Cost', type: 'number', currency: 'EUR' },
       ],
     });
   });
 
-  it('writes options and scale only where the type can use them', () => {
+  it('writes options, scale and currency only where the type can use them', () => {
     const text = serializeNotebook('Coupons', [
-      def({ name: 'Store', type: 'text', options: ['stale'] }),
-      def({ name: 'Rating', type: 'number', scale: { max: 10, step: 1 } }),
+      def({ name: 'Store', type: 'text', options: ['stale'], currency: 'USD' }),
+      def({ name: 'Rating', type: 'number', scale: { max: 10, step: 1 }, currency: 'USD' }),
     ]);
     expect(text).not.toContain('options');
+    expect(text).not.toContain('currency');
     expect(text).toContain('max: 10');
   });
 

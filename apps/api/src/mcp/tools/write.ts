@@ -7,12 +7,14 @@ import {
   MAX_TAG_LENGTH,
   MAX_TITLE_LENGTH,
   UNFILED,
+  currencySchema,
   fieldNameSchema,
   fieldOptionsSchema,
   fieldTypeSchema,
   notebookNameSchema,
   tagNameSchema,
   type FieldDef,
+  type FieldValue,
   type NoteFieldValue,
   type NoteFieldsPatch,
 } from '@unbent/shared';
@@ -27,13 +29,19 @@ import { jsonResult, noteRef, notFound, toolError } from './result.js';
 const fieldsSchema = z
   .record(
     z.string().min(1),
-    z.union([z.string().max(MAX_FIELD_VALUE_LENGTH), z.number(), z.boolean(), z.null()]),
+    z.union([
+      z.string().max(MAX_FIELD_VALUE_LENGTH),
+      z.number(),
+      z.boolean(),
+      z.array(z.string().max(MAX_FIELD_VALUE_LENGTH)),
+      z.null(),
+    ]),
   )
   .describe(
     'Custom field values keyed by field name, as list_notebooks reports them for the ' +
       'notebook. Null clears one. Only the names given change. A value must fit the ' +
       'field\'s type: a number for number, YYYY-MM-DD for date, true/false for checkbox, ' +
-      'one of the options for select.',
+      'one of the options for select, a list of the options for multiselect.',
   );
 
 /**
@@ -45,7 +53,7 @@ const fieldsSchema = z
  * the real ones, since the likeliest cause is a misremembered name.
  */
 function resolveFieldNames(
-  byName: Record<string, string | number | boolean | null>,
+  byName: Record<string, FieldValue | null>,
   defs: FieldDef[],
   existing: NoteFieldValue[],
   notebookName: string | null,
@@ -428,18 +436,27 @@ export function registerWriteTools(server: McpServer, notes: NotesRepo): void {
       title: 'Add a custom field to a notebook',
       description:
         'Define a field on a notebook, so notes in it can carry a value under that name. ' +
-        `Types: ${FIELD_TYPES.join(', ')}. A select needs its options. Get the notebook id ` +
+        `Types: ${FIELD_TYPES.join(', ')}. A select or multiselect needs its options. A number ` +
+        'may carry a currency, which draws its values as money. Get the notebook id ' +
         'from list_notebooks; set values with create_note or update_note.',
       inputSchema: z.object({
         notebookId: z.string().min(1),
         name: fieldNameSchema,
         type: fieldTypeSchema,
-        options: fieldOptionsSchema.optional().describe('For select: the allowed values.'),
+        options: fieldOptionsSchema.optional().describe('For select and multiselect: the allowed values.'),
+        currency: currencySchema
+          .optional()
+          .describe('For number: an ISO 4217 code such as USD, so values read as amounts.'),
       }),
       annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
     },
-    async ({ notebookId, name, type, options }) => {
-      const result = await notes.createField(notebookId, { name, type, options: options ?? [] });
+    async ({ notebookId, name, type, options, currency }) => {
+      const result = await notes.createField(notebookId, {
+        name,
+        type,
+        options: options ?? [],
+        currency: currency ?? null,
+      });
       if (result === 'missing') return notFound('notebook', notebookId);
       if (result === 'conflict') {
         return toolError(`This notebook already has a field called "${name}".`);
@@ -454,21 +471,26 @@ export function registerWriteTools(server: McpServer, notes: NotesRepo): void {
     {
       title: 'Rename or retype a custom field',
       description:
-        'Change a field\'s name, type, or select options. Changing the type converts the ' +
-        'values notes already hold; any value that cannot be read as the new type is ' +
-        'cleared, and the result says how many were. Changing to select makes the existing ' +
-        'values the options.',
+        'Change a field\'s name, type, or the options of a select or multiselect. Changing ' +
+        'the type converts the values notes already hold; any value that cannot be read as ' +
+        'the new type is cleared, and the result says how many were. Changing to select or ' +
+        'multiselect makes the existing values the options. A currency on a number is ' +
+        'display only: setting or clearing one changes no value.',
       inputSchema: z.object({
         notebookId: z.string().min(1),
         fieldId: z.string().uuid(),
         name: fieldNameSchema.optional(),
         type: fieldTypeSchema.optional(),
         options: fieldOptionsSchema.optional(),
+        currency: currencySchema
+          .nullable()
+          .optional()
+          .describe('For number: an ISO 4217 code such as USD, or null to show a plain number.'),
       }),
       annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false },
     },
-    async ({ notebookId, fieldId, name, type, options }) => {
-      const result = await notes.updateField(notebookId, fieldId, { name, type, options });
+    async ({ notebookId, fieldId, name, type, options, currency }) => {
+      const result = await notes.updateField(notebookId, fieldId, { name, type, options, currency });
       if (result === 'missing') return notFound('field', fieldId);
       if (result === 'conflict') {
         return toolError(`This notebook already has a field called "${name}".`);

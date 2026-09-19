@@ -24,22 +24,54 @@ function formatRating(value: number, scale: FieldScale): string {
  * A field value as a person reads it, in a list row or a collapsed summary.
  *
  * Only the kinds whose stored form is not already readable are touched: a checkbox says
- * Yes or No rather than true or false, a number gets the viewer's separators, and a
- * rating is drawn as its stars. Dates stay `YYYY-MM-DD` — it sorts by eye, and it is what
- * the person typed.
+ * Yes or No rather than true or false, a number gets the viewer's separators, a rating is
+ * drawn as its stars, an amount as money, and a multi-select's options are joined with
+ * commas. Dates stay `YYYY-MM-DD` — it sorts by eye, and it is what the person typed.
  */
 export function formatFieldValue(
   type: FieldType,
   value: FieldValue,
   scale?: FieldScale | null,
+  currency?: string | null,
 ): string {
+  if (Array.isArray(value)) return value.join(', ');
   if (type === 'checkbox') return value === true || value === 'true' ? 'Yes' : 'No';
   if (type === 'number') {
     const n = typeof value === 'number' ? value : Number(value);
     if (!Number.isFinite(n)) return String(value);
-    // A rating is a number, so this is the one branch that has to ask the definition
-    // rather than the type; see `isRatingField`.
-    return scale ? formatRating(n, scale) : n.toLocaleString();
+    // A rating and an amount are both numbers, so this is the one branch that has to ask
+    // the definition rather than the type; see `isRatingField` and `isCurrencyField`.
+    if (scale) return formatRating(n, scale);
+    if (currency) return formatCurrency(n, currency);
+    return n.toLocaleString();
   }
   return String(value);
+}
+
+/**
+ * A number as money in the viewer's locale: `$1,234.50`, `€1.234,50`, `¥1,235`.
+ *
+ * `Intl` knows every ISO 4217 code and draws one it has no symbol for as the code beside
+ * the number, so the fallback is only for a code that is not even the right shape, which
+ * the schema already refuses at the API.
+ */
+export function formatCurrency(n: number, currency: string): string {
+  try {
+    return new Intl.NumberFormat(undefined, { style: 'currency', currency }).format(n);
+  } catch {
+    return `${n.toLocaleString()} ${currency}`;
+  }
+}
+
+/** The symbol a currency draws with — `$`, `€`, `£` — or the code where it has none. */
+export function currencySymbol(currency: string): string {
+  try {
+    return (
+      new Intl.NumberFormat(undefined, { style: 'currency', currency })
+        .formatToParts(0)
+        .find((p) => p.type === 'currency')?.value ?? currency
+    );
+  } catch {
+    return currency;
+  }
 }

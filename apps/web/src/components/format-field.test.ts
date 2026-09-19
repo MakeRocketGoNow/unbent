@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { formatFieldValue } from './format-field.js';
+import { currencySymbol, formatCurrency, formatFieldValue } from './format-field.js';
 
 describe('formatFieldValue', () => {
   it('reads a checkbox as Yes or No', () => {
@@ -13,6 +13,36 @@ describe('formatFieldValue', () => {
     expect(formatFieldValue('number', '12')).toBe('12');
     expect(formatFieldValue('date', '2024-03-01')).toBe('2024-03-01');
     expect(formatFieldValue('text', 'Acme')).toBe('Acme');
+  });
+
+  it('joins a multi-select with commas', () => {
+    expect(formatFieldValue('multiselect', ['PC', 'PS5'])).toBe('PC, PS5');
+    expect(formatFieldValue('multiselect', [])).toBe('');
+    // A value from another notebook, still a list, reads the same whatever type it is drawn as.
+    expect(formatFieldValue('text', ['a', 'b'])).toBe('a, b');
+  });
+});
+
+describe('an amount', () => {
+  const money = (n: number, c: string) => new Intl.NumberFormat(undefined, { style: 'currency', currency: c }).format(n);
+
+  it('draws a number with a currency as money in the viewer\'s locale', () => {
+    expect(formatFieldValue('number', 1234.5, null, 'USD')).toBe(money(1234.5, 'USD'));
+    expect(formatFieldValue('number', '29.99', null, 'EUR')).toBe(money(29.99, 'EUR'));
+    expect(formatFieldValue('number', 1235, null, 'JPY')).toBe(money(1235, 'JPY'));
+  });
+
+  it('lets a scale win over a currency, since a rating is never money', () => {
+    expect(formatFieldValue('number', 3, { max: 5, step: 1 }, 'USD')).toBe('★★★☆☆');
+  });
+
+  it('falls back to the number beside the code for a code Intl refuses', () => {
+    expect(formatCurrency(12, 'US')).toBe(`${(12).toLocaleString()} US`);
+  });
+
+  it('knows the symbol a currency draws with', () => {
+    expect(currencySymbol('USD')).toBe(money(0, 'USD').replace(/[\d.,\s]/g, ''));
+    expect(currencySymbol('US')).toBe('US');
   });
 });
 

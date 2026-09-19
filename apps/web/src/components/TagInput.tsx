@@ -25,6 +25,16 @@ interface TagInputProps {
    * three buttons each.
    */
   reorderable?: boolean;
+  /**
+   * Whether only a suggestion may be added.
+   *
+   * Off for tags, where a new word is a new tag. On where the editor holds a multi-select
+   * field's value: the suggestions are the field's options, and a word that is not one of
+   * them is not a value the field can hold, so it is dropped rather than turned into a
+   * chip the save would refuse. The whole list is offered on a click, since there is
+   * nothing to type that it does not already say.
+   */
+  restrict?: boolean;
 }
 
 /**
@@ -52,6 +62,7 @@ export function TagInput({
   onChange,
   label = 'tag',
   reorderable = false,
+  restrict = false,
 }: TagInputProps) {
   const [draft, setDraft] = useState('');
   /**
@@ -65,16 +76,22 @@ export function TagInput({
   const [active, setActive] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
+  const typed = draft.trim().toLowerCase();
   const available = suggestions
     .filter((s) => !tags.includes(s))
-    .filter((s) => draft.trim() !== '' && s.toLowerCase().includes(draft.trim().toLowerCase()))
-    .slice(0, 6);
+    // Completions appear once there is something to complete; a restricted list is the
+    // whole choice, so it appears on an empty field too.
+    .filter((s) => (restrict && typed === '') || (typed !== '' && s.toLowerCase().includes(typed)))
+    .slice(0, restrict ? suggestions.length : 6);
 
   function commit(raw: string) {
     const name = raw.trim();
     setDraft('');
-    if (name === '' || tags.includes(name)) return;
-    onChange([...tags, name]);
+    if (name === '') return;
+    // Restricted, a typed word means the option spelled that way, whatever its case.
+    const chosen = restrict ? suggestions.find((s) => s.toLowerCase() === name.toLowerCase()) : name;
+    if (chosen === undefined || tags.includes(chosen)) return;
+    onChange([...tags, chosen]);
   }
 
   function remove(name: string) {

@@ -1,5 +1,5 @@
 import { useNavigate } from '@tanstack/react-router';
-import { parseFieldFilter, formatFieldFilter, type FieldDef, type FieldFilter } from '@unbent/shared';
+import { fieldHasOptions, parseFieldFilter, formatFieldFilter, type FieldDef, type FieldFilter } from '@unbent/shared';
 import { FieldTypeIcon } from './icons.js';
 import { writeFieldFilter } from '../routes/notes.js';
 
@@ -13,9 +13,10 @@ interface FieldsPickerProps {
 /**
  * Narrow the list by the selected notebook's fields: a page of the filter sheet.
  *
- * One row per field, each carrying the control its type wants. A select, a checkbox and
- * the text-like types get a `<select>`: "Any", then the values it can equal, then whether
- * it is set or empty at all. A number and a date get a pair of bounds, either end open,
+ * One row per field, each carrying the control its type wants. A select, a multi-select,
+ * a checkbox and the text-like types get a `<select>`: "Any", then the values it can
+ * equal — for a multi-select, the options it can hold — then whether it is set or empty
+ * at all. A number and a date get a pair of bounds, either end open,
  * the way the date range page's custom fields work — a range is two fields, and a row
  * that returned to the root after the first would take the second away mid-edit. Text
  * "contains" is not offered: the search box already reads field values.
@@ -79,7 +80,7 @@ function ChoiceControl({ def, mine, write }: { def: FieldDef; mine: FieldFilter[
   const one = mine[0];
   const value = one ? formatFieldFilter(one).slice(def.id.length + 1) : '';
   const values =
-    def.type === 'select'
+    fieldHasOptions(def.type)
       ? def.options.map((o) => ({ value: `eq:${o}`, label: o }))
       : def.type === 'checkbox'
         ? [

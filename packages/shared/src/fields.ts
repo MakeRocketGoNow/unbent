@@ -19,6 +19,7 @@ export const FIELD_TYPES = [
   'email',
   'phone',
   'select',
+  'multiselect',
 ] as const;
 export type FieldType = (typeof FIELD_TYPES)[number];
 export const fieldTypeSchema = z.enum(FIELD_TYPES);
@@ -33,7 +34,21 @@ export const FIELD_TYPE_LABELS: Record<FieldType, string> = {
   email: 'Email',
   phone: 'Phone',
   select: 'Select',
+  multiselect: 'Multi-select',
 };
+
+/**
+ * Whether a type's definition carries an option list.
+ *
+ * A select and a multi-select are the same list of choices; they differ in how many of
+ * them a note may hold. Everything that treats options as "a select's" — the column
+ * that stores them, the editor that edits them, the definitions file that carries them,
+ * the seeding when a field is converted — asks this rather than naming the types, so the
+ * two cannot drift apart on which fields have options.
+ */
+export function fieldHasOptions(type: FieldType): boolean {
+  return type === 'select' || type === 'multiselect';
+}
 
 /**
  * Frontmatter keys the exporter itself writes. A field may not take one of these names,
@@ -111,6 +126,52 @@ export const fieldScaleSchema = z.object({
 });
 
 /**
+ * A `number` field's currency: an ISO 4217 code, which is what `Intl.NumberFormat` takes.
+ *
+ * A currency is not a type, for the reason a rating is not one: the value is a number,
+ * and is stored, sorted, ranged and exported as one. What a currency adds is how the
+ * number is drawn — `$29.99` rather than `29.99` — so it is a column on the definition
+ * beside the scale. The two are exclusive: a rating is not an amount of money, and the
+ * schemas below refuse both at once.
+ *
+ * Only the shape is checked. `Intl` formats any well-formed code, an unknown one as the
+ * code beside the number, so a currency the picker does not list still reads.
+ */
+export const currencySchema = z
+  .string()
+  .regex(/^[A-Z]{3}$/, 'expected an ISO 4217 currency code such as USD');
+
+/** The codes the picker offers first. Any well-formed code is accepted; these are the common ones. */
+export const CURRENCY_CODES = [
+  'USD',
+  'EUR',
+  'GBP',
+  'CAD',
+  'AUD',
+  'JPY',
+  'CHF',
+  'MXN',
+  'INR',
+  'CNY',
+  'SEK',
+  'NZD',
+] as const;
+
+/**
+ * Whether a field draws its number as money: a `number` with a currency and no scale.
+ *
+ * The one place that answers it, as `isRatingField` is for stars, so the glyph, the
+ * property row's affix and a list cell cannot disagree about which numbers are amounts.
+ */
+export function isCurrencyField(def: {
+  type: FieldType;
+  scale?: FieldScale | null;
+  currency?: string | null;
+}): boolean {
+  return def.type === 'number' && !def.scale && typeof def.currency === 'string' && def.currency !== '';
+}
+
+/**
  * How wide a row of stars may get before the value is drawn as text instead.
  *
  * Five glyphs is a comfortable row of tap targets; ten is not, and ten of them in a
@@ -156,23 +217,32 @@ export const fieldOptionsSchema = z
   .max(MAX_SELECT_OPTIONS)
   .transform((opts) => [...new Set(opts)]);
 
-export const createFieldSchema = z.object({
-  name: fieldNameSchema,
-  type: fieldTypeSchema,
-  options: fieldOptionsSchema.default([]),
-  scale: fieldScaleSchema.nullish(),
-});
+const NOT_BOTH = { message: 'A rating cannot also be a currency', path: ['currency'] };
+
+export const createFieldSchema = z
+  .object({
+    name: fieldNameSchema,
+    type: fieldTypeSchema,
+    options: fieldOptionsSchema.default([]),
+    scale: fieldScaleSchema.nullish(),
+    currency: currencySchema.nullish(),
+  })
+  .refine((f) => !(f.scale && f.currency), NOT_BOTH);
 
 /**
- * `scale: null` clears one, which is how a rating becomes a plain number again. Absent
- * leaves it alone, matching how `name`, `type` and `options` patch.
+ * `scale: null` clears one, which is how a rating becomes a plain number again; `currency:
+ * null` likewise. Absent leaves either alone, matching how `name`, `type` and `options`
+ * patch. A patch may not set both, and the repo drops a currency when a scale stands.
  */
-export const updateFieldSchema = z.object({
-  name: fieldNameSchema.optional(),
-  type: fieldTypeSchema.optional(),
-  options: fieldOptionsSchema.optional(),
-  scale: fieldScaleSchema.nullish(),
-});
+export const updateFieldSchema = z
+  .object({
+    name: fieldNameSchema.optional(),
+    type: fieldTypeSchema.optional(),
+    options: fieldOptionsSchema.optional(),
+    scale: fieldScaleSchema.nullish(),
+    currency: currencySchema.nullish(),
+  })
+  .refine((f) => !(f.scale && f.currency), NOT_BOTH);
 
 export const reorderFieldsSchema = z.object({
   ids: z.array(z.string().uuid()).min(1).max(MAX_FIELDS_PER_NOTEBOOK),
@@ -181,13 +251,20 @@ export const reorderFieldsSchema = z.object({
 export type CreateFieldInput = z.infer<typeof createFieldSchema>;
 export type UpdateFieldInput = z.infer<typeof updateFieldSchema>;
 
-/** A value as a program sees it: what the API accepts and what export writes to YAML. */
-export type FieldValue = string | number | boolean;
+/**
+ * A value as a program sees it: what the API accepts and what export writes to YAML.
+ *
+ * A list is a multi-select's value — its chosen options, each a string. It is the one
+ * non-scalar, and it is a plain list rather than a joined string so that an option can
+ * contain a comma and a YAML reader sees a sequence, the way it sees `tags`.
+ */
+export type FieldValue = string | number | boolean | string[];
 
 export const fieldValueInputSchema = z.union([
   z.string().max(MAX_FIELD_VALUE_LENGTH),
   z.number().finite(),
   z.boolean(),
+  z.array(z.string().max(MAX_FIELD_VALUE_LENGTH)).max(MAX_SELECT_OPTIONS),
 ]);
 
 /**
@@ -204,10 +281,12 @@ export interface FieldDef {
   notebookId: string;
   name: string;
   type: FieldType;
-  /** Empty for every type but `select`. */
+  /** Empty for every type but `select` and `multiselect`; see `fieldHasOptions`. */
   options: string[];
   /** Set only on a `number` that is a rating; null on every other field. */
   scale: FieldScale | null;
+  /** Set only on a `number` drawn as money; null on every other field. See `isCurrencyField`. */
+  currency: string | null;
   position: number;
   /** How many notes hold a value. Present only on the management listing. */
   valueCount?: number;
@@ -229,6 +308,8 @@ export interface NoteFieldValue {
    * glyphs the row has — or that the number is a rating at all.
    */
   scale?: FieldScale | null;
+  /** The currency, when the field has one, for the same reason `scale` rides here: a row draws `$12.50`, not `12.5`. */
+  currency?: string | null;
   notebookId: string;
   notebook: string;
 }
@@ -304,6 +385,25 @@ export function encodeFieldValue(
       if (typeof value !== 'string') return null;
       const text = value.trim();
       return def.options.includes(text) ? { text, num: null } : null;
+    }
+    case 'multiselect': {
+      /*
+         A list of options, or one option as a bare string — which is what a select's
+         value looks like, so converting a select to a multi-select carries every value
+         across. An empty list clears, the way an emptied input does.
+
+         Stored as a JSON array in the text column, in the option list's own order with
+         each option at most once. Canonical order is what makes "unchanged" a string
+         comparison and the export deterministic; JSON rather than a joined string is what
+         lets an option contain a comma and the filter read the list back exactly.
+      */
+      const given = Array.isArray(value) ? value : typeof value === 'string' ? [value] : null;
+      if (given === null) return null;
+      const picked = new Set(given.map((v) => String(v).trim()).filter((v) => v.length > 0));
+      if (picked.size === 0) return 'clear';
+      for (const v of picked) if (!def.options.includes(v)) return null;
+      const list = def.options.filter((o) => picked.has(o));
+      return { text: JSON.stringify(list), num: null };
     }
   }
 }
@@ -422,29 +522,36 @@ export function fieldSortKey(
       return startOfDay(String(held.value));
     case 'checkbox':
       return held.value === true ? 1 : 0;
+    case 'multiselect':
+      // The stored text is the JSON list, and that is what the SQL ordered by.
+      return JSON.stringify(Array.isArray(held.value) ? held.value : [String(held.value)]);
     default:
       return String(held.value);
   }
 }
 
 /**
- * Whether a select value that `encodeFieldValue` rejected should still be left on the note.
+ * The definition with the options a note already holds put back, for reading that note's
+ * next value.
  *
- * Select options can shrink without converting the field. The editor keeps a retired
- * value on notes that already hold it ("Travel (no longer an option)"), and it resends
- * every field on every save. Rejecting that resend fails the whole patch — title and
- * body included — until someone clears the value by hand. A value the note does not
+ * Options can shrink without converting the field. The editor keeps a retired value on
+ * notes that already hold it ("Travel (no longer an option)"), and it resends every field
+ * on every save. Rejecting that resend would fail the whole patch — title and body
+ * included — until someone cleared the value by hand. So a retired option the note holds
+ * stays legal for that note: for a select that is the one stored option, for a
+ * multi-select each option in the stored list. A multi-select in particular needs this
+ * to be a widening rather than an "unchanged, skip" check, because adding a live option
+ * beside a retired one is a real edit that has to write. An option the note does not
  * already hold is a new choice and still has to be in the list.
  */
-export function isHeldSelectValue(
-  def: Pick<FieldDef, 'type'>,
-  value: FieldValue | null | undefined,
+export function withHeldOptions<D extends Pick<FieldDef, 'type' | 'options'>>(
+  def: D,
   storedText: string | undefined,
-): boolean {
-  if (def.type !== 'select' || storedText === undefined || typeof value !== 'string') return false;
-  // Re-trims rather than reusing encodeFieldValue's trimmed text: this runs only after
-  // encodeFieldValue has already rejected the value, so its `text` isn't in scope here.
-  return value.trim() === storedText;
+): D {
+  if (storedText === undefined || !fieldHasOptions(def.type)) return def;
+  const held = def.type === 'select' ? [storedText] : (decodeFieldValue('multiselect', storedText) as string[]);
+  const retired = held.filter((o) => !def.options.includes(o));
+  return retired.length === 0 ? def : { ...def, options: [...def.options, ...retired] };
 }
 
 /** What a rejected value should have looked like, for an error message. */
@@ -471,6 +578,10 @@ export function expectedFieldValue(
       return def.options.length
         ? `must be one of: ${def.options.join(', ')}`
         : 'has no options to choose from yet';
+    case 'multiselect':
+      return def.options.length
+        ? `must be a list of options from: ${def.options.join(', ')}`
+        : 'has no options to choose from yet';
     case 'text':
     case 'phone':
       return `must be at most ${MAX_FIELD_VALUE_LENGTH} characters`;
@@ -486,6 +597,17 @@ export function decodeFieldValue(type: FieldType, text: string): FieldValue {
     }
     case 'checkbox':
       return text === 'true';
+    case 'multiselect': {
+      // The JSON list `encodeFieldValue` wrote. Anything else is read as one option, so a
+      // row written under another type and converted without a plan still reads.
+      try {
+        const parsed: unknown = JSON.parse(text);
+        if (Array.isArray(parsed) && parsed.every((v) => typeof v === 'string')) return parsed;
+      } catch {
+        // Not JSON: fall through.
+      }
+      return [text];
+    }
     default:
       return text;
   }
@@ -498,6 +620,7 @@ export function decodeFieldValue(type: FieldType, text: string): FieldValue {
  * reject the next value that does not.
  */
 export function inferFieldType(value: FieldValue): FieldType {
+  if (Array.isArray(value)) return 'multiselect';
   if (typeof value === 'boolean') return 'checkbox';
   if (typeof value === 'number') return 'number';
   if (dateOnlySchema.safeParse(value).success) return 'date';
@@ -533,21 +656,43 @@ export function planConversion<R extends { text: string }>(
   toScale?: FieldScale | null,
 ): ConversionPlan<R> {
   const plan: ConversionPlan<R> = { keep: [], drop: [] };
+  const decoded = rows.map((row) => ({ row, value: decodeFieldValue(from, row.text) }));
 
+  /*
+     Seeded from what the rows hold, one option per distinct value. A multi-select's rows
+     are lists, so it is their elements that become options — both when a multi-select is
+     becoming a select and when a select is becoming a multi-select, where every value
+     carries across as a one-element list.
+  */
   let options: string[] = [];
-  if (to === 'select') {
-    options = [...new Set(rows.map((r) => r.text.trim()).filter((t) => t.length > 0))].slice(
-      0,
-      MAX_SELECT_OPTIONS,
-    );
+  if (fieldHasOptions(to)) {
+    const seen = new Set<string>();
+    for (const { value } of decoded) {
+      for (const v of Array.isArray(value) ? value : [String(value)]) {
+        const t = v.trim();
+        if (t.length > 0) seen.add(t);
+      }
+    }
+    options = [...seen].slice(0, MAX_SELECT_OPTIONS);
     plan.seededOptions = options;
   }
 
-  for (const row of rows) {
-    const encoded = encodeFieldValue(
-      { type: to, options, scale: toScale ?? null },
-      decodeFieldValue(from, row.text),
-    );
+  for (const { row, value } of decoded) {
+    /*
+       A list leaving the multi-select type: text takes the options joined, since that is
+       the printed form and nothing is lost; a select takes a list of one, since that is
+       a choice; anything else cannot read a list and drops it, the same as a number
+       cannot read a word.
+    */
+    const candidate =
+      Array.isArray(value) && to !== 'multiselect'
+        ? to === 'text'
+          ? value.join(', ')
+          : value.length === 1
+            ? value[0]!
+            : value
+        : value;
+    const encoded = encodeFieldValue({ type: to, options, scale: toScale ?? null }, candidate);
     if (encoded === null || encoded === 'clear') plan.drop.push(row);
     else plan.keep.push({ row, text: encoded.text, num: encoded.num });
   }

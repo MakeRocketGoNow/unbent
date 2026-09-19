@@ -25,6 +25,7 @@ const def = (id: string, name: string, type: FieldDef['type'], options: string[]
   type,
   options,
   scale: null,
+  currency: null,
   position: 0,
 });
 const DEFS = [
