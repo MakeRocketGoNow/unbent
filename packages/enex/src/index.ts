@@ -4,6 +4,7 @@ export * from './parse.js';
 export * from './import.js';
 export * from './import-run.js';
 export * from './import-archive.js';
+export * from './import-notion.js';
 export * from './import-format.js';
 export * from './content-type-guess.js';
 export * from './ocr-text.js';

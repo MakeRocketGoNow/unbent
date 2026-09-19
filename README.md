@@ -1202,6 +1202,36 @@ restore. Only the layout is assumed: markdown with frontmatter, and a `files/` d
 beside it. Directory names are ignored, so an archive unpacked, rearranged and zipped again
 by hand reads the same as the original.
 
+### Importing from Notion
+
+Notion's "Markdown & CSV" export — of a workspace, or of one database or page — goes in
+through the same Settings → Import. The zip is read before anything is imported, and the
+panel lists what it holds: one row per top-level database or page, with its notes, files
+and columns counted, to tick or untick. The usual reason to untick is a database that is
+already here from another source; the two Evernote-migrated notebooks in a real export
+would otherwise arrive twice, since a note from Notion and the same note from ENEX share
+no id and no hash.
+
+Each database becomes a notebook, its rows the notes, and its columns the notebook's
+fields. Notion's CSV carries no types, so each column's is inferred from every value it
+holds, conservatively: Yes/No is a checkbox, a run of stars a rating, `$29.99` a number in
+USD, short values that repeat a select, comma-separated parts that repeat a multi-select,
+and anything the rules cannot place is text, which the Fields page can convert. A column
+named Tags becomes the note's tags (an option under the list keeps it as a field), and
+Notion's own created and last-edited columns become the note's dates — the one place the
+export carries a timestamp; every other note is dated at import. A text column too long
+for a field goes into the body under its own heading. Formulas and rollups are not in the
+CSV and are dropped.
+
+A page and its sub-pages become a notebook too, with any database nested in the tree
+adding its columns; pages outside any database or tree go into one notebook named in the
+panel, or none. Every page keeps Notion's id as its note id — the 32 digits are a UUID
+without its dashes — so importing the same zip again skips what landed, and links between
+exported pages, relative or `notion.so`, become links between the notes. Attachments sit
+in a folder named for their page and are uploaded as the note's files; callouts become
+quotes. The driver is `importNotion` in `packages/enex`, beside the ENEX and archive
+importers, and shares their requests, resumability and failure log.
+
 ## License
 
 [Functional Source License, Version 1.1, Apache 2.0 Future License](LICENSE.md)
