@@ -37,6 +37,7 @@ import {
   FieldsIcon,
   TrashIcon,
   NotebookActionIcon,
+  TagActionIcon,
 } from './icons.js';
 import { Sheet } from './Sheet.js';
 import { NoteListHead } from './NoteListHead.js';
@@ -58,6 +59,7 @@ import { useSelection } from '../useSelection.js';
 import { SelectionBar } from './SelectionBar.js';
 import { Confirm } from './Confirm.js';
 import { MoveSheet } from './MoveSheet.js';
+import { TagsSheet } from './TagsSheet.js';
 import { editOpenNoteFiling } from '../open-note-fields.js';
 import { useSession } from '../auth-client.js';
 import { useSignOut } from '../useSignOut.js';
@@ -392,7 +394,8 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
    * (`editOpenNoteFiling` — the next autosave would otherwise put the old filing back),
    * then refetches everything the change reaches: the lists, any search, the cached
    * notes, the counts on the rail. Moving and trashing drop the selection — the rows
-   * leave the list, or the job is done. Trashing is confirmed inline, unlike the single
+   * leave the list, or the job is done — while a tag change keeps it, since the sheet
+   * stays open for the next one. Trashing is confirmed inline, unlike the single
    * note's Delete, which has the ⋯ menu as its deliberate second step; a bar's button is
    * one click, and forty notes is a blast radius worth naming first.
    */
@@ -440,6 +443,22 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
         editOpenNoteFiling(layout.open, { notebook: target });
       }
       selection.clear();
+      await refetchAfterBulk();
+    });
+  const tagSelected = (change: { add?: string[]; remove?: string[] }) =>
+    runBulk(async () => {
+      const ids = selection.ids;
+      await api.updateNotes(ids, { addTags: change.add, removeTags: change.remove });
+      if (layout.open && ids.includes(layout.open)) {
+        const add = change.add ?? [];
+        const remove = new Set(change.remove ?? []);
+        editOpenNoteFiling(layout.open, {
+          tags: (current) => [
+            ...current.filter((t) => !remove.has(t)),
+            ...add.filter((t) => !current.includes(t)),
+          ],
+        });
+      }
       await refetchAfterBulk();
     });
   /*
@@ -672,6 +691,15 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
           notebooks={notebooks.data}
           busy={bulkBusy}
           onPick={(target) => void moveSelected(target)}
+        />
+
+        <TagsSheet
+          open={bulkSheet === 'tags'}
+          onClose={() => setBulkSheet(null)}
+          notes={notes.filter((n) => selection.has(n.id))}
+          suggestions={tags.data?.map((t) => t.name) ?? []}
+          busy={bulkBusy}
+          onChange={(change) => void tagSelected(change)}
         />
 
         {isMobile && (
@@ -959,6 +987,16 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
               onClick={() => setBulkSheet('move')}
             >
               <NotebookActionIcon />
+            </button>
+            <button
+              type="button"
+              className="icon-btn"
+              aria-label="Tags"
+              title="Tags"
+              disabled={bulkBusy}
+              onClick={() => setBulkSheet('tags')}
+            >
+              <TagActionIcon />
             </button>
             <button
               type="button"

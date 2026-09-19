@@ -6935,3 +6935,46 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
   }
 }
 
+/*
+   The selection's tags — `TagsSheet`: the note's tag field with no chips in it, then a
+   row per tag the selection carries, each a checkbox beside the chip the note's own
+   property list would draw for it. The chip loses the room it keeps for a × it does not
+   have here.
+*/
+.tags-sheet {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  min-width: 0;
+  max-height: 70dvh;
+}
+
+.tags-sheet-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.tags-sheet-row {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  min-height: 2.25rem;
+  padding: 0.25rem 0.5rem;
+  border-radius: 0.3rem;
+  cursor: pointer;
+}
+
+.tags-sheet-row:hover { background: color-mix(in srgb, var(--fg) 8%, transparent); }
+
+.tags-sheet-row input { margin: 0; }
+
+.tags-sheet-row .tag-chip { padding-right: 0.5rem; }
+
+.tags-sheet-row .tag-count { margin-left: auto; font-size: 0.85rem; }
+
+.tags-sheet-empty { margin: 0.25rem 0; }
