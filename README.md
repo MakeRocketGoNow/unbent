@@ -226,6 +226,7 @@ says otherwise; `pnpm exec wrangler secret put NAME` from `apps/api`, or the das
 | `<PROVIDER>_CLIENT_ID`, `<PROVIDER>_CLIENT_SECRET` | any of Better Auth's OAuth providers | both or neither; the callback is `/api/auth/callback/<provider>` on your origin |
 | `AUTH_PASSWORD`, `AUTH_PASSKEY` | forcing a method on or off | rarely needed; the defaults are explained in the sign-in section |
 | `POSTHOG_KEY`, `POSTHOG_HOST` | error tracking | see [Errors in the browser](#errors-in-the-browser) |
+| `TYPESAFE_API_KEY` | filing a note from what it says | see [Filing a note from what it says](#filing-a-note-from-what-it-says) |
 | `ANDROID_ASSET_LINKS` | an Android build of your own | see [Android app](#android-app) |
 | Custom domain | serving from your own name | dashboard, not config |
 | `ANDROID_APPLICATION_ID`, `ANDROID_DEFAULT_INSTANCE` | the Android build in CI | GitHub repository **variables**; `unbent.applicationId` and `unbent.defaultInstance` in `local.properties` locally |
@@ -919,6 +920,45 @@ existed cannot be fixed by re-importing — they are skipped along with their at
 "Index existing PDFs" walks the gap instead, extracting text for any attachment that does
 not have it yet. `GET /api/attachments/pending-text` says what is still missing, scoped to
 one note with `?note=`, which is how the phone asks for its own capture and nothing else.
+
+## Filing a note from what it says
+
+A scan arrives as an untitled note in the Inbox holding one PDF, and filing it — a title, a
+notebook, tags, the amount and the date copied into the notebook's fields — is the same
+minute of work for every one of thirteen thousand. **Auto-fill**, in a note's head, does that
+minute: it reads what the note and its files say and fills in whatever is empty, and asks
+before replacing anything already set. What it fills lands in the editor's draft like a
+typed value, so it saves when the note saves and is undone by retyping.
+
+It is on when the instance has a key for [Jev](https://docs.typesafe.ai), TypeSafe's model
+for exactly this shape of question, and drawn nowhere otherwise:
+
+```bash
+cd apps/api
+pnpm exec wrangler secret put TYPESAFE_API_KEY
+```
+
+Locally, the same name in `apps/api/.dev.vars`. A key of its own for development keeps its
+usage apart from production's.
+
+**What is sent, on each press.** The note's title and body, the text already extracted from
+its PDFs (see [Searching inside PDFs](#searching-inside-pdfs) — a scan that has not been read
+yet is reported as such rather than guessed at, and a photograph has no text to send), and
+the names of your notebooks, tags and fields, with a few recent titles from each notebook and
+tag as examples of what belongs there. Nothing else in the archive. Nothing is sent until the
+button is pressed.
+
+**Why Jev.** It chooses rather than writes: the notebook, the tags and every select or
+checkbox are choices among things that already exist, so it cannot invent a notebook or
+misspell a tag, and each answer comes with a confidence. For the title and free-form fields
+the code finds the candidates — every date the text writes for a date field, every amount for
+a number, the document's own lines for a title or a text field — and the model picks one or
+says none of them. A value can still be wrong, but it is always something the document
+actually says, and anything the model is unsure of is left empty rather than guessed. Ratings
+are left alone: a document has no opinion to read.
+
+`POST /api/notes/:id/autofill` answers with the suggestions and applies nothing; the client
+does. The Android app's note screen does not have the control yet.
 
 ## Local database
 
