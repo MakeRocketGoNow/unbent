@@ -18,8 +18,14 @@ export type ButtonVariant = 'primary' | 'secondary' | 'quiet';
  * Kept separate because "destructive" and "prominent" are different questions: Delete
  * forever is destructive and quiet, Empty trash is destructive and primary. The same
  * vocabulary `Confirm` uses for its actions.
+ *
+ * `neutral` is the affirmative that must not read as the brand's green — the reassuring
+ * choice standing next to a `danger` one, where a filled accent and a filled red clash as
+ * two saturated colours competing. Filled in the page's own ink instead (dark on light,
+ * light on dark), it carries a primary's weight without the hue. Only meaningful on
+ * `primary`; on an outlined or quiet button it has nothing to fill and falls back to plain.
  */
-export type ButtonTone = 'default' | 'danger';
+export type ButtonTone = 'default' | 'danger' | 'neutral';
 
 export interface ButtonProps extends Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'className'> {
   children: ReactNode;
@@ -62,6 +68,7 @@ export function Button({
     'btn',
     `btn-${variant}`,
     tone === 'danger' ? 'btn-danger' : '',
+    tone === 'neutral' ? 'btn-neutral' : '',
     size === 'small' ? 'btn-small' : '',
     className ?? '',
   ]

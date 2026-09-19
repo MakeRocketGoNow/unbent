@@ -206,6 +206,18 @@ describe('NotebookFields', () => {
     expect(api.removeNotebookFieldOption).not.toHaveBeenCalled();
   });
 
+  it('dismisses the removal popover on a click outside it', async () => {
+    vi.mocked(api.countOptionUsage).mockResolvedValue(3);
+    mount();
+    await screen.findByText('Category');
+    fireEvent.click(screen.getByLabelText('Remove option Food'));
+    await waitFor(() => expect(screen.getByRole('group', { name: 'Confirm remove option' })).toBeTruthy());
+    // A pointer down anywhere outside the popover closes it, like any popover.
+    fireEvent.pointerDown(document.body);
+    await waitFor(() => expect(screen.queryByRole('group', { name: 'Confirm remove option' })).toBeNull());
+    expect(api.removeNotebookFieldOption).not.toHaveBeenCalled();
+  });
+
   it('asks before deleting, naming how many notes lose a value', async () => {
     mount();
     await screen.findByText('Merchant');

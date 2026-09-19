@@ -805,6 +805,24 @@ button.link {
   .btn-danger.btn-primary { color: #16151a; }
 }
 
+/*
+   Neutral, filled: a primary's weight in the page's own ink rather than the brand green.
+
+   For the reassuring choice that sits beside a danger one, where two saturated fills —
+   accent green and --bad red — read as rivals. Filling in --fg over --bg drops the hue but
+   keeps the emphasis, and because both tokens flip with the theme it comes out dark-on-light
+   in light mode and light-on-dark in dark, with no per-mode override. Only the filled
+   variant carries it; on an outline or a quiet button there is nothing to fill, so the class
+   is inert there by design.
+*/
+.btn-neutral.btn-primary {
+  color: var(--bg);
+  background: var(--fg);
+  border-color: var(--fg);
+}
+
+.btn-neutral.btn-primary:hover:not(:disabled) { opacity: 0.9; }
+
 
 /* ---------------------------------------------------------------------------------
    Disclosures.
@@ -4445,6 +4463,61 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
 .field-admin-options {
   flex-basis: 100%;
   padding: 0.1rem 0 0.25rem;
+  /* Anchor for the removal popover, so it floats from the chip row rather than reflowing
+     the fields below it. */
+  position: relative;
+}
+
+/*
+   The option-removal confirm, floated under the option it is about.
+
+   Rendered inside the field's own options row and positioned absolutely so it hangs over
+   whatever fields sit below instead of pushing the page down and stranding the buttons off
+   the fold — the reflow the inline confirm caused here. It carries the panel's own surface
+   and a shadow so it reads as lifted above the rows it covers, and a small notch points
+   back up at the chips it belongs to. Left-aligned under the list, capped so a long detail
+   line wraps rather than running the width of the settings panel, and z-raised over the
+   rows and the new-field form beneath it.
+*/
+.field-option-confirm {
+  position: absolute;
+  top: calc(100% - 0.15rem);
+  left: 0;
+  z-index: 20;
+  width: max-content;
+  max-width: min(28rem, 100%);
+  background: var(--bg);
+  border-radius: 0.55rem;
+  box-shadow: 0 0.5rem 1.5rem rgba(0, 0, 0, 0.18);
+  filter: drop-shadow(0 1px 0 var(--border));
+}
+
+/* The confirm inside drops its own top margin — the popover owns the spacing now — and its
+   red hairline border becomes the popover's edge, sitting on the lifted surface. */
+.field-option-confirm .confirm {
+  margin: 0;
+  background: var(--bg);
+  border-radius: 0.55rem;
+}
+
+/* A notch pointing up at the chip row the popover hangs from. Two stacked triangles — the
+   border colour behind, the surface in front one pixel down — so the pointer keeps the same
+   hairline edge the box has. */
+.field-option-confirm::before,
+.field-option-confirm::after {
+  content: '';
+  position: absolute;
+  bottom: 100%;
+  left: 1.25rem;
+  width: 0;
+  height: 0;
+  border: 0.45rem solid transparent;
+  border-bottom-color: var(--bad);
+}
+
+.field-option-confirm::after {
+  border-bottom-color: var(--bg);
+  transform: translateY(1px);
 }
 
 .field-admin-new { flex-wrap: wrap; }

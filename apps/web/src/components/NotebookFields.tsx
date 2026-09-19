@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link } from '@tanstack/react-router';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
@@ -108,6 +108,25 @@ export function NotebookFields({ notebookId, onChanged }: NotebookFieldsProps) {
   const [newCurrency, setNewCurrency] = useState<string>(DEFAULT_CURRENCY);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+
+  /*
+     The removal popover dismisses on a click outside it, the way a popover should. Escape
+     and its own Cancel already close it (see `Confirm`); this adds the third way people
+     reach for. Guarded by `busy` so a click landing while the removal is in flight cannot
+     tear the popover down mid-write, and skipped entirely while nothing is open. The chip's
+     own remove button lives outside the popover, so a listener that fired on it would close
+     and reopen in one gesture — but that button is disabled by `busy` during the run and is
+     never what dismisses, so a plain contains-check is enough.
+  */
+  const optionConfirmRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!pendingOption || busy) return;
+    const onDown = (e: PointerEvent) => {
+      if (!optionConfirmRef.current?.contains(e.target as Node)) setPendingOption(null);
+    };
+    document.addEventListener('pointerdown', onDown);
+    return () => document.removeEventListener('pointerdown', onDown);
+  }, [pendingOption, busy]);
 
   /** Runs a mutation, then refetches this page and the app behind it. */
   async function run(action: () => Promise<unknown>) {
@@ -452,6 +471,42 @@ export function NotebookFields({ notebookId, onChanged }: NotebookFieldsProps) {
                   reorderable
                   onChange={(options) => editOptions(field, options)}
                 />
+                {/* The removal confirm floats over the rows below rather than pushing them,
+                    and sits under the option it is about so the two read as one action. */}
+                {pendingOption?.field.id === field.id && (
+                  <div className="field-option-confirm" ref={optionConfirmRef}>
+                    <Confirm
+                      label="Confirm remove option"
+                      question={
+                        <>
+                          Remove <strong>{pendingOption.option}</strong> from {field.name}?
+                        </>
+                      }
+                      detail={
+                        `${plural(pendingOption.usage, 'note')} still ${pendingOption.usage === 1 ? 'uses' : 'use'} it. ` +
+                        'Keep it and those notes still show it, marked no longer an option; clear it and ' +
+                        `it's removed from ${pendingOption.usage === 1 ? 'that note' : 'those notes'}.`
+                      }
+                      busy={busy}
+                      onCancel={() => setPendingOption(null)}
+                      actions={[
+                        {
+                          label: 'Keep values',
+                          busyLabel: 'Removing…',
+                          // Filled in ink, not the brand green, so it does not clash with the red clear.
+                          tone: 'neutral',
+                          onConfirm: () => confirmRemoveOption(false),
+                        },
+                        {
+                          label: `Clear from ${plural(pendingOption.usage, 'note')}`,
+                          busyLabel: 'Clearing…',
+                          tone: 'danger',
+                          onConfirm: () => confirmRemoveOption(true),
+                        },
+                      ]}
+                    />
+                  </div>
+                )}
               </div>
             )}
 
@@ -497,38 +552,6 @@ export function NotebookFields({ notebookId, onChanged }: NotebookFieldsProps) {
           onCancel={() => setPendingDelete(null)}
           actions={[
             { label: 'Delete field', busyLabel: 'Deleting…', tone: 'danger', onConfirm: confirmDelete },
-          ]}
-        />
-      )}
-
-      {pendingOption && (
-        <Confirm
-          label="Confirm remove option"
-          question={
-            <>
-              Remove <strong>{pendingOption.option}</strong> from {pendingOption.field.name}?
-            </>
-          }
-          detail={
-            `${plural(pendingOption.usage, 'note')} still ${pendingOption.usage === 1 ? 'uses' : 'use'} it. ` +
-            'Keep it and those notes still show it, marked no longer an option; clear it and ' +
-            `it's removed from ${pendingOption.usage === 1 ? 'that note' : 'those notes'}.`
-          }
-          busy={busy}
-          onCancel={() => setPendingOption(null)}
-          actions={[
-            {
-              label: 'Keep values',
-              busyLabel: 'Removing…',
-              tone: 'primary',
-              onConfirm: () => confirmRemoveOption(false),
-            },
-            {
-              label: `Clear from ${plural(pendingOption.usage, 'note')}`,
-              busyLabel: 'Clearing…',
-              tone: 'danger',
-              onConfirm: () => confirmRemoveOption(true),
-            },
           ]}
         />
       )}
