@@ -856,8 +856,8 @@ the same date; search, having no sort, filters on `created_at`.
 ### Acting on several notes
 
 The list has a selection, in the shape people arrive with from Evernote. Cmd/Ctrl-click
-toggles a note into it and Shift-click selects a run from the last one picked (or from the
-open note); on a touch screen a finger resting on a note for half a second selects it, and
+toggles a note into it — the open note comes along with the first — and Shift-click selects
+a run from the last one picked (or from the open note); on a touch screen a finger resting on a note for half a second selects it, and
 while anything is selected a tap toggles notes rather than opening them. Space picks the
 focused note, Cmd/Ctrl+A picks every loaded note, Escape clears. The table view has a
 column of checkboxes with a select-all in its header as well. A bar floats up over the foot

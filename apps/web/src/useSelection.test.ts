@@ -40,6 +40,28 @@ describe('useSelection', () => {
     expect(result.current.ids).toEqual(['a', 'b', 'c', 'd']);
   });
 
+  it('brings the open note along on the first pick of another row', () => {
+    const { result } = mount({ rows, anchor: 'b', key: 'k' });
+    act(() => result.current.pick('d'));
+    expect(result.current.ids).toEqual(['b', 'd']);
+    // Only the first: the open note is not re-added once the selection is under way.
+    act(() => result.current.pick('b'));
+    act(() => result.current.pick('e'));
+    expect(result.current.ids).toEqual(['d', 'e']);
+  });
+
+  it('just selects the open note when it is the row picked', () => {
+    const { result } = mount({ rows, anchor: 'b', key: 'k' });
+    act(() => result.current.pick('b'));
+    expect(result.current.ids).toEqual(['b']);
+  });
+
+  it('leaves out an open note that is not on screen', () => {
+    const { result } = mount({ rows, anchor: 'gone', key: 'k' });
+    act(() => result.current.pick('d'));
+    expect(result.current.ids).toEqual(['d']);
+  });
+
   it('ranges from the open note before anything has been picked', () => {
     const { result } = mount({ rows, anchor: 'd', key: 'k' });
     act(() => result.current.pick('b', { range: true }));

@@ -11,12 +11,19 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
  * never do. For the same reason `ids` is the selection *as loaded*: an id the list no
  * longer holds (trashed from another tab, filtered out) is not counted and not acted on.
  *
+ * The open note is a selection of one. Nothing says so while it is the only one — the
+ * bar would be noise over every note anyone reads — but the first pick of another row
+ * brings it along, and a Shift-click ranges from it: Cmd-clicking a second note when one
+ * is open selects the two, as it does in Finder and Evernote, rather than leaving the one
+ * on screen out of the selection it visibly started. Picking the open note itself just
+ * selects it.
+ *
  * The anchor is the last row picked on its own, and a range runs from it to the row
- * picked with Shift — Finder's rule, and Evernote's, which is where people arrive from.
- * When nothing has been picked yet the open note stands in, so Shift-clicking a row
- * three below the one you are reading selects the four; a range that lands nowhere
- * selects the one row. Ranges add to the selection rather than replace it, as Gmail's
- * do, since building up a selection is the common case and a replaced one is a surprise.
+ * picked with Shift — Finder's rule again. When nothing has been picked yet the open note
+ * stands in, so Shift-clicking a row three below the one you are reading selects the
+ * four; a range that lands nowhere selects the one row. Ranges add to the selection
+ * rather than replace it, as Gmail's do, since building up a selection is the common
+ * case and a replaced one is a surprise.
  */
 export interface Selection {
   /** The selected rows that the list currently holds, in the list's order. */
@@ -79,6 +86,12 @@ export function useSelection(
       anchorRef.current = id;
       setPicked((prev) => {
         const next = new Set(prev);
+        // The open note comes along on the first pick of another row — see above. Judged
+        // on the rows on screen, since `prev` may still name rows that have left the list.
+        const nothingYet = !rows.some((row) => prev.has(row));
+        if (nothingYet && defaultAnchor && defaultAnchor !== id && rows.includes(defaultAnchor)) {
+          next.add(defaultAnchor);
+        }
         if (next.has(id)) next.delete(id);
         else next.add(id);
         return next;
