@@ -1,5 +1,5 @@
-import { describe, it, expect, afterEach } from 'vitest';
-import { render, screen, cleanup, fireEvent } from '@testing-library/react';
+import { describe, it, expect, afterEach, vi } from 'vitest';
+import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/react';
 import {
   createRootRoute,
   createRoute,
@@ -128,4 +128,80 @@ it('leaves entries unmarked where there is no transition to grow from', async ()
   const { findByText, getByText } = mount();
   fireEvent.click(await findByText('Lunch'));
   expect(getByText('Lunch').closest('a')?.hasAttribute('data-opening')).toBe(false);
+});
+
+/*
+ * Selecting several. The rules a screenshot cannot check: which clicks pick and which
+ * open, that Space picks, and that the checkbox is only there while the list is
+ * selecting.
+ */
+describe('a selectable entry', () => {
+  function mountSelectable(selection: { selected?: boolean; active?: boolean } = {}) {
+    const onPick = vi.fn();
+    const rootRoute = createRootRoute({
+      component: () => (
+        <ul className="note-list">
+          <NoteListItem
+            note={note}
+            to="/notes/$noteId"
+            selection={{ selected: false, active: false, ...selection, onPick }}
+          />
+        </ul>
+      ),
+    });
+    const noteRoute = createRoute({ getParentRoute: () => rootRoute, path: '/notes/$noteId' });
+    const router = createRouter({
+      routeTree: rootRoute.addChildren([noteRoute]),
+      history: createMemoryHistory({ initialEntries: ['/'] }),
+    });
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    render(<RouterProvider router={router as any} />);
+    return { onPick, router };
+  }
+
+  it('picks on a Cmd- or Ctrl-click instead of opening', async () => {
+    const { onPick, router } = mountSelectable();
+    const link = (await screen.findByText('Lunch')).closest('a')!;
+    fireEvent.click(link, { metaKey: true });
+    fireEvent.click(link, { ctrlKey: true });
+    expect(onPick).toHaveBeenCalledTimes(2);
+    expect(onPick).toHaveBeenLastCalledWith({ range: false });
+    expect(router.state.location.pathname).toBe('/');
+  });
+
+  it('picks a range on a Shift-click', async () => {
+    const { onPick } = mountSelectable();
+    fireEvent.click((await screen.findByText('Lunch')).closest('a')!, { shiftKey: true });
+    expect(onPick).toHaveBeenCalledWith({ range: true });
+  });
+
+  it('picks on Space, which would otherwise scroll', async () => {
+    const { onPick } = mountSelectable();
+    const link = (await screen.findByText('Lunch')).closest('a')!;
+    fireEvent.keyDown(link, { key: ' ' });
+    expect(onPick).toHaveBeenCalledWith({ range: false });
+    fireEvent.keyDown(link, { key: ' ', shiftKey: true });
+    expect(onPick).toHaveBeenLastCalledWith({ range: true });
+  });
+
+  it('still opens on a plain click', async () => {
+    const { onPick, router } = mountSelectable({ active: true });
+    fireEvent.click((await screen.findByText('Lunch')).closest('a')!);
+    expect(onPick).not.toHaveBeenCalled();
+    await waitFor(() => expect(router.state.location.pathname).toBe('/notes/n1'));
+  });
+
+  it('shows a checkbox only while the list is selecting, and rings a selected row', async () => {
+    mountSelectable();
+    await screen.findByText('Lunch');
+    expect(screen.queryByRole('checkbox')).toBeNull();
+    cleanup();
+
+    const { onPick } = mountSelectable({ active: true, selected: true });
+    const box = (await screen.findByRole('checkbox', { name: 'Select Lunch' })) as HTMLInputElement;
+    expect(box.checked).toBe(true);
+    expect(screen.getByText('Lunch').closest('a')?.classList.contains('selected')).toBe(true);
+    fireEvent.click(box, { shiftKey: true });
+    expect(onPick).toHaveBeenCalledWith({ range: true });
+  });
 });

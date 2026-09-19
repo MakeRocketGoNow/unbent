@@ -270,6 +270,51 @@ export const updateNoteSchema = z.object({
 });
 
 /**
+ * A set of notes to act on at once: the list's selection.
+ *
+ * Ids rather than a filter, deliberately. "Every note matching the filter" would let a
+ * client trash what it has not seen — the list is paged, and a filter that reads as forty
+ * rows on screen can match four thousand — whereas a client that names ids can only name
+ * what it has loaded. The cap is generous next to the pages the list loads; it exists so a
+ * request stays one request rather than a job.
+ *
+ * Any non-empty string is an id here, not only a UUID: an import keeps the id an export
+ * carried when it can (`importNote`), so an archive can hold ids in another shape, and a
+ * batch that refused them would refuse exactly the notes a bulk edit is for. An id that is
+ * not this user's matches nothing, the same as it would in the singular routes.
+ */
+export const MAX_BATCH_NOTES = 500;
+
+const noteIdsSchema = z.array(z.string().trim().min(1).max(100)).min(1).max(MAX_BATCH_NOTES);
+
+/** The notes a batch acts on — trash, restore, purge. */
+export const noteBatchSchema = z.object({ ids: noteIdsSchema });
+
+/**
+ * A refiling applied to several notes: the notebook, and tags to add and take away.
+ *
+ * Tags are added and removed rather than set, because the notes need not agree: three
+ * notes with three different tag lists gain a fourth tag each and keep their own. Setting
+ * would make every list the same, which is never what "tag these" means. A tag in both
+ * lists is added — the rule `update_note_tags` states over MCP. A body naming nothing to
+ * change is refused rather than answered with a count of zero, since it is a client bug.
+ */
+export const updateNotesSchema = z
+  .object({
+    ids: noteIdsSchema,
+    notebook: notebookNameSchema.nullable().optional(),
+    addTags: z.array(tagNameSchema).max(100).optional(),
+    removeTags: z.array(tagNameSchema).max(100).optional(),
+  })
+  .refine(
+    (v) =>
+      v.notebook !== undefined ||
+      (v.addTags?.length ?? 0) > 0 ||
+      (v.removeTags?.length ?? 0) > 0,
+    { message: 'Nothing to change: give a notebook, tags to add, or tags to remove' },
+  );
+
+/**
  * How the note list is ordered.
  *
  * `updated` is the default because a notes app is usually a worklist. The others matter
@@ -418,6 +463,7 @@ export type ImportEnmlInput = z.infer<typeof importEnmlSchema>;
 
 export type CreateNoteInput = z.infer<typeof createNoteSchema>;
 export type UpdateNoteInput = z.infer<typeof updateNoteSchema>;
+export type UpdateNotesInput = z.infer<typeof updateNotesSchema>;
 export type ListNotesQuery = z.infer<typeof listNotesQuerySchema>;
 export type SearchQuery = z.infer<typeof searchQuerySchema>;
 export type ImportNoteInput = z.infer<typeof importNoteSchema>;

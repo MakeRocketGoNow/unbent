@@ -1153,6 +1153,48 @@ button.link {
 .note-table [data-align='end'] { text-align: right; }
 .note-table [data-align='center'] { text-align: center; }
 
+/*
+   The table's selection column — see `NoteTable`.
+
+   The first column is the checkbox now, so the pin moves: the checkbox stays put at the
+   left edge and the name pins beside it, one column's width in. The column is given its
+   width outright rather than sized to its box, because a pinned second column has to
+   know where the first one ends; the rule above gave every first column 12rem for the
+   name, and this one takes that back.
+*/
+.note-table.selectable th:first-child,
+.note-table.selectable td:first-child {
+  width: 2.5rem;
+  min-width: 2.5rem;
+  max-width: 2.5rem;
+  padding-inline: 0.5rem;
+  text-align: center;
+}
+
+.note-table.selectable th:nth-child(2),
+.note-table.selectable td:nth-child(2) {
+  position: sticky;
+  left: 2.5rem;
+  z-index: 1;
+  min-width: 12rem;
+}
+
+.note-table.selectable th:nth-child(2) { z-index: 3; }
+
+.note-table-check input {
+  margin: 0;
+  vertical-align: middle;
+  cursor: pointer;
+}
+
+/*
+   A selected row: the sidebar entry's wash, and its ring reduced to a bar down the row's
+   left edge, since a table row cannot carry one box's inset shadow across its cells.
+   Over `--bg`, as every fill on these sticky cells has to be.
+*/
+.note-row.selected td { background: color-mix(in srgb, var(--accent) 8%, var(--bg)); }
+.note-row.selected td:first-child { box-shadow: inset 3px 0 0 var(--accent); }
+
 /* The heading is the sort control: drawn as its text, lit when it is the column in charge. */
 .note-th-sort {
   display: inline-flex;
@@ -2015,6 +2057,34 @@ a.overflow-item { text-decoration: none; }
 .tag-picker-item:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: -2px;
+}
+
+/*
+   The notebook picker a selection is moved with — `MoveSheet` — is this picker's shape:
+   a find field over a capped, scrolling list. Its rows are the drawer's, so only the
+   frame is shared here; see the component for why it is a sheet at all.
+*/
+.move-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  min-width: 0;
+  max-height: 70dvh;
+}
+
+.move-picker .search-field { flex: 0 0 auto; }
+
+.move-picker-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 /* A tag name is unbounded; it yields so the count beside it never has to move. */
@@ -6835,3 +6905,181 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
     animation: none !important;
   }
 }
+
+/* ---------------------------------------------------------------------------------
+   Selecting several notes — `useSelection`, `NoteListItem`, `SelectionBar`.
+
+   Evernote's shape: Cmd/Ctrl-click and Shift-click pick rows, a held finger picks one on
+   a phone, and a bar floats up over the foot of the screen with the count and the actions.
+   --------------------------------------------------------------------------------- */
+
+/* The checkbox sits over the row's top corner; the entry is what it is positioned in. */
+.note-entry { position: relative; }
+
+/*
+   A selected row: a ring inside its edge, over whatever fill it has.
+
+   Inside rather than the focus ring's outside, so the two are different marks — a focused
+   row is where the keyboard is, a selected one is what an action will reach — and so the
+   ring is never clipped by the list's scroll box. The wash is lighter than the open note's
+   14%, since the ring is the statement and the wash only keeps a selected row from looking
+   like a hovered one when the pointer leaves it. Evernote outlines its selected cards the
+   same way.
+*/
+.note-item.selected {
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+  box-shadow: inset 0 0 0 1.5px var(--accent);
+}
+
+.note-item.selected.active {
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+}
+
+/*
+   The checkbox, on the title line at the row's end.
+
+   Outside the link (a control inside an anchor is invalid, and every click on it would
+   follow the link), so it is laid over the row rather than in its flow. The title is
+   asked to stop short of it — below — for as long as the list is in its selection mode,
+   which is the one moment every row changes at once and so the one moment a reflow is
+   not a jump. Sized to the row's text, not to a thumb: on a touch screen the whole row
+   toggles, and the box only reports.
+*/
+.note-check {
+  position: absolute;
+  top: calc(0.6rem + 0.16rem);
+  right: 0.7rem;
+  width: 1.15rem;
+  height: 1.15rem;
+  margin: 0;
+  cursor: pointer;
+}
+
+.note-list.selecting .note-title { padding-right: 1.8rem; }
+
+/* No pointer to aim with: the row is the target, and the box must not take the tap. */
+@media (hover: none) {
+  .note-check { pointer-events: none; }
+
+  /*
+     A held finger selects, so the browser's own answers to a held link — the callout on
+     iOS, a text selection on either — are switched off. The rows are links, not prose;
+     nobody selects their text.
+  */
+  .note-item {
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    user-select: none;
+  }
+}
+
+/*
+   The bar: a pill over the foot of the screen, centred, the way Evernote's rises.
+
+   Fixed rather than in the list, so nothing under it moves when it comes or goes; and
+   over the window rather than the column, so a narrow sidebar never squeezes its
+   controls off the screen. The colours are the dropdown's — the page's own background,
+   a border and a shadow — rather than the accent's, so the delete control can keep its
+   red and the icons their ink. On a phone it takes the New button's place; that button
+   hides while anything is selected. Under the sheet's backdrop, which the top layer puts
+   above everything regardless; this only has to beat the list.
+*/
+.selection-bar {
+  position: fixed;
+  left: 50%;
+  bottom: calc(1rem + env(safe-area-inset-bottom));
+  translate: -50% 0;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  gap: 0.1rem;
+  max-width: calc(100vw - 2rem);
+  padding: 0.25rem 0.35rem 0.25rem 0.25rem;
+  color: var(--fg);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  box-shadow: 0 6px 20px color-mix(in srgb, var(--fg) 18%, transparent);
+}
+
+.selection-count {
+  padding: 0 0.5rem 0 0.15rem;
+  font-size: 0.9rem;
+  font-weight: 500;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+/* A pill has no second line; the words in it stay on the first. */
+.selection-bar .btn { white-space: nowrap; }
+
+/* The actions, after the count and its Select all, with a breath between the two groups. */
+.selection-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.1rem;
+  margin-left: 0.35rem;
+}
+
+/* The destructive one wears its colour, as a quiet danger button would. */
+.selection-actions .icon-btn.danger { color: var(--bad); }
+.selection-actions .icon-btn.danger:hover {
+  color: var(--bad);
+  background: color-mix(in srgb, var(--bad) 12%, transparent);
+}
+
+/*
+   A pointer's bar takes the head's smaller boxes; a thumb's keeps the 44px every other
+   control on a phone gets. Same rule and reasons as `.list-head-actions`.
+*/
+@media (width > 860px) and (hover: hover) and (pointer: fine) {
+  .selection-bar .icon-btn {
+    min-width: 2rem;
+    height: 2rem;
+    font-size: 0.9rem;
+  }
+}
+
+/*
+   The selection's tags — `TagsSheet`: the note's tag field with no chips in it, then a
+   row per tag the selection carries, each a checkbox beside the chip the note's own
+   property list would draw for it. The chip loses the room it keeps for a × it does not
+   have here.
+*/
+.tags-sheet {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  min-width: 0;
+  max-height: 70dvh;
+}
+
+.tags-sheet-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.tags-sheet-row {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  min-height: 2.25rem;
+  padding: 0.25rem 0.5rem;
+  border-radius: 0.3rem;
+  cursor: pointer;
+}
+
+.tags-sheet-row:hover { background: color-mix(in srgb, var(--fg) 8%, transparent); }
+
+.tags-sheet-row input { margin: 0; }
+
+.tags-sheet-row .tag-chip { padding-right: 0.5rem; }
+
+.tags-sheet-row .tag-count { margin-left: auto; font-size: 0.85rem; }
+
+.tags-sheet-empty { margin: 0.25rem 0; }

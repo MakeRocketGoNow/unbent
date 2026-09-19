@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { Link, useNavigate } from '@tanstack/react-router';
 import { useQuery, useInfiniteQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import { UNFILED, type FieldDef, type FieldValue } from '@unbent/shared';
@@ -30,7 +30,15 @@ import { DatePicker } from './DatePicker.js';
 import { FieldsPicker } from './FieldsPicker.js';
 import { rangeLabel } from './format-when.js';
 import { NotebookDrawer } from './NotebookDrawer.js';
-import { PlusIcon, TagIcon, CalendarIcon, FieldsIcon } from './icons.js';
+import {
+  PlusIcon,
+  TagIcon,
+  CalendarIcon,
+  FieldsIcon,
+  TrashIcon,
+  NotebookActionIcon,
+  TagActionIcon,
+} from './icons.js';
 import { Sheet } from './Sheet.js';
 import { NoteListHead } from './NoteListHead.js';
 import { NotesSort } from './NotesSort.js';
@@ -47,6 +55,12 @@ import { keys } from '../queries.js';
 import { ActiveFilters } from './ActiveFilters.js';
 import { ScopeMatches, scopeMatches } from './ScopeMatches.js';
 import { useMediaQuery, MOBILE_QUERY } from '../useMediaQuery.js';
+import { useSelection } from '../useSelection.js';
+import { SelectionBar } from './SelectionBar.js';
+import { Confirm } from './Confirm.js';
+import { MoveSheet } from './MoveSheet.js';
+import { TagsSheet } from './TagsSheet.js';
+import { editOpenNoteFiling } from '../open-note-fields.js';
 import { useSession } from '../auth-client.js';
 import { useSignOut } from '../useSignOut.js';
 
@@ -337,6 +351,116 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
    * and keeps the stacked header, which is what fits.
    */
   const toolbarHead = tableMode && !layout.open;
+
+  /*
+   * Which rows are picked for a bulk action — see `useSelection` for the rules. The rows
+   * are the loaded notes in their drawn order, whichever way they are drawn; the open
+   * note is the anchor a Shift-click ranges from until something else is picked; and any
+   * change of scope drops the selection, since it names rows that are no longer on screen.
+   */
+  const rowIds = notes.map((n) => n.id);
+  const selection = useSelection(rowIds, {
+    anchor: layout.open,
+    resetKey: JSON.stringify([filter, ordering, debounced]),
+  });
+  /*
+   * Opening a note drops the selection too, as it does in Finder: a plain click or an
+   * arrow key is browsing, and a selection left standing behind the note you moved to
+   * would be one an action could reach with its rows out of view. The modifier clicks
+   * and the checkboxes do not navigate, so they are not this.
+   */
+  const { clear: clearSelection } = selection;
+  useEffect(() => {
+    clearSelection();
+  }, [layout.open, clearSelection]);
+
+  /** Escape and Cmd/Ctrl+A on the list are the selection's; the arrows stay the list's. */
+  const onListKeysWithSelection = (event: KeyboardEvent<HTMLElement>) => {
+    if (event.key === 'Escape' && selection.active) {
+      event.preventDefault();
+      selection.clear();
+      return;
+    }
+    if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'a' && results === null) {
+      event.preventDefault();
+      selection.selectAll();
+      return;
+    }
+    onListKeys(event);
+  };
+
+  /*
+   * The bulk actions. Each writes, tells the open note's draft if it was among the rows
+   * (`editOpenNoteFiling` — the next autosave would otherwise put the old filing back),
+   * then refetches everything the change reaches: the lists, any search, the cached
+   * notes, the counts on the rail. Moving and trashing drop the selection — the rows
+   * leave the list, or the job is done — while a tag change keeps it, since the sheet
+   * stays open for the next one. Trashing is confirmed inline, unlike the single
+   * note's Delete, which has the ⋯ menu as its deliberate second step; a bar's button is
+   * one click, and forty notes is a blast radius worth naming first.
+   */
+  const [pendingTrash, setPendingTrash] = useState(false);
+  /** Which of the bar's sheets is open: where to move the selection, or its tags. */
+  const [bulkSheet, setBulkSheet] = useState<'move' | 'tags' | null>(null);
+  const [bulkBusy, setBulkBusy] = useState(false);
+  const [bulkError, setBulkError] = useState<string | null>(null);
+  async function runBulk(action: () => Promise<void>) {
+    setBulkBusy(true);
+    setBulkError(null);
+    try {
+      await action();
+    } catch (err) {
+      setBulkError((err as Error).message);
+    } finally {
+      setBulkBusy(false);
+    }
+  }
+  async function refetchAfterBulk() {
+    await queryClient.invalidateQueries({ queryKey: ['notes'] });
+    void queryClient.invalidateQueries({ queryKey: ['search'] });
+    void queryClient.invalidateQueries({ queryKey: ['note'] });
+    invalidateNoteMembership(queryClient);
+  }
+  const trashSelected = () =>
+    runBulk(async () => {
+      const ids = selection.ids;
+      await api.deleteNotes(ids);
+      setPendingTrash(false);
+      selection.clear();
+      // The open note went with them: leave it before its query learns it is gone.
+      if (layout.open && ids.includes(layout.open)) {
+        void navigate({ to: '/notes', search: (p) => p });
+      }
+      void queryClient.invalidateQueries({ queryKey: ['trash'] });
+      await refetchAfterBulk();
+    });
+  const moveSelected = (target: string | null) =>
+    runBulk(async () => {
+      const ids = selection.ids;
+      await api.updateNotes(ids, { notebook: target });
+      setBulkSheet(null);
+      if (layout.open && ids.includes(layout.open)) {
+        editOpenNoteFiling(layout.open, { notebook: target });
+      }
+      selection.clear();
+      await refetchAfterBulk();
+    });
+  const tagSelected = (change: { add?: string[]; remove?: string[] }) =>
+    runBulk(async () => {
+      const ids = selection.ids;
+      await api.updateNotes(ids, { addTags: change.add, removeTags: change.remove });
+      if (layout.open && ids.includes(layout.open)) {
+        const add = change.add ?? [];
+        const remove = new Set(change.remove ?? []);
+        editOpenNoteFiling(layout.open, {
+          tags: (current) => [
+            ...current.filter((t) => !remove.has(t)),
+            ...add.filter((t) => !current.includes(t)),
+          ],
+        });
+      }
+      await refetchAfterBulk();
+    });
   /*
    * Where the list is, as a navigation target: the open note when there is one. Changing
    * how the list is drawn must not close a note, unlike a filter, which can take the note
@@ -525,6 +649,7 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
         />
 
         {error && <p className="bad small">{(error as Error).message}</p>}
+        {bulkError && <p className="bad small">{bulkError}</p>}
         <NotebookMissing notebook={notebook} notebooks={notebooks} />
 
         {/*
@@ -542,6 +667,39 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
           fieldDefs={fieldDefs.data ?? []}
           from={from}
           to={to}
+        />
+
+        {/* Above the list, where the trash view puts its confirms: a row is too narrow to
+            hold a question and two buttons, and the count is what is being decided. */}
+        {pendingTrash && selection.active && (
+          <Confirm
+            label="Confirm delete notes"
+            question={`Delete ${selection.ids.length} ${selection.ids.length === 1 ? 'note' : 'notes'}?`}
+            detail="They go to the trash, and can be restored from there."
+            busy={bulkBusy}
+            onCancel={() => setPendingTrash(false)}
+            actions={[
+              { label: 'Delete', busyLabel: 'Deleting…', tone: 'danger', onConfirm: trashSelected },
+            ]}
+          />
+        )}
+
+        <MoveSheet
+          open={bulkSheet === 'move'}
+          onClose={() => setBulkSheet(null)}
+          count={selection.ids.length}
+          notebooks={notebooks.data}
+          busy={bulkBusy}
+          onPick={(target) => void moveSelected(target)}
+        />
+
+        <TagsSheet
+          open={bulkSheet === 'tags'}
+          onClose={() => setBulkSheet(null)}
+          notes={notes.filter((n) => selection.has(n.id))}
+          suggestions={tags.data?.map((t) => t.name) ?? []}
+          busy={bulkBusy}
+          onChange={(change) => void tagSelected(change)}
         />
 
         {isMobile && (
@@ -721,7 +879,7 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
           * with it — a "new note" button floating over the note you are reading would make
           * one every time a thumb reached for the scroll bar.
           */}
-        {isMobile && (
+        {isMobile && !selection.active && (
           <button type="button" className="fab" aria-label="New note" onClick={() => void newNote()}>
             <PlusIcon />
           </button>
@@ -739,13 +897,27 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
             isFetchingNextPage={list.isFetchingNextPage}
             onLoadMore={() => void list.fetchNextPage()}
             onSort={sortBy}
-            onKeyDown={onListKeys}
+            onKeyDown={onListKeysWithSelection}
             tableRef={tableRef}
             empty={emptyMessage}
             onEdit={onEditCell}
+            selection={{
+              has: selection.has,
+              active: selection.active,
+              all: selection.active && selection.ids.length === rowIds.length,
+              onPick: selection.pick,
+              onSelectAll: selection.selectAll,
+              onClear: selection.clear,
+            }}
           />
         ) : (
-        <ul className="note-list" ref={listRef} aria-busy={stale || undefined} onKeyDown={onListKeys}>
+        <ul
+          className={selection.active ? 'note-list selecting' : 'note-list'}
+          ref={listRef}
+          aria-busy={stale || undefined}
+          aria-multiselectable={results === null ? true : undefined}
+          onKeyDown={onListKeysWithSelection}
+        >
           {/*
               Tags and notebooks whose names match, before the notes that do. The needle is
               the debounced query so they arrive together with the results rather than a
@@ -774,6 +946,11 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
                 to="/notes/$noteId"
                 sort={sort ?? 'updated'}
                 transition={isMobile}
+                selection={{
+                  selected: selection.has(n.id),
+                  active: selection.active,
+                  onPick: (opts) => selection.pick(n.id, opts),
+                }}
               />
             ))}
 
@@ -799,6 +976,48 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
         {/* Trash is a row of the rail and of the drawer; the column is the list alone.
             `.note-list` takes the leftover height, so the status lands on the floor. */}
         <IndexingStatus />
+
+        {/* Inside the sidebar, so the rule that hides the list under an open note on a
+            phone takes the bar with it — see the New button above for the same reason. */}
+        {selection.active && (
+          <SelectionBar
+            count={selection.ids.length}
+            total={rowIds.length}
+            onClear={selection.clear}
+            onSelectAll={selection.selectAll}
+          >
+            <button
+              type="button"
+              className="icon-btn"
+              aria-label="Move to notebook"
+              title="Move to notebook"
+              disabled={bulkBusy}
+              onClick={() => setBulkSheet('move')}
+            >
+              <NotebookActionIcon />
+            </button>
+            <button
+              type="button"
+              className="icon-btn"
+              aria-label="Tags"
+              title="Tags"
+              disabled={bulkBusy}
+              onClick={() => setBulkSheet('tags')}
+            >
+              <TagActionIcon />
+            </button>
+            <button
+              type="button"
+              className="icon-btn danger"
+              aria-label="Delete"
+              title="Delete"
+              disabled={bulkBusy}
+              onClick={() => setPendingTrash(true)}
+            >
+              <TrashIcon />
+            </button>
+          </SelectionBar>
+        )}
       </aside>
 
       <ResizeHandle

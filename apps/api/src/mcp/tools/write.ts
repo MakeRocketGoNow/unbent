@@ -2,6 +2,7 @@ import { z } from 'zod';
 import {
   FIELD_TYPES,
   InvalidFieldValue,
+  MAX_BATCH_NOTES,
   MAX_BODY_BYTES,
   MAX_FIELD_VALUE_LENGTH,
   MAX_TAG_LENGTH,
@@ -291,15 +292,27 @@ export function registerWriteTools(server: McpServer, notes: NotesRepo): void {
     },
   );
 
+  /*
+     The tools that take several notes go through the repo's batch methods — one read and
+     one transaction for the set, where each used to read and write every note in turn,
+     which is what capped them at fifty. They answer with which ids were done, how many of
+     those actually changed (a note already there, or already carrying the tag, keeps its
+     date), and which ids were not found: an assistant re-running a step it already ran
+     is ordinary, and a stale id must not stop the other forty-nine.
+  */
+  const noteIdsSchema = z.array(z.string().uuid()).min(1).max(MAX_BATCH_NOTES);
+
   server.registerTool(
     'update_note_tags',
     {
       title: 'Add or remove tags',
       description:
         'Add and remove tags across one or more notes without touching their other fields. ' +
-        'Tags that are already there, or already absent, are left alone.',
+        'Tags that are already there, or already absent, are left alone. Answers with the ' +
+        'notes it reached, how many changed, and any ids it could not find; get_note shows ' +
+        "a note's tags afterwards.",
       inputSchema: z.object({
-        noteIds: z.array(z.string().uuid()).min(1).max(50),
+        noteIds: noteIdsSchema,
         add: z.array(z.string().trim().min(1).max(MAX_TAG_LENGTH)).default([]),
         remove: z.array(z.string().trim().min(1).max(MAX_TAG_LENGTH)).default([]),
       }),
@@ -309,25 +322,15 @@ export function registerWriteTools(server: McpServer, notes: NotesRepo): void {
       if (!add.length && !remove.length) {
         return toolError('Nothing to do: pass tags to add, to remove, or both.');
       }
-      const removing = new Set(remove);
-      // Sequential rather than concurrent: D1 is one connection, and a batch of 50 parallel
-      // read-modify-writes buys nothing but contention.
-      const results = [];
-      for (const id of noteIds) {
-        const note = await notes.get(id);
-        if (!note) {
-          results.push({ noteId: id, ok: false, error: 'no such note' });
-          continue;
-        }
-        const tags = [...new Set([...note.tags.filter((t) => !removing.has(t)), ...add])];
-        const updated = await notes.update(id, { tags });
-        results.push(
-          updated
-            ? { noteId: id, ok: true, tags: updated.tags }
-            : { noteId: id, ok: false, error: 'no such note' },
-        );
-      }
-      return jsonResult({ results });
+      const { matched, changed } = await notes.updateMany(noteIds, {
+        addTags: add,
+        removeTags: remove,
+      });
+      return jsonResult({
+        noteIds: matched,
+        changed: changed.length,
+        missing: noteIds.filter((id) => !matched.includes(id)),
+      });
     },
   );
 
@@ -337,25 +340,26 @@ export function registerWriteTools(server: McpServer, notes: NotesRepo): void {
       title: 'Move notes to a notebook',
       description:
         'File one or more notes into a notebook, or out of every notebook with null. The ' +
-        'notebook is created if it does not exist.',
+        'notebook is created if it does not exist. Answers with the notes it reached, how ' +
+        'many actually moved, and any ids it could not find.',
       inputSchema: z.object({
-        noteIds: z.array(z.string().uuid()).min(1).max(50),
+        noteIds: noteIdsSchema,
         notebook: notebookSchema,
       }),
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     },
     async ({ noteIds, notebook }) => {
       const target = normalizeNotebook(notebook) ?? null;
-      const results = [];
-      for (const id of noteIds) {
-        const updated = await notes.update(id, { notebook: target });
-        results.push(
-          updated
-            ? { noteId: id, ok: true, notebook: updated.notebook ?? null }
-            : { noteId: id, ok: false, error: 'no such note' },
-        );
-      }
-      return jsonResult({ results });
+      const { matched, changed } = await notes.updateMany(noteIds, { notebook: target });
+      // The notebook as stored, which is the name the assistant will see everywhere else:
+      // a request for "coupons" lands in an existing "Coupons", and the answer says so.
+      const first = matched[0] ? await notes.get(matched[0]) : null;
+      return jsonResult({
+        notebook: first ? (first.notebook ?? null) : target,
+        noteIds: matched,
+        changed: changed.length,
+        missing: noteIds.filter((id) => !matched.includes(id)),
+      });
     },
   );
 
@@ -388,6 +392,49 @@ export function registerWriteTools(server: McpServer, notes: NotesRepo): void {
       const ok = await notes.restore(noteId);
       if (!ok) return notFound('trashed note', noteId);
       return jsonResult({ noteId, restored: true });
+    },
+  );
+
+  /*
+     The same two verbs over a set. Still nothing that deletes permanently — the trash is
+     as far as an assistant can go, and a set of ids does not change that.
+  */
+  server.registerTool(
+    'delete_notes',
+    {
+      title: 'Move several notes to the trash',
+      description:
+        'Trash several notes at once. Reversible, as delete_note is: they stay in the trash ' +
+        'until someone empties it, and restore_notes brings them back. Answers with the ' +
+        'notes it trashed and any ids it could not find or that were already in the trash.',
+      inputSchema: z.object({ noteIds: noteIdsSchema }),
+      annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false },
+    },
+    async ({ noteIds }) => {
+      const trashed = await notes.removeMany(noteIds);
+      return jsonResult({
+        noteIds: trashed,
+        missing: noteIds.filter((id) => !trashed.includes(id)),
+      });
+    },
+  );
+
+  server.registerTool(
+    'restore_notes',
+    {
+      title: 'Restore several notes from the trash',
+      description:
+        'Bring several trashed notes back at once. Answers with the notes it restored and ' +
+        'any ids it could not find in the trash.',
+      inputSchema: z.object({ noteIds: noteIdsSchema }),
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    },
+    async ({ noteIds }) => {
+      const restored = await notes.restoreMany(noteIds);
+      return jsonResult({
+        noteIds: restored,
+        missing: noteIds.filter((id) => !restored.includes(id)),
+      });
     },
   );
 

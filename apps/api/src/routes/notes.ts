@@ -4,7 +4,9 @@ import {
   createNoteSchema,
   InvalidFieldValue,
   listNotesQuerySchema,
+  noteBatchSchema,
   updateNoteSchema,
+  updateNotesSchema,
 } from '@unbent/shared';
 import { copyAttachments } from '../lib/copy-attachments.js';
 import { nextCursor } from '../lib/notes-repo.js';
@@ -164,6 +166,43 @@ export const notes = new Hono<AppEnv>()
     for (const key of keys) await c.env.BLOBS.delete(key);
 
     return c.body(null, 204);
+  })
+
+  /*
+     Several notes at once — the list's selection.
+
+     Each is the singular route above over a set of ids, answered with a count rather than
+     the notes: the client already holds the rows it named and refetches the list anyway,
+     and five hundred notes with their fields is a page nobody asked for. An id that is not
+     this user's, or is on the wrong side of the trash, is left out of the count rather
+     than failing the request — see the repo's batch methods for why.
+
+     `PATCH /notes` rather than a `/notes/batch`: it is the collection being patched, and
+     the ids are the body's business. The three verbs are POSTs with a body for the same
+     reason — a DELETE carrying JSON is legal and widely mishandled.
+  */
+
+  .patch('/notes', zValidator('json', updateNotesSchema), async (c) => {
+    const { ids, ...patch } = c.req.valid('json');
+    const { matched, changed } = await c.get('notes').updateMany(ids, patch);
+    return c.json({ matched: matched.length, changed: changed.length });
+  })
+
+  .post('/notes/trash', zValidator('json', noteBatchSchema), async (c) => {
+    const trashed = await c.get('notes').removeMany(c.req.valid('json').ids);
+    return c.json({ trashed: trashed.length });
+  })
+
+  .post('/notes/restore', zValidator('json', noteBatchSchema), async (c) => {
+    const restored = await c.get('notes').restoreMany(c.req.valid('json').ids);
+    return c.json({ restored: restored.length });
+  })
+
+  /** Blobs after rows, for the reason `/notes/:id/permanent` gives. */
+  .post('/notes/purge', zValidator('json', noteBatchSchema), async (c) => {
+    const { deleted, keys } = await c.get('notes').purgeMany(c.req.valid('json').ids);
+    for (const key of keys) await c.env.BLOBS.delete(key);
+    return c.json({ deleted });
   })
 
   .get('/tags', requireAuth, withRepos, async (c) => {

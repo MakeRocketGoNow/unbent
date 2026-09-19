@@ -34,6 +34,22 @@ interface NoteTableProps {
    * the rest open the note. Absent, every cell is read-only.
    */
   onEdit?: ((noteId: string, def: FieldDef, value: FieldValue | null) => void) | undefined;
+  /**
+   * The list's selection, drawn as a first column of checkboxes with a select-all in the
+   * header. Absent, the table has no such column.
+   */
+  selection?: TableSelection | undefined;
+}
+
+export interface TableSelection {
+  has: (id: string) => boolean;
+  /** Whether any row is selected. */
+  active: boolean;
+  /** Every loaded row is selected, which is when the header's box is checked. */
+  all: boolean;
+  onPick: (id: string, opts: { range: boolean }) => void;
+  onSelectAll: () => void;
+  onClear: () => void;
 }
 
 /**
@@ -53,6 +69,12 @@ interface NoteTableProps {
  * would own here is small: the sort is URL state fed to the server, the pages come from
  * the query, the pinned column is one CSS rule. `note-columns.ts` is the seam if that
  * changes.
+ *
+ * Selecting several is the table's own shape rather than the sidebar's: a column of
+ * checkboxes, always there, with the header's box selecting or clearing every loaded row
+ * — Gmail's table, and every spreadsheet's. A table is wide enough to spend a column on
+ * it, where the sidebar's rows were not. The modifier clicks still work on a row, for
+ * the hand that has learnt them in the list, and a checkbox takes Shift for a range.
  */
 export function NoteTable({
   notes,
@@ -69,7 +91,9 @@ export function NoteTable({
   tableRef,
   empty,
   onEdit,
+  selection,
 }: NoteTableProps) {
+  const span = columns.length + (selection ? 1 : 0);
   return (
     <div
       className="note-table-wrap"
@@ -78,12 +102,28 @@ export function NoteTable({
       onKeyDown={onKeyDown}
     >
       <table
-        className="note-table"
+        className={selection ? 'note-table selectable' : 'note-table'}
         aria-label={`Notes in ${notebook}`}
         aria-rowcount={total ?? undefined}
+        aria-multiselectable={selection ? true : undefined}
       >
         <thead>
           <tr>
+            {selection && (
+              <th scope="col" className="note-table-check">
+                <input
+                  type="checkbox"
+                  aria-label={selection.all ? 'Clear selection' : 'Select all loaded notes'}
+                  checked={selection.all && notes.length > 0}
+                  disabled={notes.length === 0}
+                  ref={(el) => {
+                    // Some but not all: the header shows the half state a spreadsheet does.
+                    if (el) el.indeterminate = selection.active && !selection.all;
+                  }}
+                  onChange={() => (selection.all ? selection.onClear() : selection.onSelectAll())}
+                />
+              </th>
+            )}
             {columns.map((col) => {
               const state = col.sortTarget ? columnSortState(col.sortTarget, search) : null;
               const target = col.sortTarget;
@@ -118,7 +158,8 @@ export function NoteTable({
           {notes.map((note) => (
             <tr
               key={note.id}
-              className="note-row"
+              className={selection?.has(note.id) ? 'note-row selected' : 'note-row'}
+              aria-selected={selection ? selection.has(note.id) : undefined}
               // Like a sidebar entry: a click here is browsing, and the editor stands
               // down so the arrows keep working. Read by `useListKeys`' pointerdown.
               data-keep-focus=""
@@ -126,14 +167,31 @@ export function NoteTable({
                 if (!(e.target instanceof Element)) return;
                 // A control in a cell, or the name link itself, handles its own click.
                 if (e.target.closest('a, button, input, select, label')) return;
+                // The list's keys, on the row's whole width.
+                if (selection && (e.metaKey || e.ctrlKey || e.shiftKey)) {
+                  e.preventDefault();
+                  selection.onPick(note.id, { range: e.shiftKey });
+                  return;
+                }
                 const link = e.currentTarget.querySelector<HTMLAnchorElement>('.note-row-link');
                 link?.focus();
                 link?.click();
               }}
             >
+              {selection && (
+                <td className="note-table-check">
+                  <input
+                    type="checkbox"
+                    checked={selection.has(note.id)}
+                    aria-label={`Select ${note.title || 'Untitled'}`}
+                    onChange={() => undefined}
+                    onClick={(e) => selection.onPick(note.id, { range: e.shiftKey })}
+                  />
+                </td>
+              )}
               {columns.map((col) => (
                 <td key={col.id} data-align={col.align}>
-                  {cell(col, note, onEdit)}
+                  {cell(col, note, onEdit, selection)}
                 </td>
               ))}
             </tr>
@@ -141,7 +199,7 @@ export function NoteTable({
 
           {hasNextPage && (
             <tr>
-              <td colSpan={columns.length}>
+              <td colSpan={span}>
                 <button
                   type="button"
                   className="load-more"
@@ -156,7 +214,7 @@ export function NoteTable({
 
           {notes.length === 0 && empty && (
             <tr>
-              <td colSpan={columns.length} className="muted small empty">
+              <td colSpan={span} className="muted small empty">
                 {empty}
               </td>
             </tr>
@@ -171,6 +229,7 @@ function cell(
   col: NoteColumn,
   note: NoteSummary,
   onEdit: NoteTableProps['onEdit'],
+  selection: TableSelection | undefined,
 ): ReactNode {
   switch (col.kind) {
     case 'name':
@@ -182,6 +241,20 @@ function cell(
           search={(prev) => prev}
           className="note-row-link"
           activeProps={{ className: 'note-row-link active' }}
+          // The modifier clicks pick, as they do on a sidebar entry — see `NoteListItem`
+          // for why they are taken from the link. Space picks too.
+          onClick={(e) => {
+            if (selection && (e.metaKey || e.ctrlKey || e.shiftKey)) {
+              e.preventDefault();
+              selection.onPick(note.id, { range: e.shiftKey });
+            }
+          }}
+          onKeyDown={(e) => {
+            if (selection && e.key === ' ') {
+              e.preventDefault();
+              selection.onPick(note.id, { range: e.shiftKey });
+            }
+          }}
         >
           {note.title || 'Untitled'}
         </Link>
