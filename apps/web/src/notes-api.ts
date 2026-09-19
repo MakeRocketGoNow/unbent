@@ -188,6 +188,62 @@ export async function deleteNotePermanently(id: string): Promise<void> {
   if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
 }
 
+/*
+   Several notes at once — the list's selection. Each answers with a count, not the notes;
+   the caller refetches the list, which is where the notes are read from anyway.
+*/
+
+/**
+ * Refiles several notes: into a notebook (null for none), and with tags added or taken
+ * away. `matched` is how many ids were live notes of this user's; `changed` how many were
+ * actually written — a note already filed there, or already carrying the tag, keeps its date.
+ */
+export async function updateNotes(
+  ids: string[],
+  patch: { notebook?: string | null; addTags?: string[]; removeTags?: string[] },
+): Promise<{ matched: number; changed: number }> {
+  return json(
+    await fetch('/api/notes', {
+      method: 'PATCH',
+      headers: jsonHeaders,
+      body: JSON.stringify({ ids, ...patch }),
+    }),
+  );
+}
+
+/** Moves several notes to the trash. */
+export async function deleteNotes(ids: string[]): Promise<{ trashed: number }> {
+  return json(
+    await fetch('/api/notes/trash', {
+      method: 'POST',
+      headers: jsonHeaders,
+      body: JSON.stringify({ ids }),
+    }),
+  );
+}
+
+/** Restores several trashed notes. */
+export async function restoreNotes(ids: string[]): Promise<{ restored: number }> {
+  return json(
+    await fetch('/api/notes/restore', {
+      method: 'POST',
+      headers: jsonHeaders,
+      body: JSON.stringify({ ids }),
+    }),
+  );
+}
+
+/** Permanently deletes several trashed notes and their attachments. Irreversible. */
+export async function deleteNotesPermanently(ids: string[]): Promise<{ deleted: number }> {
+  return json(
+    await fetch('/api/notes/purge', {
+      method: 'POST',
+      headers: jsonHeaders,
+      body: JSON.stringify({ ids }),
+    }),
+  );
+}
+
 /**
  * How this instance can be signed in to. Public, so it works before there is a session;
  * the login screen is what asks.

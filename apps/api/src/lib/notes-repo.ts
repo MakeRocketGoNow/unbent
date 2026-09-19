@@ -537,6 +537,33 @@ function sameTagSet(patch: string[], stored: string[]): boolean {
 }
 
 /**
+ * A tag list as `setTags` would write it: trimmed, blanks dropped, each name once.
+ * Compared exactly, as the UNIQUE index compares them — "Receipt" and "receipt" are two tags.
+ */
+function uniqueTags(tags: string[]): string[] {
+  return [...new Set(tags.map((t) => t.trim()).filter((t) => t.length > 0))];
+}
+
+/**
+ * D1 binds at most 100 parameters to one statement, so a set of ids is written in runs of
+ * this many, leaving room for the handful of other values a statement binds. `purge` uses
+ * 99 with a single other bind; the batch methods below bind a few more, and one number
+ * that is safe for all of them is easier to keep right than one per query.
+ */
+const ID_RUN = 90;
+
+function runs<T>(items: T[], size = ID_RUN): T[][] {
+  const out: T[][] = [];
+  for (let i = 0; i < items.length; i += size) out.push(items.slice(i, i + size));
+  return out;
+}
+
+/** `?n, ?n+1, …` — `count` placeholders numbered from `from`, for an `IN (…)` list. */
+function placeholders(from: number, count: number): string {
+  return Array.from({ length: count }, (_, i) => `?${from + i}`).join(', ');
+}
+
+/**
  * All note access for one user.
  *
  * Every method injects `this.userId` — no method accepts a user id as a parameter, which
@@ -1066,6 +1093,245 @@ export class NotesRepo extends ScopedRepo {
     if (res.meta.changes > 0) await this.sweepTombstonedFields();
 
     return { deleted: res.meta.changes > 0, keys: results.map((r) => r.r2_key) };
+  }
+
+  /*
+     Several notes at once — the list's selection acting as one.
+
+     Each of these is the singular method above applied to a set, with two differences the
+     set forces. Ids that are not this user's, or are on the wrong side of the trash, are
+     skipped and counted out rather than failing the request: a selection is made from a
+     list that can go stale under it — a note trashed from another tab, restored over MCP —
+     and one such id must not stop the other forty-nine. And every statement names its notes
+     in runs of `ID_RUN`, because D1 caps the binds a statement carries.
+
+     The counts come from `RETURNING id`, not `meta.changes`. A note's row has an FTS
+     trigger on it, and D1 counts what the trigger writes to the index's shadow tables as
+     changes too — trashing two notes reported ten. The singular methods only ask whether
+     the count is zero, which that cannot get wrong; these report it.
+  */
+
+  /** Trashes several notes. Returns how many were — ids already trashed count for nothing. */
+  async removeMany(ids: string[]): Promise<number> {
+    const now = Date.now();
+    let trashed = 0;
+    for (const run of runs([...new Set(ids)])) {
+      const { results } = await this.db
+        .prepare(
+          `UPDATE notes SET deleted_at = ?1
+            WHERE user_id = ?2 AND deleted_at IS NULL AND id IN (${placeholders(3, run.length)})
+            RETURNING id`,
+        )
+        .bind(now, this.userId, ...run)
+        .all<{ id: string }>();
+      trashed += results.length;
+    }
+    return trashed;
+  }
+
+  /** Restores several trashed notes. `updated_at` stays, as `restore` leaves it. */
+  async restoreMany(ids: string[]): Promise<number> {
+    let restored = 0;
+    for (const run of runs([...new Set(ids)])) {
+      const { results } = await this.db
+        .prepare(
+          `UPDATE notes SET deleted_at = NULL
+            WHERE user_id = ?1 AND deleted_at IS NOT NULL AND id IN (${placeholders(2, run.length)})
+            RETURNING id`,
+        )
+        .bind(this.userId, ...run)
+        .all<{ id: string }>();
+      restored += results.length;
+    }
+    return restored;
+  }
+
+  /**
+   * Permanently deletes several trashed notes, returning their R2 keys so the blobs can go
+   * too. Only ones already in the trash, as `purgeOne`: a live note named here is left
+   * alone, because the two-step delete is the safety property.
+   *
+   * Sweeps what `purge` sweeps afterwards — tag rows nothing references any more, and
+   * field definitions these notes were the last to hold a value for — since a selection
+   * can be most of the trash.
+   */
+  async purgeMany(ids: string[]): Promise<{ deleted: number; keys: string[] }> {
+    const keys: string[] = [];
+    let deleted = 0;
+    for (const run of runs([...new Set(ids)])) {
+      const { results } = await this.db
+        .prepare(
+          `SELECT a.r2_key FROM attachments a
+             JOIN notes n ON n.id = a.note_id
+            WHERE n.user_id = ?1 AND n.deleted_at IS NOT NULL
+              AND n.id IN (${placeholders(2, run.length)})`,
+        )
+        .bind(this.userId, ...run)
+        .all<{ r2_key: string }>();
+      keys.push(...results.map((r) => r.r2_key));
+
+      const { results: gone } = await this.db
+        .prepare(
+          `DELETE FROM notes
+            WHERE user_id = ?1 AND deleted_at IS NOT NULL AND id IN (${placeholders(2, run.length)})
+            RETURNING id`,
+        )
+        .bind(this.userId, ...run)
+        .all<{ id: string }>();
+      deleted += gone.length;
+    }
+
+    if (deleted > 0) {
+      await this.db
+        .prepare(
+          `DELETE FROM tags
+            WHERE user_id = ?1
+              AND id NOT IN (SELECT tag_id FROM note_tags)`,
+        )
+        .bind(this.userId)
+        .run();
+      await this.sweepTombstonedFields();
+    }
+
+    return { deleted, keys };
+  }
+
+  /**
+   * Refiles several notes at once — into a notebook or out of every one, with tags added
+   * or taken away.
+   *
+   * Reads first and writes only what differs, the way `update` does through
+   * `changedKeysOnly`. The date is not bookkeeping: it is read, sorted by, and for an
+   * imported note it is a real modification date carried over from Evernote — so "tag
+   * these forty" must not re-date the thirty that already had the tag, and moving a
+   * selection into the notebook half of it is already in must leave that half alone.
+   * `matched` is how many of the ids were this user's live notes; `changed` how many
+   * were actually written.
+   *
+   * The writes go in one `batch`, which D1 runs as a transaction, so a failure part way
+   * leaves every note refiled or none of them. Tags are added and removed per note rather
+   * than set — the notes need not agree with each other — and a tag in both lists is
+   * added, the rule `update_note_tags` states over MCP. Tag rows are get-or-create as
+   * `setTags` has them; a tag removed from its last note keeps its row, also as `setTags`
+   * leaves it, since `listTags` only counts tags on live notes.
+   */
+  async updateMany(
+    ids: string[],
+    patch: { notebook?: string | null; addTags?: string[]; removeTags?: string[] },
+  ): Promise<{ matched: number; changed: number }> {
+    const add = uniqueTags(patch.addTags ?? []);
+    const remove = uniqueTags(patch.removeTags ?? []).filter((t) => !add.includes(t));
+
+    // What each note holds now: its notebook and its tags, one row per note.
+    const rows: Array<{ id: string; notebook_id: string | null; tags: string | null }> = [];
+    for (const run of runs([...new Set(ids)])) {
+      const { results } = await this.db
+        .prepare(
+          `SELECT n.id, n.notebook_id,
+                  (SELECT group_concat(t.name, char(31)) FROM note_tags nt
+                     JOIN tags t ON t.id = nt.tag_id
+                    WHERE nt.note_id = n.id) AS tags
+             FROM notes n
+            WHERE n.user_id = ?1 AND n.deleted_at IS NULL
+              AND n.id IN (${placeholders(2, run.length)})`,
+        )
+        .bind(this.userId, ...run)
+        .all<{ id: string; notebook_id: string | null; tags: string | null }>();
+      rows.push(...results);
+    }
+    if (rows.length === 0) return { matched: 0, changed: 0 };
+
+    // The destination, resolved once — created if it does not exist yet, as `update`
+    // would create it for one note. Only once something is going to be filed there.
+    const notebookId =
+      patch.notebook === undefined ? undefined : await this.resolveNotebook(patch.notebook);
+
+    const moving: string[] = [];
+    /** Tag name → the notes that lack it, or that carry it. */
+    const adding = new Map<string, string[]>();
+    const removing = new Map<string, string[]>();
+    const changed = new Set<string>();
+    const note = (map: Map<string, string[]>, tag: string, id: string) => {
+      map.get(tag)?.push(id) ?? map.set(tag, [id]);
+      changed.add(id);
+    };
+    for (const row of rows) {
+      if (notebookId !== undefined && row.notebook_id !== notebookId) {
+        moving.push(row.id);
+        changed.add(row.id);
+      }
+      const have = new Set(splitTags(row.tags));
+      for (const tag of add) if (!have.has(tag)) note(adding, tag, row.id);
+      for (const tag of remove) if (have.has(tag)) note(removing, tag, row.id);
+    }
+    if (changed.size === 0) return { matched: rows.length, changed: 0 };
+
+    const statements: D1PreparedStatement[] = [];
+
+    for (const run of runs(moving)) {
+      statements.push(
+        this.db
+          .prepare(
+            `UPDATE notes SET notebook_id = ?1
+              WHERE user_id = ?2 AND deleted_at IS NULL AND id IN (${placeholders(3, run.length)})`,
+          )
+          .bind(notebookId, this.userId, ...run),
+      );
+    }
+
+    // Tag rows before the joins that look them up.
+    for (const name of adding.keys()) {
+      statements.push(
+        this.db
+          .prepare(
+            `INSERT INTO tags (id, user_id, name) VALUES (?1, ?2, ?3)
+             ON CONFLICT(user_id, name) DO NOTHING`,
+          )
+          .bind(crypto.randomUUID(), this.userId, name),
+      );
+    }
+    for (const [name, noteIds] of adding) {
+      for (const run of runs(noteIds)) {
+        statements.push(
+          this.db
+            .prepare(
+              `INSERT OR IGNORE INTO note_tags (note_id, tag_id)
+               SELECT n.id, t.id FROM notes n
+                 JOIN tags t ON t.user_id = n.user_id AND t.name = ?1
+                WHERE n.user_id = ?2 AND n.id IN (${placeholders(3, run.length)})`,
+            )
+            .bind(name, this.userId, ...run),
+        );
+      }
+    }
+    for (const [name, noteIds] of removing) {
+      for (const run of runs(noteIds)) {
+        statements.push(
+          this.db
+            .prepare(
+              `DELETE FROM note_tags
+                WHERE tag_id = (SELECT id FROM tags WHERE user_id = ?1 AND name = ?2)
+                  AND note_id IN (${placeholders(3, run.length)})`,
+            )
+            .bind(this.userId, name, ...run),
+        );
+      }
+    }
+
+    const now = Date.now();
+    for (const run of runs([...changed])) {
+      statements.push(
+        this.db
+          .prepare(
+            `UPDATE notes SET updated_at = ?1
+              WHERE user_id = ?2 AND id IN (${placeholders(3, run.length)})`,
+          )
+          .bind(now, this.userId, ...run),
+      );
+    }
+
+    await this.db.batch(statements);
+    return { matched: rows.length, changed: changed.size };
   }
 
   /**
