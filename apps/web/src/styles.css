@@ -1135,6 +1135,48 @@ h1 {
 .note-table [data-align='end'] { text-align: right; }
 .note-table [data-align='center'] { text-align: center; }
 
+/*
+   The table's selection column — see `NoteTable`.
+
+   The first column is the checkbox now, so the pin moves: the checkbox stays put at the
+   left edge and the name pins beside it, one column's width in. The column is given its
+   width outright rather than sized to its box, because a pinned second column has to
+   know where the first one ends; the rule above gave every first column 12rem for the
+   name, and this one takes that back.
+*/
+.note-table.selectable th:first-child,
+.note-table.selectable td:first-child {
+  width: 2.5rem;
+  min-width: 2.5rem;
+  max-width: 2.5rem;
+  padding-inline: 0.5rem;
+  text-align: center;
+}
+
+.note-table.selectable th:nth-child(2),
+.note-table.selectable td:nth-child(2) {
+  position: sticky;
+  left: 2.5rem;
+  z-index: 1;
+  min-width: 12rem;
+}
+
+.note-table.selectable th:nth-child(2) { z-index: 3; }
+
+.note-table-check input {
+  margin: 0;
+  vertical-align: middle;
+  cursor: pointer;
+}
+
+/*
+   A selected row: the sidebar entry's wash, and its ring reduced to a bar down the row's
+   left edge, since a table row cannot carry one box's inset shadow across its cells.
+   Over `--bg`, as every fill on these sticky cells has to be.
+*/
+.note-row.selected td { background: color-mix(in srgb, var(--accent) 8%, var(--bg)); }
+.note-row.selected td:first-child { box-shadow: inset 3px 0 0 var(--accent); }
+
 /* The heading is the sort control: drawn as its text, lit when it is the column in charge. */
 .note-th-sort {
   display: inline-flex;

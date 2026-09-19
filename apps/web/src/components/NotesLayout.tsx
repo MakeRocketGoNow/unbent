@@ -901,6 +901,14 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
             tableRef={tableRef}
             empty={emptyMessage}
             onEdit={onEditCell}
+            selection={{
+              has: selection.has,
+              active: selection.active,
+              all: selection.active && selection.ids.length === rowIds.length,
+              onPick: selection.pick,
+              onSelectAll: selection.selectAll,
+              onClear: selection.clear,
+            }}
           />
         ) : (
         <ul

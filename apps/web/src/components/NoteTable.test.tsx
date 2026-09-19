@@ -143,3 +143,57 @@ describe('NoteTable', () => {
     expect(await findByText('No notes in Travel.')).toBeTruthy();
   });
 });
+
+/*
+ * The selection column: a checkbox per row, a select-all in the header that becomes a
+ * clear once every row is picked, and the list's modifier clicks on the row's whole width.
+ */
+describe('the selection column', () => {
+  afterEach(cleanup);
+
+  const selection = (over: Partial<NonNullable<Parameters<typeof NoteTable>[0]['selection']>> = {}) => ({
+    has: () => false,
+    active: false,
+    all: false,
+    onPick: vi.fn(),
+    onSelectAll: vi.fn(),
+    onClear: vi.fn(),
+    ...over,
+  });
+
+  it('is absent without a selection', async () => {
+    const { findByRole, queryAllByRole } = harness();
+    await findByRole('table');
+    expect(queryAllByRole('checkbox')).toEqual([]);
+  });
+
+  it('adds a checkbox per row and a select-all in the header', async () => {
+    const sel = selection();
+    const { findByRole, getByRole } = harness({ selection: sel });
+    await findByRole('table');
+    fireEvent.click(getByRole('checkbox', { name: 'Select all loaded notes' }));
+    expect(sel.onSelectAll).toHaveBeenCalled();
+    fireEvent.click(getByRole('checkbox', { name: 'Select Ski trip' }), { shiftKey: true });
+    expect(sel.onPick).toHaveBeenCalledWith('n1', { range: true });
+  });
+
+  it('clears from the header once every row is selected', async () => {
+    const sel = selection({ has: () => true, active: true, all: true });
+    const { findByRole } = harness({ selection: sel });
+    const head = (await findByRole('checkbox', { name: 'Clear selection' })) as HTMLInputElement;
+    expect(head.checked).toBe(true);
+    fireEvent.click(head);
+    expect(sel.onClear).toHaveBeenCalled();
+  });
+
+  it('picks on a modifier click anywhere on the row, without opening the note', async () => {
+    const sel = selection();
+    const { findByText, getAllByRole, history } = harness({ selection: sel });
+    fireEvent.click(await findByText('Ski trip'), { metaKey: true });
+    expect(sel.onPick).toHaveBeenCalledWith('n1', { range: false });
+    const cells = getAllByRole('row')[1]!.querySelectorAll('td');
+    fireEvent.click(cells[2]!, { shiftKey: true });
+    expect(sel.onPick).toHaveBeenLastCalledWith('n1', { range: true });
+    expect(history.location.pathname).toBe('/notes');
+  });
+});
