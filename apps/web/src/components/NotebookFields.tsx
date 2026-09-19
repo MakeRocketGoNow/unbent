@@ -2,12 +2,14 @@ import { useState } from 'react';
 import { Link } from '@tanstack/react-router';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
+  CURRENCY_CODES,
   FIELD_TYPES,
   FIELD_TYPE_LABELS,
   MAX_RATING_MAX,
   MIN_RATING_MAX,
   fieldHasOptions,
   fieldNameSchema,
+  isCurrencyField,
   isRatingField,
   type FieldDef,
   type FieldScale,
@@ -18,6 +20,7 @@ import { keys, notebookFieldsQuery, notebooksQuery } from '../queries.js';
 import { Button } from './Button';
 import { Confirm } from './Confirm.js';
 import { TagInput } from './TagInput.js';
+import { formatCurrency } from './format-field.js';
 import { FieldTypeIcon, MoveDownIcon, MoveUpIcon } from './icons.js';
 
 interface NotebookFieldsProps {
@@ -35,11 +38,16 @@ interface PendingType {
    * `changeType` and `changeScale`.
    */
   scale?: FieldScale | null;
+  /** Set when the change puts a currency on the field or takes one off; see `changeType`. */
+  currency?: string | null;
   values: number;
   incompatible: number;
 }
 
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
+
+/** What a field becomes when "Currency" is picked; the picker under it changes it. */
+const DEFAULT_CURRENCY = 'USD';
 
 /**
  * Field management for one notebook: rename in place, change the type, edit a select's or
@@ -82,6 +90,10 @@ export function NotebookFields({ notebookId, onChanged }: NotebookFieldsProps) {
   */
   const [newIsRating, setNewIsRating] = useState(false);
   const [newScale, setNewScale] = useState<FieldScale>({ max: 5, step: 0.5 });
+  // "Currency" is the same kind of picker entry as "Rating": a `number` with something
+  // beside it, held here and turned back into a type and a currency on create.
+  const [newIsCurrency, setNewIsCurrency] = useState(false);
+  const [newCurrency, setNewCurrency] = useState<string>(DEFAULT_CURRENCY);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -111,12 +123,15 @@ export function NotebookFields({ notebookId, onChanged }: NotebookFieldsProps) {
         type: newType,
         options: fieldHasOptions(newType) ? newOptions : [],
         ...(newIsRating ? { scale: newScale } : {}),
+        ...(newIsCurrency ? { currency: newCurrency } : {}),
       });
       setNewName('');
       setNewType('text');
       setNewOptions([]);
       setNewIsRating(false);
       setNewScale({ max: 5, step: 0.5 });
+      setNewIsCurrency(false);
+      setNewCurrency(DEFAULT_CURRENCY);
     });
   }
 
@@ -150,15 +165,29 @@ export function NotebookFields({ notebookId, onChanged }: NotebookFieldsProps) {
    * a type change. It still goes through the preview, because gaining a scale can clear
    * values — a stored 0 or 250 is no longer a legal rating — and that is exactly the
    * confirmation a type change gets.
+   *
+   * `currency` is the same for the "Currency" entry, with one difference: a currency is
+   * display only, so a number gaining or losing one clears nothing, and when that is all
+   * that changes there is nothing to preview and it writes at once.
    */
-  async function changeType(field: FieldDef, to: FieldType, scale?: FieldScale | null) {
+  async function changeType(
+    field: FieldDef,
+    to: FieldType,
+    scale?: FieldScale | null,
+    currency?: string | null,
+  ) {
     const scaleChanged = scale !== undefined && (scale === null) !== (field.scale === null);
-    if (to === field.type && !scaleChanged) return;
+    const currencyChanged = currency !== undefined && (currency ?? null) !== (field.currency ?? null);
+    if (to === field.type && !scaleChanged && !currencyChanged) return;
     setError(null);
+    if (to === field.type && !scaleChanged) {
+      void run(() => api.updateNotebookField(notebookId, field.id, { currency: currency ?? null }));
+      return;
+    }
     try {
       const preview = await api.previewFieldConversion(notebookId, field.id, to, scale);
       if (preview.incompatible > 0) {
-        setPendingType({ field, to, scale, ...preview });
+        setPendingType({ field, to, scale, currency, ...preview });
         return;
       }
     } catch (err) {
@@ -169,6 +198,7 @@ export function NotebookFields({ notebookId, onChanged }: NotebookFieldsProps) {
       api.updateNotebookField(notebookId, field.id, {
         type: to,
         ...(scale !== undefined ? { scale } : {}),
+        ...(currency !== undefined ? { currency } : {}),
       }),
     );
   }
@@ -206,7 +236,7 @@ export function NotebookFields({ notebookId, onChanged }: NotebookFieldsProps) {
   function confirmType() {
     if (!pendingType) return;
     const pending = pendingType;
-    const { field, to, scale } = pending;
+    const { field, to, scale, currency } = pending;
     void run(async () => {
       await api.updateNotebookField(notebookId, field.id, {
         // A scale tighten is not a type change, and `changeScale` writes it without a
@@ -214,6 +244,7 @@ export function NotebookFields({ notebookId, onChanged }: NotebookFieldsProps) {
         // two paths for one intent send different bodies.
         ...(scaleOnlyConfirm(pending) ? {} : { type: to }),
         ...(scale !== undefined ? { scale } : {}),
+        ...(currency !== undefined ? { currency } : {}),
       });
       setPendingType(null);
     });
@@ -284,7 +315,7 @@ export function NotebookFields({ notebookId, onChanged }: NotebookFieldsProps) {
                 title="Rename"
                 onClick={() => setEditing({ id: field.id, value: field.name })}
               >
-                <FieldTypeIcon type={field.type} rating={isRatingField(field)} />
+                <FieldTypeIcon type={field.type} rating={isRatingField(field)} currency={isCurrencyField(field)} />
                 {field.name}
                 {field.valueCount !== undefined && field.valueCount > 0 && (
                   <span className="tag-count" title={`${plural(field.valueCount, 'note')} with a value`}>
@@ -298,18 +329,23 @@ export function NotebookFields({ notebookId, onChanged }: NotebookFieldsProps) {
               <select
                 className="notebook-scope"
                 aria-label={`Type of ${field.name}`}
-                value={isRatingField(field) ? 'rating' : field.type}
+                value={isRatingField(field) ? 'rating' : isCurrencyField(field) ? 'currency' : field.type}
                 disabled={busy}
                 onChange={(e) => {
                   const picked = e.target.value;
+                  // Away from a rating, the scale goes with it; away from an amount, the
+                  // currency does — `null` rather than undefined, which would leave the old
+                  // one on the field.
+                  const dropScale = field.scale ? null : undefined;
+                  const dropCurrency = field.currency ? null : undefined;
                   if (picked === 'rating') {
                     // Turning a number into a rating: the scale it starts on is the one
                     // the create form offers, which is the shape most ratings want.
-                    void changeType(field, 'number', { max: 5, step: 0.5 });
+                    void changeType(field, 'number', { max: 5, step: 0.5 }, dropCurrency);
+                  } else if (picked === 'currency') {
+                    void changeType(field, 'number', dropScale, DEFAULT_CURRENCY);
                   } else {
-                    // Away from a rating, the scale goes with it — `null` rather than
-                    // undefined, which would leave the old scale bounding the field.
-                    void changeType(field, picked as FieldType, field.scale ? null : undefined);
+                    void changeType(field, picked as FieldType, dropScale, dropCurrency);
                   }
                 }}
               >
@@ -319,6 +355,7 @@ export function NotebookFields({ notebookId, onChanged }: NotebookFieldsProps) {
                   </option>
                 ))}
                 <option value="rating">Rating</option>
+                <option value="currency">Currency</option>
               </select>
             </span>
 
@@ -376,6 +413,16 @@ export function NotebookFields({ notebookId, onChanged }: NotebookFieldsProps) {
                 onChange={(scale) => void changeScale(field, scale)}
               />
             )}
+
+            {isCurrencyField(field) && field.currency && (
+              <CurrencyPicker
+                currency={field.currency}
+                disabled={busy}
+                onChange={(currency) =>
+                  void run(() => api.updateNotebookField(notebookId, field.id, { currency }))
+                }
+              />
+            )}
           </li>
         ))}
 
@@ -417,7 +464,12 @@ export function NotebookFields({ notebookId, onChanged }: NotebookFieldsProps) {
                   Change <strong>{pendingType.field.name}</strong> to{' '}
                   {/* Named as the picker names it: "to Number" would be the wrong word for a
                       number gaining a scale, which is the change the person just asked for. */}
-                  {pendingType.scale ? 'Rating' : FIELD_TYPE_LABELS[pendingType.to]}?
+                  {pendingType.scale
+                    ? 'Rating'
+                    : pendingType.currency
+                      ? 'Currency'
+                      : FIELD_TYPE_LABELS[pendingType.to]}
+                  ?
                 </>
               )}
             </>
@@ -457,12 +509,13 @@ export function NotebookFields({ notebookId, onChanged }: NotebookFieldsProps) {
           <select
             className="notebook-scope"
             aria-label="New field type"
-            value={newIsRating ? 'rating' : newType}
+            value={newIsRating ? 'rating' : newIsCurrency ? 'currency' : newType}
             disabled={busy}
             onChange={(e) => {
               const picked = e.target.value;
               setNewIsRating(picked === 'rating');
-              setNewType(picked === 'rating' ? 'number' : (picked as FieldType));
+              setNewIsCurrency(picked === 'currency');
+              setNewType(picked === 'rating' || picked === 'currency' ? 'number' : (picked as FieldType));
             }}
           >
             {FIELD_TYPES.map((t) => (
@@ -470,8 +523,9 @@ export function NotebookFields({ notebookId, onChanged }: NotebookFieldsProps) {
                 {FIELD_TYPE_LABELS[t]}
               </option>
             ))}
-            {/* Last, and named for what it is rather than for what it stores. */}
+            {/* Last, and named for what they are rather than for what they store. */}
             <option value="rating">Rating</option>
+            <option value="currency">Currency</option>
           </select>
         </span>
         <Button variant="primary" disabled={busy || !newName.trim()} onClick={create}>
@@ -488,6 +542,9 @@ export function NotebookFields({ notebookId, onChanged }: NotebookFieldsProps) {
         )}
         {newIsRating && (
           <ScalePicker scale={newScale} disabled={busy} onChange={setNewScale} />
+        )}
+        {newIsCurrency && (
+          <CurrencyPicker currency={newCurrency} disabled={busy} onChange={setNewCurrency} />
         )}
       </div>
 
@@ -599,6 +656,47 @@ function ScalePicker({
             ? `Shown as ${scale.max} stars, half steps allowed.`
             : `Shown as ${scale.max} stars.`}
       </span>
+    </div>
+  );
+}
+
+/**
+ * An amount's currency: one select over the common codes, with the field's own code first
+ * when it is not among them — a code set over the API or read from a definitions file is
+ * still a choice here, not a blank. A currency is display only, so every change writes at
+ * once; the line under the select is how a value will draw, in the viewer's locale.
+ */
+function CurrencyPicker({
+  currency,
+  disabled,
+  onChange,
+}: {
+  currency: string;
+  disabled?: boolean;
+  onChange: (currency: string) => void;
+}) {
+  const codes: string[] = (CURRENCY_CODES as readonly string[]).includes(currency)
+    ? [...CURRENCY_CODES]
+    : [currency, ...CURRENCY_CODES];
+  return (
+    <div className="field-admin-scale">
+      <label className="notebook-scope-wrap">
+        <span className="muted small">Currency</span>
+        <select
+          className="notebook-scope"
+          aria-label="Currency"
+          value={currency}
+          disabled={disabled}
+          onChange={(e) => onChange(e.target.value)}
+        >
+          {codes.map((c) => (
+            <option key={c} value={c}>
+              {c}
+            </option>
+          ))}
+        </select>
+      </label>
+      <span className="muted small">Shown as {formatCurrency(1234.5, currency)}.</span>
     </div>
   );
 }

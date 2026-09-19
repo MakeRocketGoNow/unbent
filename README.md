@@ -1133,7 +1133,7 @@ notes back.
 
 `notebooks/` holds what is about a notebook rather than a note: one `<slug>.yaml` per
 notebook naming its fields in order, each with its type and, where it has them, its select
-or multi-select options or its rating scale. A multi-select's value is a YAML list under the
+or multi-select options, its rating scale or its currency. A multi-select's value is a YAML list under the
 field's name, the way `tags` is. A value in frontmatter says nothing about the field that holds it,
 and without this file a restore rebuilt every field from the first value it met — URLs and
 selects as text, ratings as plain numbers, and a field with no values not at all. An

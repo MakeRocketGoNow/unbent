@@ -4,6 +4,7 @@ import {
   FIELD_TYPE_LABELS,
   fieldHasOptions,
   fieldNameSchema,
+  isCurrencyField,
   isRatingField,
   type FieldDef,
   type FieldType,
@@ -13,7 +14,7 @@ import {
 import { Button } from './Button';
 import { FieldTypeIcon, PlusRowIcon } from './icons.js';
 import { FieldCellInput } from './FieldCellInput.js';
-import { formatFieldValue } from './format-field.js';
+import { currencySymbol, formatFieldValue } from './format-field.js';
 import { usePersistentState } from '../usePersistentState.js';
 
 export interface NoteFieldsProps {
@@ -149,7 +150,7 @@ export function NoteFields({
             {v.name}
             <span className="note-field-origin">from {v.notebook}</span>
           </span>
-          <span className="note-field-value">{formatFieldValue(v.type, v.value, v.scale)}</span>
+          <span className="note-field-value">{formatFieldValue(v.type, v.value, v.scale, v.currency)}</span>
           <span className="note-field-side">
             {!readOnly && (
               <Button variant="quiet" size="small" onClick={() => onChange(v.fieldId, null)}>
@@ -285,6 +286,19 @@ function FieldRow({ def, value, readOnly, onChange }: FieldRowProps) {
           onChange={(e) => setText(e.target.value)}
         />
       );
+      // An amount wears its currency's symbol before the digits, the way a price is
+      // written, so the row reads as money without the input having to format what is
+      // being typed. The input itself stays the plain number.
+      if (isCurrencyField(def) && def.currency) {
+        control = (
+          <span className="note-field-money">
+            <span className="note-field-affix" aria-hidden="true">
+              {currencySymbol(def.currency)}
+            </span>
+            {control}
+          </span>
+        );
+      }
       break;
     case 'date':
       control = (
@@ -345,7 +359,7 @@ function FieldRow({ def, value, readOnly, onChange }: FieldRowProps) {
   return (
     <div className="note-field" data-type={def.type}>
       <span className="note-field-glyph" aria-hidden="true">
-        <FieldTypeIcon type={def.type} rating={isRatingField(def)} />
+        <FieldTypeIcon type={def.type} rating={isRatingField(def)} currency={isCurrencyField(def)} />
       </span>
       {/* The title carries the whole name for one the fixed name column has to cut. */}
       <label className="note-field-label" htmlFor={id} title={def.name}>

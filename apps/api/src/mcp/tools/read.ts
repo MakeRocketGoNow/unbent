@@ -202,7 +202,14 @@ export function registerReadTools(
           count: nb.count,
           fields: fields
             .filter((f) => f.notebookId === nb.id)
-            .map((f) => ({ id: f.id, name: f.name, type: f.type, options: f.options })),
+            .map((f) => ({
+              id: f.id,
+              name: f.name,
+              type: f.type,
+              options: f.options,
+              ...(f.scale ? { scale: f.scale } : {}),
+              ...(f.currency ? { currency: f.currency } : {}),
+            })),
         })),
         unfiled,
       });

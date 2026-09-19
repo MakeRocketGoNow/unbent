@@ -160,8 +160,8 @@ describe('ActiveFilters', () => {
      the range, and comes off on its own like a tag does. */
   it('names a field filter and removes only that one', async () => {
     const defs = [
-      { id: 'cat', notebookId: 'nb', name: 'Category', type: 'select' as const, options: ['Food'], scale: null, position: 0 },
-      { id: 'amt', notebookId: 'nb', name: 'Amount', type: 'number' as const, options: [], scale: null, position: 1 },
+      { id: 'cat', notebookId: 'nb', name: 'Category', type: 'select' as const, options: ['Food'], scale: null, currency: null, position: 0 },
+      { id: 'amt', notebookId: 'nb', name: 'Amount', type: 'number' as const, options: [], scale: null, currency: null, position: 1 },
     ];
     const { container, findByLabelText, history } = harness({
       notebook: undefined,

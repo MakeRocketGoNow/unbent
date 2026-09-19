@@ -9,6 +9,7 @@ import {
   Check,
   ChevronLeft,
   ChevronRight,
+  Coins,
   Copy,
   Download,
   FileText,
@@ -304,8 +305,17 @@ const FIELD_TYPE_ICONS: Record<FieldType, LucideIcon> = {
  * is a number under the hood, and the hash beside a row of stars would be the one glyph
  * in the column that described the storage instead of the value.
  */
-export function FieldTypeIcon({ type, rating }: { type: FieldType; rating?: boolean }) {
-  return <RowIcon icon={rating ? Star : FIELD_TYPE_ICONS[type]} />;
+export function FieldTypeIcon({
+  type,
+  rating,
+  currency,
+}: {
+  type: FieldType;
+  rating?: boolean;
+  /** An amount takes the coins for the same reason a rating takes the star: it says what the row is. */
+  currency?: boolean;
+}) {
+  return <RowIcon icon={rating ? Star : currency ? Coins : FIELD_TYPE_ICONS[type]} />;
 }
 
 /**

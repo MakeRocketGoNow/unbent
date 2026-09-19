@@ -28,6 +28,7 @@ import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
 import { z } from 'zod';
 import {
   MAX_FIELDS_PER_NOTEBOOK,
+  currencySchema,
   fieldHasOptions,
   fieldNameSchema,
   fieldOptionsSchema,
@@ -47,6 +48,8 @@ export interface NotebookFileField {
   options?: string[];
   /** Present only on a rating. */
   scale?: FieldScale;
+  /** Present only on a number drawn as money. */
+  currency?: string;
 }
 
 /** A notebook as the file describes it: its name and its fields in display order. */
@@ -71,6 +74,7 @@ export const notebookDefinitionSchema = z.object({
         type: fieldTypeSchema,
         options: fieldOptionsSchema.optional(),
         scale: fieldScaleSchema.optional(),
+        currency: currencySchema.optional(),
       }),
     )
     .max(MAX_FIELDS_PER_NOTEBOOK)
@@ -89,6 +93,7 @@ export function serializeNotebook(name: string, fields: FieldDef[]): string {
       // learn to skip.
       ...(fieldHasOptions(f.type) ? { options: f.options } : {}),
       ...(f.type === 'number' && f.scale ? { scale: f.scale } : {}),
+      ...(f.type === 'number' && !f.scale && f.currency ? { currency: f.currency } : {}),
     })),
   };
   return stringifyYaml(definition, {

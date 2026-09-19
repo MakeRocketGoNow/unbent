@@ -16,6 +16,7 @@ const def = (id: string, name: string, type: FieldType, options: string[] = []):
   type,
   options,
   scale: null,
+  currency: null,
   position: 0,
 });
 
@@ -32,6 +33,7 @@ const defs = [
 
 /** Kept out of `defs`: the empties threshold and the row count below are pinned to eight. */
 const multi = def('f-multi', 'Platforms', 'multiselect', ['PC', 'PS5', 'Switch']);
+const price: FieldDef = { ...def('f-price', 'Price', 'number'), currency: 'USD' };
 
 const leftover: NoteFieldValue = {
   fieldId: 'old',
@@ -154,6 +156,17 @@ describe('NoteFields', () => {
     expect(screen.getByLabelText('Remove option Xbox')).toBeTruthy();
     fireEvent.click(screen.getByLabelText('Remove option Xbox'));
     expect(onChange).toHaveBeenLastCalledWith('f-multi', null);
+  });
+
+  it('puts the currency symbol before an amount and still reports the plain number', () => {
+    const { onChange, container } = mount({ definitions: [price], values: { 'f-price': 29.99 } });
+    const symbol = new Intl.NumberFormat(undefined, { style: 'currency', currency: 'USD' })
+      .formatToParts(0)
+      .find((p) => p.type === 'currency')!.value;
+    expect(container.querySelector('.note-field-money > .note-field-affix')!.textContent).toBe(symbol);
+    expect(input('Price').value).toBe('29.99');
+    fireEvent.change(input('Price'), { target: { value: '30' } });
+    expect(onChange).toHaveBeenLastCalledWith('f-price', '30');
   });
 
   it('draws a read-only multi-select as its chips alone', () => {

@@ -2268,6 +2268,22 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
 }
 
 /*
+   An amount: the currency's symbol before the digits, in the muted ink, the input
+   itself unchanged. Inline-flex so the pair sits in the value cell as one control.
+*/
+.note-field-money {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+}
+
+.note-field-affix {
+  flex: 0 0 auto;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+/*
    A multi-select's value: the tag row's editor, in the value column. Its chips start on
    the column's edge like every chip on the list; see the note on `.note-fields .tag-input`.
    Read-only it is the chips alone, or the word "Empty" in the muted ink the other empty

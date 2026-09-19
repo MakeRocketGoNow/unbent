@@ -14,6 +14,7 @@ const amount: FieldDef = {
   type: 'number',
   options: [],
   scale: null,
+  currency: null,
   position: 0,
 };
 
@@ -24,6 +25,7 @@ const site: FieldDef = {
   type: 'url',
   options: [],
   scale: null,
+  currency: null,
   position: 1,
 };
 
@@ -34,6 +36,7 @@ const kind: FieldDef = {
   type: 'select',
   options: ['Food'],
   scale: null,
+  currency: null,
   position: 2,
 };
 
@@ -44,6 +47,7 @@ const platforms: FieldDef = {
   type: 'multiselect',
   options: ['PC', 'PS5', 'Switch'],
   scale: null,
+  currency: null,
   position: 3,
 };
 

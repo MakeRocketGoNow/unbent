@@ -2,8 +2,8 @@ import { describe, it, expect } from 'vitest';
 import type { FieldDef, NoteSummary } from '@unbent/shared';
 import { patchNoteFields, patchNotePages } from './note-table-edit.js';
 
-const cost: FieldDef = { id: 'f-cost', notebookId: 'nb', name: 'Cost', type: 'number', options: [], scale: null, position: 0 };
-const packed: FieldDef = { id: 'f-packed', notebookId: 'nb', name: 'Packed', type: 'checkbox', options: [], scale: null, position: 1 };
+const cost: FieldDef = { id: 'f-cost', notebookId: 'nb', name: 'Cost', type: 'number', options: [], scale: null, currency: null, position: 0 };
+const packed: FieldDef = { id: 'f-packed', notebookId: 'nb', name: 'Packed', type: 'checkbox', options: [], scale: null, currency: null, position: 1 };
 
 const base: NoteSummary = {
   id: 'n1',

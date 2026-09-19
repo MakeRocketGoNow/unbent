@@ -3,8 +3,10 @@ import {
   createFieldSchema,
   decodeFieldValue,
   encodeFieldValue,
+  currencySchema,
   expectedFieldValue,
   fieldHasOptions,
+  isCurrencyField,
   fieldNameSchema,
   fieldRangeBound,
   fieldSortKey,
@@ -462,6 +464,29 @@ describe('ratings', () => {
     expect(scaled({ max: 11, step: 1 })).toBe(false);
     expect(scaled({ max: 1, step: 1 })).toBe(false);
     expect(scaled({ max: 5, step: 0.25 })).toBe(false);
+  });
+});
+
+describe('currency', () => {
+  it('is an ISO 4217 code by shape', () => {
+    expect(currencySchema.safeParse('USD').success).toBe(true);
+    expect(currencySchema.safeParse('ZZZ').success).toBe(true);
+    for (const bad of ['usd', 'US', 'USDD', '$', '']) expect(currencySchema.safeParse(bad).success).toBe(false);
+  });
+
+  it('cannot be set on a rating', () => {
+    const both = { name: 'Price', type: 'number', scale: { max: 5, step: 1 }, currency: 'USD' };
+    expect(createFieldSchema.safeParse(both).success).toBe(false);
+    expect(createFieldSchema.safeParse({ ...both, scale: null }).success).toBe(true);
+    expect(createFieldSchema.safeParse({ ...both, currency: null }).success).toBe(true);
+  });
+
+  it('knows an amount from a plain number and from a rating', () => {
+    expect(isCurrencyField({ type: 'number', scale: null, currency: 'USD' })).toBe(true);
+    expect(isCurrencyField({ type: 'number', currency: 'EUR' })).toBe(true);
+    expect(isCurrencyField({ type: 'number', scale: null, currency: null })).toBe(false);
+    expect(isCurrencyField({ type: 'number', scale: { max: 5, step: 1 }, currency: 'USD' })).toBe(false);
+    expect(isCurrencyField({ type: 'text', currency: 'USD' })).toBe(false);
   });
 });
 

@@ -132,6 +132,7 @@ interface FieldJson {
   type: string;
   options: string[];
   scale: { max: number; step: number } | null;
+  currency: string | null;
 }
 
 async function fieldsOf(actor: Actor, notebook: string): Promise<FieldJson[]> {
@@ -384,6 +385,8 @@ describe('notebook definitions across an import', () => {
         { name: 'Merchant', type: 'text' },
         { name: 'Kind', type: 'select', options: ['Food'] },
         { name: 'Score', type: 'number', scale: { max: 5, step: 1 } },
+        { name: 'Price', type: 'number' },
+        { name: 'Fee', type: 'number', currency: 'USD' },
       ],
     });
 
@@ -398,18 +401,25 @@ describe('notebook definitions across an import', () => {
         { name: 'Score', type: 'number', scale: { max: 10, step: 0.5 } },
         // New, so it appends after what was there.
         { name: 'Paid', type: 'checkbox' },
+        // A currency is display only: a plain number gains one, a number in another
+        // currency keeps its own and says so.
+        { name: 'Price', type: 'number', currency: 'EUR' },
+        { name: 'Fee', type: 'number', currency: 'EUR' },
       ],
     });
     expect(second.skipped).toEqual([
       { name: 'merchant', reason: 'Already here as text, not url; left as it is' },
+      { name: 'Fee', reason: 'Already here in USD, not EUR; left as it is' },
     ]);
 
     const fields = await fieldsOf(bob, notebook);
-    expect(fields.map(({ name, type, options, scale }) => ({ name, type, options, scale }))).toEqual([
-      { name: 'Merchant', type: 'text', options: [], scale: null },
-      { name: 'Kind', type: 'select', options: ['Food', 'Travel'], scale: null },
-      { name: 'Score', type: 'number', options: [], scale: { max: 5, step: 1 } },
-      { name: 'Paid', type: 'checkbox', options: [], scale: null },
+    expect(fields.map(({ name, type, options, scale, currency }) => ({ name, type, options, scale, currency }))).toEqual([
+      { name: 'Merchant', type: 'text', options: [], scale: null, currency: null },
+      { name: 'Kind', type: 'select', options: ['Food', 'Travel'], scale: null, currency: null },
+      { name: 'Score', type: 'number', options: [], scale: { max: 5, step: 1 }, currency: null },
+      { name: 'Price', type: 'number', options: [], scale: null, currency: 'EUR' },
+      { name: 'Fee', type: 'number', options: [], scale: null, currency: 'USD' },
+      { name: 'Paid', type: 'checkbox', options: [], scale: null, currency: null },
     ]);
   });
 

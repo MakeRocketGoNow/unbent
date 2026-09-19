@@ -9,6 +9,7 @@ const def = (id: string, name: string, type: FieldDef['type']): FieldDef => ({
   type,
   options: [],
   scale: null,
+  currency: null,
   position: 0,
 });
 const DEFS = [
@@ -17,6 +18,7 @@ const DEFS = [
   def('amt', 'Amount', 'number'),
   def('on', 'Paid on', 'date'),
   def('who', 'Merchant', 'text'),
+  { ...def('cost', 'Price', 'number'), currency: 'USD' },
 ];
 
 describe('fieldFilterLabel', () => {
@@ -26,6 +28,12 @@ describe('fieldFilterLabel', () => {
     expect(fieldFilterLabel('on:lte:2026-01-10', DEFS)).toBe('Paid on ≤ 2026-01-10');
     expect(fieldFilterLabel('who:set', DEFS)).toBe('Merchant is set');
     expect(fieldFilterLabel('who:empty', DEFS)).toBe('Merchant is empty');
+  });
+
+  it('draws an amount\'s bound as money', () => {
+    const money = new Intl.NumberFormat(undefined, { style: 'currency', currency: 'USD' }).format(20);
+    expect(fieldFilterLabel('cost:gte:20', DEFS)).toBe(`Price ≥ ${money}`);
+    expect(fieldFilterLabel('cost:set', DEFS)).toBe('Price is set');
   });
 
   it('reads a checkbox as a statement', () => {

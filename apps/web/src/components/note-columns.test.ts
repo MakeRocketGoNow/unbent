@@ -9,6 +9,7 @@ const def = (id: string, name: string, type: FieldDef['type'], position: number)
   type,
   options: [],
   scale: null,
+  currency: null,
   position,
 });
 

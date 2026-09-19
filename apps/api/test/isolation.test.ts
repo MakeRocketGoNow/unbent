@@ -1007,6 +1007,7 @@ describe('notebook fields', () => {
     type: string;
     options: string[];
     scale?: { max: number; step: number } | null;
+    currency?: string | null;
     position: number;
     valueCount?: number;
   }
@@ -1028,7 +1029,13 @@ describe('notebook fields', () => {
   async function makeField(
     actor: Actor,
     notebookId: string,
-    def: { name: string; type: string; options?: string[]; scale?: { max: number; step: number } },
+    def: {
+      name: string;
+      type: string;
+      options?: string[];
+      scale?: { max: number; step: number };
+      currency?: string | null;
+    },
   ): Promise<Field> {
     const res = await json(actor, 'POST', `/api/notebooks/${notebookId}/fields`, def);
     if (res.status !== 201) throw new Error(`field: ${res.status} ${await res.text()}`);
@@ -1298,6 +1305,36 @@ describe('notebook fields', () => {
     expect(new Set(back.field.options)).toEqual(new Set(['GP', 'Dentist']));
     expect(byName((await getNote(alice, ids[0]!)).fields)[kind.name]).toBe('GP');
     expect(byName((await getNote(alice, ids[1]!)).fields)[kind.name]).toBeUndefined();
+  });
+
+  it('lets a number carry a currency, which a rating cannot, and drops it with the type', async () => {
+    const price = await makeField(alice, nb.id, { name: `Price ${Date.now()}`, type: 'number', currency: 'USD' });
+    expect(price.currency).toBe('USD');
+    // The value is a number as ever; the currency is how it is drawn.
+    const note = await json(alice, 'POST', '/api/notes', { title: 'Cost', body: '', notebook: nb.name, fields: { [price.id]: 29.99 } }).then((r) => r.json());
+    expect(byName(note.fields)[price.name]).toBe(29.99);
+    expect(note.fields.find((v: Value) => v.fieldId === price.id).currency).toBe('USD');
+
+    // Both at once is refused; a lower-case or malformed code too.
+    expect((await json(alice, 'POST', `/api/notebooks/${nb.id}/fields`, { name: 'Both', type: 'number', scale: { max: 5, step: 1 }, currency: 'USD' })).status).toBe(400);
+    expect((await json(alice, 'PATCH', `/api/notebooks/${nb.id}/fields/${price.id}`, { currency: 'usd' })).status).toBe(400);
+
+    const euro = await json(alice, 'PATCH', `/api/notebooks/${nb.id}/fields/${price.id}`, { currency: 'EUR' }).then((r) => r.json());
+    expect(euro.field.currency).toBe('EUR');
+    expect(euro.cleared).toBe(0);
+
+    // A scale arriving takes the currency away; so does leaving the number type.
+    const stars = await json(alice, 'PATCH', `/api/notebooks/${nb.id}/fields/${price.id}`, { scale: { max: 5, step: 1 } }).then((r) => r.json());
+    expect(stars.field.scale).toEqual({ max: 5, step: 1 });
+    expect(stars.field.currency).toBeNull();
+    const again = await json(alice, 'PATCH', `/api/notebooks/${nb.id}/fields/${price.id}`, { scale: null, currency: 'GBP' }).then((r) => r.json());
+    expect(again.field.currency).toBe('GBP');
+    const text = await json(alice, 'PATCH', `/api/notebooks/${nb.id}/fields/${price.id}`, { type: 'text' }).then((r) => r.json());
+    expect(text.field.currency).toBeNull();
+    // And a plain number can let go of it.
+    const money = await makeField(alice, nb.id, { name: `Fee ${Date.now()}`, type: 'number', currency: 'USD' });
+    const plain = await json(alice, 'PATCH', `/api/notebooks/${nb.id}/fields/${money.id}`, { currency: null }).then((r) => r.json());
+    expect(plain.field.currency).toBeNull();
   });
 
   it('merges a patch, and clears a value with null or an empty string', async () => {

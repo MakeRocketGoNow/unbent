@@ -126,6 +126,52 @@ export const fieldScaleSchema = z.object({
 });
 
 /**
+ * A `number` field's currency: an ISO 4217 code, which is what `Intl.NumberFormat` takes.
+ *
+ * A currency is not a type, for the reason a rating is not one: the value is a number,
+ * and is stored, sorted, ranged and exported as one. What a currency adds is how the
+ * number is drawn — `$29.99` rather than `29.99` — so it is a column on the definition
+ * beside the scale. The two are exclusive: a rating is not an amount of money, and the
+ * schemas below refuse both at once.
+ *
+ * Only the shape is checked. `Intl` formats any well-formed code, an unknown one as the
+ * code beside the number, so a currency the picker does not list still reads.
+ */
+export const currencySchema = z
+  .string()
+  .regex(/^[A-Z]{3}$/, 'expected an ISO 4217 currency code such as USD');
+
+/** The codes the picker offers first. Any well-formed code is accepted; these are the common ones. */
+export const CURRENCY_CODES = [
+  'USD',
+  'EUR',
+  'GBP',
+  'CAD',
+  'AUD',
+  'JPY',
+  'CHF',
+  'MXN',
+  'INR',
+  'CNY',
+  'SEK',
+  'NZD',
+] as const;
+
+/**
+ * Whether a field draws its number as money: a `number` with a currency and no scale.
+ *
+ * The one place that answers it, as `isRatingField` is for stars, so the glyph, the
+ * property row's affix and a list cell cannot disagree about which numbers are amounts.
+ */
+export function isCurrencyField(def: {
+  type: FieldType;
+  scale?: FieldScale | null;
+  currency?: string | null;
+}): boolean {
+  return def.type === 'number' && !def.scale && typeof def.currency === 'string' && def.currency !== '';
+}
+
+/**
  * How wide a row of stars may get before the value is drawn as text instead.
  *
  * Five glyphs is a comfortable row of tap targets; ten is not, and ten of them in a
@@ -171,23 +217,32 @@ export const fieldOptionsSchema = z
   .max(MAX_SELECT_OPTIONS)
   .transform((opts) => [...new Set(opts)]);
 
-export const createFieldSchema = z.object({
-  name: fieldNameSchema,
-  type: fieldTypeSchema,
-  options: fieldOptionsSchema.default([]),
-  scale: fieldScaleSchema.nullish(),
-});
+const NOT_BOTH = { message: 'A rating cannot also be a currency', path: ['currency'] };
+
+export const createFieldSchema = z
+  .object({
+    name: fieldNameSchema,
+    type: fieldTypeSchema,
+    options: fieldOptionsSchema.default([]),
+    scale: fieldScaleSchema.nullish(),
+    currency: currencySchema.nullish(),
+  })
+  .refine((f) => !(f.scale && f.currency), NOT_BOTH);
 
 /**
- * `scale: null` clears one, which is how a rating becomes a plain number again. Absent
- * leaves it alone, matching how `name`, `type` and `options` patch.
+ * `scale: null` clears one, which is how a rating becomes a plain number again; `currency:
+ * null` likewise. Absent leaves either alone, matching how `name`, `type` and `options`
+ * patch. A patch may not set both, and the repo drops a currency when a scale stands.
  */
-export const updateFieldSchema = z.object({
-  name: fieldNameSchema.optional(),
-  type: fieldTypeSchema.optional(),
-  options: fieldOptionsSchema.optional(),
-  scale: fieldScaleSchema.nullish(),
-});
+export const updateFieldSchema = z
+  .object({
+    name: fieldNameSchema.optional(),
+    type: fieldTypeSchema.optional(),
+    options: fieldOptionsSchema.optional(),
+    scale: fieldScaleSchema.nullish(),
+    currency: currencySchema.nullish(),
+  })
+  .refine((f) => !(f.scale && f.currency), NOT_BOTH);
 
 export const reorderFieldsSchema = z.object({
   ids: z.array(z.string().uuid()).min(1).max(MAX_FIELDS_PER_NOTEBOOK),
@@ -230,6 +285,8 @@ export interface FieldDef {
   options: string[];
   /** Set only on a `number` that is a rating; null on every other field. */
   scale: FieldScale | null;
+  /** Set only on a `number` drawn as money; null on every other field. See `isCurrencyField`. */
+  currency: string | null;
   position: number;
   /** How many notes hold a value. Present only on the management listing. */
   valueCount?: number;
@@ -251,6 +308,8 @@ export interface NoteFieldValue {
    * glyphs the row has — or that the number is a rating at all.
    */
   scale?: FieldScale | null;
+  /** The currency, when the field has one, for the same reason `scale` rides here: a row draws `$12.50`, not `12.5`. */
+  currency?: string | null;
   notebookId: string;
   notebook: string;
 }

@@ -68,6 +68,7 @@ interface FieldRow {
   options: string | null;
   scale_max: number | null;
   scale_step: number | null;
+  currency: string | null;
   position: number;
   value_count?: number;
 }
@@ -80,6 +81,7 @@ interface FieldJson {
   text: string;
   scaleMax: number | null;
   scaleStep: number | null;
+  currency: string | null;
   position: number;
   notebookId: string;
   notebook: string;
@@ -97,6 +99,7 @@ function rowToField(row: FieldRow): FieldDef {
       row.scale_max !== null && row.scale_step !== null
         ? { max: row.scale_max, step: row.scale_step === 0.5 ? 0.5 : 1 }
         : null,
+    currency: row.currency,
     position: row.position,
     ...(row.value_count !== undefined ? { valueCount: row.value_count } : {}),
   };
@@ -105,6 +108,20 @@ function rowToField(row: FieldRow): FieldDef {
 /** Options are only stored for the types that carry them; every other type gets NULL, whatever was sent. */
 function optionsColumn(type: FieldType, options: string[]): string | null {
   return fieldHasOptions(type) ? JSON.stringify(options) : null;
+}
+
+/**
+ * A currency belongs only to a plain `number`: a field converted away from number drops
+ * it, for the reason `scaleColumns` gives, and a rating drops it because a rating is not
+ * an amount of money — the schema refuses both in one patch, and this keeps it true when
+ * a scale arrives on a field that had a currency.
+ */
+function currencyColumn(
+  type: FieldType,
+  scale: FieldScale | null | undefined,
+  currency: string | null | undefined,
+): string | null {
+  return type === 'number' && !scale && currency ? currency : null;
 }
 
 /**
@@ -162,6 +179,7 @@ function decodeFieldsJson(json: string | null, ownNotebookId: string | null): No
         r.scaleMax !== null && r.scaleStep !== null
           ? { max: r.scaleMax, step: r.scaleStep === 0.5 ? (0.5 as const) : (1 as const) }
           : null,
+      currency: r.currency,
       notebookId: r.notebookId,
       notebook: r.notebook,
     }));
@@ -181,7 +199,7 @@ function decodeFieldsJson(json: string | null, ownNotebookId: string | null): No
  */
 const FIELDS_SUBQUERY = `(SELECT json_group_array(json_object(
                  'fieldId', f.id, 'name', f.name, 'type', f.type, 'text', nf.value_text,
-                 'scaleMax', f.scale_max, 'scaleStep', f.scale_step,
+                 'scaleMax', f.scale_max, 'scaleStep', f.scale_step, 'currency', f.currency,
                  'position', f.position, 'notebookId', f.notebook_id,
                  'notebook', COALESCE(fnb.name, f.notebook_name)))
             FROM note_fields nf
@@ -1770,7 +1788,7 @@ export class NotesRepo extends ScopedRepo {
 
     const { results } = await this.db
       .prepare(
-        `SELECT f.id, f.notebook_id, f.name, f.type, f.options, f.scale_max, f.scale_step, f.position,
+        `SELECT f.id, f.notebook_id, f.name, f.type, f.options, f.scale_max, f.scale_step, f.currency, f.position,
                 (SELECT COUNT(*) FROM note_fields nf WHERE nf.field_id = f.id) AS value_count
            FROM notebook_fields f
           WHERE f.notebook_id = ?1 AND f.user_id = ?2 AND f.deleted_at IS NULL
@@ -1793,7 +1811,7 @@ export class NotesRepo extends ScopedRepo {
   async fieldById(id: string): Promise<FieldDef | null> {
     const row = await this.db
       .prepare(
-        `SELECT id, notebook_id, name, type, options, scale_max, scale_step, position
+        `SELECT id, notebook_id, name, type, options, scale_max, scale_step, currency, position
            FROM notebook_fields WHERE id = ?1 AND user_id = ?2 AND deleted_at IS NULL`,
       )
       .bind(id, this.userId)
@@ -1809,7 +1827,7 @@ export class NotesRepo extends ScopedRepo {
   async listAllFields(): Promise<FieldDef[]> {
     const { results } = await this.db
       .prepare(
-        `SELECT id, notebook_id, name, type, options, scale_max, scale_step, position
+        `SELECT id, notebook_id, name, type, options, scale_max, scale_step, currency, position
            FROM notebook_fields WHERE user_id = ?1 AND deleted_at IS NULL
           ORDER BY notebook_id, position`,
       )
@@ -1827,7 +1845,13 @@ export class NotesRepo extends ScopedRepo {
    */
   async createField(
     notebookId: string,
-    input: { name: string; type: FieldType; options: string[]; scale?: FieldScale | null },
+    input: {
+      name: string;
+      type: FieldType;
+      options: string[];
+      scale?: FieldScale | null;
+      currency?: string | null;
+    },
   ): Promise<FieldDef | 'missing' | 'conflict' | 'full'> {
     const owned = await this.db
       .prepare(`SELECT 1 FROM notebooks WHERE id = ?1 AND user_id = ?2`)
@@ -1858,11 +1882,11 @@ export class NotesRepo extends ScopedRepo {
     await this.db
       .prepare(
         `INSERT INTO notebook_fields
-           (id, user_id, notebook_id, name, type, options, scale_max, scale_step, position, created_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8,
+           (id, user_id, notebook_id, name, type, options, scale_max, scale_step, currency, position, created_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9,
                  (SELECT COALESCE(MAX(position) + 1, 0) FROM notebook_fields
                    WHERE notebook_id = ?3 AND deleted_at IS NULL),
-                 ?9)`,
+                 ?10)`,
       )
       .bind(
         id,
@@ -1873,6 +1897,7 @@ export class NotesRepo extends ScopedRepo {
         optionsColumn(input.type, input.options),
         scale.max,
         scale.step,
+        currencyColumn(input.type, input.scale, input.currency),
         Date.now(),
       )
       .run();
@@ -1897,7 +1922,13 @@ export class NotesRepo extends ScopedRepo {
   async updateField(
     notebookId: string,
     fieldId: string,
-    patch: { name?: string; type?: FieldType; options?: string[]; scale?: FieldScale | null },
+    patch: {
+      name?: string;
+      type?: FieldType;
+      options?: string[];
+      scale?: FieldScale | null;
+      currency?: string | null;
+    },
   ): Promise<{ field: FieldDef; cleared: number } | 'missing' | 'conflict'> {
     const current = await this.getField(notebookId, fieldId);
     if (!current) return 'missing';
@@ -1920,6 +1951,12 @@ export class NotesRepo extends ScopedRepo {
     // `undefined` leaves the scale alone; `null` clears it back to a plain number.
     const scale = patch.scale === undefined ? current.scale : patch.scale;
     const stored = scaleColumns(type, scale);
+    // The same rule: absent leaves it, null clears it. Display only, so nothing to convert.
+    const currency = currencyColumn(
+      type,
+      scale,
+      patch.currency === undefined ? current.currency : patch.currency,
+    );
     if (type !== current.type || scaleTightens(current.scale, stored)) {
       const converted = await this.convertFieldValues(fieldId, current.type, type, scale);
       cleared = converted.cleared;
@@ -1928,8 +1965,9 @@ export class NotesRepo extends ScopedRepo {
 
     await this.db
       .prepare(
-        `UPDATE notebook_fields SET name = ?1, type = ?2, options = ?3, scale_max = ?4, scale_step = ?5
-          WHERE id = ?6 AND notebook_id = ?7 AND user_id = ?8`,
+        `UPDATE notebook_fields
+            SET name = ?1, type = ?2, options = ?3, scale_max = ?4, scale_step = ?5, currency = ?6
+          WHERE id = ?7 AND notebook_id = ?8 AND user_id = ?9`,
       )
       .bind(
         patch.name ?? current.name,
@@ -1937,6 +1975,7 @@ export class NotesRepo extends ScopedRepo {
         optionsColumn(type, options),
         stored.max,
         stored.step,
+        currency,
         fieldId,
         notebookId,
         this.userId,
@@ -2014,7 +2053,7 @@ export class NotesRepo extends ScopedRepo {
   private async getField(notebookId: string, fieldId: string): Promise<FieldDef | null> {
     const row = await this.db
       .prepare(
-        `SELECT id, notebook_id, name, type, options, scale_max, scale_step, position
+        `SELECT id, notebook_id, name, type, options, scale_max, scale_step, currency, position
            FROM notebook_fields
           WHERE id = ?1 AND notebook_id = ?2 AND user_id = ?3 AND deleted_at IS NULL`,
       )
@@ -2110,7 +2149,7 @@ export class NotesRepo extends ScopedRepo {
 
     const { results } = await this.db
       .prepare(
-        `SELECT id, notebook_id, name, type, options, scale_max, scale_step, position
+        `SELECT id, notebook_id, name, type, options, scale_max, scale_step, currency, position
            FROM notebook_fields
           WHERE user_id = ?1 AND id IN (${ids.map((_, i) => `?${i + 2}`).join(', ')})`,
       )
@@ -2188,7 +2227,7 @@ export class NotesRepo extends ScopedRepo {
 
       let def = await this.db
         .prepare(
-          `SELECT id, notebook_id, name, type, options, scale_max, scale_step, position
+          `SELECT id, notebook_id, name, type, options, scale_max, scale_step, currency, position
              FROM notebook_fields
             WHERE notebook_id = ?1 AND name = ?2 COLLATE NOCASE AND deleted_at IS NULL`,
         )
@@ -2305,6 +2344,7 @@ export class NotesRepo extends ScopedRepo {
           type: field.type,
           options: field.options ?? [],
           scale: field.scale ?? null,
+          currency: field.currency ?? null,
         });
         if (created === 'full') {
           skipped.push({ name: field.name, reason: 'This notebook has as many fields as it can hold' });
@@ -2322,6 +2362,25 @@ export class NotesRepo extends ScopedRepo {
           reason: `Already here as ${current.type}, not ${field.type}; left as it is`,
         });
         continue;
+      }
+
+      /*
+         A currency is display only, so giving a plain number one clears nothing and is
+         an add; a number already drawn in another currency is left as it is and said so,
+         like a type. A rating never takes one.
+      */
+      if (field.currency && current.type === 'number' && !current.scale) {
+        if (!current.currency) {
+          const result = await this.updateField(notebookId, current.id, { currency: field.currency });
+          if (typeof result === 'string') {
+            skipped.push({ name: field.name, reason: 'Currency could not be applied' });
+          }
+        } else if (current.currency !== field.currency) {
+          skipped.push({
+            name: field.name,
+            reason: `Already here in ${current.currency}, not ${field.currency}; left as it is`,
+          });
+        }
       }
 
       if (fieldHasOptions(field.type)) {

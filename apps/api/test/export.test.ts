@@ -635,6 +635,7 @@ describe('notebook definitions in the export', () => {
     // Never valued, so no note's frontmatter could bring it back.
     await field({ name: 'Image', type: 'url' });
     await field({ name: 'Platforms', type: 'multiselect', options: ['PC', 'PS5'] });
+    await field({ name: 'Cost', type: 'number', currency: 'EUR' });
 
     await createNote(actor, { title: 'Bike', notebook: 'Shopping' });
     await fetch(`${BASE}/api/notes`, {
@@ -651,6 +652,7 @@ describe('notebook definitions in the export', () => {
         { name: 'Priority', type: 'number', scale: { max: 5, step: 0.5 } },
         { name: 'Image', type: 'url' },
         { name: 'Platforms', type: 'multiselect', options: ['PC', 'PS5'] },
+        { name: 'Cost', type: 'number', currency: 'EUR' },
       ],
     };
 
