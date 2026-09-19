@@ -111,6 +111,19 @@ function optionsColumn(type: FieldType, options: string[]): string | null {
 }
 
 /**
+ * Whether stored text is a JSON array, the form a multi-select's value takes. Guards the
+ * one place a value is read back and rewritten rather than compared, where a row that is
+ * somehow not the expected shape must be left alone, not thrown on.
+ */
+function isJsonArray(text: string): boolean {
+  try {
+    return Array.isArray(JSON.parse(text));
+  } catch {
+    return false;
+  }
+}
+
+/**
  * A currency belongs only to a plain `number`: a field converted away from number drops
  * it, for the reason `scaleColumns` gives, and a rating drops it because a rating is not
  * an amount of money — the schema refuses both in one patch, and this keeps it true when
@@ -2048,6 +2061,113 @@ export class NotesRepo extends ScopedRepo {
         .bind(fieldId, this.userId),
     ]);
     return true;
+  }
+
+  /**
+   * How many notes hold `option` on this select or multi-select field.
+   *
+   * A select stores the option as the whole `value_text`; a multi-select stores a JSON
+   * list, so the option is a member of that list. This is the same distinction the note
+   * filter's `eq` op draws, and it is drawn the same way here — the plain compare first,
+   * then `json_each` guarded by `json_valid` so it never runs on a select's bare text.
+   *
+   * Null when the field is not one with options, so the caller can tell "no such field"
+   * (or wrong type) from "an option no note uses", which is `0`.
+   */
+  async countOptionUsage(
+    notebookId: string,
+    fieldId: string,
+    option: string,
+  ): Promise<number | null> {
+    const field = await this.getField(notebookId, fieldId);
+    if (!field || !fieldHasOptions(field.type)) return null;
+
+    const row = await this.db
+      .prepare(
+        `SELECT COUNT(*) AS n FROM note_fields
+          WHERE field_id = ?1 AND user_id = ?2
+            AND (value_text = ?3 OR (json_valid(value_text)
+                 AND json_type(value_text) = 'array'
+                 AND EXISTS (SELECT 1 FROM json_each(value_text) WHERE json_each.value = ?3)))`,
+      )
+      .bind(fieldId, this.userId, option)
+      .first<{ n: number }>();
+    return row?.n ?? 0;
+  }
+
+  /**
+   * Removes an option from a select or multi-select, optionally taking it off the notes
+   * that hold it.
+   *
+   * The default leaves those values in place — a select that no longer lists the option
+   * still shows it as "(no longer an option)", and nothing about the note changes. That
+   * is the whole point of keeping a stored value legible after its option is gone, and it
+   * is what this method does when `clear` is false. Removing the option from the list is
+   * done by rewriting the field's options, the same path the options editor takes.
+   *
+   * With `clear`, the value is also removed from every note that held it — a deliberate
+   * cleanup, confirmed by name and count in the UI, not a silent side effect of tidying
+   * the list. A select's value is the option itself, so the whole row goes; a
+   * multi-select's is one member of a list, so the member is dropped and the row deleted
+   * only when nothing is left, the same rule an emptied multi-select follows.
+   *
+   * Returns the count of notes whose value changed, or null when there is no such field
+   * or the option is not one it has (so a stale client cannot report a phantom cleanup).
+   */
+  async removeFieldOption(
+    notebookId: string,
+    fieldId: string,
+    option: string,
+    clear: boolean,
+  ): Promise<{ field: FieldDef; cleared: number } | null> {
+    const field = await this.getField(notebookId, fieldId);
+    if (!field || !fieldHasOptions(field.type)) return null;
+    if (!field.options.includes(option)) return null;
+
+    let cleared = 0;
+    if (clear) {
+      const rows = await this.fieldValueRows(fieldId);
+      const statements: D1PreparedStatement[] = [];
+      for (const { noteId, text } of rows) {
+        // A multi-select stores a JSON list; a select stores the bare option. Only rows
+        // that actually hold the option are touched, so an unrelated value is never
+        // rewritten (which would bump its row for no reason).
+        if (field.type === 'multiselect' && isJsonArray(text)) {
+          const list = JSON.parse(text) as string[];
+          if (!list.includes(option)) continue;
+          const remaining = list.filter((o) => o !== option);
+          statements.push(
+            remaining.length === 0
+              ? this.db
+                  .prepare(`DELETE FROM note_fields WHERE note_id = ?1 AND field_id = ?2 AND user_id = ?3`)
+                  .bind(noteId, fieldId, this.userId)
+              : this.db
+                  .prepare(
+                    `UPDATE note_fields SET value_text = ?1
+                      WHERE note_id = ?2 AND field_id = ?3 AND user_id = ?4`,
+                  )
+                  .bind(JSON.stringify(remaining), noteId, fieldId, this.userId),
+          );
+          cleared += 1;
+        } else if (text === option) {
+          statements.push(
+            this.db
+              .prepare(`DELETE FROM note_fields WHERE note_id = ?1 AND field_id = ?2 AND user_id = ?3`)
+              .bind(noteId, fieldId, this.userId),
+          );
+          cleared += 1;
+        }
+      }
+      for (let i = 0; i < statements.length; i += 50) {
+        await this.db.batch(statements.slice(i, i + 50));
+      }
+    }
+
+    const updated = await this.updateField(notebookId, fieldId, {
+      options: field.options.filter((o) => o !== option),
+    });
+    if (typeof updated === 'string') return null;
+    return { field: updated.field, cleared };
   }
 
   private async getField(notebookId: string, fieldId: string): Promise<FieldDef | null> {

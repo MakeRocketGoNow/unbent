@@ -173,6 +173,62 @@ export const notebooks = new Hono<AppEnv>()
     },
   )
 
+  /**
+   * How many notes still hold a given select or multi-select option, so removing it can
+   * name that number before deciding what becomes of them.
+   *
+   * The option rides in a query param rather than the path: an option is free text and
+   * can hold a slash or an ampersand, which a path segment would split or a proxy rewrite.
+   * A field that is not one with options, or an id that is not this user's, is a 404 — the
+   * same "no such thing" as elsewhere, told apart from "an option no note uses", which is
+   * a `0` count.
+   */
+  .get(
+    '/notebooks/:id/fields/:fieldId/option-usage',
+    zValidator('query', z.object({ option: z.string().min(1) })),
+    async (c) => {
+      const notes = await c
+        .get('notes')
+        .countOptionUsage(c.req.param('id'), c.req.param('fieldId'), c.req.valid('query').option);
+      if (notes === null) return c.json({ error: 'Not found' }, 404);
+      return c.json({ notes });
+    },
+  )
+
+  /**
+   * Removes one option from a select or multi-select.
+   *
+   * `?clear=1` also takes the option off every note that held it — the deliberate cleanup
+   * the client confirms by name and count. Without it, the option leaves the list and the
+   * notes keep their value, shown as "(no longer an option)": the default, because
+   * removing an option is usually a reorganisation, not a decision to erase data.
+   *
+   * Returns the updated field and how many notes were cleared (`0` unless `clear`). A 404
+   * covers both a missing field and an option the field does not have, so a stale client
+   * cannot report a cleanup that never ran.
+   */
+  .delete(
+    '/notebooks/:id/fields/:fieldId/option',
+    zValidator(
+      'query',
+      z.object({
+        option: z.string().min(1),
+        clear: z
+          .string()
+          .optional()
+          .transform((v) => v === '1'),
+      }),
+    ),
+    async (c) => {
+      const { option, clear } = c.req.valid('query');
+      const result = await c
+        .get('notes')
+        .removeFieldOption(c.req.param('id'), c.req.param('fieldId'), option, clear);
+      if (!result) return c.json({ error: 'Not found' }, 404);
+      return c.json(result);
+    },
+  )
+
   /** Deletes a field and every value held under it. Not recoverable; the client confirms. */
   .delete('/notebooks/:id/fields/:fieldId', async (c) => {
     const ok = await c.get('notes').deleteField(c.req.param('id'), c.req.param('fieldId'));

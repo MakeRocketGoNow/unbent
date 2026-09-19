@@ -378,6 +378,38 @@ export async function deleteNotebookField(notebookId: string, fieldId: string): 
   if (!res.ok) throw new ApiError(res.status, await httpErrorMessage(res));
 }
 
+/** How many notes still hold a select/multi-select option — the number a removal confirms. */
+export async function countOptionUsage(
+  notebookId: string,
+  fieldId: string,
+  option: string,
+): Promise<number> {
+  const query = new URLSearchParams({ option });
+  const { notes } = await json<{ notes: number }>(
+    await fetch(`/api/notebooks/${notebookId}/fields/${fieldId}/option-usage?${query}`),
+  );
+  return notes;
+}
+
+/**
+ * Removes one option from a select or multi-select. `clear` also takes it off the notes
+ * that held it; left off, those notes keep the value as "(no longer an option)". Returns
+ * how many notes were cleared.
+ */
+export async function removeNotebookFieldOption(
+  notebookId: string,
+  fieldId: string,
+  option: string,
+  clear: boolean,
+): Promise<{ field: FieldDef; cleared: number }> {
+  const query = new URLSearchParams({ option, ...(clear ? { clear: '1' } : {}) });
+  return json(
+    await fetch(`/api/notebooks/${notebookId}/fields/${fieldId}/option?${query}`, {
+      method: 'DELETE',
+    }),
+  );
+}
+
 export interface UploadedFile {
   filename: string;
   contentType: string;
