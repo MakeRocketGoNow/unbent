@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState, type KeyboardEvent } from 'react';
 import { Link, useNavigate } from '@tanstack/react-router';
 import { useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
 import * as api from '../notes-api.js';
@@ -11,6 +11,9 @@ import { Confirm } from './Confirm.js';
 import { Button } from './Button.js';
 import { BackArrow } from './BackArrow.js';
 import { useMaintenance } from './use-maintenance.js';
+import { useSelection } from '../useSelection.js';
+import { SelectionBar } from './SelectionBar.js';
+import { RestoreIcon, TrashIcon } from './icons.js';
 
 /**
  * The trash sidebar.
@@ -27,12 +30,43 @@ export function TrashLayout({ children }: { children: React.ReactNode }) {
   const layout = useNotesLayout('/trash/$noteId');
   const onListKeys = useListKeys();
   const open = layout.open;
-  /** Note awaiting an explicit "delete forever", or 'all' for emptying the trash. */
-  const [pending, setPending] = useState<{ id: string; title: string } | 'all' | null>(null);
+  /**
+   * Note awaiting an explicit "delete forever", 'selected' for the selection, or 'all'
+   * for emptying the trash.
+   */
+  const [pending, setPending] = useState<
+    { id: string; title: string } | 'selected' | 'all' | null
+  >(null);
   const empty = useMaintenance();
 
   const notes = list.data?.pages.flatMap((p) => p.items) ?? [];
   const total = list.data?.pages[0]?.total ?? notes.length;
+
+  /*
+   * Several at once, as the note list has it — see `useSelection`. Restoring a dozen
+   * notes trashed by mistake, or destroying the dozen that were not, is the trash's
+   * whole job, and it was one row at a time. Nothing here changes the scope, so nothing
+   * resets it but opening a note, which drops it as the list's does.
+   */
+  const rowIds = notes.map((n) => n.id);
+  const selection = useSelection(rowIds, { anchor: open, resetKey: 'trash' });
+  const { clear: clearSelection } = selection;
+  useEffect(() => {
+    clearSelection();
+  }, [open, clearSelection]);
+  const onListKeysWithSelection = (event: KeyboardEvent<HTMLElement>) => {
+    if (event.key === 'Escape' && selection.active) {
+      event.preventDefault();
+      selection.clear();
+      return;
+    }
+    if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'a') {
+      event.preventDefault();
+      selection.selectAll();
+      return;
+    }
+    onListKeys(event);
+  };
 
   /** Refetches the trash, and steps away from the open note if it is the one that left. */
   async function afterRemoval(id: string) {
@@ -62,6 +96,31 @@ export function TrashLayout({ children }: { children: React.ReactNode }) {
     setPending(null);
     await afterRemoval(id);
   }
+
+  /**
+   * The selection's two verbs, through the same runner as Empty trash: it tracks busy
+   * and error, and its unscoped invalidation is right here too, since either changes
+   * what every list and count holds. The open note leaves with the rest.
+   */
+  const restoreSelected = () => {
+    const ids = selection.ids;
+    return empty.run(async () => {
+      const r = await api.restoreNotes(ids);
+      selection.clear();
+      if (open && ids.includes(open)) void navigate({ to: '/trash' });
+      return `Restored ${r.restored} note${r.restored === 1 ? '' : 's'}.`;
+    });
+  };
+  const destroySelected = () => {
+    const ids = selection.ids;
+    return empty.run(async () => {
+      const r = await api.deleteNotesPermanently(ids);
+      setPending(null);
+      selection.clear();
+      if (open && ids.includes(open)) void navigate({ to: '/trash' });
+      return `Deleted ${r.deleted} note${r.deleted === 1 ? '' : 's'}.`;
+    });
+  };
 
   return (
     <div className={layout.className} style={layout.style} ref={layout.containerRef}>
@@ -128,9 +187,27 @@ export function TrashLayout({ children }: { children: React.ReactNode }) {
           />
         )}
 
+        {pending === 'selected' && selection.active && (
+          <Confirm
+            label="Confirm delete selected notes forever"
+            question={`Permanently delete ${selection.ids.length} ${selection.ids.length === 1 ? 'note' : 'notes'}?`}
+            detail="Their attachments go too. This cannot be undone."
+            busy={empty.busy}
+            onCancel={() => setPending(null)}
+            actions={[
+              {
+                label: 'Delete forever',
+                busyLabel: 'Deleting…',
+                tone: 'danger',
+                onConfirm: destroySelected,
+              },
+            ]}
+          />
+        )}
+
         {/* Rendered at the top of the sidebar rather than inside the row: a list item is
             too narrow to hold a question and two buttons, and the note is named here. */}
-        {pending && pending !== 'all' && (
+        {pending && pending !== 'all' && pending !== 'selected' && (
           <Confirm
             label="Confirm delete note forever"
             question={
@@ -154,12 +231,21 @@ export function TrashLayout({ children }: { children: React.ReactNode }) {
 
         {list.error && <p className="bad small">{(list.error as Error).message}</p>}
 
-        <ul className="note-list" onKeyDown={onListKeys}>
+        <ul
+          className={selection.active ? 'note-list selecting' : 'note-list'}
+          aria-multiselectable
+          onKeyDown={onListKeysWithSelection}
+        >
           {notes.map((n) => (
             <NoteListItem
               key={n.id}
               note={n}
               to="/trash/$noteId"
+              selection={{
+                selected: selection.has(n.id),
+                active: selection.active,
+                onPick: (opts) => selection.pick(n.id, opts),
+              }}
               actions={
                 <div className="trash-actions">
                   {/* Quiet, not outlined: these repeat on every row, and a grid of
@@ -197,6 +283,36 @@ export function TrashLayout({ children }: { children: React.ReactNode }) {
             <li className="muted small empty">Trash is empty.</li>
           )}
         </ul>
+
+        {selection.active && (
+          <SelectionBar
+            count={selection.ids.length}
+            total={rowIds.length}
+            onClear={selection.clear}
+            onSelectAll={selection.selectAll}
+          >
+            <button
+              type="button"
+              className="icon-btn"
+              aria-label="Restore"
+              title="Restore"
+              disabled={empty.busy}
+              onClick={() => void restoreSelected()}
+            >
+              <RestoreIcon />
+            </button>
+            <button
+              type="button"
+              className="icon-btn danger"
+              aria-label="Delete forever"
+              title="Delete forever"
+              disabled={empty.busy}
+              onClick={() => setPending('selected')}
+            >
+              <TrashIcon />
+            </button>
+          </SelectionBar>
+        )}
       </aside>
 
       <ResizeHandle
