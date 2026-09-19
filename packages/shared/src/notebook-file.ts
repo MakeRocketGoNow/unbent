@@ -28,6 +28,7 @@ import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
 import { z } from 'zod';
 import {
   MAX_FIELDS_PER_NOTEBOOK,
+  fieldHasOptions,
   fieldNameSchema,
   fieldOptionsSchema,
   fieldScaleSchema,
@@ -42,7 +43,7 @@ import { notebookNameSchema } from './schemas.js';
 export interface NotebookFileField {
   name: string;
   type: FieldType;
-  /** Present only on a `select`. */
+  /** Present only on a `select` or a `multiselect`. */
   options?: string[];
   /** Present only on a rating. */
   scale?: FieldScale;
@@ -83,9 +84,10 @@ export function serializeNotebook(name: string, fields: FieldDef[]): string {
     fields: fields.map((f) => ({
       name: f.name,
       type: f.type,
-      // Only what the type can use: a select's options, a rating's scale. An empty
-      // `options: []` on every text field would be noise a reader has to learn to skip.
-      ...(f.type === 'select' ? { options: f.options } : {}),
+      // Only what the type can use: a select's or multi-select's options, a rating's
+      // scale. An empty `options: []` on every text field would be noise a reader has to
+      // learn to skip.
+      ...(fieldHasOptions(f.type) ? { options: f.options } : {}),
       ...(f.type === 'number' && f.scale ? { scale: f.scale } : {}),
     })),
   };

@@ -184,7 +184,7 @@ export function registerReadTools(
       description:
         'Every notebook with the number of live notes in it, plus the count of notes filed in ' +
         'none. Notebooks are flat: there is no nesting. Each notebook lists its custom fields ' +
-        '(name, type, and the options of a select); values are read on a note and set by ' +
+        '(name, type, and the options of a select or multiselect); values are read on a note and set by ' +
         'name through create_note and update_note.',
       inputSchema: z.object({}),
       annotations: { readOnlyHint: true, openWorldHint: false },

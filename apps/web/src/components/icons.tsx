@@ -19,6 +19,7 @@ import {
   Inbox,
   Link as LinkGlyph,
   List,
+  ListChecks,
   Mail,
   Maximize2,
   Menu,
@@ -293,6 +294,8 @@ const FIELD_TYPE_ICONS: Record<FieldType, LucideIcon> = {
   email: Mail,
   phone: Phone,
   select: List,
+  // A list with its rows ticked: the same list as a select, with more than one chosen.
+  multiselect: ListChecks,
 };
 
 /**

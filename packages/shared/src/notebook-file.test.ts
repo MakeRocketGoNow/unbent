@@ -20,6 +20,7 @@ describe('the notebook definitions file', () => {
       def({ name: 'Priority', type: 'number', scale: { max: 5, step: 0.5 } }),
       def({ name: 'Captured', type: 'date' }),
       def({ name: 'Image', type: 'url' }),
+      def({ name: 'Platforms', type: 'multiselect', options: ['PC', 'PS5'] }),
     ];
 
     const text = serializeNotebook('Coupons', fields);
@@ -32,6 +33,7 @@ describe('the notebook definitions file', () => {
         { name: 'Priority', type: 'number', scale: { max: 5, step: 0.5 } },
         { name: 'Captured', type: 'date' },
         { name: 'Image', type: 'url' },
+        { name: 'Platforms', type: 'multiselect', options: ['PC', 'PS5'] },
       ],
     });
   });

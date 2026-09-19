@@ -6,9 +6,11 @@ import {
   excerptMarkdown,
   expectedFieldValue,
   fieldRangeBound,
+  fieldHasOptions,
+  fieldOptionsSchema,
   inferFieldType,
   InvalidFieldValue,
-  isHeldSelectValue,
+  withHeldOptions,
   isReservedFieldName,
   MAX_FIELDS_PER_NOTEBOOK,
   MAX_SELECT_OPTIONS,
@@ -100,9 +102,9 @@ function rowToField(row: FieldRow): FieldDef {
   };
 }
 
-/** Options are only stored for `select`; every other type carries NULL, whatever was sent. */
+/** Options are only stored for the types that carry them; every other type gets NULL, whatever was sent. */
 function optionsColumn(type: FieldType, options: string[]): string | null {
-  return type === 'select' ? JSON.stringify(options) : null;
+  return fieldHasOptions(type) ? JSON.stringify(options) : null;
 }
 
 /**
@@ -325,6 +327,12 @@ function filterConditions(
    * field of the wrong type for its op matches nothing, which is the right answer to a
    * question that does not apply. The `user_id` on the value row is what keeps a guessed
    * field id from reading across tenants; the indexes are 0014's.
+   *
+   * The one text that is not one value is a multi-select's, which `encodeFieldValue`
+   * writes as a JSON list. `eq` on that means "holds this option", so the stored text is
+   * also opened as a list and each element compared — still without knowing the type,
+   * since only a multi-select stores a JSON array. The `CASE` is what keeps `json_each`
+   * off text that is not JSON, where it would raise rather than return nothing.
    */
   for (const f of opts.fields ?? []) {
     binds.push(f.fieldId, userId);
@@ -338,10 +346,17 @@ function filterConditions(
       case 'empty':
         conditions.push(`NOT EXISTS (${held})`);
         break;
-      case 'eq':
+      case 'eq': {
         binds.push(f.value ?? '');
-        conditions.push(`EXISTS (${held} AND nf3.value_text = ?${binds.length})`);
+        const v = `?${binds.length}`;
+        conditions.push(
+          `EXISTS (${held} AND (nf3.value_text = ${v} OR CASE WHEN json_valid(nf3.value_text)` +
+            ` THEN json_type(nf3.value_text) = 'array'` +
+            ` AND EXISTS (SELECT 1 FROM json_each(nf3.value_text) WHERE json_each.value = ${v})` +
+            ` ELSE 0 END))`,
+        );
         break;
+      }
       case 'gte':
       case 'lte': {
         const bound = fieldRangeBound(f.op, f.value ?? '');
@@ -490,6 +505,13 @@ function splitTags(joined: string | null): string[] {
  * compares sets. Blanks and duplicates are normalized away first, matching what `setTags`
  * would have written, so `['work', 'work', ' ']` against a stored `['work']` is no edit.
  */
+/** Whether a stored value and a resent one are the same text, a list compared as a list. */
+function sameFieldText(a: FieldValue, b: FieldValue): boolean {
+  return Array.isArray(a) || Array.isArray(b)
+    ? JSON.stringify(a) === JSON.stringify(b)
+    : String(a) === String(b);
+}
+
 function sameTagSet(patch: string[], stored: string[]): boolean {
   const next = new Set(patch.map((t) => t.trim()).filter((t) => t.length > 0));
   if (next.size !== stored.length) return false;
@@ -940,8 +962,9 @@ export class NotesRepo extends ScopedRepo {
           continue;
         }
         // Compared as text: a number the client re-sends as "12" is the stored 12, and
-        // the far end is going to encode it to a string column either way.
-        if (stands !== undefined && String(stands) === String(value)) continue;
+        // the far end is going to encode it to a string column either way. A list is
+        // compared as one, so its elements' commas cannot make two lists read as one.
+        if (stands !== undefined && sameFieldText(stands, value)) continue;
         fields[fieldId] = value;
       }
       if (Object.keys(fields).length > 0) next.fields = fields;
@@ -2065,10 +2088,12 @@ export class NotesRepo extends ScopedRepo {
    * Merge semantics, unlike `setTags`: only the keys in the patch change. The editor sends
    * every field anyway, and a caller setting one value should not have to know the rest.
    *
-   * A select value the option list has dropped is left on notes that already hold it, for
-   * the reason `isHeldSelectValue` gives: the editor resends every field, and failing that
+   * An option the list has dropped stays legal on notes that already hold it, for the
+   * reason `withHeldOptions` gives: the editor resends every field, and failing that
    * resend would refuse the title and body too. Looked up here so a new choice that is not
-   * in the list is still a 400.
+   * in the list is still a 400. A value that is exactly what is stored is not written at
+   * all — that resend is the common case, and a statement for it would only re-date the
+   * note.
    *
    * Tombstoned definitions resolve here, deliberately, where every listing excludes them:
    * a value they key is still the note's own data, and clearing it is the only way to take
@@ -2108,11 +2133,13 @@ export class NotesRepo extends ScopedRepo {
       if (!def) throw new InvalidFieldValue(id, 'No such field');
 
       const value = patch[id];
-      const encoded = value === null || value === undefined ? 'clear' : encodeFieldValue(def, value);
-      if (encoded === null) {
-        if (isHeldSelectValue(def, value, held.get(id))) continue;
-        throw new InvalidFieldValue(def.name, expectedFieldValue(def));
-      }
+      const stored = held.get(id);
+      const encoded =
+        value === null || value === undefined
+          ? 'clear'
+          : encodeFieldValue(withHeldOptions(def, stored), value);
+      if (encoded === null) throw new InvalidFieldValue(def.name, expectedFieldValue(def));
+      if (encoded !== 'clear' && encoded.text === stored) continue;
 
       statements.push(
         encoded === 'clear'
@@ -2136,11 +2163,14 @@ export class NotesRepo extends ScopedRepo {
    * Applies imported values, which arrive by field *name* — the interchange form.
    *
    * A name with no definition in the notebook creates one, typed from the value, so a
-   * vault exported elsewhere lands with its properties intact. Anything that cannot be
-   * stored (a reserved name, a value the field's type cannot read, a notebook already at
-   * its limit) is skipped and named, rather than failing the note: an import is judged by
-   * what it kept. With `onlyMissing`, a value a note already holds is left alone — the
-   * content-hash skip path restores what a deleted field lost without undoing an edit.
+   * vault exported elsewhere lands with its properties intact; a list value makes a
+   * multi-select with the list as its first options. An option a select or multi-select
+   * lacks is added rather than the value dropped — see `addImportedOptions`. Anything
+   * that still cannot be stored (a reserved name, a value the field's type cannot read, a
+   * notebook already at its limit) is skipped and named, rather than failing the note: an
+   * import is judged by what it kept. With `onlyMissing`, a value a note already holds is
+   * left alone — the content-hash skip path restores what a deleted field lost without
+   * undoing an edit.
    */
   private async applyImportedFields(
     noteId: string,
@@ -2167,10 +2197,15 @@ export class NotesRepo extends ScopedRepo {
         .then((r) => (r ? rowToField(r) : null));
 
       if (!def) {
+        const seeded = Array.isArray(value) ? fieldOptionsSchema.safeParse(value) : null;
+        if (seeded && !seeded.success) {
+          skipped.push(rawName);
+          continue;
+        }
         const created = await this.createField(notebookId, {
           name,
           type: inferFieldType(value),
-          options: [],
+          options: seeded?.data ?? [],
         });
         if (typeof created === 'string') {
           skipped.push(rawName);
@@ -2179,7 +2214,14 @@ export class NotesRepo extends ScopedRepo {
         def = created;
       }
 
-      const encoded = encodeFieldValue(def, value);
+      let encoded = encodeFieldValue(def, value);
+      if (encoded === null && fieldHasOptions(def.type)) {
+        const widened = await this.addImportedOptions(notebookId, def, value);
+        if (widened) {
+          def = widened;
+          encoded = encodeFieldValue(def, value);
+        }
+      }
       if (encoded === null || encoded === 'clear') {
         skipped.push(rawName);
         continue;
@@ -2202,6 +2244,32 @@ export class NotesRepo extends ScopedRepo {
   }
 
   /**
+   * Adds the options an imported value needs to a select or multi-select, when it can.
+   *
+   * The rule `importNotebook` applies to a definitions file — add, never alter — applied
+   * to a value: an option the notebook lacks is created rather than the value dropped.
+   * That is what lets a vault written by hand, with no `notebooks/` file to declare its
+   * options, land with its values intact, and what puts back an option that was pruned
+   * after the export was taken. Nothing is removed and nothing retyped. Null when the list
+   * is full or the value is not made of names an option can have, and the caller then
+   * skips the value and says so.
+   */
+  private async addImportedOptions(
+    notebookId: string,
+    def: FieldDef,
+    value: FieldValue,
+  ): Promise<FieldDef | null> {
+    const wanted = fieldOptionsSchema.safeParse(Array.isArray(value) ? value : [String(value)]);
+    if (!wanted.success) return null;
+    const missing = wanted.data.filter((o) => !def.options.includes(o));
+    if (missing.length === 0 || def.options.length + missing.length > MAX_SELECT_OPTIONS) return null;
+    const updated = await this.updateField(notebookId, def.id, {
+      options: [...def.options, ...missing],
+    });
+    return typeof updated === 'string' ? null : updated.field;
+  }
+
+  /**
    * Applies a notebook's definitions from an export's `notebooks/<slug>.yaml`, ahead of
    * the notes that will carry values for them.
    *
@@ -2211,8 +2279,8 @@ export class NotesRepo extends ScopedRepo {
    * changing either clears every value that cannot be read the new way, and an import is
    * not the place to decide that on someone's behalf; the mismatch is reported instead,
    * so the person can convert it themselves with the confirmation that step deserves.
-   * The one merge is a select's options: the file's are added after the notebook's own,
-   * which cannot lose anything and lets the incoming values land.
+   * The one merge is a select's or multi-select's options: the file's are added after the
+   * notebook's own, which cannot lose anything and lets the incoming values land.
    *
    * Existing fields keep their positions and new ones append in file order, so a fresh
    * notebook comes out in exactly the exported order and an existing one is not shuffled
@@ -2256,7 +2324,7 @@ export class NotesRepo extends ScopedRepo {
         continue;
       }
 
-      if (field.type === 'select') {
+      if (fieldHasOptions(field.type)) {
         const have = new Set(current.options.map((o) => o.toLowerCase()));
         const added = (field.options ?? []).filter((o) => !have.has(o.toLowerCase()));
         if (added.length > 0) {

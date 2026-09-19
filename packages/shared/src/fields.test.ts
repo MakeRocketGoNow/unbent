@@ -4,6 +4,7 @@ import {
   decodeFieldValue,
   encodeFieldValue,
   expectedFieldValue,
+  fieldHasOptions,
   fieldNameSchema,
   fieldRangeBound,
   fieldSortKey,
@@ -11,13 +12,13 @@ import {
   fieldsByName,
   formatFieldFilter,
   inferFieldType,
-  isHeldSelectValue,
   isRatingField,
   isReservedFieldName,
   parseFieldFilter,
   planConversion,
   ratingRendersAsStars,
   ratingSteps,
+  withHeldOptions,
   type FieldType,
   type NoteFieldValue,
 } from './fields.js';
@@ -106,18 +107,83 @@ describe('encodeFieldValue', () => {
 
   it('keeps a select value a note already holds after that option is removed', () => {
     const select = def('select', ['Food']);
-    expect(isHeldSelectValue(select, 'Travel', 'Travel')).toBe(true);
-    expect(isHeldSelectValue(select, ' Travel ', 'Travel')).toBe(true);
+    const held = withHeldOptions(select, 'Travel');
+    expect(encodeFieldValue(held, 'Travel')).toEqual({ text: 'Travel', num: null });
+    expect(encodeFieldValue(held, ' Travel ')).toEqual({ text: 'Travel', num: null });
     // A value the note never held is still a new choice.
-    expect(isHeldSelectValue(select, 'Vet', 'Travel')).toBe(false);
-    expect(isHeldSelectValue(select, 'Travel', undefined)).toBe(false);
-    expect(isHeldSelectValue(def('text'), 'Travel', 'Travel')).toBe(false);
+    expect(encodeFieldValue(held, 'Vet')).toBeNull();
+    expect(withHeldOptions(select, undefined)).toBe(select);
+    expect(withHeldOptions(select, 'Food')).toBe(select);
+    expect(withHeldOptions(def('text'), 'Travel')).toEqual(def('text'));
   });
 
   it('has a hint for every rejection', () => {
     expect(expectedFieldValue(def('number'))).toMatch(/number/);
     expect(expectedFieldValue(def('select', ['a', 'b']))).toContain('a, b');
     expect(expectedFieldValue(def('select'))).toMatch(/no options/);
+    expect(expectedFieldValue(def('multiselect', ['a', 'b']))).toMatch(/list of options from: a, b/);
+    expect(expectedFieldValue(def('multiselect'))).toMatch(/no options/);
+  });
+});
+
+describe('multi-select', () => {
+  const platforms = def('multiselect', ['PC', 'PS5', 'Switch']);
+
+  it('is the other type that carries options', () => {
+    expect(fieldHasOptions('select')).toBe(true);
+    expect(fieldHasOptions('multiselect')).toBe(true);
+    expect(fieldHasOptions('text')).toBe(false);
+  });
+
+  it('stores the chosen options as a JSON list in the option order, each once', () => {
+    expect(encodeFieldValue(platforms, ['Switch', 'PC', ' PC '])).toEqual({
+      text: '["PC","Switch"]',
+      num: null,
+    });
+  });
+
+  it('reads one option given as a bare string, which is what a select value looks like', () => {
+    expect(encodeFieldValue(platforms, 'PS5')).toEqual({ text: '["PS5"]', num: null });
+  });
+
+  it('refuses a list with anything that is not an option, and non-lists', () => {
+    expect(encodeFieldValue(platforms, ['PC', 'Xbox'])).toBeNull();
+    expect(encodeFieldValue(platforms, 3)).toBeNull();
+    expect(encodeFieldValue(platforms, true)).toBeNull();
+    expect(encodeFieldValue(def('multiselect'), ['PC'])).toBeNull();
+  });
+
+  it('clears on an empty list or a list of blanks', () => {
+    expect(encodeFieldValue(platforms, [])).toBe('clear');
+    expect(encodeFieldValue(platforms, ['', '  '])).toBe('clear');
+  });
+
+  it('decodes the list back, and reads anything else as one option', () => {
+    expect(decodeFieldValue('multiselect', '["PC","Switch"]')).toEqual(['PC', 'Switch']);
+    expect(decodeFieldValue('multiselect', 'PC')).toEqual(['PC']);
+    expect(decodeFieldValue('multiselect', '[1]')).toEqual(['[1]']);
+  });
+
+  it('keeps the retired options a note holds, and still takes a live one beside them', () => {
+    const shrunk = def('multiselect', ['PC']);
+    const held = withHeldOptions(shrunk, '["PC","PS5"]');
+    expect(held.options).toEqual(['PC', 'PS5']);
+    expect(encodeFieldValue(held, ['PS5', 'PC'])).toEqual({ text: '["PC","PS5"]', num: null });
+    // Adding a retired option the note never held is still a new choice.
+    expect(encodeFieldValue(held, ['PC', 'Switch'])).toBeNull();
+  });
+
+  it('is what a list value with no definition infers to', () => {
+    expect(inferFieldType(['PC'])).toBe('multiselect');
+  });
+
+  it('sorts by the stored list text, which is what the SQL ordered by', () => {
+    const d = { id: 'f', type: 'multiselect' as const };
+    const held: NoteFieldValue = {
+      fieldId: 'f', name: 'Platforms', type: 'multiselect', value: ['PC', 'PS5'], notebookId: 'nb', notebook: 'Games',
+    };
+    expect(fieldSortKey(d, [held])).toBe('["PC","PS5"]');
+    expect(fieldSortKey(d, [])).toBe('');
   });
 });
 
@@ -166,6 +232,34 @@ describe('planConversion', () => {
     const plan = planConversion('checkbox', 'text', rows('true', 'false'));
     expect(plan.keep.map((k) => k.text)).toEqual(['true', 'false']);
     expect(plan.keep.every((k) => k.num === null)).toBe(true);
+  });
+
+  it('select to multi-select carries every value across as a list of one', () => {
+    const plan = planConversion('select', 'multiselect', rows('GP', 'Dentist', 'GP'));
+    expect(plan.seededOptions).toEqual(['GP', 'Dentist']);
+    expect(plan.drop).toEqual([]);
+    expect(plan.keep.map((k) => k.text)).toEqual(['["GP"]', '["Dentist"]', '["GP"]']);
+  });
+
+  it('multi-select to select keeps the single choices, seeds every option, and drops the rest', () => {
+    const plan = planConversion('multiselect', 'select', rows('["PC"]', '["PC","PS5"]', '["Switch"]'));
+    expect(plan.seededOptions).toEqual(['PC', 'PS5', 'Switch']);
+    expect(plan.keep.map((k) => [k.row.id, k.text])).toEqual([
+      [0, 'PC'],
+      [2, 'Switch'],
+    ]);
+    expect(plan.drop.map((r) => r.id)).toEqual([1]);
+  });
+
+  it('multi-select to text joins the options, and to a number drops them', () => {
+    expect(planConversion('multiselect', 'text', rows('["PC","PS5"]')).keep[0]?.text).toBe('PC, PS5');
+    expect(planConversion('multiselect', 'number', rows('["PC"]')).drop).toHaveLength(1);
+  });
+
+  it('text to multi-select seeds an option per distinct value', () => {
+    const plan = planConversion('text', 'multiselect', rows('PC, PS5', 'PC, PS5', 'Switch'));
+    expect(plan.seededOptions).toEqual(['PC, PS5', 'Switch']);
+    expect(plan.drop).toEqual([]);
   });
 
   it('number to date drops every value', () => {

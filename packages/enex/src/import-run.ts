@@ -1,4 +1,4 @@
-import type { NotebookDefinition } from '@unbent/shared';
+import type { FieldValue, NotebookDefinition } from '@unbent/shared';
 import { isExtractable } from './ocr-text.js';
 import { extractPdfText } from './pdf-text.js';
 
@@ -137,8 +137,8 @@ export interface ImportClient {
     contentHash: string;
     sourceEnex?: string;
     sourceUrl?: string;
-    /** Custom field values by field name, as the export writes them. */
-    fields?: Record<string, string | number | boolean>;
+    /** Custom field values by field name, as the export writes them; a multi-select's is a list. */
+    fields?: Record<string, FieldValue>;
   }) => Promise<{ id: string; created: boolean }>;
 
   uploadFile: (

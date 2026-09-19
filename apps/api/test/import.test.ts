@@ -48,7 +48,7 @@ interface NoteJson {
   notebook?: string | null;
   createdAt: number;
   updatedAt: number;
-  fields?: Array<{ name: string; value: string | number | boolean }>;
+  fields?: Array<{ name: string; value: string | number | boolean | string[] }>;
 }
 
 const sha256 = async (title: string, body: string) => {
@@ -65,7 +65,7 @@ async function importNote(
     body: string;
     tags?: string[];
     notebook?: string;
-    fields?: Record<string, string | number | boolean>;
+    fields?: Record<string, string | number | boolean | string[]>;
   },
 ): Promise<{ status: number; id: string; created: boolean; skippedFields: string[] }> {
   const res = await api(actor, '/api/import/note', {
@@ -411,6 +411,39 @@ describe('notebook definitions across an import', () => {
       { name: 'Score', type: 'number', options: [], scale: { max: 5, step: 1 } },
       { name: 'Paid', type: 'checkbox', options: [], scale: null },
     ]);
+  });
+
+  it('make a multi-select from a list value, and add the options a later value needs', async () => {
+    const notebook = `Games ${Date.now()}`;
+    const first = await importNote(bob, { title: 'One', body: '', notebook, fields: { Platforms: ['PC', 'PS5'] } });
+    expect(first.skippedFields).toEqual([]);
+    // A list with no definition makes a multi-select, with the list as its first options.
+    let [platforms] = await fieldsOf(bob, notebook);
+    expect(platforms).toMatchObject({ name: 'Platforms', type: 'multiselect', options: ['PC', 'PS5'] });
+
+    // A later value naming an option the field lacks adds it rather than being dropped:
+    // add, never alter, applied to a value.
+    const second = await importNote(bob, { title: 'Two', body: '', notebook, fields: { Platforms: ['Switch'] } });
+    expect(second.skippedFields).toEqual([]);
+    [platforms] = await fieldsOf(bob, notebook);
+    expect(platforms!.options).toEqual(['PC', 'PS5', 'Switch']);
+
+    const note = await json<NoteJson>(await api(bob, `/api/notes/${second.id}`));
+    expect(note.fields?.map((f) => [f.name, f.value])).toEqual([['Platforms', ['Switch']]]);
+
+    // The same for a select: a value the options lack is an option the notebook gains.
+    const kind = await importNote(bob, { title: 'Three', body: '', notebook, fields: { Kind: 'RPG' } });
+    expect(kind.skippedFields).toEqual([]);
+    const nb = (await json<{ notebooks: Array<{ id: string; name: string }> }>(await api(bob, '/api/notebooks'))).notebooks.find((n) => n.name === notebook)!;
+    const kindField = (await fieldsOf(bob, notebook)).find((f) => f.name === 'Kind')!;
+    await api(bob, `/api/notebooks/${nb.id}/fields/${kindField.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ type: 'select' }),
+    });
+    const strategy = await importNote(bob, { title: 'Four', body: '', notebook, fields: { Kind: 'Strategy' } });
+    expect(strategy.skippedFields).toEqual([]);
+    expect((await fieldsOf(bob, notebook)).find((f) => f.name === 'Kind')!.options).toEqual(['RPG', 'Strategy']);
   });
 
   it('refuse a file the field editor would refuse', async () => {

@@ -257,6 +257,17 @@ describe('fields', () => {
     expect(out.fields).toEqual({ Code: '42', Flag: 'true' });
   });
 
+  it('writes a multi-select as a YAML list and reads it back as one', () => {
+    const out = serialize({ ...base, fields: { Platforms: ['PC', 'PS5, Pro'] } });
+    expect(out).toContain('Platforms:\n  - PC\n  - PS5, Pro\n');
+    expect(parse(out).fields).toEqual({ Platforms: ['PC', 'PS5, Pro'] });
+  });
+
+  it('reads a hand-written list of scalars as strings, and leaves maps behind', () => {
+    const text = `---\nid: ${base.id}\ntitle: t\ncreated: 2024-01-01T00:00:00Z\nupdated: 2024-01-01T00:00:00Z\ntags: []\nSizes: [1, true, s]\nNested:\n  a: 1\nDeep:\n  - [1]\n---\n\nbody`;
+    expect(parse(text).fields).toEqual({ Sizes: ['1', 'true', 's'] });
+  });
+
   it('omits the fields entirely when there are none', () => {
     expect(parse(serialize(base)).fields).toBeUndefined();
     expect(parse(serialize({ ...base, fields: {} })).fields).toBeUndefined();
@@ -272,8 +283,10 @@ describe('fields', () => {
     expect(parse(handWritten).title).toBe('');
   });
 
-  it('leaves lists and maps behind and reads a yaml timestamp as a date', () => {
+  it('reads a list as a multi-select, leaves maps and nulls behind, and reads a yaml timestamp as a date', () => {
+    // `aliases` is Obsidian's, and deliberately not reserved: a list under any name is a
+    // field holding those options, the same as the export writes one.
     const handWritten = `---\nid: abc\ncreated: 2024-01-15T09:30:00Z\nupdated: 2024-01-15T09:30:00Z\naliases: [a, b]\nmeta: {k: v}\nnothing: null\nExpires: 2024-03-01\n---\n`;
-    expect(parse(handWritten).fields).toEqual({ Expires: '2024-03-01' });
+    expect(parse(handWritten).fields).toEqual({ aliases: ['a', 'b'], Expires: '2024-03-01' });
   });
 });
