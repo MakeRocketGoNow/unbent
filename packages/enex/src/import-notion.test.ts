@@ -15,6 +15,7 @@ import type { ImportClient } from './import-run.js';
  */
 const GAMES = '0a0a0a0a0a0a4a0a8a0a0a0a0a0a0a01';
 const CATAN = '0a0a0a0a0a0a4a0a8a0a0a0a0a0a0a02';
+const CATAN2 = '0a0a0a0a0a0a4a0a8a0a0a0a0a0a0a06';
 const AZUL = '0a0a0a0a0a0a4a0a8a0a0a0a0a0a0a03';
 const BLANK = '0a0a0a0a0a0a4a0a8a0a0a0a0a0a0a04';
 const STRATEGY = '0a0a0a0a0a0a4a0a8a0a0a0a0a0a0a05';
@@ -28,6 +29,7 @@ const LIBRARY = '3d3d3d3d3d3d4d3d8d3d3d3d3d3d3d31';
 const csv = [
   'Name,Players,Rating,Price,Played On,Mechanics,Tags,Added On,Last Updated',
   'Catan,4,★★★★,$39.99,"August 2, 2026","Trading, Dice","Classic, Family","September 12, 2026 10:19 AM","September 13, 2026 8:00 AM"',
+  'Catan,2,★★★,$34.99,"August 9, 2026","Trading, Dice",Family,"September 12, 2026 10:21 AM","September 12, 2026 10:21 AM"',
   'Azul,2,★★★,$29.99,"July 4, 2026","Trading, Dice",Family,"September 12, 2026 10:20 AM","September 12, 2026 10:20 AM"',
 ].join('\n');
 
@@ -51,13 +53,14 @@ const FILES: Record<string, string | Uint8Array> = {
     '',
     '![box.png](Catan/box.png)',
     '',
-    '[rules.pdf](Catan/rules.pdf)',
-    'rules.pdf',
-    '',
     `See [Azul](Azul%20${AZUL}.md) and [notes](Catan/Strategy%20notes%20${STRATEGY}.md).`,
     '',
   ].join('\n'),
+  // A second row with the same title: Notion named the folder above after the first, so
+  // this page shares that folder's name but does not own it, and links nothing in it.
+  [`${W}/Board Games/Catan ${CATAN2}.md`]: '# Catan\n\nPlayers: 2\nRating: ★★★\nPrice: $34.99\nPlayed On: August 9, 2026\nMechanics: Trading, Dice\nTags: Family\nAdded On: September 12, 2026 10:21 AM\nLast Updated: September 12, 2026 10:21 AM\n\nThe travel edition.\n',
   [`${W}/Board Games/Catan/box.png`]: new Uint8Array([0x89, 0x50, 0x4e, 0x47, 1, 2, 3]),
+  // An orphan: in the folder, kept by the export, but no page links it (too big for Notion).
   [`${W}/Board Games/Catan/rules.pdf`]: new Uint8Array([0x25, 0x50, 0x44, 0x46, 1, 2, 3]),
   [`${W}/Board Games/Catan/Strategy notes ${STRATEGY}.md`]: '# Strategy notes\n\nBuild roads.\n',
   [`${W}/Board Games/Azul ${AZUL}.md`]: `# Azul\n\nPlayers: 2\nRating: ★★★\nPrice: $29.99\nPlayed On: July 4, 2026\nMechanics: Trading, Dice\nTags: Family, ${'A sentence that sat in the tags column '.repeat(4)}\nAdded On: September 12, 2026 10:20 AM\nLast Updated: September 12, 2026 10:20 AM\n\nTiles.\n`,
@@ -124,7 +127,7 @@ describe('describeNotion', () => {
     const { units } = await describeNotion(zip);
     const by = Object.fromEntries(units.map((u) => [u.key, u]));
     expect(by[`Board Games ${GAMES}`]).toEqual({
-      key: `Board Games ${GAMES}`, name: '🎲 Board Games', kind: 'database', notes: 4, attachments: 2, fields: 5,
+      key: `Board Games ${GAMES}`, name: '🎲 Board Games', kind: 'database', notes: 5, attachments: 2, fields: 5,
     });
     expect(by[`Garden ${GARDEN}`]).toEqual({
       key: `Garden ${GARDEN}`, name: 'Garden', kind: 'page', notes: 3, attachments: 1, fields: 1,
@@ -148,7 +151,7 @@ describe('importNotion', () => {
     const { client, notes, files, notebooks } = fakeClient();
     const progress = await importNotion(await zipFile(), client, { include: [`Board Games ${GAMES}`] });
 
-    expect(progress).toMatchObject({ created: 4, skipped: 0, failed: 0, notesTotal: 4, filesUploaded: 2 });
+    expect(progress).toMatchObject({ created: 5, skipped: 0, failed: 0, notesTotal: 5, filesUploaded: 2 });
     expect(notebooks).toEqual([
       {
         name: '🎲 Board Games',
@@ -162,9 +165,8 @@ describe('importNotion', () => {
       },
     ]);
 
-    const catan = byTitle(notes, 'Catan');
+    const catan = notes.find((n) => n.id === notionIdToNoteId(CATAN))!;
     expect(catan).toMatchObject({
-      id: notionIdToNoteId(CATAN),
       notebook: '🎲 Board Games',
       tags: ['Classic', 'Family'],
       fields: { Players: 4, Rating: 4, Price: 39.99, 'Played On': '2026-08-02', Mechanics: ['Trading', 'Dice'] },
@@ -178,15 +180,24 @@ describe('importNotion', () => {
         '',
         '![box.png](files/box.png)',
         '',
-        '[rules.pdf](files/rules.pdf)',
-        '',
         `See [Azul](/notes/${notionIdToNoteId(AZUL)}) and [notes](/notes/${notionIdToNoteId(STRATEGY)}).`,
       ].join('\n'),
     );
+
+    /*
+       Two rows share the title "Catan", so Notion named their attachment folder after the
+       first with no id. Both files go to that first Catan and nowhere else: box.png, which
+       its body links, and rules.pdf, an orphan the export kept but no page references. The
+       orphan lands on the note that owns the folder rather than being lost or duplicated
+       onto the second Catan.
+    */
     expect(files.filter((f) => f.noteId === catan.storedId).map((f) => [f.filename, f.mime])).toEqual([
       ['box.png', 'image/png'],
       ['rules.pdf', 'application/pdf'],
     ]);
+    const catan2 = notes.find((n) => n.id === notionIdToNoteId(CATAN2))!;
+    expect(catan2).toMatchObject({ fields: expect.objectContaining({ Price: 34.99 }), body: 'The travel edition.' });
+    expect(files.filter((f) => f.noteId === catan2.storedId)).toEqual([]);
 
     // A row the CSV left out still lands, dated by its own stamp; a row's sub-page is a plain note.
     expect(byTitle(notes, 'Untitled')).toMatchObject({
@@ -202,7 +213,7 @@ describe('importNotion', () => {
     expect(byTitle(notes, 'Azul').tags).toEqual(['Family']);
 
     // Nothing from the other units.
-    expect(notes.map((n) => n.title).sort()).toEqual(['Azul', 'Catan', 'Strategy notes', 'Untitled']);
+    expect(notes.map((n) => n.title).sort()).toEqual(['Azul', 'Catan', 'Catan', 'Strategy notes', 'Untitled']);
   });
 
   it('imports a page tree as a notebook, its nested database\'s columns included, and links pages to each other', async () => {
@@ -246,11 +257,11 @@ describe('importNotion', () => {
     const { client, notes } = fakeClient();
     const zip = await zipFile();
     const first = await importNotion(zip, client);
-    expect(first).toMatchObject({ created: 8, failed: 0, notesTotal: 8 });
+    expect(first).toMatchObject({ created: 9, failed: 0, notesTotal: 9 });
     expect(notes.some((n) => n.title === 'Library')).toBe(false);
 
     const again = await importNotion(zip, client);
-    expect(again).toMatchObject({ created: 0, skipped: 8, filesUploaded: 0 });
+    expect(again).toMatchObject({ created: 0, skipped: 9, filesUploaded: 0 });
   });
 
   it('keeps a Tags column as a field when asked', async () => {

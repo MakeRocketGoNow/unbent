@@ -200,6 +200,66 @@ interface Model {
   units: Unit[];
   /** Every path in the archive, for resolving a page's relative links. */
   byPath: Map<string, { kind: 'file'; file: Attachment } | { kind: 'page'; page: PageFile } | { kind: 'csv' }>;
+  /**
+   * The page id that owns each attachment folder, by the folder's path.
+   *
+   * Notion names a row's attachment folder after the row's title, with no id, so two rows
+   * with the same title share one folder name. Both pages would otherwise claim it — the
+   * files landing on whichever the run reached first, and duplicated onto the other. The
+   * owner is the page whose body links a file in the folder; a folder no page links (a
+   * file too big for Notion, which the export kept but never referenced) falls to the page
+   * that matches the folder's base name, so an orphan still lands on its own note rather
+   * than nowhere or on a stranger.
+   */
+  folderOwner: Map<string, string>;
+}
+
+/** A link destination that points into a folder, relative to a page's own directory. */
+const RELATIVE_LINK = /\]\(\s*<?([^)>\s][^)>]*?)\/[^)>]+>?\s*\)/g;
+
+/**
+ * Which page owns each attachment folder.
+ *
+ * A folder is any directory holding files; its candidates are the pages in its parent
+ * whose own folder it would be — same base name. When one candidate's body links into
+ * it, that page owns it; otherwise the first candidate by archive order does, which for
+ * the common case of a unique name is the only one. Reading bodies is scoped to folders
+ * with more than one candidate, which a real export has a handful of.
+ */
+async function resolveFolderOwners(tree: Tree): Promise<Map<string, string>> {
+  const owner = new Map<string, string>();
+  for (const [dir, d] of tree) {
+    if (d.files.length === 0) continue;
+    const parent = dir.includes('/') ? dir.slice(0, dir.lastIndexOf('/')) : '';
+    const base = dir.includes('/') ? dir.slice(dir.lastIndexOf('/') + 1) : dir;
+    const candidates = (tree.get(parent)?.pages ?? []).filter((p) => p.base === base);
+    if (candidates.length === 0) continue;
+    if (candidates.length === 1) {
+      owner.set(dir, candidates[0]!.id);
+      continue;
+    }
+    let linker: PageFile | undefined;
+    for (const page of candidates) {
+      const body = await page.entry.getData(new TextWriter());
+      RELATIVE_LINK.lastIndex = 0;
+      let m: RegExpExecArray | null;
+      while ((m = RELATIVE_LINK.exec(body))) {
+        let path: string;
+        try {
+          path = decodeURIComponent(m[1]!);
+        } catch {
+          continue;
+        }
+        if (join(page.dir, path) === dir) {
+          linker = page;
+          break;
+        }
+      }
+      if (linker) break;
+    }
+    owner.set(dir, (linker ?? candidates[0]!).id);
+  }
+  return owner;
 }
 
 async function readModel(entries: Entry[], options: NotionImportOptions): Promise<Model> {
@@ -234,9 +294,15 @@ async function readModel(entries: Entry[], options: NotionImportOptions): Promis
    * their rows, each recursively. A page beside a database file with the same id is the
    * database's stub, not a page.
    */
+  const descended = new Set<string>();
   async function descend(dir: string, into: Located[], dbs: Database[]): Promise<void> {
     const d = tree.get(dir);
     if (!d) return;
+    // Two rows can share a title, so two rows can name the same folder — the shared
+    // attachment folder that `resolveFolderOwners` sorts out. Walk it once, or a sub-page
+    // sitting in it (a row's own sub-page) would be added, counted and imported twice.
+    if (descended.has(dir)) return;
+    descended.add(dir);
     const stubs = new Set(d.csvs.map((c) => c.id));
     for (const csv of d.csvs) {
       const db = await database(csv);
@@ -253,8 +319,17 @@ async function readModel(entries: Entry[], options: NotionImportOptions): Promis
     }
   }
 
+  const folderOwner = await resolveFolderOwners(tree);
+  /** The folder a page owns and thus uploads, or undefined when it owns none. */
+  const ownedFolder = (page: PageFile): string | undefined => {
+    const dir = join(page.dir, page.base);
+    return folderOwner.get(dir) === page.id ? dir : undefined;
+  };
   const attachmentsUnder = (pages: Located[]) =>
-    pages.reduce((n, { page }) => n + (tree.get(join(page.dir, page.base))?.files.length ?? 0), 0);
+    pages.reduce((n, { page }) => {
+      const dir = ownedFolder(page);
+      return n + (dir ? (tree.get(dir)?.files.length ?? 0) : 0);
+    }, 0);
 
   const definitionsOf = (dbs: Database[]): NotebookFileField[] => {
     const seen = new Set<string>();
@@ -349,7 +424,7 @@ async function readModel(entries: Entry[], options: NotionImportOptions): Promis
     });
   }
 
-  return { tree, units, byPath };
+  return { tree, units, byPath, folderOwner };
 }
 
 /** What the archive holds, unit by unit, for the picker. Reads only the CSVs and the top-level pages. */
@@ -475,10 +550,14 @@ async function importPage(
     }
   }
 
-  // The page's own folder holds its attachments; a link may also reach one deeper down.
+  // The folder this page owns holds its attachments; a link may also reach a file
+  // elsewhere. Ownership, not the base name, is what keeps two rows with the same title
+  // from each claiming the one folder they share — see `resolveFolderOwners`.
   const folder = join(page.dir, page.base);
   const uploads = new Map<string, Attachment>();
-  for (const f of model.tree.get(folder)?.files ?? []) uploads.set(f.name, f);
+  if (model.folderOwner.get(folder) === page.id) {
+    for (const f of model.tree.get(folder)?.files ?? []) uploads.set(f.name, f);
+  }
 
   const resolve = (path: string): NotionLinkTarget | null => {
     const full = join(page.dir, path).replace(/^(\.\/)+/, '');
