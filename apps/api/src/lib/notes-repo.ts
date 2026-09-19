@@ -1741,6 +1741,61 @@ export class NotesRepo extends ScopedRepo {
   }
 
   /**
+   * A few recent titles from each notebook and each tag, as examples of what is filed
+   * where, for auto-fill to show the model beside each name.
+   *
+   * A notebook called "Misc" or a tag called "2019" says nothing on its own; three titles
+   * from it say what a person has been putting there. Recent rather than random, so the
+   * examples follow how the archive is used now. Untitled notes and the note being filed
+   * are left out — one has nothing to show and the other is the question. One query per
+   * kind, numbered within each group, so an archive of thirteen thousand notes costs two
+   * scans rather than a query per notebook.
+   */
+  async sampleTitles(
+    exclude: string,
+    perGroup: number,
+  ): Promise<{ notebooks: Map<string, string[]>; tags: Map<string, string[]> }> {
+    const [byNotebook, byTag] = await this.db.batch([
+      this.db
+        .prepare(
+          `SELECT group_id, title FROM (
+             SELECT n.notebook_id AS group_id, n.title,
+                    ROW_NUMBER() OVER (PARTITION BY n.notebook_id ORDER BY n.updated_at DESC) AS rn
+               FROM notes n
+              WHERE n.user_id = ?1 AND n.deleted_at IS NULL AND n.notebook_id IS NOT NULL
+                AND n.title <> '' AND n.id <> ?2
+           ) WHERE rn <= ?3`,
+        )
+        .bind(this.userId, exclude, perGroup),
+      this.db
+        .prepare(
+          `SELECT group_id, title FROM (
+             SELECT nt.tag_id AS group_id, n.title,
+                    ROW_NUMBER() OVER (PARTITION BY nt.tag_id ORDER BY n.updated_at DESC) AS rn
+               FROM note_tags nt
+               JOIN tags t ON t.id = nt.tag_id AND t.user_id = ?1
+               JOIN notes n ON n.id = nt.note_id AND n.user_id = ?1 AND n.deleted_at IS NULL
+              WHERE n.title <> '' AND n.id <> ?2
+           ) WHERE rn <= ?3`,
+        )
+        .bind(this.userId, exclude, perGroup),
+    ]);
+    const group = (rows: { results: Array<{ group_id: string; title: string }> }) => {
+      const out = new Map<string, string[]>();
+      for (const row of rows.results) {
+        const list = out.get(row.group_id) ?? [];
+        list.push(row.title);
+        out.set(row.group_id, list);
+      }
+      return out;
+    };
+    return {
+      notebooks: group(byNotebook as { results: Array<{ group_id: string; title: string }> }),
+      tags: group(byTag as { results: Array<{ group_id: string; title: string }> }),
+    };
+  }
+
+  /**
    * Renames a tag; every note carrying it follows, because notes reference the row.
    *
    * A tag is addressed by id here for the same reason a notebook is: the id is stable

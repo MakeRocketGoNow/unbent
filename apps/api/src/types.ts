@@ -152,6 +152,19 @@ export interface Env {
    */
   PREVIEW_RELAY_ORIGIN?: string;
   PREVIEW_RELAY_SUBDOMAIN?: string;
+  /**
+   * A TypeSafe API key, which turns on auto-fill: the control on a note that files it —
+   * title, notebook, tags and fields — from what it and its scans say. Read by lib/jev.ts;
+   * lib/autofill.ts says exactly what is sent. Unset, the editor draws no control and the
+   * route answers 503. `wrangler secret put TYPESAFE_API_KEY`, or .dev.vars locally.
+   */
+  TYPESAFE_API_KEY?: string;
+  /**
+   * Where those requests go instead of TypeSafe's endpoint. For a stand-in during
+   * development — the kind of server a test runs to answer with canned judgements — and
+   * nothing else; a deployed instance leaves it unset.
+   */
+  TYPESAFE_API_URL?: string;
 }
 
 export interface SessionUser {

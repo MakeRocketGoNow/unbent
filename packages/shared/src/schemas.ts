@@ -9,6 +9,8 @@ import {
   fieldValueInputSchema,
   noteFieldsPatchSchema,
   parseFieldFilter,
+  type FieldDef,
+  type FieldValue,
   type NoteFieldValue,
 } from './fields.js';
 
@@ -221,6 +223,44 @@ export interface AppConfig {
    * this as "draw no relay button". See `previewRelayOrigin` in the API.
    */
   previewRelay?: { origin: string };
+  /**
+   * Whether this instance can fill in a note's filing from what it says.
+   *
+   * On when the operator has set a Jev key — `TYPESAFE_API_KEY` in the API — and the
+   * editor draws the Auto-fill control on the strength of this alone, since the route
+   * answers 503 without one. Optional for the same reason `accountDeletion` is: absent
+   * reads as not offered.
+   */
+  autofill?: boolean;
+}
+
+/**
+ * What auto-fill proposes for a note, as `POST /notes/:id/autofill` answers.
+ *
+ * Suggestions, never writes. The editor holds a draft and an autosave, and a server that
+ * wrote behind them would be undone by the next keystroke — the hazard the web's
+ * `open-note-fields.ts` describes. So the server judges and the client applies, which is
+ * also what lets the client fill what is empty at once and ask before replacing anything
+ * already set.
+ *
+ * Each part carries the model's confidence in it, 0 to 1, already above the floor the
+ * server applies — anything below is not returned at all. It rides along so a client can
+ * show it, or hold a low one back further than the server did.
+ */
+export interface AutofillSuggestion {
+  title?: { value: string; confidence: number };
+  /** An existing notebook the note belongs in. */
+  notebook?: { id: string; name: string; confidence: number };
+  /** Existing tags that apply, likeliest first. Tags the note already carries are left out. */
+  tags: Array<{ name: string; confidence: number }>;
+  /**
+   * Values for the fields of the notebook the note would end up in — the suggested one,
+   * or the note's own when there is no suggestion. Each carries its definition, so a
+   * client can write the value before it has loaded that notebook's fields.
+   */
+  fields: Array<{ field: FieldDef; value: FieldValue; confidence: number }>;
+  /** Which of the note's files were read, and which had no text to read yet. */
+  read: { attachments: string[]; pending: string[] };
 }
 
 export const noteIdSchema = z.string().uuid();
