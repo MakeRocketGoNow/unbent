@@ -1285,6 +1285,23 @@ function buildDecorations(view: EditorView, options: RichMarkdownOptions): Decor
   // Read from the view at click time, so the set is the note as it stands then.
   const siblings: Siblings = () => collectAttachmentTargets(view.state, options);
 
+  /**
+   * Whether the syntax under the cursor should be revealed for editing.
+   *
+   * A reveal is the editing affordance: put the caret on a heading and its `##` comes back,
+   * on an image and its `![alt](url)` comes back. That only makes sense in an editor the
+   * user is actually in. An unfocused view still carries a selection — CodeMirror seeds one
+   * at offset 0 when none is given, which is where a note opened by the sidebar's arrow keys
+   * (it mounts each editor without focus) lands. When the note begins with an image, that
+   * phantom caret sat on it and the first image alone showed its raw markdown while every
+   * other one rendered. Gating every reveal on focus is the fix, and the honest rule: an
+   * editor no one is typing in shows the finished note, not its markup. `focusChanged` is in
+   * the plugin's repaint triggers so gaining or losing focus repaints.
+   */
+  const focused = view.hasFocus;
+  const reveals = (from: number, to: number): boolean =>
+    focused && selectionTouches(state, from, to);
+
   for (const { from, to } of view.visibleRanges) {
     syntaxTree(state).iterate({
       from,
@@ -1301,7 +1318,7 @@ function buildDecorations(view: EditorView, options: RichMarkdownOptions): Decor
         if (node.name === 'FencedCode') {
           const firstLine = state.doc.lineAt(node.from);
           const lastLine = state.doc.lineAt(node.to);
-          const revealed = selectionTouches(state, node.from, node.to);
+          const revealed = reveals(node.from, node.to);
 
           /**
            * A fence row with the cursor on it is left as plain text — no slab, no hiding.
@@ -1463,7 +1480,7 @@ function buildDecorations(view: EditorView, options: RichMarkdownOptions): Decor
            * branch) applies here.
            */
           const scope = revealScope(state, node.node);
-          if (!selectionTouches(state, scope.from, scope.to)) {
+          if (!reveals(scope.from, scope.to)) {
             const alt = match[1] ?? '';
             if (alt) {
               // `![` before the alt, `](url)` after it — hidden, with the alt itself drawn
@@ -1553,7 +1570,7 @@ function buildDecorations(view: EditorView, options: RichMarkdownOptions): Decor
                * on keeps the document honest — nothing is ever hidden from the point the
                * user is working at — without putting it on screen the rest of the time.
                */
-              const onThisRow = selectionTouches(state, line.from, line.to);
+              const onThisRow = reveals(line.from, line.to);
               if (!onThisRow) {
                 // The line decoration collapses the row; the mark hides its text. Both are
                 // needed — hiding the text alone leaves an empty row inside the table.
@@ -1595,7 +1612,7 @@ function buildDecorations(view: EditorView, options: RichMarkdownOptions): Decor
            * would be impossible to find again without turning off rich text.
            */
           const scope = revealScope(state, node.node);
-          if (label && !selectionTouches(state, scope.from, scope.to)) {
+          if (label && !reveals(scope.from, scope.to)) {
             const labelStart = node.from + 1;
             const labelEnd = labelStart + label.length;
             marks.push(hiddenMark.range(node.from, labelStart));
@@ -1647,7 +1664,7 @@ function buildDecorations(view: EditorView, options: RichMarkdownOptions): Decor
            * a list; every bullet is rendered, because a dash never does.
            */
           const scope = revealScope(state, node.node);
-          if (!selectionTouches(state, scope.from, scope.to)) {
+          if (!reveals(scope.from, scope.to)) {
             /**
              * A task item is its checkbox: a bullet in front of it is a second marker
              * for the same item, which is how no checklist anywhere is drawn. The dash
@@ -1730,7 +1747,7 @@ function buildDecorations(view: EditorView, options: RichMarkdownOptions): Decor
             }
           }
 
-          if (!selectionTouches(state, scope.from, scope.to)) {
+          if (!reveals(scope.from, scope.to)) {
             marks.push(hiddenMark.range(node.from, end));
           } else if (node.name === 'HeaderMark') {
             // The space hangs with the mark: it is the gap between the hashes and the text.
@@ -1760,13 +1777,22 @@ export function richMarkdown(options: RichMarkdownOptions = {}): Extension {
         }
 
         update(update: ViewUpdate) {
-          // Selection changes matter as much as edits: they reveal and hide syntax. The
-          // effects cover the inputs that change without a transaction of their own — the
-          // attachment list arriving after the view was built, and an image failing to load.
+          // Selection changes matter as much as edits: they reveal and hide syntax. Focus
+          // matters for the same reason — a reveal only happens in a focused editor (see
+          // `reveals`), so gaining or losing focus changes what is shown even with the
+          // selection unmoved. The effects cover the inputs that change without a transaction
+          // of their own — the attachment list arriving after the view was built, and an
+          // image failing to load.
           const repaint = update.transactions.some((tr) =>
             tr.effects.some((e) => e.is(pdfNamesChanged) || e.is(imageFailed)),
           );
-          if (update.docChanged || update.viewportChanged || update.selectionSet || repaint) {
+          if (
+            update.docChanged ||
+            update.viewportChanged ||
+            update.selectionSet ||
+            update.focusChanged ||
+            repaint
+          ) {
             this.decorations = buildDecorations(update.view, options);
           }
         }
