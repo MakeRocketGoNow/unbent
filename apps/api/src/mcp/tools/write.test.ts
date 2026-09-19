@@ -223,3 +223,84 @@ describe('update_note with custom fields', () => {
     expect(result.content[0]!.text).toContain('no fields yet');
   });
 });
+
+/*
+ * The tools that take several notes: one batch call each, and an answer that names the
+ * ids the batch could not reach rather than dropping them.
+ */
+describe('the batch tools', () => {
+  const other = '22222222-2222-4222-8222-222222222222';
+
+  function batchRepo() {
+    const calls: Array<{ method: string; ids: string[]; patch?: unknown }> = [];
+    const known = new Set([noteId]);
+    const only = (ids: string[]) => ids.filter((id) => known.has(id));
+    const repo = {
+      get: async (id: string) => (known.has(id) ? { id, notebook: 'Coupons', tags: ['deals'] } : null),
+      updateMany: async (ids: string[], patch: unknown) => {
+        calls.push({ method: 'updateMany', ids, patch });
+        return { matched: only(ids), changed: only(ids) };
+      },
+      removeMany: async (ids: string[]) => {
+        calls.push({ method: 'removeMany', ids });
+        return only(ids);
+      },
+      restoreMany: async (ids: string[]) => {
+        calls.push({ method: 'restoreMany', ids });
+        return only(ids);
+      },
+    } as unknown as NotesRepo;
+    return { calls, repo };
+  }
+
+  const answer = (r: { content: Array<{ text: string }> }) => JSON.parse(r.content[0]!.text);
+
+  it('files a set in one batch and names the ids it could not find', async () => {
+    const { calls, repo } = batchRepo();
+    const move = collect(repo).get('move_notes')!;
+
+    const result = answer(await move({ noteIds: [noteId, other], notebook: 'coupons' }));
+
+    expect(calls).toEqual([{ method: 'updateMany', ids: [noteId, other], patch: { notebook: 'coupons' } }]);
+    // The name as stored, not as typed.
+    expect(result).toEqual({ notebook: 'Coupons', noteIds: [noteId], changed: 1, missing: [other] });
+  });
+
+  it('treats the unfiled sentinel as no notebook', async () => {
+    const { calls, repo } = batchRepo();
+    await collect(repo).get('move_notes')!({ noteIds: [noteId], notebook: '[unfiled]' });
+    expect(calls[0]?.patch).toEqual({ notebook: null });
+  });
+
+  it('adds and removes tags in one batch, and refuses a call that names neither', async () => {
+    const { calls, repo } = batchRepo();
+    const tag = collect(repo).get('update_note_tags')!;
+
+    const result = answer(await tag({ noteIds: [noteId, other], add: ['later'], remove: ['deals'] }));
+    expect(calls[0]).toEqual({
+      method: 'updateMany',
+      ids: [noteId, other],
+      patch: { addTags: ['later'], removeTags: ['deals'] },
+    });
+    expect(result).toEqual({ noteIds: [noteId], changed: 1, missing: [other] });
+
+    const refused = await tag({ noteIds: [noteId], add: [], remove: [] });
+    expect(refused.isError).toBe(true);
+    expect(calls).toHaveLength(1);
+  });
+
+  it('trashes and restores a set, reporting what it could not reach', async () => {
+    const { calls, repo } = batchRepo();
+    const tools = collect(repo);
+
+    expect(answer(await tools.get('delete_notes')!({ noteIds: [noteId, other] }))).toEqual({
+      noteIds: [noteId],
+      missing: [other],
+    });
+    expect(answer(await tools.get('restore_notes')!({ noteIds: [other] }))).toEqual({
+      noteIds: [],
+      missing: [other],
+    });
+    expect(calls.map((c) => c.method)).toEqual(['removeMany', 'restoreMany']);
+  });
+});

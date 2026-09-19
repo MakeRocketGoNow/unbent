@@ -184,17 +184,18 @@ export const notes = new Hono<AppEnv>()
 
   .patch('/notes', zValidator('json', updateNotesSchema), async (c) => {
     const { ids, ...patch } = c.req.valid('json');
-    return c.json(await c.get('notes').updateMany(ids, patch));
+    const { matched, changed } = await c.get('notes').updateMany(ids, patch);
+    return c.json({ matched: matched.length, changed: changed.length });
   })
 
   .post('/notes/trash', zValidator('json', noteBatchSchema), async (c) => {
     const trashed = await c.get('notes').removeMany(c.req.valid('json').ids);
-    return c.json({ trashed });
+    return c.json({ trashed: trashed.length });
   })
 
   .post('/notes/restore', zValidator('json', noteBatchSchema), async (c) => {
     const restored = await c.get('notes').restoreMany(c.req.valid('json').ids);
-    return c.json({ restored });
+    return c.json({ restored: restored.length });
   })
 
   /** Blobs after rows, for the reason `/notes/:id/permanent` gives. */

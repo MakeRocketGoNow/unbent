@@ -1105,16 +1105,19 @@ export class NotesRepo extends ScopedRepo {
      and one such id must not stop the other forty-nine. And every statement names its notes
      in runs of `ID_RUN`, because D1 caps the binds a statement carries.
 
-     The counts come from `RETURNING id`, not `meta.changes`. A note's row has an FTS
-     trigger on it, and D1 counts what the trigger writes to the index's shadow tables as
-     changes too — trashing two notes reported ten. The singular methods only ask whether
-     the count is zero, which that cannot get wrong; these report it.
+     Each answers with the ids it touched rather than a count, so a caller can say which
+     of the ids it named were not: the MCP tools report those back to an assistant, and
+     the routes reduce the list to the number the web client wants. The ids come from
+     `RETURNING id`, not `meta.changes`: a note's row has an FTS trigger on it, and D1
+     counts what the trigger writes to the index's shadow tables as changes too —
+     trashing two notes reported ten. The singular methods only ask whether the count is
+     zero, which that cannot get wrong; these report it.
   */
 
-  /** Trashes several notes. Returns how many were — ids already trashed count for nothing. */
-  async removeMany(ids: string[]): Promise<number> {
+  /** Trashes several notes. Returns the ids that were — ids already trashed are not among them. */
+  async removeMany(ids: string[]): Promise<string[]> {
     const now = Date.now();
-    let trashed = 0;
+    const trashed: string[] = [];
     for (const run of runs([...new Set(ids)])) {
       const { results } = await this.db
         .prepare(
@@ -1124,14 +1127,14 @@ export class NotesRepo extends ScopedRepo {
         )
         .bind(now, this.userId, ...run)
         .all<{ id: string }>();
-      trashed += results.length;
+      trashed.push(...results.map((r) => r.id));
     }
     return trashed;
   }
 
   /** Restores several trashed notes. `updated_at` stays, as `restore` leaves it. */
-  async restoreMany(ids: string[]): Promise<number> {
-    let restored = 0;
+  async restoreMany(ids: string[]): Promise<string[]> {
+    const restored: string[] = [];
     for (const run of runs([...new Set(ids)])) {
       const { results } = await this.db
         .prepare(
@@ -1141,7 +1144,7 @@ export class NotesRepo extends ScopedRepo {
         )
         .bind(this.userId, ...run)
         .all<{ id: string }>();
-      restored += results.length;
+      restored.push(...results.map((r) => r.id));
     }
     return restored;
   }
@@ -1205,7 +1208,7 @@ export class NotesRepo extends ScopedRepo {
    * imported note it is a real modification date carried over from Evernote — so "tag
    * these forty" must not re-date the thirty that already had the tag, and moving a
    * selection into the notebook half of it is already in must leave that half alone.
-   * `matched` is how many of the ids were this user's live notes; `changed` how many
+   * `matched` is which of the ids were this user's live notes; `changed` which of those
    * were actually written.
    *
    * The writes go in one `batch`, which D1 runs as a transaction, so a failure part way
@@ -1218,7 +1221,7 @@ export class NotesRepo extends ScopedRepo {
   async updateMany(
     ids: string[],
     patch: { notebook?: string | null; addTags?: string[]; removeTags?: string[] },
-  ): Promise<{ matched: number; changed: number }> {
+  ): Promise<{ matched: string[]; changed: string[] }> {
     const add = uniqueTags(patch.addTags ?? []);
     const remove = uniqueTags(patch.removeTags ?? []).filter((t) => !add.includes(t));
 
@@ -1239,7 +1242,8 @@ export class NotesRepo extends ScopedRepo {
         .all<{ id: string; notebook_id: string | null; tags: string | null }>();
       rows.push(...results);
     }
-    if (rows.length === 0) return { matched: 0, changed: 0 };
+    const matched = rows.map((r) => r.id);
+    if (rows.length === 0) return { matched, changed: [] };
 
     // The destination, resolved once — created if it does not exist yet, as `update`
     // would create it for one note. Only once something is going to be filed there.
@@ -1264,7 +1268,7 @@ export class NotesRepo extends ScopedRepo {
       for (const tag of add) if (!have.has(tag)) note(adding, tag, row.id);
       for (const tag of remove) if (have.has(tag)) note(removing, tag, row.id);
     }
-    if (changed.size === 0) return { matched: rows.length, changed: 0 };
+    if (changed.size === 0) return { matched, changed: [] };
 
     const statements: D1PreparedStatement[] = [];
 
@@ -1331,7 +1335,7 @@ export class NotesRepo extends ScopedRepo {
     }
 
     await this.db.batch(statements);
-    return { matched: rows.length, changed: changed.size };
+    return { matched, changed: [...changed] };
   }
 
   /**

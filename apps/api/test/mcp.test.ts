@@ -362,7 +362,7 @@ describe('mcp cross-tenant isolation', () => {
  * Worth checking through MCP specifically, and not just over the REST route, because these
  * tools are the writers most likely to re-send what is already there: `update_note_tags`
  * promises in its own description that tags already present are "left alone",
- * `move_notes` files up to fifty notes at a time into a notebook many already belong to,
+ * `move_notes` files up to five hundred notes at a time into a notebook many already belong to,
  * and an agent re-running a step it already ran is ordinary. Before the repo compared
  * values, every one of those re-dated the note.
  */
@@ -402,9 +402,8 @@ describe('a write through MCP that changes nothing', () => {
       name: 'update_note_tags',
       arguments: { noteIds: [before.id], add: ['deals'], remove: ['absent'] },
     });
-    const result = JSON.parse(toolText(after.body)).results[0];
-    expect(result.ok).toBe(true);
-    expect(result.tags).toEqual(['deals']);
+    const result = JSON.parse(toolText(after.body));
+    expect(result).toEqual({ noteIds: [before.id], changed: 0, missing: [] });
 
     const read = JSON.parse(
       toolText(
@@ -412,6 +411,7 @@ describe('a write through MCP that changes nothing', () => {
           .body,
       ),
     );
+    expect(read.tags).toEqual(['deals']);
     expect(read.updatedAt).toBe(before.updatedAt);
   });
 
@@ -422,7 +422,12 @@ describe('a write through MCP that changes nothing', () => {
       name: 'move_notes',
       arguments: { noteIds: [before.id], notebook: 'Podcast Bookmarks' },
     });
-    expect(JSON.parse(toolText(after.body)).results[0].ok).toBe(true);
+    expect(JSON.parse(toolText(after.body))).toEqual({
+      notebook: 'Podcast Bookmarks',
+      noteIds: [before.id],
+      changed: 0,
+      missing: [],
+    });
 
     const read = JSON.parse(
       toolText(
