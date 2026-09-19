@@ -15,7 +15,7 @@ import {
   focusActiveListItem,
   focusEditor,
 } from '../useListKeys.js';
-import { registerOpenNoteFieldEdit } from '../open-note-fields.js';
+import { registerOpenNoteFieldEdit, registerOpenNoteFilingEdit } from '../open-note-fields.js';
 import { useIsNewNote } from '../useNewNote.js';
 import { useMediaQuery, MOBILE_QUERY, TOUCH_QUERY } from '../useMediaQuery.js';
 import { useKeyboardInset } from '../useKeyboardInset.js';
@@ -296,6 +296,22 @@ export function Workspace({ noteId, readOnly = false, backTo = '/notes' }: Works
     if (!editing) return;
     return registerOpenNoteFieldEdit(noteId, (fieldId, value) =>
       setDraft((d) => ({ ...d, fields: { ...d.fields, [fieldId]: value } })),
+    );
+  }, [editing, noteId]);
+
+  /*
+     And its filing, for a bulk action on the list that includes this note: the notebook
+     it was moved to, the tags it gained or lost. Into the draft for the same reason —
+     the next autosave would otherwise write the old filing back over the batch.
+  */
+  useEffect(() => {
+    if (!editing) return;
+    return registerOpenNoteFilingEdit(noteId, (change) =>
+      setDraft((d) => ({
+        ...d,
+        ...(change.notebook !== undefined ? { notebook: change.notebook } : {}),
+        ...(change.tags ? { tags: change.tags(d.tags) } : {}),
+      })),
     );
   }, [editing, noteId]);
 

@@ -42,6 +42,7 @@ import {
   Trash2,
   Type,
   X,
+  ArchiveRestore,
 } from 'lucide-react';
 import { normalizeContentType, type FieldType } from '@unbent/shared';
 
@@ -162,6 +163,26 @@ export function CancelIcon() {
 
 export function TrashIcon() {
   return <HeaderIcon icon={Trash2} />;
+}
+
+/*
+   The selection bar's controls — what can be done to several notes at once. Each sits
+   alone in a button, so they are `HeaderIcon`-sized like the list head's. The notebook
+   and the tag are the same glyphs the drawer's rows and the filter sheet use for the
+   same two things, drawn larger; a second picture for "notebook" here would be a second
+   idea for one thing.
+*/
+export function NotebookActionIcon() {
+  return <HeaderIcon icon={Book} />;
+}
+
+export function TagActionIcon() {
+  return <HeaderIcon icon={Tag} />;
+}
+
+/** Out of the trash: a box with its lid off and an arrow up out of it. */
+export function RestoreIcon() {
+  return <HeaderIcon icon={ArchiveRestore} />;
 }
 
 /** A magnifier, for opening the search field. */

@@ -30,7 +30,14 @@ import { DatePicker } from './DatePicker.js';
 import { FieldsPicker } from './FieldsPicker.js';
 import { rangeLabel } from './format-when.js';
 import { NotebookDrawer } from './NotebookDrawer.js';
-import { PlusIcon, TagIcon, CalendarIcon, FieldsIcon, TrashIcon } from './icons.js';
+import {
+  PlusIcon,
+  TagIcon,
+  CalendarIcon,
+  FieldsIcon,
+  TrashIcon,
+  NotebookActionIcon,
+} from './icons.js';
 import { Sheet } from './Sheet.js';
 import { NoteListHead } from './NoteListHead.js';
 import { NotesSort } from './NotesSort.js';
@@ -50,6 +57,8 @@ import { useMediaQuery, MOBILE_QUERY } from '../useMediaQuery.js';
 import { useSelection } from '../useSelection.js';
 import { SelectionBar } from './SelectionBar.js';
 import { Confirm } from './Confirm.js';
+import { MoveSheet } from './MoveSheet.js';
+import { editOpenNoteFiling } from '../open-note-fields.js';
 import { useSession } from '../auth-client.js';
 import { useSignOut } from '../useSignOut.js';
 
@@ -379,13 +388,17 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
   };
 
   /*
-   * The bulk actions. Each writes, then refetches everything the change reaches — the
-   * lists, any search, the cached notes, the counts on the rail. Trashing drops the
-   * selection: the rows leave the list. It is confirmed inline, unlike the single note's
-   * Delete, which has the ⋯ menu as its deliberate second step; a bar's button is one
-   * click, and forty notes is a blast radius worth naming first.
+   * The bulk actions. Each writes, tells the open note's draft if it was among the rows
+   * (`editOpenNoteFiling` — the next autosave would otherwise put the old filing back),
+   * then refetches everything the change reaches: the lists, any search, the cached
+   * notes, the counts on the rail. Moving and trashing drop the selection — the rows
+   * leave the list, or the job is done. Trashing is confirmed inline, unlike the single
+   * note's Delete, which has the ⋯ menu as its deliberate second step; a bar's button is
+   * one click, and forty notes is a blast radius worth naming first.
    */
   const [pendingTrash, setPendingTrash] = useState(false);
+  /** Which of the bar's sheets is open: where to move the selection, or its tags. */
+  const [bulkSheet, setBulkSheet] = useState<'move' | 'tags' | null>(null);
   const [bulkBusy, setBulkBusy] = useState(false);
   const [bulkError, setBulkError] = useState<string | null>(null);
   async function runBulk(action: () => Promise<void>) {
@@ -416,6 +429,17 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
         void navigate({ to: '/notes', search: (p) => p });
       }
       void queryClient.invalidateQueries({ queryKey: ['trash'] });
+      await refetchAfterBulk();
+    });
+  const moveSelected = (target: string | null) =>
+    runBulk(async () => {
+      const ids = selection.ids;
+      await api.updateNotes(ids, { notebook: target });
+      setBulkSheet(null);
+      if (layout.open && ids.includes(layout.open)) {
+        editOpenNoteFiling(layout.open, { notebook: target });
+      }
+      selection.clear();
       await refetchAfterBulk();
     });
   /*
@@ -640,6 +664,15 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
             ]}
           />
         )}
+
+        <MoveSheet
+          open={bulkSheet === 'move'}
+          onClose={() => setBulkSheet(null)}
+          count={selection.ids.length}
+          notebooks={notebooks.data}
+          busy={bulkBusy}
+          onPick={(target) => void moveSelected(target)}
+        />
 
         {isMobile && (
           <NotebookDrawer
@@ -917,6 +950,16 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
             onClear={selection.clear}
             onSelectAll={selection.selectAll}
           >
+            <button
+              type="button"
+              className="icon-btn"
+              aria-label="Move to notebook"
+              title="Move to notebook"
+              disabled={bulkBusy}
+              onClick={() => setBulkSheet('move')}
+            >
+              <NotebookActionIcon />
+            </button>
             <button
               type="button"
               className="icon-btn danger"

@@ -1999,6 +1999,34 @@ a.overflow-item { text-decoration: none; }
   outline-offset: -2px;
 }
 
+/*
+   The notebook picker a selection is moved with — `MoveSheet` — is this picker's shape:
+   a find field over a capped, scrolling list. Its rows are the drawer's, so only the
+   frame is shared here; see the component for why it is a sheet at all.
+*/
+.move-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  min-width: 0;
+  max-height: 70dvh;
+}
+
+.move-picker .search-field { flex: 0 0 auto; }
+
+.move-picker-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
 /* A tag name is unbounded; it yields so the count beside it never has to move. */
 .tag-picker-name {
   min-width: 0;
