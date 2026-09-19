@@ -34,6 +34,7 @@ import {
   Search,
   Settings,
   SlidersHorizontal,
+  Sparkles,
   SquareCheck,
   Star,
   StickyNote,
@@ -183,6 +184,15 @@ export function TagActionIcon() {
 /** Out of the trash: a box with its lid off and an arrow up out of it. */
 export function RestoreIcon() {
   return <HeaderIcon icon={ArchiveRestore} />;
+}
+
+/**
+ * Auto-fill, in the note's head: the sparkle every product now uses for "let the model do
+ * it", which is the one meaning nobody has to be taught. Sized as a row icon because it
+ * sits beside its label, not alone in a square.
+ */
+export function AutofillIcon() {
+  return <RowIcon icon={Sparkles} />;
 }
 
 /** A magnifier, for opening the search field. */

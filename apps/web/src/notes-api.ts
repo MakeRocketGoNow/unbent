@@ -1,6 +1,7 @@
 import type {
   AppConfig,
   AttachmentInfo,
+  AutofillSuggestion,
   FieldDef,
   FieldScale,
   FieldType,
@@ -162,6 +163,17 @@ export async function updateNote(
       headers: jsonHeaders,
       body: JSON.stringify(patch),
     }),
+  );
+}
+
+/**
+ * What the model would file a note as. Nothing is written; the editor applies what it
+ * wants of the answer — see `planAutofill`. The 422 for a note with nothing to read yet
+ * and the 503 for an instance with no key each carry a sentence meant to be shown as is.
+ */
+export async function autofillNote(id: string): Promise<AutofillSuggestion> {
+  return json<AutofillSuggestion>(
+    await fetch(`/api/notes/${encodeURIComponent(id)}/autofill`, { method: 'POST' }),
   );
 }
 

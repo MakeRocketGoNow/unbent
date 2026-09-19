@@ -1725,6 +1725,23 @@ a.overflow-item { text-decoration: none; }
   white-space: nowrap;
 }
 
+/*
+   The head's status — "Saved", or what Auto-fill just did — gives way before the title
+   does. It is a sentence for a few seconds; the title is how you know which note this is,
+   and a status that read "Filled in the title, the notebook, a tag and 5 fields" left
+   "ACME HARD" of it. Cut with an ellipsis rather than wrapped, since the row has one line,
+   and carried whole in the span's tooltip.
+*/
+.workspace-status {
+  max-width: 24rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Auto-fill, between the save state and the ⋯: a sparkle and a word, drawn as one more
+   thing in the head rather than a second menu. The gap is the icon's, not a button's. */
+.autofill-btn { gap: 0.3rem; }
+
 .small { font-size: 0.78rem; }
 .danger { color: var(--bad); }
 
@@ -6594,6 +6611,18 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
     /* Save state is the only text here and it is status, not a control. */
     font-size: 0.78rem;
   }
+
+  /* Less room still: the status shares the title's line here. */
+  .workspace-status { max-width: 40vw; }
+
+  /* The sparkle alone, in a square the size of the ⋯ beside it: the row shares the
+     title's line, and a word here is a word taken from the title. */
+  .workspace-actions .autofill-btn {
+    min-width: 2.75rem;
+    min-height: 2.75rem;
+    padding: 0;
+  }
+  .workspace-actions .autofill-label { display: none; }
 
   /*
      Confirmation buttons are tap targets like any other, and these end an irreversible
