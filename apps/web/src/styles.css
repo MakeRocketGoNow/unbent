@@ -6772,3 +6772,138 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
     animation: none !important;
   }
 }
+
+/* ---------------------------------------------------------------------------------
+   Selecting several notes — `useSelection`, `NoteListItem`, `SelectionBar`.
+
+   Evernote's shape: Cmd/Ctrl-click and Shift-click pick rows, a held finger picks one on
+   a phone, and a bar floats up over the foot of the screen with the count and the actions.
+   --------------------------------------------------------------------------------- */
+
+/* The checkbox sits over the row's top corner; the entry is what it is positioned in. */
+.note-entry { position: relative; }
+
+/*
+   A selected row: a ring inside its edge, over whatever fill it has.
+
+   Inside rather than the focus ring's outside, so the two are different marks — a focused
+   row is where the keyboard is, a selected one is what an action will reach — and so the
+   ring is never clipped by the list's scroll box. The wash is lighter than the open note's
+   14%, since the ring is the statement and the wash only keeps a selected row from looking
+   like a hovered one when the pointer leaves it. Evernote outlines its selected cards the
+   same way.
+*/
+.note-item.selected {
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+  box-shadow: inset 0 0 0 1.5px var(--accent);
+}
+
+.note-item.selected.active {
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+}
+
+/*
+   The checkbox, on the title line at the row's end.
+
+   Outside the link (a control inside an anchor is invalid, and every click on it would
+   follow the link), so it is laid over the row rather than in its flow. The title is
+   asked to stop short of it — below — for as long as the list is in its selection mode,
+   which is the one moment every row changes at once and so the one moment a reflow is
+   not a jump. Sized to the row's text, not to a thumb: on a touch screen the whole row
+   toggles, and the box only reports.
+*/
+.note-check {
+  position: absolute;
+  top: calc(0.6rem + 0.16rem);
+  right: 0.7rem;
+  width: 1.15rem;
+  height: 1.15rem;
+  margin: 0;
+  cursor: pointer;
+}
+
+.note-list.selecting .note-title { padding-right: 1.8rem; }
+
+/* No pointer to aim with: the row is the target, and the box must not take the tap. */
+@media (hover: none) {
+  .note-check { pointer-events: none; }
+
+  /*
+     A held finger selects, so the browser's own answers to a held link — the callout on
+     iOS, a text selection on either — are switched off. The rows are links, not prose;
+     nobody selects their text.
+  */
+  .note-item {
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    user-select: none;
+  }
+}
+
+/*
+   The bar: a pill over the foot of the screen, centred, the way Evernote's rises.
+
+   Fixed rather than in the list, so nothing under it moves when it comes or goes; and
+   over the window rather than the column, so a narrow sidebar never squeezes its
+   controls off the screen. The colours are the dropdown's — the page's own background,
+   a border and a shadow — rather than the accent's, so the delete control can keep its
+   red and the icons their ink. On a phone it takes the New button's place; that button
+   hides while anything is selected. Under the sheet's backdrop, which the top layer puts
+   above everything regardless; this only has to beat the list.
+*/
+.selection-bar {
+  position: fixed;
+  left: 50%;
+  bottom: calc(1rem + env(safe-area-inset-bottom));
+  translate: -50% 0;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  gap: 0.1rem;
+  max-width: calc(100vw - 2rem);
+  padding: 0.25rem 0.35rem 0.25rem 0.25rem;
+  color: var(--fg);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  box-shadow: 0 6px 20px color-mix(in srgb, var(--fg) 18%, transparent);
+}
+
+.selection-count {
+  padding: 0 0.5rem 0 0.15rem;
+  font-size: 0.9rem;
+  font-weight: 500;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+/* A pill has no second line; the words in it stay on the first. */
+.selection-bar .btn { white-space: nowrap; }
+
+/* The actions, after the count and its Select all, with a breath between the two groups. */
+.selection-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.1rem;
+  margin-left: 0.35rem;
+}
+
+/* The destructive one wears its colour, as a quiet danger button would. */
+.selection-actions .icon-btn.danger { color: var(--bad); }
+.selection-actions .icon-btn.danger:hover {
+  color: var(--bad);
+  background: color-mix(in srgb, var(--bad) 12%, transparent);
+}
+
+/*
+   A pointer's bar takes the head's smaller boxes; a thumb's keeps the 44px every other
+   control on a phone gets. Same rule and reasons as `.list-head-actions`.
+*/
+@media (width > 860px) and (hover: hover) and (pointer: fine) {
+  .selection-bar .icon-btn {
+    min-width: 2rem;
+    height: 2rem;
+    font-size: 0.9rem;
+  }
+}
+
