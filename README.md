@@ -853,6 +853,26 @@ columns. The range filters the date the sort's rows show — updated or created,
 under the title sort, which has no date of its own — so the filter and the row always mean
 the same date; search, having no sort, filters on `created_at`.
 
+### Acting on several notes
+
+The list has a selection, in the shape people arrive with from Evernote. Cmd/Ctrl-click
+toggles a note into it and Shift-click selects a run from the last one picked (or from the
+open note); on a touch screen a finger resting on a note for half a second selects it, and
+while anything is selected a tap toggles notes rather than opening them. Space picks the
+focused note, Cmd/Ctrl+A picks every loaded note, Escape clears. The table view has a
+column of checkboxes with a select-all in its header as well. A bar floats up over the foot
+of the screen with the count and the actions: move to a notebook (an existing one, or a
+name that makes a new one), add or take away tags, delete. In the trash the same selection
+restores or permanently deletes. Opening a note or changing the filters drops the
+selection, so an action can never reach notes that are out of view — and Select all reaches
+what is loaded, not what the filter would match.
+
+The API is `PATCH /api/notes` with `{ ids, notebook?, addTags?, removeTags? }`, and
+`POST /api/notes/trash`, `/api/notes/restore` and `/api/notes/purge` with `{ ids }`. Each
+answers with a count. A note already in the notebook, or already carrying the tag, is left
+alone and keeps its date; ids that are not the caller's, or on the wrong side of the trash,
+are counted out rather than failing the request. Up to 500 ids per call.
+
 ## Searching inside PDFs
 
 Most notes in a real Evernote export are a scanned PDF with an empty body — in one notebook,
