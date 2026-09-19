@@ -364,6 +364,24 @@ h1 {
 }
 
 /*
+   A <button> that acts as a link, styled as one rather than as a control.
+
+   Most `.link`s are anchors with a real URL, so they carry no chrome. The few that only
+   act on the page in place — the picker's All/None — are buttons, and a button keeps the
+   platform's border, background and padding unless they are turned off here. Without this
+   they render as grey boxes beside the green anchor-links, which is the one look that says
+   nobody checked. The inherited font and the accent colour come from `.link` above.
+*/
+button.link {
+  padding: 0;
+  border: none;
+  background: none;
+  font: inherit;
+  cursor: pointer;
+  appearance: none;
+}
+
+/*
  * Controls that became links.
  *
  * Note entries, the trash toggle, the topbar actions and the wordmark are anchors now
@@ -3443,7 +3461,7 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
   margin: 0;
 }
 
-.notion-picker-head .link { padding: 0; }
+.notion-picker-head .link { margin-left: 0.15rem; }
 
 .notion-units {
   list-style: none;
