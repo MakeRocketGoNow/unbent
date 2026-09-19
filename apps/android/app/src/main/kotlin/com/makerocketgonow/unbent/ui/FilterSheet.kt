@@ -509,7 +509,10 @@ private typealias WriteFilter = (fieldId: String, ops: Set<FieldFilter.Op>, next
 
 private val CHOICE_OPS = setOf(FieldFilter.Op.EQ, FieldFilter.Op.SET, FieldFilter.Op.EMPTY, FieldFilter.Op.GTE, FieldFilter.Op.LTE)
 
-/** The ways a select, checkbox or text-like field can be narrowed, as one row of chips. */
+/**
+ * The ways a select, multi-select, checkbox or text-like field can be narrowed, as one row
+ * of chips. A multi-select's chips are its options too: `eq` on one means "holds it".
+ */
 @Composable
 @OptIn(ExperimentalLayoutApi::class)
 private fun ChoiceChips(def: FieldDef, mine: List<FieldFilter>, write: WriteFilter) {
@@ -517,7 +520,7 @@ private fun ChoiceChips(def: FieldDef, mine: List<FieldFilter>, write: WriteFilt
     val choices: List<Pair<String, FieldFilter?>> = buildList {
         add(stringResource(R.string.field_any) to null)
         when (def.type) {
-            "select" -> for (o in def.options) add(o to FieldFilter(def.id, FieldFilter.Op.EQ, o))
+            "select", "multiselect" -> for (o in def.options) add(o to FieldFilter(def.id, FieldFilter.Op.EQ, o))
             "checkbox" -> {
                 add(stringResource(R.string.field_checked) to FieldFilter(def.id, FieldFilter.Op.EQ, "true"))
                 add(stringResource(R.string.field_unchecked) to FieldFilter(def.id, FieldFilter.Op.EQ, "false"))

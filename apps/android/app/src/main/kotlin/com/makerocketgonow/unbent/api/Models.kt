@@ -137,7 +137,7 @@ data class FieldDef(
     val name: String,
     /** One of the shared package's `FIELD_TYPES`; unknown ones are offered set/empty only. */
     val type: String,
-    /** Empty for every type but `select`. */
+    /** Empty for every type but `select` and `multiselect`. */
     val options: List<String> = emptyList(),
     val position: Int = 0,
 )

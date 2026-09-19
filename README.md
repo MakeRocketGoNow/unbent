@@ -1133,7 +1133,8 @@ notes back.
 
 `notebooks/` holds what is about a notebook rather than a note: one `<slug>.yaml` per
 notebook naming its fields in order, each with its type and, where it has them, its select
-options or rating scale. A value in frontmatter says nothing about the field that holds it,
+or multi-select options or its rating scale. A multi-select's value is a YAML list under the
+field's name, the way `tags` is. A value in frontmatter says nothing about the field that holds it,
 and without this file a restore rebuilt every field from the first value it met — URLs and
 selects as text, ratings as plain numbers, and a field with no values not at all. An
 unfiltered export lists every notebook, empty ones included; a filtered export lists the
@@ -1164,7 +1165,9 @@ The `notebooks/` files are applied first, through `POST /api/import/notebook`, s
 land against the definitions they were written under. The rule there is add, never alter: a
 field the notebook lacks is created as the file describes it, a field it already has keeps
 its type and scale (changing either clears values, which an import should not decide), and
-a select's options are merged. Anything left unapplied is named in the import's failure log.
+a select's or multi-select's options are merged. A note's value naming an option the field
+lacks adds that option rather than being dropped, so a vault with no `notebooks/` file still
+lands with its choices intact. Anything left unapplied is named in the import's failure log.
 An archive without `notebooks/` — an older export, a hand-made vault — imports as before,
 with each field's type inferred from its first value. A single note's download carries no
 definitions, since it is not a notebook.
