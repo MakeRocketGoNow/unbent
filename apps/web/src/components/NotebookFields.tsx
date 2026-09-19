@@ -6,6 +6,7 @@ import {
   FIELD_TYPE_LABELS,
   MAX_RATING_MAX,
   MIN_RATING_MAX,
+  fieldHasOptions,
   fieldNameSchema,
   isRatingField,
   type FieldDef,
@@ -41,9 +42,9 @@ interface PendingType {
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
 
 /**
- * Field management for one notebook: rename in place, change the type, edit a select's
- * options, reorder, delete. Modelled on the notebook list it is reached from, so the two
- * pages feel like one section.
+ * Field management for one notebook: rename in place, change the type, edit a select's or
+ * multi-select's options, reorder, delete. Modelled on the notebook list it is reached
+ * from, so the two pages feel like one section.
  *
  * Three changes here can lose data and so go through `Confirm` naming what they will lose.
  * Deleting a field deletes its values. Changing a type keeps every value the new type can
@@ -108,7 +109,7 @@ export function NotebookFields({ notebookId, onChanged }: NotebookFieldsProps) {
       await api.createNotebookField(notebookId, {
         name: parsed.data,
         type: newType,
-        options: newType === 'select' ? newOptions : [],
+        options: fieldHasOptions(newType) ? newOptions : [],
         ...(newIsRating ? { scale: newScale } : {}),
       });
       setNewName('');
@@ -354,7 +355,7 @@ export function NotebookFields({ notebookId, onChanged }: NotebookFieldsProps) {
               </Button>
             </span>
 
-            {field.type === 'select' && (
+            {fieldHasOptions(field.type) && (
               <div className="field-admin-options">
                 <TagInput
                   label="option"
@@ -476,7 +477,7 @@ export function NotebookFields({ notebookId, onChanged }: NotebookFieldsProps) {
         <Button variant="primary" disabled={busy || !newName.trim()} onClick={create}>
           Add field
         </Button>
-        {newType === 'select' && !newIsRating && (
+        {fieldHasOptions(newType) && !newIsRating && (
           <TagInput
             label="option"
             tags={newOptions}

@@ -24,15 +24,16 @@ function formatRating(value: number, scale: FieldScale): string {
  * A field value as a person reads it, in a list row or a collapsed summary.
  *
  * Only the kinds whose stored form is not already readable are touched: a checkbox says
- * Yes or No rather than true or false, a number gets the viewer's separators, and a
- * rating is drawn as its stars. Dates stay `YYYY-MM-DD` — it sorts by eye, and it is what
- * the person typed.
+ * Yes or No rather than true or false, a number gets the viewer's separators, a rating is
+ * drawn as its stars, and a multi-select's options are joined with commas. Dates stay
+ * `YYYY-MM-DD` — it sorts by eye, and it is what the person typed.
  */
 export function formatFieldValue(
   type: FieldType,
   value: FieldValue,
   scale?: FieldScale | null,
 ): string {
+  if (Array.isArray(value)) return value.join(', ');
   if (type === 'checkbox') return value === true || value === 'true' ? 'Yes' : 'No';
   if (type === 'number') {
     const n = typeof value === 'number' ? value : Number(value);

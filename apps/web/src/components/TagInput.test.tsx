@@ -253,3 +253,42 @@ describe('TagInput suggestions', () => {
     expect(onChange).not.toHaveBeenCalledWith(['build']);
   });
 });
+
+/*
+ * Restricted to its suggestions, the editor holds a multi-select field's value: the
+ * suggestions are the options, and a word that is not one of them is not a value.
+ */
+describe('TagInput restricted to its suggestions', () => {
+  afterEach(cleanup);
+  const options = ['PC', 'PS5', 'Switch'];
+
+  it('offers every remaining option on a click, before anything is typed', () => {
+    render(<TagInput tags={['PS5']} suggestions={options} onChange={() => {}} label="option" restrict />);
+    const field = screen.getByLabelText('Add a option');
+    fireEvent.click(field);
+    expect(screen.getAllByRole('option').map((o) => o.textContent)).toEqual(['PC', 'Switch']);
+  });
+
+  it('files a typed option whatever its case, and drops a word that is no option', () => {
+    const onChange = vi.fn();
+    render(<TagInput tags={[]} suggestions={options} onChange={onChange} label="option" restrict />);
+    const field = screen.getByLabelText('Add a option') as HTMLInputElement;
+    fireEvent.change(field, { target: { value: 'switch' } });
+    fireEvent.keyDown(field, { key: 'Enter' });
+    expect(onChange).toHaveBeenCalledWith(['Switch']);
+
+    fireEvent.change(field, { target: { value: 'Xbox' } });
+    fireEvent.keyDown(field, { key: 'Enter' });
+    expect(onChange).toHaveBeenCalledTimes(1);
+    expect(field.value).toBe('');
+  });
+
+  it('still lets free text through when not restricted', () => {
+    const onChange = vi.fn();
+    render(<TagInput tags={[]} suggestions={options} onChange={onChange} />);
+    const field = screen.getByLabelText('Add a tag');
+    fireEvent.change(field, { target: { value: 'Xbox' } });
+    fireEvent.keyDown(field, { key: 'Enter' });
+    expect(onChange).toHaveBeenCalledWith(['Xbox']);
+  });
+});

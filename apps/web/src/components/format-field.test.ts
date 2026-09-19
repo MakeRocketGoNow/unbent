@@ -14,6 +14,13 @@ describe('formatFieldValue', () => {
     expect(formatFieldValue('date', '2024-03-01')).toBe('2024-03-01');
     expect(formatFieldValue('text', 'Acme')).toBe('Acme');
   });
+
+  it('joins a multi-select with commas', () => {
+    expect(formatFieldValue('multiselect', ['PC', 'PS5'])).toBe('PC, PS5');
+    expect(formatFieldValue('multiselect', [])).toBe('');
+    // A value from another notebook, still a list, reads the same whatever type it is drawn as.
+    expect(formatFieldValue('text', ['a', 'b'])).toBe('a, b');
+  });
 });
 
 describe('a rating', () => {

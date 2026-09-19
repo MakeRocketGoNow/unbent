@@ -2267,6 +2267,22 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
   cursor: pointer;
 }
 
+/*
+   A multi-select's value: the tag row's editor, in the value column. Its chips start on
+   the column's edge like every chip on the list; see the note on `.note-fields .tag-input`.
+   Read-only it is the chips alone, or the word "Empty" in the muted ink the other empty
+   controls use.
+*/
+.note-field-multi {
+  min-width: 0;
+  align-self: center;
+}
+
+.note-field-empty {
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
 .note-field-value {
   min-width: 0;
   font-size: 0.9rem;

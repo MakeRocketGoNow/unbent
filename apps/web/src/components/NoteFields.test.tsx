@@ -30,6 +30,9 @@ const defs = [
   def('f-sel', 'Category', 'select', ['Food', 'Travel']),
 ];
 
+/** Kept out of `defs`: the empties threshold and the row count below are pinned to eight. */
+const multi = def('f-multi', 'Platforms', 'multiselect', ['PC', 'PS5', 'Switch']);
+
 const leftover: NoteFieldValue = {
   fieldId: 'old',
   name: 'Store',
@@ -125,6 +128,53 @@ describe('NoteFields', () => {
     mount({ values: { 'f-sel': 'Vet' } });
     expect(selectValue('Category')).toBe('Vet');
     expect(screen.getByText('Vet (no longer an option)')).toBeTruthy();
+  });
+
+  it('draws a multi-select as chips with an entry that only takes an option, and reports the list', () => {
+    const { onChange } = mount({ definitions: [multi], values: { 'f-multi': ['PC', 'PS5'] } });
+    expect(screen.getByLabelText('Remove option PC')).toBeTruthy();
+    expect(screen.getByLabelText('Remove option PS5')).toBeTruthy();
+
+    const field = screen.getByLabelText('Add a option');
+    fireEvent.change(field, { target: { value: 'switch' } });
+    fireEvent.keyDown(field, { key: 'Enter' });
+    expect(onChange).toHaveBeenLastCalledWith('f-multi', ['PC', 'PS5', 'Switch']);
+
+    // A word that is no option is not a value the field can hold.
+    fireEvent.change(field, { target: { value: 'Xbox' } });
+    fireEvent.keyDown(field, { key: 'Enter' });
+    expect(onChange).not.toHaveBeenCalledWith('f-multi', expect.arrayContaining(['Xbox']));
+
+    fireEvent.click(screen.getByLabelText('Remove option PS5'));
+    expect(onChange).toHaveBeenLastCalledWith('f-multi', ['PC']);
+  });
+
+  it('reports an emptied multi-select as null, and keeps a retired option the note holds removable', () => {
+    const { onChange } = mount({ definitions: [multi], values: { 'f-multi': ['Xbox'] } });
+    expect(screen.getByLabelText('Remove option Xbox')).toBeTruthy();
+    fireEvent.click(screen.getByLabelText('Remove option Xbox'));
+    expect(onChange).toHaveBeenLastCalledWith('f-multi', null);
+  });
+
+  it('draws a read-only multi-select as its chips alone', () => {
+    mount({ definitions: [multi], values: { 'f-multi': ['PC'] }, readOnly: true });
+    expect(screen.getByText('PC')).toBeTruthy();
+    expect(screen.queryByLabelText('Add a option')).toBeNull();
+    cleanup();
+    mount({ definitions: [multi], readOnly: true });
+    expect(screen.getByText('Empty')).toBeTruthy();
+  });
+
+  it('asks for options when the field being added is a multi-select', async () => {
+    const { onAddField } = mount();
+    fireEvent.click(screen.getByText('Add field'));
+    fireEvent.change(screen.getByLabelText('Field name'), { target: { value: 'Platforms' } });
+    fireEvent.change(screen.getByLabelText('Field type'), { target: { value: 'multiselect' } });
+    fireEvent.change(screen.getByLabelText('Options'), { target: { value: 'PC, PS5' } });
+    fireEvent.click(screen.getByText('Add'));
+    await waitFor(() =>
+      expect(onAddField).toHaveBeenCalledWith({ name: 'Platforms', type: 'multiselect', options: ['PC', 'PS5'] }),
+    );
   });
 
   it('shows a value from another notebook as text, says where from, and can clear it', () => {
