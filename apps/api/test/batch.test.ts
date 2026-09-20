@@ -189,4 +189,31 @@ describe('the batch verbs', () => {
     const back = await get(alice, b.id);
     expect(back.updatedAt).toBe(b.updatedAt);
   });
+
+  it('keeps the files of a note restored before the batch purge', async () => {
+    const note = await create(alice, { title: 'with-file' });
+    const put = await fetch(`${BASE}/api/notes/${note.id}/files`, {
+      method: 'PUT',
+      headers: {
+        Cookie: alice.cookie,
+        Origin: ORIGIN,
+        'X-Filename': encodeURIComponent('scan.pdf'),
+        'Content-Type': 'application/pdf',
+      },
+      body: 'fake-pdf',
+    });
+    expect(put.status).toBe(201);
+
+    expect(await status(alice, 'DELETE', `/notes/${note.id}`)).toBe(204);
+    expect(await status(alice, 'POST', `/notes/${note.id}/restore`)).toBe(200);
+
+    // Named in the purge the way a stale trash selection would name it.
+    expect(await call(alice, 'POST', '/notes/purge', { ids: [note.id] })).toEqual({ deleted: 0 });
+
+    const file = await fetch(`${BASE}/api/notes/${note.id}/files/scan.pdf`, {
+      headers: { Cookie: alice.cookie, Origin: ORIGIN },
+    });
+    expect(file.status).toBe(200);
+    expect(await file.text()).toBe('fake-pdf');
+  });
 });
