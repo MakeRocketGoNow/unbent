@@ -88,7 +88,14 @@ export interface AutofillInput {
    * wrote the text, which then opens with a name for the file; see `nameFromReading`.
    */
   attachments: Array<{ filename: string; text: string | null; readBy?: 'vision' | null }>;
-  notebooks: Array<{ id: string; name: string; fields: FieldDef[]; examples: string[] }>;
+  notebooks: Array<{
+    id: string;
+    name: string;
+    /** What belongs here, in the owner's words; steers the choice where the name misleads. */
+    purpose: string | null;
+    fields: FieldDef[];
+    examples: string[];
+  }>;
   /** Most used first; only the first `MAX_TAGS_ASKED` are asked about. */
   tags: Array<{ name: string; examples: string[] }>;
 }
@@ -421,14 +428,21 @@ function firstRound(input: AutofillInput, corpus: Corpus) {
           {
             question: 'Which notebook does this note belong in?',
             guidance:
-              'Each notebook holds one kind of document. Its fields say what is recorded about ' +
-              'each, and its examples are titles of notes already filed there.',
+              'Each notebook holds one kind of document. A notebook\'s purpose, when it has ' +
+              'one, is its owner\'s own statement of what belongs there and what does not, and ' +
+              'it decides the question — a note goes in a notebook only when it fits that ' +
+              'purpose, even if the name alone would seem to invite it. Its fields say what is ' +
+              'recorded about each note, and its examples are titles of notes already filed ' +
+              'there. Choose "No notebook fits this note" when none of the purposes plainly ' +
+              'covers this note; a note left unfiled is easily filed later, but a note filed ' +
+              'into the wrong notebook is not easily found again.',
           },
           input.notebooks.map((nb) => ({
             key: nb.name,
             value: nb.id,
             description: {
               what: `The notebook "${nb.name}"`,
+              ...(nb.purpose ? { purpose: nb.purpose } : {}),
               ...(nb.fields.length > 0 ? { fields: nb.fields.map((f) => f.name) } : {}),
               ...(nb.examples.length > 0 ? { examples: nb.examples } : {}),
             },

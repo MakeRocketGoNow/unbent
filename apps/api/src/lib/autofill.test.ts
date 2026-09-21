@@ -67,12 +67,14 @@ const receipt = [
 const coupons: AutofillInput['notebooks'][number] = {
   id: 'nb-coupons',
   name: 'Coupons',
+  purpose: null,
   fields: [],
   examples: ['Target 20% off', 'Free coffee card'],
 };
 const receipts: AutofillInput['notebooks'][number] = {
   id: 'nb-receipts',
   name: 'Receipts',
+  purpose: 'Receipts and invoices for things already bought.',
   fields: [
     field({ id: 'f-vendor', name: 'Vendor', type: 'text', notebookId: 'nb-receipts' }),
     field({ id: 'f-total', name: 'Total', type: 'number', currency: 'USD', notebookId: 'nb-receipts' }),

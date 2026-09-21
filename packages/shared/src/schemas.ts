@@ -36,6 +36,7 @@ export const MAX_ENML_BYTES = 8 * 1024 * 1024;
 
 export const MAX_TITLE_LENGTH = 500;
 export const MAX_TAG_LENGTH = 100;
+export const MAX_NOTEBOOK_PURPOSE_LENGTH = 500;
 
 /**
  * Attachment filenames are stored as the tail of an R2 object key:
@@ -63,6 +64,18 @@ export const filenameSchema = z
 export const tagNameSchema = z.string().trim().min(1).max(MAX_TAG_LENGTH);
 
 export const notebookNameSchema = z.string().trim().min(1).max(MAX_TAG_LENGTH);
+
+/**
+ * A notebook's purpose: a sentence saying what belongs in it, shown to the person and read
+ * by the auto-fill classifier. Unlike a name it may be blank, which clears it, so an empty
+ * or whitespace-only string normalises to `null` rather than being rejected.
+ */
+export const notebookPurposeSchema = z
+  .string()
+  .trim()
+  .max(MAX_NOTEBOOK_PURPOSE_LENGTH)
+  .transform((v) => (v.length > 0 ? v : null))
+  .nullable();
 
 /**
  * The `tag` filter, which may be given more than once.
@@ -570,6 +583,8 @@ export interface NotebookSummary {
   count: number;
   /** Custom fields defined here. */
   fields: number;
+  /** What belongs here, shown to the person and read by the classifier; `null` when unset. */
+  purpose: string | null;
 }
 
 export interface AttachmentInfo {

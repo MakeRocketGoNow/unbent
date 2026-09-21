@@ -1,0 +1,17 @@
+-- A notebook can carry a sentence saying what it is for.
+--
+-- The auto-fill classifier files a note by matching it against each notebook, and until now
+-- all it had to match against was the name. A name is a lossy label: "Shopping" reads to the
+-- model as "things bought" when its owner keeps it as a wish list, so a receipt lands there
+-- instead of staying unfiled. The purpose is the sentence the owner would say out loud --
+-- "things I want to buy someday; not receipts or purchases" -- and it is the negative half
+-- ("not ...") that does the work the name cannot.
+--
+-- The same string is shown to the person in the notebook editor, so it stays a human
+-- description that happens to steer the model, not a hidden AI-only field that rots.
+--
+-- NULL for every notebook that exists today, which is exactly the name-only behaviour the
+-- classifier has now: the field degrades gracefully to nothing.
+--
+-- One ADD COLUMN, for the reason 0018 and 0019 gave: no table rebuild, so no cascade to fear.
+ALTER TABLE notebooks ADD COLUMN purpose TEXT;

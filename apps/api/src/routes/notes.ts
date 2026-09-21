@@ -193,6 +193,7 @@ export const notes = new Hono<AppEnv>()
         notebooks: notebooks.map((nb) => ({
           id: nb.id,
           name: nb.name,
+          purpose: nb.purpose,
           fields: fields.filter((f) => f.notebookId === nb.id),
           examples: examples.notebooks.get(nb.id) ?? [],
         })),

@@ -6,6 +6,7 @@ import {
   fieldScaleSchema,
   fieldTypeSchema,
   notebookNameSchema,
+  notebookPurposeSchema,
   reorderFieldsSchema,
   updateFieldSchema,
 } from '@unbent/shared';
@@ -25,6 +26,17 @@ import type { AppEnv } from '../types.js';
  * routes: confirming an id exists is itself a leak.
  */
 const nameBody = z.object({ name: notebookNameSchema });
+
+/**
+ * A PATCH may change the name, the purpose, or both, so each is optional — but an empty body
+ * changes nothing, and that is a stale client, not a request. `purpose` accepts `null` to
+ * clear it; an absent key leaves that column untouched (see `updateNotebook`).
+ */
+const updateBody = z
+  .object({ name: notebookNameSchema.optional(), purpose: notebookPurposeSchema.optional() })
+  .refine((b) => b.name !== undefined || b.purpose !== undefined, {
+    message: 'Nothing to update',
+  });
 
 export const notebooks = new Hono<AppEnv>()
   .use('/notebooks', requireAuth, withRepos)
@@ -50,16 +62,15 @@ export const notebooks = new Hono<AppEnv>()
     return c.json(created, 201);
   })
 
-  .patch('/notebooks/:id', zValidator('json', nameBody), async (c) => {
-    const result = await c
-      .get('notes')
-      .renameNotebook(c.req.param('id'), c.req.valid('json').name);
+  .patch('/notebooks/:id', zValidator('json', updateBody), async (c) => {
+    const patch = c.req.valid('json');
+    const result = await c.get('notes').updateNotebook(c.req.param('id'), patch);
 
     if (result === 'conflict') {
       return c.json({ error: 'A notebook with that name already exists' }, 409);
     }
     if (result === 'missing') return c.json({ error: 'Not found' }, 404);
-    return c.json({ id: c.req.param('id'), name: c.req.valid('json').name });
+    return c.body(null, 204);
   })
 
   /**
