@@ -7,6 +7,7 @@ import {
   LlmError,
   canUseLlm,
   formatReading,
+  isLlmAuthError,
   readableByLlm,
   llmFrom,
 } from './llm.js';
@@ -36,6 +37,18 @@ describe('vision', () => {
     expect(canUseLlm({ ANTHROPIC_API_KEY: ' ' })).toBe(false);
     expect(canUseLlm(env)).toBe(true);
     expect(() => llmFrom({})).toThrow();
+  });
+
+  it('reads a standing misconfiguration off an LlmError: a 401 or 403, nothing else', () => {
+    expect(isLlmAuthError(new LlmError(401, 'invalid x-api-key'))).toBe(true);
+    expect(isLlmAuthError(new LlmError(403, 'this key cannot use that model'))).toBe(true);
+    // Passing failures, which retrying would clear — not a fault to fix.
+    for (const status of [0, 400, 404, 429, 500, 529]) {
+      expect(isLlmAuthError(new LlmError(status, 'x'))).toBe(false);
+    }
+    // Not an LlmError at all.
+    expect(isLlmAuthError(new Error('boom'))).toBe(false);
+    expect(isLlmAuthError(null)).toBe(false);
   });
 
   it('takes pictures and PDFs under their caps, and nothing else', () => {

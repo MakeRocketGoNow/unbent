@@ -13,6 +13,7 @@ import { autofill, EXAMPLES_PER_OPTION, NothingToRead } from '../lib/autofill.js
 import { copyAttachments } from '../lib/copy-attachments.js';
 import { canAutofill, JevError, jevFrom } from '../lib/jev.js';
 import { canUseLlm, LLM_IMAGE_TYPES, llmFrom } from '../lib/llm.js';
+import { isOperator } from '../lib/instance.js';
 import { nextCursor } from '../lib/notes-repo.js';
 import { requireAuth } from '../lib/session.js';
 import { withRepos } from '../lib/repos-middleware.js';
@@ -199,6 +200,8 @@ export const notes = new Hono<AppEnv>()
         },
         // The language model writes the title where the instance has one; see `autofill`.
         canUseLlm(c.env) ? llmFrom(c.env) : undefined,
+        // Only an operator is told when that model rejects its key — a fault they can fix.
+        isOperator(c.env, c.get('user')?.email),
       );
       return c.json(suggestion);
     } catch (err) {

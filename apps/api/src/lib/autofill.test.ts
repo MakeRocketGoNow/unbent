@@ -13,6 +13,7 @@ import {
   type AutofillInput,
 } from './autofill.js';
 import type { Jev, JevAnswer, JevChoiceQuestion, JevEntry, JevQuestion } from './jev.js';
+import { LlmError } from './llm.js';
 
 /**
  * A Jev that records what it was asked and answers from a script keyed by question id.
@@ -212,6 +213,34 @@ describe('the title', () => {
     const failing = { title: vi.fn(async () => { throw new Error('down'); }) };
     expect((await autofill(jev, input(), failing)).title).toEqual({ value: 'ACME HARDWARE', confidence: 0.7 });
     expect((await autofill(jev, input())).title).toEqual({ value: 'ACME HARDWARE', confidence: 0.7 });
+  });
+
+  it('tells an operator when the title model rejected its key, and no one else', async () => {
+    const rejected = { title: vi.fn(async () => { throw new LlmError(401, 'invalid x-api-key'); }) };
+    // The operator is told, alongside the fallback title \u2014 the fill still succeeds.
+    const forOperator = await autofill(fake().jev, input(), rejected, true);
+    expect(forOperator.titleModel).toBe('auth-failed');
+    // Everyone else sees exactly the silent fallback, no signal.
+    const forOther = await autofill(fake().jev, input(), rejected, false);
+    expect(forOther.titleModel).toBeUndefined();
+  });
+
+  it('stays silent for a passing failure even for an operator', async () => {
+    // A rate limit, a 5xx, a timeout (status 0): retrying would work, so Jev's pick stands
+    // without crying wolf. Only 401/403 are the standing misconfiguration worth surfacing.
+    for (const status of [429, 500, 529, 0]) {
+      const flaky = { title: vi.fn(async () => { throw new LlmError(status, 'busy'); }) };
+      expect((await autofill(fake().jev, input(), flaky, true)).titleModel).toBeUndefined();
+    }
+    const plain = { title: vi.fn(async () => { throw new Error('boom'); }) };
+    expect((await autofill(fake().jev, input(), plain, true)).titleModel).toBeUndefined();
+  });
+
+  it('does not flag when the model wrote a title despite an operator watching', async () => {
+    // No fault to report when the title came back \u2014 auth-failed only rides a fallback.
+    const out = await autofill(fake().jev, input(), written, true);
+    expect(out.title).toEqual({ value: 'Acme Hardware invoice, March 2026' });
+    expect(out.titleModel).toBeUndefined();
   });
 });
 

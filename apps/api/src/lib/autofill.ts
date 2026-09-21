@@ -6,7 +6,7 @@ import {
   type FieldValue,
 } from '@unbent/shared';
 import type { Jev, JevAnswer, JevChoiceQuestion, JevEntry, JevQuestion } from './jev.js';
-import type { LanguageModel, NoteForTitle } from './llm.js';
+import { isLlmAuthError, type LanguageModel, type NoteForTitle } from './llm.js';
 
 /**
  * Filing a note from what it says: the title, the notebook, the tags and the fields, as
@@ -639,20 +639,36 @@ function nameFromReading(input: AutofillInput): string | null {
  * takes overlap both rounds rather than delaying the fields. Its failure is not the
  * suggestion's: a title is the one part with a fallback, so the error is logged and
  * Jev's pick stands.
+ *
+ * `operator` is whether the caller runs this instance. It changes nothing about the
+ * suggestion except one thing only they can act on: a title model that fails on auth is a
+ * secret they have to replace, and left silent it looks like the model merely having no
+ * better title (see `titleModel` on the suggestion). The signal is set only for them, so
+ * a note filed on a misconfigured instance reads the same for everyone else as it did
+ * before — Jev's picked title, no error — while the person who can fix it is told.
  */
 export async function autofill(
   jev: Jev,
   input: AutofillInput,
   llm?: Pick<LanguageModel, 'title'>,
+  operator = false,
 ): Promise<AutofillSuggestion> {
   const corpus = gather(input);
   const first = firstRound(input, corpus);
 
+  // Set where the title call failed on a standing misconfiguration the operator must fix;
+  // `isLlmAuthError` draws the line, and only the operator is ever told (see below).
+  let titleAuthFailed = false;
   const named = nameFromReading(input);
   const writing =
     llm && !named
       ? llm.title(corpus.note).catch((err: unknown) => {
-          console.error('autofill title:', (err as Error).message);
+          if (isLlmAuthError(err)) {
+            titleAuthFailed = true;
+            console.error('autofill title: LLM auth/config failure —', (err as Error).message);
+          } else {
+            console.error('autofill title:', (err as Error).message);
+          }
           return null;
         })
       : null;
@@ -702,6 +718,11 @@ export async function autofill(
     const title = first.title && chosen(answers['title'], first.title.values);
     if (title) suggestion.title = { value: String(title.value), confidence: title.confidence };
   }
+
+  // Only the operator, and only when the model's own title never came — a suggestion that
+  // still got its title has nothing to report. `await writing` above has already resolved,
+  // so `titleAuthFailed` is settled by here.
+  if (operator && titleAuthFailed && !written) suggestion.titleModel = 'auth-failed';
 
   return suggestion;
 }

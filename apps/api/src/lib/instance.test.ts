@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
+  isOperator,
   legalLinksOf,
+  operatorEmails,
   operatorOf,
   posthogAssetsHost,
   posthogHost,
@@ -42,6 +44,32 @@ describe('operatorOf', () => {
   it('takes the host from APP_URL', () => {
     const at = env({ ...OPERATOR, APP_URL: 'https://notes.example.org:8443' });
     expect(operatorOf(at)?.host).toBe('notes.example.org:8443');
+  });
+});
+
+/**
+ * Who runs the instance, for the one thing only they should be shown — a title model that
+ * rejected its key. The same "nobody by default" rule as the rest of this file: an
+ * unconfigured fork flags no one, so its notes read the same for everyone.
+ */
+describe('operatorEmails and isOperator', () => {
+  it('is nobody by default', () => {
+    expect(operatorEmails(env({})).size).toBe(0);
+    expect(isOperator(env({}), 'anyone@example.com')).toBe(false);
+  });
+
+  it('reads a comma list, trimmed and case-folded, the way ALLOWED_EMAILS does', () => {
+    const two = env({ OPERATOR_EMAILS: ' Me@Example.com , you@example.com ' });
+    expect(operatorEmails(two)).toEqual(new Set(['me@example.com', 'you@example.com']));
+    expect(isOperator(two, 'ME@EXAMPLE.COM')).toBe(true);
+    expect(isOperator(two, 'you@example.com')).toBe(true);
+    expect(isOperator(two, 'stranger@example.com')).toBe(false);
+  });
+
+  it('is never an operator without an email to check', () => {
+    const one = env({ OPERATOR_EMAILS: 'me@example.com' });
+    expect(isOperator(one, undefined)).toBe(false);
+    expect(isOperator(one, '')).toBe(false);
   });
 });
 
