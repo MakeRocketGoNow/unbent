@@ -530,6 +530,23 @@ function splitTags(joined: string | null): string[] {
 }
 
 /**
+ * Attachment keys that belong to notes a purge actually deleted.
+ *
+ * The SELECT that finds keys and the DELETE that removes notes are separate statements,
+ * and a restore from another tab or over MCP can land between them. Returning every key
+ * the SELECT saw would then delete the files of a note that is live again. The singular
+ * route already refuses to sweep blobs unless the row went; the batch paths have to do
+ * the same per id.
+ */
+export function keysOfDeletedNotes(
+  rows: Array<{ r2_key: string; note_id: string }>,
+  deletedIds: string[],
+): string[] {
+  const gone = new Set(deletedIds);
+  return rows.filter((r) => gone.has(r.note_id)).map((r) => r.r2_key);
+}
+
+/**
  * Whether a patch's tag list would leave the stored tags exactly as they are.
  *
  * Order is not significant — `note_tags` has none and `get` returns them sorted — so this
@@ -1103,9 +1120,14 @@ export class NotesRepo extends ScopedRepo {
       .run();
 
     // This note may have held the last value a tombstoned definition was keeping alive.
-    if (res.meta.changes > 0) await this.sweepTombstonedFields();
+    const deleted = res.meta.changes > 0;
+    if (deleted) await this.sweepTombstonedFields();
 
-    return { deleted: res.meta.changes > 0, keys: results.map((r) => r.r2_key) };
+    // No keys unless the row went: a restore between the SELECT and the DELETE would
+    // otherwise leave the note live and the route would still delete its files. The
+    // singular route already skips the blob sweep when `deleted` is false; returning
+    // nothing here keeps that property inside the repo too.
+    return { deleted, keys: deleted ? results.map((r) => r.r2_key) : [] };
   }
 
   /*
@@ -1167,6 +1189,11 @@ export class NotesRepo extends ScopedRepo {
    * too. Only ones already in the trash, as `purgeOne`: a live note named here is left
    * alone, because the two-step delete is the safety property.
    *
+   * Keys are only those of notes this actually deleted. The SELECT and the DELETE are not
+   * one transaction, and a restore can land between them — the same stale-selection case
+   * the skip-not-fail rule is for. Returning every key the SELECT saw would keep the row
+   * (the DELETE sees `deleted_at IS NULL` and skips it) and still destroy every file.
+   *
    * Sweeps what `purge` sweeps afterwards — tag rows nothing references any more, and
    * field definitions these notes were the last to hold a value for — since a selection
    * can be most of the trash.
@@ -1177,14 +1204,13 @@ export class NotesRepo extends ScopedRepo {
     for (const run of runs([...new Set(ids)])) {
       const { results } = await this.db
         .prepare(
-          `SELECT a.r2_key FROM attachments a
+          `SELECT a.r2_key, n.id AS note_id FROM attachments a
              JOIN notes n ON n.id = a.note_id
             WHERE n.user_id = ?1 AND n.deleted_at IS NOT NULL
               AND n.id IN (${placeholders(2, run.length)})`,
         )
         .bind(this.userId, ...run)
-        .all<{ r2_key: string }>();
-      keys.push(...results.map((r) => r.r2_key));
+        .all<{ r2_key: string; note_id: string }>();
 
       const { results: gone } = await this.db
         .prepare(
@@ -1195,6 +1221,7 @@ export class NotesRepo extends ScopedRepo {
         .bind(this.userId, ...run)
         .all<{ id: string }>();
       deleted += gone.length;
+      keys.push(...keysOfDeletedNotes(results, gone.map((r) => r.id)));
     }
 
     if (deleted > 0) {
@@ -1676,6 +1703,10 @@ export class NotesRepo extends ScopedRepo {
    * rather than a half-deleted note.
    *
    * `scope: 'trashed'` empties the trash; `scope: 'all'` wipes the account's notes.
+   *
+   * Emptying the trash re-checks `deleted_at` on the DELETE, the way `purgeMany` does: a
+   * restore between listing the trash and destroying it must leave the note, not take a
+   * live note with it. `scope: 'all'` is a wipe, so it still deletes whatever it named.
    */
   async purge(scope: 'trashed' | 'all'): Promise<{ notes: number; keys: string[] }> {
     const where =
@@ -1683,12 +1714,12 @@ export class NotesRepo extends ScopedRepo {
 
     const { results: keyRows } = await this.db
       .prepare(
-        `SELECT a.r2_key FROM attachments a
+        `SELECT a.r2_key, n.id AS note_id FROM attachments a
            JOIN notes n ON n.id = a.note_id
           WHERE n.${where} AND a.user_id = ?1`,
       )
       .bind(this.userId)
-      .all<{ r2_key: string }>();
+      .all<{ r2_key: string; note_id: string }>();
 
     const { results: idRows } = await this.db
       .prepare(`SELECT id FROM notes WHERE ${where}`)
@@ -1698,16 +1729,25 @@ export class NotesRepo extends ScopedRepo {
     if (idRows.length === 0) return { notes: 0, keys: [] };
 
     // Delete in batches: D1 caps bound parameters at 100 per statement, and note_tags,
-    // attachments, and attachment_text all cascade from notes.
+    // attachments, and attachment_text all cascade from notes. Empty-trash re-checks
+    // `deleted_at` so a note restored after the listing is not destroyed as a live one.
+    const stillTrashed = scope === 'trashed' ? ' AND deleted_at IS NOT NULL' : '';
     const ids = idRows.map((r) => r.id);
+    const deletedIds: string[] = [];
     for (let i = 0; i < ids.length; i += 99) {
       const batch = ids.slice(i, i + 99);
       const placeholders = batch.map((_, j) => `?${j + 2}`).join(', ');
-      await this.db
-        .prepare(`DELETE FROM notes WHERE user_id = ?1 AND id IN (${placeholders})`)
+      const { results: gone } = await this.db
+        .prepare(
+          `DELETE FROM notes WHERE user_id = ?1${stillTrashed} AND id IN (${placeholders})
+           RETURNING id`,
+        )
         .bind(this.userId, ...batch)
-        .run();
+        .all<{ id: string }>();
+      deletedIds.push(...gone.map((r) => r.id));
     }
+
+    if (deletedIds.length === 0) return { notes: 0, keys: [] };
 
     // Tag rows are per-user and survive their notes; drop the ones nothing references.
     await this.db
@@ -1722,7 +1762,7 @@ export class NotesRepo extends ScopedRepo {
     // The same for field definitions kept alive only by the values on these notes.
     await this.sweepTombstonedFields();
 
-    return { notes: ids.length, keys: keyRows.map((r) => r.r2_key) };
+    return { notes: deletedIds.length, keys: keysOfDeletedNotes(keyRows, deletedIds) };
   }
 
   /**

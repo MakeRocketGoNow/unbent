@@ -258,7 +258,11 @@ export const notes = new Hono<AppEnv>()
     return c.json({ restored: restored.length });
   })
 
-  /** Blobs after rows, for the reason `/notes/:id/permanent` gives. */
+  /**
+   * Blobs after rows, for the reason `/notes/:id/permanent` gives. `purgeMany` only
+   * returns keys of notes it actually deleted, so a restore that won the race does not
+   * come back as a live note whose files are already gone.
+   */
   .post('/notes/purge', zValidator('json', noteBatchSchema), async (c) => {
     const { deleted, keys } = await c.get('notes').purgeMany(c.req.valid('json').ids);
     for (const key of keys) await c.env.BLOBS.delete(key);
