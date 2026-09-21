@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it, vi } from 'vitest';
 import {
   FAILURE_STREAK_LIMIT,
+  TRANSIENT_RETRY_LIMIT,
   ImportStoppedError,
   importEnex,
   type ImportClient,
@@ -614,6 +615,10 @@ describe('a server that stops responding', () => {
   const manyNotes = (count: number) =>
     Array.from({ length: count }, (_, i) => note({ title: `N${i}`, content: '<div></div>' }));
 
+  // A transient host failure (502/503/504) is retried with backoff before it counts, so
+  // any run that throws one must skip the real wait or the test just sits out the delay.
+  const noSleep = { sleep: async () => {} };
+
   it('stops the run once the failures are consecutive and alike', async () => {
     const healthy = 2;
     const createNote = vi.fn(async (input: { title: string; contentHash: string }) => {
@@ -646,8 +651,49 @@ describe('a server that stops responding', () => {
     });
 
     await expect(
-      importEnex(enexFile('N.enex', manyNotes(20)), client),
+      importEnex(enexFile('N.enex', manyNotes(20)), client, noSleep),
     ).rejects.toThrow(/503.*1 notes were imported before that.*Import the same file again/s);
+  });
+
+  it('retries a transient 503 in place and lands the note without counting a failure', async () => {
+    // The isolate is briefly evicted: the first try of each note 503s, the retry succeeds.
+    // The run must finish clean rather than logging failures or aborting.
+    const tries = new Map<string, number>();
+    const createNote = vi.fn(async (input: { title: string }) => {
+      const n = (tries.get(input.title) ?? 0) + 1;
+      tries.set(input.title, n);
+      if (n === 1) throw statusError(503);
+      return { id: `note-${input.title}`, created: true };
+    });
+    const { client } = fakeClient({ createNote });
+
+    const failures: string[] = [];
+    const progress = await importEnex(enexFile('N.enex', manyNotes(6)), client, {
+      ...noSleep,
+      onFailure: (f) => failures.push(f.title),
+    });
+
+    expect(progress.created).toBe(6);
+    expect(progress.failed).toBe(0);
+    expect(failures).toEqual([]);
+    // Six notes, each one retry: the retry is what saved them, not a fresh import.
+    expect(createNote).toHaveBeenCalledTimes(12);
+  });
+
+  it('gives a transient failure a bounded number of tries, then lets the breaker have it', async () => {
+    // A host that never comes back: every try 503s. Each note still tries a few times, but
+    // the run gives up after the streak, not after retrying forever.
+    const createNote = vi.fn(async () => {
+      throw statusError(503);
+    });
+    const { client } = fakeClient({ createNote });
+
+    await expect(
+      importEnex(enexFile('N.enex', manyNotes(40)), client, noSleep),
+    ).rejects.toMatchObject({ status: 503, streak: FAILURE_STREAK_LIMIT });
+
+    // Five notes reach the breaker, each tried 1 + TRANSIENT_RETRY_LIMIT times.
+    expect(createNote).toHaveBeenCalledTimes(FAILURE_STREAK_LIMIT * (1 + TRANSIENT_RETRY_LIMIT));
   });
 
   it('keeps going when a success breaks the streak', async () => {
@@ -667,15 +713,18 @@ describe('a server that stops responding', () => {
   });
 
   it('keeps going when the statuses differ', async () => {
+    // Keyed on the note's own title, not the call count, so a retried 5xx sees the same
+    // status on every try and a note counts as one failure however many tries it took.
     const statuses = [500, 502, 503, 504, 500, 502, 503, 504];
-    let call = 0;
     const { client } = fakeClient({
-      createNote: vi.fn(async () => {
-        throw statusError(statuses[call++ % statuses.length]!);
+      createNote: vi.fn(async (input: { title: string }) => {
+        throw statusError(statuses[Number(input.title.slice(1)) % statuses.length]!);
       }),
     });
 
-    const progress = await importEnex(enexFile('N.enex', manyNotes(8)), client);
+    // Each note fails, but never twice running with the same status, so the streak keeps
+    // resetting and the run reaches the end rather than tripping the breaker.
+    const progress = await importEnex(enexFile('N.enex', manyNotes(8)), client, noSleep);
     expect(progress.processed).toBe(8);
     expect(progress.failed).toBe(8);
   });
