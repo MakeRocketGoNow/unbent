@@ -1612,6 +1612,16 @@ describe('cross-tenant access', () => {
     expect((await fetch(`${BASE}/api/notes/${aliceNote.id}`, asUser(alice))).status).toBe(200);
   });
 
+  it('bob cannot ask for an alice note to be auto-filled', async () => {
+    // 404 before anything else — before the instance so much as checks for a key — so
+    // the answer cannot say whether the note exists, configured or not.
+    const res = await fetch(`${BASE}/api/notes/${aliceNote.id}/autofill`, {
+      method: 'POST',
+      headers: { Cookie: bob.cookie, Origin: ORIGIN },
+    });
+    expect(res.status).toBe(404);
+  });
+
   it('alice notes never appear in a bob list', async () => {
     const { items } = await fetch(`${BASE}/api/notes?limit=100`, asUser(bob)).then((r) => r.json());
     expect(items.map((i: { id: string }) => i.id)).not.toContain(aliceNote.id);

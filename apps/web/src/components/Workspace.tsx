@@ -20,6 +20,7 @@ import { useIsNewNote } from '../useNewNote.js';
 import { useMediaQuery, MOBILE_QUERY, TOUCH_QUERY } from '../useMediaQuery.js';
 import { useKeyboardInset } from '../useKeyboardInset.js';
 import {
+  configQuery,
   noteQuery,
   notebooksQuery,
   notebookFieldsQuery,
@@ -39,6 +40,16 @@ import { Button } from './Button';
 import { BackArrow } from './BackArrow.js';
 import { FilingRows } from './FilingRows.js';
 import { NoteFields } from './NoteFields.js';
+import { Confirm } from './Confirm.js';
+import { AutofillIcon } from './icons.js';
+import { formatFieldValue } from './format-field.js';
+import {
+  applyAutofill,
+  describeChanges,
+  isEmptyChanges,
+  planAutofill,
+  type AutofillChanges,
+} from '../autofill.js';
 
 /** The editor's share of the pane row when split evenly, and the limits a drag respects. */
 const EDITOR_DEFAULT = 0.5;
@@ -67,6 +78,7 @@ export function Workspace({ noteId, readOnly = false, backTo = '/notes' }: Works
   const { data: note, error, refetch } = useQuery(noteQuery(noteId));
   const notebooks = useQuery(notebooksQuery());
   const tags = useQuery(tagsQuery());
+  const config = useQuery(configQuery());
 
   const [draft, setDraft] = useState<{
     title: string;
@@ -488,6 +500,65 @@ export function Workspace({ noteId, readOnly = false, backTo = '/notes' }: Works
   }
 
   /**
+   * The draft as it stands, for auto-fill to plan against after its round trip: the plan
+   * compares the suggestion with what is on screen when the answer arrives, not with
+   * what was there when the button was pressed.
+   */
+  const draftRef = useRef(draft);
+  draftRef.current = draft;
+  /** What the last Auto-fill is doing or did, in the head where "Saved" goes. */
+  const [autofillStatus, setAutofillStatus] = useState<{ text: string; failed: boolean } | null>(
+    null,
+  );
+  const autofillStatusTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [autofilling, setAutofilling] = useState(false);
+  /** Changes that would replace something already set, waiting to be confirmed. */
+  const [autofillReplace, setAutofillReplace] = useState<AutofillChanges | null>(null);
+
+  /** Beside the title for a few seconds; a failure stays longer, since it is a sentence. */
+  function showAutofillStatus(text: string, failed = false) {
+    if (autofillStatusTimer.current) clearTimeout(autofillStatusTimer.current);
+    setAutofillStatus({ text, failed });
+    autofillStatusTimer.current = setTimeout(() => setAutofillStatus(null), failed ? 8000 : 5000);
+  }
+
+  /**
+   * Fills in the note's filing from what it says: see `autofill.ts` for the rule, and the
+   * API's `lib/autofill.ts` for what is read. The draft is flushed first so the server
+   * reads the note as it is on screen, and the suggestion's definitions are remembered
+   * before its values land, so the patch can encode a value for a notebook whose fields
+   * this session has not loaded yet — the same gap `rememberFieldDefs` closes for a
+   * typed value.
+   */
+  async function runAutofill() {
+    setAutofilling(true);
+    setAutofillReplace(null);
+    if (autofillStatusTimer.current) clearTimeout(autofillStatusTimer.current);
+    setAutofillStatus({ text: 'Reading…', failed: false });
+    try {
+      await flush();
+      const suggestion = await api.autofillNote(noteId);
+      for (const { field } of suggestion.fields) seenFieldDefs.current.set(field.id, field);
+      const plan = planAutofill(draftRef.current, suggestion);
+      if (!isEmptyChanges(plan.fill)) setDraft((d) => applyAutofill(d, plan.fill));
+      // Short, because it sits beside the title, which a phone gives little room.
+      const stillReading = suggestion.read.pending.length > 0 ? ' — a file is still being read' : '';
+      showAutofillStatus(
+        isEmptyChanges(plan.fill)
+          ? `Nothing empty to fill in${stillReading}`
+          : `Filled in ${describeChanges(plan.fill)}${stillReading}`,
+      );
+      if (!isEmptyChanges(plan.replace)) setAutofillReplace(plan.replace);
+    } catch (err) {
+      // The server's own sentence, without the status it arrives prefixed with: "422:
+      // Nothing to read yet…" is not what a person beside a title wants to read.
+      showAutofillStatus((err as Error).message.replace(/^\d{3}[^:]*: /, ''), true);
+    } finally {
+      setAutofilling(false);
+    }
+  }
+
+  /**
    * A note id can arrive from a shared link or a reload long after the note was deleted,
    * so a failure here is expected rather than exceptional. The id deliberately stays in
    * the URL so the link remains copyable and retryable; this explains what happened
@@ -650,9 +721,38 @@ export function Workspace({ noteId, readOnly = false, backTo = '/notes' }: Works
         </div>
 
         <div className="workspace-actions">
-          <span className={saveState === 'error' ? 'bad small' : 'muted small'}>
-            {readOnly ? 'In trash' : (webImagesStatus ?? saveLabel)}
+          {/* Cut with an ellipsis before the title is, and carried whole in the tooltip;
+              see `.workspace-status`. */}
+          <span
+            className={`workspace-status ${saveState === 'error' || autofillStatus?.failed ? 'bad' : 'muted'} small`}
+            title={autofillStatus?.text}
+          >
+            {readOnly ? 'In trash' : (autofillStatus?.text ?? webImagesStatus ?? saveLabel)}
           </span>
+
+          {/*
+              Auto-fill: the one action promoted out of the ⋯ below, because it is the
+              reason a scanned note gets opened at all — the scanner made the note, and
+              filing it is the next thing — and a control reached through a menu is one
+              nobody learns is there. Quiet, so it does not outrank the title beside it,
+              and only where the instance can answer (`config.autofill`); a trashed note
+              has no filing to fill. Below the breakpoint the label goes and the sparkle
+              stays, a 44px target, so the title keeps its line.
+          */}
+          {!readOnly && config.data?.autofill && (
+            <Button
+              variant="quiet"
+              size="small"
+              className="autofill-btn"
+              disabled={autofilling}
+              aria-label="Auto-fill"
+              title="Fill in the title, notebook, tags and fields from what the note and its files say"
+              onClick={() => void runAutofill()}
+            >
+              <AutofillIcon />
+              <span className="autofill-label">Auto-fill</span>
+            </Button>
+          )}
 
           {/*
               Everything that acts on the note as an object, at every width.
@@ -699,6 +799,40 @@ export function Workspace({ noteId, readOnly = false, backTo = '/notes' }: Works
           )}
         </div>
       </div>
+
+      {/*
+          Auto-fill's offer to replace what is already set — the warning the issue asked
+          for, as an inline confirm above the list it would change, so the values it
+          would replace are on screen while deciding. Applied as one: the fields that
+          come with a move mean nothing without it. `Confirm` is for what cannot be
+          undone, and overwriting a title someone typed is exactly that.
+      */}
+      {autofillReplace && (
+        <Confirm
+          label="Confirm replacing the note's filing"
+          question={<>Also replace {describeChanges(autofillReplace)}?</>}
+          detail={[
+            ...(autofillReplace.title !== undefined ? [`Title: ${autofillReplace.title}`] : []),
+            ...(autofillReplace.notebook !== undefined ? [`Notebook: ${autofillReplace.notebook}`] : []),
+            ...autofillReplace.fields.map(
+              ({ def, value }) => `${def.name}: ${formatFieldValue(def.type, value, def.scale, def.currency)}`,
+            ),
+          ].join(' · ')}
+          actions={[
+            {
+              label: 'Replace',
+              tone: 'primary',
+              onConfirm: () => {
+                const changes = autofillReplace;
+                setDraft((d) => applyAutofill(d, changes));
+                setAutofillReplace(null);
+                showAutofillStatus(`Replaced ${describeChanges(changes)}`);
+              },
+            },
+          ]}
+          onCancel={() => setAutofillReplace(null)}
+        />
+      )}
 
       {/*
           The note's filing: the notebook, its tags, and the notebook's own fields, as one

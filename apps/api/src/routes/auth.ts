@@ -3,6 +3,7 @@ import type { AppConfig } from '@unbent/shared';
 import { accountDeletionOffered, getAuth, offeredProviders } from '../auth.js';
 import { legalLinksOf, operatorOf, posthogOf } from '../lib/instance.js';
 import { previewRelayOrigin } from '../lib/preview-relay.js';
+import { canAutofill } from '../lib/jev.js';
 import type { AppEnv } from '../types.js';
 
 export const authRoutes = new Hono<AppEnv>()
@@ -31,6 +32,9 @@ export const authRoutes = new Hono<AppEnv>()
    * names the dev instance the login screen can borrow a Google session from — see
    * `previewRelayOrigin`. Absent everywhere else, and read as "no relay button".
    *
+   * `autofill` is `accountDeletion`'s shape once more: true only where the instance has a
+   * key for the model, so the editor draws the control only where the route would answer.
+   *
    * `satisfies` rather than a return annotation: the fields whose value is `undefined` are
    * dropped by `JSON.stringify` on the way out, which is exactly the "absent means not
    * offered" reading the client already applies to `accountDeletion`.
@@ -44,5 +48,6 @@ export const authRoutes = new Hono<AppEnv>()
       legal: legalLinksOf(c.env),
       posthog: posthogOf(c.env),
       previewRelay: relayOrigin ? { origin: relayOrigin } : undefined,
+      autofill: canAutofill(c.env),
     } satisfies AppConfig);
   });

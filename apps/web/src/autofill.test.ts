@@ -1,0 +1,102 @@
+import { describe, expect, it } from 'vitest';
+import type { AutofillSuggestion, FieldDef } from '@unbent/shared';
+import type { NoteDraft } from './note-patch.js';
+import { applyAutofill, describeChanges, isEmptyChanges, planAutofill } from './autofill.js';
+
+const amount: FieldDef = {
+  id: 'f-amount',
+  notebookId: 'nb-receipts',
+  name: 'Amount',
+  type: 'number',
+  options: [],
+  scale: null,
+  currency: 'USD',
+  position: 0,
+};
+const via: FieldDef = { ...amount, id: 'f-via', name: 'Paid via', type: 'multiselect', options: ['Card', 'Cash'], currency: null };
+
+const suggestion: AutofillSuggestion = {
+  title: { value: 'Acme Hardware', confidence: 0.8 },
+  notebook: { id: 'nb-receipts', name: 'Receipts', confidence: 0.9 },
+  tags: [
+    { name: 'home', confidence: 0.9 },
+    { name: 'taxes', confidence: 0.8 },
+  ],
+  fields: [
+    { field: amount, value: 12.5, confidence: 0.9 },
+    { field: via, value: ['Card'], confidence: 0.8 },
+  ],
+  read: { attachments: ['scan.pdf'], pending: [] },
+};
+
+const fresh: NoteDraft = { title: '', body: '', tags: [], notebook: null, fields: {} };
+
+describe('planning a fill', () => {
+  it('fills everything on a note that has nothing, and asks about nothing', () => {
+    const { fill, replace } = planAutofill(fresh, suggestion);
+    expect(fill).toEqual({
+      title: 'Acme Hardware',
+      notebook: 'Receipts',
+      tags: ['home', 'taxes'],
+      fields: [
+        { def: amount, value: 12.5 },
+        { def: via, value: ['Card'] },
+      ],
+    });
+    expect(isEmptyChanges(replace)).toBe(true);
+  });
+
+  it('keeps what is set and offers to replace it, while still filling the empties', () => {
+    const filed: NoteDraft = {
+      ...fresh,
+      title: 'My own title',
+      tags: ['Home'],
+      notebook: 'receipts',
+      fields: { 'f-amount': 20 },
+    };
+    const { fill, replace } = planAutofill(filed, suggestion);
+    // The notebook matches by name, whatever the case; "home" is already there.
+    expect(fill).toEqual({ tags: ['taxes'], fields: [{ def: via, value: ['Card'] }] });
+    expect(replace).toEqual({ title: 'Acme Hardware', tags: [], fields: [{ def: amount, value: 12.5 }] });
+  });
+
+  it('bundles the fields with a move, since they belong to the notebook the note would go to', () => {
+    const elsewhere: NoteDraft = { ...fresh, notebook: 'Coupons' };
+    const { fill, replace } = planAutofill(elsewhere, suggestion);
+    expect(fill).toEqual({ title: 'Acme Hardware', tags: ['home', 'taxes'], fields: [] });
+    expect(replace).toMatchObject({ notebook: 'Receipts', fields: suggestion.fields.map((f) => ({ def: f.field, value: f.value })) });
+  });
+
+  it('proposes nothing for a value the note already holds', () => {
+    const same: NoteDraft = { ...fresh, title: 'Acme Hardware', notebook: 'Receipts', fields: { 'f-amount': '12.5', 'f-via': ['Card'] } };
+    const { fill, replace } = planAutofill(same, suggestion);
+    expect(fill).toEqual({ tags: ['home', 'taxes'], fields: [] });
+    expect(isEmptyChanges(replace)).toBe(true);
+  });
+});
+
+describe('applying and describing', () => {
+  it('lands in a new draft, with the tags added to the ones there', () => {
+    const draft: NoteDraft = { ...fresh, tags: ['old'], fields: { 'f-other': 'kept' } };
+    const next = applyAutofill(draft, planAutofill(draft, suggestion).fill);
+    expect(next).not.toBe(draft);
+    expect(next).toEqual({
+      title: 'Acme Hardware',
+      body: '',
+      tags: ['old', 'home', 'taxes'],
+      notebook: 'Receipts',
+      fields: { 'f-other': 'kept', 'f-amount': 12.5, 'f-via': ['Card'] },
+    });
+    // Nothing to apply leaves the draft's own objects in place, so autosave sees no edit.
+    const untouched = applyAutofill(draft, { tags: [], fields: [] });
+    expect(untouched.tags).toBe(draft.tags);
+    expect(untouched.fields).toBe(draft.fields);
+  });
+
+  it('names what changed the way a sentence would', () => {
+    expect(describeChanges(planAutofill(fresh, suggestion).fill)).toBe('the title, the notebook, 2 tags and 2 fields');
+    expect(describeChanges({ tags: ['x'], fields: [{ def: amount, value: 1 }] })).toBe('a tag and Amount');
+    expect(describeChanges({ notebook: 'Receipts', tags: [], fields: [] })).toBe('the notebook');
+    expect(describeChanges({ tags: [], fields: [] })).toBe('nothing');
+  });
+});

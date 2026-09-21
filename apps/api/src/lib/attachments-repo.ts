@@ -269,6 +269,31 @@ export class AttachmentsRepo extends ScopedRepo {
     return row?.text ?? null;
   }
 
+  /**
+   * Every file on a note with whatever text it has, for auto-fill to read the note whole.
+   *
+   * The same three answers `textFor` gives, per file: `null` while no text has been
+   * recorded — a PDF still being read, or never read — and `''` for one read and found
+   * empty. The type rides along because only a PDF ever gets text, and a caller telling
+   * "still being read" from "a photograph" needs to know which it is looking at.
+   */
+  async textsForNote(
+    noteId: string,
+  ): Promise<Array<{ filename: string; contentType: string; text: string | null }>> {
+    const { results } = await this.db
+      .prepare(
+        `SELECT a.filename, a.content_type, t.text
+           FROM attachments a
+           JOIN notes n ON n.id = a.note_id
+           LEFT JOIN attachment_text t ON t.attachment_id = a.id
+          WHERE a.note_id = ?1 AND a.user_id = ?2 AND n.user_id = ?2 AND n.deleted_at IS NULL
+          ORDER BY a.created_at`,
+      )
+      .bind(noteId, this.userId)
+      .all<{ filename: string; content_type: string; text: string | null }>();
+    return results.map((r) => ({ filename: r.filename, contentType: r.content_type, text: r.text }));
+  }
+
   /** Attachment id for a filename within a note, scoped to this user. */
   async idFor(noteId: string, filename: string): Promise<string | null> {
     const row = await this.resolve(noteId, filename);

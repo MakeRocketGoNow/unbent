@@ -1,0 +1,336 @@
+import { describe, expect, it } from 'vitest';
+import type { FieldDef } from '@unbent/shared';
+import {
+  MAX_SUGGESTED_TAGS,
+  NothingToRead,
+  autofill,
+  candidateLines,
+  findDates,
+  findEmails,
+  findNumbers,
+  findPhones,
+  findUrls,
+  type AutofillInput,
+} from './autofill.js';
+import type { Jev, JevAnswer, JevChoiceQuestion, JevEntry, JevQuestion } from './jev.js';
+
+/**
+ * A Jev that records what it was asked and answers from a script keyed by question id.
+ * Anything unscripted is answered as unsure — a choice of "none", a no — so a test only
+ * has to say what it is about.
+ */
+function fake(script: Record<string, JevAnswer> = {}) {
+  const calls: Array<{ state: JevEntry; questions: Record<string, JevQuestion> }> = [];
+  const jev: Jev = {
+    async ask(state, questions) {
+      calls.push({ state, questions });
+      return Object.fromEntries(
+        Object.entries(questions).map(([id, q]) => [
+          id,
+          script[id] ??
+            (q.type === 'choice'
+              ? { type: 'choice', choice: 'none', probabilities: {}, confidence: 0.9 }
+              : { type: 'noul', noul: 0.1 }),
+        ]),
+      );
+    },
+  };
+  return { jev, calls };
+}
+
+const choice = (choice: string, confidence = 0.9): JevAnswer => ({
+  type: 'choice',
+  choice,
+  probabilities: {},
+  confidence,
+});
+const noul = (noul: number): JevAnswer => ({ type: 'noul', noul });
+
+function field(over: Partial<FieldDef> & Pick<FieldDef, 'id' | 'name' | 'type'>): FieldDef {
+  return { notebookId: 'nb-coupons', options: [], scale: null, currency: null, position: 0, ...over };
+}
+
+const receipt = [
+  'ACME HARDWARE',
+  '123 Main St, Springfield',
+  'Invoice #4471',
+  'Date: 03/04/2026',
+  'Due: March 18, 2026',
+  'Contact billing@acme.example',
+  'Subtotal $1,234.56',
+  'Tax 98.76',
+  'Total $1,333.32',
+  'Call (612) 555-0148 or visit www.acme.example/pay',
+].join('\n');
+
+const coupons: AutofillInput['notebooks'][number] = {
+  id: 'nb-coupons',
+  name: 'Coupons',
+  fields: [],
+  examples: ['Target 20% off', 'Free coffee card'],
+};
+const receipts: AutofillInput['notebooks'][number] = {
+  id: 'nb-receipts',
+  name: 'Receipts',
+  fields: [
+    field({ id: 'f-vendor', name: 'Vendor', type: 'text', notebookId: 'nb-receipts' }),
+    field({ id: 'f-total', name: 'Total', type: 'number', currency: 'USD', notebookId: 'nb-receipts' }),
+    field({ id: 'f-date', name: 'Invoice date', type: 'date', notebookId: 'nb-receipts' }),
+    field({ id: 'f-kind', name: 'Kind', type: 'select', options: ['Hardware', 'Grocery'], notebookId: 'nb-receipts' }),
+    field({ id: 'f-paid', name: 'Paid', type: 'checkbox', notebookId: 'nb-receipts' }),
+    field({ id: 'f-via', name: 'Paid via', type: 'multiselect', options: ['Card', 'Cash', 'Check'], notebookId: 'nb-receipts' }),
+    field({ id: 'f-stars', name: 'Rating', type: 'number', scale: { max: 5, step: 1 }, notebookId: 'nb-receipts' }),
+    field({ id: 'f-mail', name: 'Contact', type: 'email', notebookId: 'nb-receipts' }),
+  ],
+  examples: ['Plumber, June'],
+};
+
+function input(over: Partial<AutofillInput> = {}): AutofillInput {
+  return {
+    note: { title: '', body: '', tags: [], notebookId: null },
+    attachments: [{ filename: 'scan.pdf', text: receipt }],
+    notebooks: [coupons, receipts],
+    tags: [
+      { name: 'home', examples: ['Roof quote'] },
+      { name: 'taxes', examples: [] },
+      { name: 'car', examples: [] },
+    ],
+    ...over,
+  };
+}
+
+describe('what the model is asked', () => {
+  it('refuses an empty note, and says so differently while its scan is still being read', async () => {
+    const empty = autofill(fake().jev, input({ attachments: [] }));
+    await expect(empty).rejects.toBeInstanceOf(NothingToRead);
+    await expect(empty).rejects.toThrow(/nothing to read/i);
+
+    const pending = autofill(fake().jev, input({ attachments: [{ filename: 'scan.pdf', text: null }] }));
+    await expect(pending).rejects.toThrow(/scan\.pdf is still being read/);
+
+    // A photograph read and found empty is not "still being read".
+    const photo = autofill(fake().jev, input({ attachments: [{ filename: 'photo.jpg', text: '' }] }));
+    await expect(photo).rejects.toThrow(/nothing to read:/i);
+  });
+
+  it('sends the note and its files as the state, and asks the notebook, the title and each tag once', async () => {
+    const { jev, calls } = fake();
+    await autofill(jev, input({ note: { title: 'A title', body: 'Body text', tags: ['home'], notebookId: null } }));
+
+    expect(calls).toHaveLength(1);
+    const { state, questions } = calls[0]!;
+    expect(state).toEqual({
+      title: 'A title',
+      body: 'Body text',
+      attachments: [{ filename: 'scan.pdf', text: receipt }],
+    });
+
+    const notebook = questions['notebook'] as JevChoiceQuestion;
+    expect(Object.keys(notebook.criteria)).toEqual(['Coupons', 'Receipts', 'none']);
+    expect(notebook.criteria['Coupons']).toEqual({
+      what: 'The notebook "Coupons"',
+      examples: ['Target 20% off', 'Free coffee card'],
+    });
+    expect(notebook.criteria['Receipts']).toMatchObject({ fields: expect.arrayContaining(['Vendor', 'Total']) });
+
+    const title = questions['title'] as JevChoiceQuestion;
+    expect(title.criteria['ACME HARDWARE']).toBe('Line 1 of scan.pdf');
+    expect(title.criteria['A title']).toBe('Line 1 of the note');
+    expect(title.criteria['none']).toBeDefined();
+
+    // "home" is already on the note, so it is not a suggestion and not a question.
+    const tags = Object.entries(questions).filter(([id]) => id.startsWith('tag_'));
+    expect(tags).toHaveLength(2);
+    expect(tags.map(([, q]) => q.type)).toEqual(['noul', 'noul']);
+    const asked = tags.map(([, q]) => JSON.stringify(q.instructions));
+    expect(asked.some((text) => text.includes('taxes'))).toBe(true);
+    expect(asked.some((text) => text.includes('home'))).toBe(false);
+  });
+
+  it('reports which files it read and which are still being read', async () => {
+    const { jev } = fake();
+    const out = await autofill(
+      jev,
+      input({
+        attachments: [
+          { filename: 'scan.pdf', text: receipt },
+          { filename: 'later.pdf', text: null },
+          { filename: 'blank.pdf', text: '' },
+        ],
+      }),
+    );
+    expect(out.read).toEqual({ attachments: ['scan.pdf'], pending: ['later.pdf'] });
+  });
+});
+
+describe('what the model answers', () => {
+  it('takes the notebook, the title and the likeliest tags that clear the floors', async () => {
+    const { jev } = fake({
+      notebook: choice('Receipts', 0.8),
+      title: choice('ACME HARDWARE', 0.7),
+      tag_0: noul(0.9),
+      tag_1: noul(0.5),
+      tag_2: noul(0.8),
+    });
+    const out = await autofill(jev, input());
+    expect(out.notebook).toEqual({ id: 'nb-receipts', name: 'Receipts', confidence: 0.8 });
+    expect(out.title).toEqual({ value: 'ACME HARDWARE', confidence: 0.7 });
+    // Likeliest first; "taxes" at 0.5 is below the floor.
+    expect(out.tags).toEqual([
+      { name: 'home', confidence: 0.9 },
+      { name: 'car', confidence: 0.8 },
+    ]);
+  });
+
+  it('leaves alone what the model is unsure of, or answers "none" to', async () => {
+    const { jev } = fake({ notebook: choice('Receipts', 0.4), title: choice('none', 0.99) });
+    const out = await autofill(jev, input());
+    expect(out.notebook).toBeUndefined();
+    expect(out.title).toBeUndefined();
+    expect(out.tags).toEqual([]);
+  });
+
+  it('suggests at most a few tags, however many the model likes', async () => {
+    const tags = Array.from({ length: 12 }, (_, i) => ({ name: `t${i}`, examples: [] }));
+    const script = Object.fromEntries(tags.map((_, i) => [`tag_${i}`, noul(0.8 + i / 100)]));
+    const out = await autofill(fake(script).jev, input({ tags }));
+    expect(out.tags).toHaveLength(MAX_SUGGESTED_TAGS);
+    expect(out.tags[0]?.name).toBe('t11');
+  });
+
+  it('never answers with a notebook it was not given', async () => {
+    const out = await autofill(fake({ notebook: choice('Somewhere else', 0.99) }).jev, input());
+    expect(out.notebook).toBeUndefined();
+  });
+});
+
+describe('the fields', () => {
+  it('asks the chosen notebook’s fields in a second round, each by its type', async () => {
+    const { jev, calls } = fake({ notebook: choice('Receipts') });
+    await autofill(jev, input());
+
+    expect(calls).toHaveLength(2);
+    const { questions } = calls[1]!;
+    const byName = (i: number) => questions[`field_${i}`];
+
+    // Vendor, a text field: the document's lines.
+    const vendor = byName(0) as JevChoiceQuestion;
+    expect(vendor.type).toBe('choice');
+    expect(Object.keys(vendor.criteria)).toContain('ACME HARDWARE');
+    expect(Object.keys(vendor.criteria)).toContain('none');
+
+    // Total, an amount: every number that could be one, described as written.
+    const total = byName(1) as JevChoiceQuestion;
+    expect(Object.keys(total.criteria)).toEqual(
+      expect.arrayContaining(['1234.56', '98.76', '1333.32', '4471', 'none']),
+    );
+    expect(Object.keys(total.criteria)).not.toContain('0148');
+    expect(total.criteria['1234.56']).toBe('As written: $1,234.56');
+
+    // Invoice date: every date, as ISO, described as written.
+    const date = byName(2) as JevChoiceQuestion;
+    expect(Object.keys(date.criteria)).toEqual(['2026-03-04', '2026-03-18', 'none']);
+    expect(date.criteria['2026-03-18']).toBe('As written: March 18, 2026');
+
+    // Kind, a select: its options.
+    const kind = byName(3) as JevChoiceQuestion;
+    expect(Object.keys(kind.criteria)).toEqual(['Hardware', 'Grocery', 'none']);
+
+    // Paid, a checkbox: one yes/no. Paid via, a multi-select: one per option.
+    expect(byName(4)?.type).toBe('noul');
+    expect(questions['field_5_0']?.type).toBe('noul');
+    expect(questions['field_5_2']?.type).toBe('noul');
+
+    // A rating is never asked about.
+    expect(byName(6)).toBeUndefined();
+
+    // Contact, an email: the addresses in the text.
+    const mail = byName(7) as JevChoiceQuestion;
+    expect(Object.keys(mail.criteria)).toEqual(['billing@acme.example', 'none']);
+  });
+
+  it('turns the answers into values the fields can hold', async () => {
+    const { jev } = fake({
+      notebook: choice('Receipts'),
+      field_0: choice('ACME HARDWARE', 0.85),
+      field_1: choice('1333.32', 0.9),
+      field_2: choice('2026-03-04', 0.6),
+      field_3: choice('Hardware', 0.95),
+      field_4: noul(0.8),
+      field_5_0: noul(0.9),
+      field_5_1: noul(0.1),
+      field_5_2: noul(0.76),
+      field_7: choice('billing@acme.example', 0.9),
+    });
+    const out = await autofill(jev, input());
+    expect(out.fields.map((f) => [f.field.name, f.value, f.confidence])).toEqual([
+      ['Vendor', 'ACME HARDWARE', 0.85],
+      ['Total', 1333.32, 0.9],
+      ['Invoice date', '2026-03-04', 0.6],
+      ['Kind', 'Hardware', 0.95],
+      ['Paid', true, 0.8],
+      // The list's confidence is its least certain member's.
+      ['Paid via', ['Card', 'Check'], 0.76],
+      ['Contact', 'billing@acme.example', 0.9],
+    ]);
+    // The definition rides along, so a client can store the value before it has loaded it.
+    expect(out.fields[1]?.field).toMatchObject({ id: 'f-total', type: 'number', currency: 'USD' });
+  });
+
+  it('fills the note’s own notebook’s fields when the model has no opinion on the notebook', async () => {
+    const { jev, calls } = fake({ field_3: choice('Grocery') });
+    const out = await autofill(jev, input({ note: { title: '', body: '', tags: [], notebookId: 'nb-receipts' } }));
+    expect(calls).toHaveLength(2);
+    expect(out.notebook).toBeUndefined();
+    expect(out.fields).toEqual([{ field: receipts.fields[3], value: 'Grocery', confidence: 0.9 }]);
+  });
+
+  it('asks no second round for a notebook with no fields', async () => {
+    const { jev, calls } = fake({ notebook: choice('Coupons') });
+    const out = await autofill(jev, input());
+    expect(calls).toHaveLength(1);
+    expect(out.fields).toEqual([]);
+  });
+
+  it('drops an answer the field could not hold', async () => {
+    // An option retired between the question and the answer, and a key never offered.
+    const { jev } = fake({ notebook: choice('Receipts'), field_3: choice('Sundries'), field_1: choice('lots') });
+    const out = await autofill(jev, input());
+    expect(out.fields).toEqual([]);
+  });
+});
+
+describe('the candidates the code finds', () => {
+  it('reads dates however the document writes them, once each', () => {
+    const found = findDates('Paid 2026-03-04, due 3/18/26 and again on March 18, 2026; 25.12.2025; 4th Feb 2026; 13/13/2026');
+    expect(found.map((o) => o.key)).toEqual(['2026-03-04', '2026-03-18', '2025-12-25', '2026-02-04']);
+    expect(found[1]?.description).toBe('As written: 3/18/26');
+  });
+
+  it('reads numbers that could be amounts, and not the ones that are something else', () => {
+    const found = findNumbers('Total $1,333.32 on 03/04/2026 at 10:30, ref 1234567890123, qty 3, tax 98.76, tel 612-555-0148');
+    expect(found.map((o) => o.value)).toEqual([1333.32, 98.76, 3]);
+  });
+
+  it('reads addresses, links and phone numbers', () => {
+    expect(findEmails('Write to Billing@acme.example or billing@acme.example').map((o) => o.key)).toEqual([
+      'Billing@acme.example',
+    ]);
+    expect(findUrls('See https://acme.example/pay. Or www.acme.example/help, thanks').map((o) => o.value)).toEqual([
+      'https://acme.example/pay',
+      'https://www.acme.example/help',
+    ]);
+    expect(findPhones('Call (612) 555-0148 or +1 612.555.0148 or 612-555-0199').map((o) => o.key)).toEqual([
+      '(612) 555-0148',
+      '612-555-0199',
+    ]);
+  });
+
+  it('offers the document’s lines as they read, without markdown or noise', () => {
+    const lines = candidateLines([
+      { text: '# Acme Hardware\n\n- **Invoice** 4471\n![scan](files/scan.png)\n12345\nab\nnone\nAcme hardware', where: 'the note' },
+    ]);
+    expect(lines.map((o) => o.key)).toEqual(['Acme Hardware', 'Invoice** 4471']);
+    expect(lines[0]?.description).toBe('Line 1 of the note');
+  });
+});

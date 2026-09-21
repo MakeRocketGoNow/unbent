@@ -8,7 +8,10 @@ import {
   updateNoteSchema,
   updateNotesSchema,
 } from '@unbent/shared';
+import { isExtractable } from '@unbent/enex/ocr-text';
+import { autofill, EXAMPLES_PER_OPTION, NothingToRead } from '../lib/autofill.js';
 import { copyAttachments } from '../lib/copy-attachments.js';
+import { canAutofill, JevError, jevFrom } from '../lib/jev.js';
 import { nextCursor } from '../lib/notes-repo.js';
 import { requireAuth } from '../lib/session.js';
 import { withRepos } from '../lib/repos-middleware.js';
@@ -141,6 +144,63 @@ export const notes = new Hono<AppEnv>()
       );
     }
     return c.json(copy, 201);
+  })
+
+  /**
+   * What the model would file this note as: a title, a notebook, tags and field values,
+   * each with its confidence. Suggestions only — nothing is written; see
+   * `AutofillSuggestion` for why the client applies them.
+   *
+   * A POST although it changes nothing here, because it is not free: every call is a
+   * round trip to a paid API, and nothing that treats GET as safe — a prefetch, a cache, a
+   * retry — may make one on its own. Ownership is checked before configuration, so the
+   * 404 for another user's note holds on an instance with no key too.
+   */
+  .post('/notes/:id/autofill', async (c) => {
+    const id = c.req.param('id');
+    const notes = c.get('notes');
+    const attachments = c.get('attachments');
+
+    const note = await notes.get(id);
+    if (!note) return c.json({ error: 'Not found' }, 404);
+    if (!canAutofill(c.env)) return c.json({ error: 'Auto-fill is not set up on this instance' }, 503);
+
+    const [files, notebooks, fields, tags, examples] = await Promise.all([
+      attachments.textsForNote(id),
+      notes.listNotebooks(),
+      notes.listAllFields(),
+      notes.listTags(),
+      notes.sampleTitles(id, EXAMPLES_PER_OPTION),
+    ]);
+
+    try {
+      const suggestion = await autofill(jevFrom(c.env), {
+        note: { title: note.title, body: note.body, tags: note.tags, notebookId: note.notebookId ?? null },
+        // Only a PDF is ever read, so a photograph with no text is "nothing there" rather
+        // than "still being read" — see `textsForNote`.
+        attachments: files.map((f) => ({
+          filename: f.filename,
+          text: isExtractable(f.contentType) ? f.text : '',
+        })),
+        notebooks: notebooks.map((nb) => ({
+          id: nb.id,
+          name: nb.name,
+          fields: fields.filter((f) => f.notebookId === nb.id),
+          examples: examples.notebooks.get(nb.id) ?? [],
+        })),
+        tags: tags.map((t) => ({ name: t.name, examples: examples.tags.get(t.id) ?? [] })),
+      });
+      return c.json(suggestion);
+    } catch (err) {
+      if (err instanceof NothingToRead) return c.json({ error: err.message }, 422);
+      if (err instanceof JevError) {
+        // The upstream failure, with its reason, rather than an anonymous 500: the reason
+        // is what tells an invalid key from an outage, and both are the operator's to fix.
+        console.error('autofill:', err.message);
+        return c.json({ error: err.message }, 502);
+      }
+      throw err;
+    }
   })
 
   /** Restores a trashed note. 404 when it is not this user's, or was never trashed. */
