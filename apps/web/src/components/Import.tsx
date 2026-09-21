@@ -470,7 +470,11 @@ export function Import({ onImported }: ImportProps) {
 
       {status === 'idle' && (
         <div className="backfill-row">
-          <Button size="small" disabled={indexing.status === 'running'} onClick={() => startIndexing({ auto: false, images: vision })}>
+          <Button
+            size="small"
+            disabled={indexing.status === 'running'}
+            onClick={() => startIndexing({ auto: false, images: vision })}
+          >
             {vision ? 'Index existing files' : 'Index existing PDFs'}
           </Button>
           <span className={indexing.status === 'error' ? 'bad small' : 'muted small'}>
