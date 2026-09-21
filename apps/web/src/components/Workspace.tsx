@@ -502,10 +502,14 @@ export function Workspace({ noteId, readOnly = false, backTo = '/notes' }: Works
   /**
    * The draft as it stands, for auto-fill to plan against after its round trip: the plan
    * compares the suggestion with what is on screen when the answer arrives, not with
-   * what was there when the button was pressed.
+   * what was there when the button was pressed. That is a same-note comparison — the
+   * user typing a title while Jev reads — not a licence to file the next note. `noteIdRef`
+   * is what makes the distinction: after a switch, this draft is the incoming note's.
    */
   const draftRef = useRef(draft);
   draftRef.current = draft;
+  const noteIdRef = useRef(noteId);
+  noteIdRef.current = noteId;
   /** What the last Auto-fill is doing or did, in the head where "Saved" goes. */
   const [autofillStatus, setAutofillStatus] = useState<{ text: string; failed: boolean } | null>(
     null,
@@ -514,6 +518,20 @@ export function Workspace({ noteId, readOnly = false, backTo = '/notes' }: Works
   const [autofilling, setAutofilling] = useState(false);
   /** Changes that would replace something already set, waiting to be confirmed. */
   const [autofillReplace, setAutofillReplace] = useState<AutofillChanges | null>(null);
+
+  /*
+     Auto-fill's round trip outlives a note switch — Workspace is reused, the same way
+     autosave is. Drop the in-flight UI here so a "Reading…" or a replace confirm from
+     the previous note cannot sit on this one. The request itself is left to finish;
+     wasting it is cheaper than filing the wrong note, which `runAutofill` now refuses
+     once `noteIdRef` has moved on.
+  */
+  useEffect(() => {
+    setAutofilling(false);
+    setAutofillReplace(null);
+    if (autofillStatusTimer.current) clearTimeout(autofillStatusTimer.current);
+    setAutofillStatus(null);
+  }, [noteId]);
 
   /** Beside the title for a few seconds; a failure stays longer, since it is a sentence. */
   function showAutofillStatus(text: string, failed = false) {
@@ -531,13 +549,18 @@ export function Workspace({ noteId, readOnly = false, backTo = '/notes' }: Works
    * typed value.
    */
   async function runAutofill() {
+    const startedFor = noteId;
     setAutofilling(true);
     setAutofillReplace(null);
     if (autofillStatusTimer.current) clearTimeout(autofillStatusTimer.current);
     setAutofillStatus({ text: 'Reading…', failed: false });
     try {
       await flush();
-      const suggestion = await api.autofillNote(noteId);
+      // Left this note during the flush: don't spend a Jev round-trip on a note that
+      // is no longer open. Coming back to it starts a new press.
+      if (noteIdRef.current !== startedFor) return;
+      const suggestion = await api.autofillNote(startedFor);
+      if (noteIdRef.current !== startedFor) return;
       for (const { field } of suggestion.fields) seenFieldDefs.current.set(field.id, field);
       const plan = planAutofill(draftRef.current, suggestion);
       if (!isEmptyChanges(plan.fill)) setDraft((d) => applyAutofill(d, plan.fill));
@@ -550,11 +573,12 @@ export function Workspace({ noteId, readOnly = false, backTo = '/notes' }: Works
       );
       if (!isEmptyChanges(plan.replace)) setAutofillReplace(plan.replace);
     } catch (err) {
+      if (noteIdRef.current !== startedFor) return;
       // The server's own sentence, without the status it arrives prefixed with: "422:
       // Nothing to read yet…" is not what a person beside a title wants to read.
       showAutofillStatus((err as Error).message.replace(/^\d{3}[^:]*: /, ''), true);
     } finally {
-      setAutofilling(false);
+      if (noteIdRef.current === startedFor) setAutofilling(false);
     }
   }
 
