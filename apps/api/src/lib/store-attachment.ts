@@ -58,7 +58,7 @@ export interface StoreAttachmentInput {
  * received, and that is what the row records.
  */
 export async function storeAttachment(
-  env: Pick<Env, 'BLOBS' | 'AI' | 'ANTHROPIC_API_KEY' | 'ANTHROPIC_API_URL' | 'VISION_MODEL'>,
+  env: Pick<Env, 'BLOBS' | 'AI' | 'ANTHROPIC_API_KEY' | 'ANTHROPIC_API_URL' | 'ANTHROPIC_MODEL'>,
   ctx: { waitUntil(promise: Promise<unknown>): void },
   repos: { attachments: AttachmentsRepo; notes: NotesRepo },
   input: StoreAttachmentInput,

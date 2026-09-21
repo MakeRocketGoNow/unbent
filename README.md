@@ -227,7 +227,7 @@ says otherwise; `pnpm exec wrangler secret put NAME` from `apps/api`, or the das
 | `AUTH_PASSWORD`, `AUTH_PASSKEY` | forcing a method on or off | rarely needed; the defaults are explained in the sign-in section |
 | `POSTHOG_KEY`, `POSTHOG_HOST` | error tracking | see [Errors in the browser](#errors-in-the-browser) |
 | `TYPESAFE_API_KEY` | filing a note from what it says | see [Filing a note from what it says](#filing-a-note-from-what-it-says); `DEV_TYPESAFE_API_KEY` as a GitHub secret carries a separate key to the dev instance and previews |
-| `ANTHROPIC_API_KEY`, `VISION_MODEL` | reading images and text-less scans | see [Reading images](#reading-images); `DEV_ANTHROPIC_API_KEY` as a GitHub secret carries a separate key to the dev instance and previews |
+| `ANTHROPIC_API_KEY`, `ANTHROPIC_MODEL` | reading images and text-less scans, and writing titles | see [Reading images](#reading-images); `DEV_ANTHROPIC_API_KEY` as a GitHub secret carries a separate key to the dev instance and previews |
 | `ANDROID_ASSET_LINKS` | an Android build of your own | see [Android app](#android-app) |
 | Custom domain | serving from your own name | dashboard, not config |
 | `ANDROID_APPLICATION_ID`, `ANDROID_DEFAULT_INSTANCE` | the Android build in CI | GitHub repository **variables**; `unbent.applicationId` and `unbent.defaultInstance` in `local.properties` locally |
@@ -956,11 +956,12 @@ a few per request, with a count of what is left; the pass a tab opening starts n
 images, because each is a request the instance pays for. The bytes go to Anthropic and are
 not kept there; each file is read once, and a decline is recorded so it is not asked again.
 
-`VISION_MODEL` picks the model. Unset means the most capable current one — a wrong digit in a
+`ANTHROPIC_MODEL` picks the model. Unset means the most capable current one — a wrong digit in a
 transcribed total is copied into a field with full confidence — and `claude-sonnet-5` trades
-some of that for cost. The reader is behind one interface in `apps/api/src/lib/vision.ts`,
-so another model, or Workers AI for an instance that would rather keep images in place, is
-one more implementation of it.
+some of that for cost. The same model writes Auto-fill's titles (see
+[Filing a note from what it says](#filing-a-note-from-what-it-says)). It sits behind one
+interface in `apps/api/src/lib/llm.ts`, so another model, or Workers AI for an instance that
+would rather keep images in place, is one more implementation of it.
 
 ## Filing a note from what it says
 
@@ -992,10 +993,12 @@ button is pressed.
 
 **Why Jev.** It chooses rather than writes: the notebook, the tags and every select or
 checkbox are choices among things that already exist, so it cannot invent a notebook or
-misspell a tag, and each answer comes with a confidence. For the title and free-form fields
-the code finds the candidates — every date the text writes for a date field, every amount for
-a number, the document's own lines for a title or a text field — and the model picks one or
-says none of them. A value can still be wrong, but it is always something the document
+misspell a tag, and each answer comes with a confidence. For free-form fields the code finds the
+candidates — every date the text writes for a date field, every amount for a number, the
+document's own lines for a text field — and the model picks one or says none of them. The
+title is written rather than chosen: where the instance has a language model, the same key
+that [reads images](#reading-images), it is asked for the title a careful person would give
+the note, and Jev's pick of the document's own lines stands where there is none. A value can still be wrong, but it is always something the document
 actually says, and anything the model is unsure of is left empty rather than guessed. Ratings
 are left alone: a document has no opinion to read.
 

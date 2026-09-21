@@ -166,19 +166,20 @@ export interface Env {
    */
   TYPESAFE_API_URL?: string;
   /**
-   * An Anthropic API key, which turns on reading images and text-less scans with a
-   * vision model: what a file shows, and any text on it, recorded as the file's text for
-   * search and auto-fill. Read by lib/vision.ts. Unset, pictures have no text, as before.
+   * An Anthropic API key, which turns on the language model: reading images and text-less
+   * scans — what a file shows, and any text on it, recorded as the file's text for search
+   * and auto-fill — and writing auto-fill's titles. Read by lib/llm.ts. Unset, pictures
+   * have no text and titles are Jev's pick of a line, as before.
    * `wrangler secret put ANTHROPIC_API_KEY`, or .dev.vars locally.
    */
   ANTHROPIC_API_KEY?: string;
   /** Where those requests go instead of Anthropic's endpoint; a stand-in for development. */
   ANTHROPIC_API_URL?: string;
   /**
-   * The model the vision reader asks for, e.g. `claude-sonnet-5` to trade some reading
-   * accuracy for cost. Unset means `VISION_MODEL_DEFAULT` in lib/vision.ts.
+   * The model the language model client asks for, e.g. `claude-sonnet-5` to trade some
+   * reading accuracy for cost. Unset means `LLM_MODEL_DEFAULT` in lib/llm.ts.
    */
-  VISION_MODEL?: string;
+  ANTHROPIC_MODEL?: string;
 }
 
 export interface SessionUser {

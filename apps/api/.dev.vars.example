@@ -169,21 +169,24 @@ ALLOWED_EMAILS=
 # Where those requests go instead, for a stand-in server during development. Leave unset.
 # TYPESAFE_API_URL=
 
-# Reading images: an Anthropic API key, which turns on reading pictures — and scans with
-# no text layer — with a vision model. What the file is and shows, then any text on it,
-# becomes the file's text for search and Auto-fill. Unset — the default — means a picture
-# has no text, as before, and nothing is sent anywhere.
+# A language model: an Anthropic API key, which turns on reading pictures — and scans with
+# no text layer — with a vision model, and writing Auto-fill's titles. What a file is and
+# shows, then any text on it, becomes the file's text for search and Auto-fill; a title is
+# written from the note whole rather than picked off a line of it. Unset — the default —
+# means a picture has no text, as before, titles come from Jev's pick of a line, and
+# nothing is sent anywhere.
 #
 # Each file is read once, after its upload or from the Import panel's "Index existing
-# files", and the bytes go to api.anthropic.com. See src/lib/vision.ts for exactly what
-# is asked. A key of its own for development keeps its usage apart from production's.
+# files", and the bytes go to api.anthropic.com; a title is one small request per press of
+# Auto-fill. See src/lib/llm.ts for exactly what is asked. A key of its own for development
+# keeps its usage apart from production's.
 #
 #   https://console.anthropic.com/settings/keys
 # ANTHROPIC_API_KEY=
 #
-# The model asked. Unset means the default in src/lib/vision.ts, the most capable current
+# The model asked. Unset means the default in src/lib/llm.ts, the most capable current
 # one; set a cheaper one to trade some reading accuracy for cost.
-# VISION_MODEL=claude-sonnet-5
+# ANTHROPIC_MODEL=claude-sonnet-5
 #
 # Where those requests go instead, for a stand-in server during development. Leave unset.
 # ANTHROPIC_API_URL=

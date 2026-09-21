@@ -1,15 +1,15 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
   ANTHROPIC_API_URL,
-  MAX_VISION_IMAGE_BYTES,
-  MAX_VISION_PDF_BYTES,
-  VISION_MODEL_DEFAULT,
-  VisionError,
-  canReadImages,
+  MAX_LLM_IMAGE_BYTES,
+  MAX_LLM_PDF_BYTES,
+  LLM_MODEL_DEFAULT,
+  LlmError,
+  canUseLlm,
   formatReading,
-  readableByVision,
-  visionFrom,
-} from './vision.js';
+  readableByLlm,
+  llmFrom,
+} from './llm.js';
 
 const env = { ANTHROPIC_API_KEY: 'sk-test' };
 const bytes = new TextEncoder().encode('not really a jpeg').buffer as ArrayBuffer;
@@ -32,24 +32,24 @@ function message(text: string, stop_reason = 'end_turn') {
 
 describe('vision', () => {
   it('is on when there is a key, and only then', () => {
-    expect(canReadImages({})).toBe(false);
-    expect(canReadImages({ ANTHROPIC_API_KEY: ' ' })).toBe(false);
-    expect(canReadImages(env)).toBe(true);
-    expect(() => visionFrom({})).toThrow();
+    expect(canUseLlm({})).toBe(false);
+    expect(canUseLlm({ ANTHROPIC_API_KEY: ' ' })).toBe(false);
+    expect(canUseLlm(env)).toBe(true);
+    expect(() => llmFrom({})).toThrow();
   });
 
   it('takes pictures and PDFs under their caps, and nothing else', () => {
-    expect(readableByVision('image/jpeg', 1000)).toBe(true);
-    expect(readableByVision('image/webp', MAX_VISION_IMAGE_BYTES + 1)).toBe(false);
-    expect(readableByVision('application/pdf', 1000)).toBe(true);
-    expect(readableByVision('application/pdf', MAX_VISION_PDF_BYTES + 1)).toBe(false);
-    expect(readableByVision('image/svg+xml', 10)).toBe(false);
-    expect(readableByVision('text/plain', 10)).toBe(false);
+    expect(readableByLlm('image/jpeg', 1000)).toBe(true);
+    expect(readableByLlm('image/webp', MAX_LLM_IMAGE_BYTES + 1)).toBe(false);
+    expect(readableByLlm('application/pdf', 1000)).toBe(true);
+    expect(readableByLlm('application/pdf', MAX_LLM_PDF_BYTES + 1)).toBe(false);
+    expect(readableByLlm('image/svg+xml', 10)).toBe(false);
+    expect(readableByLlm('text/plain', 10)).toBe(false);
   });
 
   it('sends the picture before the words, with the key and the shape to fill in', async () => {
     const fetchImpl = answering(200, message(JSON.stringify(said)));
-    const vision = visionFrom(env, fetchImpl as unknown as typeof fetch);
+    const vision = llmFrom(env, fetchImpl as unknown as typeof fetch);
     const reading = await vision.read(photo);
 
     expect(reading).toEqual(said);
@@ -60,7 +60,7 @@ describe('vision', () => {
     expect(headers['anthropic-version']).toBe('2023-06-01');
 
     const body = JSON.parse(init!.body as string);
-    expect(body.model).toBe(VISION_MODEL_DEFAULT);
+    expect(body.model).toBe(LLM_MODEL_DEFAULT);
     expect(body.output_config.format.type).toBe('json_schema');
     expect(body.output_config.format.schema.required).toEqual(['name', 'kind', 'description', 'text']);
     expect(body.output_config.format.schema.additionalProperties).toBe(false);
@@ -75,7 +75,7 @@ describe('vision', () => {
 
   it('sends a PDF as a document, and asks the model it is told to', async () => {
     const fetchImpl = answering(200, message(JSON.stringify(said)));
-    const vision = visionFrom({ ...env, VISION_MODEL: 'claude-sonnet-5', ANTHROPIC_API_URL: 'http://localhost:9/v1/messages' }, fetchImpl as unknown as typeof fetch);
+    const vision = llmFrom({ ...env, ANTHROPIC_MODEL: 'claude-sonnet-5', ANTHROPIC_API_URL: 'http://localhost:9/v1/messages' }, fetchImpl as unknown as typeof fetch);
     await vision.read({ filename: 'scan.pdf', contentType: 'application/pdf', bytes });
 
     const [url, init] = fetchImpl.mock.calls[0]!;
@@ -86,16 +86,16 @@ describe('vision', () => {
   });
 
   it('reads a decline as no reading, whether it comes as a stop reason or as prose', async () => {
-    const refused = visionFrom(env, answering(200, message('', 'refusal')) as unknown as typeof fetch);
+    const refused = llmFrom(env, answering(200, message('', 'refusal')) as unknown as typeof fetch);
     expect(await refused.read(photo)).toBeNull();
-    const prose = visionFrom(env, answering(200, message('I cannot help with that image.')) as unknown as typeof fetch);
+    const prose = llmFrom(env, answering(200, message('I cannot help with that image.')) as unknown as typeof fetch);
     expect(await prose.read(photo)).toBeNull();
   });
 
   it('says why the API refused, with the status', async () => {
-    const vision = visionFrom(env, answering(401, { type: 'error', error: { type: 'authentication_error', message: 'invalid x-api-key' } }) as unknown as typeof fetch);
+    const vision = llmFrom(env, answering(401, { type: 'error', error: { type: 'authentication_error', message: 'invalid x-api-key' } }) as unknown as typeof fetch);
     const failed = vision.read(photo);
-    await expect(failed).rejects.toBeInstanceOf(VisionError);
+    await expect(failed).rejects.toBeInstanceOf(LlmError);
     await expect(failed).rejects.toMatchObject({ status: 401, message: expect.stringContaining('invalid x-api-key') });
   });
 
@@ -104,10 +104,32 @@ describe('vision', () => {
       .fn()
       .mockResolvedValueOnce(new Response('busy', { status: 529 }))
       .mockResolvedValueOnce(new Response(JSON.stringify(message(JSON.stringify(said))), { status: 200 }));
-    const vision = visionFrom(env, fetchImpl as unknown as typeof fetch);
+    const vision = llmFrom(env, fetchImpl as unknown as typeof fetch);
     expect(await vision.read(photo)).toEqual(said);
     expect(fetchImpl).toHaveBeenCalledTimes(2);
   }, 10_000);
+
+  it('writes a title for a note from what it and its files say', async () => {
+    const fetchImpl = answering(200, message(JSON.stringify({ title: '  Acme Hardware invoice, March 2026 ' })));
+    const llm = llmFrom(env, fetchImpl as unknown as typeof fetch);
+    const note = { title: '', body: 'Paid.', attachments: [{ filename: 'scan.pdf', text: 'ACME HARDWARE\nInvoice #4471' }] };
+    expect(await llm.title(note)).toBe('Acme Hardware invoice, March 2026');
+
+    const [, init] = fetchImpl.mock.calls[0]!;
+    const body = JSON.parse(init!.body as string);
+    expect(body.model).toBe(LLM_MODEL_DEFAULT);
+    expect(body.max_tokens).toBeLessThanOrEqual(1024);
+    expect(body.system).toContain('title');
+    expect(JSON.parse(body.messages[0].content)).toEqual(note);
+    expect(body.output_config.format.schema.required).toEqual(['title']);
+  });
+
+  it('answers no title for a decline or an empty answer', async () => {
+    const declined = llmFrom(env, answering(200, message('', 'refusal')) as unknown as typeof fetch);
+    expect(await declined.title({ title: '', body: 'x', attachments: [] })).toBeNull();
+    const blank = llmFrom(env, answering(200, message(JSON.stringify({ title: '   ' }))) as unknown as typeof fetch);
+    expect(await blank.title({ title: '', body: 'x', attachments: [] })).toBeNull();
+  });
 
   it('lays the reading out as the file’s text: the name, the kind and description, then the words', () => {
     expect(formatReading(said)).toBe(

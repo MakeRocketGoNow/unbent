@@ -4,7 +4,7 @@ import { accountDeletionOffered, getAuth, offeredProviders } from '../auth.js';
 import { legalLinksOf, operatorOf, posthogOf } from '../lib/instance.js';
 import { previewRelayOrigin } from '../lib/preview-relay.js';
 import { canAutofill } from '../lib/jev.js';
-import { canReadImages } from '../lib/vision.js';
+import { canUseLlm } from '../lib/llm.js';
 import type { AppEnv } from '../types.js';
 
 export const authRoutes = new Hono<AppEnv>()
@@ -52,6 +52,6 @@ export const authRoutes = new Hono<AppEnv>()
       posthog: posthogOf(c.env),
       previewRelay: relayOrigin ? { origin: relayOrigin } : undefined,
       autofill: canAutofill(c.env),
-      vision: canReadImages(c.env),
+      vision: canUseLlm(c.env),
     } satisfies AppConfig);
   });

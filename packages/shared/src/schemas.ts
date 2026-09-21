@@ -257,7 +257,11 @@ export interface AppConfig {
  * show it, or hold a low one back further than the server did.
  */
 export interface AutofillSuggestion {
-  title?: { value: string; confidence: number };
+  /**
+   * `confidence` is absent when the title was written by the language model rather than
+   * chosen by Jev from the document's lines: a model that writes reports no probability.
+   */
+  title?: { value: string; confidence?: number };
   /** An existing notebook the note belongs in. */
   notebook?: { id: string; name: string; confidence: number };
   /** Existing tags that apply, likeliest first. Tags the note already carries are left out. */

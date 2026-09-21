@@ -10,8 +10,8 @@ import {
 } from '@unbent/shared';
 import { z } from 'zod';
 import { copyAttachments } from '../lib/copy-attachments.js';
-import { readWithVision, readersFrom } from '../lib/read-attachment.js';
-import { canReadImages, readableByVision } from '../lib/vision.js';
+import { readWithLlm, readersFrom } from '../lib/read-attachment.js';
+import { canUseLlm, readableByLlm } from '../lib/llm.js';
 import { fetchWebImage } from '../lib/web-image.js';
 import { requireAuth } from '../lib/session.js';
 import { withRepos } from '../lib/repos-middleware.js';
@@ -247,16 +247,16 @@ export const attachments = new Hono<AppEnv>()
     if (body.unusable) {
       const repo = c.get('attachments');
       await repo.recordText({ attachmentId, noteId, filename, text: '' });
-      const { vision } = readersFrom(c.env);
+      const { llm } = readersFrom(c.env);
       const row = await repo.resolve(noteId, filename);
-      if (vision && row && readableByVision(row.content_type, row.size)) {
+      if (llm && row && readableByLlm(row.content_type, row.size)) {
         c.executionCtx.waitUntil(
           (async () => {
             try {
               const stored = await c.env.BLOBS.get(row.r2_key);
               if (!stored) return;
-              await readWithVision(
-                vision,
+              await readWithLlm(
+                llm,
                 repo,
                 { id: row.id, noteId, filename, contentType: row.content_type, size: row.size, r2Key: row.r2_key },
                 await stored.arrayBuffer(),
@@ -330,15 +330,15 @@ export const attachments = new Hono<AppEnv>()
     withRepos,
     zValidator('json', z.object({ limit: z.number().int().min(1).max(10).default(3) })),
     async (c) => {
-      if (!canReadImages(c.env)) {
+      if (!canUseLlm(c.env)) {
         return c.json({ error: 'Reading images is not set up on this instance' }, 503);
       }
       const repo = c.get('attachments');
-      const { vision } = readersFrom(c.env);
+      const { llm } = readersFrom(c.env);
       const counts = { read: 0, empty: 0, failed: 0 };
       for (const file of await repo.needingVision(c.req.valid('json').limit)) {
         try {
-          if (!readableByVision(file.contentType, file.size)) {
+          if (!readableByLlm(file.contentType, file.size)) {
             // Past the caps: recorded as the model's empty answer, so it is not offered again.
             await repo.recordText({ attachmentId: file.id, noteId: file.noteId, filename: file.filename, text: '', readBy: 'vision' });
             counts.empty += 1;
@@ -349,7 +349,7 @@ export const attachments = new Hono<AppEnv>()
             counts.failed += 1;
             continue;
           }
-          const outcome = await readWithVision(vision!, repo, file, await stored.arrayBuffer());
+          const outcome = await readWithLlm(llm!, repo, file, await stored.arrayBuffer());
           counts[outcome === 'vision' ? 'read' : 'empty'] += 1;
         } catch (err) {
           // One unreadable file must not stop the pass; it stays pending for the next.

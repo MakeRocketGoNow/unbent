@@ -1,41 +1,45 @@
 import { z } from 'zod';
 
 /**
- * Reading a file a text layer cannot: a photograph, or a scan that was never OCR'd.
+ * The language model: what reads and writes, where Jev only judges.
  *
- * Search and auto-fill both read text, and until now the only text an attachment could
- * have was its PDF text layer. A photo of a receipt, a business card, a plate of food or a
- * whiteboard had none, and neither did a scan that skipped OCR. A vision model reads them
- * — and, for most photos, what it says the picture *is* matters more than the words on it:
- * "a business card" is what files it under Contacts, and no line on the card says so.
+ * Two jobs, both things a model that chooses among options cannot do. Reading a file a
+ * text layer cannot — a photograph, or a scan that was never OCR'd. Search and auto-fill
+ * both read text, and until now the only text an attachment could have was its PDF text
+ * layer; a photo of a receipt, a business card, a plate of food or a whiteboard had none.
+ * For most photos, what the picture *is* matters more than the words on it: "a business
+ * card" is what files it under Contacts, and no line on the card says so. So the model is
+ * asked for one fixed shape — a name, a kind, a description, a verbatim transcription —
+ * and the whole of it becomes the file's text (see `formatReading`), the same row search
+ * indexes and auto-fill reads. Nothing downstream learns a new kind of text.
  *
- * So the model is asked for one fixed shape — a name, a kind, a description, and a verbatim
- * transcription — and the whole of it becomes the file's text (see `formatReading`), the
- * same row search indexes and auto-fill reads. Nothing downstream learns a new kind of
- * text; a photo simply has some now.
+ * And writing a note's title. Jev can only pick a line off the document, which gets
+ * "Invoice #4471"; a model that writes gets "Acme Hardware invoice, March 2026", which is
+ * what a person filing it would have typed. See `title`, and lib/autofill.ts for how the
+ * two are combined.
  *
- * On the server, because the bytes are already in R2 and every client benefits without
- * doing anything; see lib/read-attachment.ts for where it runs. Behind a seam
- * (`VisionModel`) so the model can be swapped: the one implementation here is Claude over
- * the Messages API, with the model id an environment variable, and a Workers AI reader
- * for a self-hoster who would rather keep images in place would implement the same
- * interface. One `fetch` against one endpoint rather than the SDK, as lib/jev.ts and
- * lib/email.ts do, for the Worker's cold start.
+ * Behind a seam (`LanguageModel`) so the model can be swapped: the one implementation is
+ * Claude over the Messages API, with the model id an environment variable, and another
+ * provider — Workers AI, for a self-hoster who would rather keep images in place — is one
+ * more implementation of the same interface. One `fetch` against one endpoint rather than
+ * the SDK, as lib/jev.ts and lib/email.ts do, for the Worker's cold start. Reading runs
+ * on the server because the bytes are already in R2; see lib/read-attachment.ts.
  */
 
 export const ANTHROPIC_API_URL = 'https://api.anthropic.com/v1/messages';
 const ANTHROPIC_VERSION = '2023-06-01';
 
 /**
- * The model asked when `VISION_MODEL` is unset. The most capable current one rather
+ * The model asked when `ANTHROPIC_MODEL` is unset. The most capable current one rather
  * than the cheapest, because a wrong digit in a transcribed total is copied into a field
  * with full confidence, and the reading of a file happens once; an operator who would
- * rather trade some accuracy for cost sets the variable.
+ * rather trade some accuracy for cost sets the variable. Nothing here is tied to one
+ * model's features — no effort level, no thinking settings — so any current model works.
  */
-export const VISION_MODEL_DEFAULT = 'claude-opus-5';
+export const LLM_MODEL_DEFAULT = 'claude-opus-5';
 
 /** What the API takes as a picture. An animation loses all but its first frame, which is fine for filing. */
-export const VISION_IMAGE_TYPES = new Set(['image/jpeg', 'image/png', 'image/gif', 'image/webp']);
+export const LLM_IMAGE_TYPES = new Set(['image/jpeg', 'image/png', 'image/gif', 'image/webp']);
 
 /**
  * The API caps a base64 image at 10MB, which is about 7.5MB of file; a PDF at 32MB per
@@ -43,8 +47,8 @@ export const VISION_IMAGE_TYPES = new Set(['image/jpeg', 'image/png', 'image/gif
  * a couple of thousand tokens, and a scan that long is a job to run on purpose, not a
  * side effect of an upload.
  */
-export const MAX_VISION_IMAGE_BYTES = 7 * 1024 * 1024;
-export const MAX_VISION_PDF_BYTES = 8 * 1024 * 1024;
+export const MAX_LLM_IMAGE_BYTES = 7 * 1024 * 1024;
+export const MAX_LLM_PDF_BYTES = 8 * 1024 * 1024;
 
 /** Room for a long transcription. A scan of many pages can run to thousands of words. */
 const MAX_OUTPUT_TOKENS = 8192;
@@ -56,24 +60,24 @@ const TIMEOUT_MS = 120_000;
 const RETRY_STATUSES = new Set([429, 500, 529]);
 const RETRY_AFTER_MS = 2000;
 
-export interface VisionEnv {
+export interface LlmEnv {
   /** `wrangler secret put ANTHROPIC_API_KEY`; in dev it comes from .dev.vars. */
   ANTHROPIC_API_KEY?: string;
   /** Where the requests go instead of Anthropic, for a stand-in during development. */
   ANTHROPIC_API_URL?: string;
-  /** The model asked; see `VISION_MODEL_DEFAULT`. */
-  VISION_MODEL?: string;
+  /** The model asked; see `LLM_MODEL_DEFAULT`. */
+  ANTHROPIC_MODEL?: string;
 }
 
-/** Whether this instance can read images at all. The key alone decides. */
-export function canReadImages(env: VisionEnv): boolean {
+/** Whether this instance has a language model at all. The key alone decides. */
+export function canUseLlm(env: LlmEnv): boolean {
   return Boolean(env.ANTHROPIC_API_KEY?.trim());
 }
 
 /** Whether a file is one the vision model would be handed: a picture or a PDF, under the caps. */
-export function readableByVision(contentType: string, size: number): boolean {
-  if (VISION_IMAGE_TYPES.has(contentType)) return size <= MAX_VISION_IMAGE_BYTES;
-  if (contentType === 'application/pdf') return size <= MAX_VISION_PDF_BYTES;
+export function readableByLlm(contentType: string, size: number): boolean {
+  if (LLM_IMAGE_TYPES.has(contentType)) return size <= MAX_LLM_IMAGE_BYTES;
+  if (contentType === 'application/pdf') return size <= MAX_LLM_PDF_BYTES;
   return false;
 }
 
@@ -89,20 +93,30 @@ export interface FileReading {
   text: string;
 }
 
+/** A note as the model is shown it for a title: what it says, and what its files say. */
+export interface NoteForTitle {
+  /** The title it has now, which the model is told to keep when it already fits. */
+  title: string;
+  body: string;
+  attachments: Array<{ filename: string; text: string }>;
+}
+
 /** What a caller asks of the model, so a test can hand in a stand-in and another model can take its place. */
-export interface VisionModel {
+export interface LanguageModel {
   /** Null when the model declined to read the file, which is recorded so it is not asked again. */
   read(file: { filename: string; contentType: string; bytes: ArrayBuffer }): Promise<FileReading | null>;
+  /** The title a careful person would give the note. Null when the model declined. */
+  title(note: NoteForTitle): Promise<string | null>;
 }
 
 /** The API refused or failed. `status` is HTTP's, or 0 when no answer arrived at all. */
-export class VisionError extends Error {
+export class LlmError extends Error {
   constructor(
     readonly status: number,
     message: string,
   ) {
     super(message);
-    this.name = 'VisionError';
+    this.name = 'LlmError';
   }
 }
 
@@ -164,6 +178,31 @@ const SYSTEM = [
   '  several pages, every page in order. Empty when there is no text.',
 ].join('\n');
 
+const TITLE_SYSTEM = [
+  'You title notes in a personal archive: scans, photographs and notes someone kept. You',
+  'are shown the note — the title it has now, its body, and the text of its files — and',
+  'you answer with the title a careful person would give it: what it is and who or what it',
+  'is from or about, the way a label on a folder reads. For example "Acme Hardware invoice,',
+  'March 2026", "Jane Doe, Acme Plumbing (business card)", "Lasagna at Luigi\u2019s", "Roof',
+  'quote from Summit Roofing".',
+  '',
+  'Short, under about sixty characters, with no quotation marks and no full stop. Use only',
+  'what the note says: never invent a name, a date or an amount. If the title the note has',
+  'now already names it well, answer with that title exactly as it is.',
+].join('\n');
+
+const TITLE_SCHEMA = {
+  type: 'object',
+  properties: { title: { type: 'string' } },
+  required: ['title'],
+  additionalProperties: false,
+} as const;
+
+const titled = z.object({ title: z.string() });
+
+/** Titles have a length in the shared schema; a model that ignores "short" is cut, not refused. */
+const MAX_TITLE_CHARS = 200;
+
 const answer = z.object({
   stop_reason: z.string().nullable().optional(),
   content: z.array(z.object({ type: z.string(), text: z.string().optional() })),
@@ -179,11 +218,11 @@ function toBase64(bytes: ArrayBuffer): string {
   return btoa(binary);
 }
 
-export function visionFrom(env: VisionEnv, fetchImpl: typeof fetch = fetch): VisionModel {
+export function llmFrom(env: LlmEnv, fetchImpl: typeof fetch = fetch): LanguageModel {
   const apiKey = env.ANTHROPIC_API_KEY?.trim();
   if (!apiKey) throw new Error('Refusing to build a vision client without a key');
   const url = env.ANTHROPIC_API_URL?.trim() || ANTHROPIC_API_URL;
-  const model = env.VISION_MODEL?.trim() || VISION_MODEL_DEFAULT;
+  const model = env.ANTHROPIC_MODEL?.trim() || LLM_MODEL_DEFAULT;
 
   async function post(body: string): Promise<Response> {
     try {
@@ -198,8 +237,34 @@ export function visionFrom(env: VisionEnv, fetchImpl: typeof fetch = fetch): Vis
         signal: AbortSignal.timeout(TIMEOUT_MS),
       });
     } catch (err) {
-      throw new VisionError(0, `Could not reach the vision model: ${(err as Error).message}`);
+      throw new LlmError(0, `Could not reach the language model: ${(err as Error).message}`);
     }
+  }
+
+  /**
+   * One request, answered with the text the model wrote, or null when it declined.
+   *
+   * A refusal carries its own stop reason, and a refusal under structured output can also
+   * arrive as prose where the JSON should be; the callers' parse failures mean the same.
+   * Both are "declined", and a file the model declines once it would decline again, so
+   * the callers record that rather than retry it.
+   */
+  async function ask(body: string): Promise<string | null> {
+    let res = await post(body);
+    if (RETRY_STATUSES.has(res.status)) {
+      await new Promise((resolve) => setTimeout(resolve, RETRY_AFTER_MS));
+      res = await post(body);
+    }
+    if (!res.ok) {
+      // The body says why — a bad key, a model this key cannot use, a file too large —
+      // and the status alone does not. Truncated because this ends up in a log.
+      const detail = (await res.text().catch(() => '')).trim().slice(0, 200);
+      throw new LlmError(res.status, `The language model answered ${res.status}${detail ? `: ${detail}` : ''}`);
+    }
+    const parsed = answer.safeParse(await res.json().catch(() => null));
+    if (!parsed.success) throw new LlmError(0, 'The language model answered with nothing this code can read');
+    if (parsed.data.stop_reason === 'refusal') return null;
+    return parsed.data.content.find((c) => c.type === 'text')?.text ?? null;
   }
 
   return {
@@ -227,29 +292,33 @@ export function visionFrom(env: VisionEnv, fetchImpl: typeof fetch = fetch): Vis
         output_config: { format: { type: 'json_schema', schema: READING_SCHEMA } },
       });
 
-      let res = await post(body);
-      if (RETRY_STATUSES.has(res.status)) {
-        await new Promise((resolve) => setTimeout(resolve, RETRY_AFTER_MS));
-        res = await post(body);
-      }
-      if (!res.ok) {
-        // The body says why — a bad key, a model this key cannot use, a file too large —
-        // and the status alone does not. Truncated because this ends up in a log.
-        const detail = (await res.text().catch(() => '')).trim().slice(0, 200);
-        throw new VisionError(res.status, `The vision model answered ${res.status}${detail ? `: ${detail}` : ''}`);
-      }
-
-      const parsed = answer.safeParse(await res.json().catch(() => null));
-      if (!parsed.success) throw new VisionError(0, 'The vision model answered with nothing this code can read');
-      // A refusal carries its own stop reason, and a refusal under structured output can
-      // also arrive as prose where the JSON should be. Both mean the model declined, and
-      // a file it declines once it would decline again — recorded, not retried.
-      if (parsed.data.stop_reason === 'refusal') return null;
-      const text = parsed.data.content.find((c) => c.type === 'text')?.text;
+      const text = await ask(body);
       if (!text) return null;
       try {
         const result = reading.safeParse(JSON.parse(text));
         return result.success ? result.data : null;
+      } catch {
+        return null;
+      }
+    },
+
+    async title(note) {
+      const body = JSON.stringify({
+        model,
+        max_tokens: 256,
+        system: TITLE_SYSTEM,
+        // The note as one JSON object, its parts labelled, the way the docs recommend
+        // handing over structured state.
+        messages: [{ role: 'user', content: JSON.stringify(note) }],
+        output_config: { format: { type: 'json_schema', schema: TITLE_SCHEMA } },
+      });
+      const text = await ask(body);
+      if (!text) return null;
+      try {
+        const result = titled.safeParse(JSON.parse(text));
+        if (!result.success) return null;
+        const title = result.data.title.trim().replace(/\s+/g, ' ').slice(0, MAX_TITLE_CHARS);
+        return title || null;
       } catch {
         return null;
       }

@@ -1,7 +1,7 @@
 import { isExtractable } from '@unbent/enex/ocr-text';
 import type { AttachmentsRepo } from './attachments-repo.js';
 import { canExtractOnServer, extractOnServer, type MarkdownConverter } from './extract-text.js';
-import { canReadImages, formatReading, readableByVision, visionFrom, type VisionEnv, type VisionModel } from './vision.js';
+import { canUseLlm, formatReading, readableByLlm, llmFrom, type LlmEnv, type LanguageModel } from './llm.js';
 
 /**
  * Reading one stored file into `attachment_text`, whichever way this deployment can.
@@ -30,14 +30,14 @@ export interface StoredFile {
 export interface Readers {
   /** The PDF text-layer reader, when the deployment binds Workers AI. */
   converter?: MarkdownConverter;
-  /** The vision model, when the deployment has a key for one. */
-  vision?: VisionModel;
+  /** The language model, when the deployment has a key for one. Only its reading is needed here. */
+  llm?: Pick<LanguageModel, 'read'>;
 }
 
-export function readersFrom(env: VisionEnv & { AI?: MarkdownConverter }): Readers {
+export function readersFrom(env: LlmEnv & { AI?: MarkdownConverter }): Readers {
   return {
     ...(env.AI ? { converter: env.AI } : {}),
-    ...(canReadImages(env) ? { vision: visionFrom(env) } : {}),
+    ...(canUseLlm(env) ? { llm: llmFrom(env) } : {}),
   };
 }
 
@@ -51,12 +51,12 @@ export function readersFrom(env: VisionEnv & { AI?: MarkdownConverter }): Reader
  * layer, so it is the server's wherever the vision model is.
  */
 export function serverCanRead(
-  env: VisionEnv & { AI?: unknown },
+  env: LlmEnv & { AI?: unknown },
   contentType: string,
   size: number,
 ): boolean {
   if (canExtractOnServer(env, contentType, size)) return true;
-  return canReadImages(env) && !isExtractable(contentType) && readableByVision(contentType, size);
+  return canUseLlm(env) && !isExtractable(contentType) && readableByLlm(contentType, size);
 }
 
 /** Where the bytes come from; R2's binding, or a stand-in. */
@@ -98,14 +98,14 @@ export async function readAttachment(
     // Read and found empty, or could not be read at all: the vision model's turn, if
     // there is one. Without one, an empty read closes the row as it always did and a
     // failed read leaves it for the browser's pass.
-    if (!readers.vision) {
+    if (!readers.llm) {
       if (extracted) await record('', null);
       return extracted ? 'empty' : 'unread';
     }
   }
 
-  if (readers.vision && readableByVision(file.contentType, file.size)) {
-    return readWithVision(readers.vision, attachments, file, await load());
+  if (readers.llm && readableByLlm(file.contentType, file.size)) {
+    return readWithLlm(readers.llm, attachments, file, await load());
   }
 
   return 'unread';
@@ -116,13 +116,13 @@ export async function readAttachment(
  * the layer had nothing for. Whatever it says is recorded under its name, so a backfill
  * never pays for the same file twice — a decline included.
  */
-export async function readWithVision(
-  vision: VisionModel,
+export async function readWithLlm(
+  llm: Pick<LanguageModel, 'read'>,
   attachments: Pick<AttachmentsRepo, 'recordText'>,
   file: StoredFile,
   bytes: ArrayBuffer,
 ): Promise<Reading> {
-  const reading = await vision.read({ filename: file.filename, contentType: file.contentType, bytes });
+  const reading = await llm.read({ filename: file.filename, contentType: file.contentType, bytes });
   await attachments.recordText({
     attachmentId: file.id,
     noteId: file.noteId,

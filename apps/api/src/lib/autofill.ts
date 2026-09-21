@@ -6,6 +6,7 @@ import {
   type FieldValue,
 } from '@unbent/shared';
 import type { Jev, JevAnswer, JevChoiceQuestion, JevEntry, JevQuestion } from './jev.js';
+import type { LanguageModel, NoteForTitle } from './llm.js';
 
 /**
  * Filing a note from what it says: the title, the notebook, the tags and the fields, as
@@ -22,8 +23,14 @@ import type { Jev, JevAnswer, JevChoiceQuestion, JevEntry, JevQuestion } from '.
  * options exactly — each is a choice among things that already exist, and the model
  * cannot answer with a notebook that does not. For the rest, the code finds the
  * candidates and the model picks: every date in the text for a date field, every amount
- * for a number, the document's own lines for a text field or the title. A value can still
- * be wrong, but it cannot be malformed, and it is always something the document says.
+ * for a number, the document's own lines for a text field. A value can still be wrong,
+ * but it cannot be malformed, and it is always something the document says.
+ *
+ * The title is the exception, because a title is written, not found. A line picked off
+ * the document gets "Invoice #4471"; the language model, where the instance has one,
+ * gets "Acme Hardware invoice, March 2026". Jev is still asked to pick a line — its
+ * question rides in a request that is being made anyway — and its pick is what stands
+ * where there is no language model, or when that model declines or fails.
  *
  * Two round trips. The fields to fill are the chosen notebook's, and the choice has to
  * come back first; every question in a round shares one state, so each round is one
@@ -111,6 +118,8 @@ export interface Option {
 }
 
 interface Corpus {
+  /** The note as the language model is shown it for a title; `state` is the same, as Jev takes it. */
+  note: NoteForTitle;
   /** What every question is asked about. */
   state: JevEntry;
   /** Every piece of text, for the pattern-found candidates. */
@@ -150,8 +159,10 @@ function gather(input: AutofillInput): Corpus {
 
   if (!title && !body.trim() && files.length === 0) throw new NothingToRead(pending);
 
+  const note: NoteForTitle = { title, body, attachments: files.map((f) => ({ filename: f.filename, text: f.text })) };
   return {
-    state: { title, body, attachments: files.map((f) => ({ filename: f.filename, text: f.text })) },
+    note,
+    state: { ...note },
     text: [title, body, ...files.map((f) => f.text)].join('\n'),
     lines: candidateLines([
       { text: `${title}\n${body}`, where: 'the note' },
@@ -604,11 +615,27 @@ function fieldAsks(fields: FieldDef[], corpus: Corpus): Ask[] {
 /**
  * Asks, and answers with what cleared the floors. Throws `NothingToRead` before asking
  * anything when the note is empty; a Jev failure surfaces as the client's own error.
+ *
+ * `llm` is the language model, when the instance has one, asked for the title alongside
+ * Jev's first round. Its failure is not the suggestion's: a title is the one part with a
+ * fallback, so the error is logged and Jev's pick stands.
  */
-export async function autofill(jev: Jev, input: AutofillInput): Promise<AutofillSuggestion> {
+export async function autofill(
+  jev: Jev,
+  input: AutofillInput,
+  llm?: Pick<LanguageModel, 'title'>,
+): Promise<AutofillSuggestion> {
   const corpus = gather(input);
   const first = firstRound(input, corpus);
-  const answers = await jev.ask(corpus.state, first.questions);
+  const [answers, written] = await Promise.all([
+    jev.ask(corpus.state, first.questions),
+    llm
+      ? llm.title(corpus.note).catch((err: unknown) => {
+          console.error('autofill title:', (err as Error).message);
+          return null;
+        })
+      : Promise.resolve(null),
+  ]);
 
   const suggestion: AutofillSuggestion = {
     tags: [],
@@ -616,8 +643,11 @@ export async function autofill(jev: Jev, input: AutofillInput): Promise<Autofill
     read: { attachments: corpus.read, pending: corpus.pending },
   };
 
-  const title = first.title && chosen(answers['title'], first.title.values);
-  if (title) suggestion.title = { value: String(title.value), confidence: title.confidence };
+  if (written) suggestion.title = { value: written };
+  else {
+    const title = first.title && chosen(answers['title'], first.title.values);
+    if (title) suggestion.title = { value: String(title.value), confidence: title.confidence };
+  }
 
   const notebook = first.notebook && chosen(answers['notebook'], first.notebook.values);
   if (notebook) {

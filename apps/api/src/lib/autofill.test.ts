@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import type { FieldDef } from '@unbent/shared';
 import {
   MAX_SUGGESTED_TAGS,
@@ -160,6 +160,30 @@ describe('what the model is asked', () => {
       }),
     );
     expect(out.read).toEqual({ attachments: ['scan.pdf'], pending: ['later.pdf'] });
+  });
+});
+
+describe('the title', () => {
+  const written = { title: vi.fn(async () => 'Acme Hardware invoice, March 2026') };
+
+  it('is written by the language model when there is one, shown the note whole', async () => {
+    const { jev } = fake({ title: choice('ACME HARDWARE', 0.9) });
+    const out = await autofill(jev, input({ note: { title: 'Untitled scan', body: 'Paid.', tags: [], notebookId: null } }), written);
+    expect(out.title).toEqual({ value: 'Acme Hardware invoice, March 2026' });
+    expect(written.title).toHaveBeenCalledWith({
+      title: 'Untitled scan',
+      body: 'Paid.',
+      attachments: [{ filename: 'scan.pdf', text: receipt }],
+    });
+  });
+
+  it('falls back to Jev\u2019s pick of a line when the model declines or fails', async () => {
+    const { jev } = fake({ title: choice('ACME HARDWARE', 0.7) });
+    const declined = { title: vi.fn(async () => null) };
+    expect((await autofill(jev, input(), declined)).title).toEqual({ value: 'ACME HARDWARE', confidence: 0.7 });
+    const failing = { title: vi.fn(async () => { throw new Error('down'); }) };
+    expect((await autofill(jev, input(), failing)).title).toEqual({ value: 'ACME HARDWARE', confidence: 0.7 });
+    expect((await autofill(jev, input())).title).toEqual({ value: 'ACME HARDWARE', confidence: 0.7 });
   });
 });
 

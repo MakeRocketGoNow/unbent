@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { MarkdownConverter } from './extract-text.js';
 import { readAttachment, serverCanRead, type BlobStore, type StoredFile } from './read-attachment.js';
-import type { FileReading, VisionModel } from './vision.js';
+import type { FileReading, LanguageModel } from './llm.js';
 
 const prose =
   'Your diagnosis based on what you shared about how you are feeling is allergic rhinitis, ' +
@@ -15,7 +15,7 @@ function converter(data: string | null): MarkdownConverter {
   };
 }
 
-function vision(reading: FileReading | null): VisionModel & { read: ReturnType<typeof vi.fn> } {
+function vision(reading: FileReading | null): Pick<LanguageModel, 'read'> & { read: ReturnType<typeof vi.fn> } {
   return { read: vi.fn(async () => reading) };
 }
 
@@ -47,7 +47,7 @@ describe('reading a file', () => {
   it('takes the text layer first and never pays for a scan that has one', async () => {
     const eyes = vision(said);
     const r = repo();
-    const outcome = await readAttachment(blobs, { converter: converter(`# scan.pdf\n## Contents\n${prose}`), vision: eyes }, r, pdf);
+    const outcome = await readAttachment(blobs, { converter: converter(`# scan.pdf\n## Contents\n${prose}`), llm: eyes }, r, pdf);
     expect(outcome).toBe('text');
     expect(eyes.read).not.toHaveBeenCalled();
     expect(r.recordText).toHaveBeenCalledWith(expect.objectContaining({ attachmentId: 'a1', text: expect.stringContaining('allergic'), readBy: null }));
@@ -56,7 +56,7 @@ describe('reading a file', () => {
   it('hands a scan the layer had nothing for to the model, and records the answer under its name', async () => {
     const eyes = vision(said);
     const r = repo();
-    const outcome = await readAttachment(blobs, { converter: converter('# scan.pdf\n## Metadata\n- Creator=ScanSnap\n'), vision: eyes }, r, pdf);
+    const outcome = await readAttachment(blobs, { converter: converter('# scan.pdf\n## Metadata\n- Creator=ScanSnap\n'), llm: eyes }, r, pdf);
     expect(outcome).toBe('vision');
     expect(eyes.read).toHaveBeenCalledWith(expect.objectContaining({ filename: 'scan.pdf', contentType: 'application/pdf' }));
     expect(r.recordText).toHaveBeenCalledTimes(1);
@@ -72,11 +72,11 @@ describe('reading a file', () => {
 
   it('reads a picture with the model, and records a decline so it is not asked again', async () => {
     const r = repo();
-    expect(await readAttachment(blobs, { vision: vision(said) }, r, photo)).toBe('vision');
+    expect(await readAttachment(blobs, { llm: vision(said) }, r, photo)).toBe('vision');
     expect(r.recordText).toHaveBeenCalledWith(expect.objectContaining({ attachmentId: 'a2', readBy: 'vision' }));
 
     const declined = repo();
-    expect(await readAttachment(blobs, { vision: vision(null) }, declined, photo)).toBe('empty');
+    expect(await readAttachment(blobs, { llm: vision(null) }, declined, photo)).toBe('empty');
     expect(declined.recordText).toHaveBeenCalledWith(expect.objectContaining({ text: '', readBy: 'vision' }));
   });
 
@@ -86,7 +86,7 @@ describe('reading a file', () => {
     // A PDF's text layer is the browser's to read here; the model gets it only once the
     // browser says the layer was empty, which is a different entry point.
     const eyes = vision(said);
-    expect(await readAttachment(blobs, { vision: eyes }, r, pdf)).toBe('vision');
+    expect(await readAttachment(blobs, { llm: eyes }, r, pdf)).toBe('vision');
     expect(r.recordText).toHaveBeenCalledTimes(1);
   });
 });
