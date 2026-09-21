@@ -2,6 +2,7 @@ import { isExtractable } from '@unbent/enex/ocr-text';
 import type { AttachmentsRepo } from './attachments-repo.js';
 import { canExtractOnServer, extractOnServer, type MarkdownConverter } from './extract-text.js';
 import { canUseLlm, formatReading, readableByLlm, llmFrom, type LlmEnv, type LanguageModel } from './llm.js';
+import { withReaderSlot } from './reader-gate.js';
 
 /**
  * Reading one stored file into `attachment_text`, whichever way this deployment can.
@@ -96,29 +97,41 @@ export async function readAttachment(
      `readWithLlm` from that route. `serverCanRead` keeps such a PDF from reaching this
      function at all; this keeps the guarantee that a text-layer scan is never paid for
      in the one function that could break it.
+
+     Decided before the slot, because it reads nothing: a file no reader here can take must
+     not wait behind ones that are holding memory.
   */
   if (isExtractable(file.contentType) && !readers.converter) return 'unread';
 
-  if (readers.converter && canExtractOnServer({ AI: readers.converter }, file.contentType, file.size)) {
-    const extracted = await extractOnServer(readers.converter, file.filename, new Blob([await load()]));
-    if (extracted?.quality.usable) {
-      await record(extracted.text, null);
-      return 'text';
+  /*
+     Everything past here loads the whole file into the isolate. An import fires these off
+     back to back in `waitUntil` on one isolate, so `withReaderSlot` caps how many hold a
+     file at once — without it a burst of large attachments evicts the isolate with
+     `exceededResources`, which reaches the browser as a 503 and stops the run. See
+     reader-gate.ts.
+  */
+  return withReaderSlot(async () => {
+    if (readers.converter && canExtractOnServer({ AI: readers.converter }, file.contentType, file.size)) {
+      const extracted = await extractOnServer(readers.converter, file.filename, new Blob([await load()]));
+      if (extracted?.quality.usable) {
+        await record(extracted.text, null);
+        return 'text';
+      }
+      // Read and found empty, or could not be read at all: the vision model's turn, if
+      // there is one. Without one, an empty read closes the row as it always did and a
+      // failed read leaves it for the browser's pass.
+      if (!readers.llm) {
+        if (extracted) await record('', null);
+        return extracted ? 'empty' : 'unread';
+      }
     }
-    // Read and found empty, or could not be read at all: the vision model's turn, if
-    // there is one. Without one, an empty read closes the row as it always did and a
-    // failed read leaves it for the browser's pass.
-    if (!readers.llm) {
-      if (extracted) await record('', null);
-      return extracted ? 'empty' : 'unread';
+
+    if (readers.llm && readableByLlm(file.contentType, file.size)) {
+      return readWithLlm(readers.llm, attachments, file, await load());
     }
-  }
 
-  if (readers.llm && readableByLlm(file.contentType, file.size)) {
-    return readWithLlm(readers.llm, attachments, file, await load());
-  }
-
-  return 'unread';
+    return 'unread';
+  });
 }
 
 /**
