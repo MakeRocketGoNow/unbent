@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link } from '@tanstack/react-router';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
@@ -44,6 +44,17 @@ interface PendingType {
   incompatible: number;
 }
 
+/**
+ * Removing a select option that notes still use, held while the person decides whether to
+ * keep those values or clear them. Only ever set when `usage > 0`: an option no note uses
+ * is removed without asking.
+ */
+interface PendingOption {
+  field: FieldDef;
+  option: string;
+  usage: number;
+}
+
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
 
 /** What a field becomes when "Currency" is picked; the picker under it changes it. */
@@ -79,6 +90,7 @@ export function NotebookFields({ notebookId, onChanged }: NotebookFieldsProps) {
   const [editing, setEditing] = useState<{ id: string; value: string } | null>(null);
   const [pendingDelete, setPendingDelete] = useState<FieldDef | null>(null);
   const [pendingType, setPendingType] = useState<PendingType | null>(null);
+  const [pendingOption, setPendingOption] = useState<PendingOption | null>(null);
   const [newName, setNewName] = useState('');
   const [newType, setNewType] = useState<FieldType>('text');
   const [newOptions, setNewOptions] = useState<string[]>([]);
@@ -96,6 +108,25 @@ export function NotebookFields({ notebookId, onChanged }: NotebookFieldsProps) {
   const [newCurrency, setNewCurrency] = useState<string>(DEFAULT_CURRENCY);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+
+  /*
+     The removal popover dismisses on a click outside it, the way a popover should. Escape
+     and its own Cancel already close it (see `Confirm`); this adds the third way people
+     reach for. Guarded by `busy` so a click landing while the removal is in flight cannot
+     tear the popover down mid-write, and skipped entirely while nothing is open. The chip's
+     own remove button lives outside the popover, so a listener that fired on it would close
+     and reopen in one gesture — but that button is disabled by `busy` during the run and is
+     never what dismisses, so a plain contains-check is enough.
+  */
+  const optionConfirmRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!pendingOption || busy) return;
+    const onDown = (e: PointerEvent) => {
+      if (!optionConfirmRef.current?.contains(e.target as Node)) setPendingOption(null);
+    };
+    document.addEventListener('pointerdown', onDown);
+    return () => document.removeEventListener('pointerdown', onDown);
+  }, [pendingOption, busy]);
 
   /** Runs a mutation, then refetches this page and the app behind it. */
   async function run(action: () => Promise<unknown>) {
@@ -259,6 +290,45 @@ export function NotebookFields({ notebookId, onChanged }: NotebookFieldsProps) {
     });
   }
 
+  /**
+   * Applies an edit to a select's or multi-select's options.
+   *
+   * Every edit but one writes straight through: adding an option, renaming one, reordering
+   * them — none can strand a value. The exception is removing an option that notes still
+   * hold. That is the one option edit that can orphan data, so it is the one that asks
+   * first: the field's own value keeps working (it shows as "no longer an option"), but
+   * whether those notes should lose it is the person's call, not a silent effect of tidying
+   * the list. When more than one option leaves at once — a rare multi-remove — it is not
+   * worth a prompt per option; the whole edit writes through, matching how the list behaved
+   * before this guard existed and never destroying a value without a single removal's intent.
+   */
+  function editOptions(field: FieldDef, options: string[]) {
+    const removed = field.options.filter((o) => !options.includes(o));
+    if (removed.length === 1) {
+      const option = removed[0]!;
+      void run(async () => {
+        const usage = await api.countOptionUsage(notebookId, field.id, option);
+        if (usage > 0) {
+          setPendingOption({ field, option, usage });
+          return;
+        }
+        await api.removeNotebookFieldOption(notebookId, field.id, option, false);
+      });
+      return;
+    }
+    void run(() => api.updateNotebookField(notebookId, field.id, { options }));
+  }
+
+  /** Carries out a confirmed option removal: `clear` decides the notes' fate. */
+  function confirmRemoveOption(clear: boolean) {
+    if (!pendingOption) return;
+    const { field, option } = pendingOption;
+    void run(async () => {
+      await api.removeNotebookFieldOption(notebookId, field.id, option, clear);
+      setPendingOption(null);
+    });
+  }
+
   /** Optimistic: the row moves now, and the order is written behind it. */
   function move(index: number, by: -1 | 1) {
     const current = fields.data ?? [];
@@ -399,10 +469,44 @@ export function NotebookFields({ notebookId, onChanged }: NotebookFieldsProps) {
                   tags={field.options}
                   suggestions={[]}
                   reorderable
-                  onChange={(options) =>
-                    void run(() => api.updateNotebookField(notebookId, field.id, { options }))
-                  }
+                  onChange={(options) => editOptions(field, options)}
                 />
+                {/* The removal confirm floats over the rows below rather than pushing them,
+                    and sits under the option it is about so the two read as one action. */}
+                {pendingOption?.field.id === field.id && (
+                  <div className="field-option-confirm" ref={optionConfirmRef}>
+                    <Confirm
+                      label="Confirm remove option"
+                      question={
+                        <>
+                          Remove <strong>{pendingOption.option}</strong> from {field.name}?
+                        </>
+                      }
+                      detail={
+                        `${plural(pendingOption.usage, 'note')} still ${pendingOption.usage === 1 ? 'uses' : 'use'} it. ` +
+                        'Keep it and those notes still show it, marked no longer an option; clear it and ' +
+                        `it's removed from ${pendingOption.usage === 1 ? 'that note' : 'those notes'}.`
+                      }
+                      busy={busy}
+                      onCancel={() => setPendingOption(null)}
+                      actions={[
+                        {
+                          label: 'Keep values',
+                          busyLabel: 'Removing…',
+                          // Filled in ink, not the brand green, so it does not clash with the red clear.
+                          tone: 'neutral',
+                          onConfirm: () => confirmRemoveOption(false),
+                        },
+                        {
+                          label: `Clear from ${plural(pendingOption.usage, 'note')}`,
+                          busyLabel: 'Clearing…',
+                          tone: 'danger',
+                          onConfirm: () => confirmRemoveOption(true),
+                        },
+                      ]}
+                    />
+                  </div>
+                )}
               </div>
             )}
 

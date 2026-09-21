@@ -76,6 +76,8 @@ describe('NotebookFields', () => {
   beforeEach(() => {
     vi.spyOn(api, 'previewFieldConversion');
     vi.spyOn(api, 'updateNotebookField');
+    vi.spyOn(api, 'countOptionUsage');
+    vi.spyOn(api, 'removeNotebookFieldOption');
   });
   afterEach(() => {
     vi.restoreAllMocks();
@@ -131,6 +133,89 @@ describe('NotebookFields', () => {
     await screen.findByText('Category');
     expect((screen.getByLabelText('Move option Food earlier') as HTMLButtonElement).disabled).toBe(true);
     expect((screen.getByLabelText('Move option Travel later') as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  /*
+     Removing an option that no note uses is not a data-loss edit, so it writes straight
+     through the removal endpoint without a prompt — the routine tidying case.
+  */
+  it('removes an unused option without asking', async () => {
+    vi.mocked(api.countOptionUsage).mockResolvedValue(0);
+    vi.mocked(api.removeNotebookFieldOption).mockResolvedValue({
+      field: { ...fields[1]!, options: ['Travel'] },
+      cleared: 0,
+    });
+    mount();
+    await screen.findByText('Category');
+    fireEvent.click(screen.getByLabelText('Remove option Food'));
+    await waitFor(() =>
+      expect(api.removeNotebookFieldOption).toHaveBeenCalledWith('nb1', 'f2', 'Food', false),
+    );
+    // No dialog, and the generic field update is never used for a removal.
+    expect(screen.queryByText('Confirm remove option')).toBeNull();
+    expect(api.updateNotebookField).not.toHaveBeenCalledWith('nb1', 'f2', { options: ['Travel'] });
+  });
+
+  /*
+     Removing an option notes still hold asks first, names the count, and — the default —
+     keeps those values, which the server does when `clear` is false.
+  */
+  it('asks before removing an option in use and keeps values by default', async () => {
+    vi.mocked(api.countOptionUsage).mockResolvedValue(3);
+    vi.mocked(api.removeNotebookFieldOption).mockResolvedValue({
+      field: { ...fields[1]!, options: ['Travel'] },
+      cleared: 0,
+    });
+    mount();
+    await screen.findByText('Category');
+    fireEvent.click(screen.getByLabelText('Remove option Food'));
+    await waitFor(() => expect(screen.getByText(/3 notes still use it/)).toBeTruthy());
+    // Nothing is removed while the question is open.
+    expect(api.removeNotebookFieldOption).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByText('Keep values'));
+    await waitFor(() =>
+      expect(api.removeNotebookFieldOption).toHaveBeenCalledWith('nb1', 'f2', 'Food', false),
+    );
+  });
+
+  it('clears an option from its notes when that is chosen', async () => {
+    vi.mocked(api.countOptionUsage).mockResolvedValue(3);
+    vi.mocked(api.removeNotebookFieldOption).mockResolvedValue({
+      field: { ...fields[1]!, options: ['Travel'] },
+      cleared: 3,
+    });
+    mount();
+    await screen.findByText('Category');
+    fireEvent.click(screen.getByLabelText('Remove option Food'));
+    await waitFor(() => expect(screen.getByText('Clear from 3 notes')).toBeTruthy());
+    fireEvent.click(screen.getByText('Clear from 3 notes'));
+    await waitFor(() =>
+      expect(api.removeNotebookFieldOption).toHaveBeenCalledWith('nb1', 'f2', 'Food', true),
+    );
+  });
+
+  it('does not remove the option when the prompt is cancelled', async () => {
+    vi.mocked(api.countOptionUsage).mockResolvedValue(3);
+    mount();
+    await screen.findByText('Category');
+    fireEvent.click(screen.getByLabelText('Remove option Food'));
+    await waitFor(() => expect(screen.getByRole('group', { name: 'Confirm remove option' })).toBeTruthy());
+    fireEvent.click(screen.getByText('Cancel'));
+    await waitFor(() => expect(screen.queryByRole('group', { name: 'Confirm remove option' })).toBeNull());
+    expect(api.removeNotebookFieldOption).not.toHaveBeenCalled();
+  });
+
+  it('dismisses the removal popover on a click outside it', async () => {
+    vi.mocked(api.countOptionUsage).mockResolvedValue(3);
+    mount();
+    await screen.findByText('Category');
+    fireEvent.click(screen.getByLabelText('Remove option Food'));
+    await waitFor(() => expect(screen.getByRole('group', { name: 'Confirm remove option' })).toBeTruthy());
+    // A pointer down anywhere outside the popover closes it, like any popover.
+    fireEvent.pointerDown(document.body);
+    await waitFor(() => expect(screen.queryByRole('group', { name: 'Confirm remove option' })).toBeNull());
+    expect(api.removeNotebookFieldOption).not.toHaveBeenCalled();
   });
 
   it('asks before deleting, naming how many notes lose a value', async () => {

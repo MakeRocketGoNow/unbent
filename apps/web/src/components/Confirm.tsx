@@ -11,8 +11,13 @@ export interface ConfirmAction {
    * a danger action and no primary (delete every note), a primary that *is* the
    * destruction (empty the trash), or one of each — the notebook case: keep the notes, or
    * don't.
+   *
+   * `neutral` is a reassuring outcome like `primary`, but filled in the page's ink rather
+   * than the brand green — for the keep-vs-clear pair, where a green fill beside the red
+   * danger button reads as two colours fighting. It weighs exactly as `primary` does; only
+   * its hue differs.
    */
-  tone: 'primary' | 'danger';
+  tone: 'primary' | 'neutral' | 'danger';
   onConfirm: () => void | Promise<void>;
 }
 
@@ -57,6 +62,9 @@ function actionWeight(
   index: number,
 ): { variant: ButtonVariant; tone: ButtonTone; ownLine: boolean } {
   if (action.tone === 'primary') return { variant: 'primary', tone: 'default', ownLine: false };
+  // Filled like a primary, but in the page's ink — the affirmative that shares a row with
+  // a danger button without the two fills clashing. Weighs the same, so it never demotes.
+  if (action.tone === 'neutral') return { variant: 'primary', tone: 'neutral', ownLine: false };
   if (index > 0) {
     return { variant: 'secondary', tone: 'danger', ownLine: true };
   }
