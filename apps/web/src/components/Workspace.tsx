@@ -465,23 +465,34 @@ export function Workspace({ noteId, readOnly = false, backTo = '/notes' }: Works
    * the draft as it stands then, not as it stood when the pass began, so anything typed
    * meanwhile survives; an address the site refused keeps its web link, and the count
    * in the head says how many did.
+   *
+   * Workspace is reused across notes, and this pass outlives a switch the same way
+   * Auto-fill's round trip does. `startedFor` is what keeps it honest: `draftBodyRef` is
+   * the incoming note's after a switch, so rewriting from it would write the previous
+   * note's localized links onto the one now open — and the status would land on it too.
+   * Bail once `noteIdRef` has moved on. The images already fetched stay stored on the note
+   * they belong to; coming back to it starts a new press, as with `runAutofill`.
    */
   async function saveWebImages() {
+    const startedFor = noteId;
     await flush();
+    if (noteIdRef.current !== startedFor) return;
     const urls = remoteImageUrls(draftBodyRef.current);
     const stored = new Map<string, string>();
     let failed = 0;
     for (const [i, url] of urls.entries()) {
+      if (noteIdRef.current !== startedFor) return;
       setWebImagesStatus(`Saving ${i + 1} of ${urls.length}…`);
       try {
-        stored.set(url, (await api.fetchWebImage(noteId, url)).filename);
+        stored.set(url, (await api.fetchWebImage(startedFor, url)).filename);
       } catch {
         failed += 1;
       }
     }
+    if (noteIdRef.current !== startedFor) return;
     if (stored.size > 0) {
       rewriteBody(localizeImageLinks(draftBodyRef.current, (url) => stored.get(url) ?? null));
-      void queryClient.invalidateQueries({ queryKey: keys.attachments(noteId) });
+      void queryClient.invalidateQueries({ queryKey: keys.attachments(startedFor) });
     }
     // Short, because it sits beside the title, which a phone gives little room. A count
     // short of the total says a fetch failed; the picture that kept its web link is the
@@ -520,17 +531,18 @@ export function Workspace({ noteId, readOnly = false, backTo = '/notes' }: Works
   const [autofillReplace, setAutofillReplace] = useState<AutofillChanges | null>(null);
 
   /*
-     Auto-fill's round trip outlives a note switch — Workspace is reused, the same way
-     autosave is. Drop the in-flight UI here so a "Reading…" or a replace confirm from
-     the previous note cannot sit on this one. The request itself is left to finish;
-     wasting it is cheaper than filing the wrong note, which `runAutofill` now refuses
-     once `noteIdRef` has moved on.
+     A round trip outlives a note switch — Workspace is reused, the same way autosave is.
+     Drop the in-flight head UI here so a "Reading…", a replace confirm, or a "Saving…"
+     from the previous note cannot sit on this one. The requests themselves are left to
+     finish; wasting one is cheaper than landing it on the wrong note, which `runAutofill`
+     and `saveWebImages` both now refuse once `noteIdRef` has moved on.
   */
   useEffect(() => {
     setAutofilling(false);
     setAutofillReplace(null);
     if (autofillStatusTimer.current) clearTimeout(autofillStatusTimer.current);
     setAutofillStatus(null);
+    setWebImagesStatus(null);
   }, [noteId]);
 
   /** Beside the title for a few seconds; a failure stays longer, since it is a sentence. */
