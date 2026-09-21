@@ -31,6 +31,31 @@ export function operatorOf(env: Env): AppConfig['operator'] | undefined {
 }
 
 /**
+ * The accounts that run this instance, by email, the shape `ALLOWED_EMAILS` uses.
+ *
+ * Separate from `OPERATOR_NAME`/`OPERATOR_EMAIL`, which name the legal entity for the
+ * documents and are a single contact, not a sign-in identity. This is a set of the people
+ * whose session may be shown an operator-only fault to fix — right now, a title model that
+ * rejected its key. Unset — every fresh checkout, and every fork — means nobody is an
+ * operator here and no such fault is ever surfaced, which is the safe default for a
+ * repository people deploy unchanged.
+ */
+export function operatorEmails(env: Env): Set<string> {
+  return new Set(
+    (env.OPERATOR_EMAILS ?? '')
+      .split(',')
+      .map((e) => e.trim().toLowerCase())
+      .filter(Boolean),
+  );
+}
+
+/** Whether this signed-in email runs the instance. False for an absent email or an empty list. */
+export function isOperator(env: Env, email: string | undefined): boolean {
+  if (!email) return false;
+  return operatorEmails(env).has(email.trim().toLowerCase());
+}
+
+/**
  * Where this instance's privacy policy and terms are, if it has any.
  *
  * Three answers, in order of who should be believed. An operator who has published their

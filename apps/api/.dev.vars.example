@@ -134,6 +134,14 @@ ALLOWED_EMAILS=
 # OPERATOR_NAME=Example Co
 # OPERATOR_EMAIL=help@example.com
 
+# The accounts that run this instance, by email, comma-separated — the shape of
+# ALLOWED_EMAILS above. Distinct from the pair just above, which name one legal contact for
+# the documents: this is who, when signed in, is shown a fault only an operator can fix.
+# Today that is one thing — auto-fill's title model rejecting its ANTHROPIC_API_KEY, which
+# otherwise fails silently and looks like the model simply having no better title. Unset,
+# nobody is flagged and nothing operator-only is ever surfaced, which is right for a fork.
+# OPERATOR_EMAILS=you@example.com
+
 # Legal documents you host yourself, if you would rather not use the built-in ones.
 #
 # Both or neither, and when both are set they win over OPERATOR_NAME/OPERATOR_EMAIL above:

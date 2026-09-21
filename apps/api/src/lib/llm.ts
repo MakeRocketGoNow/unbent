@@ -133,6 +133,22 @@ export class LlmError extends Error {
 }
 
 /**
+ * Whether a failure is a standing misconfiguration rather than a passing outage: a key
+ * the model rejected (401), or one not permitted to use the model or endpoint (403).
+ *
+ * The line matters because the two want opposite handling. A 401/403 fails every call
+ * until an operator changes a secret, and the caller that swallows it — auto-fill, whose
+ * title has a fallback — should say so where the operator can see it. A 429, a 5xx, a
+ * timeout (`status` 0) or a refusal is a reason to fall back quietly and let the next
+ * press succeed; surfacing those would cry wolf. Only the callers that swallow the error
+ * consult this; a caller that already surfaces its `LlmError` needs no help telling them
+ * apart.
+ */
+export function isLlmAuthError(err: unknown): boolean {
+  return err instanceof LlmError && (err.status === 401 || err.status === 403);
+}
+
+/**
  * The reading as one text, for the row every reader shares.
  *
  * The name first, on a line of its own, because auto-fill offers a file's lines as title

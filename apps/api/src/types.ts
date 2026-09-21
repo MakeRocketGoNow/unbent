@@ -98,6 +98,15 @@ export interface Env {
   OPERATOR_NAME?: string;
   OPERATOR_EMAIL?: string;
   /**
+   * Comma-separated emails of the accounts that run this instance, the shape of
+   * `ALLOWED_EMAILS`. Distinct from the pair above, which name one legal contact for the
+   * documents: this is who, when signed in, is shown an operator-only fault they can fix —
+   * currently a title model that rejected its `ANTHROPIC_API_KEY`. Unset — every fresh
+   * checkout — means nobody is flagged and nothing operator-only is ever surfaced. See
+   * `isOperator` in lib/instance.ts.
+   */
+  OPERATOR_EMAILS?: string;
+  /**
    * Legal documents hosted somewhere other than this app, for an operator whose lawyers
    * wrote their own.
    *

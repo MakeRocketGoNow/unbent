@@ -529,6 +529,13 @@ export function Workspace({ noteId, readOnly = false, backTo = '/notes' }: Works
   const [autofilling, setAutofilling] = useState(false);
   /** Changes that would replace something already set, waiting to be confirmed. */
   const [autofillReplace, setAutofillReplace] = useState<AutofillChanges | null>(null);
+  /**
+   * Set when the last Auto-fill told us — and it tells only an operator — that the title
+   * model rejected its key. A standing fault, not a passing one, so it holds as a
+   * dismissible notice rather than a status that fades, until the operator dismisses it or
+   * leaves the note. See the server's `lib/autofill.ts` and `titleModel`.
+   */
+  const [titleModelFault, setTitleModelFault] = useState(false);
 
   /*
      A round trip outlives a note switch — Workspace is reused, the same way autosave is.
@@ -542,6 +549,7 @@ export function Workspace({ noteId, readOnly = false, backTo = '/notes' }: Works
     setAutofillReplace(null);
     if (autofillStatusTimer.current) clearTimeout(autofillStatusTimer.current);
     setAutofillStatus(null);
+    setTitleModelFault(false);
     setWebImagesStatus(null);
   }, [noteId]);
 
@@ -573,6 +581,9 @@ export function Workspace({ noteId, readOnly = false, backTo = '/notes' }: Works
       if (noteIdRef.current !== startedFor) return;
       const suggestion = await api.autofillNote(startedFor);
       if (noteIdRef.current !== startedFor) return;
+      // Set only for an operator, and only when the title model rejected its key; a
+      // standing notice, separate from the status line, so it survives the fill's success.
+      setTitleModelFault(suggestion.titleModel === 'auth-failed');
       for (const { field } of suggestion.fields) seenFieldDefs.current.set(field.id, field);
       const plan = planAutofill(draftRef.current, suggestion);
       if (!isEmptyChanges(plan.fill)) setDraft((d) => applyAutofill(d, plan.fill));
@@ -835,6 +846,31 @@ export function Workspace({ noteId, readOnly = false, backTo = '/notes' }: Works
           )}
         </div>
       </div>
+
+      {/*
+          Operator-only: the title model rejected its key. Shown only to whoever runs the
+          instance (the server gates the signal), because it names a secret only they can
+          replace, and left to the status line it would fade as if it were nothing. A note
+          filed on a misconfigured instance still fills everything else and reads normally
+          for everyone else — this is the one person who can fix it, told plainly.
+      */}
+      {titleModelFault && (
+        <div className="operator-notice" role="status">
+          <span>
+            Auto-fill couldn’t reach the title model — it rejected the API key. Check{' '}
+            <code>ANTHROPIC_API_KEY</code> on this instance. Filing still works; titles fall
+            back to a line from the note.
+          </span>
+          <Button
+            variant="quiet"
+            size="small"
+            aria-label="Dismiss"
+            onClick={() => setTitleModelFault(false)}
+          >
+            Dismiss
+          </Button>
+        </div>
+      )}
 
       {/*
           Auto-fill's offer to replace what is already set — the warning the issue asked

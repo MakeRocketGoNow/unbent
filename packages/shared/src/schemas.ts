@@ -274,6 +274,18 @@ export interface AutofillSuggestion {
   fields: Array<{ field: FieldDef; value: FieldValue; confidence: number }>;
   /** Which of the note's files were read, and which had no text to read yet. */
   read: { attachments: string[]; pending: string[] };
+  /**
+   * A standing fault in the language model the title is written by, surfaced only to an
+   * operator and only when it is one the operator has to fix — an API key the model
+   * rejected, or a model this key cannot use. Not a transient outage: a rate limit or a
+   * 5xx leaves this absent and Jev's picked title stands, because retrying would work.
+   *
+   * `'auth-failed'` is the key case — a 401/403 from the model, which fails every call
+   * until the key is replaced, and looks in the UI exactly like "the model had no better
+   * title" without this. Absent for a non-operator, or where the title call succeeded,
+   * declined, or failed only for a moment; see the API's `lib/autofill.ts`.
+   */
+  titleModel?: 'auth-failed';
 }
 
 export const noteIdSchema = z.string().uuid();

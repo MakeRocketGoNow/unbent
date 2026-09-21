@@ -209,6 +209,29 @@ describe('the Auto-fill control', () => {
     expect(status.className).toContain('bad');
   });
 
+  it('shows a dismissible operator notice when the title model rejected its key', async () => {
+    // The server only sends `titleModel` to an operator; the client trusts and shows it.
+    vi.mocked(api.autofillNote).mockResolvedValue({ ...suggestion, titleModel: 'auth-failed' });
+    mount(fresh);
+    fireEvent.click(await screen.findByRole('button', { name: 'Auto-fill' }));
+
+    const notice = await screen.findByText(/rejected the API key/);
+    expect(notice.textContent).toContain('ANTHROPIC_API_KEY');
+    // The fill still succeeded — the notice rides alongside a filled title, not instead of it.
+    expect((screen.getByPlaceholderText('Untitled') as HTMLInputElement).value).toBe('Acme Hardware');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Dismiss' }));
+    expect(screen.queryByText(/rejected the API key/)).toBeNull();
+  });
+
+  it('shows no operator notice when the suggestion does not carry one', async () => {
+    vi.mocked(api.autofillNote).mockResolvedValue(suggestion);
+    mount(fresh);
+    fireEvent.click(await screen.findByRole('button', { name: 'Auto-fill' }));
+    await waitFor(() => expect(api.autofillNote).toHaveBeenCalledWith('n1'));
+    expect(document.querySelector('.operator-notice')).toBeNull();
+  });
+
   it('does not file the next note when Auto-fill’s answer arrives after a switch', async () => {
     let finish: (value: AutofillSuggestion) => void = () => {};
     vi.mocked(api.autofillNote).mockImplementation(

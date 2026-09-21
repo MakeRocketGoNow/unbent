@@ -4666,6 +4666,40 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
   border-radius: 0.45rem;
 }
 
+/*
+   The operator-only notice that the title model rejected its key. Sits where a confirm
+   sits — same width and margins, below the header — but it asks nothing, so it reads as a
+   line of prose with a dismiss beside it rather than a bordered question. A soft --bad
+   tint says something is wrong without the alarm of a full red border; the message names
+   the secret to fix. Only an operator ever sees it; see Workspace's `titleModelFault`.
+*/
+.operator-notice {
+  width: 100%;
+  min-width: 0;
+  margin: 0.75rem 0 0.25rem;
+  padding: 0.7rem 0.9rem;
+  display: flex;
+  gap: 0.75rem;
+  align-items: baseline;
+  justify-content: space-between;
+  border: 1px solid color-mix(in srgb, var(--bad) 35%, var(--border));
+  border-radius: 0.45rem;
+  background: color-mix(in srgb, var(--bad) 6%, transparent);
+  font-size: 0.9rem;
+}
+
+.operator-notice code {
+  /* The secret's name, set apart from the sentence without a monospace face shouting. */
+  font-family: inherit;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+/* The Dismiss button keeps its own size and does not shrink under the sentence. */
+.operator-notice > button {
+  flex: 0 0 auto;
+}
+
 .confirm p {
   margin: 0 0 0.5rem;
   /*
