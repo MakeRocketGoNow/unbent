@@ -1,0 +1,354 @@
+import { z } from 'zod';
+
+/**
+ * The language model: what reads and writes, where Jev only judges.
+ *
+ * Two jobs, both things a model that chooses among options cannot do. Reading a file a
+ * text layer cannot — a photograph, or a scan that was never OCR'd. Search and auto-fill
+ * both read text, and until now the only text an attachment could have was its PDF text
+ * layer; a photo of a receipt, a business card, a plate of food or a whiteboard had none.
+ * For most photos, what the picture *is* matters more than the words on it: "a business
+ * card" is what files it under Contacts, and no line on the card says so. So the model is
+ * asked for one fixed shape — a name, a kind, a description, a verbatim transcription —
+ * and the whole of it becomes the file's text (see `formatReading`), the same row search
+ * indexes and auto-fill reads. Nothing downstream learns a new kind of text.
+ *
+ * And writing a note's title. Jev can only pick a line off the document, which gets
+ * "Invoice #4471"; a model that writes gets "Acme Hardware invoice, March 2026", which is
+ * what a person filing it would have typed. See `title`, and lib/autofill.ts for how the
+ * two are combined.
+ *
+ * Behind a seam (`LanguageModel`) so the model can be swapped: the one implementation is
+ * Claude over the Messages API, with the model id an environment variable, and another
+ * provider — Workers AI, for a self-hoster who would rather keep images in place — is one
+ * more implementation of the same interface. One `fetch` against one endpoint rather than
+ * the SDK, as lib/jev.ts and lib/email.ts do, for the Worker's cold start. Reading runs
+ * on the server because the bytes are already in R2; see lib/read-attachment.ts.
+ */
+
+export const ANTHROPIC_API_URL = 'https://api.anthropic.com/v1/messages';
+const ANTHROPIC_VERSION = '2023-06-01';
+
+/**
+ * The model asked when `ANTHROPIC_MODEL` is unset. The most capable current one rather
+ * than the cheapest, because a wrong digit in a transcribed total is copied into a field
+ * with full confidence, and the reading of a file happens once; an operator who would
+ * rather trade some accuracy for cost sets the variable. The one model-specific setting
+ * here, a low effort on the title, is sent only to this default; an operator's choice
+ * gets the plain request, so any current model works in the variable.
+ */
+export const LLM_MODEL_DEFAULT = 'claude-opus-5';
+
+/** What the API takes as a picture. An animation loses all but its first frame, which is fine for filing. */
+export const LLM_IMAGE_TYPES = new Set(['image/jpeg', 'image/png', 'image/gif', 'image/webp']);
+
+/**
+ * The API caps a base64 image at 10MB, which is about 7.5MB of file; a PDF at 32MB per
+ * request and hundreds of pages. The PDF cap here is our own and lower: every page costs
+ * a couple of thousand tokens, and a scan that long is a job to run on purpose, not a
+ * side effect of an upload.
+ */
+export const MAX_LLM_IMAGE_BYTES = 7 * 1024 * 1024;
+export const MAX_LLM_PDF_BYTES = 8 * 1024 * 1024;
+
+/**
+ * Room for a long transcription. A scan of many pages can run to thousands of words, and
+ * on a model that thinks by default the thinking shares this budget with the answer.
+ */
+const MAX_OUTPUT_TOKENS = 16384;
+
+/**
+ * A title is a few dozen tokens, and this is far more than that on purpose: the default
+ * model thinks before it answers, that thinking is counted against the same budget, and
+ * a title that spent the whole of a small budget thinking would come back with no answer
+ * at all — which reads as a decline, and falls back to Jev's pick without a word.
+ */
+const MAX_TITLE_TOKENS = 1024;
+
+/** A long scan takes a while to read; this is for an outage, not a slow page. */
+const TIMEOUT_MS = 120_000;
+
+/** Retried once, after a pause: the statuses the API documents as retryable. */
+const RETRY_STATUSES = new Set([429, 500, 529]);
+const RETRY_AFTER_MS = 2000;
+
+export interface LlmEnv {
+  /** `wrangler secret put ANTHROPIC_API_KEY`; in dev it comes from .dev.vars. */
+  ANTHROPIC_API_KEY?: string;
+  /** Where the requests go instead of Anthropic, for a stand-in during development. */
+  ANTHROPIC_API_URL?: string;
+  /** The model asked; see `LLM_MODEL_DEFAULT`. */
+  ANTHROPIC_MODEL?: string;
+}
+
+/** Whether this instance has a language model at all. The key alone decides. */
+export function canUseLlm(env: LlmEnv): boolean {
+  return Boolean(env.ANTHROPIC_API_KEY?.trim());
+}
+
+/** Whether a file is one the vision model would be handed: a picture or a PDF, under the caps. */
+export function readableByLlm(contentType: string, size: number): boolean {
+  if (LLM_IMAGE_TYPES.has(contentType)) return size <= MAX_LLM_IMAGE_BYTES;
+  if (contentType === 'application/pdf') return size <= MAX_LLM_PDF_BYTES;
+  return false;
+}
+
+/** What the model says about a file. Every part may be empty but the description. */
+export interface FileReading {
+  /** A short line a person would title the note with. */
+  name: string;
+  /** What the file is, in a few words: receipt, business card, photo of a meal. */
+  kind: string;
+  /** What it shows and the facts someone filing it would want. */
+  description: string;
+  /** Every piece of legible text, verbatim, in reading order. Empty when there is none. */
+  text: string;
+}
+
+/** A note as the model is shown it for a title: what it says, and what its files say. */
+export interface NoteForTitle {
+  /** The title it has now, which the model is told to keep when it already fits. */
+  title: string;
+  body: string;
+  attachments: Array<{ filename: string; text: string }>;
+}
+
+/** What a caller asks of the model, so a test can hand in a stand-in and another model can take its place. */
+export interface LanguageModel {
+  /** Null when the model declined to read the file, which is recorded so it is not asked again. */
+  read(file: { filename: string; contentType: string; bytes: ArrayBuffer }): Promise<FileReading | null>;
+  /** The title a careful person would give the note. Null when the model declined. */
+  title(note: NoteForTitle): Promise<string | null>;
+}
+
+/** The API refused or failed. `status` is HTTP's, or 0 when no answer arrived at all. */
+export class LlmError extends Error {
+  constructor(
+    readonly status: number,
+    message: string,
+  ) {
+    super(message);
+    this.name = 'LlmError';
+  }
+}
+
+/**
+ * The reading as one text, for the row every reader shares.
+ *
+ * The name first, on a line of its own, because auto-fill offers a file's lines as title
+ * candidates and the name is the one line written to be a title. Then the kind and the
+ * description together, which is the line search hits when someone types "business
+ * card" or "lasagna". Then the transcription, which is what the candidate finders read
+ * for dates, amounts and phone numbers, and where a search for a word on the page lands.
+ */
+export function formatReading(reading: FileReading): string {
+  const kind = reading.kind.trim();
+  const description = reading.description.trim();
+  const about = kind ? `${kind.charAt(0).toUpperCase()}${kind.slice(1)}: ${description}` : description;
+  return [reading.name.trim(), about, '', reading.text.trim()].join('\n').trim();
+}
+
+/**
+ * The shape the model fills in. Constrained decoding on the API's side guarantees it, so
+ * the answer is parsed rather than validated — except that a refusal comes back as prose
+ * in place of JSON, which is what the parse failure below means.
+ */
+const READING_SCHEMA = {
+  type: 'object',
+  properties: {
+    name: { type: 'string' },
+    kind: { type: 'string' },
+    description: { type: 'string' },
+    text: { type: 'string' },
+  },
+  required: ['name', 'kind', 'description', 'text'],
+  additionalProperties: false,
+} as const;
+
+const reading = z.object({
+  name: z.string(),
+  kind: z.string(),
+  description: z.string(),
+  text: z.string(),
+});
+
+const SYSTEM = [
+  'You read files for a personal notes archive so they can be searched and filed. The',
+  'file is a photograph, a screenshot or a scanned document that someone kept: a receipt,',
+  'a business card, a meal, a product, a whiteboard, a letter, a form, a label.',
+  '',
+  'Answer in the shape you are given.',
+  '- kind: what the file is, in a few plain words, such as "receipt", "business card",',
+  '  "photo of a meal", "whiteboard", "product box", "letter", "screenshot".',
+  '- name: one short line a person would title the note with, naming what it is and who',
+  '  or what it is from or about — a letterhead, a business, a dish, a subject.',
+  '- description: one or two sentences saying what it shows and the facts someone filing',
+  '  it would want: the business, the dish, the product, the amounts, the dates, the',
+  '  people by role. Never identify a person from their face.',
+  '- text: every piece of legible text, transcribed exactly as written and in reading',
+  '  order, one line per line of the original, with no commentary. For a document of',
+  '  several pages, every page in order. Empty when there is no text. If the text runs',
+  '  past about ten thousand words, stop there and end with a line saying the rest was',
+  '  left out.',
+].join('\n');
+
+const TITLE_SYSTEM = [
+  'You title notes in a personal archive: scans, photographs and notes someone kept. You',
+  'are shown the note — the title it has now, its body, and the text of its files — and',
+  'you answer with the title a careful person would give it: what it is and who or what it',
+  'is from or about, the way a label on a folder reads. For example "Acme Hardware invoice,',
+  'March 2026", "Jane Doe, Acme Plumbing (business card)", "Lasagna at Luigi\u2019s", "Roof',
+  'quote from Summit Roofing".',
+  '',
+  'Short, under about sixty characters, with no quotation marks and no full stop. Use only',
+  'what the note says: never invent a name, a date or an amount. If the title the note has',
+  'now already names it well, answer with that title exactly as it is.',
+].join('\n');
+
+const TITLE_SCHEMA = {
+  type: 'object',
+  properties: { title: { type: 'string' } },
+  required: ['title'],
+  additionalProperties: false,
+} as const;
+
+const titled = z.object({ title: z.string() });
+
+/** Titles have a length in the shared schema; a model that ignores "short" is cut, not refused. */
+const MAX_TITLE_CHARS = 200;
+
+const answer = z.object({
+  stop_reason: z.string().nullable().optional(),
+  content: z.array(z.object({ type: z.string(), text: z.string().optional() })),
+});
+
+/** Chunked, because `String.fromCharCode(...bytes)` overflows the call stack on a photo. */
+function toBase64(bytes: ArrayBuffer): string {
+  const view = new Uint8Array(bytes);
+  let binary = '';
+  for (let i = 0; i < view.length; i += 0x8000) {
+    binary += String.fromCharCode(...view.subarray(i, i + 0x8000));
+  }
+  return btoa(binary);
+}
+
+export function llmFrom(env: LlmEnv, fetchImpl: typeof fetch = fetch): LanguageModel {
+  const apiKey = env.ANTHROPIC_API_KEY?.trim();
+  if (!apiKey) throw new Error('Refusing to build a vision client without a key');
+  const url = env.ANTHROPIC_API_URL?.trim() || ANTHROPIC_API_URL;
+  const model = env.ANTHROPIC_MODEL?.trim() || LLM_MODEL_DEFAULT;
+
+  async function post(body: string): Promise<Response> {
+    try {
+      return await fetchImpl(url, {
+        method: 'POST',
+        headers: {
+          'x-api-key': apiKey!,
+          'anthropic-version': ANTHROPIC_VERSION,
+          'Content-Type': 'application/json',
+        },
+        body,
+        signal: AbortSignal.timeout(TIMEOUT_MS),
+      });
+    } catch (err) {
+      throw new LlmError(0, `Could not reach the language model: ${(err as Error).message}`);
+    }
+  }
+
+  /**
+   * One request, answered with the text the model wrote, or null when it declined.
+   *
+   * A refusal carries its own stop reason, and a refusal under structured output can also
+   * arrive as prose where the JSON should be; the callers' parse failures mean the same.
+   * Both are "declined", and a file the model declines once it would decline again, so
+   * the callers record that rather than retry it.
+   */
+  async function ask(body: string): Promise<string | null> {
+    let res = await post(body);
+    if (RETRY_STATUSES.has(res.status)) {
+      await new Promise((resolve) => setTimeout(resolve, RETRY_AFTER_MS));
+      res = await post(body);
+    }
+    if (!res.ok) {
+      // The body says why — a bad key, a model this key cannot use, a file too large —
+      // and the status alone does not. Truncated because this ends up in a log.
+      const detail = (await res.text().catch(() => '')).trim().slice(0, 200);
+      throw new LlmError(res.status, `The language model answered ${res.status}${detail ? `: ${detail}` : ''}`);
+    }
+    const parsed = answer.safeParse(await res.json().catch(() => null));
+    if (!parsed.success) throw new LlmError(0, 'The language model answered with nothing this code can read');
+    if (parsed.data.stop_reason === 'refusal') return null;
+    // Cut off, not declined: the answer is missing or truncated. Recording that as a
+    // decline would file a half-read scan as empty for good, so it is an error instead,
+    // which leaves the file pending and the title to Jev's pick, and is logged either way.
+    if (parsed.data.stop_reason === 'max_tokens') {
+      throw new LlmError(0, 'The language model ran out of room before it finished answering');
+    }
+    return parsed.data.content.find((c) => c.type === 'text')?.text ?? null;
+  }
+
+  return {
+    async read(file) {
+      const data = toBase64(file.bytes);
+      // A PDF is a document, a picture an image; the API reads each page of a document
+      // as text and as an image, so a scan with no text layer reads the same as a photo.
+      const source = { type: 'base64', media_type: file.contentType, data };
+      const block =
+        file.contentType === 'application/pdf'
+          ? { type: 'document', source }
+          : { type: 'image', source };
+
+      const body = JSON.stringify({
+        model,
+        max_tokens: MAX_OUTPUT_TOKENS,
+        system: SYSTEM,
+        // The file before the words about it, which is the order the docs recommend.
+        messages: [
+          {
+            role: 'user',
+            content: [block, { type: 'text', text: `Read this file, which is called "${file.filename}".` }],
+          },
+        ],
+        output_config: { format: { type: 'json_schema', schema: READING_SCHEMA } },
+      });
+
+      const text = await ask(body);
+      if (!text) return null;
+      try {
+        const result = reading.safeParse(JSON.parse(text));
+        return result.success ? result.data : null;
+      } catch {
+        return null;
+      }
+    },
+
+    async title(note) {
+      const body = JSON.stringify({
+        model,
+        max_tokens: MAX_TITLE_TOKENS,
+        system: TITLE_SYSTEM,
+        // The note as one JSON object, its parts labelled, the way the docs recommend
+        // handing over structured state.
+        messages: [{ role: 'user', content: JSON.stringify(note) }],
+        output_config: {
+          // A title is a small judgement, and the thinking a capable model would spend on
+          // it is paid for and waited on. Low effort trims both — but only on the model
+          // this file chose, whose parameters it knows; a model the operator named gets
+          // the plain request, since not every model accepts the field.
+          ...(model === LLM_MODEL_DEFAULT ? { effort: 'low' } : {}),
+          format: { type: 'json_schema', schema: TITLE_SCHEMA },
+        },
+      });
+      const text = await ask(body);
+      if (!text) return null;
+      try {
+        const result = titled.safeParse(JSON.parse(text));
+        if (!result.success) return null;
+        const title = result.data.title.trim().replace(/\s+/g, ' ').slice(0, MAX_TITLE_CHARS);
+        return title || null;
+      } catch {
+        return null;
+      }
+    },
+  };
+}

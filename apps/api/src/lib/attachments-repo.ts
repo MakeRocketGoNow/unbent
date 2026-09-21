@@ -10,6 +10,16 @@ interface AttachmentRow {
 }
 
 /**
+ * The predicate behind `needingVision` and `visionPending`, written once so the count
+ * and the list cannot disagree about what is pending. The image types are the vision
+ * model's (`VISION_IMAGE_TYPES`), spelled out here because a query cannot take a Set.
+ */
+const VISION_PENDING = `(
+  (a.content_type IN ('image/jpeg', 'image/png', 'image/gif', 'image/webp') AND t.attachment_id IS NULL)
+  OR (a.content_type = 'application/pdf' AND t.text = '' AND t.read_by IS NULL)
+)`;
+
+/**
  * Attachment metadata for one user.
  *
  * Ownership is checked in the same query that fetches the R2 key — a note id from a URL is
@@ -142,14 +152,27 @@ export class AttachmentsRepo extends ScopedRepo {
     noteId: string;
     filename: string;
     text: string;
+    /**
+     * `'vision'` when the vision model wrote the row, whatever it found — see migration
+     * 0020. Absent or null for a text layer, which is what every row was before.
+     */
+    readBy?: 'vision' | null;
   }): Promise<void> {
     await this.db
       .prepare(
-        `INSERT INTO attachment_text (attachment_id, note_id, user_id, filename, text, created_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6)
-         ON CONFLICT(attachment_id) DO UPDATE SET text = excluded.text`,
+        `INSERT INTO attachment_text (attachment_id, note_id, user_id, filename, text, read_by, created_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+         ON CONFLICT(attachment_id) DO UPDATE SET text = excluded.text, read_by = excluded.read_by`,
       )
-      .bind(input.attachmentId, input.noteId, this.userId, input.filename, input.text, Date.now())
+      .bind(
+        input.attachmentId,
+        input.noteId,
+        this.userId,
+        input.filename,
+        input.text,
+        input.readBy ?? null,
+        Date.now(),
+      )
       .run();
   }
 
@@ -167,8 +190,8 @@ export class AttachmentsRepo extends ScopedRepo {
   ): Promise<void> {
     await this.db
       .prepare(
-        `INSERT INTO attachment_text (attachment_id, note_id, user_id, filename, text, created_at)
-         SELECT ?1, ?2, user_id, ?3, text, ?4
+        `INSERT INTO attachment_text (attachment_id, note_id, user_id, filename, text, read_by, created_at)
+         SELECT ?1, ?2, user_id, ?3, text, read_by, ?4
            FROM attachment_text
           WHERE attachment_id = ?5 AND user_id = ?6`,
       )
@@ -217,6 +240,57 @@ export class AttachmentsRepo extends ScopedRepo {
       filename: r.filename,
       r2Key: r.r2_key,
     }));
+  }
+
+  /**
+   * Files still waiting for the vision model: a picture with no text row, or a PDF whose
+   * text layer was read and found empty and that the model has not been asked about.
+   *
+   * The second half is what `read_by` exists for. An empty row from a text layer and an
+   * empty row from the model look the same in `text`, and only one of them should be
+   * offered to a reader that costs a request per file. Ownership rides on the joins, as
+   * it does in `needingText`.
+   */
+  async needingVision(limit: number): Promise<
+    Array<{ id: string; noteId: string; filename: string; contentType: string; size: number; r2Key: string }>
+  > {
+    const { results } = await this.db
+      .prepare(
+        `SELECT a.id, a.note_id, a.filename, a.content_type, a.size, a.r2_key
+           FROM attachments a
+           JOIN notes n ON n.id = a.note_id
+           LEFT JOIN attachment_text t ON t.attachment_id = a.id
+          WHERE a.user_id = ?1 AND n.user_id = ?1 AND n.deleted_at IS NULL
+            AND ${VISION_PENDING}
+          ORDER BY a.created_at
+          LIMIT ?2`,
+      )
+      .bind(this.userId, limit)
+      .all<{ id: string; note_id: string; filename: string; content_type: string; size: number; r2_key: string }>();
+    return results.map((r) => ({
+      id: r.id,
+      noteId: r.note_id,
+      filename: r.filename,
+      contentType: r.content_type,
+      size: r.size,
+      r2Key: r.r2_key,
+    }));
+  }
+
+  /** How many files `needingVision` would still offer, for a pass to say what is left. */
+  async visionPending(): Promise<number> {
+    const row = await this.db
+      .prepare(
+        `SELECT COUNT(*) AS pending
+           FROM attachments a
+           JOIN notes n ON n.id = a.note_id
+           LEFT JOIN attachment_text t ON t.attachment_id = a.id
+          WHERE a.user_id = ?1 AND n.user_id = ?1 AND n.deleted_at IS NULL
+            AND ${VISION_PENDING}`,
+      )
+      .bind(this.userId)
+      .first<{ pending: number }>();
+    return row?.pending ?? 0;
   }
 
   /**
@@ -274,15 +348,16 @@ export class AttachmentsRepo extends ScopedRepo {
    *
    * The same three answers `textFor` gives, per file: `null` while no text has been
    * recorded — a PDF still being read, or never read — and `''` for one read and found
-   * empty. The type rides along because only a PDF ever gets text, and a caller telling
-   * "still being read" from "a photograph" needs to know which it is looking at.
+   * empty. The type rides along because a caller telling "still being read" from "a file
+   * nothing here reads" needs to know which it is looking at, and `readBy` because text
+   * the language model wrote opens with a name for the file, which auto-fill can use.
    */
-  async textsForNote(
-    noteId: string,
-  ): Promise<Array<{ filename: string; contentType: string; text: string | null }>> {
+  async textsForNote(noteId: string): Promise<
+    Array<{ filename: string; contentType: string; text: string | null; readBy: 'vision' | null }>
+  > {
     const { results } = await this.db
       .prepare(
-        `SELECT a.filename, a.content_type, t.text
+        `SELECT a.filename, a.content_type, t.text, t.read_by
            FROM attachments a
            JOIN notes n ON n.id = a.note_id
            LEFT JOIN attachment_text t ON t.attachment_id = a.id
@@ -290,8 +365,13 @@ export class AttachmentsRepo extends ScopedRepo {
           ORDER BY a.created_at`,
       )
       .bind(noteId, this.userId)
-      .all<{ filename: string; content_type: string; text: string | null }>();
-    return results.map((r) => ({ filename: r.filename, contentType: r.content_type, text: r.text }));
+      .all<{ filename: string; content_type: string; text: string | null; read_by: string | null }>();
+    return results.map((r) => ({
+      filename: r.filename,
+      contentType: r.content_type,
+      text: r.text,
+      readBy: r.read_by === 'vision' ? 'vision' : null,
+    }));
   }
 
   /** Attachment id for a filename within a note, scoped to this user. */

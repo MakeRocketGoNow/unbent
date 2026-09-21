@@ -232,6 +232,15 @@ export interface AppConfig {
    * reads as not offered.
    */
   autofill?: boolean;
+  /**
+   * Whether this instance reads images — and scans with no text layer — with a vision
+   * model, so they can be searched and auto-filled.
+   *
+   * On when the operator has set `ANTHROPIC_API_KEY` in the API. The Import panel's
+   * "Index existing files" runs the server's pass over images only when this is true,
+   * since each file read is a paid request the instance has to be able to make.
+   */
+  vision?: boolean;
 }
 
 /**
@@ -248,7 +257,11 @@ export interface AppConfig {
  * show it, or hold a low one back further than the server did.
  */
 export interface AutofillSuggestion {
-  title?: { value: string; confidence: number };
+  /**
+   * `confidence` is absent when the title was written by the language model rather than
+   * chosen by Jev from the document's lines: a model that writes reports no probability.
+   */
+  title?: { value: string; confidence?: number };
   /** An existing notebook the note belongs in. */
   notebook?: { id: string; name: string; confidence: number };
   /** Existing tags that apply, likeliest first. Tags the note already carries are left out. */

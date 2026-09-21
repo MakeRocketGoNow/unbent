@@ -8,7 +8,10 @@ import {
   serveContentType,
   serveDisposition,
 } from '@unbent/shared';
+import { z } from 'zod';
 import { copyAttachments } from '../lib/copy-attachments.js';
+import { readWithLlm, readersFrom } from '../lib/read-attachment.js';
+import { canUseLlm, readableByLlm } from '../lib/llm.js';
 import { fetchWebImage } from '../lib/web-image.js';
 import { requireAuth } from '../lib/session.js';
 import { withRepos } from '../lib/repos-middleware.js';
@@ -235,9 +238,36 @@ export const attachments = new Hono<AppEnv>()
      * `unusable: true` records that extraction was attempted and produced nothing worth
      * indexing. The row exists so a backfill pass does not retry the same failing scan
      * forever, but it holds no text, so it can never match a search.
+     *
+     * Unless the vision model can read it: a scan with no text layer is exactly what that
+     * reader is for, and this is the moment the browser says the layer had nothing. Read
+     * after the response, as an upload's server-side read is; a failure leaves the empty
+     * row standing, which the backfill offers to the model again.
      */
     if (body.unusable) {
-      await c.get('attachments').recordText({ attachmentId, noteId, filename, text: '' });
+      const repo = c.get('attachments');
+      await repo.recordText({ attachmentId, noteId, filename, text: '' });
+      const { llm } = readersFrom(c.env);
+      const row = await repo.resolve(noteId, filename);
+      if (llm && row && readableByLlm(row.content_type, row.size)) {
+        c.executionCtx.waitUntil(
+          (async () => {
+            try {
+              const stored = await c.env.BLOBS.get(row.r2_key);
+              if (!stored) return;
+              await readWithLlm(
+                llm,
+                repo,
+                { id: row.id, noteId, filename, contentType: row.content_type, size: row.size, r2Key: row.r2_key },
+                await stored.arrayBuffer(),
+              );
+            } catch (err) {
+              // Left for the backfill, and logged by id for the reason the upload gives.
+              console.error('read after empty layer:', row.id, (err as Error).message);
+            }
+          })(),
+        );
+      }
       return c.body(null, 204);
     }
 
@@ -280,6 +310,58 @@ export const attachments = new Hono<AppEnv>()
       ...coverage,
     });
   })
+
+  /**
+   * Reads a few of the files still waiting for the vision model, and says how many wait.
+   *
+   * The counterpart of `pending-text` for the reader that lives on the server: pictures,
+   * and PDFs the text layer had nothing for. The browser's pass fetches bytes to run
+   * pdf.js on; this one runs here, where the bytes and the key are, and the client only
+   * asks again until nothing is left. A few per call because each is seconds and a
+   * request per file, and a person watching a count go down can stop.
+   *
+   * A POST although it changes nothing a client sees directly: every file read is a
+   * paid request, so nothing that treats GET as safe may start one on its own. It is
+   * what the Import panel's button runs, never the pass a tab opening starts — see
+   * `startIndexing`.
+   */
+  .post(
+    '/attachments/read',
+    requireAuth,
+    withRepos,
+    zValidator('json', z.object({ limit: z.number().int().min(1).max(10).default(3) })),
+    async (c) => {
+      if (!canUseLlm(c.env)) {
+        return c.json({ error: 'Reading images is not set up on this instance' }, 503);
+      }
+      const repo = c.get('attachments');
+      const { llm } = readersFrom(c.env);
+      const counts = { read: 0, empty: 0, failed: 0 };
+      for (const file of await repo.needingVision(c.req.valid('json').limit)) {
+        try {
+          if (!readableByLlm(file.contentType, file.size)) {
+            // Past the caps: recorded as the model's empty answer, so it is not offered again.
+            await repo.recordText({ attachmentId: file.id, noteId: file.noteId, filename: file.filename, text: '', readBy: 'vision' });
+            counts.empty += 1;
+            continue;
+          }
+          const stored = await c.env.BLOBS.get(file.r2Key);
+          if (!stored) {
+            counts.failed += 1;
+            continue;
+          }
+          const outcome = await readWithLlm(llm!, repo, file, await stored.arrayBuffer());
+          counts[outcome === 'vision' ? 'read' : 'empty'] += 1;
+        } catch (err) {
+          // One unreadable file must not stop the pass; it stays pending for the next. The
+          // id rather than the name, which comes from the archive and can say too much.
+          console.error('read:', file.id, (err as Error).message);
+          counts.failed += 1;
+        }
+      }
+      return c.json({ ...counts, remaining: await repo.visionPending() });
+    },
+  )
 
   .delete('/notes/:id/files/:filename', async (c) => {
     const filename = decodeURIComponent(c.req.param('filename'));

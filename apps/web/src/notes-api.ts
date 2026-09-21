@@ -533,6 +533,33 @@ export function noteDownloadUrl(noteId: string): string {
   return `/api/notes/${encodeURIComponent(noteId)}/export`;
 }
 
+/** What one call of the server's reading pass did, and how many files still wait for it. */
+export interface ReadPass {
+  /** Files the vision model read something off. */
+  read: number;
+  /** Files it looked at and found nothing on, or declined; recorded, so not offered again. */
+  empty: number;
+  /** Files that could not be read this time and stay pending. */
+  failed: number;
+  remaining: number;
+}
+
+/**
+ * Asks the server to read a few of the files still waiting for its vision model —
+ * pictures, and PDFs the text layer had nothing for — and say how many still wait. A
+ * handful per call, since each is seconds and a paid request; the indexing pass loops
+ * until `remaining` is zero. See the route for why it is a POST.
+ */
+export async function readPendingFiles(limit = 3): Promise<ReadPass> {
+  return json(
+    await fetch('/api/attachments/read', {
+      method: 'POST',
+      headers: jsonHeaders,
+      body: JSON.stringify({ limit }),
+    }),
+  );
+}
+
 /** Attachment metadata for one note — includes files no longer linked in the body. */
 export async function listAttachments(noteId: string): Promise<AttachmentInfo[]> {
   const { files } = await json<{ files: AttachmentInfo[] }>(

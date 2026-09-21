@@ -64,6 +64,42 @@ describe('indexing', () => {
     expect(seen).toEqual(['running', 'deferred']);
   });
 
+  it('reads images on the server after the PDFs, when asked, until none are left', async () => {
+    const worker = fakeWorker();
+    const passes = [
+      { read: 2, empty: 1, failed: 0, remaining: 1 },
+      { read: 1, empty: 0, failed: 0, remaining: 0 },
+    ];
+    const readImages = vi.fn(async () => passes.shift()!);
+    const indexing = createIndexing(() => worker as unknown as Worker, readImages);
+
+    indexing.start({ auto: false, images: true });
+    worker.answer({ type: 'backfill-done', progress: finished });
+    await vi.waitFor(() => expect(indexing.get().status).toBe('done'));
+
+    expect(readImages).toHaveBeenCalledTimes(2);
+    expect(indexing.get()).toMatchObject({ phase: 'images', images: { read: 3, remaining: 0 }, progress: finished });
+  });
+
+  it('never reads images on the unasked pass, and stops when a call moves nothing', async () => {
+    const readImages = vi.fn(async () => ({ read: 0, empty: 0, failed: 2, remaining: 2 }));
+    const auto = fakeWorker();
+    const unasked = createIndexing(() => auto as unknown as Worker, readImages);
+    unasked.start({ auto: true, images: true });
+    auto.answer({ type: 'backfill-done', progress: finished });
+    expect(unasked.get().status).toBe('done');
+    expect(readImages).not.toHaveBeenCalled();
+
+    const worker = fakeWorker();
+    const asked = createIndexing(() => worker as unknown as Worker, readImages);
+    asked.start({ auto: false, images: true });
+    worker.answer({ type: 'backfill-done', progress: finished });
+    await vi.waitFor(() => expect(asked.get().status).toBe('done'));
+    // Two files the server could not read stay pending, and are not paid for twice in one pass.
+    expect(readImages).toHaveBeenCalledTimes(1);
+    expect(asked.get().images).toEqual({ read: 0, remaining: 2 });
+  });
+
   it('drops a worker that crashed so the next start gets a fresh one', () => {
     const workers = [fakeWorker(), fakeWorker()];
     let spawned = 0;

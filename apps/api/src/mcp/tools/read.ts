@@ -166,10 +166,12 @@ export function registerReadTools(
     {
       title: 'Read an attachment as text',
       description:
-        "The text extracted from an attachment — a PDF's text layer, typically. This is what " +
-        'makes a scanned document readable; the file itself is bytes a model cannot use. ' +
-        'Extraction happens in the background after upload, so a recently added file may have ' +
-        'no text yet, which is reported as such rather than as an empty document.',
+        "The text extracted from an attachment: a PDF's text layer, or, where the instance " +
+        'has a vision model, what it read off a picture or a text-less scan — a name, what ' +
+        'the file is and shows, then any text on it. This is what makes a scanned document ' +
+        'or a photo readable; the file itself is bytes a model cannot use. Reading happens ' +
+        'in the background after upload, so a recently added file may have no text yet, ' +
+        'which is reported as such rather than as an empty document.',
       inputSchema: z.object({
         noteId: z.string().uuid(),
         filename: z.string().min(1).describe('As listed by get_note.'),
