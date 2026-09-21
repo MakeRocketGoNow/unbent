@@ -84,9 +84,10 @@ describe('reading a file', () => {
     const r = repo();
     expect(await readAttachment(blobs, {}, r, photo)).toBe('unread');
     // A PDF's text layer is the browser's to read here; the model gets it only once the
-    // browser says the layer was empty, which is a different entry point.
+    // browser says the layer was empty, which is a different entry point (`readWithLlm`).
     const eyes = vision(said);
-    expect(await readAttachment(blobs, { llm: eyes }, r, pdf)).toBe('vision');
-    expect(r.recordText).toHaveBeenCalledTimes(1);
+    expect(await readAttachment(blobs, { llm: eyes }, r, pdf)).toBe('unread');
+    expect(eyes.read).not.toHaveBeenCalled();
+    expect(r.recordText).not.toHaveBeenCalled();
   });
 });

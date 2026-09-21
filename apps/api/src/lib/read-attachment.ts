@@ -89,6 +89,16 @@ export async function readAttachment(
     return bytes;
   };
 
+  /*
+     A PDF never goes to the paid reader from here without the conversion having looked
+     first. Where the conversion is not bound, the text layer is the browser's to read,
+     and the model is asked only once the browser has reported that layer empty, through
+     `readWithLlm` from that route. `serverCanRead` keeps such a PDF from reaching this
+     function at all; this keeps the guarantee that a text-layer scan is never paid for
+     in the one function that could break it.
+  */
+  if (isExtractable(file.contentType) && !readers.converter) return 'unread';
+
   if (readers.converter && canExtractOnServer({ AI: readers.converter }, file.contentType, file.size)) {
     const extracted = await extractOnServer(readers.converter, file.filename, new Blob([await load()]));
     if (extracted?.quality.usable) {
