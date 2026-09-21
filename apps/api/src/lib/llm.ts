@@ -51,8 +51,19 @@ export const LLM_IMAGE_TYPES = new Set(['image/jpeg', 'image/png', 'image/gif', 
 export const MAX_LLM_IMAGE_BYTES = 7 * 1024 * 1024;
 export const MAX_LLM_PDF_BYTES = 8 * 1024 * 1024;
 
-/** Room for a long transcription. A scan of many pages can run to thousands of words. */
-const MAX_OUTPUT_TOKENS = 8192;
+/**
+ * Room for a long transcription. A scan of many pages can run to thousands of words, and
+ * on a model that thinks by default the thinking shares this budget with the answer.
+ */
+const MAX_OUTPUT_TOKENS = 16384;
+
+/**
+ * A title is a few dozen tokens, and this is far more than that on purpose: the default
+ * model thinks before it answers, that thinking is counted against the same budget, and
+ * a title that spent the whole of a small budget thinking would come back with no answer
+ * at all — which reads as a decline, and falls back to Jev's pick without a word.
+ */
+const MAX_TITLE_TOKENS = 1024;
 
 /** A long scan takes a while to read; this is for an outage, not a slow page. */
 const TIMEOUT_MS = 120_000;
@@ -176,7 +187,9 @@ const SYSTEM = [
   '  people by role. Never identify a person from their face.',
   '- text: every piece of legible text, transcribed exactly as written and in reading',
   '  order, one line per line of the original, with no commentary. For a document of',
-  '  several pages, every page in order. Empty when there is no text.',
+  '  several pages, every page in order. Empty when there is no text. If the text runs',
+  '  past about ten thousand words, stop there and end with a line saying the rest was',
+  '  left out.',
 ].join('\n');
 
 const TITLE_SYSTEM = [
@@ -265,6 +278,12 @@ export function llmFrom(env: LlmEnv, fetchImpl: typeof fetch = fetch): LanguageM
     const parsed = answer.safeParse(await res.json().catch(() => null));
     if (!parsed.success) throw new LlmError(0, 'The language model answered with nothing this code can read');
     if (parsed.data.stop_reason === 'refusal') return null;
+    // Cut off, not declined: the answer is missing or truncated. Recording that as a
+    // decline would file a half-read scan as empty for good, so it is an error instead,
+    // which leaves the file pending and the title to Jev's pick, and is logged either way.
+    if (parsed.data.stop_reason === 'max_tokens') {
+      throw new LlmError(0, 'The language model ran out of room before it finished answering');
+    }
     return parsed.data.content.find((c) => c.type === 'text')?.text ?? null;
   }
 
@@ -306,7 +325,7 @@ export function llmFrom(env: LlmEnv, fetchImpl: typeof fetch = fetch): LanguageM
     async title(note) {
       const body = JSON.stringify({
         model,
-        max_tokens: 256,
+        max_tokens: MAX_TITLE_TOKENS,
         system: TITLE_SYSTEM,
         // The note as one JSON object, its parts labelled, the way the docs recommend
         // handing over structured state.

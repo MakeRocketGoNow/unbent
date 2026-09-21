@@ -135,6 +135,13 @@ describe('vision', () => {
     expect(body.output_config.format.type).toBe('json_schema');
   });
 
+  it('treats an answer cut off by the token budget as an error, not a decline', async () => {
+    // A decline is recorded and never asked again; a cut-off answer must stay pending.
+    const cut = llmFrom(env, answering(200, message('{"title": "Acme', 'max_tokens')) as unknown as typeof fetch);
+    await expect(cut.title({ title: '', body: 'x', attachments: [] })).rejects.toBeInstanceOf(LlmError);
+    await expect(cut.read(photo)).rejects.toMatchObject({ message: expect.stringContaining('ran out of room') });
+  });
+
   it('answers no title for a decline or an empty answer', async () => {
     const declined = llmFrom(env, answering(200, message('', 'refusal')) as unknown as typeof fetch);
     expect(await declined.title({ title: '', body: 'x', attachments: [] })).toBeNull();
