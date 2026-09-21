@@ -4507,6 +4507,15 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
 
 .notebook-purpose-hint { margin: 0; }
 
+/* The header's right side: the save status beside the "All notebooks" link, the way the
+   note editor sets its status beside its actions. Baseline-aligned to sit on the title's line. */
+.notebook-head-actions {
+  display: flex;
+  align-items: baseline;
+  gap: 0.9rem;
+  white-space: nowrap;
+}
+
 /* The name input above the purpose, stretched to the panel like the purpose is. */
 .notebook-name-edit {
   align-self: stretch;
