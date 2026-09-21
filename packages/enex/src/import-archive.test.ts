@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { importArchive } from './import-archive.js';
 import {
   FAILURE_STREAK_LIMIT,
+  TRANSIENT_RETRY_LIMIT,
   ImportStoppedError,
   type ImportClient,
   type ImportSkip,
@@ -446,11 +447,16 @@ describe('failures', () => {
       content[`n-${i}/n-${i}.md`] = noteMarkdown({ id: `id-${i}`, title: `Note ${i}` });
     }
 
-    const run = importArchive(await zipFile('lib.zip', content), client);
+    // 502 is transient, so each note is retried a few times before it counts; `sleep` is a
+    // no-op here so the retries don't wait out their backoff.
+    const run = importArchive(await zipFile('lib.zip', content), client, { sleep: async () => {} });
 
     await expect(run).rejects.toBeInstanceOf(ImportStoppedError);
     await expect(run).rejects.toMatchObject({ status: 502, streak: FAILURE_STREAK_LIMIT });
-    expect(client.createNote).toHaveBeenCalledTimes(FAILURE_STREAK_LIMIT);
+    // Five notes reach the breaker, each tried 1 + TRANSIENT_RETRY_LIMIT times.
+    expect(client.createNote).toHaveBeenCalledTimes(
+      FAILURE_STREAK_LIMIT * (1 + TRANSIENT_RETRY_LIMIT),
+    );
   });
 });
 

@@ -23,6 +23,7 @@ import type { EnexNote } from './types.js';
 
 export {
   FAILURE_STREAK_LIMIT,
+  TRANSIENT_RETRY_LIMIT,
   ImportStoppedError,
   type ImportClient,
   type ImportFailure,

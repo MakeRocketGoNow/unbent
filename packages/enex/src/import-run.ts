@@ -121,6 +121,33 @@ function isNoteFailure(status: number): boolean {
   return status === 400 || status === 413 || status === 415 || status === 422;
 }
 
+/**
+ * Statuses worth trying the same note again for, rather than counting straight away.
+ *
+ * A 503/502/504 is the edge answering because the Worker was momentarily unavailable — an
+ * overloaded or briefly-evicted isolate, not a note the server refuses and not a host that
+ * is gone for good. Under a bulk import these come in bursts and then clear, so the same
+ * note usually lands on a second try a moment later. Retrying it in place is what keeps one
+ * blip from aborting the run and spending a fresh import's worth of requests re-treading
+ * everything that already landed. A host that really has gone away fails every retry too,
+ * so the breaker still trips — just after each note has tried a few times first.
+ *
+ * 404 is deliberately not here: the deleted-preview-Worker case answers 404, and a gone
+ * Worker will not come back within a note's worth of backoff, so retrying it only delays
+ * the breaker the run wants.
+ */
+function isTransientHostFailure(status: number): boolean {
+  return status === 502 || status === 503 || status === 504;
+}
+
+/** How many extra tries a transient host failure gets before it counts. */
+export const TRANSIENT_RETRY_LIMIT = 3;
+
+/** Backoff before the Nth retry (1-based): 250ms, 500ms, 1s. Capped, so a long run cannot stall. */
+function retryDelayMs(attempt: number): number {
+  return Math.min(250 * 2 ** (attempt - 1), 2000);
+}
+
 export interface ImportClient {
   createNote: (input: {
     /**
@@ -195,6 +222,11 @@ export interface ImportOptions {
   onProgress?: (progress: ImportProgress) => void;
   onFailure?: (failure: ImportFailure) => void;
   onSkip?: (skip: ImportSkip) => void;
+  /**
+   * How the run waits between retries of a transient host failure. Real time by default;
+   * a test injects a resolved promise so a retry path does not sleep for seconds.
+   */
+  sleep?: (ms: number) => Promise<void>;
 }
 
 /**
@@ -243,6 +275,39 @@ export class ImportRun {
   }
 
   /**
+   * Runs one note's work, retrying a transient host failure a few times before letting it
+   * through to the caller's failure handling.
+   *
+   * The retry is per note and in place: a 503 from an overloaded Worker usually clears in a
+   * moment, so trying the same note again is what keeps a burst from counting as failures
+   * and aborting the run. A note-shaped failure (a rejected body, a bad name) and a host
+   * that has truly gone (404) are not retried — the first is not the host's fault and the
+   * second will not recover within a note's backoff — so both reach the breaker as before.
+   * Whatever the last try threw is rethrown, so the streak still sees the real status.
+   */
+  private async runWithRetries(work: () => Promise<void>): Promise<void> {
+    const sleep = this.options.sleep ?? ((ms) => new Promise<void>((r) => setTimeout(r, ms)));
+    for (let retries = 0; ; retries += 1) {
+      try {
+        await work();
+        return;
+      } catch (err) {
+        const status = statusOf(err);
+        if (
+          status === undefined ||
+          !isTransientHostFailure(status) ||
+          retries >= TRANSIENT_RETRY_LIMIT ||
+          this.options.signal?.aborted
+        ) {
+          throw err;
+        }
+        await sleep(retryDelayMs(retries + 1));
+        if (this.options.signal?.aborted) throw err;
+      }
+    }
+  }
+
+  /**
    * Imports one note, recording the outcome either way.
    *
    * `title` is what the driver knows before the work starts. A driver that only learns
@@ -260,7 +325,7 @@ export class ImportRun {
     progress.currentTitle = title;
 
     try {
-      await work();
+      await this.runWithRetries(work);
       this.streak = { status: undefined, count: 0 };
     } catch (err) {
       if (options.signal?.aborted) return;
