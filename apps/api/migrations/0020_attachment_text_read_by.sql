@@ -1,0 +1,12 @@
+-- Which reader produced a row of attachment text.
+--
+-- Until now every row came from a text layer: pdf.js in the browser, or Workers AI's
+-- conversion on the server, and an empty row meant "read, and there was nothing there".
+-- A vision model can now read what a text layer cannot -- a photograph, a scan that was
+-- never OCR'd -- and it costs a request per file, so the same empty row has to answer a
+-- second question: has the vision model been here yet? NULL means it has not; 'vision'
+-- means it has, whatever it found, so a backfill never pays for the same file twice.
+--
+-- One ADD COLUMN, for the reason 0018 gave: no rebuild, so no cascade to fear. The FTS
+-- triggers on this table copy `text` alone and are unaffected.
+ALTER TABLE attachment_text ADD COLUMN read_by TEXT;

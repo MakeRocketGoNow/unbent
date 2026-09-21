@@ -4,6 +4,7 @@ import { accountDeletionOffered, getAuth, offeredProviders } from '../auth.js';
 import { legalLinksOf, operatorOf, posthogOf } from '../lib/instance.js';
 import { previewRelayOrigin } from '../lib/preview-relay.js';
 import { canAutofill } from '../lib/jev.js';
+import { canReadImages } from '../lib/vision.js';
 import type { AppEnv } from '../types.js';
 
 export const authRoutes = new Hono<AppEnv>()
@@ -34,6 +35,8 @@ export const authRoutes = new Hono<AppEnv>()
    *
    * `autofill` is `accountDeletion`'s shape once more: true only where the instance has a
    * key for the model, so the editor draws the control only where the route would answer.
+   * `vision` likewise: the Import panel runs the pass over images only where the server
+   * has a reader for them.
    *
    * `satisfies` rather than a return annotation: the fields whose value is `undefined` are
    * dropped by `JSON.stringify` on the way out, which is exactly the "absent means not
@@ -49,5 +52,6 @@ export const authRoutes = new Hono<AppEnv>()
       posthog: posthogOf(c.env),
       previewRelay: relayOrigin ? { origin: relayOrigin } : undefined,
       autofill: canAutofill(c.env),
+      vision: canReadImages(c.env),
     } satisfies AppConfig);
   });

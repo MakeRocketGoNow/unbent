@@ -5,8 +5,8 @@ import {
   type AttachmentInfo,
 } from '@unbent/shared';
 import type { AttachmentsRepo } from './attachments-repo.js';
-import { canExtractOnServer, extractOnServer } from './extract-text.js';
 import type { NotesRepo } from './notes-repo.js';
+import { readAttachment, readersFrom, serverCanRead } from './read-attachment.js';
 import type { Env } from '../types.js';
 
 /** One attachment after it is stored: what it is called now and how to link it. */
@@ -58,7 +58,7 @@ export interface StoreAttachmentInput {
  * received, and that is what the row records.
  */
 export async function storeAttachment(
-  env: Pick<Env, 'BLOBS' | 'AI'>,
+  env: Pick<Env, 'BLOBS' | 'AI' | 'ANTHROPIC_API_KEY' | 'ANTHROPIC_API_URL' | 'VISION_MODEL'>,
   ctx: { waitUntil(promise: Promise<unknown>): void },
   repos: { attachments: AttachmentsRepo; notes: NotesRepo },
   input: StoreAttachmentInput,
@@ -99,37 +99,31 @@ export async function storeAttachment(
   const path = `files/${filename}`;
 
   /**
-   * Extract the text here, where the deployment can.
+   * Read the file here, where the deployment can.
    *
-   * Every client then gets a searchable PDF without doing anything: the editor, the
+   * Every client then gets a searchable file without doing anything: the editor, the
    * phone, the import, an assistant, and whatever comes next. After the response rather
-   * than before it, because the caller should return the moment the bytes are safe and
-   * conversion is a second or more of waiting on another service; `waitUntil` gives it
-   * thirty seconds. A failure of any kind leaves the row pending, and the browser's
-   * passes remain the fallback — only a conversion that read the file and found nothing
-   * writes the empty row. The result says which way it went, so a client that would
-   * extract on its own knows not to.
+   * than before it, because the caller should return the moment the bytes are safe and a
+   * reader is seconds of waiting on another service; `waitUntil` gives it thirty. A
+   * failure of any kind leaves the row pending, and the passes over pending files remain
+   * the fallback — only a reader that looked and found nothing writes the empty row. The
+   * result says which way it went, so a client that would extract on its own knows not
+   * to. Which readers run, and in what order, is lib/read-attachment.ts's business.
    */
-  const indexing = canExtractOnServer(env, contentType, object.size) ? 'server' : 'client';
+  const indexing = serverCanRead(env, contentType, object.size) ? 'server' : 'client';
   if (indexing === 'server') {
-    const ai = env.AI!;
+    const readers = readersFrom(env);
     ctx.waitUntil(
-      (async () => {
-        try {
-          const stored = await env.BLOBS.get(key);
-          if (!stored) return;
-          const extracted = await extractOnServer(ai, filename, await stored.blob());
-          if (!extracted) return;
-          await attachments.recordText({
-            attachmentId: id,
-            noteId,
-            filename,
-            text: extracted.quality.usable ? extracted.text : '',
-          });
-        } catch {
-          // Left pending for the browser's passes.
-        }
-      })(),
+      readAttachment(env.BLOBS, readers, attachments, {
+        id,
+        noteId,
+        filename,
+        contentType,
+        size: object.size,
+        r2Key: key,
+      }).catch(() => {
+        // Left pending for the passes.
+      }),
     );
   }
 

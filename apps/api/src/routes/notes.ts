@@ -12,6 +12,7 @@ import { isExtractable } from '@unbent/enex/ocr-text';
 import { autofill, EXAMPLES_PER_OPTION, NothingToRead } from '../lib/autofill.js';
 import { copyAttachments } from '../lib/copy-attachments.js';
 import { canAutofill, JevError, jevFrom } from '../lib/jev.js';
+import { canReadImages, VISION_IMAGE_TYPES } from '../lib/vision.js';
 import { nextCursor } from '../lib/notes-repo.js';
 import { requireAuth } from '../lib/session.js';
 import { withRepos } from '../lib/repos-middleware.js';
@@ -176,11 +177,14 @@ export const notes = new Hono<AppEnv>()
     try {
       const suggestion = await autofill(jevFrom(c.env), {
         note: { title: note.title, body: note.body, tags: note.tags, notebookId: note.notebookId ?? null },
-        // Only a PDF is ever read, so a photograph with no text is "nothing there" rather
-        // than "still being read" — see `textsForNote`.
+        // A file no reader here takes is "nothing there" rather than "still being read":
+        // a PDF always has a reader, a picture only where the vision model is.
         attachments: files.map((f) => ({
           filename: f.filename,
-          text: isExtractable(f.contentType) ? f.text : '',
+          text:
+            isExtractable(f.contentType) || (canReadImages(c.env) && VISION_IMAGE_TYPES.has(f.contentType))
+              ? f.text
+              : '',
         })),
         notebooks: notebooks.map((nb) => ({
           id: nb.id,
