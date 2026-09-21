@@ -5,6 +5,7 @@ import {
   CURRENCY_CODES,
   FIELD_TYPES,
   FIELD_TYPE_LABELS,
+  MAX_NOTEBOOK_PURPOSE_LENGTH,
   MAX_RATING_MAX,
   MIN_RATING_MAX,
   fieldHasOptions,
@@ -88,6 +89,12 @@ export function NotebookFields({ notebookId, onChanged }: NotebookFieldsProps) {
 
   /** Id of the field being renamed, with its in-progress value. */
   const [editing, setEditing] = useState<{ id: string; value: string } | null>(null);
+  /**
+   * The purpose textarea's own draft. Seeded from the notebook once it loads and whenever
+   * the saved value changes under it, but otherwise left to the person's keystrokes — a
+   * controlled textarea bound straight to the query would fight the caret on every refetch.
+   */
+  const [purposeDraft, setPurposeDraft] = useState<string | null>(null);
   const [pendingDelete, setPendingDelete] = useState<FieldDef | null>(null);
   const [pendingType, setPendingType] = useState<PendingType | null>(null);
   const [pendingOption, setPendingOption] = useState<PendingOption | null>(null);
@@ -128,6 +135,14 @@ export function NotebookFields({ notebookId, onChanged }: NotebookFieldsProps) {
     return () => document.removeEventListener('pointerdown', onDown);
   }, [pendingOption, busy]);
 
+  // Seed the purpose draft from the notebook, and follow the saved value when it changes
+  // under us (another tab, a fresh load) — but only while the two agree, so a save landing
+  // does not wipe what the person is mid-typing.
+  const savedPurpose = notebook?.purpose ?? '';
+  useEffect(() => {
+    setPurposeDraft((draft) => (draft === null ? savedPurpose : draft));
+  }, [savedPurpose]);
+
   /** Runs a mutation, then refetches this page and the app behind it. */
   async function run(action: () => Promise<unknown>) {
     setBusy(true);
@@ -164,6 +179,18 @@ export function NotebookFields({ notebookId, onChanged }: NotebookFieldsProps) {
       setNewIsCurrency(false);
       setNewCurrency(DEFAULT_CURRENCY);
     });
+  }
+
+  /**
+   * Writes the purpose on blur, and only when it changed — a blank draft clears it to
+   * `null` rather than storing an empty string, which is how the server reads it too. The
+   * comparison is on the trimmed text, so adding and removing a space is not a save.
+   */
+  function savePurpose() {
+    if (purposeDraft === null) return;
+    const next = purposeDraft.trim();
+    if (next === savedPurpose.trim()) return;
+    void run(() => api.updateNotebook(notebookId, { purpose: next.length > 0 ? next : null }));
   }
 
   function commitRename() {
@@ -360,6 +387,32 @@ export function NotebookFields({ notebookId, onChanged }: NotebookFieldsProps) {
       </div>
 
       {error && <p className="bad small">{error}</p>}
+
+      {/* The notebook's purpose sits above its fields because it is about the notebook as a
+          whole, not about any one field. It is optional and empty by default; what it earns
+          its place for is auto-fill, which reads it to decide whether a note belongs here —
+          so the placeholder coaches toward what belongs and, as usefully, what does not. */}
+      <div className="notebook-purpose">
+        <label className="notebook-purpose-label" htmlFor="notebook-purpose">
+          Purpose <span className="muted small">— optional</span>
+        </label>
+        <textarea
+          id="notebook-purpose"
+          className="notebook-purpose-input"
+          value={purposeDraft ?? ''}
+          rows={2}
+          maxLength={MAX_NOTEBOOK_PURPOSE_LENGTH}
+          disabled={busy || !notebook}
+          placeholder="What belongs here — and what doesn't. e.g. Things I want to buy someday; not receipts or purchases."
+          onChange={(e) => setPurposeDraft(e.target.value)}
+          onBlur={savePurpose}
+        />
+        <p className="muted small notebook-purpose-hint">
+          Auto-fill reads this when it decides where a note belongs, so a notebook whose name
+          could mislead — a “Shopping” list that is really a wish list — keeps notes that
+          don't fit out.
+        </p>
+      </div>
 
       <ul className="notebook-admin field-admin">
         {list.map((field, index) => (

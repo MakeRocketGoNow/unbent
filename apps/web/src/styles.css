@@ -4467,6 +4467,40 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
 }
 
 /* Notebook management, inside the settings panel. */
+/*
+ * The notebook's purpose, above its fields. Stretched to the panel width for the same
+ * reason `.notebook-admin` is: `.panel` shrink-wraps its children to their content, and a
+ * full-width textarea should not be as narrow as its own placeholder.
+ */
+.notebook-purpose {
+  align-self: stretch;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  margin: 0.25rem 0 0.5rem;
+}
+
+.notebook-purpose-label { font-size: 0.85rem; }
+
+.notebook-purpose-input {
+  width: 100%;
+  padding: 0.4rem 0.6rem;
+  font: inherit;
+  font-size: 0.85rem;
+  line-height: 1.4;
+  color: var(--fg);
+  background: color-mix(in srgb, var(--fg) 4%, transparent);
+  border: 1px solid var(--border);
+  border-radius: 0.4rem;
+  resize: vertical;
+}
+
+.notebook-purpose-input:focus { outline: none; border-color: var(--accent); }
+.notebook-purpose-input::placeholder { color: var(--muted); }
+.notebook-purpose-input:disabled { opacity: 0.6; }
+
+.notebook-purpose-hint { margin: 0; }
+
 .notebook-admin {
   list-style: none;
   margin: 0.5rem 0;
