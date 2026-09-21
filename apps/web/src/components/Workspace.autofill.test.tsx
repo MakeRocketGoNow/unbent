@@ -1,5 +1,6 @@
+import { useState } from 'react';
 import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest';
-import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, cleanup, fireEvent, waitFor, act } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
   createRootRoute,
@@ -43,12 +44,17 @@ const suggestion: AutofillSuggestion = {
   read: { attachments: ['scan.pdf'], pending: [] },
 };
 
-function mount(note: Note, config: { autofill?: boolean } = { autofill: true }) {
+function seedNote(client: QueryClient, note: Note) {
+  client.setQueryData(keys.note(note.id), note);
+  client.setQueryData(keys.attachments(note.id), []);
+}
+
+function mount(note: Note, config: { autofill?: boolean } = { autofill: true }, others: Note[] = []) {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false, staleTime: Infinity } },
   });
-  client.setQueryData(keys.note(note.id), note);
-  client.setQueryData(keys.attachments(note.id), []);
+  seedNote(client, note);
+  for (const other of others) seedNote(client, other);
   client.setQueryData(keys.tags(), []);
   client.setQueryData(keys.config(), { providers: [], ...config });
   client.setQueryData(keys.notebooks(), {
@@ -60,9 +66,32 @@ function mount(note: Note, config: { autofill?: boolean } = { autofill: true }) 
   });
   client.setQueryData(keys.notebookFields('nb-receipts'), [amount]);
   client.setQueryData(keys.notebookFields('nb-coupons'), []);
-  vi.mocked(api.updateNote).mockImplementation(async (id, patch) => ({ ...note, id, ...patch } as Note));
+  vi.mocked(api.updateNote).mockImplementation(async (id, patch) => {
+    const current = client.getQueryData<Note>(keys.note(id));
+    return { ...(current ?? note), id, ...patch } as Note;
+  });
 
-  const rootRoute = createRootRoute({ component: () => <Workspace noteId={note.id} /> });
+  /*
+     Workspace is reused across notes in the app — a new `noteId` prop, not a remount —
+     and Auto-fill's round trip is long enough that arrowing to the next note meanwhile
+     is the ordinary thing. The harness switches the same way so the tests can watch
+     a suggestion for one note try to land on another.
+  */
+  function Harness() {
+    const [id, setId] = useState(note.id);
+    return (
+      <>
+        {others.map((other) => (
+          <button key={other.id} type="button" onClick={() => setId(other.id)}>
+            Open {other.id}
+          </button>
+        ))}
+        <Workspace noteId={id} />
+      </>
+    );
+  }
+
+  const rootRoute = createRootRoute({ component: () => <Harness /> });
   const notesRoute = createRoute({ getParentRoute: () => rootRoute, path: '/notes' });
   const router = createRouter({
     routeTree: rootRoute.addChildren([notesRoute]),
@@ -83,6 +112,18 @@ const fresh: Note = {
   body: '',
   tags: [],
   notebook: null,
+  createdAt: 0,
+  updatedAt: 0,
+  fields: [],
+};
+
+/** A second note already filed, so a suggestion for `fresh` landing here is visible. */
+const other: Note = {
+  id: 'n2',
+  title: 'Weekly review',
+  body: 'already written',
+  tags: ['work'],
+  notebook: 'Coupons',
   createdAt: 0,
   updatedAt: 0,
   fields: [],
@@ -166,5 +207,50 @@ describe('the Auto-fill control', () => {
     const status = await screen.findByText(/still being read/);
     expect(status.textContent).not.toMatch(/^422/);
     expect(status.className).toContain('bad');
+  });
+
+  it('does not file the next note when Auto-fill’s answer arrives after a switch', async () => {
+    let finish: (value: AutofillSuggestion) => void = () => {};
+    vi.mocked(api.autofillNote).mockImplementation(
+      () => new Promise((resolve) => { finish = resolve; }),
+    );
+    mount(fresh, { autofill: true }, [other]);
+    fireEvent.click(await screen.findByRole('button', { name: 'Auto-fill' }));
+    await waitFor(() => expect(api.autofillNote).toHaveBeenCalledWith('n1'));
+    expect(screen.getByText('Reading…')).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Open n2' }));
+    await waitFor(() =>
+      expect((screen.getByPlaceholderText('Untitled') as HTMLInputElement).value).toBe('Weekly review'),
+    );
+
+    finish(suggestion);
+    // The suggestion's continuation is a microtask. Flush it (and the render it would
+    // cause) so a landing on this note would already be visible before we assert it
+    // did not.
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect((screen.getByPlaceholderText('Untitled') as HTMLInputElement).value).toBe('Weekly review');
+    expect((screen.getByLabelText('Notebook') as unknown as HTMLSelectElement).value).toBe('Coupons');
+    expect(document.querySelector('.tag-input')?.textContent).toContain('work');
+    expect(document.querySelector('.tag-input')?.textContent).not.toContain('home');
+    expect(screen.queryByLabelText('Amount')).toBeNull();
+    expect(screen.queryByText(/Filled in/)).toBeNull();
+    expect(screen.queryByRole('group', { name: "Confirm replacing the note's filing" })).toBeNull();
+  });
+
+  it('drops a replace confirm when the open note changes', async () => {
+    vi.mocked(api.autofillNote).mockResolvedValue(suggestion);
+    mount({ ...fresh, title: 'My own title', notebook: 'Receipts' }, { autofill: true }, [other]);
+    fireEvent.click(await screen.findByRole('button', { name: 'Auto-fill' }));
+    expect(await screen.findByRole('group', { name: "Confirm replacing the note's filing" })).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Open n2' }));
+    await waitFor(() =>
+      expect((screen.getByPlaceholderText('Untitled') as HTMLInputElement).value).toBe('Weekly review'),
+    );
+    expect(screen.queryByRole('group', { name: "Confirm replacing the note's filing" })).toBeNull();
+    expect((screen.getByPlaceholderText('Untitled') as HTMLInputElement).value).toBe('Weekly review');
   });
 });

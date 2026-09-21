@@ -465,23 +465,34 @@ export function Workspace({ noteId, readOnly = false, backTo = '/notes' }: Works
    * the draft as it stands then, not as it stood when the pass began, so anything typed
    * meanwhile survives; an address the site refused keeps its web link, and the count
    * in the head says how many did.
+   *
+   * Workspace is reused across notes, and this pass outlives a switch the same way
+   * Auto-fill's round trip does. `startedFor` is what keeps it honest: `draftBodyRef` is
+   * the incoming note's after a switch, so rewriting from it would write the previous
+   * note's localized links onto the one now open — and the status would land on it too.
+   * Bail once `noteIdRef` has moved on. The images already fetched stay stored on the note
+   * they belong to; coming back to it starts a new press, as with `runAutofill`.
    */
   async function saveWebImages() {
+    const startedFor = noteId;
     await flush();
+    if (noteIdRef.current !== startedFor) return;
     const urls = remoteImageUrls(draftBodyRef.current);
     const stored = new Map<string, string>();
     let failed = 0;
     for (const [i, url] of urls.entries()) {
+      if (noteIdRef.current !== startedFor) return;
       setWebImagesStatus(`Saving ${i + 1} of ${urls.length}…`);
       try {
-        stored.set(url, (await api.fetchWebImage(noteId, url)).filename);
+        stored.set(url, (await api.fetchWebImage(startedFor, url)).filename);
       } catch {
         failed += 1;
       }
     }
+    if (noteIdRef.current !== startedFor) return;
     if (stored.size > 0) {
       rewriteBody(localizeImageLinks(draftBodyRef.current, (url) => stored.get(url) ?? null));
-      void queryClient.invalidateQueries({ queryKey: keys.attachments(noteId) });
+      void queryClient.invalidateQueries({ queryKey: keys.attachments(startedFor) });
     }
     // Short, because it sits beside the title, which a phone gives little room. A count
     // short of the total says a fetch failed; the picture that kept its web link is the
@@ -502,10 +513,14 @@ export function Workspace({ noteId, readOnly = false, backTo = '/notes' }: Works
   /**
    * The draft as it stands, for auto-fill to plan against after its round trip: the plan
    * compares the suggestion with what is on screen when the answer arrives, not with
-   * what was there when the button was pressed.
+   * what was there when the button was pressed. That is a same-note comparison — the
+   * user typing a title while Jev reads — not a licence to file the next note. `noteIdRef`
+   * is what makes the distinction: after a switch, this draft is the incoming note's.
    */
   const draftRef = useRef(draft);
   draftRef.current = draft;
+  const noteIdRef = useRef(noteId);
+  noteIdRef.current = noteId;
   /** What the last Auto-fill is doing or did, in the head where "Saved" goes. */
   const [autofillStatus, setAutofillStatus] = useState<{ text: string; failed: boolean } | null>(
     null,
@@ -514,6 +529,21 @@ export function Workspace({ noteId, readOnly = false, backTo = '/notes' }: Works
   const [autofilling, setAutofilling] = useState(false);
   /** Changes that would replace something already set, waiting to be confirmed. */
   const [autofillReplace, setAutofillReplace] = useState<AutofillChanges | null>(null);
+
+  /*
+     A round trip outlives a note switch — Workspace is reused, the same way autosave is.
+     Drop the in-flight head UI here so a "Reading…", a replace confirm, or a "Saving…"
+     from the previous note cannot sit on this one. The requests themselves are left to
+     finish; wasting one is cheaper than landing it on the wrong note, which `runAutofill`
+     and `saveWebImages` both now refuse once `noteIdRef` has moved on.
+  */
+  useEffect(() => {
+    setAutofilling(false);
+    setAutofillReplace(null);
+    if (autofillStatusTimer.current) clearTimeout(autofillStatusTimer.current);
+    setAutofillStatus(null);
+    setWebImagesStatus(null);
+  }, [noteId]);
 
   /** Beside the title for a few seconds; a failure stays longer, since it is a sentence. */
   function showAutofillStatus(text: string, failed = false) {
@@ -531,13 +561,18 @@ export function Workspace({ noteId, readOnly = false, backTo = '/notes' }: Works
    * typed value.
    */
   async function runAutofill() {
+    const startedFor = noteId;
     setAutofilling(true);
     setAutofillReplace(null);
     if (autofillStatusTimer.current) clearTimeout(autofillStatusTimer.current);
     setAutofillStatus({ text: 'Reading…', failed: false });
     try {
       await flush();
-      const suggestion = await api.autofillNote(noteId);
+      // Left this note during the flush: don't spend a Jev round-trip on a note that
+      // is no longer open. Coming back to it starts a new press.
+      if (noteIdRef.current !== startedFor) return;
+      const suggestion = await api.autofillNote(startedFor);
+      if (noteIdRef.current !== startedFor) return;
       for (const { field } of suggestion.fields) seenFieldDefs.current.set(field.id, field);
       const plan = planAutofill(draftRef.current, suggestion);
       if (!isEmptyChanges(plan.fill)) setDraft((d) => applyAutofill(d, plan.fill));
@@ -550,11 +585,12 @@ export function Workspace({ noteId, readOnly = false, backTo = '/notes' }: Works
       );
       if (!isEmptyChanges(plan.replace)) setAutofillReplace(plan.replace);
     } catch (err) {
+      if (noteIdRef.current !== startedFor) return;
       // The server's own sentence, without the status it arrives prefixed with: "422:
       // Nothing to read yet…" is not what a person beside a title wants to read.
       showAutofillStatus((err as Error).message.replace(/^\d{3}[^:]*: /, ''), true);
     } finally {
-      setAutofilling(false);
+      if (noteIdRef.current === startedFor) setAutofilling(false);
     }
   }
 
