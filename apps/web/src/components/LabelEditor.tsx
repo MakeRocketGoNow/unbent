@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { Link } from '@tanstack/react-router';
 import {
   NotebookRowIcon,
   TagIcon,
@@ -32,6 +33,15 @@ interface LabelEditorProps {
   onRename: (item: LabelItem, name: string) => Promise<boolean>;
   /** Asks to delete. The caller confirms, since only it knows what deleting means for this kind. */
   onDelete: (item: LabelItem) => void;
+  /**
+   * When set, a row is a link to this destination rather than an inline rename — the whole
+   * row navigates, and its name and pencil are anchors. It is how the notebook list works:
+   * a notebook has a page of its own (its name, purpose, fields, delete), so the list is a
+   * way in rather than a place to correct a name in passing. A tag has no such page and
+   * leaves this unset, keeping the inline editor. Delete still rides on the row here — the
+   * one destructive act that stays reachable without opening the page.
+   */
+  rowHref?: (item: LabelItem) => string;
   /** Anything else a resting row should carry between its name and its count. */
   renderExtra?: (item: LabelItem) => ReactNode;
   /**
@@ -84,6 +94,7 @@ export function LabelEditor({
   onCreate,
   onRename,
   onDelete,
+  rowHref,
   renderExtra,
   renderNameCount,
   editingId,
@@ -197,7 +208,41 @@ export function LabelEditor({
           ))}
 
         {shown.map((item) =>
-          openId === item.id ? (
+          rowHref ? (
+            /* A navigational row: the whole thing leads to the item's own page. The name
+               is the link, the pencil beside it is the same link worn as the row's affordance
+               (the same glyph the inline editor uses to say "editable"), and delete stays as
+               a trash button so the one destructive act does not require opening the page.
+               No editing state, so no fence and no in-place field. */
+            <li key={item.id} className="label-row label-row-link">
+              <span className="label-slot" aria-hidden="true">
+                <Glyph />
+              </span>
+              <Link to={rowHref(item)} className="label-name label-name-link" disabled={busy}>
+                <span className="label-name-text">{item.name}</span>
+                {renderNameCount?.(item)}
+              </Link>
+              {renderExtra?.(item)}
+              {!renderNameCount && <span className="tag-count">{item.count}</span>}
+              <button
+                type="button"
+                className="icon-btn label-delete"
+                aria-label={`Delete ${item.name}`}
+                disabled={busy}
+                onClick={() => onDelete(item)}
+              >
+                <TrashIcon />
+              </button>
+              <Link
+                to={rowHref(item)}
+                className="icon-btn"
+                aria-label={`Edit ${item.name}`}
+                disabled={busy}
+              >
+                <PencilIcon />
+              </Link>
+            </li>
+          ) : openId === item.id ? (
             <li key={item.id} className="label-row editing">
               <button
                 type="button"

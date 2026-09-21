@@ -1,6 +1,6 @@
-import { createFileRoute } from '@tanstack/react-router';
+import { createFileRoute, useNavigate } from '@tanstack/react-router';
 import { useQueryClient } from '@tanstack/react-query';
-import { NotebookFields } from '../components/NotebookFields.js';
+import { NotebookEditor } from '../components/NotebookEditor.js';
 import { keys, notebookFieldsQuery } from '../queries.js';
 
 /**
@@ -15,22 +15,26 @@ import { keys, notebookFieldsQuery } from '../queries.js';
 export const Route = createFileRoute('/settings/notebooks_/$notebookId')({
   loader: ({ context: { queryClient }, params }) =>
     queryClient.ensureQueryData(notebookFieldsQuery(params.notebookId)),
-  component: NotebookFieldsRoute,
+  component: NotebookEditorRoute,
 });
 
-function NotebookFieldsRoute() {
+function NotebookEditorRoute() {
   const { notebookId } = Route.useParams();
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
   return (
-    <NotebookFields
+    <NotebookEditor
       notebookId={notebookId}
       onChanged={() => {
         void queryClient.invalidateQueries({ queryKey: keys.notebookFields(notebookId) });
-        // The notebook list carries a field count, and every note row shows its values.
+        // The notebook list carries a name, field count and purpose, and every note row
+        // shows its values.
         void queryClient.invalidateQueries({ queryKey: keys.notebooks() });
         void queryClient.invalidateQueries({ queryKey: ['notes'] });
         void queryClient.invalidateQueries({ queryKey: ['note'] });
       }}
+      // The notebook is gone; the list is where to be.
+      onDeleted={() => void navigate({ to: '/settings/notebooks' })}
     />
   );
 }

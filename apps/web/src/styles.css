@@ -4419,6 +4419,12 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
 
 .label-name:disabled { cursor: default; }
 
+/* The navigational variant is an anchor wearing the same shape as the name button: no
+   underline, the foreground colour, so the row reads as a name and not a link even though
+   the whole row leads to the notebook's page. */
+.label-name-link { text-decoration: none; }
+.label-name-link:hover .label-name-text { text-decoration: underline; }
+
 /* Creating is quieter than the names it makes more of. */
 .label-create .label-name { color: var(--muted); }
 
@@ -4500,6 +4506,36 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
 .notebook-purpose-input:disabled { opacity: 0.6; }
 
 .notebook-purpose-hint { margin: 0; }
+
+/* The name input above the purpose, stretched to the panel like the purpose is. */
+.notebook-name-edit {
+  align-self: stretch;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  margin: 0.25rem 0 0.75rem;
+}
+
+/* Section heading within the edit page — "Fields", "Delete notebook". Quieter than the
+   panel's h2, since the page title already names the notebook. */
+.notebook-section-head {
+  align-self: stretch;
+  margin: 1rem 0 0.25rem;
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.notebook-danger-head { color: var(--bad); }
+
+.notebook-danger {
+  align-self: stretch;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.4rem;
+}
+
+.notebook-danger p { margin: 0; }
 
 .notebook-admin {
   list-style: none;
