@@ -1,7 +1,8 @@
 import { useSyncExternalStore } from 'react';
 import { isExtractable } from '@unbent/enex';
 import type { IndexProgress } from './attachment-text.js';
-import type { UploadedFile } from './notes-api.js';
+import * as api from './notes-api.js';
+import type { ReadPass, UploadedFile } from './notes-api.js';
 import type { ImportEvent, ImportRequest } from './import-worker.js';
 
 /**
@@ -22,16 +23,27 @@ export type IndexingStatus = 'idle' | 'running' | 'done' | 'deferred' | 'error';
 
 export interface IndexingState {
   status: IndexingStatus;
+  /**
+   * Which half a running pass is in. The PDFs first, in the browser, where pdf.js is;
+   * then, when asked, the images on the server, where the vision model is.
+   */
+  phase: 'pdfs' | 'images';
   /** Null until a pass has started. */
   progress: IndexProgress | null;
+  /** The server's pass over images: read so far, and left. Null until one has started. */
+  images: { read: number; remaining: number } | null;
   /** How many files a deferred pass left alone; see `AUTO_INDEX_LIMIT`. */
   remaining: number;
   error: string | null;
 }
 
 export interface Indexing {
-  /** Starts a pass over everything pending. `auto` marks an unasked one, which runs once. */
-  start(opts: { auto: boolean }): void;
+  /**
+   * Starts a pass over everything pending. `auto` marks an unasked one, which runs once.
+   * `images` asks for the server's pass over images once the PDFs are done; never on an
+   * unasked pass, since every image read is a paid request nobody chose to make.
+   */
+  start(opts: { auto: boolean; images?: boolean }): void;
   abort(): void;
   /**
    * Indexes one file whose bytes are in hand, right after its upload. Nothing happens
@@ -42,13 +54,29 @@ export interface Indexing {
   get(): IndexingState;
 }
 
-const initial: IndexingState = { status: 'idle', progress: null, remaining: 0, error: null };
+const initial: IndexingState = {
+  status: 'idle',
+  phase: 'pdfs',
+  progress: null,
+  images: null,
+  remaining: 0,
+  error: null,
+};
 
-export function createIndexing(spawn: () => Worker): Indexing {
+/** Files per call of the server's pass; each is seconds, and a request the person can stop. */
+const IMAGES_PER_CALL = 3;
+
+export function createIndexing(
+  spawn: () => Worker,
+  readImages: (limit: number) => Promise<ReadPass> = api.readPendingFiles,
+): Indexing {
   let state = initial;
   const listeners = new Set<(state: IndexingState) => void>();
   let worker: Worker | null = null;
   let autoStarted = false;
+  /** Whether the pass now running should go on to the images once the PDFs are done. */
+  let wantImages = false;
+  let stopImages = false;
 
   function set(patch: Partial<IndexingState>): void {
     state = { ...state, ...patch };
@@ -67,7 +95,10 @@ export function createIndexing(spawn: () => Worker): Indexing {
     w.onmessage = (event: MessageEvent<ImportEvent>) => {
       const data = event.data;
       if (data.type === 'backfill-progress') set({ progress: data.progress });
-      else if (data.type === 'backfill-done') set({ status: 'done', progress: data.progress });
+      else if (data.type === 'backfill-done') {
+        if (wantImages) void runImages(data.progress);
+        else set({ status: 'done', progress: data.progress });
+      }
       else if (data.type === 'backfill-deferred') set({ status: 'deferred', remaining: data.remaining });
       else if (data.type === 'error') set({ status: 'error', error: data.message });
     };
@@ -83,8 +114,32 @@ export function createIndexing(spawn: () => Worker): Indexing {
     return w;
   }
 
+  /**
+   * The second half: the server reads a few images per call until none are left.
+   *
+   * Stops early when a call moves nothing — every file left is one the server could not
+   * read this time, and asking again would only pay to fail again. Those stay pending
+   * for the next press.
+   */
+  async function runImages(progress: IndexProgress): Promise<void> {
+    set({ status: 'running', phase: 'images', progress, images: { read: 0, remaining: 0 } });
+    let read = 0;
+    try {
+      for (;;) {
+        if (stopImages) break;
+        const pass = await readImages(IMAGES_PER_CALL);
+        read += pass.read;
+        set({ images: { read, remaining: pass.remaining } });
+        if (pass.remaining === 0 || pass.read + pass.empty === 0) break;
+      }
+      set({ status: 'done' });
+    } catch (err) {
+      set({ status: 'error', error: (err as Error).message });
+    }
+  }
+
   return {
-    start({ auto }) {
+    start({ auto, images = false }) {
       if (state.status === 'running') return;
       /**
        * The unasked run happens once per page load. StrictMode mounts effects twice in
@@ -96,9 +151,13 @@ export function createIndexing(spawn: () => Worker): Indexing {
         if (autoStarted) return;
         autoStarted = true;
       }
+      wantImages = images && !auto;
+      stopImages = false;
       set({
         status: 'running',
+        phase: 'pdfs',
         progress: { done: 0, indexed: 0, unusable: 0, failed: 0, total: 0 },
+        images: null,
         remaining: 0,
         error: null,
       });
@@ -106,6 +165,7 @@ export function createIndexing(spawn: () => Worker): Indexing {
     },
 
     abort() {
+      stopImages = true;
       worker?.postMessage({ type: 'abort' } satisfies ImportRequest);
     },
 
@@ -135,7 +195,7 @@ export const indexing = createIndexing(
   () => new Worker(new URL('./import-worker.ts', import.meta.url), { type: 'module' }),
 );
 
-export function startIndexing(opts: { auto: boolean }): void {
+export function startIndexing(opts: { auto: boolean; images?: boolean }): void {
   indexing.start(opts);
 }
 

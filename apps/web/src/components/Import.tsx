@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import {
   DEFAULT_PAGES_NOTEBOOK,
   importFormat,
@@ -8,6 +9,7 @@ import {
 } from '@unbent/enex';
 import type { ImportEvent, ImportRequest, NotionChoices } from '../import-worker.js';
 import { startIndexing, useIndexing, type IndexingState } from '../index-files.js';
+import { configQuery } from '../queries.js';
 import { Button } from './Button.js';
 import { describeImportFile } from './import-file.js';
 import { importPercent } from './import-progress.js';
@@ -47,16 +49,24 @@ function initialProgress(): ImportProgress {
  * opened, so every state the store can be in has a sentence here, not only the ones the
  * button itself leads to.
  */
-function indexingText(state: IndexingState): string {
+function indexingText(state: IndexingState, vision: boolean): string {
   const p = state.progress;
   switch (state.status) {
     case 'idle':
-      return 'For notes imported before PDF search existed.';
+      // The cost is named up front where there is one: each image is a paid request.
+      return vision
+        ? 'For files added before PDF or image search existed. Images are read one request each.'
+        : 'For notes imported before PDF search existed.';
     case 'running':
-      return `Indexing… ${p?.done ?? 0}${p?.total ? ` / ${p.total}` : ''}`;
+      if (state.phase === 'images') {
+        const i = state.images;
+        return `Reading images… ${i?.read ?? 0} read${i ? `, ${i.remaining} left` : ''}`;
+      }
+      return `Indexing PDFs… ${p?.done ?? 0}${p?.total ? ` / ${p.total}` : ''}`;
     case 'done':
       return (
         `Done. Indexed ${p?.indexed ?? 0} of ${p?.done ?? 0} PDFs.` +
+        (state.images ? ` Read ${state.images.read} image${state.images.read === 1 ? '' : 's'}.` : '') +
         (p?.failed ? ` ${p.failed} could not be read and will be tried again.` : '')
       );
     case 'deferred':
@@ -93,6 +103,8 @@ export function Import({ onImported }: ImportProps) {
   const [pagesNotebook, setPagesNotebook] = useState(DEFAULT_PAGES_NOTEBOOK);
   const [tagsAsTags, setTagsAsTags] = useState(true);
   const indexing = useIndexing();
+  const config = useQuery(configQuery());
+  const vision = config.data?.vision === true;
 
   const { setImportRunning } = useSettingsBusy();
   const worker = useRef<Worker | null>(null);
@@ -458,11 +470,11 @@ export function Import({ onImported }: ImportProps) {
 
       {status === 'idle' && (
         <div className="backfill-row">
-          <Button size="small" disabled={indexing.status === 'running'} onClick={() => startIndexing({ auto: false })}>
-            Index existing PDFs
+          <Button size="small" disabled={indexing.status === 'running'} onClick={() => startIndexing({ auto: false, images: vision })}>
+            {vision ? 'Index existing files' : 'Index existing PDFs'}
           </Button>
           <span className={indexing.status === 'error' ? 'bad small' : 'muted small'}>
-            {indexingText(indexing)}
+            {indexingText(indexing, vision)}
           </span>
         </div>
       )}

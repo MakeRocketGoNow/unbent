@@ -16,6 +16,15 @@ export function IndexingStatus() {
   const indexing = useIndexing();
 
   if (indexing.status === 'running') {
+    if (indexing.phase === 'images') {
+      const i = indexing.images;
+      return (
+        <span className="sidebar-status">
+          Reading images
+          {i ? ` · ${i.read} read, ${i.remaining} left` : ''}
+        </span>
+      );
+    }
     const p = indexing.progress;
     return (
       <span className="sidebar-status">
