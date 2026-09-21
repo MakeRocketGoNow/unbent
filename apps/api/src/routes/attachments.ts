@@ -261,8 +261,9 @@ export const attachments = new Hono<AppEnv>()
                 { id: row.id, noteId, filename, contentType: row.content_type, size: row.size, r2Key: row.r2_key },
                 await stored.arrayBuffer(),
               );
-            } catch {
-              // Left for the backfill.
+            } catch (err) {
+              // Left for the backfill, and logged by id for the reason the upload gives.
+              console.error('read after empty layer:', row.id, (err as Error).message);
             }
           })(),
         );
@@ -352,8 +353,9 @@ export const attachments = new Hono<AppEnv>()
           const outcome = await readWithLlm(llm!, repo, file, await stored.arrayBuffer());
           counts[outcome === 'vision' ? 'read' : 'empty'] += 1;
         } catch (err) {
-          // One unreadable file must not stop the pass; it stays pending for the next.
-          console.error('read:', file.filename, (err as Error).message);
+          // One unreadable file must not stop the pass; it stays pending for the next. The
+          // id rather than the name, which comes from the archive and can say too much.
+          console.error('read:', file.id, (err as Error).message);
           counts.failed += 1;
         }
       }
