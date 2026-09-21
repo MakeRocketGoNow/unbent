@@ -121,8 +121,11 @@ export async function storeAttachment(
         contentType,
         size: object.size,
         r2Key: key,
-      }).catch(() => {
-        // Left pending for the passes.
+      }).catch((err: unknown) => {
+        // Left pending for the passes — and said so, because a request the API refused
+        // (a bad key, a shape it will not take) would otherwise look exactly like a file
+        // nobody has got to yet. The id rather than the name: names come from the archive.
+        console.error('read after upload:', id, (err as Error).message);
       }),
     );
   }
