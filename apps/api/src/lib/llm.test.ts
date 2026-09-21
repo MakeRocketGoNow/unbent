@@ -122,6 +122,17 @@ describe('vision', () => {
     expect(body.system).toContain('title');
     expect(JSON.parse(body.messages[0].content)).toEqual(note);
     expect(body.output_config.format.schema.required).toEqual(['title']);
+    // Low effort for the default model, whose parameters this code knows.
+    expect(body.output_config.effort).toBe('low');
+  });
+
+  it('sends a model the operator named the plain request', async () => {
+    const fetchImpl = answering(200, message(JSON.stringify({ title: 'x' })));
+    const llm = llmFrom({ ...env, ANTHROPIC_MODEL: 'claude-sonnet-5' }, fetchImpl as unknown as typeof fetch);
+    await llm.title({ title: '', body: 'x', attachments: [] });
+    const body = JSON.parse(fetchImpl.mock.calls[0]![1]!.body as string);
+    expect(body.output_config.effort).toBeUndefined();
+    expect(body.output_config.format.type).toBe('json_schema');
   });
 
   it('answers no title for a decline or an empty answer', async () => {

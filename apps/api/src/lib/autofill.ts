@@ -84,9 +84,10 @@ export interface AutofillInput {
   /**
    * The note's files with their extracted text: `null` while none has been recorded — the
    * scan is still being read — and `''` for a file that was read and held none, or is a
-   * kind of file nothing here can read.
+   * kind of file nothing here can read. `readBy` is `'vision'` when the language model
+   * wrote the text, which then opens with a name for the file; see `nameFromReading`.
    */
-  attachments: Array<{ filename: string; text: string | null }>;
+  attachments: Array<{ filename: string; text: string | null; readBy?: 'vision' | null }>;
   notebooks: Array<{ id: string; name: string; fields: FieldDef[]; examples: string[] }>;
   /** Most used first; only the first `MAX_TAGS_ASKED` are asked about. */
   tags: Array<{ name: string; examples: string[] }>;
@@ -613,12 +614,31 @@ function fieldAsks(fields: FieldDef[], corpus: Corpus): Ask[] {
 }
 
 /**
+ * The name the language model already wrote for a note that is one picture and nothing
+ * else — the most common capture, a photo shared from a phone.
+ *
+ * The reader's text opens with a name for the file, written from the same pixels a title
+ * call would send back, so for an untitled note whose only content is that one reading
+ * the call is a second request for an answer already on hand. Only that case: a body,
+ * a second file or a title of the person's own is context the reader never saw, and
+ * the title call is what weighs it.
+ */
+function nameFromReading(input: AutofillInput): string | null {
+  if (input.note.title.trim() || input.note.body.trim()) return null;
+  const read = input.attachments.filter((a) => a.text?.trim());
+  if (read.length !== 1 || read[0]!.readBy !== 'vision') return null;
+  return read[0]!.text!.split('\n')[0]?.trim() || null;
+}
+
+/**
  * Asks, and answers with what cleared the floors. Throws `NothingToRead` before asking
  * anything when the note is empty; a Jev failure surfaces as the client's own error.
  *
- * `llm` is the language model, when the instance has one, asked for the title alongside
- * Jev's first round. Its failure is not the suggestion's: a title is the one part with a
- * fallback, so the error is logged and Jev's pick stands.
+ * `llm` is the language model, when the instance has one, asked for the title. The call
+ * is started before Jev's first round and collected after the second, so the seconds it
+ * takes overlap both rounds rather than delaying the fields. Its failure is not the
+ * suggestion's: a title is the one part with a fallback, so the error is logged and
+ * Jev's pick stands.
  */
 export async function autofill(
   jev: Jev,
@@ -627,27 +647,23 @@ export async function autofill(
 ): Promise<AutofillSuggestion> {
   const corpus = gather(input);
   const first = firstRound(input, corpus);
-  const [answers, written] = await Promise.all([
-    jev.ask(corpus.state, first.questions),
-    llm
+
+  const named = nameFromReading(input);
+  const writing =
+    llm && !named
       ? llm.title(corpus.note).catch((err: unknown) => {
           console.error('autofill title:', (err as Error).message);
           return null;
         })
-      : Promise.resolve(null),
-  ]);
+      : null;
+
+  const answers = await jev.ask(corpus.state, first.questions);
 
   const suggestion: AutofillSuggestion = {
     tags: [],
     fields: [],
     read: { attachments: corpus.read, pending: corpus.pending },
   };
-
-  if (written) suggestion.title = { value: written };
-  else {
-    const title = first.title && chosen(answers['title'], first.title.values);
-    if (title) suggestion.title = { value: String(title.value), confidence: title.confidence };
-  }
 
   const notebook = first.notebook && chosen(answers['notebook'], first.notebook.values);
   if (notebook) {
@@ -678,6 +694,13 @@ export async function autofill(
         if (found) suggestion.fields.push(found);
       }
     }
+  }
+
+  const written = named ?? (writing ? await writing : null);
+  if (written) suggestion.title = { value: written };
+  else {
+    const title = first.title && chosen(answers['title'], first.title.values);
+    if (title) suggestion.title = { value: String(title.value), confidence: title.confidence };
   }
 
   return suggestion;

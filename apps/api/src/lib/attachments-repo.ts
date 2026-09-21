@@ -348,15 +348,16 @@ export class AttachmentsRepo extends ScopedRepo {
    *
    * The same three answers `textFor` gives, per file: `null` while no text has been
    * recorded — a PDF still being read, or never read — and `''` for one read and found
-   * empty. The type rides along because only a PDF ever gets text, and a caller telling
-   * "still being read" from "a photograph" needs to know which it is looking at.
+   * empty. The type rides along because a caller telling "still being read" from "a file
+   * nothing here reads" needs to know which it is looking at, and `readBy` because text
+   * the language model wrote opens with a name for the file, which auto-fill can use.
    */
-  async textsForNote(
-    noteId: string,
-  ): Promise<Array<{ filename: string; contentType: string; text: string | null }>> {
+  async textsForNote(noteId: string): Promise<
+    Array<{ filename: string; contentType: string; text: string | null; readBy: 'vision' | null }>
+  > {
     const { results } = await this.db
       .prepare(
-        `SELECT a.filename, a.content_type, t.text
+        `SELECT a.filename, a.content_type, t.text, t.read_by
            FROM attachments a
            JOIN notes n ON n.id = a.note_id
            LEFT JOIN attachment_text t ON t.attachment_id = a.id
@@ -364,8 +365,13 @@ export class AttachmentsRepo extends ScopedRepo {
           ORDER BY a.created_at`,
       )
       .bind(noteId, this.userId)
-      .all<{ filename: string; content_type: string; text: string | null }>();
-    return results.map((r) => ({ filename: r.filename, contentType: r.content_type, text: r.text }));
+      .all<{ filename: string; content_type: string; text: string | null; read_by: string | null }>();
+    return results.map((r) => ({
+      filename: r.filename,
+      contentType: r.content_type,
+      text: r.text,
+      readBy: r.read_by === 'vision' ? 'vision' : null,
+    }));
   }
 
   /** Attachment id for a filename within a note, scoped to this user. */

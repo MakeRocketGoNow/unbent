@@ -187,6 +187,7 @@ export const notes = new Hono<AppEnv>()
             isExtractable(f.contentType) || (canUseLlm(c.env) && LLM_IMAGE_TYPES.has(f.contentType))
               ? f.text
               : '',
+          readBy: f.readBy,
         })),
         notebooks: notebooks.map((nb) => ({
           id: nb.id,

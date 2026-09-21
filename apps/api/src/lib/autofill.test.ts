@@ -177,6 +177,34 @@ describe('the title', () => {
     });
   });
 
+  it('uses the reader\u2019s own name for a note that is one picture and nothing else, without asking', async () => {
+    const reading = 'Acme Plumbing business card\nBusiness card: A card for a plumber.\n\nACME PLUMBING\n(612) 555-0148';
+    const lone = input({ attachments: [{ filename: 'card.jpg', text: reading, readBy: 'vision' }] });
+    const out = await autofill(fake().jev, lone, written);
+    expect(out.title).toEqual({ value: 'Acme Plumbing business card' });
+    expect(written.title).not.toHaveBeenCalled();
+
+    // A body, a second file, or a title of the person's own is context the reader never
+    // saw, so the model is asked.
+    const withBody = input({ note: { title: '', body: 'Met at the fair.', tags: [], notebookId: null }, attachments: lone.attachments });
+    await autofill(fake().jev, withBody, written);
+    expect(written.title).toHaveBeenCalledTimes(1);
+    const titled = input({ note: { title: 'Plumber', body: '', tags: [], notebookId: null }, attachments: lone.attachments });
+    await autofill(fake().jev, titled, written);
+    expect(written.title).toHaveBeenCalledTimes(2);
+  });
+
+  it('asks the fields before the title has come back, and collects the title last', async () => {
+    let finish!: (title: string) => void;
+    const slow = { title: vi.fn(() => new Promise<string>((resolve) => (finish = resolve))) };
+    const { jev, calls } = fake({ notebook: choice('Receipts') });
+    const running = autofill(jev, input(), slow);
+    // Both rounds are asked while the title is still being written.
+    await vi.waitFor(() => expect(calls).toHaveLength(2));
+    finish('Acme Hardware invoice, March 2026');
+    expect((await running).title).toEqual({ value: 'Acme Hardware invoice, March 2026' });
+  });
+
   it('falls back to Jev\u2019s pick of a line when the model declines or fails', async () => {
     const { jev } = fake({ title: choice('ACME HARDWARE', 0.7) });
     const declined = { title: vi.fn(async () => null) };

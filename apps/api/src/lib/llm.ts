@@ -33,8 +33,9 @@ const ANTHROPIC_VERSION = '2023-06-01';
  * The model asked when `ANTHROPIC_MODEL` is unset. The most capable current one rather
  * than the cheapest, because a wrong digit in a transcribed total is copied into a field
  * with full confidence, and the reading of a file happens once; an operator who would
- * rather trade some accuracy for cost sets the variable. Nothing here is tied to one
- * model's features — no effort level, no thinking settings — so any current model works.
+ * rather trade some accuracy for cost sets the variable. The one model-specific setting
+ * here, a low effort on the title, is sent only to this default; an operator's choice
+ * gets the plain request, so any current model works in the variable.
  */
 export const LLM_MODEL_DEFAULT = 'claude-opus-5';
 
@@ -310,7 +311,14 @@ export function llmFrom(env: LlmEnv, fetchImpl: typeof fetch = fetch): LanguageM
         // The note as one JSON object, its parts labelled, the way the docs recommend
         // handing over structured state.
         messages: [{ role: 'user', content: JSON.stringify(note) }],
-        output_config: { format: { type: 'json_schema', schema: TITLE_SCHEMA } },
+        output_config: {
+          // A title is a small judgement, and the thinking a capable model would spend on
+          // it is paid for and waited on. Low effort trims both — but only on the model
+          // this file chose, whose parameters it knows; a model the operator named gets
+          // the plain request, since not every model accepts the field.
+          ...(model === LLM_MODEL_DEFAULT ? { effort: 'low' } : {}),
+          format: { type: 'json_schema', schema: TITLE_SCHEMA },
+        },
       });
       const text = await ask(body);
       if (!text) return null;
