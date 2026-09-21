@@ -227,6 +227,7 @@ says otherwise; `pnpm exec wrangler secret put NAME` from `apps/api`, or the das
 | `AUTH_PASSWORD`, `AUTH_PASSKEY` | forcing a method on or off | rarely needed; the defaults are explained in the sign-in section |
 | `POSTHOG_KEY`, `POSTHOG_HOST` | error tracking | see [Errors in the browser](#errors-in-the-browser) |
 | `TYPESAFE_API_KEY` | filing a note from what it says | see [Filing a note from what it says](#filing-a-note-from-what-it-says); `DEV_TYPESAFE_API_KEY` as a GitHub secret carries a separate key to the dev instance and previews |
+| `ANTHROPIC_API_KEY`, `VISION_MODEL` | reading images and text-less scans | see [Reading images](#reading-images); `DEV_ANTHROPIC_API_KEY` as a GitHub secret carries a separate key to the dev instance and previews |
 | `ANDROID_ASSET_LINKS` | an Android build of your own | see [Android app](#android-app) |
 | Custom domain | serving from your own name | dashboard, not config |
 | `ANDROID_APPLICATION_ID`, `ANDROID_DEFAULT_INSTANCE` | the Android build in CI | GitHub repository **variables**; `unbent.applicationId` and `unbent.defaultInstance` in `local.properties` locally |
@@ -579,6 +580,7 @@ summary rather than failing.
 | `DEV_INSTANCE_ORIGIN` | variable, optional | where a preview's sign-in relay sends people; defaults to `https://dev.unbent.app`. Set it only if your dev instance has a different name |
 | `DEV_GOOGLE_CLIENT_ID`, `DEV_GOOGLE_CLIENT_SECRET` | secret, optional | Google on the dev instance, so the relay can sign in with it; both or neither, and the client must list `dev.unbent.app` — see [Google on the dev instance](#google-on-the-dev-instance) |
 | `DEV_TYPESAFE_API_KEY` | secret, optional | Auto-fill on the dev instance and every preview; a key of its own, so what they spend stays apart from production's — see [Filing a note from what it says](#filing-a-note-from-what-it-says) |
+| `DEV_ANTHROPIC_API_KEY` | secret, optional | Reading images on the dev instance and every preview; a key of its own, for the same reason — see [Reading images](#reading-images) |
 
 The subdomain is a variable rather than a secret because the workflow has to build the URL
 before deploying — `APP_URL` is baked in at deploy time — and a masked value would arrive
@@ -922,6 +924,44 @@ existed cannot be fixed by re-importing — they are skipped along with their at
 not have it yet. `GET /api/attachments/pending-text` says what is still missing, scoped to
 one note with `?note=`, which is how the phone asks for its own capture and nothing else.
 
+### Reading images
+
+A text layer is the only text a file had, so a photo of a receipt, a business card, a plate
+of food or a whiteboard was nothing to search and nothing for Auto-fill to read, and so was
+a scan that was never OCR'd. With an Anthropic API key the instance reads those with a
+vision model:
+
+```bash
+cd apps/api
+pnpm exec wrangler secret put ANTHROPIC_API_KEY
+```
+
+Locally, the same name in `apps/api/.dev.vars`; `DEV_ANTHROPIC_API_KEY` as a GitHub secret
+carries a separate key to the dev instance and previews. Without one, pictures have no text,
+as before, and nothing is sent anywhere.
+
+The model is asked for one fixed shape — a short name for the file, what kind of thing it is,
+a sentence or two on what it shows and the facts someone filing it would want, and every
+legible word transcribed — and the whole of it becomes the file's text, in that order. The
+same row search indexes and Auto-fill reads, so a photo of a card fills a Contacts notebook's
+fields the way a scan fills Receipts, and "lasagna" finds the plate. `get_attachment_text`
+over MCP returns it too.
+
+**When it runs.** After an upload, in the same slot where a PDF's text layer is read, for
+pictures, and for a scan whose text layer turned out empty — whether the server's conversion
+found nothing or the browser's did. Never for a PDF that has a text layer: the free reader
+goes first, and the paid one only gets what it leaves. For files already here, the Import
+panel's button becomes **Index existing files** and runs the pictures through after the PDFs,
+a few per request, with a count of what is left; the pass a tab opening starts never reads
+images, because each is a request the instance pays for. The bytes go to Anthropic and are
+not kept there; each file is read once, and a decline is recorded so it is not asked again.
+
+`VISION_MODEL` picks the model. Unset means the most capable current one — a wrong digit in a
+transcribed total is copied into a field with full confidence — and `claude-sonnet-5` trades
+some of that for cost. The reader is behind one interface in `apps/api/src/lib/vision.ts`,
+so another model, or Workers AI for an instance that would rather keep images in place, is
+one more implementation of it.
+
 ## Filing a note from what it says
 
 A scan arrives as an untitled note in the Inbox holding one PDF, and filing it — a title, a
@@ -944,7 +984,8 @@ usage apart from production's.
 
 **What is sent, on each press.** The note's title and body, the text already extracted from
 its PDFs (see [Searching inside PDFs](#searching-inside-pdfs) — a scan that has not been read
-yet is reported as such rather than guessed at, and a photograph has no text to send), and
+yet is reported as such rather than guessed at, and a photograph has text only where the
+instance [reads images](#reading-images)), and
 the names of your notebooks, tags and fields, with a few recent titles from each notebook and
 tag as examples of what belongs there. Nothing else in the archive. Nothing is sent until the
 button is pressed.
