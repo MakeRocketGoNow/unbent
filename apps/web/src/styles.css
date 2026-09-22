@@ -1760,6 +1760,25 @@ a.overflow-item { text-decoration: none; }
    thing in the head rather than a second menu. The gap is the icon's, not a button's. */
 .autofill-btn { gap: 0.3rem; }
 
+/* While the press is out reading, the sparkle spins — the progress the header status line
+   used to carry, now on the trigger itself, which is the one spot that also works on a
+   phone where the label is hidden. Still under `prefers-reduced-motion`. */
+.autofill-btn.busy svg {
+  animation: autofill-spin 900ms linear infinite;
+}
+
+@keyframes autofill-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .autofill-btn.busy svg {
+    animation: none;
+  }
+}
+
 .small { font-size: 0.78rem; }
 .danger { color: var(--bad); }
 

@@ -75,7 +75,7 @@ export function Snackbar({ message, tone, action, duration, onDismiss }: Snackba
         variant="quiet"
         size="small"
         className="snackbar-close"
-        aria-label="Dismiss"
+        aria-label="Dismiss notification"
         onClick={onDismiss}
       >
         ✕

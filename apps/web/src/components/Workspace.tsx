@@ -41,6 +41,7 @@ import { BackArrow } from './BackArrow.js';
 import { FilingRows } from './FilingRows.js';
 import { NoteFields } from './NoteFields.js';
 import { Confirm } from './Confirm.js';
+import { Snackbar } from './Snackbar.js';
 import { AutofillIcon } from './icons.js';
 import { formatFieldValue } from './format-field.js';
 import {
@@ -514,11 +515,17 @@ export function Workspace({ noteId, readOnly = false, backTo = '/notes' }: Works
   draftRef.current = draft;
   const noteIdRef = useRef(noteId);
   noteIdRef.current = noteId;
-  /** What the last Auto-fill is doing or did, in the head where "Saved" goes. */
-  const [autofillStatus, setAutofillStatus] = useState<{ text: string; failed: boolean } | null>(
-    null,
-  );
-  const autofillStatusTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /**
+   * The bottom-of-screen result of the last Auto-fill: what it filled, or why it couldn't.
+   * A success carries an Undo and clears itself; an error stays until dismissed. Replaces
+   * the header status line the result used to fade in beside the title. See `Snackbar`.
+   */
+  const [snackbar, setSnackbar] = useState<{
+    message: string;
+    tone: 'info' | 'error';
+    action?: { label: string; onClick: () => void };
+    duration?: number;
+  } | null>(null);
   const [autofilling, setAutofilling] = useState(false);
   /** Changes that would replace something already set, waiting to be confirmed. */
   const [autofillReplace, setAutofillReplace] = useState<AutofillChanges | null>(null);
@@ -540,17 +547,14 @@ export function Workspace({ noteId, readOnly = false, backTo = '/notes' }: Works
   useEffect(() => {
     setAutofilling(false);
     setAutofillReplace(null);
-    if (autofillStatusTimer.current) clearTimeout(autofillStatusTimer.current);
-    setAutofillStatus(null);
+    setSnackbar(null);
     setTitleModelFault(false);
     setWebImagesStatus(null);
   }, [noteId]);
 
-  /** Beside the title for a few seconds; a failure stays longer, since it is a sentence. */
-  function showAutofillStatus(text: string, failed = false) {
-    if (autofillStatusTimer.current) clearTimeout(autofillStatusTimer.current);
-    setAutofillStatus({ text, failed });
-    autofillStatusTimer.current = setTimeout(() => setAutofillStatus(null), failed ? 8000 : 5000);
+  /** A success snackbar that clears itself after a few seconds, with an optional Undo. */
+  function showFillResult(message: string, action?: { label: string; onClick: () => void }) {
+    setSnackbar({ message, tone: 'info', action, duration: 5000 });
   }
 
   /**
@@ -565,8 +569,9 @@ export function Workspace({ noteId, readOnly = false, backTo = '/notes' }: Works
     const startedFor = noteId;
     setAutofilling(true);
     setAutofillReplace(null);
-    if (autofillStatusTimer.current) clearTimeout(autofillStatusTimer.current);
-    setAutofillStatus({ text: 'Reading…', failed: false });
+    // The press is its own progress now — the button goes busy; the last result, if one is
+    // still up, clears so it can't be mistaken for this press's answer.
+    setSnackbar(null);
     try {
       await flush();
       // Left this note during the flush: don't spend a Jev round-trip on a note that
@@ -575,24 +580,30 @@ export function Workspace({ noteId, readOnly = false, backTo = '/notes' }: Works
       const suggestion = await api.autofillNote(startedFor);
       if (noteIdRef.current !== startedFor) return;
       // Set only for an operator, and only when the title model rejected its key; a
-      // standing notice, separate from the status line, so it survives the fill's success.
+      // standing notice, separate from the snackbar, so it survives the fill's success.
       setTitleModelFault(suggestion.titleModel === 'auth-failed');
       for (const { field } of suggestion.fields) seenFieldDefs.current.set(field.id, field);
       const plan = planAutofill(draftRef.current, suggestion);
-      if (!isEmptyChanges(plan.fill)) setDraft((d) => applyAutofill(d, plan.fill));
-      // Short, because it sits beside the title, which a phone gives little room.
       const stillReading = suggestion.read.pending.length > 0 ? ' — a file is still being read' : '';
-      showAutofillStatus(
-        isEmptyChanges(plan.fill)
-          ? `Nothing empty to fill in${stillReading}`
-          : `Filled in ${describeChanges(plan.fill)}${stillReading}`,
-      );
+      if (isEmptyChanges(plan.fill)) {
+        showFillResult(`Nothing empty to fill in${stillReading}`);
+      } else {
+        // The draft as it stood, captured before the fill lands, so Undo is one assignment
+        // back to it — `applyAutofill` returns a new object and never touches this one.
+        const before = draftRef.current;
+        setDraft((d) => applyAutofill(d, plan.fill));
+        showFillResult(`Filled in ${describeChanges(plan.fill)}${stillReading}`, {
+          label: 'Undo',
+          onClick: () => setDraft(before),
+        });
+      }
       if (!isEmptyChanges(plan.replace)) setAutofillReplace(plan.replace);
     } catch (err) {
       if (noteIdRef.current !== startedFor) return;
       // The server's own sentence, without the status it arrives prefixed with: "422:
-      // Nothing to read yet…" is not what a person beside a title wants to read.
-      showAutofillStatus((err as Error).message.replace(/^\d{3}[^:]*: /, ''), true);
+      // Nothing to read yet…" is not what a person wants to read. A failure stays until
+      // dismissed rather than fading — no `duration`.
+      setSnackbar({ message: (err as Error).message.replace(/^\d{3}[^:]*: /, ''), tone: 'error' });
     } finally {
       if (noteIdRef.current === startedFor) setAutofilling(false);
     }
@@ -764,10 +775,10 @@ export function Workspace({ noteId, readOnly = false, backTo = '/notes' }: Works
           {/* Cut with an ellipsis before the title is, and carried whole in the tooltip;
               see `.workspace-status`. */}
           <span
-            className={`workspace-status ${saveState === 'error' || autofillStatus?.failed ? 'bad' : 'muted'} small`}
-            title={autofillStatus?.text}
+            className={`workspace-status ${saveState === 'error' ? 'bad' : 'muted'} small`}
+            title={webImagesStatus ?? saveLabel}
           >
-            {readOnly ? 'In trash' : (autofillStatus?.text ?? webImagesStatus ?? saveLabel)}
+            {readOnly ? 'In trash' : (webImagesStatus ?? saveLabel)}
           </span>
 
           {/*
@@ -783,14 +794,16 @@ export function Workspace({ noteId, readOnly = false, backTo = '/notes' }: Works
             <Button
               variant="quiet"
               size="small"
-              className="autofill-btn"
+              className={`autofill-btn${autofilling ? ' busy' : ''}`}
               disabled={autofilling}
-              aria-label="Auto-fill"
+              aria-label={autofilling ? 'Reading…' : 'Auto-fill'}
               title="Fill in the title, notebook, tags and fields from what the note and its files say"
               onClick={() => void runAutofill()}
             >
               <AutofillIcon />
-              <span className="autofill-label">Auto-fill</span>
+              {/* The press carries its own progress: the sparkle spins and the label says
+                  what it is doing, so the result no longer needs a "Reading…" in the head. */}
+              <span className="autofill-label">{autofilling ? 'Reading…' : 'Auto-fill'}</span>
             </Button>
           )}
 
@@ -889,13 +902,28 @@ export function Workspace({ noteId, readOnly = false, backTo = '/notes' }: Works
               tone: 'primary',
               onConfirm: () => {
                 const changes = autofillReplace;
+                const before = draftRef.current;
                 setDraft((d) => applyAutofill(d, changes));
                 setAutofillReplace(null);
-                showAutofillStatus(`Replaced ${describeChanges(changes)}`);
+                showFillResult(`Replaced ${describeChanges(changes)}`, {
+                  label: 'Undo',
+                  onClick: () => setDraft(before),
+                });
               },
             },
           ]}
           onCancel={() => setAutofillReplace(null)}
+        />
+      )}
+
+      {/* Auto-fill's result: fixed to the bottom of the screen, not the header. */}
+      {snackbar && (
+        <Snackbar
+          message={snackbar.message}
+          tone={snackbar.tone}
+          action={snackbar.action}
+          duration={snackbar.duration}
+          onDismiss={() => setSnackbar(null)}
         />
       )}
 
