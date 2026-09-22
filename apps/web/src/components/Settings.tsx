@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import * as api from '../notes-api.js';
 import { LabelEditor, type LabelItem } from './LabelEditor.js';
 import { DeleteNotebookConfirm } from './DeleteNotebookConfirm.js';
-import { DownloadIcon } from './icons.js';
+import { DownloadIcon, FieldsIcon } from './icons.js';
 
 interface SettingsProps {
   /** Called after any change, so the note list and sidebar refetch. */
@@ -115,24 +115,42 @@ export function Settings({ onChanged }: SettingsProps) {
             </span>
           ) : null
         }
-        /* The row already leads to the notebook's page, so the old "Fields" link here would
-           be a second way to the same place; it is gone, and the field count rides on that
-           page's title instead. The download stays, and stays an anchor: the archive streams
-           as the browser saves it, so it cannot go through a fetch, and an anchor keeps
-           Save-Link-As and copy-link. `download` with no name lets the server's
-           Content-Disposition name the file. It wears `icon-btn` for the 44px box; the class
-           is only styling. */
-        renderExtra={(item) => (
-          <a
-            href={api.exportUrl({ notebook: item.name })}
-            download
-            className="icon-btn label-download"
-            title={`Download ${item.name} as a zip`}
-            aria-label={`Download ${item.name} as a zip`}
-          >
-            <DownloadIcon />
-          </a>
-        )}
+        /* The row leads to the notebook's page now, so the old "Fields" link here — a second
+           way to the same place — is gone. What it also carried, the field count, comes back
+           as a plain glyph-and-number: how many custom fields the notebook has, which is what
+           says at a glance which notebooks are collections of records. Silent at zero, the
+           way the note count is, so a notebook with no fields shows nothing rather than a grey
+           zero. Not a link, since the row already leads to where the fields are edited.
+
+           The download stays, and stays an anchor: the archive streams as the browser saves
+           it, so it cannot go through a fetch, and an anchor keeps Save-Link-As and copy-link.
+           `download` with no name lets the server's Content-Disposition name the file. It
+           wears `icon-btn` for the 44px box; the class is only styling. */
+        renderExtra={(item) => {
+          const fields = byId(item)?.fields ?? 0;
+          return (
+            <>
+              {fields > 0 && (
+                <span
+                  className="label-field-count muted small"
+                  title={`${fields} custom field${fields === 1 ? '' : 's'}`}
+                >
+                  <FieldsIcon />
+                  {fields}
+                </span>
+              )}
+              <a
+                href={api.exportUrl({ notebook: item.name })}
+                download
+                className="icon-btn label-download"
+                title={`Download ${item.name} as a zip`}
+                aria-label={`Download ${item.name} as a zip`}
+              >
+                <DownloadIcon />
+              </a>
+            </>
+          );
+        }}
         emptyText="No notebooks yet."
         hint="Open a notebook to change its name, its purpose, or its fields. Deleting one leaves its notes unfiled unless you choose to move them to Trash."
       />

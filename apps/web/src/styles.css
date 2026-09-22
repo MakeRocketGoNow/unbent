@@ -4458,6 +4458,23 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
 
 .label-extra { flex: 0 0 auto; }
 
+/* The custom-field count on a notebook row: its glyph and a number, not a link, since the
+   row already leads to where the fields live. A tight glyph-to-number gap so the two read as
+   one unit, and it does not stretch, so the name's ellipsis takes the slack first. The icon
+   is drawn a shade smaller than a row glyph — this is a count beside the name, not a row of
+   its own. */
+.label-field-count {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  flex: 0 0 auto;
+}
+
+.label-field-count svg {
+  width: 0.95em;
+  height: 0.95em;
+}
+
 /* The count that hugs the name, when a caller puts one there — a notebook's note count,
    like a field's value count on the notebook's own page. A small gap off the name, and it
    does not stretch, so the name's ellipsis still takes the slack on a narrow row. */
