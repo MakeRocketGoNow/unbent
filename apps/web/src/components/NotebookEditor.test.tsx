@@ -63,13 +63,13 @@ function mount(seed: FieldDef[] = fields) {
     routeTree: rootRoute.addChildren([notebooksRoute]),
     history: createMemoryHistory({ initialEntries: ['/'] }),
   });
-  render(
+  const { unmount } = render(
     <QueryClientProvider client={client}>
       {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
       <RouterProvider router={router as any} />
     </QueryClientProvider>,
   );
-  return { onChanged, onDeleted };
+  return { onChanged, onDeleted, unmount };
 }
 
 describe('NotebookEditor', () => {
@@ -98,21 +98,24 @@ describe('NotebookEditor', () => {
     expect(screen.getByTitle('12 notes with a value').textContent).toBe('12');
   });
 
-  it('renames the notebook on blur, and only when it changed', async () => {
+  it('autosaves a name change once, and not a name typed back to itself', async () => {
     mount();
     const field = (await screen.findByLabelText('Notebook name')) as HTMLInputElement;
     expect(field.value).toBe('Receipts');
 
-    // Re-typing the same name is not a request — it would 409 against its own row.
-    fireEvent.blur(field);
-    expect(api.updateNotebook).not.toHaveBeenCalled();
-
+    // A real change autosaves after the debounce settles.
     fireEvent.change(field, { target: { value: 'Invoices' } });
-    fireEvent.blur(field);
     await waitFor(() => expect(api.updateNotebook).toHaveBeenCalledWith('nb1', { name: 'Invoices' }));
+    expect(api.updateNotebook).toHaveBeenCalledTimes(1);
+
+    // Pressing Enter commits at once rather than waiting the debounce out again — but the
+    // draft has not changed since the save, so it is a no-op, not a second write.
+    fireEvent.keyDown(field, { key: 'Enter' });
+    await new Promise((r) => setTimeout(r, 0));
+    expect(api.updateNotebook).toHaveBeenCalledTimes(1);
   });
 
-  it('shows the same save words the note editor uses as the name is edited', async () => {
+  it('shows the note editor save words as the name is edited', async () => {
     mount();
     const field = (await screen.findByLabelText('Notebook name')) as HTMLInputElement;
 
@@ -120,21 +123,15 @@ describe('NotebookEditor', () => {
     expect(screen.queryByText('Unsaved')).toBeNull();
     expect(screen.queryByText('Saved')).toBeNull();
 
-    // A keystroke that diverges from the saved name reads as Unsaved at once…
+    // A keystroke reads as Unsaved at once, before the debounced write…
     fireEvent.change(field, { target: { value: 'Invoices' } });
     expect(screen.getByText('Unsaved')).toBeTruthy();
 
-    // …and a blur that writes settles on Saved.
-    fireEvent.blur(field);
+    // …and settles on Saved once it lands.
     await waitFor(() => expect(screen.getByText('Saved')).toBeTruthy());
-
-    // Typing back to the saved value clears the indicator rather than leaving a stale Saved.
-    fireEvent.change(field, { target: { value: 'Receipts' } });
-    expect(screen.queryByText('Saved')).toBeNull();
-    expect(screen.queryByText('Unsaved')).toBeNull();
   });
 
-  it('shows Save failed when a rename clashes, and clears it on the next keystroke', async () => {
+  it('shows Save failed when a rename clashes', async () => {
     vi.mocked(api.updateNotebook).mockRejectedValueOnce(
       new Error('A notebook with that name already exists.'),
     );
@@ -142,15 +139,23 @@ describe('NotebookEditor', () => {
     const field = (await screen.findByLabelText('Notebook name')) as HTMLInputElement;
 
     fireEvent.change(field, { target: { value: 'Home' } });
-    fireEvent.blur(field);
     await waitFor(() => expect(screen.getByText('Save failed')).toBeTruthy());
     // The actionable message rides alongside the indicator.
     expect(screen.getByText('A notebook with that name already exists.')).toBeTruthy();
+  });
 
-    // A fresh keystroke clears both, so the stale clash does not outlive the name.
-    fireEvent.change(field, { target: { value: 'Homes' } });
-    expect(screen.queryByText('Save failed')).toBeNull();
-    expect(screen.queryByText('A notebook with that name already exists.')).toBeNull();
+  it('flushes a pending name edit when the editor unmounts, so leaving does not lose it', async () => {
+    const { unmount } = mount();
+    const field = (await screen.findByLabelText('Notebook name')) as HTMLInputElement;
+
+    // Type but do not wait for the debounce — then leave, as clicking a nav link would.
+    fireEvent.change(field, { target: { value: 'Ledger' } });
+    expect(api.updateNotebook).not.toHaveBeenCalled();
+    unmount();
+
+    // The unmount flush writes the edit rather than dropping it — the whole reason the
+    // name and purpose use the autosave hook rather than a blur handler.
+    await waitFor(() => expect(api.updateNotebook).toHaveBeenCalledWith('nb1', { name: 'Ledger' }));
   });
 
   it('deletes the notebook from its own page and leaves for the list', async () => {
