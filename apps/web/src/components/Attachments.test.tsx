@@ -10,6 +10,8 @@ import { Attachments } from './Attachments.js';
 vi.mock('../notes-api.js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../notes-api.js')>()),
   deleteAttachment: vi.fn(),
+  copyAttachments: vi.fn(),
+  listNotes: vi.fn(),
 }));
 
 /**
@@ -25,12 +27,18 @@ const scan: AttachmentInfo = {
 
 const n1Body = '[scan](files/scan.pdf)\n\nKeep this text.';
 const n2Body = 'already written';
+/*
+   A second body for n2 that carries the same file link the move strips. A rewrite that
+   wrongly lands on n2 loses that link and is caught; a link-free n2 body would swallow the
+   bug, since removing a link n2 never had leaves the body untouched either way.
+*/
+const n2WithScan = '[scan](files/scan.pdf)\n\nn2 keeps this.';
 
 function seed(client: QueryClient, noteId: string, files: AttachmentInfo[]) {
   client.setQueryData(keys.attachments(noteId), files);
 }
 
-function mount() {
+function mount(secondBody: string = n2Body) {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false, staleTime: Infinity } },
   });
@@ -50,7 +58,7 @@ function mount() {
           type="button"
           onClick={() => {
             setId('n2');
-            setBody(n2Body);
+            setBody(secondBody);
           }}
         >
           Open n2
@@ -119,6 +127,50 @@ describe('Attachments', () => {
       await Promise.resolve();
     });
     expect(screen.getByTestId('draft-body').textContent).toBe(n2Body);
+    expect(api.deleteAttachment).toHaveBeenCalledTimes(1);
+    expect(api.deleteAttachment).toHaveBeenCalledWith('n1', 'scan.pdf');
+  });
+
+  it('does not rewrite the next note when a linked move finishes after a switch', async () => {
+    // The picker lists the note to move to; only id/title/updatedAt are read from a row.
+    vi.mocked(api.listNotes).mockResolvedValue({
+      items: [{ id: 'n2', title: 'Second', updatedAt: 0 }] as never,
+      cursor: null,
+      total: 1,
+    });
+    vi.mocked(api.copyAttachments).mockResolvedValue({ files: [], missing: [] });
+    let finishDelete: () => void = () => {};
+    vi.mocked(api.deleteAttachment).mockImplementation(
+      () => new Promise((resolve) => { finishDelete = () => resolve(); }),
+    );
+    // n2 opens onto a body that also links scan.pdf, so a stray rewrite here would show.
+    mount(n2WithScan);
+    openPanel();
+
+    fireEvent.click(screen.getByRole('button', { name: /More actions for scan\.pdf/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Move to note…' }));
+    await waitFor(() => expect(screen.getByRole('button', { name: /Second/ })).toBeTruthy());
+    fireEvent.click(screen.getByRole('button', { name: /Second/ }));
+
+    // The copy resolves, then the delete hangs — the move's rewrite is still ahead of it.
+    await waitFor(() =>
+      expect(api.copyAttachments).toHaveBeenCalledWith('n2', {
+        from: 'n1',
+        filenames: ['scan.pdf'],
+        link: true,
+      }),
+    );
+    await waitFor(() => expect(api.deleteAttachment).toHaveBeenCalledWith('n1', 'scan.pdf'));
+
+    fireEvent.click(screen.getByRole('button', { name: 'Open n2' }));
+    expect(screen.getByTestId('draft-body').textContent).toBe(n2WithScan);
+
+    finishDelete();
+    await act(async () => {
+      await Promise.resolve();
+    });
+    // n2's body — including its own scan.pdf link — is left exactly as it was.
+    expect(screen.getByTestId('draft-body').textContent).toBe(n2WithScan);
     expect(api.deleteAttachment).toHaveBeenCalledTimes(1);
     expect(api.deleteAttachment).toHaveBeenCalledWith('n1', 'scan.pdf');
   });
