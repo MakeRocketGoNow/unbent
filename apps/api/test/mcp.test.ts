@@ -214,6 +214,42 @@ describe('mcp endpoint', () => {
     expect(names).toContain('search_notes');
     expect(names).toContain('create_note');
     expect(names).toContain('edit_note');
+    expect(names).toContain('update_notebook');
+  });
+
+  it('sets a notebook purpose through update_notebook and reads it back from list_notebooks', async () => {
+    const name = `Purpose over MCP ${Date.now()}`;
+    const created = await mcp(alice.token, 'tools/call', {
+      name: 'create_notebook',
+      arguments: { name },
+    });
+    const notebookId = JSON.parse(toolText(created.body)).id as string;
+
+    const purpose = 'Things I want to buy someday; not receipts or purchases.';
+    await mcp(alice.token, 'tools/call', {
+      name: 'update_notebook',
+      arguments: { notebookId, purpose },
+    });
+
+    // The purpose the agent set is what list_notebooks reports, so an agent can read what it
+    // wrote and file against it rather than only setting it blind.
+    const listed = await mcp(alice.token, 'tools/call', { name: 'list_notebooks', arguments: {} });
+    const nb = JSON.parse(toolText(listed.body)).notebooks.find(
+      (n: { id: string }) => n.id === notebookId,
+    );
+    expect(nb.purpose).toBe(purpose);
+
+    // Passing null clears it, and a notebook without a purpose omits the key rather than
+    // carrying a null.
+    await mcp(alice.token, 'tools/call', {
+      name: 'update_notebook',
+      arguments: { notebookId, purpose: null },
+    });
+    const cleared = await mcp(alice.token, 'tools/call', { name: 'list_notebooks', arguments: {} });
+    const after = JSON.parse(toolText(cleared.body)).notebooks.find(
+      (n: { id: string }) => n.id === notebookId,
+    );
+    expect(after.purpose).toBeUndefined();
   });
 
   it('round-trips a note through create, search and read', async () => {
