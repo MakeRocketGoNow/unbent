@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link } from '@tanstack/react-router';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
@@ -18,7 +18,7 @@ import {
   type FieldType,
 } from '@unbent/shared';
 import * as api from '../notes-api.js';
-import { SAVE_LABEL, type SaveState } from '../useAutosave.js';
+import { SAVE_LABEL, useAutosave, type SaveState } from '../useAutosave.js';
 import { keys, notebookFieldsQuery, notebooksQuery } from '../queries.js';
 import { Button } from './Button';
 import { Confirm } from './Confirm.js';
@@ -93,18 +93,11 @@ export function NotebookEditor({ notebookId, onChanged, onDeleted }: NotebookEdi
   const notebook = notebooks.data?.notebooks.find((nb) => nb.id === notebookId);
 
   /**
-   * The notebook name's own draft, seeded and followed like the purpose below. A rename
-   * writes on blur and on Enter; a clash comes back as an error and the draft is left as the
-   * person typed it so they can fix it rather than losing it.
+   * The notebook name's own draft, seeded and followed like the purpose below. The rename
+   * autosaves as you type (see `useAutosave` below); a clash comes back as an error and the
+   * draft is left as the person typed it so they can fix it rather than losing it.
    */
   const [nameDraft, setNameDraft] = useState<string | null>(null);
-  /**
-   * The save state of the name and purpose together, shown in the header the way a note's
-   * editor shows its own — the same `SAVE_LABEL` words, so the two pages speak alike. These
-   * two save on blur rather than as you type, so the state steps `saving` → `saved` on a real
-   * write and stays `idle` (blank) when a blur changes nothing, never flashing a false Saved.
-   */
-  const [saveState, setSaveState] = useState<SaveState>('idle');
   /** Set while the two-option delete confirm is open for this whole notebook. */
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   /** Id of the field being renamed, with its in-progress value. */
@@ -155,9 +148,10 @@ export function NotebookEditor({ notebookId, onChanged, onDeleted }: NotebookEdi
     return () => document.removeEventListener('pointerdown', onDown);
   }, [pendingOption, busy]);
 
-  // Seed the name and purpose drafts from the notebook, and follow the saved values when
-  // they change under us (another tab, a fresh load) — but only while a draft is still
-  // unseeded, so a save landing does not wipe what the person is mid-typing.
+  // Seed the name and purpose drafts into the controlled inputs from the notebook, and
+  // follow the saved values when they change under us (another tab, a fresh load) — but only
+  // while a draft is still unseeded, so a save landing does not wipe what the person is
+  // mid-typing. The autosave hooks below track these drafts once seeded.
   const savedName = notebook?.name ?? '';
   const savedPurpose = notebook?.purpose ?? '';
   useEffect(() => {
@@ -166,6 +160,63 @@ export function NotebookEditor({ notebookId, onChanged, onDeleted }: NotebookEdi
   useEffect(() => {
     setPurposeDraft((draft) => (draft === null ? savedPurpose : draft));
   }, [savedPurpose]);
+
+  /**
+   * Name and purpose autosave the way a note's body does: debounced as you type, and — the
+   * reason it is the hook and not a blur handler — flushed on unmount and on tab hide, so
+   * clicking a nav link or closing the tab mid-edit still saves the last change rather than
+   * dropping it. Only enabled once the draft is seeded from the notebook, so the seed itself
+   * is never mistaken for an edit (the same guard the note editor relies on).
+   */
+  const seeded = notebook !== undefined && nameDraft !== null && purposeDraft !== null;
+
+  /**
+   * Saves the name when it is a real, valid change. An empty or unseeded draft, or one equal
+   * to the saved name, is `'unchanged'` — the hook's honest no-op, so a name typed back to
+   * itself never 409s against its own row and the indicator does not flash a false Saved. A
+   * clash throws, which the hook surfaces as the error the header shows.
+   */
+  const saveName = useCallback(
+    async (draft: string | null): Promise<void | 'unchanged'> => {
+      const parsed = notebookNameSchema.safeParse(draft ?? '');
+      if (!parsed.success || parsed.data === savedName) return 'unchanged';
+      await api.updateNotebook(notebookId, { name: parsed.data });
+      onChanged();
+    },
+    [notebookId, savedName, onChanged],
+  );
+
+  /**
+   * Saves the purpose when it changed. A blank draft clears it to `null` rather than storing
+   * an empty string; a draft equal to the saved purpose is `'unchanged'`. The comparison is
+   * on trimmed text, so a space typed and removed is not a save.
+   */
+  const savePurpose = useCallback(
+    async (draft: string | null): Promise<void | 'unchanged'> => {
+      if (draft === null) return 'unchanged';
+      const next = draft.trim();
+      if (next === savedPurpose.trim()) return 'unchanged';
+      await api.updateNotebook(notebookId, { purpose: next.length > 0 ? next : null });
+      onChanged();
+    },
+    [notebookId, savedPurpose, onChanged],
+  );
+
+  const { state: nameState, error: nameError, flush: flushName } = useAutosave(nameDraft, saveName, {
+    enabled: seeded,
+    resetKey: notebookId,
+  });
+  const { state: purposeState, error: purposeError } = useAutosave(purposeDraft, savePurpose, {
+    enabled: seeded,
+    resetKey: notebookId,
+  });
+
+  /**
+   * One state for the header, from the two autosaves: the worse of the two, since the header
+   * only says whether the page is safe to leave. Error beats saving beats dirty beats saved.
+   */
+  const RANK = { error: 4, saving: 3, dirty: 2, saved: 1, idle: 0 } as const;
+  const saveState: SaveState = RANK[nameState] >= RANK[purposeState] ? nameState : purposeState;
 
   /** Runs a mutation, then refetches this page and the app behind it. */
   async function run(action: () => Promise<unknown>) {
@@ -203,73 +254,6 @@ export function NotebookEditor({ notebookId, onChanged, onDeleted }: NotebookEdi
       setNewIsCurrency(false);
       setNewCurrency(DEFAULT_CURRENCY);
     });
-  }
-
-  /**
-   * Saves a name or purpose change and drives the header indicator through it: `saving`
-   * while the write is in flight, then `saved`, or `error` on failure. Mirrors `run` but
-   * owns the save state the note editor owns through `useAutosave`, so the two show the same
-   * words for the same moments even though these save on blur rather than as you type.
-   */
-  /**
-   * Reflects a keystroke in the indicator: `dirty` (Unsaved) the moment the field diverges
-   * from what is saved, back to `idle` (blank) when it matches again — the same immediate
-   * feedback the note editor gives, without a save until blur. A save in flight is left
-   * alone; its own outcome resolves the state. A fresh keystroke also clears a prior save
-   * error, so a stale "already exists" does not outlive the name that caused it.
-   */
-  function markDirty(dirty: boolean) {
-    setError(null);
-    setSaveState((s) => (s === 'saving' ? s : dirty ? 'dirty' : 'idle'));
-  }
-
-  async function saveNotebook(patch: { name?: string; purpose?: string | null }) {
-    setBusy(true);
-    setError(null);
-    setSaveState('saving');
-    try {
-      await api.updateNotebook(notebookId, patch);
-      setSaveState('saved');
-      onChanged();
-    } catch (err) {
-      setSaveState('error');
-      setError((err as Error).message);
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  /**
-   * Writes the purpose on blur, and only when it changed — a blank draft clears it to
-   * `null` rather than storing an empty string, which is how the server reads it too. The
-   * comparison is on the trimmed text, so adding and removing a space is not a save, and the
-   * indicator stays idle rather than flashing a Saved for a write that never happened.
-   */
-  function savePurpose() {
-    if (purposeDraft === null) return;
-    const next = purposeDraft.trim();
-    if (next === savedPurpose.trim()) return;
-    void saveNotebook({ purpose: next.length > 0 ? next : null });
-  }
-
-  /**
-   * Renames the notebook on blur or Enter. An empty draft, or one unchanged from the saved
-   * name, is not a request — the same no-op guard the field rename and the list editor use,
-   * so a name typed back to itself does not 409 against its own row and the indicator stays
-   * idle. A real clash surfaces as the error the header shows, and the draft is left as typed
-   * so it can be corrected.
-   */
-  function saveName() {
-    if (nameDraft === null) return;
-    const parsed = notebookNameSchema.safeParse(nameDraft);
-    if (!parsed.success) {
-      // A blank name is a cancel, not an error: fall back to the saved one rather than nag.
-      if (nameDraft.trim() === '') setNameDraft(savedName);
-      else setError(parsed.error.issues[0]?.message ?? 'Give the notebook a name');
-      return;
-    }
-    if (parsed.data === savedName) return;
-    void saveNotebook({ name: parsed.data });
   }
 
   /** Deletes the whole notebook; `trashNotes` decides whether its notes go with it. */
@@ -486,11 +470,15 @@ export function NotebookEditor({ notebookId, onChanged, onDeleted }: NotebookEdi
         </div>
       </div>
 
-      {error && <p className="bad small">{error}</p>}
+      {/* A failed field operation, or a failed name/purpose autosave (a clash, most often),
+          shown in full under the header where the indicator only had room for "Save failed". */}
+      {(error ?? nameError ?? purposeError) && (
+        <p className="bad small">{error ?? nameError ?? purposeError}</p>
+      )}
 
       {/* The name comes first — it is what the notebook is called, and what the list showed.
-          Renaming here updates every note in it, because the notes reference the id. Saved on
-          blur and on Enter, like the purpose below and the field rename further down. */}
+          Renaming here updates every note in it, because the notes reference the id. It
+          autosaves as you type, and is flushed if you leave the page mid-edit. */}
       <div className="notebook-name-edit">
         <label className="notebook-purpose-label" htmlFor="notebook-name">
           Name
@@ -501,13 +489,11 @@ export function NotebookEditor({ notebookId, onChanged, onDeleted }: NotebookEdi
           value={nameDraft ?? ''}
           disabled={busy || !notebook}
           aria-label="Notebook name"
-          onChange={(e) => {
-            setNameDraft(e.target.value);
-            markDirty(e.target.value.trim() !== savedName);
-          }}
-          onBlur={saveName}
+          onChange={(e) => setNameDraft(e.target.value)}
           onKeyDown={(e) => {
-            if (e.key === 'Enter') e.currentTarget.blur();
+            // Enter commits now rather than waiting out the debounce; Escape abandons the
+            // edit back to the saved name.
+            if (e.key === 'Enter') void flushName();
             if (e.key === 'Escape') setNameDraft(savedName);
           }}
         />
@@ -529,11 +515,7 @@ export function NotebookEditor({ notebookId, onChanged, onDeleted }: NotebookEdi
           maxLength={MAX_NOTEBOOK_PURPOSE_LENGTH}
           disabled={busy || !notebook}
           placeholder="What belongs here — and what doesn't. e.g. Things I want to buy someday; not receipts or purchases."
-          onChange={(e) => {
-            setPurposeDraft(e.target.value);
-            markDirty(e.target.value.trim() !== savedPurpose.trim());
-          }}
-          onBlur={savePurpose}
+          onChange={(e) => setPurposeDraft(e.target.value)}
         />
         <p className="muted small notebook-purpose-hint">
           Auto-fill reads this when it decides where a note belongs, so a notebook whose name
