@@ -198,9 +198,11 @@ export function registerReadTools(
       title: 'List notebooks',
       description:
         'Every notebook with the number of live notes in it, plus the count of notes filed in ' +
-        'none. Notebooks are flat: there is no nesting. Each notebook lists its custom fields ' +
-        '(name, type, and the options of a select or multiselect); values are read on a note and set by ' +
-        'name through create_note and update_note.',
+        'none. Notebooks are flat: there is no nesting. Each notebook carries its purpose when ' +
+        'one is set — a sentence saying what belongs in it, which auto-fill reads when filing a ' +
+        'note — and lists its custom fields (name, type, and the options of a select or ' +
+        'multiselect); values are read on a note and set by name through create_note and ' +
+        'update_note.',
       inputSchema: z.object({}),
       annotations: { readOnlyHint: true, openWorldHint: false },
     },
@@ -215,6 +217,8 @@ export function registerReadTools(
           id: nb.id,
           name: nb.name,
           count: nb.count,
+          // Only when set, so a notebook without a purpose is silent rather than carrying a null.
+          ...(nb.purpose ? { purpose: nb.purpose } : {}),
           fields: fields
             .filter((f) => f.notebookId === nb.id)
             .map((f) => ({
