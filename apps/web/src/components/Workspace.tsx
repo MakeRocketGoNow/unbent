@@ -7,7 +7,7 @@ import { localizeImageLinks, remoteImageUrls } from '@unbent/shared';
 import * as api from '../notes-api.js';
 import { isStatus } from '../notes-api.js';
 import { buildNotePatch, rememberFieldDefs, unstoreableFieldIds } from '../note-patch.js';
-import { useAutosave } from '../useAutosave.js';
+import { useAutosave, SAVE_LABEL } from '../useAutosave.js';
 import { usePersistentState, clamp } from '../usePersistentState.js';
 import {
   useCameFromList,
@@ -56,13 +56,6 @@ const EDITOR_DEFAULT = 0.5;
 const EDITOR_MIN = 0.2;
 const EDITOR_MAX = 0.8;
 
-const SAVE_LABEL: Record<string, string> = {
-  idle: '',
-  dirty: 'Unsaved',
-  saving: 'Saving…',
-  saved: 'Saved',
-  error: 'Save failed',
-};
 
 interface WorkspaceProps {
   noteId: string;

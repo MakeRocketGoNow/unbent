@@ -13,6 +13,7 @@ import {
   fieldOptionsSchema,
   fieldTypeSchema,
   notebookNameSchema,
+  notebookPurposeSchema,
   tagNameSchema,
   type FieldDef,
   type FieldValue,
@@ -456,18 +457,31 @@ export function registerWriteTools(server: McpServer, notes: NotesRepo): void {
   );
 
   server.registerTool(
-    'rename_notebook',
+    'update_notebook',
     {
-      title: 'Rename a notebook',
-      description: 'Rename a notebook by id. Get the id from list_notebooks.',
-      inputSchema: z.object({ notebookId: z.string().min(1), name: notebookNameSchema }),
+      title: 'Update a notebook',
+      description:
+        'Change a notebook by id: its name, its purpose, or both. Get the id from ' +
+        'list_notebooks. The purpose is a sentence saying what belongs in the notebook and, ' +
+        'as helpfully, what does not (e.g. "Things I want to buy someday; not receipts or ' +
+        'purchases"). It is shown to the person and read by auto-fill when it decides where ' +
+        'a note belongs, so it is what keeps notes out of a notebook whose name alone would ' +
+        'mislead. Pass purpose:null to clear it. Omit a field to leave it unchanged.',
+      inputSchema: z.object({
+        notebookId: z.string().min(1),
+        name: notebookNameSchema.optional(),
+        purpose: notebookPurposeSchema.optional(),
+      }),
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     },
-    async ({ notebookId, name }) => {
-      const outcome = await notes.renameNotebook(notebookId, name);
+    async ({ notebookId, name, purpose }) => {
+      if (name === undefined && purpose === undefined) {
+        return toolError('Give a name or a purpose to change.');
+      }
+      const outcome = await notes.updateNotebook(notebookId, { name, purpose });
       if (outcome === 'missing') return notFound('notebook', notebookId);
       if (outcome === 'conflict') return toolError(`A notebook called "${name}" already exists.`);
-      return jsonResult({ id: notebookId, name });
+      return jsonResult({ id: notebookId, ...(name !== undefined && { name }), ...(purpose !== undefined && { purpose }) });
     },
   );
 

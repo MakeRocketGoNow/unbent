@@ -856,13 +856,38 @@ describe('notebooks', () => {
       headers: { 'Content-Type': 'application/json', ...asUser(alice).headers },
       body: JSON.stringify({ name: after }),
     });
-    expect(res.status).toBe(200);
+    expect(res.status).toBe(204);
 
     const listed = await fetch(
       `${BASE}/api/notes?notebook=${encodeURIComponent(after)}`,
       asUser(alice),
     ).then((r) => r.json());
     expect(listed.items.some((n: { title: string }) => n.title === 'follows')).toBe(true);
+  });
+
+  it('sets and clears a notebook purpose, which the list reports', async () => {
+    const name = `Purposeful ${Date.now()}`;
+    await createNote(alice, { title: 'anchor', body: 'x', notebook: name });
+    const nb = (await listNotebooks(alice)).find((n) => n.name === name)!;
+    expect(nb.purpose).toBeNull();
+
+    const purpose = 'Things I want to buy someday; not receipts or purchases.';
+    const set = await fetch(`${BASE}/api/notebooks/${nb.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', ...asUser(alice).headers },
+      body: JSON.stringify({ purpose }),
+    });
+    expect(set.status).toBe(204);
+    expect((await listNotebooks(alice)).find((n) => n.id === nb.id)!.purpose).toBe(purpose);
+
+    // A blank string clears it back to null rather than storing an empty purpose.
+    const clear = await fetch(`${BASE}/api/notebooks/${nb.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', ...asUser(alice).headers },
+      body: JSON.stringify({ purpose: '   ' }),
+    });
+    expect(clear.status).toBe(204);
+    expect((await listNotebooks(alice)).find((n) => n.id === nb.id)!.purpose).toBeNull();
   });
 
   it('unfiles notes rather than deleting them', async () => {

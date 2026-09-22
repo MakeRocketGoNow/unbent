@@ -1,5 +1,11 @@
 import { describe, it, expect, afterEach, vi } from 'vitest';
-import { render, cleanup, fireEvent, waitFor } from '@testing-library/react';
+import { render, cleanup, fireEvent, waitFor, screen } from '@testing-library/react';
+import {
+  createRootRoute,
+  createRouter,
+  createMemoryHistory,
+  RouterProvider,
+} from '@tanstack/react-router';
 import { LabelEditor, type LabelItem } from './LabelEditor.js';
 
 /**
@@ -155,5 +161,63 @@ describe('LabelEditor', () => {
     expect(nameButton?.textContent).toContain('5');
     // The empty notebook shows no count at all, not a bare zero, anywhere on its row.
     expect(queryAllByText('0')).toHaveLength(0);
+  });
+});
+
+/**
+ * The navigational mode, which the notebook list uses: a row is a link to the item's own
+ * page rather than an inline field, and delete rides on the row so the one destructive act
+ * stays reachable without opening the page. Tags never pass rowHref and keep the inline
+ * editor the tests above pin.
+ */
+describe('LabelEditor navigational rows', () => {
+  afterEach(cleanup);
+
+  function linkHarness(over: Partial<Parameters<typeof LabelEditor>[0]> = {}) {
+    const onRename = vi.fn(async () => true);
+    const onDelete = vi.fn();
+    const rootRoute = createRootRoute({
+      component: () => (
+        <LabelEditor
+          kind="notebook"
+          items={ITEMS}
+          busy={false}
+          onRename={onRename}
+          onDelete={onDelete}
+          rowHref={(item) => `/settings/notebooks/${item.id}`}
+          emptyText="None."
+          hint="A hint."
+          {...over}
+        />
+      ),
+    });
+    const router = createRouter({
+      routeTree: rootRoute,
+      history: createMemoryHistory({ initialEntries: ['/'] }),
+    });
+    render(
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      <RouterProvider router={router as any} />,
+    );
+    return { onRename, onDelete };
+  }
+
+  it('renders each row as a link to its page, and does not rename in place on click', async () => {
+    const { onRename } = linkHarness();
+    const name = await screen.findByRole('link', { name: 'Coupons' });
+    expect(name.getAttribute('href')).toBe('/settings/notebooks/1');
+    // The pencil is the same link, not an inline-rename trigger.
+    const pencil = screen.getByRole('link', { name: 'Edit Coupons' });
+    expect(pencil.getAttribute('href')).toBe('/settings/notebooks/1');
+    // Clicking the name navigates rather than turning the row into a field.
+    fireEvent.click(name);
+    expect(screen.queryByLabelText('Rename Coupons')).toBeNull();
+    expect(onRename).not.toHaveBeenCalled();
+  });
+
+  it('keeps delete on the row, reachable without opening the page', async () => {
+    const { onDelete } = linkHarness();
+    fireEvent.click(await screen.findByLabelText('Delete Receipts'));
+    expect(onDelete).toHaveBeenCalledWith(ITEMS[1]);
   });
 });

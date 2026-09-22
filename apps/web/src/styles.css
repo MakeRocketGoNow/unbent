@@ -4419,6 +4419,12 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
 
 .label-name:disabled { cursor: default; }
 
+/* The navigational variant is an anchor wearing the same shape as the name button: no
+   underline, the foreground colour, so the row reads as a name and not a link even though
+   the whole row leads to the notebook's page. */
+.label-name-link { text-decoration: none; }
+.label-name-link:hover .label-name-text { text-decoration: underline; }
+
 /* Creating is quieter than the names it makes more of. */
 .label-create .label-name { color: var(--muted); }
 
@@ -4467,6 +4473,79 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
 }
 
 /* Notebook management, inside the settings panel. */
+/*
+ * The notebook's purpose, above its fields. Stretched to the panel width for the same
+ * reason `.notebook-admin` is: `.panel` shrink-wraps its children to their content, and a
+ * full-width textarea should not be as narrow as its own placeholder.
+ */
+.notebook-purpose {
+  align-self: stretch;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  margin: 0.25rem 0 0.5rem;
+}
+
+.notebook-purpose-label { font-size: 0.85rem; }
+
+.notebook-purpose-input {
+  width: 100%;
+  padding: 0.4rem 0.6rem;
+  font: inherit;
+  font-size: 0.85rem;
+  line-height: 1.4;
+  color: var(--fg);
+  background: color-mix(in srgb, var(--fg) 4%, transparent);
+  border: 1px solid var(--border);
+  border-radius: 0.4rem;
+  resize: vertical;
+}
+
+.notebook-purpose-input:focus { outline: none; border-color: var(--accent); }
+.notebook-purpose-input::placeholder { color: var(--muted); }
+.notebook-purpose-input:disabled { opacity: 0.6; }
+
+.notebook-purpose-hint { margin: 0; }
+
+/* The header's right side: the save status beside the "All notebooks" link, the way the
+   note editor sets its status beside its actions. Baseline-aligned to sit on the title's line. */
+.notebook-head-actions {
+  display: flex;
+  align-items: baseline;
+  gap: 0.9rem;
+  white-space: nowrap;
+}
+
+/* The name input above the purpose, stretched to the panel like the purpose is. */
+.notebook-name-edit {
+  align-self: stretch;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  margin: 0.25rem 0 0.75rem;
+}
+
+/* Section heading within the edit page — "Fields", "Delete notebook". Quieter than the
+   panel's h2, since the page title already names the notebook. */
+.notebook-section-head {
+  align-self: stretch;
+  margin: 1rem 0 0.25rem;
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.notebook-danger-head { color: var(--bad); }
+
+.notebook-danger {
+  align-self: stretch;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.4rem;
+}
+
+.notebook-danger p { margin: 0; }
+
 .notebook-admin {
   list-style: none;
   margin: 0.5rem 0;

@@ -5,8 +5,10 @@ import {
   CURRENCY_CODES,
   FIELD_TYPES,
   FIELD_TYPE_LABELS,
+  MAX_NOTEBOOK_PURPOSE_LENGTH,
   MAX_RATING_MAX,
   MIN_RATING_MAX,
+  notebookNameSchema,
   fieldHasOptions,
   fieldNameSchema,
   isCurrencyField,
@@ -16,17 +18,21 @@ import {
   type FieldType,
 } from '@unbent/shared';
 import * as api from '../notes-api.js';
+import { SAVE_LABEL, type SaveState } from '../useAutosave.js';
 import { keys, notebookFieldsQuery, notebooksQuery } from '../queries.js';
 import { Button } from './Button';
 import { Confirm } from './Confirm.js';
+import { DeleteNotebookConfirm } from './DeleteNotebookConfirm.js';
 import { TagInput } from './TagInput.js';
 import { formatCurrency } from './format-field.js';
 import { FieldTypeIcon, MoveDownIcon, MoveUpIcon } from './icons.js';
 
-interface NotebookFieldsProps {
+interface NotebookEditorProps {
   notebookId: string;
   /** Called after any change, so the notebook list, the note list and open notes refetch. */
   onChanged: () => void;
+  /** Called after the notebook is deleted, so the route can leave for the list. */
+  onDeleted: () => void;
 }
 
 /** What a type or scale change is about to do, held while the person decides. */
@@ -80,14 +86,35 @@ const DEFAULT_CURRENCY = 'USD';
  * list items say the same (see README). The fields are a column and move up/down; a
  * select's options wrap as chips and move earlier/later, but it is the same one-step nudge.
  */
-export function NotebookFields({ notebookId, onChanged }: NotebookFieldsProps) {
+export function NotebookEditor({ notebookId, onChanged, onDeleted }: NotebookEditorProps) {
   const queryClient = useQueryClient();
   const fields = useQuery(notebookFieldsQuery(notebookId));
   const notebooks = useQuery(notebooksQuery());
   const notebook = notebooks.data?.notebooks.find((nb) => nb.id === notebookId);
 
+  /**
+   * The notebook name's own draft, seeded and followed like the purpose below. A rename
+   * writes on blur and on Enter; a clash comes back as an error and the draft is left as the
+   * person typed it so they can fix it rather than losing it.
+   */
+  const [nameDraft, setNameDraft] = useState<string | null>(null);
+  /**
+   * The save state of the name and purpose together, shown in the header the way a note's
+   * editor shows its own — the same `SAVE_LABEL` words, so the two pages speak alike. These
+   * two save on blur rather than as you type, so the state steps `saving` → `saved` on a real
+   * write and stays `idle` (blank) when a blur changes nothing, never flashing a false Saved.
+   */
+  const [saveState, setSaveState] = useState<SaveState>('idle');
+  /** Set while the two-option delete confirm is open for this whole notebook. */
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
   /** Id of the field being renamed, with its in-progress value. */
   const [editing, setEditing] = useState<{ id: string; value: string } | null>(null);
+  /**
+   * The purpose textarea's own draft. Seeded from the notebook once it loads and whenever
+   * the saved value changes under it, but otherwise left to the person's keystrokes — a
+   * controlled textarea bound straight to the query would fight the caret on every refetch.
+   */
+  const [purposeDraft, setPurposeDraft] = useState<string | null>(null);
   const [pendingDelete, setPendingDelete] = useState<FieldDef | null>(null);
   const [pendingType, setPendingType] = useState<PendingType | null>(null);
   const [pendingOption, setPendingOption] = useState<PendingOption | null>(null);
@@ -128,6 +155,18 @@ export function NotebookFields({ notebookId, onChanged }: NotebookFieldsProps) {
     return () => document.removeEventListener('pointerdown', onDown);
   }, [pendingOption, busy]);
 
+  // Seed the name and purpose drafts from the notebook, and follow the saved values when
+  // they change under us (another tab, a fresh load) — but only while a draft is still
+  // unseeded, so a save landing does not wipe what the person is mid-typing.
+  const savedName = notebook?.name ?? '';
+  const savedPurpose = notebook?.purpose ?? '';
+  useEffect(() => {
+    setNameDraft((draft) => (draft === null ? savedName : draft));
+  }, [savedName]);
+  useEffect(() => {
+    setPurposeDraft((draft) => (draft === null ? savedPurpose : draft));
+  }, [savedPurpose]);
+
   /** Runs a mutation, then refetches this page and the app behind it. */
   async function run(action: () => Promise<unknown>) {
     setBusy(true);
@@ -163,6 +202,83 @@ export function NotebookFields({ notebookId, onChanged }: NotebookFieldsProps) {
       setNewScale({ max: 5, step: 0.5 });
       setNewIsCurrency(false);
       setNewCurrency(DEFAULT_CURRENCY);
+    });
+  }
+
+  /**
+   * Saves a name or purpose change and drives the header indicator through it: `saving`
+   * while the write is in flight, then `saved`, or `error` on failure. Mirrors `run` but
+   * owns the save state the note editor owns through `useAutosave`, so the two show the same
+   * words for the same moments even though these save on blur rather than as you type.
+   */
+  /**
+   * Reflects a keystroke in the indicator: `dirty` (Unsaved) the moment the field diverges
+   * from what is saved, back to `idle` (blank) when it matches again — the same immediate
+   * feedback the note editor gives, without a save until blur. A save in flight is left
+   * alone; its own outcome resolves the state. A fresh keystroke also clears a prior save
+   * error, so a stale "already exists" does not outlive the name that caused it.
+   */
+  function markDirty(dirty: boolean) {
+    setError(null);
+    setSaveState((s) => (s === 'saving' ? s : dirty ? 'dirty' : 'idle'));
+  }
+
+  async function saveNotebook(patch: { name?: string; purpose?: string | null }) {
+    setBusy(true);
+    setError(null);
+    setSaveState('saving');
+    try {
+      await api.updateNotebook(notebookId, patch);
+      setSaveState('saved');
+      onChanged();
+    } catch (err) {
+      setSaveState('error');
+      setError((err as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  /**
+   * Writes the purpose on blur, and only when it changed — a blank draft clears it to
+   * `null` rather than storing an empty string, which is how the server reads it too. The
+   * comparison is on the trimmed text, so adding and removing a space is not a save, and the
+   * indicator stays idle rather than flashing a Saved for a write that never happened.
+   */
+  function savePurpose() {
+    if (purposeDraft === null) return;
+    const next = purposeDraft.trim();
+    if (next === savedPurpose.trim()) return;
+    void saveNotebook({ purpose: next.length > 0 ? next : null });
+  }
+
+  /**
+   * Renames the notebook on blur or Enter. An empty draft, or one unchanged from the saved
+   * name, is not a request — the same no-op guard the field rename and the list editor use,
+   * so a name typed back to itself does not 409 against its own row and the indicator stays
+   * idle. A real clash surfaces as the error the header shows, and the draft is left as typed
+   * so it can be corrected.
+   */
+  function saveName() {
+    if (nameDraft === null) return;
+    const parsed = notebookNameSchema.safeParse(nameDraft);
+    if (!parsed.success) {
+      // A blank name is a cancel, not an error: fall back to the saved one rather than nag.
+      if (nameDraft.trim() === '') setNameDraft(savedName);
+      else setError(parsed.error.issues[0]?.message ?? 'Give the notebook a name');
+      return;
+    }
+    if (parsed.data === savedName) return;
+    void saveNotebook({ name: parsed.data });
+  }
+
+  /** Deletes the whole notebook; `trashNotes` decides whether its notes go with it. */
+  function deleteNotebook(trashNotes: boolean) {
+    void run(async () => {
+      await api.deleteNotebook(notebookId, { trashNotes });
+      setConfirmingDelete(false);
+      // The list this returns to no longer holds this notebook; leave before it refetches.
+      onDeleted();
     });
   }
 
@@ -353,13 +469,80 @@ export function NotebookFields({ notebookId, onChanged }: NotebookFieldsProps) {
   return (
     <div className="panel">
       <div className="panel-head">
-        <h2>{notebook ? `Fields in ${notebook.name}` : 'Fields'}</h2>
-        <Link to="/settings/notebooks" className="link small">
-          All notebooks
-        </Link>
+        <h2>{notebook ? `Edit ${notebook.name}` : 'Edit notebook'}</h2>
+        <div className="notebook-head-actions">
+          {/* The name and purpose autosave; this says so in the note editor's own words, so
+              the two pages read alike. Blank while idle, so it appears only once there is
+              something to report. */}
+          <span
+            className={`workspace-status ${saveState === 'error' ? 'bad' : 'muted'} small`}
+            aria-live="polite"
+          >
+            {SAVE_LABEL[saveState]}
+          </span>
+          <Link to="/settings/notebooks" className="link small">
+            All notebooks
+          </Link>
+        </div>
       </div>
 
       {error && <p className="bad small">{error}</p>}
+
+      {/* The name comes first — it is what the notebook is called, and what the list showed.
+          Renaming here updates every note in it, because the notes reference the id. Saved on
+          blur and on Enter, like the purpose below and the field rename further down. */}
+      <div className="notebook-name-edit">
+        <label className="notebook-purpose-label" htmlFor="notebook-name">
+          Name
+        </label>
+        <input
+          id="notebook-name"
+          className="search-field"
+          value={nameDraft ?? ''}
+          disabled={busy || !notebook}
+          aria-label="Notebook name"
+          onChange={(e) => {
+            setNameDraft(e.target.value);
+            markDirty(e.target.value.trim() !== savedName);
+          }}
+          onBlur={saveName}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') e.currentTarget.blur();
+            if (e.key === 'Escape') setNameDraft(savedName);
+          }}
+        />
+      </div>
+
+      {/* The notebook's purpose sits above its fields because it is about the notebook as a
+          whole, not about any one field. It is optional and empty by default; what it earns
+          its place for is auto-fill, which reads it to decide whether a note belongs here —
+          so the placeholder coaches toward what belongs and, as usefully, what does not. */}
+      <div className="notebook-purpose">
+        <label className="notebook-purpose-label" htmlFor="notebook-purpose">
+          Purpose <span className="muted small">— optional</span>
+        </label>
+        <textarea
+          id="notebook-purpose"
+          className="notebook-purpose-input"
+          value={purposeDraft ?? ''}
+          rows={2}
+          maxLength={MAX_NOTEBOOK_PURPOSE_LENGTH}
+          disabled={busy || !notebook}
+          placeholder="What belongs here — and what doesn't. e.g. Things I want to buy someday; not receipts or purchases."
+          onChange={(e) => {
+            setPurposeDraft(e.target.value);
+            markDirty(e.target.value.trim() !== savedPurpose.trim());
+          }}
+          onBlur={savePurpose}
+        />
+        <p className="muted small notebook-purpose-hint">
+          Auto-fill reads this when it decides where a note belongs, so a notebook whose name
+          could mislead — a “Shopping” list that is really a wish list — keeps notes that
+          don't fit out.
+        </p>
+      </div>
+
+      <h3 className="notebook-section-head">Fields</h3>
 
       <ul className="notebook-admin field-admin">
         {list.map((field, index) => (
@@ -657,6 +840,35 @@ export function NotebookFields({ notebookId, onChanged }: NotebookFieldsProps) {
         Changing a field's type, or narrowing a rating's scale, clears any value that can't
         be read that way. A note moved to another notebook keeps the values it has.
       </p>
+
+      {/* Delete sits last and apart, the way a destructive action should: past the fields,
+          under its own heading, not a button a stray click on the way down the page can find.
+          The list offers the same delete, so this is a second door, not the only one. */}
+      <h3 className="notebook-section-head notebook-danger-head">Delete notebook</h3>
+      <div className="notebook-danger">
+        <p className="muted small">
+          Deleting <strong>{notebook?.name}</strong> leaves its notes unfiled unless you choose
+          to move them to Trash.
+        </p>
+        <Button
+          variant="quiet"
+          tone="danger"
+          disabled={busy || !notebook}
+          onClick={() => setConfirmingDelete(true)}
+        >
+          Delete notebook
+        </Button>
+      </div>
+
+      {confirmingDelete && notebook && (
+        <DeleteNotebookConfirm
+          name={notebook.name}
+          count={notebook.count}
+          busy={busy}
+          onCancel={() => setConfirmingDelete(false)}
+          onConfirm={deleteNotebook}
+        />
+      )}
     </div>
   );
 }

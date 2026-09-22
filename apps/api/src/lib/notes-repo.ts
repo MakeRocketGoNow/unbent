@@ -1863,7 +1863,7 @@ export class NotesRepo extends ScopedRepo {
    * before passing `merge`. Case is compared exactly, as the UNIQUE index does: "receipt"
    * and "Receipt" are two tags today, and a rename between them is a plain rename.
    *
-   * Notes' `updated_at` is left alone, as `renameNotebook` leaves it: nothing about the
+   * Notes' `updated_at` is left alone, as `updateNotebook` leaves it: nothing about the
    * note's own content changed.
    */
   async renameTag(
@@ -1955,7 +1955,7 @@ export class NotesRepo extends ScopedRepo {
   async listNotebooks(): Promise<NotebookSummary[]> {
     const { results } = await this.db
       .prepare(
-        `SELECT nb.id, nb.name,
+        `SELECT nb.id, nb.name, nb.purpose,
                 COUNT(n.id) AS count,
                 (SELECT COUNT(*) FROM notebook_fields f
                   WHERE f.notebook_id = nb.id AND f.deleted_at IS NULL) AS fields
@@ -1963,7 +1963,7 @@ export class NotesRepo extends ScopedRepo {
            LEFT JOIN notes n
              ON n.notebook_id = nb.id AND n.deleted_at IS NULL AND n.user_id = ?1
           WHERE nb.user_id = ?1
-          GROUP BY nb.id, nb.name
+          GROUP BY nb.id, nb.name, nb.purpose
           ORDER BY nb.name COLLATE NOCASE`,
       )
       .bind(this.userId)
@@ -2031,27 +2031,60 @@ export class NotesRepo extends ScopedRepo {
   }
 
   /**
-   * Renames a notebook. Returns 'conflict' when another notebook already has the name.
+   * Updates a notebook's name and/or purpose. Returns 'conflict' when a new name is already
+   * taken by another notebook, case-insensitively.
    *
-   * Every note follows automatically because they reference the id — the rename is a single
-   * row update, which is the point of the notebook being an entity at all.
+   * When `name` is given, every note follows automatically because they reference the id —
+   * the rename is a single row update, which is the point of the notebook being an entity at
+   * all. `purpose` given as `null` clears it. An omitted key is left untouched, so the same
+   * method serves the rename-only path (route, MCP) and the purpose editor without either
+   * disturbing the other's column.
    */
-  async renameNotebook(id: string, name: string): Promise<'ok' | 'conflict' | 'missing'> {
-    const trimmed = name.trim();
-    if (!trimmed) return 'missing';
+  async updateNotebook(
+    id: string,
+    patch: { name?: string; purpose?: string | null },
+  ): Promise<'ok' | 'conflict' | 'missing'> {
+    const sets: string[] = [];
+    const binds: unknown[] = [];
 
-    const clash = await this.db
-      .prepare(
-        `SELECT 1 FROM notebooks
-          WHERE user_id = ?1 AND name = ?2 COLLATE NOCASE AND id <> ?3`,
-      )
-      .bind(this.userId, trimmed, id)
-      .first();
-    if (clash) return 'conflict';
+    if (patch.name !== undefined) {
+      const trimmed = patch.name.trim();
+      if (!trimmed) return 'missing';
+
+      const clash = await this.db
+        .prepare(
+          `SELECT 1 FROM notebooks
+            WHERE user_id = ?1 AND name = ?2 COLLATE NOCASE AND id <> ?3`,
+        )
+        .bind(this.userId, trimmed, id)
+        .first();
+      if (clash) return 'conflict';
+
+      sets.push(`name = ?${binds.length + 1}`);
+      binds.push(trimmed);
+    }
+
+    if (patch.purpose !== undefined) {
+      sets.push(`purpose = ?${binds.length + 1}`);
+      binds.push(patch.purpose);
+    }
+
+    // Nothing to change: still tell the caller whether the notebook is theirs, so a PATCH
+    // with an empty body 404s on a bad id rather than silently reporting success.
+    if (sets.length === 0) {
+      const row = await this.db
+        .prepare(`SELECT 1 FROM notebooks WHERE id = ?1 AND user_id = ?2`)
+        .bind(id, this.userId)
+        .first();
+      return row ? 'ok' : 'missing';
+    }
 
     const res = await this.db
-      .prepare(`UPDATE notebooks SET name = ?1 WHERE id = ?2 AND user_id = ?3`)
-      .bind(trimmed, id, this.userId)
+      .prepare(
+        `UPDATE notebooks SET ${sets.join(', ')}
+          WHERE id = ?${binds.length + 1} AND user_id = ?${binds.length + 2}`,
+      )
+      .bind(...binds, id, this.userId)
       .run();
 
     return res.meta.changes > 0 ? 'ok' : 'missing';

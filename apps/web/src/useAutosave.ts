@@ -3,6 +3,19 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 export type SaveState = 'idle' | 'dirty' | 'saving' | 'saved' | 'error';
 
 /**
+ * The one vocabulary for a save's state, so every place that shows one says the same words.
+ * `idle` is blank on purpose — nothing has been touched, so there is nothing to announce.
+ * Rendered by the note editor and the notebook editor alike; keep it their single source.
+ */
+export const SAVE_LABEL: Record<SaveState, string> = {
+  idle: '',
+  dirty: 'Unsaved',
+  saving: 'Saving…',
+  saved: 'Saved',
+  error: 'Save failed',
+};
+
+/**
  * Debounced autosave with a flush on note change, unmount, and tab hide.
  *
  * The flush matters more than the debounce: without it, edits made in the last debounce

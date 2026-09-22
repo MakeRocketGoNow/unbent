@@ -1,8 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Link } from '@tanstack/react-router';
 import * as api from '../notes-api.js';
-import { Confirm } from './Confirm.js';
 import { LabelEditor, type LabelItem } from './LabelEditor.js';
+import { DeleteNotebookConfirm } from './DeleteNotebookConfirm.js';
 import { DownloadIcon } from './icons.js';
 
 interface SettingsProps {
@@ -78,11 +77,6 @@ export function Settings({ onChanged }: SettingsProps) {
     });
   }
 
-  const noteLabel =
-    pendingDelete && pendingDelete.count > 0
-      ? `${pendingDelete.count} note${pendingDelete.count === 1 ? '' : 's'}`
-      : null;
-
   const byId = (item: LabelItem) => notebooks?.find((n) => n.id === item.id);
 
   return (
@@ -99,11 +93,17 @@ export function Settings({ onChanged }: SettingsProps) {
         busy={busy}
         editingId={pendingDelete?.id ?? null}
         onCreate={(name) => run(() => api.createNotebook(name))}
+        /* A notebook's name is edited on its own page now, so the list does not rename in
+           place; `onRename` stays only to satisfy the shared editor's contract and is never
+           reached while `rowHref` is set. */
         onRename={(item, name) => run(() => api.renameNotebook(item.id, name))}
         onDelete={(item) => {
           const nb = byId(item);
           if (nb) setPendingDelete(nb);
         }}
+        /* The row leads to the notebook's own page — its name, purpose, fields and delete.
+           The list is a way in, not a place to correct a name in passing. */
+        rowHref={(item) => `/settings/notebooks/${item.id}`}
         /* The note count sits right after the name, the way a field's value count sits
            after the field name on the notebook's own page. It said at the far right, a
            second bare number beside "Fields N", read as more fields; against the name it
@@ -115,75 +115,35 @@ export function Settings({ onChanged }: SettingsProps) {
             </span>
           ) : null
         }
-        /* Navigation to the notebook's own page, so a link. The count says at a glance
-           which notebooks are collections of records. The download is an anchor too, and
-           must be: the archive streams as the browser saves it, so it cannot go through a
-           fetch, and an anchor keeps Save-Link-As and copy-link. `download` with no name
-           lets the server's Content-Disposition name the file for the notebook. It wears
-           `icon-btn` for the pencil's look and 44px box; the class is only styling. */
-        renderExtra={(item) => {
-          const fields = byId(item)?.fields ?? 0;
-          return (
-            <>
-              <Link
-                to="/settings/notebooks/$notebookId"
-                params={{ notebookId: item.id }}
-                className="link small label-extra"
-              >
-                Fields{fields > 0 && <span className="tag-count"> {fields}</span>}
-              </Link>
-              <a
-                href={api.exportUrl({ notebook: item.name })}
-                download
-                className="icon-btn label-download"
-                title={`Download ${item.name} as a zip`}
-                aria-label={`Download ${item.name} as a zip`}
-              >
-                <DownloadIcon />
-              </a>
-            </>
-          );
-        }}
+        /* The row already leads to the notebook's page, so the old "Fields" link here would
+           be a second way to the same place; it is gone, and the field count rides on that
+           page's title instead. The download stays, and stays an anchor: the archive streams
+           as the browser saves it, so it cannot go through a fetch, and an anchor keeps
+           Save-Link-As and copy-link. `download` with no name lets the server's
+           Content-Disposition name the file. It wears `icon-btn` for the 44px box; the class
+           is only styling. */
+        renderExtra={(item) => (
+          <a
+            href={api.exportUrl({ notebook: item.name })}
+            download
+            className="icon-btn label-download"
+            title={`Download ${item.name} as a zip`}
+            aria-label={`Download ${item.name} as a zip`}
+          >
+            <DownloadIcon />
+          </a>
+        )}
         emptyText="No notebooks yet."
-        hint="Renaming a notebook updates every note in it. Deleting one leaves its notes unfiled unless you choose to move them to Trash."
+        hint="Open a notebook to change its name, its purpose, or its fields. Deleting one leaves its notes unfiled unless you choose to move them to Trash."
       />
 
       {pendingDelete && (
-        <Confirm
-          label="Confirm delete notebook"
-          question={
-            <>
-              Delete the notebook <strong>{pendingDelete.name}</strong>?
-            </>
-          }
-          /* Nothing is said about custom fields because nothing happens to their values:
-             the definitions go with the notebook, but every value already entered stays
-             on the note that holds it, labelled with this notebook's name. A warning
-             would be describing a loss that no longer occurs. */
-          detail={
-            noteLabel ? `Its ${noteLabel} will become unfiled, not deleted.` : 'It has no notes.'
-          }
+        <DeleteNotebookConfirm
+          name={pendingDelete.name}
+          count={pendingDelete.count}
           busy={busy}
           onCancel={() => setPendingDelete(null)}
-          // Order carries the emphasis: keeping the notes is offered first and reads as
-          // the button, so the cascade has to be reached for deliberately.
-          actions={[
-            {
-              label: 'Delete notebook',
-              busyLabel: 'Deleting…',
-              tone: 'danger',
-              onConfirm: () => confirmDelete(false),
-            },
-            ...(noteLabel
-              ? [
-                  {
-                    label: `Delete notebook and move ${noteLabel} to Trash`,
-                    tone: 'danger' as const,
-                    onConfirm: () => confirmDelete(true),
-                  },
-                ]
-              : []),
-          ]}
+          onConfirm={confirmDelete}
         />
       )}
     </div>

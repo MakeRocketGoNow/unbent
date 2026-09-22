@@ -337,14 +337,25 @@ export async function createNotebook(name: string): Promise<{ id: string; name: 
   return json(res);
 }
 
-export async function renameNotebook(id: string, name: string): Promise<void> {
+/**
+ * Changes a notebook's name and/or purpose. Either key may be omitted to leave it untouched;
+ * `purpose: null` clears it. The route answers 204, so nothing is parsed on success.
+ */
+export async function updateNotebook(
+  id: string,
+  patch: { name?: string; purpose?: string | null },
+): Promise<void> {
   const res = await fetch(`/api/notebooks/${id}`, {
     method: 'PATCH',
     headers: jsonHeaders,
-    body: JSON.stringify({ name }),
+    body: JSON.stringify(patch),
   });
   if (res.status === 409) throw new Error('A notebook with that name already exists.');
-  await json(res);
+  if (!res.ok) throw new ApiError(res.status, await httpErrorMessage(res));
+}
+
+export async function renameNotebook(id: string, name: string): Promise<void> {
+  await updateNotebook(id, { name });
 }
 
 /**

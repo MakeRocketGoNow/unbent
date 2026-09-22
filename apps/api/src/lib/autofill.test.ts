@@ -67,12 +67,14 @@ const receipt = [
 const coupons: AutofillInput['notebooks'][number] = {
   id: 'nb-coupons',
   name: 'Coupons',
+  purpose: null,
   fields: [],
   examples: ['Target 20% off', 'Free coffee card'],
 };
 const receipts: AutofillInput['notebooks'][number] = {
   id: 'nb-receipts',
   name: 'Receipts',
+  purpose: 'Receipts and invoices for things already bought.',
   fields: [
     field({ id: 'f-vendor', name: 'Vendor', type: 'text', notebookId: 'nb-receipts' }),
     field({ id: 'f-total', name: 'Total', type: 'number', currency: 'USD', notebookId: 'nb-receipts' }),
@@ -128,11 +130,23 @@ describe('what the model is asked', () => {
 
     const notebook = questions['notebook'] as JevChoiceQuestion;
     expect(Object.keys(notebook.criteria)).toEqual(['Coupons', 'Receipts', 'none']);
+    // A notebook with no purpose carries no purpose key — the model sees exactly what it
+    // saw before this field existed.
     expect(notebook.criteria['Coupons']).toEqual({
       what: 'The notebook "Coupons"',
       examples: ['Target 20% off', 'Free coffee card'],
     });
-    expect(notebook.criteria['Receipts']).toMatchObject({ fields: expect.arrayContaining(['Vendor', 'Total']) });
+    // A notebook with a purpose hands it to the model alongside the name and fields.
+    expect(notebook.criteria['Receipts']).toMatchObject({
+      purpose: 'Receipts and invoices for things already bought.',
+      fields: expect.arrayContaining(['Vendor', 'Total']),
+    });
+    // The guidance tells the model to leave a note unfiled rather than force it into a
+    // notebook whose purpose does not cover it — the abstain path that keeps a receipt out
+    // of a "Shopping" wish list.
+    const guidance = JSON.stringify(notebook.instructions);
+    expect(guidance).toContain('purpose');
+    expect(guidance).toContain('No notebook fits this note');
 
     const title = questions['title'] as JevChoiceQuestion;
     expect(title.criteria['ACME HARDWARE']).toBe('Line 1 of scan.pdf');

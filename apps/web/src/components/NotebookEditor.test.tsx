@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach, beforeAll, beforeEach, vi } from 'vitest';
-import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, cleanup, fireEvent, waitFor, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
   createRootRoute,
@@ -11,7 +11,7 @@ import {
 import type { FieldDef } from '@unbent/shared';
 import { keys } from '../queries.js';
 import * as api from '../notes-api.js';
-import { NotebookFields } from './NotebookFields.js';
+import { NotebookEditor } from './NotebookEditor.js';
 
 /**
  * The management page, rendered against seeded queries and a real router. What is worth
@@ -47,13 +47,16 @@ function mount(seed: FieldDef[] = fields) {
   });
   client.setQueryData(keys.notebookFields('nb1'), seed);
   client.setQueryData(keys.notebooks(), {
-    notebooks: [{ id: 'nb1', name: 'Receipts', count: 3, fields: seed.length }],
+    notebooks: [{ id: 'nb1', name: 'Receipts', count: 3, fields: seed.length, purpose: null }],
     unfiled: 0,
   });
 
   const onChanged = vi.fn();
+  const onDeleted = vi.fn();
   const rootRoute = createRootRoute({
-    component: () => <NotebookFields notebookId="nb1" onChanged={onChanged} />,
+    component: () => (
+      <NotebookEditor notebookId="nb1" onChanged={onChanged} onDeleted={onDeleted} />
+    ),
   });
   const notebooksRoute = createRoute({ getParentRoute: () => rootRoute, path: '/settings/notebooks' });
   const router = createRouter({
@@ -66,10 +69,10 @@ function mount(seed: FieldDef[] = fields) {
       <RouterProvider router={router as any} />
     </QueryClientProvider>,
   );
-  return { onChanged };
+  return { onChanged, onDeleted };
 }
 
-describe('NotebookFields', () => {
+describe('NotebookEditor', () => {
   beforeAll(() => {
     vi.stubGlobal('scrollTo', () => {});
   });
@@ -78,6 +81,8 @@ describe('NotebookFields', () => {
     vi.spyOn(api, 'updateNotebookField');
     vi.spyOn(api, 'countOptionUsage');
     vi.spyOn(api, 'removeNotebookFieldOption');
+    vi.spyOn(api, 'updateNotebook').mockResolvedValue(undefined);
+    vi.spyOn(api, 'deleteNotebook').mockResolvedValue(undefined);
   });
   afterEach(() => {
     vi.restoreAllMocks();
@@ -86,11 +91,79 @@ describe('NotebookFields', () => {
 
   it('names the notebook and lists its fields with their types and value counts', async () => {
     mount();
-    expect(await screen.findByText('Fields in Receipts')).toBeTruthy();
+    expect(await screen.findByText('Edit Receipts')).toBeTruthy();
     expect(screen.getByText('Merchant')).toBeTruthy();
     expect(selectValue('Type of Merchant')).toBe('text');
     expect(selectValue('Type of Amount')).toBe('number');
     expect(screen.getByTitle('12 notes with a value').textContent).toBe('12');
+  });
+
+  it('renames the notebook on blur, and only when it changed', async () => {
+    mount();
+    const field = (await screen.findByLabelText('Notebook name')) as HTMLInputElement;
+    expect(field.value).toBe('Receipts');
+
+    // Re-typing the same name is not a request — it would 409 against its own row.
+    fireEvent.blur(field);
+    expect(api.updateNotebook).not.toHaveBeenCalled();
+
+    fireEvent.change(field, { target: { value: 'Invoices' } });
+    fireEvent.blur(field);
+    await waitFor(() => expect(api.updateNotebook).toHaveBeenCalledWith('nb1', { name: 'Invoices' }));
+  });
+
+  it('shows the same save words the note editor uses as the name is edited', async () => {
+    mount();
+    const field = (await screen.findByLabelText('Notebook name')) as HTMLInputElement;
+
+    // Idle to start: nothing touched, nothing announced.
+    expect(screen.queryByText('Unsaved')).toBeNull();
+    expect(screen.queryByText('Saved')).toBeNull();
+
+    // A keystroke that diverges from the saved name reads as Unsaved at once…
+    fireEvent.change(field, { target: { value: 'Invoices' } });
+    expect(screen.getByText('Unsaved')).toBeTruthy();
+
+    // …and a blur that writes settles on Saved.
+    fireEvent.blur(field);
+    await waitFor(() => expect(screen.getByText('Saved')).toBeTruthy());
+
+    // Typing back to the saved value clears the indicator rather than leaving a stale Saved.
+    fireEvent.change(field, { target: { value: 'Receipts' } });
+    expect(screen.queryByText('Saved')).toBeNull();
+    expect(screen.queryByText('Unsaved')).toBeNull();
+  });
+
+  it('shows Save failed when a rename clashes, and clears it on the next keystroke', async () => {
+    vi.mocked(api.updateNotebook).mockRejectedValueOnce(
+      new Error('A notebook with that name already exists.'),
+    );
+    mount();
+    const field = (await screen.findByLabelText('Notebook name')) as HTMLInputElement;
+
+    fireEvent.change(field, { target: { value: 'Home' } });
+    fireEvent.blur(field);
+    await waitFor(() => expect(screen.getByText('Save failed')).toBeTruthy());
+    // The actionable message rides alongside the indicator.
+    expect(screen.getByText('A notebook with that name already exists.')).toBeTruthy();
+
+    // A fresh keystroke clears both, so the stale clash does not outlive the name.
+    fireEvent.change(field, { target: { value: 'Homes' } });
+    expect(screen.queryByText('Save failed')).toBeNull();
+    expect(screen.queryByText('A notebook with that name already exists.')).toBeNull();
+  });
+
+  it('deletes the notebook from its own page and leaves for the list', async () => {
+    const { onDeleted } = mount();
+    fireEvent.click(await screen.findByRole('button', { name: 'Delete notebook' }));
+    // The confirm opens as its own labelled region; its "Delete notebook" is a second button
+    // with the same words, so reach the one inside the confirm rather than the trigger.
+    const confirm = await screen.findByRole('group', { name: 'Confirm delete notebook' });
+    fireEvent.click(within(confirm).getByRole('button', { name: 'Delete notebook' }));
+    await waitFor(() =>
+      expect(api.deleteNotebook).toHaveBeenCalledWith('nb1', { trashNotes: false }),
+    );
+    await waitFor(() => expect(onDeleted).toHaveBeenCalled());
   });
 
   it('cannot move the first field up or the last one down', async () => {
