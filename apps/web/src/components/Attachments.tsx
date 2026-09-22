@@ -98,11 +98,39 @@ export function Attachments({
    * warning is that they should be looked at.
    */
   const [hadUnlinked, setHadUnlinked] = useState(false);
-  useEffect(() => {
-    if (unlinkedCount > 0) setHadUnlinked(true);
-  }, [unlinkedCount]);
   /** Whether the "delete all not linked" confirmation is showing. */
   const [cleaning, setCleaning] = useState(false);
+
+  /*
+     Workspace is reused across notes, and so is this panel. A delete or move's round trip
+     outlives a switch the same way Auto-fill's does: `onBodyRewrite` writes the *current*
+     draft, so finishing after the user has moved on would replace the incoming note's body
+     with the previous one's. Drop the in-flight UI here so a Delete, Move, or "delete not
+     linked" confirm started on the last note cannot sit on this one — especially when both
+     happen to have a `scan.pdf`. The request itself is left to finish against the note it
+     started on; wasting it is cheaper than landing the rewrite on the wrong one.
+  */
+  const noteIdRef = useRef(noteId);
+  noteIdRef.current = noteId;
+  const bodyRef = useRef(body);
+  bodyRef.current = body;
+  useEffect(() => {
+    setPending(null);
+    setSending(null);
+    setCleaning(false);
+    setSent(null);
+    setDeleteError(null);
+    setCopied(null);
+    setBusy(null);
+    setHadUnlinked(false);
+    if (copiedTimer.current) {
+      clearTimeout(copiedTimer.current);
+      copiedTimer.current = null;
+    }
+  }, [noteId]);
+  useEffect(() => {
+    if (unlinkedCount > 0) setHadUnlinked(true);
+  }, [unlinkedCount, noteId]);
 
   function insertLink(file: AttachmentInfo) {
     const markdown = formatAttachmentMarkdown(file.filename, `files/${file.filename}`, {
@@ -156,24 +184,29 @@ export function Attachments({
    * rather than in neither.
    */
   async function sendTo(file: AttachmentInfo, target: PickedNote, mode: 'copy' | 'move') {
+    const startedFor = noteId;
+    const stillLinked = linked.has(file.filename);
     setBusy(file.filename);
     setDeleteError(null);
     setSent(null);
     try {
       await api.copyAttachments(target.id, {
-        from: noteId,
+        from: startedFor,
         filenames: [file.filename],
         link: true,
       });
       void queryClient.invalidateQueries({ queryKey: keys.attachments(target.id) });
       void queryClient.invalidateQueries({ queryKey: keys.note(target.id) });
       if (mode === 'move') {
-        await api.deleteAttachment(noteId, file.filename);
-        if (linked.has(file.filename)) onBodyRewrite(removeAttachmentLinks(body, file.filename));
-        await queryClient.invalidateQueries({ queryKey: keys.attachments(noteId) });
+        await api.deleteAttachment(startedFor, file.filename);
+        if (stillLinked && noteIdRef.current === startedFor) {
+          onBodyRewrite(removeAttachmentLinks(bodyRef.current, file.filename));
+        }
+        await queryClient.invalidateQueries({ queryKey: keys.attachments(startedFor) });
       }
       // The list rows show what each note holds.
       void queryClient.invalidateQueries({ queryKey: ['notes'] });
+      if (noteIdRef.current !== startedFor) return;
       setSending(null);
       setSent(
         <>
@@ -185,9 +218,9 @@ export function Attachments({
         </>,
       );
     } catch (err) {
-      setDeleteError((err as Error).message);
+      if (noteIdRef.current === startedFor) setDeleteError((err as Error).message);
     } finally {
-      setBusy(null);
+      if (noteIdRef.current === startedFor) setBusy(null);
     }
   }
 
@@ -200,34 +233,37 @@ export function Attachments({
    * what is still stored.
    */
   async function removeUnlinked() {
+    const startedFor = noteId;
+    const toDelete = unlinked;
     setCleaning(false);
     setBusy('*');
     setDeleteError(null);
     try {
-      for (const file of unlinked) await api.deleteAttachment(noteId, file.filename);
+      for (const file of toDelete) await api.deleteAttachment(startedFor, file.filename);
     } catch (err) {
-      setDeleteError((err as Error).message);
+      if (noteIdRef.current === startedFor) setDeleteError((err as Error).message);
     } finally {
-      await queryClient.invalidateQueries({ queryKey: keys.attachments(noteId) });
-      setBusy(null);
+      await queryClient.invalidateQueries({ queryKey: keys.attachments(startedFor) });
+      if (noteIdRef.current === startedFor) setBusy(null);
     }
   }
 
   async function remove(filename: string) {
+    const startedFor = noteId;
     const stillLinked = linked.has(filename);
     setPending(null);
     setBusy(filename);
     setDeleteError(null);
     try {
-      await api.deleteAttachment(noteId, filename);
-      if (stillLinked) {
-        onBodyRewrite(removeAttachmentLinks(body, filename));
+      await api.deleteAttachment(startedFor, filename);
+      if (stillLinked && noteIdRef.current === startedFor) {
+        onBodyRewrite(removeAttachmentLinks(bodyRef.current, filename));
       }
-      await queryClient.invalidateQueries({ queryKey: keys.attachments(noteId) });
+      await queryClient.invalidateQueries({ queryKey: keys.attachments(startedFor) });
     } catch (err) {
-      setDeleteError((err as Error).message);
+      if (noteIdRef.current === startedFor) setDeleteError((err as Error).message);
     } finally {
-      setBusy(null);
+      if (noteIdRef.current === startedFor) setBusy(null);
     }
   }
 
