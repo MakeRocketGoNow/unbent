@@ -4796,6 +4796,92 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
   flex: 0 0 auto;
 }
 
+/*
+   The snackbar: a one-shot result that lands at the bottom of the screen and clears
+   itself — Auto-fill's outcome, moved out of the header status line where it used to fade
+   beside the title (and fight the "Saved" for the room a phone gives the title).
+
+   Fixed and centred, capped to a readable width so it reads as a card and not a bar. It
+   sits above everything except the docked formatting toolbar's own layer, and is lifted
+   clear of that toolbar (z-index 30, fixed to the very bottom on a phone) by `bottom`, so
+   the result never covers the B/I/S row the user is filing under. `--fg` ground with the
+   page reversed out of it, the way a snackbar reads on both platforms; the tone tints its
+   left edge rather than its whole fill, so the ground stays legible and the meaning still
+   shows at a glance.
+*/
+.snackbar {
+  position: fixed;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: calc(4.5rem + env(safe-area-inset-bottom));
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  max-width: min(30rem, calc(100vw - 2rem));
+  padding: 0.6rem 0.6rem 0.6rem 0.9rem;
+  border-radius: 0.5rem;
+  border-left: 3px solid var(--good);
+  color: var(--bg);
+  background: var(--fg);
+  box-shadow: 0 6px 20px color-mix(in srgb, var(--fg) 30%, transparent);
+  animation: snackbar-in 160ms ease-out;
+}
+
+.snackbar.error {
+  border-left-color: var(--bad);
+}
+
+.snackbar-message {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 0.9rem;
+  /* A long "Filled in the title, the notebook and 4 fields" wraps rather than clips — the
+     result is worth reading in full, unlike the header line it replaced. */
+  overflow-wrap: anywhere;
+}
+
+/*
+   The buttons sit on the dark ground, so they reverse: the page colour for their ink and
+   hover, not the page's ink. `.btn-quiet`'s default hover fill is mixed from `--fg`, which
+   is the ground here and so invisible — restated in `--bg`.
+*/
+.snackbar-action,
+.snackbar-close {
+  flex: 0 0 auto;
+  color: var(--bg);
+}
+
+.snackbar-action {
+  /* The one thing to do about the result — given the accent so Undo reads as the offer it
+     is, not another dismiss. Lightened for legibility on the dark ground. */
+  color: color-mix(in srgb, var(--accent) 55%, var(--bg));
+  font-weight: 600;
+}
+
+.snackbar-action:hover,
+.snackbar-close:hover {
+  background: color-mix(in srgb, var(--bg) 18%, transparent);
+}
+
+@keyframes snackbar-in {
+  from {
+    opacity: 0;
+    transform: translate(-50%, 0.5rem);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+}
+
+/* A result that slides in is motion for its own sake to a reader who has asked for none. */
+@media (prefers-reduced-motion: reduce) {
+  .snackbar {
+    animation: none;
+  }
+}
+
 .confirm p {
   margin: 0 0 0.5rem;
   /*
