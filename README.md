@@ -950,11 +950,14 @@ over MCP returns it too.
 **When it runs.** After an upload, in the same slot where a PDF's text layer is read, for
 pictures, and for a scan whose text layer turned out empty — whether the server's conversion
 found nothing or the browser's did. Never for a PDF that has a text layer: the free reader
-goes first, and the paid one only gets what it leaves. For files already here, the Import
-panel's button becomes **Index existing files** and runs the pictures through after the PDFs,
-a few per request, with a count of what is left; the pass a tab opening starts never reads
-images, because each is a request the instance pays for. The bytes go to Anthropic and are
-not kept there; each file is read once, and a decline is recorded so it is not asked again.
+goes first, and the paid one only gets what it leaves. Pressing **Auto-fill** reads the
+note's own unread files first, a few at most, so a picture stored before the instance had a
+key is read by the press that asks about it rather than staying unreadable for good. For
+everything else already here, the Import panel's button becomes **Index existing files** and
+runs the pictures through after the PDFs, a few per request, with a count of what is left;
+the pass a tab opening starts never reads images, because each is a request the instance
+pays for. The bytes go to Anthropic and are not kept there; each file is read once, and a
+decline is recorded so it is not asked again.
 
 `ANTHROPIC_MODEL` picks the model. Unset means the most capable current one — a wrong digit in a
 transcribed total is copied into a field with full confidence — and `claude-sonnet-5` trades

@@ -215,10 +215,12 @@ export class AttachmentsRepo extends ScopedRepo {
   async needingText(
     limit: number,
     noteId?: string,
-  ): Promise<Array<{ id: string; noteId: string; filename: string; r2Key: string }>> {
+  ): Promise<
+    Array<{ id: string; noteId: string; filename: string; contentType: string; size: number; r2Key: string }>
+  > {
     const { results } = await this.db
       .prepare(
-        `SELECT a.id, a.note_id, a.filename, a.r2_key
+        `SELECT a.id, a.note_id, a.filename, a.content_type, a.size, a.r2_key
            FROM attachments a
            JOIN notes n ON n.id = a.note_id
            LEFT JOIN attachment_text at ON at.attachment_id = a.id
@@ -232,12 +234,14 @@ export class AttachmentsRepo extends ScopedRepo {
           LIMIT ?2`,
       )
       .bind(this.userId, limit, ...(noteId ? [noteId] : []))
-      .all<{ id: string; note_id: string; filename: string; r2_key: string }>();
+      .all<{ id: string; note_id: string; filename: string; content_type: string; size: number; r2_key: string }>();
 
     return results.map((r) => ({
       id: r.id,
       noteId: r.note_id,
       filename: r.filename,
+      contentType: r.content_type,
+      size: r.size,
       r2Key: r.r2_key,
     }));
   }
@@ -250,8 +254,16 @@ export class AttachmentsRepo extends ScopedRepo {
    * empty row from the model look the same in `text`, and only one of them should be
    * offered to a reader that costs a request per file. Ownership rides on the joins, as
    * it does in `needingText`.
+   *
+   * `noteId` narrows to one note, for the same reason it does in `needingText`: auto-fill
+   * reads the note in front of the person before it suggests, and must never be handed the
+   * account's backlog — every file here is a paid request, and the backlog is the Import
+   * panel's to run on purpose.
    */
-  async needingVision(limit: number): Promise<
+  async needingVision(
+    limit: number,
+    noteId?: string,
+  ): Promise<
     Array<{ id: string; noteId: string; filename: string; contentType: string; size: number; r2Key: string }>
   > {
     const { results } = await this.db
@@ -262,10 +274,11 @@ export class AttachmentsRepo extends ScopedRepo {
            LEFT JOIN attachment_text t ON t.attachment_id = a.id
           WHERE a.user_id = ?1 AND n.user_id = ?1 AND n.deleted_at IS NULL
             AND ${VISION_PENDING}
+            ${noteId ? 'AND a.note_id = ?3' : ''}
           ORDER BY a.created_at
           LIMIT ?2`,
       )
-      .bind(this.userId, limit)
+      .bind(this.userId, limit, ...(noteId ? [noteId] : []))
       .all<{ id: string; note_id: string; filename: string; content_type: string; size: number; r2_key: string }>();
     return results.map((r) => ({
       id: r.id,
@@ -277,8 +290,11 @@ export class AttachmentsRepo extends ScopedRepo {
     }));
   }
 
-  /** How many files `needingVision` would still offer, for a pass to say what is left. */
-  async visionPending(): Promise<number> {
+  /**
+   * How many files `needingVision` would still offer, for a pass to say what is left —
+   * on one note when `noteId` is given, as `textCoverage` scopes its count.
+   */
+  async visionPending(noteId?: string): Promise<number> {
     const row = await this.db
       .prepare(
         `SELECT COUNT(*) AS pending
@@ -286,9 +302,10 @@ export class AttachmentsRepo extends ScopedRepo {
            JOIN notes n ON n.id = a.note_id
            LEFT JOIN attachment_text t ON t.attachment_id = a.id
           WHERE a.user_id = ?1 AND n.user_id = ?1 AND n.deleted_at IS NULL
-            AND ${VISION_PENDING}`,
+            AND ${VISION_PENDING}
+            ${noteId ? 'AND a.note_id = ?2' : ''}`,
       )
-      .bind(this.userId)
+      .bind(this.userId, ...(noteId ? [noteId] : []))
       .first<{ pending: number }>();
     return row?.pending ?? 0;
   }

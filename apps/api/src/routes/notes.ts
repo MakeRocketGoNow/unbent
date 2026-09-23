@@ -15,6 +15,7 @@ import { canAutofill, JevError, jevFrom } from '../lib/jev.js';
 import { canUseLlm, LLM_IMAGE_TYPES, llmFrom } from '../lib/llm.js';
 import { isOperator } from '../lib/instance.js';
 import { nextCursor } from '../lib/notes-repo.js';
+import { readPendingFiles, readersFrom } from '../lib/read-attachment.js';
 import { requireAuth } from '../lib/session.js';
 import { withRepos } from '../lib/repos-middleware.js';
 import type { AppEnv } from '../types.js';
@@ -160,12 +161,47 @@ export const notes = new Hono<AppEnv>()
    */
   .post('/notes/:id/autofill', async (c) => {
     const id = c.req.param('id');
+    /*
+       How many of the note's unread files one press will read. Above a card and its
+       back, a note with a stack of scans is a job to run from the Import panel, where
+       the count is shown and the person can stop; a press that silently paid for twenty
+       files would be the surprise this cap exists to prevent.
+    */
+    const OWN_FILES_TO_READ = 5;
     const notes = c.get('notes');
     const attachments = c.get('attachments');
 
     const note = await notes.get(id);
     if (!note) return c.json({ error: 'Not found' }, 404);
     if (!canAutofill(c.env)) return c.json({ error: 'Auto-fill is not set up on this instance' }, 503);
+
+    /*
+       The note's own files first, before anything is suggested. A file is read once, at
+       upload, and never again on its own — so a picture stored before this instance had
+       a vision model, or a scan whose read failed that day, stayed unreadable for good,
+       and pressing Auto-fill on it only ever answered "a file is still being read". The
+       press is the person asking for exactly this read, so it happens here, awaited: a
+       few seconds for a card is what the button costs anyway, and the text it records is
+       what the suggestion is then built from.
+
+       Scoped to this note and capped, never the account's backlog: that is a thousand paid
+       requests on a real archive, and the Import panel's to run on purpose. A file this
+       instance has no reader for stays as it was and is reported in `read.pending`, as
+       before. A read that fails is logged and left pending rather than failing the press —
+       the suggestion still comes from whatever text there is.
+    */
+    const readers = readersFrom(c.env);
+    if (readers.converter || readers.llm) {
+      const [forText, forVision] = await Promise.all([
+        attachments.needingText(OWN_FILES_TO_READ, id),
+        attachments.needingVision(OWN_FILES_TO_READ, id),
+      ]);
+      const pending = [
+        ...forText.map((f) => ({ ...f, pending: 'text' as const })),
+        ...forVision.map((f) => ({ ...f, pending: 'vision' as const })),
+      ];
+      if (pending.length > 0) await readPendingFiles(c.env.BLOBS, readers, attachments, pending);
+    }
 
     const [files, notebooks, fields, tags, examples] = await Promise.all([
       attachments.textsForNote(id),

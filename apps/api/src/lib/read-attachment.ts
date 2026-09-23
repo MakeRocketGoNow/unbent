@@ -135,6 +135,78 @@ export async function readAttachment(
 }
 
 /**
+ * A file still waiting for a reader, and which one: `text` for a PDF nothing has looked
+ * at, which takes the whole path (`readAttachment` — the layer, then the model for what
+ * the layer lacks); `vision` for a file already past the layer — a picture, or a scan the
+ * browser read and found empty — which goes to the model alone. The two are what
+ * `AttachmentsRepo.needingText` and `needingVision` list, respectively.
+ */
+export type PendingFile = StoredFile & { pending: 'text' | 'vision' };
+
+/** What a pass over pending files did, for the caller to report or count. */
+export interface ReadCounts {
+  /** Recorded text, from the layer or the model. */
+  read: number;
+  /** A reader looked and found nothing; recorded, so it is not offered again. */
+  empty: number;
+  /** The file threw — missing object, model outage — and stays pending for a later pass. */
+  failed: number;
+  /** No reader here takes it; stays pending for a deployment that has one. */
+  unread: number;
+}
+
+/**
+ * Reads the files a caller has already chosen, one after another, and says what became
+ * of each. One place, because three callers need the same loop with the same rules: the
+ * Import panel's backfill over the account, auto-fill reading the note in front of the
+ * person before it suggests, and the MCP tool reading one file on request.
+ *
+ * The rules are the backfill's, which this was lifted from. One unreadable file must not
+ * stop the pass — it is counted and the rest go on. A file past the model's size caps is
+ * recorded as the model's empty answer rather than skipped, or every pass would offer it
+ * again. The id is what gets logged, never the name, which comes from the archive and
+ * can say too much.
+ */
+export async function readPendingFiles(
+  blobs: BlobStore,
+  readers: Readers,
+  attachments: Pick<AttachmentsRepo, 'recordText'>,
+  files: readonly PendingFile[],
+): Promise<ReadCounts> {
+  const counts: ReadCounts = { read: 0, empty: 0, failed: 0, unread: 0 };
+  for (const file of files) {
+    try {
+      const outcome = await readPendingFile(blobs, readers, attachments, file);
+      if (outcome === 'text' || outcome === 'vision') counts.read += 1;
+      else counts[outcome] += 1;
+    } catch (err) {
+      console.error('read:', file.id, (err as Error).message);
+      counts.failed += 1;
+    }
+  }
+  return counts;
+}
+
+/** One file of `readPendingFiles`, thrown rather than counted so a single-file caller sees why. */
+export async function readPendingFile(
+  blobs: BlobStore,
+  readers: Readers,
+  attachments: Pick<AttachmentsRepo, 'recordText'>,
+  file: PendingFile,
+): Promise<Reading> {
+  if (file.pending === 'text') return readAttachment(blobs, readers, attachments, file);
+
+  if (!readers.llm) return 'unread';
+  if (!readableByLlm(file.contentType, file.size)) {
+    await attachments.recordText({ attachmentId: file.id, noteId: file.noteId, filename: file.filename, text: '', readBy: 'vision' });
+    return 'empty';
+  }
+  const stored = await blobs.get(file.r2Key);
+  if (!stored) throw new Error(`No object at ${file.r2Key}`);
+  return readWithLlm(readers.llm, attachments, file, await stored.arrayBuffer());
+}
+
+/**
  * The vision model alone, for a file that is past the text layer: a picture, or a scan
  * the layer had nothing for. Whatever it says is recorded under its name, so a backfill
  * never pays for the same file twice — a decline included.

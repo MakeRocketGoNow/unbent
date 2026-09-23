@@ -1,6 +1,12 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { MarkdownConverter } from './extract-text.js';
-import { readAttachment, serverCanRead, type BlobStore, type StoredFile } from './read-attachment.js';
+import {
+  readAttachment,
+  readPendingFiles,
+  serverCanRead,
+  type BlobStore,
+  type StoredFile,
+} from './read-attachment.js';
 import type { FileReading, LanguageModel } from './llm.js';
 
 const prose =
@@ -88,6 +94,54 @@ describe('reading a file', () => {
     const eyes = vision(said);
     expect(await readAttachment(blobs, { llm: eyes }, r, pdf)).toBe('unread');
     expect(eyes.read).not.toHaveBeenCalled();
+    expect(r.recordText).not.toHaveBeenCalled();
+  });
+});
+
+describe('a pass over files already chosen', () => {
+  it('takes a never-read scan through the layer and a picture straight to the model, and counts each', async () => {
+    const eyes = vision(said);
+    const r = repo();
+    const counts = await readPendingFiles(
+      blobs,
+      { converter: converter(`# scan.pdf\n## Contents\n${prose}`), llm: eyes },
+      r,
+      [
+        { ...pdf, pending: 'text' },
+        { ...photo, pending: 'vision' },
+      ],
+    );
+    expect(counts).toEqual({ read: 2, empty: 0, failed: 0, unread: 0 });
+    // The scan's layer had text, so only the picture reached the paid reader.
+    expect(eyes.read).toHaveBeenCalledTimes(1);
+    expect(eyes.read).toHaveBeenCalledWith(expect.objectContaining({ filename: 'card.jpg' }));
+  });
+
+  it('closes a file past the caps as the model’s empty answer, and goes on past one that throws', async () => {
+    const quiet = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const eyes = vision(said);
+    const r = repo();
+    const missing: BlobStore = { get: async (key) => (key === 'gone' ? null : blobs.get(key)) };
+    const counts = await readPendingFiles(missing, { llm: eyes }, r, [
+      { ...photo, id: 'big', size: 100 * 1024 * 1024, pending: 'vision' },
+      { ...photo, id: 'lost', r2Key: 'gone', pending: 'vision' },
+      { ...photo, pending: 'vision' },
+    ]);
+    expect(counts).toEqual({ read: 1, empty: 1, failed: 1, unread: 0 });
+    expect(r.recordText).toHaveBeenCalledWith(expect.objectContaining({ attachmentId: 'big', text: '', readBy: 'vision' }));
+    expect(eyes.read).toHaveBeenCalledTimes(1);
+    // The id is what gets logged, never the filename.
+    expect(quiet).toHaveBeenCalledWith('read:', 'lost', expect.any(String));
+    quiet.mockRestore();
+  });
+
+  it('leaves every file alone where no reader here takes it', async () => {
+    const r = repo();
+    const counts = await readPendingFiles(blobs, {}, r, [
+      { ...photo, pending: 'vision' },
+      { ...pdf, pending: 'text' },
+    ]);
+    expect(counts).toEqual({ read: 0, empty: 0, failed: 0, unread: 2 });
     expect(r.recordText).not.toHaveBeenCalled();
   });
 });
