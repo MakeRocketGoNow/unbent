@@ -45,11 +45,20 @@ const nothing = (): AutofillChanges => ({ tags: [], fields: [] });
  * and nothing looser: the whole string must be the stamp, with real month/day/hour
  * ranges, so a title someone typed that merely opens with a year ("2026 tax plan") is
  * left alone and still prompts before it is replaced.
+ *
+ * The stamp may keep its file extension. `titleFor` strips it, but a note that arrived
+ * any other way — years of scans imported from Evernote, which titled a scanned note
+ * after the whole file name — reads `2026_09_18_15_38_48.pdf`, and the first version of
+ * this, which anchored on the bare stamp, asked before replacing every one of them. The
+ * extension is allowed only after a complete stamp, so it widens nothing else.
  */
 export function isPlaceholderTitle(title: string): boolean {
   const t = title.trim();
   if (t === '') return true;
-  const m = /^(\d{4})([_-])(\d{2})\2(\d{2})(?:[_-](\d{2})[_-](\d{2})[_-](\d{2}))?$/.exec(t);
+  const m =
+    /^(\d{4})([_-])(\d{2})\2(\d{2})(?:[_-](\d{2})[_-](\d{2})[_-](\d{2}))?(?:\.[a-z0-9]{1,5})?$/i.exec(
+      t,
+    );
   if (!m) return false;
   const [, , , month, day, hour, min, sec] = m;
   const mm = Number(month), dd = Number(day);
