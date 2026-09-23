@@ -94,6 +94,10 @@ function imageText(state: IndexingState): string {
  * on the button. It was one button, "Index existing files", that ran both in turn; on a
  * real archive that committed the person to a thousand paid requests in a press.
  *
+ * Drawn by Maintenance, beside the orphaned-files sweep, because that is what these are:
+ * housekeeping over every file the account holds, however it arrived. They started under
+ * Import, where they read as a step of importing and sat as a footnote under its form.
+ *
  * Stop takes the running row's button's place rather than appearing beside it: a row has
  * one slot for an action, and while its pass runs the action is ending it. The slots keep
  * their width across the swap (`.backfill-row .btn`) so the text beside them stays put.

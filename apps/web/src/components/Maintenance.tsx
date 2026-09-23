@@ -3,6 +3,7 @@ import { Link } from '@tanstack/react-router';
 import { useQuery } from '@tanstack/react-query';
 import * as api from '../notes-api.js';
 import { deleteUser, useSession } from '../auth-client.js';
+import { Backfill } from './Backfill.js';
 import { Confirm } from './Confirm.js';
 import { Button } from './Button.js';
 import { useMaintenance } from './use-maintenance.js';
@@ -15,15 +16,19 @@ function plural(n: number, word: string): string {
 }
 
 /**
- * Irreversible operations, gathered into one page.
+ * Operations over the whole account, gathered into one page and ordered by blast radius.
  *
- * These lived at the bottom of the import panel, which meant the only route to "delete
- * all notes" was through Import — and they vanished mid-run, when a failed import is
- * exactly when you want them. A maintenance page has to list every destructive operation
- * to be worth trusting, so emptying the trash appears here as well as in the trash view.
+ * The destructive ones lived at the bottom of the import panel, which meant the only route
+ * to "delete all notes" was through Import — and they vanished mid-run, when a failed
+ * import is exactly when you want them. The indexing passes followed for the same reason:
+ * they run over files that arrived by any route, not only an import, and under Import they
+ * read as a footnote to a form. A maintenance page has to list every operation of this
+ * kind to be worth trusting, so emptying the trash appears here as well as in the trash
+ * view.
  *
- * Weight runs opposite to blast radius: sweeping is an ordinary button, wiping the
- * account is the quietest control on the page.
+ * Weight runs opposite to blast radius: the passes that change nothing come first as
+ * ordinary buttons, sweeping is one too, and wiping the account is the quietest control
+ * on the page.
  */
 export function Maintenance() {
   const [pending, setPending] = useState<Pending>(null);
@@ -89,9 +94,19 @@ export function Maintenance() {
       </div>
 
       <p className="muted small">
-        Everything on this page is permanent. None of it touches the export, so take one
-        first if you are unsure.
+        Passes over everything you have. The first keeps search complete; the rest are
+        permanent, and none of them touch the export, so take one first if you are unsure.
       </p>
+
+      <section className="settings-section">
+        <h3>Files not yet searchable</h3>
+        <p className="muted small">
+          Search reads the text inside attachments. Files added before that existed, or
+          uploaded from the phone, may not have theirs yet; these passes catch up. Nothing
+          is changed or deleted, and a pass can be stopped and run again.
+        </p>
+        <Backfill vision={config.data?.vision === true} />
+      </section>
 
       <section className="settings-section">
         <h3>Empty trash</h3>

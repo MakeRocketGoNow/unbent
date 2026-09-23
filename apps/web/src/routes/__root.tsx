@@ -116,7 +116,7 @@ function AppShell() {
    * button in Settings was the only thing that ever caught up. Now the app does on open.
    * The pass declines a backlog larger than one page — see AUTO_INDEX_LIMIT — so this can
    * never start pulling gigabytes because a tab was opened on a phone; the sidebar says
-   * what it left and the Import panel is where that gets run.
+   * what it left and Maintenance is where that gets run.
    *
    * Attachment text is what search reads, so a result cached before the pass ran is
    * stale once it has indexed something. Nothing else in the cache is.

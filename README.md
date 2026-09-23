@@ -919,7 +919,7 @@ browser.
 That pass stops short of a backlog: more than one page of pending files and it downloads
 nothing, because it pulls the same bytes the button does and a backlog is gigabytes that must
 not start flowing because a tab was opened on a phone. The sidebar says what it left, and
-"Index existing PDFs" in the Import panel is where that gets run.
+"Index existing PDFs" on the Maintenance page is where that gets run.
 
 **Backfill.** Import is idempotent on content hash, so notes imported before extraction
 existed cannot be fixed by re-importing — they are skipped along with their attachments.
@@ -956,8 +956,8 @@ found nothing or the browser's did. Never for a PDF that has a text layer: the f
 goes first, and the paid one only gets what it leaves. Pressing **Auto-fill** reads the
 note's own unread files first, a few at most, so a picture stored before the instance had a
 key is read by the press that asks about it rather than staying unreadable for good. For
-everything else already here, the Import panel gets a second button beside **Index existing
-PDFs**: **Read N images**, with the count of what waits on it
+everything else already here, the Maintenance page has a second button beside **Index
+existing PDFs**: **Read N images**, with the count of what waits on it
 (`GET /api/attachments/pending-vision`, which is free to ask). It reads a few per request
 until none are left, and Stop ends it between requests. It is never part of the PDF pass or
 of the pass a tab opening starts, because each file read is a request the instance pays for,
@@ -1022,8 +1022,8 @@ directory by hand — that has no undo and has already cost one set of local not
 ## Deleting notes
 
 Note deletion in the app is a soft delete — the note goes to trash and its attachments stay
-in R2 so a restore is not left with dead links. To reclaim that storage, the Import panel
-has a Maintenance section:
+in R2 so a restore is not left with dead links. To reclaim that storage, Settings has a
+Maintenance page:
 
 - **Empty trash** — permanently deletes soft-deleted notes and their files.
 - **Sweep orphaned files** — removes R2 objects with no attachment row. Files you

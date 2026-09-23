@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { Link } from '@tanstack/react-router';
 import {
   DEFAULT_PAGES_NOTEBOOK,
   importFormat,
@@ -8,8 +8,6 @@ import {
   type NotionUnit,
 } from '@unbent/enex';
 import type { ImportEvent, ImportRequest, NotionChoices } from '../import-worker.js';
-import { configQuery } from '../queries.js';
-import { Backfill } from './Backfill.js';
 import { Button } from './Button.js';
 import { describeImportFile } from './import-file.js';
 import { importPercent } from './import-progress.js';
@@ -70,8 +68,6 @@ export function Import({ onImported }: ImportProps) {
   const [include, setInclude] = useState<ReadonlySet<string>>(new Set());
   const [pagesNotebook, setPagesNotebook] = useState(DEFAULT_PAGES_NOTEBOOK);
   const [tagsAsTags, setTagsAsTags] = useState(true);
-  const config = useQuery(configQuery());
-  const vision = config.data?.vision === true;
 
   const { setImportRunning } = useSettingsBusy();
   const worker = useRef<Worker | null>(null);
@@ -349,6 +345,16 @@ export function Import({ onImported }: ImportProps) {
           <Button variant="primary" disabled={!canStart} onClick={start}>
             Start import
           </Button>
+
+          {/* The other half of the checkbox above: extract now, or catch up later. The
+              catching up lives with the account's other housekeeping, not here. */}
+          <p className="muted small">
+            Files already here that search cannot read yet are indexed from{' '}
+            <Link to="/settings/maintenance" className="link">
+              Maintenance
+            </Link>
+            .
+          </p>
         </>
       )}
 
@@ -434,8 +440,6 @@ export function Import({ onImported }: ImportProps) {
           </Button>
         </div>
       )}
-
-      {status === 'idle' && <Backfill vision={vision} />}
 
       {failures.length > 0 && (
         <details className="failures">

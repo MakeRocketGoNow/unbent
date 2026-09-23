@@ -184,8 +184,8 @@ ALLOWED_EMAILS=
 # means a picture has no text, as before, titles come from Jev's pick of a line, and
 # nothing is sent anywhere.
 #
-# Each file is read once, after its upload or from the Import panel's "Read N images", and
-# the bytes go to api.anthropic.com; a title is one small request per press of Auto-fill. See src/lib/llm.ts for exactly what is asked. A key of its own for development
+# Each file is read once, after its upload or from Maintenance's "Read N images", and the
+# bytes go to api.anthropic.com; a title is one small request per press of Auto-fill. See src/lib/llm.ts for exactly what is asked. A key of its own for development
 # keeps its usage apart from production's.
 #
 #   https://console.anthropic.com/settings/keys

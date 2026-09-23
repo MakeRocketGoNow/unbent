@@ -32,7 +32,7 @@ function harness(config: Partial<AppConfig> = { accountDeletion: true }) {
     defaultOptions: { queries: { retry: false } },
   });
   // Seeded rather than fetched: jsdom has no server, and these three are the only queries
-  // the panel reads.
+  // the panel reads — the indexing section asks for a fourth only where `vision` is set.
   client.setQueryData(keys.config(), { providers: ['password'], ...config });
   client.setQueryData(keys.trashCount(), 0);
   client.setQueryData(keys.noteCount(), 3);
@@ -49,6 +49,24 @@ function harness(config: Partial<AppConfig> = { accountDeletion: true }) {
     </QueryClientProvider>,
   );
 }
+
+describe('Maintenance: files not yet searchable', () => {
+  afterEach(cleanup);
+
+  /**
+   * The indexing passes moved here from Import, where they read as a step of importing.
+   * Pinned as the first section: weight runs opposite to blast radius on this page, and
+   * these change nothing, so they come before anything that deletes.
+   */
+  it('offers the indexing passes first, before anything permanent', async () => {
+    harness();
+    expect(await screen.findByRole('button', { name: 'Index existing PDFs' })).toBeTruthy();
+    const headings = [...document.querySelectorAll('.settings-section h3')].map((h) => h.textContent);
+    expect(headings[0]).toBe('Files not yet searchable');
+    // Without a vision model there is nothing paid to offer, and nothing is asked for.
+    expect(screen.queryByRole('button', { name: /Read/ })).toBeNull();
+  });
+});
 
 describe('Maintenance: delete account', () => {
   afterEach(() => {

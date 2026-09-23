@@ -35,7 +35,7 @@ export const authRoutes = new Hono<AppEnv>()
    *
    * `autofill` is `accountDeletion`'s shape once more: true only where the instance has a
    * key for the model, so the editor draws the control only where the route would answer.
-   * `vision` likewise: the Import panel runs the pass over images only where the server
+   * `vision` likewise: Maintenance runs the pass over images only where the server
    * has a reader for them.
    *
    * `satisfies` rather than a return annotation: the fields whose value is `undefined` are

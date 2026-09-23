@@ -314,7 +314,7 @@ export const attachments = new Hono<AppEnv>()
   /**
    * How many files wait for the vision model, and nothing else.
    *
-   * The Import panel's button names this number as its price before anyone presses it:
+   * Maintenance's button names this number as its price before anyone presses it:
    * every file the pass below reads is a paid request, and on a real archive the count is
    * in the thousands. The count is the one thing about that pass that is free to ask for,
    * so it is a GET of its own rather than a field on `pending-text`, which the browser's
@@ -335,7 +335,7 @@ export const attachments = new Hono<AppEnv>()
    *
    * A POST although it changes nothing a client sees directly: every file read is a
    * paid request, so nothing that treats GET as safe may start one on its own. It is
-   * what the Import panel's "Read N images" runs, never the PDF pass or the pass a tab
+   * what Maintenance's "Read N images" runs, never the PDF pass or the pass a tab
    * opening starts — see `readImages` in the web app's `index-files.ts`.
    *
    * `note` narrows the pass to one note's files, as `pending-text` narrows the browser's,

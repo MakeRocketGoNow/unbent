@@ -163,7 +163,7 @@ export const notes = new Hono<AppEnv>()
     const id = c.req.param('id');
     /*
        How many of the note's unread files one press will read. Above a card and its
-       back, a note with a stack of scans is a job to run from the Import panel, where
+       back, a note with a stack of scans is a job to run from Maintenance, where
        the count is shown and the person can stop; a press that silently paid for twenty
        files would be the surprise this cap exists to prevent.
     */
@@ -185,7 +185,7 @@ export const notes = new Hono<AppEnv>()
        what the suggestion is then built from.
 
        Scoped to this note and capped, never the account's backlog: that is a thousand paid
-       requests on a real archive, and the Import panel's to run on purpose. A file this
+       requests on a real archive, and Maintenance's to run on purpose. A file this
        instance has no reader for stays as it was and is reported in `read.pending`, as
        before. A read that fails is logged and left pending rather than failing the press —
        the suggestion still comes from whatever text there is.
