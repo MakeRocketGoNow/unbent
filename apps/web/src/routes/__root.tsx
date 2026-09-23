@@ -125,7 +125,8 @@ function AppShell() {
     if (!userId) return;
     startIndexing({ auto: true });
     return subscribeIndexing((state) => {
-      if (state.status === 'done' && state.progress?.indexed) {
+      // A stopped pass indexed what it got through, which makes a cached search as stale.
+      if ((state.status === 'done' || state.status === 'stopped') && state.progress?.indexed) {
         void queryClient.invalidateQueries({ queryKey: ['search'] });
       }
     });

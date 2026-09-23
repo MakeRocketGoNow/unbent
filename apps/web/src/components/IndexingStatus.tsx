@@ -9,8 +9,8 @@ import { useIndexing } from '../index-files.js';
  * case is a link, because the way to run the backlog is the Import panel's button and
  * this takes you there — navigation, so a link and not a button.
  *
- * Idle and finished are silent. A search that finds text inside a PDF is the evidence
- * that the pass worked; a line saying so would be noise on every open.
+ * Idle, finished and stopped are silent. A search that finds text inside a PDF is the
+ * evidence that the pass worked; a line saying so would be noise on every open.
  */
 export function IndexingStatus() {
   const indexing = useIndexing();

@@ -3728,6 +3728,14 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
   width: 100%;
 }
 
+/*
+   One slot for the action, whichever action it is. Stop takes the place of the button
+   that started the pass and is a shorter word; without a floor on the width the line of
+   text beside it would shift left when a pass starts and back when it ends. Sized to the
+   longest label the slot draws.
+*/
+.backfill-row .btn { min-width: 9.5rem; }
+
 .load-more {
   width: 100%;
   padding: 0.55rem;

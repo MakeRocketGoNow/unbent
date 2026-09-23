@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { createIndexing } from './index-files.js';
 import type { ImportEvent } from './import-worker.js';
+import type { ReadPass } from './notes-api.js';
 
 /** A worker that records what it is sent and lets a test answer as the real one would. */
 function fakeWorker() {
@@ -98,6 +99,64 @@ describe('indexing', () => {
     // Two files the server could not read stay pending, and are not paid for twice in one pass.
     expect(readImages).toHaveBeenCalledTimes(1);
     expect(asked.get().images).toEqual({ read: 0, remaining: 2 });
+  });
+
+  it('stops the PDF pass between files, keeping what it got through', () => {
+    const worker = fakeWorker();
+    const indexing = createIndexing(() => worker as unknown as Worker);
+
+    // Nothing to stop yet: no abort goes to a worker that was never made.
+    indexing.stop();
+    expect(worker.posted).toEqual([]);
+
+    indexing.start({ auto: false });
+    indexing.stop();
+    expect(worker.posted).toEqual([{ type: 'backfill', auto: false }, { type: 'abort' }]);
+    expect(indexing.get()).toMatchObject({ status: 'running', stopping: true });
+
+    // The worker ends an aborted pass the way it ends a finished one, with what it had done.
+    const partial = { done: 4, indexed: 3, unusable: 1, failed: 0, total: 40 };
+    worker.answer({ type: 'backfill-done', progress: partial });
+    expect(indexing.get()).toMatchObject({ status: 'stopped', stopping: false, progress: partial });
+  });
+
+  it('reads an abort that cut a fetch short as stopped, not failed', () => {
+    const worker = fakeWorker();
+    const indexing = createIndexing(() => worker as unknown as Worker);
+    indexing.start({ auto: false });
+    indexing.stop();
+    worker.answer({ type: 'error', message: 'The operation was aborted.' });
+    expect(indexing.get()).toMatchObject({ status: 'stopped', error: null });
+
+    // A real failure on a pass nobody stopped is still one.
+    indexing.start({ auto: false });
+    worker.answer({ type: 'error', message: 'Out of memory' });
+    expect(indexing.get()).toMatchObject({ status: 'error', error: 'Out of memory' });
+  });
+
+  it('stops the image pass between requests, letting the one in flight land', async () => {
+    const worker = fakeWorker();
+    let land!: (pass: ReadPass) => void;
+    const readImages = vi.fn(
+      () =>
+        new Promise<ReadPass>((resolve) => {
+          land = resolve;
+        }),
+    );
+    const indexing = createIndexing(() => worker as unknown as Worker, readImages);
+
+    indexing.start({ auto: false, images: true });
+    worker.answer({ type: 'backfill-done', progress: finished });
+    expect(readImages).toHaveBeenCalledTimes(1);
+
+    indexing.stop();
+    expect(indexing.get()).toMatchObject({ status: 'running', phase: 'images', stopping: true });
+
+    // Paid for already, so counted — and then no second request.
+    land({ read: 3, empty: 0, failed: 0, remaining: 9 });
+    await vi.waitFor(() => expect(indexing.get().status).toBe('stopped'));
+    expect(readImages).toHaveBeenCalledTimes(1);
+    expect(indexing.get()).toMatchObject({ stopping: false, images: { read: 3, remaining: 9 } });
   });
 
   it('drops a worker that crashed so the next start gets a fresh one', () => {
