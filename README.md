@@ -723,7 +723,10 @@ Three are worth knowing about:
   changing one line of a long note does not mean resending it. A `find` matching more than
   once is refused with the count rather than guessed at.
 - **`get_attachment_text`** returns the text already extracted from a PDF, which is what
-  makes a scanned bill answerable. See [Searching inside PDFs](#searching-inside-pdfs).
+  makes a scanned bill answerable, and **`read_attachment`** asks for that extraction now,
+  for one file the first tool reports unread — a picture stored before the instance could
+  read one, or a scan nothing has looked at. That one costs a request when the vision model
+  is used, and reads the one file only. See [Searching inside PDFs](#searching-inside-pdfs).
 - **`add_attachment`** takes a URL, not bytes. A tool call is JSON the model writes token by
   token, so a file cannot ride in one — a scan as base64 is millions of characters, past
   what any client carries. What an assistant can hand over is the download link another
