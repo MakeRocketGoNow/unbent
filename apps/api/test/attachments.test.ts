@@ -739,6 +739,52 @@ describe('cross-tenant access', () => {
  * Blob GC. R2 has no foreign keys, so metadata deletion can leave objects behind; the
  * sweep is what reclaims them. It is scoped to the caller's own prefix by design.
  */
+describe('pending-vision', () => {
+  const count = async (who: Actor): Promise<number> => {
+    const res = await fetch(`${BASE}/api/attachments/pending-vision`, {
+      headers: { Cookie: who.cookie, Origin: ORIGIN },
+    });
+    expect(res.status).toBe(200);
+    return ((await res.json()) as { remaining: number }).remaining;
+  };
+
+  /**
+   * The count behind the Import panel's "Read N images" button, which has to be free to
+   * ask for: it is what names the price of the paid pass before anyone starts one.
+   *
+   * The picture is past the vision model's size cap on purpose. The Worker this runs
+   * against may well hold a key, and a picture under the cap is read right after its
+   * upload — a real request to a real model, from a test. One past the cap is left for the
+   * pass, which is exactly the case the count exists to report; the pass records it as
+   * empty when it gets there. 7MB is `MAX_LLM_IMAGE_BYTES`.
+   */
+  it('counts the files a reading pass would still be offered, per user', async () => {
+    const stamp = Date.now();
+    const actor = await signUp(`vision-${stamp}@example.test`, 'vision-pass-1234', 'V');
+    const other = await signUp(`vision-other-${stamp}@example.test`, 'vision-pass-1234', 'O');
+    expect(await count(actor)).toBe(0);
+
+    const note = await createNote(actor, 'Pictures');
+    const picture = await upload(actor, note.id, 'big.png', new Uint8Array(7 * 1024 * 1024 + 1), 'image/png');
+    expect(picture.status).toBe(201);
+    // A PDF with a text layer is the free reader's, never the model's.
+    await upload(actor, note.id, 'scan.pdf', 'PDFBYTES', 'application/pdf');
+    await fetch(`${BASE}/api/notes/${note.id}/files/scan.pdf/text`, {
+      method: 'PUT',
+      headers: { Cookie: actor.cookie, Origin: ORIGIN, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text: 'has a layer' }),
+    });
+
+    expect(await count(actor)).toBe(1);
+    expect(await count(other)).toBe(0);
+  });
+
+  it('requires a session', async () => {
+    const res = await fetch(`${BASE}/api/attachments/pending-vision`, { headers: { Origin: ORIGIN } });
+    expect(res.status).toBe(401);
+  });
+});
+
 describe('orphaned blob gc', () => {
   it('reports zero orphans for a consistent account', async () => {
     const actor = await signUp(`gc-clean-${Date.now()}@example.test`, 'gc-password-1234', 'GC');

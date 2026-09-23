@@ -70,6 +70,7 @@ export const keys = {
   noteCount: () => ['notes', 'count'] as const,
   search: (q: string, filter: NoteFilter = {}) => ['search', q, filter] as const,
   config: () => ['config'] as const,
+  pendingImages: () => ['pending-images'] as const,
 };
 
 /**
@@ -149,6 +150,17 @@ export const tagsQuery = () =>
  */
 export const configQuery = () =>
   queryOptions({ queryKey: keys.config(), queryFn: () => api.getConfig(), staleTime: Infinity });
+
+/**
+ * How many files wait for the vision model — the count on the Import panel's button.
+ *
+ * Never considered fresh, because what changes it runs outside the panel: a pass started
+ * here keeps going after the panel is closed, and an upload from the editor adds to it.
+ * So the panel fetches on every mount and again when a pass ends, rather than trusting a
+ * number from the last visit.
+ */
+export const pendingImagesQuery = () =>
+  queryOptions({ queryKey: keys.pendingImages(), queryFn: () => api.pendingImages(), staleTime: 0 });
 
 /**
  * Which user each cache currently holds rows for.

@@ -312,6 +312,19 @@ export const attachments = new Hono<AppEnv>()
   })
 
   /**
+   * How many files wait for the vision model, and nothing else.
+   *
+   * The Import panel's button names this number as its price before anyone presses it:
+   * every file the pass below reads is a paid request, and on a real archive the count is
+   * in the thousands. The count is the one thing about that pass that is free to ask for,
+   * so it is a GET of its own rather than a field on `pending-text`, which the browser's
+   * pass calls once per page and would pay the extra query for each time.
+   */
+  .get('/attachments/pending-vision', requireAuth, withRepos, async (c) => {
+    return c.json({ remaining: await c.get('attachments').visionPending() });
+  })
+
+  /**
    * Reads a few of the files still waiting for the vision model, and says how many wait.
    *
    * The counterpart of `pending-text` for the reader that lives on the server: pictures,
