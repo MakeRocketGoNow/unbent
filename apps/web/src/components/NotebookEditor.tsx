@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Link } from '@tanstack/react-router';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
@@ -137,9 +137,18 @@ export function NotebookEditor({ notebookId, onChanged, onDeleted }: NotebookEdi
      own remove button lives outside the popover, so a listener that fired on it would close
      and reopen in one gesture — but that button is disabled by `busy` during the run and is
      never what dismisses, so a plain contains-check is enough.
+
+     A layout effect, not a passive one, so the listener exists the instant the popover is
+     in the DOM. The popover opens from a promise continuation (after the usage count comes
+     back), which React commits on its scheduler rather than inside an event, and it then
+     flushes passive effects in a later task. That leaves a moment where the popover is
+     visible but a pointer down outside it does nothing. No person can click inside it, but
+     the test that pins this behaviour can: `waitFor` sees the popover as soon as it is
+     committed and fires the pointer down before that later task has run — reliably on a
+     slow CI runner, where the timer Testing Library drains with fires before React's task.
   */
   const optionConfirmRef = useRef<HTMLDivElement>(null);
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!pendingOption || busy) return;
     const onDown = (e: PointerEvent) => {
       if (!optionConfirmRef.current?.contains(e.target as Node)) setPendingOption(null);
