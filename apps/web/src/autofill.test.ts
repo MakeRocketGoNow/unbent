@@ -1,7 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import type { AutofillSuggestion, FieldDef } from '@unbent/shared';
 import type { NoteDraft } from './note-patch.js';
-import { applyAutofill, describeChanges, isEmptyChanges, planAutofill } from './autofill.js';
+import {
+  applyAutofill,
+  describeChanges,
+  isEmptyChanges,
+  isPlaceholderTitle,
+  planAutofill,
+} from './autofill.js';
 
 const amount: FieldDef = {
   id: 'f-amount',
@@ -72,6 +78,38 @@ describe('planning a fill', () => {
     const { fill, replace } = planAutofill(same, suggestion);
     expect(fill).toEqual({ tags: ['home', 'taxes'], fields: [] });
     expect(isEmptyChanges(replace)).toBe(true);
+  });
+});
+
+describe('recognising a placeholder title', () => {
+  it('treats a blank or whitespace title as a placeholder', () => {
+    expect(isPlaceholderTitle('')).toBe(true);
+    expect(isPlaceholderTitle('   ')).toBe(true);
+  });
+
+  it('treats a scanner timestamp as a placeholder', () => {
+    // What ScanSnap leaves: `2026_09_18_15_38_48.pdf` → this title.
+    expect(isPlaceholderTitle('2026_09_18_15_38_48')).toBe(true);
+    expect(isPlaceholderTitle('  2026_09_18_15_38_48  ')).toBe(true);
+    // The date-only and hyphenated shapes a file handler might also produce.
+    expect(isPlaceholderTitle('2026_09_18')).toBe(true);
+    expect(isPlaceholderTitle('2026-09-18')).toBe(true);
+  });
+
+  it('leaves a title someone chose alone, even one that opens with a year', () => {
+    expect(isPlaceholderTitle('Acme Hardware')).toBe(false);
+    expect(isPlaceholderTitle('2026 tax plan')).toBe(false);
+    expect(isPlaceholderTitle('2026-09-18 Water bill')).toBe(false);
+    // Out-of-range parts are not a real stamp, so not a placeholder.
+    expect(isPlaceholderTitle('2026_13_40_15_38_48')).toBe(false);
+    expect(isPlaceholderTitle('2026_09_18_99_38_48')).toBe(false);
+  });
+
+  it('fills a scanner-titled note without offering to replace the title', () => {
+    const scanned: NoteDraft = { ...fresh, title: '2026_09_18_15_38_48' };
+    const { fill, replace } = planAutofill(scanned, suggestion);
+    expect(fill.title).toBe('Acme Hardware');
+    expect(replace.title).toBeUndefined();
   });
 });
 

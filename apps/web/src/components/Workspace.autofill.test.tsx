@@ -204,9 +204,42 @@ describe('the Auto-fill control', () => {
     );
     mount(fresh);
     fireEvent.click(await screen.findByRole('button', { name: 'Auto-fill' }));
-    const status = await screen.findByText(/still being read/);
-    expect(status.textContent).not.toMatch(/^422/);
-    expect(status.className).toContain('bad');
+    const message = await screen.findByText(/still being read/);
+    expect(message.textContent).not.toMatch(/^422/);
+    // An error rides in the snackbar's error tone, and stays until dismissed rather than
+    // fading — so there is a close button and no auto-clear.
+    const snackbar = message.closest('.snackbar');
+    expect(snackbar?.className).toContain('error');
+    expect(snackbar?.querySelector('.snackbar-action')).toBeNull();
+    expect(snackbar?.querySelector('[aria-label="Dismiss notification"]')).toBeTruthy();
+  });
+
+  it('offers Undo after a fill and restores what it changed', async () => {
+    vi.mocked(api.autofillNote).mockResolvedValue(suggestion);
+    mount(fresh);
+    fireEvent.click(await screen.findByRole('button', { name: 'Auto-fill' }));
+    await waitFor(() =>
+      expect((screen.getByPlaceholderText('Untitled') as HTMLInputElement).value).toBe('Acme Hardware'),
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Undo' }));
+    // The whole fill comes back out as one edit: the title it set is empty again.
+    expect((screen.getByPlaceholderText('Untitled') as HTMLInputElement).value).toBe('');
+    expect(screen.queryByText(/Filled in/)).toBeNull();
+  });
+
+  it('fills a scanner-titled note without asking to replace the title', async () => {
+    vi.mocked(api.autofillNote).mockResolvedValue(suggestion);
+    // What a ScanSnap scan lands as: a timestamp for a title, not one anyone chose.
+    mount({ ...fresh, title: '2026_09_18_15_38_48' });
+    fireEvent.click(await screen.findByRole('button', { name: 'Auto-fill' }));
+
+    await waitFor(() =>
+      expect((screen.getByPlaceholderText('Untitled') as HTMLInputElement).value).toBe('Acme Hardware'),
+    );
+    // No "Also replace the title?" for a placeholder title — it just fills.
+    expect(screen.queryByRole('group', { name: "Confirm replacing the note's filing" })).toBeNull();
+    expect(screen.getByText(/Filled in the title/)).toBeTruthy();
   });
 
   it('shows a dismissible operator notice when the title model rejected its key', async () => {

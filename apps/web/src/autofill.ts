@@ -6,10 +6,11 @@ import type { NoteDraft } from './note-patch.js';
  *
  * The server judges; this decides what to do with the judgement, by one rule: fill what
  * is empty without asking, and ask before replacing anything already set. A freshly
- * scanned note is untitled, unfiled and untagged, so on the case this exists for
- * everything lands at once. A note someone has already filed gets its empties filled and
- * an offer for the rest, which is the warning the issue asked for without a dialog in
- * front of the common case.
+ * scanned note is unfiled and untagged and titled only by its filename — a timestamp the
+ * scanner made, not a title anyone chose (see `isPlaceholderTitle`) — so on the case this
+ * exists for everything lands at once. A note someone has already filed, or titled by
+ * hand, gets its empties filled and an offer for the rest, which is the warning the issue
+ * asked for without a dialog in front of the common case.
  *
  * Into the draft rather than to the server, for the reason `open-note-fields.ts` gives
  * for the table's edits: the draft is what autosave writes, and a value put on the server
@@ -32,6 +33,30 @@ export interface AutofillPlan {
 }
 
 const nothing = (): AutofillChanges => ({ tags: [], fields: [] });
+
+/**
+ * A title the note carries only because something had to fill the slot, not because
+ * anyone chose it — so auto-fill overwrites it like an empty one, without asking.
+ *
+ * Two cases: genuinely blank, and the timestamp a scanner leaves. `launch-files.ts`
+ * names a scanned note after its file, and a ScanSnap file is `2026_09_18_15_38_48.pdf`,
+ * which lands as the title `2026_09_18_15_38_48`. We match that shape — a full
+ * `YYYY_MM_DD_HH_MM_SS`, and the same date with a `-` separator or without the time —
+ * and nothing looser: the whole string must be the stamp, with real month/day/hour
+ * ranges, so a title someone typed that merely opens with a year ("2026 tax plan") is
+ * left alone and still prompts before it is replaced.
+ */
+export function isPlaceholderTitle(title: string): boolean {
+  const t = title.trim();
+  if (t === '') return true;
+  const m = /^(\d{4})([_-])(\d{2})\2(\d{2})(?:[_-](\d{2})[_-](\d{2})[_-](\d{2}))?$/.exec(t);
+  if (!m) return false;
+  const [, , , month, day, hour, min, sec] = m;
+  const mm = Number(month), dd = Number(day);
+  if (mm < 1 || mm > 12 || dd < 1 || dd > 31) return false;
+  if (hour === undefined) return true;
+  return Number(hour) <= 23 && Number(min) <= 59 && Number(sec) <= 59;
+}
 
 export function isEmptyChanges(changes: AutofillChanges): boolean {
   return (
@@ -65,7 +90,7 @@ export function planAutofill(draft: NoteDraft, suggestion: AutofillSuggestion): 
   const replace = nothing();
 
   if (suggestion.title) {
-    if (draft.title.trim() === '') fill.title = suggestion.title.value;
+    if (isPlaceholderTitle(draft.title)) fill.title = suggestion.title.value;
     else if (draft.title.trim() !== suggestion.title.value) replace.title = suggestion.title.value;
   }
 
