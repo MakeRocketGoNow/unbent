@@ -9,9 +9,16 @@ import {
   fetchSource,
 } from '../../lib/fetch-attachment.js';
 import type { NotesRepo } from '../../lib/notes-repo.js';
+import { readPendingFile, readersFrom } from '../../lib/read-attachment.js';
 import { storeAttachment } from '../../lib/store-attachment.js';
 import type { Env } from '../../types.js';
 import { jsonResult, notFound, toolError } from './result.js';
+
+/**
+ * How far into one note's files the read tool looks for the one it was asked about. A
+ * note has a handful; this is a bound on the query, not a limit anyone should meet.
+ */
+const FILES_PER_NOTE = 100;
 
 /**
  * The tool that gives a note a file.
@@ -28,10 +35,90 @@ import { jsonResult, notFound, toolError } from './result.js';
  */
 export function registerAttachmentTools(
   server: McpServer,
-  env: Pick<Env, 'BLOBS' | 'AI' | 'ALLOW_TEST_CREDENTIALS'>,
+  env: Pick<
+    Env,
+    'BLOBS' | 'AI' | 'ALLOW_TEST_CREDENTIALS' | 'ANTHROPIC_API_KEY' | 'ANTHROPIC_API_URL' | 'ANTHROPIC_MODEL'
+  >,
   ctx: { waitUntil(promise: Promise<unknown>): void },
   repos: { notes: NotesRepo; attachments: AttachmentsRepo },
 ): void {
+  /*
+     The counterpart of get_attachment_text, for the file that tool reports unread. A
+     file is read once, at upload, and never again on its own, so one stored before the
+     instance could read it — every picture on an archive imported before the vision
+     model had a key — stays unread until something asks. This is the asking, for one
+     file at a time: what a model doing a pass over a notebook's cards needs, and the
+     only shape that keeps the cost legible. The account-wide backfill stays the Import
+     panel's, where a person watches the count fall.
+
+     Not a flag on get_attachment_text: that tool is read-only and free, and this one is
+     neither. A model that treats a read as safe to repeat must be told, in the tool's
+     own annotations, that this one costs a request — though a second call for the same
+     file finds the text recorded and pays nothing, which is what idempotent means here.
+  */
+  server.registerTool(
+    'read_attachment',
+    {
+      title: 'Read an attachment now',
+      description:
+        'Ask the instance to read one attachment now, so its text can be had from ' +
+        'get_attachment_text: a PDF through its text layer, then, where the instance has ' +
+        "a vision model, a picture or a scan the layer had nothing for through that model. " +
+        'For a file get_attachment_text reports as having no text. Costs a request when ' +
+        'the model is used; a file already read is returned as it is, at no cost. Reads ' +
+        'this one file only — never the rest of the note or the account.',
+      inputSchema: z.object({
+        noteId: z.string().uuid(),
+        filename: z.string().min(1).describe('As listed by get_note.'),
+      }),
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: false,
+      },
+    },
+    async ({ noteId, filename }) => {
+      if (!(await repos.attachments.ownsNote(noteId))) return notFound('note', noteId);
+
+      const [text, forText, forVision] = await Promise.all([
+        repos.attachments.textFor(noteId, filename),
+        repos.attachments.needingText(FILES_PER_NOTE, noteId),
+        repos.attachments.needingVision(FILES_PER_NOTE, noteId),
+      ]);
+      if (text === null) return notFound('attachment', `${filename} on note ${noteId}`);
+
+      // Which reader the file is waiting for, if any; `textFor` alone cannot tell a scan
+      // nothing has looked at from one the model looked at and found empty.
+      const waitingForText = forText.find((f) => f.filename === filename);
+      const waitingForVision = forVision.find((f) => f.filename === filename);
+      const pending = waitingForText
+        ? { ...waitingForText, pending: 'text' as const }
+        : waitingForVision
+          ? { ...waitingForVision, pending: 'vision' as const }
+          : null;
+      if (!pending) return jsonResult({ filename, read: false, indexed: text !== '', text });
+
+      const readers = readersFrom(env);
+      let outcome;
+      try {
+        outcome = await readPendingFile(env.BLOBS, readers, repos.attachments, pending);
+      } catch (err) {
+        return toolError(
+          `Reading the file failed: ${err instanceof Error ? err.message : String(err)}. ` +
+            'It stays unread; try again later.',
+        );
+      }
+      if (outcome === 'unread') {
+        return toolError(
+          'This instance has no reader for that file' +
+            (pending.pending === 'text' ? ' — its text layer is read in the browser here.' : '.'),
+        );
+      }
+      const after = await repos.attachments.textFor(noteId, filename);
+      return jsonResult({ filename, read: true, outcome, indexed: Boolean(after), text: after ?? '' });
+    },
+  );
   // Loopback is fetchable only where the web-image route allows it too: local development,
   // flagged the same way. Deployed, this is false, so neither server-side fetcher can be
   // pointed at the Worker's own network.
