@@ -125,8 +125,10 @@ function AppShell() {
     if (!userId) return;
     startIndexing({ auto: true });
     return subscribeIndexing((state) => {
-      // A stopped pass indexed what it got through, which makes a cached search as stale.
-      if ((state.status === 'done' || state.status === 'stopped') && state.progress?.indexed) {
+      // A stopped pass indexed what it got through, which makes a cached search as stale;
+      // an image the server read is text in the same index as a PDF's.
+      const ended = state.status === 'done' || state.status === 'stopped';
+      if (ended && (state.progress?.indexed || state.images?.read)) {
         void queryClient.invalidateQueries({ queryKey: ['search'] });
       }
     });

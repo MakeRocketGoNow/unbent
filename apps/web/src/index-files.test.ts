@@ -65,40 +65,61 @@ describe('indexing', () => {
     expect(seen).toEqual(['running', 'deferred']);
   });
 
-  it('reads images on the server after the PDFs, when asked, until none are left', async () => {
+  it('reads images on the server as a pass of its own, a few per request, until none are left', async () => {
     const worker = fakeWorker();
     const passes = [
       { read: 2, empty: 1, failed: 0, remaining: 1 },
       { read: 1, empty: 0, failed: 0, remaining: 0 },
     ];
-    const readImages = vi.fn(async () => passes.shift()!);
-    const indexing = createIndexing(() => worker as unknown as Worker, readImages);
+    const readPending = vi.fn(async () => passes.shift()!);
+    const indexing = createIndexing(() => worker as unknown as Worker, readPending);
 
-    indexing.start({ auto: false, images: true });
-    worker.answer({ type: 'backfill-done', progress: finished });
+    indexing.readImages();
+    // The count of what is left is the server's to give; nothing is claimed before it answers.
+    expect(indexing.get()).toMatchObject({ status: 'running', phase: 'images', images: null, progress: null });
     await vi.waitFor(() => expect(indexing.get().status).toBe('done'));
 
-    expect(readImages).toHaveBeenCalledTimes(2);
-    expect(indexing.get()).toMatchObject({ phase: 'images', images: { read: 3, remaining: 0 }, progress: finished });
+    expect(readPending).toHaveBeenCalledTimes(2);
+    expect(indexing.get()).toMatchObject({ phase: 'images', images: { read: 3, remaining: 0 } });
+    // The PDFs were never involved: no worker was made, and nothing was posted to one.
+    expect(worker.posted).toEqual([]);
   });
 
-  it('never reads images on the unasked pass, and stops when a call moves nothing', async () => {
-    const readImages = vi.fn(async () => ({ read: 0, empty: 0, failed: 2, remaining: 2 }));
-    const auto = fakeWorker();
-    const unasked = createIndexing(() => auto as unknown as Worker, readImages);
-    unasked.start({ auto: true, images: true });
-    auto.answer({ type: 'backfill-done', progress: finished });
-    expect(unasked.get().status).toBe('done');
-    expect(readImages).not.toHaveBeenCalled();
-
+  it('never reads images as part of a PDF pass, and stops when a call moves nothing', async () => {
+    const readPending = vi.fn(async () => ({ read: 0, empty: 0, failed: 2, remaining: 2 }));
     const worker = fakeWorker();
-    const asked = createIndexing(() => worker as unknown as Worker, readImages);
-    asked.start({ auto: false, images: true });
+    const indexing = createIndexing(() => worker as unknown as Worker, readPending);
+
+    // Neither the unasked pass nor the button's reaches the paid one.
+    indexing.start({ auto: true });
     worker.answer({ type: 'backfill-done', progress: finished });
-    await vi.waitFor(() => expect(asked.get().status).toBe('done'));
+    indexing.start({ auto: false });
+    worker.answer({ type: 'backfill-done', progress: finished });
+    expect(indexing.get().status).toBe('done');
+    expect(readPending).not.toHaveBeenCalled();
+
+    indexing.readImages();
+    await vi.waitFor(() => expect(indexing.get().status).toBe('done'));
     // Two files the server could not read stay pending, and are not paid for twice in one pass.
-    expect(readImages).toHaveBeenCalledTimes(1);
-    expect(asked.get().images).toEqual({ read: 0, remaining: 2 });
+    expect(readPending).toHaveBeenCalledTimes(1);
+    expect(indexing.get().images).toEqual({ read: 0, remaining: 2 });
+  });
+
+  it('runs one pass at a time, whichever kind is running', async () => {
+    const worker = fakeWorker();
+    const readPending = vi.fn(async () => ({ read: 1, empty: 0, failed: 0, remaining: 0 }));
+    const indexing = createIndexing(() => worker as unknown as Worker, readPending);
+
+    indexing.start({ auto: false });
+    indexing.readImages();
+    expect(readPending).not.toHaveBeenCalled();
+    worker.answer({ type: 'backfill-done', progress: finished });
+
+    indexing.readImages();
+    indexing.start({ auto: false });
+    expect(worker.posted).toHaveLength(1);
+    await vi.waitFor(() => expect(indexing.get().status).toBe('done'));
+    expect(readPending).toHaveBeenCalledTimes(1);
   });
 
   it('stops the PDF pass between files, keeping what it got through', () => {
@@ -137,17 +158,16 @@ describe('indexing', () => {
   it('stops the image pass between requests, letting the one in flight land', async () => {
     const worker = fakeWorker();
     let land!: (pass: ReadPass) => void;
-    const readImages = vi.fn(
+    const readPending = vi.fn(
       () =>
         new Promise<ReadPass>((resolve) => {
           land = resolve;
         }),
     );
-    const indexing = createIndexing(() => worker as unknown as Worker, readImages);
+    const indexing = createIndexing(() => worker as unknown as Worker, readPending);
 
-    indexing.start({ auto: false, images: true });
-    worker.answer({ type: 'backfill-done', progress: finished });
-    expect(readImages).toHaveBeenCalledTimes(1);
+    indexing.readImages();
+    expect(readPending).toHaveBeenCalledTimes(1);
 
     indexing.stop();
     expect(indexing.get()).toMatchObject({ status: 'running', phase: 'images', stopping: true });
@@ -155,7 +175,7 @@ describe('indexing', () => {
     // Paid for already, so counted — and then no second request.
     land({ read: 3, empty: 0, failed: 0, remaining: 9 });
     await vi.waitFor(() => expect(indexing.get().status).toBe('stopped'));
-    expect(readImages).toHaveBeenCalledTimes(1);
+    expect(readPending).toHaveBeenCalledTimes(1);
     expect(indexing.get()).toMatchObject({ stopping: false, images: { read: 3, remaining: 9 } });
   });
 

@@ -249,9 +249,9 @@ export interface AppConfig {
    * Whether this instance reads images — and scans with no text layer — with a vision
    * model, so they can be searched and auto-filled.
    *
-   * On when the operator has set `ANTHROPIC_API_KEY` in the API. The Import panel's
-   * "Index existing files" runs the server's pass over images only when this is true,
-   * since each file read is a paid request the instance has to be able to make.
+   * On when the operator has set `ANTHROPIC_API_KEY` in the API. The Import panel offers
+   * its "Read N images" pass only when this is true, since each file read is a paid
+   * request the instance has to be able to make.
    */
   vision?: boolean;
 }
