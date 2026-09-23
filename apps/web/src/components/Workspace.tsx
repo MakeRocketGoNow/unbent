@@ -284,10 +284,18 @@ export function Workspace({ noteId, readOnly = false, backTo = '/notes' }: Works
     if (!patch) return 'unchanged';
     const updated = await api.updateNote(noteId, patch);
     queryClient.setQueryData(keys.note(noteId), updated);
-    // A tag or notebook edit changes the sidebar counts, and the title and ordering
-    // change the list, so both are refetched rather than patched by hand.
+    // The title and ordering change the list, so it is refetched rather than patched by
+    // hand.
     void queryClient.invalidateQueries({ queryKey: ['notes'] });
-    invalidateNoteMembership(queryClient);
+    /*
+     * The sidebar's counts only when this save could have moved them — the same rule the
+     * phone's editor already keeps. Both lists count across the whole archive, and this
+     * runs on every pause in typing: refetching them for a body edit cost tens of
+     * thousands of rows read per save on a large archive, for numbers that could not
+     * have changed.
+     */
+    if (patch.notebook !== undefined) void queryClient.invalidateQueries({ queryKey: keys.notebooks() });
+    if (patch.tags) void queryClient.invalidateQueries({ queryKey: keys.tags() });
   }
 
   const editing = note !== undefined && !readOnly && draftFor === noteId;

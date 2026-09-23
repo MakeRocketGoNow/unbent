@@ -277,6 +277,26 @@ export function toFtsQuery(raw: string): string {
 }
 
 /**
+ * The `user_id` condition `list` and `count` open with, bound as `?1`.
+ *
+ * With a tag filter it is written `+n.user_id`: the unary plus is SQLite's documented way
+ * to keep a column's index out of the plan, while still applying the condition. Every
+ * notes index leads with `user_id`, and without statistics the planner takes an equality
+ * on an index's first column to be selective and starts there. On an instance with one
+ * user it matches every row, so a tag on three notes was answered by reading all of them.
+ * Hiding that index leaves the tag's `n.id IN (…)` as the way in, and the query reads the
+ * tagged notes and nothing else.
+ *
+ * Only with a tag. With none, the `user_id` indexes are the ones that return rows in sort
+ * order and let a page stop after fifty. With one, starting from the tag can cost more than
+ * walking the sort index when the tag is on most notes — but never more than the count
+ * beside the first page, which has to read every tagged note anyway.
+ */
+function ownerCondition(tags: string[] | undefined): string {
+  return tags && tags.length > 0 ? '+n.user_id = ?1' : 'n.user_id = ?1';
+}
+
+/**
  * SQL conditions for the `notebook` and `tags` filters, shared by `list` and `search`.
  *
  * Both call sites need identical semantics — a filter has to mean the same thing whether
@@ -332,19 +352,25 @@ function filterConditions(
   }
 
   /*
-   * One EXISTS per tag, AND'd together: the note must carry every one of them.
+   * One IN per tag, AND'd together: the note must carry every one of them.
    *
    * Conjunction is what makes this a widening rather than a change — a single tag
    * produces exactly the clause a single filter produced before, so the existing
    * behaviour is the one-element case rather than a case handled alongside it. Each
    * clause is an independent semi-join on note_tags, so nothing here fans out the row
    * count the way joining the table once per tag would.
+   *
+   * IN rather than a correlated EXISTS because only IN can be the side the query starts
+   * from: tag by name, its note_tags rows, then those notes by primary key. An EXISTS is
+   * evaluated per note, so the query walked every note the user has and asked each one —
+   * a tag on one note cost a read of the whole archive, twice with the count beside it.
+   * The IN alone is not enough, though; see `ownerCondition`.
    */
   for (const tag of opts.tags ?? []) {
     binds.push(tag, userId);
     conditions.push(
-      `EXISTS (SELECT 1 FROM note_tags nt2 JOIN tags t2 ON t2.id = nt2.tag_id
-               WHERE nt2.note_id = n.id AND t2.name = ?${binds.length - 1} AND t2.user_id = ?${binds.length})`,
+      `n.id IN (SELECT nt2.note_id FROM tags t2 JOIN note_tags nt2 ON nt2.tag_id = t2.id
+                 WHERE t2.name = ?${binds.length - 1} AND t2.user_id = ?${binds.length})`,
     );
   }
 
@@ -634,7 +660,7 @@ export class NotesRepo extends ScopedRepo {
     const collate = 'collate' in spec && spec.collate ? ` ${spec.collate.trim()}` : '';
 
     const conditions = [
-      'n.user_id = ?1',
+      ownerCondition(tags),
       trashed ? 'n.deleted_at IS NOT NULL' : 'n.deleted_at IS NULL',
     ];
     const binds: unknown[] = [this.userId];
@@ -676,9 +702,20 @@ export class NotesRepo extends ScopedRepo {
         // Past the boundary in the sort's own order; for a field sort the valueless
         // rows still lie ahead, so a NULL passes too.
         const nullsAhead = byField ? `${spec.column} IS NULL OR ` : '';
+        /*
+         * The same condition with a plain range in front, for the sorts with an index.
+         * SQLite cannot seek into an index through the OR above when the column carries
+         * a collation, so a page deep into the title sort walked every title before it —
+         * thousands of rows read for fifty. `key >= K` is one it can seek on, and the OR
+         * behind it then only settles the ties. Not for a field sort: its NULLs sit past
+         * every value, where no range on the value reaches them.
+         */
         conditions.push(
-          `(${nullsAhead}${spec.column}${collate} ${op} ${keyBind}` +
-            ` OR (${spec.column}${collate} = ${keyBind} AND n.id ${op} ${idBind}))`,
+          byField
+            ? `(${nullsAhead}${spec.column}${collate} ${op} ${keyBind}` +
+                ` OR (${spec.column}${collate} = ${keyBind} AND n.id ${op} ${idBind}))`
+            : `${spec.column}${collate} ${op}= ${keyBind}` +
+                ` AND (${spec.column}${collate} ${op} ${keyBind} OR n.id ${op} ${idBind})`,
         );
       }
     }
@@ -739,6 +776,11 @@ export class NotesRepo extends ScopedRepo {
    *
    * Reported separately from `list` because the list is paginated: counting what a page
    * returned would show "50 notes" for an account holding hundreds.
+   *
+   * Read from the counts 0023 keeps whenever the filter is one of those, and counted from
+   * the rows otherwise. `exact` always counts the rows: it is for a confirmation naming how
+   * many notes an action will destroy, where a stored count that had drifted would be
+   * telling the user something false at the one moment it matters.
    */
   async count(opts?: {
     tags?: string[];
@@ -750,9 +792,15 @@ export class NotesRepo extends ScopedRepo {
     sort?: NoteSort;
     /** Sorting by a field, which decides the column a date range reads; see `fieldSort`. */
     sortField?: FieldDef;
+    exact?: boolean;
   }): Promise<number> {
+    if (!opts?.exact) {
+      const stored = await this.storedCount(opts ?? {});
+      if (stored !== undefined) return stored;
+    }
+
     const conditions = [
-      'n.user_id = ?1',
+      ownerCondition(opts?.tags),
       opts?.trashed ? 'n.deleted_at IS NOT NULL' : 'n.deleted_at IS NULL',
     ];
     const binds: unknown[] = [this.userId];
@@ -784,6 +832,121 @@ export class NotesRepo extends ScopedRepo {
     return row?.n ?? 0;
   }
 
+  /**
+   * The stored count for a filter that has one, or `undefined` when it has to be counted.
+   *
+   * Stored are exactly the filters a sidebar entry is: everything, one notebook, Unfiled,
+   * one tag, and the trash. Anything narrower — a date range, a field, a tag within a
+   * notebook, two tags — is counted, and those count only the notes that match, since the
+   * tag and notebook clauses start from the tag or notebook rather than from every note.
+   *
+   * Names are matched the way `filterConditions` matches them, so a stored count and a
+   * counted one can never disagree about which notebook or tag was meant: a notebook
+   * case-insensitively, a tag exactly. A name that matches nothing is 0 either way.
+   */
+  private async storedCount(opts: {
+    tags?: string[];
+    notebook?: string;
+    fields?: FieldFilter[];
+    trashed?: boolean;
+    from?: string;
+    to?: string;
+  }): Promise<number | undefined> {
+    const { tags = [], notebook, fields = [], trashed, from, to } = opts;
+    if (from || to || fields.length > 0 || tags.length > 1) return undefined;
+    if (tags.length === 1 && notebook) return undefined;
+
+    if (trashed) return notebook || tags.length > 0 ? undefined : (await this.totals()).trashed;
+
+    if (tags.length === 1) {
+      const row = await this.db
+        .prepare(`SELECT note_count FROM tags WHERE user_id = ?1 AND name = ?2`)
+        .bind(this.userId, tags[0])
+        .first<{ note_count: number }>();
+      return row?.note_count ?? 0;
+    }
+    if (notebook === UNFILED) return (await this.totals()).unfiled;
+    if (notebook) {
+      const row = await this.db
+        .prepare(`SELECT note_count FROM notebooks WHERE user_id = ?1 AND name = ?2 COLLATE NOCASE`)
+        .bind(this.userId, notebook)
+        .first<{ note_count: number }>();
+      return row?.note_count ?? 0;
+    }
+    return (await this.totals()).live;
+  }
+
+  /** This user's account-wide counts. No row means no note has ever been stored: all zero. */
+  private async totals(): Promise<{ live: number; unfiled: number; trashed: number }> {
+    const row = await this.db
+      .prepare(`SELECT live, unfiled, trashed FROM note_counts WHERE user_id = ?1`)
+      .bind(this.userId)
+      .first<{ live: number; unfiled: number; trashed: number }>();
+    return row ?? { live: 0, unfiled: 0, trashed: 0 };
+  }
+
+  /**
+   * Counts every stored count again from the notes and writes back the ones that were
+   * wrong, returning how many that was.
+   *
+   * The way out if a count ever drifts. 0023's triggers should make that impossible, but
+   * they can only cover the writes that exist when they were written, and a count that is
+   * wrong costs nothing to notice and a full recount to fix. One batch, so the counts are
+   * read and written in one transaction and a note saved meanwhile cannot land between them.
+   *
+   * It reads every note, twice over for the notebooks and tags — roughly what the sidebar
+   * cost on every load before the counts were stored. Fine for a button; not for a loop.
+   */
+  async recountNotes(): Promise<number> {
+    const liveInNotebook = `(SELECT COUNT(*) FROM notes n
+                              WHERE n.notebook_id = notebooks.id AND n.user_id = ?1
+                                AND n.deleted_at IS NULL)`;
+    const liveWithTag = `(SELECT COUNT(*) FROM note_tags nt JOIN notes n ON n.id = nt.note_id
+                           WHERE nt.tag_id = tags.id AND n.deleted_at IS NULL)`;
+    const actualTotals = `SELECT COALESCE(SUM(deleted_at IS NULL), 0) AS live,
+                                 COALESCE(SUM(deleted_at IS NULL AND notebook_id IS NULL), 0) AS unfiled,
+                                 COALESCE(SUM(deleted_at IS NOT NULL), 0) AS trashed
+                            FROM notes WHERE user_id = ?1`;
+
+    const [stored, actual, notebooks, tags] = await this.db.batch([
+      this.db
+        .prepare(`SELECT live, unfiled, trashed FROM note_counts WHERE user_id = ?1`)
+        .bind(this.userId),
+      this.db.prepare(actualTotals).bind(this.userId),
+      this.db
+        .prepare(
+          `UPDATE notebooks SET note_count = ${liveInNotebook}
+            WHERE user_id = ?1 AND note_count <> ${liveInNotebook}
+           RETURNING id`,
+        )
+        .bind(this.userId),
+      this.db
+        .prepare(
+          `UPDATE tags SET note_count = ${liveWithTag}
+            WHERE user_id = ?1 AND note_count <> ${liveWithTag}
+           RETURNING id`,
+        )
+        .bind(this.userId),
+      // The `WHERE 1` does nothing but let SQLite parse the ON CONFLICT after it as an
+      // upsert: straight after a FROM it would be read as the start of a join constraint.
+      this.db
+        .prepare(
+          `INSERT INTO note_counts (user_id, live, unfiled, trashed)
+           SELECT ?1, live, unfiled, trashed FROM (${actualTotals}) WHERE 1
+           ON CONFLICT(user_id) DO UPDATE
+             SET live = excluded.live, unfiled = excluded.unfiled, trashed = excluded.trashed`,
+        )
+        .bind(this.userId),
+    ]);
+
+    type Totals = { live: number; unfiled: number; trashed: number };
+    const was = (stored?.results[0] as Totals | undefined) ?? { live: 0, unfiled: 0, trashed: 0 };
+    const is = actual?.results[0] as Totals;
+    const wrongTotals = (['live', 'unfiled', 'trashed'] as const).filter((k) => was[k] !== is[k]).length;
+
+    return (notebooks?.results.length ?? 0) + (tags?.results.length ?? 0) + wrongTotals;
+  }
+
   /** Scoped by user_id despite `id` being the primary key. Never returns another user's note. */
   async get(id: string): Promise<Note | null> {
     const row = await this.db
@@ -798,9 +961,18 @@ export class NotesRepo extends ScopedRepo {
       .first<NoteRow & { fields: string | null }>();
     if (!row) return null;
 
+    /*
+     * CROSS JOIN is SQLite's way of fixing the join order, and the order is the point.
+     * Written as a plain JOIN, the planner walked the user's whole tag list through the
+     * UNIQUE(user_id, name) index — it is already in name order, so the ORDER BY came
+     * free — and probed note_tags once per tag. That is every tag the user owns, read to
+     * return two or three: on an archive with three hundred tags, opening a note read
+     * three hundred rows, and D1 bills for every one. Starting from note_tags reads this
+     * note's rows and sorts a handful of names.
+     */
     const { results } = await this.db
       .prepare(
-        `SELECT t.name FROM note_tags nt JOIN tags t ON t.id = nt.tag_id
+        `SELECT t.name FROM note_tags nt CROSS JOIN tags t ON t.id = nt.tag_id
           WHERE nt.note_id = ?1 AND t.user_id = ?2 ORDER BY t.name`,
       )
       .bind(id, this.userId)
@@ -1778,15 +1950,14 @@ export class NotesRepo extends ScopedRepo {
    * rather than by whatever the query planner returns.
    */
   async listTags(): Promise<Array<{ id: string; name: string; count: number }>> {
+    // The count is 0023's, one row per tag. A tag whose notes are all in the trash has a
+    // count of zero and is left out, as it was when this joined the notes to count them.
     const { results } = await this.db
       .prepare(
-        `SELECT t.id, t.name, COUNT(nt.note_id) AS count
-           FROM tags t
-           JOIN note_tags nt ON nt.tag_id = t.id
-           JOIN notes n ON n.id = nt.note_id AND n.deleted_at IS NULL
-          WHERE t.user_id = ?1
-          GROUP BY t.id, t.name
-          ORDER BY count DESC, t.name COLLATE NOCASE`,
+        `SELECT id, name, note_count AS count
+           FROM tags
+          WHERE user_id = ?1 AND note_count > 0
+          ORDER BY note_count DESC, name COLLATE NOCASE`,
       )
       .bind(this.userId)
       .all<{ id: string; name: string; count: number }>();
@@ -1937,15 +2108,7 @@ export class NotesRepo extends ScopedRepo {
    * the scope selector needs the number to decide whether "Unfiled" is worth offering.
    */
   async countUnfiledNotes(): Promise<number> {
-    const row = await this.db
-      .prepare(
-        `SELECT COUNT(*) AS count
-           FROM notes
-          WHERE user_id = ?1 AND notebook_id IS NULL AND deleted_at IS NULL`,
-      )
-      .bind(this.userId)
-      .first<{ count: number }>();
-    return row?.count ?? 0;
+    return (await this.totals()).unfiled;
   }
 
   /**
@@ -1953,17 +2116,18 @@ export class NotesRepo extends ScopedRepo {
    * selector and the management page.
    */
   async listNotebooks(): Promise<NotebookSummary[]> {
+    /*
+     * The note count is 0023's, kept on the notebook row as its notes come and go. It was
+     * counted here, which read every filed note on every sidebar load — and the web editor
+     * reloaded the sidebar on every save.
+     */
     const { results } = await this.db
       .prepare(
-        `SELECT nb.id, nb.name, nb.purpose,
-                COUNT(n.id) AS count,
+        `SELECT nb.id, nb.name, nb.purpose, nb.note_count AS count,
                 (SELECT COUNT(*) FROM notebook_fields f
                   WHERE f.notebook_id = nb.id AND f.deleted_at IS NULL) AS fields
            FROM notebooks nb
-           LEFT JOIN notes n
-             ON n.notebook_id = nb.id AND n.deleted_at IS NULL AND n.user_id = ?1
           WHERE nb.user_id = ?1
-          GROUP BY nb.id, nb.name, nb.purpose
           ORDER BY nb.name COLLATE NOCASE`,
       )
       .bind(this.userId)

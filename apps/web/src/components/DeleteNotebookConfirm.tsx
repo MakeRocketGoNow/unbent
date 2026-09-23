@@ -1,4 +1,5 @@
 import { Confirm } from './Confirm.js';
+import { useExactCount } from './use-exact-count.js';
 
 /**
  * The two-option delete a notebook gets, in one place because it is offered from two: the
@@ -20,14 +21,19 @@ export function DeleteNotebookConfirm({
   onConfirm,
 }: {
   name: string;
-  /** Live notes in the notebook; decides whether the cascade option appears and how it reads. */
+  /**
+   * Live notes in the notebook, as the list showing it has them. Replaced by a count read
+   * from the notes as soon as that arrives — see `useExactCount` — since it decides both
+   * whether the cascade is offered and how many notes it says it will trash.
+   */
   count: number;
   busy: boolean;
   onCancel: () => void;
   /** `trashNotes` is true only for the second, cascade action. */
   onConfirm: (trashNotes: boolean) => void;
 }) {
-  const noteLabel = count > 0 ? `${count} note${count === 1 ? '' : 's'}` : null;
+  const exact = useExactCount({ notebook: name }, count);
+  const noteLabel = exact > 0 ? `${exact} note${exact === 1 ? '' : 's'}` : null;
   return (
     <Confirm
       label="Confirm delete notebook"

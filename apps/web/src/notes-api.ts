@@ -107,6 +107,8 @@ export async function listNotes(
     sortField?: string;
     from?: string;
     to?: string;
+    /** Count `total` from the notes rather than read the stored count; see `exactCountQuery`. */
+    exact?: boolean;
   } = {},
 ): Promise<NotePage> {
   const params = new URLSearchParams();
@@ -121,6 +123,7 @@ export async function listNotes(
   if (opts.from) params.set('from', opts.from);
   if (opts.to) params.set('to', opts.to);
   if (opts.trashed) params.set('trashed', '1');
+  if (opts.exact) params.set('exact', '1');
   if (opts.limit) params.set('limit', String(opts.limit));
   const qs = params.toString();
   return json<NotePage>(await fetch(`/api/notes${qs ? `?${qs}` : ''}`));
@@ -726,4 +729,9 @@ export async function gcBlobs(apply: boolean): Promise<GcResult> {
   return json<GcResult>(
     await fetch(`/api/admin/gc-blobs${apply ? '?apply=1' : ''}`, { method: 'POST' }),
   );
+}
+
+/** Counts every notebook, tag and total again from the notes; `corrected` is how many were wrong. */
+export async function recountNotes(): Promise<{ corrected: number }> {
+  return json<{ corrected: number }>(await fetch('/api/admin/recount-notes', { method: 'POST' }));
 }
