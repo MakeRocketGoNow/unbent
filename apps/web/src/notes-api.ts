@@ -730,3 +730,8 @@ export async function gcBlobs(apply: boolean): Promise<GcResult> {
     await fetch(`/api/admin/gc-blobs${apply ? '?apply=1' : ''}`, { method: 'POST' }),
   );
 }
+
+/** Counts every notebook, tag and total again from the notes; `corrected` is how many were wrong. */
+export async function recountNotes(): Promise<{ corrected: number }> {
+  return json<{ corrected: number }>(await fetch('/api/admin/recount-notes', { method: 'POST' }));
+}

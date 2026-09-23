@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Link } from '@tanstack/react-router';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import * as api from '../notes-api.js';
 import { deleteUser, useSession } from '../auth-client.js';
 import { Backfill } from './Backfill.js';
@@ -49,6 +49,37 @@ export function Maintenance() {
   const config = useQuery(configQuery());
   const { data: session } = useSession();
   const address = session?.user.email;
+
+  const queryClient = useQueryClient();
+  const [recounting, setRecounting] = useState(false);
+  const [recounted, setRecounted] = useState<string | null>(null);
+  const [recountError, setRecountError] = useState<string | null>(null);
+
+  /**
+   * Not `run` either, for the reason `requestAccountDeletion` gives: the outcome belongs
+   * under the button that asked for it, not in the result line at the foot of the page,
+   * three sections away from a control that sits near the top.
+   */
+  async function recount() {
+    setRecounting(true);
+    setRecounted(null);
+    setRecountError(null);
+    try {
+      const { corrected } = await api.recountNotes();
+      setRecounted(
+        corrected === 0
+          ? 'Every count was already right.'
+          : `Corrected ${plural(corrected, 'count')}.`,
+      );
+      // Not awaited: the button should stop saying "Recounting…" when the answer is in,
+      // not once every list behind this page has refetched the numbers it corrected.
+      if (corrected > 0) void queryClient.invalidateQueries();
+    } catch (err) {
+      setRecountError((err as Error).message || 'Could not recount.');
+    } finally {
+      setRecounting(false);
+    }
+  }
 
   const [sending, setSending] = useState(false);
   const [sentTo, setSentTo] = useState<string | null>(null);
@@ -107,6 +138,29 @@ export function Maintenance() {
           is changed or deleted, and a pass can be stopped and run again.
         </p>
         <Backfill vision={config.data?.vision === true} />
+      </section>
+
+      {/*
+          Second because it is the other pass that changes nothing a person wrote: the
+          counts are derived from the notes, so the worst a recount can do is put a right
+          number where a wrong one was. Laid out as one of the indexing passes' rows — a
+          small button with its outcome beside it, the same width of button — so the two
+          sections read as one kind of control and their status lines start at one edge.
+      */}
+      <section className="settings-section">
+        <h3>Note counts</h3>
+        <p className="muted small">
+          The numbers beside notebooks and tags are kept up to date as notes change, rather
+          than counted every time they are shown. If one ever looks wrong, this counts them
+          all again from the notes.
+        </p>
+        <div className="backfill-row">
+          <Button size="small" disabled={recounting} onClick={() => void recount()}>
+            {recounting ? 'Recounting…' : 'Recount'}
+          </Button>
+          {recounted && <span className="good small">{recounted}</span>}
+          {recountError && <span className="bad small">{recountError}</span>}
+        </div>
       </section>
 
       <section className="settings-section">

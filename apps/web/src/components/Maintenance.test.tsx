@@ -68,6 +68,41 @@ describe('Maintenance: files not yet searchable', () => {
   });
 });
 
+describe('Maintenance: note counts', () => {
+  afterEach(() => {
+    cleanup();
+    vi.unstubAllGlobals();
+  });
+
+  /**
+   * The recount's answer is shown under its own button. The page's shared result line is
+   * at the foot, three sections away, and "Corrected 2 counts" read there would have to
+   * be connected back up the page by the reader.
+   */
+  it('says under the button whether anything needed correcting', async () => {
+    const answers = [{ corrected: 0 }, { corrected: 2 }];
+    // The page's own counts refetch on mount too; only the recount takes an answer.
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) =>
+        url.startsWith('/api/admin/recount-notes')
+          ? new Response(JSON.stringify(answers.shift()), { status: 200 })
+          : new Response(JSON.stringify({ items: [], cursor: null, total: 3 }), { status: 200 }),
+      ),
+    );
+    harness();
+
+    const button = await screen.findByRole('button', { name: 'Recount' });
+    fireEvent.click(button);
+    const already = await screen.findByText('Every count was already right.');
+    expect(already.closest('.settings-section')?.querySelector('h3')?.textContent).toBe('Note counts');
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Recount' }));
+    expect(await screen.findByText('Corrected 2 counts.')).toBeTruthy();
+    expect(screen.queryByText('Every count was already right.')).toBeNull();
+  });
+});
+
 describe('Maintenance: delete account', () => {
   afterEach(() => {
     cleanup();
