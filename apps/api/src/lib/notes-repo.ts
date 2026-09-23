@@ -277,6 +277,26 @@ export function toFtsQuery(raw: string): string {
 }
 
 /**
+ * The `user_id` condition `list` and `count` open with, bound as `?1`.
+ *
+ * With a tag filter it is written `+n.user_id`: the unary plus is SQLite's documented way
+ * to keep a column's index out of the plan, while still applying the condition. Every
+ * notes index leads with `user_id`, and without statistics the planner takes an equality
+ * on an index's first column to be selective and starts there. On an instance with one
+ * user it matches every row, so a tag on three notes was answered by reading all of them.
+ * Hiding that index leaves the tag's `n.id IN (…)` as the way in, and the query reads the
+ * tagged notes and nothing else.
+ *
+ * Only with a tag. With none, the `user_id` indexes are the ones that return rows in sort
+ * order and let a page stop after fifty. With one, starting from the tag can cost more than
+ * walking the sort index when the tag is on most notes — but never more than the count
+ * beside the first page, which has to read every tagged note anyway.
+ */
+function ownerCondition(tags: string[] | undefined): string {
+  return tags && tags.length > 0 ? '+n.user_id = ?1' : 'n.user_id = ?1';
+}
+
+/**
  * SQL conditions for the `notebook` and `tags` filters, shared by `list` and `search`.
  *
  * Both call sites need identical semantics — a filter has to mean the same thing whether
@@ -332,19 +352,25 @@ function filterConditions(
   }
 
   /*
-   * One EXISTS per tag, AND'd together: the note must carry every one of them.
+   * One IN per tag, AND'd together: the note must carry every one of them.
    *
    * Conjunction is what makes this a widening rather than a change — a single tag
    * produces exactly the clause a single filter produced before, so the existing
    * behaviour is the one-element case rather than a case handled alongside it. Each
    * clause is an independent semi-join on note_tags, so nothing here fans out the row
    * count the way joining the table once per tag would.
+   *
+   * IN rather than a correlated EXISTS because only IN can be the side the query starts
+   * from: tag by name, its note_tags rows, then those notes by primary key. An EXISTS is
+   * evaluated per note, so the query walked every note the user has and asked each one —
+   * a tag on one note cost a read of the whole archive, twice with the count beside it.
+   * The IN alone is not enough, though; see `ownerCondition`.
    */
   for (const tag of opts.tags ?? []) {
     binds.push(tag, userId);
     conditions.push(
-      `EXISTS (SELECT 1 FROM note_tags nt2 JOIN tags t2 ON t2.id = nt2.tag_id
-               WHERE nt2.note_id = n.id AND t2.name = ?${binds.length - 1} AND t2.user_id = ?${binds.length})`,
+      `n.id IN (SELECT nt2.note_id FROM tags t2 JOIN note_tags nt2 ON nt2.tag_id = t2.id
+                 WHERE t2.name = ?${binds.length - 1} AND t2.user_id = ?${binds.length})`,
     );
   }
 
@@ -634,7 +660,7 @@ export class NotesRepo extends ScopedRepo {
     const collate = 'collate' in spec && spec.collate ? ` ${spec.collate.trim()}` : '';
 
     const conditions = [
-      'n.user_id = ?1',
+      ownerCondition(tags),
       trashed ? 'n.deleted_at IS NOT NULL' : 'n.deleted_at IS NULL',
     ];
     const binds: unknown[] = [this.userId];
@@ -752,7 +778,7 @@ export class NotesRepo extends ScopedRepo {
     sortField?: FieldDef;
   }): Promise<number> {
     const conditions = [
-      'n.user_id = ?1',
+      ownerCondition(opts?.tags),
       opts?.trashed ? 'n.deleted_at IS NOT NULL' : 'n.deleted_at IS NULL',
     ];
     const binds: unknown[] = [this.userId];
