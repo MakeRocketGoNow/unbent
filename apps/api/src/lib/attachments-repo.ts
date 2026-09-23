@@ -10,14 +10,48 @@ interface AttachmentRow {
 }
 
 /**
- * The predicate behind `needingVision` and `visionPending`, written once so the count
- * and the list cannot disagree about what is pending. The image types are the vision
- * model's (`VISION_IMAGE_TYPES`), spelled out here because a query cannot take a Set.
+ * The files the vision model has still to read, as two queries whose union is the answer:
+ * behind both `needingVision` and `visionPending`, written once so the count and the list
+ * cannot disagree about what is pending.
+ *
+ * Pictures with no text row, and PDFs whose text layer came back empty and that the model
+ * has not been asked about. This was one predicate over a LEFT JOIN of every attachment to
+ * its text, which SQLite could only answer by walking every attachment the account has.
+ * Split, each half reads its own partial index from 0025, so each costs a row per file
+ * still waiting and nothing once the backlog is read. The halves cannot overlap: one is
+ * pictures, the other PDFs.
+ *
+ * The conditions repeat the indexes' WHERE clauses exactly, which is what lets SQLite use
+ * them. The image types are the vision model's (`VISION_IMAGE_TYPES`), spelled out because
+ * a query cannot take a Set.
+ *
+ * `noteParam` is the placeholder for a note id, for the callers that read one note. Those
+ * name the per-note indexes outright: left to itself the planner prefers 0025's, which are
+ * account-wide, and walks the whole backlog to find the one note's files. `INDEXED BY`
+ * also makes a missing index an error rather than a quiet walk of the archive.
  */
-const VISION_PENDING = `(
-  (a.content_type IN ('image/jpeg', 'image/png', 'image/gif', 'image/webp') AND t.attachment_id IS NULL)
-  OR (a.content_type = 'application/pdf' AND t.text = '' AND t.read_by IS NULL)
-)`;
+function visionPendingHalves(noteParam: string | null): { pictures: string; pdfs: string } {
+  const columns = 'a.id, a.note_id, a.filename, a.content_type, a.size, a.r2_key, a.created_at';
+  const live = 'n.user_id = ?1 AND n.deleted_at IS NULL';
+  return {
+    pictures: `SELECT ${columns}
+                 FROM attachments a${noteParam ? ' INDEXED BY idx_attachments_note' : ''}
+                 JOIN notes n ON n.id = a.note_id
+                WHERE a.user_id = ?1
+                  AND a.content_type IN ('image/jpeg', 'image/png', 'image/gif', 'image/webp')
+                  AND a.has_text = 0
+                  AND ${live}
+                  ${noteParam ? `AND a.note_id = ${noteParam}` : ''}`,
+    pdfs: `SELECT ${columns}
+             FROM attachment_text t${noteParam ? ' INDEXED BY idx_attachment_text_note' : ''}
+             JOIN attachments a ON a.id = t.attachment_id
+             JOIN notes n ON n.id = a.note_id
+            WHERE t.user_id = ?1 AND t.text = '' AND t.read_by IS NULL
+              ${noteParam ? `AND t.note_id = ${noteParam}` : ''}
+              AND a.user_id = ?1 AND a.content_type = 'application/pdf'
+              AND ${live}`,
+  };
+}
 
 /**
  * Attachment metadata for one user.
@@ -267,16 +301,12 @@ export class AttachmentsRepo extends ScopedRepo {
   ): Promise<
     Array<{ id: string; noteId: string; filename: string; contentType: string; size: number; r2Key: string }>
   > {
+    const { pictures, pdfs } = visionPendingHalves(noteId ? '?3' : null);
     const { results } = await this.db
       .prepare(
-        `SELECT a.id, a.note_id, a.filename, a.content_type, a.size, a.r2_key
-           FROM attachments a
-           JOIN notes n ON n.id = a.note_id
-           LEFT JOIN attachment_text t ON t.attachment_id = a.id
-          WHERE a.user_id = ?1 AND n.user_id = ?1 AND n.deleted_at IS NULL
-            AND ${VISION_PENDING}
-            ${noteId ? 'AND a.note_id = ?3' : ''}
-          ORDER BY a.created_at
+        `SELECT id, note_id, filename, content_type, size, r2_key
+           FROM (${pictures} UNION ALL ${pdfs})
+          ORDER BY created_at
           LIMIT ?2`,
       )
       .bind(this.userId, limit, ...(noteId ? [noteId] : []))
@@ -296,15 +326,10 @@ export class AttachmentsRepo extends ScopedRepo {
    * on one note when `noteId` is given, as `pendingTextCount` scopes its count.
    */
   async visionPending(noteId?: string): Promise<number> {
+    const { pictures, pdfs } = visionPendingHalves(noteId ? '?2' : null);
     const row = await this.db
       .prepare(
-        `SELECT COUNT(*) AS pending
-           FROM attachments a
-           JOIN notes n ON n.id = a.note_id
-           LEFT JOIN attachment_text t ON t.attachment_id = a.id
-          WHERE a.user_id = ?1 AND n.user_id = ?1 AND n.deleted_at IS NULL
-            AND ${VISION_PENDING}
-            ${noteId ? 'AND a.note_id = ?2' : ''}`,
+        `SELECT (SELECT COUNT(*) FROM (${pictures})) + (SELECT COUNT(*) FROM (${pdfs})) AS pending`,
       )
       .bind(this.userId, ...(noteId ? [noteId] : []))
       .first<{ pending: number }>();

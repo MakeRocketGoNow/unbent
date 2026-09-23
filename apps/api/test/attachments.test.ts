@@ -779,6 +779,46 @@ describe('pending-vision', () => {
     expect(await count(other)).toBe(0);
   });
 
+  /**
+   * The count's other half, and the trash. The pictures and the PDFs are counted by two
+   * queries over two indexes (0025), so each half needs a file of its own here, and both
+   * have to drop out while their note is in the trash and come back when it is restored.
+   *
+   * The PDF is past the model's PDF cap for the reason the picture above is past its own:
+   * marking a text layer unusable starts a read with the model right away when the file is
+   * small enough, and that is a paid request. 8MB is `MAX_LLM_PDF_BYTES`.
+   */
+  it('counts a PDF its text layer found empty, and nothing in the trash', async () => {
+    const stamp = Date.now();
+    const actor = await signUp(`vision-pdf-${stamp}@example.test`, 'vision-pass-1234', 'V');
+    const note = await createNote(actor, 'Scans');
+    const picture = await upload(actor, note.id, 'big.png', new Uint8Array(7 * 1024 * 1024 + 1), 'image/png');
+    expect(picture.status).toBe(201);
+    const pdf = await upload(actor, note.id, 'blank.pdf', new Uint8Array(8 * 1024 * 1024 + 1), 'application/pdf');
+    expect(pdf.status).toBe(201);
+    expect(await count(actor)).toBe(1);
+
+    const marked = await fetch(`${BASE}/api/notes/${note.id}/files/blank.pdf/text`, {
+      method: 'PUT',
+      headers: { Cookie: actor.cookie, Origin: ORIGIN, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ unusable: true }),
+    });
+    expect(marked.status).toBe(204);
+    expect(await count(actor)).toBe(2);
+
+    await fetch(`${BASE}/api/notes/${note.id}`, {
+      method: 'DELETE',
+      headers: { Cookie: actor.cookie, Origin: ORIGIN },
+    });
+    expect(await count(actor)).toBe(0);
+
+    await fetch(`${BASE}/api/notes/${note.id}/restore`, {
+      method: 'POST',
+      headers: { Cookie: actor.cookie, Origin: ORIGIN },
+    });
+    expect(await count(actor)).toBe(2);
+  });
+
   it('requires a session', async () => {
     const res = await fetch(`${BASE}/api/attachments/pending-vision`, { headers: { Origin: ORIGIN } });
     expect(res.status).toBe(401);
