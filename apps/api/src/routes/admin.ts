@@ -95,4 +95,16 @@ export const admin = new Hono<AppEnv>()
     await deleteKeys(c.env.BLOBS, keys);
 
     return c.json({ scope, notesDeleted: notes, filesDeleted: keys.length });
+  })
+
+  /**
+   * Counts the notes in every notebook and tag again, and the account's totals, and
+   * corrects any stored count that disagrees. Answers with how many did.
+   *
+   * Not destructive, unlike its neighbours: the counts are derived, so the worst a recount
+   * can do is replace a wrong number with the right one. It lives here because it is the
+   * same kind of operation — over the whole account, run by hand from Maintenance.
+   */
+  .post('/admin/recount-notes', requireAuth, withRepos, async (c) => {
+    return c.json({ corrected: await c.get('notes').recountNotes() });
   });

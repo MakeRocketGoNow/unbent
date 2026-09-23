@@ -54,6 +54,7 @@ export const notes = new Hono<AppEnv>()
       from,
       to,
       sortField: sortFieldId,
+      exact,
     } = c.req.valid('query');
     const repo = c.get('notes');
     /*
@@ -71,7 +72,7 @@ export const notes = new Hono<AppEnv>()
       repo.list({ limit, cursor, tags, notebook, fields, trashed, sort, order, from, to, ...bySort }),
       // Only counted on the first page: a paging client already knows the total, and this
       // is a second query on a hot path.
-      cursor ? Promise.resolve<number | null>(null) : repo.count(filter),
+      cursor ? Promise.resolve<number | null>(null) : repo.count({ ...filter, exact }),
     ]);
 
     // The cursor is derived from the sort that produced the page, so the two cannot

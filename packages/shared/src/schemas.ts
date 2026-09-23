@@ -430,6 +430,15 @@ export const listNotesQuerySchema = z.object({
     .string()
     .optional()
     .transform((v) => v === '1'),
+  /**
+   * Count `total` from the notes themselves rather than read the stored count. For a
+   * confirmation that names how many notes an action will destroy; everything else takes
+   * the stored count, which costs one row instead of one per note. Same "1" rule.
+   */
+  exact: z
+    .string()
+    .optional()
+    .transform((v) => v === '1'),
 });
 
 /**
