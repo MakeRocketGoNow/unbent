@@ -1,5 +1,7 @@
+import { readFileSync, readdirSync } from 'node:fs';
 import { createRequire } from 'node:module';
-import { defineConfig } from 'vite';
+import { dirname, join } from 'node:path';
+import { defineConfig, type Plugin } from 'vite';
 import react from '@vitejs/plugin-react';
 import { tanstackRouter } from '@tanstack/router-plugin/vite';
 
@@ -15,6 +17,49 @@ const decodeEntitiesNodeBuild = require
   .replace(/index\.dom\.js$/, 'index.js');
 
 /**
+ * pdf.js's WebAssembly image decoders, served at a fixed path the renderer points
+ * `wasmUrl` at (see `src/pdf/render.ts`).
+ *
+ * pdf.js 6 decodes JBIG2 and CCITT fax images — the 1-bit encodings every B&W document
+ * scanner writes — and JPEG 2000 with these modules, and without them it drops the image
+ * and draws the page blank. It builds each file's URL from a base directory, so they
+ * cannot go through Vite's hashed `?url` imports: they are served as-is in development
+ * and copied under the same path into the build.
+ */
+const PDFJS_WASM_PATH = '/pdfjs/wasm/';
+const pdfjsWasmDir = join(dirname(require.resolve('pdfjs-dist/package.json')), 'wasm');
+
+function pdfjsWasm(): Plugin {
+  // quickjs is the PDF-scripting engine, which the app never enables.
+  const files = readdirSync(pdfjsWasmDir).filter(
+    (name) => /\.(wasm|js)$/.test(name) && !name.startsWith('quickjs'),
+  );
+  return {
+    name: 'unbent:pdfjs-wasm',
+    configureServer(server) {
+      server.middlewares.use(PDFJS_WASM_PATH, (req, res, next) => {
+        const name = (req.url ?? '').replace(/^\//, '').split('?')[0] ?? '';
+        if (!files.includes(name)) return next();
+        res.setHeader(
+          'Content-Type',
+          name.endsWith('.wasm') ? 'application/wasm' : 'text/javascript',
+        );
+        res.end(readFileSync(join(pdfjsWasmDir, name)));
+      });
+    },
+    generateBundle() {
+      for (const name of files) {
+        this.emitFile({
+          type: 'asset',
+          fileName: `${PDFJS_WASM_PATH.slice(1)}${name}`,
+          source: readFileSync(join(pdfjsWasmDir, name)),
+        });
+      }
+    },
+  };
+}
+
+/**
  * Ports come from the environment so that a second checkout can run its own pair.
  * `scripts/dev.mjs` derives them from the worktree; started by hand, the defaults are the
  * main checkout's.
@@ -28,6 +73,7 @@ export default defineConfig({
     // the React plugin has to see the generated file rather than race it.
     tanstackRouter({ target: 'react', autoCodeSplitting: true }),
     react(),
+    pdfjsWasm(),
   ],
   resolve: {
     // better-auth/react is a linked workspace dependency with its own nested react

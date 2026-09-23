@@ -74,6 +74,14 @@ export async function loadPdf(url: string, signal?: AbortSignal): Promise<Loaded
      * real glyphs the page draws with substituted fonts and wrong metrics.
      */
     isEvalSupported: false,
+    /**
+     * Where the image decoders live; `vite.config.ts` serves them there.
+     *
+     * Without this every JBIG2 or CCITT fax image fails to decode — pdf.js 6 handles
+     * both in WebAssembly — and a black-and-white scan renders as a blank white page,
+     * with only its invisible OCR text layer drawn.
+     */
+    wasmUrl: '/pdfjs/wasm/',
   } as Parameters<typeof lib.getDocument>[0]);
 
   const doc = await task.promise;
