@@ -34,8 +34,8 @@ function harness(config: Partial<AppConfig> = { accountDeletion: true }) {
   // Seeded rather than fetched: jsdom has no server, and these three are the only queries
   // the panel reads — the indexing section asks for a fourth only where `vision` is set.
   client.setQueryData(keys.config(), { providers: ['password'], ...config });
-  client.setQueryData(keys.trashCount(), 0);
-  client.setQueryData(keys.noteCount(), 3);
+  client.setQueryData(keys.exactCount({ trashed: true }), { items: [], cursor: null, total: 0 });
+  client.setQueryData(keys.exactCount({}), { items: [], cursor: null, total: 3 });
 
   const rootRoute = createRootRoute({ component: () => <Maintenance /> });
   const router = createRouter({

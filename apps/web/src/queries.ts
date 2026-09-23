@@ -67,7 +67,12 @@ export const keys = {
   notebookFields: (notebookId: string) => ['notebook-fields', notebookId] as const,
   trash: () => ['trash'] as const,
   trashCount: () => ['trash', 'count'] as const,
-  noteCount: () => ['notes', 'count'] as const,
+  /**
+   * Under `trash` for the trash and `notes` for the rest, so the invalidations those roots
+   * already get on every trash, restore, move and save reach these too.
+   */
+  exactCount: (filter: ExactCountFilter) =>
+    filter.trashed ? (['trash', 'exact-count'] as const) : (['notes', 'exact-count', filter] as const),
   search: (q: string, filter: NoteFilter = {}) => ['search', q, filter] as const,
   config: () => ['config'] as const,
   pendingImages: () => ['pending-images'] as const,
@@ -255,16 +260,33 @@ export const searchQuery = (q: string, filter: NoteFilter = {}) =>
     enabled: q.trim() !== '',
   });
 
+/** One of the scopes a destructive action names a count for; empty means every live note. */
+export interface ExactCountFilter {
+  notebook?: string;
+  tag?: string;
+  trashed?: boolean;
+}
+
 /**
- * How many live notes exist.
+ * How many notes a scope holds, counted from the notes themselves.
  *
- * Sibling of `trashCountQuery`, and asked for the same reason: a destructive button that
- * names its blast radius before you press it is worth more than the confirm that follows.
- * Only the total is used, so this asks for a single row.
+ * Every other count in the app is the one the server keeps as notes change (0023), which
+ * is one row to read instead of one per note. This is for the number a destructive action
+ * names before it runs — "Permanently delete 47 notes", "Its 12 notes will become
+ * unfiled" — where a stored count that had somehow drifted would be telling the user
+ * something false at the moment they decide. Only the total is used, so it asks for one
+ * row of the list.
  */
-export const noteCountQuery = () =>
+export const exactCountQuery = (filter: ExactCountFilter = {}) =>
   queryOptions({
-    queryKey: keys.noteCount(),
-    queryFn: () => api.listNotes({ limit: 1 }),
+    queryKey: keys.exactCount(filter),
+    queryFn: () =>
+      api.listNotes({
+        ...(filter.notebook ? { notebook: filter.notebook } : {}),
+        ...(filter.tag ? { tag: [filter.tag] } : {}),
+        ...(filter.trashed ? { trashed: true } : {}),
+        limit: 1,
+        exact: true,
+      }),
     select: (page) => page.total ?? 0,
   });

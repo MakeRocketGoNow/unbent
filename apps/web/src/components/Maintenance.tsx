@@ -7,7 +7,7 @@ import { Backfill } from './Backfill.js';
 import { Confirm } from './Confirm.js';
 import { Button } from './Button.js';
 import { useMaintenance } from './use-maintenance.js';
-import { configQuery, noteCountQuery, trashCountQuery } from '../queries.js';
+import { configQuery, exactCountQuery } from '../queries.js';
 
 type Pending = 'trashed' | 'all' | 'account' | null;
 
@@ -35,8 +35,9 @@ export function Maintenance() {
   const [sweep, setSweep] = useState<api.GcResult | null>(null);
   const { busy, result, error, run, reset } = useMaintenance();
 
-  const trashCount = useQuery(trashCountQuery());
-  const noteCount = useQuery(noteCountQuery());
+  // Counted from the notes, not read from the stored counts: see `exactCountQuery`.
+  const trashCount = useQuery(exactCountQuery({ trashed: true }));
+  const noteCount = useQuery(exactCountQuery());
   const trashed = trashCount.data ?? 0;
   const notes = noteCount.data ?? 0;
 

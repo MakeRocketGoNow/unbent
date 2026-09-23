@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import * as api from '../notes-api.js';
 import { Confirm } from './Confirm.js';
 import { LabelEditor } from './LabelEditor.js';
+import { useExactCount } from './use-exact-count.js';
 
 interface TagsProps {
   /** Called after any change, so every note list and open note refetch their tags. */
@@ -84,6 +85,16 @@ export function Tags({ onChanged }: TagsProps) {
 
   const other = pendingMerge && tags?.find((t) => t.name === pendingMerge.into);
   const noteLabel = (n: number) => `${n} note${n === 1 ? '' : 's'}`;
+  // What each confirm names, counted from the notes once it opens; see `useExactCount`.
+  const mergeCount = useExactCount(
+    pendingMerge ? { tag: pendingMerge.tag.name } : null,
+    pendingMerge?.tag.count ?? 0,
+  );
+  const otherCount = useExactCount(other ? { tag: other.name } : null, other ? other.count : 0);
+  const deleteCount = useExactCount(
+    pendingDelete ? { tag: pendingDelete.name } : null,
+    pendingDelete?.count ?? 0,
+  );
 
   return (
     <div className="panel">
@@ -117,7 +128,7 @@ export function Tags({ onChanged }: TagsProps) {
               <strong>{pendingMerge.tag.name}</strong> into it?
             </>
           }
-          detail={`The ${noteLabel(pendingMerge.tag.count)} tagged ${pendingMerge.tag.name} will be tagged ${pendingMerge.into} instead${other ? `, joining its ${noteLabel(other.count)}` : ''}. This cannot be undone.`}
+          detail={`The ${noteLabel(mergeCount)} tagged ${pendingMerge.tag.name} will be tagged ${pendingMerge.into} instead${other ? `, joining its ${noteLabel(otherCount)}` : ''}. This cannot be undone.`}
           busy={busy}
           onCancel={() => setPendingMerge(null)}
           actions={[
@@ -146,8 +157,8 @@ export function Tags({ onChanged }: TagsProps) {
             </>
           }
           detail={
-            pendingDelete.count > 0
-              ? `It comes off ${noteLabel(pendingDelete.count)}. The notes themselves stay.`
+            deleteCount > 0
+              ? `It comes off ${noteLabel(deleteCount)}. The notes themselves stay.`
               : 'No live notes carry it.'
           }
           busy={busy}

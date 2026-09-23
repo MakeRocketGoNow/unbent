@@ -11,6 +11,7 @@ import { Confirm } from './Confirm.js';
 import { Button } from './Button.js';
 import { BackArrow } from './BackArrow.js';
 import { useMaintenance } from './use-maintenance.js';
+import { useExactCount } from './use-exact-count.js';
 import { useSelection } from '../useSelection.js';
 import { SelectionBar } from './SelectionBar.js';
 import { RestoreIcon, TrashIcon } from './icons.js';
@@ -41,6 +42,8 @@ export function TrashLayout({ children }: { children: React.ReactNode }) {
 
   const notes = list.data?.pages.flatMap((p) => p.items) ?? [];
   const total = list.data?.pages[0]?.total ?? notes.length;
+  // The number emptying the trash names, counted from the notes; see `useExactCount`.
+  const toEmpty = useExactCount(pending === 'all' ? { trashed: true } : null, total);
 
   /*
    * Several at once, as the note list has it — see `useSelection`. Restoring a dozen
@@ -166,7 +169,7 @@ export function TrashLayout({ children }: { children: React.ReactNode }) {
         {pending === 'all' && (
           <Confirm
             label="Confirm empty trash"
-            question={`Permanently delete all ${total} note${total === 1 ? '' : 's'} and their attachments?`}
+            question={`Permanently delete all ${toEmpty} note${toEmpty === 1 ? '' : 's'} and their attachments?`}
             detail="This cannot be undone. Restore anything you want to keep first."
             busy={empty.busy}
             onCancel={() => setPending(null)}

@@ -107,6 +107,8 @@ export async function listNotes(
     sortField?: string;
     from?: string;
     to?: string;
+    /** Count `total` from the notes rather than read the stored count; see `exactCountQuery`. */
+    exact?: boolean;
   } = {},
 ): Promise<NotePage> {
   const params = new URLSearchParams();
@@ -121,6 +123,7 @@ export async function listNotes(
   if (opts.from) params.set('from', opts.from);
   if (opts.to) params.set('to', opts.to);
   if (opts.trashed) params.set('trashed', '1');
+  if (opts.exact) params.set('exact', '1');
   if (opts.limit) params.set('limit', String(opts.limit));
   const qs = params.toString();
   return json<NotePage>(await fetch(`/api/notes${qs ? `?${qs}` : ''}`));
