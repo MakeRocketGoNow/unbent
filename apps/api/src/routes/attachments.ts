@@ -10,7 +10,7 @@ import {
 } from '@unbent/shared';
 import { z } from 'zod';
 import { copyAttachments } from '../lib/copy-attachments.js';
-import { readWithLlm, readersFrom } from '../lib/read-attachment.js';
+import { readPendingFiles, readWithLlm, readersFrom } from '../lib/read-attachment.js';
 import { canUseLlm, readableByLlm } from '../lib/llm.js';
 import { fetchWebImage } from '../lib/web-image.js';
 import { requireAuth } from '../lib/session.js';
@@ -337,42 +337,33 @@ export const attachments = new Hono<AppEnv>()
    * paid request, so nothing that treats GET as safe may start one on its own. It is
    * what the Import panel's button runs, never the pass a tab opening starts — see
    * `startIndexing`.
+   *
+   * `note` narrows the pass to one note's files, as `pending-text` narrows the browser's,
+   * and `remaining` then counts only that note's. Unscoped, this walks the whole account
+   * oldest first, which on a real archive is a thousand paid requests — the right thing
+   * for a person who pressed the button to see the count fall, and the wrong thing for
+   * anything that only wanted the note in front of it.
    */
   .post(
     '/attachments/read',
     requireAuth,
     withRepos,
-    zValidator('json', z.object({ limit: z.number().int().min(1).max(10).default(3) })),
+    zValidator(
+      'json',
+      z.object({
+        limit: z.number().int().min(1).max(10).default(3),
+        note: z.string().min(1).max(128).optional(),
+      }),
+    ),
     async (c) => {
       if (!canUseLlm(c.env)) {
         return c.json({ error: 'Reading images is not set up on this instance' }, 503);
       }
       const repo = c.get('attachments');
-      const { llm } = readersFrom(c.env);
-      const counts = { read: 0, empty: 0, failed: 0 };
-      for (const file of await repo.needingVision(c.req.valid('json').limit)) {
-        try {
-          if (!readableByLlm(file.contentType, file.size)) {
-            // Past the caps: recorded as the model's empty answer, so it is not offered again.
-            await repo.recordText({ attachmentId: file.id, noteId: file.noteId, filename: file.filename, text: '', readBy: 'vision' });
-            counts.empty += 1;
-            continue;
-          }
-          const stored = await c.env.BLOBS.get(file.r2Key);
-          if (!stored) {
-            counts.failed += 1;
-            continue;
-          }
-          const outcome = await readWithLlm(llm!, repo, file, await stored.arrayBuffer());
-          counts[outcome === 'vision' ? 'read' : 'empty'] += 1;
-        } catch (err) {
-          // One unreadable file must not stop the pass; it stays pending for the next. The
-          // id rather than the name, which comes from the archive and can say too much.
-          console.error('read:', file.id, (err as Error).message);
-          counts.failed += 1;
-        }
-      }
-      return c.json({ ...counts, remaining: await repo.visionPending() });
+      const { limit, note } = c.req.valid('json');
+      const files = (await repo.needingVision(limit, note)).map((f) => ({ ...f, pending: 'vision' as const }));
+      const { read, empty, failed } = await readPendingFiles(c.env.BLOBS, readersFrom(c.env), repo, files);
+      return c.json({ read, empty, failed, remaining: await repo.visionPending(note) });
     },
   )
 
