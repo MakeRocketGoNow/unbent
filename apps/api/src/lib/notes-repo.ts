@@ -798,9 +798,18 @@ export class NotesRepo extends ScopedRepo {
       .first<NoteRow & { fields: string | null }>();
     if (!row) return null;
 
+    /*
+     * CROSS JOIN is SQLite's way of fixing the join order, and the order is the point.
+     * Written as a plain JOIN, the planner walked the user's whole tag list through the
+     * UNIQUE(user_id, name) index — it is already in name order, so the ORDER BY came
+     * free — and probed note_tags once per tag. That is every tag the user owns, read to
+     * return two or three: on an archive with three hundred tags, opening a note read
+     * three hundred rows, and D1 bills for every one. Starting from note_tags reads this
+     * note's rows and sorts a handful of names.
+     */
     const { results } = await this.db
       .prepare(
-        `SELECT t.name FROM note_tags nt JOIN tags t ON t.id = nt.tag_id
+        `SELECT t.name FROM note_tags nt CROSS JOIN tags t ON t.id = nt.tag_id
           WHERE nt.note_id = ?1 AND t.user_id = ?2 ORDER BY t.name`,
       )
       .bind(id, this.userId)
