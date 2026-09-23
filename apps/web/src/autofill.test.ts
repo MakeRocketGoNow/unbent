@@ -96,6 +96,14 @@ describe('recognising a placeholder title', () => {
     expect(isPlaceholderTitle('2026-09-18')).toBe(true);
   });
 
+  it('treats a scanner timestamp that kept its file extension as a placeholder', () => {
+    // How a scan imported from Evernote is titled: the whole file name, extension and all.
+    expect(isPlaceholderTitle('2014_03_07_09_12_44.pdf')).toBe(true);
+    expect(isPlaceholderTitle('2014_03_07_09_12_44.PDF')).toBe(true);
+    expect(isPlaceholderTitle('2014_03_07_09_12_44.jpeg')).toBe(true);
+    expect(isPlaceholderTitle('2014-03-07.pdf')).toBe(true);
+  });
+
   it('leaves a title someone chose alone, even one that opens with a year', () => {
     expect(isPlaceholderTitle('Acme Hardware')).toBe(false);
     expect(isPlaceholderTitle('2026 tax plan')).toBe(false);
@@ -103,13 +111,19 @@ describe('recognising a placeholder title', () => {
     // Out-of-range parts are not a real stamp, so not a placeholder.
     expect(isPlaceholderTitle('2026_13_40_15_38_48')).toBe(false);
     expect(isPlaceholderTitle('2026_09_18_99_38_48')).toBe(false);
+    // An extension only rides on a complete stamp; it widens nothing else.
+    expect(isPlaceholderTitle('2026 tax plan.pdf')).toBe(false);
+    expect(isPlaceholderTitle('2026-09-18 Water bill.pdf')).toBe(false);
+    expect(isPlaceholderTitle('2014_03_07_09_12_44.pdf.pdf')).toBe(false);
+    expect(isPlaceholderTitle('2014_03_07_09_12_44.')).toBe(false);
   });
 
   it('fills a scanner-titled note without offering to replace the title', () => {
-    const scanned: NoteDraft = { ...fresh, title: '2026_09_18_15_38_48' };
-    const { fill, replace } = planAutofill(scanned, suggestion);
-    expect(fill.title).toBe('Acme Hardware');
-    expect(replace.title).toBeUndefined();
+    for (const title of ['2026_09_18_15_38_48', '2014_03_07_09_12_44.pdf']) {
+      const { fill, replace } = planAutofill({ ...fresh, title }, suggestion);
+      expect(fill.title).toBe('Acme Hardware');
+      expect(replace.title).toBeUndefined();
+    }
   });
 });
 
