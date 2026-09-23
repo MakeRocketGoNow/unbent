@@ -273,6 +273,34 @@ describe('attachment text', () => {
     return note;
   }
 
+  /** A note holding a PDF nothing has read yet: what the backfill is there to find. */
+  async function noteWithUnreadPdf(actor: Actor): Promise<{ id: string }> {
+    const note = await createNote(actor, { title: 'Unread scan', body: '' });
+    const res = await fetch(`${BASE}/api/notes/${note.id}/files`, {
+      method: 'PUT',
+      headers: {
+        Cookie: actor.cookie,
+        Origin: ORIGIN,
+        'X-Filename': 'unread.pdf',
+        'Content-Type': 'application/pdf',
+      },
+      body: 'PDFBYTES',
+    });
+    expect(res.ok).toBe(true);
+    return note;
+  }
+
+  async function pendingText(actor: Actor, note?: string) {
+    const res = await fetch(
+      `${BASE}/api/attachments/pending-text${note ? `?note=${note}` : ''}`,
+      { headers: { Cookie: actor.cookie, Origin: ORIGIN } },
+    );
+    return (await res.json()) as {
+      pending: Array<{ noteId: string; filename: string }>;
+      remaining: number;
+    };
+  }
+
   it('finds a note by text that exists only inside its attachment', async () => {
     const token = `onlyinpdf${Date.now()}`;
     const note = await noteWithText(alice, token);
@@ -414,13 +442,15 @@ describe('attachment text', () => {
   });
 
   it('does not offer another user attachments for backfill', async () => {
-    await noteWithText(alice, `mine${Date.now()}`);
-    const res = await fetch(`${BASE}/api/attachments/pending-text`, {
-      headers: { Cookie: bob.cookie, Origin: ORIGIN },
-    }).then((r) => r.json());
-    expect(res.pending.every((p: { noteId: string }) => p.noteId)).toBe(true);
-    // Bob has no PDFs of his own, so nothing is offered.
-    expect(res.extractable).toBe(0);
+    // Unread, so that it would be both listed and counted if it leaked. A PDF with text is
+    // neither, and would pass this whether or not the query were scoped.
+    const hers = await noteWithUnreadPdf(alice);
+    expect((await pendingText(alice)).pending.map((p) => p.noteId)).toContain(hers.id);
+
+    // Bob has no PDFs of his own, so nothing is offered and nothing is left.
+    const res = await pendingText(bob);
+    expect(res.pending).toEqual([]);
+    expect(res.remaining).toBe(0);
   });
 
   /**
@@ -450,7 +480,6 @@ describe('attachment text', () => {
     }).then((r) => r.json());
     expect(scoped.pending).toEqual([{ noteId: first.id, filename: 'scan.pdf' }]);
     expect(scoped.remaining).toBe(1);
-    expect(scoped.extractable).toBe(1);
 
     const all = await fetch(`${BASE}/api/attachments/pending-text`, {
       headers: { Cookie: actor.cookie, Origin: ORIGIN },
@@ -459,12 +488,51 @@ describe('attachment text', () => {
   });
 
   it('does not reveal another user\'s note through the note scope', async () => {
-    const mine = await noteWithText(alice, `scoped${Date.now()}`);
-    const res = await fetch(`${BASE}/api/attachments/pending-text?note=${mine.id}`, {
-      headers: { Cookie: bob.cookie, Origin: ORIGIN },
-    }).then((r) => r.json());
+    // Unread for the reason the test above gives: a leak has to be able to show.
+    const mine = await noteWithUnreadPdf(alice);
+    expect((await pendingText(alice, mine.id)).remaining).toBe(1);
+
+    const res = await pendingText(bob, mine.id);
     expect(res.pending).toEqual([]);
-    expect(res.extractable).toBe(0);
+    expect(res.remaining).toBe(0);
+  });
+
+  /**
+   * A copy carries its source's text (see `copyText`), and 0024's trigger has to see that
+   * insert: were the copy offered again, the pass would fetch its bytes back from R2 and
+   * read them a second time for text the server already had.
+   */
+  it('does not offer a copied file whose source was already read', async () => {
+    const actor = await signUp(`copied-${Date.now()}@example.test`, 'copied-pass-123', 'C');
+    const source = await createNote(actor, { title: 'Source', body: '' });
+    const target = await createNote(actor, { title: 'Target', body: '' });
+    await fetch(`${BASE}/api/notes/${source.id}/files`, {
+      method: 'PUT',
+      headers: {
+        Cookie: actor.cookie,
+        Origin: ORIGIN,
+        'X-Filename': 'read.pdf',
+        'Content-Type': 'application/pdf',
+      },
+      body: 'PDFBYTES',
+    });
+    await fetch(`${BASE}/api/notes/${source.id}/files/read.pdf/text`, {
+      method: 'PUT',
+      headers: { Cookie: actor.cookie, Origin: ORIGIN, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text: 'already read' }),
+    });
+    expect((await pendingText(actor)).remaining).toBe(0);
+
+    const copied = await fetch(`${BASE}/api/notes/${target.id}/files/copy`, {
+      method: 'POST',
+      headers: { Cookie: actor.cookie, Origin: ORIGIN, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ from: source.id, filenames: ['read.pdf'] }),
+    });
+    expect(copied.ok).toBe(true);
+
+    const after = await pendingText(actor);
+    expect(after.pending).toEqual([]);
+    expect(after.remaining).toBe(0);
   });
 
   it('scopes an attachment hit to the notebook filter', async () => {

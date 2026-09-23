@@ -218,17 +218,18 @@ export class AttachmentsRepo extends ScopedRepo {
   ): Promise<
     Array<{ id: string; noteId: string; filename: string; contentType: string; size: number; r2Key: string }>
   > {
+    // `content_type` and `has_text` are written exactly as 0024's partial index states
+    // them, which is what lets SQLite use it: the walk is over unread PDFs alone, in order,
+    // instead of every PDF with a lookup each to see whether it has text.
     const { results } = await this.db
       .prepare(
         `SELECT a.id, a.note_id, a.filename, a.content_type, a.size, a.r2_key
            FROM attachments a
            JOIN notes n ON n.id = a.note_id
-           LEFT JOIN attachment_text at ON at.attachment_id = a.id
           WHERE a.user_id = ?1
+            AND a.content_type = 'application/pdf' AND a.has_text = 0
             AND n.user_id = ?1
             AND n.deleted_at IS NULL
-            AND a.content_type = 'application/pdf'
-            AND at.attachment_id IS NULL
             ${noteId ? 'AND a.note_id = ?3' : ''}
           ORDER BY a.created_at
           LIMIT ?2`,
@@ -292,7 +293,7 @@ export class AttachmentsRepo extends ScopedRepo {
 
   /**
    * How many files `needingVision` would still offer, for a pass to say what is left —
-   * on one note when `noteId` is given, as `textCoverage` scopes its count.
+   * on one note when `noteId` is given, as `pendingTextCount` scopes its count.
    */
   async visionPending(noteId?: string): Promise<number> {
     const row = await this.db
@@ -311,28 +312,30 @@ export class AttachmentsRepo extends ScopedRepo {
   }
 
   /**
-   * Counts of extractable attachments and how many already have text.
+   * How many PDFs `needingText` would still offer, for a pass to say what is left.
    *
    * Scoped to one note when `noteId` is given, so a caller that asked for one note's
    * pending files is told how many that note has left rather than how many the account has.
+   *
+   * This counts only what is unread, through the same partial index as `needingText`.
+   * It replaced a count of every PDF and of every PDF with text, whose difference was the
+   * one number any caller used; producing the other two meant reading every PDF, on
+   * every open of the app.
    */
-  async textCoverage(noteId?: string): Promise<{ extractable: number; indexed: number }> {
+  async pendingTextCount(noteId?: string): Promise<number> {
     const row = await this.db
       .prepare(
-        `SELECT
-           COUNT(*) AS extractable,
-           SUM(CASE WHEN at.attachment_id IS NOT NULL THEN 1 ELSE 0 END) AS indexed
-         FROM attachments a
-         JOIN notes n ON n.id = a.note_id
-         LEFT JOIN attachment_text at ON at.attachment_id = a.id
-        WHERE a.user_id = ?1 AND n.user_id = ?1 AND n.deleted_at IS NULL
-          AND a.content_type = 'application/pdf'
-          ${noteId ? 'AND a.note_id = ?2' : ''}`,
+        `SELECT COUNT(*) AS pending
+           FROM attachments a
+           JOIN notes n ON n.id = a.note_id
+          WHERE a.user_id = ?1
+            AND a.content_type = 'application/pdf' AND a.has_text = 0
+            AND n.user_id = ?1 AND n.deleted_at IS NULL
+            ${noteId ? 'AND a.note_id = ?2' : ''}`,
       )
       .bind(this.userId, ...(noteId ? [noteId] : []))
-      .first<{ extractable: number; indexed: number | null }>();
-
-    return { extractable: row?.extractable ?? 0, indexed: row?.indexed ?? 0 };
+      .first<{ pending: number }>();
+    return row?.pending ?? 0;
   }
 
   /**
