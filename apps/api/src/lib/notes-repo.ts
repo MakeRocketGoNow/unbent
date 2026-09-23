@@ -1999,17 +1999,26 @@ export class NotesRepo extends ScopedRepo {
    * selector and the management page.
    */
   async listNotebooks(): Promise<NotebookSummary[]> {
+    /*
+     * The counts come from one grouped pass over the notes index rather than a join per
+     * notebook. The join counted `n.id`, which the index does not carry, so every live
+     * note was read twice — its index entry and then its row — to count it once. This
+     * reads the index only. Still one read per filed note, because that is what a count
+     * is in SQLite; the sidebar asks for this often, so the half it saves is worth having.
+     */
     const { results } = await this.db
       .prepare(
         `SELECT nb.id, nb.name, nb.purpose,
-                COUNT(n.id) AS count,
+                COALESCE(c.count, 0) AS count,
                 (SELECT COUNT(*) FROM notebook_fields f
                   WHERE f.notebook_id = nb.id AND f.deleted_at IS NULL) AS fields
            FROM notebooks nb
-           LEFT JOIN notes n
-             ON n.notebook_id = nb.id AND n.deleted_at IS NULL AND n.user_id = ?1
+           LEFT JOIN (SELECT notebook_id, COUNT(*) AS count
+                        FROM notes
+                       WHERE user_id = ?1 AND deleted_at IS NULL AND notebook_id IS NOT NULL
+                       GROUP BY notebook_id) c
+             ON c.notebook_id = nb.id
           WHERE nb.user_id = ?1
-          GROUP BY nb.id, nb.name, nb.purpose
           ORDER BY nb.name COLLATE NOCASE`,
       )
       .bind(this.userId)
