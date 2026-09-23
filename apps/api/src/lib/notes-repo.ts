@@ -702,9 +702,20 @@ export class NotesRepo extends ScopedRepo {
         // Past the boundary in the sort's own order; for a field sort the valueless
         // rows still lie ahead, so a NULL passes too.
         const nullsAhead = byField ? `${spec.column} IS NULL OR ` : '';
+        /*
+         * The same condition with a plain range in front, for the sorts with an index.
+         * SQLite cannot seek into an index through the OR above when the column carries
+         * a collation, so a page deep into the title sort walked every title before it —
+         * thousands of rows read for fifty. `key >= K` is one it can seek on, and the OR
+         * behind it then only settles the ties. Not for a field sort: its NULLs sit past
+         * every value, where no range on the value reaches them.
+         */
         conditions.push(
-          `(${nullsAhead}${spec.column}${collate} ${op} ${keyBind}` +
-            ` OR (${spec.column}${collate} = ${keyBind} AND n.id ${op} ${idBind}))`,
+          byField
+            ? `(${nullsAhead}${spec.column}${collate} ${op} ${keyBind}` +
+                ` OR (${spec.column}${collate} = ${keyBind} AND n.id ${op} ${idBind}))`
+            : `${spec.column}${collate} ${op}= ${keyBind}` +
+                ` AND (${spec.column}${collate} ${op} ${keyBind} OR n.id ${op} ${idBind})`,
         );
       }
     }
