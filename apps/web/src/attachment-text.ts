@@ -4,7 +4,7 @@ import { ApiError, httpErrorMessage } from './notes-api.js';
 /**
  * Extracting attachment text for search, wherever that happens to run.
  *
- * pdf.js lives in the browser, so extraction does too — the Import panel's button, the
+ * pdf.js lives in the browser, so extraction does too — Maintenance's button, the
  * pass the app makes on open, the editor after an upload, and the page the Android app
  * hosts all need the same loop and the same two calls. This module is that loop, written
  * against nothing but `fetch`, so it runs in a Web Worker and on a page's own thread alike.

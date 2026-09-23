@@ -12,7 +12,7 @@ import { postToApp } from '../app-bridge.js';
  * the files to the API — so nothing extracts their text the way the editor does for its
  * own uploads. pdf.js is the one extractor this project has and it lives in the browser;
  * the app has a browser. So after the upload the app loads this page, off screen, with
- * the note's id, and it does for that one note what the Import panel's button does for
+ * the note's id, and it does for that one note what Maintenance's button does for
  * the account.
  *
  * `note` is required: this page is never a backlog runner. A phone must not be handed

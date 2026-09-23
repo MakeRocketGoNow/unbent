@@ -6,11 +6,11 @@ import { useIndexing } from '../index-files.js';
  *
  * Renders nothing unless there is something to say: a pass in progress, or a backlog the
  * pass on open left alone because it was more than it will download unasked. That second
- * case is a link, because the way to run the backlog is the Import panel's button and
- * this takes you there — navigation, so a link and not a button.
+ * case is a link, because the way to run the backlog is Maintenance's button and this
+ * takes you there — navigation, so a link and not a button.
  *
- * Idle and finished are silent. A search that finds text inside a PDF is the evidence
- * that the pass worked; a line saying so would be noise on every open.
+ * Idle, finished and stopped are silent. A search that finds text inside a PDF is the
+ * evidence that the pass worked; a line saying so would be noise on every open.
  */
 export function IndexingStatus() {
   const indexing = useIndexing();
@@ -36,7 +36,7 @@ export function IndexingStatus() {
 
   if (indexing.status === 'deferred') {
     return (
-      <Link to="/settings/import" className="sidebar-status">
+      <Link to="/settings/maintenance" className="sidebar-status">
         {indexing.remaining} PDFs not yet searchable
       </Link>
     );

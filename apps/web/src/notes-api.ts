@@ -571,6 +571,15 @@ export async function readPendingFiles(limit = 3): Promise<ReadPass> {
   );
 }
 
+/**
+ * How many files still wait for the server's vision model: what a reading pass would
+ * cost, in requests, before one is started. Free to ask, unlike the pass.
+ */
+export async function pendingImages(): Promise<number> {
+  const { remaining } = await json<{ remaining: number }>(await fetch('/api/attachments/pending-vision'));
+  return remaining;
+}
+
 /** Attachment metadata for one note — includes files no longer linked in the body. */
 export async function listAttachments(noteId: string): Promise<AttachmentInfo[]> {
   const { files } = await json<{ files: AttachmentInfo[] }>(

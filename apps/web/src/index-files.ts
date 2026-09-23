@@ -19,7 +19,11 @@ import type { ImportEvent, ImportRequest } from './import-worker.js';
  * the real one.
  */
 
-export type IndexingStatus = 'idle' | 'running' | 'done' | 'deferred' | 'error';
+/**
+ * `stopped` is a pass the person ended, keeping whatever it had done by then. Not `error`,
+ * which is a pass that ended itself, and not `done`, which promises nothing was left.
+ */
+export type IndexingStatus = 'idle' | 'running' | 'done' | 'stopped' | 'deferred' | 'error';
 
 export interface IndexingState {
   status: IndexingStatus;
@@ -34,17 +38,36 @@ export interface IndexingState {
   images: { read: number; remaining: number } | null;
   /** How many files a deferred pass left alone; see `AUTO_INDEX_LIMIT`. */
   remaining: number;
+  /**
+   * A stop has been asked for and the pass has not ended yet. Set for as long as the file,
+   * or the server's request, in flight takes to land — seconds, for the images — so the
+   * screen can say the press was heard rather than look as if it was ignored.
+   */
+  stopping: boolean;
   error: string | null;
 }
 
 export interface Indexing {
   /**
-   * Starts a pass over everything pending. `auto` marks an unasked one, which runs once.
-   * `images` asks for the server's pass over images once the PDFs are done; never on an
-   * unasked pass, since every image read is a paid request nobody chose to make.
+   * Starts the browser's pass over the pending PDFs. `auto` marks an unasked one, which
+   * runs once. Never the images: those are a pass of their own, below.
    */
-  start(opts: { auto: boolean; images?: boolean }): void;
-  abort(): void;
+  start(opts: { auto: boolean }): void;
+  /**
+   * Starts the server's pass over the images, and nothing else: a few per request until
+   * none are left. Every file it reads is a paid request, which is why it is not a flag
+   * on `start` — it used to be, and the one button then committed the person to reading
+   * every pending image on the account with no way to stop. It runs when this is called,
+   * and this is called by the button that names the count.
+   */
+  readImages(): void;
+  /**
+   * Ends the running pass. Between files for the PDFs — the worker's abort — and between
+   * requests for the images: the request in flight is a few files the server has already
+   * been asked to read, so it is left to land rather than wasted, and the state says
+   * `stopping` until it does. Nothing happens when no pass is running.
+   */
+  stop(): void;
   /**
    * Indexes one file whose bytes are in hand, right after its upload. Nothing happens
    * for a file with no text to extract.
@@ -60,6 +83,7 @@ const initial: IndexingState = {
   progress: null,
   images: null,
   remaining: 0,
+  stopping: false,
   error: null,
 };
 
@@ -68,15 +92,19 @@ const IMAGES_PER_CALL = 3;
 
 export function createIndexing(
   spawn: () => Worker,
-  readImages: (limit: number) => Promise<ReadPass> = api.readPendingFiles,
+  readPending: (limit: number) => Promise<ReadPass> = api.readPendingFiles,
 ): Indexing {
   let state = initial;
   const listeners = new Set<(state: IndexingState) => void>();
   let worker: Worker | null = null;
   let autoStarted = false;
-  /** Whether the pass now running should go on to the images once the PDFs are done. */
-  let wantImages = false;
-  let stopImages = false;
+  /**
+   * A stop asked for during this pass. Read by the images loop between requests, and by
+   * the worker's answers for the PDFs: an abort ends the worker's pass with the same
+   * `backfill-done` a finished one sends — or, when it cuts a fetch short, an `error` —
+   * and this is what tells those apart from the real thing.
+   */
+  let stopping = false;
 
   function set(patch: Partial<IndexingState>): void {
     state = { ...state, ...patch };
@@ -96,17 +124,19 @@ export function createIndexing(
       const data = event.data;
       if (data.type === 'backfill-progress') set({ progress: data.progress });
       else if (data.type === 'backfill-done') {
-        if (wantImages) void runImages(data.progress);
-        else set({ status: 'done', progress: data.progress });
+        set({ status: stopping ? 'stopped' : 'done', stopping: false, progress: data.progress });
       }
       else if (data.type === 'backfill-deferred') set({ status: 'deferred', remaining: data.remaining });
-      else if (data.type === 'error') set({ status: 'error', error: data.message });
+      else if (data.type === 'error') {
+        if (stopping) set({ status: 'stopped', stopping: false });
+        else set({ status: 'error', error: data.message });
+      }
     };
     w.onerror = (event) => {
       // Module workers often die with an empty message — the nested pdf.js worker's
       // teardown is one way. Say something actionable, and drop the worker so the next
       // start gets a fresh one instead of posting into a corpse.
-      set({ status: 'error', error: event.message || 'Indexing stopped unexpectedly — try again.' });
+      set({ status: 'error', stopping: false, error: event.message || 'Indexing stopped unexpectedly — try again.' });
       w.terminate();
       if (worker === w) worker = null;
     };
@@ -115,31 +145,38 @@ export function createIndexing(
   }
 
   /**
-   * The second half: the server reads a few images per call until none are left.
+   * The server's pass: it reads a few images per call until none are left.
    *
    * Stops early when a call moves nothing — every file left is one the server could not
    * read this time, and asking again would only pay to fail again. Those stay pending
-   * for the next press.
+   * for the next press. And stops between requests when asked to: the one in flight is
+   * paid for already, so it is left to land and counted.
+   *
+   * `images` starts null rather than at zero: the count of what is left is the server's
+   * to give, and "0 left" before it has answered would be a promise the pass cannot make.
    */
-  async function runImages(progress: IndexProgress): Promise<void> {
-    set({ status: 'running', phase: 'images', progress, images: { read: 0, remaining: 0 } });
+  async function runImages(): Promise<void> {
     let read = 0;
+    let finished = false;
     try {
-      for (;;) {
-        if (stopImages) break;
-        const pass = await readImages(IMAGES_PER_CALL);
+      while (!stopping) {
+        const pass = await readPending(IMAGES_PER_CALL);
         read += pass.read;
         set({ images: { read, remaining: pass.remaining } });
-        if (pass.remaining === 0 || pass.read + pass.empty === 0) break;
+        if (pass.remaining === 0 || pass.read + pass.empty === 0) {
+          finished = true;
+          break;
+        }
       }
-      set({ status: 'done' });
+      // A stop that lands as the last request finishes is a pass that finished.
+      set({ status: finished ? 'done' : 'stopped', stopping: false });
     } catch (err) {
-      set({ status: 'error', error: (err as Error).message });
+      set({ status: 'error', stopping: false, error: (err as Error).message });
     }
   }
 
   return {
-    start({ auto, images = false }) {
+    start({ auto }) {
       if (state.status === 'running') return;
       /**
        * The unasked run happens once per page load. StrictMode mounts effects twice in
@@ -151,21 +188,31 @@ export function createIndexing(
         if (autoStarted) return;
         autoStarted = true;
       }
-      wantImages = images && !auto;
-      stopImages = false;
+      stopping = false;
       set({
         status: 'running',
         phase: 'pdfs',
         progress: { done: 0, indexed: 0, unusable: 0, failed: 0, total: 0 },
         images: null,
         remaining: 0,
+        stopping: false,
         error: null,
       });
       ensureWorker().postMessage({ type: 'backfill', auto } satisfies ImportRequest);
     },
 
-    abort() {
-      stopImages = true;
+    readImages() {
+      if (state.status === 'running') return;
+      stopping = false;
+      // `progress` is the PDF pass's and is cleared with it: this pass has no PDF news.
+      set({ status: 'running', phase: 'images', progress: null, images: null, remaining: 0, stopping: false, error: null });
+      void runImages();
+    },
+
+    stop() {
+      if (state.status !== 'running') return;
+      stopping = true;
+      set({ stopping: true });
       worker?.postMessage({ type: 'abort' } satisfies ImportRequest);
     },
 
@@ -195,8 +242,16 @@ export const indexing = createIndexing(
   () => new Worker(new URL('./import-worker.ts', import.meta.url), { type: 'module' }),
 );
 
-export function startIndexing(opts: { auto: boolean; images?: boolean }): void {
+export function startIndexing(opts: { auto: boolean }): void {
   indexing.start(opts);
+}
+
+export function readImages(): void {
+  indexing.readImages();
+}
+
+export function stopIndexing(): void {
+  indexing.stop();
 }
 
 /**

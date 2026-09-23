@@ -158,7 +158,7 @@ export interface ReadCounts {
 /**
  * Reads the files a caller has already chosen, one after another, and says what became
  * of each. One place, because three callers need the same loop with the same rules: the
- * Import panel's backfill over the account, auto-fill reading the note in front of the
+ * backfill Maintenance runs over the account, auto-fill reading the note in front of the
  * person before it suggests, and the MCP tool reading one file on request.
  *
  * The rules are the backfill's, which this was lifted from. One unreadable file must not

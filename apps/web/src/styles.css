@@ -3720,13 +3720,34 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
   white-space: nowrap;
 }
 
+/*
+   The passes over files already here: the PDFs, and with a vision model the images. One
+   row each, stacked closer than the panel's own 0.9rem so the two read as a group, and
+   with a row's own wrap gap smaller still — on a phone the text wraps under its button,
+   and it has to sit nearer that button than the next row's.
+*/
+.backfill {
+  display: grid;
+  gap: 0.6rem;
+  width: 100%;
+}
+
 .backfill-row {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.7rem;
+  gap: 0.35rem 0.7rem;
   align-items: baseline;
   width: 100%;
 }
+
+/*
+   One slot per row for the action, whichever action it is. Stop takes the place of the
+   button that started the pass and is a shorter word; without a floor on the width the
+   line of text beside it would shift left when a pass starts and back when it ends, and
+   the two rows' text would start at different places. Sized to the longest label a slot
+   draws, "Index existing PDFs", with room for a five-figure count on the other.
+*/
+.backfill-row .btn { min-width: 9.5rem; }
 
 .load-more {
   width: 100%;

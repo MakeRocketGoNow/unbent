@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { Link } from '@tanstack/react-router';
 import {
   DEFAULT_PAGES_NOTEBOOK,
   importFormat,
@@ -8,8 +8,6 @@ import {
   type NotionUnit,
 } from '@unbent/enex';
 import type { ImportEvent, ImportRequest, NotionChoices } from '../import-worker.js';
-import { startIndexing, useIndexing, type IndexingState } from '../index-files.js';
-import { configQuery } from '../queries.js';
 import { Button } from './Button.js';
 import { describeImportFile } from './import-file.js';
 import { importPercent } from './import-progress.js';
@@ -44,38 +42,6 @@ function initialProgress(): ImportProgress {
   };
 }
 
-/**
- * One line under the button. The app may have run a pass on its own before this panel was
- * opened, so every state the store can be in has a sentence here, not only the ones the
- * button itself leads to.
- */
-function indexingText(state: IndexingState, vision: boolean): string {
-  const p = state.progress;
-  switch (state.status) {
-    case 'idle':
-      // The cost is named up front where there is one: each image is a paid request.
-      return vision
-        ? 'For files added before PDF or image search existed. Images are read one request each.'
-        : 'For notes imported before PDF search existed.';
-    case 'running':
-      if (state.phase === 'images') {
-        const i = state.images;
-        return `Reading images… ${i?.read ?? 0} read${i ? `, ${i.remaining} left` : ''}`;
-      }
-      return `Indexing PDFs… ${p?.done ?? 0}${p?.total ? ` / ${p.total}` : ''}`;
-    case 'done':
-      return (
-        `Done. Indexed ${p?.indexed ?? 0} of ${p?.done ?? 0} PDFs.` +
-        (state.images ? ` Read ${state.images.read} image${state.images.read === 1 ? '' : 's'}.` : '') +
-        (p?.failed ? ` ${p.failed} could not be read and will be tried again.` : '')
-      );
-    case 'deferred':
-      return `${state.remaining} PDFs are not searchable yet.`;
-    case 'error':
-      return state.error ?? 'Indexing failed.';
-  }
-}
-
 /** `1 note`, `3,325 notes`. */
 function count(n: number, noun: string): string {
   return `${n.toLocaleString()} ${noun}${n === 1 ? '' : 's'}`;
@@ -102,9 +68,6 @@ export function Import({ onImported }: ImportProps) {
   const [include, setInclude] = useState<ReadonlySet<string>>(new Set());
   const [pagesNotebook, setPagesNotebook] = useState(DEFAULT_PAGES_NOTEBOOK);
   const [tagsAsTags, setTagsAsTags] = useState(true);
-  const indexing = useIndexing();
-  const config = useQuery(configQuery());
-  const vision = config.data?.vision === true;
 
   const { setImportRunning } = useSettingsBusy();
   const worker = useRef<Worker | null>(null);
@@ -382,6 +345,16 @@ export function Import({ onImported }: ImportProps) {
           <Button variant="primary" disabled={!canStart} onClick={start}>
             Start import
           </Button>
+
+          {/* The other half of the checkbox above: extract now, or catch up later. The
+              catching up lives with the account's other housekeeping, not here. */}
+          <p className="muted small">
+            Files already here that search cannot read yet are indexed from{' '}
+            <Link to="/settings/maintenance" className="link">
+              Maintenance
+            </Link>
+            .
+          </p>
         </>
       )}
 
@@ -465,21 +438,6 @@ export function Import({ onImported }: ImportProps) {
           <Button variant="secondary" onClick={reset}>
             Try another file
           </Button>
-        </div>
-      )}
-
-      {status === 'idle' && (
-        <div className="backfill-row">
-          <Button
-            size="small"
-            disabled={indexing.status === 'running'}
-            onClick={() => startIndexing({ auto: false, images: vision })}
-          >
-            {vision ? 'Index existing files' : 'Index existing PDFs'}
-          </Button>
-          <span className={indexing.status === 'error' ? 'bad small' : 'muted small'}>
-            {indexingText(indexing, vision)}
-          </span>
         </div>
       )}
 
