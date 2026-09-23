@@ -335,8 +335,8 @@ export const attachments = new Hono<AppEnv>()
    *
    * A POST although it changes nothing a client sees directly: every file read is a
    * paid request, so nothing that treats GET as safe may start one on its own. It is
-   * what the Import panel's button runs, never the pass a tab opening starts — see
-   * `startIndexing`.
+   * what the Import panel's "Read N images" runs, never the PDF pass or the pass a tab
+   * opening starts — see `readImages` in the web app's `index-files.ts`.
    *
    * `note` narrows the pass to one note's files, as `pending-text` narrows the browser's,
    * and `remaining` then counts only that note's. Unscoped, this walks the whole account
