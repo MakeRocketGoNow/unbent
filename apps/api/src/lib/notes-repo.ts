@@ -251,6 +251,153 @@ function decodeAttachmentsJson(json: string | null): NonNullable<NoteSummary['at
 }
 
 /**
+ * How many rows past the page each later search tier reads, as a multiple of the limit.
+ *
+ * A tag, field or file tier yields one row per matching tag, value or file, not per note:
+ * a note tagged with three matching tags is three rows until the window function keeps its
+ * best one. The tier is read in rank order and cut off at this multiple of the page, so
+ * the page is exact unless the top of a tier averages more than this many rows per note —
+ * in which case the page comes back short rather than wrong. Four is well past what an
+ * archive shows (most notes carry one or two files) and still bounded.
+ */
+const SEARCH_OVERFETCH = 4;
+
+/**
+ * The most notes a search's notebook or tag filter can name and still be searched note by
+ * note rather than match by match. See `scopeDrivenSearchSql`.
+ *
+ * The two shapes cost differently: the FTS-driven one pays for every archive-wide match
+ * until it has a page inside the scope, the scope-driven one about 20–40 rows per note in
+ * scope whatever the query. Measured at 13k notes, a common word in a 4-note notebook read
+ * 64k rows FTS-driven and 83 scope-driven; at 120 notes scope-driven read 2.2k, and by 770
+ * it read 30k, worse than the FTS-driven page. A hundred keeps the scope-driven worst case
+ * to a few thousand rows.
+ */
+const SCOPE_DRIVEN_SEARCH_MAX = 100;
+
+interface SearchRow {
+  id: string;
+  title: string;
+  updated_at: number;
+  snippet: string;
+  matched_file: string | null;
+  matched_field: string | null;
+  matched_tag: string | null;
+}
+
+function toSearchResult(r: SearchRow): SearchResult {
+  return {
+    id: r.id,
+    title: r.title,
+    updatedAt: r.updated_at,
+    snippet: r.snippet,
+    ...(r.matched_file ? { matchedFile: r.matched_file } : {}),
+    ...(r.matched_field ? { matchedField: r.matched_field } : {}),
+    ...(r.matched_tag ? { matchedTag: r.matched_tag } : {}),
+  };
+}
+
+/**
+ * Search for a small notebook or tag: start from the notes in scope and ask each FTS table
+ * about those rows only.
+ *
+ * The FTS-driven query in `search` reads the archive's matches in rank order and throws
+ * away the ones outside the filter, which is right for a large scope — a page fills early —
+ * and wrong for a small one: a common word in a four-note notebook walked every match in
+ * the archive to find none. Here every source is a CROSS JOIN from the scope, which pins
+ * the join order (the planner would otherwise start from the MATCH, having no statistics
+ * to say the scope is smaller), and each FTS table is probed by rowid with its MATCH
+ * applied to that one row. bm25 reads the whole index's statistics either way, so ranks
+ * are the ones the FTS-driven query would give. Same tiers, same one-row-per-note rule;
+ * the scope is small, so nothing needs cutting off early.
+ *
+ * The `user_id` checks on the joined rows are written with a unary plus. They are the
+ * repo's belt-and-braces scoping, not the way in: left visible, the planner reached each
+ * note's files through `idx_attachment_text_user` and read every file the account has once
+ * per note in scope — 427k rows to search a 40-note notebook.
+ *
+ * `owner` is the `user_id` condition — see `ownerCondition` for why it hides the index
+ * when a tag filter is present — and `scoped` the filter clauses, bound as in `search`.
+ */
+function scopeDrivenSearchSql(owner: string, scoped: string): string {
+  return `WITH scope AS MATERIALIZED (
+            SELECT n.rowid AS rid, n.id, n.title, n.updated_at
+              FROM notes n
+             WHERE ${owner} AND n.deleted_at IS NULL
+               ${scoped}
+          ),
+          note_hits AS (
+            SELECT s.id, s.title, s.updated_at,
+                   snippet(notes_fts, 1, '<<', '>>', '…', 24) AS snippet,
+                   NULL AS matched_file,
+                   NULL AS matched_field,
+                   NULL AS matched_tag,
+                   bm25(notes_fts, 10.0, 1.0) AS rank,
+                   0 AS tier
+              FROM scope s
+             CROSS JOIN notes_fts ON notes_fts.rowid = s.rid
+             WHERE notes_fts MATCH ?1
+          ),
+          tag_hits AS (
+            SELECT s.id, s.title, s.updated_at,
+                   snippet(tags_fts, 0, '<<', '>>', '…', 24) AS snippet,
+                   NULL AS matched_file,
+                   NULL AS matched_field,
+                   t.name AS matched_tag,
+                   bm25(tags_fts) AS rank,
+                   1 AS tier
+              FROM scope s
+             CROSS JOIN note_tags nt ON nt.note_id = s.id
+             CROSS JOIN tags t ON t.id = nt.tag_id
+             CROSS JOIN tags_fts ON tags_fts.rowid = t.rowid
+             WHERE tags_fts MATCH ?1 AND +t.user_id = ?2
+          ),
+          field_hits AS (
+            SELECT s.id, s.title, s.updated_at,
+                   snippet(note_fields_fts, 0, '<<', '>>', '…', 24) AS snippet,
+                   NULL AS matched_file,
+                   f.name AS matched_field,
+                   NULL AS matched_tag,
+                   bm25(note_fields_fts) AS rank,
+                   2 AS tier
+              FROM scope s
+             CROSS JOIN note_fields nf ON nf.note_id = s.id
+             CROSS JOIN note_fields_fts ON note_fields_fts.rowid = nf.rowid
+             CROSS JOIN notebook_fields f ON f.id = nf.field_id
+             WHERE note_fields_fts MATCH ?1 AND +nf.user_id = ?2
+          ),
+          file_hits AS (
+            SELECT s.id, s.title, s.updated_at,
+                   snippet(attachment_text_fts, 0, '<<', '>>', '…', 24) AS snippet,
+                   at.filename AS matched_file,
+                   NULL AS matched_field,
+                   NULL AS matched_tag,
+                   bm25(attachment_text_fts) AS rank,
+                   3 AS tier
+              FROM scope s
+             CROSS JOIN attachment_text at ON at.note_id = s.id
+             CROSS JOIN attachment_text_fts ON attachment_text_fts.rowid = at.rowid
+             WHERE attachment_text_fts MATCH ?1 AND +at.user_id = ?2
+          ),
+          combined AS (
+            SELECT * FROM note_hits
+            UNION ALL SELECT * FROM tag_hits
+            UNION ALL SELECT * FROM field_hits
+            UNION ALL SELECT * FROM file_hits
+          ),
+          best AS (
+            SELECT *, ROW_NUMBER() OVER (PARTITION BY id ORDER BY tier, rank) AS place
+              FROM combined
+          )
+          SELECT id, title, updated_at, snippet, matched_file, matched_field, matched_tag,
+                 tier, rank
+            FROM best
+           WHERE place = 1
+           ORDER BY tier, rank, id
+           LIMIT ?3`;
+}
+
+/**
  * Turns arbitrary user input into a valid FTS5 MATCH expression.
  *
  * FTS5 query syntax is a real grammar: a stray quote, a bare `*`, or a reserved word like
@@ -1739,6 +1886,15 @@ export class NotesRepo extends ScopedRepo {
     const scope = filterConditions(filters, binds, this.userId);
     const scoped = scope.length > 0 ? `AND ${scope.join(' AND ')}` : '';
 
+    if (await this.searchScopeIsSmall(filters)) {
+      const owner = filters.tags && filters.tags.length > 0 ? '+n.user_id = ?2' : 'n.user_id = ?2';
+      const { results } = await this.db
+        .prepare(scopeDrivenSearchSql(owner, scoped))
+        .bind(...binds)
+        .all<SearchRow>();
+      return results.map(toSearchResult);
+    }
+
     /**
      * Four indexes, one result set.
      *
@@ -1774,53 +1930,81 @@ export class NotesRepo extends ScopedRepo {
      * The one on `nt.note_id` stops a tag filter's `n.id IN (…)` from being carried over
      * onto note_tags, which made the plan probe the tag index once per filtered note for
      * every matching tag instead of reading each tag's links once.
+     *
+     * Every tier stops after a page, because D1 bills every row a query visits and this
+     * one used to visit every match. Each tier used to join all of its matches to notes,
+     * compute bm25 for each, and hand the lot to the window function to sort — a common
+     * word read 146k rows to show fifty. Now each tier orders by its FTS table's own
+     * `rank` (the vtab streams in rank order, so the LIMIT stops the join early), a tier
+     * is skipped outright once the tiers above it have filled the page — no lower tier
+     * can outrank them — and each later tier leaves out notes an earlier one already
+     * holds, so its rows are all candidates. The same common word now reads about 10k.
+     * `rank MATCH 'bm25(10.0, 1.0)'` keeps the title weighting the old `bm25()` call had.
+     * The MATERIALIZED CTEs are each referenced several times and must run once.
      */
     const { results } = await this.db
       .prepare(
-        `WITH note_hits AS (
+        `WITH note_hits AS MATERIALIZED (
            SELECT n.id, n.title, n.updated_at,
                   snippet(notes_fts, 1, '<<', '>>', '…', 24) AS snippet,
                   NULL AS matched_file,
                   NULL AS matched_field,
                   NULL AS matched_tag,
-                  bm25(notes_fts, 10.0, 1.0) AS rank,
+                  notes_fts.rank AS rank,
                   0 AS tier
              FROM notes_fts
              JOIN notes n ON n.rowid = notes_fts.rowid
-            WHERE notes_fts MATCH ?1 AND n.user_id = ?2 AND n.deleted_at IS NULL
+            WHERE notes_fts MATCH ?1 AND notes_fts.rank MATCH 'bm25(10.0, 1.0)'
+              AND n.user_id = ?2 AND n.deleted_at IS NULL
               ${scoped}
+            ORDER BY notes_fts.rank
+            LIMIT ?3
          ),
-         tag_hits AS (
+         tag_hits AS MATERIALIZED (
            SELECT n.id, n.title, n.updated_at,
                   snippet(tags_fts, 0, '<<', '>>', '…', 24) AS snippet,
                   NULL AS matched_file,
                   NULL AS matched_field,
                   t.name AS matched_tag,
-                  bm25(tags_fts) AS rank,
+                  tags_fts.rank AS rank,
                   1 AS tier
              FROM tags_fts
              JOIN tags t ON t.rowid = tags_fts.rowid
              JOIN note_tags nt ON nt.tag_id = t.id
              JOIN notes n ON n.id = +nt.note_id
-            WHERE tags_fts MATCH ?1 AND t.user_id = ?2
+            WHERE (SELECT COUNT(*) FROM note_hits) < ?3
+              AND tags_fts MATCH ?1 AND t.user_id = ?2
               AND +n.user_id = ?2 AND n.deleted_at IS NULL
+              AND n.id NOT IN (SELECT id FROM note_hits)
               ${scoped}
+            ORDER BY tags_fts.rank
+            LIMIT ?3 * ${SEARCH_OVERFETCH}
          ),
-         field_hits AS (
+         early AS MATERIALIZED (
+           SELECT * FROM note_hits UNION ALL SELECT * FROM tag_hits
+         ),
+         field_hits AS MATERIALIZED (
            SELECT n.id, n.title, n.updated_at,
                   snippet(note_fields_fts, 0, '<<', '>>', '…', 24) AS snippet,
                   NULL AS matched_file,
                   f.name AS matched_field,
                   NULL AS matched_tag,
-                  bm25(note_fields_fts) AS rank,
+                  note_fields_fts.rank AS rank,
                   2 AS tier
              FROM note_fields_fts
              JOIN note_fields nf ON nf.rowid = note_fields_fts.rowid
              JOIN notebook_fields f ON f.id = nf.field_id
              JOIN notes n ON n.id = nf.note_id
-            WHERE note_fields_fts MATCH ?1 AND nf.user_id = ?2
+            WHERE (SELECT COUNT(DISTINCT id) FROM early) < ?3
+              AND note_fields_fts MATCH ?1 AND nf.user_id = ?2
               AND n.user_id = ?2 AND n.deleted_at IS NULL
+              AND n.id NOT IN (SELECT id FROM early)
               ${scoped}
+            ORDER BY note_fields_fts.rank
+            LIMIT ?3 * ${SEARCH_OVERFETCH}
+         ),
+         earlier AS MATERIALIZED (
+           SELECT * FROM early UNION ALL SELECT * FROM field_hits
          ),
          file_hits AS (
            SELECT n.id, n.title, n.updated_at,
@@ -1828,20 +2012,21 @@ export class NotesRepo extends ScopedRepo {
                   at.filename AS matched_file,
                   NULL AS matched_field,
                   NULL AS matched_tag,
-                  bm25(attachment_text_fts) AS rank,
+                  attachment_text_fts.rank AS rank,
                   3 AS tier
              FROM attachment_text_fts
              JOIN attachment_text at ON at.rowid = attachment_text_fts.rowid
              JOIN notes n ON n.id = at.note_id
-            WHERE attachment_text_fts MATCH ?1 AND at.user_id = ?2
+            WHERE (SELECT COUNT(DISTINCT id) FROM earlier) < ?3
+              AND attachment_text_fts MATCH ?1 AND at.user_id = ?2
               AND n.user_id = ?2 AND n.deleted_at IS NULL
+              AND n.id NOT IN (SELECT id FROM earlier)
               ${scoped}
+            ORDER BY attachment_text_fts.rank
+            LIMIT ?3 * ${SEARCH_OVERFETCH}
          ),
          combined AS (
-           SELECT * FROM note_hits
-           UNION ALL SELECT * FROM tag_hits
-           UNION ALL SELECT * FROM field_hits
-           UNION ALL SELECT * FROM file_hits
+           SELECT * FROM earlier UNION ALL SELECT * FROM file_hits
          ),
          best AS (
            SELECT *, ROW_NUMBER() OVER (PARTITION BY id ORDER BY tier, rank) AS place
@@ -1851,29 +2036,47 @@ export class NotesRepo extends ScopedRepo {
                 tier, rank
            FROM best
           WHERE place = 1
-          ORDER BY tier, rank
+          ORDER BY tier, rank, id
           LIMIT ?3`,
       )
       .bind(...binds)
-      .all<{
-        id: string;
-        title: string;
-        updated_at: number;
-        snippet: string;
-        matched_file: string | null;
-        matched_field: string | null;
-        matched_tag: string | null;
-      }>();
+      .all<SearchRow>();
 
-    return results.map((r) => ({
-      id: r.id,
-      title: r.title,
-      updatedAt: r.updated_at,
-      snippet: r.snippet,
-      ...(r.matched_file ? { matchedFile: r.matched_file } : {}),
-      ...(r.matched_field ? { matchedField: r.matched_field } : {}),
-      ...(r.matched_tag ? { matchedTag: r.matched_tag } : {}),
-    }));
+    return results.map(toSearchResult);
+  }
+
+  /**
+   * Whether a search's notebook or tag filter names few enough notes to search them one by
+   * one — see `scopeDrivenSearchSql`. Read from the stored counts, so it costs a row per
+   * filter. A name that does not exist counts as empty, which the scope-driven query then
+   * answers by reading nothing. Field and date filters have no stored size and leave the
+   * search FTS-driven.
+   */
+  private async searchScopeIsSmall(filters: {
+    tags?: string[] | undefined;
+    notebook?: string | undefined;
+  }): Promise<boolean> {
+    const binds: unknown[] = [this.userId];
+    const sizes: string[] = [];
+    if (filters.notebook === UNFILED) {
+      sizes.push('(SELECT unfiled FROM note_counts WHERE user_id = ?1)');
+    } else if (filters.notebook) {
+      binds.push(filters.notebook);
+      sizes.push(
+        `(SELECT note_count FROM notebooks WHERE user_id = ?1 AND name = ?${binds.length} COLLATE NOCASE)`,
+      );
+    }
+    for (const tag of filters.tags ?? []) {
+      binds.push(tag);
+      sizes.push(`(SELECT note_count FROM tags WHERE user_id = ?1 AND name = ?${binds.length})`);
+    }
+    if (sizes.length === 0) return false;
+
+    const row = await this.db
+      .prepare(`SELECT MIN(${sizes.map((s) => `COALESCE(${s}, 0)`).join(', ')}) AS size`)
+      .bind(...binds)
+      .first<{ size: number }>();
+    return (row?.size ?? 0) <= SCOPE_DRIVEN_SEARCH_MAX;
   }
 
   /**
