@@ -755,6 +755,17 @@ function uniqueTags(tags: string[]): string[] {
  */
 const ID_RUN = 90;
 
+/*
+ * Every statement that names notes by an `id IN (…)` run writes its owner condition as
+ * `+user_id`. The unary plus is SQLite's way to keep a column's index out of the plan
+ * while still applying the condition — the idiom `ownerCondition` uses for tag filters.
+ * Without it the planner, which has no statistics and so takes `user_id` to be selective,
+ * answered "these fifty notes" by walking a `user_id` index over every note the account
+ * has and testing each against the list: 13k rows per statement at 13k notes, for a
+ * selection of two, and a bulk move, tag or trash is several statements. With it, each id
+ * is a primary-key lookup. The owner check still runs on every row it finds.
+ */
+
 function runs<T>(items: T[], size = ID_RUN): T[][] {
   const out: T[][] = [];
   for (let i = 0; i < items.length; i += size) out.push(items.slice(i, i + size));
@@ -1476,7 +1487,7 @@ export class NotesRepo extends ScopedRepo {
       const { results } = await this.db
         .prepare(
           `UPDATE notes SET deleted_at = ?1
-            WHERE user_id = ?2 AND deleted_at IS NULL AND id IN (${placeholders(3, run.length)})
+            WHERE +user_id = ?2 AND deleted_at IS NULL AND id IN (${placeholders(3, run.length)})
             RETURNING id`,
         )
         .bind(now, this.userId, ...run)
@@ -1493,7 +1504,7 @@ export class NotesRepo extends ScopedRepo {
       const { results } = await this.db
         .prepare(
           `UPDATE notes SET deleted_at = NULL
-            WHERE user_id = ?1 AND deleted_at IS NOT NULL AND id IN (${placeholders(2, run.length)})
+            WHERE +user_id = ?1 AND deleted_at IS NOT NULL AND id IN (${placeholders(2, run.length)})
             RETURNING id`,
         )
         .bind(this.userId, ...run)
@@ -1525,7 +1536,7 @@ export class NotesRepo extends ScopedRepo {
         .prepare(
           `SELECT a.r2_key, n.id AS note_id FROM attachments a
              JOIN notes n ON n.id = a.note_id
-            WHERE n.user_id = ?1 AND n.deleted_at IS NOT NULL
+            WHERE +n.user_id = ?1 AND n.deleted_at IS NOT NULL
               AND n.id IN (${placeholders(2, run.length)})`,
         )
         .bind(this.userId, ...run)
@@ -1534,7 +1545,7 @@ export class NotesRepo extends ScopedRepo {
       const { results: gone } = await this.db
         .prepare(
           `DELETE FROM notes
-            WHERE user_id = ?1 AND deleted_at IS NOT NULL AND id IN (${placeholders(2, run.length)})
+            WHERE +user_id = ?1 AND deleted_at IS NOT NULL AND id IN (${placeholders(2, run.length)})
             RETURNING id`,
         )
         .bind(this.userId, ...run)
@@ -1594,7 +1605,7 @@ export class NotesRepo extends ScopedRepo {
                      JOIN tags t ON t.id = nt.tag_id
                     WHERE nt.note_id = n.id) AS tags
              FROM notes n
-            WHERE n.user_id = ?1 AND n.deleted_at IS NULL
+            WHERE +n.user_id = ?1 AND n.deleted_at IS NULL
               AND n.id IN (${placeholders(2, run.length)})`,
         )
         .bind(this.userId, ...run)
@@ -1636,7 +1647,7 @@ export class NotesRepo extends ScopedRepo {
         this.db
           .prepare(
             `UPDATE notes SET notebook_id = ?1
-              WHERE user_id = ?2 AND deleted_at IS NULL AND id IN (${placeholders(3, run.length)})`,
+              WHERE +user_id = ?2 AND deleted_at IS NULL AND id IN (${placeholders(3, run.length)})`,
           )
           .bind(notebookId, this.userId, ...run),
       );
@@ -1661,7 +1672,7 @@ export class NotesRepo extends ScopedRepo {
               `INSERT OR IGNORE INTO note_tags (note_id, tag_id)
                SELECT n.id, t.id FROM notes n
                  JOIN tags t ON t.user_id = n.user_id AND t.name = ?1
-                WHERE n.user_id = ?2 AND n.id IN (${placeholders(3, run.length)})`,
+                WHERE +n.user_id = ?2 AND n.id IN (${placeholders(3, run.length)})`,
             )
             .bind(name, this.userId, ...run),
         );
@@ -1687,7 +1698,7 @@ export class NotesRepo extends ScopedRepo {
         this.db
           .prepare(
             `UPDATE notes SET updated_at = ?1
-              WHERE user_id = ?2 AND id IN (${placeholders(3, run.length)})`,
+              WHERE +user_id = ?2 AND id IN (${placeholders(3, run.length)})`,
           )
           .bind(now, this.userId, ...run),
       );
@@ -2124,7 +2135,7 @@ export class NotesRepo extends ScopedRepo {
       const placeholders = batch.map((_, j) => `?${j + 2}`).join(', ');
       const { results: gone } = await this.db
         .prepare(
-          `DELETE FROM notes WHERE user_id = ?1${stillTrashed} AND id IN (${placeholders})
+          `DELETE FROM notes WHERE +user_id = ?1${stillTrashed} AND id IN (${placeholders})
            RETURNING id`,
         )
         .bind(this.userId, ...batch)
