@@ -2108,12 +2108,20 @@ export class NotesRepo extends ScopedRepo {
     const where =
       scope === 'trashed' ? 'user_id = ?1 AND deleted_at IS NOT NULL' : 'user_id = ?1';
 
+    /*
+       Emptying the trash starts from the trashed notes and reaches their files through
+       the note index; the CROSS JOIN pins that order. Left to itself the planner started
+       from the account's attachments and read every one of them to find the trash's —
+       30k rows for a 300-note trash at 13k notes, now 900. A wipe wants every file anyway,
+       and starting from the notes there would probe each of them, so it keeps the
+       attachments-first join.
+    */
+    const from =
+      scope === 'trashed'
+        ? 'notes n CROSS JOIN attachments a ON a.note_id = n.id'
+        : 'attachments a JOIN notes n ON n.id = a.note_id';
     const { results: keyRows } = await this.db
-      .prepare(
-        `SELECT a.r2_key, n.id AS note_id FROM attachments a
-           JOIN notes n ON n.id = a.note_id
-          WHERE n.${where} AND a.user_id = ?1`,
-      )
+      .prepare(`SELECT a.r2_key, n.id AS note_id FROM ${from} WHERE n.${where} AND a.user_id = ?1`)
       .bind(this.userId)
       .all<{ r2_key: string; note_id: string }>();
 
