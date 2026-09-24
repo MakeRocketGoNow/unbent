@@ -85,6 +85,25 @@ describe('indexing', () => {
     expect(worker.posted).toEqual([]);
   });
 
+  it('asks the server to count only once, and ends when the server runs out of files', async () => {
+    const worker = fakeWorker();
+    const passes = [
+      { read: 3, empty: 0, failed: 0, remaining: 5 },
+      { read: 2, empty: 1, failed: 0 },
+      { read: 1, empty: 0, failed: 0 },
+    ];
+    const readPending = vi.fn(async () => passes.shift()!);
+    const indexing = createIndexing(() => worker as unknown as Worker, readPending);
+
+    indexing.readImages();
+    await vi.waitFor(() => expect(indexing.get().status).toBe('done'));
+
+    expect(readPending.mock.calls.map((c) => (c as unknown[])[1])).toEqual([true, false, false]);
+    // 5 left after the first call, 3 taken by the second, and the third was handed fewer
+    // files than it asked for, so it saw the last of them.
+    expect(indexing.get().images).toEqual({ read: 6, remaining: 1 });
+  });
+
   it('never reads images as part of a PDF pass, and stops when a call moves nothing', async () => {
     const readPending = vi.fn(async () => ({ read: 0, empty: 0, failed: 2, remaining: 2 }));
     const worker = fakeWorker();

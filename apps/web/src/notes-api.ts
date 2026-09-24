@@ -558,7 +558,8 @@ export interface ReadPass {
   empty: number;
   /** Files that could not be read this time and stay pending. */
   failed: number;
-  remaining: number;
+  /** How many still wait. Only when the call asked for the count. */
+  remaining?: number;
 }
 
 /**
@@ -567,12 +568,12 @@ export interface ReadPass {
  * handful per call, since each is seconds and a paid request; the indexing pass loops
  * until `remaining` is zero. See the route for why it is a POST.
  */
-export async function readPendingFiles(limit = 3): Promise<ReadPass> {
+export async function readPendingFiles(limit = 3, count = true): Promise<ReadPass> {
   return json(
     await fetch('/api/attachments/read', {
       method: 'POST',
       headers: jsonHeaders,
-      body: JSON.stringify({ limit }),
+      body: JSON.stringify({ limit, count }),
     }),
   );
 }
