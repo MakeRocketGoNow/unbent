@@ -253,11 +253,22 @@ export function invalidateNoteMembership(queryClient: QueryClient) {
   void queryClient.invalidateQueries({ queryKey: keys.notebooks() });
 }
 
+/**
+ * The shortest query sent to the server. One character is not a search anyone means: the
+ * last term is prefix-matched, so "t" asks for every word in the archive that starts with
+ * a t, and it is only ever on its way to a longer word. It is also the costliest request
+ * a search box sends — D1 bills every row a query reads, and a one-letter prefix reads the
+ * most — so a pause after the first letter, which is most pauses on a phone, spent the
+ * most for the answer nobody reads. Tag and notebook matches still show for one letter;
+ * they are filtered from lists the client already holds.
+ */
+export const MIN_SEARCH_LENGTH = 2;
+
 export const searchQuery = (q: string, filter: NoteFilter = {}) =>
   queryOptions({
     queryKey: keys.search(q, filter),
     queryFn: () => api.searchNotes(q, filter),
-    enabled: q.trim() !== '',
+    enabled: q.trim().length >= MIN_SEARCH_LENGTH,
   });
 
 /** One of the scopes a destructive action names a count for; empty means every live note. */

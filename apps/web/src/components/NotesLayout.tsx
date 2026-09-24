@@ -10,6 +10,7 @@ import {
   notebooksQuery,
   notebookFieldsQuery,
   searchQuery,
+  MIN_SEARCH_LENGTH,
   trashCountQuery,
   invalidateNoteMembership,
 } from '../queries.js';
@@ -260,8 +261,14 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
       replace: true,
     });
 
-  /** Null means "not searching", which is distinct from searching and finding nothing. */
-  const results = debounced.trim() === '' ? null : (search.data ?? null);
+  /**
+   * Null means "not searching", which is distinct from searching and finding nothing. A
+   * query too short to send (see MIN_SEARCH_LENGTH) is still searching — the field is in
+   * use and the tag and notebook picks show — but it has no note results to wait for.
+   */
+  const needle = debounced.trim();
+  const tooShort = needle !== '' && needle.length < MIN_SEARCH_LENGTH;
+  const results = needle === '' ? null : tooShort ? [] : (search.data ?? null);
   /** Whether the results will be headed by picks, which is when the notes need a caption too. */
   const picks = scopeMatches(debounced, tags.data ?? [], notebooks.data, selectedTags, notebook);
   const hasPicks = picks.tags.length > 0 || picks.notebooks.length > 0;
@@ -936,7 +943,12 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
             />
           )}
           {results !== null && hasPicks && <li className="list-caption">Notes</li>}
-          {results !== null && <SearchResults results={results} />}
+          {results !== null &&
+            (tooShort ? (
+              <li className="muted small empty">Keep typing to search notes.</li>
+            ) : (
+              <SearchResults results={results} />
+            ))}
 
           {results === null &&
             notes.map((n) => (
