@@ -1,5 +1,6 @@
 package com.makerocketgonow.unbent.ui
 
+import android.os.SystemClock
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
@@ -172,8 +173,13 @@ fun NotesScreen(
      */
     LaunchedEffect(state.notebook, state.selectedTags, state.fieldFilters, state.sort, state.from, state.to) {
         if (!state.loaded || state.filterChanged) state.load()
+        // Results on screen belong to the old filter; the list under them is not what shows.
+        if (state.results != null) state.search()
     }
     LaunchedEffect(state) { if (state.notebooks.isEmpty() && state.tags.isEmpty()) state.loadFilters() }
+    // The tags are only read by the filter sheet and search's picks, so they are brought up
+    // to date when one of those opens rather than on every return to the list.
+    LaunchedEffect(filtering, searchOpen) { if (filtering || searchOpen) state.loadTagsIfStale() }
     // The selected notebook's field definitions, which the sheet offers and the chips are
     // named by. Keyed on the directory too: the notebook arrives by name and the
     // definitions are fetched by id, which the directory is what supplies.
@@ -362,6 +368,7 @@ fun NotesScreen(
                 when {
                     results != null -> SearchList(
                         results = results,
+                        tooShort = state.queryTooShort,
                         /*
                          * From the live query rather than the debounced one that produced
                          * the results: the lists are already in hand, so the picks can keep
@@ -961,14 +968,17 @@ private fun fileKindDrawable(contentType: String): Int {
 @Composable
 private fun SearchList(
     results: List<SearchResult>,
+    /** Whether the query is too short to have been sent, so "no matches" would be untrue. */
+    tooShort: Boolean,
     /** Tags and notebooks whose names match, offered above the notes that do. */
     picks: List<ScopePick>,
     onOpen: (String) -> Unit,
     onPick: (ScopePick) -> Unit,
 ) {
+    val empty = stringResource(if (tooShort) R.string.search_keep_typing else R.string.no_matches)
     if (results.isEmpty() && picks.isEmpty()) {
         Box(Modifier.fillMaxSize().padding(Space.Screen), contentAlignment = Alignment.TopCenter) {
-            Text(stringResource(R.string.no_matches), color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(empty, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         return
     }
@@ -1011,7 +1021,7 @@ private fun SearchList(
         if (results.isEmpty()) {
             item(key = "no-matches") {
                 Text(
-                    stringResource(R.string.no_matches),
+                    empty,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(Space.Screen),
                 )
@@ -1075,6 +1085,19 @@ class NotesState(private val api: UnbentApi) {
     private companion object {
         /** The page the API returns by default, and what [refreshInPlace] counts in. */
         const val PAGE_SIZE = 50
+
+        /**
+         * The shortest query sent, as on the web. One letter is prefix-matched against every
+         * word in the archive, the costliest search there is, and it is only ever on its way
+         * to a longer word; a pause after it is most pauses on a phone keyboard.
+         */
+        const val MIN_SEARCH_LENGTH = 2
+
+        /** How long the tag list is trusted before the sheet or search refetches it. */
+        const val TAGS_FRESH_MS = 5 * 60_000L
+
+        /** A second in-place refresh this soon after one is the same return, seen twice. */
+        const val REFRESH_COALESCE_MS = 2_000L
     }
 
     /**
@@ -1205,6 +1228,24 @@ class NotesState(private val api: UnbentApi) {
     var results by mutableStateOf<List<SearchResult>?>(null)
         private set
 
+    /** Whether the box holds something, but too little to send; see [MIN_SEARCH_LENGTH]. */
+    val queryTooShort: Boolean get() = query.trim().let { it.isNotEmpty() && it.length < MIN_SEARCH_LENGTH }
+
+    /**
+     * The query and filter [results] answer. Coming back from a hit re-enters the screen,
+     * which restarts the debounced search, and the lifecycle's resume used to re-run it as
+     * well: two or three identical searches for every result opened. A search whose answer
+     * is already on screen is not sent again; a pull asks for a fresh one.
+     */
+    private var searchedFor: String? = null
+
+    /** When [tags] were last fetched, for [loadTagsIfStale]. */
+    private var tagsAt = 0L
+
+    /** The in-place refresh running now, and when the last one finished; see [refreshInPlace]. */
+    private var refreshingInPlace = false
+    private var refreshedInPlaceAt = 0L
+
     private var cursor: String? = null
     /** Which load is current, so a page from a superseded filter is thrown away. */
     private var generation = 0
@@ -1234,7 +1275,7 @@ class NotesState(private val api: UnbentApi) {
         try {
             loadFilters()
             fetch(reset = true)
-            if (results != null) search()
+            if (results != null) search(force = true)
         } finally {
             refreshing = false
         }
@@ -1254,15 +1295,32 @@ class NotesState(private val api: UnbentApi) {
      * page — filter to almost any tag in a real archive and everything fits — so this is
      * usually a single request.
      *
-     * The count and the directory come along, because an edit can move a note between
-     * notebooks and change what the drawer should say.
+     * The count and the notebooks come along, because an edit can move a note between
+     * notebooks and change what the drawer should say. The tags do not: only the filter
+     * sheet and search read them, and they refresh when those open ([loadTagsIfStale]).
+     * Nor does an open search — see [searchedFor].
+     *
+     * Once per return. Coming back from a note both flags the list stale and resumes the
+     * screen, and each asked for this; the second, arriving while the first runs or just
+     * after, is dropped.
      */
     suspend fun refreshInPlace() {
-        if (!loaded) return
+        if (!loaded || refreshingInPlace) return
+        if (SystemClock.elapsedRealtime() - refreshedInPlaceAt < REFRESH_COALESCE_MS) return
+        refreshingInPlace = true
+        try {
+            rebuildInPlace()
+        } finally {
+            refreshingInPlace = false
+            refreshedInPlaceAt = SystemClock.elapsedRealtime()
+        }
+    }
+
+    private suspend fun rebuildInPlace() {
         val pages = maxOf(1, (items.size + PAGE_SIZE - 1) / PAGE_SIZE)
         val mine = ++generation
 
-        loadFilters()
+        loadNotebooks()
         if (mine != generation) return
 
         val rebuilt = mutableListOf<NoteSummary>()
@@ -1293,7 +1351,6 @@ class NotesState(private val api: UnbentApi) {
 
         items = rebuilt
         cursor = next
-        if (results != null) search()
     }
 
     /** Changes what the list shows. The screen reloads when it sees the change. */
@@ -1391,16 +1448,31 @@ class NotesState(private val api: UnbentApi) {
 
     fun changeQuery(q: String) {
         query = q
-        if (q.isBlank()) results = null
+        if (q.isBlank()) {
+            results = null
+            searchedFor = null
+        }
     }
 
-    /** Runs the current query against the current filter. A blank query is no search at all. */
-    suspend fun search() {
+    /**
+     * Runs the current query against the current filter. A blank query is no search at all,
+     * and one too short to send shows no notes (the picks, filtered from lists in hand,
+     * still show). Not sent again when its answer is already on screen, unless [force]d.
+     */
+    suspend fun search(force: Boolean = false) {
         val q = query.trim()
         if (q.isEmpty()) {
             results = null
+            searchedFor = null
             return
         }
+        if (q.length < MIN_SEARCH_LENGTH) {
+            results = emptyList()
+            searchedFor = null
+            return
+        }
+        val key = listOf(q, notebook, selectedTags, fieldFilters, from, to).toString()
+        if (!force && key == searchedFor && results != null) return
         val result = withContext(Dispatchers.IO) {
             runCatching {
                 api.search(q, notebook = notebook, tags = selectedTags, fields = fieldFilters, from = from, to = to)
@@ -1408,7 +1480,10 @@ class NotesState(private val api: UnbentApi) {
         }
         // Only if the box still says what was searched for; a stale answer is worse than none.
         if (query.trim() != q) return
-        result.onSuccess { results = it }.onFailure { e ->
+        result.onSuccess {
+            results = it
+            searchedFor = key
+        }.onFailure { e ->
             if ((e as? ApiException)?.status == 401) unauthorized = true else error = e.message
         }
     }
@@ -1421,7 +1496,18 @@ class NotesState(private val api: UnbentApi) {
         }.getOrNull()?.id
     }
 
+    /** The notebooks and the tags: what the first load and a pull ask for. */
     suspend fun loadFilters() {
+        loadNotebooks()
+        loadTags()
+    }
+
+    /** The tags, unless they were fetched in the last few minutes. */
+    suspend fun loadTagsIfStale() {
+        if (SystemClock.elapsedRealtime() - tagsAt >= TAGS_FRESH_MS) loadTags()
+    }
+
+    private suspend fun loadNotebooks() {
         withContext(Dispatchers.IO) { runCatching { api.listNotebooks() } }.onSuccess {
             notebooks = it.notebooks
             unfiled = it.unfiled
@@ -1442,8 +1528,12 @@ class NotesState(private val api: UnbentApi) {
             }
         }
         filtersLoaded = true
+    }
+
+    private suspend fun loadTags() {
         withContext(Dispatchers.IO) { runCatching { api.listTags() } }.onSuccess { fresh ->
             tags = fresh
+            tagsAt = SystemClock.elapsedRealtime()
             // Same for tags: trashing a notebook's notes can take the last note off a tag,
             // and a filter on a tag the account no longer has cannot be turned off from
             // the picker, because the picker no longer lists it.
