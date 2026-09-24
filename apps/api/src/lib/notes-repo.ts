@@ -2597,15 +2597,24 @@ export class NotesRepo extends ScopedRepo {
   // --- Custom fields -------------------------------------------------------------------
 
   /**
-   * A notebook's field definitions in display order, with how many notes hold a value for
-   * each (the management page names that count before a delete). Null when the notebook
-   * is not this user's, so the route can answer 404 without a second query.
+   * A notebook's field definitions in display order. Null when the notebook is not this
+   * user's, so the route can answer 404 without a second query.
+   *
+   * `counts` adds how many notes hold a value for each field, which the management page
+   * shows and names before a delete. Only on request: it reads every stored value of every
+   * field — 6.3k rows for a 770-note notebook with nine fields, where the definitions
+   * alone are 13 — and every other caller wanted the definitions. The note editor, the
+   * list and MCP's writes all fetched it, so each note opened in such a notebook and each
+   * card an assistant filled paid for counts nobody showed.
    *
    * Tombstones cannot reach here — the notebook they belonged to is gone, so the guard
    * above already answers null — but they are excluded explicitly so the query reads as
    * what it means rather than relying on that.
    */
-  async listFields(notebookId: string): Promise<FieldDef[] | null> {
+  async listFields(
+    notebookId: string,
+    { counts = false }: { counts?: boolean } = {},
+  ): Promise<FieldDef[] | null> {
     const owned = await this.db
       .prepare(`SELECT 1 FROM notebooks WHERE id = ?1 AND user_id = ?2`)
       .bind(notebookId, this.userId)
@@ -2614,8 +2623,8 @@ export class NotesRepo extends ScopedRepo {
 
     const { results } = await this.db
       .prepare(
-        `SELECT f.id, f.notebook_id, f.name, f.type, f.options, f.scale_max, f.scale_step, f.currency, f.position,
-                (SELECT COUNT(*) FROM note_fields nf WHERE nf.field_id = f.id) AS value_count
+        `SELECT f.id, f.notebook_id, f.name, f.type, f.options, f.scale_max, f.scale_step, f.currency, f.position
+                ${counts ? ', (SELECT COUNT(*) FROM note_fields nf WHERE nf.field_id = f.id) AS value_count' : ''}
            FROM notebook_fields f
           WHERE f.notebook_id = ?1 AND f.user_id = ?2 AND f.deleted_at IS NULL
           ORDER BY f.position`,

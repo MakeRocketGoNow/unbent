@@ -378,9 +378,12 @@ export async function deleteNotebook(
 
 // --- Custom fields ---------------------------------------------------------------------
 
-export async function listNotebookFields(notebookId: string): Promise<FieldDef[]> {
+export async function listNotebookFields(
+  notebookId: string,
+  { counts = false }: { counts?: boolean } = {},
+): Promise<FieldDef[]> {
   const { fields } = await json<{ fields: FieldDef[] }>(
-    await fetch(`/api/notebooks/${notebookId}/fields`),
+    await fetch(`/api/notebooks/${notebookId}/fields${counts ? '?counts=1' : ''}`),
   );
   return fields;
 }

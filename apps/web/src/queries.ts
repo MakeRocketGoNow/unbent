@@ -65,6 +65,13 @@ export const keys = {
    * (which happens on every save) must not refetch every open notebook's definitions.
    */
   notebookFields: (notebookId: string) => ['notebook-fields', notebookId] as const,
+  /**
+   * The same definitions with each field's value count. Its own key under the one above,
+   * so invalidating a notebook's fields reaches both, but a cached count-free entry can
+   * never be served to the page that shows counts — its delete confirmation would then
+   * name no notes.
+   */
+  notebookFieldCounts: (notebookId: string) => ['notebook-fields', notebookId, 'counts'] as const,
   trash: () => ['trash'] as const,
   trashCount: () => ['trash', 'count'] as const,
   /**
@@ -221,6 +228,17 @@ export const notebookFieldsQuery = (notebookId: string | undefined) =>
     queryKey: keys.notebookFields(notebookId ?? ''),
     queryFn: () => api.listNotebookFields(notebookId!),
     enabled: notebookId !== undefined && notebookId !== '',
+  });
+
+/**
+ * A notebook's field definitions with how many notes hold a value for each, for the page
+ * that manages them. Everything else asks `notebookFieldsQuery`: counting reads every
+ * stored value, and only this page shows the numbers.
+ */
+export const notebookFieldCountsQuery = (notebookId: string) =>
+  queryOptions({
+    queryKey: keys.notebookFieldCounts(notebookId),
+    queryFn: () => api.listNotebookFields(notebookId, { counts: true }),
   });
 
 /**
