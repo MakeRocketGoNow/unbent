@@ -48,6 +48,7 @@ import { NoteTable } from './NoteTable.js';
 import { noteColumns } from './note-columns.js';
 import { nextColumnSort, type SortTarget } from './sort-options.js';
 import { patchNoteFields, patchNotePages } from './note-table-edit.js';
+import { applySaveToLists } from '../list-cache.js';
 import { loadMoreLabel } from './load-more.js';
 import { scopeLabel, tagPlace } from './scope-label.js';
 import { useNotesView } from '../useNotesView.js';
@@ -311,8 +312,10 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
       if (queryClient.getQueryData(keys.note(updated.id))) {
         queryClient.setQueryData(keys.note(updated.id), updated);
       }
+      // The saved row, placed, in every list — a refetch only where the field decides
+      // membership or order. See `applySaveToLists`.
+      applySaveToLists(queryClient, updated, { fields: true });
     },
-    onSettled: () => void queryClient.invalidateQueries({ queryKey: ['notes'] }),
   });
   const onEditCell = (noteId: string, def: FieldDef, value: FieldValue | null) => {
     if (editOpenNoteField(noteId, def.id, value)) {

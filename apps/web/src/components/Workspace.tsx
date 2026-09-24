@@ -44,6 +44,7 @@ import { Confirm } from './Confirm.js';
 import { Snackbar } from './Snackbar.js';
 import { AutofillIcon } from './icons.js';
 import { formatFieldValue } from './format-field.js';
+import { applySaveToLists } from '../list-cache.js';
 import {
   applyAutofill,
   describeChanges,
@@ -284,9 +285,14 @@ export function Workspace({ noteId, readOnly = false, backTo = '/notes' }: Works
     if (!patch) return 'unchanged';
     const updated = await api.updateNote(noteId, patch);
     queryClient.setQueryData(keys.note(noteId), updated);
-    // The title and ordering change the list, so it is refetched rather than patched by
-    // hand.
-    void queryClient.invalidateQueries({ queryKey: ['notes'] });
+    // The lists get the saved row rather than a refetch of every page they hold — see
+    // `applySaveToLists`, which refetches only a list the save may have moved it in or out of.
+    applySaveToLists(queryClient, updated, {
+      title: patch.title !== undefined,
+      notebook: patch.notebook !== undefined,
+      tags: patch.tags !== undefined,
+      fields: patch.fields !== undefined,
+    });
     /*
      * The sidebar's counts only when this save could have moved them — the same rule the
      * phone's editor already keeps. Both lists count across the whole archive, and this
