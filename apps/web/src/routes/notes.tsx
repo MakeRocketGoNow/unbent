@@ -146,7 +146,7 @@ export const Route = createFileRoute('/notes')({
     from: search.from,
     to: search.to,
   }),
-  loader: ({ context: { queryClient }, deps }) => {
+  loader: ({ context: { queryClient }, deps, preload }) => {
     const filter = {
       ...(deps.notebook ? { notebook: deps.notebook } : {}),
       ...(deps.tag?.length ? { tag: deps.tag } : {}),
@@ -173,13 +173,18 @@ export const Route = createFileRoute('/notes')({
      * `useInfiniteQuery` would make — React Query dedupes on the key — but the URL
      * commits immediately, the heading names the new place on the next frame, and the
      * list says it is loading (see `placeholderData` on `notesQuery`, and `aria-busy` in
-     * `NotesLayout`) rather than the app saying nothing. A hover preload still warms the
-     * cache through this same call.
+     * `NotesLayout`) rather than the app saying nothing.
+     *
+     * Not the list on a hover preload. The router preloads every link the pointer rests
+     * on, and the rail and drawer are a column of notebook and tag links: moving across
+     * them fetched a page of notes, and its count, for each one passed over — 9k rows for
+     * a sweep of the notebooks at 13k notes and 39k for the tags, since D1 bills every row
+     * a page reads. The click fetches it anyway, and the list says it is loading.
      */
     void queryClient.ensureQueryData(tagsQuery());
     void queryClient.ensureQueryData(notebooksQuery());
     void queryClient.ensureQueryData(trashCountQuery());
-    void queryClient.ensureInfiniteQueryData(notesQuery(filter, ordering));
+    if (!preload) void queryClient.ensureInfiniteQueryData(notesQuery(filter, ordering));
   },
   component: () => (
     <NotesLayout>
