@@ -69,9 +69,20 @@ describe('sessionMiddleware', () => {
     expect(await res.json()).toEqual({ userId: null });
   });
 
-  /** A protected route still refuses — but with a recoverable 401, not a 500. */
-  it('degrades a protected route to 401 rather than 500 when getSession fails', async () => {
+  /**
+   * A protected route still refuses, but says the session could not be checked rather than
+   * that there is none: a 401 signs every client out, and the phone deletes its queued
+   * shares on one. The database refusing reads — a quota run out — must not do that.
+   */
+  it('answers a protected route 503 with Retry-After, not 401 or 500, when getSession fails', async () => {
     getSession.mockRejectedValue(new Error('D1_ERROR: Network connection lost'));
+    const res = await call('/protected');
+    expect(res.status).toBe(503);
+    expect(res.headers.get('Retry-After')).toBe('60');
+  });
+
+  it('still answers 401 when there is simply no session', async () => {
+    getSession.mockResolvedValue(null);
     const res = await call('/protected');
     expect(res.status).toBe(401);
   });

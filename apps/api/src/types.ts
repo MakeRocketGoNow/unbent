@@ -203,6 +203,8 @@ export interface Variables {
   /** Set by sessionMiddleware when a valid session exists. */
   userId?: string;
   user?: SessionUser;
+  /** Set by sessionMiddleware when the session could not be looked up at all. */
+  sessionUnavailable?: boolean;
   /** Set by withRepos; already bound to the authenticated user. */
   notes: NotesRepo;
   attachments: AttachmentsRepo;
