@@ -1764,6 +1764,16 @@ export class NotesRepo extends ScopedRepo {
      * tag came back with the tag's snippet and "tagged X" under it whenever the tag's
      * bm25 happened to be the smaller number. The window function says which row is
      * meant.
+     *
+     * tag_hits carries two unary pluses, and both are load-bearing. Without the one on
+     * `n.user_id` the planner — which has no statistics and so takes `user_id` to be
+     * selective — joined each matching tag to every live note through a `user_id` index
+     * and asked each one whether it carried the tag: 12.7k rows per matching tag at 13k
+     * notes, so a one-letter prefix that matched most tag names read 12.9M rows in one
+     * request. With it, the join runs tag → its note_tags → those notes by primary key.
+     * The one on `nt.note_id` stops a tag filter's `n.id IN (…)` from being carried over
+     * onto note_tags, which made the plan probe the tag index once per filtered note for
+     * every matching tag instead of reading each tag's links once.
      */
     const { results } = await this.db
       .prepare(
@@ -1791,9 +1801,9 @@ export class NotesRepo extends ScopedRepo {
              FROM tags_fts
              JOIN tags t ON t.rowid = tags_fts.rowid
              JOIN note_tags nt ON nt.tag_id = t.id
-             JOIN notes n ON n.id = nt.note_id
+             JOIN notes n ON n.id = +nt.note_id
             WHERE tags_fts MATCH ?1 AND t.user_id = ?2
-              AND n.user_id = ?2 AND n.deleted_at IS NULL
+              AND +n.user_id = ?2 AND n.deleted_at IS NULL
               ${scoped}
          ),
          field_hits AS (
