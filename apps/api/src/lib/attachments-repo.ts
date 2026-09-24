@@ -10,14 +10,48 @@ interface AttachmentRow {
 }
 
 /**
- * The predicate behind `needingVision` and `visionPending`, written once so the count
- * and the list cannot disagree about what is pending. The image types are the vision
- * model's (`VISION_IMAGE_TYPES`), spelled out here because a query cannot take a Set.
+ * The files the vision model has still to read, as two queries whose union is the answer:
+ * behind both `needingVision` and `visionPending`, written once so the count and the list
+ * cannot disagree about what is pending.
+ *
+ * Pictures with no text row, and PDFs whose text layer came back empty and that the model
+ * has not been asked about. This was one predicate over a LEFT JOIN of every attachment to
+ * its text, which SQLite could only answer by walking every attachment the account has.
+ * Split, each half reads its own partial index from 0025, so each costs a row per file
+ * still waiting and nothing once the backlog is read. The halves cannot overlap: one is
+ * pictures, the other PDFs.
+ *
+ * The conditions repeat the indexes' WHERE clauses exactly, which is what lets SQLite use
+ * them. The image types are the vision model's (`VISION_IMAGE_TYPES`), spelled out because
+ * a query cannot take a Set.
+ *
+ * `noteParam` is the placeholder for a note id, for the callers that read one note. Those
+ * name the per-note indexes outright: left to itself the planner prefers 0025's, which are
+ * account-wide, and walks the whole backlog to find the one note's files. `INDEXED BY`
+ * also makes a missing index an error rather than a quiet walk of the archive.
  */
-const VISION_PENDING = `(
-  (a.content_type IN ('image/jpeg', 'image/png', 'image/gif', 'image/webp') AND t.attachment_id IS NULL)
-  OR (a.content_type = 'application/pdf' AND t.text = '' AND t.read_by IS NULL)
-)`;
+function visionPendingHalves(noteParam: string | null): { pictures: string; pdfs: string } {
+  const columns = 'a.id, a.note_id, a.filename, a.content_type, a.size, a.r2_key, a.created_at';
+  const live = 'n.user_id = ?1 AND n.deleted_at IS NULL';
+  return {
+    pictures: `SELECT ${columns}
+                 FROM attachments a${noteParam ? ' INDEXED BY idx_attachments_note' : ''}
+                 JOIN notes n ON n.id = a.note_id
+                WHERE a.user_id = ?1
+                  AND a.content_type IN ('image/jpeg', 'image/png', 'image/gif', 'image/webp')
+                  AND a.has_text = 0
+                  AND ${live}
+                  ${noteParam ? `AND a.note_id = ${noteParam}` : ''}`,
+    pdfs: `SELECT ${columns}
+             FROM attachment_text t${noteParam ? ' INDEXED BY idx_attachment_text_note' : ''}
+             JOIN attachments a ON a.id = t.attachment_id
+             JOIN notes n ON n.id = a.note_id
+            WHERE t.user_id = ?1 AND t.text = '' AND t.read_by IS NULL
+              ${noteParam ? `AND t.note_id = ${noteParam}` : ''}
+              AND a.user_id = ?1 AND a.content_type = 'application/pdf'
+              AND ${live}`,
+  };
+}
 
 /**
  * Attachment metadata for one user.
@@ -218,17 +252,18 @@ export class AttachmentsRepo extends ScopedRepo {
   ): Promise<
     Array<{ id: string; noteId: string; filename: string; contentType: string; size: number; r2Key: string }>
   > {
+    // `content_type` and `has_text` are written exactly as 0024's partial index states
+    // them, which is what lets SQLite use it: the walk is over unread PDFs alone, in order,
+    // instead of every PDF with a lookup each to see whether it has text.
     const { results } = await this.db
       .prepare(
         `SELECT a.id, a.note_id, a.filename, a.content_type, a.size, a.r2_key
            FROM attachments a
            JOIN notes n ON n.id = a.note_id
-           LEFT JOIN attachment_text at ON at.attachment_id = a.id
           WHERE a.user_id = ?1
+            AND a.content_type = 'application/pdf' AND a.has_text = 0
             AND n.user_id = ?1
             AND n.deleted_at IS NULL
-            AND a.content_type = 'application/pdf'
-            AND at.attachment_id IS NULL
             ${noteId ? 'AND a.note_id = ?3' : ''}
           ORDER BY a.created_at
           LIMIT ?2`,
@@ -266,16 +301,12 @@ export class AttachmentsRepo extends ScopedRepo {
   ): Promise<
     Array<{ id: string; noteId: string; filename: string; contentType: string; size: number; r2Key: string }>
   > {
+    const { pictures, pdfs } = visionPendingHalves(noteId ? '?3' : null);
     const { results } = await this.db
       .prepare(
-        `SELECT a.id, a.note_id, a.filename, a.content_type, a.size, a.r2_key
-           FROM attachments a
-           JOIN notes n ON n.id = a.note_id
-           LEFT JOIN attachment_text t ON t.attachment_id = a.id
-          WHERE a.user_id = ?1 AND n.user_id = ?1 AND n.deleted_at IS NULL
-            AND ${VISION_PENDING}
-            ${noteId ? 'AND a.note_id = ?3' : ''}
-          ORDER BY a.created_at
+        `SELECT id, note_id, filename, content_type, size, r2_key
+           FROM (${pictures} UNION ALL ${pdfs})
+          ORDER BY created_at
           LIMIT ?2`,
       )
       .bind(this.userId, limit, ...(noteId ? [noteId] : []))
@@ -292,18 +323,13 @@ export class AttachmentsRepo extends ScopedRepo {
 
   /**
    * How many files `needingVision` would still offer, for a pass to say what is left —
-   * on one note when `noteId` is given, as `textCoverage` scopes its count.
+   * on one note when `noteId` is given, as `pendingTextCount` scopes its count.
    */
   async visionPending(noteId?: string): Promise<number> {
+    const { pictures, pdfs } = visionPendingHalves(noteId ? '?2' : null);
     const row = await this.db
       .prepare(
-        `SELECT COUNT(*) AS pending
-           FROM attachments a
-           JOIN notes n ON n.id = a.note_id
-           LEFT JOIN attachment_text t ON t.attachment_id = a.id
-          WHERE a.user_id = ?1 AND n.user_id = ?1 AND n.deleted_at IS NULL
-            AND ${VISION_PENDING}
-            ${noteId ? 'AND a.note_id = ?2' : ''}`,
+        `SELECT (SELECT COUNT(*) FROM (${pictures})) + (SELECT COUNT(*) FROM (${pdfs})) AS pending`,
       )
       .bind(this.userId, ...(noteId ? [noteId] : []))
       .first<{ pending: number }>();
@@ -311,28 +337,30 @@ export class AttachmentsRepo extends ScopedRepo {
   }
 
   /**
-   * Counts of extractable attachments and how many already have text.
+   * How many PDFs `needingText` would still offer, for a pass to say what is left.
    *
    * Scoped to one note when `noteId` is given, so a caller that asked for one note's
    * pending files is told how many that note has left rather than how many the account has.
+   *
+   * This counts only what is unread, through the same partial index as `needingText`.
+   * It replaced a count of every PDF and of every PDF with text, whose difference was the
+   * one number any caller used; producing the other two meant reading every PDF, on
+   * every open of the app.
    */
-  async textCoverage(noteId?: string): Promise<{ extractable: number; indexed: number }> {
+  async pendingTextCount(noteId?: string): Promise<number> {
     const row = await this.db
       .prepare(
-        `SELECT
-           COUNT(*) AS extractable,
-           SUM(CASE WHEN at.attachment_id IS NOT NULL THEN 1 ELSE 0 END) AS indexed
-         FROM attachments a
-         JOIN notes n ON n.id = a.note_id
-         LEFT JOIN attachment_text at ON at.attachment_id = a.id
-        WHERE a.user_id = ?1 AND n.user_id = ?1 AND n.deleted_at IS NULL
-          AND a.content_type = 'application/pdf'
-          ${noteId ? 'AND a.note_id = ?2' : ''}`,
+        `SELECT COUNT(*) AS pending
+           FROM attachments a
+           JOIN notes n ON n.id = a.note_id
+          WHERE a.user_id = ?1
+            AND a.content_type = 'application/pdf' AND a.has_text = 0
+            AND n.user_id = ?1 AND n.deleted_at IS NULL
+            ${noteId ? 'AND a.note_id = ?2' : ''}`,
       )
       .bind(this.userId, ...(noteId ? [noteId] : []))
-      .first<{ extractable: number; indexed: number | null }>();
-
-    return { extractable: row?.extractable ?? 0, indexed: row?.indexed ?? 0 };
+      .first<{ pending: number }>();
+    return row?.pending ?? 0;
   }
 
   /**

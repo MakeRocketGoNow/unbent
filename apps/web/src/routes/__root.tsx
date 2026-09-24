@@ -112,8 +112,16 @@ function AppShell() {
   /**
    * Index whatever is pending, once there is someone to index for.
    *
-   * The editor and the phone both upload PDFs without extracting their text, and the
-   * button in Settings was the only thing that ever caught up. Now the app does on open.
+   * The safety net under the server's read, not the main way a PDF gets its text. A
+   * deployed instance extracts every uploaded PDF itself, but only once, at upload, and
+   * nothing on the server tries again: a conversion that fails or runs out of time, a file
+   * over its 25MB limit, or an instance without Workers AI (local development, a
+   * self-hoster) leaves the file unsearchable. This catches those the next time the app
+   * opens. It was written when the browser was the only extractor, which is why it is
+   * a client pass at all.
+   *
+   * Cheap to ask on every open: the server answers from an index of the PDFs still
+   * unread (0024), so when nothing is pending, which is nearly always, it reads nothing.
    * The pass declines a backlog larger than one page — see AUTO_INDEX_LIMIT — so this can
    * never start pulling gigabytes because a tab was opened on a phone; the sidebar says
    * what it left and Maintenance is where that gets run.
