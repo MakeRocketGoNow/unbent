@@ -9,7 +9,7 @@ import {
   updateNotesSchema,
 } from '@unbent/shared';
 import { isExtractable } from '@unbent/enex/ocr-text';
-import { autofill, EXAMPLES_PER_OPTION, NothingToRead } from '../lib/autofill.js';
+import { autofill, EXAMPLES_PER_OPTION, MAX_TAGS_ASKED, NothingToRead } from '../lib/autofill.js';
 import { copyAttachments } from '../lib/copy-attachments.js';
 import { canAutofill, JevError, jevFrom } from '../lib/jev.js';
 import { canUseLlm, LLM_IMAGE_TYPES, llmFrom } from '../lib/llm.js';
@@ -204,12 +204,16 @@ export const notes = new Hono<AppEnv>()
       if (pending.length > 0) await readPendingFiles(c.env.BLOBS, readers, attachments, pending);
     }
 
-    const [files, notebooks, fields, tags, examples] = await Promise.all([
+    const [files, notebooks, fields, examples] = await Promise.all([
       attachments.textsForNote(id),
       notes.listNotebooks(),
       notes.listAllFields(),
-      notes.listTags(),
-      notes.sampleTitles(id, EXAMPLES_PER_OPTION),
+      /*
+         The most-used tags with their examples, which are all auto-fill asks about. More
+         than its cap: it drops the note's own tags first, and compares them without case,
+         so a note tagged "Tax" also drops "tax".
+      */
+      notes.sampleTitles(id, EXAMPLES_PER_OPTION, MAX_TAGS_ASKED + 2 * note.tags.length),
     ]);
 
     try {
@@ -234,7 +238,7 @@ export const notes = new Hono<AppEnv>()
           fields: fields.filter((f) => f.notebookId === nb.id),
           examples: examples.notebooks.get(nb.id) ?? [],
         })),
-        tags: tags.map((t) => ({ name: t.name, examples: examples.tags.get(t.id) ?? [] })),
+        tags: examples.tags.map((t) => ({ name: t.name, examples: t.examples })),
         },
         // The language model writes the title where the instance has one; see `autofill`.
         canUseLlm(c.env) ? llmFrom(c.env) : undefined,

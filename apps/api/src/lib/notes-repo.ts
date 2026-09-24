@@ -2178,57 +2178,84 @@ export class NotesRepo extends ScopedRepo {
   }
 
   /**
-   * A few recent titles from each notebook and each tag, as examples of what is filed
-   * where, for auto-fill to show the model beside each name.
+   * A few titles from each notebook and each of the most-used tags, as examples of what is
+   * filed where, for auto-fill to show the model beside each name; and those tags
+   * themselves, since they are the ones auto-fill asks about.
    *
    * A notebook called "Misc" or a tag called "2019" says nothing on its own; three titles
-   * from it say what a person has been putting there. Recent rather than random, so the
-   * examples follow how the archive is used now. Untitled notes and the note being filed
-   * are left out — one has nothing to show and the other is the question. One query per
-   * kind, numbered within each group, so an archive of thirteen thousand notes costs two
-   * scans rather than a query per notebook.
+   * from it say what a person has been putting there. Untitled notes and the note being
+   * filed are left out — one has nothing to show and the other is the question.
+   *
+   * Each group reads its own few rows and stops. This was one window query per kind that
+   * numbered every filed note and every tag link to keep three of each, and D1 bills every
+   * row a query visits: 146k rows per press at 13k notes, with examples built for every tag
+   * when only the most-used `tagLimit` are ever asked about. In production that was 40% of
+   * a week's reads, and on the day the quota ran out it was most of it. Now a notebook's
+   * examples walk `idx_notes_user_notebook_id` newest first and stop at `perGroup`, and a
+   * tag's walk `idx_note_tags_tag` to the notes by primary key — 3.3k rows per press.
+   *
+   * Notebook examples are the most recent, which that index gives for free. Tag examples
+   * are the first the tag's index reaches, which is note-id order: a stable sample rather
+   * than the newest. The newest would mean reading every note of each of the tags to sort
+   * them, 24k rows per press; three notes that carry a tag show what it means about as well
+   * as the three newest do. The CROSS JOIN pins the tag side's order — left to itself the
+   * planner starts from the notes and reads 186k. The tags are limited before their
+   * examples are built, so the subquery runs for the kept tags only, whatever order their
+   * names sort in.
+   *
+   * `tagLimit` is how many of the most-used tags to return. The caller asks for more than
+   * it will use: auto-fill drops the tags the note already has before taking its cap.
    */
   async sampleTitles(
     exclude: string,
     perGroup: number,
-  ): Promise<{ notebooks: Map<string, string[]>; tags: Map<string, string[]> }> {
+    tagLimit: number,
+  ): Promise<{
+    notebooks: Map<string, string[]>;
+    tags: Array<{ id: string; name: string; count: number; examples: string[] }>;
+  }> {
     const [byNotebook, byTag] = await this.db.batch([
       this.db
         .prepare(
-          `SELECT group_id, title FROM (
-             SELECT n.notebook_id AS group_id, n.title,
-                    ROW_NUMBER() OVER (PARTITION BY n.notebook_id ORDER BY n.updated_at DESC) AS rn
-               FROM notes n
-              WHERE n.user_id = ?1 AND n.deleted_at IS NULL AND n.notebook_id IS NOT NULL
-                AND n.title <> '' AND n.id <> ?2
-           ) WHERE rn <= ?3`,
+          `SELECT nb.id,
+                  (SELECT json_group_array(title) FROM (
+                     SELECT n.title FROM notes n
+                      WHERE n.user_id = ?1 AND n.notebook_id = nb.id AND n.deleted_at IS NULL
+                        AND n.title <> '' AND n.id <> ?2
+                      ORDER BY n.updated_at DESC
+                      LIMIT ?3)) AS titles
+             FROM notebooks nb
+            WHERE nb.user_id = ?1`,
         )
         .bind(this.userId, exclude, perGroup),
       this.db
         .prepare(
-          `SELECT group_id, title FROM (
-             SELECT nt.tag_id AS group_id, n.title,
-                    ROW_NUMBER() OVER (PARTITION BY nt.tag_id ORDER BY n.updated_at DESC) AS rn
-               FROM note_tags nt
-               JOIN tags t ON t.id = nt.tag_id AND t.user_id = ?1
-               JOIN notes n ON n.id = nt.note_id AND n.user_id = ?1 AND n.deleted_at IS NULL
-              WHERE n.title <> '' AND n.id <> ?2
-           ) WHERE rn <= ?3`,
+          `SELECT t.id, t.name, t.count,
+                  (SELECT json_group_array(title) FROM (
+                     SELECT n.title FROM note_tags nt
+                      CROSS JOIN notes n ON n.id = nt.note_id
+                      WHERE nt.tag_id = t.id AND n.user_id = ?1 AND n.deleted_at IS NULL
+                        AND n.title <> '' AND n.id <> ?2
+                      LIMIT ?3)) AS titles
+             FROM (SELECT id, name, note_count AS count FROM tags
+                    WHERE user_id = ?1 AND note_count > 0
+                    ORDER BY note_count DESC, name COLLATE NOCASE
+                    LIMIT ?4) t
+            ORDER BY t.count DESC, t.name COLLATE NOCASE`,
         )
-        .bind(this.userId, exclude, perGroup),
+        .bind(this.userId, exclude, perGroup, tagLimit),
     ]);
-    const group = (rows: { results: Array<{ group_id: string; title: string }> }) => {
-      const out = new Map<string, string[]>();
-      for (const row of rows.results) {
-        const list = out.get(row.group_id) ?? [];
-        list.push(row.title);
-        out.set(row.group_id, list);
-      }
-      return out;
-    };
+    const titles = (json: string | null) => (json ? (JSON.parse(json) as string[]) : []);
     return {
-      notebooks: group(byNotebook as { results: Array<{ group_id: string; title: string }> }),
-      tags: group(byTag as { results: Array<{ group_id: string; title: string }> }),
+      notebooks: new Map(
+        (byNotebook as { results: Array<{ id: string; titles: string | null }> }).results.map((r) => [
+          r.id,
+          titles(r.titles),
+        ]),
+      ),
+      tags: (
+        byTag as { results: Array<{ id: string; name: string; count: number; titles: string | null }> }
+      ).results.map((r) => ({ id: r.id, name: r.name, count: r.count, examples: titles(r.titles) })),
     };
   }
 
