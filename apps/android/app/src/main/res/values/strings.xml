@@ -224,6 +224,7 @@
     <string name="capture_save">Save</string>
     <string name="title_label">Title</string>
     <string name="saving">Saving to Unbent…</string>
+    <string name="save_waiting">Unbent is busy. Will try again later</string>
     <string name="saved">Saved to Unbent</string>
     <string name="save_failed">Could not save to Unbent</string>
     <string name="sign_in_needed">Sign in to Unbent, then share again</string>

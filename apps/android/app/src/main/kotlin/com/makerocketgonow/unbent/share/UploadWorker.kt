@@ -135,7 +135,12 @@ class UploadWorker(context: Context, params: WorkerParameters) : CoroutineWorker
                  * this does not spend one; it waits for up to [MAX_UNAVAILABLE] of them
                  * instead.
                  */
-                if (CaptureResume.recordUnavailable(dir) <= MAX_UNAVAILABLE) Result.retry() else giveUp()
+                if (CaptureResume.recordUnavailable(dir) <= MAX_UNAVAILABLE) {
+                    CaptureNotifications.waiting(context, jobId, title)
+                    Result.retry()
+                } else {
+                    giveUp()
+                }
             } else if (attemptsSpent() < MAX_ATTEMPTS) {
                 Result.retry()
             } else {
