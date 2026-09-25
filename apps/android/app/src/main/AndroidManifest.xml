@@ -39,6 +39,14 @@
         <intent>
             <action android:name="android.support.customtabs.action.CustomTabsService" />
         </intent>
+        <!--
+            The camera the file chooser offers beside the file apps. Without this, package
+            visibility hides every camera from the app, resolveActivity answers null, and the
+            option silently never appears.
+        -->
+        <intent>
+            <action android:name="android.media.action.IMAGE_CAPTURE" />
+        </intent>
     </queries>
 
     <application

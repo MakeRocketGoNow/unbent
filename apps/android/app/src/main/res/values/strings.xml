@@ -6,6 +6,7 @@
     <string name="shortcut_settings_short">Settings</string>
     <string name="shortcut_settings_long">App settings</string>
     <string name="app_settings_title">App settings</string>
+    <string name="attach_choose">Attach</string>
 
     <string name="sign_in_intro">Sign in to see your notes and save what you share here.</string>
     <string name="sign_in_otp_send">Email me a code</string>
