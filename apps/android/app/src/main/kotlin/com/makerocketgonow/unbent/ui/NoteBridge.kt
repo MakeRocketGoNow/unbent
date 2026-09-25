@@ -17,17 +17,12 @@ import kotlinx.serialization.Serializable
  * From the indexing page the capture job hosts: `ready`, then the counts with
  * `index-done` or `message` with `index-error`.
  *
- * `state` with `save`, `pending` with `upload`, and `missing` are the embedded note page's,
- * and go when it does.
- *
  * Unknown types are ignored rather than failing, so a page from a newer deploy can say
  * something this build has never heard of without breaking the screen around it.
  */
 @Serializable
 data class BridgeMessage(
     val type: String,
-    val state: String? = null,
-    val pending: Int? = null,
     val indexed: Int? = null,
     val unusable: Int? = null,
     val failed: Int? = null,
@@ -36,14 +31,11 @@ data class BridgeMessage(
 ) {
     val isReady get() = type == "ready"
     val isUnauthorized get() = type == "unauthorized"
-    val isMissing get() = type == "missing"
     val isIndexDone get() = type == "index-done"
     val isIndexError get() = type == "index-error"
     val isSignedOut get() = type == "signed-out"
     val isAppSettings get() = type == "app-settings"
     val themeBackground get() = if (type == "theme") background else null
-    val saveState get() = if (type == "save") state else null
-    val uploadsPending get() = if (type == "upload") pending else null
 }
 
 /**
@@ -86,15 +78,5 @@ class NoteBridge(
     companion object {
         /** The name the page looks for; see app-bridge.ts. */
         const val NAME = "UnbentApp"
-
-        /** Asks the page to save whatever is pending; it answers with a `save` message. */
-        const val FLUSH_SCRIPT = "window.__unbent && window.__unbent.flush && window.__unbent.flush();"
-
-        /**
-         * Asks the page to drop its uploads and their placeholders, before a flush. The
-         * page reports the pending count as 0 and the body as dirty before this returns.
-         */
-        const val ABANDON_SCRIPT =
-            "window.__unbent && window.__unbent.abandonUploads && window.__unbent.abandonUploads();"
     }
 }
