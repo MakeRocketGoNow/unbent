@@ -1,3 +1,4 @@
+import java.net.URI
 import java.util.Properties
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
@@ -31,6 +32,18 @@ fun secret(key: String, env: String): String? =
     (keystoreProps.getProperty(key) ?: System.getenv(env))?.takeUnless { it.isBlank() }
 
 val releaseStorePath = secret("unbent.keystore.path", "UNBENT_KEYSTORE_PATH")
+
+/**
+ * The instance the app talks to until someone changes it in App settings — which is what
+ * makes an emulator build usable against a local dev server, and a store build usable
+ * against any instance at all.
+ *
+ * A fork building the app for its own instance sets `unbent.defaultInstance` in
+ * local.properties or UNBENT_DEFAULT_INSTANCE in the environment. Unset, the app points at
+ * unbent.app, the instance this repository's own listing describes. Its host is also the
+ * one the app claims links on; see the App Links filter in the manifest.
+ */
+val defaultInstance = secret("unbent.defaultInstance", "UNBENT_DEFAULT_INSTANCE") ?: "https://unbent.app"
 
 /**
  * The identity a build gets when nothing has said otherwise: unbent.app's own app.
@@ -91,7 +104,8 @@ android {
          * opted out of, and every activity already calls `enableEdgeToEdge()` with insets
          * handled per screen; orientation and resizability locks are ignored above 600dp,
          * and none are declared; `onBackPressed` stops being called, and back is handled
-         * through Compose's `BackHandler` rather than the removed path.
+         * through the dispatcher's callbacks and Compose's `BackHandler` rather than the
+         * removed path.
          */
         targetSdk = 36
         /**
@@ -107,22 +121,10 @@ android {
         versionCode = secret("unbent.versionCode", "UNBENT_VERSION_CODE")?.toIntOrNull() ?: 1
         // What a person sees, in Settings and on the store listing. Bumped by hand, because
         // it means something — unlike the code above, which is bookkeeping.
-        versionName = "0.1.2"
+        versionName = "0.2.0"
 
-        /**
-         * The instance the app talks to until someone changes it in Settings — which is
-         * what makes an emulator build usable against a local dev server, and a store
-         * build usable against any instance at all.
-         *
-         * A fork building the app for its own instance sets `unbent.defaultInstance` in
-         * local.properties or UNBENT_DEFAULT_INSTANCE in the environment. Unset, the app
-         * points at unbent.app, the instance this repository's own listing describes.
-         */
-        buildConfigField(
-            "String",
-            "DEFAULT_INSTANCE",
-            "\"${secret("unbent.defaultInstance", "UNBENT_DEFAULT_INSTANCE") ?: "https://unbent.app"}\"",
-        )
+        buildConfigField("String", "DEFAULT_INSTANCE", "\"$defaultInstance\"")
+        manifestPlaceholders["instanceHost"] = URI(defaultInstance).host
         buildConfigField("String", "CONNECT_SCHEME", "\"unbent\"")
         // Google issues the ID token for the *web* client, which is the audience the
         // API already verifies. The Android client exists only so Google will trust a
@@ -221,9 +223,7 @@ dependencies {
     implementation(libs.compose.material3)
     implementation(libs.compose.material.icons.core)
     implementation(libs.androidx.activity.compose)
-    implementation(libs.androidx.navigation.compose)
     implementation(libs.androidx.webkit)
-    implementation(libs.androidx.lifecycle.runtime.compose)
     debugImplementation(libs.compose.ui.tooling)
     implementation(libs.okhttp)
     implementation(libs.kotlinx.serialization.json)

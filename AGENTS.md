@@ -283,12 +283,17 @@ FABs and list rows and create notes nobody asked for. Read the bounds first:
 adb shell uiautomator dump /sdcard/ui.xml && adb shell cat /sdcard/ui.xml
 ```
 
+Everything past sign-in and the share sheet is the site in a WebView, so most of what is on
+screen is a page. Debug builds turn on WebView debugging: `chrome://inspect` on the Mac
+lists the app's page, where its DOM, console and network can be read like any tab's.
+
 ### Sample notes, and shooting the app
 
 **Check which instance the app is pointed at before creating anything.** The debug build
 stores an instance per install and it is often `https://unbent.app` — the user's real
-notes. Settings shows the address, and so does the sign-in screen's footer. Prefer a local
-instance for anything that writes.
+notes. App settings shows the address — the site's Settings → App settings inside the app,
+or a long-press on the launcher icon — and so does the sign-in screen's footer. Prefer a
+local instance for anything that writes.
 
 `pnpm seed:demo` creates `demo@example.com` on this checkout's dev server and fills it with
 ten presentable sample notes. It is idempotent, so re-running updates rather than
@@ -298,15 +303,15 @@ written down in the script. Sign-up works because `pnpm dev` passes
 `ALLOW_TEST_CREDENTIALS=1` to the Worker — local only, see `passwordEnabled` in
 `apps/api/src/auth.ts`.
 
-Point the app at that instance from Settings → Unbent address, or the sign-in screen's
+Point the app at that instance from App settings → Unbent address, or the sign-in screen's
 Change. Use `adb reverse tcp:<port> tcp:<port>` and the plain `http://localhost:<port>`;
 the dev servers bind loopback, so `10.0.2.2` does not always reach them, and a worktree's
 port is not 5173 (`scripts/ports.mjs`).
 
-**Switching the address signs the app out of the instance it was on.** Sessions are stored
-per origin and the old one is dropped, so a debug app that was signed into production comes
-back signed out and the user has to sign in again. Say so rather than leaving them to find
-it.
+**Switching the address needs a sign-in on the new instance, and keeps the old one.**
+Sessions are stored per origin: a debug app switched from production to a local instance
+asks for a sign-in there, and switching back finds the production session where it was
+left. Say which instance the app is on when you hand it back.
 
 Store screenshots must not show the debug name. `resValue("string", "app_name", …)` in
 `apps/android/app/build.gradle.kts` makes the debug build "Unbent (debug)"; set it to
@@ -369,9 +374,11 @@ user's real data to test a control; if you do it by accident, put it back and sa
 
 `apps/android` is outside the pnpm workspace — `pnpm -r` silently skips it, so nothing above
 verifies it. It is checked with `cd apps/android && ./gradlew test`, which needs no device.
-The UI rules in this file apply to the Android app's Compose screens as much as to the
-web app. The app's editor is the web editor in a WebView, so a change to editing behaviour
-belongs in `apps/web` and reaches both.
+The app is the site in a WebView, so almost every UI change belongs in `apps/web` and
+reaches the phone on deploy. Check it at phone width and inside the app — Back, the system
+bars and the keyboard are the app's, not the browser's. What stays native is the sign-in
+screen, the share sheet and App settings, and the UI rules in this file apply to those
+Compose screens as much as to the site.
 
 ## The local database is disposable — but ask
 

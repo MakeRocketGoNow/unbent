@@ -164,4 +164,38 @@ describe('settings section routing', () => {
     // The import's own entry stays a link, so the page does not lose its own tab.
     expect(screen.getByRole('link', { name: 'Import' })).toBeTruthy();
   });
+
+  /**
+   * The Android app's settings live in the app, so their entry exists only there, and it
+   * asks the app rather than navigating. Checked against the running import too, since
+   * changing the instance from that screen would reload the site under the import.
+   */
+  describe('inside the Android app', () => {
+    afterEach(() => {
+      delete window.UnbentApp;
+    });
+
+    it('offers nothing of the app in a browser', async () => {
+      harness('/settings/notebooks');
+      await waitFor(() => expect(screen.getByText('notebooks page')).toBeTruthy());
+      expect(screen.queryByText('App settings')).toBeNull();
+    });
+
+    it("asks the app for its own settings", async () => {
+      const postMessage = vi.fn();
+      window.UnbentApp = { postMessage };
+      harness('/settings/notebooks');
+      await waitFor(() => expect(screen.getByText('notebooks page')).toBeTruthy());
+      screen.getByRole('button', { name: 'App settings' }).click();
+      expect(postMessage).toHaveBeenCalledWith('{"type":"app-settings"}');
+    });
+
+    it('holds the entry inert while an import runs', async () => {
+      window.UnbentApp = { postMessage: vi.fn() };
+      harness('/settings/import', RunningImport);
+      await waitFor(() => expect(screen.getByText('import page')).toBeTruthy());
+      expect(screen.queryByRole('button', { name: 'App settings' })).toBeNull();
+      expect(screen.getByText('App settings').getAttribute('aria-disabled')).toBe('true');
+    });
+  });
 });

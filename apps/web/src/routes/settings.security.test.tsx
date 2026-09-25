@@ -9,7 +9,7 @@ import {
 } from '@tanstack/react-router';
 import type { AppConfig, AuthProvider } from '@unbent/shared';
 import { Route } from './settings.security.js';
-import { emailOtp, passkey, signIn } from '../auth-client.js';
+import { emailOtp, passkey, signIn, signOut } from '../auth-client.js';
 import * as api from '../notes-api.js';
 
 // The route reads the instance's methods from `/api/config`; no network in a unit test.
@@ -27,6 +27,8 @@ vi.mock('../auth-client.js', () => ({
     deletePasskey: vi.fn().mockResolvedValue({}),
   },
   emailOtp: { sendVerificationOtp: vi.fn().mockResolvedValue({}) },
+  signOut: vi.fn().mockResolvedValue({}),
+  refreshSession: vi.fn().mockResolvedValue(null),
   signIn: {
     email: vi.fn().mockResolvedValue({}),
     emailOtp: vi.fn().mockResolvedValue({}),
@@ -149,6 +151,31 @@ describe('SecurityPage passkey re-verification', () => {
     await waitFor(() =>
       expect(signIn.social).toHaveBeenCalledWith({ provider: 'google', callbackURL: '/settings/security' }),
     );
+  });
+
+  /**
+   * Inside the Android app the redirect would sign in a browser tab, not the app, so the
+   * page offers the app's own sign-in instead: sign out, and the app's sign-in screen takes
+   * over and brings back a session fresh enough to add the passkey.
+   */
+  it('offers the app\'s own sign-in instead of the redirect inside the app', async () => {
+    const postMessage = vi.fn();
+    window.UnbentApp = { postMessage };
+    try {
+      vi.mocked(passkey.addPasskey).mockResolvedValue(notFresh);
+      harness(['google', 'passkey']);
+
+      await waitFor(() => expect(screen.getByText('Add a passkey')).toBeTruthy());
+      fireEvent.click(screen.getByText('Add a passkey'));
+
+      fireEvent.click(await screen.findByText('Sign out'));
+      await waitFor(() => expect(postMessage).toHaveBeenCalledWith('{"type":"signed-out"}'));
+      expect(signOut).toHaveBeenCalled();
+      expect(screen.queryByText('Continue with Google')).toBeNull();
+      expect(signIn.social).not.toHaveBeenCalled();
+    } finally {
+      delete window.UnbentApp;
+    }
   });
 
   it('still shows an unrelated failure as an error rather than a re-verify prompt', async () => {

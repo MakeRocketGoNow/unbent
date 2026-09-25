@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react';
 import { useRouterState } from '@tanstack/react-router';
 import type { ExportFilter } from '@unbent/shared';
-import { stopExport, useExporting, type ExportState } from '../export-archive.js';
+import { savedAs, stopExport, useExporting, type ExportState } from '../export-archive.js';
 import { Snackbar } from './Snackbar.js';
 
 /**
@@ -59,7 +59,7 @@ export function ExportSnackbar() {
     case 'done':
       return (
         <Snackbar
-          message={`${state.destination === 'file' ? 'Saved' : 'Downloaded'} ${state.filename}`}
+          message={savedAs(state)}
           tone="info"
           duration={6000}
           onDismiss={onDismiss}

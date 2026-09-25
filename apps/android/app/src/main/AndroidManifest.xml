@@ -39,6 +39,14 @@
         <intent>
             <action android:name="android.support.customtabs.action.CustomTabsService" />
         </intent>
+        <!--
+            The camera the file chooser offers beside the file apps. Without this, package
+            visibility hides every camera from the app, resolveActivity answers null, and the
+            option silently never appears.
+        -->
+        <intent>
+            <action android:name="android.media.action.IMAGE_CAPTURE" />
+        </intent>
     </queries>
 
     <application
@@ -63,12 +71,12 @@
             tools:node="remove" />
 
         <!--
-            The app. One activity hosting the note list, an open note and settings.
+            The app. One activity, one WebView, the whole site in it.
 
             `singleTop` so a notification tapped while the app is open reaches onNewIntent
             instead of stacking a second copy. The configuration changes are handled rather
-            than recreated because recreating the activity would recreate the WebView the
-            editor lives in, and throw away its cursor and undo history mid-thought.
+            than recreated because recreating the activity would recreate the WebView and
+            reload the site, throwing away the editor's cursor and undo history mid-thought.
             `adjustResize` is what tells devices older than API 30 to report the keyboard as
             an inset, so the editor shrinks above it instead of being covered.
         -->
@@ -84,6 +92,35 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
 
+            <!--
+                Links to the site's own pages open in the app: a note, the trash, settings.
+                The host is the build's default instance (`instanceHost`, from
+                `unbent.defaultInstance`), and `autoVerify` has Android check the instance's
+                /.well-known/assetlinks.json before it trusts the claim, so a fork's app
+                cannot take unbent.app's links.
+
+                The pages only, never the whole host: `/connect` and the OAuth callbacks
+                run in a Custom Tab during sign-in and must stay there, links in mail
+                (a password reset, confirming a deletion) belong where they were tapped,
+                and `/api` is files. A link whose host is not the instance the app is
+                pointed at now — someone who switched to their own — goes to a Custom Tab.
+
+                Verification needs the asset links to list this exact package and signing
+                certificate. The debug build is a different package (`.debug`) and needs a
+                statement of its own; the store build needs Play's App Signing key, not the
+                upload key. See AGENTS.md, "Three keys sign this app".
+            -->
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="https" />
+                <data android:host="${instanceHost}" />
+                <data android:pathPrefix="/notes" />
+                <data android:pathPrefix="/trash" />
+                <data android:pathPrefix="/settings" />
+            </intent-filter>
+
             <meta-data
                 android:name="android.app.shortcuts"
                 android:resource="@xml/shortcuts" />
@@ -92,7 +129,7 @@
         <!--
             The share-sheet entry: a bottom sheet over the sending app, with the title,
             notebook and tags, and one Save. Translucent so the sheet sits over whatever
-            was being shared from; its own task so it never brings the note list with it.
+            was being shared from; its own task so it never brings the app's own screen with it.
             Not `noHistory`: a person who has to sign in first goes away and comes back,
             and the staged files must still be here when they do.
         -->
@@ -129,6 +166,17 @@
         </activity>
 
         <!--
+            The app's own settings: the instance address and the version. Not exported: the
+            launcher shortcut reaches it through MainActivity, which is, and the site asks
+            for it over the bridge.
+        -->
+        <activity
+            android:name=".ui.AppSettingsActivity"
+            android:exported="false"
+            android:label="@string/app_settings_title"
+            android:windowSoftInputMode="adjustResize" />
+
+        <!--
             Exported, because the browser hands the token back by opening this deep link.
             The scheme carries the build's application id, so a debug install beside a
             release one cannot intercept the other's connection.
@@ -147,7 +195,7 @@
         </activity>
 
         <!--
-            How a file the app made reaches the editor. The WebView's file chooser returns
+            How a file the app made reaches the page. The WebView's file chooser returns
             content URIs, and a HEIC photo the app has transcoded to JPEG has to come back
             as one too, so the JPEG is served from the cache through this provider. Not
             exported: the only reader is this app's own WebView, under a grant the

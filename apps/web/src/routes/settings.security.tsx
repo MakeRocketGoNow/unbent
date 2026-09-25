@@ -6,6 +6,8 @@ import { Button } from '../components/Button.js';
 import type { Passkey } from '@better-auth/passkey';
 import { emailOtp, passkey, signIn, useSession } from '../auth-client.js';
 import { configQuery } from '../queries.js';
+import { isHosted } from '../app-bridge.js';
+import { useSignOut } from '../useSignOut.js';
 
 export const Route = createFileRoute('/settings/security')({
   component: SecurityPage,
@@ -192,6 +194,7 @@ function Reverify({ onVerified, onCancel }: ReverifyProps) {
   const social = providers.filter((p) => !isLocalMethod(p));
 
   const email = session?.user.email ?? '';
+  const signOutAndLeave = useSignOut();
   const [secret, setSecret] = useState('');
   const [codeSent, setCodeSent] = useState(false);
   const [code, setCode] = useState('');
@@ -341,6 +344,32 @@ function Reverify({ onVerified, onCancel }: ReverifyProps) {
         </Button>
         {error && <p className="bad small">{error}</p>}
       </form>
+    );
+  }
+
+  /*
+     Social-only instance, inside the Android app. The redirect below would leave for a
+     browser tab — Google refuses to sign in inside an app's WebView — and the session it
+     brought back would be the browser's, not the app's, so the Add button here would still
+     say no. What the app does have is its own sign-in, through the phone's account sheet,
+     and signing in there creates exactly the fresh session this needs. So the way through
+     is to sign out and back in, said plainly, with the button to start it.
+  */
+  if (social.length > 0 && isHosted()) {
+    return (
+      <div className="login-form reverify-form">
+        {intro}
+        <p className="muted small">
+          Sign out, sign back in, then add the passkey. Signing in again is what confirms it
+          is you, and inside the app that happens on the sign-in screen.
+        </p>
+        <div className="login-actions">
+          <Button onClick={signOutAndLeave}>Sign out</Button>
+          <Button variant="quiet" size="small" onClick={onCancel}>
+            Cancel
+          </Button>
+        </div>
+      </div>
     );
   }
 

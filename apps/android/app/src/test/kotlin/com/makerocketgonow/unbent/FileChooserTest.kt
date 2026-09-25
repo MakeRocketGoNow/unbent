@@ -6,8 +6,12 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.webkit.ValueCallback
+import java.io.File
 import androidx.test.core.app.ApplicationProvider
+import com.makerocketgonow.unbent.ui.CameraShot
 import com.makerocketgonow.unbent.ui.FileChooserRequest
+import com.makerocketgonow.unbent.ui.acceptsImages
+import com.makerocketgonow.unbent.ui.chosenFiles
 import com.makerocketgonow.unbent.ui.chosenUris
 import com.makerocketgonow.unbent.ui.trustedUris
 import org.junit.Assert.assertEquals
@@ -106,5 +110,58 @@ class FileChooserTest {
         request.answer(arrayOf(one))
         assertTrue(callback.values.isEmpty())
         assertFalse(request.isOpen)
+    }
+
+    /**
+     * The camera's photo, and only it. It lives on this app's own provider, which the picker's
+     * results are never allowed to be, so it has to be recognised as the one this app minted.
+     */
+    private fun shot(written: Boolean): CameraShot {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val file = File(context.cacheDir, "attach/test/IMG_1.jpg").apply {
+            parentFile?.mkdirs()
+            if (written) writeBytes(byteArrayOf(1, 2, 3)) else delete()
+        }
+        val uri = Uri.parse("content://${context.packageName}.files/attach/test/IMG_1.jpg")
+        return CameraShot(uri, file, Intent())
+    }
+
+    @Test
+    fun `a photo the camera took is handed over`() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val shot = shot(written = true)
+        assertEquals(listOf(shot.uri), chosenFiles(context, Activity.RESULT_OK, null, shot))
+        assertEquals(listOf(shot.uri), chosenFiles(context, Activity.RESULT_OK, Intent(), shot))
+        assertEquals(listOf(shot.uri), chosenFiles(context, Activity.RESULT_OK, Intent().setData(shot.uri), shot))
+    }
+
+    @Test
+    fun `a camera that wrote nothing took no photo`() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        assertEquals(emptyList<Uri>(), chosenFiles(context, Activity.RESULT_OK, null, shot(written = false)))
+        assertEquals(emptyList<Uri>(), chosenFiles(context, Activity.RESULT_CANCELED, null, shot(written = true)))
+    }
+
+    @Test
+    fun `another address on this app's provider is still refused`() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val other = Uri.parse("content://${context.packageName}.files/attach/other/secret.jpg")
+        val result = chosenFiles(context, Activity.RESULT_OK, Intent().setData(other), shot(written = true))
+        assertEquals(emptyList<Uri>(), result)
+    }
+
+    @Test
+    fun `what the picker chose wins over the camera`() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        assertEquals(listOf(one), chosenFiles(context, Activity.RESULT_OK, Intent().setData(one), shot(written = true)))
+    }
+
+    @Test
+    fun `the camera is offered only where a photo would be taken`() {
+        assertTrue(acceptsImages(arrayOf("")))
+        assertTrue(acceptsImages(emptyArray()))
+        assertTrue(acceptsImages(arrayOf("image/*")))
+        assertTrue(acceptsImages(arrayOf("application/pdf", ".jpg")))
+        assertFalse(acceptsImages(arrayOf(".enex", ".zip", ".md", "application/zip")))
     }
 }

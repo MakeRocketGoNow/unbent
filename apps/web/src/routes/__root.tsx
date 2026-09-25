@@ -11,6 +11,8 @@ import { useMediaQuery, MOBILE_QUERY } from '../useMediaQuery.js';
 import { claimCacheFor } from '../queries.js';
 import { startIndexing, subscribeIndexing } from '../index-files.js';
 import { Topbar } from '../components/Topbar.js';
+import { useHostApp } from '../useHostApp.js';
+import { postToApp } from '../app-bridge.js';
 import { ExportSnackbar } from '../components/ExportSnackbar.js';
 
 export interface RouterContext {
@@ -109,6 +111,9 @@ function AppShell() {
   const isMobile = useMediaQuery(MOBILE_QUERY);
   const railWidth = useRailWidth();
   const shellRef = useRef<HTMLDivElement>(null);
+  // Back, a notification's note and the colour around the page, when the Android app
+  // hosts the site; nothing in a browser.
+  useHostApp();
 
   /**
    * Index whatever is pending, once there is someone to index for.
@@ -149,6 +154,8 @@ function AppShell() {
    */
   useEffect(() => {
     if (isPending || session?.user) return;
+    // The app, if there is one, takes over from here; see `requireSession`.
+    postToApp({ type: 'unauthorized' });
     void navigate({ to: '/login', replace: true });
   }, [isPending, session, navigate]);
 

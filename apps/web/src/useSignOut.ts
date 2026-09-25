@@ -1,5 +1,6 @@
 import { useNavigate } from '@tanstack/react-router';
 import { signOut, refreshSession } from './auth-client.js';
+import { postToApp } from './app-bridge.js';
 
 /**
  * Sign out, and land somewhere that makes sense afterwards.
@@ -13,7 +14,7 @@ import { signOut, refreshSession } from './auth-client.js';
  * the next sign-in, so this goes to `/login` rather than staying put and letting the gate
  * bounce it there a moment later.
  *
- * The session is refetched before navigating rather than left to settle on its own:
+ * In a browser, the session is refetched before navigating rather than left to settle on its own:
  * `/login` turns away anyone who is signed in, and it reads the same store this call is in
  * the middle of emptying.
  *
@@ -27,8 +28,20 @@ import { signOut, refreshSession } from './auth-client.js';
 export function useSignOut(): () => void {
   const navigate = useNavigate();
   return () => {
-    void signOut()
-      .then(() => refreshSession())
-      .then(() => navigate({ to: '/login', replace: true }));
+    void signOut().then(() => {
+      /*
+       * Inside the Android app, the app still holds its own copy of the session and
+       * would put it back into the page on the next launch, as if the sign-out had
+       * never happened. Telling it is what makes it forget, and it replaces this screen
+       * with its own sign-in.
+       *
+       * Told before the session store is refreshed, not after. Emptying the store is what
+       * makes the shell in `__root.tsx` post `unauthorized` and navigate to `/login`, so
+       * refreshing first would send the app a session check it is about to throw away,
+       * and flash `/login` in a screen on its way out.
+       */
+      if (postToApp({ type: 'signed-out' })) return;
+      return refreshSession().then(() => navigate({ to: '/login', replace: true }));
+    });
   };
 }

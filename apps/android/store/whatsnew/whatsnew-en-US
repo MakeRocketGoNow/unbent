@@ -1,3 +1,5 @@
-Google sign-in works again. It was failing on phones that had a Google account signed in, and wrongly saying the phone had none.
+Unbent on your phone is now the whole Unbent site, so everything the website does works here too: selecting several notes at once, auto-fill, custom fields, import and export, and every setting.
 
-Settings now shows which version you are running, so a bug report can say which build it came from.
+Attach a photo straight from the camera. Links to your notes open in the app, and exports save to Downloads.
+
+Back closes whatever is open first. Losing signal no longer signs you out. The Unbent address and version are now under Settings, App settings.

@@ -321,12 +321,18 @@ class SignInActivity : ComponentActivity() {
      */
     private fun continueToApp() {
         if (intent?.getBooleanExtra(EXTRA_THEN_LAUNCH, false) == true) {
-            startActivity(Intent(this, MainActivity::class.java))
+            startActivity(
+                Intent(this, MainActivity::class.java)
+                    .putExtra(MainActivity.EXTRA_PATH, intent?.getStringExtra(EXTRA_THEN_OPEN)),
+            )
         }
     }
 
     companion object {
         /** Set when sign-in replaced a launch, so success reopens the app. */
         const val EXTRA_THEN_LAUNCH = "thenLaunch"
+
+        /** The page the app was opened for, if any, to go to once signed in. */
+        const val EXTRA_THEN_OPEN = "thenOpen"
     }
 }

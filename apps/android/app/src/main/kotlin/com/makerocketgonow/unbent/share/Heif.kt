@@ -18,7 +18,7 @@ import java.util.Locale
  * it, and Chrome could not render it anyway. So a photo is transcoded to JPEG on the
  * phone, which is the one place that can decode it, before it goes anywhere.
  *
- * One object because two paths need it — the share sheet's staging and the note screen's
+ * One object because two paths need it — the share sheet's staging and the WebView's
  * file chooser — and because the two were about to disagree on details that matter: the
  * name the JPEG gets, and what happens on a phone too old to decode.
  */
