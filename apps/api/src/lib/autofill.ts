@@ -7,6 +7,7 @@ import {
 } from '@unbent/shared';
 import type { Jev, JevAnswer, JevChoiceQuestion, JevEntry, JevQuestion } from './jev.js';
 import { isLlmAuthError, type LanguageModel, type NoteForTitle } from './llm.js';
+import { titleCase } from './title-case.js';
 
 /**
  * Filing a note from what it says: the title, the notebook, the tags and the fields, as
@@ -28,7 +29,7 @@ import { isLlmAuthError, type LanguageModel, type NoteForTitle } from './llm.js'
  *
  * The title is the exception, because a title is written, not found. A line picked off
  * the document gets "Invoice #4471"; the language model, where the instance has one,
- * gets "Acme Hardware invoice, March 2026". Jev is still asked to pick a line — its
+ * gets "Acme Hardware Invoice, March 2026". Jev is still asked to pick a line — its
  * question rides in a request that is being made anyway — and its pick is what stands
  * where there is no language model, or when that model declines or fails.
  *
@@ -726,11 +727,13 @@ export async function autofill(
     }
   }
 
+  // Whichever wrote it, the title is offered in title case: a scan's line arrives in the
+  // case it was printed in, and a prompt asks the model for title case without promising it.
   const written = named ?? (writing ? await writing : null);
-  if (written) suggestion.title = { value: written };
+  if (written) suggestion.title = { value: titleCase(written) };
   else {
     const title = first.title && chosen(answers['title'], first.title.values);
-    if (title) suggestion.title = { value: String(title.value), confidence: title.confidence };
+    if (title) suggestion.title = { value: titleCase(String(title.value)), confidence: title.confidence };
   }
 
   // Only the operator, and only when the model's own title never came — a suggestion that

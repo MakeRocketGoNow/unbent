@@ -14,7 +14,7 @@ import { z } from 'zod';
  * indexes and auto-fill reads. Nothing downstream learns a new kind of text.
  *
  * And writing a note's title. Jev can only pick a line off the document, which gets
- * "Invoice #4471"; a model that writes gets "Acme Hardware invoice, March 2026", which is
+ * "Invoice #4471"; a model that writes gets "Acme Hardware Invoice, March 2026", which is
  * what a person filing it would have typed. See `title`, and lib/autofill.ts for how the
  * two are combined.
  *
@@ -220,11 +220,12 @@ const TITLE_SYSTEM = [
   'You title notes in a personal archive: scans, photographs and notes someone kept. You',
   'are shown the note — the title it has now, its body, and the text of its files — and',
   'you answer with the title a careful person would give it: what it is and who or what it',
-  'is from or about, the way a label on a folder reads. For example "Acme Hardware invoice,',
-  'March 2026", "Jane Doe, Acme Plumbing (business card)", "Sushi A Go Go receipt", "Lasagna',
-  'at Luigi\u2019s", "Roof quote from Summit Roofing".',
+  'is from or about, the way a label on a folder reads. For example "Acme Hardware Invoice,',
+  'March 2026", "Jane Doe, Acme Plumbing (Business Card)", "Sushi A Go Go Receipt", "Lasagna',
+  'at Luigi\u2019s", "Roof Quote From Summit Roofing".',
   '',
-  'Short, under about sixty characters, with no quotation marks and no full stop. Use only',
+  'Short, under about sixty characters, in title case, with no quotation marks and no full',
+  'stop. Keep an acronym or a brand in its own capitals: "IRS", "LLC", "iPhone". Use only',
   'what the note says: never invent a name, a date or an amount. Name the party a file is',
   'from or about, not a middleman that only handled or printed it — a payment network, a',
   'concession operator, the parent brand over the specific place that served this one. If',
