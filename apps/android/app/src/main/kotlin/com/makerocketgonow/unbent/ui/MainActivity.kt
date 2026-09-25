@@ -467,6 +467,10 @@ class MainActivity : ComponentActivity() {
             if (view === webView) {
                 resumeUrl = view.url
                 webView = null
+                // An export the page was streaming has lost the page that was writing it, as
+                // in onDestroy. Left open, its pending row in Downloads would sit there until
+                // the activity went, beside whatever export the rebuilt page starts next.
+                saves.abortAll()
                 generation++
             }
             return true
