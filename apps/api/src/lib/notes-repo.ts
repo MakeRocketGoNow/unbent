@@ -900,6 +900,20 @@ export class NotesRepo extends ScopedRepo {
 
     const direction = descending ? 'DESC' : 'ASC';
 
+    /*
+       The page is chosen in a subquery, and the row's tags, fields and files are looked
+       up for the rows chosen. In one query the planner evaluated those three subqueries,
+       and the notebook join, for every candidate row before it sorted — every note in a
+       tag, every note in a notebook sorted by a field — and D1 bills each row read: a page
+       of a 770-note notebook sorted by a field read 11k rows, a popular tag's page 4k.
+       Chosen first, the page reads about 4.5k and 2.9k. Lists in index order lose nothing
+       (a plain page reads 531 rows where it read 540), so every list takes this shape.
+
+       The sort key is selected under one name, with its collation, so the outer ORDER BY
+       can name it: SQLite then keeps the subquery's order rather than sorting again, and
+       a key without the collation would have cost a second sort on title pages.
+    */
+    const nullsLast = byField ? `(${spec.column} IS NULL) ASC, ` : '';
     const { results } = await this.db
       .prepare(
         `SELECT n.id, n.title, n.body, n.created_at, n.updated_at, n.deleted_at,
@@ -909,12 +923,15 @@ export class NotesRepo extends ScopedRepo {
                   WHERE nt.note_id = n.id) AS tags,
                 ${FIELDS_SUBQUERY},
                 ${ATTACHMENTS_SUBQUERY}
-           FROM notes n
+           FROM (SELECT n.id, n.title, n.body, n.created_at, n.updated_at, n.deleted_at,
+                        n.notebook_id, ${spec.column}${collate} AS sort_key
+                   FROM notes n
+                   ${sortJoin}
+                  WHERE ${conditions.join(' AND ')}
+                  ORDER BY ${nullsLast}${spec.column}${collate} ${direction}, n.id ${direction}
+                  LIMIT ?${binds.length}) n
            LEFT JOIN notebooks nb ON nb.id = n.notebook_id
-           ${sortJoin}
-          WHERE ${conditions.join(' AND ')}
-          ORDER BY ${byField ? `(${spec.column} IS NULL) ASC, ` : ''}${spec.column}${collate} ${direction}, n.id ${direction}
-          LIMIT ?${binds.length}`,
+          ORDER BY ${byField ? '(n.sort_key IS NULL) ASC, ' : ''}n.sort_key ${direction}, n.id ${direction}`,
       )
       .bind(...binds)
       .all<SummaryRow>();
