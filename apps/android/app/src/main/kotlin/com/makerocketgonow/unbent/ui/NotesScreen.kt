@@ -194,11 +194,27 @@ fun NotesScreen(
         }
     }
 
-    // Coming back from a note, the notebooks screen or the trash — any of which may have
-    // changed a row on this list, the directory counts, or both.
+    /*
+     * One in-place refresh per return, whichever cause asks first.
+     *
+     * Coming back from a note, the notebooks screen or the trash raises the stale flag and
+     * also resumes this screen, and both used to refresh. They were coalesced with a
+     * two-second window, which also swallowed a genuine second return — trash a note, come
+     * back, open and trash the next one quickly — and left the list stale until the one
+     * after. The screen leaves composition whenever another destination covers it, so a
+     * `remember` here lives exactly one return: the stale path marks that return covered
+     * and the resume that follows skips. If the resume got there first it has already
+     * refreshed, and the stale path only lowers the flag. A resume with no stale flag
+     * behind it is the app coming back to the front, and refreshes on its own.
+     */
+    val lifecycle = LocalLifecycleOwner.current.lifecycle
+    val returnCovered = remember { booleanArrayOf(false) }
     LaunchedEffect(refreshKey) {
         if (refreshKey) {
-            state.refreshInPlace()
+            if (!lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) {
+                returnCovered[0] = true
+                state.refreshInPlace()
+            }
             onRefreshed()
         }
     }
@@ -213,11 +229,11 @@ fun NotesScreen(
      * registering fires ON_RESUME at once; that first one is skipped, since the list has
      * not loaded yet and `refreshInPlace` has nothing to rebuild.
      */
-    val lifecycle = LocalLifecycleOwner.current.lifecycle
     DisposableEffect(lifecycle, state) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME && state.loaded) {
-                scope.launch { state.refreshInPlace() }
+                if (returnCovered[0]) returnCovered[0] = false
+                else scope.launch { state.refreshInPlace() }
             }
         }
         lifecycle.addObserver(observer)
@@ -1095,9 +1111,6 @@ class NotesState(private val api: UnbentApi) {
 
         /** How long the tag list is trusted before the sheet or search refetches it. */
         const val TAGS_FRESH_MS = 5 * 60_000L
-
-        /** A second in-place refresh this soon after one is the same return, seen twice. */
-        const val REFRESH_COALESCE_MS = 2_000L
     }
 
     /**
@@ -1242,9 +1255,8 @@ class NotesState(private val api: UnbentApi) {
     /** When [tags] were last fetched, for [loadTagsIfStale]. */
     private var tagsAt = 0L
 
-    /** The in-place refresh running now, and when the last one finished; see [refreshInPlace]. */
+    /** Whether an in-place refresh is running now; see [refreshInPlace]. */
     private var refreshingInPlace = false
-    private var refreshedInPlaceAt = 0L
 
     private var cursor: String? = null
     /** Which load is current, so a page from a superseded filter is thrown away. */
@@ -1300,19 +1312,16 @@ class NotesState(private val api: UnbentApi) {
      * sheet and search read them, and they refresh when those open ([loadTagsIfStale]).
      * Nor does an open search — see [searchedFor].
      *
-     * Once per return. Coming back from a note both flags the list stale and resumes the
-     * screen, and each asked for this; the second, arriving while the first runs or just
-     * after, is dropped.
+     * Once per return, which the screen sees to: it knows which of its two triggers a
+     * return raised. One asked for while another is still running is dropped here.
      */
     suspend fun refreshInPlace() {
         if (!loaded || refreshingInPlace) return
-        if (SystemClock.elapsedRealtime() - refreshedInPlaceAt < REFRESH_COALESCE_MS) return
         refreshingInPlace = true
         try {
             rebuildInPlace()
         } finally {
             refreshingInPlace = false
-            refreshedInPlaceAt = SystemClock.elapsedRealtime()
         }
     }
 
