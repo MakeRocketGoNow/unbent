@@ -502,7 +502,12 @@ class MainActivity : ComponentActivity() {
                     Destination.InApp -> this@MainActivity.webView?.loadUrl(url)
                     else -> openOutside(this@MainActivity, destination)
                 }
-                popup.post { popup.destroy() }
+                // Posted through the host, not the popup. The popup is never attached to a
+                // window, and a view that is not attached holds what is posted to it until it
+                // is, which here is never: every link off the site would leak a whole WebView.
+                // Posted at all, rather than destroyed here, because this runs inside the
+                // popup's own callbacks.
+                view.post { popup.destroy() }
             }
             popup.webViewClient = object : WebViewClient() {
                 override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
