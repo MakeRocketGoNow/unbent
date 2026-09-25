@@ -6,8 +6,11 @@ import java.io.File
 import java.util.Calendar
 import java.util.Date
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
+import org.junit.Rule
 import org.junit.Test
+import org.junit.rules.TemporaryFolder
 
 /**
  * Filename and title derivation.
@@ -130,4 +133,41 @@ class StagingTest {
     }
 
     private fun staged(name: String) = StagedFile(File("/tmp/$name"), name, "application/octet-stream")
+
+    @get:Rule val temp = TemporaryFolder()
+
+    @Test
+    fun `a new capture is staged outside the cache`() {
+        val root = temp.newFolder("no_backup")
+        val cache = temp.newFolder("cache")
+        assertEquals(File(root, "shares/job-1"), Staging.jobDir(root, cache, "job-1"))
+    }
+
+    @Test
+    fun `a capture an earlier build staged in the cache is still found there`() {
+        val root = temp.newFolder("no_backup")
+        val cache = temp.newFolder("cache")
+        val legacy = File(cache, "shares/job-2").apply { mkdirs() }
+        assertEquals(legacy, Staging.jobDir(root, cache, "job-2"))
+    }
+
+    @Test
+    fun `a job untouched for days is swept, and one still waiting is left`() {
+        val root = temp.newFolder("shares")
+        val day = 24 * 60 * 60 * 1000L
+        val now = 10 * day
+        val abandoned = File(root, "old").apply { mkdirs() }
+        File(abandoned, "scan.pdf").apply { writeText("x") }.setLastModified(now - 4 * day)
+        abandoned.setLastModified(now - 4 * day)
+        // Staged four days ago too, but a 503 count rewritten an hour ago says it is live.
+        val waiting = File(root, "waiting").apply { mkdirs() }
+        File(waiting, "scan.pdf").apply { writeText("x") }.setLastModified(now - 4 * day)
+        File(waiting, ".unavailable").apply { writeText("9") }.setLastModified(now - 60 * 60 * 1000L)
+        waiting.setLastModified(now - 4 * day)
+
+        Staging.sweepAbandoned(root, now)
+
+        assertFalse(abandoned.exists())
+        assertTrue(waiting.exists())
+    }
 }
