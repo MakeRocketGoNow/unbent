@@ -1368,6 +1368,185 @@ describe('link rendering', () => {
   });
 });
 
+describe('following links', () => {
+  /**
+   * What a click asked the browser to follow. The editor opens a link through a detached
+   * anchor, and jsdom does not navigate, so the anchor's own click is what is recorded.
+   */
+  let followed: Array<{ href: string; target: string; rel: string }>;
+
+  beforeEach(() => {
+    followed = [];
+    vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function (
+      this: HTMLAnchorElement,
+    ) {
+      followed.push({ href: this.getAttribute('href') ?? '', target: this.target, rel: this.rel });
+    });
+    openAttachmentViewer.mockClear();
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  /** A press and release on the label, as a mouse or a tap delivers them. */
+  function clickLabel(v: EditorView): { pressClaimed: boolean } {
+    const label = v.dom.querySelector('.cm-md-link');
+    expect(label).not.toBeNull();
+    const press = new MouseEvent('mousedown', { bubbles: true, cancelable: true, button: 0 });
+    label!.dispatchEvent(press);
+    label!.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, button: 0 }));
+    return { pressClaimed: press.defaultPrevented };
+  }
+
+  it('opens a web link in a new tab from a click on its label', () => {
+    const doc = '[Example](https://example.com/page)\n\nplain';
+    const v = mount(doc, doc.length);
+    clickLabel(v);
+    expect(followed).toEqual([
+      { href: 'https://example.com/page', target: '_blank', rel: 'noopener noreferrer' },
+    ]);
+  });
+
+  /** Otherwise the tap would reveal `[text](url)` under the finger as the tab opened. */
+  it('keeps the caret where it was', () => {
+    const doc = '[Example](https://example.com)\n\nplain';
+    const v = mount(doc, doc.length);
+    const { pressClaimed } = clickLabel(v);
+    expect(pressClaimed).toBe(true);
+    expect(v.state.selection.main.head).toBe(doc.length);
+    expect(visibleText(v, 1)).toBe('Example');
+  });
+
+  it('opens from an editor nobody has focused yet', () => {
+    const doc = '[Example](https://example.com)';
+    const v = mountWithAttachments(doc, 0, [], false);
+    clickLabel(v);
+    expect(followed.map((f) => f.href)).toEqual(['https://example.com']);
+  });
+
+  it('ignores a title after the destination', () => {
+    const doc = '[Example](https://example.com "The example")\n\nplain';
+    const v = mount(doc, doc.length);
+    clickLabel(v);
+    expect(followed.map((f) => f.href)).toEqual(['https://example.com']);
+  });
+
+  it('shows the destination on hover', () => {
+    const doc = '[Example](<https://example.com/a b>)\n\nplain';
+    const v = mount(doc, doc.length);
+    expect(v.dom.querySelector('.cm-md-link')?.getAttribute('title')).toBe(
+      'https://example.com/a b',
+    );
+  });
+
+  /** Chrome leaves an empty tab behind for a `_blank` mail link. */
+  it('hands a mail link over without a new tab', () => {
+    const doc = '[Write](mailto:someone@example.com)\n\nplain';
+    const v = mount(doc, doc.length);
+    clickLabel(v);
+    expect(followed).toEqual([{ href: 'mailto:someone@example.com', target: '', rel: '' }]);
+  });
+
+  /** The sanitizer drops these in the preview; a click here is only a click on text. */
+  it('leaves a script link as text to edit', () => {
+    const doc = '[Run](javascript:alert(1))\n\nplain';
+    const v = mount(doc, doc.length);
+    clickLabel(v);
+    expect(followed).toEqual([]);
+  });
+
+  it('opens a stored PDF in the viewer', () => {
+    const doc = '[Report (final) v2.pdf](<files/Report (final) v2.pdf>)\n\nplain';
+    const v = mountWithAttachments(doc, doc.length);
+    clickLabel(v);
+    expect(followed).toEqual([]);
+    expect(openAttachmentViewer).toHaveBeenCalledWith(
+      { kind: 'pdf', src: '/api/notes/n1/files/Report (final) v2.pdf', label: '' },
+      expect.any(Array),
+    );
+  });
+
+  /**
+   * Attachments are served sandboxed, so a navigation would download anyway — and in the
+   * Android app a same-origin tab replaces the app.
+   */
+  it('downloads any other stored file', () => {
+    const doc = '[Budget.xlsx](files/Budget.xlsx)\n\nplain';
+    const v = mountWithAttachments(doc, doc.length);
+    clickLabel(v);
+    expect(followed).toEqual([
+      { href: '/api/notes/n1/files/Budget.xlsx?download=1', target: '', rel: '' },
+    ]);
+  });
+
+  /** Revealed, the label is text being edited: a plain click places the caret. */
+  it('does not open a revealed link on a plain click', () => {
+    const doc = '[Example](https://example.com)';
+    const v = mount(doc, 3);
+    expect(v.dom.querySelector('.cm-md-link')).toBeNull();
+    expect(followed).toEqual([]);
+  });
+
+  /** The case that looked disabled: a pasted link whose text is its own address. */
+  it('draws a URL used as a label as the link, not a dimmed destination', () => {
+    const doc = '[https://example.com](https://example.com)\n\nplain';
+    const v = mount(doc, doc.length);
+    const label = v.dom.querySelector('.cm-md-link')!;
+    expect(label.textContent).toBe('https://example.com');
+    expect(label.closest('.cm-md-url')).toBeNull();
+    expect(label.querySelector('.cm-md-url')).toBeNull();
+  });
+
+  it('dims only the destination once the link is revealed', () => {
+    const doc = '[https://example.com](https://example.com/long)';
+    const v = mount(doc, 3);
+    const dimmed = [...v.dom.querySelectorAll('.cm-md-url')].map((e) => e.textContent);
+    expect(dimmed).toEqual(['https://example.com/long']);
+  });
+
+  it('draws a bare URL as a link and opens it from a click', () => {
+    const doc = 'read https://example.org/page today\n\nplain';
+    const v = mount(doc, doc.length);
+    const link = v.dom.querySelector('.cm-md-link');
+    expect(link?.textContent).toBe('https://example.org/page');
+    expect(v.dom.querySelector('.cm-md-url')).toBeNull();
+    clickLabel(v);
+    expect(followed.map((f) => f.href)).toEqual(['https://example.org/page']);
+  });
+
+  /** On the line being edited a bare URL is its own text, so a click places the caret. */
+  it('leaves a bare URL as text on the line being edited', () => {
+    const doc = 'read https://example.org/page today';
+    const v = mount(doc, 2);
+    expect(v.dom.querySelector('.cm-md-link')).toBeNull();
+  });
+
+  it('opens www. and email addresses the way the preview links them', () => {
+    const doc = 'see www.example.com or someone@example.com\n\nplain';
+    const v = mount(doc, doc.length);
+    const titles = [...v.dom.querySelectorAll('.cm-md-link')].map((e) => e.getAttribute('title'));
+    expect(titles).toEqual(['http://www.example.com', 'mailto:someone@example.com']);
+  });
+
+  it('hides an autolink\'s angle brackets and opens it', () => {
+    const doc = '<https://example.com/x>\n\nplain';
+    const v = mount(doc, doc.length);
+    expect(visibleText(v, 1)).toBe('https://example.com/x');
+    clickLabel(v);
+    expect(followed.map((f) => f.href)).toEqual(['https://example.com/x']);
+  });
+
+  it('keeps a middle-click from opening it', () => {
+    const doc = '[Example](https://example.com)\n\nplain';
+    const v = mount(doc, doc.length);
+    const label = v.dom.querySelector('.cm-md-link')!;
+    label.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, button: 1 }));
+    label.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, button: 1 }));
+    expect(followed).toEqual([]);
+  });
+});
+
 describe('tables', () => {
   const doc = '| Month | Savings |\n| --- | ---: |\n| Jan | $250 |';
   const away = `${doc}\n\nplain`;
