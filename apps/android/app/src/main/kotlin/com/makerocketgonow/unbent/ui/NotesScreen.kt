@@ -211,6 +211,11 @@ fun NotesScreen(
     val returnCovered = remember { booleanArrayOf(false) }
     LaunchedEffect(refreshKey) {
         if (refreshKey) {
+            // Whichever path refreshes, an open search is sent once more: the note opened
+            // from it may have been trashed or renamed, and the debounced search that
+            // re-entering the screen restarts would otherwise see its answer on screen and
+            // skip. Before the debounce's 300 ms, so that search is the one that goes.
+            state.searchStale()
             if (!lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) {
                 returnCovered[0] = true
                 state.refreshInPlace()
@@ -1248,7 +1253,8 @@ class NotesState(private val api: UnbentApi) {
      * The query and filter [results] answer. Coming back from a hit re-enters the screen,
      * which restarts the debounced search, and the lifecycle's resume used to re-run it as
      * well: two or three identical searches for every result opened. A search whose answer
-     * is already on screen is not sent again; a pull asks for a fresh one.
+     * is already on screen is not sent again; a pull asks for a fresh one, and so does a
+     * return that says the list is stale ([searchStale]) — once, not two or three times.
      */
     private var searchedFor: String? = null
 
@@ -1457,6 +1463,15 @@ class NotesState(private val api: UnbentApi) {
 
     fun scrolledToTop() {
         scrollToTop = false
+    }
+
+    /**
+     * Lets the next [search] go out even though its answer is on screen: coming back from
+     * a note opened from the results, which may have trashed or renamed it. Left alone, the
+     * trashed hit stayed in the results, still tappable, until a pull.
+     */
+    fun searchStale() {
+        searchedFor = null
     }
 
     fun changeQuery(q: String) {
