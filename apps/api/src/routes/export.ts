@@ -22,9 +22,11 @@ export const exportRoutes = new Hono<AppEnv>()
    * names and markdown the two ends agree on.
    *
    * The same filters as the note list, through the same `notes.list`, so a filter cannot
-   * mean one thing on screen and another in the zip. There is no sort — a directory tree
-   * has no order worth choosing — and `sort` is accepted only to say which column a date
-   * range applies to. `total` comes on the first page, for a progress count.
+   * mean one thing on screen and another in the zip. A directory tree has no order worth
+   * choosing, so `sort` says only which column a date range applies to and which one the
+   * cursor walks; the web app sends `created` when there is no range, since a note edited
+   * mid-export would otherwise jump above an `updated` cursor and be missed. `total` comes
+   * on the first page, for a progress count.
    */
   .get('/export/notes', requireAuth, withRepos, zValidator('query', exportPageQuerySchema), async (c) => {
     const { tag: tags, notebook, field: fields, from, to, sort, cursor, limit } = c.req.valid('query');

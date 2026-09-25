@@ -104,4 +104,11 @@ describe('the notes route tag filter', () => {
     const params = exportQuery({ tags: ['Smith, John'] });
     expect(params.getAll('tag')).toEqual(['Smith, John']);
   });
+
+  /** A cursor over `updated` loses a note edited mid-export; `created` never moves. */
+  it('walks an export by creation date unless a date range names the column', () => {
+    expect(exportQuery({ sort: 'updated' }).get('sort')).toBe('created');
+    expect(exportQuery({ sort: 'title', from: '2021-01-01' }).get('sort')).toBe('title');
+    expect(exportQuery({ to: '2021-12-31' }).get('sort')).toBe('updated');
+  });
 });

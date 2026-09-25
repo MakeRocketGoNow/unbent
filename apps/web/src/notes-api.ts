@@ -659,9 +659,14 @@ export async function deleteAttachment(noteId: string, filename: string): Promis
 
 /**
  * The query string of an export page for a filter, the tags repeated rather than joined:
- * a tag name may contain any delimiter we'd pick. `sort` is carried only beside a date
- * range, since it names the column the range applies to and orders nothing. Built here
- * because assembling outbound API query strings is this module's job.
+ * a tag name may contain any delimiter we'd pick. Built here because assembling outbound
+ * API query strings is this module's job.
+ *
+ * `sort` is always sent, because it names the column the pages' cursor walks as well as
+ * the one a date range applies to. Beside a date range it is the filter's, so the range
+ * means what the list showing it meant. Otherwise it is `created`, which never changes:
+ * walking `updated`, the list's default, a note edited in another tab or on the phone
+ * while a long export is running jumps above the cursor and is silently left out.
  */
 export function exportQuery(
   filter: ExportFilter,
@@ -673,7 +678,7 @@ export function exportQuery(
   for (const f of filter.fields ?? []) params.append('field', f);
   if (filter.from) params.set('from', filter.from);
   if (filter.to) params.set('to', filter.to);
-  if (filter.sort && (filter.from || filter.to)) params.set('sort', filter.sort);
+  params.set('sort', filter.from || filter.to ? (filter.sort ?? 'updated') : 'created');
   if (page.cursor) params.set('cursor', page.cursor);
   if (page.limit) params.set('limit', String(page.limit));
   return params;
