@@ -449,4 +449,30 @@ class UnbentApiTest {
         assertEquals(503, second.status)
         assertNull(second.retryAfter)
     }
+
+    @Test
+    fun `emptyTrash asks for pages until the server says none are left, and totals them`() {
+        server.enqueue(MockResponse().setBody("""{"notesDeleted":990,"filesDeleted":40,"remaining":12}"""))
+        server.enqueue(MockResponse().setBody("""{"notesDeleted":12,"filesDeleted":1,"remaining":0}"""))
+
+        val result = api.emptyTrash()
+
+        assertEquals(1002, result.notesDeleted)
+        assertEquals(41, result.filesDeleted)
+        assertEquals(2, server.requestCount)
+        val req = server.takeRequest()
+        assertEquals("POST", req.method)
+        assertEquals("/api/admin/purge-notes?scope=trashed&confirm=DELETE", req.path)
+    }
+
+    @Test
+    fun `emptyTrash stops on a page that deletes nothing, whatever the count left says`() {
+        // Every note named on that page was restored before the delete, or the stored
+        // count is off; asking again would ask forever.
+        server.enqueue(MockResponse().setBody("""{"notesDeleted":3,"filesDeleted":0,"remaining":5}"""))
+        server.enqueue(MockResponse().setBody("""{"notesDeleted":0,"filesDeleted":0,"remaining":5}"""))
+
+        assertEquals(3, api.emptyTrash().notesDeleted)
+        assertEquals(2, server.requestCount)
+    }
 }
