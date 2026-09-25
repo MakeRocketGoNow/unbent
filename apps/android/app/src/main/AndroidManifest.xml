@@ -129,6 +129,17 @@
         </activity>
 
         <!--
+            The app's own settings: the instance address and the version. Not exported: the
+            launcher shortcut reaches it through MainActivity, which is, and the site asks
+            for it over the bridge.
+        -->
+        <activity
+            android:name=".ui.AppSettingsActivity"
+            android:exported="false"
+            android:label="@string/app_settings_title"
+            android:windowSoftInputMode="adjustResize" />
+
+        <!--
             Exported, because the browser hands the token back by opening this deep link.
             The scheme carries the build's application id, so a debug install beside a
             release one cannot intercept the other's connection.

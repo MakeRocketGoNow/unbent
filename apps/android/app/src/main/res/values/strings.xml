@@ -4,7 +4,8 @@
     <string name="sign_in_title">Sign in to Unbent</string>
     <string name="settings_title">Settings</string>
     <string name="shortcut_settings_short">Settings</string>
-    <string name="shortcut_settings_long">Capture settings</string>
+    <string name="shortcut_settings_long">App settings</string>
+    <string name="app_settings_title">App settings</string>
 
     <string name="sign_in_intro">Sign in to see your notes and save what you share here.</string>
     <string name="sign_in_otp_send">Email me a code</string>
@@ -213,6 +214,7 @@
     -->
     <string name="settings_version">Version %1$s (%2$d)</string>
     <string name="instance_label">Unbent address</string>
+    <string name="instance_hint">The Unbent this app opens. Switching signs you in there; you stay signed in here for when you switch back.</string>
     <string name="save">Save</string>
     <string name="sign_out">Sign out</string>
     <string name="signed_in_as">Signed in</string>

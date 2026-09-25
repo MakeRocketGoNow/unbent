@@ -98,7 +98,7 @@ class MainActivity : ComponentActivity() {
 
     private fun consume(intent: Intent?) {
         intent?.getStringExtra(EXTRA_NOTE_ID)?.let { requestedNote = it }
-        if (intent?.action == ACTION_SETTINGS) requestedSettings = true
+        if (intent?.action == ACTION_SETTINGS) startActivity(AppSettingsActivity.intent(this))
     }
 
     /**
