@@ -766,6 +766,9 @@ function uniqueTags(tags: string[]): string[] {
  */
 const ID_RUN = 90;
 
+/** Notes one `purge` call deletes: ten runs of 99 ids, so a call stays a couple of dozen statements. */
+const PURGE_PAGE = 990;
+
 /*
  * Every statement that names notes by an `id IN (…)` run writes its owner condition as
  * `+user_id`. The unary plus is SQLite's way to keep a column's index out of the plan
@@ -2119,7 +2122,8 @@ export class NotesRepo extends ScopedRepo {
   }
 
   /**
-   * Permanently removes notes, with their tags and attachment rows.
+   * Permanently removes notes, with their tags and attachment rows — up to `limit` of
+   * them, whichever the index yields first, and says how many the scope still holds.
    *
    * Distinct from `remove`, which is a soft delete the user can undo. This is the
    * irreversible one, so it returns the R2 keys it orphaned rather than deleting blobs
@@ -2128,73 +2132,94 @@ export class NotesRepo extends ScopedRepo {
    *
    * `scope: 'trashed'` empties the trash; `scope: 'all'` wipes the account's notes.
    *
+   * A page at a time because a Worker request may make only so many calls to D1 and R2
+   * — a thousand on Workers Free by the platform's limits page, and the D1 page says
+   * fifty — and one call that deleted every note ran a statement per hundred ids: 133 for
+   * a 13k-note wipe, on top of the reads around them. The client calls until `remaining`
+   * is zero. `PURGE_PAGE` keeps a call to about two dozen statements, one batch for the
+   * page's reads and deletes, and the R2 delete after it takes a thousand keys a call.
+   *
    * Emptying the trash re-checks `deleted_at` on the DELETE, the way `purgeMany` does: a
    * restore between listing the trash and destroying it must leave the note, not take a
    * live note with it. `scope: 'all'` is a wipe, so it still deletes whatever it named.
+   *
+   * The keys are read by id, in the same runs the deletes use, and in one batch with
+   * them — before, since the rows go with the cascade. That reads only the page's notes:
+   * a lookup by scope read every attachment on the account, or every trashed note, on
+   * every page.
    */
-  async purge(scope: 'trashed' | 'all'): Promise<{ notes: number; keys: string[] }> {
+  async purge(
+    scope: 'trashed' | 'all',
+    limit = PURGE_PAGE,
+  ): Promise<{ notes: number; keys: string[]; remaining: number }> {
     const where =
       scope === 'trashed' ? 'user_id = ?1 AND deleted_at IS NOT NULL' : 'user_id = ?1';
 
-    /*
-       Emptying the trash starts from the trashed notes and reaches their files through
-       the note index; the CROSS JOIN pins that order. Left to itself the planner started
-       from the account's attachments and read every one of them to find the trash's —
-       30k rows for a 300-note trash at 13k notes, now 900. A wipe wants every file anyway,
-       and starting from the notes there would probe each of them, so it keeps the
-       attachments-first join.
-    */
-    const from =
-      scope === 'trashed'
-        ? 'notes n CROSS JOIN attachments a ON a.note_id = n.id'
-        : 'attachments a JOIN notes n ON n.id = a.note_id';
-    const { results: keyRows } = await this.db
-      .prepare(`SELECT a.r2_key, n.id AS note_id FROM ${from} WHERE n.${where} AND a.user_id = ?1`)
-      .bind(this.userId)
-      .all<{ r2_key: string; note_id: string }>();
-
+    // In no order: any page will do, and ordering by id had the planner sort every id
+    // in the scope on every call, 13k rows a page at 13k notes. The index it walks
+    // stops at the limit.
     const { results: idRows } = await this.db
-      .prepare(`SELECT id FROM notes WHERE ${where}`)
-      .bind(this.userId)
+      .prepare(`SELECT id FROM notes WHERE ${where} LIMIT ?2`)
+      .bind(this.userId, limit)
       .all<{ id: string }>();
+    if (idRows.length === 0) return { notes: 0, keys: [], remaining: 0 };
 
-    if (idRows.length === 0) return { notes: 0, keys: [] };
-
-    // Delete in batches: D1 caps bound parameters at 100 per statement, and note_tags,
-    // attachments, and attachment_text all cascade from notes. Empty-trash re-checks
-    // `deleted_at` so a note restored after the listing is not destroyed as a live one.
     const stillTrashed = scope === 'trashed' ? ' AND deleted_at IS NOT NULL' : '';
     const ids = idRows.map((r) => r.id);
-    const deletedIds: string[] = [];
-    for (let i = 0; i < ids.length; i += 99) {
-      const batch = ids.slice(i, i + 99);
-      const placeholders = batch.map((_, j) => `?${j + 2}`).join(', ');
-      const { results: gone } = await this.db
+    const idRuns = runs(ids, 99);
+    const results = await this.db.batch([
+      ...idRuns.map((run) =>
+        this.db
+          .prepare(
+            `SELECT a.r2_key, a.note_id FROM attachments a
+              WHERE +a.user_id = ?1 AND a.note_id IN (${placeholders(2, run.length)})`,
+          )
+          .bind(this.userId, ...run),
+      ),
+      ...idRuns.map((run) =>
+        this.db
+          .prepare(
+            `DELETE FROM notes WHERE +user_id = ?1${stillTrashed} AND id IN (${placeholders(2, run.length)})
+             RETURNING id`,
+          )
+          .bind(this.userId, ...run),
+      ),
+    ]);
+    const keyRows = results
+      .slice(0, idRuns.length)
+      .flatMap((r) => r.results as Array<{ r2_key: string; note_id: string }>);
+    const deletedIds = results
+      .slice(idRuns.length)
+      .flatMap((r) => (r.results as Array<{ id: string }>).map((row) => row.id));
+
+    const remaining = await this.purgeRemaining(scope);
+
+    // The sweeps once the scope is empty rather than on every page: tag rows are per-user
+    // and survive their notes, and field definitions kept alive only by values on these
+    // notes; both walk the whole table, and neither is needed until the end.
+    if (remaining === 0 && deletedIds.length > 0) {
+      await this.db
         .prepare(
-          `DELETE FROM notes WHERE +user_id = ?1${stillTrashed} AND id IN (${placeholders})
-           RETURNING id`,
+          `DELETE FROM tags
+            WHERE user_id = ?1
+              AND id NOT IN (SELECT tag_id FROM note_tags)`,
         )
-        .bind(this.userId, ...batch)
-        .all<{ id: string }>();
-      deletedIds.push(...gone.map((r) => r.id));
+        .bind(this.userId)
+        .run();
+      await this.sweepTombstonedFields();
     }
 
-    if (deletedIds.length === 0) return { notes: 0, keys: [] };
+    return { notes: deletedIds.length, keys: keysOfDeletedNotes(keyRows, deletedIds), remaining };
+  }
 
-    // Tag rows are per-user and survive their notes; drop the ones nothing references.
-    await this.db
-      .prepare(
-        `DELETE FROM tags
-          WHERE user_id = ?1
-            AND id NOT IN (SELECT tag_id FROM note_tags)`,
-      )
+  /** How many notes a purge of `scope` would still find, from the stored counts (0023). */
+  private async purgeRemaining(scope: 'trashed' | 'all'): Promise<number> {
+    const row = await this.db
+      .prepare(`SELECT live, trashed FROM note_counts WHERE user_id = ?1`)
       .bind(this.userId)
-      .run();
-
-    // The same for field definitions kept alive only by the values on these notes.
-    await this.sweepTombstonedFields();
-
-    return { notes: deletedIds.length, keys: keysOfDeletedNotes(keyRows, deletedIds) };
+      .first<{ live: number; trashed: number }>();
+    if (!row) return 0;
+    return scope === 'trashed' ? row.trashed : row.live + row.trashed;
   }
 
   /**

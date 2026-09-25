@@ -711,11 +711,21 @@ export interface PurgeResult {
 /**
  * Permanently deletes notes and their attachments. Irreversible — the confirmation token
  * is required by the server, so this cannot fire from a stray call.
+ *
+ * A page per request, until the server says nothing is left: one request may make only
+ * so many database calls, and an account's worth of deletes is more than that. A request
+ * that deletes nothing ends it too, in case the server's count of what is left is wrong.
  */
 export async function purgeNotes(scope: 'trashed' | 'all'): Promise<PurgeResult> {
-  return json<PurgeResult>(
-    await fetch(`/api/admin/purge-notes?scope=${scope}&confirm=DELETE`, { method: 'POST' }),
-  );
+  const total: PurgeResult = { scope, notesDeleted: 0, filesDeleted: 0 };
+  for (;;) {
+    const page = await json<PurgeResult & { remaining: number }>(
+      await fetch(`/api/admin/purge-notes?scope=${scope}&confirm=DELETE`, { method: 'POST' }),
+    );
+    total.notesDeleted += page.notesDeleted;
+    total.filesDeleted += page.filesDeleted;
+    if (page.remaining === 0 || page.notesDeleted === 0) return total;
+  }
 }
 
 export interface GcResult {

@@ -240,13 +240,25 @@ class UnbentApi(
      * refuses a bare POST so a stray retry cannot empty an account. Scoped to the trash —
      * this client has no reason to offer the "everything" scope, which exists for
      * repeating a trial import from a desk.
+     *
+     * A page per request until the server says nothing is left, since one request may
+     * make only so many database calls; a request that deletes nothing ends it too.
      */
-    fun emptyTrash(): PurgeResult = send(
-        "Empty trash",
-        url("/api/admin/purge-notes", "scope" to "trashed", "confirm" to "DELETE"),
-        "POST",
-        buildJsonObject {},
-    )
+    fun emptyTrash(): PurgeResult {
+        var notes = 0
+        var files = 0
+        while (true) {
+            val page: PurgeResult = send(
+                "Empty trash",
+                url("/api/admin/purge-notes", "scope" to "trashed", "confirm" to "DELETE"),
+                "POST",
+                buildJsonObject {},
+            )
+            notes += page.notesDeleted
+            files += page.filesDeleted
+            if (page.remaining == 0 || page.notesDeleted == 0) return PurgeResult(notes, files)
+        }
+    }
 
     fun listNotebooks(): NotebookList = get("List notebooks", url("/api/notebooks"))
 
