@@ -1488,6 +1488,55 @@ describe('following links', () => {
     expect(followed).toEqual([]);
   });
 
+  /** The case that looked disabled: a pasted link whose text is its own address. */
+  it('draws a URL used as a label as the link, not a dimmed destination', () => {
+    const doc = '[https://example.com](https://example.com)\n\nplain';
+    const v = mount(doc, doc.length);
+    const label = v.dom.querySelector('.cm-md-link')!;
+    expect(label.textContent).toBe('https://example.com');
+    expect(label.closest('.cm-md-url')).toBeNull();
+    expect(label.querySelector('.cm-md-url')).toBeNull();
+  });
+
+  it('dims only the destination once the link is revealed', () => {
+    const doc = '[https://example.com](https://example.com/long)';
+    const v = mount(doc, 3);
+    const dimmed = [...v.dom.querySelectorAll('.cm-md-url')].map((e) => e.textContent);
+    expect(dimmed).toEqual(['https://example.com/long']);
+  });
+
+  it('draws a bare URL as a link and opens it from a click', () => {
+    const doc = 'read https://example.org/page today\n\nplain';
+    const v = mount(doc, doc.length);
+    const link = v.dom.querySelector('.cm-md-link');
+    expect(link?.textContent).toBe('https://example.org/page');
+    expect(v.dom.querySelector('.cm-md-url')).toBeNull();
+    clickLabel(v);
+    expect(followed.map((f) => f.href)).toEqual(['https://example.org/page']);
+  });
+
+  /** On the line being edited a bare URL is its own text, so a click places the caret. */
+  it('leaves a bare URL as text on the line being edited', () => {
+    const doc = 'read https://example.org/page today';
+    const v = mount(doc, 2);
+    expect(v.dom.querySelector('.cm-md-link')).toBeNull();
+  });
+
+  it('opens www. and email addresses the way the preview links them', () => {
+    const doc = 'see www.example.com or someone@example.com\n\nplain';
+    const v = mount(doc, doc.length);
+    const titles = [...v.dom.querySelectorAll('.cm-md-link')].map((e) => e.getAttribute('title'));
+    expect(titles).toEqual(['http://www.example.com', 'mailto:someone@example.com']);
+  });
+
+  it('hides an autolink\'s angle brackets and opens it', () => {
+    const doc = '<https://example.com/x>\n\nplain';
+    const v = mount(doc, doc.length);
+    expect(visibleText(v, 1)).toBe('https://example.com/x');
+    clickLabel(v);
+    expect(followed.map((f) => f.href)).toEqual(['https://example.com/x']);
+  });
+
   it('keeps a middle-click from opening it', () => {
     const doc = '[Example](https://example.com)\n\nplain';
     const v = mount(doc, doc.length);

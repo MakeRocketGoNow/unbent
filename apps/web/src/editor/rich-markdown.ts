@@ -55,7 +55,6 @@ const INLINE_STYLES: Record<string, Decoration> = {
   Emphasis: Decoration.mark({ class: 'cm-md-em' }),
   Strikethrough: Decoration.mark({ class: 'cm-md-strike' }),
   InlineCode: Decoration.mark({ class: 'cm-md-code' }),
-  URL: Decoration.mark({ class: 'cm-md-url' }),
   LinkMark: Decoration.mark({ class: 'cm-md-punct' }),
 };
 
@@ -110,6 +109,14 @@ const HEADING_LINE = { position: 'relative', minHeight: '1lh' } as const;
 const HANG_MIN_WIDTH = 1200;
 
 const hiddenMark = Decoration.mark({ class: 'cm-md-hidden' });
+/**
+ * The `(url)` of a `[text](url)` or `![alt](url)`, once the caret has revealed it.
+ *
+ * Dimmed because it is the link's plumbing, like a revealed `##`, not text a reader reads.
+ * Only the destination: a URL anywhere else — the text of a label, a bare URL in running
+ * text — is what a reader reads, and dimming those made every pasted link look disabled.
+ */
+const urlDestination = Decoration.mark({ class: 'cm-md-url' });
 /**
  * A syntax mark on the line being edited.
  *
@@ -1243,12 +1250,25 @@ function linkUrlAt(state: EditorState, pos: number): string | undefined {
         return unwrapUrl(state.doc.sliceString(node.from, node.to));
       }
       if (node.name === 'URL' && bareUrl === undefined) {
-        bareUrl = state.doc.sliceString(node.from, node.to);
+        bareUrl = bareLinkTarget(state.doc.sliceString(node.from, node.to));
       }
     }
     if (bareUrl !== undefined) return bareUrl;
   }
   return undefined;
+}
+
+/**
+ * Where a bare URL in running text goes, spelled the way the preview spells it.
+ *
+ * GFM linkifies `www.example.com` and `someone@example.com` as well as full URLs, and
+ * remark-gfm gives them `http://` and `mailto:` in the preview. Adding the same prefixes
+ * here is what lets them pass the scheme check in `linkOpener` and open as they do there.
+ */
+function bareLinkTarget(text: string): string {
+  if (/^www\./i.test(text)) return `http://${text}`;
+  if (!/^[a-z][a-z0-9+.-]*:/i.test(text) && text.includes('@')) return `mailto:${text}`;
+  return text;
 }
 
 /** macOS and iOS spell "the platform modifier" ⌘; everywhere else it is Ctrl. */
@@ -1259,19 +1279,18 @@ const MAC = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator
  *
  * Two ways in, and they answer different people:
  *
- * - **A plain click on a rendered label.** The label is drawn as a link — accent colour,
- *   underline, pointer — and a thing drawn as a link has to act like one; before this it
- *   only moved the caret and revealed `[text](url)`, which read as the link being broken.
- *   It is also the only way to open one on a phone. The cost is that a click on the
- *   label no longer puts the caret in it, which is the same trade `ImageWidget` made and
- *   for the same reason: the caret still gets there by a click anywhere else on the line
- *   (the reveal is per line), or by arrowing onto it, and the label then stops being a
- *   link until the caret leaves.
- * - **⌘/Ctrl-click anywhere on a link**, revealed or not, bare URLs included. That is what
- *   every code editor and word processor does, so it is what a keyboard-first person will
- *   try, and it is the only way to follow a bare URL: that is its own text, with no hidden
- *   syntax to click beside, so a plain click has to stay an edit. It takes the gesture
- *   from CodeMirror's add-a-cursor only while the pointer is over a link.
+ * - **A plain click on a rendered link** — a label, or a bare URL on a line the caret is
+ *   not on. It is drawn as a link — accent colour, underline, pointer — and a thing drawn
+ *   as a link has to act like one; before this a click only moved the caret and revealed
+ *   `[text](url)`, which read as the link being broken. It is also the only way to open
+ *   one on a phone. The cost is that a click on the link no longer puts the caret in it,
+ *   which is the same trade `ImageWidget` made and for the same reason: the caret still
+ *   gets there by a click anywhere else on the line (the reveal is per line), or by
+ *   arrowing onto it, and the link then stops being one until the caret leaves.
+ * - **⌘/Ctrl-click anywhere on a link**, revealed or not. That is what every code editor
+ *   and word processor does, so it is what a keyboard-first person will try, and it is how
+ *   to follow a link on the line being edited without first moving off it. It takes the
+ *   gesture from CodeMirror's add-a-cursor only while the pointer is over a link.
  *
  * Only the primary button: a middle-click or a right-click keeps its usual meaning.
  */
@@ -1759,6 +1778,53 @@ function buildDecorations(view: EditorView, options: RichMarkdownOptions): Decor
                 marks.push(tableHeaderCell.range(cell.from, cell.to));
               }
             }
+          }
+          return;
+        }
+
+        /**
+         * A URL is a link in its own right unless it is part of a `[…](…)` or `![…](…)`.
+         *
+         * Inside one it is either the destination, dimmed when revealed (`urlDestination`),
+         * or the label's own text, which the `Link` branch already draws as the link it is.
+         *
+         * Anywhere else — a bare URL, or the inside of an `<autolink>` — it is drawn and
+         * behaves exactly like a label: the link style, the destination as a tooltip, and a
+         * click that follows it, until the caret is on its line. Then it is text being
+         * edited, like a revealed `[text](url)`, and a click places the caret. Before,
+         * these were drawn in the dimmed destination style, so the most common link in a
+         * pasted note looked disabled and could not be opened at all.
+         */
+        if (node.name === 'URL') {
+          const parent = node.node.parent?.name;
+          if (parent === 'Link' || parent === 'Image') {
+            const before = node.node.prevSibling;
+            if (before && state.doc.sliceString(before.from, before.to) === '(') {
+              marks.push(urlDestination.range(node.from, node.to));
+            }
+            return;
+          }
+          const target = bareLinkTarget(state.doc.sliceString(node.from, node.to));
+          // Only what a click would open: `xmpp:` and friends stay text, as in the preview.
+          if (!WEB_SCHEME.test(target) && !HANDOFF_SCHEME.test(target)) return;
+          const scope = revealScope(state, node.node);
+          if (!reveals(scope.from, scope.to)) {
+            marks.push(
+              Decoration.mark({ class: 'cm-md-link', attributes: { title: target } }).range(
+                node.from,
+                node.to,
+              ),
+            );
+          }
+          return;
+        }
+
+        /** An `<autolink>`'s angle brackets hide like a link's brackets do. */
+        if (node.name === 'Autolink') {
+          const scope = revealScope(state, node.node);
+          if (!reveals(scope.from, scope.to) && node.to - node.from > 2) {
+            marks.push(hiddenMark.range(node.from, node.from + 1));
+            marks.push(hiddenMark.range(node.to - 1, node.to));
           }
           return;
         }
