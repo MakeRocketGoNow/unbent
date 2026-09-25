@@ -1978,21 +1978,12 @@ a.overflow-item { text-decoration: none; }
   border-color: var(--accent);
 }
 
-/* Export the current filter — a quiet action, not a call to action */
+/* Export the current filter: a quiet button under the filter rows, as wide as its label
+   rather than stretched across the sheet. The negative margin centres its glyph under the
+   rows' larger ones — its padding is there for the hover fill, not to indent it. */
 .export-filtered {
-  display: block;
-  padding: 0.35rem 0;
-  color: var(--muted);
-  text-decoration: none;
-}
-
-.export-filtered::before {
-  content: '↓ ';
-}
-
-.export-filtered:hover {
-  color: var(--accent);
-  text-decoration: underline;
+  align-self: flex-start;
+  margin-left: -0.15rem;
 }
 
 /* ---------------------------------------------------------------------------------
@@ -5126,9 +5117,32 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
  * streams the archive straight to disk — a fetch would buffer a multi-gigabyte zip inside
  * the Worker — while looking like the deliberate action it is.
  */
-.export-button {
-  display: inline-block;
-  text-decoration: none;
+/* Read by a screen reader and drawn for no one: the export's live region, which speaks
+   in steps while the count beside the button moves on every note. */
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* The export's button and, beside it, what it is doing; they wrap on a phone. */
+.export-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 1rem;
+  align-self: stretch;
+}
+
+.export-progress {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  flex: 1 1 14rem;
+  min-width: 0;
 }
 
 .export-tree {

@@ -17,7 +17,7 @@ data class StagedFile(
 )
 
 /**
- * Copies shared content out of the sending app and into our cache.
+ * Copies shared content out of the sending app and into storage this app owns.
  *
  * This has to happen before the share activity finishes. The URI permission that comes with
  * a share is tied to the receiving activity's lifetime, so a worker that starts later finds
@@ -27,6 +27,7 @@ data class StagedFile(
 object Staging {
 
     fun stageAll(context: Context, uris: List<Uri>, jobId: String): List<StagedFile> {
+        sweepAbandoned(File(context.noBackupFilesDir, SHARES), System.currentTimeMillis())
         val dir = jobDir(context, jobId).apply { mkdirs() }
         val used = mutableSetOf<String>()
         return uris.mapIndexedNotNull { index, uri ->
@@ -191,11 +192,56 @@ object Staging {
         }.getOrNull()
     }
 
+    /**
+     * Where a capture's files wait for its upload.
+     *
+     * `noBackupFilesDir`, not `cacheDir`. A capture can now wait out a day of the server
+     * being unavailable (see [UploadWorker]), and Android empties a cache under storage
+     * pressure whenever it likes. Losing `.note-id` there made the retry create a second
+     * note, and losing a staged file had the upload skip it and still say "Saved" — a small
+     * risk over the four minutes a capture used to last, a real one over a day. Nor is a
+     * capture something a device backup should carry.
+     *
+     * A capture staged under the cache by an earlier build is still found there, so one
+     * waiting through an app update carries on rather than losing its files; [clear]
+     * removes both.
+     */
     fun jobDir(context: Context, jobId: String): File =
-        File(File(context.cacheDir, "shares"), jobId)
+        jobDir(context.noBackupFilesDir, context.cacheDir, jobId)
+
+    internal fun jobDir(root: File, legacyRoot: File, jobId: String): File {
+        val legacy = File(File(legacyRoot, SHARES), jobId)
+        return if (legacy.exists()) legacy else File(File(root, SHARES), jobId)
+    }
 
     /** Best-effort cleanup once a job is done or permanently failed. */
     fun clear(context: Context, jobId: String) {
-        jobDir(context, jobId).deleteRecursively()
+        File(File(context.noBackupFilesDir, SHARES), jobId).deleteRecursively()
+        File(File(context.cacheDir, SHARES), jobId).deleteRecursively()
     }
+
+    /**
+     * Deletes job directories nothing has touched in [ABANDONED_MS].
+     *
+     * [clear] is the cleanup, and every way a job ends through [UploadWorker] calls it.
+     * This is for a job that never got there — cancelled, or forgotten by WorkManager —
+     * whose files the cache would once have reclaimed on its own and this directory never
+     * will. Touched means any file in it: a capture waiting on a 503
+     * rewrites its count on every attempt, so a live one never looks abandoned.
+     */
+    internal fun sweepAbandoned(root: File, now: Long) {
+        for (dir in root.listFiles().orEmpty()) {
+            if (!dir.isDirectory) continue
+            val touched = (dir.listFiles().orEmpty().map { it.lastModified() } + dir.lastModified()).max()
+            if (now - touched > ABANDONED_MS) dir.deleteRecursively()
+        }
+    }
+
+    private const val SHARES = "shares"
+
+    /**
+     * Three days: well past the longest a capture waits — about 28 hours of a server that
+     * cannot serve, at five-hour gaps — so only a job WorkManager has let go of is swept.
+     */
+    private const val ABANDONED_MS = 3 * 24 * 60 * 60 * 1000L
 }

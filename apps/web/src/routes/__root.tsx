@@ -11,6 +11,7 @@ import { useMediaQuery, MOBILE_QUERY } from '../useMediaQuery.js';
 import { claimCacheFor } from '../queries.js';
 import { startIndexing, subscribeIndexing } from '../index-files.js';
 import { Topbar } from '../components/Topbar.js';
+import { ExportSnackbar } from '../components/ExportSnackbar.js';
 
 export interface RouterContext {
   queryClient: QueryClient;
@@ -191,6 +192,7 @@ function AppShell() {
         <Topbar email={session.user.email} onSignOut={signOutAndLeave} />
         <Outlet />
       </main>
+      <ExportSnackbar />
     </div>
     </SettingsBusyProvider>
   );

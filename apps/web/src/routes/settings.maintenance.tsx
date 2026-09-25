@@ -1,17 +1,17 @@
 import { createFileRoute } from '@tanstack/react-router';
 import { Maintenance } from '../components/Maintenance.js';
-import { exactCountQuery } from '../queries.js';
+import { noteCountQuery, trashCountQuery } from '../queries.js';
 
 /**
  * Both counts are warmed here so the buttons can name their blast radius on first paint
- * rather than flickering from "Trash is empty" to a real number. Exact rather than stored:
- * every number on this page is the size of something it is about to delete.
+ * rather than flickering from "Trash is empty" to a real number. The stored counts, which
+ * cost a row each; a confirmation reads the exact number when it opens (see Maintenance).
  */
 export const Route = createFileRoute('/settings/maintenance')({
   loader: ({ context: { queryClient } }) =>
     Promise.all([
-      queryClient.ensureQueryData(exactCountQuery({ trashed: true })),
-      queryClient.ensureQueryData(exactCountQuery()),
+      queryClient.ensureQueryData(trashCountQuery()),
+      queryClient.ensureQueryData(noteCountQuery()),
     ]),
   component: Maintenance,
 });

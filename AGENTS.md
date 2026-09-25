@@ -382,3 +382,23 @@ state may have changed since the last conversation.
 That corpus is ~3 GB and ~13K notes, mostly PDFs — this is a paperless-office use case.
 Performance assumptions should hold at that scale, not at the scale of a dev database with
 90 notes.
+
+## D1 reads are the budget
+
+Production runs on Workers Free: D1 refuses every read once the account has read five
+million rows in a day, and every database on the account counts, the dev instance and the
+PR previews included. The archive above ran out twice in one week before the query plans
+were fixed. So a change to a query is judged by the rows it reads on a 13k-note copy, not
+by whether it returns the right rows: `wrangler d1 insights unbent --time-period 24h
+--sort-by reads --json` shows what production is actually reading, and costs no rows.
+
+The planner has no statistics (there is no `sqlite_stat1`) and takes `user_id` to be
+selective, when one user owns nearly every row. That is why several statements write
+`+user_id`: the unary plus keeps that column's index out of the plan while the condition
+still applies. Measure a new index or a `+` against a tiny notebook and another user as
+well as the big case — a global index once made a 30-note notebook read 13k rows.
+
+Do not run `PRAGMA optimize` or `ANALYZE` on production, whatever D1's documentation
+suggests. Measured on a copy of the archive, the statistics they write made the image-queue
+queries two to three times worse, and a full `ANALYZE` reads about 572k rows on its own.
+The plans this codebase depends on are pinned in SQL instead.

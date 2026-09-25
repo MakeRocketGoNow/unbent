@@ -1,7 +1,7 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router';
 import { useQueryClient } from '@tanstack/react-query';
 import { NotebookEditor } from '../components/NotebookEditor.js';
-import { keys, notebookFieldsQuery } from '../queries.js';
+import { keys, notebookFieldCountsQuery } from '../queries.js';
 
 /**
  * One notebook's custom fields.
@@ -14,7 +14,7 @@ import { keys, notebookFieldsQuery } from '../queries.js';
  */
 export const Route = createFileRoute('/settings/notebooks_/$notebookId')({
   loader: ({ context: { queryClient }, params }) =>
-    queryClient.ensureQueryData(notebookFieldsQuery(params.notebookId)),
+    queryClient.ensureQueryData(notebookFieldCountsQuery(params.notebookId)),
   component: NotebookEditorRoute,
 });
 

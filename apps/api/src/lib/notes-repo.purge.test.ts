@@ -106,3 +106,82 @@ describe('NotesRepo.purgeOne', () => {
     expect(await repo.purgeOne('restored')).toEqual({ deleted: false, keys: [] });
   });
 });
+
+/**
+ * A stub D1 holding a set of note ids and a `note_counts` row that disagrees with it, for
+ * the paging in `purge`: it must end on what its own query saw, not on the stored counts,
+ * and it must sweep tags and tombstoned fields on whichever call finds the scope empty.
+ */
+function pagingDb(ids: string[], storedCount: number) {
+  const notes = new Set(ids);
+  const sweeps: string[] = [];
+  const statement = (sql: string, args: unknown[] = []) => ({
+    bind: (...bound: unknown[]) => statement(sql, bound),
+    async all() {
+      if (/^SELECT id FROM notes/.test(sql)) {
+        return { results: [...notes].slice(0, args[1] as number).map((id) => ({ id })) };
+      }
+      if (/DELETE FROM notes/.test(sql)) {
+        const gone = (args.slice(1) as string[]).filter((id) => notes.delete(id));
+        return { results: gone.map((id) => ({ id })) };
+      }
+      return { results: [] };
+    },
+    async first() {
+      return /note_counts/.test(sql) ? { live: storedCount, trashed: 0 } : null;
+    },
+    async run() {
+      if (/DELETE FROM tags/.test(sql)) sweeps.push('tags');
+      if (/DELETE FROM notebook_fields/.test(sql)) sweeps.push('fields');
+      return { meta: { changes: 0 }, success: true };
+    },
+  });
+  const db = {
+    prepare: (sql: string) => statement(sql),
+    batch: (stmts: Array<ReturnType<typeof statement>>) => Promise.all(stmts.map((s) => s.all())),
+  } as unknown as D1Database;
+  return { db, notes, sweeps };
+}
+
+/** Calls `purge` the way the clients do, until it says nothing is left. */
+async function purgeAll(repo: NotesRepo, limit: number) {
+  const calls: Array<{ notes: number; remaining: number }> = [];
+  for (let i = 0; i < 10; i++) {
+    const { notes, remaining } = await repo.purge('all', limit);
+    calls.push({ notes, remaining });
+    if (remaining === 0) break;
+  }
+  return calls;
+}
+
+describe('NotesRepo.purge', () => {
+  const ids = ['a', 'b', 'c', 'd', 'e'];
+
+  it('pages through every note and sweeps once, on the last page', async () => {
+    const { db, notes, sweeps } = pagingDb(ids, 3);
+    const calls = await purgeAll(new NotesRepo(db, 'user-1'), 2);
+    expect(calls.map((c) => c.notes)).toEqual([2, 2, 1]);
+    expect(calls.at(-1)?.remaining).toBe(0);
+    expect(notes.size).toBe(0);
+    expect(sweeps).toEqual(['tags', 'fields']);
+  });
+
+  it('keeps going when the stored count says nothing is left', async () => {
+    const { db, notes } = pagingDb(ids, 0);
+    const calls = await purgeAll(new NotesRepo(db, 'user-1'), 2);
+    expect(calls[0]?.remaining).toBeGreaterThan(0);
+    expect(notes.size).toBe(0);
+  });
+
+  it('sweeps on the call that finds nothing when the stored count is too high', async () => {
+    const { db, notes, sweeps } = pagingDb(ids.slice(0, 4), 50);
+    const calls = await purgeAll(new NotesRepo(db, 'user-1'), 2);
+    expect(calls).toEqual([
+      { notes: 2, remaining: 50 },
+      { notes: 2, remaining: 50 },
+      { notes: 0, remaining: 0 },
+    ]);
+    expect(notes.size).toBe(0);
+    expect(sweeps).toEqual(['tags', 'fields']);
+  });
+});

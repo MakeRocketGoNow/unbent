@@ -2,6 +2,8 @@ import type {
   AppConfig,
   AttachmentInfo,
   AutofillSuggestion,
+  ExportFilter,
+  ExportPage,
   FieldDef,
   FieldScale,
   FieldType,
@@ -378,9 +380,12 @@ export async function deleteNotebook(
 
 // --- Custom fields ---------------------------------------------------------------------
 
-export async function listNotebookFields(notebookId: string): Promise<FieldDef[]> {
+export async function listNotebookFields(
+  notebookId: string,
+  { counts = false }: { counts?: boolean } = {},
+): Promise<FieldDef[]> {
   const { fields } = await json<{ fields: FieldDef[] }>(
-    await fetch(`/api/notebooks/${notebookId}/fields`),
+    await fetch(`/api/notebooks/${notebookId}/fields${counts ? '?counts=1' : ''}`),
   );
   return fields;
 }
@@ -555,7 +560,8 @@ export interface ReadPass {
   empty: number;
   /** Files that could not be read this time and stay pending. */
   failed: number;
-  remaining: number;
+  /** How many still wait. Only when the call asked for the count. */
+  remaining?: number;
 }
 
 /**
@@ -564,12 +570,12 @@ export interface ReadPass {
  * handful per call, since each is seconds and a paid request; the indexing pass loops
  * until `remaining` is zero. See the route for why it is a POST.
  */
-export async function readPendingFiles(limit = 3): Promise<ReadPass> {
+export async function readPendingFiles(limit = 3, count = true): Promise<ReadPass> {
   return json(
     await fetch('/api/attachments/read', {
       method: 'POST',
       headers: jsonHeaders,
-      body: JSON.stringify({ limit }),
+      body: JSON.stringify({ limit, count }),
     }),
   );
 }
@@ -652,34 +658,45 @@ export async function deleteAttachment(noteId: string, filename: string): Promis
 }
 
 /**
- * The URL of the export endpoint for a filter.
+ * The query string of an export page for a filter, the tags repeated rather than joined:
+ * a tag name may contain any delimiter we'd pick. Built here because assembling outbound
+ * API query strings is this module's job.
  *
- * A URL rather than a fetch: the archive is generated as it downloads, so the browser has
- * to consume the response directly — pulling it into JS would defeat the streaming design
- * and cap the export at the tab's memory. Built here because assembling outbound API query
- * strings is this module's job; components deal in filters, not querystrings.
+ * `sort` is always sent, because it names the column the pages' cursor walks as well as
+ * the one a date range applies to. Beside a date range it is the filter's, so the range
+ * means what the list showing it meant. Otherwise it is `created`, which never changes:
+ * walking `updated`, the list's default, a note edited in another tab or on the phone
+ * while a long export is running jumps above the cursor and is silently left out.
  */
-export function exportUrl(filter: {
-  tag?: string[];
-  notebook?: string;
-  field?: string[];
-  from?: string;
-  to?: string;
-  /**
-   * Carried so the export's date range means the same column the list's did. It orders
-   * nothing — see `exportQuerySchema`.
-   */
-  sort?: NoteSort;
-}): string {
+export function exportQuery(
+  filter: ExportFilter,
+  page: { cursor?: string | undefined; limit?: number | undefined } = {},
+): URLSearchParams {
   const params = new URLSearchParams();
-  for (const t of filter.tag ?? []) params.append('tag', t);
+  for (const t of filter.tags ?? []) params.append('tag', t);
   if (filter.notebook) params.set('notebook', filter.notebook);
-  for (const f of filter.field ?? []) params.append('field', f);
+  for (const f of filter.fields ?? []) params.append('field', f);
   if (filter.from) params.set('from', filter.from);
   if (filter.to) params.set('to', filter.to);
-  if (filter.sort && (filter.from || filter.to)) params.set('sort', filter.sort);
-  const qs = params.toString();
-  return `/api/export${qs ? `?${qs}` : ''}`;
+  params.set('sort', filter.from || filter.to ? (filter.sort ?? 'updated') : 'created');
+  if (page.cursor) params.set('cursor', page.cursor);
+  if (page.limit) params.set('limit', String(page.limit));
+  return params;
+}
+
+/**
+ * One page of the export: whole notes with their bodies and the names of their files.
+ * The browser walks the cursor and writes the archive itself; see `export-archive.ts`.
+ */
+export type { ExportPage, ExportedNote } from '@unbent/shared';
+
+export async function exportPage(
+  filter: ExportFilter,
+  cursor?: string,
+  limit?: number,
+): Promise<ExportPage> {
+  const qs = exportQuery(filter, { cursor, limit }).toString();
+  return json<ExportPage>(await fetch(`/api/export/notes${qs ? `?${qs}` : ''}`));
 }
 
 export async function searchNotes(
@@ -707,11 +724,32 @@ export interface PurgeResult {
 /**
  * Permanently deletes notes and their attachments. Irreversible — the confirmation token
  * is required by the server, so this cannot fire from a stray call.
+ *
+ * A page per request, until the server says nothing is left: one request may make only
+ * so many database calls, and an account's worth of deletes is more than that. A request
+ * that deletes nothing ends it too, in case the server's count of what is left is wrong.
  */
 export async function purgeNotes(scope: 'trashed' | 'all'): Promise<PurgeResult> {
-  return json<PurgeResult>(
-    await fetch(`/api/admin/purge-notes?scope=${scope}&confirm=DELETE`, { method: 'POST' }),
-  );
+  const total: PurgeResult = { scope, notesDeleted: 0, filesDeleted: 0 };
+  try {
+    for (;;) {
+      const page = await json<PurgeResult & { remaining: number }>(
+        await fetch(`/api/admin/purge-notes?scope=${scope}&confirm=DELETE`, { method: 'POST' }),
+      );
+      total.notesDeleted += page.notesDeleted;
+      total.filesDeleted += page.filesDeleted;
+      if (page.remaining === 0 || page.notesDeleted === 0) return total;
+    }
+  } catch (err) {
+    // A failure after some pages has already destroyed notes for good, and saying only
+    // what went wrong would read as though nothing happened. The likeliest one is the
+    // 503 of a day whose database reads have run out, partway through a large trash.
+    if (total.notesDeleted === 0) throw err;
+    const n = total.notesDeleted;
+    throw new Error(
+      `${n} ${n === 1 ? 'note was' : 'notes were'} permanently deleted before this stopped: ${(err as Error).message}`,
+    );
+  }
 }
 
 export interface GcResult {

@@ -62,6 +62,23 @@ object CaptureNotifications {
         )
     }
 
+    /**
+     * Replaces [saving] while a capture waits for the server to come back, which can be
+     * hours (see [UploadWorker]). The saving notification's spinner, left up that long,
+     * looks stuck; this has no progress bar and says what is happening instead. The next
+     * attempt posts [saving] again over it, since that attempt is saving.
+     */
+    fun waiting(context: Context, jobId: String, title: String) {
+        post(
+            context, jobId,
+            builder(context, title)
+                .setSmallIcon(android.R.drawable.stat_notify_sync_noanim)
+                .setContentTitle(context.getString(R.string.save_waiting))
+                .setSilent(true)
+                .setOnlyAlertOnce(true),
+        )
+    }
+
     fun saved(context: Context, jobId: String, title: String, noteId: String) {
         post(
             context, jobId,

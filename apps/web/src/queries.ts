@@ -65,8 +65,17 @@ export const keys = {
    * (which happens on every save) must not refetch every open notebook's definitions.
    */
   notebookFields: (notebookId: string) => ['notebook-fields', notebookId] as const,
+  /**
+   * The same definitions with each field's value count. Its own key under the one above,
+   * so invalidating a notebook's fields reaches both, but a cached count-free entry can
+   * never be served to the page that shows counts — its delete confirmation would then
+   * name no notes.
+   */
+  notebookFieldCounts: (notebookId: string) => ['notebook-fields', notebookId, 'counts'] as const,
   trash: () => ['trash'] as const,
   trashCount: () => ['trash', 'count'] as const,
+  /** Under `notes`, so the invalidations that root gets on every create and trash reach it. */
+  noteCount: () => ['notes', 'count'] as const,
   /**
    * Under `trash` for the trash and `notes` for the rest, so the invalidations those roots
    * already get on every trash, restore, move and save reach these too.
@@ -119,6 +128,17 @@ export const trashCountQuery = () =>
   queryOptions({
     queryKey: keys.trashCount(),
     queryFn: () => api.listNotes({ trashed: true, limit: 1 }),
+    select: (page) => page.total ?? 0,
+  });
+
+/**
+ * How many live notes there are, from the stored counts, as `trashCountQuery` reads the
+ * trash's. What a page shows before a confirmation asks for the exact number.
+ */
+export const noteCountQuery = () =>
+  queryOptions({
+    queryKey: keys.noteCount(),
+    queryFn: () => api.listNotes({ limit: 1 }),
     select: (page) => page.total ?? 0,
   });
 
@@ -224,6 +244,17 @@ export const notebookFieldsQuery = (notebookId: string | undefined) =>
   });
 
 /**
+ * A notebook's field definitions with how many notes hold a value for each, for the page
+ * that manages them. Everything else asks `notebookFieldsQuery`: counting reads every
+ * stored value, and only this page shows the numbers.
+ */
+export const notebookFieldCountsQuery = (notebookId: string) =>
+  queryOptions({
+    queryKey: keys.notebookFieldCounts(notebookId),
+    queryFn: () => api.listNotebookFields(notebookId, { counts: true }),
+  });
+
+/**
  * Full-text search.
  *
  * Enabled only for a non-empty query, so clearing the box returns to the plain list
@@ -253,11 +284,22 @@ export function invalidateNoteMembership(queryClient: QueryClient) {
   void queryClient.invalidateQueries({ queryKey: keys.notebooks() });
 }
 
+/**
+ * The shortest query sent to the server. One character is not a search anyone means: the
+ * last term is prefix-matched, so "t" asks for every word in the archive that starts with
+ * a t, and it is only ever on its way to a longer word. It is also the costliest request
+ * a search box sends — D1 bills every row a query reads, and a one-letter prefix reads the
+ * most — so a pause after the first letter, which is most pauses on a phone, spent the
+ * most for the answer nobody reads. Tag and notebook matches still show for one letter;
+ * they are filtered from lists the client already holds.
+ */
+export const MIN_SEARCH_LENGTH = 2;
+
 export const searchQuery = (q: string, filter: NoteFilter = {}) =>
   queryOptions({
     queryKey: keys.search(q, filter),
     queryFn: () => api.searchNotes(q, filter),
-    enabled: q.trim() !== '',
+    enabled: q.trim().length >= MIN_SEARCH_LENGTH,
   });
 
 /** One of the scopes a destructive action names a count for; empty means every live note. */

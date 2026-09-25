@@ -41,16 +41,31 @@ async function createNote(
   return res.json();
 }
 
-async function find(actor: Actor, q: string, filter: { tag?: string; notebook?: string } = {}) {
+/**
+ * Which of the two query shapes a filtered search takes; see `scopeDrivenSearchSql`. Every
+ * notebook and tag here is small, so by default a filtered search is scope-driven, and the
+ * FTS-driven shape production uses for a larger one would go untested. The search route
+ * lets the suite move the threshold with a header — `-1` puts every scope over it, a huge
+ * number every scope under.
+ */
+type SearchShape = 'fts' | 'scope';
+const SHAPE_MAX: Record<SearchShape, string> = { fts: '-1', scope: '1000000' };
+
+async function find(
+  actor: Actor,
+  q: string,
+  filter: { tag?: string; notebook?: string } = {},
+  shape?: SearchShape,
+) {
   const params = new URLSearchParams({ q });
   if (filter.tag) params.set('tag', filter.tag);
   if (filter.notebook) params.set('notebook', filter.notebook);
-  const res = await fetch(`${BASE}/api/search?${params.toString()}`, {
-    headers: { Cookie: actor.cookie, Origin: ORIGIN },
-  });
+  const headers: Record<string, string> = { Cookie: actor.cookie, Origin: ORIGIN };
+  if (shape) headers['X-Test-Scope-Driven-Search-Max'] = SHAPE_MAX[shape];
+  const res = await fetch(`${BASE}/api/search?${params.toString()}`, { headers });
   if (!res.ok) throw new Error(`search failed: ${res.status} ${await res.text()}`);
   const { results } = (await res.json()) as {
-    results: Array<{ id: string; title: string; snippet: string }>;
+    results: Array<{ id: string; title: string; snippet: string; matchedFile?: string; matchedTag?: string }>;
   };
   return results;
 }
@@ -568,42 +583,42 @@ describe('attachment text', () => {
  * query silently threw away the notebook the user had selected and answered a question
  * they had not asked.
  */
-describe('scoped search', () => {
+describe.each<SearchShape>(['scope', 'fts'])('scoped search, %s-driven', (shape) => {
   it('limits results to a notebook', async () => {
-    const token = `nbscope${Date.now()}`;
-    const notebook = `Scoped ${Date.now()}`;
+    const token = `nbscope${shape}${Date.now()}`;
+    const notebook = `Scoped ${shape} ${Date.now()}`;
     const inside = await createNote(alice, { title: 'Inside', body: token, notebook });
     await createNote(alice, { title: 'Outside', body: token });
 
     expect((await find(alice, token)).map((h) => h.id).sort()).toHaveLength(2);
 
-    const scoped = await find(alice, token, { notebook });
+    const scoped = await find(alice, token, { notebook }, shape);
     expect(scoped.map((h) => h.id)).toEqual([inside.id]);
   });
 
   it('matches a notebook name case-insensitively, as the list does', async () => {
-    const token = `nbcase${Date.now()}`;
-    const notebook = `MixedCase ${Date.now()}`;
+    const token = `nbcase${shape}${Date.now()}`;
+    const notebook = `MixedCase ${shape} ${Date.now()}`;
     await createNote(alice, { title: 'Inside', body: token, notebook });
 
-    const scoped = await find(alice, token, { notebook: notebook.toUpperCase() });
+    const scoped = await find(alice, token, { notebook: notebook.toUpperCase() }, shape);
     expect(scoped).toHaveLength(1);
   });
 
   it('limits results to a tag', async () => {
-    const token = `tagscope${Date.now()}`;
-    const tag = `scoped${Date.now()}`;
+    const token = `tagscope${shape}${Date.now()}`;
+    const tag = `scoped${shape}${Date.now()}`;
     const tagged = await createNote(alice, { title: 'Tagged', body: token, tags: [tag] });
     await createNote(alice, { title: 'Untagged', body: token });
 
-    const scoped = await find(alice, token, { tag });
+    const scoped = await find(alice, token, { tag }, shape);
     expect(scoped.map((h) => h.id)).toEqual([tagged.id]);
   });
 
   it('applies tag and notebook together', async () => {
-    const token = `bothscope${Date.now()}`;
-    const notebook = `Both ${Date.now()}`;
-    const tag = `both${Date.now()}`;
+    const token = `bothscope${shape}${Date.now()}`;
+    const notebook = `Both ${shape} ${Date.now()}`;
+    const tag = `both${shape}${Date.now()}`;
     const both = await createNote(alice, {
       title: 'Both',
       body: token,
@@ -613,15 +628,39 @@ describe('scoped search', () => {
     await createNote(alice, { title: 'Notebook only', body: token, notebook });
     await createNote(alice, { title: 'Tag only', body: token, tags: [tag] });
 
-    const scoped = await find(alice, token, { tag, notebook });
+    const scoped = await find(alice, token, { tag, notebook }, shape);
     expect(scoped.map((h) => h.id)).toEqual([both.id]);
   });
 
   it('returns nothing when the filter excludes every match', async () => {
-    const token = `noneleft${Date.now()}`;
+    const token = `noneleft${shape}${Date.now()}`;
     await createNote(alice, { title: 'Unfiled', body: token });
 
-    expect(await find(alice, token, { notebook: `Empty ${Date.now()}` })).toEqual([]);
+    expect(await find(alice, token, { notebook: `Empty ${shape} ${Date.now()}` }, shape)).toEqual([]);
+  });
+});
+
+describe('the two scoped search shapes', () => {
+  /**
+   * The same notes through both, compared whole: ids, order, snippets and what matched.
+   * A title match, a body match and a tag match, inside and outside the scope, so every
+   * tier the two queries spell out has a row to disagree about.
+   */
+  it('answer a filtered search identically', async () => {
+    const token = `parity${Date.now()}`;
+    const notebook = `Parity ${Date.now()}`;
+    const tag = token;
+    await createNote(alice, { title: `Title ${token}`, body: 'nothing else', notebook });
+    await createNote(alice, { title: 'Body only', body: `the word ${token} in passing`, notebook });
+    await createNote(alice, { title: 'Tagged only', body: 'no word here', tags: [tag], notebook });
+    await createNote(alice, { title: `Outside ${token}`, body: token });
+
+    for (const filter of [{ notebook }, { tag }, { tag, notebook }]) {
+      const scope = await find(alice, token, filter, 'scope');
+      const fts = await find(alice, token, filter, 'fts');
+      expect(scope.length).toBeGreaterThan(0);
+      expect(fts).toEqual(scope);
+    }
   });
 });
 

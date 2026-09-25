@@ -434,6 +434,15 @@ export function DownloadIcon() {
 }
 
 /**
+ * The same tray and arrow, sized to the words beside it: for a button that says what it
+ * downloads, like "Export these notes" beneath the list's filters, where the glyph labels
+ * the action rather than standing in for it.
+ */
+export function DownloadRowIcon() {
+  return <RowIcon icon={Download} />;
+}
+
+/**
  * Four arrows out of a corner, for opening an attachment at full size.
  *
  * On the inline PDF viewer's head, beside its other actions, and sized to sit in a small

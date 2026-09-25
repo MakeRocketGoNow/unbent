@@ -44,10 +44,14 @@
  */
 const emptyRectList = () => [] as unknown as DOMRectList;
 
-if (!Range.prototype.getClientRects) {
-  Range.prototype.getClientRects = emptyRectList;
-}
+// A test file that runs under node rather than jsdom (`@vitest-environment node`, for
+// code that only wants web streams and a Blob) has no Range at all and nothing to stub.
+if (typeof Range !== 'undefined') {
+  if (!Range.prototype.getClientRects) {
+    Range.prototype.getClientRects = emptyRectList;
+  }
 
-if (!Range.prototype.getBoundingClientRect) {
-  Range.prototype.getBoundingClientRect = () => new DOMRect(0, 0, 0, 0);
+  if (!Range.prototype.getBoundingClientRect) {
+    Range.prototype.getBoundingClientRect = () => new DOMRect(0, 0, 0, 0);
+  }
 }

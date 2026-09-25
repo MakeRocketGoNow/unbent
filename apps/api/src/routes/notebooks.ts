@@ -105,8 +105,10 @@ export const notebooks = new Hono<AppEnv>()
   // Definitions live under their notebook, addressed by id like the notebook itself. A
   // field belonging to another user's notebook is a 404 for the same reason as above.
 
+  // `?counts=1` adds each field's value count, for the page that shows it; see listFields.
   .get('/notebooks/:id/fields', async (c) => {
-    const fields = await c.get('notes').listFields(c.req.param('id'));
+    const counts = c.req.query('counts') === '1';
+    const fields = await c.get('notes').listFields(c.req.param('id'), { counts });
     if (!fields) return c.json({ error: 'Not found' }, 404);
     return c.json({ fields });
   })

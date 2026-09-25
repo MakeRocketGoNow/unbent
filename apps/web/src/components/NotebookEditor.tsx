@@ -19,7 +19,7 @@ import {
 } from '@unbent/shared';
 import * as api from '../notes-api.js';
 import { SAVE_LABEL, useAutosave, type SaveState } from '../useAutosave.js';
-import { keys, notebookFieldsQuery, notebooksQuery } from '../queries.js';
+import { keys, notebookFieldCountsQuery, notebooksQuery } from '../queries.js';
 import { Button } from './Button';
 import { Confirm } from './Confirm.js';
 import { DeleteNotebookConfirm } from './DeleteNotebookConfirm.js';
@@ -88,7 +88,7 @@ const DEFAULT_CURRENCY = 'USD';
  */
 export function NotebookEditor({ notebookId, onChanged, onDeleted }: NotebookEditorProps) {
   const queryClient = useQueryClient();
-  const fields = useQuery(notebookFieldsQuery(notebookId));
+  const fields = useQuery(notebookFieldCountsQuery(notebookId));
   const notebooks = useQuery(notebooksQuery());
   const notebook = notebooks.data?.notebooks.find((nb) => nb.id === notebookId);
 
@@ -446,7 +446,7 @@ export function NotebookEditor({ notebookId, onChanged, onDeleted }: NotebookEdi
     const next = [...current];
     [next[index], next[target]] = [next[target]!, next[index]!];
     queryClient.setQueryData(
-      keys.notebookFields(notebookId),
+      keys.notebookFieldCounts(notebookId),
       next.map((f, position) => ({ ...f, position })),
     );
     void run(() =>

@@ -115,13 +115,19 @@ export async function indexPendingFiles(opts: IndexOptions = {}): Promise<IndexR
   for (;;) {
     if (signal?.aborted) break;
 
-    const res = await apiFetch(`/api/attachments/pending-text?${query}`, { method: 'GET', signal });
-    const { pending, remaining } = (await res.json()) as {
+    // The count only until one has been had: it is read from the first page alone, and
+    // the server reads a row per unread PDF to produce it. See the route.
+    const counted = progress.total === 0;
+    const res = await apiFetch(
+      `/api/attachments/pending-text?${query}${counted ? '' : '&count=0'}`,
+      { method: 'GET', signal },
+    );
+    const { pending, remaining = 0 } = (await res.json()) as {
       pending: Array<{ noteId: string; filename: string }>;
-      remaining: number;
+      remaining?: number;
     };
 
-    if (progress.total === 0) {
+    if (counted) {
       progress.total = remaining;
       if (opts.auto && remaining > AUTO_INDEX_LIMIT) return { ...progress, deferred: remaining };
     }

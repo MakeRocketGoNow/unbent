@@ -6,7 +6,7 @@ export interface Maintenance {
   /** Human-readable summary of the last successful run. */
   result: string | null;
   error: string | null;
-  /** Runs one action, tracking state and invalidating every cached query afterwards. */
+  /** Runs one action, tracking state and invalidating every cached query afterwards, even on failure. */
   run: (action: () => Promise<string>) => Promise<void>;
   /** Clears the last result or error, so a panel can be reset between runs. */
   reset: () => void;
@@ -36,10 +36,12 @@ export function useMaintenance(): Maintenance {
     setResult(null);
     try {
       setResult(await action());
-      await queryClient.invalidateQueries();
     } catch (err) {
       setError((err as Error).message);
     } finally {
+      // Whether or not it finished: a purge is several requests, and one that fails
+      // partway has still deleted everything before the failure.
+      await queryClient.invalidateQueries();
       setBusy(false);
     }
   }

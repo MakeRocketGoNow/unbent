@@ -44,6 +44,9 @@ interface NoteRow {
   notebook_id: string | null;
 }
 
+/** A whole note with the names of its files: what one export page carries. */
+export type ExportedNote = Note & Pick<NoteSummary, 'attachments'>;
+
 interface SummaryRow {
   id: string;
   title: string;
@@ -204,20 +207,31 @@ function decodeFieldsJson(json: string | null, ownNotebookId: string | null): No
  * primary-key lookup rather than a join that multiplies rows. `json_object` rather than
  * a delimited string because a value can contain any character a delimiter could be.
  *
- * The notebook join is LEFT and the name falls back to `f.notebook_name`, because a
- * definition outlives the notebook it belonged to (0017). An inner join here would have
- * dropped the value from the note entirely once the notebook row went, which is the data
- * loss the tombstone exists to prevent — a value is a note's own data, and a deleted
- * notebook is not a reason to stop showing it.
+ * The name falls back to `f.notebook_name`, because a definition outlives the notebook it
+ * belonged to (0017). An inner join here would have dropped the value from the note
+ * entirely once the notebook row went, which is the data loss the tombstone exists to
+ * prevent — a value is a note's own data, and a deleted notebook is not a reason to stop
+ * showing it.
+ *
+ * Nearly every value belongs to the note's own notebook, whose name both callers have
+ * already joined as `nb`, so that is used first; only a value left over from another
+ * notebook looks its notebook up. Joining `notebooks` once per value, as this did, was
+ * most of a list page's cost in a notebook with fields: a page of a 770-note notebook
+ * with nine fields read 2.2k rows at 13k notes, now 1.6k. `COALESCE` stops at the first
+ * name it finds, so the lookup runs only for a leftover.
+ *
+ * Callers must join the note's notebook as `nb`.
  */
 const FIELDS_SUBQUERY = `(SELECT json_group_array(json_object(
                  'fieldId', f.id, 'name', f.name, 'type', f.type, 'text', nf.value_text,
                  'scaleMax', f.scale_max, 'scaleStep', f.scale_step, 'currency', f.currency,
                  'position', f.position, 'notebookId', f.notebook_id,
-                 'notebook', COALESCE(fnb.name, f.notebook_name)))
+                 'notebook', COALESCE(
+                   CASE WHEN f.notebook_id = n.notebook_id THEN nb.name END,
+                   (SELECT name FROM notebooks WHERE id = f.notebook_id),
+                   f.notebook_name)))
             FROM note_fields nf
             JOIN notebook_fields f ON f.id = nf.field_id
-            LEFT JOIN notebooks fnb ON fnb.id = f.notebook_id
            WHERE nf.note_id = n.id) AS fields`;
 
 /**
@@ -248,6 +262,182 @@ const ATTACHMENTS_SUBQUERY = `(SELECT json_group_array(json_object(
 function decodeAttachmentsJson(json: string | null): NonNullable<NoteSummary['attachments']> {
   if (!json) return [];
   return JSON.parse(json) as NonNullable<NoteSummary['attachments']>;
+}
+
+/**
+ * How many rows past the page each later search tier reads, as a multiple of the limit.
+ *
+ * A tag, field or file tier yields one row per matching tag, value or file, not per note:
+ * a note tagged with three matching tags is three rows until the window function keeps its
+ * best one. The tier is read in rank order and cut off at this multiple of the page, so
+ * the page is exact unless the top of a tier averages more than this many rows per note —
+ * in which case the page comes back short rather than wrong. Four is well past what an
+ * archive shows (most notes carry one or two files) and still bounded.
+ */
+const SEARCH_OVERFETCH = 4;
+
+/**
+ * The most notes a search's notebook or tag filter can name and still be searched note by
+ * note rather than match by match. See `scopeDrivenSearchSql`.
+ *
+ * The two shapes cost differently: the FTS-driven one pays for every archive-wide match
+ * until it has a page inside the scope, the scope-driven one about 20–40 rows per note in
+ * scope whatever the query. Measured at 13k notes, a common word in a 4-note notebook read
+ * 64k rows FTS-driven and 83 scope-driven; at 120 notes scope-driven read 2.2k, and by 770
+ * it read 30k, worse than the FTS-driven page. A hundred keeps the scope-driven worst case
+ * to a few thousand rows.
+ */
+const SCOPE_DRIVEN_SEARCH_MAX = 100;
+
+/**
+ * The four sources a search reads, in tier order, and what a row from each says about its
+ * match: the FTS table, which of its columns the snippet comes from, and which of the
+ * matched columns it fills. `weights` is the bm25 weighting, where a source has one — the
+ * note's title counts ten times its body.
+ *
+ * Both query shapes — `scopeDrivenSearchSql` and the FTS-driven query in `search` — select
+ * exactly these columns for every tier and differ only in how they reach the rows, so the
+ * columns are written once, in `tierColumns`. A snippet's width, a tier's place or a fifth
+ * source changed in one shape and not the other would rank the same note differently
+ * depending on how large the filter was.
+ */
+interface SearchTier {
+  tier: number;
+  fts: string;
+  /** Which of the FTS table's columns the snippet is cut from. */
+  snippet: number;
+  weights: string | null;
+  /** The matched columns this source fills; the rest are NULL. */
+  matched: { file?: string; field?: string; tag?: string };
+}
+
+const SEARCH_TIERS: Record<'note' | 'tag' | 'field' | 'file', SearchTier> = {
+  note: { tier: 0, fts: 'notes_fts', snippet: 1, weights: '10.0, 1.0', matched: {} },
+  tag: { tier: 1, fts: 'tags_fts', snippet: 0, weights: null, matched: { tag: 't.name' } },
+  field: { tier: 2, fts: 'note_fields_fts', snippet: 0, weights: null, matched: { field: 'f.name' } },
+  file: { tier: 3, fts: 'attachment_text_fts', snippet: 0, weights: null, matched: { file: 'at.filename' } },
+};
+
+/**
+ * One tier's SELECT list. `row` is the alias the note's own columns come from. `rank` is
+ * how the shape reads relevance: the FTS-driven query orders by the vtab's `rank` column,
+ * which streams in rank order so its LIMIT can stop early (the weights are applied in its
+ * WHERE, by `tierRankMatch`); the scope-driven one probes a row at a time and calls
+ * `bm25()` with the weights directly. Both give the same numbers.
+ */
+function tierColumns(source: keyof typeof SEARCH_TIERS, row: 'n' | 's', rank: 'vtab' | 'bm25'): string {
+  const t = SEARCH_TIERS[source];
+  const score = rank === 'vtab' ? `${t.fts}.rank` : `bm25(${t.fts}${t.weights ? `, ${t.weights}` : ''})`;
+  return `${row}.id, ${row}.title, ${row}.updated_at,
+                   snippet(${t.fts}, ${t.snippet}, '<<', '>>', '…', 24) AS snippet,
+                   ${t.matched.file ?? 'NULL'} AS matched_file,
+                   ${t.matched.field ?? 'NULL'} AS matched_field,
+                   ${t.matched.tag ?? 'NULL'} AS matched_tag,
+                   ${score} AS rank,
+                   ${t.tier} AS tier`;
+}
+
+/** The weighting the FTS-driven query's `rank` column applies. Only the note tier has one. */
+function tierRankMatch(source: keyof typeof SEARCH_TIERS): string {
+  return `${SEARCH_TIERS[source].fts}.rank MATCH 'bm25(${SEARCH_TIERS[source].weights})'`;
+}
+
+interface SearchRow {
+  id: string;
+  title: string;
+  updated_at: number;
+  snippet: string;
+  matched_file: string | null;
+  matched_field: string | null;
+  matched_tag: string | null;
+}
+
+function toSearchResult(r: SearchRow): SearchResult {
+  return {
+    id: r.id,
+    title: r.title,
+    updatedAt: r.updated_at,
+    snippet: r.snippet,
+    ...(r.matched_file ? { matchedFile: r.matched_file } : {}),
+    ...(r.matched_field ? { matchedField: r.matched_field } : {}),
+    ...(r.matched_tag ? { matchedTag: r.matched_tag } : {}),
+  };
+}
+
+/**
+ * Search for a small notebook or tag: start from the notes in scope and ask each FTS table
+ * about those rows only.
+ *
+ * The FTS-driven query in `search` reads the archive's matches in rank order and throws
+ * away the ones outside the filter, which is right for a large scope — a page fills early —
+ * and wrong for a small one: a common word in a four-note notebook walked every match in
+ * the archive to find none. Here every source is a CROSS JOIN from the scope, which pins
+ * the join order (the planner would otherwise start from the MATCH, having no statistics
+ * to say the scope is smaller), and each FTS table is probed by rowid with its MATCH
+ * applied to that one row. bm25 reads the whole index's statistics either way, so ranks
+ * are the ones the FTS-driven query would give. Same tiers, same one-row-per-note rule;
+ * the scope is small, so nothing needs cutting off early.
+ *
+ * The `user_id` checks on the joined rows are written with a unary plus. They are the
+ * repo's belt-and-braces scoping, not the way in: left visible, the planner reached each
+ * note's files through `idx_attachment_text_user` and read every file the account has once
+ * per note in scope — 427k rows to search a 40-note notebook.
+ *
+ * `owner` is the `user_id` condition — see `ownerCondition` for why it hides the index
+ * when a tag filter is present — and `scoped` the filter clauses, bound as in `search`.
+ */
+function scopeDrivenSearchSql(owner: string, scoped: string): string {
+  return `WITH scope AS MATERIALIZED (
+            SELECT n.rowid AS rid, n.id, n.title, n.updated_at
+              FROM notes n
+             WHERE ${owner} AND n.deleted_at IS NULL
+               ${scoped}
+          ),
+          note_hits AS (
+            SELECT ${tierColumns('note', 's', 'bm25')}
+              FROM scope s
+             CROSS JOIN notes_fts ON notes_fts.rowid = s.rid
+             WHERE notes_fts MATCH ?1
+          ),
+          tag_hits AS (
+            SELECT ${tierColumns('tag', 's', 'bm25')}
+              FROM scope s
+             CROSS JOIN note_tags nt ON nt.note_id = s.id
+             CROSS JOIN tags t ON t.id = nt.tag_id
+             CROSS JOIN tags_fts ON tags_fts.rowid = t.rowid
+             WHERE tags_fts MATCH ?1 AND +t.user_id = ?2
+          ),
+          field_hits AS (
+            SELECT ${tierColumns('field', 's', 'bm25')}
+              FROM scope s
+             CROSS JOIN note_fields nf ON nf.note_id = s.id
+             CROSS JOIN note_fields_fts ON note_fields_fts.rowid = nf.rowid
+             CROSS JOIN notebook_fields f ON f.id = nf.field_id
+             WHERE note_fields_fts MATCH ?1 AND +nf.user_id = ?2
+          ),
+          file_hits AS (
+            SELECT ${tierColumns('file', 's', 'bm25')}
+              FROM scope s
+             CROSS JOIN attachment_text at ON at.note_id = s.id
+             CROSS JOIN attachment_text_fts ON attachment_text_fts.rowid = at.rowid
+             WHERE attachment_text_fts MATCH ?1 AND +at.user_id = ?2
+          ),
+          combined AS (
+            SELECT * FROM note_hits
+            UNION ALL SELECT * FROM tag_hits
+            UNION ALL SELECT * FROM field_hits
+            UNION ALL SELECT * FROM file_hits
+          ),
+          best AS (
+            SELECT *, ROW_NUMBER() OVER (PARTITION BY id ORDER BY tier, rank) AS place
+              FROM combined
+          )
+          SELECT id, title, updated_at, snippet, matched_file, matched_field, matched_tag,
+                 tier, rank
+            FROM best
+           WHERE place = 1
+           ORDER BY tier, rank, id
+           LIMIT ?3`;
 }
 
 /**
@@ -608,6 +798,20 @@ function uniqueTags(tags: string[]): string[] {
  */
 const ID_RUN = 90;
 
+/** Notes one `purge` call deletes: ten runs of 99 ids, so a call stays a couple of dozen statements. */
+const PURGE_PAGE = 990;
+
+/*
+ * Every statement that names notes by an `id IN (…)` run writes its owner condition as
+ * `+user_id`. The unary plus is SQLite's way to keep a column's index out of the plan
+ * while still applying the condition — the idiom `ownerCondition` uses for tag filters.
+ * Without it the planner, which has no statistics and so takes `user_id` to be selective,
+ * answered "these fifty notes" by walking a `user_id` index over every note the account
+ * has and testing each against the list: 13k rows per statement at 13k notes, for a
+ * selection of two, and a bulk move, tag or trash is several statements. With it, each id
+ * is a primary-key lookup. The owner check still runs on every row it finds.
+ */
+
 function runs<T>(items: T[], size = ID_RUN): T[][] {
   const out: T[][] = [];
   for (let i = 0; i < items.length; i += size) out.push(items.slice(i, i + size));
@@ -627,6 +831,15 @@ function placeholders(from: number, count: number): string {
  * are scoped even when the id is a primary key: an unguessable uuid is not authorization.
  */
 export class NotesRepo extends ScopedRepo {
+  /**
+   * The search threshold, `SCOPE_DRIVEN_SEARCH_MAX`, on the instance so the live suite can
+   * move it. Every notebook and tag the suite creates is under a hundred notes, so left
+   * alone every filtered search there takes the scope-driven shape, and the FTS-driven one
+   * — what production uses for any larger notebook — goes untested. The search route sets
+   * this from a header, and only where `ALLOW_TEST_CREDENTIALS` is on; see `search.ts`.
+   */
+  scopeDrivenSearchMax = SCOPE_DRIVEN_SEARCH_MAX;
+
   /**
    * A page of notes, ordered by the requested sort. Keyset pagination keeps deep pages
    * cheap: each page resumes from the last row's sort key rather than counting past
@@ -651,6 +864,52 @@ export class NotesRepo extends ScopedRepo {
      */
     sortField?: FieldDef;
   }): Promise<NoteSummary[]> {
+    return (await this.pageRows(opts)).map((r) => {
+      const fields = decodeFieldsJson(r.fields, r.notebook_id);
+      const attachments = decodeAttachmentsJson(r.attachments);
+      return {
+        id: r.id,
+        title: r.title,
+        createdAt: r.created_at,
+        updatedAt: r.updated_at,
+        tags: splitTags(r.tags),
+        notebook: r.notebook,
+        notebookId: r.notebook_id,
+        // Omitted when empty: most rows in a large archive have none, and a page of fifty
+        // should not carry fifty empty arrays. Same for the files.
+        ...(fields.length > 0 ? { fields } : {}),
+        ...(attachments.length > 0 ? { attachments } : {}),
+        excerpt: excerptMarkdown(r.body),
+        deletedAt: r.deleted_at ?? undefined,
+      };
+    });
+  }
+
+  /**
+   * A page of whole notes — the body rather than an excerpt — with the names of their
+   * files, for the browser to write an export from. The same page `list` reads, in one
+   * statement, so an export is the note list the person was looking at.
+   */
+  async listFull(opts: Parameters<NotesRepo['list']>[0]): Promise<ExportedNote[]> {
+    return (await this.pageRows(opts)).map((r) => {
+      const fields = decodeFieldsJson(r.fields, r.notebook_id);
+      const attachments = decodeAttachmentsJson(r.attachments);
+      return {
+        id: r.id,
+        title: r.title,
+        body: r.body,
+        createdAt: r.created_at,
+        updatedAt: r.updated_at,
+        tags: splitTags(r.tags),
+        notebook: r.notebook,
+        notebookId: r.notebook_id,
+        ...(fields.length > 0 ? { fields } : {}),
+        ...(attachments.length > 0 ? { attachments } : {}),
+      };
+    });
+  }
+
+  private async pageRows(opts: Parameters<NotesRepo['list']>[0]): Promise<SummaryRow[]> {
     const { limit, cursor, tags, notebook, fields, trashed, from, to } = opts;
     const sort = opts.sort ?? 'updated';
     // Trash has one meaningful order — most recently deleted first — so it ignores both.
@@ -731,6 +990,20 @@ export class NotesRepo extends ScopedRepo {
 
     const direction = descending ? 'DESC' : 'ASC';
 
+    /*
+       The page is chosen in a subquery, and the row's tags, fields and files are looked
+       up for the rows chosen. In one query the planner evaluated those three subqueries,
+       and the notebook join, for every candidate row before it sorted — every note in a
+       tag, every note in a notebook sorted by a field — and D1 bills each row read: a page
+       of a 770-note notebook sorted by a field read 11k rows, a popular tag's page 4k.
+       Chosen first, the page reads about 4.5k and 2.9k. Lists in index order lose nothing
+       (a plain page reads 531 rows where it read 540), so every list takes this shape.
+
+       The sort key is selected under one name, with its collation, so the outer ORDER BY
+       can name it: SQLite then keeps the subquery's order rather than sorting again, and
+       a key without the collation would have cost a second sort on title pages.
+    */
+    const nullsLast = byField ? `(${spec.column} IS NULL) ASC, ` : '';
     const { results } = await this.db
       .prepare(
         `SELECT n.id, n.title, n.body, n.created_at, n.updated_at, n.deleted_at,
@@ -740,35 +1013,19 @@ export class NotesRepo extends ScopedRepo {
                   WHERE nt.note_id = n.id) AS tags,
                 ${FIELDS_SUBQUERY},
                 ${ATTACHMENTS_SUBQUERY}
-           FROM notes n
+           FROM (SELECT n.id, n.title, n.body, n.created_at, n.updated_at, n.deleted_at,
+                        n.notebook_id, ${spec.column}${collate} AS sort_key
+                   FROM notes n
+                   ${sortJoin}
+                  WHERE ${conditions.join(' AND ')}
+                  ORDER BY ${nullsLast}${spec.column}${collate} ${direction}, n.id ${direction}
+                  LIMIT ?${binds.length}) n
            LEFT JOIN notebooks nb ON nb.id = n.notebook_id
-           ${sortJoin}
-          WHERE ${conditions.join(' AND ')}
-          ORDER BY ${byField ? `(${spec.column} IS NULL) ASC, ` : ''}${spec.column}${collate} ${direction}, n.id ${direction}
-          LIMIT ?${binds.length}`,
+          ORDER BY ${byField ? '(n.sort_key IS NULL) ASC, ' : ''}n.sort_key ${direction}, n.id ${direction}`,
       )
       .bind(...binds)
       .all<SummaryRow>();
-
-    return results.map((r) => {
-      const fields = decodeFieldsJson(r.fields, r.notebook_id);
-      const attachments = decodeAttachmentsJson(r.attachments);
-      return {
-        id: r.id,
-        title: r.title,
-        createdAt: r.created_at,
-        updatedAt: r.updated_at,
-        tags: splitTags(r.tags),
-        notebook: r.notebook,
-        notebookId: r.notebook_id,
-        // Omitted when empty: most rows in a large archive have none, and a page of fifty
-        // should not carry fifty empty arrays. Same for the files.
-        ...(fields.length > 0 ? { fields } : {}),
-        ...(attachments.length > 0 ? { attachments } : {}),
-        excerpt: excerptMarkdown(r.body),
-        deletedAt: r.deleted_at ?? undefined,
-      };
-    });
+    return results;
   }
 
   /**
@@ -1315,10 +1572,10 @@ export class NotesRepo extends ScopedRepo {
      Each answers with the ids it touched rather than a count, so a caller can say which
      of the ids it named were not: the MCP tools report those back to an assistant, and
      the routes reduce the list to the number the web client wants. The ids come from
-     `RETURNING id`, not `meta.changes`: a note's row has an FTS trigger on it, and D1
-     counts what the trigger writes to the index's shadow tables as changes too —
-     trashing two notes reported ten. The singular methods only ask whether the count is
-     zero, which that cannot get wrong; these report it.
+     `RETURNING id`, not `meta.changes`: a note's row has triggers on it — the FTS
+     index's, the stored counts' — and D1 counts what they write as changes too; trashing
+     two notes reported ten. The singular methods only ask whether the count is zero,
+     which that cannot get wrong; these report it.
   */
 
   /** Trashes several notes. Returns the ids that were — ids already trashed are not among them. */
@@ -1329,7 +1586,7 @@ export class NotesRepo extends ScopedRepo {
       const { results } = await this.db
         .prepare(
           `UPDATE notes SET deleted_at = ?1
-            WHERE user_id = ?2 AND deleted_at IS NULL AND id IN (${placeholders(3, run.length)})
+            WHERE +user_id = ?2 AND deleted_at IS NULL AND id IN (${placeholders(3, run.length)})
             RETURNING id`,
         )
         .bind(now, this.userId, ...run)
@@ -1346,7 +1603,7 @@ export class NotesRepo extends ScopedRepo {
       const { results } = await this.db
         .prepare(
           `UPDATE notes SET deleted_at = NULL
-            WHERE user_id = ?1 AND deleted_at IS NOT NULL AND id IN (${placeholders(2, run.length)})
+            WHERE +user_id = ?1 AND deleted_at IS NOT NULL AND id IN (${placeholders(2, run.length)})
             RETURNING id`,
         )
         .bind(this.userId, ...run)
@@ -1378,7 +1635,7 @@ export class NotesRepo extends ScopedRepo {
         .prepare(
           `SELECT a.r2_key, n.id AS note_id FROM attachments a
              JOIN notes n ON n.id = a.note_id
-            WHERE n.user_id = ?1 AND n.deleted_at IS NOT NULL
+            WHERE +n.user_id = ?1 AND n.deleted_at IS NOT NULL
               AND n.id IN (${placeholders(2, run.length)})`,
         )
         .bind(this.userId, ...run)
@@ -1387,7 +1644,7 @@ export class NotesRepo extends ScopedRepo {
       const { results: gone } = await this.db
         .prepare(
           `DELETE FROM notes
-            WHERE user_id = ?1 AND deleted_at IS NOT NULL AND id IN (${placeholders(2, run.length)})
+            WHERE +user_id = ?1 AND deleted_at IS NOT NULL AND id IN (${placeholders(2, run.length)})
             RETURNING id`,
         )
         .bind(this.userId, ...run)
@@ -1447,7 +1704,7 @@ export class NotesRepo extends ScopedRepo {
                      JOIN tags t ON t.id = nt.tag_id
                     WHERE nt.note_id = n.id) AS tags
              FROM notes n
-            WHERE n.user_id = ?1 AND n.deleted_at IS NULL
+            WHERE +n.user_id = ?1 AND n.deleted_at IS NULL
               AND n.id IN (${placeholders(2, run.length)})`,
         )
         .bind(this.userId, ...run)
@@ -1489,7 +1746,7 @@ export class NotesRepo extends ScopedRepo {
         this.db
           .prepare(
             `UPDATE notes SET notebook_id = ?1
-              WHERE user_id = ?2 AND deleted_at IS NULL AND id IN (${placeholders(3, run.length)})`,
+              WHERE +user_id = ?2 AND deleted_at IS NULL AND id IN (${placeholders(3, run.length)})`,
           )
           .bind(notebookId, this.userId, ...run),
       );
@@ -1514,7 +1771,7 @@ export class NotesRepo extends ScopedRepo {
               `INSERT OR IGNORE INTO note_tags (note_id, tag_id)
                SELECT n.id, t.id FROM notes n
                  JOIN tags t ON t.user_id = n.user_id AND t.name = ?1
-                WHERE n.user_id = ?2 AND n.id IN (${placeholders(3, run.length)})`,
+                WHERE +n.user_id = ?2 AND n.id IN (${placeholders(3, run.length)})`,
             )
             .bind(name, this.userId, ...run),
         );
@@ -1540,7 +1797,7 @@ export class NotesRepo extends ScopedRepo {
         this.db
           .prepare(
             `UPDATE notes SET updated_at = ?1
-              WHERE user_id = ?2 AND id IN (${placeholders(3, run.length)})`,
+              WHERE +user_id = ?2 AND id IN (${placeholders(3, run.length)})`,
           )
           .bind(now, this.userId, ...run),
       );
@@ -1739,6 +1996,15 @@ export class NotesRepo extends ScopedRepo {
     const scope = filterConditions(filters, binds, this.userId);
     const scoped = scope.length > 0 ? `AND ${scope.join(' AND ')}` : '';
 
+    if (await this.searchScopeIsSmall(filters)) {
+      const owner = filters.tags && filters.tags.length > 0 ? '+n.user_id = ?2' : 'n.user_id = ?2';
+      const { results } = await this.db
+        .prepare(scopeDrivenSearchSql(owner, scoped))
+        .bind(...binds)
+        .all<SearchRow>();
+      return results.map(toSearchResult);
+    }
+
     /**
      * Four indexes, one result set.
      *
@@ -1764,74 +2030,89 @@ export class NotesRepo extends ScopedRepo {
      * tag came back with the tag's snippet and "tagged X" under it whenever the tag's
      * bm25 happened to be the smaller number. The window function says which row is
      * meant.
+     *
+     * tag_hits carries two unary pluses, and both are load-bearing. Without the one on
+     * `n.user_id` the planner — which has no statistics and so takes `user_id` to be
+     * selective — joined each matching tag to every live note through a `user_id` index
+     * and asked each one whether it carried the tag: 12.7k rows per matching tag at 13k
+     * notes, so a one-letter prefix that matched most tag names read 12.9M rows in one
+     * request. With it, the join runs tag → its note_tags → those notes by primary key.
+     * The one on `nt.note_id` stops a tag filter's `n.id IN (…)` from being carried over
+     * onto note_tags, which made the plan probe the tag index once per filtered note for
+     * every matching tag instead of reading each tag's links once.
+     *
+     * Every tier stops after a page, because D1 bills every row a query visits and this
+     * one used to visit every match. Each tier used to join all of its matches to notes,
+     * compute bm25 for each, and hand the lot to the window function to sort — a common
+     * word read 146k rows to show fifty. Now each tier orders by its FTS table's own
+     * `rank` (the vtab streams in rank order, so the LIMIT stops the join early), a tier
+     * is skipped outright once the tiers above it have filled the page — no lower tier
+     * can outrank them — and each later tier leaves out notes an earlier one already
+     * holds, so its rows are all candidates. The same common word now reads about 10k.
+     * `rank MATCH 'bm25(10.0, 1.0)'` keeps the title weighting the old `bm25()` call had.
+     * The MATERIALIZED CTEs are each referenced several times and must run once.
      */
     const { results } = await this.db
       .prepare(
-        `WITH note_hits AS (
-           SELECT n.id, n.title, n.updated_at,
-                  snippet(notes_fts, 1, '<<', '>>', '…', 24) AS snippet,
-                  NULL AS matched_file,
-                  NULL AS matched_field,
-                  NULL AS matched_tag,
-                  bm25(notes_fts, 10.0, 1.0) AS rank,
-                  0 AS tier
+        `WITH note_hits AS MATERIALIZED (
+           SELECT ${tierColumns('note', 'n', 'vtab')}
              FROM notes_fts
              JOIN notes n ON n.rowid = notes_fts.rowid
-            WHERE notes_fts MATCH ?1 AND n.user_id = ?2 AND n.deleted_at IS NULL
+            WHERE notes_fts MATCH ?1 AND ${tierRankMatch('note')}
+              AND n.user_id = ?2 AND n.deleted_at IS NULL
               ${scoped}
+            ORDER BY notes_fts.rank
+            LIMIT ?3
          ),
-         tag_hits AS (
-           SELECT n.id, n.title, n.updated_at,
-                  snippet(tags_fts, 0, '<<', '>>', '…', 24) AS snippet,
-                  NULL AS matched_file,
-                  NULL AS matched_field,
-                  t.name AS matched_tag,
-                  bm25(tags_fts) AS rank,
-                  1 AS tier
+         tag_hits AS MATERIALIZED (
+           SELECT ${tierColumns('tag', 'n', 'vtab')}
              FROM tags_fts
              JOIN tags t ON t.rowid = tags_fts.rowid
              JOIN note_tags nt ON nt.tag_id = t.id
-             JOIN notes n ON n.id = nt.note_id
-            WHERE tags_fts MATCH ?1 AND t.user_id = ?2
-              AND n.user_id = ?2 AND n.deleted_at IS NULL
+             JOIN notes n ON n.id = +nt.note_id
+            WHERE (SELECT COUNT(*) FROM note_hits) < ?3
+              AND tags_fts MATCH ?1 AND t.user_id = ?2
+              AND +n.user_id = ?2 AND n.deleted_at IS NULL
+              AND n.id NOT IN (SELECT id FROM note_hits)
               ${scoped}
+            ORDER BY tags_fts.rank
+            LIMIT ?3 * ${SEARCH_OVERFETCH}
          ),
-         field_hits AS (
-           SELECT n.id, n.title, n.updated_at,
-                  snippet(note_fields_fts, 0, '<<', '>>', '…', 24) AS snippet,
-                  NULL AS matched_file,
-                  f.name AS matched_field,
-                  NULL AS matched_tag,
-                  bm25(note_fields_fts) AS rank,
-                  2 AS tier
+         early AS MATERIALIZED (
+           SELECT * FROM note_hits UNION ALL SELECT * FROM tag_hits
+         ),
+         field_hits AS MATERIALIZED (
+           SELECT ${tierColumns('field', 'n', 'vtab')}
              FROM note_fields_fts
              JOIN note_fields nf ON nf.rowid = note_fields_fts.rowid
              JOIN notebook_fields f ON f.id = nf.field_id
              JOIN notes n ON n.id = nf.note_id
-            WHERE note_fields_fts MATCH ?1 AND nf.user_id = ?2
+            WHERE (SELECT COUNT(DISTINCT id) FROM early) < ?3
+              AND note_fields_fts MATCH ?1 AND nf.user_id = ?2
               AND n.user_id = ?2 AND n.deleted_at IS NULL
+              AND n.id NOT IN (SELECT id FROM early)
               ${scoped}
+            ORDER BY note_fields_fts.rank
+            LIMIT ?3 * ${SEARCH_OVERFETCH}
+         ),
+         earlier AS MATERIALIZED (
+           SELECT * FROM early UNION ALL SELECT * FROM field_hits
          ),
          file_hits AS (
-           SELECT n.id, n.title, n.updated_at,
-                  snippet(attachment_text_fts, 0, '<<', '>>', '…', 24) AS snippet,
-                  at.filename AS matched_file,
-                  NULL AS matched_field,
-                  NULL AS matched_tag,
-                  bm25(attachment_text_fts) AS rank,
-                  3 AS tier
+           SELECT ${tierColumns('file', 'n', 'vtab')}
              FROM attachment_text_fts
              JOIN attachment_text at ON at.rowid = attachment_text_fts.rowid
              JOIN notes n ON n.id = at.note_id
-            WHERE attachment_text_fts MATCH ?1 AND at.user_id = ?2
+            WHERE (SELECT COUNT(DISTINCT id) FROM earlier) < ?3
+              AND attachment_text_fts MATCH ?1 AND at.user_id = ?2
               AND n.user_id = ?2 AND n.deleted_at IS NULL
+              AND n.id NOT IN (SELECT id FROM earlier)
               ${scoped}
+            ORDER BY attachment_text_fts.rank
+            LIMIT ?3 * ${SEARCH_OVERFETCH}
          ),
          combined AS (
-           SELECT * FROM note_hits
-           UNION ALL SELECT * FROM tag_hits
-           UNION ALL SELECT * FROM field_hits
-           UNION ALL SELECT * FROM file_hits
+           SELECT * FROM earlier UNION ALL SELECT * FROM file_hits
          ),
          best AS (
            SELECT *, ROW_NUMBER() OVER (PARTITION BY id ORDER BY tier, rank) AS place
@@ -1841,33 +2122,52 @@ export class NotesRepo extends ScopedRepo {
                 tier, rank
            FROM best
           WHERE place = 1
-          ORDER BY tier, rank
+          ORDER BY tier, rank, id
           LIMIT ?3`,
       )
       .bind(...binds)
-      .all<{
-        id: string;
-        title: string;
-        updated_at: number;
-        snippet: string;
-        matched_file: string | null;
-        matched_field: string | null;
-        matched_tag: string | null;
-      }>();
+      .all<SearchRow>();
 
-    return results.map((r) => ({
-      id: r.id,
-      title: r.title,
-      updatedAt: r.updated_at,
-      snippet: r.snippet,
-      ...(r.matched_file ? { matchedFile: r.matched_file } : {}),
-      ...(r.matched_field ? { matchedField: r.matched_field } : {}),
-      ...(r.matched_tag ? { matchedTag: r.matched_tag } : {}),
-    }));
+    return results.map(toSearchResult);
   }
 
   /**
-   * Permanently removes notes, with their tags and attachment rows.
+   * Whether a search's notebook or tag filter names few enough notes to search them one by
+   * one — see `scopeDrivenSearchSql`. Read from the stored counts, so it costs a row per
+   * filter. A name that does not exist counts as empty, which the scope-driven query then
+   * answers by reading nothing. Field and date filters have no stored size and leave the
+   * search FTS-driven.
+   */
+  private async searchScopeIsSmall(filters: {
+    tags?: string[] | undefined;
+    notebook?: string | undefined;
+  }): Promise<boolean> {
+    const binds: unknown[] = [this.userId];
+    const sizes: string[] = [];
+    if (filters.notebook === UNFILED) {
+      sizes.push('(SELECT unfiled FROM note_counts WHERE user_id = ?1)');
+    } else if (filters.notebook) {
+      binds.push(filters.notebook);
+      sizes.push(
+        `(SELECT note_count FROM notebooks WHERE user_id = ?1 AND name = ?${binds.length} COLLATE NOCASE)`,
+      );
+    }
+    for (const tag of filters.tags ?? []) {
+      binds.push(tag);
+      sizes.push(`(SELECT note_count FROM tags WHERE user_id = ?1 AND name = ?${binds.length})`);
+    }
+    if (sizes.length === 0) return false;
+
+    const row = await this.db
+      .prepare(`SELECT MIN(${sizes.map((s) => `COALESCE(${s}, 0)`).join(', ')}) AS size`)
+      .bind(...binds)
+      .first<{ size: number }>();
+    return (row?.size ?? 0) <= this.scopeDrivenSearchMax;
+  }
+
+  /**
+   * Permanently removes notes, with their tags and attachment rows — up to `limit` of
+   * them, whichever the index yields first, and says how many the scope still holds.
    *
    * Distinct from `remove`, which is a soft delete the user can undo. This is the
    * irreversible one, so it returns the R2 keys it orphaned rather than deleting blobs
@@ -1876,52 +2176,93 @@ export class NotesRepo extends ScopedRepo {
    *
    * `scope: 'trashed'` empties the trash; `scope: 'all'` wipes the account's notes.
    *
+   * A page at a time because a Worker request may make only so many calls to D1 and R2
+   * — a thousand on Workers Free by the platform's limits page, and the D1 page says
+   * fifty — and one call that deleted every note ran a statement per hundred ids: 133 for
+   * a 13k-note wipe, on top of the reads around them. The client calls until `remaining`
+   * is zero. `PURGE_PAGE` keeps a call to about two dozen statements, one batch for the
+   * page's reads and deletes, and the R2 delete after it takes a thousand keys a call.
+   *
    * Emptying the trash re-checks `deleted_at` on the DELETE, the way `purgeMany` does: a
    * restore between listing the trash and destroying it must leave the note, not take a
    * live note with it. `scope: 'all'` is a wipe, so it still deletes whatever it named.
+   *
+   * The keys are read by id, in the same runs the deletes use, and in one batch with
+   * them — before, since the rows go with the cascade. That reads only the page's notes:
+   * a lookup by scope read every attachment on the account, or every trashed note, on
+   * every page.
    */
-  async purge(scope: 'trashed' | 'all'): Promise<{ notes: number; keys: string[] }> {
+  async purge(
+    scope: 'trashed' | 'all',
+    limit = PURGE_PAGE,
+  ): Promise<{ notes: number; keys: string[]; remaining: number }> {
     const where =
       scope === 'trashed' ? 'user_id = ?1 AND deleted_at IS NOT NULL' : 'user_id = ?1';
 
-    const { results: keyRows } = await this.db
-      .prepare(
-        `SELECT a.r2_key, n.id AS note_id FROM attachments a
-           JOIN notes n ON n.id = a.note_id
-          WHERE n.${where} AND a.user_id = ?1`,
-      )
-      .bind(this.userId)
-      .all<{ r2_key: string; note_id: string }>();
-
+    // In no order: any page will do, and ordering by id had the planner sort every id
+    // in the scope on every call, 13k rows a page at 13k notes. The index it walks
+    // stops at the limit.
     const { results: idRows } = await this.db
-      .prepare(`SELECT id FROM notes WHERE ${where}`)
-      .bind(this.userId)
+      .prepare(`SELECT id FROM notes WHERE ${where} LIMIT ?2`)
+      .bind(this.userId, limit)
       .all<{ id: string }>();
-
-    if (idRows.length === 0) return { notes: 0, keys: [] };
-
-    // Delete in batches: D1 caps bound parameters at 100 per statement, and note_tags,
-    // attachments, and attachment_text all cascade from notes. Empty-trash re-checks
-    // `deleted_at` so a note restored after the listing is not destroyed as a live one.
-    const stillTrashed = scope === 'trashed' ? ' AND deleted_at IS NOT NULL' : '';
-    const ids = idRows.map((r) => r.id);
-    const deletedIds: string[] = [];
-    for (let i = 0; i < ids.length; i += 99) {
-      const batch = ids.slice(i, i + 99);
-      const placeholders = batch.map((_, j) => `?${j + 2}`).join(', ');
-      const { results: gone } = await this.db
-        .prepare(
-          `DELETE FROM notes WHERE user_id = ?1${stillTrashed} AND id IN (${placeholders})
-           RETURNING id`,
-        )
-        .bind(this.userId, ...batch)
-        .all<{ id: string }>();
-      deletedIds.push(...gone.map((r) => r.id));
+    if (idRows.length === 0) {
+      await this.sweepAfterPurge();
+      return { notes: 0, keys: [], remaining: 0 };
     }
 
-    if (deletedIds.length === 0) return { notes: 0, keys: [] };
+    const stillTrashed = scope === 'trashed' ? ' AND deleted_at IS NOT NULL' : '';
+    const ids = idRows.map((r) => r.id);
+    const idRuns = runs(ids, 99);
+    const results = await this.db.batch([
+      ...idRuns.map((run) =>
+        this.db
+          .prepare(
+            `SELECT a.r2_key, a.note_id FROM attachments a
+              WHERE +a.user_id = ?1 AND a.note_id IN (${placeholders(2, run.length)})`,
+          )
+          .bind(this.userId, ...run),
+      ),
+      ...idRuns.map((run) =>
+        this.db
+          .prepare(
+            `DELETE FROM notes WHERE +user_id = ?1${stillTrashed} AND id IN (${placeholders(2, run.length)})
+             RETURNING id`,
+          )
+          .bind(this.userId, ...run),
+      ),
+    ]);
+    const keyRows = results
+      .slice(0, idRuns.length)
+      .flatMap((r) => r.results as Array<{ r2_key: string; note_id: string }>);
+    const deletedIds = results
+      .slice(idRuns.length)
+      .flatMap((r) => (r.results as Array<{ id: string }>).map((row) => row.id));
 
-    // Tag rows are per-user and survive their notes; drop the ones nothing references.
+    // Whether the scope is exhausted comes from what this page saw, not from the stored
+    // counts. A short page means the query ran out of notes; a full one means there may be
+    // more. The counts (0023) only supply the number the client shows, and they can drift
+    // — `recount-notes` exists for that — so trusting them to end the loop could stop it
+    // with notes left (counts low) or leave a last call that finds nothing and never
+    // sweeps (counts high). A full page always reports at least one more, and the call
+    // after it, finding nothing, answers zero and sweeps.
+    const remaining = idRows.length < limit ? 0 : Math.max(1, await this.purgeRemaining(scope));
+
+    // The sweeps once the scope is empty rather than on every page: tag rows are per-user
+    // and survive their notes, and field definitions kept alive only by values on these
+    // notes; both walk the whole table, and neither is needed until the end.
+    if (remaining === 0) await this.sweepAfterPurge();
+
+    return { notes: deletedIds.length, keys: keysOfDeletedNotes(keyRows, deletedIds), remaining };
+  }
+
+  /**
+   * What a purge leaves behind once its scope is empty: tags no note carries any more, and
+   * tombstoned field definitions whose last values went with the notes. Run on the last
+   * page, and also on a call that found nothing — the page before it was full, so it did
+   * not know it was the last.
+   */
+  private async sweepAfterPurge(): Promise<void> {
     await this.db
       .prepare(
         `DELETE FROM tags
@@ -1930,11 +2271,17 @@ export class NotesRepo extends ScopedRepo {
       )
       .bind(this.userId)
       .run();
-
-    // The same for field definitions kept alive only by the values on these notes.
     await this.sweepTombstonedFields();
+  }
 
-    return { notes: deletedIds.length, keys: keysOfDeletedNotes(keyRows, deletedIds) };
+  /** How many notes a purge of `scope` would still find, from the stored counts (0023). */
+  private async purgeRemaining(scope: 'trashed' | 'all'): Promise<number> {
+    const row = await this.db
+      .prepare(`SELECT live, trashed FROM note_counts WHERE user_id = ?1`)
+      .bind(this.userId)
+      .first<{ live: number; trashed: number }>();
+    if (!row) return 0;
+    return scope === 'trashed' ? row.trashed : row.live + row.trashed;
   }
 
   /**
@@ -1965,57 +2312,84 @@ export class NotesRepo extends ScopedRepo {
   }
 
   /**
-   * A few recent titles from each notebook and each tag, as examples of what is filed
-   * where, for auto-fill to show the model beside each name.
+   * A few titles from each notebook and each of the most-used tags, as examples of what is
+   * filed where, for auto-fill to show the model beside each name; and those tags
+   * themselves, since they are the ones auto-fill asks about.
    *
    * A notebook called "Misc" or a tag called "2019" says nothing on its own; three titles
-   * from it say what a person has been putting there. Recent rather than random, so the
-   * examples follow how the archive is used now. Untitled notes and the note being filed
-   * are left out — one has nothing to show and the other is the question. One query per
-   * kind, numbered within each group, so an archive of thirteen thousand notes costs two
-   * scans rather than a query per notebook.
+   * from it say what a person has been putting there. Untitled notes and the note being
+   * filed are left out — one has nothing to show and the other is the question.
+   *
+   * Each group reads its own few rows and stops. This was one window query per kind that
+   * numbered every filed note and every tag link to keep three of each, and D1 bills every
+   * row a query visits: 146k rows per press at 13k notes, with examples built for every tag
+   * when only the most-used `tagLimit` are ever asked about. In production that was 40% of
+   * a week's reads, and on the day the quota ran out it was most of it. Now a notebook's
+   * examples walk `idx_notes_user_notebook_id` newest first and stop at `perGroup`, and a
+   * tag's walk `idx_note_tags_tag` to the notes by primary key — 3.3k rows per press.
+   *
+   * Notebook examples are the most recent, which that index gives for free. Tag examples
+   * are the first the tag's index reaches, which is note-id order: a stable sample rather
+   * than the newest. The newest would mean reading every note of each of the tags to sort
+   * them, 24k rows per press; three notes that carry a tag show what it means about as well
+   * as the three newest do. The CROSS JOIN pins the tag side's order — left to itself the
+   * planner starts from the notes and reads 186k. The tags are limited before their
+   * examples are built, so the subquery runs for the kept tags only, whatever order their
+   * names sort in.
+   *
+   * `tagLimit` is how many of the most-used tags to return. The caller asks for more than
+   * it will use: auto-fill drops the tags the note already has before taking its cap.
    */
   async sampleTitles(
     exclude: string,
     perGroup: number,
-  ): Promise<{ notebooks: Map<string, string[]>; tags: Map<string, string[]> }> {
+    tagLimit: number,
+  ): Promise<{
+    notebooks: Map<string, string[]>;
+    tags: Array<{ id: string; name: string; examples: string[] }>;
+  }> {
     const [byNotebook, byTag] = await this.db.batch([
       this.db
         .prepare(
-          `SELECT group_id, title FROM (
-             SELECT n.notebook_id AS group_id, n.title,
-                    ROW_NUMBER() OVER (PARTITION BY n.notebook_id ORDER BY n.updated_at DESC) AS rn
-               FROM notes n
-              WHERE n.user_id = ?1 AND n.deleted_at IS NULL AND n.notebook_id IS NOT NULL
-                AND n.title <> '' AND n.id <> ?2
-           ) WHERE rn <= ?3`,
+          `SELECT nb.id,
+                  (SELECT json_group_array(title) FROM (
+                     SELECT n.title FROM notes n
+                      WHERE n.user_id = ?1 AND n.notebook_id = nb.id AND n.deleted_at IS NULL
+                        AND n.title <> '' AND n.id <> ?2
+                      ORDER BY n.updated_at DESC
+                      LIMIT ?3)) AS titles
+             FROM notebooks nb
+            WHERE nb.user_id = ?1`,
         )
         .bind(this.userId, exclude, perGroup),
       this.db
         .prepare(
-          `SELECT group_id, title FROM (
-             SELECT nt.tag_id AS group_id, n.title,
-                    ROW_NUMBER() OVER (PARTITION BY nt.tag_id ORDER BY n.updated_at DESC) AS rn
-               FROM note_tags nt
-               JOIN tags t ON t.id = nt.tag_id AND t.user_id = ?1
-               JOIN notes n ON n.id = nt.note_id AND n.user_id = ?1 AND n.deleted_at IS NULL
-              WHERE n.title <> '' AND n.id <> ?2
-           ) WHERE rn <= ?3`,
+          `SELECT t.id, t.name,
+                  (SELECT json_group_array(title) FROM (
+                     SELECT n.title FROM note_tags nt
+                      CROSS JOIN notes n ON n.id = nt.note_id
+                      WHERE nt.tag_id = t.id AND n.user_id = ?1 AND n.deleted_at IS NULL
+                        AND n.title <> '' AND n.id <> ?2
+                      LIMIT ?3)) AS titles
+             FROM (SELECT id, name, note_count AS count FROM tags
+                    WHERE user_id = ?1 AND note_count > 0
+                    ORDER BY note_count DESC, name COLLATE NOCASE
+                    LIMIT ?4) t
+            ORDER BY t.count DESC, t.name COLLATE NOCASE`,
         )
-        .bind(this.userId, exclude, perGroup),
+        .bind(this.userId, exclude, perGroup, tagLimit),
     ]);
-    const group = (rows: { results: Array<{ group_id: string; title: string }> }) => {
-      const out = new Map<string, string[]>();
-      for (const row of rows.results) {
-        const list = out.get(row.group_id) ?? [];
-        list.push(row.title);
-        out.set(row.group_id, list);
-      }
-      return out;
-    };
+    const titles = (json: string | null) => (json ? (JSON.parse(json) as string[]) : []);
     return {
-      notebooks: group(byNotebook as { results: Array<{ group_id: string; title: string }> }),
-      tags: group(byTag as { results: Array<{ group_id: string; title: string }> }),
+      notebooks: new Map(
+        (byNotebook as { results: Array<{ id: string; titles: string | null }> }).results.map((r) => [
+          r.id,
+          titles(r.titles),
+        ]),
+      ),
+      tags: (
+        byTag as { results: Array<{ id: string; name: string; titles: string | null }> }
+      ).results.map((r) => ({ id: r.id, name: r.name, examples: titles(r.titles) })),
     };
   }
 
@@ -2346,15 +2720,24 @@ export class NotesRepo extends ScopedRepo {
   // --- Custom fields -------------------------------------------------------------------
 
   /**
-   * A notebook's field definitions in display order, with how many notes hold a value for
-   * each (the management page names that count before a delete). Null when the notebook
-   * is not this user's, so the route can answer 404 without a second query.
+   * A notebook's field definitions in display order. Null when the notebook is not this
+   * user's, so the route can answer 404 without a second query.
+   *
+   * `counts` adds how many notes hold a value for each field, which the management page
+   * shows and names before a delete. Only on request: it reads every stored value of every
+   * field — 6.3k rows for a 770-note notebook with nine fields, where the definitions
+   * alone are 13 — and every other caller wanted the definitions. The note editor, the
+   * list and MCP's writes all fetched it, so each note opened in such a notebook and each
+   * card an assistant filled paid for counts nobody showed.
    *
    * Tombstones cannot reach here — the notebook they belonged to is gone, so the guard
    * above already answers null — but they are excluded explicitly so the query reads as
    * what it means rather than relying on that.
    */
-  async listFields(notebookId: string): Promise<FieldDef[] | null> {
+  async listFields(
+    notebookId: string,
+    { counts = false }: { counts?: boolean } = {},
+  ): Promise<FieldDef[] | null> {
     const owned = await this.db
       .prepare(`SELECT 1 FROM notebooks WHERE id = ?1 AND user_id = ?2`)
       .bind(notebookId, this.userId)
@@ -2363,8 +2746,8 @@ export class NotesRepo extends ScopedRepo {
 
     const { results } = await this.db
       .prepare(
-        `SELECT f.id, f.notebook_id, f.name, f.type, f.options, f.scale_max, f.scale_step, f.currency, f.position,
-                (SELECT COUNT(*) FROM note_fields nf WHERE nf.field_id = f.id) AS value_count
+        `SELECT f.id, f.notebook_id, f.name, f.type, f.options, f.scale_max, f.scale_step, f.currency, f.position
+                ${counts ? ', (SELECT COUNT(*) FROM note_fields nf WHERE nf.field_id = f.id) AS value_count' : ''}
            FROM notebook_fields f
           WHERE f.notebook_id = ?1 AND f.user_id = ?2 AND f.deleted_at IS NULL
           ORDER BY f.position`,

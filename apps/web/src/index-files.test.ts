@@ -85,6 +85,45 @@ describe('indexing', () => {
     expect(worker.posted).toEqual([]);
   });
 
+  it('asks the server to count only once, and ends when the server runs out of files', async () => {
+    const worker = fakeWorker();
+    const passes = [
+      { read: 3, empty: 0, failed: 0, remaining: 5 },
+      { read: 2, empty: 1, failed: 0 },
+      { read: 1, empty: 0, failed: 0 },
+    ];
+    const readPending = vi.fn(async () => passes.shift()!);
+    const indexing = createIndexing(() => worker as unknown as Worker, readPending);
+
+    indexing.readImages();
+    await vi.waitFor(() => expect(indexing.get().status).toBe('done'));
+
+    expect(readPending.mock.calls.map((c) => (c as unknown[])[1])).toEqual([true, false, false]);
+    // 5 left after the first call and 3 taken by the second, which kept count says 2 are
+    // left. The third was handed only 1: an upload or another tab drifted the count. It was
+    // handed fewer files than it asked for, so it saw the last of them, and read them all.
+    // "0 left" is the truth, not the drifted 1 that would sit beside "Done".
+    expect(indexing.get().images).toEqual({ read: 6, remaining: 0 });
+  });
+
+  it('leaves what the last call could not read when the server runs out', async () => {
+    const worker = fakeWorker();
+    const passes = [
+      { read: 3, empty: 0, failed: 0, remaining: 9 },
+      { read: 1, empty: 0, failed: 1 },
+    ];
+    const readPending = vi.fn(async () => passes.shift()!);
+    const indexing = createIndexing(() => worker as unknown as Worker, readPending);
+
+    indexing.readImages();
+    await vi.waitFor(() => expect(indexing.get().status).toBe('done'));
+
+    // The kept count says 5 are left; the server handed out 2, so there were only 2, and
+    // the one it could not read is what waits for next time.
+    expect(readPending).toHaveBeenCalledTimes(2);
+    expect(indexing.get().images).toEqual({ read: 4, remaining: 1 });
+  });
+
   it('never reads images as part of a PDF pass, and stops when a call moves nothing', async () => {
     const readPending = vi.fn(async () => ({ read: 0, empty: 0, failed: 2, remaining: 2 }));
     const worker = fakeWorker();

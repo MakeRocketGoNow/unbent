@@ -7,7 +7,8 @@ import { Backfill } from './Backfill.js';
 import { Confirm } from './Confirm.js';
 import { Button } from './Button.js';
 import { useMaintenance } from './use-maintenance.js';
-import { configQuery, exactCountQuery } from '../queries.js';
+import { configQuery, noteCountQuery, trashCountQuery } from '../queries.js';
+import { useExactCount } from './use-exact-count.js';
 
 type Pending = 'trashed' | 'all' | 'account' | null;
 
@@ -35,11 +36,16 @@ export function Maintenance() {
   const [sweep, setSweep] = useState<api.GcResult | null>(null);
   const { busy, result, error, run, reset } = useMaintenance();
 
-  // Counted from the notes, not read from the stored counts: see `exactCountQuery`.
-  const trashCount = useQuery(exactCountQuery({ trashed: true }));
-  const noteCount = useQuery(exactCountQuery());
-  const trashed = trashCount.data ?? 0;
-  const notes = noteCount.data ?? 0;
+  /*
+     The stored counts, until a confirmation opens; then the count read from the notes
+     themselves, which is the number a permanent delete should name (see `useExactCount`).
+     The page used to count exactly on every visit, and counting every note reads every
+     note — 13k rows at 13k notes to label two buttons most visits never press.
+  */
+  const trashStored = useQuery(trashCountQuery()).data ?? 0;
+  const notesStored = useQuery(noteCountQuery()).data ?? 0;
+  const trashed = useExactCount(pending === 'trashed' ? { trashed: true } : null, trashStored);
+  const notes = useExactCount(pending === 'all' ? {} : null, notesStored);
 
   /**
    * Account deletion is confirmed by mail, so an instance with none does not offer the

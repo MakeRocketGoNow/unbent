@@ -147,7 +147,7 @@ internal data class FieldList(val fields: List<FieldDef> = emptyList())
 
 /** What a purge actually removed, so the result can say rather than imply. */
 @Serializable
-data class PurgeResult(val notesDeleted: Int = 0, val filesDeleted: Int = 0)
+data class PurgeResult(val notesDeleted: Int = 0, val filesDeleted: Int = 0, val remaining: Int = 0)
 
 /** `GET /api/notebooks`, with how many notes sit in no notebook at all. */
 @Serializable

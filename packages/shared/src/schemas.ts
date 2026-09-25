@@ -462,10 +462,11 @@ export const searchQuerySchema = z.object({
 /**
  * Export takes the note list's filters, so an export is the view the user was looking at.
  *
- * No `limit`: a partial backup is a trap rather than a feature. `sort` is accepted but
- * does not order anything — a zip of directories has no order worth choosing. It is here
- * because the date range filters whichever column the sort names, so without it an export
- * of "2021" would quietly mean a different set of notes than the list showing "2021".
+ * No `limit`: a partial backup is a trap rather than a feature. `sort` orders nothing
+ * anyone sees — a zip of directories has no order worth choosing. It is here because the
+ * date range filters whichever column the sort names, so without it an export of "2021"
+ * would quietly mean a different set of notes than the list showing "2021"; and, for the
+ * paged export, because it is the column the cursor walks.
  */
 export const exportQuerySchema = z.object({
   tag: tagFilterSchema,
@@ -474,6 +475,16 @@ export const exportQuerySchema = z.object({
   from: dateOnlySchema.optional(),
   to: dateOnlySchema.optional(),
   sort: noteSortSchema,
+});
+
+/**
+ * One page of an export: the same filter, walked with a cursor. The archive is built by
+ * the client from these pages (see the web app's `export-archive.ts`), because a Worker
+ * request may make only so many database calls and a library is thousands of notes.
+ */
+export const exportPageQuerySchema = exportQuerySchema.extend({
+  cursor: z.string().optional(),
+  limit: z.coerce.number().int().min(1).max(100).default(50),
 });
 
 /**

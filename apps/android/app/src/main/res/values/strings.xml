@@ -60,6 +60,7 @@
     <string name="no_notes">No notes yet.</string>
     <string name="no_notes_filtered">No notes here.</string>
     <string name="no_matches">No matches.</string>
+    <string name="search_keep_typing">Keep typing to search notes.</string>
     <string name="matched_in">in %1$s</string>
     <string name="matched_tagged">tagged %1$s</string>
     <string name="search_picks_caption">Tags and notebooks</string>
@@ -223,6 +224,7 @@
     <string name="capture_save">Save</string>
     <string name="title_label">Title</string>
     <string name="saving">Saving to Unbent…</string>
+    <string name="save_waiting">Unbent is busy. Will try again later</string>
     <string name="saved">Saved to Unbent</string>
     <string name="save_failed">Could not save to Unbent</string>
     <string name="sign_in_needed">Sign in to Unbent, then share again</string>

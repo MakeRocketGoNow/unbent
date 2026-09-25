@@ -68,7 +68,7 @@ export const admin = new Hono<AppEnv>()
    *
    * `?scope=trashed` (default) empties the trash — the storage that soft delete leaves
    * behind. `?scope=all` wipes every note in the account, which is what makes a trial
-   * import repeatable.
+   * import repeatable. Each call takes a page and answers with `remaining`.
    *
    * Irreversible, so it requires `?confirm=DELETE` rather than firing on a bare POST: a
    * mistyped URL or a stray retry should not be able to empty an account.
@@ -88,13 +88,15 @@ export const admin = new Hono<AppEnv>()
       );
     }
 
-    const { notes, keys } = await c.get('notes').purge(scope);
+    // A page of the scope per call, and how much is left; the client calls until that
+    // is zero. See `NotesRepo.purge` for why one call cannot do it all.
+    const { notes, keys, remaining } = await c.get('notes').purge(scope);
 
     // Blobs go after the rows: a failure here leaves orphans the sweep can reclaim, while
     // the reverse would leave notes pointing at objects that no longer exist.
     await deleteKeys(c.env.BLOBS, keys);
 
-    return c.json({ scope, notesDeleted: notes, filesDeleted: keys.length });
+    return c.json({ scope, notesDeleted: notes, filesDeleted: keys.length, remaining });
   })
 
   /**

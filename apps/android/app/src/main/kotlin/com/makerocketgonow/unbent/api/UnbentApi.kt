@@ -22,8 +22,20 @@ import okhttp3.RequestBody
 import okhttp3.RequestBody.Companion.asRequestBody
 import okhttp3.RequestBody.Companion.toRequestBody
 
-/** An API call that failed with a status, so 401 can be handled differently from the rest. */
-class ApiException(val status: Int, message: String, val body: String = "") : IOException(message) {
+/**
+ * An API call that failed with a status, so 401 can be handled differently from the rest.
+ *
+ * [retryAfter] is the response's `Retry-After`, when it sent one: the server's own word
+ * that the failure is passing and worth waiting out. Only the session check's 503 sends
+ * it — the one a spent database allowance produces — so it is what tells that apart from
+ * a 503 that will fail the same way however long a capture waits.
+ */
+class ApiException(
+    val status: Int,
+    message: String,
+    val body: String = "",
+    val retryAfter: String? = null,
+) : IOException(message) {
     /**
      * The server's own explanation, pulled out of the JSON body this wraps.
      *
@@ -82,7 +94,9 @@ class UnbentApi(
     private fun call(request: Request, what: String): String =
         client.newCall(request).execute().use { res ->
             val text = res.body.string()
-            if (!res.isSuccessful) throw ApiException(res.code, "$what failed: ${res.code}", text)
+            if (!res.isSuccessful) {
+                throw ApiException(res.code, "$what failed: ${res.code}", text, res.header("Retry-After"))
+            }
             text
         }
 
@@ -240,13 +254,25 @@ class UnbentApi(
      * refuses a bare POST so a stray retry cannot empty an account. Scoped to the trash —
      * this client has no reason to offer the "everything" scope, which exists for
      * repeating a trial import from a desk.
+     *
+     * A page per request until the server says nothing is left, since one request may
+     * make only so many database calls; a request that deletes nothing ends it too.
      */
-    fun emptyTrash(): PurgeResult = send(
-        "Empty trash",
-        url("/api/admin/purge-notes", "scope" to "trashed", "confirm" to "DELETE"),
-        "POST",
-        buildJsonObject {},
-    )
+    fun emptyTrash(): PurgeResult {
+        var notes = 0
+        var files = 0
+        while (true) {
+            val page: PurgeResult = send(
+                "Empty trash",
+                url("/api/admin/purge-notes", "scope" to "trashed", "confirm" to "DELETE"),
+                "POST",
+                buildJsonObject {},
+            )
+            notes += page.notesDeleted
+            files += page.filesDeleted
+            if (page.remaining == 0 || page.notesDeleted == 0) return PurgeResult(notes, files)
+        }
+    }
 
     fun listNotebooks(): NotebookList = get("List notebooks", url("/api/notebooks"))
 

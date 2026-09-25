@@ -331,7 +331,15 @@ private class TrashState(private val api: UnbentApi) {
                 emptied = result.notesDeleted
                 load()
             }
-            .onFailure { report(it) }
+            .onFailure {
+                // Emptying is a request per page, so a failure partway has still deleted
+                // every page before it. Reload so the list and the notes behind it show
+                // what is left, then report — after, so a reload failing for the same
+                // reason does not replace the message that says what went wrong.
+                changed = true
+                load()
+                report(it)
+            }
         busy = false
     }
 

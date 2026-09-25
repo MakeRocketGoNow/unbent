@@ -254,11 +254,14 @@ export class AttachmentsRepo extends ScopedRepo {
   > {
     // `content_type` and `has_text` are written exactly as 0024's partial index states
     // them, which is what lets SQLite use it: the walk is over unread PDFs alone, in order,
-    // instead of every PDF with a lookup each to see whether it has text.
+    // instead of every PDF with a lookup each to see whether it has text. For one note the
+    // note's own index is named outright, for the reason `visionPendingHalves` gives: left
+    // to itself the planner takes the partial index and walks the account's whole backlog
+    // to find one note's files.
     const { results } = await this.db
       .prepare(
         `SELECT a.id, a.note_id, a.filename, a.content_type, a.size, a.r2_key
-           FROM attachments a
+           FROM attachments a${noteId ? ' INDEXED BY idx_attachments_note' : ''}
            JOIN notes n ON n.id = a.note_id
           WHERE a.user_id = ?1
             AND a.content_type = 'application/pdf' AND a.has_text = 0
@@ -302,9 +305,17 @@ export class AttachmentsRepo extends ScopedRepo {
     Array<{ id: string; noteId: string; filename: string; contentType: string; size: number; r2Key: string }>
   > {
     const { pictures, pdfs } = visionPendingHalves(noteId ? '?3' : null);
+    /*
+       `created_at` is selected although nothing reads it. SQLite only runs a compound
+       subquery as a merge of its halves when the outer ORDER BY names one of the outer
+       result columns; without it the union was materialised and the whole backlog sorted
+       in a temp B-tree to hand back three files — 9.4k rows per call of Maintenance's
+       "Read N images" at 13k notes. With it, each half walks its partial index in
+       `created_at` order and the LIMIT stops them: 283 rows.
+    */
     const { results } = await this.db
       .prepare(
-        `SELECT id, note_id, filename, content_type, size, r2_key
+        `SELECT id, note_id, filename, content_type, size, r2_key, created_at
            FROM (${pictures} UNION ALL ${pdfs})
           ORDER BY created_at
           LIMIT ?2`,
@@ -351,7 +362,7 @@ export class AttachmentsRepo extends ScopedRepo {
     const row = await this.db
       .prepare(
         `SELECT COUNT(*) AS pending
-           FROM attachments a
+           FROM attachments a${noteId ? ' INDEXED BY idx_attachments_note' : ''}
            JOIN notes n ON n.id = a.note_id
           WHERE a.user_id = ?1
             AND a.content_type = 'application/pdf' AND a.has_text = 0

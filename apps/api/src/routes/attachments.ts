@@ -304,14 +304,22 @@ export const attachments = new Hono<AppEnv>()
   .get('/attachments/pending-text', requireAuth, withRepos, async (c) => {
     const limit = Math.min(Number(c.req.query('limit') ?? '25'), 100);
     const note = c.req.query('note') || undefined;
+    /*
+       `count=0` leaves the count out. The pass reads it from its first page only and
+       walks the rest page by page, and counting reads a row per unread PDF: a pass over
+       a 10k-file backlog counted it on each of its 400 pages, 4M rows for a number read
+       once. Counting stays the default, so a client that does not know to ask still
+       gets it.
+    */
+    const counted = c.req.query('count') !== '0';
     const [pending, remaining] = await Promise.all([
       c.get('attachments').needingText(limit, note),
-      c.get('attachments').pendingTextCount(note),
+      counted ? c.get('attachments').pendingTextCount(note) : undefined,
     ]);
 
     return c.json({
       pending: pending.map((p) => ({ noteId: p.noteId, filename: p.filename })),
-      remaining,
+      ...(remaining !== undefined ? { remaining } : {}),
     });
   })
 
@@ -343,7 +351,9 @@ export const attachments = new Hono<AppEnv>()
    * opening starts — see `readImages` in the web app's `index-files.ts`.
    *
    * `note` narrows the pass to one note's files, as `pending-text` narrows the browser's,
-   * and `remaining` then counts only that note's. Unscoped, this walks the whole account
+   * and `remaining` then counts only that note's. `count: false` leaves `remaining` out:
+   * the pass calls this once per three files and counting reads the whole backlog, so it
+   * counts on its first call and keeps the number itself after that. Unscoped, this walks the whole account
    * oldest first, which on a real archive is a thousand paid requests — the right thing
    * for a person who pressed the button to see the count fall, and the wrong thing for
    * anything that only wanted the note in front of it.
@@ -357,6 +367,7 @@ export const attachments = new Hono<AppEnv>()
       z.object({
         limit: z.number().int().min(1).max(10).default(3),
         note: z.string().min(1).max(128).optional(),
+        count: z.boolean().default(true),
       }),
     ),
     async (c) => {
@@ -364,10 +375,10 @@ export const attachments = new Hono<AppEnv>()
         return c.json({ error: 'Reading images is not set up on this instance' }, 503);
       }
       const repo = c.get('attachments');
-      const { limit, note } = c.req.valid('json');
+      const { limit, note, count } = c.req.valid('json');
       const files = (await repo.needingVision(limit, note)).map((f) => ({ ...f, pending: 'vision' as const }));
       const { read, empty, failed } = await readPendingFiles(c.env.BLOBS, readersFrom(c.env), repo, files);
-      return c.json({ read, empty, failed, remaining: await repo.visionPending(note) });
+      return c.json({ read, empty, failed, ...(count ? { remaining: await repo.visionPending(note) } : {}) });
     },
   )
 

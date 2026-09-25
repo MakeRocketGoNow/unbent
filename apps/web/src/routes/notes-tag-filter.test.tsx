@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { filters, writeTagFilter } from './notes.js';
-import { exportUrl } from '../notes-api.js';
+import { exportQuery } from '../notes-api.js';
 
 /**
  * The tag filter reads one tag or several, and writes whichever makes the better link.
@@ -14,7 +14,7 @@ import { exportUrl } from '../notes-api.js';
  * Two serializations are in play and they are deliberately different, which is worth
  * knowing before reading the cases below. The *browser* URL is the router's, and it
  * JSON-encodes the array: `?tag=["a","b"]`. The *API* query is `notes-api.ts`'s and repeats
- * the parameter, `?tag=a&tag=b`, because that is what the Worker reads. The `exportUrl`
+ * the parameter, `?tag=a&tag=b`, because that is what the Worker reads. The `exportQuery`
  * cases here are about that second wire.
  */
 describe('the notes route tag filter', () => {
@@ -90,18 +90,25 @@ describe('the notes route tag filter', () => {
    * dots, and any delimiter would need escaping on both sides.
    */
   it('writes every tag as its own parameter in the API query', () => {
-    const url = new URL(exportUrl({ tag: ['Receipt', 'Medical'] }), 'http://x');
-    expect(url.searchParams.getAll('tag')).toEqual(['Receipt', 'Medical']);
+    const params = exportQuery({ tags: ['Receipt', 'Medical'] });
+    expect(params.getAll('tag')).toEqual(['Receipt', 'Medical']);
   });
 
   it('writes no tag parameter when none are selected', () => {
-    const url = new URL(exportUrl({ tag: [] }), 'http://x');
-    expect(url.searchParams.has('tag')).toBe(false);
+    const params = exportQuery({ tags: [] });
+    expect(params.has('tag')).toBe(false);
   });
 
   /** A name carrying the character a delimiter would have used survives the round trip. */
   it('round-trips a tag name containing a comma', () => {
-    const url = new URL(exportUrl({ tag: ['Smith, John'] }), 'http://x');
-    expect(url.searchParams.getAll('tag')).toEqual(['Smith, John']);
+    const params = exportQuery({ tags: ['Smith, John'] });
+    expect(params.getAll('tag')).toEqual(['Smith, John']);
+  });
+
+  /** A cursor over `updated` loses a note edited mid-export; `created` never moves. */
+  it('walks an export by creation date unless a date range names the column', () => {
+    expect(exportQuery({ sort: 'updated' }).get('sort')).toBe('created');
+    expect(exportQuery({ sort: 'title', from: '2021-01-01' }).get('sort')).toBe('title');
+    expect(exportQuery({ to: '2021-12-31' }).get('sort')).toBe('updated');
   });
 });

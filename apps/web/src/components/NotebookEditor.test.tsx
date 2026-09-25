@@ -45,7 +45,7 @@ function mount(seed: FieldDef[] = fields) {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false, staleTime: Infinity } },
   });
-  client.setQueryData(keys.notebookFields('nb1'), seed);
+  client.setQueryData(keys.notebookFieldCounts('nb1'), seed);
   client.setQueryData(keys.notebooks(), {
     notebooks: [{ id: 'nb1', name: 'Receipts', count: 3, fields: seed.length, purpose: null }],
     unfiled: 0,

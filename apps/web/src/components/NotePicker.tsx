@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import * as api from '../notes-api.js';
+import { MIN_SEARCH_LENGTH } from '../queries.js';
 import { Button } from './Button';
 import { formatWhen } from './format-when.js';
 
@@ -41,8 +42,13 @@ export function NotePicker({ label, excludeId, busy = false, onPick, onCancel }:
   const [needle, setNeedle] = useState('');
 
   // A short debounce: search hits the server, and a title is typed faster than it answers.
+  // A single character keeps the recent notes rather than searching — see MIN_SEARCH_LENGTH
+  // — and shares their cache entry, so the first letter typed sends nothing.
   useEffect(() => {
-    const t = setTimeout(() => setNeedle(query.trim()), 200);
+    const t = setTimeout(() => {
+      const term = query.trim();
+      setNeedle(term.length >= MIN_SEARCH_LENGTH ? term : '');
+    }, 200);
     return () => clearTimeout(t);
   }, [query]);
 

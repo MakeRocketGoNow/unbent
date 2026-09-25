@@ -1068,7 +1068,7 @@ describe('notebook fields', () => {
   }
 
   async function getFields(actor: Actor, notebookId: string): Promise<Field[]> {
-    const res = await json(actor, 'GET', `/api/notebooks/${notebookId}/fields`);
+    const res = await json(actor, 'GET', `/api/notebooks/${notebookId}/fields?counts=1`);
     if (!res.ok) throw new Error(`fields: ${res.status}`);
     return (await res.json()).fields;
   }
