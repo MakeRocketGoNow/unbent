@@ -726,13 +726,24 @@ export interface PurgeResult {
  */
 export async function purgeNotes(scope: 'trashed' | 'all'): Promise<PurgeResult> {
   const total: PurgeResult = { scope, notesDeleted: 0, filesDeleted: 0 };
-  for (;;) {
-    const page = await json<PurgeResult & { remaining: number }>(
-      await fetch(`/api/admin/purge-notes?scope=${scope}&confirm=DELETE`, { method: 'POST' }),
+  try {
+    for (;;) {
+      const page = await json<PurgeResult & { remaining: number }>(
+        await fetch(`/api/admin/purge-notes?scope=${scope}&confirm=DELETE`, { method: 'POST' }),
+      );
+      total.notesDeleted += page.notesDeleted;
+      total.filesDeleted += page.filesDeleted;
+      if (page.remaining === 0 || page.notesDeleted === 0) return total;
+    }
+  } catch (err) {
+    // A failure after some pages has already destroyed notes for good, and saying only
+    // what went wrong would read as though nothing happened. The likeliest one is the
+    // 503 of a day whose database reads have run out, partway through a large trash.
+    if (total.notesDeleted === 0) throw err;
+    const n = total.notesDeleted;
+    throw new Error(
+      `${n} ${n === 1 ? 'note was' : 'notes were'} permanently deleted before this stopped: ${(err as Error).message}`,
     );
-    total.notesDeleted += page.notesDeleted;
-    total.filesDeleted += page.filesDeleted;
-    if (page.remaining === 0 || page.notesDeleted === 0) return total;
   }
 }
 
