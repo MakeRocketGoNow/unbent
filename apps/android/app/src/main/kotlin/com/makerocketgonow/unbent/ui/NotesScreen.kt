@@ -1246,8 +1246,15 @@ class NotesState(private val api: UnbentApi) {
     var results by mutableStateOf<List<SearchResult>?>(null)
         private set
 
-    /** Whether the box holds something, but too little to send; see [MIN_SEARCH_LENGTH]. */
-    val queryTooShort: Boolean get() = query.trim().let { it.isNotEmpty() && it.length < MIN_SEARCH_LENGTH }
+    /**
+     * Whether [results] answer a query too short to send; see [MIN_SEARCH_LENGTH]. Set by
+     * [search] alongside the results rather than read off the live [query]: from "a" to
+     * "ab" the live query stops being too short at once, while the results are still the
+     * empty list the short one left, so "No matches." showed until the real answer came —
+     * and stayed if the request failed. The web computes both from the debounced value.
+     */
+    var queryTooShort by mutableStateOf(false)
+        private set
 
     /**
      * The query and filter [results] answer. Coming back from a hit re-enters the screen,
@@ -1478,6 +1485,7 @@ class NotesState(private val api: UnbentApi) {
         query = q
         if (q.isBlank()) {
             results = null
+            queryTooShort = false
             searchedFor = null
         }
     }
@@ -1491,11 +1499,13 @@ class NotesState(private val api: UnbentApi) {
         val q = query.trim()
         if (q.isEmpty()) {
             results = null
+            queryTooShort = false
             searchedFor = null
             return
         }
         if (q.length < MIN_SEARCH_LENGTH) {
             results = emptyList()
+            queryTooShort = true
             searchedFor = null
             return
         }
@@ -1510,6 +1520,7 @@ class NotesState(private val api: UnbentApi) {
         if (query.trim() != q) return
         result.onSuccess {
             results = it
+            queryTooShort = false
             searchedFor = key
         }.onFailure { e ->
             if ((e as? ApiException)?.status == 401) unauthorized = true else error = e.message
