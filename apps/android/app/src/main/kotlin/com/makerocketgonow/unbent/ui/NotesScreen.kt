@@ -1310,7 +1310,10 @@ class NotesState(private val api: UnbentApi) {
      * The count and the notebooks come along, because an edit can move a note between
      * notebooks and change what the drawer should say. The tags do not: only the filter
      * sheet and search read them, and they refresh when those open ([loadTagsIfStale]).
-     * Nor does an open search — see [searchedFor].
+     * Except under a tag filter, where they are fetched every time: taking a tag off its
+     * last note removes it from the account, and [loadTags] is what drops a filter on a tag
+     * that is gone. Left to the sheet, the list would sit empty under a chip for a tag that
+     * no longer exists. Nor does an open search come along — see [searchedFor].
      *
      * Once per return, which the screen sees to: it knows which of its two triggers a
      * return raised. One asked for while another is still running is dropped here.
@@ -1330,6 +1333,7 @@ class NotesState(private val api: UnbentApi) {
         val mine = ++generation
 
         loadNotebooks()
+        if (selectedTags.isNotEmpty()) loadTags()
         if (mine != generation) return
 
         val rebuilt = mutableListOf<NoteSummary>()
