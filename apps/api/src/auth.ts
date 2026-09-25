@@ -537,6 +537,20 @@ function createAuth(env: Env): AuthInstance {
       // The SPA and API are same-origin in both dev and production, so a host-only
       // cookie is sufficient and avoids SameSite=None.
       useSecureCookies: !env.APP_URL.startsWith('http://localhost'),
+      database: {
+        /*
+         * Better Auth compares its tables with the database's whenever a Worker instance
+         * starts: one read of sqlite_master and a `pragma_table_info` for every table,
+         * the full-text indexes' shadow tables included — about 47 statements and 420
+         * rows before the first request can be answered. Instances start often, on
+         * production, the dev instance and every preview, all against one account's
+         * Workers Free quota: about 86k rows a day across the two databases, to check a
+         * schema that apps/api/migrations owns and `wrangler d1 migrations apply` has
+         * already put in place. Kept on a local instance, which is free, and where a
+         * Better Auth upgrade that needs a migration is caught before it ships.
+         */
+        validateSchema: env.APP_URL.startsWith('http://localhost'),
+      },
     },
     user: {
       /**
