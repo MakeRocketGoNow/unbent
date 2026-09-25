@@ -160,7 +160,12 @@ export function createIndexing(
    * reads the whole backlog, and asking on every call of three files read it again for
    * each three. Because a kept count can drift (an upload during the pass adds to the
    * backlog), the end is decided by the server running out: a call that is handed fewer
-   * files than it asked for has seen the last of them.
+   * files than it asked for has seen the last of them. What is left then is exactly what
+   * that call could not read, and the count is set to that rather than to the drifted
+   * subtraction, which could otherwise report files left beside a pass that says it is
+   * done. Only the last call's failures, not the pass's: the server hands files out oldest
+   * first and a failed one stays pending, so it comes back in the next call and a running
+   * total would count it again each time.
    */
   async function runImages(): Promise<void> {
     let read = 0;
@@ -171,9 +176,10 @@ export function createIndexing(
         const pass = await readPending(IMAGES_PER_CALL, remaining === null);
         read += pass.read;
         const moved = pass.read + pass.empty;
-        remaining = pass.remaining ?? Math.max(0, (remaining ?? 0) - moved);
+        const ranOut = moved + pass.failed < IMAGES_PER_CALL;
+        remaining = pass.remaining ?? (ranOut ? pass.failed : Math.max(0, (remaining ?? 0) - moved));
         set({ images: { read, remaining } });
-        if (pass.remaining === 0 || moved === 0 || moved + pass.failed < IMAGES_PER_CALL) {
+        if (pass.remaining === 0 || moved === 0 || ranOut) {
           finished = true;
           break;
         }
