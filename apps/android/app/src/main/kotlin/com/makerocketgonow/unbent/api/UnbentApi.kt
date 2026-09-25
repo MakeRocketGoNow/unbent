@@ -4,7 +4,6 @@ import java.io.File
 import java.io.IOException
 import java.net.URLEncoder
 import java.util.concurrent.TimeUnit
-import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.add
 import kotlinx.serialization.json.buildJsonObject
@@ -115,67 +114,6 @@ class UnbentApi(
     /** Who the stored session belongs to, or null when the server no longer knows it. */
     fun me(): MeUser? = get<Me>("Session check", url("/api/me")).user
 
-    /**
-     * `from` and `to` are inclusive `YYYY-MM-DD` days, read by the server in UTC, on the
-     * date the sort shows: updated, created, or updated again under a title sort.
-     */
-    fun listNotes(
-        cursor: String? = null,
-        notebook: String? = null,
-        tags: List<String> = emptyList(),
-        /** Custom-field filters as their wire strings; see [FieldFilter]. Repeated, ANDed. */
-        fields: List<String> = emptyList(),
-        sort: String? = null,
-        order: String? = null,
-        from: String? = null,
-        to: String? = null,
-        limit: Int = 50,
-        /** Lists the trash instead of live notes. It has one order and ignores the rest. */
-        trashed: Boolean = false,
-    ): NotePage = get(
-        "List notes",
-        url(
-            "/api/notes",
-            "cursor" to cursor,
-            "notebook" to notebook,
-            "tag" to tags,
-            "field" to fields,
-            "trashed" to if (trashed) "1" else null,
-            "sort" to sort,
-            "order" to order,
-            "from" to from,
-            "to" to to,
-            "limit" to limit.toString(),
-        ),
-    )
-
-    /**
-     * Full-text search, narrowed by the same filters as the list. Ranked, so unsorted —
-     * which is why its date range always means the created date.
-     */
-    fun search(
-        q: String,
-        notebook: String? = null,
-        tags: List<String> = emptyList(),
-        fields: List<String> = emptyList(),
-        from: String? = null,
-        to: String? = null,
-    ): List<SearchResult> =
-        get<SearchResults>(
-            "Search",
-            url(
-                "/api/search",
-                "q" to q,
-                "notebook" to notebook,
-                "tag" to tags,
-                "field" to fields,
-                "from" to from,
-                "to" to to,
-            ),
-        ).results
-
-    fun getNote(id: String): Note = get("Load note", noteUrl(id))
-
     /** Creates a note. Notebook omitted means unfiled, which the UI calls the Inbox. */
     fun createNote(
         title: String,
@@ -192,141 +130,9 @@ class UnbentApi(
         return send("Create note", url("/api/notes"), "POST", payload)
     }
 
-    /**
-     * Changes only the fields given.
-     *
-     * PATCH is partial on the server, and that is load-bearing: the WebView showing the
-     * body saves `body` alone while this side saves the title and filing alone, so neither
-     * can overwrite what the other just wrote. See [Filing] for why the notebook is not a
-     * plain nullable String.
-     */
-    fun updateNote(
-        id: String,
-        title: String? = null,
-        body: String? = null,
-        tags: List<String>? = null,
-        filing: Filing? = null,
-    ): Note {
-        val payload = buildJsonObject {
-            if (title != null) put("title", title)
-            if (body != null) put("body", body)
-            if (tags != null) putJsonArray("tags") { tags.forEach { add(it) } }
-            if (filing != null) {
-                if (filing.notebook != null) put("notebook", filing.notebook) else put("notebook", JsonNull)
-            }
-        }
-        return send("Update note", noteUrl(id), "PATCH", payload)
-    }
-
-    /** Soft delete: the note goes to the trash, where it can be restored. */
-    fun deleteNote(id: String) {
-        call(Request.Builder().url(noteUrl(id)).auth().delete().build(), "Delete note")
-    }
-
-    /** Brings a trashed note back. 404 when it is not this user's, or was never trashed. */
-    fun restoreNote(id: String): Note = send(
-        "Restore note",
-        noteUrl(id).newBuilder().addPathSegment("restore").build(),
-        "POST",
-        buildJsonObject {},
-    )
-
-    /**
-     * Permanently deletes one trashed note and the files it owned. No undo.
-     *
-     * Separate from [deleteNote] on purpose: that one is reversible and this one is not,
-     * and a single method with a flag would make the difference a parameter rather than a
-     * decision.
-     */
-    fun purgeNote(id: String) {
-        call(
-            Request.Builder()
-                .url(noteUrl(id).newBuilder().addPathSegment("permanent").build())
-                .auth().delete().build(),
-            "Delete note forever",
-        )
-    }
-
-    /**
-     * Permanently deletes every trashed note and its files.
-     *
-     * `confirm=DELETE` is the server's own requirement, not a formality invented here: it
-     * refuses a bare POST so a stray retry cannot empty an account. Scoped to the trash —
-     * this client has no reason to offer the "everything" scope, which exists for
-     * repeating a trial import from a desk.
-     *
-     * A page per request until the server says nothing is left, since one request may
-     * make only so many database calls; a request that deletes nothing ends it too.
-     */
-    fun emptyTrash(): PurgeResult {
-        var notes = 0
-        var files = 0
-        while (true) {
-            val page: PurgeResult = send(
-                "Empty trash",
-                url("/api/admin/purge-notes", "scope" to "trashed", "confirm" to "DELETE"),
-                "POST",
-                buildJsonObject {},
-            )
-            notes += page.notesDeleted
-            files += page.filesDeleted
-            if (page.remaining == 0 || page.notesDeleted == 0) return PurgeResult(notes, files)
-        }
-    }
-
     fun listNotebooks(): NotebookList = get("List notebooks", url("/api/notebooks"))
 
-    /** Creates an empty notebook. A 409 means the name is taken, case-insensitively. */
-    fun createNotebook(name: String): Notebook =
-        send("Create notebook", url("/api/notebooks"), "POST", buildJsonObject { put("name", name) })
-
-    /**
-     * Renames a notebook. A 409 means another notebook already has that name.
-     *
-     * By id, unlike the list filter, which is by name: an id survives the rename, and the
-     * rename is the whole reason this route exists. The server's own notebook routes
-     * carry the same note.
-     */
-    fun renameNotebook(id: String, name: String): Notebook =
-        send("Rename notebook", notebookUrl(id), "PATCH", buildJsonObject { put("name", name) })
-
-    /**
-     * Deletes a notebook. Its notes survive, unfiled, unless [trashNotes] is set — and
-     * then they go to the trash, not the void: deleting an organisational label must never
-     * permanently destroy what it organised.
-     *
-     * 204, so there is nothing to decode and this cannot go through [send].
-     */
-    fun deleteNotebook(id: String, trashNotes: Boolean = false) {
-        val url = notebookUrl(id).newBuilder()
-            .apply { if (trashNotes) addQueryParameter("trashNotes", "1") }
-            .build()
-        call(Request.Builder().url(url).auth().delete().build(), "Delete notebook")
-    }
-
     fun listTags(): List<Tag> = get<TagList>("List tags", url("/api/tags")).tags
-
-    /** A notebook's custom field definitions, in display order. 404 when it is not this user's. */
-    fun listNotebookFields(notebookId: String): List<FieldDef> =
-        get<FieldList>(
-            "List fields",
-            notebookUrl(notebookId).newBuilder().addPathSegment("fields").build(),
-        ).fields
-
-    /**
-     * Revokes the session on the server. Best effort: a phone that has lost its network
-     * still has to be able to sign out locally, and the web app's session list is where a
-     * session that could not be revoked from here gets revoked instead.
-     */
-    fun signOut() {
-        runCatching {
-            call(
-                Request.Builder().url(url("/api/auth/sign-out")).auth()
-                    .post(buildJsonObject {}.asBody()).build(),
-                "Sign out",
-            )
-        }
-    }
 
     /** Files already stored on a note, so a retried capture can skip ones that landed. */
     fun listAttachments(noteId: String): List<AttachmentInfo> =
@@ -357,9 +163,6 @@ class UnbentApi(
 
         return ApiJson.decodeFromString(call(req, "Upload"))
     }
-
-    private fun notebookUrl(id: String): HttpUrl =
-        "$origin/api/notebooks".toHttpUrl().newBuilder().addPathSegment(id).build()
 
     private fun noteUrl(id: String): HttpUrl =
         "$origin/api/notes".toHttpUrl().newBuilder().addPathSegment(id).build()

@@ -67,28 +67,6 @@ data class MeUser(
 )
 
 @Serializable
-data class NoteSummary(
-    val id: String,
-    val title: String,
-    val updatedAt: Long,
-    val createdAt: Long,
-    val tags: List<String> = emptyList(),
-    val notebook: String? = null,
-    val excerpt: String? = null,
-    /** The files the note stores, oldest first. Absent from the JSON when there are none. */
-    val attachments: List<NoteAttachment> = emptyList(),
-    /** Set only on notes listed from the trash. */
-    val deletedAt: Long? = null,
-)
-
-/**
- * A file on a list row: its name and declared type. The type is the stored value,
- * unverified, and chooses a glyph — nothing more.
- */
-@Serializable
-data class NoteAttachment(val filename: String, val contentType: String)
-
-@Serializable
 data class Note(
     val id: String,
     val title: String,
@@ -97,15 +75,6 @@ data class Note(
     val createdAt: Long,
     val tags: List<String> = emptyList(),
     val notebook: String? = null,
-)
-
-/** One page of `GET /api/notes`. The total comes only with the first page. */
-@Serializable
-data class NotePage(
-    val items: List<NoteSummary> = emptyList(),
-    /** Pass back as `cursor` for the next page; null when there is no more. */
-    val cursor: String? = null,
-    val total: Int? = null,
 )
 
 /**
@@ -123,32 +92,6 @@ data class UploadedFile(val filename: String, val indexing: String? = null) {
 @Serializable
 data class Notebook(val id: String, val name: String, val count: Int = 0)
 
-/**
- * A custom field a notebook defines: `GET /api/notebooks/:id/fields`.
- *
- * Only what the filter needs. The values themselves are edited on the web page the note
- * screen embeds, so the phone never reads or writes one; it reads the definitions to
- * offer a filter per field and to name a filter's chip.
- */
-@Serializable
-data class FieldDef(
-    val id: String,
-    val notebookId: String,
-    val name: String,
-    /** One of the shared package's `FIELD_TYPES`; unknown ones are offered set/empty only. */
-    val type: String,
-    /** Empty for every type but `select` and `multiselect`. */
-    val options: List<String> = emptyList(),
-    val position: Int = 0,
-)
-
-@Serializable
-internal data class FieldList(val fields: List<FieldDef> = emptyList())
-
-/** What a purge actually removed, so the result can say rather than imply. */
-@Serializable
-data class PurgeResult(val notesDeleted: Int = 0, val filesDeleted: Int = 0, val remaining: Int = 0)
-
 /** `GET /api/notebooks`, with how many notes sit in no notebook at all. */
 @Serializable
 data class NotebookList(val notebooks: List<Notebook> = emptyList(), val unfiled: Int = 0)
@@ -160,43 +103,8 @@ data class Tag(val name: String, val count: Int = 0)
 internal data class TagList(val tags: List<Tag> = emptyList())
 
 @Serializable
-data class SearchResult(
-    val id: String,
-    val title: String,
-    val updatedAt: Long,
-    val snippet: String = "",
-    /** Set when the match came from an attachment's extracted text rather than the note. */
-    val matchedFile: String? = null,
-    /** Set when the match came from a custom field's value; the field's name. */
-    val matchedField: String? = null,
-    /**
-     * Set when the match came from one of the note's tags; the tag's name. The server
-     * searches tag names since the web's filtering work, so a note filed under
-     * "Alfa Romeo Stelvio" is found by "stelvio" with the word nowhere in its text — and
-     * the row has to say so, or the hit looks like a mistake.
-     */
-    val matchedTag: String? = null,
-)
-
-@Serializable
-internal data class SearchResults(val results: List<SearchResult> = emptyList())
-
-@Serializable
 data class AttachmentInfo(val filename: String, val contentType: String, val size: Long)
 
 /** `GET /api/notes/:id/files`. */
 @Serializable
 internal data class AttachmentList(val files: List<AttachmentInfo> = emptyList())
-
-/**
- * Where a note is filed, for [UnbentApi.updateNote].
- *
- * A type of its own because two absences mean different things: leaving the argument out
- * says "do not touch the notebook", while a [Filing] holding null says "the Inbox". The
- * server takes an explicit null for unfiled, and a plain nullable String cannot say both.
- */
-data class Filing(val notebook: String?) {
-    companion object {
-        val INBOX = Filing(null)
-    }
-}
