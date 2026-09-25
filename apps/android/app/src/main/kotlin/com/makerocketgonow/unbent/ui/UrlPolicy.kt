@@ -40,6 +40,27 @@ fun classify(origin: String, url: String): Destination {
     return if (sameOrigin(site, target)) Destination.InApp else Destination.Browser(url)
 }
 
+/**
+ * The path a link to this site should open in the app, or null when it names another site.
+ *
+ * Matched on the host alone, because a link and the instance can differ in the rest and
+ * still mean the same place: a link shared from the site is `https://`, a debug build
+ * pointed at a laptop is `http://` on a port. The path and query are kept and later
+ * rebased onto the instance the app is pointed at; a fragment means nothing to the router.
+ */
+fun linkPath(instance: String, link: String): String? {
+    val target = runCatching { URI(link) }.getOrNull() ?: return null
+    val site = runCatching { URI(instance.trimEnd('/')) }.getOrNull() ?: return null
+    if (target.scheme?.lowercase() !in setOf("http", "https")) return null
+    if (target.host == null || !target.host.equals(site.host, ignoreCase = true)) return null
+    val path = target.rawPath.orEmpty().ifEmpty { "/" }
+    val query = target.rawQuery?.let { "?$it" }.orEmpty()
+    return path + query
+}
+
+/** A path on this site and nothing that could be read as another host. */
+fun isSitePath(path: String): Boolean = path.startsWith("/") && !path.startsWith("//")
+
 private fun sameOrigin(a: URI, b: URI): Boolean =
     a.scheme.equals(b.scheme, ignoreCase = true) &&
         a.host != null && a.host.equals(b.host, ignoreCase = true) &&

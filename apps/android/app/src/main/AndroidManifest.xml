@@ -92,6 +92,35 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
 
+            <!--
+                Links to the site's own pages open in the app: a note, the trash, settings.
+                The host is the build's default instance (`instanceHost`, from
+                `unbent.defaultInstance`), and `autoVerify` has Android check the instance's
+                /.well-known/assetlinks.json before it trusts the claim, so a fork's app
+                cannot take unbent.app's links.
+
+                The pages only, never the whole host: `/connect` and the OAuth callbacks
+                run in a Custom Tab during sign-in and must stay there, links in mail
+                (a password reset, confirming a deletion) belong where they were tapped,
+                and `/api` is files. A link whose host is not the instance the app is
+                pointed at now — someone who switched to their own — goes to a Custom Tab.
+
+                Verification needs the asset links to list this exact package and signing
+                certificate. The debug build is a different package (`.debug`) and needs a
+                statement of its own; the store build needs Play's App Signing key, not the
+                upload key. See AGENTS.md, "Three keys sign this app".
+            -->
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="https" />
+                <data android:host="${instanceHost}" />
+                <data android:pathPrefix="/notes" />
+                <data android:pathPrefix="/trash" />
+                <data android:pathPrefix="/settings" />
+            </intent-filter>
+
             <meta-data
                 android:name="android.app.shortcuts"
                 android:resource="@xml/shortcuts" />

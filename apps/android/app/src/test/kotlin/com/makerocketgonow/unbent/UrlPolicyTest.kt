@@ -2,7 +2,12 @@ package com.makerocketgonow.unbent
 
 import com.makerocketgonow.unbent.ui.Destination
 import com.makerocketgonow.unbent.ui.classify
+import com.makerocketgonow.unbent.ui.isSitePath
+import com.makerocketgonow.unbent.ui.linkPath
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
@@ -52,5 +57,28 @@ class UrlPolicyTest {
         assertEquals(Destination.Other("mailto:someone@example.com"), classify(site, "mailto:someone@example.com"))
         assertEquals(Destination.Other("tel:+15555550100"), classify(site, "tel:+15555550100"))
         assertEquals(Destination.Other("intent://x#Intent;end"), classify(site, "intent://x#Intent;end"))
+    }
+
+    /**
+     * A link to the site opens on the instance the app is pointed at, matched by host so a
+     * shared https link still opens in a debug build pointed at a laptop on http.
+     */
+    @Test fun `a link to the site becomes a path on the app's instance`() {
+        assertEquals("/notes/abc?view=table", linkPath(site, "https://unbent.example/notes/abc?view=table#top"))
+        assertEquals("/notes", linkPath("http://unbent.example:5232", "https://unbent.example/notes"))
+        assertEquals("/", linkPath(site, "https://unbent.example"))
+    }
+
+    @Test fun `a link to another site is not the app's`() {
+        assertNull(linkPath(site, "https://other.example/notes/abc"))
+        assertNull(linkPath("https://my-own.example", "https://unbent.example/notes/abc"))
+        assertNull(linkPath(site, "mailto:someone@unbent.example"))
+    }
+
+    @Test fun `only a path on this site is followed`() {
+        assertTrue(isSitePath("/notes/abc"))
+        assertFalse(isSitePath("//evil.example/notes"))
+        assertFalse(isSitePath("https://evil.example/"))
+        assertFalse(isSitePath(""))
     }
 }

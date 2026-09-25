@@ -124,9 +124,12 @@ class MainActivity : ComponentActivity() {
          * asked. Nothing below works without a session, so there is nothing to show first.
          */
         if (!prefs.isSignedIn) {
+            // Whatever the app was opened for — a link, a notification's note — waits for
+            // the sign-in and is opened after it, rather than being dropped on the way.
             startActivity(
                 Intent(this, SignInActivity::class.java)
-                    .putExtra(SignInActivity.EXTRA_THEN_LAUNCH, true),
+                    .putExtra(SignInActivity.EXTRA_THEN_LAUNCH, true)
+                    .putExtra(SignInActivity.EXTRA_THEN_OPEN, requestedPath(intent)),
             )
             finish()
             return
@@ -269,10 +272,30 @@ class MainActivity : ComponentActivity() {
         return origin + path
     }
 
-    /** A notification's note or the settings shortcut. */
+    /** A notification's note, a link to the site, a path carried through sign-in, or the settings shortcut. */
     private fun consume(intent: Intent?) {
-        intent?.getStringExtra(EXTRA_NOTE_ID)?.let { open("/notes/" + Uri.encode(it)) }
-        if (intent?.action == ACTION_SETTINGS) openAppSettings()
+        if (intent == null) return
+        if (intent.action == ACTION_SETTINGS) {
+            openAppSettings()
+            return
+        }
+        requestedPath(intent)?.let(::open)
+        // A link to a site the app is not pointed at — after someone switched to their own
+        // instance, a link to unbent.app still arrives here — opens where it belongs.
+        val link = intent.data
+        if (intent.action == Intent.ACTION_VIEW && link != null && linkPath(prefs.instance, link.toString()) == null) {
+            openOutside(this, classify(prefs.instance, link.toString()))
+        }
+    }
+
+    /** The page [intent] asks for, as a path on this site; null when it asks for none. */
+    private fun requestedPath(intent: Intent?): String? {
+        if (intent == null) return null
+        intent.getStringExtra(EXTRA_NOTE_ID)?.let { return "/notes/" + Uri.encode(it) }
+        intent.getStringExtra(EXTRA_PATH)?.takeIf(::isSitePath)?.let { return it }
+        val link = intent.data
+        if (intent.action == Intent.ACTION_VIEW && link != null) return linkPath(prefs.instance, link.toString())
+        return null
     }
 
     /**
@@ -500,6 +523,9 @@ class MainActivity : ComponentActivity() {
 
     companion object {
         const val EXTRA_NOTE_ID = "noteId"
+
+        /** A path on the site to open, as sign-in hands back what the app was opened for. */
+        const val EXTRA_PATH = "path"
         const val ACTION_SETTINGS = "com.makerocketgonow.unbent.SETTINGS"
         private const val KEY_WEB_STATE = "web"
         private const val HOME = "/notes"
