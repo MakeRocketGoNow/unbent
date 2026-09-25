@@ -119,6 +119,13 @@ internal class AppWebViewClient(
     override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
         val destination = classify(origin, request.url.toString())
         if (destination == Destination.InApp) return false
+        // A frame inside the page never opens a browser or another app; only the person
+        // tapping something at the top level does. A frame navigating off the site is
+        // refused rather than shown, because the bridge is exposed to every frame in this
+        // WebView and a page from anywhere else must not reach it. This is not the whole
+        // fence: a frame's first load, from its `src`, never comes through here. The site
+        // has no frames, and one that ever loads another origin needs its own answer.
+        if (!request.isForMainFrame) return true
         openOutside(context, destination)
         return true
     }
