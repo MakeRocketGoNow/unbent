@@ -3,7 +3,7 @@ import * as api from '../notes-api.js';
 import { LabelEditor, type LabelItem } from './LabelEditor.js';
 import { DeleteNotebookConfirm } from './DeleteNotebookConfirm.js';
 import { DownloadIcon, FieldsIcon } from './icons.js';
-import { startExport, useExporting } from '../export-archive.js';
+import { startExport, useExportRunning } from '../export-archive.js';
 
 interface SettingsProps {
   /** Called after any change, so the note list and sidebar refetch. */
@@ -34,7 +34,7 @@ interface SettingsProps {
  * row's two actions, with Fields left alone as the row's one navigation.
  */
 export function Settings({ onChanged }: SettingsProps) {
-  const exporting = useExporting();
+  const exportRunning = useExportRunning();
   const [notebooks, setNotebooks] = useState<api.Notebook[] | null>(null);
   /** Notebook awaiting an explicit delete choice. */
   const [pendingDelete, setPendingDelete] = useState<api.Notebook | null>(null);
@@ -144,7 +144,7 @@ export function Settings({ onChanged }: SettingsProps) {
               <button
                 type="button"
                 className="icon-btn label-download"
-                disabled={exporting.status === 'running'}
+                disabled={exportRunning}
                 onClick={() => startExport({ notebook: item.name })}
                 title={`Download ${item.name} as a zip`}
                 aria-label={`Download ${item.name} as a zip`}

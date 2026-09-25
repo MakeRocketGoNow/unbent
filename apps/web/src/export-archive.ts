@@ -273,3 +273,12 @@ export const stopExport = () => exporting.stop();
 export function useExporting(): ExportState {
   return useSyncExternalStore(exporting.subscribe, exporting.get);
 }
+
+/**
+ * Only whether an export is running, for a control that has to wait for one. The state
+ * changes once per note, so a component reading all of it re-renders thousands of times
+ * over an archive export; this one re-renders when the answer changes — twice.
+ */
+export function useExportRunning(): boolean {
+  return useSyncExternalStore(exporting.subscribe, () => exporting.get().status === 'running');
+}
