@@ -134,7 +134,6 @@ const revealedHeaderMark = Decoration.mark({ class: 'cm-md-mark cm-md-headmark' 
 /** The alignment row hides as a collapsed line rather than as zero-width text. */
 const hiddenAlignRow = Decoration.mark({ class: 'cm-md-hidden' });
 const listBullet = Decoration.mark({ class: 'cm-md-bullet' });
-const linkLabel = Decoration.mark({ class: 'cm-md-link' });
 /**
  * An unfocused image's alt text, kept on screen as the picture's caption.
  *
@@ -1135,6 +1134,176 @@ function unwrapUrl(raw: string): string {
 }
 
 /**
+ * A link's destination without its optional title: `url "Title"` → `url`.
+ *
+ * The `Link` branch matches `(…)` whole, which is the destination plus whatever title
+ * followed it. A title is display text for a tooltip, never part of where the link goes,
+ * and a URL cannot contain a bare space — so the first whitespace ends it, unless the
+ * destination is angle-bracketed, where spaces are allowed and `>` ends it instead.
+ */
+function linkDestination(raw: string): string {
+  const inner = raw.trim();
+  if (inner.startsWith('<')) {
+    const close = inner.indexOf('>');
+    return close === -1 ? inner : inner.slice(1, close);
+  }
+  return inner.split(/\s/, 1)[0] ?? '';
+}
+
+/**
+ * Schemes a click may follow, and whether each leaves the note open behind it.
+ *
+ * The same set the preview pane's sanitizer lets through as an `href` (rehype-sanitize's
+ * default `http`, `https`, `mailto`, `tel`), so the two modes agree on what is a working
+ * link. Anything else — `javascript:`, `data:`, a bare relative path — is text that
+ * happens to be in brackets, and a click on it does what a click on text does.
+ *
+ * A web page opens in a new tab: the note is what the reader was in, and a link that
+ * replaced it would unmount the editor mid-thought. Mail and phone stay in this window
+ * because the browser hands them to another app without navigating, whereas a `_blank`
+ * for them leaves an empty tab behind in Chrome. The Android shell routes both — a
+ * `_blank` to a Custom Tab through `onCreateWindow`, a same-window `mailto:` to the mail
+ * app through `shouldOverrideUrlLoading` — so neither needs the bridge.
+ */
+const WEB_SCHEME = /^https?:\/\//i;
+const HANDOFF_SCHEME = /^(mailto|tel):/i;
+
+/**
+ * Follows a URL the way a real anchor would, from inside a click handler.
+ *
+ * A detached `<a>` rather than `window.open`: the browser treats its click as the user's
+ * own navigation, so it is never taken for a popup, `rel` keeps the opened page from
+ * reaching back through `window.opener`, and the Android WebView sees exactly what it
+ * sees for every other `target=_blank` on the site.
+ */
+function followUrl(url: string, newTab: boolean): void {
+  const anchor = document.createElement('a');
+  anchor.href = url;
+  if (newTab) {
+    anchor.target = '_blank';
+    anchor.rel = 'noopener noreferrer';
+  }
+  anchor.click();
+}
+
+/**
+ * What a click on a link should do, or `undefined` when it should do nothing special.
+ *
+ * Returned as a thunk so the mousedown can ask "is this a link I will open?" — and keep
+ * the caret where it was — while the open itself waits for the click, as it does on any
+ * anchor: a press that turns into a drag is a selection, not a navigation.
+ *
+ * A stored PDF opens the viewer, the same as a click on its pages below the link; any
+ * other stored file downloads, because attachments are served under a sandbox CSP that
+ * turns a navigation to one into a download anyway, and inside the Android app a
+ * same-origin tab would replace the app itself.
+ */
+function linkOpener(
+  view: EditorView,
+  url: string,
+  options: RichMarkdownOptions,
+): (() => void) | undefined {
+  if (url.startsWith(ATTACHMENT_PREFIX)) {
+    const resolve = options.resolveAttachment;
+    if (!resolve) return undefined;
+    const filename = url.slice(ATTACHMENT_PREFIX.length);
+    const src = resolve(filename);
+    const decoded = decodePath(filename).split('?')[0] ?? '';
+    if (PDF_PATH.test(decoded) || options.isPdfAttachment?.(decoded)) {
+      return () =>
+        openAttachmentViewer(
+          { kind: 'pdf', src, label: '' },
+          collectAttachmentTargets(view.state, options),
+        );
+    }
+    return () => followUrl(downloadUrl(src), false);
+  }
+  if (WEB_SCHEME.test(url)) return () => followUrl(url, true);
+  if (HANDOFF_SCHEME.test(url)) return () => followUrl(url, false);
+  return undefined;
+}
+
+/**
+ * The destination of the link at `pos`: an inline `[text](url)`, an `<autolink>`, or a
+ * bare URL GFM recognised in running text. Undefined anywhere else, including inside an
+ * image, whose click already belongs to the viewer.
+ */
+function linkUrlAt(state: EditorState, pos: number): string | undefined {
+  const tree = syntaxTree(state);
+  for (const side of [1, -1] as const) {
+    let bareUrl: string | undefined;
+    type Node = ReturnType<typeof tree.resolveInner>;
+    for (let node: Node | null = tree.resolveInner(pos, side); node; node = node.parent) {
+      if (node.name === 'Image') return undefined;
+      if (node.name === 'Link') {
+        const match = /^\[([^\]]*)\]\((.+)\)$/.exec(state.doc.sliceString(node.from, node.to));
+        return match ? linkDestination(match[2]!) : undefined;
+      }
+      if (node.name === 'Autolink') {
+        return unwrapUrl(state.doc.sliceString(node.from, node.to));
+      }
+      if (node.name === 'URL' && bareUrl === undefined) {
+        bareUrl = state.doc.sliceString(node.from, node.to);
+      }
+    }
+    if (bareUrl !== undefined) return bareUrl;
+  }
+  return undefined;
+}
+
+/** macOS and iOS spell "the platform modifier" ⌘; everywhere else it is Ctrl. */
+const MAC = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform);
+
+/**
+ * The opener for the link a mouse event lands on, if it should open one.
+ *
+ * Two ways in, and they answer different people:
+ *
+ * - **A plain click on a rendered label.** The label is drawn as a link — accent colour,
+ *   underline, pointer — and a thing drawn as a link has to act like one; before this it
+ *   only moved the caret and revealed `[text](url)`, which read as the link being broken.
+ *   It is also the only way to open one on a phone. The cost is that a click on the
+ *   label no longer puts the caret in it, which is the same trade `ImageWidget` made and
+ *   for the same reason: the caret still gets there by a click anywhere else on the line
+ *   (the reveal is per line), or by arrowing onto it, and the label then stops being a
+ *   link until the caret leaves.
+ * - **⌘/Ctrl-click anywhere on a link**, revealed or not, bare URLs included. That is what
+ *   every code editor and word processor does, so it is what a keyboard-first person will
+ *   try, and it is the only way to follow a bare URL: that is its own text, with no hidden
+ *   syntax to click beside, so a plain click has to stay an edit. It takes the gesture
+ *   from CodeMirror's add-a-cursor only while the pointer is over a link.
+ *
+ * Only the primary button: a middle-click or a right-click keeps its usual meaning.
+ */
+function linkClickOpener(
+  event: MouseEvent,
+  view: EditorView,
+  options: RichMarkdownOptions,
+): (() => void) | undefined {
+  if (event.button !== 0 || event.shiftKey || event.altKey) return undefined;
+  const modified = MAC ? event.metaKey : event.ctrlKey;
+
+  let pos: number | null = null;
+  if (modified) {
+    pos = view.posAtCoords({ x: event.clientX, y: event.clientY });
+    // `posAtCoords` answers with the nearest position, so a click in the empty space
+    // after a line would otherwise follow a link that happens to end it.
+    if (pos !== null && pos === view.state.doc.lineAt(pos).to) {
+      const end = view.coordsAtPos(pos, -1);
+      if (end && event.clientX > end.right + 2) return undefined;
+    }
+  } else {
+    const label = (event.target as Element | null)?.closest?.('.cm-md-link');
+    if (!label || !view.contentDOM.contains(label)) return undefined;
+    pos = view.posAtDOM(label);
+  }
+  if (pos === null) return undefined;
+
+  const url = linkUrlAt(view.state, pos);
+  return url === undefined ? undefined : linkOpener(view, url, options);
+}
+
+/**
  * The http(s) schemes the preview pane's sanitizer permits for an image `src`.
  *
  * The two panes must agree on what is a picture. Preview renders through rehype-sanitize,
@@ -1616,7 +1785,14 @@ function buildDecorations(view: EditorView, options: RichMarkdownOptions): Decor
             const labelStart = node.from + 1;
             const labelEnd = labelStart + label.length;
             marks.push(hiddenMark.range(node.from, labelStart));
-            marks.push(linkLabel.range(labelStart, labelEnd));
+            marks.push(
+              Decoration.mark({
+                class: 'cm-md-link',
+                // The destination is hidden with the rest of the syntax; the tooltip is
+                // where a reader can see where a click will take them before making it.
+                attributes: { title: linkDestination(match[2]!) },
+              }).range(labelStart, labelEnd),
+            );
             marks.push(hiddenMark.range(labelEnd, node.to));
           }
 
@@ -1799,6 +1975,27 @@ export function richMarkdown(options: RichMarkdownOptions = {}): Extension {
       },
       { decorations: (v) => v.decorations },
     ),
+
+    /**
+     * Following a link — see `linkClickOpener` for which clicks do.
+     *
+     * The mousedown is claimed so CodeMirror neither moves the caret nor reveals the
+     * line's syntax under the pointer; the open waits for the click, as an anchor's does.
+     */
+    EditorView.domEventHandlers({
+      mousedown(event, view) {
+        if (!linkClickOpener(event, view, options)) return false;
+        event.preventDefault();
+        return true;
+      },
+      click(event, view) {
+        const open = linkClickOpener(event, view, options);
+        if (!open) return false;
+        event.preventDefault();
+        open();
+        return true;
+      },
+    }),
 
     EditorView.theme({
       /**
