@@ -204,20 +204,31 @@ function decodeFieldsJson(json: string | null, ownNotebookId: string | null): No
  * primary-key lookup rather than a join that multiplies rows. `json_object` rather than
  * a delimited string because a value can contain any character a delimiter could be.
  *
- * The notebook join is LEFT and the name falls back to `f.notebook_name`, because a
- * definition outlives the notebook it belonged to (0017). An inner join here would have
- * dropped the value from the note entirely once the notebook row went, which is the data
- * loss the tombstone exists to prevent — a value is a note's own data, and a deleted
- * notebook is not a reason to stop showing it.
+ * The name falls back to `f.notebook_name`, because a definition outlives the notebook it
+ * belonged to (0017). An inner join here would have dropped the value from the note
+ * entirely once the notebook row went, which is the data loss the tombstone exists to
+ * prevent — a value is a note's own data, and a deleted notebook is not a reason to stop
+ * showing it.
+ *
+ * Nearly every value belongs to the note's own notebook, whose name both callers have
+ * already joined as `nb`, so that is used first; only a value left over from another
+ * notebook looks its notebook up. Joining `notebooks` once per value, as this did, was
+ * most of a list page's cost in a notebook with fields: a page of a 770-note notebook
+ * with nine fields read 2.2k rows at 13k notes, now 1.6k. `COALESCE` stops at the first
+ * name it finds, so the lookup runs only for a leftover.
+ *
+ * Callers must join the note's notebook as `nb`.
  */
 const FIELDS_SUBQUERY = `(SELECT json_group_array(json_object(
                  'fieldId', f.id, 'name', f.name, 'type', f.type, 'text', nf.value_text,
                  'scaleMax', f.scale_max, 'scaleStep', f.scale_step, 'currency', f.currency,
                  'position', f.position, 'notebookId', f.notebook_id,
-                 'notebook', COALESCE(fnb.name, f.notebook_name)))
+                 'notebook', COALESCE(
+                   CASE WHEN f.notebook_id = n.notebook_id THEN nb.name END,
+                   (SELECT name FROM notebooks WHERE id = f.notebook_id),
+                   f.notebook_name)))
             FROM note_fields nf
             JOIN notebook_fields f ON f.id = nf.field_id
-            LEFT JOIN notebooks fnb ON fnb.id = f.notebook_id
            WHERE nf.note_id = n.id) AS fields`;
 
 /**
