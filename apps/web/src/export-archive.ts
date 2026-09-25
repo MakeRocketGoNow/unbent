@@ -241,6 +241,12 @@ export function createExporting(source: ExportSource = liveSource, pick = pickDe
       stopping: false,
       error: null,
     });
+    // An export lives in this tab, so closing or reloading it throws the run away, and a
+    // large one is an hour's work. The browser's own "Leave site?" is the whole warning:
+    // what it says cannot be chosen, only whether it is asked. Through `globalThis`, and
+    // optional, because the store's tests run it under Node, which has no window.
+    const guard = (e: BeforeUnloadEvent) => e.preventDefault();
+    globalThis.addEventListener?.('beforeunload', guard);
     try {
       const progress = await writeArchive(destination.writable, filter, source, controller.signal, (p) =>
         set(p),
@@ -253,6 +259,7 @@ export function createExporting(source: ExportSource = liveSource, pick = pickDe
       if (controller.signal.aborted) set({ status: 'stopped', stopping: false });
       else set({ status: 'error', stopping: false, error: (err as Error).message });
     } finally {
+      globalThis.removeEventListener?.('beforeunload', guard);
       controller = null;
     }
   }
