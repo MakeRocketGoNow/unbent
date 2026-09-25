@@ -3,6 +3,7 @@ import { BlobWriter } from '@zip.js/zip.js';
 import { writeArchive, type ExportSource } from '@unbent/enex';
 import { exportFilename, type ExportFilter } from '@unbent/shared';
 import * as api from './notes-api.js';
+import { hostApp, type HostApp } from './app-bridge.js';
 
 /**
  * The library export, built here in the browser.
@@ -20,7 +21,10 @@ import * as api from './notes-api.js';
  * Edge offer `showSaveFilePicker`, which hands over a stream to a file the person chose,
  * so the archive goes to disk as it is built and its size does not matter. Elsewhere the
  * zip is assembled in memory and handed over as a download when it is done, which caps
- * the export at what the tab can hold; the page says so. The picker has to be asked
+ * the export at what the tab can hold; the page says so. Inside the Android app, the
+ * app is the file system: the zip streams to it a piece at a time and it writes the
+ * pieces into the phone's Downloads as they come, so there too size does not matter. The
+ * picker has to be asked
  * inside the click that started the export — it is a user gesture — so `start` opens it
  * before it awaits anything.
  *
@@ -47,8 +51,11 @@ export interface ExportState {
   files: number;
   skipped: number;
   filename: string | null;
-  /** Where the archive went: a file the person chose, or the browser's downloads. */
-  destination: 'file' | 'download' | null;
+  /**
+   * Where the archive went: a file the person chose, the browser's downloads, or the
+   * phone's Downloads by way of the Android app.
+   */
+  destination: DestinationKind | null;
   /** A stop has been asked for and the request in flight has not landed yet. */
   stopping: boolean;
   error: string | null;
@@ -79,9 +86,11 @@ interface SaveFilePicker {
   }): Promise<{ createWritable(): Promise<WritableStream<Uint8Array>> }>;
 }
 
+type DestinationKind = 'file' | 'download' | 'app';
+
 /** Where the archive's bytes are written, and how they reach the person afterwards. */
-interface Destination {
-  kind: 'file' | 'download';
+export interface Destination {
+  kind: DestinationKind;
   writable: WritableStream<Uint8Array>;
   /** For a download: the assembled blob, once the writable has been closed. */
   finish(): Promise<Blob | null>;
@@ -152,6 +161,9 @@ const liveSource: ExportSource = {
  * picker, which is not an error.
  */
 async function pickDestination(filename: string): Promise<Destination | null> {
+  const app = hostApp();
+  if (app?.saveBegin) return appDestination(app, filename);
+
   const picker = (window as unknown as { showSaveFilePicker?: SaveFilePicker }).showSaveFilePicker;
   if (picker) {
     let handle: Awaited<ReturnType<SaveFilePicker>>;
@@ -180,6 +192,95 @@ async function pickDestination(filename: string): Promise<Destination | null> {
     finish: () => blobWriter.getData(),
     abort: () => blobWriter.writable.abort().catch(() => undefined),
   };
+}
+
+/**
+ * How much of the archive crosses to the app per call. The bridge carries strings, so each
+ * piece goes as base64, a third larger; half a megabyte keeps a call short enough not to
+ * stall the page and few enough that a gigabyte is two thousand of them, not a million.
+ */
+const APP_PIECE = 512 * 1024;
+
+/** Bytes as base64, in slices, since spreading a large array into one call overflows the stack. */
+function toBase64(bytes: Uint8Array): string {
+  let text = '';
+  for (let i = 0; i < bytes.length; i += 0x8000) {
+    text += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  }
+  return btoa(text);
+}
+
+/**
+ * The archive streamed to the Android app, which writes it into the phone's Downloads.
+ *
+ * A WebView offers no save picker, and the in-memory path ends by clicking a `blob:` link,
+ * which the WebView hands to the app as a download of an address only this page can read:
+ * the phone's download manager cannot fetch it, and the export would end with nothing
+ * saved and nothing said. So the app takes the bytes directly. Its calls are synchronous,
+ * which is the point — a page writing faster than the phone's storage waits on each call
+ * rather than queueing the library in memory — and a call that answers false is a write
+ * that failed, which fails the export like any other error.
+ *
+ * `saveAbort` is called directly as well as through the stream: once a write has thrown,
+ * the stream is errored and would never pass an abort on, and the app's half-written file
+ * has to go either way.
+ */
+export function appDestination(app: HostApp, filename: string): Destination {
+  const id = app.saveBegin!(filename, 'application/zip');
+  if (!id) throw new Error('The app could not create a file in Downloads.');
+  let ended = false;
+  /*
+     The zip writer hands over many small chunks — a header here, a few bytes of a name
+     there — and each call to the app has a fixed cost, so they are gathered into full
+     pieces first. Copied as they are gathered, since the writer owns the buffers it passes.
+  */
+  const pending = new Uint8Array(APP_PIECE);
+  let filled = 0;
+  const send = (piece: Uint8Array) => {
+    if (!app.saveChunk!(id, toBase64(piece))) {
+      throw new Error('The phone could not write the archive to Downloads.');
+    }
+  };
+  const writable = new WritableStream<Uint8Array>({
+    write(chunk) {
+      let at = 0;
+      while (at < chunk.length) {
+        const take = Math.min(APP_PIECE - filled, chunk.length - at);
+        pending.set(chunk.subarray(at, at + take), filled);
+        filled += take;
+        at += take;
+        if (filled === APP_PIECE) {
+          send(pending);
+          filled = 0;
+        }
+      }
+    },
+    close() {
+      if (filled > 0) send(pending.subarray(0, filled));
+      if (!app.saveEnd!(id)) throw new Error('The phone could not finish writing the archive.');
+      ended = true;
+    },
+  });
+  return {
+    kind: 'app',
+    writable,
+    finish: async () => null,
+    abort: async () => {
+      if (ended) return;
+      app.saveAbort?.(id);
+      await writable.abort().catch(() => undefined);
+    },
+  };
+}
+
+/**
+ * What a finished export says it did, in the words of where it went: a chosen file and the
+ * phone's Downloads were written as they went, a browser download was handed over at the
+ * end.
+ */
+export function savedAs(state: Pick<ExportState, 'destination' | 'filename'>): string {
+  if (state.destination === 'app') return `Saved ${state.filename} to Downloads`;
+  return `${state.destination === 'file' ? 'Saved' : 'Downloaded'} ${state.filename}`;
 }
 
 /** Hands an in-memory archive to the browser's downloads, named as the file would be. */
