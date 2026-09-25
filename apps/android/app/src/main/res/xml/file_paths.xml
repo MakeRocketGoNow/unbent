@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- What the FileProvider may hand out: only the note screen's transcoded photos. -->
+<!-- What the FileProvider may hand out: only the file chooser's transcoded and camera photos. -->
 <paths>
     <cache-path name="attach" path="attach/" />
 </paths>

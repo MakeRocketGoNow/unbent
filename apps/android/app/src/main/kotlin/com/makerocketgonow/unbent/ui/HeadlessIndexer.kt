@@ -101,7 +101,7 @@ object HeadlessIndexer {
         if (BuildConfig.DEBUG) WebView.setWebContentsDebuggingEnabled(true)
 
         try {
-            // The cookie first, every time, as the note screen does: the jar can be cleared
+            // The cookie first, every time, as the main WebView does: the jar can be cleared
             // behind the app's back, and a page loaded without it reports `unauthorized`.
             WebSession.install(origin, session)
             view.loadUrl("$origin/embed/index-files?note=${Uri.encode(noteId)}")

@@ -7,6 +7,8 @@
     <string name="shortcut_settings_long">App settings</string>
     <string name="app_settings_title">App settings</string>
     <string name="attach_choose">Attach</string>
+    <string name="unreachable_title">Couldn\'t reach Unbent</string>
+    <string name="unreachable_body">Check your connection, or the address in App settings.</string>
 
     <string name="sign_in_intro">Sign in to see your notes and save what you share here.</string>
     <string name="sign_in_otp_send">Email me a code</string>

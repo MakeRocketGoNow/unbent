@@ -71,12 +71,12 @@
             tools:node="remove" />
 
         <!--
-            The app. One activity hosting the note list, an open note and settings.
+            The app. One activity, one WebView, the whole site in it.
 
             `singleTop` so a notification tapped while the app is open reaches onNewIntent
             instead of stacking a second copy. The configuration changes are handled rather
-            than recreated because recreating the activity would recreate the WebView the
-            editor lives in, and throw away its cursor and undo history mid-thought.
+            than recreated because recreating the activity would recreate the WebView and
+            reload the site, throwing away the editor's cursor and undo history mid-thought.
             `adjustResize` is what tells devices older than API 30 to report the keyboard as
             an inset, so the editor shrinks above it instead of being covered.
         -->
@@ -100,7 +100,7 @@
         <!--
             The share-sheet entry: a bottom sheet over the sending app, with the title,
             notebook and tags, and one Save. Translucent so the sheet sits over whatever
-            was being shared from; its own task so it never brings the note list with it.
+            was being shared from; its own task so it never brings the app's own screen with it.
             Not `noHistory`: a person who has to sign in first goes away and comes back,
             and the staged files must still be here when they do.
         -->
@@ -166,7 +166,7 @@
         </activity>
 
         <!--
-            How a file the app made reaches the editor. The WebView's file chooser returns
+            How a file the app made reaches the page. The WebView's file chooser returns
             content URIs, and a HEIC photo the app has transcoded to JPEG has to come back
             as one too, so the JPEG is served from the cache through this provider. Not
             exported: the only reader is this app's own WebView, under a grant the

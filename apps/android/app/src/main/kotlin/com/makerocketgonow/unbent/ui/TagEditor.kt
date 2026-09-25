@@ -29,10 +29,9 @@ import com.makerocketgonow.unbent.ui.theme.Space
  * The note's tags: the ones it has as chips, a field to add one, and the account's other
  * tags as suggestions narrowed by what has been typed.
  *
- * Shared by the note screen's filing sheet and the capture sheet, so a tag is entered the
- * same way wherever it is entered. Suggestions matter more than free typing here: an
- * archive's tags are a vocabulary, and "Dentist" typed as "dentist" is a second tag the
- * web's case-variant cleanup later has to fold back in.
+ * The capture sheet's; the app's other screens are the site's now. Suggestions matter
+ * more than free typing here: an archive's tags are a vocabulary, and "Dentist" typed as
+ * "dentist" is a second tag the web's case-variant cleanup later has to fold back in.
  *
  * The field's text belongs to the caller, not to this editor, because the caller is the
  * one with a Save or Done button: a tag still being typed when that button is tapped has

@@ -16,10 +16,9 @@ import com.makerocketgonow.unbent.ui.theme.Space
 /**
  * One notebook to pick, with its note count where it has one; the Inbox has none.
  *
- * A row in a list rather than an entry in a dropdown, on purpose: the note screen's
- * filing sheet and the capture sheet both show notebooks this way, and a list inside the
- * sheet needs no popup window — which matters in the share activity, where popups and
- * dialogs proved unreliable over a translucent window.
+ * A row in a list rather than an entry in a dropdown, on purpose: a list inside the
+ * capture sheet needs no popup window — which matters in the share activity, where popups
+ * and dialogs proved unreliable over a translucent window.
  */
 @Composable
 fun NotebookChoice(name: String, count: Int?, selected: Boolean, onSelect: () -> Unit) {
