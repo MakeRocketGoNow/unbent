@@ -98,6 +98,11 @@ export function Export() {
         )}
         <ExportStatus state={exporting} />
       </div>
+      {/* Mounted from the start, so the first thing it says is heard: a live region that
+          appears with its first message is often not announced at all. */}
+      <span className="visually-hidden" role="status" aria-live="polite">
+        {announcement(exporting)}
+      </span>
 
       <p className="muted small">
         The archive is built in this tab, a few notes at a time. In Chrome and Edge you are
@@ -121,9 +126,39 @@ function plural(n: number, word: string): string {
 }
 
 /**
+ * What a screen reader hears of the export: the same story as `ExportStatus`, told in
+ * steps. The visible count moves on every note, and a live region that did the same
+ * would talk over everything else for as long as the export ran; this changes every
+ * tenth of the way. A failure is left to `ExportStatus`'s alert, which is heard at once.
+ */
+function announcement(state: ExportState): string {
+  switch (state.status) {
+    case 'idle':
+    case 'error':
+      return '';
+    case 'running': {
+      if (state.stopping) return 'Stopping the export.';
+      if (!state.total) return 'Exporting.';
+      return `Exporting, ${Math.floor((state.done / state.total) * 10) * 10}% done.`;
+    }
+    case 'done': {
+      const verb = state.destination === 'file' ? 'Saved' : 'Downloaded';
+      const skipped = state.skipped > 0 ? ` ${plural(state.skipped, 'file')} could not be found.` : '';
+      return `${verb} ${state.filename}: ${plural(state.done, 'note')} and ${plural(state.files, 'file')}.${skipped}`;
+    }
+    case 'stopped':
+      return 'Export stopped. Nothing was saved.';
+  }
+}
+
+/**
  * What the export is doing, beside its button: a count that moves while it runs, and
  * where the archive went when it is done. The bar is the count as a fraction, drawn only
  * once the total is known — before that, the count alone is the honest picture.
+ *
+ * Seen rather than heard: the live region beside it (`announcement`) speaks for it, so
+ * none of this is a live region itself. The bar is a real progressbar, for a reader who
+ * goes looking.
  */
 export function ExportStatus({ state }: { state: ExportState }) {
   switch (state.status) {
@@ -131,9 +166,16 @@ export function ExportStatus({ state }: { state: ExportState }) {
       return null;
     case 'running':
       return (
-        <div className="export-progress" role="status">
+        <div className="export-progress">
           {state.total !== null && state.total > 0 && (
-            <div className="progress-bar" aria-hidden="true">
+            <div
+              className="progress-bar"
+              role="progressbar"
+              aria-label="Export progress"
+              aria-valuemin={0}
+              aria-valuemax={state.total}
+              aria-valuenow={state.done}
+            >
               <div className="progress-fill" style={{ width: `${(state.done / state.total) * 100}%` }} />
             </div>
           )}
@@ -146,7 +188,7 @@ export function ExportStatus({ state }: { state: ExportState }) {
       );
     case 'done':
       return (
-        <span className="muted small" role="status">
+        <span className="muted small">
           {state.destination === 'file' ? 'Saved' : 'Downloaded'} <code>{state.filename}</code>:{' '}
           {plural(state.done, 'note')} and {plural(state.files, 'file')}.
           {state.skipped > 0 &&
@@ -155,7 +197,7 @@ export function ExportStatus({ state }: { state: ExportState }) {
       );
     case 'stopped':
       return (
-        <span className="muted small" role="status">
+        <span className="muted small">
           Stopped. Nothing was saved; export again when you are ready.
         </span>
       );

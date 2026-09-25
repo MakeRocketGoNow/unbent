@@ -5117,6 +5117,17 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
  * streams the archive straight to disk — a fetch would buffer a multi-gigabyte zip inside
  * the Worker — while looking like the deliberate action it is.
  */
+/* Read by a screen reader and drawn for no one: the export's live region, which speaks
+   in steps while the count beside the button moves on every note. */
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
 /* The export's button and, beside it, what it is doing; they wrap on a phone. */
 .export-actions {
   display: flex;
