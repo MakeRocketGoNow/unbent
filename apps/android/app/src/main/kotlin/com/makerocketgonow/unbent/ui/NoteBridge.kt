@@ -7,14 +7,21 @@ import com.makerocketgonow.unbent.api.ApiJson
 import kotlinx.serialization.Serializable
 
 /**
- * What an embedded page tells the app. Mirrors `AppMessage` in apps/web/src/app-bridge.ts.
+ * What a page tells the app. Mirrors `AppMessage` in apps/web/src/app-bridge.ts.
  *
- * `state` accompanies `save` only, and is one of the web autosave's five states; `pending`
- * accompanies `upload` only, and is how many files the page is still sending. The counts
- * come with `index-done` and `message` with `index-error`, from the indexing page the
- * capture job hosts. Unknown types are ignored rather than failing, so a page from a
- * newer deploy can say something this build has never heard of without breaking the
- * screen around it.
+ * From the site the app hosts: `theme` with the page's ground colour as `background`, for
+ * the strips behind the system bars; `unauthorized` when the page believes the session is
+ * gone, which the app checks before believing; `signed-out` when the person signed out on
+ * the page; and `app-settings` to open the app's own settings.
+ *
+ * From the indexing page the capture job hosts: `ready`, then the counts with
+ * `index-done` or `message` with `index-error`.
+ *
+ * `state` with `save`, `pending` with `upload`, and `missing` are the embedded note page's,
+ * and go when it does.
+ *
+ * Unknown types are ignored rather than failing, so a page from a newer deploy can say
+ * something this build has never heard of without breaking the screen around it.
  */
 @Serializable
 data class BridgeMessage(
@@ -25,12 +32,16 @@ data class BridgeMessage(
     val unusable: Int? = null,
     val failed: Int? = null,
     val message: String? = null,
+    val background: String? = null,
 ) {
     val isReady get() = type == "ready"
     val isUnauthorized get() = type == "unauthorized"
     val isMissing get() = type == "missing"
     val isIndexDone get() = type == "index-done"
     val isIndexError get() = type == "index-error"
+    val isSignedOut get() = type == "signed-out"
+    val isAppSettings get() = type == "app-settings"
+    val themeBackground get() = if (type == "theme") background else null
     val saveState get() = if (type == "save") state else null
     val uploadsPending get() = if (type == "upload") pending else null
 }

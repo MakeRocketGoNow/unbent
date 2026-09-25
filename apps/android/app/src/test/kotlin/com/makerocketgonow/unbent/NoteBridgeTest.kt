@@ -55,4 +55,25 @@ class NoteBridgeTest {
         assertEquals("R2 is on fire", message.message)
         assertNull(message.indexed)
     }
+
+    @Test
+    fun `a theme message carries the page's ground and nothing else`() {
+        val message = ApiJson.decodeFromString<BridgeMessage>("""{"type":"theme","background":"#16151a"}""")
+        assertEquals("#16151a", message.themeBackground)
+        assertNull(message.saveState)
+        assertNull(message.uploadsPending)
+    }
+
+    @Test
+    fun `a background outside a theme message is not a theme`() {
+        val message = ApiJson.decodeFromString<BridgeMessage>("""{"type":"ready","background":"#000000"}""")
+        assertNull(message.themeBackground)
+    }
+
+    @Test
+    fun `the site's sign-out and settings requests parse`() {
+        assertEquals(true, ApiJson.decodeFromString<BridgeMessage>("""{"type":"signed-out"}""").isSignedOut)
+        assertEquals(true, ApiJson.decodeFromString<BridgeMessage>("""{"type":"app-settings"}""").isAppSettings)
+        assertEquals(true, ApiJson.decodeFromString<BridgeMessage>("""{"type":"unauthorized"}""").isUnauthorized)
+    }
 }
