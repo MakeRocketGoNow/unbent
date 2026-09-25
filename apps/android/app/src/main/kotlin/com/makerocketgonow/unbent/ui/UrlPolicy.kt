@@ -1,6 +1,7 @@
 package com.makerocketgonow.unbent.ui
 
 import java.net.URI
+import java.net.URLDecoder
 
 /**
  * Where an address opens, decided without Android so it runs under a plain JVM test.
@@ -70,4 +71,28 @@ private fun portOf(uri: URI): Int = when {
     uri.port != -1 -> uri.port
     uri.scheme.equals("https", ignoreCase = true) -> 443
     else -> 80
+}
+
+/**
+ * Where the page was before it fell to the site's sign-in at [current], or [fallback].
+ *
+ * The site's gate sends a signed-out page to `/login?redirect=` with the place it was
+ * bounced from (see `returnTo` in `auth-gate.ts`). When the app then finds the session was
+ * fine after all — the page only lost the network — that is where it belongs, not the list.
+ * The value is anything a URL can carry, so it is only followed when it is a path on this
+ * site, and never when it is `/login` again, which the site's own `safeRedirect` refuses
+ * for the same reason: a loop waiting for a cause.
+ */
+fun returnPath(current: String?, fallback: String): String {
+    val uri = current?.let { runCatching { URI(it) }.getOrNull() } ?: return fallback
+    if (uri.rawPath?.trimEnd('/') != "/login") return fallback
+    val raw = uri.rawQuery
+        ?.split('&')
+        ?.firstOrNull { it.startsWith("redirect=") }
+        ?.substringAfter('=')
+        ?: return fallback
+    val path = runCatching { URLDecoder.decode(raw, "UTF-8") }.getOrNull() ?: return fallback
+    if (!isSitePath(path)) return fallback
+    if (path.substringBefore('?').trimEnd('/') == "/login") return fallback
+    return path
 }

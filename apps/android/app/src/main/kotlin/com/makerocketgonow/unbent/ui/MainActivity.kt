@@ -354,7 +354,7 @@ class MainActivity : ComponentActivity() {
      * because of a tunnel. So the app asks the server itself: no user, or a 401, is a real
      * sign-out; anything else is the network, which gets the unreachable panel and keeps
      * the session for when it comes back. A session the server still honours sends the
-     * page back to the list it was bounced from.
+     * page back to where it was bounced from.
      */
     private fun checkSession() {
         if (checkingSession) return
@@ -369,7 +369,7 @@ class MainActivity : ComponentActivity() {
                         signOutAndRestart()
                     } else {
                         WebSession.install(origin, session)
-                        webView?.loadUrl(origin + HOME)
+                        webView?.let { it.loadUrl(origin + returnPath(it.url, HOME)) }
                     }
                 },
                 onFailure = { error ->
@@ -383,11 +383,11 @@ class MainActivity : ComponentActivity() {
         unreachable = false
         val view = webView ?: return
         val url = view.url
-        // A page that fell to the site's own sign-in while offline goes back to the list; the
-        // session was checked before this panel was shown.
+        // A page that fell to the site's own sign-in while offline goes back where it was
+        // bounced from, or the list; the session was checked before this panel was shown.
         if (url == null || url.startsWith("about:") || Uri.parse(url).path?.startsWith("/login") == true) {
             prefs.session?.let { WebSession.install(origin, it) }
-            view.loadUrl(origin + HOME)
+            view.loadUrl(origin + returnPath(url, HOME))
         } else {
             view.reload()
         }

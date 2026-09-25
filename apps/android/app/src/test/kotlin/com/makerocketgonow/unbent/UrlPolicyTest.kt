@@ -4,6 +4,7 @@ import com.makerocketgonow.unbent.ui.Destination
 import com.makerocketgonow.unbent.ui.classify
 import com.makerocketgonow.unbent.ui.isSitePath
 import com.makerocketgonow.unbent.ui.linkPath
+import com.makerocketgonow.unbent.ui.returnPath
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -80,5 +81,23 @@ class UrlPolicyTest {
         assertFalse(isSitePath("//evil.example/notes"))
         assertFalse(isSitePath("https://evil.example/"))
         assertFalse(isSitePath(""))
+    }
+
+    @Test fun `a page bounced to sign-in goes back where it was`() {
+        assertEquals("/notes/abc", returnPath("https://unbent.example/login?redirect=%2Fnotes%2Fabc", "/notes"))
+        assertEquals(
+            "/notes?view=table",
+            returnPath("https://unbent.example/login?x=1&redirect=%2Fnotes%3Fview%3Dtable", "/notes"),
+        )
+    }
+
+    @Test fun `anything else goes to the list`() {
+        assertEquals("/notes", returnPath(null, "/notes"))
+        assertEquals("/notes", returnPath("about:blank", "/notes"))
+        assertEquals("/notes", returnPath("https://unbent.example/login", "/notes"))
+        assertEquals("/notes", returnPath("https://unbent.example/trash?redirect=%2Fsettings", "/notes"))
+        assertEquals("/notes", returnPath("https://unbent.example/login?redirect=%2F%2Fevil.example", "/notes"))
+        assertEquals("/notes", returnPath("https://unbent.example/login?redirect=https%3A%2F%2Fevil.example", "/notes"))
+        assertEquals("/notes", returnPath("https://unbent.example/login?redirect=%2Flogin%3Fredirect%3D%2Fx", "/notes"))
     }
 }
