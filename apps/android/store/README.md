@@ -59,9 +59,10 @@ pnpm seed:demo           # demo@example.com, ten sample notes, idempotent
 adb reverse tcp:<port> tcp:<port>
 ```
 
-Point the app at `http://localhost:<port>` from Settings → Unbent address, make the same
-temporary rename, and capture with `adb exec-out screencap -p > shot.png`. Note that
-switching the address signs the app out of whatever instance it was on. The fuller version
+Point the app at `http://localhost:<port>` from App settings → Unbent address (the site's
+Settings → App settings inside the app, or the sign-in screen's Change), make the same
+temporary rename, and capture with `adb exec-out screencap -p > shot.png`. The new address
+needs its own sign-in; the session for the old one is kept for switching back. The fuller version
 of all this is in `AGENTS.md` under "Sample notes, and shooting the app".
 
 ## The graphics
