@@ -832,6 +832,15 @@ function placeholders(from: number, count: number): string {
  */
 export class NotesRepo extends ScopedRepo {
   /**
+   * The search threshold, `SCOPE_DRIVEN_SEARCH_MAX`, on the instance so the live suite can
+   * move it. Every notebook and tag the suite creates is under a hundred notes, so left
+   * alone every filtered search there takes the scope-driven shape, and the FTS-driven one
+   * — what production uses for any larger notebook — goes untested. The search route sets
+   * this from a header, and only where `ALLOW_TEST_CREDENTIALS` is on; see `search.ts`.
+   */
+  scopeDrivenSearchMax = SCOPE_DRIVEN_SEARCH_MAX;
+
+  /**
    * A page of notes, ordered by the requested sort. Keyset pagination keeps deep pages
    * cheap: each page resumes from the last row's sort key rather than counting past
    * everything before it.
@@ -2153,7 +2162,7 @@ export class NotesRepo extends ScopedRepo {
       .prepare(`SELECT MIN(${sizes.map((s) => `COALESCE(${s}, 0)`).join(', ')}) AS size`)
       .bind(...binds)
       .first<{ size: number }>();
-    return (row?.size ?? 0) <= SCOPE_DRIVEN_SEARCH_MAX;
+    return (row?.size ?? 0) <= this.scopeDrivenSearchMax;
   }
 
   /**
