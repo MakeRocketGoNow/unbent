@@ -1,5 +1,5 @@
 import type { NoteSort } from '@unbent/shared';
-import { startExport, useExporting } from '../export-archive.js';
+import { isExportOf, startExport, useExporting } from '../export-archive.js';
 import { Button } from './Button.js';
 import { DownloadRowIcon } from './icons.js';
 import type { NoteFilter } from '../queries.js';
@@ -25,38 +25,43 @@ interface ExportLinkProps {
  * was a `<button>` drawn as the quiet grey line the old download link had been, which
  * left it no hit area beyond its text and an underline promising a navigation. Quiet and
  * small, since it sits under the filters it serves rather than competing with them.
- * One export runs at a time, so while one does the label reports it instead.
+ *
+ * One export runs at a time, so while one does this waits. Its label counts the export
+ * only when the export is of this filter: another's count here read as this list's. How
+ * the export ends, and a way to stop it, are the app-wide `ExportSnackbar`'s to say.
  */
 export function ExportLink({ filter, sort, total }: ExportLinkProps) {
   const exporting = useExporting();
   const running = exporting.status === 'running';
+  const scope = {
+    tags: filter.tag,
+    notebook: filter.notebook,
+    fields: filter.field,
+    from: filter.from,
+    to: filter.to,
+    sort: sort ?? 'updated',
+  };
+  const mine = running && isExportOf(exporting, scope);
   return (
     <Button
       variant="quiet"
       size="small"
       className="export-filtered"
       disabled={running}
-      onClick={() =>
-        startExport({
-          tags: filter.tag,
-          notebook: filter.notebook,
-          fields: filter.field,
-          from: filter.from,
-          to: filter.to,
-          sort: sort ?? 'updated',
-        })
-      }
+      onClick={() => startExport(scope)}
     >
       <DownloadRowIcon />
-      {running
+      {mine
         ? exporting.total === null
           ? 'Exporting…'
-          : `Exporting ${exporting.done} of ${exporting.total}…`
-        : total === 1
-          ? 'Export this note'
-          : total !== null
-            ? `Export these ${total.toLocaleString()} notes`
-            : 'Export these notes'}
+          : `Exporting ${exporting.done.toLocaleString()} of ${exporting.total.toLocaleString()}…`
+        : running
+          ? 'Another export is running'
+          : total === 1
+            ? 'Export this note'
+            : total !== null
+              ? `Export these ${total.toLocaleString()} notes`
+              : 'Export these notes'}
     </Button>
   );
 }

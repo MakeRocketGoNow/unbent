@@ -33,6 +33,13 @@ export type ExportStatus = 'idle' | 'running' | 'done' | 'stopped' | 'error';
 
 export interface ExportState {
   status: ExportStatus;
+  /**
+   * What the latest export was of, and which run it was: a place that started one can
+   * tell its own from another's, and a status that was dismissed stays dismissed for that
+   * run only. Null and 0 until the first export starts.
+   */
+  filter: ExportFilter | null;
+  run: number;
   /** Notes written so far, and how many the export holds. Total is null until known. */
   done: number;
   total: number | null;
@@ -49,6 +56,8 @@ export interface ExportState {
 
 const initial: ExportState = {
   status: 'idle',
+  filter: null,
+  run: 0,
   done: 0,
   total: null,
   files: 0,
@@ -221,6 +230,8 @@ export function createExporting(source: ExportSource = liveSource, pick = pickDe
     controller = new AbortController();
     set({
       status: 'running',
+      filter,
+      run: state.run + 1,
       done: 0,
       total: null,
       files: 0,
@@ -269,6 +280,16 @@ const exporting = createExporting();
 
 export const startExport = (filter: ExportFilter) => exporting.start(filter);
 export const stopExport = () => exporting.stop();
+
+/**
+ * Whether `state` is an export of `filter`. Compared as the query the pages are fetched
+ * with, which is already the export's normal form: no empty lists, no sort that means
+ * nothing without a date range.
+ */
+export function isExportOf(state: ExportState, filter: ExportFilter): boolean {
+  if (!state.filter) return false;
+  return api.exportQuery(state.filter).toString() === api.exportQuery(filter).toString();
+}
 
 export function useExporting(): ExportState {
   return useSyncExternalStore(exporting.subscribe, exporting.get);
