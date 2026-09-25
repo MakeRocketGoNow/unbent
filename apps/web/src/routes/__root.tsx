@@ -12,6 +12,7 @@ import { claimCacheFor } from '../queries.js';
 import { startIndexing, subscribeIndexing } from '../index-files.js';
 import { Topbar } from '../components/Topbar.js';
 import { useHostApp } from '../useHostApp.js';
+import { postToApp } from '../app-bridge.js';
 import { ExportSnackbar } from '../components/ExportSnackbar.js';
 
 export interface RouterContext {
@@ -153,6 +154,8 @@ function AppShell() {
    */
   useEffect(() => {
     if (isPending || session?.user) return;
+    // The app, if there is one, takes over from here; see `requireSession`.
+    postToApp({ type: 'unauthorized' });
     void navigate({ to: '/login', replace: true });
   }, [isPending, session, navigate]);
 

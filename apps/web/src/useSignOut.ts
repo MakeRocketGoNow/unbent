@@ -1,5 +1,6 @@
 import { useNavigate } from '@tanstack/react-router';
 import { signOut, refreshSession } from './auth-client.js';
+import { postToApp } from './app-bridge.js';
 
 /**
  * Sign out, and land somewhere that makes sense afterwards.
@@ -29,6 +30,16 @@ export function useSignOut(): () => void {
   return () => {
     void signOut()
       .then(() => refreshSession())
-      .then(() => navigate({ to: '/login', replace: true }));
+      .then(() => {
+        /*
+         * Inside the Android app, the app still holds its own copy of the session and
+         * would put it back into the page on the next launch, as if the sign-out had
+         * never happened. Telling it is what makes it forget. It replaces this screen with
+         * its own sign-in, so navigating here would only flash `/login` in a screen on its
+         * way out.
+         */
+        if (postToApp({ type: 'signed-out' })) return;
+        return navigate({ to: '/login', replace: true });
+      });
   };
 }

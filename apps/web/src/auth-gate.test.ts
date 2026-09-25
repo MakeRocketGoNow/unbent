@@ -1,5 +1,7 @@
-import { describe, it, expect, vi } from 'vitest';
-import { returnTo, safeRedirect, shellFor } from './auth-gate.js';
+import { describe, it, expect, vi, afterEach } from 'vitest';
+import type { ParsedLocation } from '@tanstack/react-router';
+import { ensureSession } from './auth-client.js';
+import { requireSession, returnTo, safeRedirect, shellFor } from './auth-gate.js';
 
 // The gate imports the auth client for `ensureSession`; nothing below reaches the network,
 // and creating a real client on import would point it at endpoints that are not there.
@@ -151,5 +153,43 @@ describe('safeRedirect', () => {
     expect(safeRedirect('/login')).toBeUndefined();
     expect(safeRedirect('/login/')).toBeUndefined();
     expect(safeRedirect('/login?redirect=/login')).toBeUndefined();
+  });
+});
+
+/**
+ * A gated page with no session, inside the Android app. The redirect still happens — the
+ * page must not render a route it cannot load — but the app is told, because its own
+ * sign-in screen is the one that offers the phone's account sheet. Outside the app nothing
+ * is posted, since there is nothing to hear it.
+ */
+describe('requireSession inside the app', () => {
+  const at = (href: string) => ({ pathname: href.split('?')[0], href }) as unknown as ParsedLocation;
+
+  afterEach(() => {
+    delete window.UnbentApp;
+  });
+
+  it('tells the app the session is gone, and still redirects', async () => {
+    vi.mocked(ensureSession).mockResolvedValue(null);
+    const postMessage = vi.fn();
+    window.UnbentApp = { postMessage };
+    await expect(requireSession(at('/notes/abc'))).rejects.toBeTruthy();
+    expect(postMessage).toHaveBeenCalledWith('{"type":"unauthorized"}');
+  });
+
+  it('says nothing when there is a session', async () => {
+    vi.mocked(ensureSession).mockResolvedValue({ user: { id: 'u1' } } as never);
+    const postMessage = vi.fn();
+    window.UnbentApp = { postMessage };
+    await requireSession(at('/notes'));
+    expect(postMessage).not.toHaveBeenCalled();
+  });
+
+  it('says nothing on a page that needs no session', async () => {
+    vi.mocked(ensureSession).mockResolvedValue(null);
+    const postMessage = vi.fn();
+    window.UnbentApp = { postMessage };
+    await requireSession(at('/login'));
+    expect(postMessage).not.toHaveBeenCalled();
   });
 });
