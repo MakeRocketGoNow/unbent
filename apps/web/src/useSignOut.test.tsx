@@ -34,5 +34,8 @@ describe('useSignOut', () => {
     renderHook(() => useSignOut()).result.current();
     await waitFor(() => expect(postMessage).toHaveBeenCalledWith('{"type":"signed-out"}'));
     expect(navigate).not.toHaveBeenCalled();
+    // Refreshing would make the shell report `unauthorized` to an app that is already
+    // signing out.
+    expect(refreshSession).not.toHaveBeenCalled();
   });
 });
