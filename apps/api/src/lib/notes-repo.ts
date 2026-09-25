@@ -1473,10 +1473,10 @@ export class NotesRepo extends ScopedRepo {
      Each answers with the ids it touched rather than a count, so a caller can say which
      of the ids it named were not: the MCP tools report those back to an assistant, and
      the routes reduce the list to the number the web client wants. The ids come from
-     `RETURNING id`, not `meta.changes`: a note's row has an FTS trigger on it, and D1
-     counts what the trigger writes to the index's shadow tables as changes too —
-     trashing two notes reported ten. The singular methods only ask whether the count is
-     zero, which that cannot get wrong; these report it.
+     `RETURNING id`, not `meta.changes`: a note's row has triggers on it — the FTS
+     index's, the stored counts' — and D1 counts what they write as changes too; trashing
+     two notes reported ten. The singular methods only ask whether the count is zero,
+     which that cannot get wrong; these report it.
   */
 
   /** Trashes several notes. Returns the ids that were — ids already trashed are not among them. */
