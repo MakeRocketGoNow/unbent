@@ -74,6 +74,8 @@ export const keys = {
   notebookFieldCounts: (notebookId: string) => ['notebook-fields', notebookId, 'counts'] as const,
   trash: () => ['trash'] as const,
   trashCount: () => ['trash', 'count'] as const,
+  /** Under `notes`, so the invalidations that root gets on every create and trash reach it. */
+  noteCount: () => ['notes', 'count'] as const,
   /**
    * Under `trash` for the trash and `notes` for the rest, so the invalidations those roots
    * already get on every trash, restore, move and save reach these too.
@@ -126,6 +128,17 @@ export const trashCountQuery = () =>
   queryOptions({
     queryKey: keys.trashCount(),
     queryFn: () => api.listNotes({ trashed: true, limit: 1 }),
+    select: (page) => page.total ?? 0,
+  });
+
+/**
+ * How many live notes there are, from the stored counts, as `trashCountQuery` reads the
+ * trash's. What a page shows before a confirmation asks for the exact number.
+ */
+export const noteCountQuery = () =>
+  queryOptions({
+    queryKey: keys.noteCount(),
+    queryFn: () => api.listNotes({ limit: 1 }),
     select: (page) => page.total ?? 0,
   });
 

@@ -32,8 +32,11 @@ function harness(config: Partial<AppConfig> = { accountDeletion: true }) {
     defaultOptions: { queries: { retry: false } },
   });
   // Seeded rather than fetched: jsdom has no server, and these three are the only queries
-  // the panel reads — the indexing section asks for a fourth only where `vision` is set.
+  // the panel reads — the indexing section asks for a fourth only where `vision` is set,
+  // and a confirmation for the exact count when it opens.
   client.setQueryData(keys.config(), { providers: ['password'], ...config });
+  client.setQueryData(keys.trashCount(), { items: [], cursor: null, total: 0 });
+  client.setQueryData(keys.noteCount(), { items: [], cursor: null, total: 3 });
   client.setQueryData(keys.exactCount({ trashed: true }), { items: [], cursor: null, total: 0 });
   client.setQueryData(keys.exactCount({}), { items: [], cursor: null, total: 3 });
 
