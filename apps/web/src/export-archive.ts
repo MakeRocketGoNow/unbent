@@ -36,8 +36,9 @@ export interface ExportState {
   /** Notes written so far, and how many the export holds. Total is null until known. */
   done: number;
   total: number | null;
-  /** Files written so far, for the summary. */
+  /** Files written so far, and files skipped because they were gone, for the summary. */
   files: number;
+  skipped: number;
   filename: string | null;
   /** Where the archive went: a file the person chose, or the browser's downloads. */
   destination: 'file' | 'download' | null;
@@ -51,6 +52,7 @@ const initial: ExportState = {
   done: 0,
   total: null,
   files: 0,
+  skipped: 0,
   filename: null,
   destination: null,
   stopping: false,
@@ -81,13 +83,56 @@ interface Destination {
 /** How many notes each page asks for: the endpoint's maximum, so a library is few requests. */
 const PAGE = 100;
 
+/**
+ * How long to wait before each retry of a request that failed in passing: a dropped
+ * connection or a 5xx. A blip clears in a second and a busy Worker in a few; three
+ * retries cover both without leaving a person watching a stalled count for long when
+ * the failure is one that will not clear today, like a spent database allowance.
+ */
+const RETRY_DELAYS = [1_000, 4_000, 15_000];
+
+/** A failure worth retrying: the server's 5xx, or fetch's TypeError for a network error. */
+function transient(err: unknown): boolean {
+  return err instanceof api.ApiError ? err.status >= 500 : err instanceof TypeError;
+}
+
+/**
+ * Runs `attempt`, retrying a transient failure after each of `RETRY_DELAYS`. One page or
+ * one file failing once used to throw away the whole archive, which on a large library
+ * is an hour of work lost to a hiccup. A stop cuts a wait short.
+ */
+async function retrying<T>(signal: AbortSignal | undefined, attempt: () => Promise<T>): Promise<T> {
+  for (let i = 0; ; i++) {
+    try {
+      return await attempt();
+    } catch (err) {
+      const delay = RETRY_DELAYS[i];
+      if (delay === undefined || signal?.aborted || !transient(err)) throw err;
+      await new Promise<void>((resolve) => {
+        const timer = setTimeout(resolve, delay);
+        signal?.addEventListener('abort', () => {
+          clearTimeout(timer);
+          resolve();
+        }, { once: true });
+      });
+      signal?.throwIfAborted();
+    }
+  }
+}
+
 const liveSource: ExportSource = {
-  page: (filter, cursor) => api.exportPage(filter, cursor, PAGE),
-  file: async (noteId, filename, signal) => {
-    const res = await fetch(`/api/notes/${noteId}/files/${encodeURIComponent(filename)}`, { signal });
-    if (!res.ok || !res.body) throw new Error(`Could not read ${filename}: ${res.status}`);
-    return res.body;
-  },
+  page: (filter, cursor, signal) => retrying(signal, () => api.exportPage(filter, cursor, PAGE)),
+  file: (noteId, filename, signal) =>
+    retrying(signal, async () => {
+      const res = await fetch(`/api/notes/${noteId}/files/${encodeURIComponent(filename)}`, { signal });
+      // Gone since the page listed it — its note deleted mid-export, or the object missing
+      // from storage. Skipped and counted; see `ExportSource.file`.
+      if (res.status === 404) return null;
+      if (!res.ok || !res.body) {
+        throw new api.ApiError(res.status, `Could not read ${filename}: ${await api.httpErrorMessage(res)}`);
+      }
+      return res.body;
+    }),
   notebooks: async () => (await api.listNotebooks()).notebooks,
   fields: (id) => api.listNotebookFields(id),
 };
@@ -179,6 +224,7 @@ export function createExporting(source: ExportSource = liveSource, pick = pickDe
       done: 0,
       total: null,
       files: 0,
+      skipped: 0,
       filename,
       destination: destination.kind,
       stopping: false,

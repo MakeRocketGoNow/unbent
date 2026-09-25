@@ -29,6 +29,8 @@ function fake(opts: {
   notebooks?: NotebookSummary[];
   fields?: Record<string, FieldDef[]>;
   files?: Record<string, string>;
+  /** Files the source answers null for, as a deleted note's or a missing object's would. */
+  gone?: string[];
 }): ExportSource & { pages: number } {
   const size = opts.pageSize ?? 100;
   const source = {
@@ -41,6 +43,7 @@ function fake(opts: {
       return { notes, cursor: next, total: cursor ? null : opts.notes.length };
     },
     async file(noteId: string, filename: string) {
+      if (opts.gone?.includes(`${noteId}/${filename}`)) return null;
       const text = opts.files?.[`${noteId}/${filename}`];
       if (text === undefined) throw new Error(`no such file ${noteId}/${filename}`);
       return new Blob([text]).stream();
@@ -125,6 +128,35 @@ describe('writeArchive', () => {
     expect(files.get('with-files-aaaaaaaa/files/pic.png')).toBe('PNGDATA');
     // The link stays relative, so the unpacked folder works without this app.
     expect(parse(files.get('with-files-aaaaaaaa/with-files-aaaaaaaa.md')!).body).toBe('![x](files/pic.png)');
+  });
+
+  it('skips a file that is gone and counts it, rather than failing the archive', async () => {
+    const id = 'aaaaaaaa-0000-4000-8000-000000000004';
+    const writer = new BlobWriter('application/zip');
+    const progress = await writeArchive(
+      writer.writable,
+      {},
+      fake({
+        notes: [
+          note({
+            id,
+            title: 'Half there',
+            attachments: [
+              { filename: 'kept.txt', contentType: 'text/plain' },
+              { filename: 'gone.pdf', contentType: 'application/pdf' },
+            ],
+          }),
+        ],
+        files: { [`${id}/kept.txt`]: 'kept' },
+        gone: [`${id}/gone.pdf`],
+      }),
+      new AbortController().signal,
+    );
+    expect(progress).toEqual({ done: 1, total: 1, files: 1, skipped: 1 });
+    const reader = new ZipReader(new BlobReader(await writer.getData()));
+    const names = (await reader.getEntries()).map((e) => e.filename).sort();
+    await reader.close();
+    expect(names).toEqual(['half-there-aaaaaaaa/files/kept.txt', 'half-there-aaaaaaaa/half-there-aaaaaaaa.md']);
   });
 
   it('walks every page', async () => {

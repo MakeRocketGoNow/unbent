@@ -30,10 +30,16 @@ import {
 /**
  * What an export reads and writes, so the archive's layout can be tested against fakes:
  * a page of notes, a file's bytes, the notebooks and each one's fields.
+ *
+ * `file` answers null for a file that is no longer there — deleted with its note, or
+ * missing from storage, while a long export was on its way to it. That file is skipped
+ * and counted rather than failing the archive: the old Worker skipped them too, and
+ * throwing away an hour of backup over one file is the worse outcome by far. Anything
+ * else it throws still ends the export; retrying is the source's business.
  */
 export interface ExportSource {
-  page(filter: ExportFilter, cursor: string | undefined): Promise<ExportPage>;
-  file(noteId: string, filename: string, signal: AbortSignal): Promise<ReadableStream<Uint8Array>>;
+  page(filter: ExportFilter, cursor: string | undefined, signal?: AbortSignal): Promise<ExportPage>;
+  file(noteId: string, filename: string, signal: AbortSignal): Promise<ReadableStream<Uint8Array> | null>;
   notebooks(): Promise<NotebookSummary[]>;
   fields(notebookId: string): Promise<FieldDef[]>;
 }
@@ -41,7 +47,10 @@ export interface ExportSource {
 export interface WriteProgress {
   done: number;
   total: number | null;
+  /** Files written. */
   files: number;
+  /** Files a note listed that were gone by the time they were fetched. */
+  skipped: number;
 }
 
 /**
@@ -63,22 +72,21 @@ export async function writeArchive(
   onProgress: (progress: WriteProgress) => void = () => {},
 ): Promise<WriteProgress> {
   const zip = new ZipWriter(writable, { bufferedWrite: true, useWebWorkers: false });
-  const progress: WriteProgress = { done: 0, total: null, files: 0 };
+  const progress: WriteProgress = { done: 0, total: null, files: 0, skipped: 0 };
   const seenNotebooks = new Set<string>();
   let cursor: string | undefined;
 
   for (;;) {
     signal.throwIfAborted();
-    const page = await source.page(filter, cursor);
+    const page = await source.page(filter, cursor, signal);
     if (page.total !== null) {
       progress.total = page.total;
       onProgress({ ...progress });
     }
     for (const note of page.notes) {
       signal.throwIfAborted();
-      await writeNote(zip, note, source, signal);
+      await writeNote(zip, note, source, signal, progress);
       progress.done += 1;
-      progress.files += note.attachments?.length ?? 0;
       if (note.notebookId) seenNotebooks.add(note.notebookId);
       onProgress({ ...progress });
     }
@@ -116,12 +124,15 @@ export async function writeArchive(
  * `zip64: false` on every entry, as the Worker wrote them: macOS Archive Utility refuses
  * an archive whose headers reserve Zip64 space, which is what a double-click in Finder
  * produces.
+ *
+ * Counts each file into `progress` as written or skipped; see `ExportSource.file`.
  */
 async function writeNote(
   zip: ZipWriter<unknown>,
   note: ExportedNote,
   source: ExportSource,
   signal: AbortSignal,
+  progress: WriteProgress,
 ): Promise<void> {
   // Names both the note's directory and its markdown, so the two always agree.
   const base = noteDirName(note.title, note.id);
@@ -129,7 +140,12 @@ async function writeNote(
   for (const file of note.attachments ?? []) {
     signal.throwIfAborted();
     const bytes = await source.file(note.id, file.filename, signal);
+    if (!bytes) {
+      progress.skipped += 1;
+      continue;
+    }
     await zip.add(`${base}/files/${file.filename}`, bytes, { level: 0, zip64: false, signal });
+    progress.files += 1;
   }
 }
 

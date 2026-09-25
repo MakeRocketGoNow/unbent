@@ -149,6 +149,8 @@ export function ExportStatus({ state }: { state: ExportState }) {
         <span className="muted small" role="status">
           {state.destination === 'file' ? 'Saved' : 'Downloaded'} <code>{state.filename}</code>:{' '}
           {plural(state.done, 'note')} and {plural(state.files, 'file')}.
+          {state.skipped > 0 &&
+            ` ${plural(state.skipped, 'file')} ${state.skipped === 1 ? 'was' : 'were'} gone by the time the export reached ${state.skipped === 1 ? 'it' : 'them'}, so ${state.skipped === 1 ? 'it is' : 'they are'} not in it.`}
         </span>
       );
     case 'stopped':
