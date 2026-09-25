@@ -1,12 +1,8 @@
 package com.makerocketgonow.unbent.ui
 
-import android.app.DownloadManager
 import android.content.Context
 import android.net.Uri
-import android.os.Build
-import android.os.Environment
 import android.view.ViewGroup
-import android.webkit.URLUtil
 import android.webkit.ValueCallback
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceRequest
@@ -69,8 +65,6 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.viewinterop.AndroidView
-import androidx.webkit.WebSettingsCompat
-import androidx.webkit.WebViewFeature
 import com.makerocketgonow.unbent.Prefs
 import com.makerocketgonow.unbent.R
 import com.makerocketgonow.unbent.UnbentApp
@@ -80,7 +74,6 @@ import com.makerocketgonow.unbent.api.SessionCookie
 import com.makerocketgonow.unbent.api.UnbentApi
 import com.makerocketgonow.unbent.ui.theme.Space
 import kotlin.concurrent.thread
-import kotlin.coroutines.resume
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -89,7 +82,6 @@ import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 
@@ -503,7 +495,7 @@ private fun NoteWebView(
                     ): Boolean = currentOnChooseFiles(filePathCallback, fileChooserParams)
                 }
                 setDownloadListener { url, _, contentDisposition, mimeType, _ ->
-                    download(ctx, url, contentDisposition, mimeType, session)
+                    download(ctx, url, contentDisposition, mimeType)
                 }
                 if (session != null) WebSession.install(origin, session)
                 loadUrl("$origin/embed/notes/$noteId?$theme")
@@ -512,42 +504,6 @@ private fun NoteWebView(
         },
         onRelease = { it.destroy() },
     )
-}
-
-/**
- * Dark mode for the page, on devices that do not derive it from the app theme.
- *
- * From API 33 the WebView reads `prefers-color-scheme` off the activity's theme and this
- * does nothing. Below that, force-dark with the web-theme-only strategy asks the page for
- * its own dark stylesheet — which it has — and never algorithmically inverts anything.
- */
-@Suppress("DEPRECATION")
-private fun applyDarkMode(view: WebView, dark: Boolean) {
-    if (Build.VERSION.SDK_INT >= 33) return
-    val settings = view.settings
-    if (WebViewFeature.isFeatureSupported(WebViewFeature.FORCE_DARK)) {
-        WebSettingsCompat.setForceDark(
-            settings,
-            if (dark) WebSettingsCompat.FORCE_DARK_ON else WebSettingsCompat.FORCE_DARK_OFF,
-        )
-    }
-    if (WebViewFeature.isFeatureSupported(WebViewFeature.FORCE_DARK_STRATEGY)) {
-        WebSettingsCompat.setForceDarkStrategy(settings, WebSettingsCompat.DARK_STRATEGY_WEB_THEME_DARKENING_ONLY)
-    }
-}
-
-/**
- * `evaluateJavascript`, awaited: resumes once the page has run the script.
- *
- * Bounded, because a WebView destroyed before the script finishes never calls back, and
- * a leave that waited on it would never pop.
- */
-private suspend fun WebView.evaluate(script: String) {
-    withTimeoutOrNull(1_000) {
-        suspendCancellableCoroutine { cont ->
-            evaluateJavascript(script) { if (cont.isActive) cont.resume(Unit) }
-        }
-    }
 }
 
 private class NoteWebViewClient(private val origin: String, private val context: Context) : WebViewClient() {
@@ -560,33 +516,6 @@ private class NoteWebViewClient(private val origin: String, private val context:
         runCatching { CustomTabsIntent.Builder().build().launchUrl(context, url) }
         return true
     }
-}
-
-/**
- * An attachment the page asked to download, fetched with the app's session.
- *
- * DownloadManager runs outside the WebView and so outside its cookie jar; the cookie goes
- * on the request by hand. Into the public Downloads folder where the platform allows it
- * without a permission, and into the app's own files below that.
- */
-private fun download(
-    context: Context,
-    url: String,
-    contentDisposition: String?,
-    mimeType: String?,
-    session: SessionCookie?,
-) {
-    val name = URLUtil.guessFileName(url, contentDisposition, mimeType)
-    val request = DownloadManager.Request(Uri.parse(url)).apply {
-        if (session != null) addRequestHeader("Cookie", "${session.name}=${session.value}")
-        setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, name)
-        } else {
-            setDestinationInExternalFilesDir(context, Environment.DIRECTORY_DOWNLOADS, name)
-        }
-    }
-    runCatching { context.getSystemService(DownloadManager::class.java)?.enqueue(request) }
 }
 
 /**
