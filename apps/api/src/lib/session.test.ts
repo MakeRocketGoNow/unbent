@@ -1,3 +1,4 @@
+import { APIError } from 'better-auth/api';
 import { Hono } from 'hono';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { AppEnv, Env } from '../types.js';
@@ -79,6 +80,27 @@ describe('sessionMiddleware', () => {
     const res = await call('/protected');
     expect(res.status).toBe(503);
     expect(res.headers.get('Retry-After')).toBe('60');
+  });
+
+  /**
+   * Better Auth wraps its own store failing as a 500 `APIError`, so that is the shape a D1
+   * refusal really arrives in — not only the raw error above.
+   */
+  it('answers 503 when Better Auth reports its store failed', async () => {
+    getSession.mockRejectedValue(new APIError('INTERNAL_SERVER_ERROR', { message: 'Failed to get session' }));
+    const res = await call('/protected');
+    expect(res.status).toBe(503);
+  });
+
+  /**
+   * A 4xx from Better Auth is about this client's session, and would fail the same way on
+   * every retry. A 503 there would leave the client retrying forever with no route back to
+   * sign-in, so it is answered as no session.
+   */
+  it('answers 401, not 503, when Better Auth rejects the session itself', async () => {
+    getSession.mockRejectedValue(new APIError('UNAUTHORIZED', { message: 'Failed to get session' }));
+    const res = await call('/protected');
+    expect(res.status).toBe(401);
   });
 
   it('still answers 401 when there is simply no session', async () => {

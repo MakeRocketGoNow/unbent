@@ -1,3 +1,4 @@
+import { APIError } from 'better-auth/api';
 import { createMiddleware } from 'hono/factory';
 import { getAuth } from '../auth.js';
 import type { AppEnv } from '../types.js';
@@ -26,9 +27,16 @@ import type { AppEnv } from '../types.js';
  * complete. `sessionUnavailable` lets `requireAuth` answer 503 with a Retry-After, which
  * clients already treat as an error to retry.
  *
- * Deliberately not narrowed to a particular error: whatever makes the session unresolvable
- * — a D1 timeout, a malformed cookie, a Better Auth internal — the right response is the
- * same, never a 500.
+ * Narrowed by who is at fault, not by what went wrong. Better Auth catches every failure
+ * inside `getSession` and rethrows it as an `APIError`: its own store failing — the D1
+ * refusal above, a timeout — comes out as a 500, while a 4xx is Better Auth deciding this
+ * client's session is no good (the row deleted between reading and refreshing it). A 503
+ * tells the client to keep retrying, which is only honest when retrying can work; a 4xx
+ * would fail the same way forever, leaving the client stuck on "try again shortly" with no
+ * way back to the sign-in screen, so it is answered as no session instead. Anything that is
+ * not an `APIError` at all never reached Better Auth's own handling and is treated as the
+ * store, not the client. A malformed or wrongly signed cookie does not throw — better-call
+ * reads it as no cookie and `getSession` resolves null — so it was never in question.
  */
 export const sessionMiddleware = createMiddleware<AppEnv>(async (c, next) => {
   try {
@@ -46,7 +54,7 @@ export const sessionMiddleware = createMiddleware<AppEnv>(async (c, next) => {
     }
   } catch (err) {
     console.error('Session resolution failed; continuing unauthenticated:', err);
-    c.set('sessionUnavailable', true);
+    if (!(err instanceof APIError && err.statusCode < 500)) c.set('sessionUnavailable', true);
   }
 
   await next();
