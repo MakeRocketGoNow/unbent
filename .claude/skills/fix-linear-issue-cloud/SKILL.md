@@ -68,6 +68,20 @@ steps 4–8, and say that is what you did.
 If Linear fails for a reason that is not "no connector" — an id that doesn't resolve, a
 permissions error — ask rather than reconstructing the issue from its title.
 
+**It's fine to ask questions before starting**, as long as the answer would change what you
+build. Examples: an issue that could mean two different things, a screenshot that
+contradicts the text, a request that conflicts with how the app already works, or two
+reasonable fixes with a real UX trade-off. Ask now, with `AskUserQuestion`, before step 3,
+so an issue whose scope turns out to be wrong never gets marked In Progress. Don't ask about
+anything the code, a reproduction or `AGENTS.md` can settle, and always give a
+recommendation.
+
+Weigh this against the rule at the top: a session started from Linear may have nobody
+watching, and a question can sit unanswered until someone comes back to it. If you are
+confident in one reading, don't block on it. Build that reading, say which one you chose and
+why in the PR body, and let review catch it. Keep the question for cases where guessing
+wrong would waste the whole PR.
+
 ## 3. Move each issue to In Progress
 
 Before the code, not after:
