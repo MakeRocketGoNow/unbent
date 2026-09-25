@@ -125,14 +125,14 @@ class UploadWorker(context: Context, params: WorkerParameters) : CoroutineWorker
                 Staging.clear(context, jobId)
                 CaptureNotifications.signInNeeded(context, jobId, title)
                 Result.failure()
-            } else if (e.status == 503) {
+            } else if (waitsOut(e)) {
                 /*
                  * The server is up but cannot serve right now, and has said so. The case
                  * that matters is the database's daily read allowance running out: every
                  * request fails the same way until it resets at midnight UTC, which can be
                  * most of a day away. Four attempts on a backoff from thirty seconds are
-                 * spent in under four minutes, and the capture was deleted with them. So a
-                 * 503 does not spend one; it waits for up to [MAX_UNAVAILABLE] of them
+                 * spent in under four minutes, and the capture was deleted with them. So
+                 * this does not spend one; it waits for up to [MAX_UNAVAILABLE] of them
                  * instead.
                  */
                 if (CaptureResume.recordUnavailable(dir) <= MAX_UNAVAILABLE) Result.retry() else giveUp()
@@ -163,6 +163,16 @@ class UploadWorker(context: Context, params: WorkerParameters) : CoroutineWorker
     }
 
     companion object {
+        /**
+         * Whether a failure is one to wait out rather than spend an attempt on: a 503 that
+         * says when to come back. Not every 503: "reading images is not set up" fails the
+         * same way on every try, and the edge's own error page for a Worker that ran out of
+         * resources is not this server asking for time. Waiting a day on those re-uploads
+         * the capture fourteen times to say what four attempts would have. The session
+         * check's 503, the one a spent read allowance produces, sends `Retry-After`.
+         */
+        internal fun waitsOut(e: ApiException): Boolean = e.status == 503 && e.retryAfter != null
+
         const val KEY_JOB_ID = "jobId"
         const val KEY_TITLE = "title"
         const val KEY_BODY = "body"

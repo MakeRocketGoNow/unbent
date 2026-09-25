@@ -432,4 +432,21 @@ class UnbentApiTest {
             assertEquals("Attachment exceeds 95MB limit", e.serverMessage())
         }
     }
+
+    @Test
+    fun `a refusal carries the server's Retry-After, and one without it carries none`() {
+        server.enqueue(
+            MockResponse().setResponseCode(503).setHeader("Retry-After", "60")
+                .setBody("""{"error":"Service unavailable"}"""),
+        )
+        server.enqueue(MockResponse().setResponseCode(503).setBody("""{"error":"Reading images is not set up"}"""))
+
+        val first = runCatching { api.createNote("a", "") }.exceptionOrNull() as ApiException
+        assertEquals(503, first.status)
+        assertEquals("60", first.retryAfter)
+
+        val second = runCatching { api.createNote("b", "") }.exceptionOrNull() as ApiException
+        assertEquals(503, second.status)
+        assertNull(second.retryAfter)
+    }
 }
