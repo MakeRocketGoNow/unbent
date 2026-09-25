@@ -1,6 +1,7 @@
 import { createContext, useContext, useMemo, useState, type ReactNode } from 'react';
 import { Link } from '@tanstack/react-router';
 import { BackArrow } from './BackArrow.js';
+import { isHosted, postToApp } from '../app-bridge.js';
 
 interface BusyContext {
   /** Set while an import is running, so the sub-nav can refuse to unmount it. */
@@ -103,6 +104,30 @@ export function SettingsLayout({ children }: { children: ReactNode }) {
               </Link>
             ),
           )}
+          {/*
+              The Android app's own settings: which instance it talks to, and its version.
+              Only inside the app, where they exist.
+
+              A pill beside the others rather than a button of its own, because it is the
+              same gesture — go to a settings page — and only its destination differs: a
+              native screen, which no anchor can reach, hence a `<button>`. Inert during an
+              import like its siblings, since changing the instance reloads the site and
+              that would end the import as surely as leaving the page.
+          */}
+          {isHosted() &&
+            (importRunning ? (
+              <span className="settings-nav-disabled" aria-disabled="true">
+                App settings
+              </span>
+            ) : (
+              <button
+                type="button"
+                className="settings-nav-item"
+                onClick={() => postToApp({ type: 'app-settings' })}
+              >
+                App settings
+              </button>
+            ))}
         </nav>
 
         {importRunning && (

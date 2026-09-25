@@ -5040,6 +5040,15 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
   border-radius: 999px;
 }
 
+/* The Android app's own settings entry is a button (an anchor cannot open native chrome);
+   drawn exactly as the anchors beside it. */
+button.settings-nav-item {
+  font: inherit;
+  font-size: 0.8rem;
+  background: none;
+  cursor: pointer;
+}
+
 .settings-nav-item:hover { color: var(--fg); border-color: var(--accent); }
 
 .settings-nav-item.active {
