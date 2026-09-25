@@ -2314,7 +2314,7 @@ export class NotesRepo extends ScopedRepo {
     tagLimit: number,
   ): Promise<{
     notebooks: Map<string, string[]>;
-    tags: Array<{ id: string; name: string; count: number; examples: string[] }>;
+    tags: Array<{ id: string; name: string; examples: string[] }>;
   }> {
     const [byNotebook, byTag] = await this.db.batch([
       this.db
@@ -2332,7 +2332,7 @@ export class NotesRepo extends ScopedRepo {
         .bind(this.userId, exclude, perGroup),
       this.db
         .prepare(
-          `SELECT t.id, t.name, t.count,
+          `SELECT t.id, t.name,
                   (SELECT json_group_array(title) FROM (
                      SELECT n.title FROM note_tags nt
                       CROSS JOIN notes n ON n.id = nt.note_id
@@ -2356,8 +2356,8 @@ export class NotesRepo extends ScopedRepo {
         ]),
       ),
       tags: (
-        byTag as { results: Array<{ id: string; name: string; count: number; titles: string | null }> }
-      ).results.map((r) => ({ id: r.id, name: r.name, count: r.count, examples: titles(r.titles) })),
+        byTag as { results: Array<{ id: string; name: string; titles: string | null }> }
+      ).results.map((r) => ({ id: r.id, name: r.name, examples: titles(r.titles) })),
     };
   }
 
