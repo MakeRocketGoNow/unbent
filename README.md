@@ -58,7 +58,7 @@ than on Workers, and the export zip is assembled in the browser from pages of no
 ```
 apps/web       Vite + React SPA
 apps/api       Hono API on Workers, and the MCP server under src/mcp
-apps/android   Kotlin app: native shell and share sheet, the web editor in a WebView
+apps/android   Kotlin app: the site in a WebView, with native sign-in, share sheet and files
 packages/shared  zod schemas, frontmatter codec, remark plugins
 packages/enex    ENEX -> Markdown, runtime-agnostic
 ```
@@ -306,7 +306,7 @@ A thrown exception in the page POSTs itself to `/api/client-errors`, which logs 
 into the Worker's own logs — `wrangler tail` live, or Workers Logs in the dashboard, where
 it is searchable for three days on the free plan.
 
-It exists because of the Android app. The editor there is this site in a WebView, so a
+It exists because of the Android app. The app is this site in a WebView, so a
 JavaScript failure is invisible to Play's crash reporting: the process never dies, and to
 Android nothing happened. The logged `userAgent` is what separates "broken everywhere" from
 "broken only in the app", which is the first question these reports raise.
@@ -433,7 +433,7 @@ It exists because a preview cannot be a stable host, and several things need one
   useless on the next.
 - **Mail.** A reset or sign-in link is only worth sending to a host that will still be there
   when the message is opened.
-- **The Android app.** `DEFAULT_INSTANCE` is `https://unbent.app`, and the Settings override
+- **The Android app.** `DEFAULT_INSTANCE` is `https://unbent.app`, and the App settings override
   had nothing to point at that was neither production nor gone by morning.
 
 Before it, production was the only instance anywhere with a hostname stable enough to prove
@@ -501,8 +501,8 @@ If the zone is not on Cloudflare, or you would rather wrangler did not touch DNS
 `https://unbent-dev.<subdomain>.workers.dev`. A standing Worker's workers.dev URL is stable
 too, so OAuth, passkeys and mail all still work against it — only the name is uglier.
 
-To point the Android app at it, put the host in Settings; `Prefs.instance` is per-origin, so
-the production session is kept rather than overwritten.
+To point the Android app at it, put the host in App settings; `Prefs.instance` is per-origin,
+so the production session is kept rather than overwritten, and switching back finds it.
 
 ### Preview deployments
 
@@ -1011,7 +1011,7 @@ actually says, and anything the model is unsure of is left empty rather than gue
 are left alone: a document has no opinion to read.
 
 `POST /api/notes/:id/autofill` answers with the suggestions and applies nothing; the client
-does. The Android app's note screen does not have the control yet.
+does. The Android app is the site in a WebView, so it has the same control.
 
 ## Local database
 
@@ -1094,11 +1094,16 @@ design, so it can never see or remove another account's objects.
 
 ## Android app
 
-A native app around the site's own editor. The note list, the note's title and filing,
-settings and the share sheet are Kotlin and Compose; a note's body is the web editor at
-`/embed/notes/:id`, rendered in a WebView. That is the same CodeMirror code the site runs,
-so editing behaves identically in both places, and a self-hosted instance serves the app
-the editor that matches its API.
+The site, whole, in one WebView, with native code only for what a page cannot do on
+Android: the share sheet, sign-in through the phone's account sheet, the file picker and
+camera, saving into Downloads, links, and the app's own address and version.
+
+It used to draw its own note list, filters, notebooks, trash and settings in Compose, with
+only a note's body in a WebView. Every feature the site gained then had to be built twice,
+and within a week the phone was missing bulk selection, auto-fill and half of what
+Settings does. The site is held to a phone-layout standard anyway, so the app shows it. A
+self-hosted instance serves the app the site that matches its API, and a change to the site
+reaches the phone on deploy, with no store release.
 
 ```
 cd apps/android
@@ -1117,25 +1122,43 @@ through Android's account sheet, GitHub through a Custom Tab to `/connect` that 
 with a one-time token, or email and password against Better Auth directly. Every path ends
 the same way: the session cookie the response set is stored per origin in app-private
 preferences. Its value goes out as `Authorization: Bearer` from the app's own client, and
-the same cookie is written into the WebView's jar before the editor loads — one sign-in,
+the same cookie is written into the WebView's jar before the site loads — one sign-in,
 one session, nothing exchanged between the two. A Trusted Web Activity could never do
 this, because Chrome's cookie jar is Chrome's; that is why the previous shell needed a
-handoff on every launch.
+handoff on every launch. Signing out on the page tells the app, which forgets its copy and
+shows its own sign-in. A page that believes the session has ended says so too, and the app
+asks `/api/me` before believing it, because a phone with no signal looks the same to the
+page; that case gets a native "couldn't reach" panel and keeps the session.
 
-**How a note is edited.** The app draws the title, notebook and tags natively and saves
-them itself; the page saves the body. `PATCH /api/notes/:id` is partial, so the two never
-overwrite each other. A small bridge (`apps/web/src/app-bridge.ts`) carries the page's
-save state and its count of uploads in flight to the app, and lets the app ask the page
-to flush — or to abandon those uploads first — before the screen closes.
+**How the site is hosted.** `MainActivity` is one WebView of the instance. The page sits
+between the system bars, and the app paints the strips behind them in the page's own
+colour, which the page reports; the keyboard shrinks the page, so the editor's toolbar sits
+on the keys. A small bridge (`apps/web/src/app-bridge.ts`, `NoteBridge.kt`) carries
+everything else. Back asks the page first, which closes an open sheet, then walks the
+WebView's history, then puts the app in the background rather than finishing it, so an
+upload in flight and the page's state survive. A notification's note opens in place
+without reloading the site. The site's Settings shows an "App settings" pill only inside
+the app, for the native screen that holds the instance address and version; the launcher
+icon's long-press reaches it too.
+
+Links off the site, `target=_blank` included, open in a Custom Tab. Attachment downloads
+go to DownloadManager with the session added by hand, since it cannot see the WebView's
+cookies. An export is built in the page (see [Backups and export](#backups-and-export))
+and streamed to the app through the bridge's synchronous save calls, which write it into
+Downloads as it arrives. A `blob:` download would reach the download manager as an address
+only the page can read, and the export would silently save nothing. Links to the
+instance's `/notes`, `/trash` and `/settings` open in the app through verified App Links,
+rebased onto whichever instance the app points at; the rest of the host, `/connect` and
+mailed links above all, stays in the browser.
 
 **How a file is attached.** The Attach button is the editor's own, in its bar; what the
-app adds is the file chooser behind it, since a WebView opens no picker of its own. The
-system picker's files go to the page as they are, under the picker's grant. A HEIC photo
-is transcoded to JPEG on the phone first, for the reason given under captures below, and
-handed back through a FileProvider. Pressing Back with a file still uploading asks first:
-leaving anyway drops the upload and its placeholder rather than saving the placeholder
-into the note, which is what would otherwise happen, since the WebView that could have
-replaced it dies with the screen.
+app adds is the file chooser behind it, since a WebView opens no picker of its own. It
+offers the phone's file apps with the camera beside them, the way Chrome answers the same
+input, and an input that asks for capture goes straight to the camera. The picker's files
+go to the page as they are, under the picker's grant. A photo the camera takes is written
+to the app's cache and handed over through a FileProvider, accepted by identity because the
+chooser otherwise refuses this app's own provider. A HEIC photo is transcoded to JPEG on
+the phone first, for the reason given under captures below.
 
 **How a capture works.** Sharing to Unbent opens a sheet over the sending app with the
 title, the notebook and the tags, prefilled so that the lazy case is one tap on Save. The
@@ -1161,7 +1184,7 @@ fails, the note is still saved and the file stays on the server's pending list, 
 app's pass on open picks it up.
 
 **Pointing it at a dev server.** On the sign-in screen, Change the address to
-`http://10.0.2.2:5173` from an emulator; once signed in the same field is in Settings.
+`http://10.0.2.2:5173` from an emulator; once signed in the same field is in App settings.
 Cleartext is permitted for loopback addresses in debug builds only (see
 `network_security_config.xml`), and the API trusts that origin in development (see
 `baseURLFor` in `apps/api/src/auth.ts`).
@@ -1187,8 +1210,8 @@ unbent.defaultInstance=https://notes.example.com
 unbent.applicationId=com.example.notes
 ```
 
-The first is where the app signs in until someone changes it in Settings; unset, it is
-`https://unbent.app`. The second is the identity Play, the Google OAuth client and the app
+The first is where the app signs in until someone changes it in App settings; unset, it is
+`https://unbent.app`. Its host is also the one the app claims links on. The second is the identity Play, the Google OAuth client and the app
 links document all key on, and a fork that publishes needs one of its own — Play will not
 take a second app under an id it already has, and a reverse-domain id has to be one you
 control. The Kotlin package stays `com.makerocketgonow.unbent` either way; only the id
@@ -1201,7 +1224,8 @@ offer the site's passkeys to it, if the site says which app that is: a Digital A
 document at `/.well-known/assetlinks.json` naming the package and the SHA-256 of every
 certificate that signs it. The instance serves that document from its `ANDROID_ASSET_LINKS`
 secret — the JSON verbatim, an array of statements — and an instance that has not set one
-vouches for no app, which is right until you have one. Three keys usually sign a published
+vouches for no app, which is right until you have one. The debug build is a different
+package (`.debug`) and needs a statement of its own. Three keys usually sign a published
 app, and all three belong in it: the debug keystore, the upload key, and the App Signing
 key Play re-signs every bundle with, whose fingerprint is on the app's App signing page in
 Play Console. Registering only the upload key is the classic trap, because every build you
