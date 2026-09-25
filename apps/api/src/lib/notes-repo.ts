@@ -675,10 +675,10 @@ const TRASH_SORT = {
  *
  * Not an entry in `SORTS` because the column depends on the type: the numeric types
  * order by their `value_num` shadow and the rest by `value_text`, the same split
- * `fieldSortsNumerically` draws for the cursor. The value comes in through a LEFT JOIN
- * aliased `sf`, so notes without one are still rows — ordered last, whichever direction,
- * by the `IS NULL` term the ORDER BY leads with. The rows show their updated date under
- * this sort, as under the title sort, so that is what a date range reads.
+ * `fieldSortsNumerically` draws for the cursor. The column names the value row aliased
+ * `sf`, which `pageRows` walks in order; notes without a value come after every note with
+ * one, whichever direction. The rows show their updated date under this sort, as under the
+ * title sort, so that is what a date range reads.
  */
 function fieldSort(def: FieldDef) {
   const numeric = fieldSortsNumerically(def.type);
@@ -917,65 +917,58 @@ export class NotesRepo extends ScopedRepo {
     const spec = trashed ? TRASH_SORT : byField ? fieldSort(byField) : SORTS[sort];
     const descending = trashed || (opts.order ?? 'desc') === 'desc';
     const collate = 'collate' in spec && spec.collate ? ` ${spec.collate.trim()}` : '';
+    const direction = descending ? 'DESC' : 'ASC';
+    const op = descending ? '<' : '>';
+    // Titles and field text compare as text; the timestamp and numeric columns must bind as
+    // numbers or SQLite compares them as strings, where '9' sorts after '10'.
+    const isText = !trashed && 'text' in spec && spec.text === true;
+
+    const binds: unknown[] = [this.userId];
+    // Bound second, straight after the user id, so the page can name it as ?2 whatever
+    // else the filters bind later.
+    if (byField) binds.push(byField.id);
+
+    const decoded = cursor ? decodeCursor(cursor) : null;
+    /**
+     * `(key, id) < (?, ?)` spelled out, because SQLite has no row-value comparison in
+     * this position: strictly past the boundary key, or on it and past that row's id.
+     *
+     * With a plain range in front: SQLite cannot seek into an index through the OR when
+     * the column carries a collation, so a page deep into the title sort walked every
+     * title before it — thousands of rows read for fifty. `key >= K` is one it can seek
+     * on, and the OR behind it then only settles the ties.
+     */
+    const pastCursor = (column: string, idColumn: string): string => {
+      if (!decoded) return '';
+      binds.push(isText ? decoded.key : Number(decoded.key), decoded.id);
+      const keyBind = `?${binds.length - 1}`;
+      const idBind = `?${binds.length}`;
+      return (
+        `${column} ${op}= ${keyBind}` +
+        ` AND (${column} ${op} ${keyBind} OR ${idColumn} ${op} ${idBind})`
+      );
+    };
 
     const conditions = [
       ownerCondition(tags),
       trashed ? 'n.deleted_at IS NOT NULL' : 'n.deleted_at IS NULL',
     ];
-    const binds: unknown[] = [this.userId];
+    const sortKey = `${spec.column}${collate}`;
+    const cursorCondition = !byField && decoded ? pastCursor(sortKey, 'n.id') : '';
     /*
-     * The value being sorted by, one row per note or none. Bound second, straight after
-     * the user id, so the join can name it as ?2 whatever else the filters bind later.
+     * A field sort's valueless boundary is recognised before the filters bind, so the
+     * cursor's binds keep one order whichever branch reads them. `''` is the marker
+     * `fieldSortKey` writes for a row with no value.
      */
-    let sortJoin = '';
-    if (byField) {
-      binds.push(byField.id);
-      sortJoin = `LEFT JOIN note_fields sf
-             ON sf.note_id = n.id AND sf.field_id = ?2 AND sf.user_id = ?1`;
-    }
-
-    const decoded = cursor ? decodeCursor(cursor) : null;
-    if (decoded) {
-      /**
-       * `(key, id) < (?, ?)` spelled out, because SQLite has no row-value comparison in
-       * this position: strictly past the boundary key, or on it and past that row's id.
-       *
-       * Titles compare as text; the timestamp columns are numbers and must bind as
-       * numbers or SQLite compares them as strings, where '9' sorts after '10'.
-       */
-      const isText = !trashed && 'text' in spec && spec.text === true;
-      const op = descending ? '<' : '>';
-      if (byField && decoded.key === '') {
-        /*
-         * The boundary row had no value. Those rows come after every row with one, in
-         * both directions (see `fieldSort`), so the rest of the page is the remaining
-         * valueless rows past that id — never a row with a value, which is why the
-         * key is not compared at all. `''` is the marker `fieldSortKey` writes.
-         */
+    const pastValueless = byField && decoded?.key === '';
+    let valuedCursor = '';
+    let valuelessCursor = '';
+    if (byField && decoded) {
+      if (pastValueless) {
         binds.push(decoded.id);
-        conditions.push(`(${spec.column} IS NULL AND n.id ${op} ?${binds.length})`);
+        valuelessCursor = `n.id ${op} ?${binds.length}`;
       } else {
-        binds.push(isText ? decoded.key : Number(decoded.key), decoded.id);
-        const keyBind = `?${binds.length - 1}`;
-        const idBind = `?${binds.length}`;
-        // Past the boundary in the sort's own order; for a field sort the valueless
-        // rows still lie ahead, so a NULL passes too.
-        const nullsAhead = byField ? `${spec.column} IS NULL OR ` : '';
-        /*
-         * The same condition with a plain range in front, for the sorts with an index.
-         * SQLite cannot seek into an index through the OR above when the column carries
-         * a collation, so a page deep into the title sort walked every title before it —
-         * thousands of rows read for fifty. `key >= K` is one it can seek on, and the OR
-         * behind it then only settles the ties. Not for a field sort: its NULLs sit past
-         * every value, where no range on the value reaches them.
-         */
-        conditions.push(
-          byField
-            ? `(${nullsAhead}${spec.column}${collate} ${op} ${keyBind}` +
-                ` OR (${spec.column}${collate} = ${keyBind} AND n.id ${op} ${idBind}))`
-            : `${spec.column}${collate} ${op}= ${keyBind}` +
-                ` AND (${spec.column}${collate} ${op} ${keyBind} OR n.id ${op} ${idBind})`,
-        );
+        valuedCursor = pastCursor(sortKey, 'sf.note_id');
       }
     }
     conditions.push(
@@ -987,8 +980,62 @@ export class NotesRepo extends ScopedRepo {
       ),
     );
     binds.push(limit);
+    const limitBind = `?${binds.length}`;
 
-    const direction = descending ? 'DESC' : 'ASC';
+    const columns = `n.id, n.title, n.body, n.created_at, n.updated_at, n.deleted_at, n.notebook_id`;
+    let page: string;
+    if (byField) {
+      /*
+       * Sorted by a field, the page is two ordered runs one after the other: the notes
+       * holding a value, in value order, then the notes holding none, by id. That is the
+       * order the old single query produced with `(value IS NULL)` leading its ORDER BY,
+       * but no index can serve that ORDER BY, so it read every note in scope and every
+       * value, then sorted them all to keep fifty — about two rows per note in the
+       * notebook, on every page however deep: ~2.4k rows for a page of a 770-note notebook
+       * where sorting it by date read ~840.
+       *
+       * Split, the first run walks 0027's index for the one field — already in order, id
+       * tie-break and collation included — checking each value's note against the filters
+       * as it goes, and stops at the page's end: ~100 rows at any depth. CROSS JOIN pins
+       * that loop order; left to itself the planner could start from the notebook's notes
+       * and sort again. The owner check is on the note rather than on `sf.user_id`: a
+       * value's owner is its note's, and reading that column would fetch each value's
+       * table row for nothing the index does not already answer.
+       *
+       * The second run is the expensive one — nothing indexes "notes with no value", so it
+       * reads the notes in scope — but UNION ALL under a LIMIT runs it only when the first
+       * run came up short, which is the last page or two of a long list.
+       *
+       * A cursor on a valued row pages the first run and starts the second from the top,
+       * since every valueless row lies beyond every valued one in both directions. A
+       * cursor on a valueless row skips the first run entirely.
+       */
+      const where = conditions.join(' AND ');
+      const valued = `SELECT * FROM (
+                 SELECT ${columns}, ${sortKey} AS sort_key
+                   FROM note_fields sf CROSS JOIN notes n ON n.id = sf.note_id
+                  WHERE sf.field_id = ?2 AND ${spec.column} IS NOT NULL AND ${where}
+                        ${valuedCursor ? `AND ${valuedCursor}` : ''}
+                  ORDER BY ${sortKey} ${direction}, sf.note_id ${direction}
+                  LIMIT ${limitBind})`;
+      const valueless = `SELECT * FROM (
+                 SELECT ${columns}, NULL AS sort_key
+                   FROM notes n
+                  WHERE ${where}
+                    AND NOT EXISTS (SELECT 1 FROM note_fields sf
+                                     WHERE sf.note_id = n.id AND sf.field_id = ?2
+                                       AND ${spec.column} IS NOT NULL)
+                        ${valuelessCursor ? `AND ${valuelessCursor}` : ''}
+                  ORDER BY n.id ${direction}
+                  LIMIT ${limitBind})`;
+      page = pastValueless ? valueless : `${valued} UNION ALL ${valueless} LIMIT ${limitBind}`;
+    } else {
+      page = `SELECT ${columns}, ${sortKey} AS sort_key
+                FROM notes n
+               WHERE ${[...conditions, ...(cursorCondition ? [cursorCondition] : [])].join(' AND ')}
+               ORDER BY ${sortKey} ${direction}, n.id ${direction}
+               LIMIT ${limitBind}`;
+    }
 
     /*
        The page is chosen in a subquery, and the row's tags, fields and files are looked
@@ -1003,7 +1050,6 @@ export class NotesRepo extends ScopedRepo {
        can name it: SQLite then keeps the subquery's order rather than sorting again, and
        a key without the collation would have cost a second sort on title pages.
     */
-    const nullsLast = byField ? `(${spec.column} IS NULL) ASC, ` : '';
     const { results } = await this.db
       .prepare(
         `SELECT n.id, n.title, n.body, n.created_at, n.updated_at, n.deleted_at,
@@ -1013,13 +1059,7 @@ export class NotesRepo extends ScopedRepo {
                   WHERE nt.note_id = n.id) AS tags,
                 ${FIELDS_SUBQUERY},
                 ${ATTACHMENTS_SUBQUERY}
-           FROM (SELECT n.id, n.title, n.body, n.created_at, n.updated_at, n.deleted_at,
-                        n.notebook_id, ${spec.column}${collate} AS sort_key
-                   FROM notes n
-                   ${sortJoin}
-                  WHERE ${conditions.join(' AND ')}
-                  ORDER BY ${nullsLast}${spec.column}${collate} ${direction}, n.id ${direction}
-                  LIMIT ?${binds.length}) n
+           FROM (${page}) n
            LEFT JOIN notebooks nb ON nb.id = n.notebook_id
           ORDER BY ${byField ? '(n.sort_key IS NULL) ASC, ' : ''}n.sort_key ${direction}, n.id ${direction}`,
       )

@@ -184,3 +184,90 @@ describe('sort by a custom field', () => {
     expect(malformed.status).toBe(400);
   });
 });
+
+/**
+ * The rows a field's values reach but the list must not show.
+ *
+ * A field-sorted page is chosen by walking the field's values and checking each one's note
+ * (see `pageRows`), so the values are the starting point and the note is the filter. A
+ * value outlives its note's place in the list: trashing a note keeps it, and so does
+ * moving the note to another notebook. Both must drop out, and a tag filter on top must
+ * narrow the valued and the valueless notes alike.
+ */
+describe('sort by a custom field, from the values outward', () => {
+  let walked: string;
+  let elsewhere: string;
+  let price: string;
+
+  beforeAll(async () => {
+    const stamp = Date.now();
+    walked = `Walked ${stamp}`;
+    elsewhere = `Elsewhere ${stamp}`;
+    const seed = await post<{ id: string }>(actor, '/api/notes', {
+      title: 'seed',
+      body: 'x',
+      notebook: walked,
+      tags: ['keep'],
+    });
+    await post(actor, '/api/notes', { title: 'parked', body: 'x', notebook: elsewhere });
+    const { notebooks } = (await fetch(`${BASE}/api/notebooks`, asUser(actor)).then((r) =>
+      r.json(),
+    )) as { notebooks: Array<{ id: string; name: string }> };
+    const nb = notebooks.find((n) => n.name === walked)!;
+    price = (await post<{ id: string }>(actor, `/api/notebooks/${nb.id}/fields`, {
+      name: 'Price',
+      type: 'number',
+    })).id;
+
+    await fetch(`${BASE}/api/notes/${seed.id}`, asUser(actor, {
+      method: 'PATCH',
+      body: JSON.stringify({ fields: { [price]: 5 } }),
+    }));
+    const make = (title: string, value: number | undefined, tags: string[] = []) =>
+      post<{ id: string }>(actor, '/api/notes', {
+        title,
+        body: 'x',
+        notebook: walked,
+        tags,
+        ...(value !== undefined ? { fields: { [price]: value } } : {}),
+      });
+    await make('three', 3);
+    await make('blank-kept', undefined, ['keep']);
+    await make('blank', undefined);
+    const trashed = await make('trashed', 100, ['keep']);
+    const moved = await make('moved', 50, ['keep']);
+
+    await fetch(`${BASE}/api/notes/${trashed.id}`, asUser(actor, { method: 'DELETE' }));
+    await fetch(`${BASE}/api/notes/${moved.id}`, asUser(actor, {
+      method: 'PATCH',
+      body: JSON.stringify({ notebook: elsewhere }),
+    }));
+  });
+
+  it('leaves out trashed notes and notes moved to another notebook', async () => {
+    for (const limit of [1, 2, 50]) {
+      const titles = await walk(
+        actor,
+        `notebook=${encodeURIComponent(walked)}&sortField=${price}&order=desc`,
+        limit,
+      );
+      expect(titles.slice(0, 2)).toEqual(['seed', 'three']);
+      expect(titles.slice(2).sort()).toEqual(['blank', 'blank-kept']);
+    }
+  });
+
+  it('applies a tag filter to the valued and the valueless notes alike', async () => {
+    const titles = await walk(
+      actor,
+      `notebook=${encodeURIComponent(walked)}&tag=keep&sortField=${price}&order=asc`,
+      1,
+    );
+    expect(titles).toEqual(['seed', 'blank-kept']);
+  });
+
+  it('still finds a moved note by its value outside the notebook', async () => {
+    // Unscoped, the moved note's value still sorts it: the value is the note's own data.
+    const titles = await walk(actor, `sortField=${price}&order=desc&tag=keep`, 50);
+    expect(titles.slice(0, 2)).toEqual(['moved', 'seed']);
+  });
+});
