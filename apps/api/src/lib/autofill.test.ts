@@ -184,7 +184,7 @@ describe('the title', () => {
   it('is written by the language model when there is one, shown the note whole', async () => {
     const { jev } = fake({ title: choice('ACME HARDWARE', 0.9) });
     const out = await autofill(jev, input({ note: { title: 'Untitled scan', body: 'Paid.', tags: [], notebookId: null } }), written);
-    expect(out.title).toEqual({ value: 'Acme Hardware invoice, March 2026' });
+    expect(out.title).toEqual({ value: 'Acme Hardware Invoice, March 2026' });
     expect(written.title).toHaveBeenCalledWith({
       title: 'Untitled scan',
       body: 'Paid.',
@@ -196,7 +196,7 @@ describe('the title', () => {
     const reading = 'Acme Plumbing business card\nBusiness card: A card for a plumber.\n\nACME PLUMBING\n(612) 555-0148';
     const lone = input({ attachments: [{ filename: 'card.jpg', text: reading, readBy: 'vision' }] });
     const out = await autofill(fake().jev, lone, written);
-    expect(out.title).toEqual({ value: 'Acme Plumbing business card' });
+    expect(out.title).toEqual({ value: 'Acme Plumbing Business Card' });
     expect(written.title).not.toHaveBeenCalled();
 
     // A body, a second file, or a title of the person's own is context the reader never
@@ -217,16 +217,16 @@ describe('the title', () => {
     // Both rounds are asked while the title is still being written.
     await vi.waitFor(() => expect(calls).toHaveLength(2));
     finish('Acme Hardware invoice, March 2026');
-    expect((await running).title).toEqual({ value: 'Acme Hardware invoice, March 2026' });
+    expect((await running).title).toEqual({ value: 'Acme Hardware Invoice, March 2026' });
   });
 
-  it('falls back to Jev\u2019s pick of a line when the model declines or fails', async () => {
+  it('falls back to Jev\u2019s pick of a line, in title case, when the model declines or fails', async () => {
     const { jev } = fake({ title: choice('ACME HARDWARE', 0.7) });
     const declined = { title: vi.fn(async () => null) };
-    expect((await autofill(jev, input(), declined)).title).toEqual({ value: 'ACME HARDWARE', confidence: 0.7 });
+    expect((await autofill(jev, input(), declined)).title).toEqual({ value: 'Acme Hardware', confidence: 0.7 });
     const failing = { title: vi.fn(async () => { throw new Error('down'); }) };
-    expect((await autofill(jev, input(), failing)).title).toEqual({ value: 'ACME HARDWARE', confidence: 0.7 });
-    expect((await autofill(jev, input())).title).toEqual({ value: 'ACME HARDWARE', confidence: 0.7 });
+    expect((await autofill(jev, input(), failing)).title).toEqual({ value: 'Acme Hardware', confidence: 0.7 });
+    expect((await autofill(jev, input())).title).toEqual({ value: 'Acme Hardware', confidence: 0.7 });
   });
 
   it('tells an operator when the title model rejected its key, and no one else', async () => {
@@ -253,7 +253,7 @@ describe('the title', () => {
   it('does not flag when the model wrote a title despite an operator watching', async () => {
     // No fault to report when the title came back \u2014 auth-failed only rides a fallback.
     const out = await autofill(fake().jev, input(), written, true);
-    expect(out.title).toEqual({ value: 'Acme Hardware invoice, March 2026' });
+    expect(out.title).toEqual({ value: 'Acme Hardware Invoice, March 2026' });
     expect(out.titleModel).toBeUndefined();
   });
 });
@@ -269,7 +269,7 @@ describe('what the model answers', () => {
     });
     const out = await autofill(jev, input());
     expect(out.notebook).toEqual({ id: 'nb-receipts', name: 'Receipts', confidence: 0.8 });
-    expect(out.title).toEqual({ value: 'ACME HARDWARE', confidence: 0.7 });
+    expect(out.title).toEqual({ value: 'Acme Hardware', confidence: 0.7 });
     // Likeliest first; "taxes" at 0.5 is below the floor.
     expect(out.tags).toEqual([
       { name: 'home', confidence: 0.9 },
