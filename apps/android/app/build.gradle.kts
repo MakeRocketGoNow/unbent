@@ -91,7 +91,8 @@ android {
          * opted out of, and every activity already calls `enableEdgeToEdge()` with insets
          * handled per screen; orientation and resizability locks are ignored above 600dp,
          * and none are declared; `onBackPressed` stops being called, and back is handled
-         * through Compose's `BackHandler` rather than the removed path.
+         * through the dispatcher's callbacks and Compose's `BackHandler` rather than the
+         * removed path.
          */
         targetSdk = 36
         /**
@@ -221,9 +222,7 @@ dependencies {
     implementation(libs.compose.material3)
     implementation(libs.compose.material.icons.core)
     implementation(libs.androidx.activity.compose)
-    implementation(libs.androidx.navigation.compose)
     implementation(libs.androidx.webkit)
-    implementation(libs.androidx.lifecycle.runtime.compose)
     debugImplementation(libs.compose.ui.tooling)
     implementation(libs.okhttp)
     implementation(libs.kotlinx.serialization.json)

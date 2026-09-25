@@ -2,7 +2,6 @@
 <resources>
     <string name="app_name">Unbent</string>
     <string name="sign_in_title">Sign in to Unbent</string>
-    <string name="settings_title">Settings</string>
     <string name="shortcut_settings_short">Settings</string>
     <string name="shortcut_settings_long">App settings</string>
     <string name="app_settings_title">App settings</string>
@@ -58,157 +57,13 @@
     <string name="instance_use">Use this address</string>
 
     <string name="back">Back</string>
-    <string name="more">More</string>
     <string name="untitled">Untitled</string>
     <string name="inbox">Inbox</string>
-    <string name="no_notes">No notes yet.</string>
-    <string name="no_notes_filtered">No notes here.</string>
-    <string name="no_matches">No matches.</string>
-    <string name="search_keep_typing">Keep typing to search notes.</string>
-    <string name="matched_in">in %1$s</string>
-    <string name="matched_tagged">tagged %1$s</string>
-    <string name="search_picks_caption">Tags and notebooks</string>
-    <string name="search_notes_caption">Notes</string>
-    <string name="search_pick_tag">Filter by tag %1$s</string>
-    <string name="search_pick_notebook">Show notebook %1$s</string>
-    <string name="field_filter_eq">%1$s: %2$s</string>
-    <string name="field_filter_gte">%1$s ≥ %2$s</string>
-    <string name="field_filter_lte">%1$s ≤ %2$s</string>
-    <string name="field_filter_set">%1$s is set</string>
-    <string name="field_filter_empty">%1$s is empty</string>
-    <string name="field_filter_not">Not %1$s</string>
-    <string name="field_unknown">Unknown field</string>
-    <string name="field_filter_unreadable">Unreadable field filter</string>
-    <string name="fields_label">Fields</string>
-    <plurals name="fields_selected">
-        <item quantity="one">%d filter</item>
-        <item quantity="other">%d filters</item>
-    </plurals>
-    <string name="field_any">Any</string>
-    <string name="field_set">Is set</string>
-    <string name="field_empty">Is empty</string>
-    <string name="field_checked">Checked</string>
-    <string name="field_unchecked">Unchecked</string>
-    <string name="field_min">Min</string>
-    <string name="field_max">Max</string>
-    <string name="field_from">From</string>
-    <string name="field_to">To</string>
-    <string name="field_bound_clear">Clear %1$s</string>
-    <string name="search">Search</string>
-    <string name="search_hint">Search notes…</string>
-    <string name="close_search">Close search</string>
-    <string name="clear">Clear</string>
-    <string name="filters">Filters</string>
-    <string name="all_notes">All notes</string>
-    <string name="tags_clear">Clear tag</string>
-    <string name="notebooks_label">Notebooks</string>
-    <string name="notebooks_edit">Edit</string>
-    <string name="loading">Loading…</string>
-    <string name="filter_notes">Filter notes</string>
-    <string name="filter_clear_all">Clear all</string>
-    <string name="filter_applied">Filters</string>
-    <string name="filter_remove">Remove %1$s</string>
-    <string name="filter_none">Nothing is filtered.</string>
-    <string name="tags_find">Find tags</string>
-    <string name="tags_no_matches">No tags match.</string>
-    <string name="tags_all_chosen">Every tag is chosen.</string>
-    <plurals name="tags_dropped">
-        <item quantity="one">This Unbent can filter by one tag at a time, so %2$s was dropped. Showing #%1$s.</item>
-        <item quantity="other">This Unbent can filter by one tag at a time, so %2$s were dropped. Showing #%1$s.</item>
-    </plurals>
-    <plurals name="tags_selected">
-        <item quantity="one">%d tag</item>
-        <item quantity="other">%d tags</item>
-    </plurals>
-    <string name="dates_today">Today</string>
-    <string name="dates_7">Last 7 days</string>
-    <string name="dates_30">Last 30 days</string>
-    <string name="dates_90">Last 90 days</string>
-    <string name="dates_year">This year</string>
-    <string name="dates_custom">Custom…</string>
-    <string name="manage_notebooks">Manage notebooks</string>
-    <string name="trash">Trash</string>
-    <string name="trash_empty">The trash is empty.</string>
-    <string name="trash_restore">Restore</string>
-    <string name="trash_delete_forever">Delete forever</string>
-    <string name="trash_delete_title">Delete “%1$s” forever?</string>
-    <string name="trash_delete_body">Its attachments go too. This cannot be undone.</string>
-    <string name="trash_empty_action">Empty trash</string>
-    <string name="trash_empty_title">Permanently delete everything in the trash?</string>
-    <string name="trash_empty_body">This cannot be undone. Restore anything you want to keep first.</string>
-    <plurals name="trash_emptied">
-        <item quantity="one">Deleted %d note.</item>
-        <item quantity="other">Deleted %d notes.</item>
-    </plurals>
-    <string name="notebook_rename">Rename</string>
-    <string name="notebook_delete">Delete</string>
-    <string name="notebook_new_hint">New notebook name</string>
-    <string name="notebook_create">Create</string>
-    <string name="notebook_create_row">Create new notebook</string>
-    <string name="notebook_none">No notebooks yet.</string>
-    <string name="notebook_delete_title">Delete “%1$s”?</string>
-    <string name="notebook_delete_empty">It has no notes.</string>
-    <string name="notebook_delete_keep">Its notes become unfiled, not deleted.</string>
-    <string name="notebook_delete_only">Delete notebook</string>
-    <string name="notebook_manage_hint">Renaming a notebook updates every note in it. Deleting one leaves its notes unfiled unless you move them to the trash.</string>
-    <plurals name="notebook_delete_cascade">
-        <item quantity="one">Delete and move %d note to the trash</item>
-        <item quantity="other">Delete and move %d notes to the trash</item>
-    </plurals>
-    <string name="new_note">New note</string>
-    <string name="sort_label">Sort</string>
-    <string name="sort_updated">Recently updated</string>
-    <string name="sort_newest">Newest first</string>
-    <string name="sort_oldest">Oldest first</string>
-    <string name="sort_title_az">Title A–Z</string>
-    <string name="sort_current">Sort: %1$s</string>
-    <string name="dates_label">Dates</string>
-    <string name="dates_any">Any time</string>
-    <string name="dates_clear">Clear dates</string>
-    <string name="dates_apply">Apply</string>
-    <string name="date_range">%1$s – %2$s</string>
-    <string name="date_from">From %1$s</string>
-    <string name="date_to">Until %1$s</string>
-    <string name="sort_title_za">Title Z–A</string>
-    <string name="just_now">just now</string>
-    <string name="minutes_ago">%1$dm ago</string>
-    <string name="hours_ago">%1$dh ago</string>
-    <string name="load_failed">Couldn\'t load. %1$s</string>
-    <string name="note_missing">That note doesn\'t exist, or was deleted.</string>
-    <string name="note_delete">Delete</string>
-    <string name="note_delete_title">Move to the trash?</string>
-    <string name="note_delete_body">“%1$s” goes to the trash. You can restore it from there.</string>
-    <string name="note_open_web">Open on the web</string>
-    <string name="save_unsaved">Unsaved</string>
-    <string name="save_saving">Saving…</string>
-    <string name="save_saved">Saved</string>
-    <string name="save_error">Save failed</string>
-    <string name="attach_attaching">Attaching…</string>
-    <string name="leave_attaching_title">Still attaching</string>
-    <plurals name="leave_attaching_body">
-        <item quantity="one">%d file is still attaching. If you leave now it won\'t be added to the note.</item>
-        <item quantity="other">%d files are still attaching. If you leave now they won\'t be added to the note.</item>
-    </plurals>
-    <string name="leave_keep_waiting">Keep waiting</string>
-    <string name="leave_anyway">Leave</string>
     <string name="notebook_label">Notebook</string>
-    <string name="new_notebook">New notebook</string>
     <string name="tags_label">Tags</string>
     <string name="add_tag">Add a tag</string>
     <string name="remove_tag">Remove %1$s</string>
-    <string name="done">Done</string>
-    <string name="manage_on_web">Manage on the web</string>
-    <string name="manage_on_web_hint">Import and export live on the site. The browser has its own sign-in.</string>
 
-    <!--
-        Deleting an account happens on the web, so this row opens the settings page that
-        starts it rather than doing it here. Play requires the path to be reachable from
-        inside the app; duplicating the flow natively would mean a second confirmation UI
-        to keep in step with the first, for something done once in an account's life — and
-        the confirmation that matters is a link in an email either way.
-    -->
-    <string name="delete_account">Delete account</string>
-    <string name="delete_account_hint">Removes your notes, files and account for good. Opens the site, which emails a link to confirm before anything is deleted.</string>
     <!--
       Version name and code together, because neither identifies a build on its own: the
       name repeats across every build between bumps, and the code is the only thing that
@@ -218,10 +73,6 @@
     <string name="settings_version">Version %1$s (%2$d)</string>
     <string name="instance_label">Unbent address</string>
     <string name="instance_hint">The Unbent this app opens. Switching signs you in there; you stay signed in here for when you switch back.</string>
-    <string name="save">Save</string>
-    <string name="sign_out">Sign out</string>
-    <string name="signed_in_as">Signed in</string>
-    <string name="signed_out">Not signed in</string>
 
     <string name="capture_title">Save to Unbent</string>
     <string name="capture_text">Text</string>
@@ -247,9 +98,5 @@
     <plurals name="capture_files">
         <item quantity="one">%d file</item>
         <item quantity="other">%d files</item>
-    </plurals>
-    <plurals name="notes_count">
-        <item quantity="one">%d note</item>
-        <item quantity="other">%d notes</item>
     </plurals>
 </resources>
