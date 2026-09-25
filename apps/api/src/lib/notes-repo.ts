@@ -289,6 +289,59 @@ const SEARCH_OVERFETCH = 4;
  */
 const SCOPE_DRIVEN_SEARCH_MAX = 100;
 
+/**
+ * The four sources a search reads, in tier order, and what a row from each says about its
+ * match: the FTS table, which of its columns the snippet comes from, and which of the
+ * matched columns it fills. `weights` is the bm25 weighting, where a source has one — the
+ * note's title counts ten times its body.
+ *
+ * Both query shapes — `scopeDrivenSearchSql` and the FTS-driven query in `search` — select
+ * exactly these columns for every tier and differ only in how they reach the rows, so the
+ * columns are written once, in `tierColumns`. A snippet's width, a tier's place or a fifth
+ * source changed in one shape and not the other would rank the same note differently
+ * depending on how large the filter was.
+ */
+interface SearchTier {
+  tier: number;
+  fts: string;
+  /** Which of the FTS table's columns the snippet is cut from. */
+  snippet: number;
+  weights: string | null;
+  /** The matched columns this source fills; the rest are NULL. */
+  matched: { file?: string; field?: string; tag?: string };
+}
+
+const SEARCH_TIERS: Record<'note' | 'tag' | 'field' | 'file', SearchTier> = {
+  note: { tier: 0, fts: 'notes_fts', snippet: 1, weights: '10.0, 1.0', matched: {} },
+  tag: { tier: 1, fts: 'tags_fts', snippet: 0, weights: null, matched: { tag: 't.name' } },
+  field: { tier: 2, fts: 'note_fields_fts', snippet: 0, weights: null, matched: { field: 'f.name' } },
+  file: { tier: 3, fts: 'attachment_text_fts', snippet: 0, weights: null, matched: { file: 'at.filename' } },
+};
+
+/**
+ * One tier's SELECT list. `row` is the alias the note's own columns come from. `rank` is
+ * how the shape reads relevance: the FTS-driven query orders by the vtab's `rank` column,
+ * which streams in rank order so its LIMIT can stop early (the weights are applied in its
+ * WHERE, by `tierRankMatch`); the scope-driven one probes a row at a time and calls
+ * `bm25()` with the weights directly. Both give the same numbers.
+ */
+function tierColumns(source: keyof typeof SEARCH_TIERS, row: 'n' | 's', rank: 'vtab' | 'bm25'): string {
+  const t = SEARCH_TIERS[source];
+  const score = rank === 'vtab' ? `${t.fts}.rank` : `bm25(${t.fts}${t.weights ? `, ${t.weights}` : ''})`;
+  return `${row}.id, ${row}.title, ${row}.updated_at,
+                   snippet(${t.fts}, ${t.snippet}, '<<', '>>', '…', 24) AS snippet,
+                   ${t.matched.file ?? 'NULL'} AS matched_file,
+                   ${t.matched.field ?? 'NULL'} AS matched_field,
+                   ${t.matched.tag ?? 'NULL'} AS matched_tag,
+                   ${score} AS rank,
+                   ${t.tier} AS tier`;
+}
+
+/** The weighting the FTS-driven query's `rank` column applies. Only the note tier has one. */
+function tierRankMatch(source: keyof typeof SEARCH_TIERS): string {
+  return `${SEARCH_TIERS[source].fts}.rank MATCH 'bm25(${SEARCH_TIERS[source].weights})'`;
+}
+
 interface SearchRow {
   id: string;
   title: string;
@@ -341,25 +394,13 @@ function scopeDrivenSearchSql(owner: string, scoped: string): string {
                ${scoped}
           ),
           note_hits AS (
-            SELECT s.id, s.title, s.updated_at,
-                   snippet(notes_fts, 1, '<<', '>>', '…', 24) AS snippet,
-                   NULL AS matched_file,
-                   NULL AS matched_field,
-                   NULL AS matched_tag,
-                   bm25(notes_fts, 10.0, 1.0) AS rank,
-                   0 AS tier
+            SELECT ${tierColumns('note', 's', 'bm25')}
               FROM scope s
              CROSS JOIN notes_fts ON notes_fts.rowid = s.rid
              WHERE notes_fts MATCH ?1
           ),
           tag_hits AS (
-            SELECT s.id, s.title, s.updated_at,
-                   snippet(tags_fts, 0, '<<', '>>', '…', 24) AS snippet,
-                   NULL AS matched_file,
-                   NULL AS matched_field,
-                   t.name AS matched_tag,
-                   bm25(tags_fts) AS rank,
-                   1 AS tier
+            SELECT ${tierColumns('tag', 's', 'bm25')}
               FROM scope s
              CROSS JOIN note_tags nt ON nt.note_id = s.id
              CROSS JOIN tags t ON t.id = nt.tag_id
@@ -367,13 +408,7 @@ function scopeDrivenSearchSql(owner: string, scoped: string): string {
              WHERE tags_fts MATCH ?1 AND +t.user_id = ?2
           ),
           field_hits AS (
-            SELECT s.id, s.title, s.updated_at,
-                   snippet(note_fields_fts, 0, '<<', '>>', '…', 24) AS snippet,
-                   NULL AS matched_file,
-                   f.name AS matched_field,
-                   NULL AS matched_tag,
-                   bm25(note_fields_fts) AS rank,
-                   2 AS tier
+            SELECT ${tierColumns('field', 's', 'bm25')}
               FROM scope s
              CROSS JOIN note_fields nf ON nf.note_id = s.id
              CROSS JOIN note_fields_fts ON note_fields_fts.rowid = nf.rowid
@@ -381,13 +416,7 @@ function scopeDrivenSearchSql(owner: string, scoped: string): string {
              WHERE note_fields_fts MATCH ?1 AND +nf.user_id = ?2
           ),
           file_hits AS (
-            SELECT s.id, s.title, s.updated_at,
-                   snippet(attachment_text_fts, 0, '<<', '>>', '…', 24) AS snippet,
-                   at.filename AS matched_file,
-                   NULL AS matched_field,
-                   NULL AS matched_tag,
-                   bm25(attachment_text_fts) AS rank,
-                   3 AS tier
+            SELECT ${tierColumns('file', 's', 'bm25')}
               FROM scope s
              CROSS JOIN attachment_text at ON at.note_id = s.id
              CROSS JOIN attachment_text_fts ON attachment_text_fts.rowid = at.rowid
@@ -2017,29 +2046,17 @@ export class NotesRepo extends ScopedRepo {
     const { results } = await this.db
       .prepare(
         `WITH note_hits AS MATERIALIZED (
-           SELECT n.id, n.title, n.updated_at,
-                  snippet(notes_fts, 1, '<<', '>>', '…', 24) AS snippet,
-                  NULL AS matched_file,
-                  NULL AS matched_field,
-                  NULL AS matched_tag,
-                  notes_fts.rank AS rank,
-                  0 AS tier
+           SELECT ${tierColumns('note', 'n', 'vtab')}
              FROM notes_fts
              JOIN notes n ON n.rowid = notes_fts.rowid
-            WHERE notes_fts MATCH ?1 AND notes_fts.rank MATCH 'bm25(10.0, 1.0)'
+            WHERE notes_fts MATCH ?1 AND ${tierRankMatch('note')}
               AND n.user_id = ?2 AND n.deleted_at IS NULL
               ${scoped}
             ORDER BY notes_fts.rank
             LIMIT ?3
          ),
          tag_hits AS MATERIALIZED (
-           SELECT n.id, n.title, n.updated_at,
-                  snippet(tags_fts, 0, '<<', '>>', '…', 24) AS snippet,
-                  NULL AS matched_file,
-                  NULL AS matched_field,
-                  t.name AS matched_tag,
-                  tags_fts.rank AS rank,
-                  1 AS tier
+           SELECT ${tierColumns('tag', 'n', 'vtab')}
              FROM tags_fts
              JOIN tags t ON t.rowid = tags_fts.rowid
              JOIN note_tags nt ON nt.tag_id = t.id
@@ -2056,13 +2073,7 @@ export class NotesRepo extends ScopedRepo {
            SELECT * FROM note_hits UNION ALL SELECT * FROM tag_hits
          ),
          field_hits AS MATERIALIZED (
-           SELECT n.id, n.title, n.updated_at,
-                  snippet(note_fields_fts, 0, '<<', '>>', '…', 24) AS snippet,
-                  NULL AS matched_file,
-                  f.name AS matched_field,
-                  NULL AS matched_tag,
-                  note_fields_fts.rank AS rank,
-                  2 AS tier
+           SELECT ${tierColumns('field', 'n', 'vtab')}
              FROM note_fields_fts
              JOIN note_fields nf ON nf.rowid = note_fields_fts.rowid
              JOIN notebook_fields f ON f.id = nf.field_id
@@ -2079,13 +2090,7 @@ export class NotesRepo extends ScopedRepo {
            SELECT * FROM early UNION ALL SELECT * FROM field_hits
          ),
          file_hits AS (
-           SELECT n.id, n.title, n.updated_at,
-                  snippet(attachment_text_fts, 0, '<<', '>>', '…', 24) AS snippet,
-                  at.filename AS matched_file,
-                  NULL AS matched_field,
-                  NULL AS matched_tag,
-                  attachment_text_fts.rank AS rank,
-                  3 AS tier
+           SELECT ${tierColumns('file', 'n', 'vtab')}
              FROM attachment_text_fts
              JOIN attachment_text at ON at.rowid = attachment_text_fts.rowid
              JOIN notes n ON n.id = at.note_id
