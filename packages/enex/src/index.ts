@@ -9,3 +9,4 @@ export * from './import-format.js';
 export * from './content-type-guess.js';
 export * from './ocr-text.js';
 export * from './pdf-text.js';
+export * from './export-archive.js';

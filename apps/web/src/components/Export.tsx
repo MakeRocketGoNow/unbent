@@ -1,5 +1,6 @@
-import { useState } from 'react';
 import { Link } from '@tanstack/react-router';
+import { Button } from './Button.js';
+import { startExport, stopExport, useExporting, type ExportState } from '../export-archive.js';
 
 /**
  * The export page.
@@ -8,15 +9,17 @@ import { Link } from '@tanstack/react-router';
  * download with no warning and no account of what was in it. It is the only backup this
  * app has, which makes it worth a page that says so.
  *
- * Still an anchor rather than a button: the archive is generated as it downloads, and
- * letting the browser consume the response is what keeps a corpus larger than the
- * Worker's 128MB ceiling from ever landing in a JS buffer. An anchor also keeps
- * Save-Link-As, copy-link and middle-click, and works even if the bundle has failed.
+ * A button rather than a link now: the archive is built here in the browser, a page of
+ * notes per request, because one request to the Worker may make only so many calls to
+ * the database and a library is far more than that (see `export-archive.ts`). Chrome and
+ * Edge ask where to save and stream the zip to that file as it is built; other browsers
+ * hold it in memory until it is done and then hand it over as a download.
  */
 export function Export() {
-  const [started, setStarted] = useState(false);
-  // Matches the filename the API stamps, so the example is never a date from the past.
+  const exporting = useExporting();
+  // Matches the filename the export stamps, so the example is never a date from the past.
   const stamp = new Date().toISOString().slice(0, 10);
+  const running = exporting.status === 'running';
 
   return (
     <div className="panel">
@@ -25,8 +28,8 @@ export function Export() {
       </div>
 
       <p className="muted small">
-        Downloads every note as a zip of folders — one per note, with its attachments
-        beside it. Plain files, readable without this app or any other.
+        Saves every note as a zip of folders — one per note, with its attachments beside
+        it. Plain files, readable without this app or any other.
       </p>
 
       <pre className="export-tree">
@@ -83,18 +86,26 @@ export function Export() {
         what you have never duplicates anything.
       </p>
 
-      <a className="primary export-button" href="/api/export" download onClick={() => setStarted(true)}>
-        {started ? 'Download again' : 'Download export'}
-      </a>
+      <div className="export-actions">
+        {running ? (
+          <Button tone="danger" disabled={exporting.stopping} onClick={stopExport}>
+            {exporting.stopping ? 'Stopping…' : 'Stop'}
+          </Button>
+        ) : (
+          <Button variant="primary" onClick={() => startExport({})}>
+            {exporting.status === 'done' ? 'Export again' : 'Export everything'}
+          </Button>
+        )}
+        <ExportStatus state={exporting} />
+      </div>
 
-      {started && (
-        <p className="muted small">
-          The download is running in your browser. A large library takes a few minutes and
-          will not show a percentage — the archive is built as it downloads, so its final
-          size is not known when it starts. If it stops early the zip will not open; just
-          download it again, since exporting changes nothing on the server.
-        </p>
-      )}
+      <p className="muted small">
+        The archive is built in this tab, a few notes at a time. In Chrome and Edge you are
+        asked where to save it first and it is written there as it goes, so a library of
+        any size exports. Other browsers keep it in memory until it is finished and then
+        hand it to your downloads, which is fine for a notebook and may not be for
+        everything; if it fails, try a slice at a time, or Chrome.
+      </p>
 
       <p className="muted small">
         This is the backup. D1&apos;s own export cannot be used — it fails on any database
@@ -103,4 +114,54 @@ export function Export() {
       </p>
     </div>
   );
+}
+
+function plural(n: number, word: string): string {
+  return `${n.toLocaleString()} ${word}${n === 1 ? '' : 's'}`;
+}
+
+/**
+ * What the export is doing, beside its button: a count that moves while it runs, and
+ * where the archive went when it is done. The bar is the count as a fraction, drawn only
+ * once the total is known — before that, the count alone is the honest picture.
+ */
+export function ExportStatus({ state }: { state: ExportState }) {
+  switch (state.status) {
+    case 'idle':
+      return null;
+    case 'running':
+      return (
+        <div className="export-progress" role="status">
+          {state.total !== null && state.total > 0 && (
+            <div className="progress-bar" aria-hidden="true">
+              <div className="progress-fill" style={{ width: `${(state.done / state.total) * 100}%` }} />
+            </div>
+          )}
+          <span className="muted small">
+            {state.total === null
+              ? `Exporting… ${plural(state.done, 'note')} so far`
+              : `Exporting ${state.done.toLocaleString()} of ${plural(state.total, 'note')}…`}
+          </span>
+        </div>
+      );
+    case 'done':
+      return (
+        <span className="muted small" role="status">
+          {state.destination === 'file' ? 'Saved' : 'Downloaded'} <code>{state.filename}</code>:{' '}
+          {plural(state.done, 'note')} and {plural(state.files, 'file')}.
+        </span>
+      );
+    case 'stopped':
+      return (
+        <span className="muted small" role="status">
+          Stopped. Nothing was saved; export again when you are ready.
+        </span>
+      );
+    case 'error':
+      return (
+        <span className="bad small" role="alert">
+          The export failed: {state.error}. Nothing was saved.
+        </span>
+      );
+  }
 }

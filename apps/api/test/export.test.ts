@@ -1,12 +1,15 @@
 /**
  * Export round-trip: the disaster-recovery guarantee.
  *
- * `wrangler d1 export` is broken on FTS5 databases, so this zip is the only backup. These
- * tests assert the archive is real and complete — that a user can actually leave.
+ * `wrangler d1 export` is broken on FTS5 databases, so the zip the browser builds is the
+ * only backup. The browser builds it from pages of `GET /api/export/notes` (see the web
+ * app's `export-archive.ts`, whose own tests cover the archive's layout), so what is
+ * asserted here is the half the server owns: that a page carries everything a note needs
+ * to come back — and only this user's notes, only the ones the filter names.
  */
 import { BlobReader, ZipReader } from '@zip.js/zip.js';
 import { beforeAll, describe, expect, it } from 'vitest';
-import { parse, parseNotebook } from '@unbent/shared';
+import { noteDirName, noteMarkdown, parse, type Note } from '@unbent/shared';
 
 const BASE = process.env['API_URL'] ?? 'http://localhost:8787';
 const ORIGIN = process.env['APP_URL'] ?? 'http://localhost:5173';
@@ -61,28 +64,60 @@ async function unzip(res: Response): Promise<Map<string, string>> {
   return out;
 }
 
-/** Downloads the library export, optionally filtered, and unpacks it. */
-async function fetchExport(
-  actor: Actor,
-  filter: { tag?: string; notebook?: string; from?: string; to?: string; sort?: string } = {},
-): Promise<Map<string, string>> {
-  const res = await rawExport(actor, filter);
-  if (!res.ok) throw new Error(`export failed: ${res.status}`);
-  expect(res.headers.get('content-type')).toBe('application/zip');
-  return unzip(res);
+type ExportedNote = Note & { attachments?: Array<{ filename: string; contentType: string }> };
+interface ExportPage {
+  notes: ExportedNote[];
+  cursor: string | null;
+  total: number | null;
 }
 
-/** The export response itself, for assertions about status and headers. */
-function rawExport(
+/** One page of the export, as the response itself, for assertions about status. */
+function rawPage(
   actor: Actor,
   filter: Record<string, string | undefined> = {},
 ): Promise<Response> {
   const params = new URLSearchParams();
   for (const [k, v] of Object.entries(filter)) if (v) params.set(k, v);
   const qs = params.toString();
-  return fetch(`${BASE}/api/export${qs ? `?${qs}` : ''}`, {
+  return fetch(`${BASE}/api/export/notes${qs ? `?${qs}` : ''}`, {
     headers: { Cookie: actor.cookie, Origin: ORIGIN },
   });
+}
+
+/** Every note the export names, walking the cursor the way the browser does. */
+async function exportNotes(
+  actor: Actor,
+  filter: Record<string, string | undefined> = {},
+): Promise<ExportedNote[]> {
+  const notes: ExportedNote[] = [];
+  let cursor: string | undefined;
+  for (;;) {
+    const res = await rawPage(actor, { ...filter, cursor });
+    if (!res.ok) throw new Error(`export page failed: ${res.status}`);
+    const page = (await res.json()) as ExportPage;
+    notes.push(...page.notes);
+    if (!page.cursor) return notes;
+    cursor = page.cursor;
+  }
+}
+
+/**
+ * The archive's markdown entries as the browser would write them: the shared names and
+ * markdown applied to the pages. Keyed by path, so the assertions read as they did when
+ * the server wrote the zip.
+ */
+async function fetchExport(
+  actor: Actor,
+  filter: Record<string, string | undefined> = {},
+): Promise<Map<string, string>> {
+  const out = new Map<string, string>();
+  for (const note of await exportNotes(actor, filter)) {
+    const dir = noteDirName(note.title, note.id);
+    out.set(`${dir}/${dir}.md`, noteMarkdown(note));
+    // The files' entries by name only; their bytes come through the note's file route.
+    for (const file of note.attachments ?? []) out.set(`${dir}/files/${file.filename}`, '');
+  }
+  return out;
 }
 
 /** Requests one note's download, following none of the branching itself. */
@@ -121,8 +156,8 @@ beforeAll(async () => {
   bob = await signUp(`exp-bob-${stamp}@example.test`, 'bob-password-1234', 'Bob');
 }, 30_000);
 
-describe('export', () => {
-  it('produces one markdown file per note, in its own directory', async () => {
+describe('export pages', () => {
+  it('carries every note once, with what its directory needs', async () => {
     await createNote(alice, { title: 'First note', body: 'one', tags: ['a'] });
     await createNote(alice, { title: 'Second note', body: 'two' });
 
@@ -157,6 +192,30 @@ describe('export', () => {
     expect(note.updated.getTime()).toBeGreaterThanOrEqual(note.created.getTime());
   });
 
+  /**
+   * The browser walks the cursor, so a page has to hand back the next one and the last
+   * has to say so; the total rides only on the first, for the progress count.
+   */
+  it('pages through the library with a cursor, counting once', async () => {
+    const actor = await signUp(`exp-page-${Date.now()}@example.test`, 'page-password-12', 'P');
+    await createNote(actor, { title: 'One', body: '1' });
+    await createNote(actor, { title: 'Two', body: '2' });
+    await createNote(actor, { title: 'Three', body: '3' });
+
+    const first = (await (await rawPage(actor, { limit: '2' })).json()) as ExportPage;
+    expect(first.notes).toHaveLength(2);
+    expect(first.total).toBe(3);
+    expect(first.cursor).toBeTruthy();
+
+    const second = (await (await rawPage(actor, { limit: '2', cursor: first.cursor! })).json()) as ExportPage;
+    expect(second.notes).toHaveLength(1);
+    expect(second.total).toBeNull();
+    expect(second.cursor).toBeNull();
+
+    const ids = [...first.notes, ...second.notes].map((n) => n.id);
+    expect(new Set(ids).size).toBe(3);
+  });
+
   it('gives same-titled notes distinct directories', async () => {
     const actor = await signUp(`exp-dup-${Date.now()}@example.test`, 'dup-password-123', 'Dup');
     await createNote(actor, { title: 'Meeting notes', body: 'first' });
@@ -165,23 +224,13 @@ describe('export', () => {
     const files = await fetchExport(actor);
     // Two entries, not one overwriting the other.
     expect(files.size).toBe(2);
-    expect(new Set([...files.keys()]).size).toBe(2);
     expect([...files.values()].map((v) => parse(v).body).sort()).toEqual(['first', 'second']);
   });
 
-  it('slugifies unicode and punctuation into filesystem-safe names', async () => {
-    const actor = await signUp(`exp-uni-${Date.now()}@example.test`, 'uni-password-1234', 'Uni');
-    await createNote(actor, { title: 'Café ☕ / Notes: 2024!', body: 'x' });
-
-    const name = [...(await fetchExport(actor)).keys()][0] ?? '';
-    expect(name).toMatch(/^([a-z0-9-]+)\/\1\.md$/);
-    expect(name).toContain('cafe');
-  });
-
-  it('exports an empty account without erroring', async () => {
+  it('exports an empty account as an empty page', async () => {
     const actor = await signUp(`exp-empty-${Date.now()}@example.test`, 'empty-password-12', 'E');
-    const files = await fetchExport(actor);
-    expect(files.has('README.txt')).toBe(true);
+    const page = (await (await rawPage(actor)).json()) as ExportPage;
+    expect(page).toEqual({ notes: [], cursor: null, total: 0 });
   });
 
   it('excludes soft-deleted notes', async () => {
@@ -194,40 +243,33 @@ describe('export', () => {
       headers: { Cookie: actor.cookie, Origin: ORIGIN },
     });
 
-    const files = await fetchExport(actor);
-    expect(files.size).toBe(1);
-    expect(parse([...files.values()][0]!).id).toBe(keep.id);
+    const notes = await exportNotes(actor);
+    expect(notes.map((n) => n.id)).toEqual([keep.id]);
   });
 
-  it('includes attachments alongside the markdown', async () => {
+  /**
+   * The names of a note's files ride with it, every stored file and not only the ones the
+   * body still links; the browser fetches each through the note's file route. The
+   * markdown link stays relative so the exported folder works without this app.
+   */
+  it('names every stored file beside the markdown', async () => {
     const actor = await signUp(`exp-att-${Date.now()}@example.test`, 'att-password-1234', 'A');
     const note = await createNote(actor, { title: 'With files', body: '![x](files/pic.png)' });
+    await upload(actor, note.id, 'pic.png', 'PNGDATA', 'image/png');
+    await upload(actor, note.id, 'unlinked.txt', 'kept');
 
-    await fetch(`${BASE}/api/notes/${note.id}/files`, {
-      method: 'PUT',
-      headers: {
-        Cookie: actor.cookie,
-        Origin: ORIGIN,
-        'X-Filename': 'pic.png',
-        'Content-Type': 'image/png',
-      },
-      body: 'PNGDATA',
+    const [exported] = await exportNotes(actor);
+    expect(exported!.attachments?.map((a) => a.filename).sort()).toEqual(['pic.png', 'unlinked.txt']);
+    expect(exported!.body).toBe('![x](files/pic.png)');
+
+    const res = await fetch(`${BASE}/api/notes/${note.id}/files/pic.png`, {
+      headers: { Cookie: actor.cookie, Origin: ORIGIN },
     });
-
-    const files = await fetchExport(actor);
-    const names = [...files.keys()].sort();
-    expect(names).toHaveLength(2);
-    expect(names[0]).toMatch(/^with-files-[0-9a-f]{8}\/files\/pic\.png$/);
-    expect(names[1]).toMatch(/^(with-files-[0-9a-f]{8})\/\1\.md$/);
-
-    // The attachment bytes survive, and the markdown link stays relative so the exported
-    // folder works without this app.
-    expect(files.get(names[0]!)).toBe('PNGDATA');
-    expect(parse(files.get(names[1]!)!).body).toBe('![x](files/pic.png)');
+    expect(await res.text()).toBe('PNGDATA');
   });
 
   it('requires a session', async () => {
-    const res = await fetch(`${BASE}/api/export`, { headers: { Origin: ORIGIN } });
+    const res = await fetch(`${BASE}/api/export/notes`, { headers: { Origin: ORIGIN } });
     expect(res.status).toBe(401);
   });
 
@@ -240,17 +282,6 @@ describe('export', () => {
   });
 });
 
-/**
- * Single-note download.
- *
- * The shape is conditional — bare markdown with no attachments, a zip with them — so the
- * branch itself is the thing under test, along with the property that makes the zip worth
- * producing: the markdown sits one level above its own `files/`, so the relative `files/…`
- * links resolve once it is unpacked.
- *
- * Unlike the library export this writes at the archive root: the zip is already named for
- * the note, so a directory inside it would repeat that name for nothing.
- */
 /**
  * Filtered export.
  *
@@ -266,9 +297,7 @@ describe('filtered export', () => {
     await createNote(actor, { title: 'Inside two', body: 'b', notebook });
     await createNote(actor, { title: 'Outside', body: 'c' });
 
-    const entries = await fetchExport(actor, { notebook });
-    const names = [...entries.keys()].join('\n');
-
+    const names = [...(await fetchExport(actor, { notebook })).keys()].join('\n');
     expect(names).toContain('inside-one');
     expect(names).toContain('inside-two');
     expect(names).not.toContain('outside');
@@ -285,28 +314,6 @@ describe('filtered export', () => {
     expect(names).not.toContain('plain-note');
   });
 
-  it('names the file after the slice it contains', async () => {
-    const actor = await signUp(`namedexport-${Date.now()}@example.test`, 'named-pass-12', 'F');
-    const notebook = 'Podcast Bookmarks';
-    await createNote(actor, { title: 'Only', body: 'a', notebook });
-
-    const res = await rawExport(actor, { notebook, from: '2020-01-01' });
-    const disposition = res.headers.get('content-disposition') ?? '';
-    await res.body?.cancel();
-
-    // Several slices land in one downloads folder; the name has to say which is which.
-    expect(disposition).toContain('unbent-podcast-bookmarks-2020-01-01-to-now');
-  });
-
-  it('keeps the original filename when unfiltered', async () => {
-    const actor = await signUp(`plainname-${Date.now()}@example.test`, 'plainname-pass', 'P');
-    await createNote(actor, { title: 'Anything', body: 'a' });
-
-    const res = await rawExport(actor);
-    expect(res.headers.get('content-disposition')).toContain('unbent-export-');
-    await res.body?.cancel();
-  });
-
   it('still exports everything when unfiltered', async () => {
     const actor = await signUp(`allexport-${Date.now()}@example.test`, 'allexport-pass', 'A');
     await createNote(actor, { title: 'First one', body: 'a', notebook: 'Somewhere' });
@@ -317,14 +324,15 @@ describe('filtered export', () => {
     expect(names).toContain('second-one');
   });
 
-  it('produces a valid empty archive when the filter matches nothing', async () => {
+  it('answers an empty page when the filter matches nothing', async () => {
     const actor = await signUp(`emptyexport-${Date.now()}@example.test`, 'empty-pass-12', 'E');
     await createNote(actor, { title: 'Unmatched', body: 'a' });
 
-    // A filter that excludes everything is a real thing to ask for by accident; it should
-    // open and say so rather than produce a corrupt file.
-    const entries = await fetchExport(actor, { notebook: `Nothing ${Date.now()}` });
-    expect([...entries.keys()]).toEqual(['README.txt']);
+    // A filter that excludes everything is a real thing to ask for by accident; the
+    // browser then writes an archive that opens and says so.
+    const page = (await (await rawPage(actor, { notebook: `Nothing ${Date.now()}` })).json()) as ExportPage;
+    expect(page.notes).toEqual([]);
+    expect(page.total).toBe(0);
   });
 
   it('reads the date range against the column the sort names', async () => {
@@ -376,7 +384,7 @@ describe('filtered export', () => {
 
     // Silently ignoring an unparseable bound would hand back a wider archive than asked
     // for, which is the one failure mode an export must not have.
-    const res = await rawExport(actor, { from: 'whenever' });
+    const res = await rawPage(actor, { from: 'whenever' });
     expect(res.status).toBe(400);
     await res.body?.cancel();
   });
@@ -606,80 +614,5 @@ describe('custom fields in the export', () => {
 
     // The single-note download is the same text.
     expect(parse(await (await fetchNote(actor, created.id)).text()).fields).toEqual(expected);
-  });
-});
-
-describe('notebook definitions in the export', () => {
-  /**
-   * What a note's frontmatter cannot say — that a field is a URL, which options a select
-   * offers, how tall a rating is, that a field with no values exists — rides in
-   * `notebooks/<slug>.yaml`, one per notebook the archive is about.
-   */
-  it('writes every notebook in scope with its fields typed, ordered and complete', async () => {
-    const actor = await signUp(`exp-nbd-${Date.now()}@example.test`, 'nbd-password-1234', 'D');
-    const headers = { 'Content-Type': 'application/json', Cookie: actor.cookie, Origin: ORIGIN };
-    const notebook = async (name: string) =>
-      fetch(`${BASE}/api/notebooks`, { method: 'POST', headers, body: JSON.stringify({ name }) })
-        .then((r) => r.json() as Promise<{ id: string }>);
-    const shopping = await notebook('Shopping');
-    const empty = await notebook('Nothing here');
-    const field = (body: object) =>
-      fetch(`${BASE}/api/notebooks/${shopping.id}/fields`, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify(body),
-      }).then((r) => r.json() as Promise<{ id: string }>);
-    const url = await field({ name: 'Url', type: 'url' });
-    await field({ name: 'Status', type: 'select', options: ['Want', 'Ordered'] });
-    await field({ name: 'Priority', type: 'number', scale: { max: 5, step: 0.5 } });
-    // Never valued, so no note's frontmatter could bring it back.
-    await field({ name: 'Image', type: 'url' });
-    await field({ name: 'Platforms', type: 'multiselect', options: ['PC', 'PS5'] });
-    await field({ name: 'Cost', type: 'number', currency: 'EUR' });
-
-    await createNote(actor, { title: 'Bike', notebook: 'Shopping' });
-    await fetch(`${BASE}/api/notes`, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify({ title: 'Tagged', tags: ['gift'], fields: { [url.id]: 'https://x.test' } }),
-    });
-
-    const expected = {
-      name: 'Shopping',
-      fields: [
-        { name: 'Url', type: 'url' },
-        { name: 'Status', type: 'select', options: ['Want', 'Ordered'] },
-        { name: 'Priority', type: 'number', scale: { max: 5, step: 0.5 } },
-        { name: 'Image', type: 'url' },
-        { name: 'Platforms', type: 'multiselect', options: ['PC', 'PS5'] },
-        { name: 'Cost', type: 'number', currency: 'EUR' },
-      ],
-    };
-
-    // Everything: both notebooks, the empty one included — a backup that dropped a
-    // notebook for holding no notes that day would not be a backup of the account.
-    const all = await fetchExport(actor);
-    expect([...all.keys()].filter((k) => k.startsWith('notebooks/')).sort()).toEqual([
-      'notebooks/nothing-here.yaml',
-      'notebooks/shopping.yaml',
-    ]);
-    expect(parseNotebook(all.get('notebooks/shopping.yaml')!)).toEqual(expected);
-    expect(parseNotebook(all.get('notebooks/nothing-here.yaml')!)).toEqual({
-      name: 'Nothing here',
-      fields: [],
-    });
-
-    // A notebook slice carries that notebook — and only it — even when it is empty.
-    const slice = await fetchExport(actor, { notebook: 'Shopping' });
-    expect([...slice.keys()].filter((k) => k.startsWith('notebooks/'))).toEqual([
-      'notebooks/shopping.yaml',
-    ]);
-    const emptySlice = await fetchExport(actor, { notebook: 'Nothing here' });
-    expect([...emptySlice.keys()]).toEqual(['notebooks/nothing-here.yaml', 'README.txt']);
-
-    // A slice by tag carries the notebooks its notes are in; an unfiled note names none.
-    const tagged = await fetchExport(actor, { tag: 'gift' });
-    expect([...tagged.keys()].filter((k) => k.startsWith('notebooks/'))).toEqual([]);
-    void empty;
   });
 });

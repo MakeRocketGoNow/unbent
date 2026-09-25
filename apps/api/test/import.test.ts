@@ -5,7 +5,9 @@
  * account exports, another can import — same ids, same notebooks, same tags, same fields,
  * same files — and importing it again changes nothing.
  */
-import { importArchive } from '@unbent/enex';
+import { BlobWriter } from '@zip.js/zip.js';
+import { importArchive, writeArchive, type ExportSource } from '@unbent/enex';
+import type { ExportPage, FieldDef, NotebookSummary } from '@unbent/shared';
 import { beforeAll, describe, expect, it } from 'vitest';
 
 const BASE = process.env['API_URL'] ?? 'http://localhost:8787';
@@ -38,6 +40,32 @@ function api(actor: Actor, path: string, init: RequestInit = {}): Promise<Respon
 async function json<T>(res: Response): Promise<T> {
   if (!res.ok) throw new Error(`${res.status} ${await res.text()}`);
   return res.json() as Promise<T>;
+}
+
+/**
+ * A notebook's export, built the way the web app builds one: from pages of
+ * `/api/export/notes`, each file through its note's route, and the notebooks' definitions.
+ * The zip the browser would hand the person, so what is imported below is the real thing.
+ */
+async function exportNotebook(actor: Actor, notebook: string): Promise<Blob> {
+  const source: ExportSource = {
+    page: async (filter, cursor) => {
+      const params = new URLSearchParams({ notebook: filter.notebook ?? '' });
+      if (cursor) params.set('cursor', cursor);
+      return json<ExportPage>(await api(actor, `/api/export/notes?${params}`));
+    },
+    file: async (noteId, filename) => {
+      const res = await api(actor, `/api/notes/${noteId}/files/${encodeURIComponent(filename)}`);
+      if (!res.ok || !res.body) throw new Error(`file ${filename}: ${res.status}`);
+      return res.body;
+    },
+    notebooks: async () =>
+      (await json<{ notebooks: NotebookSummary[] }>(await api(actor, '/api/notebooks'))).notebooks,
+    fields: async (id) => (await json<{ fields: FieldDef[] }>(await api(actor, `/api/notebooks/${id}/fields`))).fields,
+  };
+  const writer = new BlobWriter('application/zip');
+  await writeArchive(writer.writable, { notebook }, source, new AbortController().signal);
+  return writer.getData();
 }
 
 interface NoteJson {
@@ -269,8 +297,7 @@ describe('an export imported into another account', () => {
     );
     const original = await json<NoteJson>(await api(alice, `/api/notes/${created.id}`));
 
-    const exported = await api(alice, `/api/export?notebook=${encodeURIComponent(notebook)}`);
-    const zip = { name: 'unbent-moved.zip', blob: await exported.blob() };
+    const zip = { name: 'unbent-moved.zip', blob: await exportNotebook(alice, notebook) };
 
     const progress = await importArchive(zip, archiveClient(bob));
 
@@ -350,8 +377,7 @@ describe('notebook definitions across an import', () => {
       }),
     );
 
-    const exported = await api(alice, `/api/export?notebook=${encodeURIComponent(notebook)}`);
-    const zip = { name: 'unbent-shopping.zip', blob: await exported.blob() };
+    const zip = { name: 'unbent-shopping.zip', blob: await exportNotebook(alice, notebook) };
     const progress = await importArchive(zip, archiveClient(bob));
     expect(progress).toMatchObject({ created: 1, failed: 0 });
 

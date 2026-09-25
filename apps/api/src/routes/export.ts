@@ -1,71 +1,40 @@
 import { Hono } from 'hono';
 import { zValidator } from '@hono/zod-validator';
-import { exportQuerySchema } from '@unbent/shared';
+import { exportPageQuerySchema, noteDirName, noteMarkdown } from '@unbent/shared';
 import { requireAuth } from '../lib/session.js';
 import { withRepos } from '../lib/repos-middleware.js';
-import {
-  exportNoteZipStream,
-  exportZipStream,
-  noteDirName,
-  noteMarkdown,
-  slugify,
-  type ExportFilter,
-} from '../lib/export.js';
+import { exportNoteZipStream } from '../lib/export.js';
+import { nextCursor } from '../lib/notes-repo.js';
 import type { AppEnv } from '../types.js';
 
-/**
- * A filename that says what is inside.
- *
- * A filtered export is a slice, and several slices land in the same downloads folder on
- * the same day. Naming them all `unbent-export-2026-08-29.zip` makes the user open each
- * one to find out which is which, so the scope goes in the name: notebook, then tag, then
- * the date bounds. Slugified because this ends up in a Content-Disposition header and on
- * a filesystem.
- */
-function exportFilename(filter: ExportFilter, stamp: string): string {
-  const scoped = Boolean(
-    filter.notebook || filter.tags?.length || filter.fields?.length || filter.from || filter.to,
-  );
-  // An unfiltered export keeps the name it has always had, so existing habits and any
-  // backup script pointing at it are undisturbed.
-  const parts = ['unbent', ...(scoped ? [] : ['export'])];
-  if (filter.notebook) parts.push(slugify(filter.notebook));
-  // Every tag lands in the name: an export filtered to two tags is a different set
-  // than either alone, and a filename naming only the first would describe the wrong
-  // archive.
-  for (const tag of filter.tags ?? []) parts.push(slugify(tag));
-  if (filter.from || filter.to) parts.push(`${filter.from ?? 'start'}-to-${filter.to ?? 'now'}`);
-  parts.push(stamp);
-  return `${parts.join('-')}.zip`;
-}
-
 export const exportRoutes = new Hono<AppEnv>()
-  .get('/export', requireAuth, withRepos, zValidator('query', exportQuerySchema), (c) => {
-    const stamp = new Date().toISOString().slice(0, 10);
-    // Field filters are in the set but not in the name: a filename has no room for
-    // "<uuid>:gte:20", and the notebook that scopes them is already there.
-    const { tag: tags, notebook, field: fields, from, to, sort } = c.req.valid('query');
+  /**
+   * One page of the library, whole notes with their bodies and the names of their files,
+   * for the browser to write into an archive.
+   *
+   * The export used to be one request that streamed the whole zip, and it read each note
+   * and each of its files from here as it went. A Worker request may make only so many
+   * calls to D1 and R2 — a thousand on Workers Free by the platform's limits page — and
+   * a library is tens of thousands of them, so the backup could never have completed on
+   * the archive it existed for. This page is one statement. The client walks the cursor,
+   * fetches each file through the note's own file route, and writes the zip itself; see
+   * the web app's `export-archive.ts`, and `@unbent/shared`'s `export-format.ts` for the
+   * names and markdown the two ends agree on.
+   *
+   * The same filters as the note list, through the same `notes.list`, so a filter cannot
+   * mean one thing on screen and another in the zip. There is no sort — a directory tree
+   * has no order worth choosing — and `sort` is accepted only to say which column a date
+   * range applies to. `total` comes on the first page, for a progress count.
+   */
+  .get('/export/notes', requireAuth, withRepos, zValidator('query', exportPageQuerySchema), async (c) => {
+    const { tag: tags, notebook, field: fields, from, to, sort, cursor, limit } = c.req.valid('query');
+    const repo = c.get('notes');
     const filter = { tags, notebook, fields, from, to, sort };
-
-    // Returned immediately, before any note is read: the archive is produced as the
-    // client consumes it, so nothing is ever held in the Worker's 128MB of memory.
-    return new Response(
-      exportZipStream(
-        {
-          notes: c.get('notes'),
-          attachments: c.get('attachments'),
-          blobs: c.env.BLOBS,
-        },
-        filter,
-      ),
-      {
-        headers: {
-          'Content-Type': 'application/zip',
-          'Content-Disposition': `attachment; filename="${exportFilename(filter, stamp)}"`,
-          'Cache-Control': 'no-store',
-        },
-      },
-    );
+    const [notes, total] = await Promise.all([
+      repo.listFull({ limit, cursor, ...filter }),
+      cursor ? Promise.resolve<number | null>(null) : repo.count(filter),
+    ]);
+    return c.json({ notes, cursor: nextCursor(notes, { limit, sort }), total });
   })
 
   /**

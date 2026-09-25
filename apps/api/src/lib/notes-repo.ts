@@ -44,6 +44,9 @@ interface NoteRow {
   notebook_id: string | null;
 }
 
+/** A whole note with the names of its files: what one export page carries. */
+export type ExportedNote = Note & Pick<NoteSummary, 'attachments'>;
+
 interface SummaryRow {
   id: string;
   title: string;
@@ -823,6 +826,52 @@ export class NotesRepo extends ScopedRepo {
      */
     sortField?: FieldDef;
   }): Promise<NoteSummary[]> {
+    return (await this.pageRows(opts)).map((r) => {
+      const fields = decodeFieldsJson(r.fields, r.notebook_id);
+      const attachments = decodeAttachmentsJson(r.attachments);
+      return {
+        id: r.id,
+        title: r.title,
+        createdAt: r.created_at,
+        updatedAt: r.updated_at,
+        tags: splitTags(r.tags),
+        notebook: r.notebook,
+        notebookId: r.notebook_id,
+        // Omitted when empty: most rows in a large archive have none, and a page of fifty
+        // should not carry fifty empty arrays. Same for the files.
+        ...(fields.length > 0 ? { fields } : {}),
+        ...(attachments.length > 0 ? { attachments } : {}),
+        excerpt: excerptMarkdown(r.body),
+        deletedAt: r.deleted_at ?? undefined,
+      };
+    });
+  }
+
+  /**
+   * A page of whole notes — the body rather than an excerpt — with the names of their
+   * files, for the browser to write an export from. The same page `list` reads, in one
+   * statement, so an export is the note list the person was looking at.
+   */
+  async listFull(opts: Parameters<NotesRepo['list']>[0]): Promise<ExportedNote[]> {
+    return (await this.pageRows(opts)).map((r) => {
+      const fields = decodeFieldsJson(r.fields, r.notebook_id);
+      const attachments = decodeAttachmentsJson(r.attachments);
+      return {
+        id: r.id,
+        title: r.title,
+        body: r.body,
+        createdAt: r.created_at,
+        updatedAt: r.updated_at,
+        tags: splitTags(r.tags),
+        notebook: r.notebook,
+        notebookId: r.notebook_id,
+        ...(fields.length > 0 ? { fields } : {}),
+        ...(attachments.length > 0 ? { attachments } : {}),
+      };
+    });
+  }
+
+  private async pageRows(opts: Parameters<NotesRepo['list']>[0]): Promise<SummaryRow[]> {
     const { limit, cursor, tags, notebook, fields, trashed, from, to } = opts;
     const sort = opts.sort ?? 'updated';
     // Trash has one meaningful order — most recently deleted first — so it ignores both.
@@ -938,26 +987,7 @@ export class NotesRepo extends ScopedRepo {
       )
       .bind(...binds)
       .all<SummaryRow>();
-
-    return results.map((r) => {
-      const fields = decodeFieldsJson(r.fields, r.notebook_id);
-      const attachments = decodeAttachmentsJson(r.attachments);
-      return {
-        id: r.id,
-        title: r.title,
-        createdAt: r.created_at,
-        updatedAt: r.updated_at,
-        tags: splitTags(r.tags),
-        notebook: r.notebook,
-        notebookId: r.notebook_id,
-        // Omitted when empty: most rows in a large archive have none, and a page of fifty
-        // should not carry fifty empty arrays. Same for the files.
-        ...(fields.length > 0 ? { fields } : {}),
-        ...(attachments.length > 0 ? { attachments } : {}),
-        excerpt: excerptMarkdown(r.body),
-        deletedAt: r.deleted_at ?? undefined,
-      };
-    });
+    return results;
   }
 
   /**

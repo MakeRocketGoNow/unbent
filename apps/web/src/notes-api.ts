@@ -2,6 +2,8 @@ import type {
   AppConfig,
   AttachmentInfo,
   AutofillSuggestion,
+  ExportFilter,
+  ExportPage,
   FieldDef,
   FieldScale,
   FieldType,
@@ -656,34 +658,40 @@ export async function deleteAttachment(noteId: string, filename: string): Promis
 }
 
 /**
- * The URL of the export endpoint for a filter.
- *
- * A URL rather than a fetch: the archive is generated as it downloads, so the browser has
- * to consume the response directly — pulling it into JS would defeat the streaming design
- * and cap the export at the tab's memory. Built here because assembling outbound API query
- * strings is this module's job; components deal in filters, not querystrings.
+ * The query string of an export page for a filter, the tags repeated rather than joined:
+ * a tag name may contain any delimiter we'd pick. `sort` is carried only beside a date
+ * range, since it names the column the range applies to and orders nothing. Built here
+ * because assembling outbound API query strings is this module's job.
  */
-export function exportUrl(filter: {
-  tag?: string[];
-  notebook?: string;
-  field?: string[];
-  from?: string;
-  to?: string;
-  /**
-   * Carried so the export's date range means the same column the list's did. It orders
-   * nothing — see `exportQuerySchema`.
-   */
-  sort?: NoteSort;
-}): string {
+export function exportQuery(
+  filter: ExportFilter,
+  page: { cursor?: string | undefined; limit?: number | undefined } = {},
+): URLSearchParams {
   const params = new URLSearchParams();
-  for (const t of filter.tag ?? []) params.append('tag', t);
+  for (const t of filter.tags ?? []) params.append('tag', t);
   if (filter.notebook) params.set('notebook', filter.notebook);
-  for (const f of filter.field ?? []) params.append('field', f);
+  for (const f of filter.fields ?? []) params.append('field', f);
   if (filter.from) params.set('from', filter.from);
   if (filter.to) params.set('to', filter.to);
   if (filter.sort && (filter.from || filter.to)) params.set('sort', filter.sort);
-  const qs = params.toString();
-  return `/api/export${qs ? `?${qs}` : ''}`;
+  if (page.cursor) params.set('cursor', page.cursor);
+  if (page.limit) params.set('limit', String(page.limit));
+  return params;
+}
+
+/**
+ * One page of the export: whole notes with their bodies and the names of their files.
+ * The browser walks the cursor and writes the archive itself; see `export-archive.ts`.
+ */
+export type { ExportPage, ExportedNote } from '@unbent/shared';
+
+export async function exportPage(
+  filter: ExportFilter,
+  cursor?: string,
+  limit?: number,
+): Promise<ExportPage> {
+  const qs = exportQuery(filter, { cursor, limit }).toString();
+  return json<ExportPage>(await fetch(`/api/export/notes${qs ? `?${qs}` : ''}`));
 }
 
 export async function searchNotes(

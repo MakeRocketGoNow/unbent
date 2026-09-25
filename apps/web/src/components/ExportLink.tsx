@@ -1,5 +1,5 @@
 import type { NoteSort } from '@unbent/shared';
-import * as api from '../notes-api.js';
+import { startExport, useExporting } from '../export-archive.js';
 import type { NoteFilter } from '../queries.js';
 
 interface ExportLinkProps {
@@ -18,19 +18,36 @@ interface ExportLinkProps {
  * is the failure mode. Callers show it only when a filter is active — with none, this is the
  * whole-library export, which has its own page and a warning about size that belongs with it.
  *
- * An anchor, like the export page's: the archive is generated as it downloads, so letting
- * the browser consume the response is what keeps a corpus larger than the Worker's memory
- * from ever landing in a JS buffer. `Button` deliberately does not render anchors, which is
- * why this keeps its own class rather than wearing button shape.
+ * A button, since it starts work in this tab: the archive is built here from pages of
+ * notes (see `export-archive.ts`), and a browser that can asks where to save it first.
+ * One export runs at a time, so while one does the label reports it instead.
  */
 export function ExportLink({ filter, sort, total }: ExportLinkProps) {
+  const exporting = useExporting();
+  const running = exporting.status === 'running';
   return (
-    <a
+    <button
+      type="button"
       className="export-filtered small"
-      href={api.exportUrl({ ...filter, sort: sort ?? 'updated' })}
-      download
+      disabled={running}
+      onClick={() =>
+        startExport({
+          tags: filter.tag,
+          notebook: filter.notebook,
+          fields: filter.field,
+          from: filter.from,
+          to: filter.to,
+          sort: sort ?? 'updated',
+        })
+      }
     >
-      {total !== null ? `Export these ${total} notes` : 'Export these notes'}
-    </a>
+      {running
+        ? exporting.total === null
+          ? 'Exporting…'
+          : `Exporting ${exporting.done} of ${exporting.total}…`
+        : total !== null
+          ? `Export these ${total} notes`
+          : 'Export these notes'}
+    </button>
   );
 }

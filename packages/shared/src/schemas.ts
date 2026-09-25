@@ -477,6 +477,16 @@ export const exportQuerySchema = z.object({
 });
 
 /**
+ * One page of an export: the same filter, walked with a cursor. The archive is built by
+ * the client from these pages (see the web app's `export-archive.ts`), because a Worker
+ * request may make only so many database calls and a library is thousands of notes.
+ */
+export const exportPageQuerySchema = exportQuerySchema.extend({
+  cursor: z.string().optional(),
+  limit: z.coerce.number().int().min(1).max(100).default(50),
+});
+
+/**
  * One note from an ENEX import. `contentHash` makes the endpoint idempotent so an
  * interrupted import can be re-run without duplicating notes.
  */

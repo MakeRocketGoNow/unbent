@@ -51,7 +51,7 @@ to avoid is importing a whole account twice in the same day. Nothing here needs 
 Paid; take it for the higher ceilings if the instance grows, not to get started.
 
 CPU is not a constraint at either end: ENEX parsing runs in a browser Web Worker rather
-than on Workers, and export streams the zip as the client consumes it.
+than on Workers, and the export zip is assembled in the browser from pages of notes.
 
 ## Layout
 
@@ -1243,7 +1243,7 @@ would otherwise swamp the suite it belongs to.
 
 ## Backups and export
 
-`GET /api/export` streams a zip of the whole account as a plain folder tree:
+Settings → Export writes a zip of the whole account as a plain folder tree:
 
 ```
 first-note-2382e420/first-note-2382e420.md
@@ -1268,13 +1268,25 @@ selects as text, ratings as plain numbers, and a field with no values not at all
 unfiltered export lists every notebook, empty ones included; a filtered export lists the
 notebooks its notes are in, plus the one the filter named.
 
-`/api/export` also takes the note list's `tag`, `notebook`, `from`, and `to`, so an export
-can be a slice rather than the whole library — a year of records for a doctor, the receipts
-an accountant asked for. Settings → Notebooks offers the `notebook` slice as a download
-beside each notebook, since "a copy of this notebook" is the slice people reach for. The enumeration goes through the same `notes.list` as the list
-itself, so a filter cannot mean one thing on screen and another in the zip. There is no
-`sort` (a directory tree has no order worth choosing) and no `limit` (a partial backup is a
-trap); `sort` is accepted only to say which column a date range applies to. The filename
+The browser builds the archive. `GET /api/export/notes` hands back a page of whole notes
+— body, tags, fields, and the names of their files — and the web app walks its cursor,
+fetches each file through the note's own file route, and writes the zip with the names and
+markdown that `packages/shared/src/export-format.ts` defines. It used to be one request
+that streamed the whole zip, and that request read every note and every file from the
+Worker as it went; a Worker request may make only so many calls to D1 and R2 (a thousand
+on Workers Free), and a library is tens of thousands of them, so the backup could never have
+finished on the archive it existed for. In Chrome and Edge the zip streams straight to a
+file the person chooses, so a library larger than the tab's memory still exports; other
+browsers hold it in memory and hand it over as a download when it is done.
+
+The page endpoint takes the note list's `tag`, `notebook`, `field`, `from`, and `to`, so an
+export can be a slice rather than the whole library — a year of records for a doctor, the
+receipts an accountant asked for. Settings → Notebooks offers the `notebook` slice as a
+download beside each notebook, since "a copy of this notebook" is the slice people reach
+for, and the note list offers the filter on screen beneath its filters. The enumeration
+goes through the same `notes.list` as the list itself, so a filter cannot mean one thing on
+screen and another in the zip. There is no order (a directory tree has no order worth
+choosing); `sort` is accepted only to say which column a date range applies to. The filename
 carries the scope, since several slices land in one downloads folder on the same day.
 
 This is the backup mechanism, not a convenience feature: `wrangler d1 export` fails on any

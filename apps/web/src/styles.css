@@ -1984,6 +1984,17 @@ a.overflow-item { text-decoration: none; }
   padding: 0.35rem 0;
   color: var(--muted);
   text-decoration: none;
+  /* A button since the archive is built here, drawn as the quiet line it always was. */
+  border: none;
+  background: none;
+  font: inherit;
+  cursor: pointer;
+  appearance: none;
+  text-align: left;
+}
+
+.export-filtered:disabled {
+  cursor: default;
 }
 
 .export-filtered::before {
@@ -5126,9 +5137,21 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
  * streams the archive straight to disk — a fetch would buffer a multi-gigabyte zip inside
  * the Worker — while looking like the deliberate action it is.
  */
-.export-button {
-  display: inline-block;
-  text-decoration: none;
+/* The export's button and, beside it, what it is doing; they wrap on a phone. */
+.export-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 1rem;
+  align-self: stretch;
+}
+
+.export-progress {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  flex: 1 1 14rem;
+  min-width: 0;
 }
 
 .export-tree {
