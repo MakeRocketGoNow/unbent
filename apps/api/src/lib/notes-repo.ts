@@ -2197,7 +2197,10 @@ export class NotesRepo extends ScopedRepo {
       .prepare(`SELECT id FROM notes WHERE ${where} LIMIT ?2`)
       .bind(this.userId, limit)
       .all<{ id: string }>();
-    if (idRows.length === 0) return { notes: 0, keys: [], remaining: 0 };
+    if (idRows.length === 0) {
+      await this.sweepAfterPurge();
+      return { notes: 0, keys: [], remaining: 0 };
+    }
 
     const stillTrashed = scope === 'trashed' ? ' AND deleted_at IS NOT NULL' : '';
     const ids = idRows.map((r) => r.id);
@@ -2227,24 +2230,39 @@ export class NotesRepo extends ScopedRepo {
       .slice(idRuns.length)
       .flatMap((r) => (r.results as Array<{ id: string }>).map((row) => row.id));
 
-    const remaining = await this.purgeRemaining(scope);
+    // Whether the scope is exhausted comes from what this page saw, not from the stored
+    // counts. A short page means the query ran out of notes; a full one means there may be
+    // more. The counts (0023) only supply the number the client shows, and they can drift
+    // — `recount-notes` exists for that — so trusting them to end the loop could stop it
+    // with notes left (counts low) or leave a last call that finds nothing and never
+    // sweeps (counts high). A full page always reports at least one more, and the call
+    // after it, finding nothing, answers zero and sweeps.
+    const remaining = idRows.length < limit ? 0 : Math.max(1, await this.purgeRemaining(scope));
 
     // The sweeps once the scope is empty rather than on every page: tag rows are per-user
     // and survive their notes, and field definitions kept alive only by values on these
     // notes; both walk the whole table, and neither is needed until the end.
-    if (remaining === 0 && deletedIds.length > 0) {
-      await this.db
-        .prepare(
-          `DELETE FROM tags
-            WHERE user_id = ?1
-              AND id NOT IN (SELECT tag_id FROM note_tags)`,
-        )
-        .bind(this.userId)
-        .run();
-      await this.sweepTombstonedFields();
-    }
+    if (remaining === 0) await this.sweepAfterPurge();
 
     return { notes: deletedIds.length, keys: keysOfDeletedNotes(keyRows, deletedIds), remaining };
+  }
+
+  /**
+   * What a purge leaves behind once its scope is empty: tags no note carries any more, and
+   * tombstoned field definitions whose last values went with the notes. Run on the last
+   * page, and also on a call that found nothing — the page before it was full, so it did
+   * not know it was the last.
+   */
+  private async sweepAfterPurge(): Promise<void> {
+    await this.db
+      .prepare(
+        `DELETE FROM tags
+          WHERE user_id = ?1
+            AND id NOT IN (SELECT tag_id FROM note_tags)`,
+      )
+      .bind(this.userId)
+      .run();
+    await this.sweepTombstonedFields();
   }
 
   /** How many notes a purge of `scope` would still find, from the stored counts (0023). */
