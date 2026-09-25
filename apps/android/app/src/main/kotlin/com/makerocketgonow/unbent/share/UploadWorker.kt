@@ -61,6 +61,15 @@ class UploadWorker(context: Context, params: WorkerParameters) : CoroutineWorker
         val api = UnbentApi(prefs.instance, prefs.session?.bearer ?: return@withContext Result.failure())
         val dir = Staging.jobDir(context, jobId)
 
+        fun giveUp(): Result {
+            Staging.clear(context, jobId)
+            CaptureNotifications.failed(context, jobId, title)
+            return Result.failure()
+        }
+
+        // Attempts that failed for a reason of their own; see the 503 case below.
+        fun attemptsSpent() = runAttemptCount - CaptureResume.unavailableAttempts(dir)
+
         try {
             /*
              * Create once, remember the id, reuse it on retry.
@@ -116,21 +125,24 @@ class UploadWorker(context: Context, params: WorkerParameters) : CoroutineWorker
                 Staging.clear(context, jobId)
                 CaptureNotifications.signInNeeded(context, jobId, title)
                 Result.failure()
-            } else if (runAttemptCount < MAX_ATTEMPTS) {
+            } else if (e.status == 503) {
+                /*
+                 * The server is up but cannot serve right now, and has said so. The case
+                 * that matters is the database's daily read allowance running out: every
+                 * request fails the same way until it resets at midnight UTC, which can be
+                 * most of a day away. Four attempts on a backoff from thirty seconds are
+                 * spent in under four minutes, and the capture was deleted with them. So a
+                 * 503 does not spend one; it waits for up to [MAX_UNAVAILABLE] of them
+                 * instead.
+                 */
+                if (CaptureResume.recordUnavailable(dir) <= MAX_UNAVAILABLE) Result.retry() else giveUp()
+            } else if (attemptsSpent() < MAX_ATTEMPTS) {
                 Result.retry()
             } else {
-                Staging.clear(context, jobId)
-                CaptureNotifications.failed(context, jobId, title)
-                Result.failure()
+                giveUp()
             }
         } catch (e: Exception) {
-            if (runAttemptCount < MAX_ATTEMPTS) {
-                Result.retry()
-            } else {
-                Staging.clear(context, jobId)
-                CaptureNotifications.failed(context, jobId, title)
-                Result.failure()
-            }
+            if (attemptsSpent() < MAX_ATTEMPTS) Result.retry() else giveUp()
         }
     }
 
@@ -164,6 +176,18 @@ class UploadWorker(context: Context, params: WorkerParameters) : CoroutineWorker
         /** Output: false when the server extracted every PDF's text itself. */
         const val KEY_NEEDS_INDEX = "needsIndex"
         private const val MAX_ATTEMPTS = 4
+
+        /**
+         * How many 503s a capture waits through before it gives up: about 28 hours.
+         *
+         * WorkManager's backoff doubles from thirty seconds and stops growing at five
+         * hours, so ten retries take about eight and a half hours and each after that
+         * five more. Fourteen reaches past a full day, which is the longest the read
+         * allowance can stay spent, whenever in the day it ran out. The cost of the cap
+         * is a capture that lands up to five hours after the reset rather than on it;
+         * WorkManager has one backoff per job and no way to honour the Retry-After.
+         */
+        private const val MAX_UNAVAILABLE = 14
 
         /** How long a capture waits for the user to finish connecting. */
         private const val CONNECT_WAIT_MS = 5 * 60 * 1000L

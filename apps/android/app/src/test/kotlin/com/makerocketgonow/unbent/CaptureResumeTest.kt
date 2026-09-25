@@ -12,8 +12,8 @@ import org.junit.rules.TemporaryFolder
  * A capture that fails mid-upload must resume the same note, not create another.
  *
  * WorkManager retries [com.makerocketgonow.unbent.share.UploadWorker] from the top after a
- * dropped radio. These are the two facts that retry reads: which note already exists, and
- * which files are already on it.
+ * dropped radio. These are the facts that retry reads: which note already exists, which
+ * files are already on it, and how many attempts the server turned away as unavailable.
  */
 class CaptureResumeTest {
 
@@ -41,6 +41,23 @@ class CaptureResumeTest {
     fun `blank sidecar is treated as missing rather than as an id`() {
         File(temp.root, ".note-id").writeText("  \n")
         assertNull(CaptureResume.readNoteId(temp.root))
+    }
+
+    @Test
+    fun `a capture the server has not turned away has spent no waits`() {
+        assertEquals(0, CaptureResume.unavailableAttempts(temp.root))
+    }
+
+    @Test
+    fun `each 503 is counted once, and a retry reads the total`() {
+        val dir = File(temp.root, "shares/job-2")
+        assertEquals(1, CaptureResume.recordUnavailable(dir))
+        assertEquals(2, CaptureResume.recordUnavailable(dir))
+        assertEquals(2, CaptureResume.unavailableAttempts(dir))
+        // The note id beside it is a separate fact and survives the count.
+        CaptureResume.writeNoteId(dir, "note-1")
+        assertEquals(3, CaptureResume.recordUnavailable(dir))
+        assertEquals("note-1", CaptureResume.readNoteId(dir))
     }
 
     @Test
