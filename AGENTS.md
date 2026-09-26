@@ -172,6 +172,13 @@ may not be available to you — the rule above is the same either way.
 **Pushing is still on request.** Committing as you go is the default; pushing and opening a
 PR are not. Don't push unprompted.
 
+The exception is work started from a Linear issue: asking for an issue to be fixed is asking
+for the PR, so push and open one once the change is verified, then move the issue to In
+Review. Stop at the commit only when the change is one the user will want to try locally
+before review — in practice, Android changes, which only prove themselves on a device. Web,
+API and docs changes are verified in the browser and the test suites, and go straight to a
+PR. The `fix-linear-issue-cloud` skill carries the full loop.
+
 ## Running things
 
 **Do not leave background processes running.** This has been raised sharply. Don't
