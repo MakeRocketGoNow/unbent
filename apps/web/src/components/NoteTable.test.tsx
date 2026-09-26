@@ -102,7 +102,7 @@ describe('NoteTable', () => {
   it('marks the default sort when the URL carries none', async () => {
     const { findByRole, getByRole } = harness();
     await findByRole('table');
-    expect(getByRole('columnheader', { name: 'Updated' }).getAttribute('aria-sort')).toBe('descending');
+    expect(getByRole('columnheader', { name: 'Created' }).getAttribute('aria-sort')).toBe('descending');
   });
 
   it('offers the next page the way the list does', async () => {

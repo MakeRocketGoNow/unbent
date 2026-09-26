@@ -43,7 +43,7 @@ describe('listAfterSave', () => {
   );
 
   it('moves a body save to the top of a newest-first list, rebuilding the row', () => {
-    const next = listAfterSave(data, {}, {}, saved('c', 40), {});
+    const next = listAfterSave(data, {}, { sort: 'updated' }, saved('c', 40), {});
     expect(ids(next)).toEqual([['c', 'a', 'b'], []]);
     const top = (next as InfiniteData<NotePage>).pages[0]!.items[0]!;
     expect(top.updatedAt).toBe(40);
@@ -52,19 +52,23 @@ describe('listAfterSave', () => {
     expect(top.attachments).toEqual([{ filename: 'x.pdf', contentType: 'application/pdf' }]);
   });
 
+  it('leaves a saved row where it was under the default creation order', () => {
+    expect(ids(listAfterSave(data, {}, {}, saved('b', 40), {}))).toEqual([['a', 'b'], ['c']]);
+  });
+
   it('keeps the count and cursors it was given', () => {
-    const next = listAfterSave(data, {}, {}, saved('c', 40), {}) as InfiniteData<NotePage>;
+    const next = listAfterSave(data, {}, { sort: 'updated' }, saved('c', 40), {}) as InfiniteData<NotePage>;
     expect(next.pages.map((p) => p.cursor)).toEqual(['c1', 'c2']);
     expect(next.pages[0]!.total).toBe(99);
   });
 
   it('drops a row whose save sends it past the pages an oldest-first list has loaded', () => {
-    expect(ids(listAfterSave(data, {}, { order: 'asc' }, saved('a', 40), {}))).toEqual([['b'], ['c']]);
+    expect(ids(listAfterSave(data, {}, { sort: 'updated', order: 'asc' }, saved('a', 40), {}))).toEqual([['b'], ['c']]);
   });
 
   it('appends it once the oldest-first list has reached its end', () => {
     const done = pages({ items: [row('a', 10), row('b', 20)], cursor: null });
-    expect(ids(listAfterSave(done, {}, { order: 'asc' }, saved('a', 40), {}))).toEqual([['b', 'a']]);
+    expect(ids(listAfterSave(done, {}, { sort: 'updated', order: 'asc' }, saved('a', 40), {}))).toEqual([['b', 'a']]);
   });
 
   it('patches in place where the sort does not read the updated date', () => {
@@ -83,20 +87,20 @@ describe('listAfterSave', () => {
   });
 
   it('brings a note it had not loaded to the top when it belongs to the list', () => {
-    expect(ids(listAfterSave(data, { notebook: 'travel' }, {}, saved('z', 50), {}))).toEqual([['z', 'a', 'b'], ['c']]);
+    expect(ids(listAfterSave(data, { notebook: 'travel' }, { sort: 'updated' }, saved('z', 50), {}))).toEqual([['z', 'a', 'b'], ['c']]);
   });
 
   it('leaves a list alone for a note that does not belong to it', () => {
-    expect(listAfterSave(data, { notebook: 'Recipes' }, {}, saved('z', 50), {})).toBe(data);
-    expect(listAfterSave(data, { notebook: UNFILED }, {}, saved('z', 50), {})).toBe(data);
-    expect(listAfterSave(data, { tag: ['ski'] }, {}, saved('z', 50, { tags: ['beach'] }), {})).toBe(data);
+    expect(listAfterSave(data, { notebook: 'Recipes' }, { sort: 'updated' }, saved('z', 50), {})).toBe(data);
+    expect(listAfterSave(data, { notebook: UNFILED }, { sort: 'updated' }, saved('z', 50), {})).toBe(data);
+    expect(listAfterSave(data, { tag: ['ski'] }, { sort: 'updated' }, saved('z', 50, { tags: ['beach'] }), {})).toBe(data);
   });
 
   it('refetches when the save changed what the list filters on', () => {
-    expect(listAfterSave(data, { notebook: 'Travel' }, {}, saved('a', 40), { notebook: true })).toBe('refetch');
-    expect(listAfterSave(data, { tag: ['ski'] }, {}, saved('a', 40), { tags: true })).toBe('refetch');
-    expect(listAfterSave(data, { field: ['f:set'] }, {}, saved('a', 40), { fields: true })).toBe('refetch');
-    expect(listAfterSave(data, { from: '2020-01-01' }, {}, saved('a', 40), {})).toBe('refetch');
+    expect(listAfterSave(data, { notebook: 'Travel' }, { sort: 'updated' }, saved('a', 40), { notebook: true })).toBe('refetch');
+    expect(listAfterSave(data, { tag: ['ski'] }, { sort: 'updated' }, saved('a', 40), { tags: true })).toBe('refetch');
+    expect(listAfterSave(data, { field: ['f:set'] }, { sort: 'updated' }, saved('a', 40), { fields: true })).toBe('refetch');
+    expect(listAfterSave(data, { from: '2020-01-01' }, { sort: 'updated' }, saved('a', 40), {})).toBe('refetch');
   });
 
   it('refetches when the save changed what the list sorts by', () => {
@@ -105,11 +109,11 @@ describe('listAfterSave', () => {
   });
 
   it('does not refetch an unfiltered list for a change of filing', () => {
-    expect(ids(listAfterSave(data, {}, {}, saved('b', 40), { notebook: true, tags: true }))).toEqual([['b', 'a'], ['c']]);
+    expect(ids(listAfterSave(data, {}, { sort: 'updated' }, saved('b', 40), { notebook: true, tags: true }))).toEqual([['b', 'a'], ['c']]);
   });
 
   it('refetches a field-filtered list for a note it has not loaded, since it cannot tell', () => {
-    expect(listAfterSave(data, { field: ['f:set'] }, {}, saved('z', 50), {})).toBe('refetch');
+    expect(listAfterSave(data, { field: ['f:set'] }, { sort: 'updated' }, saved('z', 50), {})).toBe('refetch');
   });
 });
 
@@ -117,14 +121,14 @@ describe('applySaveToLists', () => {
   it('patches each cached list, refetches only the ones it must, and leaves counts alone for a body save', () => {
     const qc = new QueryClient();
     const all = pages({ items: [row('a', 30), row('b', 20)], cursor: null });
-    qc.setQueryData(['notes', {}, {}], all);
+    qc.setQueryData(['notes', {}, { sort: 'updated' }], all);
     qc.setQueryData(['notes', {}, { sort: 'title' }], all);
     qc.setQueryData(['notes', 'exact-count', {}], 12);
     const invalidate = vi.spyOn(qc, 'invalidateQueries');
 
     applySaveToLists(qc, saved('b', 40, { title: 'Zed' }), { title: true });
 
-    expect(ids(qc.getQueryData<InfiniteData<NotePage>>(['notes', {}, {}])!)).toEqual([['b', 'a']]);
+    expect(ids(qc.getQueryData<InfiniteData<NotePage>>(['notes', {}, { sort: 'updated' }])!)).toEqual([['b', 'a']]);
     expect(invalidate.mock.calls.map((c) => c[0]?.queryKey)).toEqual([['notes', {}, { sort: 'title' }]]);
   });
 

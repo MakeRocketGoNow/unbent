@@ -5941,7 +5941,7 @@ button.settings-nav-item {
    notebooks, with nothing to say where the fixed part ended, would read as unstable.
 
    The rows keep the named orders' 44px and their inline padding, so a field's name starts on
-   the same edge as "Recently updated" and the two lists read as one column.
+   the same edge as "Newest first" and the two lists read as one column.
 */
 .sort-fields {
   display: flex;

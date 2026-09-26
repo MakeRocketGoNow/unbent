@@ -395,14 +395,19 @@ export const updateNotesSchema = z
 /**
  * How the note list is ordered.
  *
- * `updated` is the default because a notes app is usually a worklist. The others matter
- * for an archive: filing by when a document was received (`created`) or finding one by
- * name (`title`) are both ordinary questions that recency cannot answer.
+ * `created` is the default: this is a paperless archive more than a worklist, and a list
+ * ordered by when each document arrived stays put — under `updated` an autosave, a tag or
+ * an auto-fill sent an old receipt to the top, and the list reshuffled under whoever was
+ * reading it. `updated` is still offered for working through what was touched last, and
+ * `title` for finding a document by name.
  */
 export const NOTE_SORTS = ['updated', 'created', 'title'] as const;
 export type NoteSort = (typeof NOTE_SORTS)[number];
 
-export const noteSortSchema = z.enum(NOTE_SORTS).default('updated');
+/** The order a list takes when none is asked for. Spelled once; see above for why. */
+export const DEFAULT_NOTE_SORT: NoteSort = 'created';
+
+export const noteSortSchema = z.enum(NOTE_SORTS).default(DEFAULT_NOTE_SORT);
 /** Ascending is meaningful for every sort: oldest first, or A–Z. */
 export const noteOrderSchema = z.enum(['asc', 'desc']).default('desc');
 

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { Link, useNavigate } from '@tanstack/react-router';
 import { useQuery, useInfiniteQuery, useQueryClient, useMutation } from '@tanstack/react-query';
-import { UNFILED, type FieldDef, type FieldValue } from '@unbent/shared';
+import { DEFAULT_NOTE_SORT, UNFILED, type FieldDef, type FieldValue } from '@unbent/shared';
 import * as api from '../notes-api.js';
 import { Route } from '../routes/notes.js';
 import {
@@ -187,7 +187,7 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
    *
    * Only on arriving in a place, never while in one. Absent is also how the URL spells
    * the default, so a check on absence alone would put the old order straight back the
-   * moment "Recently updated" was picked. Picking it has already forgotten the place by
+   * moment "Newest first" was picked. Picking it has already forgotten the place by
    * then (`rememberSort`), but the arrival rule is what keeps the two from depending on
    * the order the writes land in. Back to a bare entry is an arrival too, and opens in
    * the remembered order rather than the default that entry happened to be made with:
@@ -315,8 +315,8 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
    * The row changes at once and the save follows, the way the note's own property list
    * behaves; a failure puts the row back and says so on the error line. The rest of the
    * list is refetched afterwards rather than patched, because the edit bumps the note's
-   * updated date — under the default sort the row then moves to the top, which is what
-   * any edit does to the list today and not something a table should quietly hide.
+   * updated date — under "Recently updated" the row then moves to the top, which is what
+   * any edit does to that list and not something a table should quietly hide.
    *
    * The open note is the exception: its editor holds a draft that would write the old
    * value back over a direct save, so its edits go to that draft (`editOpenNoteField`)
@@ -994,7 +994,7 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
                 key={n.id}
                 note={n}
                 to="/notes/$noteId"
-                sort={sort ?? 'updated'}
+                sort={sort ?? DEFAULT_NOTE_SORT}
                 transition={isMobile}
                 selection={{
                   selected: selection.has(n.id),

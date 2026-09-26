@@ -32,6 +32,7 @@ import {
   type SearchResult,
   fieldSortKey,
   fieldSortsNumerically,
+  DEFAULT_NOTE_SORT,
 } from '@unbent/shared';
 
 interface NoteRow {
@@ -911,7 +912,7 @@ export class NotesRepo extends ScopedRepo {
 
   private async pageRows(opts: Parameters<NotesRepo['list']>[0]): Promise<SummaryRow[]> {
     const { limit, cursor, tags, notebook, fields, trashed, from, to } = opts;
-    const sort = opts.sort ?? 'updated';
+    const sort = opts.sort ?? DEFAULT_NOTE_SORT;
     // Trash has one meaningful order — most recently deleted first — so it ignores both.
     const byField = !trashed && opts.sortField ? opts.sortField : undefined;
     const spec = trashed ? TRASH_SORT : byField ? fieldSort(byField) : SORTS[sort];
@@ -1114,7 +1115,7 @@ export class NotesRepo extends ScopedRepo {
             ? TRASH_SORT.dateColumn
             : opts?.sortField
               ? fieldSort(opts.sortField).dateColumn
-              : SORTS[opts?.sort ?? 'updated'].dateColumn,
+              : SORTS[opts?.sort ?? DEFAULT_NOTE_SORT].dateColumn,
         },
         binds,
         this.userId,

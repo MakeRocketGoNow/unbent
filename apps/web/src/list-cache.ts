@@ -1,5 +1,5 @@
 import type { InfiniteData, QueryClient, QueryKey } from '@tanstack/react-query';
-import { excerptMarkdown, UNFILED, type Note, type NoteSummary } from '@unbent/shared';
+import { DEFAULT_NOTE_SORT, excerptMarkdown, UNFILED, type Note, type NoteSummary } from '@unbent/shared';
 import type { NotePage } from './notes-api.js';
 import type { NoteFilter, NoteOrdering } from './queries.js';
 
@@ -54,9 +54,8 @@ function noteListKey(key: QueryKey): { filter: NoteFilter; ordering: NoteOrderin
  * `'refetch'` when only the server can say where it goes.
  *
  * A patch can place the note when its position depends on something the save did not
- * touch, or on its updated date, which the save sets and the PATCH returns: under the
- * default newest-first order the row moves to the top, as it did when the list was
- * refetched. It cannot when the save changed what a filter tests (filing under a notebook
+ * touch, or on its updated date, which the save sets and the PATCH returns: under
+ * "Recently updated" the row moves to the top, as it did when the list was refetched. It cannot when the save changed what a filter tests (filing under a notebook
  * or tag filter, a field under a field filter, the updated date under a range on it) or
  * what a title or field sort orders by — the new position is somewhere among rows this
  * list may not have loaded.
@@ -68,7 +67,7 @@ export function listAfterSave(
   saved: Note,
   change: SavedChange,
 ): InfiniteData<NotePage> | 'refetch' {
-  const sort = ordering.sortField ? 'field' : (ordering.sort ?? 'updated');
+  const sort = ordering.sortField ? 'field' : (ordering.sort ?? DEFAULT_NOTE_SORT);
   const descending = (ordering.order ?? 'desc') === 'desc';
 
   if ((filter.notebook !== undefined || filter.tag?.length) && (change.notebook || change.tags)) {

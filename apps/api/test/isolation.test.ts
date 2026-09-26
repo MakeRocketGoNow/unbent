@@ -356,13 +356,19 @@ describe('note CRUD', () => {
       body: JSON.stringify({ body: 'edited' }),
     });
 
-    const byUpdated = await fetch(`${BASE}/api/notes`, asUser(actor)).then((r) => r.json());
+    const byUpdated = await fetch(`${BASE}/api/notes?sort=updated`, asUser(actor)).then((r) =>
+      r.json(),
+    );
     expect(byUpdated.items[0].id).toBe(first.id);
 
     const byCreated = await fetch(`${BASE}/api/notes?sort=created`, asUser(actor)).then((r) =>
       r.json(),
     );
     expect(byCreated.items[0].id).toBe(second.id);
+
+    // Newest first is the default: an edit does not move a note up an unsorted list.
+    const byDefault = await fetch(`${BASE}/api/notes`, asUser(actor)).then((r) => r.json());
+    expect(byDefault.items[0].id).toBe(second.id);
   });
 
   it('reverses with order=asc', async () => {
