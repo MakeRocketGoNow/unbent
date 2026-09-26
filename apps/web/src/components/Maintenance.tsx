@@ -305,10 +305,12 @@ export function Maintenance() {
           Empties the account: every note, trashed or not, and every attachment. Mainly
           useful for repeating a trial import.
         </p>
-        {/* The quietest control here on purpose — nothing else on this page can do as much.
-            `quiet` is the variant that says so without pretending to be a link. */}
+        {/* Outlined in red, like the notebook page's Delete notebook, rather than filled like
+            Empty trash above it: nothing else on this page can do as much, so it is not the
+            loud one. It was `quiet` once, which left a lone red caption at the foot of the
+            section; that variant is for actions repeated down a list, not one per page. */}
         <Button
-          variant="quiet"
+          variant="secondary"
           tone="danger"
           disabled={busy}
           onClick={() => {
@@ -367,7 +369,7 @@ export function Maintenance() {
               reading on the one page where the other control means it.
           */}
           <Button
-            variant="quiet"
+            variant="secondary"
             tone="danger"
             disabled={busy || sending}
             onClick={() => {
