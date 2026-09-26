@@ -834,15 +834,21 @@ export function NotebookEditor({ notebookId, onChanged, onDeleted }: NotebookEdi
 
       {/* Delete sits last and apart, the way a destructive action should: past the fields,
           under its own heading, not a button a stray click on the way down the page can find.
-          The list offers the same delete, so this is a second door, not the only one. */}
-      <h3 className="notebook-section-head notebook-danger-head">Delete notebook</h3>
+          The list offers the same delete, so this is a second door, not the only one.
+
+          The heading is in the page's ink like "Fields", and the red is the button's alone.
+          Both were red once, with the button `quiet` and so borderless: two lines of the
+          same red words, one of which you could click, and nothing to say which. The button
+          is outlined because it appears once on the page — `quiet` is for actions repeated
+          down a dense list, and here it only made the one action look like a caption. */}
+      <h3 className="notebook-section-head">Delete notebook</h3>
       <div className="notebook-danger">
         <p className="muted small">
           Deleting <strong>{notebook?.name}</strong> leaves its notes unfiled unless you choose
           to move them to Trash.
         </p>
         <Button
-          variant="quiet"
+          variant="secondary"
           tone="danger"
           disabled={busy || !notebook}
           onClick={() => setConfirmingDelete(true)}

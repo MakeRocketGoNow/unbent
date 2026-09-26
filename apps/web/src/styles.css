@@ -4582,8 +4582,6 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
   font-weight: 600;
 }
 
-.notebook-danger-head { color: var(--bad); }
-
 .notebook-danger {
   align-self: stretch;
   display: flex;
