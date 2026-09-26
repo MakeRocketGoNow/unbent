@@ -460,7 +460,7 @@ export function NotebookEditor({ notebookId, onChanged, onDeleted }: NotebookEdi
   const list = fields.data ?? [];
 
   return (
-    <div className="panel">
+    <div className="panel notebook-edit">
       <div className="panel-head">
         <h2>{notebook ? `Edit ${notebook.name}` : 'Edit notebook'}</h2>
         <div className="notebook-head-actions">
@@ -479,358 +479,364 @@ export function NotebookEditor({ notebookId, onChanged, onDeleted }: NotebookEdi
         </div>
       </div>
 
-      {/* A failed field operation, or a failed name/purpose autosave (a clash, most often),
-          shown in full under the header where the indicator only had room for "Save failed". */}
-      {(error ?? nameError ?? purposeError) && (
-        <p className="bad small">{error ?? nameError ?? purposeError}</p>
-      )}
-
-      {/* The name comes first — it is what the notebook is called, and what the list showed.
-          Renaming here updates every note in it, because the notes reference the id. It
-          autosaves as you type, and is flushed if you leave the page mid-edit. */}
-      <div className="notebook-name-edit">
-        <label className="notebook-purpose-label" htmlFor="notebook-name">
-          Name
-        </label>
-        <input
-          id="notebook-name"
-          className="search-field"
-          value={nameDraft ?? ''}
-          disabled={busy || !notebook}
-          aria-label="Notebook name"
-          onChange={(e) => setNameDraft(e.target.value)}
-          onKeyDown={(e) => {
-            // Enter commits now rather than waiting out the debounce; Escape abandons the
-            // edit back to the saved name.
-            if (e.key === 'Enter') void flushName();
-            if (e.key === 'Escape') setNameDraft(savedName);
-          }}
-        />
-      </div>
-
-      {/* The notebook's purpose sits above its fields because it is about the notebook as a
-          whole, not about any one field. It is optional and empty by default; what it earns
-          its place for is auto-fill, which reads it to decide whether a note belongs here —
-          so the placeholder coaches toward what belongs and, as usefully, what does not. */}
-      <div className="notebook-purpose">
-        <label className="notebook-purpose-label" htmlFor="notebook-purpose">
-          Purpose <span className="muted small">— optional</span>
-        </label>
-        <textarea
-          id="notebook-purpose"
-          className="notebook-purpose-input"
-          value={purposeDraft ?? ''}
-          rows={2}
-          maxLength={MAX_NOTEBOOK_PURPOSE_LENGTH}
-          disabled={busy || !notebook}
-          placeholder="What belongs here — and what doesn't. e.g. Things I want to buy someday; not receipts or purchases."
-          onChange={(e) => setPurposeDraft(e.target.value)}
-        />
-        <p className="muted small notebook-purpose-hint">
-          Auto-fill reads this when it decides where a note belongs, so a notebook whose name
-          could mislead — a “Shopping” list that is really a wish list — keeps notes that
-          don't fit out.
-        </p>
-      </div>
-
-      <h3 className="notebook-section-head">Fields</h3>
-
-      <ul className="notebook-admin field-admin">
-        {list.map((field, index) => (
-          <li key={field.id}>
-            {editing?.id === field.id ? (
-              <input
-                className="search-field"
-                value={editing.value}
-                autoFocus
-                disabled={busy}
-                aria-label="Field name"
-                onChange={(e) => setEditing({ id: field.id, value: e.target.value })}
-                onBlur={commitRename}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') commitRename();
-                  if (e.key === 'Escape') setEditing(null);
-                }}
-              />
-            ) : (
-              <button
-                type="button"
-                className="notebook-admin-name"
-                title="Rename"
-                onClick={() => setEditing({ id: field.id, value: field.name })}
-              >
-                <FieldTypeIcon type={field.type} rating={isRatingField(field)} currency={isCurrencyField(field)} />
-                {field.name}
-                {field.valueCount !== undefined && field.valueCount > 0 && (
-                  <span className="tag-count" title={`${plural(field.valueCount, 'note')} with a value`}>
-                    {field.valueCount}
-                  </span>
-                )}
-              </button>
-            )}
-
-            <span className="notebook-scope-wrap field-admin-type">
-              <select
-                className="notebook-scope"
-                aria-label={`Type of ${field.name}`}
-                value={isRatingField(field) ? 'rating' : isCurrencyField(field) ? 'currency' : field.type}
-                disabled={busy}
-                onChange={(e) => {
-                  const picked = e.target.value;
-                  // Away from a rating, the scale goes with it; away from an amount, the
-                  // currency does — `null` rather than undefined, which would leave the old
-                  // one on the field.
-                  const dropScale = field.scale ? null : undefined;
-                  const dropCurrency = field.currency ? null : undefined;
-                  if (picked === 'rating') {
-                    // Turning a number into a rating: the scale it starts on is the one
-                    // the create form offers, which is the shape most ratings want.
-                    void changeType(field, 'number', { max: 5, step: 0.5 }, dropCurrency);
-                  } else if (picked === 'currency') {
-                    void changeType(field, 'number', dropScale, DEFAULT_CURRENCY);
-                  } else {
-                    void changeType(field, picked as FieldType, dropScale, dropCurrency);
-                  }
-                }}
-              >
-                {FIELD_TYPES.map((t) => (
-                  <option key={t} value={t}>
-                    {FIELD_TYPE_LABELS[t]}
-                  </option>
-                ))}
-                <option value="rating">Rating</option>
-                <option value="currency">Currency</option>
-              </select>
-            </span>
-
-            <span className="notebook-admin-actions">
-              <Button
-                variant="quiet"
-                size="small"
-                aria-label={`Move ${field.name} up`}
-                disabled={busy || index === 0}
-                onClick={() => move(index, -1)}
-              >
-                <MoveUpIcon />
-              </Button>
-              <Button
-                variant="quiet"
-                size="small"
-                aria-label={`Move ${field.name} down`}
-                disabled={busy || index === list.length - 1}
-                onClick={() => move(index, 1)}
-              >
-                <MoveDownIcon />
-              </Button>
-              <Button
-                variant="quiet"
-                tone="danger"
-                size="small"
-                disabled={busy}
-                onClick={() => {
-                  setEditing(null);
-                  setPendingDelete(field);
-                }}
-              >
-                Delete
-              </Button>
-            </span>
-
-            {fieldHasOptions(field.type) && (
-              <div className="field-admin-options">
-                <TagInput
-                  label="option"
-                  tags={field.options}
-                  suggestions={[]}
-                  reorderable
-                  onChange={(options) => editOptions(field, options)}
-                />
-                {/* The removal confirm floats over the rows below rather than pushing them,
-                    and sits under the option it is about so the two read as one action. */}
-                {pendingOption?.field.id === field.id && (
-                  <div className="field-option-confirm" ref={optionConfirmRef}>
-                    <Confirm
-                      label="Confirm remove option"
-                      question={
-                        <>
-                          Remove <strong>{pendingOption.option}</strong> from {field.name}?
-                        </>
-                      }
-                      detail={
-                        `${plural(pendingOption.usage, 'note')} still ${pendingOption.usage === 1 ? 'uses' : 'use'} it. ` +
-                        'Keep it and those notes still show it, marked no longer an option; clear it and ' +
-                        `it's removed from ${pendingOption.usage === 1 ? 'that note' : 'those notes'}.`
-                      }
-                      busy={busy}
-                      onCancel={() => setPendingOption(null)}
-                      actions={[
-                        {
-                          label: 'Keep values',
-                          busyLabel: 'Removing…',
-                          // Filled in ink, not the brand green, so it does not clash with the red clear.
-                          tone: 'neutral',
-                          onConfirm: () => confirmRemoveOption(false),
-                        },
-                        {
-                          label: `Clear from ${plural(pendingOption.usage, 'note')}`,
-                          busyLabel: 'Clearing…',
-                          tone: 'danger',
-                          onConfirm: () => confirmRemoveOption(true),
-                        },
-                      ]}
-                    />
-                  </div>
-                )}
-              </div>
-            )}
-
-            {isRatingField(field) && field.scale && (
-              <ScalePicker
-                scale={field.scale}
-                disabled={busy}
-                onChange={(scale) => void changeScale(field, scale)}
-              />
-            )}
-
-            {isCurrencyField(field) && field.currency && (
-              <CurrencyPicker
-                currency={field.currency}
-                disabled={busy}
-                onChange={(currency) =>
-                  void run(() => api.updateNotebookField(notebookId, field.id, { currency }))
-                }
-              />
-            )}
-          </li>
-        ))}
-
-        {list.length === 0 && fields.isSuccess && (
-          <li className="muted small">No fields yet. Notes in this notebook will get every field you add here.</li>
+      {/* The page is three sections — the notebook itself, its fields, its deletion — and the
+          spacing lives on them rather than on what is inside: see `.notebook-edit`. */}
+      <section className="notebook-section">
+        {/* A failed field operation, or a failed name/purpose autosave (a clash, most often),
+            shown in full under the header where the indicator only had room for "Save failed". */}
+        {(error ?? nameError ?? purposeError) && (
+          <p className="bad small">{error ?? nameError ?? purposeError}</p>
         )}
-      </ul>
 
-      {pendingDelete && (
-        <Confirm
-          label="Confirm delete field"
-          question={
-            <>
-              Delete the field <strong>{pendingDelete.name}</strong>?
-            </>
-          }
-          detail={
-            pendingDelete.valueCount
-              ? `Its values on ${plural(pendingDelete.valueCount, 'note')} will be deleted.`
-              : 'No note has a value for it.'
-          }
-          busy={busy}
-          onCancel={() => setPendingDelete(null)}
-          actions={[
-            { label: 'Delete field', busyLabel: 'Deleting…', tone: 'danger', onConfirm: confirmDelete },
-          ]}
-        />
-      )}
-
-      {pendingType && (
-        <Confirm
-          label={scaleOnlyConfirm(pendingType) ? 'Confirm change rating scale' : 'Confirm change field type'}
-          question={
-            <>
-              {scaleOnlyConfirm(pendingType) ? (
-                scaleConfirmQuestion(pendingType)
-              ) : (
-                <>
-                  Change <strong>{pendingType.field.name}</strong> to{' '}
-                  {/* Named as the picker names it: "to Number" would be the wrong word for a
-                      number gaining a scale, which is the change the person just asked for. */}
-                  {pendingType.scale
-                    ? 'Rating'
-                    : pendingType.currency
-                      ? 'Currency'
-                      : FIELD_TYPE_LABELS[pendingType.to]}
-                  ?
-                </>
-              )}
-            </>
-          }
-          detail={
-            `${plural(pendingType.values, 'note')} ${pendingType.values === 1 ? 'has' : 'have'} a value. ` +
-            (pendingType.incompatible === pendingType.values
-              ? pendingType.incompatible === 1
-                ? "It can't be read that way and will be cleared."
-                : 'None of them can be read that way, so all will be cleared.'
-              : `${pendingType.incompatible} of them can't be read that way and will be cleared.`)
-          }
-          busy={busy}
-          onCancel={() => setPendingType(null)}
-          actions={[
-            {
-              label: `Change and clear ${plural(pendingType.incompatible, 'value')}`,
-              busyLabel: 'Changing…',
-              tone: 'danger',
-              onConfirm: confirmType,
-            },
-          ]}
-        />
-      )}
-
-      <div className="notebook-admin-new field-admin-new">
-        <input
-          className="search-field"
-          value={newName}
-          placeholder="New field name"
-          aria-label="New field name"
-          disabled={busy}
-          onChange={(e) => setNewName(e.target.value)}
-          onKeyDown={(e) => e.key === 'Enter' && create()}
-        />
-        <span className="notebook-scope-wrap field-admin-type">
-          <select
-            className="notebook-scope"
-            aria-label="New field type"
-            value={newIsRating ? 'rating' : newIsCurrency ? 'currency' : newType}
-            disabled={busy}
-            onChange={(e) => {
-              const picked = e.target.value;
-              setNewIsRating(picked === 'rating');
-              setNewIsCurrency(picked === 'currency');
-              setNewType(picked === 'rating' || picked === 'currency' ? 'number' : (picked as FieldType));
+        {/* The name comes first — it is what the notebook is called, and what the list showed.
+            Renaming here updates every note in it, because the notes reference the id. It
+            autosaves as you type, and is flushed if you leave the page mid-edit. */}
+        <div className="notebook-name-edit">
+          <label className="notebook-purpose-label" htmlFor="notebook-name">
+            Name
+          </label>
+          <input
+            id="notebook-name"
+            className="search-field"
+            value={nameDraft ?? ''}
+            disabled={busy || !notebook}
+            aria-label="Notebook name"
+            onChange={(e) => setNameDraft(e.target.value)}
+            onKeyDown={(e) => {
+              // Enter commits now rather than waiting out the debounce; Escape abandons the
+              // edit back to the saved name.
+              if (e.key === 'Enter') void flushName();
+              if (e.key === 'Escape') setNameDraft(savedName);
             }}
-          >
-            {FIELD_TYPES.map((t) => (
-              <option key={t} value={t}>
-                {FIELD_TYPE_LABELS[t]}
-              </option>
-            ))}
-            {/* Last, and named for what they are rather than for what they store. */}
-            <option value="rating">Rating</option>
-            <option value="currency">Currency</option>
-          </select>
-        </span>
-        <Button variant="primary" disabled={busy || !newName.trim()} onClick={create}>
-          Add field
-        </Button>
-        {fieldHasOptions(newType) && !newIsRating && (
-          <TagInput
-            label="option"
-            tags={newOptions}
-            suggestions={[]}
-            reorderable
-            onChange={setNewOptions}
+          />
+        </div>
+
+        {/* The notebook's purpose sits above its fields because it is about the notebook as a
+            whole, not about any one field. It is optional and empty by default; what it earns
+            its place for is auto-fill, which reads it to decide whether a note belongs here —
+            so the placeholder coaches toward what belongs and, as usefully, what does not. */}
+        <div className="notebook-purpose">
+          <label className="notebook-purpose-label" htmlFor="notebook-purpose">
+            Purpose <span className="muted small">— optional</span>
+          </label>
+          <textarea
+            id="notebook-purpose"
+            className="notebook-purpose-input"
+            value={purposeDraft ?? ''}
+            rows={2}
+            maxLength={MAX_NOTEBOOK_PURPOSE_LENGTH}
+            disabled={busy || !notebook}
+            placeholder="What belongs here — and what doesn't. e.g. Things I want to buy someday; not receipts or purchases."
+            onChange={(e) => setPurposeDraft(e.target.value)}
+          />
+          <p className="muted small notebook-purpose-hint">
+            Auto-fill reads this when it decides where a note belongs, so a notebook whose name
+            could mislead — a “Shopping” list that is really a wish list — keeps notes that
+            don't fit out.
+          </p>
+        </div>
+      </section>
+
+      <section className="notebook-section">
+        <h3 className="notebook-section-head">Fields</h3>
+
+        <ul className="notebook-admin field-admin">
+          {list.map((field, index) => (
+            <li key={field.id}>
+              {editing?.id === field.id ? (
+                <input
+                  className="search-field"
+                  value={editing.value}
+                  autoFocus
+                  disabled={busy}
+                  aria-label="Field name"
+                  onChange={(e) => setEditing({ id: field.id, value: e.target.value })}
+                  onBlur={commitRename}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') commitRename();
+                    if (e.key === 'Escape') setEditing(null);
+                  }}
+                />
+              ) : (
+                <button
+                  type="button"
+                  className="notebook-admin-name"
+                  title="Rename"
+                  onClick={() => setEditing({ id: field.id, value: field.name })}
+                >
+                  <FieldTypeIcon type={field.type} rating={isRatingField(field)} currency={isCurrencyField(field)} />
+                  {field.name}
+                  {field.valueCount !== undefined && field.valueCount > 0 && (
+                    <span className="tag-count" title={`${plural(field.valueCount, 'note')} with a value`}>
+                      {field.valueCount}
+                    </span>
+                  )}
+                </button>
+              )}
+
+              <span className="notebook-scope-wrap field-admin-type">
+                <select
+                  className="notebook-scope"
+                  aria-label={`Type of ${field.name}`}
+                  value={isRatingField(field) ? 'rating' : isCurrencyField(field) ? 'currency' : field.type}
+                  disabled={busy}
+                  onChange={(e) => {
+                    const picked = e.target.value;
+                    // Away from a rating, the scale goes with it; away from an amount, the
+                    // currency does — `null` rather than undefined, which would leave the old
+                    // one on the field.
+                    const dropScale = field.scale ? null : undefined;
+                    const dropCurrency = field.currency ? null : undefined;
+                    if (picked === 'rating') {
+                      // Turning a number into a rating: the scale it starts on is the one
+                      // the create form offers, which is the shape most ratings want.
+                      void changeType(field, 'number', { max: 5, step: 0.5 }, dropCurrency);
+                    } else if (picked === 'currency') {
+                      void changeType(field, 'number', dropScale, DEFAULT_CURRENCY);
+                    } else {
+                      void changeType(field, picked as FieldType, dropScale, dropCurrency);
+                    }
+                  }}
+                >
+                  {FIELD_TYPES.map((t) => (
+                    <option key={t} value={t}>
+                      {FIELD_TYPE_LABELS[t]}
+                    </option>
+                  ))}
+                  <option value="rating">Rating</option>
+                  <option value="currency">Currency</option>
+                </select>
+              </span>
+
+              <span className="notebook-admin-actions">
+                <Button
+                  variant="quiet"
+                  size="small"
+                  aria-label={`Move ${field.name} up`}
+                  disabled={busy || index === 0}
+                  onClick={() => move(index, -1)}
+                >
+                  <MoveUpIcon />
+                </Button>
+                <Button
+                  variant="quiet"
+                  size="small"
+                  aria-label={`Move ${field.name} down`}
+                  disabled={busy || index === list.length - 1}
+                  onClick={() => move(index, 1)}
+                >
+                  <MoveDownIcon />
+                </Button>
+                <Button
+                  variant="quiet"
+                  tone="danger"
+                  size="small"
+                  disabled={busy}
+                  onClick={() => {
+                    setEditing(null);
+                    setPendingDelete(field);
+                  }}
+                >
+                  Delete
+                </Button>
+              </span>
+
+              {fieldHasOptions(field.type) && (
+                <div className="field-admin-options">
+                  <TagInput
+                    label="option"
+                    tags={field.options}
+                    suggestions={[]}
+                    reorderable
+                    onChange={(options) => editOptions(field, options)}
+                  />
+                  {/* The removal confirm floats over the rows below rather than pushing them,
+                      and sits under the option it is about so the two read as one action. */}
+                  {pendingOption?.field.id === field.id && (
+                    <div className="field-option-confirm" ref={optionConfirmRef}>
+                      <Confirm
+                        label="Confirm remove option"
+                        question={
+                          <>
+                            Remove <strong>{pendingOption.option}</strong> from {field.name}?
+                          </>
+                        }
+                        detail={
+                          `${plural(pendingOption.usage, 'note')} still ${pendingOption.usage === 1 ? 'uses' : 'use'} it. ` +
+                          'Keep it and those notes still show it, marked no longer an option; clear it and ' +
+                          `it's removed from ${pendingOption.usage === 1 ? 'that note' : 'those notes'}.`
+                        }
+                        busy={busy}
+                        onCancel={() => setPendingOption(null)}
+                        actions={[
+                          {
+                            label: 'Keep values',
+                            busyLabel: 'Removing…',
+                            // Filled in ink, not the brand green, so it does not clash with the red clear.
+                            tone: 'neutral',
+                            onConfirm: () => confirmRemoveOption(false),
+                          },
+                          {
+                            label: `Clear from ${plural(pendingOption.usage, 'note')}`,
+                            busyLabel: 'Clearing…',
+                            tone: 'danger',
+                            onConfirm: () => confirmRemoveOption(true),
+                          },
+                        ]}
+                      />
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {isRatingField(field) && field.scale && (
+                <ScalePicker
+                  scale={field.scale}
+                  disabled={busy}
+                  onChange={(scale) => void changeScale(field, scale)}
+                />
+              )}
+
+              {isCurrencyField(field) && field.currency && (
+                <CurrencyPicker
+                  currency={field.currency}
+                  disabled={busy}
+                  onChange={(currency) =>
+                    void run(() => api.updateNotebookField(notebookId, field.id, { currency }))
+                  }
+                />
+              )}
+            </li>
+          ))}
+
+          {list.length === 0 && fields.isSuccess && (
+            <li className="muted small">No fields yet. Notes in this notebook will get every field you add here.</li>
+          )}
+        </ul>
+
+        {pendingDelete && (
+          <Confirm
+            label="Confirm delete field"
+            question={
+              <>
+                Delete the field <strong>{pendingDelete.name}</strong>?
+              </>
+            }
+            detail={
+              pendingDelete.valueCount
+                ? `Its values on ${plural(pendingDelete.valueCount, 'note')} will be deleted.`
+                : 'No note has a value for it.'
+            }
+            busy={busy}
+            onCancel={() => setPendingDelete(null)}
+            actions={[
+              { label: 'Delete field', busyLabel: 'Deleting…', tone: 'danger', onConfirm: confirmDelete },
+            ]}
           />
         )}
-        {newIsRating && (
-          <ScalePicker scale={newScale} disabled={busy} onChange={setNewScale} />
-        )}
-        {newIsCurrency && (
-          <CurrencyPicker currency={newCurrency} disabled={busy} onChange={setNewCurrency} />
-        )}
-      </div>
 
-      <p className="muted small">
-        Fields appear on every note in this notebook. Deleting a field deletes its values.
-        Changing a field's type, or narrowing a rating's scale, clears any value that can't
-        be read that way. A note moved to another notebook keeps the values it has.
-      </p>
+        {pendingType && (
+          <Confirm
+            label={scaleOnlyConfirm(pendingType) ? 'Confirm change rating scale' : 'Confirm change field type'}
+            question={
+              <>
+                {scaleOnlyConfirm(pendingType) ? (
+                  scaleConfirmQuestion(pendingType)
+                ) : (
+                  <>
+                    Change <strong>{pendingType.field.name}</strong> to{' '}
+                    {/* Named as the picker names it: "to Number" would be the wrong word for a
+                        number gaining a scale, which is the change the person just asked for. */}
+                    {pendingType.scale
+                      ? 'Rating'
+                      : pendingType.currency
+                        ? 'Currency'
+                        : FIELD_TYPE_LABELS[pendingType.to]}
+                    ?
+                  </>
+                )}
+              </>
+            }
+            detail={
+              `${plural(pendingType.values, 'note')} ${pendingType.values === 1 ? 'has' : 'have'} a value. ` +
+              (pendingType.incompatible === pendingType.values
+                ? pendingType.incompatible === 1
+                  ? "It can't be read that way and will be cleared."
+                  : 'None of them can be read that way, so all will be cleared.'
+                : `${pendingType.incompatible} of them can't be read that way and will be cleared.`)
+            }
+            busy={busy}
+            onCancel={() => setPendingType(null)}
+            actions={[
+              {
+                label: `Change and clear ${plural(pendingType.incompatible, 'value')}`,
+                busyLabel: 'Changing…',
+                tone: 'danger',
+                onConfirm: confirmType,
+              },
+            ]}
+          />
+        )}
+
+        <div className="notebook-admin-new field-admin-new">
+          <input
+            className="search-field"
+            value={newName}
+            placeholder="New field name"
+            aria-label="New field name"
+            disabled={busy}
+            onChange={(e) => setNewName(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && create()}
+          />
+          <span className="notebook-scope-wrap field-admin-type">
+            <select
+              className="notebook-scope"
+              aria-label="New field type"
+              value={newIsRating ? 'rating' : newIsCurrency ? 'currency' : newType}
+              disabled={busy}
+              onChange={(e) => {
+                const picked = e.target.value;
+                setNewIsRating(picked === 'rating');
+                setNewIsCurrency(picked === 'currency');
+                setNewType(picked === 'rating' || picked === 'currency' ? 'number' : (picked as FieldType));
+              }}
+            >
+              {FIELD_TYPES.map((t) => (
+                <option key={t} value={t}>
+                  {FIELD_TYPE_LABELS[t]}
+                </option>
+              ))}
+              {/* Last, and named for what they are rather than for what they store. */}
+              <option value="rating">Rating</option>
+              <option value="currency">Currency</option>
+            </select>
+          </span>
+          <Button variant="primary" disabled={busy || !newName.trim()} onClick={create}>
+            Add field
+          </Button>
+          {fieldHasOptions(newType) && !newIsRating && (
+            <TagInput
+              label="option"
+              tags={newOptions}
+              suggestions={[]}
+              reorderable
+              onChange={setNewOptions}
+            />
+          )}
+          {newIsRating && (
+            <ScalePicker scale={newScale} disabled={busy} onChange={setNewScale} />
+          )}
+          {newIsCurrency && (
+            <CurrencyPicker currency={newCurrency} disabled={busy} onChange={setNewCurrency} />
+          )}
+        </div>
+
+        <p className="muted small">
+          Fields appear on every note in this notebook. Deleting a field deletes its values.
+          Changing a field's type, or narrowing a rating's scale, clears any value that can't
+          be read that way. A note moved to another notebook keeps the values it has.
+        </p>
+      </section>
 
       {/* Delete sits last and apart, the way a destructive action should: past the fields,
           under its own heading, not a button a stray click on the way down the page can find.
@@ -841,8 +847,8 @@ export function NotebookEditor({ notebookId, onChanged, onDeleted }: NotebookEdi
           same red words, one of which you could click, and nothing to say which. The button
           is outlined because it appears once on the page — `quiet` is for actions repeated
           down a dense list, and here it only made the one action look like a caption. */}
-      <h3 className="notebook-section-head">Delete notebook</h3>
-      <div className="notebook-danger">
+      <section className="notebook-section">
+        <h3 className="notebook-section-head">Delete notebook</h3>
         <p className="muted small">
           Deleting <strong>{notebook?.name}</strong> leaves its notes unfiled unless you choose
           to move them to Trash.
@@ -855,17 +861,17 @@ export function NotebookEditor({ notebookId, onChanged, onDeleted }: NotebookEdi
         >
           Delete notebook
         </Button>
-      </div>
 
-      {confirmingDelete && notebook && (
-        <DeleteNotebookConfirm
-          name={notebook.name}
-          count={notebook.count}
-          busy={busy}
-          onCancel={() => setConfirmingDelete(false)}
-          onConfirm={deleteNotebook}
-        />
-      )}
+        {confirmingDelete && notebook && (
+          <DeleteNotebookConfirm
+            name={notebook.name}
+            count={notebook.count}
+            busy={busy}
+            onCancel={() => setConfirmingDelete(false)}
+            onConfirm={deleteNotebook}
+          />
+        )}
+      </section>
     </div>
   );
 }
