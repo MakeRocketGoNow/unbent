@@ -1142,7 +1142,7 @@ button.link {
   text-align: left;
   vertical-align: middle;
   white-space: nowrap;
-  max-width: 24rem;
+  max-width: 22rem;
   overflow: hidden;
   text-overflow: ellipsis;
   border-bottom: 1px solid var(--border);
