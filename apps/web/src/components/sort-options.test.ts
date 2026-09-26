@@ -28,12 +28,13 @@ describe('sort options', () => {
   });
 
   it('fills in the default for a URL that omits it', () => {
-    expect(sortKey(undefined, undefined)).toBe('updated:desc');
-    expect(sortLabel(undefined, undefined)).toBe('Recently updated');
+    expect(sortKey(undefined, undefined)).toBe('created:desc');
+    expect(sortLabel(undefined, undefined)).toBe('Newest first');
   });
 
   it('reads a key the select or menu produced', () => {
-    expect(parseSortKey('created:asc')).toEqual({ sort: 'created', order: 'asc' });
+    expect(parseSortKey('updated:desc')).toEqual({ sort: 'updated', order: undefined });
+    expect(sortLabel('updated', 'desc')).toBe('Recently updated');
     expect(sortLabel('created', 'asc')).toBe('Oldest first');
   });
 
@@ -42,9 +43,9 @@ describe('sort options', () => {
    * spelling out what absence already means, so `/notes` stays the clean link.
    */
   it('drops each half of the default rather than writing it to the URL', () => {
-    expect(parseSortKey('updated:desc')).toEqual({ sort: undefined, order: undefined });
+    expect(parseSortKey('created:desc')).toEqual({ sort: undefined, order: undefined });
     // Half a default is still dropped by half: the field is the default, the direction is not.
-    expect(parseSortKey('updated:asc')).toEqual({ sort: undefined, order: 'asc' });
+    expect(parseSortKey('created:asc')).toEqual({ sort: undefined, order: 'asc' });
     expect(parseSortKey('title:desc')).toEqual({ sort: 'title', order: undefined });
   });
 
@@ -66,24 +67,25 @@ describe('sort options', () => {
  */
 describe('column sorting', () => {
   const name = { kind: 'note', sort: 'title' } as const;
-  const updated = { kind: 'note', sort: 'updated' } as const;
+  const created = { kind: 'note', sort: 'created' } as const;
   const amount = { kind: 'field', fieldId: 'f-amount' } as const;
 
   it('reports which column the URL is sorted by, filling in the default', () => {
-    expect(columnSortState(updated, {})).toBe('desc');
+    expect(columnSortState(created, {})).toBe('desc');
+    expect(columnSortState({ kind: 'note', sort: 'updated' }, {})).toBeNull();
     expect(columnSortState(name, {})).toBeNull();
     expect(columnSortState(name, { sort: 'title', order: 'asc' })).toBe('asc');
     expect(columnSortState(amount, { sortField: 'f-amount', order: 'asc' })).toBe('asc');
     expect(columnSortState(amount, { sortField: 'f-amount' })).toBe('desc');
     // A field sort outranks the named one, so the default column is not marked either.
-    expect(columnSortState(updated, { sortField: 'f-amount' })).toBeNull();
+    expect(columnSortState(created, { sortField: 'f-amount' })).toBeNull();
   });
 
   it('starts names and fields ascending, dates newest first', () => {
     expect(nextColumnSort(name, {})).toEqual({ sort: 'title', order: 'asc', sortField: undefined });
     expect(nextColumnSort(amount, {})).toEqual({ sort: undefined, order: 'asc', sortField: 'f-amount' });
-    expect(nextColumnSort({ kind: 'note', sort: 'created' }, {})).toEqual({
-      sort: 'created',
+    expect(nextColumnSort({ kind: 'note', sort: 'updated' }, {})).toEqual({
+      sort: 'updated',
       order: undefined,
       sortField: undefined,
     });
@@ -114,7 +116,7 @@ describe('column sorting', () => {
   });
 
   it('writes the default named sort as absence, from a field sort too', () => {
-    expect(nextColumnSort(updated, { sortField: 'f-amount', order: 'asc' })).toEqual({
+    expect(nextColumnSort(created, { sortField: 'f-amount', order: 'asc' })).toEqual({
       sort: undefined,
       order: undefined,
       sortField: undefined,

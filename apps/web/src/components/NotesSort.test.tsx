@@ -81,7 +81,7 @@ describe('NotesSort', () => {
 
   it('names the default sort when the URL carries none', async () => {
     const { findByLabelText } = harness();
-    expect(await findByLabelText('Sort notes, currently Recently updated')).toBeTruthy();
+    expect(await findByLabelText('Sort notes, currently Newest first')).toBeTruthy();
   });
 
   it('opens the orders as a sheet, with the current one marked', async () => {
@@ -97,9 +97,9 @@ describe('NotesSort', () => {
   it('writes the chosen order and closes', async () => {
     const { findByLabelText, findByText, container, history } = harness();
     fireEvent.click(await findByLabelText(/^Sort notes, currently/));
-    fireEvent.click(await findByText('Oldest first'));
+    fireEvent.click(await findByText('Title A–Z'));
     await waitFor(() => {
-      expect(history.location.href).toContain('created');
+      expect(history.location.href).toContain('title');
       expect(history.location.href).toContain('asc');
       expect(sortSheet(container)?.open).toBe(false);
     });
@@ -164,7 +164,7 @@ describe('NotesSort', () => {
   it('writes the default order as absence', async () => {
     const { findByLabelText, findByText, history } = harness({ sort: 'title', order: 'asc' });
     fireEvent.click(await findByLabelText(/^Sort notes, currently/));
-    fireEvent.click(await findByText('Recently updated'));
+    fireEvent.click(await findByText('Newest first'));
     await waitFor(() => {
       expect(history.location.href).not.toContain('sort');
       expect(history.location.href).not.toContain('order');

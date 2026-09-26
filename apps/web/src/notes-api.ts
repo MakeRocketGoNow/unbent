@@ -1,3 +1,4 @@
+import { DEFAULT_NOTE_SORT } from '@unbent/shared';
 import type {
   AppConfig,
   AttachmentInfo,
@@ -678,7 +679,7 @@ export function exportQuery(
   for (const f of filter.fields ?? []) params.append('field', f);
   if (filter.from) params.set('from', filter.from);
   if (filter.to) params.set('to', filter.to);
-  params.set('sort', filter.from || filter.to ? (filter.sort ?? 'updated') : 'created');
+  params.set('sort', filter.from || filter.to ? (filter.sort ?? DEFAULT_NOTE_SORT) : 'created');
   if (page.cursor) params.set('cursor', page.cursor);
   if (page.limit) params.set('limit', String(page.limit));
   return params;

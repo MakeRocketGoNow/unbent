@@ -1,4 +1,4 @@
-import type { NoteSort } from '@unbent/shared';
+import { DEFAULT_NOTE_SORT, type NoteSort } from '@unbent/shared';
 import { isExportOf, startExport, useExporting } from '../export-archive.js';
 import { Button } from './Button.js';
 import { DownloadRowIcon } from './icons.js';
@@ -39,7 +39,7 @@ export function ExportLink({ filter, sort, total }: ExportLinkProps) {
     fields: filter.field,
     from: filter.from,
     to: filter.to,
-    sort: sort ?? 'updated',
+    sort: sort ?? DEFAULT_NOTE_SORT,
   };
   const mine = running && isExportOf(exporting, scope);
   return (

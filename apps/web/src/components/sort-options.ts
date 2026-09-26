@@ -1,4 +1,4 @@
-import type { FieldDef, FieldType, NoteSort } from '@unbent/shared';
+import { DEFAULT_NOTE_SORT, type FieldDef, type FieldType, type NoteSort } from '@unbent/shared';
 
 /**
  * The sort orders the list offers, named.
@@ -22,15 +22,15 @@ export interface SortOption {
 }
 
 export const SORT_OPTIONS: SortOption[] = [
-  { key: 'updated:desc', label: 'Recently updated', sort: 'updated', order: 'desc' },
   { key: 'created:desc', label: 'Newest first', sort: 'created', order: 'desc' },
   { key: 'created:asc', label: 'Oldest first', sort: 'created', order: 'asc' },
+  { key: 'updated:desc', label: 'Recently updated', sort: 'updated', order: 'desc' },
   { key: 'title:asc', label: 'Title A–Z', sort: 'title', order: 'asc' },
   { key: 'title:desc', label: 'Title Z–A', sort: 'title', order: 'desc' },
 ];
 
 /** The default, spelled once. Absent from the URL means this. */
-export const DEFAULT_SORT: NoteSort = 'updated';
+export const DEFAULT_SORT: NoteSort = DEFAULT_NOTE_SORT;
 export const DEFAULT_ORDER: 'asc' | 'desc' = 'desc';
 
 /** The URL's sort as a key, filling in the default the URL leaves out. */
@@ -42,7 +42,7 @@ export function sortKey(sort: NoteSort | undefined, order: 'asc' | 'desc' | unde
  * A key as the search params to write.
  *
  * The default comes back as `undefined` rather than as itself, so a plain `/notes` link
- * stays clean — picking "Recently updated" removes the parameters instead of spelling out
+ * stays clean — picking "Newest first" removes the parameters instead of spelling out
  * what absence already means.
  */
 export function parseSortKey(key: string): {
@@ -109,7 +109,7 @@ export function fieldSortDirections(type: FieldType): [FieldSortDirection, Field
  *
  * A sort by a custom field is none of the named orders, so it is named from the field and
  * its direction in the field's own words — "Date, newest first" — rather than falling back
- * to "Recently updated" over a list that is ordered by something else.
+ * to "Newest first" over a list that is ordered by something else.
  */
 export function sortLabel(
   sort: NoteSort | undefined,
@@ -151,7 +151,7 @@ export function columnSortState(target: SortTarget, search: SortSearch): 'asc' |
  * A first click sorts the way that column is usually wanted — names and field values
  * A–Z or low to high, dates newest first — and a click on the column already in charge
  * flips it. There is no third state: the list always has *some* order, and a header that
- * cycled to "none" would silently put "Recently updated" back under a column that no
+ * cycled to "none" would silently put "Newest first" back under a column that no
  * longer said so. The two kinds of sort are exclusive on the wire, so choosing one
  * clears the other, and the defaults are dropped the way `parseSortKey` drops them.
  */

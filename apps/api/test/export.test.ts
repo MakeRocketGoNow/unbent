@@ -360,11 +360,17 @@ describe('filtered export', () => {
     ].join('\n');
     expect(byCreated).toContain('filed-in-2021-edited-later');
 
-    // The same range under the default sort means "updated in 2021", which this is not.
+    // The same range under the updated sort means "updated in 2021", which this is not.
     const byUpdated = [
-      ...(await fetchExport(actor, { from: '2021-01-01', to: '2021-12-31' })).keys(),
+      ...(await fetchExport(actor, { from: '2021-01-01', to: '2021-12-31', sort: 'updated' })).keys(),
     ].join('\n');
     expect(byUpdated).not.toContain('filed-in-2021-edited-later');
+
+    // The default sort is creation date, so a range with no sort names that column.
+    const byDefault = [
+      ...(await fetchExport(actor, { from: '2021-01-01', to: '2021-12-31' })).keys(),
+    ].join('\n');
+    expect(byDefault).toContain('filed-in-2021-edited-later');
 
     // A title sort has no date of its own; its rows show the updated date, so its range
     // means "updated in": this note is in 2026's slice and not in 2021's.
