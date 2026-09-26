@@ -811,9 +811,11 @@ export function NotebookEditor({ notebookId, onChanged, onDeleted }: NotebookEdi
               <option value="currency">Currency</option>
             </select>
           </span>
-          <Button variant="primary" disabled={busy || !newName.trim()} onClick={create}>
-            Add field
-          </Button>
+          <span className="field-admin-add">
+            <Button variant="primary" disabled={busy || !newName.trim()} onClick={create}>
+              Add field
+            </Button>
+          </span>
           {fieldHasOptions(newType) && !newIsRating && (
             <TagInput
               label="option"

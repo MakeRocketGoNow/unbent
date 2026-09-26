@@ -4686,9 +4686,66 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
 */
 .field-admin li { flex-wrap: wrap; }
 
+/*
+   The field page's columns: a name, a type, and an actions slot, shared by the list's rows
+   and the new-field form under them, so the form reads as the next row rather than a
+   separate control.
+
+   The type picker is pinned right with `margin-left: auto` instead of being pushed there by
+   a name that grows: a name that grows is exactly what the rename box and the form's name
+   box must not do. The actions slot is one width in both places — the arrows and Delete in
+   a row, Add field in the form — so the type pickers above and below line up in a column.
+   9.25rem is the arrows-and-Delete group with a few pixels to spare; it is a floor, so if
+   that group ever grows the rows stay whole and only the alignment slips.
+*/
+.field-admin,
+.field-admin-new {
+  --field-actions-width: 9.25rem;
+}
+
 /* The type picker is the sidebar's select at its own width, not the sidebar's full one. */
-.field-admin-type { flex: 0 0 auto; }
+.field-admin-type { flex: 0 0 auto; margin-left: auto; }
 .field-admin-type .notebook-scope { width: auto; }
+
+.field-admin .notebook-admin-actions,
+.field-admin-add {
+  min-width: var(--field-actions-width);
+  justify-content: flex-end;
+}
+
+/* The type picker's auto margin does the pushing here, alone, for the same reason as the
+   form's Add field below; `flex-end` on the row puts the actions right when a phone
+   wraps them to a line of their own. */
+.field-admin li { justify-content: flex-end; }
+.field-admin .notebook-admin-actions { margin-left: 0; }
+
+/* No auto margin of its own: beside the type picker's, it would split the free space and
+   stop the picker short of its column. On a phone it wraps to a line alone, and the
+   form's `justify-content: flex-end` puts it on the right, under the type, as a row's
+   arrows and Delete are. */
+.field-admin-add {
+  display: flex;
+  flex-shrink: 0;
+}
+
+/*
+   A field name, being edited — renaming a row or naming a new field.
+
+   Sized for a name, not the row. Field names are a few words, and `.search-field`'s
+   `width: 100%` made the rename box take a line of its own, dropping the row's type,
+   arrows and Delete to the line below it the moment the name was clicked. The form's box
+   filled the row the same way, with the type and Add field stranded at the far edge.
+
+   Capped at 18rem, about 35 characters. The 8rem floor is what wraps a row on a phone:
+   without it the box would shrink to nothing before letting the actions go to a second
+   line, where the rows already put them at that width.
+*/
+.field-admin .search-field,
+.field-admin-new .search-field {
+  flex: 1 1 0;
+  min-width: 8rem;
+  max-width: 18rem;
+}
 
 .field-admin-options {
   flex-basis: 100%;
@@ -4737,10 +4794,15 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
    was whatever the chosen type put under the name: a rating's scale, a currency's
    example, a select's option chips. So the name box grew every time the type changed —
    170px for Text, 600 for Rating — and the Add field button walked right with it.
-   Stretched, the box fills the row the way Name does above it, and the type only ever
-   adds a line below. Pinning the name to a fixed width was the other fix; it would have
-   held still but sat short beside the full-width Name and the field rows. */
-.field-admin-new { flex-wrap: wrap; align-self: stretch; }
+   Stretched, it lays out on the rows' columns above, and the type only ever adds a line
+   below. The column gap is the rows' gap too, or the type column would be off by the
+   difference; the row gap stays at the form's own, for the line a type adds. */
+.field-admin-new {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  align-self: stretch;
+  gap: 0.5rem 0.75rem;
+}
 .field-admin-new .tag-input { flex-basis: 100%; }
 
 /* A rating's scale, on its own row under the name and type, like a select's options. */
