@@ -167,6 +167,13 @@ AGENTS.md keeps pushing on request, and **invoking this skill is the request** â
 loop through the PR is what it was asked for. So push and open the PR as soon as the change
 is verified, without a second round trip.
 
+The one exception, on a local checkout: a change the user will want to try on their own
+machine before review â€” in practice, **Android changes** (`apps/android`), which only prove
+themselves on a device. Commit, say what to try on the emulator, and wait for a go-ahead.
+Web, API and docs changes don't qualify; the verification in step 5 is the local test. In a
+cloud session there is nobody at the keyboard to hand it to, so push regardless and say in
+the PR body what still needs trying on a device.
+
 ```bash
 git push -u origin <branch>
 ```
