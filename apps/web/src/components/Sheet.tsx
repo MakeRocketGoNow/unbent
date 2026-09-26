@@ -30,6 +30,12 @@ export interface SheetProps {
    * than sizing to its content.
    */
   side?: 'bottom' | 'start';
+  /**
+   * A class for the dialog itself, beside the sheet's own, for a sheet whose contents need
+   * a different box — the sort panel, whose field rows are wider than the sidebar it is
+   * otherwise sized to. The shape stays the sheet's; this is for sizing, not restyling.
+   */
+  className?: string | undefined;
   children: ReactNode;
 }
 
@@ -159,6 +165,7 @@ export function Sheet({
   headAction,
   onBack,
   side = 'bottom',
+  className,
   children,
 }: SheetProps) {
   const ref = useRef<HTMLDialogElement>(null);
@@ -187,7 +194,9 @@ export function Sheet({
   return (
     <dialog
       ref={ref}
-      className={side === 'start' ? 'sheet sheet-side' : 'sheet'}
+      className={['sheet', side === 'start' ? 'sheet-side' : null, className]
+        .filter(Boolean)
+        .join(' ')}
       aria-label={title}
       // Escape. The event is the platform telling us it is about to close; the state has to
       // follow or the next `open` finds `el.open` already false and does nothing.

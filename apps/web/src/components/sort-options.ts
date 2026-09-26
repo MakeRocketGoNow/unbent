@@ -1,4 +1,4 @@
-import type { NoteSort } from '@unbent/shared';
+import type { FieldDef, FieldType, NoteSort } from '@unbent/shared';
 
 /**
  * The sort orders the list offers, named.
@@ -56,20 +56,70 @@ export function parseSortKey(key: string): {
   };
 }
 
+/** One direction a field can be sorted in, worded for its type. */
+export interface FieldSortDirection {
+  order: 'asc' | 'desc';
+  /** Short, for a button beside the field's name: "Newest". */
+  label: string;
+  /** Whole, for where the name is not beside it: "newest first". */
+  phrase: string;
+}
+
+/**
+ * The two ways a field sorts, in the order they are offered, worded for what the field holds.
+ *
+ * "Ascending" is a word for the query, not for the person reading the list: nobody asks for
+ * their receipts by date ascending, they ask for the oldest first. So each type names its
+ * ends the way the named orders above do, and puts first the end people reach for — the
+ * newest date, as "Newest first" leads the named list; a checkbox's ticked notes, which are
+ * the ones the box was added to find; A–Z and low to high for everything else, as the
+ * table's headers do on a first click. A rating and an amount are numbers underneath and
+ * read fine as one.
+ *
+ * A multi-select sorts by its stored list, which puts it in order of its first option; A–Z
+ * says that well enough.
+ */
+export function fieldSortDirections(type: FieldType): [FieldSortDirection, FieldSortDirection] {
+  switch (type) {
+    case 'date':
+      return [
+        { order: 'desc', label: 'Newest', phrase: 'newest first' },
+        { order: 'asc', label: 'Oldest', phrase: 'oldest first' },
+      ];
+    case 'number':
+      return [
+        { order: 'asc', label: 'Low–high', phrase: 'lowest first' },
+        { order: 'desc', label: 'High–low', phrase: 'highest first' },
+      ];
+    case 'checkbox':
+      return [
+        { order: 'desc', label: 'Checked', phrase: 'checked first' },
+        { order: 'asc', label: 'Unchecked', phrase: 'unchecked first' },
+      ];
+    default:
+      return [
+        { order: 'asc', label: 'A–Z', phrase: 'A–Z' },
+        { order: 'desc', label: 'Z–A', phrase: 'Z–A' },
+      ];
+  }
+}
+
 /**
  * What the current sort is called, for a control that shows its value rather than a list.
  *
- * A sort by a custom field has no named option — the table's column headers are how it is
- * chosen — so it is named from the field, with the direction spelled out, rather than
- * falling back to "Recently updated" over a list that is ordered by something else.
+ * A sort by a custom field is none of the named orders, so it is named from the field and
+ * its direction in the field's own words — "Date, newest first" — rather than falling back
+ * to "Recently updated" over a list that is ordered by something else.
  */
 export function sortLabel(
   sort: NoteSort | undefined,
   order: 'asc' | 'desc' | undefined,
-  fieldName?: string,
+  field?: Pick<FieldDef, 'name' | 'type'>,
 ): string {
-  if (fieldName !== undefined) {
-    return `${fieldName} ${(order ?? DEFAULT_ORDER) === 'asc' ? 'ascending' : 'descending'}`;
+  if (field !== undefined) {
+    const want = order ?? DEFAULT_ORDER;
+    const direction = fieldSortDirections(field.type).find((d) => d.order === want)!;
+    return `${field.name}, ${direction.phrase}`;
   }
   const key = sortKey(sort, order);
   return SORT_OPTIONS.find((o) => o.key === key)?.label ?? SORT_OPTIONS[0]!.label;
