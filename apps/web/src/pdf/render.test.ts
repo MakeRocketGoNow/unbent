@@ -12,12 +12,14 @@ const getPage = vi.fn(async () => ({
   render,
 }));
 
+const getDocument = vi.fn((_params: Record<string, unknown>) => ({
+  promise: Promise.resolve({ numPages: 1, getPage }),
+  destroy: () => {},
+}));
+
 vi.mock('pdfjs-dist/legacy/build/pdf.mjs', () => ({
   GlobalWorkerOptions: { workerSrc: 'stub' },
-  getDocument: () => ({
-    promise: Promise.resolve({ numPages: 1, getPage }),
-    destroy: () => {},
-  }),
+  getDocument,
 }));
 
 const { loadPdf } = await import('./render.js');
@@ -64,5 +66,23 @@ describe('renderPage parameters', () => {
   it('caps the scale at 2x', async () => {
     const params = await renderOnce(3);
     expect(params['transform']).toEqual([2, 0, 0, 2, 0, 0]);
+  });
+});
+
+/**
+ * An attachment is whatever someone uploaded or imported, so it is treated as hostile.
+ * `render.ts` explains the two ways a PDF could get script into the page; these pin the
+ * options that close them.
+ */
+describe('getDocument options', () => {
+  it('never compiles font data with eval', async () => {
+    await renderOnce(1);
+    expect(getDocument.mock.lastCall![0]['isEvalSupported']).toBe(false);
+  });
+
+  /** XFA forms render as live HTML rather than onto the canvas; off is pdf.js's default. */
+  it('leaves XFA forms off', async () => {
+    await renderOnce(1);
+    expect(getDocument.mock.lastCall![0]['enableXfa']).toBeUndefined();
   });
 });

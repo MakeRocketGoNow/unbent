@@ -73,6 +73,20 @@ export async function loadPdf(url: string, signal?: AbortSignal): Promise<Loaded
      * fonts is a large speedup across thousands of scans. Rendering needs them: without
      * real glyphs the page draws with substituted fonts and wrong metrics.
      */
+    /**
+     * The one setting that keeps a hostile PDF's code out of this origin.
+     *
+     * pdf.js never runs a document's own JavaScript — `/OpenAction` scripts, form
+     * calculations and the rest are handled only by the viewer's scripting sandbox
+     * (`pdf.scripting.mjs`), which this module does not load. Keep it that way: don't
+     * pull in the viewer or pass `enableScripting` to show a form's computed fields.
+     *
+     * What pdf.js core can do is compile a font's glyph outlines with `new Function` for
+     * speed, from values the file supplies. CVE-2024-4367 was exactly that: a crafted
+     * FontMatrix became script in the page. The bug is patched, but this path is the one
+     * that would carry the next one, and the canvas renderer does not need it.
+     * `render.test.ts` pins the option.
+     */
     isEvalSupported: false,
     /**
      * Where the image decoders live; `vite.config.ts` serves them there.
