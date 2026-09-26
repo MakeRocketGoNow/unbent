@@ -4530,8 +4530,7 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
   align-self: stretch;
   display: flex;
   flex-direction: column;
-  gap: 0.3rem;
-  margin: 0.25rem 0 0.5rem;
+  gap: 0.35rem;
 }
 
 .notebook-purpose-label { font-size: 0.85rem; }
@@ -4569,34 +4568,52 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
   align-self: stretch;
   display: flex;
   flex-direction: column;
-  gap: 0.3rem;
-  margin: 0.25rem 0 0.75rem;
+  gap: 0.35rem;
 }
+
+/*
+   A notebook's edit page, on one vertical rhythm.
+
+   Four steps, and nothing inside sets a margin of its own:
+     0.35rem  a label and its control, a control and its hint — one thing in two parts
+     1rem     one block to the next within a section
+     1.25rem  the page title to the first section
+     2rem     one section to the next
+
+   It used to be the panel's 0.9rem gap with every child adding margins on top, and flex
+   gaps do not collapse margins the way block flow does, so each gap was whatever that
+   pair's sum came to: nine gaps down the page in seven sizes, from 38px above "Fields"
+   to 6px between the delete text and its button. Tuning any one of them only moved the
+   inconsistency somewhere else, so the spacing now belongs to the sections instead.
+*/
+.notebook-edit { gap: 1.25rem; }
+
+.notebook-section {
+  align-self: stretch;
+  display: flex;
+  flex-direction: column;
+  /* Like `.panel`: a button in here keeps its own width rather than spanning the page. */
+  align-items: flex-start;
+  gap: 1rem;
+}
+
+.notebook-section + .notebook-section { margin-top: 0.75rem; }
+
+/* The confirms bring their own margins for pages without a rhythm; this one has one. */
+.notebook-section > .confirm { margin: 0; }
 
 /* Section heading within the edit page — "Fields", "Delete notebook". Quieter than the
    panel's h2, since the page title already names the notebook. */
 .notebook-section-head {
   align-self: stretch;
-  margin: 1rem 0 0.25rem;
+  margin: 0;
   font-size: 0.9rem;
   font-weight: 600;
 }
 
-.notebook-danger-head { color: var(--bad); }
-
-.notebook-danger {
-  align-self: stretch;
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 0.4rem;
-}
-
-.notebook-danger p { margin: 0; }
-
 .notebook-admin {
   list-style: none;
-  margin: 0.5rem 0;
+  margin: 0;
   padding: 0;
   /*
    * `.panel` is a flex column with `align-items: flex-start`, which shrink-wraps its
@@ -4655,7 +4672,6 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
 .notebook-admin-new {
   display: flex;
   gap: 0.5rem;
-  margin: 0.75rem 0 0.5rem;
 }
 
 .notebook-admin-new .search-field {
