@@ -96,7 +96,12 @@ export function NotesSort({ sort, order, sortField, fields = [] }: NotesSortProp
           longer than a menu row wants to be. Android reaches for a dialog here for the same
           reasons; this app's equivalent surface is the sheet it already has.
       */}
-      <Sheet open={picking} onClose={() => setPicking(false)} title="Sort notes">
+      <Sheet
+        open={picking}
+        onClose={() => setPicking(false)}
+        title="Sort notes"
+        className={fields.length > 0 ? 'sort-sheet-fields' : undefined}
+      >
         <div className="sort-options">
           {SORT_OPTIONS.map((o) => {
             const on = o.key === current;
@@ -142,7 +147,9 @@ export function NotesSort({ sort, order, sortField, fields = [] }: NotesSortProp
                     rating={isRatingField(def)}
                     currency={isCurrencyField(def)}
                   />
-                  <span className="sort-field-label">{def.name}</span>
+                  <span className="sort-field-label" title={def.name}>
+                    {def.name}
+                  </span>
                 </span>
                 <span className="sort-field-directions">
                   {fieldSortDirections(def.type).map((d) => {

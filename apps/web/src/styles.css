@@ -5968,10 +5968,19 @@ button.settings-nav-item {
   color: var(--muted);
 }
 
+/* Two lines before it gives up. A sort menu is where you read which field you are about to
+   order by, and one line cut "Date of reimbursement" to "Date o…", which is no name at all.
+   A second line costs the row a few pixels; a name that still runs past it is clipped, and
+   the whole of it is in the title. `anywhere` so one unbroken word cannot push the buttons
+   off the row. */
 .sort-field-label {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
   overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
+  overflow-wrap: anywhere;
+  line-height: 1.25;
 }
 
 /*
@@ -6717,6 +6726,23 @@ button.settings-nav-item {
   */
   .sheet:not(.sheet-side) .tag-picker {
     height: min(70dvh, calc(100dvh - var(--panel-top) - 8rem));
+  }
+
+  /*
+     The sort panel, when it lists a notebook's fields, is as wide as a phone.
+
+     Sized to the sidebar like every other panel, a field's row was its name plus a pair of
+     buttons in 20rem, and the buttons won: names were cut to a word or less, narrower than
+     the same sheet on a phone. 26rem is a large phone's width, so a row reads the same on
+     both. Only with fields — the five named orders fit the sidebar's width, and a panel
+     wider than what it holds is a panel with an empty right half. Still capped by the
+     window, like the rule it overrides.
+  */
+  .sheet.sort-sheet-fields:not(.sheet-side) {
+    width: min(
+      max(var(--sidebar-width, 19rem), 26rem),
+      calc(100vw - var(--rail-width, 0px) - 3rem)
+    );
   }
 
   /* A panel drops from the head it belongs to rather than rising from a floor it does
