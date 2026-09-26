@@ -1,6 +1,7 @@
 import { useNavigate } from '@tanstack/react-router';
 import { TagIcon, NotebookRowIcon } from './icons.js';
 import { writeTagFilter } from '../routes/notes.js';
+import { rememberedSort } from '../notebook-sort.js';
 import type { TagCount } from './TagPicker.js';
 import type { NotebookData } from './NotebookNav.js';
 
@@ -133,7 +134,7 @@ export function ScopeMatches({
             className="scope-match-btn"
             aria-label={`Show notebook: ${nb.name}`}
             onClick={() =>
-              pick({ notebook: nb.name, tag: undefined, field: undefined, sortField: undefined })
+              pick({ notebook: nb.name, tag: undefined, field: undefined, ...rememberedSort(nb.name) })
             }
           >
             <span className="scope-match-icon">

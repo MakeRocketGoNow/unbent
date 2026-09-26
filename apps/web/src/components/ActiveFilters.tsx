@@ -4,6 +4,7 @@ import { CloseIcon } from './icons.js';
 import { rangeLabel } from './format-when.js';
 import { fieldFilterLabel } from './field-filter.js';
 import { writeTagFilter, writeFieldFilter } from '../routes/notes.js';
+import { rememberedSort } from '../notebook-sort.js';
 
 interface ActiveFiltersProps {
   /**
@@ -76,9 +77,11 @@ export function ActiveFilters({
            * Drops the tags with it, the same rule the notebook select follows: tags cross
            * notebook boundaries, so leaving one selected here routinely yields an empty list
            * with no visible cause. The field filters too — they belong to this notebook.
+           * The list opens in the order All notes was last left in, as the drawer's link
+           * to it would.
            */
           onClick={() =>
-            drop({ notebook: undefined, tag: undefined, field: undefined, sortField: undefined })
+            drop({ notebook: undefined, tag: undefined, field: undefined, ...rememberedSort(undefined) })
           }
         >
           {notebook === UNFILED ? 'Inbox' : notebook}

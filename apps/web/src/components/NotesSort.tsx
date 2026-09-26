@@ -12,8 +12,11 @@ import {
   fieldSortDirections,
   DEFAULT_ORDER,
 } from './sort-options.js';
+import { rememberSort } from '../notebook-sort.js';
 
 interface NotesSortProps {
+  /** Where the list is, so the choice is remembered for this place; see `rememberSort`. */
+  notebook?: string | undefined;
   sort: NoteSort | undefined;
   order: 'asc' | 'desc' | undefined;
   /** The custom field the list is sorted by instead, if any; see `sortLabel`. */
@@ -52,7 +55,7 @@ interface NotesSortProps {
  * column's whole problem was rows of controls above a list with no room left for notes.
  * Above the breakpoint the sheet is drawn as a panel beside the list — see `Sheet`.
  */
-export function NotesSort({ sort, order, sortField, fields = [] }: NotesSortProps) {
+export function NotesSort({ notebook, sort, order, sortField, fields = [] }: NotesSortProps) {
   const navigate = useNavigate();
   const [picking, setPicking] = useState(false);
   /*
@@ -74,6 +77,7 @@ export function NotesSort({ sort, order, sortField, fields = [] }: NotesSortProp
     order: 'asc' | 'desc' | undefined;
     sortField: string | undefined;
   }) => {
+    rememberSort(notebook, next);
     void navigate({ to: '/notes', search: (prev) => ({ ...prev, ...next }) });
     setPicking(false);
   };

@@ -125,15 +125,45 @@ describe('NotebookNav', () => {
    * boundaries, so carrying one into a new notebook routinely yields an empty list with no
    * visible cause.
    */
-  it('clears the tags when the scope changes, and keeps how you are looking', async () => {
+  it('clears the tags when the scope changes, and keeps the dates', async () => {
+    localStorage.clear();
     const { findByText, history } = harness({ notebook: undefined, selectedTags: ['Receipt'] });
-    // Arrive with a sort already set, to prove it survives.
-    await history.push('/notes?sort=title&tag=Receipt');
+    await history.push('/notes?from=2024-01-01&tag=Receipt');
     fireEvent.click(await findByText('Coupons'));
     await waitFor(() => {
       expect(history.location.href).toContain('Coupons');
-      expect(history.location.href).toContain('sort=title');
+      expect(history.location.href).toContain('from=2024-01-01');
       expect(history.location.href).not.toContain('Receipt');
+    });
+  });
+
+  /*
+   * Each place opens in the order it was last left in: the order that suited the place
+   * being left says nothing about the one being entered.
+   */
+  it('opens a notebook in its own remembered order, not the one being left', async () => {
+    localStorage.clear();
+    localStorage.setItem('unbent.notebookSorts', JSON.stringify({ Coupons: { sort: 'created' } }));
+    const { findByText, history } = harness({ notebook: undefined });
+    await history.push('/notes?sort=title&order=asc');
+    fireEvent.click(await findByText('Coupons'));
+    await waitFor(() => {
+      const href = history.location.href;
+      expect(href).toContain('Coupons');
+      expect(href).toContain('sort=created');
+      expect(href).not.toContain('title');
+      expect(href).not.toContain('order');
+    });
+  });
+
+  it('opens a notebook with nothing remembered in the default order', async () => {
+    localStorage.clear();
+    const { findByText, history } = harness({ notebook: undefined });
+    await history.push('/notes?sort=title&order=asc');
+    fireEvent.click(await findByText('Coupons'));
+    await waitFor(() => {
+      expect(history.location.href).toContain('Coupons');
+      expect(history.location.href).not.toContain('sort');
     });
   });
 
@@ -203,12 +233,13 @@ describe('NotebookNav', () => {
 
     /*
      * A tag is a place across every notebook: the notebook goes, and with it the field
-     * filter that belongs to it, while the named sort — how you are looking — stays.
+     * filter that belongs to it, and the order is the one All notes remembers.
      */
-    it('goes to the tag across all notebooks, keeping only how you are looking', async () => {
+    it('goes to the tag across all notebooks, in the order All notes remembers', async () => {
       localStorage.setItem('unbent.navTagsOpen', 'true');
+      localStorage.setItem('unbent.notebookSorts', JSON.stringify({ '': { sort: 'title' } }));
       const { findByRole, history } = harness({ tags: TAGS, notebook: 'Coupons' });
-      await history.push('/notes?notebook=Coupons&sort=title&field=abc:set');
+      await history.push('/notes?notebook=Coupons&sort=created&field=abc:set');
       fireEvent.click(await findByRole('link', { name: /^Receipt/ }));
       await waitFor(() => {
         const href = history.location.href;
