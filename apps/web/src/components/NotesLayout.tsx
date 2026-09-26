@@ -628,7 +628,7 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
                 sort={sort}
                 order={order}
                 sortField={sortField}
-                fieldName={sortFieldDef?.name}
+                fields={fieldDefs.data ?? []}
               />
             ) : null
           }

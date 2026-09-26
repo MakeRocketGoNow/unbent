@@ -6,6 +6,7 @@ import {
   createRouter,
   RouterProvider,
 } from '@tanstack/react-router';
+import type { FieldDef } from '@unbent/shared';
 import { NotesSort } from './NotesSort.js';
 
 /**
@@ -34,8 +35,22 @@ function harness(props: Partial<Parameters<typeof NotesSort>[0]> = {}) {
   const history = createMemoryHistory({ initialEntries: ['/notes'] });
   const router = createRouter({ routeTree: rootRoute, history });
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  return { ...render(<RouterProvider router={router as any} />), history };
+  return { ...render(<RouterProvider router={router as any} />), history, router };
 }
+
+const field = (id: string, name: string, type: FieldDef['type'], position: number): FieldDef =>
+  ({ id, notebookId: 'nb', name, type, position }) as FieldDef;
+const amount = field('f-amount', 'Amount', 'number', 0);
+const due = field('f-due', 'Due', 'date', 1);
+
+/**
+ * The URL's search as the router parsed it, to compare whole. Read from the router's own
+ * state — the router owns the location, which is what `url-boundary.test.ts` guards.
+ */
+const params = (router: { state: { location: { search: unknown } } }) => {
+  const { search } = router.state.location;
+  return search;
+};
 
 /** The sort sheet, typed — `querySelector` hands back an `Element`, which has no `open`. */
 const sortSheet = (c: HTMLElement) =>
@@ -90,17 +105,59 @@ describe('NotesSort', () => {
     });
   });
 
-  /* A sort by a field is chosen from the table, not here; the icon still has to say so,
-     and no named order may claim to be current over a list ordered by something else. */
-  it('names a field sort and marks no named order while it holds', async () => {
+  /* No named order may claim to be current over a list ordered by something else; the
+     field's own direction is what is marked. */
+  it('names a field sort and marks its direction, not a named order', async () => {
     const { findByLabelText, container } = harness({
       sortField: 'f-amount',
-      fieldName: 'Amount',
+      fields: [amount, due],
       order: 'asc',
     });
-    fireEvent.click(await findByLabelText('Sort notes, currently Amount ascending'));
+    fireEvent.click(await findByLabelText('Sort notes, currently Amount, lowest first'));
     await waitFor(() => expect(sortSheet(container)?.open).toBe(true));
     expect(container.querySelectorAll('.sort-option.current')).toHaveLength(0);
+    const marked = [...container.querySelectorAll('.sort-direction.current')].map((e) =>
+      e.getAttribute('aria-label'),
+    );
+    expect(marked).toEqual(['Amount, lowest first']);
+  });
+
+  /* The phone has no table, so this sheet is the only way there to sort by a field. */
+  it("offers each of the notebook's fields in both directions", async () => {
+    const { findByLabelText, findByRole, router, container } = harness({ fields: [amount, due] });
+    fireEvent.click(await findByLabelText(/^Sort notes, currently/));
+    fireEvent.click(await findByRole('button', { name: 'Due, oldest first' }));
+    await waitFor(() => {
+      expect(params(router)).toMatchObject({ sortField: 'f-due', order: 'asc' });
+      expect(sortSheet(container)?.open).toBe(false);
+    });
+  });
+
+  /* Descending is the default order, so it stays out of the URL like any other default. */
+  it("writes a field sort's default direction as absence", async () => {
+    const { findByLabelText, findByRole, router } = harness({ fields: [amount, due] });
+    fireEvent.click(await findByLabelText(/^Sort notes, currently/));
+    fireEvent.click(await findByRole('button', { name: 'Due, newest first' }));
+    await waitFor(() => expect(params(router)).toEqual({ sortField: 'f-due' }));
+  });
+
+  it('offers no field section outside a notebook', async () => {
+    const { findByLabelText, container } = harness();
+    fireEvent.click(await findByLabelText(/^Sort notes, currently/));
+    await waitFor(() => expect(sortSheet(container)?.open).toBe(true));
+    expect(container.querySelector('.sort-fields')).toBeNull();
+  });
+
+  /* Picking a named order is how a field sort is left, so it must clear the field. */
+  it('clears the field sort when a named order is chosen', async () => {
+    const { findByLabelText, findByText, router } = harness({
+      sortField: 'f-amount',
+      fields: [amount],
+      order: 'asc',
+    });
+    fireEvent.click(await findByLabelText(/^Sort notes, currently/));
+    fireEvent.click(await findByText('Title A–Z'));
+    await waitFor(() => expect(params(router)).toEqual({ sort: 'title', order: 'asc' }));
   });
 
   /* The default stays out of the URL, so a plain /notes link is clean. */

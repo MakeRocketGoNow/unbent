@@ -1,6 +1,8 @@
 import { describe, it, expect } from 'vitest';
+import { FIELD_TYPES } from '@unbent/shared';
 import {
   SORT_OPTIONS,
+  fieldSortDirections,
   sortKey,
   parseSortKey,
   sortLabel,
@@ -119,8 +121,26 @@ describe('column sorting', () => {
     });
   });
 
-  it('names a field sort from the field and its direction', () => {
-    expect(sortLabel(undefined, 'asc', 'Amount')).toBe('Amount ascending');
-    expect(sortLabel(undefined, undefined, 'Amount')).toBe('Amount descending');
+  it("names a field sort from the field and its direction, in the field's own words", () => {
+    const amount = { name: 'Amount', type: 'number' as const };
+    expect(sortLabel(undefined, 'asc', amount)).toBe('Amount, lowest first');
+    expect(sortLabel(undefined, undefined, amount)).toBe('Amount, highest first');
+    expect(sortLabel(undefined, 'asc', { name: 'Due', type: 'date' })).toBe('Due, oldest first');
+    expect(sortLabel(undefined, 'desc', { name: 'Store', type: 'select' })).toBe('Store, Z–A');
+  });
+
+  /* Each type offers both ends, once each, whatever order it puts them in. */
+  it('offers both directions for every field type', () => {
+    for (const type of FIELD_TYPES) {
+      const orders = fieldSortDirections(type).map((d) => d.order).sort();
+      expect(orders).toEqual(['asc', 'desc']);
+    }
+  });
+
+  it('leads with the end people reach for', () => {
+    expect(fieldSortDirections('date')[0]).toMatchObject({ order: 'desc', label: 'Newest' });
+    expect(fieldSortDirections('checkbox')[0]).toMatchObject({ order: 'desc', label: 'Checked' });
+    expect(fieldSortDirections('number')[0]).toMatchObject({ order: 'asc', label: 'Low–high' });
+    expect(fieldSortDirections('text')[0]).toMatchObject({ order: 'asc', label: 'A–Z' });
   });
 });

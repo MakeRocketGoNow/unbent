@@ -2,17 +2,27 @@ import { useState } from 'react';
 import { useNavigate } from '@tanstack/react-router';
 import { Sheet } from './Sheet.js';
 import { Button } from './Button';
-import { SortIcon } from './icons.js';
-import type { NoteSort } from '@unbent/shared';
-import { SORT_OPTIONS, sortKey, parseSortKey, sortLabel } from './sort-options.js';
+import { FieldTypeIcon, SortIcon } from './icons.js';
+import { isCurrencyField, isRatingField, type FieldDef, type NoteSort } from '@unbent/shared';
+import {
+  SORT_OPTIONS,
+  sortKey,
+  parseSortKey,
+  sortLabel,
+  fieldSortDirections,
+  DEFAULT_ORDER,
+} from './sort-options.js';
 
 interface NotesSortProps {
   sort: NoteSort | undefined;
   order: 'asc' | 'desc' | undefined;
   /** The custom field the list is sorted by instead, if any; see `sortLabel`. */
   sortField?: string | undefined;
-  /** That field's name, once its definition has loaded. */
-  fieldName?: string | undefined;
+  /**
+   * The selected notebook's fields, in display order, each offered as a sort. Empty
+   * outside a notebook: a field belongs to one, and "All notes" has no fields to order by.
+   */
+  fields?: FieldDef[] | undefined;
 }
 
 /**
@@ -42,15 +52,31 @@ interface NotesSortProps {
  * column's whole problem was rows of controls above a list with no room left for notes.
  * Above the breakpoint the sheet is drawn as a panel beside the list — see `Sheet`.
  */
-export function NotesSort({ sort, order, sortField, fieldName }: NotesSortProps) {
+export function NotesSort({ sort, order, sortField, fields = [] }: NotesSortProps) {
   const navigate = useNavigate();
   const [picking, setPicking] = useState(false);
   /*
-   * A field sort is none of the named orders, so none is marked: the table's column
-   * header is where it shows. Picking a named order here is how it is left again.
+   * A field sort is none of the named orders, so none of them is marked while it holds;
+   * its own row below is. Picking a named order is how it is left again.
    */
   const current = sortField ? null : sortKey(sort, order);
-  const label = sortField ? sortLabel(sort, order, fieldName ?? 'a field') : sortLabel(sort, order);
+  const sortDef = sortField ? fields.find((d) => d.id === sortField) : undefined;
+  // Named once the definition has loaded; until then, honestly, as a field.
+  const label = sortField
+    ? sortDef
+      ? sortLabel(sort, order, sortDef)
+      : 'a custom field'
+    : sortLabel(sort, order);
+  const fieldOrder = order ?? DEFAULT_ORDER;
+
+  const choose = (next: {
+    sort: NoteSort | undefined;
+    order: 'asc' | 'desc' | undefined;
+    sortField: string | undefined;
+  }) => {
+    void navigate({ to: '/notes', search: (prev) => ({ ...prev, ...next }) });
+    setPicking(false);
+  };
 
   return (
     <>
@@ -80,19 +106,71 @@ export function NotesSort({ sort, order, sortField, fieldName }: NotesSortProps)
                 type="button"
                 className={on ? 'sort-option current' : 'sort-option'}
                 aria-pressed={on}
-                onClick={() => {
-                  void navigate({
-                    to: '/notes',
-                    search: (prev) => ({ ...prev, ...parseSortKey(o.key), sortField: undefined }),
-                  });
-                  setPicking(false);
-                }}
+                onClick={() => choose({ ...parseSortKey(o.key), sortField: undefined })}
               >
                 {o.label}
               </button>
             );
           })}
         </div>
+
+        {/*
+            The notebook's fields, one row each: the name, then its two directions.
+
+            One row per field rather than two per field in the list above, which is the
+            shape this would otherwise take: a notebook with nine fields would put eighteen rows under five, and the orders
+            most people want would scroll away beneath the ones most people do not. The
+            name is said once and the choice is only which way — the same thing the
+            table's header does with a click, made visible here as two buttons, because
+            clicking the same row again to flip it is a gesture nobody would guess.
+
+            The directions are worded for the type ("Newest", "Low–high") and not
+            "ascending", for the reason `fieldSortDirections` gives. The phrase in each
+            button's accessible name carries the field's name too, since a screen reader
+            meeting "Newest" on its own would not know newest what.
+        */}
+        {fields.length > 0 && (
+          <section className="sort-fields" aria-labelledby="sort-fields-head">
+            <h3 id="sort-fields-head" className="sort-fields-head">
+              By field
+            </h3>
+            {fields.map((def) => (
+              <div key={def.id} className="sort-field" role="group" aria-label={def.name}>
+                <span className="sort-field-name">
+                  <FieldTypeIcon
+                    type={def.type}
+                    rating={isRatingField(def)}
+                    currency={isCurrencyField(def)}
+                  />
+                  <span className="sort-field-label">{def.name}</span>
+                </span>
+                <span className="sort-field-directions">
+                  {fieldSortDirections(def.type).map((d) => {
+                    const on = sortField === def.id && fieldOrder === d.order;
+                    return (
+                      <button
+                        key={d.order}
+                        type="button"
+                        className={on ? 'sort-direction current' : 'sort-direction'}
+                        aria-pressed={on}
+                        aria-label={`${def.name}, ${d.phrase}`}
+                        onClick={() =>
+                          choose({
+                            sort: undefined,
+                            order: d.order === DEFAULT_ORDER ? undefined : d.order,
+                            sortField: def.id,
+                          })
+                        }
+                      >
+                        {d.label}
+                      </button>
+                    );
+                  })}
+                </span>
+              </div>
+            ))}
+          </section>
+        )}
         <div className="sheet-foot">
           <Button variant="quiet" onClick={() => setPicking(false)}>
             Done

@@ -5917,6 +5917,117 @@ button.settings-nav-item {
 }
 
 /*
+   The notebook's fields, under the named orders: a row per field, its name then a pair of
+   directions.
+
+   Set off by the same seam `.sheet-rule` draws, and headed, because these change with the
+   notebook where the five above never do — a list that grew and shrank as you moved between
+   notebooks, with nothing to say where the fixed part ended, would read as unstable.
+
+   The rows keep the named orders' 44px and their inline padding, so a field's name starts on
+   the same edge as "Recently updated" and the two lists read as one column.
+*/
+.sort-fields {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  padding-top: 0.5rem;
+  border-top: 1px solid var(--border);
+}
+
+.sort-fields-head {
+  margin: 0;
+  padding: 0.25rem 0.5rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.sort-field {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  min-height: 2.75rem;
+  padding: 0.25rem 0 0.25rem 0.5rem;
+  min-width: 0;
+}
+
+/* A field's name is unbounded; it yields to the buttons, never the other way round, so the
+   directions stay on the row and at the edge where a thumb finds them. */
+.sort-field-name {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex: 1 1 auto;
+  min-width: 0;
+  color: var(--fg);
+}
+
+.sort-field-name svg {
+  flex: 0 0 auto;
+  color: var(--muted);
+}
+
+.sort-field-label {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/*
+   The two directions, joined as one control.
+
+   A segmented pair rather than two free buttons: they are one choice with two answers, and
+   joined they say so — the same reason the named orders are one list and not five buttons.
+   The pair is quieter than the list rows around it until one is in effect, because nine of
+   these stacked would otherwise be eighteen outlined boxes competing with the names.
+
+   The one in effect is filled with the accent, not ticked. A tick needs a row's trailing
+   edge to sit on, and a filled segment is what a segmented control's current answer looks
+   like everywhere else; the colour is the same accent the ticked named order uses, so
+   "this is the order" reads the same way in both halves of the sheet.
+*/
+.sort-field-directions {
+  display: inline-flex;
+  flex: 0 0 auto;
+  border: 1px solid var(--border);
+  border-radius: 0.4rem;
+  overflow: hidden;
+}
+
+/* One width for every segment, whatever its word, so the pairs stack as a column with one
+   left edge. Sized to "Unchecked", the longest; sized to each word, a checkbox's pair stood
+   out further than a date's and the column went ragged. */
+.sort-direction {
+  width: 5.5rem;
+  min-height: 2.25rem;
+  padding: 0.25rem 0.4rem;
+  text-align: center;
+  font: inherit;
+  font-size: 0.875rem;
+  color: var(--fg);
+  background: none;
+  border: none;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.sort-direction + .sort-direction { border-left: 1px solid var(--border); }
+
+.sort-direction:hover { background: color-mix(in srgb, var(--fg) 8%, transparent); }
+
+.sort-direction:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.sort-direction.current,
+.sort-direction.current:hover {
+  color: var(--bg);
+  background: var(--accent);
+}
+
+/*
    The fields page: a control per definition, each under its name.
 
    Stacked rather than label-beside-control, because the sheet is a phone's width and a
