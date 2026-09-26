@@ -12,6 +12,7 @@ import {
 } from './icons.js';
 import type { TagCount } from './TagPicker.js';
 import { usePersistentState } from '../usePersistentState.js';
+import { rememberedSort } from '../notebook-sort.js';
 
 /**
  * How many tags the section lists before offering the rest.
@@ -105,26 +106,33 @@ export function NotebookNav({
   /*
    * The places are links, like the destinations: each is a URL, and a link can be opened
    * in a new tab, middle-clicked and copied, which a button cannot. The search each one
-   * writes is a function of the current one, so that what is kept is kept: the named sort
-   * and the date range are how you are looking, not what at, and they ride along.
+   * writes is a function of the current one, so that what is kept is kept: the date range
+   * is how you are looking, not what at, and it rides along.
+   *
+   * The sort does not, though it once did. Each place opens in the order it was last left
+   * in (`rememberedSort`) — a notebook of receipts wants its newest first and one of
+   * recipes wants A–Z, and the order that suited the place being left said nothing about
+   * the one being entered. It is written into the link rather than filled in on arrival so
+   * that the list is fetched once, in the right order, instead of in the old one first.
    *
    * Picking a scope clears the tags, the same rule the notebook select followed: tags
    * cross notebook boundaries, so carrying one into a new notebook routinely lands on an
    * empty list with no visible cause. Field filters go with them — a field belongs to the
-   * notebook being left, as does a sort by one of its fields.
+   * notebook being left.
    */
   const scopeOf = (next: string | undefined) => (prev: Record<string, unknown>) => ({
     ...prev,
     notebook: next,
     tag: undefined,
     field: undefined,
-    sortField: undefined,
+    ...rememberedSort(next),
   });
 
   /*
    * A tag as a place: every note carrying it, across all notebooks — Evernote's tag view.
-   * The notebook goes, and with it the field filter and sort, which belong to it; the
-   * named sort and dates stay. Only ever one tag from here: narrowing to several is the
+   * The notebook goes, and with it the field filter, which belongs to it; the order is
+   * the one All notes remembers, since a tag place is the whole archive narrowed, and the
+   * dates stay. Only ever one tag from here: narrowing to several is the
    * filter sheet's job, where a tag is a refinement of where you are rather than a place.
    * A search pick made from All notes with nothing else set lands on this same URL, so
    * the row marks it — see `ScopeMatches`.
@@ -134,7 +142,7 @@ export function NotebookNav({
     tag: [name],
     notebook: undefined,
     field: undefined,
-    sortField: undefined,
+    ...rememberedSort(undefined),
   });
 
   /** A place was picked; a drawer closes behind it. */

@@ -1,6 +1,7 @@
 import { Link } from '@tanstack/react-router';
 import { UNFILED } from '@unbent/shared';
 import type { NotebookData } from './NotebookNav.js';
+import { rememberedSort } from '../notebook-sort.js';
 
 interface NotebookMissingProps {
   notebook: string | undefined;
@@ -29,7 +30,7 @@ export function NotebookMissing({ notebook, notebooks }: NotebookMissingProps) {
   return (
     <p className="bad small">
       No notebook named “{notebook}”.{' '}
-      <Link to="/notes" search={(prev) => ({ ...prev, notebook: undefined })}>
+      <Link to="/notes" search={(prev) => ({ ...prev, notebook: undefined, ...rememberedSort(undefined) })}>
         Show all notes
       </Link>
     </p>

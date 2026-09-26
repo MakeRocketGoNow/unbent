@@ -47,6 +47,7 @@ import { NotesViewToggle } from './NotesViewToggle.js';
 import { NoteTable } from './NoteTable.js';
 import { noteColumns } from './note-columns.js';
 import { nextColumnSort, type SortTarget } from './sort-options.js';
+import { forgetSortField, hasRememberedSort, rememberSort, rememberedSort } from '../notebook-sort.js';
 import { patchNoteFields, patchNotePages } from './note-table-edit.js';
 import { applySaveToLists } from '../list-cache.js';
 import { loadMoreLabel } from './load-more.js';
@@ -168,13 +169,44 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
       (fieldDefs.isSuccess && sortFieldDef === undefined));
   useEffect(() => {
     if (!sortFieldStale) return;
+    // Remembered too, most likely — that is how a deleted field's sort comes back.
+    forgetSortField(notebook);
     void navigate({
       to: '/notes',
       search: (prev) => ({ ...prev, sortField: undefined }),
       replace: true,
     });
   }, [sortFieldStale, navigate]);
-  /** For the phone drawer's floor; the desktop's rail asks for it itself. */
+  /*
+   * A place opened by a URL that names no order is given the one it was last left in.
+   *
+   * The drawer's links already carry it (see `scopeOf` in `NotebookNav`), so this is for
+   * everything else that arrives bare: a cold start at `/notes`, a bookmark, the back
+   * arrows out of Settings and the trash. Replaced, not pushed — it fills in the entry
+   * rather than moving from it.
+   *
+   * Only on arriving in a place, never while in one. Absent is also how the URL spells
+   * the default, so a check on absence alone would put the old order straight back the
+   * moment "Recently updated" was picked. Picking it has already forgotten the place by
+   * then (`rememberSort`), but the arrival rule is what keeps the two from depending on
+   * the order the writes land in. Back to a bare entry is an arrival too, and opens in
+   * the remembered order rather than the default that entry happened to be made with:
+   * remembering is the point, and the list is the same notes either way.
+   */
+  const seededFor = useRef<string | null>(null);
+  const scope = notebook ?? '';
+  const orderingUnsaid = !sort && !order && !sortField;
+  useEffect(() => {
+    if (seededFor.current === scope) return;
+    seededFor.current = scope;
+    if (!orderingUnsaid || !hasRememberedSort(notebook)) return;
+    void navigate({
+      to: '.',
+      search: (prev) => ({ ...prev, ...rememberedSort(notebook) }),
+      replace: true,
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [scope]);  /** For the phone drawer's floor; the desktop's rail asks for it itself. */
   const trashCount = useQuery(trashCountQuery());
   const trashed = trashCount.data ?? 0;
 
@@ -508,11 +540,13 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
   const chooseView = (next: 'list' | 'table') => void navigate(withView(next, false));
   const columns = noteColumns(fieldDefs.data ?? []);
   /** A column header was clicked: write the order it asks for. */
-  const sortBy = (target: SortTarget) =>
+  const sortBy = (target: SortTarget) => {
+    rememberSort(notebook, nextColumnSort(target, { sort, order, sortField }));
     void navigate({
       to: '/notes',
       search: (prev) => ({ ...prev, ...nextColumnSort(target, prev) }),
     });
+  };
   /** The list's empty state, in words; both renderings say the same thing. */
   const emptyMessage =
     notes.length === 0 && !error && !list.isPending
@@ -625,6 +659,7 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
           sort={
             results === null ? (
               <NotesSort
+                notebook={notebook}
                 sort={sort}
                 order={order}
                 sortField={sortField}
