@@ -4732,7 +4732,15 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
   border-radius: 0.55rem;
 }
 
-.field-admin-new { flex-wrap: wrap; }
+/* The new-field form spans the section rather than taking `.notebook-section`'s
+   shrink-to-fit. Shrink-wrapped, the form was as wide as its widest line, and that line
+   was whatever the chosen type put under the name: a rating's scale, a currency's
+   example, a select's option chips. So the name box grew every time the type changed —
+   170px for Text, 600 for Rating — and the Add field button walked right with it.
+   Stretched, the box fills the row the way Name does above it, and the type only ever
+   adds a line below. Pinning the name to a fixed width was the other fix; it would have
+   held still but sat short beside the full-width Name and the field rows. */
+.field-admin-new { flex-wrap: wrap; align-self: stretch; }
 .field-admin-new .tag-input { flex-basis: 100%; }
 
 /* A rating's scale, on its own row under the name and type, like a select's options. */
