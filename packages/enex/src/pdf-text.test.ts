@@ -81,3 +81,76 @@ describe('extractPdfText', () => {
     expect(result.quality.usable).toBe(false);
   }, 30_000);
 });
+
+/**
+ * A PDF that tries to run script the moment it is opened, built by hand so every byte is
+ * visible: an `/OpenAction`, a page-open `/AA` action and a document-level named script,
+ * all setting the same global.
+ *
+ * pdf.js reads these as data and runs none of them; only its viewer's scripting sandbox
+ * would. This goes through real pdf.js rather than a mock, so an upgrade that changed
+ * that would fail here instead of in someone's archive.
+ */
+function scriptedPdf(): Uint8Array {
+  const js = '(globalThis.__unbentPdfScriptRan = true)';
+  const objects = [
+    `<< /Type /Catalog /Pages 2 0 R /OpenAction 5 0 R /Names << /JavaScript << /Names [(init) 5 0 R] >> >> >>`,
+    `<< /Type /Pages /Kids [3 0 R] /Count 1 >>`,
+    `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 200] /Contents 4 0 R /Resources << /Font << /F1 6 0 R >> >> /AA << /O 5 0 R >> >>`,
+    null, // the content stream, below, since its length is part of it
+    `<< /S /JavaScript /JS (${js}) >>`,
+    `<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>`,
+  ];
+  const stream = 'BT /F1 18 Tf 20 100 Td (Harmless invoice text) Tj ET';
+  objects[3] = `<< /Length ${stream.length} >>\nstream\n${stream}\nendstream`;
+
+  let out = '%PDF-1.4\n';
+  const offsets: number[] = [];
+  objects.forEach((body, i) => {
+    offsets.push(out.length);
+    out += `${i + 1} 0 obj\n${body}\nendobj\n`;
+  });
+  const xref = out.length;
+  out += `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n`;
+  for (const offset of offsets) out += `${String(offset).padStart(10, '0')} 00000 n \n`;
+  out += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF\n`;
+  return new TextEncoder().encode(out);
+}
+
+describe('a PDF carrying JavaScript', () => {
+  it('is read for its text and its scripts never run', async () => {
+    const scope = globalThis as { __unbentPdfScriptRan?: boolean };
+    delete scope.__unbentPdfScriptRan;
+
+    const result = await extractPdfText(scriptedPdf());
+
+    // Proves the file was actually opened and walked, not rejected before its actions
+    // were ever reached.
+    expect(result.error).toBeUndefined();
+    expect(result.pages).toBe(1);
+    expect(result.text).toContain('Harmless invoice text');
+    expect(scope.__unbentPdfScriptRan).toBeUndefined();
+  }, 30_000);
+
+  /**
+   * Without this the test above could pass by accident: a fixture pdf.js failed to
+   * parse the actions from would carry no script at all, and nothing would run either.
+   */
+  it('really does carry scripts pdf.js can see', async () => {
+    await extractPdfText(new Uint8Array(0)); // configures the worker
+    const lib = await import('pdfjs-dist/legacy/build/pdf.mjs');
+    const task = lib.getDocument({ data: scriptedPdf(), isEvalSupported: false } as Parameters<
+      typeof lib.getDocument
+    >[0]);
+    const doc = await task.promise;
+
+    const docActions = (await doc.getJSActions()) as Map<string, string[]> | null;
+    const pageActions = (await (await doc.getPage(1)).getJSActions()) as Map<
+      string,
+      string[]
+    > | null;
+    expect([...(docActions?.keys() ?? [])]).toEqual(expect.arrayContaining(['OpenAction', 'init']));
+    expect([...(pageActions?.keys() ?? [])]).toEqual(['PageOpen']);
+    await task.destroy();
+  }, 30_000);
+});

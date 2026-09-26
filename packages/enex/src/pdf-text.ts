@@ -59,6 +59,8 @@ export async function extractPdfText(bytes: Uint8Array): Promise<PdfTextResult> 
       // pdf.js transfers and detaches the buffer it is given; the caller still needs the
       // original bytes to upload, so hand it a copy.
       data: new Uint8Array(bytes),
+      // No compiling font data into functions: that is how a crafted PDF once ran script
+      // (CVE-2024-4367). See the same option in `apps/web/src/pdf/render.ts`.
       isEvalSupported: false,
       // Fonts and images are irrelevant when only the text layer is wanted, and skipping
       // them is a large speedup across thousands of scans.
