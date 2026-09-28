@@ -120,6 +120,27 @@ describe('NotebookNav', () => {
     expect(row.closest('.drawer-item')?.getAttribute('aria-current')).toBe('true');
   });
 
+  it('draws a notebook with an emoji as that emoji, and one without as the book', async () => {
+    const { findByText } = harness({
+      notebooks: {
+        data: {
+          notebooks: [
+            { id: '1', name: 'Coupons', count: 5, emoji: '🎟️' },
+            { id: '2', name: 'Podcast Bookmarks', count: 3, emoji: null },
+          ],
+          unfiled: 0,
+        },
+      },
+    });
+    const withEmoji = (await findByText('Coupons')).closest('.drawer-item')!;
+    expect(withEmoji.querySelector('.notebook-emoji')?.textContent).toBe('🎟️');
+    expect(withEmoji.querySelector('svg')).toBeNull();
+
+    const without = (await findByText('Podcast Bookmarks')).closest('.drawer-item')!;
+    expect(without.querySelector('.notebook-emoji')).toBeNull();
+    expect(without.querySelector('svg')).toBeTruthy();
+  });
+
   /*
    * The rule that makes this navigation rather than a filter: tags cross notebook
    * boundaries, so carrying one into a new notebook routinely yields an empty list with no

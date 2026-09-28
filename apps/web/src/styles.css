@@ -5317,6 +5317,26 @@ button.settings-nav-item {
 
 .drawer-item.current > svg { color: var(--fg); }
 
+/*
+   A notebook's emoji, in the box its book would take (`NotebookGlyph`), so a column that
+   mixes the two keeps one edge for its labels and one height for its rows. The box is
+   `RowIcon`'s 1.15em, restated against the larger font the emoji is set in: emoji fonts
+   pad each picture inside its em, and at the label's own size they read a size smaller
+   than the books beside them. Emoji fonts first, so a platform whose UI font has plain
+   forms of some pictographs still draws them in colour.
+*/
+.notebook-emoji {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-family: "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif;
+  font-size: 1.1em;
+  width: calc(1.15em / 1.1);
+  height: calc(1.15em / 1.1);
+  line-height: 1;
+}
+
 .drawer-item:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: -2px;

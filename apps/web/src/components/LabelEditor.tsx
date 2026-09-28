@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Link } from '@tanstack/react-router';
 import {
-  NotebookRowIcon,
+  NotebookGlyph,
   TagIcon,
   PlusRowIcon,
   PencilIcon,
@@ -15,6 +15,8 @@ export interface LabelItem {
   name: string;
   /** Live notes carrying it; shown beside the name, since in an archive the number is the information. */
   count: number;
+  /** A notebook's own emoji, drawn in place of the book. Tags have none. */
+  emoji?: string | null;
 }
 
 interface LabelEditorProps {
@@ -111,7 +113,8 @@ export function LabelEditor({
   const openId = editing?.id ?? editingId ?? null;
 
   const noun = kind === 'notebook' ? 'notebook' : 'tag';
-  const Glyph = kind === 'notebook' ? NotebookRowIcon : TagIcon;
+  const glyph = (item: LabelItem) =>
+    kind === 'notebook' ? <NotebookGlyph emoji={item.emoji} /> : <TagIcon />;
 
   const startRename = (item: LabelItem) => {
     setCreating(null);
@@ -216,7 +219,7 @@ export function LabelEditor({
                No editing state, so no fence and no in-place field. */
             <li key={item.id} className="label-row label-row-link">
               <span className="label-slot" aria-hidden="true">
-                <Glyph />
+                {glyph(item)}
               </span>
               <Link to={rowHref(item)} className="label-name label-name-link" disabled={busy}>
                 <span className="label-name-text">{item.name}</span>
@@ -274,7 +277,7 @@ export function LabelEditor({
           ) : (
             <li key={item.id} className="label-row">
               <span className="label-slot" aria-hidden="true">
-                <Glyph />
+                {glyph(item)}
               </span>
               {/* The name is the row's target, since renaming is what the row is mostly
                   for; the pencil beside it says so, which a bare name did not. */}

@@ -117,8 +117,8 @@ export function RowIcon({ icon: Icon }: { icon: LucideIcon }) {
    Every row gets a glyph, as every drawer people arrive from gives it: a column of bare
    words is scanned by reading, and a column with a picture beside each word is scanned by
    looking. They are `RowIcon`s — sized to the label, muted by the row — and they name
-   what the row is rather than decorate it, which is why each notebook gets the same book
-   rather than a picture of its own.
+   what the row is rather than decorate it, which is why a notebook gets the same book as
+   every other unless its owner has given it an emoji (`NotebookGlyph`).
 */
 export function NotesRowIcon() {
   return <RowIcon icon={StickyNote} />;
@@ -130,6 +130,27 @@ export function InboxRowIcon() {
 
 export function NotebookRowIcon() {
   return <RowIcon icon={Book} />;
+}
+
+/**
+ * One notebook's own glyph: its emoji where it has one, and the book where it does not.
+ *
+ * For rows that are a particular notebook — the drawer, the move sheet, a search match, the
+ * settings list. Not for a row that means "notebook" in general, like the property row a
+ * note is filed from, which keeps the book whatever it is filed in.
+ *
+ * The emoji is drawn in the box the book fills, so a column that mixes the two keeps one
+ * left edge for the labels and one height for the rows (`.notebook-emoji`). It ignores the
+ * row's muted colour, which is the point of it: a picture in colour is what lets the eye
+ * find one notebook among a dozen without reading.
+ */
+export function NotebookGlyph({ emoji }: { emoji: string | null | undefined }) {
+  if (!emoji) return <NotebookRowIcon />;
+  return (
+    <span className="notebook-emoji" aria-hidden="true">
+      {emoji}
+    </span>
+  );
 }
 
 export function PlusRowIcon() {

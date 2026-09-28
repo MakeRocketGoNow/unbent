@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Sheet } from './Sheet.js';
-import { InboxRowIcon, NotebookRowIcon, PlusRowIcon } from './icons.js';
+import { InboxRowIcon, NotebookGlyph, PlusRowIcon } from './icons.js';
 import type { NotebookData } from './NotebookNav.js';
 
 interface MoveSheetProps {
@@ -88,7 +88,7 @@ export function MoveSheet({ open, onClose, count, notebooks, busy, onPick }: Mov
                 disabled={busy}
                 onClick={() => pick(nb.name)}
               >
-                <NotebookRowIcon />
+                <NotebookGlyph emoji={nb.emoji} />
                 <span className="drawer-item-label">{nb.name}</span>
                 <span className="tag-count">{nb.count}</span>
               </button>
