@@ -4571,6 +4571,150 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
   gap: 0.35rem;
 }
 
+/* The emoji square, then the name taking the rest of the line, at one height. */
+.notebook-name-row {
+  display: flex;
+  align-items: stretch;
+  gap: 0.5rem;
+}
+
+.notebook-name-row > .search-field {
+  flex: 1;
+  min-width: 0;
+}
+
+/*
+   The notebook's emoji, and the picker that opens from it (`EmojiField`).
+
+   The square is drawn as the name field beside it is — the same border, wash and radius —
+   so the two read as one row of the same kind of thing, and a bordered square beside a
+   field is plainly something to press. It shows what the notebook shows everywhere else,
+   the book included, and the book keeps its muted ink here for the same reason it does in
+   the drawer.
+*/
+.emoji-field {
+  position: relative;
+  flex: 0 0 auto;
+  display: flex;
+}
+
+.emoji-trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.25rem;
+  min-height: 2.25rem;
+  padding: 0;
+  font: inherit;
+  font-size: 1.1rem;
+  color: var(--muted);
+  background: color-mix(in srgb, var(--fg) 4%, transparent);
+  border: 1px solid var(--border);
+  border-radius: 0.4rem;
+  cursor: pointer;
+}
+
+.emoji-trigger:hover:not(:disabled) {
+  color: var(--fg);
+  background: color-mix(in srgb, var(--fg) 8%, transparent);
+}
+
+.emoji-trigger:focus-visible,
+.emoji-trigger[aria-expanded="true"] {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.emoji-trigger:disabled { opacity: 0.6; cursor: default; }
+
+/*
+   Under the square and left-aligned to it, on the surface `.overflow-list` uses. Bounded
+   by the screen as well as by eight comfortable columns: the square sits a panel's padding
+   in from the page edge, so the ceiling leaves that inset free on the right too rather than
+   running the picker into the side of a phone.
+*/
+.emoji-panel {
+  position: absolute;
+  top: calc(100% + 0.25rem);
+  left: 0;
+  z-index: 20;
+  width: min(19.5rem, calc(100vw - 4rem));
+  padding: 0.5rem;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  box-shadow: 0 6px 20px color-mix(in srgb, var(--fg) 12%, transparent);
+}
+
+.emoji-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  height: 20rem;
+}
+
+.emoji-viewport {
+  flex: 1;
+  min-height: 0;
+  outline: none;
+}
+
+.emoji-status {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Sticky as it scrolls, so it needs the panel's own background to cover the rows under it. */
+.emoji-category {
+  padding: 0.5rem 0.25rem 0.25rem;
+  font-size: 0.75rem;
+  color: var(--muted);
+  background: var(--bg);
+}
+
+/*
+   An eighth of the row each, so the columns fill whatever width the screen left the panel.
+   Sized from the column count frimousse publishes rather than by sharing the row with
+   `flex: 1`, which spread a search's last, short row across the whole width.
+*/
+.emoji-cell {
+  flex: 0 0 auto;
+  width: calc(100% / var(--frimousse-list-columns));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 2.25rem;
+  padding: 0;
+  font-size: 1.35rem;
+  line-height: 1;
+  background: none;
+  border: none;
+  border-radius: 0.35rem;
+  cursor: pointer;
+}
+
+/* The pointer's or the arrow keys' current emoji: frimousse marks one, never both. */
+.emoji-cell[data-active] { background: color-mix(in srgb, var(--fg) 10%, transparent); }
+
+.emoji-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  min-height: 2rem;
+  padding-inline: 0.25rem;
+}
+
+.emoji-active {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 /*
    A notebook's edit page, on one vertical rhythm.
 

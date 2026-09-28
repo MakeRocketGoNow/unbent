@@ -23,6 +23,7 @@ import { keys, notebookFieldCountsQuery, notebooksQuery } from '../queries.js';
 import { Button } from './Button';
 import { Confirm } from './Confirm.js';
 import { DeleteNotebookConfirm } from './DeleteNotebookConfirm.js';
+import { EmojiField } from './EmojiField.js';
 import { TagInput } from './TagInput.js';
 import { formatCurrency } from './format-field.js';
 import { FieldTypeIcon, MoveDownIcon, MoveUpIcon } from './icons.js';
@@ -438,6 +439,28 @@ export function NotebookEditor({ notebookId, onChanged, onDeleted }: NotebookEdi
     });
   }
 
+  /**
+   * Optimistic, like `move`: the emoji shows in the square, and in the drawer behind this
+   * page, the moment it is picked, and is written behind it. `run` refetches the list on
+   * success; on failure the refetch here puts back what the server still has.
+   */
+  function changeEmoji(emoji: string | null) {
+    queryClient.setQueryData(keys.notebooks(), (list: api.NotebookList | undefined) =>
+      list && {
+        ...list,
+        notebooks: list.notebooks.map((nb) => (nb.id === notebookId ? { ...nb, emoji } : nb)),
+      },
+    );
+    void run(async () => {
+      try {
+        await api.updateNotebook(notebookId, { emoji });
+      } catch (err) {
+        void queryClient.invalidateQueries({ queryKey: keys.notebooks() });
+        throw err;
+      }
+    });
+  }
+
   /** Optimistic: the row moves now, and the order is written behind it. */
   function move(index: number, by: -1 | 1) {
     const current = fields.data ?? [];
@@ -490,25 +513,39 @@ export function NotebookEditor({ notebookId, onChanged, onDeleted }: NotebookEdi
 
         {/* The name comes first — it is what the notebook is called, and what the list showed.
             Renaming here updates every note in it, because the notes reference the id. It
-            autosaves as you type, and is flushed if you leave the page mid-edit. */}
+            autosaves as you type, and is flushed if you leave the page mid-edit.
+
+            The emoji leads the name the way it leads it in the drawer, so the row reads as
+            the notebook does everywhere else: picture, then words. */}
         <div className="notebook-name-edit">
           <label className="notebook-purpose-label" htmlFor="notebook-name">
             Name
           </label>
-          <input
-            id="notebook-name"
-            className="search-field"
-            value={nameDraft ?? ''}
-            disabled={busy || !notebook}
-            aria-label="Notebook name"
-            onChange={(e) => setNameDraft(e.target.value)}
-            onKeyDown={(e) => {
-              // Enter commits now rather than waiting out the debounce; Escape abandons the
-              // edit back to the saved name.
-              if (e.key === 'Enter') void flushName();
-              if (e.key === 'Escape') setNameDraft(savedName);
-            }}
-          />
+          <div className="notebook-name-row">
+            <EmojiField
+              emoji={notebook?.emoji ?? null}
+              name={notebook?.name ?? 'this notebook'}
+              // Not disabled while a save is in flight, unlike the fields around it: the
+              // picker hands focus back to this square as it closes, and a square disabled
+              // by the save that close starts would drop that focus on the floor.
+              disabled={!notebook}
+              onChange={changeEmoji}
+            />
+            <input
+              id="notebook-name"
+              className="search-field"
+              value={nameDraft ?? ''}
+              disabled={busy || !notebook}
+              aria-label="Notebook name"
+              onChange={(e) => setNameDraft(e.target.value)}
+              onKeyDown={(e) => {
+                // Enter commits now rather than waiting out the debounce; Escape abandons the
+                // edit back to the saved name.
+                if (e.key === 'Enter') void flushName();
+                if (e.key === 'Escape') setNameDraft(savedName);
+              }}
+            />
+          </div>
         </div>
 
         {/* The notebook's purpose sits above its fields because it is about the notebook as a

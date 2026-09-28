@@ -155,7 +155,7 @@ export function Settings({ onChanged }: SettingsProps) {
           );
         }}
         emptyText="No notebooks yet."
-        hint="Open a notebook to change its name, its purpose, or its fields. Deleting one leaves its notes unfiled unless you choose to move them to Trash."
+        hint="Open a notebook to change its name and emoji, its purpose, or its fields. Deleting one leaves its notes unfiled unless you choose to move them to Trash."
       />
 
       {pendingDelete && (
