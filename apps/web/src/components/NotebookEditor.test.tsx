@@ -47,7 +47,7 @@ function mount(seed: FieldDef[] = fields) {
   });
   client.setQueryData(keys.notebookFieldCounts('nb1'), seed);
   client.setQueryData(keys.notebooks(), {
-    notebooks: [{ id: 'nb1', name: 'Receipts', count: 3, fields: seed.length, purpose: null }],
+    notebooks: [{ id: 'nb1', name: 'Receipts', count: 3, fields: seed.length, purpose: null, emoji: null }],
     unfiled: 0,
   });
 

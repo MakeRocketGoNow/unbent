@@ -252,6 +252,36 @@ describe('mcp endpoint', () => {
     expect(after.purpose).toBeUndefined();
   });
 
+  it('sets a notebook emoji through update_notebook and reads it back from list_notebooks', async () => {
+    const name = `Emoji over MCP ${Date.now()}`;
+    const created = await mcp(alice.token, 'tools/call', {
+      name: 'create_notebook',
+      arguments: { name },
+    });
+    const notebookId = JSON.parse(toolText(created.body)).id as string;
+
+    const find = async () => {
+      const listed = await mcp(alice.token, 'tools/call', { name: 'list_notebooks', arguments: {} });
+      return JSON.parse(toolText(listed.body)).notebooks.find(
+        (n: { id: string }) => n.id === notebookId,
+      );
+    };
+    // Unset, the key is absent rather than null, like a purpose.
+    expect((await find()).emoji).toBeUndefined();
+
+    await mcp(alice.token, 'tools/call', {
+      name: 'update_notebook',
+      arguments: { notebookId, emoji: '🧾' },
+    });
+    expect((await find()).emoji).toBe('🧾');
+
+    await mcp(alice.token, 'tools/call', {
+      name: 'update_notebook',
+      arguments: { notebookId, emoji: null },
+    });
+    expect((await find()).emoji).toBeUndefined();
+  });
+
   it('round-trips a note through create, search and read', async () => {
     const found = await mcp(alice.token, 'tools/call', {
       name: 'search_notes',

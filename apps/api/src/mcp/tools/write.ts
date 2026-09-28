@@ -13,6 +13,7 @@ import {
   fieldOptionsSchema,
   fieldTypeSchema,
   notebookNameSchema,
+  notebookEmojiSchema,
   notebookPurposeSchema,
   tagNameSchema,
   type FieldDef,
@@ -461,27 +462,35 @@ export function registerWriteTools(server: McpServer, notes: NotesRepo): void {
     {
       title: 'Update a notebook',
       description:
-        'Change a notebook by id: its name, its purpose, or both. Get the id from ' +
-        'list_notebooks. The purpose is a sentence saying what belongs in the notebook and, ' +
-        'as helpfully, what does not (e.g. "Things I want to buy someday; not receipts or ' +
+        'Change a notebook by id: its name, its purpose, its emoji, or any of them. Get the ' +
+        'id from list_notebooks. The purpose is a sentence saying what belongs in the notebook ' +
+        'and, as helpfully, what does not (e.g. "Things I want to buy someday; not receipts or ' +
         'purchases"). It is shown to the person and read by auto-fill when it decides where ' +
         'a note belongs, so it is what keeps notes out of a notebook whose name alone would ' +
-        'mislead. Pass purpose:null to clear it. Omit a field to leave it unchanged.',
+        'mislead. The emoji is a single emoji (e.g. "🧾") drawn in place of the notebook icon ' +
+        'wherever the notebook is listed. Pass purpose:null or emoji:null to clear one. Omit a ' +
+        'field to leave it unchanged.',
       inputSchema: z.object({
         notebookId: z.string().min(1),
         name: notebookNameSchema.optional(),
         purpose: notebookPurposeSchema.optional(),
+        emoji: notebookEmojiSchema.optional(),
       }),
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     },
-    async ({ notebookId, name, purpose }) => {
-      if (name === undefined && purpose === undefined) {
-        return toolError('Give a name or a purpose to change.');
+    async ({ notebookId, name, purpose, emoji }) => {
+      if (name === undefined && purpose === undefined && emoji === undefined) {
+        return toolError('Give a name, a purpose or an emoji to change.');
       }
-      const outcome = await notes.updateNotebook(notebookId, { name, purpose });
+      const outcome = await notes.updateNotebook(notebookId, { name, purpose, emoji });
       if (outcome === 'missing') return notFound('notebook', notebookId);
       if (outcome === 'conflict') return toolError(`A notebook called "${name}" already exists.`);
-      return jsonResult({ id: notebookId, ...(name !== undefined && { name }), ...(purpose !== undefined && { purpose }) });
+      return jsonResult({
+        id: notebookId,
+        ...(name !== undefined && { name }),
+        ...(purpose !== undefined && { purpose }),
+        ...(emoji !== undefined && { emoji }),
+      });
     },
   );
 
