@@ -13,6 +13,7 @@ import { Topbar } from '../components/Topbar.js';
 import { useHostApp } from '../useHostApp.js';
 import { postToApp } from '../app-bridge.js';
 import { ExportSnackbar } from '../components/ExportSnackbar.js';
+import { ImportSnackbar } from '../components/ImportSnackbar.js';
 import { claimImportFor, getImportRun, subscribeImport } from '../import-run.js';
 
 export interface RouterContext {
@@ -217,6 +218,7 @@ function AppShell() {
         <Outlet />
       </main>
       <ExportSnackbar />
+      <ImportSnackbar />
     </div>
   );
 }
