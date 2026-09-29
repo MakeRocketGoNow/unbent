@@ -76,6 +76,7 @@ export async function writeArchive(
   const zip = new ZipWriter(writable, { bufferedWrite: true, useWebWorkers: false });
   const progress: WriteProgress = { done: 0, total: null, files: 0, skipped: 0 };
   const seenNotebooks = new Set<string>();
+  const dirs = new Set<string>();
   let cursor: string | undefined;
 
   for (;;) {
@@ -87,7 +88,7 @@ export async function writeArchive(
     }
     for (const note of page.notes) {
       signal.throwIfAborted();
-      await writeNote(zip, note, source, signal, progress);
+      await writeNote(zip, note, uniqueDir(dirs, note), source, signal, progress);
       progress.done += 1;
       if (note.notebookId) seenNotebooks.add(note.notebookId);
       onProgress({ ...progress });
@@ -116,6 +117,28 @@ export async function writeArchive(
 }
 
 /**
+ * The directory a note gets in this archive: `noteDirName`, unless an earlier note already
+ * took that name, in which case the whole id rather than its first eight characters.
+ *
+ * zip.js refuses a second entry under a name it has written ("File already exists"), and
+ * that refusal ends the whole export — an hour of backup lost to two notes. It happened:
+ * notes imported from Notion keep their page ids, which share their leading digits when
+ * the pages were made close together, so two same-titled pages from one Notion database
+ * mapped to one directory. The short name stays the rule because it is the one a person
+ * reads in Finder; the importer ignores directory names, so the longer one restores the
+ * same. A numbered suffix past that covers the one case the whole id cannot, the same
+ * note listed twice, rather than failing on it.
+ */
+function uniqueDir(used: Set<string>, note: ExportedNote): string {
+  let dir = noteDirName(note.title, note.id);
+  if (used.has(dir)) dir = noteDirName(note.title, note.id, Infinity);
+  const full = dir;
+  for (let n = 2; used.has(dir); n += 1) dir = `${full}-${n}`;
+  used.add(dir);
+  return dir;
+}
+
+/**
  * One note's directory: its markdown, then every stored file under `files/`, each followed
  * by its text under `text/` or `described/` when the page says it has any.
  *
@@ -133,12 +156,12 @@ export async function writeArchive(
 async function writeNote(
   zip: ZipWriter<unknown>,
   note: ExportedNote,
+  // Names both the note's directory and its markdown, so the two always agree.
+  base: string,
   source: ExportSource,
   signal: AbortSignal,
   progress: WriteProgress,
 ): Promise<void> {
-  // Names both the note's directory and its markdown, so the two always agree.
-  const base = noteDirName(note.title, note.id);
   await zip.add(`${base}/${base}.md`, new TextReader(noteMarkdown(note)), { level: 6, zip64: false });
   for (const file of note.attachments ?? []) {
     signal.throwIfAborted();
