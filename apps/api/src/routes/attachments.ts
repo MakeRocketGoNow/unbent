@@ -81,6 +81,13 @@ export const attachments = new Hono<AppEnv>()
      */
     const link = c.req.query('link') !== undefined;
 
+    /**
+     * `?text=supplied`: the client has this file's text already and will put it next, so
+     * the read that would otherwise start here is skipped. What the importer sends for a
+     * file that arrived with a `text/` or `described/` sidecar — see `storeAttachment`.
+     */
+    const textSupplied = c.req.query('text') === 'supplied';
+
     const { filename, contentType, size, path, indexing } = await storeAttachment(
       c.env,
       c.executionCtx,
@@ -91,6 +98,7 @@ export const attachments = new Hono<AppEnv>()
         contentType: c.req.header('Content-Type'),
         body: c.req.raw.body,
         link,
+        textSupplied,
       },
     );
 
@@ -224,6 +232,11 @@ export const attachments = new Hono<AppEnv>()
    * A separate call rather than part of the upload because extraction happens on the
    * client after the bytes are already sent, and because it is optional — an attachment
    * with no usable text simply never gets one.
+   *
+   * `readBy: 'vision'` records that the vision model wrote the text, which is only ever
+   * true of text restored from an archive's `described/`: the model runs on the server,
+   * and every other caller here sends a text layer. Anything else is refused rather than
+   * stored as a layer, so a typo cannot quietly change what the row claims.
    */
   .put('/notes/:id/files/:filename/text', async (c) => {
     const noteId = c.req.param('id');
@@ -232,7 +245,10 @@ export const attachments = new Hono<AppEnv>()
     const attachmentId = await c.get('attachments').idFor(noteId, filename);
     if (!attachmentId) return c.json({ error: 'Not found' }, 404);
 
-    const body = await c.req.json<{ text?: string; unusable?: boolean }>();
+    const body = await c.req.json<{ text?: string; unusable?: boolean; readBy?: unknown }>();
+    if (body.readBy !== undefined && body.readBy !== 'vision') {
+      return c.json({ error: "readBy must be 'vision' when given" }, 400);
+    }
 
     /**
      * `unusable: true` records that extraction was attempted and produced nothing worth
@@ -281,6 +297,7 @@ export const attachments = new Hono<AppEnv>()
       filename,
       // D1 caps a row at 2MB; long scans are truncated rather than rejected.
       text: body.text.slice(0, 500_000),
+      readBy: body.readBy === 'vision' ? 'vision' : null,
     });
 
     return c.body(null, 204);

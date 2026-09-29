@@ -5,6 +5,7 @@ import {
   noteMarkdown,
   notebooksToExport,
   serializeNotebook,
+  textSidecarPath,
   type ExportFilter,
   type ExportPage,
   type ExportedNote,
@@ -58,8 +59,9 @@ export interface WriteProgress {
  * drives it, and the tests drive it with a fake source and a blob for the writable.
  *
  * The order is the one the Worker wrote: each note's markdown, then its files under
- * `files/`, then `notebooks/<slug>.yaml` for the notebooks in scope — those come last
- * because a slice only learns which notebooks it touched by walking its notes. The
+ * `files/` with their text beside them, then `notebooks/<slug>.yaml` for the notebooks
+ * in scope — those come last because a slice only learns which notebooks it touched by
+ * walking its notes. The
  * importer reads the zip's central directory and takes the definitions first whatever
  * order they were written in. An export that finds nothing still writes a valid zip,
  * with a README saying so, rather than an empty file that will not open.
@@ -114,7 +116,8 @@ export async function writeArchive(
 }
 
 /**
- * One note's directory: its markdown, then every stored file under `files/`.
+ * One note's directory: its markdown, then every stored file under `files/`, each followed
+ * by its text under `text/` or `described/` when the page says it has any.
  *
  * Every stored file, not only the ones the body still links. Uploading and then cutting
  * the link keeps the file (see the Attachments panel), and those leftovers are still part
@@ -146,6 +149,17 @@ async function writeNote(
     }
     await zip.add(`${base}/files/${file.filename}`, bytes, { level: 0, zip64: false, signal });
     progress.files += 1;
+    /*
+       Only beside a file that made it into the archive: text for a file that was gone by
+       the time it was fetched would restore as nothing, attached to nothing. Deflated,
+       unlike the file, because plain text is what deflate is for.
+    */
+    if (file.text) {
+      await zip.add(`${base}/${textSidecarPath(file.filename, file.readBy)}`, new TextReader(file.text), {
+        level: 6,
+        zip64: false,
+      });
+    }
   }
 }
 

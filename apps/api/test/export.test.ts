@@ -9,7 +9,7 @@
  */
 import { BlobReader, ZipReader } from '@zip.js/zip.js';
 import { beforeAll, describe, expect, it } from 'vitest';
-import { noteDirName, noteMarkdown, parse, type Note } from '@unbent/shared';
+import { noteDirName, noteMarkdown, parse, textSidecarPath, type Note } from '@unbent/shared';
 
 const BASE = process.env['API_URL'] ?? 'http://localhost:8787';
 const ORIGIN = process.env['APP_URL'] ?? 'http://localhost:5173';
@@ -64,7 +64,9 @@ async function unzip(res: Response): Promise<Map<string, string>> {
   return out;
 }
 
-type ExportedNote = Note & { attachments?: Array<{ filename: string; contentType: string }> };
+type ExportedNote = Note & {
+  attachments?: Array<{ filename: string; contentType: string; text?: string; readBy?: 'vision' }>;
+};
 interface ExportPage {
   notes: ExportedNote[];
   cursor: string | null;
@@ -115,7 +117,10 @@ async function fetchExport(
     const dir = noteDirName(note.title, note.id);
     out.set(`${dir}/${dir}.md`, noteMarkdown(note));
     // The files' entries by name only; their bytes come through the note's file route.
-    for (const file of note.attachments ?? []) out.set(`${dir}/files/${file.filename}`, '');
+    for (const file of note.attachments ?? []) {
+      out.set(`${dir}/files/${file.filename}`, '');
+      if (file.text) out.set(`${dir}/${textSidecarPath(file.filename, file.readBy)}`, file.text);
+    }
   }
   return out;
 }
@@ -133,8 +138,9 @@ async function upload(
   filename: string,
   content: string,
   contentType = 'text/plain',
+  query = '',
 ): Promise<void> {
-  const res = await fetch(`${BASE}/api/notes/${noteId}/files`, {
+  const res = await fetch(`${BASE}/api/notes/${noteId}/files${query}`, {
     method: 'PUT',
     headers: {
       Cookie: actor.cookie,
@@ -145,6 +151,25 @@ async function upload(
     body: content,
   });
   if (!res.ok) throw new Error(`upload failed: ${res.status} ${await res.text()}`);
+}
+
+/**
+ * A file with text already recorded, as the text route records it. Uploaded with
+ * `text=supplied` so the Worker does not start reading it itself — a local instance may
+ * hold a real vision key — and cannot land a read of its own over this one.
+ */
+async function uploadWithText(
+  actor: Actor,
+  noteId: string,
+  file: { filename: string; contentType: string; text: string; readBy?: 'vision' },
+): Promise<void> {
+  await upload(actor, noteId, file.filename, 'BYTES', file.contentType, '?text=supplied');
+  const res = await fetch(`${BASE}/api/notes/${noteId}/files/${encodeURIComponent(file.filename)}/text`, {
+    method: 'PUT',
+    headers: { Cookie: actor.cookie, Origin: ORIGIN, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ text: file.text, ...(file.readBy ? { readBy: file.readBy } : {}) }),
+  });
+  if (!res.ok) throw new Error(`text failed: ${res.status} ${await res.text()}`);
 }
 
 let alice: Actor;
@@ -266,6 +291,56 @@ describe('export pages', () => {
       headers: { Cookie: actor.cookie, Origin: ORIGIN },
     });
     expect(await res.text()).toBe('PNGDATA');
+  });
+
+  /**
+   * And the text held for each, with who read it, so the archive can carry it in `text/`
+   * or `described/` and a restore need not read every file again. A file with no text, or
+   * an empty row, carries neither key.
+   */
+  it('carries the text held for each file, and who read it', async () => {
+    const actor = await signUp(`exp-txt-${Date.now()}@example.test`, 'txt-password-1234', 'T');
+    const note = await createNote(actor, { title: 'Paperwork', body: '' });
+    await uploadWithText(actor, note.id, { filename: 'statement.pdf', contentType: 'application/pdf', text: 'Balance due 42.00' });
+    await uploadWithText(actor, note.id, {
+      filename: 'receipt.jpg',
+      contentType: 'image/jpeg',
+      text: 'Receipt from Acme',
+      readBy: 'vision',
+    });
+    await upload(actor, note.id, 'notes.txt', 'plain', 'text/plain', '?text=supplied');
+
+    const [exported] = await exportNotes(actor);
+    expect(exported!.attachments?.sort((a, b) => a.filename.localeCompare(b.filename))).toEqual([
+      { filename: 'notes.txt', contentType: 'text/plain' },
+      { filename: 'receipt.jpg', contentType: 'image/jpeg', text: 'Receipt from Acme', readBy: 'vision' },
+      { filename: 'statement.pdf', contentType: 'application/pdf', text: 'Balance due 42.00' },
+    ]);
+
+    // A single note's zip carries the same sidecars at its root.
+    const zipped = await unzip(await fetchNote(actor, note.id));
+    expect([...zipped.keys()].sort()).toEqual([
+      'described/receipt.jpg.txt',
+      'files/notes.txt',
+      'files/receipt.jpg',
+      'files/statement.pdf',
+      `${noteDirName('Paperwork', note.id)}.md`,
+      'text/statement.pdf.txt',
+    ]);
+    expect(zipped.get('text/statement.pdf.txt')).toBe('Balance due 42.00');
+    expect(zipped.get('described/receipt.jpg.txt')).toBe('Receipt from Acme');
+  });
+
+  it('refuses a reader other than the vision model', async () => {
+    const actor = await signUp(`exp-rdr-${Date.now()}@example.test`, 'rdr-password-1234', 'R');
+    const note = await createNote(actor, { title: 'Reader', body: '' });
+    await upload(actor, note.id, 'a.pdf', 'x', 'application/pdf', '?text=supplied');
+    const res = await fetch(`${BASE}/api/notes/${note.id}/files/a.pdf/text`, {
+      method: 'PUT',
+      headers: { Cookie: actor.cookie, Origin: ORIGIN, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text: 'words', readBy: 'ocr' }),
+    });
+    expect(res.status).toBe(400);
   });
 
   it('requires a session', async () => {

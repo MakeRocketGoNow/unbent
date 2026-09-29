@@ -282,6 +282,93 @@ describe('the library archive', () => {
   });
 });
 
+/**
+ * `text/` and `described/` beside `files/` hold what the exporting instance had read from
+ * each file. A file that has one arrives with it and is read by nobody: not the server,
+ * which is told before the bytes land, and not the importer's own PDF extraction.
+ */
+describe('text carried beside the files', () => {
+  function textClient() {
+    const saved: Array<{ noteId: string; filename: string; text: string; readBy?: string }> = [];
+    const uploads: Array<{ filename: string; textSupplied: boolean }> = [];
+    const fake = fakeClient({
+      uploadFile: vi.fn(async (_noteId, filename, _mime, _data, options) => {
+        uploads.push({ filename, textSupplied: options?.textSupplied ?? false });
+        // The server suffixes a name that is taken; the text must follow the stored name.
+        return { filename: filename === 'statement.pdf' ? 'statement-2.pdf' : filename };
+      }),
+      saveFileText: vi.fn(async (noteId, filename, text, readBy) => {
+        saved.push({ noteId, filename, text, ...(readBy ? { readBy } : {}) });
+      }),
+    });
+    return { ...fake, saved, uploads };
+  }
+
+  it('uploads a file with its text instead of reading it again', async () => {
+    const { client, saved, uploads } = textClient();
+    const zip = await zipFile('unbent-export.zip', {
+      'paperwork-0191c2a0/paperwork-0191c2a0.md': noteMarkdown({ title: 'Paperwork' }),
+      // Not a PDF pdf.js could open: extraction, had it run, would have failed the note.
+      'paperwork-0191c2a0/files/statement.pdf': bytes('%PDF-1.4 not really'),
+      'paperwork-0191c2a0/files/receipt.jpg': new Uint8Array([0xff, 0xd8, 0xff, 0xe0]),
+      'paperwork-0191c2a0/files/plain.jpg': new Uint8Array([0xff, 0xd8, 0xff, 0xe0]),
+      'paperwork-0191c2a0/text/statement.pdf.txt': 'Balance due 42.00',
+      'paperwork-0191c2a0/described/receipt.jpg.txt': 'Receipt from Acme',
+      // About no file in the archive, so about nothing.
+      'paperwork-0191c2a0/text/missing.pdf.txt': 'orphan',
+    });
+
+    const progress = await importArchive(zip, client, { extractText: true });
+
+    expect(progress).toMatchObject({ created: 1, failed: 0, filesUploaded: 3, filesIndexed: 2 });
+    expect(uploads.sort((a, b) => a.filename.localeCompare(b.filename))).toEqual([
+      { filename: 'plain.jpg', textSupplied: false },
+      { filename: 'receipt.jpg', textSupplied: true },
+      { filename: 'statement.pdf', textSupplied: true },
+    ]);
+    expect(saved.sort((a, b) => a.filename.localeCompare(b.filename))).toEqual([
+      { noteId: '0191c2a0-0000-7000-8000-000000000001', filename: 'receipt.jpg', text: 'Receipt from Acme', readBy: 'vision' },
+      { noteId: '0191c2a0-0000-7000-8000-000000000001', filename: 'statement-2.pdf', text: 'Balance due 42.00' },
+    ]);
+  });
+
+  it('reads a single note’s flat zip the same way', async () => {
+    const { client, saved } = textClient();
+    const zip = await zipFile('receipt.zip', {
+      'receipt.md': noteMarkdown({ title: 'Receipt' }),
+      'files/receipt.jpg': new Uint8Array([0xff, 0xd8, 0xff, 0xe0]),
+      'described/receipt.jpg.txt': 'Receipt from Acme',
+    });
+    await importArchive(zip, client);
+    expect(saved).toEqual([
+      expect.objectContaining({ filename: 'receipt.jpg', text: 'Receipt from Acme', readBy: 'vision' }),
+    ]);
+  });
+
+  it('treats an empty sidecar, or a host that cannot take text, as no sidecar', async () => {
+    const { client, saved, uploads } = textClient();
+    const zip = await zipFile('unbent-export.zip', {
+      'note-0191c2a0/note-0191c2a0.md': noteMarkdown(),
+      'note-0191c2a0/files/scan.jpg': new Uint8Array([0xff, 0xd8, 0xff, 0xe0]),
+      'note-0191c2a0/described/scan.jpg.txt': '',
+    });
+    await importArchive(zip, client);
+    expect(uploads).toEqual([{ filename: 'scan.jpg', textSupplied: false }]);
+    expect(saved).toEqual([]);
+
+    const bare = textClient();
+    delete bare.client.saveFileText;
+    const withText = await zipFile('unbent-export.zip', {
+      'note-0191c2a0/note-0191c2a0.md': noteMarkdown(),
+      'note-0191c2a0/files/scan.jpg': new Uint8Array([0xff, 0xd8, 0xff, 0xe0]),
+      'note-0191c2a0/described/scan.jpg.txt': 'Something',
+    });
+    await importArchive(withText, bare.client);
+    // Without anywhere to put the text, the server must still read the file itself.
+    expect(bare.uploads).toEqual([{ filename: 'scan.jpg', textSupplied: false }]);
+  });
+});
+
 describe('a single note', () => {
   it('imports the flat zip a note with attachments downloads as', async () => {
     const { client, notes, files } = fakeClient();

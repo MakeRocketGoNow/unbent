@@ -430,6 +430,42 @@ export class AttachmentsRepo extends ScopedRepo {
     }));
   }
 
+  /**
+   * The text held for every file on a page of notes, for the export to write beside them.
+   *
+   * A statement of its own rather than a column on the page's attachments subquery. That
+   * subquery builds one JSON string per note, and a note with a few long scans would
+   * build one past D1's two-megabyte cap on a value and fail the whole page; a row per
+   * file stays under it, since each text is capped at half a million characters when it
+   * is stored. Only rows with text come back — an empty row has nothing to carry.
+   *
+   * `+t.user_id` keeps the planner off the user index, which it takes to be selective when
+   * one user owns nearly every row, and on `note_id`, where a page of notes is a handful
+   * of seeks. The ids go in as one JSON array because D1 binds at most a hundred values
+   * and a page may be a hundred notes.
+   */
+  async textsForNotes(
+    noteIds: string[],
+  ): Promise<Array<{ noteId: string; filename: string; text: string; readBy: 'vision' | null }>> {
+    if (noteIds.length === 0) return [];
+    const { results } = await this.db
+      .prepare(
+        `SELECT a.note_id, a.filename, t.text, t.read_by
+           FROM attachment_text t
+           JOIN attachments a ON a.id = t.attachment_id
+          WHERE t.note_id IN (SELECT value FROM json_each(?1))
+            AND +t.user_id = ?2 AND t.text <> ''`,
+      )
+      .bind(JSON.stringify(noteIds), this.userId)
+      .all<{ note_id: string; filename: string; text: string; read_by: string | null }>();
+    return results.map((r) => ({
+      noteId: r.note_id,
+      filename: r.filename,
+      text: r.text,
+      readBy: r.read_by === 'vision' ? 'vision' : null,
+    }));
+  }
+
   /** Attachment id for a filename within a note, scoped to this user. */
   async idFor(noteId: string, filename: string): Promise<string | null> {
     const row = await this.resolve(noteId, filename);

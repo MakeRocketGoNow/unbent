@@ -1,5 +1,12 @@
 import { BlobReader, TextWriter, Uint8ArrayWriter, ZipReader, type Entry } from '@zip.js/zip.js';
-import { NOTEBOOKS_DIR, parse, parseNotebook, type ParsedNote } from '@unbent/shared';
+import {
+  DESCRIBED_DIR,
+  NOTEBOOKS_DIR,
+  TEXT_DIR,
+  parse,
+  parseNotebook,
+  type ParsedNote,
+} from '@unbent/shared';
 import { guessContentType } from './content-type-guess.js';
 import { importFormat } from './import-format.js';
 import {
@@ -36,6 +43,12 @@ import { contentHash } from './note-body.js';
  * back as text and a rating as a plain number. An archive without that directory (an
  * older export, or a vault someone assembled by hand) imports exactly as before.
  *
+ * Beside `files/`, a note may have `text/` and `described/`: each file's text as the
+ * exporting instance held it, from the file's own text layer or from the vision model. A
+ * file that has one is uploaded with its text rather than read again — no extraction, no
+ * paid vision request, and the same words search and Auto-fill were built on. A file
+ * without one is read as it always was.
+ *
  * Bytes are read as they are needed. `ZipReader` over a `Blob` reads the central
  * directory first and then each entry by byte range, so a multi-gigabyte archive never
  * lands in memory whole; one attachment at a time does, which the upload needs anyway.
@@ -52,6 +65,8 @@ interface NoteFileSource {
   /** Compressed size, which is what the progress bar counts. */
   size: number;
   bytes: () => Promise<Uint8Array>;
+  /** The file's `text/` or `described/` sidecar, when the archive has one. */
+  text?: { size: number; readBy: 'vision' | null; read: () => Promise<string> };
 }
 
 interface NoteSource {
@@ -216,7 +231,19 @@ async function* loadFiles(
   for (const file of files) {
     const bytes = await file.bytes();
     progress.bytesRead += file.size;
-    yield { filename: file.filename, mime: guessContentType(file.filename, bytes), bytes };
+    let text: ImportFile['text'];
+    if (file.text) {
+      const read = await file.text.read();
+      progress.bytesRead += file.text.size;
+      // An empty sidecar says nothing, and the text route refuses empty text; read the file.
+      if (read.length > 0) text = { text: read, readBy: file.text.readBy };
+    }
+    yield {
+      filename: file.filename,
+      mime: guessContentType(file.filename, bytes),
+      bytes,
+      ...(text ? { text } : {}),
+    };
   }
 }
 
@@ -278,11 +305,23 @@ async function* noteSources(
           path: entry.filename,
           size: entry.compressedSize,
           markdown: () => entry.getData(new TextWriter()),
-          files: group.files.map((f) => ({
-            filename: f.name,
-            size: f.entry.compressedSize,
-            bytes: () => f.entry.getData(new Uint8ArrayWriter()),
-          })),
+          files: group.files.map((f) => {
+            const sidecar = group.texts.get(f.name);
+            return {
+              filename: f.name,
+              size: f.entry.compressedSize,
+              bytes: () => f.entry.getData(new Uint8ArrayWriter()),
+              ...(sidecar
+                ? {
+                    text: {
+                      size: sidecar.entry.compressedSize,
+                      readBy: sidecar.readBy,
+                      read: () => sidecar.entry.getData(new TextWriter()),
+                    },
+                  }
+                : {}),
+            };
+          }),
         };
       }
     }
@@ -293,10 +332,14 @@ async function* noteSources(
 
 type FileEntry = Extract<Entry, { directory: false }>;
 
-/** One note directory's worth of entries: its markdown, and what is under its `files/`. */
+/**
+ * One note directory's worth of entries: its markdown, what is under its `files/`, and the
+ * text sidecars beside them, keyed by the name of the file each belongs to.
+ */
 interface EntryGroup {
   notes: FileEntry[];
   files: Array<{ name: string; entry: FileEntry }>;
+  texts: Map<string, { entry: FileEntry; readBy: 'vision' | null }>;
 }
 
 /** What the archive holds, sorted: note directories, and the definitions files. */
@@ -317,7 +360,9 @@ interface ArchiveEntries {
  * order: this app's own export writes a note's markdown before its files, but a zip
  * someone re-packed after unpacking may list them any way the tool felt like. A directory
  * with markdown and no `files/` is a note without attachments; `files/` with no markdown
- * beside it belongs to nothing and is skipped.
+ * beside it belongs to nothing and is skipped. A `.txt` under `text/` or `described/` is
+ * the text of the file of the same name less `.txt`, and is skipped when there is no such
+ * file.
  *
  * Skipped outright: directory entries, which carry no bytes; Finder's `__MACOSX` tree,
  * which is resource forks for every file in the archive; and any dotfile, which is
@@ -330,7 +375,7 @@ function groupEntries(entries: Entry[], progress: ImportProgress): ArchiveEntrie
   const groupFor = (dir: string): EntryGroup => {
     let group = groups.get(dir);
     if (!group) {
-      group = { notes: [], files: [] };
+      group = { notes: [], files: [], texts: new Map() };
       groups.set(dir, group);
     }
     return group;
@@ -352,8 +397,15 @@ function groupEntries(entries: Entry[], progress: ImportProgress): ArchiveEntrie
       continue;
     }
 
-    if (segments[segments.length - 1] === 'files') {
+    const parent = segments[segments.length - 1];
+    if (parent === 'files') {
       groupFor(segments.slice(0, -1).join('/')).files.push({ name, entry });
+    } else if ((parent === TEXT_DIR || parent === DESCRIBED_DIR) && /\.txt$/i.test(name)) {
+      // The export never writes both for one file; if a hand-made archive does, the first wins.
+      const texts = groupFor(segments.slice(0, -1).join('/')).texts;
+      const of = name.slice(0, -'.txt'.length);
+      if (texts.has(of)) progress.bytesRead += entry.compressedSize;
+      else texts.set(of, { entry, readBy: parent === DESCRIBED_DIR ? 'vision' : null });
     } else if (segments[segments.length - 1] === NOTEBOOKS_DIR && /\.ya?ml$/i.test(name)) {
       notebooks.push(entry);
     } else if (/\.(md|markdown)$/i.test(name)) {
@@ -365,6 +417,13 @@ function groupEntries(entries: Entry[], progress: ImportProgress): ArchiveEntrie
 
   const result: EntryGroup[] = [];
   for (const group of groups.values()) {
+    // A sidecar whose file is not in the archive is text about nothing; count it as read.
+    const names = new Set(group.files.map((f) => f.name));
+    for (const [of, sidecar] of group.texts) {
+      if (group.notes.length > 0 && names.has(of)) continue;
+      progress.bytesRead += sidecar.entry.compressedSize;
+      group.texts.delete(of);
+    }
     if (group.notes.length > 0) {
       result.push(group);
     } else {

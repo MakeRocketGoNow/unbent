@@ -1272,6 +1272,9 @@ Settings → Export writes a zip of the whole account as a plain folder tree:
 ```
 first-note-2382e420/first-note-2382e420.md
 first-note-2382e420/files/agenda.pdf
+first-note-2382e420/files/whiteboard.jpg
+first-note-2382e420/text/agenda.pdf.txt
+first-note-2382e420/described/whiteboard.jpg.txt
 untitled-e080eb5b/untitled-e080eb5b.md
 notebooks/coupons.yaml
 ```
@@ -1282,6 +1285,14 @@ is a slug plus an id fragment, so two notes with the same title do not collide, 
 markdown repeats it so a search of the unpacked tree finds one file per title rather than a
 thousand `note.md`s. Standard `unzip` reads it; no part of this app is needed to get your
 notes back.
+
+Beside `files/`, `text/` and `described/` hold the text this instance has read from each
+file, as a plain `<filename>.txt`: `text/` for what the file's own text layer gave,
+`described/` for what the vision model read from a picture or a scan with no layer. A file
+with no text has neither. They are what makes a scanned bill answerable, so they are also
+what a person would want to `grep` in the unpacked folder — and without them a restore read
+every file again, a PDF extraction or a paid vision request per file, and got different
+words than search and Auto-fill had been built on.
 
 `notebooks/` holds what is about a notebook rather than a note: one `<slug>.yaml` per
 notebook with its emoji and its purpose when it has them — the purpose is what Auto-fill
@@ -1348,8 +1359,11 @@ fresh live copy under a new id.
 The archive is read in the browser, one note and one attachment at a time, by the same
 worker that reads ENEX files — the requests, the resumability and the per-note failure log
 are all the ENEX import's. Attachment types are recovered from the bytes and then the
-extension, since a zip carries neither, and PDF text is re-extracted so search works after a
-restore. Only the layout is assumed: markdown with frontmatter, and a `files/` directory
+extension, since a zip carries neither. A file that arrives with a `text/` or `described/`
+sidecar is uploaded with `?text=supplied`, which stops the Worker reading it, and its text is
+recorded as it was, under the reader that wrote it; nothing is extracted, nothing goes back
+to pending, and no vision request is made. A file without one — from an older export — is
+read as any upload is, so search works after that restore too. Only the layout is assumed: markdown with frontmatter, and a `files/` directory
 beside it. Directory names are ignored, so an archive unpacked, rearranged and zipped again
 by hand reads the same as the original.
 

@@ -17,8 +17,9 @@ export interface StoredAttachment extends AttachmentInfo {
   markdown: string;
   /**
    * Where the text extraction will happen. `server` means it is already under way in the
-   * background; `client` means this deployment cannot, and the browser's pass will do it
-   * the next time the notes are opened.
+   * background; `client` means this deployment cannot, or the caller said it would supply
+   * the text, and otherwise the browser's pass will do it the next time the notes are
+   * opened.
    */
   indexing: 'server' | 'client';
 }
@@ -38,6 +39,13 @@ export interface StoreAttachmentInput {
   body: ReadableStream | ArrayBuffer;
   /** Append the markdown to the note body once the file is stored. */
   link: boolean;
+  /**
+   * The caller will record this file's text itself, so do not read it here. An import
+   * from this app's own archive brings each file's text beside it; reading it again would
+   * spend a vision request on words the archive already holds, and could land after the
+   * archive's text and replace it with different ones.
+   */
+  textSupplied?: boolean;
 }
 
 /**
@@ -110,7 +118,8 @@ export async function storeAttachment(
    * result says which way it went, so a client that would extract on its own knows not
    * to. Which readers run, and in what order, is lib/read-attachment.ts's business.
    */
-  const indexing = serverCanRead(env, contentType, object.size) ? 'server' : 'client';
+  const indexing =
+    !input.textSupplied && serverCanRead(env, contentType, object.size) ? 'server' : 'client';
   if (indexing === 'server') {
     const readers = readersFrom(env);
     ctx.waitUntil(

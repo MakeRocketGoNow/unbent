@@ -103,8 +103,10 @@ const client: ImportClient = {
     return res.json() as Promise<{ id: string; created: boolean }>;
   },
 
-  uploadFile: async (noteId, filename, mime, bytes) => {
-    const res = await api(`/api/notes/${noteId}/files`, {
+  uploadFile: async (noteId, filename, mime, bytes, options) => {
+    // `text=supplied` stops the server reading a file whose text comes next from the archive.
+    const query = options?.textSupplied ? '?text=supplied' : '';
+    const res = await api(`/api/notes/${noteId}/files${query}`, {
       method: 'PUT',
       headers: {
         'X-Filename': encodeURIComponent(filename),
@@ -140,11 +142,11 @@ const client: ImportClient = {
     });
   },
 
-  saveFileText: async (noteId, filename, text) => {
+  saveFileText: async (noteId, filename, text, readBy) => {
     await api(`/api/notes/${noteId}/files/${encodeURIComponent(filename)}/text`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text }),
+      body: JSON.stringify(readBy ? { text, readBy } : { text }),
     });
   },
 };
