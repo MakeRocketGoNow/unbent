@@ -1,0 +1,127 @@
+import { describe, expect, it } from 'vitest';
+import { runInDurableObject } from 'cloudflare:test';
+import { freshStore } from './helpers.js';
+
+/** `AttachmentsStore` through the object, with the `has_text` and FTS triggers live. */
+describe('attachments', () => {
+  const file = (noteId: string, over: Partial<{ id: string; filename: string; contentType: string; r2Key: string }> = {}) => ({
+    id: over.id ?? crypto.randomUUID(),
+    noteId,
+    filename: over.filename ?? 'scan.pdf',
+    contentType: over.contentType ?? 'application/pdf',
+    size: 3,
+    r2Key: over.r2Key ?? `users/u/notes/${noteId}/files/${over.id ?? 'x'}-${over.filename ?? 'scan.pdf'}`,
+  });
+
+  it('records, resolves, lists, names around collisions and removes', async () => {
+    const { stub } = freshStore('att');
+    const n = await stub.create({ id: 'n1', title: 'T', body: '', tags: [] });
+    expect(await stub.recordAttachment(file(n.id, { id: 'a1' }))).toEqual({ filename: 'scan.pdf', contentType: 'application/pdf', size: 3 });
+    expect(await stub.availableFilename(n.id, 'scan.pdf')).toBe('scan-2.pdf');
+    expect(await stub.availableFilename(n.id, 'other.pdf')).toBe('other.pdf');
+    await stub.recordAttachment(file(n.id, { id: 'a2', filename: 'scan-2.pdf' }));
+    expect(await stub.availableFilename(n.id, 'scan.pdf')).toBe('scan-3.pdf');
+
+    expect(await stub.resolveAttachment(n.id, 'scan.pdf')).toMatchObject({ id: 'a1', r2_key: expect.stringContaining('a1-scan.pdf') });
+    expect(await stub.attachmentIdFor(n.id, 'scan-2.pdf')).toBe('a2');
+    expect(await stub.attachmentIdFor(n.id, 'nope.pdf')).toBeNull();
+    expect((await stub.listAttachments(n.id)).map((f) => f.filename)).toEqual(['scan.pdf', 'scan-2.pdf']);
+    expect((await stub.keysForNote(n.id)).length).toBe(2);
+    expect(await stub.ownsNote(n.id)).toBe(true);
+    expect(await stub.ownsNote('ghost')).toBe(false);
+
+    // A trashed note's files resolve to nothing, as before, and come back with the note.
+    await stub.remove(n.id);
+    expect(await stub.resolveAttachment(n.id, 'scan.pdf')).toBeNull();
+    expect(await stub.ownsNote(n.id)).toBe(false);
+    await stub.restore(n.id);
+    expect(await stub.removeAttachment(n.id, 'scan.pdf')).toEqual(expect.stringContaining('a1-scan.pdf'));
+    expect(await stub.removeAttachment(n.id, 'scan.pdf')).toBeNull();
+    expect((await stub.listAttachments(n.id)).map((f) => f.filename)).toEqual(['scan-2.pdf']);
+  });
+
+  it('keeps has_text and the FTS index in step with the text rows, and copies text', async () => {
+    const { stub } = freshStore('text');
+    await stub.create({ id: 'n1', title: 'T', body: '', tags: [] });
+    await stub.recordAttachment(file('n1', { id: 'a1' }));
+    expect(await stub.textFor('n1', 'scan.pdf')).toBe('');
+    expect(await stub.textFor('n1', 'missing.pdf')).toBeNull();
+    expect(await stub.pendingTextCount()).toBe(1);
+
+    await stub.recordText({ attachmentId: 'a1', noteId: 'n1', filename: 'scan.pdf', text: 'acme corporation invoice' });
+    expect(await stub.textFor('n1', 'scan.pdf')).toBe('acme corporation invoice');
+    expect(await stub.pendingTextCount()).toBe(0);
+    expect((await stub.search('acme', 5)).map((r) => r.matchedFile)).toEqual(['scan.pdf']);
+    // The upsert path: new text, the flag stays, the index follows.
+    await stub.recordText({ attachmentId: 'a1', noteId: 'n1', filename: 'scan.pdf', text: 'globex receipt', readBy: 'vision' });
+    expect(await stub.search('acme', 5)).toEqual([]);
+    expect((await stub.search('globex', 5)).length).toBe(1);
+    expect(await stub.textsForNote('n1')).toEqual([{ filename: 'scan.pdf', contentType: 'application/pdf', text: 'globex receipt', readBy: 'vision' }]);
+
+    await stub.recordAttachment(file('n1', { id: 'a2', filename: 'copy.pdf' }));
+    await stub.copyText('a1', { attachmentId: 'a2', noteId: 'n1', filename: 'copy.pdf' });
+    expect(await stub.textFor('n1', 'copy.pdf')).toBe('globex receipt');
+    expect(await stub.textsForNotes(['n1', 'nope'])).toEqual([
+      { noteId: 'n1', filename: 'scan.pdf', text: 'globex receipt', readBy: 'vision' },
+      { noteId: 'n1', filename: 'copy.pdf', text: 'globex receipt', readBy: 'vision' },
+    ]);
+    expect(await stub.textsForNotes([])).toEqual([]);
+
+    // Removing the attachment cascades its text and the flag no longer matters; the
+    // FTS entry goes with the row.
+    await stub.removeAttachment('n1', 'scan.pdf');
+    expect((await stub.search('globex', 5)).map((r) => r.matchedFile)).toEqual(['copy.pdf']);
+    const flags = await runInDurableObject(stub, (_i, state) =>
+      state.storage.sql.exec<{ id: string; has_text: number }>('SELECT id, has_text FROM attachments').toArray(),
+    );
+    expect(flags).toEqual([{ id: 'a2', has_text: 1 }]);
+  });
+
+  it('lists what each reader still has to read, account-wide and for one note', async () => {
+    const { stub } = freshStore('pending');
+    await stub.create({ id: 'n1', title: 'T', body: '', tags: [] });
+    await stub.create({ id: 'n2', title: 'T', body: '', tags: [] });
+    await stub.create({ id: 'trashed', title: 'T', body: '', tags: [] });
+    await stub.recordAttachment(file('n1', { id: 'pdf-unread' }));
+    await stub.recordAttachment(file('n1', { id: 'pdf-empty', filename: 'empty.pdf' }));
+    await stub.recordText({ attachmentId: 'pdf-empty', noteId: 'n1', filename: 'empty.pdf', text: '' });
+    await stub.recordAttachment(file('n1', { id: 'pdf-seen', filename: 'seen.pdf' }));
+    await stub.recordText({ attachmentId: 'pdf-seen', noteId: 'n1', filename: 'seen.pdf', text: '', readBy: 'vision' });
+    await stub.recordAttachment(file('n2', { id: 'pic', filename: 'card.jpg', contentType: 'image/jpeg' }));
+    await stub.recordAttachment(file('n2', { id: 'pic-read', filename: 'read.png', contentType: 'image/png' }));
+    await stub.recordText({ attachmentId: 'pic-read', noteId: 'n2', filename: 'read.png', text: 'a card', readBy: 'vision' });
+    await stub.recordAttachment(file('n2', { id: 'other', filename: 'notes.txt', contentType: 'text/plain' }));
+    await stub.recordAttachment(file('trashed', { id: 'gone' }));
+    await stub.recordAttachment(file('trashed', { id: 'gone-pic', filename: 'x.jpg', contentType: 'image/jpeg' }));
+    await stub.remove('trashed');
+
+    expect((await stub.needingText(10)).map((f) => f.id)).toEqual(['pdf-unread']);
+    expect(await stub.pendingTextCount()).toBe(1);
+    expect((await stub.needingText(10, 'n1')).map((f) => f.id)).toEqual(['pdf-unread']);
+    expect(await stub.pendingTextCount('n1')).toBe(1);
+    expect(await stub.needingText(10, 'n2')).toEqual([]);
+    expect(await stub.pendingTextCount('n2')).toBe(0);
+
+    // Vision: the picture without text and the PDF whose text layer was empty and that
+    // the model has not seen; not the one it has, not the read picture, not the trash.
+    expect((await stub.needingVision(10)).map((f) => f.id).sort()).toEqual(['pdf-empty', 'pic']);
+    expect(await stub.visionPending()).toBe(2);
+    expect((await stub.needingVision(10, 'n1')).map((f) => f.id)).toEqual(['pdf-empty']);
+    expect(await stub.visionPending('n1')).toBe(1);
+    expect((await stub.needingVision(10, 'n2')).map((f) => f.id)).toEqual(['pic']);
+    expect(await stub.visionPending('n2')).toBe(1);
+    expect((await stub.needingVision(1)).length).toBe(1);
+  });
+
+  it('pages every blob key by rowid', async () => {
+    const { stub } = freshStore('keys');
+    await stub.create({ id: 'n1', title: 'T', body: '', tags: [] });
+    for (let i = 0; i < 5; i++) await stub.recordAttachment(file('n1', { id: `a${i}`, filename: `f${i}.pdf`, r2Key: `k${i}` }));
+    const first = await stub.allBlobKeys(0, 2);
+    expect(first.keys).toEqual(['k0', 'k1']);
+    const second = await stub.allBlobKeys(first.nextRowid!, 2);
+    expect(second.keys).toEqual(['k2', 'k3']);
+    const third = await stub.allBlobKeys(second.nextRowid!, 2);
+    expect(third).toEqual({ keys: ['k4'], nextRowid: null });
+  });
+});

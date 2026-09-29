@@ -1,17 +1,30 @@
 import { DurableObject } from 'cloudflare:workers';
+import {
+  DEFAULT_NOTE_SORT,
+  type FieldDef,
+  type FieldScale,
+  type FieldType,
+  type FieldValue,
+  type Note,
+  type NoteFieldsPatch,
+  type NotebookDefinition,
+} from '@unbent/shared';
+import { AttachmentsStore } from './attachments.js';
 import { appliedMigrations, migrate } from './migrate.js';
+import { NotesStore, type CountOptions, type ListOptions, type SearchFilters } from './notes.js';
+import { cursorAfter, nextCursor } from './notes-shared.js';
 import { SCHEMA } from './schema/index.js';
 import { instrumentedSql, type Sql } from './sql.js';
 
 /**
  * What the object is allowed to see of the Worker's environment: nothing.
  *
- * `Pick<Env, never>` is deliberately empty rather than omitted, so the type is the place
- * to widen when the one-time copy from D1 lands (it needs `DB`, and nothing else ever
- * will). Naming `BLOBS`, `AI` or a secret here would be refused by review before it was
- * refused by the compiler, but the compiler refusing it is what makes rule 1 in AGENTS.md
- * — the object touches its SQLite and nothing else — a property of the code rather than
- * a habit.
+ * `Record<never, never>` is deliberately empty rather than omitted, so the type is the
+ * place to widen when the one-time copy from D1 lands (it needs `DB`, and nothing else
+ * ever will). Naming `BLOBS`, `AI` or a secret here would be refused by review before it
+ * was refused by the compiler, but the compiler refusing it is what makes rule 1 in
+ * AGENTS.md — the object touches its SQLite and nothing else — a property of the code
+ * rather than a habit.
  */
 export type StoreEnv = Record<never, never>;
 
@@ -49,6 +62,15 @@ export interface StoreStats {
 }
 
 /**
+ * How many bytes of note bodies and file texts one export page carries before it is cut
+ * short. An RPC result is capped at 32 MiB by the runtime, and a page of a hundred notes
+ * whose scans each hold half a million characters of text would pass it; eight leaves
+ * room for the rest of the page around the text. A page cut here comes back with a
+ * cursor from its last row, so the client walks on as if the page had been full.
+ */
+export const EXPORT_PAGE_BYTES = 8 * 1024 * 1024;
+
+/**
  * One account's notes, in a SQLite database of their own.
  *
  * The object is the repository. Every route and MCP tool in the Worker reaches a user's
@@ -64,6 +86,13 @@ export interface StoreStats {
  * engine's default, but the cascades depend on it) and that `_meta.user_id` is the name
  * it was created under. Every other wake is local reads only.
  *
+ * Every public method is one billable request to the object, so the surface has two
+ * layers: the repository methods one for one, for the facade that keeps `NotesRepo`'s
+ * and `AttachmentsRepo`'s signatures, and composites that answer what a route asks in
+ * one call where it used to make two or three — a list with its count, a note with its
+ * files, a notebook list with the unfiled count. Prefer adding to the second layer over
+ * a second call in the same request.
+ *
  * A wiped object stays wiped until something asks for its notes. Account deletion calls
  * `wipe`, which drops everything and leaves the storage empty, so a deleted account
  * costs nothing; the next data call, if there ever is one, rebuilds the schema first.
@@ -73,6 +102,8 @@ export interface StoreStats {
 export class UserStore extends DurableObject<StoreEnv> {
   readonly userId: string;
   private sql: Sql;
+  private notes: NotesStore;
+  private attachments: AttachmentsStore;
   private wiped = false;
 
   constructor(ctx: DurableObjectState, env: StoreEnv) {
@@ -84,6 +115,8 @@ export class UserStore extends DurableObject<StoreEnv> {
     if (!name) throw new Error('UserStore must be created with idFromName(userId)');
     this.userId = name;
     this.sql = instrumentedSql(ctx.storage, name);
+    this.notes = new NotesStore(this.sql);
+    this.attachments = new AttachmentsStore(this.sql);
     ctx.blockConcurrencyWhile(async () => {
       this.bootstrap();
     });
@@ -239,4 +272,235 @@ export class UserStore extends DurableObject<StoreEnv> {
   resetCounters(): void {
     this.sql.resetCounters();
   }
+
+  // --- Notes: the repository, one for one -----------------------------------------------
+  //
+  // Each of these is `NotesStore`'s method of the same name, behind `ready()`. They are
+  // spelled out rather than proxied so the RPC surface is a list a reader can grep, the
+  // types cross the boundary as written, and a method the object should not expose cannot
+  // leak through a wildcard.
+
+  list(opts: ListOptions) { this.ready(); return this.notes.list(opts); }
+  listFull(opts: ListOptions) { this.ready(); return this.notes.listFull(opts); }
+  count(opts: CountOptions = {}) { this.ready(); return this.notes.count(opts); }
+  recountNotes() { this.ready(); return this.notes.recountNotes(); }
+  get(id: string) { this.ready(); return this.notes.get(id); }
+  create(input: Parameters<NotesStore['create']>[0]) { this.ready(); return this.notes.create(input); }
+  duplicate(id: string, newId: string) { this.ready(); return this.notes.duplicate(id, newId); }
+  update(id: string, patch: Parameters<NotesStore['update']>[1]) { this.ready(); return this.notes.update(id, patch); }
+  appendToBody(id: string, markdown: string) { this.ready(); return this.notes.appendToBody(id, markdown); }
+  remove(id: string) { this.ready(); return this.notes.remove(id); }
+  restore(id: string) { this.ready(); return this.notes.restore(id); }
+  purgeOne(id: string) { this.ready(); return this.notes.purgeOne(id); }
+  removeMany(ids: string[]) { this.ready(); return this.notes.removeMany(ids); }
+  restoreMany(ids: string[]) { this.ready(); return this.notes.restoreMany(ids); }
+  purgeMany(ids: string[]) { this.ready(); return this.notes.purgeMany(ids); }
+  updateMany(ids: string[], patch: Parameters<NotesStore['updateMany']>[1]) { this.ready(); return this.notes.updateMany(ids, patch); }
+  importNote(input: Parameters<NotesStore['importNote']>[0]) { this.ready(); return this.notes.importNote(input); }
+  setBody(id: string, body: string) { this.ready(); return this.notes.setBody(id, body); }
+  search(rawQuery: string, limit: number, filters: SearchFilters = {}, scopeDrivenSearchMax?: number) {
+    this.ready();
+    return this.notes.search(rawQuery, limit, filters, scopeDrivenSearchMax);
+  }
+  purge(scope: 'trashed' | 'all', limit?: number) { this.ready(); return this.notes.purge(scope, limit); }
+  listTags() { this.ready(); return this.notes.listTags(); }
+  sampleTitles(exclude: string, perGroup: number, tagLimit: number) { this.ready(); return this.notes.sampleTitles(exclude, perGroup, tagLimit); }
+  renameTag(id: string, name: string, opts?: { merge?: boolean | undefined }) { this.ready(); return this.notes.renameTag(id, name, opts); }
+  deleteTag(id: string) { this.ready(); return this.notes.deleteTag(id); }
+  countUnfiledNotes() { this.ready(); return this.notes.countUnfiledNotes(); }
+  listNotebooks() { this.ready(); return this.notes.listNotebooks(); }
+  createNotebook(name: string) { this.ready(); return this.notes.createNotebook(name); }
+  updateNotebook(id: string, patch: Parameters<NotesStore['updateNotebook']>[1]) { this.ready(); return this.notes.updateNotebook(id, patch); }
+  deleteNotebook(id: string, opts?: { trashNotes?: boolean | undefined }) { this.ready(); return this.notes.deleteNotebook(id, opts); }
+  listFields(notebookId: string, opts?: { counts?: boolean | undefined }) { this.ready(); return this.notes.listFields(notebookId, opts); }
+  fieldById(id: string) { this.ready(); return this.notes.fieldById(id); }
+  listAllFields() { this.ready(); return this.notes.listAllFields(); }
+  createField(notebookId: string, input: { name: string; type: FieldType; options: string[]; scale?: FieldScale | null | undefined; currency?: string | null | undefined }) {
+    this.ready();
+    return this.notes.createField(notebookId, input);
+  }
+  updateField(notebookId: string, fieldId: string, patch: Parameters<NotesStore['updateField']>[2]) {
+    this.ready();
+    return this.notes.updateField(notebookId, fieldId, patch);
+  }
+  previewConversion(notebookId: string, fieldId: string, to: FieldType, toScale?: FieldScale | null | undefined) {
+    this.ready();
+    return this.notes.previewConversion(notebookId, fieldId, to, toScale);
+  }
+  reorderFields(notebookId: string, ids: string[]) { this.ready(); return this.notes.reorderFields(notebookId, ids); }
+  deleteField(notebookId: string, fieldId: string) { this.ready(); return this.notes.deleteField(notebookId, fieldId); }
+  countOptionUsage(notebookId: string, fieldId: string, option: string) { this.ready(); return this.notes.countOptionUsage(notebookId, fieldId, option); }
+  removeFieldOption(notebookId: string, fieldId: string, option: string, clear: boolean) {
+    this.ready();
+    return this.notes.removeFieldOption(notebookId, fieldId, option, clear);
+  }
+  importNotebook(definition: NotebookDefinition) { this.ready(); return this.notes.importNotebook(definition); }
+
+  // --- Attachments: the repository, one for one -----------------------------------------
+  //
+  // Prefixed where a name would collide with a note method's (`remove`) or read as one
+  // out of context (`record`). `ownsNote` keeps its name for the facade's sake although
+  // ownership is not what it checks any more; see `AttachmentsStore.noteIsLive`.
+
+  resolveAttachment(noteId: string, filename: string) { this.ready(); return this.attachments.resolve(noteId, filename); }
+  listAttachments(noteId: string) { this.ready(); return this.attachments.listForNote(noteId); }
+  ownsNote(noteId: string) { this.ready(); return this.attachments.noteIsLive(noteId); }
+  availableFilename(noteId: string, desired: string) { this.ready(); return this.attachments.availableFilename(noteId, desired); }
+  recordAttachment(input: Parameters<AttachmentsStore['record']>[0]) { this.ready(); return this.attachments.record(input); }
+  removeAttachment(noteId: string, filename: string) { this.ready(); return this.attachments.remove(noteId, filename); }
+  recordText(input: Parameters<AttachmentsStore['recordText']>[0]) { this.ready(); return this.attachments.recordText(input); }
+  copyText(fromAttachmentId: string, to: { attachmentId: string; noteId: string; filename: string }) {
+    this.ready();
+    return this.attachments.copyText(fromAttachmentId, to);
+  }
+  needingText(limit: number, noteId?: string) { this.ready(); return this.attachments.needingText(limit, noteId); }
+  needingVision(limit: number, noteId?: string) { this.ready(); return this.attachments.needingVision(limit, noteId); }
+  visionPending(noteId?: string) { this.ready(); return this.attachments.visionPending(noteId); }
+  pendingTextCount(noteId?: string) { this.ready(); return this.attachments.pendingTextCount(noteId); }
+  textFor(noteId: string, filename: string) { this.ready(); return this.attachments.textFor(noteId, filename); }
+  textsForNote(noteId: string) { this.ready(); return this.attachments.textsForNote(noteId); }
+  textsForNotes(noteIds: string[]) { this.ready(); return this.attachments.textsForNotes(noteIds); }
+  attachmentIdFor(noteId: string, filename: string) { this.ready(); return this.attachments.idFor(noteId, filename); }
+  keysForNote(noteId: string) { this.ready(); return this.attachments.keysForNote(noteId); }
+  allBlobKeys(afterRowid?: number, limit?: number) { this.ready(); return this.attachments.blobKeys(afterRowid, limit); }
+
+  // --- Composites: what a route asks, in one request ------------------------------------
+
+  /** `GET /notes`: the page and, on the first page, the total. */
+  listPage(list: ListOptions, count: CountOptions | null) {
+    this.ready();
+    return this.sql.tx(() => ({
+      items: this.notes.list(list),
+      total: count ? this.notes.count(count) : null,
+    }));
+  }
+
+  /**
+   * `GET /export/notes`: whole notes, the texts held for their files, the total on the
+   * first page, and the cursor to continue from.
+   *
+   * The cursor is computed here rather than by the route because the page can be cut
+   * short: bodies and texts are added up as they go, and once they pass
+   * `EXPORT_PAGE_BYTES` the rest of the page is dropped and the cursor points at the
+   * last note kept. A short page from `nextCursor`'s point of view means "the end", so
+   * a cut page has to carry its own; see `cursorAfter`.
+   */
+  exportPage(list: ListOptions, count: CountOptions | null) {
+    this.ready();
+    return this.sql.tx(() => {
+      let notes = this.notes.listFull(list);
+      const total = count ? this.notes.count(count) : null;
+      const sort = list.sort ?? DEFAULT_NOTE_SORT;
+      const full = notes.length === list.limit;
+
+      const withFiles = notes.filter((n) => n.attachments?.length).map((n) => n.id);
+      let texts = this.attachments.textsForNotes(withFiles);
+      const textBytes = new Map<string, number>();
+      for (const t of texts) textBytes.set(t.noteId, (textBytes.get(t.noteId) ?? 0) + t.text.length);
+
+      let bytes = 0;
+      let cut = -1;
+      for (let i = 0; i < notes.length; i++) {
+        const n = notes[i]!;
+        bytes += n.body.length + (textBytes.get(n.id) ?? 0);
+        // Always at least one note, or a single oversized note could never be exported.
+        if (bytes > EXPORT_PAGE_BYTES && i > 0) {
+          cut = i;
+          break;
+        }
+      }
+      if (cut > 0) {
+        notes = notes.slice(0, cut);
+        const kept = new Set(notes.map((n) => n.id));
+        texts = texts.filter((t) => kept.has(t.noteId));
+      }
+
+      const last = notes[notes.length - 1];
+      const cursor =
+        cut > 0 && last
+          ? cursorAfter(last, { sort, trashed: list.trashed, sortField: list.sortField })
+          : full
+            ? nextCursor(notes, { limit: list.limit, sort, trashed: list.trashed, sortField: list.sortField })
+            : null;
+      return { notes, total, texts, cursor };
+    });
+  }
+
+  /** `GET /notes/:id` with its files, as the MCP `get_note` tool wants them. */
+  getWithFiles(id: string): { note: Note; files: ReturnType<AttachmentsStore['listForNote']> } | null {
+    this.ready();
+    return this.sql.tx(() => {
+      const note = this.notes.get(id);
+      if (!note) return null;
+      return { note, files: this.attachments.listForNote(id) };
+    });
+  }
+
+  /** `GET /notebooks` and MCP `list_notebooks`: the notebooks, the unfiled count, and every field if asked. */
+  notebooksOverview(opts: { fields?: boolean | undefined } = {}) {
+    this.ready();
+    return this.sql.tx(() => ({
+      notebooks: this.notes.listNotebooks(),
+      unfiled: this.notes.countUnfiledNotes(),
+      ...(opts.fields ? { fields: this.notes.listAllFields() } : {}),
+    }));
+  }
+
+  /** `GET /attachments/pending-text`: the next files and, when asked, how many remain. */
+  pendingText(limit: number, noteId: string | undefined, counted: boolean) {
+    this.ready();
+    return this.sql.tx(() => ({
+      files: this.attachments.needingText(limit, noteId),
+      ...(counted ? { remaining: this.attachments.pendingTextCount(noteId) } : {}),
+    }));
+  }
+
+  /**
+   * The first half of `POST /notes/:id/autofill`: the note, and the files of its own that
+   * are still to be read, capped. Null when there is no such live note.
+   */
+  autofillPrelude(id: string, ownFilesToRead: number) {
+    this.ready();
+    return this.sql.tx(() => {
+      const note = this.notes.get(id);
+      if (!note) return null;
+      return {
+        note,
+        forText: this.attachments.needingText(ownFilesToRead, id),
+        forVision: this.attachments.needingVision(ownFilesToRead, id),
+      };
+    });
+  }
+
+  /** The second half: everything the model is shown beside the note. */
+  autofillContext(id: string, perGroup: number, tagLimit: number) {
+    this.ready();
+    return this.sql.tx(() => ({
+      files: this.attachments.textsForNote(id),
+      notebooks: this.notes.listNotebooks(),
+      fields: this.notes.listAllFields(),
+      examples: this.notes.sampleTitles(id, perGroup, tagLimit),
+    }));
+  }
+
+  /**
+   * What MCP's `read_attachment` asks before it reads: whether the note is live, the text
+   * the file already has, and the note's files still waiting for either reader.
+   */
+  attachmentReadPrelude(noteId: string, filename: string, filesPerNote: number) {
+    this.ready();
+    return this.sql.tx(() => {
+      if (!this.attachments.noteIsLive(noteId)) return null;
+      return {
+        text: this.attachments.textFor(noteId, filename),
+        forText: this.attachments.needingText(filesPerNote, noteId),
+        forVision: this.attachments.needingVision(filesPerNote, noteId),
+      };
+    });
+  }
 }
+
+// Re-exported so the facade and the tests can name the option shapes without reaching
+// into the store modules.
+export type { CountOptions, ListOptions, SearchFilters };
+export type { FieldDef, FieldValue, NoteFieldsPatch };
