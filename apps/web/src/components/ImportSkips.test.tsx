@@ -11,9 +11,9 @@ import { emptySkipLog, recordSkip } from './import-skips.js';
 
 const log = recordSkip(emptySkipLog, { title: 'Sample receipt', noteId: 'n-1', earlierInFile: true });
 
-/** `Link` needs a router; one route is enough to render the panel under it. */
-async function mount(running: boolean) {
-  const rootRoute = createRootRoute({ component: () => <ImportSkips log={log} running={running} /> });
+/** `Link` needs a router; one route is enough to render the list under it. */
+async function mount() {
+  const rootRoute = createRootRoute({ component: () => <ImportSkips log={log} run={1} /> });
   const router = createRouter({
     routeTree: rootRoute,
     history: createMemoryHistory({ initialEntries: ['/settings/import'] }),
@@ -22,30 +22,17 @@ async function mount(running: boolean) {
   await screen.findByText('Sample receipt');
 }
 
-afterEach(() => {
-  cleanup();
-  delete window.UnbentApp;
-});
+afterEach(cleanup);
 
 describe('ImportSkips', () => {
-  it('links each row to a new tab in a browser, even mid-run', async () => {
-    await mount(true);
+  /*
+   * In place, not a new tab: the run outlives the import page now, so following a row
+   * and coming back finds the same list. In the Android app a new tab would not exist.
+   */
+  it('links each row to its note in place', async () => {
+    await mount();
     const link = screen.getByRole('link', { name: 'Sample receipt' });
-    expect(link.getAttribute('target')).toBe('_blank');
-  });
-
-  /** The app has no tabs: a row would navigate in place, and leaving ends the import. */
-  it('keeps the rows from opening while the Android app is running an import', async () => {
-    window.UnbentApp = { postMessage: () => {} };
-    await mount(true);
-    expect(screen.queryByRole('link', { name: 'Sample receipt' })).toBeNull();
-    expect(screen.getByText(/open once the import finishes/)).toBeTruthy();
-  });
-
-  it('links the rows again in the app once the run is over', async () => {
-    window.UnbentApp = { postMessage: () => {} };
-    await mount(false);
-    expect(screen.getByRole('link', { name: 'Sample receipt' })).toBeTruthy();
-    expect(screen.queryByText(/open once the import finishes/)).toBeNull();
+    expect(link.getAttribute('href')).toBe('/notes/n-1');
+    expect(link.hasAttribute('target')).toBe(false);
   });
 });

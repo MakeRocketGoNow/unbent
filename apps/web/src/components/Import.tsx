@@ -34,7 +34,7 @@ function formatBytes(n: number): string {
  * means nothing once a run has started.
  */
 export function Import() {
-  const { status, file, zip, progress, failures, skips, error, startedAt, endedAt } = useImportRun();
+  const { status, file, zip, progress, failures, skips, error, startedAt, endedAt, run } = useImportRun();
   const [extractText, setExtractText] = useState(true);
   /** The Notion units to import, by key; every non-empty one until the person unticks it. */
   const [include, setInclude] = useState<ReadonlySet<string>>(new Set());
@@ -352,7 +352,7 @@ export function Import() {
         </details>
       )}
 
-      <ImportSkips log={skips} running={status === 'running'} />
+      <ImportSkips log={skips} run={run} />
     </div>
   );
 }
