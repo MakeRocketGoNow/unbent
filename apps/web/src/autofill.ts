@@ -38,7 +38,28 @@ const nothing = (): AutofillChanges => ({ tags: [], fields: [] });
  * A title the note carries only because something had to fill the slot, not because
  * anyone chose it — so auto-fill overwrites it like an empty one, without asking.
  *
- * Two cases: genuinely blank, and the timestamp a scanner leaves. `launch-files.ts`
+ * Three cases: genuinely blank, the name of one of the note's own files, and the
+ * timestamp a scanner leaves.
+ *
+ * The file name is the general rule, and the one that does the work. Every way a file
+ * becomes a note names the note after it — `titleFor` here, the Android share sheet's
+ * `deriveTitle`, a scanner writing straight into Evernote — and every device names its
+ * files differently: ScanSnap `2026_09_18_15_38_48.pdf`, a Pixel `Scanned_20260928-2018`,
+ * a camera `IMG_4012`. Matching shapes meant a new bug report per device; asking "is the
+ * title just the file's name?" covers all of them, including ones not yet seen, and the
+ * years of notes already imported, without recording anywhere how a title came to be.
+ * It compares with or without the extension, ignoring case, since the paths differ on
+ * whether they keep it.
+ *
+ * The cost is a file someone named by hand — `Lease renewal.pdf` titling its note "Lease
+ * renewal" — which is now replaced without asking too. Accepted: that is rare in a
+ * paperless archive, where the device names nearly every file, the suggested title is
+ * usually the better one anyway, and the snackbar's Undo puts it back in one press. A
+ * title that differs from every file name, however little, is still someone's and still
+ * asks.
+ *
+ * The timestamp stays as a second net for a note whose file was since renamed or
+ * removed, so its title no longer matches anything attached. `launch-files.ts`
  * names a scanned note after its file, and a ScanSnap file is `2026_09_18_15_38_48.pdf`,
  * which lands as the title `2026_09_18_15_38_48`. We match that shape — a full
  * `YYYY_MM_DD_HH_MM_SS`, and the same date with a `-` separator or without the time —
@@ -52,9 +73,15 @@ const nothing = (): AutofillChanges => ({ tags: [], fields: [] });
  * this, which anchored on the bare stamp, asked before replacing every one of them. The
  * extension is allowed only after a complete stamp, so it widens nothing else.
  */
-export function isPlaceholderTitle(title: string): boolean {
+export function isPlaceholderTitle(title: string, filenames: readonly string[] = []): boolean {
   const t = title.trim();
   if (t === '') return true;
+  const lower = t.toLowerCase();
+  for (const filename of filenames) {
+    const name = filename.trim().toLowerCase();
+    const stem = name.replace(/\.[^.]+$/, '');
+    if (lower === name || (stem !== '' && lower === stem)) return true;
+  }
   const m =
     /^(\d{4})([_-])(\d{2})\2(\d{2})(?:[_-](\d{2})[_-](\d{2})[_-](\d{2}))?(?:\.[a-z0-9]{1,5})?$/i.exec(
       t,
@@ -94,12 +121,20 @@ function sameValue(a: FieldValue, b: FieldValue): boolean {
   return a === b || String(a) === String(b);
 }
 
-export function planAutofill(draft: NoteDraft, suggestion: AutofillSuggestion): AutofillPlan {
+/**
+ * `filenames` are the note's own files, for `isPlaceholderTitle`: a title that is just one
+ * of their names is filled over rather than offered.
+ */
+export function planAutofill(
+  draft: NoteDraft,
+  suggestion: AutofillSuggestion,
+  filenames: readonly string[] = [],
+): AutofillPlan {
   const fill = nothing();
   const replace = nothing();
 
   if (suggestion.title) {
-    if (isPlaceholderTitle(draft.title)) fill.title = suggestion.title.value;
+    if (isPlaceholderTitle(draft.title, filenames)) fill.title = suggestion.title.value;
     else if (draft.title.trim() !== suggestion.title.value) replace.title = suggestion.title.value;
   }
 

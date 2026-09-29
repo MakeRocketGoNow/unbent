@@ -9,7 +9,7 @@ import {
   createMemoryHistory,
   RouterProvider,
 } from '@tanstack/react-router';
-import type { AutofillSuggestion, FieldDef, Note } from '@unbent/shared';
+import type { AttachmentInfo, AutofillSuggestion, FieldDef, Note } from '@unbent/shared';
 import * as api from '../notes-api.js';
 import { keys } from '../queries.js';
 import { Workspace } from './Workspace.js';
@@ -44,16 +44,21 @@ const suggestion: AutofillSuggestion = {
   read: { attachments: ['scan.pdf'], pending: [] },
 };
 
-function seedNote(client: QueryClient, note: Note) {
+function seedNote(client: QueryClient, note: Note, files: AttachmentInfo[] = []) {
   client.setQueryData(keys.note(note.id), note);
-  client.setQueryData(keys.attachments(note.id), []);
+  client.setQueryData(keys.attachments(note.id), files);
 }
 
-function mount(note: Note, config: { autofill?: boolean } = { autofill: true }, others: Note[] = []) {
+function mount(
+  note: Note,
+  config: { autofill?: boolean } = { autofill: true },
+  others: Note[] = [],
+  files: AttachmentInfo[] = [],
+) {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false, staleTime: Infinity } },
   });
-  seedNote(client, note);
+  seedNote(client, note, files);
   for (const other of others) seedNote(client, other);
   client.setQueryData(keys.tags(), []);
   client.setQueryData(keys.config(), { providers: [], ...config });
@@ -240,6 +245,20 @@ describe('the Auto-fill control', () => {
     // No "Also replace the title?" for a placeholder title — it just fills.
     expect(screen.queryByRole('group', { name: "Confirm replacing the note's filing" })).toBeNull();
     expect(screen.getByText(/Filled in the title/)).toBeTruthy();
+  });
+
+  it('fills a note titled after its own file without asking, whatever the device named it', async () => {
+    vi.mocked(api.autofillNote).mockResolvedValue(suggestion);
+    // A phone's scanner: no timestamp shape the rule knows, only the file's own name.
+    mount({ ...fresh, title: 'Scanned_20250311-0942' }, { autofill: true }, [], [
+      { filename: 'Scanned_20250311-0942.pdf', contentType: 'application/pdf', size: 1024 },
+    ]);
+    fireEvent.click(await screen.findByRole('button', { name: 'Auto-fill' }));
+
+    await waitFor(() =>
+      expect((screen.getByPlaceholderText('Untitled') as HTMLInputElement).value).toBe('Acme Hardware'),
+    );
+    expect(screen.queryByRole('group', { name: "Confirm replacing the note's filing" })).toBeNull();
   });
 
   it('shows a dismissible operator notice when the title model rejected its key', async () => {
