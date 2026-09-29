@@ -125,6 +125,38 @@ describe('recognising a placeholder title', () => {
       expect(replace.title).toBeUndefined();
     }
   });
+
+  it('treats a title that is only one of the note’s file names as a placeholder', () => {
+    // Whatever the device's naming — a phone's scanner, a camera — with or without the
+    // extension, and whatever the case.
+    const files = ['Scanned_20250311-0942.pdf', 'IMG_4012.JPG'];
+    expect(isPlaceholderTitle('Scanned_20250311-0942', files)).toBe(true);
+    expect(isPlaceholderTitle('Scanned_20250311-0942.pdf', files)).toBe(true);
+    expect(isPlaceholderTitle('  scanned_20250311-0942  ', files)).toBe(true);
+    expect(isPlaceholderTitle('IMG_4012', files)).toBe(true);
+    expect(isPlaceholderTitle('img_4012.jpg', files)).toBe(true);
+  });
+
+  it('leaves a title alone that differs from every file name, however little', () => {
+    const files = ['Lease renewal.pdf'];
+    expect(isPlaceholderTitle('Lease renewal (signed)', files)).toBe(false);
+    expect(isPlaceholderTitle('Lease', files)).toBe(false);
+    // The same shape with no file behind it is not a placeholder: it is the file's name
+    // that makes it one, not how it looks.
+    expect(isPlaceholderTitle('Scanned_20250311-0942')).toBe(false);
+    expect(isPlaceholderTitle('Scanned_20250311-0942', ['Scanned_20250311-0943.pdf'])).toBe(false);
+  });
+
+  it('fills over a file-name title, and still offers to replace a chosen one', () => {
+    const files = ['Scanned_20250311-0942.pdf'];
+    const named = planAutofill({ ...fresh, title: 'Scanned_20250311-0942' }, suggestion, files);
+    expect(named.fill.title).toBe('Acme Hardware');
+    expect(named.replace.title).toBeUndefined();
+
+    const chosen = planAutofill({ ...fresh, title: 'Hardware run' }, suggestion, files);
+    expect(chosen.fill.title).toBeUndefined();
+    expect(chosen.replace.title).toBe('Acme Hardware');
+  });
 });
 
 describe('applying and describing', () => {

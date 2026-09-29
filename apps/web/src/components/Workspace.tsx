@@ -20,6 +20,7 @@ import { useIsNewNote } from '../useNewNote.js';
 import { useMediaQuery, MOBILE_QUERY, TOUCH_QUERY } from '../useMediaQuery.js';
 import { useKeyboardInset } from '../useKeyboardInset.js';
 import {
+  attachmentsQuery,
   configQuery,
   noteQuery,
   notebooksQuery,
@@ -591,13 +592,26 @@ export function Workspace({ noteId, readOnly = false, backTo = '/notes' }: Works
       // Left this note during the flush: don't spend a Jev round-trip on a note that
       // is no longer open. Coming back to it starts a new press.
       if (noteIdRef.current !== startedFor) return;
-      const suggestion = await api.autofillNote(startedFor);
+      /*
+         The note's files, beside the suggestion rather than after it, so a title that is
+         only a file's name is filled over instead of offered (`isPlaceholderTitle`). The
+         attachments panel has usually loaded them already, so this is the cache; a list
+         that fails to load costs only that — the title is offered, as it was before.
+      */
+      const [suggestion, files] = await Promise.all([
+        api.autofillNote(startedFor),
+        queryClient.ensureQueryData(attachmentsQuery(startedFor)).catch(() => []),
+      ]);
       if (noteIdRef.current !== startedFor) return;
       // Set only for an operator, and only when the title model rejected its key; a
       // standing notice, separate from the snackbar, so it survives the fill's success.
       setTitleModelFault(suggestion.titleModel === 'auth-failed');
       for (const { field } of suggestion.fields) seenFieldDefs.current.set(field.id, field);
-      const plan = planAutofill(draftRef.current, suggestion);
+      const plan = planAutofill(
+        draftRef.current,
+        suggestion,
+        files.map((f) => f.filename),
+      );
       const stillReading = suggestion.read.pending.length > 0 ? ' — a file is still being read' : '';
       if (isEmptyChanges(plan.fill)) {
         showFillResult(`Nothing empty to fill in${stillReading}`);
