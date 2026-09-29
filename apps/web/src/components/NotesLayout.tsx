@@ -204,6 +204,8 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
       to: '.',
       search: (prev) => ({ ...prev, ...rememberedSort(notebook) }),
       replace: true,
+      // `.` can be an open note, and filling in the URL is not a new page.
+      resetScroll: false,
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [scope]);  /** For the phone drawer's floor; the desktop's rail asks for it itself. */

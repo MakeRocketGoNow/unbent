@@ -54,6 +54,28 @@ const router = createRouter({
   // React Query owns staleness; letting the router cache loader results too would mean
   // two caches to invalidate and one of them silently winning.
   defaultPreloadStaleTime: 0,
+  /*
+   * The boxes that scroll, so a new page starts at its top.
+   *
+   * The router resets the window on every navigation, but the window never scrolls here:
+   * the signed-in shell is a viewport-height frame that clips, and each view scrolls a box
+   * of its own inside it. Those boxes belong to layouts that stay mounted while their child
+   * route changes — Settings around each of its pages, the note column around each note —
+   * so they kept whatever offset the last page left. Editing the last notebook in a long
+   * list opened its settings already scrolled away from the name, and opening a note from
+   * the list landed as far down it as the previous note had been read.
+   *
+   * Registered here rather than reset by each layout on its own, because the router
+   * already knows which navigations should keep their place: anything passing
+   * `resetScroll: false`, as the notes view does when it only changes how the list is
+   * drawn. A layout watching its own pathname would have to learn that distinction again.
+   *
+   * `querySelector`, so one element each; the split view's two panes are named apart. The
+   * note list is left out on purpose: it is what a note is picked from, and has to stay
+   * where it was when one is opened. Leaving a selector here that matches nothing on the
+   * current page is harmless — the router skips it.
+   */
+  scrollToTopSelectors: ['.settings', '.workspace-main', '.editor-pane', '.preview-pane'],
 });
 
 /*
