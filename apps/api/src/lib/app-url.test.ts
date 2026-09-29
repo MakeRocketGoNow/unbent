@@ -3,7 +3,7 @@ import { withAppUrl } from './app-url.js';
 import type { RawEnv } from '../types.js';
 
 function raw(vars: Record<string, unknown>): RawEnv {
-  return { DB: {}, BLOBS: {}, BETTER_AUTH_SECRET: 's', ...vars } as unknown as RawEnv;
+  return { DB: {}, BLOBS: {}, USER_STORE: {}, BETTER_AUTH_SECRET: 's', ...vars } as unknown as RawEnv;
 }
 
 const request = (url: string) => new Request(url);
