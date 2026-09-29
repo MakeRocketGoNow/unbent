@@ -2,6 +2,7 @@ package com.makerocketgonow.unbent
 
 import com.makerocketgonow.unbent.ui.Destination
 import com.makerocketgonow.unbent.ui.classify
+import com.makerocketgonow.unbent.ui.inAppWindowPath
 import com.makerocketgonow.unbent.ui.isSitePath
 import com.makerocketgonow.unbent.ui.linkPath
 import com.makerocketgonow.unbent.ui.returnPath
@@ -74,6 +75,25 @@ class UrlPolicyTest {
         assertNull(linkPath(site, "https://other.example/notes/abc"))
         assertNull(linkPath("https://my-own.example", "https://unbent.example/notes/abc"))
         assertNull(linkPath(site, "mailto:someone@unbent.example"))
+    }
+
+    /**
+     * A `_blank` to this site is a path for [inAppWindowPath], which the shell opens in
+     * place. Loading it into the WebView would replace the app.
+     */
+    @Test fun `a new window to this site is a path to open in place`() {
+        assertEquals("/notes/abc?view=table", inAppWindowPath(site, "https://unbent.example/notes/abc?view=table"))
+        assertEquals("/settings", inAppWindowPath(site, "https://unbent.example/settings"))
+        assertEquals("/", inAppWindowPath(site, "https://unbent.example/"))
+    }
+
+    @Test fun `a new window off the site, or one the page made, is not a path`() {
+        assertNull(inAppWindowPath(site, "https://evil.example/notes"))
+        assertNull(inAppWindowPath(site, "http://unbent.example/notes"))
+        assertNull(inAppWindowPath(site, "mailto:someone@example.com"))
+        assertNull(inAppWindowPath(site, "about:blank"))
+        assertNull(inAppWindowPath(site, "javascript:alert(1)"))
+        assertNull(inAppWindowPath(site, "blob:https://unbent.example/1234"))
     }
 
     @Test fun `only a path on this site is followed`() {

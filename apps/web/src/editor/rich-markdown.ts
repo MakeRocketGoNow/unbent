@@ -1169,8 +1169,10 @@ function linkDestination(raw: string): string {
  * replaced it would unmount the editor mid-thought. Mail and phone stay in this window
  * because the browser hands them to another app without navigating, whereas a `_blank`
  * for them leaves an empty tab behind in Chrome. The Android shell routes both — a
- * `_blank` to a Custom Tab through `onCreateWindow`, a same-window `mailto:` to the mail
- * app through `shouldOverrideUrlLoading` — so neither needs the bridge.
+ * `_blank` off the site to a Custom Tab through `onCreateWindow`, a same-window
+ * `mailto:` to the mail app through `shouldOverrideUrlLoading`. A `_blank` *on* the
+ * site has to go through the bridge instead: the WebView has no tabs, and loading the
+ * address into the app used to destroy the page that held the note.
  */
 const WEB_SCHEME = /^https?:\/\//i;
 const HANDOFF_SCHEME = /^(mailto|tel):/i;
@@ -1181,9 +1183,11 @@ const HANDOFF_SCHEME = /^(mailto|tel):/i;
  * A detached `<a>` rather than `window.open`: the browser treats its click as the user's
  * own navigation, so it is never taken for a popup, `rel` keeps the opened page from
  * reaching back through `window.opener`, and the Android WebView sees exactly what it
- * sees for every other `target=_blank` on the site.
+ * sees for every other `target=_blank` on the site — except a same-origin one, which
+ * `followInHost` takes first so the app navigates in place rather than replacing itself.
  */
 function followUrl(url: string, newTab: boolean): void {
+  if (newTab && followInHost(url)) return;
   const anchor = document.createElement('a');
   anchor.href = url;
   if (newTab) {
@@ -1191,6 +1195,37 @@ function followUrl(url: string, newTab: boolean): void {
     anchor.rel = 'noopener noreferrer';
   }
   anchor.click();
+}
+
+/**
+ * A same-origin http(s) link, opened in place when the Android app is hosting.
+ *
+ * `__unbent.open` is how a notification already reaches a note without reloading the
+ * site. Using it here means a link to another note (or to settings, or to this instance)
+ * keeps the page alive, so the editor can flush and an upload is not killed. Off-site
+ * addresses, and the same link in a browser — where a real tab exists — still fall
+ * through to `_blank`. A path that is not on this site is refused the same way the
+ * handler itself refuses one, rather than handed to `open` as a courtesy.
+ *
+ * The app's own `onCreateWindow` now does the same for any same-origin `_blank`, so this
+ * can look redundant. It is here for the versions of the app that predate that: they
+ * still load the address into the WebView and destroy the page, and a deploy of this
+ * site reaches them long before an app update does. Only the editor's links get it
+ * because only they are routinely same-origin — a link from one note to another. A URL
+ * field or an off-site link almost never is, and the app handles those anyway.
+ */
+function followInHost(url: string): boolean {
+  const open = window.__unbent?.open;
+  if (!open) return false;
+  try {
+    const target = new URL(url, window.location.href);
+    if (target.origin !== window.location.origin) return false;
+    const path = `${target.pathname}${target.search}`;
+    if (!path.startsWith('/') || path.startsWith('//')) return false;
+    return open(path) === true;
+  } catch {
+    return false;
+  }
 }
 
 /**

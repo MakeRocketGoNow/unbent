@@ -130,6 +130,18 @@ describe('useHostApp', () => {
     expect(window.__unbent?.open?.('//example.com/notes')).toBe(false);
   });
 
+  /** The router has no route for these; the caller falls back to loading the address. */
+  it('refuses a path the Worker answers rather than the site', async () => {
+    stubScheme();
+    window.UnbentApp = { postMessage: vi.fn() };
+    const router = harness('/notes');
+    await screen.findByText('note list');
+    expect(window.__unbent?.open?.('/api/attachments/abc')).toBe(false);
+    expect(window.__unbent?.open?.('/.well-known/assetlinks.json')).toBe(false);
+    expect(window.__unbent?.open?.('/ingest/e')).toBe(false);
+    expect(router.state.location.pathname).toBe('/notes');
+  });
+
   it('answers Back from a note opened from outside by going to the list', async () => {
     stubScheme();
     window.UnbentApp = { postMessage: vi.fn() };
