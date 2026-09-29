@@ -5,12 +5,15 @@ import {
   MAX_BATCH_NOTES,
   MAX_BODY_BYTES,
   MAX_FIELD_VALUE_LENGTH,
+  MAX_RATING_MAX,
   MAX_TAG_LENGTH,
   MAX_TITLE_LENGTH,
+  MIN_RATING_MAX,
   UNFILED,
   currencySchema,
   fieldNameSchema,
   fieldOptionsSchema,
+  fieldScaleSchema,
   fieldTypeSchema,
   notebookNameSchema,
   notebookEmojiSchema,
@@ -526,8 +529,9 @@ export function registerWriteTools(server: McpServer, notes: NotesRepo): void {
       description:
         'Define a field on a notebook, so notes in it can carry a value under that name. ' +
         `Types: ${FIELD_TYPES.join(', ')}. A select or multiselect needs its options. A number ` +
-        'may carry a currency, which draws its values as money. Get the notebook id ' +
-        'from list_notebooks; set values with create_note or update_note.',
+        'may carry a currency, which draws its values as money, or a scale, which makes it ' +
+        'a rating drawn as stars; not both. Get the notebook id from list_notebooks; set ' +
+        'values with create_note or update_note.',
       inputSchema: z.object({
         notebookId: z.string().min(1),
         name: fieldNameSchema,
@@ -536,14 +540,26 @@ export function registerWriteTools(server: McpServer, notes: NotesRepo): void {
         currency: currencySchema
           .optional()
           .describe('For number: an ISO 4217 code such as USD, so values read as amounts.'),
+        scale: fieldScaleSchema
+          .optional()
+          .describe(
+            `For number: makes it a rating from 1 to max (${MIN_RATING_MAX} to ` +
+              `${MAX_RATING_MAX}), in whole steps (step 1) or halves (step 0.5).`,
+          ),
       }),
       annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
     },
-    async ({ notebookId, name, type, options, currency }) => {
+    async ({ notebookId, name, type, options, currency, scale }) => {
+      // Refused rather than passed on: the repo keeps a scale only on a number and drops a
+      // currency beside one, which is right for the editor's patches but would leave a
+      // model believing it made a rating, or money, that it did not.
+      if (scale && type !== 'number') return toolError('Only a number field can have a scale.');
+      if (scale && currency) return toolError('A rating cannot also be a currency.');
       const result = await notes.createField(notebookId, {
         name,
         type,
         options: options ?? [],
+        scale: scale ?? null,
         currency: currency ?? null,
       });
       if (result === 'missing') return notFound('notebook', notebookId);
