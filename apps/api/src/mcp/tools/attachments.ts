@@ -91,13 +91,9 @@ export function registerAttachmentTools(
       },
     },
     async ({ noteId, filename }) => {
-      if (!(await repos.attachments.ownsNote(noteId))) return notFound('note', noteId);
-
-      const [text, forText, forVision] = await Promise.all([
-        repos.attachments.textFor(noteId, filename),
-        repos.attachments.needingText(FILES_PER_NOTE, noteId),
-        repos.attachments.needingVision(FILES_PER_NOTE, noteId),
-      ]);
+      const prelude = await repos.attachments.readPrelude(noteId, filename, FILES_PER_NOTE);
+      if (!prelude) return notFound('note', noteId);
+      const { text, forText, forVision } = prelude;
       if (text === null) return notFound('attachment', `${filename} on note ${noteId}`);
 
       // Which reader the file is waiting for, if any; `textFor` alone cannot tell a scan

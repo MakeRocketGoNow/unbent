@@ -76,8 +76,16 @@ function fakeAttachments(state: { text: string | null; pendingText?: boolean; pe
     repo: {
       ownsNote: async (id: string) => id === noteId,
       textFor: async (id: string, filename: string) => (id === noteId && filename === 'scan.pdf' ? state.text : null),
-      needingText: async (_limit: number, id?: string) => (id === noteId && state.pendingText ? [file] : []),
-      needingVision: async (_limit: number, id?: string) => (id === noteId && state.pendingVision ? [file] : []),
+      // What the store answers in one call: nothing for a note that is not live, else the
+      // text held and the note's files each reader is still waiting on.
+      readPrelude: async (id: string, filename: string) =>
+        id === noteId
+          ? {
+              text: filename === 'scan.pdf' ? state.text : null,
+              forText: state.pendingText ? [file] : [],
+              forVision: state.pendingVision ? [file] : [],
+            }
+          : null,
       recordText: async ({ text, readBy }: { text: string; readBy: 'vision' | null }) => {
         recorded.push({ text, readBy });
         state.text = text;
