@@ -8,6 +8,7 @@ import type { AuthProvider } from '@unbent/shared';
 import type { Env } from './types.js';
 import { canSendEmail, sendEmail } from './lib/email.js';
 import { deleteKeys, deleteUserBlobs } from './lib/blobs.js';
+import { ensureDirectoryRow } from './lib/directory.js';
 
 /**
  * Emails permitted to create an account, lowercased.
@@ -496,6 +497,15 @@ function createAuth(env: Env): AuthInstance {
             throw new APIError('FORBIDDEN', {
               message: 'This Unbent instance is not open for sign-ups.',
             });
+          },
+          /**
+           * Every account gets a directory row the moment it exists, so the sweep can find
+           * its note store from the first day. The object itself is created lazily, by the
+           * first request that names the user; nothing to do for it here. See
+           * lib/directory.ts.
+           */
+          after: async (user: { id: string }) => {
+            await ensureDirectoryRow(env.DB, user.id);
           },
         },
       },
