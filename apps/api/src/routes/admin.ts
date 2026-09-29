@@ -1,10 +1,15 @@
 import { Hono } from 'hono';
+import { zValidator } from '@hono/zod-validator';
+import { z } from 'zod';
 import { requireAuth } from '../lib/session.js';
 import { withRepos } from '../lib/repos-middleware.js';
 import { deleteKeys } from '../lib/blobs.js';
 import { dropDirectoryRow } from '../lib/directory.js';
+import { isOperator } from '../lib/instance.js';
 import { userPrefix } from '../lib/repo.js';
 import { storeFor } from '../lib/store-client.js';
+import { sweepStores } from '../lib/sweep.js';
+import { DATA_TABLES } from '../store/tables.js';
 import type { AppEnv } from '../types.js';
 
 /**
@@ -151,4 +156,118 @@ export const admin = new Hono<AppEnv>()
       await dropDirectoryRow(c.env.DB, id);
     }
     return c.json({ users: results.length, wiped, failed });
+  })
+
+  /*
+     The operator's window into a note store. An object has no console: nothing lists its
+     tables, nothing runs a query against it, nothing copies it out. These four routes are
+     that console, and they are what `wrangler d1 execute` and `d1 export` used to be for
+     the shared database.
+
+     `stats` and `dump` are the signed-in user's own by default; a session in
+     OPERATOR_EMAILS may name another account with `?user=`, and every such read is logged
+     with both ids, since it is one person reading another's notes and the log is the
+     record of it. `sql` and `sweep` are the operator's alone: the first is a raw query
+     over someone's notes, the second walks every account.
+  */
+
+  /** Row counts, size and schema version of one store. */
+  .get('/admin/store/stats', requireAuth, async (c) => {
+    const target = operatorTarget(c);
+    if (target instanceof Response) return target;
+    return c.json(await storeFor(c.env, target).stats());
+  })
+
+  /**
+   * One SELECT against one store, rolled back whatever it does; see `readOnlySql`. For
+   * `EXPLAIN QUERY PLAN` on a slow account as much as for looking at rows.
+   */
+  .post(
+    '/admin/store/sql',
+    requireAuth,
+    zValidator('json', z.object({ query: z.string().min(1), binds: z.array(z.union([z.string(), z.number(), z.null()])).default([]), user: z.string().optional() })),
+    async (c) => {
+      const email = c.get('user')?.email;
+      if (!isOperator(c.env, email)) return c.json({ error: 'Not found' }, 404);
+      const { query, binds, user } = c.req.valid('json');
+      const target = user ?? c.get('userId')!;
+      console.log(`[store] operator=${email} sql user=${target}`);
+      try {
+        return c.json(await storeFor(c.env, target).readOnlySql(query, binds));
+      } catch (err) {
+        // The query's own error — a misspelt column, a refused statement — is the answer.
+        return c.json({ error: err instanceof Error ? err.message : String(err) }, 400);
+      }
+    },
+  )
+
+  /**
+   * Every row of one store as JSON lines: the schema first, then each data table's rows
+   * with the table named on each line, paged out of the object by rowid as it streams.
+   * What `d1 export` was for the shared database — a file an account can be rebuilt from
+   * locally, and the rehearsal for a migration. The FTS tables are not in it; their
+   * triggers refill them when the rows are put back.
+   */
+  .get('/admin/store/dump', requireAuth, async (c) => {
+    const target = operatorTarget(c);
+    if (target instanceof Response) return target;
+    const store = storeFor(c.env, target);
+    const encoder = new TextEncoder();
+    const body = new ReadableStream<Uint8Array>({
+      async start(controller) {
+        try {
+          controller.enqueue(encoder.encode(`${JSON.stringify({ schema: await store.schemaSql() })}\n`));
+          for (const table of DATA_TABLES) {
+            for (let after = 0; ; ) {
+              const page = await store.dumpPage(table, after, 500);
+              for (const row of page.rows) {
+                const { _rowid, ...columns } = row;
+                void _rowid;
+                controller.enqueue(encoder.encode(`${JSON.stringify({ table, row: columns })}\n`));
+              }
+              if (page.nextRowid === null) break;
+              after = page.nextRowid;
+            }
+          }
+          controller.close();
+        } catch (err) {
+          controller.error(err);
+        }
+      },
+    });
+    return new Response(body, {
+      headers: {
+        'Content-Type': 'application/x-ndjson; charset=utf-8',
+        'Content-Disposition': `attachment; filename="unbent-store-${target}.jsonl"`,
+        'Cache-Control': 'no-store',
+      },
+    });
+  })
+
+  /**
+   * The daily walk, on demand: after a deploy that carries a schema file, so every account
+   * is migrated within minutes rather than a day, and after the cutover, so every account
+   * is copied. See lib/sweep.ts.
+   */
+  .post('/admin/store/sweep', requireAuth, async (c) => {
+    const email = c.get('user')?.email;
+    if (!isOperator(c.env, email)) return c.json({ error: 'Not found' }, 404);
+    console.log(`[store] operator=${email} sweep`);
+    return c.json(await sweepStores(c.env));
   });
+
+/**
+ * Whose store a `stats` or `dump` reads: the caller's own, or, for an operator naming
+ * `?user=`, someone else's — logged, because that is one person reading another's notes.
+ * A non-operator naming anyone is answered as if the route did not exist, the way every
+ * other "is this mine" check here answers.
+ */
+function operatorTarget(c: { env: AppEnv['Bindings']; req: { query(name: string): string | undefined }; get(key: 'userId'): string | undefined; get(key: 'user'): { email: string } | undefined }): string | Response {
+  const asked = c.req.query('user');
+  const own = c.get('userId')!;
+  if (!asked || asked === own) return own;
+  const email = c.get('user')?.email;
+  if (!isOperator(c.env, email)) return Response.json({ error: 'Not found' }, { status: 404 });
+  console.log(`[store] operator=${email} read user=${asked}`);
+  return asked;
+}

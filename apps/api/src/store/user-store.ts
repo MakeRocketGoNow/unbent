@@ -16,6 +16,9 @@ import { NotesStore, type CountOptions, type ListOptions, type SearchFilters } f
 import { cursorAfter, nextCursor } from './notes-shared.js';
 import { SCHEMA } from './schema/index.js';
 import { instrumentedSql, type Sql } from './sql.js';
+import { DATA_TABLES, type DataTable } from './tables.js';
+
+export { DATA_TABLES, type DataTable };
 
 /**
  * What the object is allowed to see of the Worker's environment: the D1 database, for the
@@ -37,18 +40,6 @@ const META = {
 /** One row as SQLite hands it back: the four value types it has, by column name. */
 export type Row = Record<string, SqlStorageValue>;
 
-/** The tables `dumpPage` will page and `stats` counts. FTS tables are rebuilt from these, never dumped. */
-export const DATA_TABLES = [
-  'notebooks',
-  'notebook_fields',
-  'tags',
-  'notes',
-  'note_tags',
-  'note_fields',
-  'attachments',
-  'attachment_text',
-] as const;
-export type DataTable = (typeof DATA_TABLES)[number];
 
 /** What `stats` reports: the shape the ops route and the sweep read. */
 export interface StoreStats {

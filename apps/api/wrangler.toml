@@ -87,6 +87,15 @@ class_name = "UserStore"
 tag = "v1"
 new_sqlite_classes = ["UserStore"]
 
+# The daily walk over every account's note store (src/lib/sweep.ts): wakes each object so
+# a pending migration runs and fails in the log rather than in front of its owner, records
+# each account's size in the directory, and finishes any deletion that was interrupted.
+# Inherited by the named environments, which is right for `dev` and wrong for a preview
+# that lives for one pull request; `[env.preview.triggers]` below switches it off there.
+# The hour is arbitrary and quiet.
+[triggers]
+crons = ["17 4 * * *"]
+
 # The SPA is served by this same Worker, so "same-origin" is structural rather than a
 # routing rule that has to be kept correct in a dashboard. Session cookies and OAuth
 # callbacks then need no CORS or SameSite workarounds.
@@ -222,11 +231,14 @@ bucket_name = "unbent-dev-blobs"
 # Each preview Worker has a namespace of its own, so a preview's per-account stores are
 # not the dev instance's, although its D1 and R2 still are. Notes therefore no longer
 # carry between a preview and dev the way they did on the shared database; `pnpm seed:demo
-# --url` fills a preview. The sweep cron (top level) is inherited and switched off here,
+# --url` fills a preview. The sweep cron (top level) is inherited and switched off just
 # below, because a preview lives for the length of a pull request.
 [[env.preview.durable_objects.bindings]]
 name = "USER_STORE"
 class_name = "UserStore"
+
+[env.preview.triggers]
+crons = []
 
 [env.preview.assets]
 directory = "../web/dist"

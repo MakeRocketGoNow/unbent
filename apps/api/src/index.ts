@@ -3,6 +3,7 @@ import { logger } from 'hono/logger';
 import type { AppEnv, RawEnv } from './types.js';
 import { withAppUrl } from './lib/app-url.js';
 import { StoreUnavailable } from './lib/store-client.js';
+import { sweepStores } from './lib/sweep.js';
 import { sessionMiddleware } from './lib/session.js';
 import { health } from './routes/health.js';
 import { authRoutes } from './routes/auth.js';
@@ -96,5 +97,13 @@ export type AppType = typeof routes;
 export default {
   fetch(request: Request, env: RawEnv, ctx: ExecutionContext): Response | Promise<Response> {
     return app.fetch(request, withAppUrl(env, request), ctx);
+  },
+  /**
+   * The daily sweep over every account's note store; see lib/sweep.ts for what it is for.
+   * `[triggers]` in wrangler.toml is when. `waitUntil` so the walk is not cut off at the
+   * handler's return, and nothing else here needs `APP_URL` settled.
+   */
+  scheduled(_controller: ScheduledController, env: RawEnv, ctx: ExecutionContext): void {
+    ctx.waitUntil(sweepStores(env));
   },
 };
