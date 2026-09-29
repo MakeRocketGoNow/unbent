@@ -541,17 +541,24 @@ export function registerWriteTools(server: McpServer, notes: NotesRepo): void {
     {
       title: 'Rename or retype a custom field',
       description:
-        'Change a field\'s name, type, or the options of a select or multiselect. Changing ' +
-        'the type converts the values notes already hold; any value that cannot be read as ' +
-        'the new type is cleared, and the result says how many were. Changing to select or ' +
-        'multiselect makes the existing values the options. A currency on a number is ' +
-        'display only: setting or clearing one changes no value.',
+        'Change a field\'s name, type, or the options of a select or multiselect. Omit any ' +
+        'of them to leave it unchanged. Options replace the whole list rather than adding ' +
+        'to it: to add one, send every current option (list_notebooks has them) with the ' +
+        'new one, in the order they should show. An option left out leaves the list, but ' +
+        'notes that hold it keep their value; only new choices of it are refused until it ' +
+        'is sent again. Changing the type converts the values notes already hold; any ' +
+        'value that cannot be read as the new type is cleared, and the result says how ' +
+        'many were. Changing to select or multiselect makes the existing values the ' +
+        'options. A currency on a number is display only: setting or clearing one changes ' +
+        'no value.',
       inputSchema: z.object({
         notebookId: z.string().min(1),
         fieldId: z.string().uuid(),
         name: fieldNameSchema.optional(),
         type: fieldTypeSchema.optional(),
-        options: fieldOptionsSchema.optional(),
+        options: fieldOptionsSchema
+          .optional()
+          .describe('For select and multiselect: the complete list, which replaces the current one.'),
         currency: currencySchema
           .nullable()
           .optional()
