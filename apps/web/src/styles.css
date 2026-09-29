@@ -5751,9 +5751,6 @@ button.settings-nav-item {
     right: auto;
   }
 
-  /* Refusing to leave a running import, like the settings sub-nav — see `Rail.tsx`. */
-  .rail[inert] { opacity: 0.45; }
-
   /*
      The rows' scrollbar sits on the divider, not a gutter's width in from it.
 

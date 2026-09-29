@@ -13,7 +13,6 @@ import { Button } from './Button.js';
 import { describeImportFile } from './import-file.js';
 import { importPercent } from './import-progress.js';
 import { ImportSkips } from './ImportSkips.js';
-import { useSettingsBusy } from './SettingsLayout.js';
 
 /** `1 note`, `3,325 notes`. */
 function count(n: number, noun: string): string {
@@ -42,14 +41,6 @@ export function Import() {
   const [pagesNotebook, setPagesNotebook] = useState(DEFAULT_PAGES_NOTEBOOK);
   const [tagsAsTags, setTagsAsTags] = useState(true);
   const [now, setNow] = useState(() => Date.now());
-  const { setImportRunning } = useSettingsBusy();
-
-  // Mirrored into the section rather than set at each transition: the sub-nav has to go
-  // inert for the whole run.
-  useEffect(() => {
-    setImportRunning(status === 'running');
-    return () => setImportRunning(false);
-  }, [status, setImportRunning]);
 
   // Everything importable starts ticked, each time a zip is read.
   useEffect(() => {
