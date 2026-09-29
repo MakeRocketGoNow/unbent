@@ -1,3 +1,12 @@
+/*
+ * Node's types, for this file only. The API's tsconfig knows the Workers runtime and
+ * nothing else, which is right for the code that ships; this test runs under Node in the
+ * unit project and reads the source tree, which is the one thing here that needs `fs`.
+ * A reference rather than `"node"` in the tsconfig's `types`, so the Worker's own files
+ * are still checked against the runtime they run in and cannot quietly import a Node
+ * built-in.
+ */
+/// <reference types="node" />
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { describe, expect, it } from 'vitest';
