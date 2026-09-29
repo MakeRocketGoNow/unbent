@@ -2,7 +2,9 @@ import { Hono } from 'hono';
 import { requireAuth } from '../lib/session.js';
 import { withRepos } from '../lib/repos-middleware.js';
 import { deleteKeys } from '../lib/blobs.js';
+import { dropDirectoryRow } from '../lib/directory.js';
 import { userPrefix } from '../lib/repo.js';
+import { storeFor } from '../lib/store-client.js';
 import type { AppEnv } from '../types.js';
 
 /**
@@ -112,4 +114,41 @@ export const admin = new Hono<AppEnv>()
    */
   .post('/admin/recount-notes', requireAuth, withRepos, async (c) => {
     return c.json({ corrected: await c.get('notes').recountNotes() });
+  })
+
+  /**
+   * Removes the accounts the test suites create, with their note stores.
+   *
+   * The live suites sign up throwaway `@example.test` actors, and `pnpm test` purges them
+   * afterwards. That used to be one SQL statement against local D1 — delete the user rows
+   * and let the cascade take the notes — but the notes are in objects now, and nothing but
+   * the Worker can reach one. So the purge is a route: wipe each actor's store, then delete
+   * the user row, whose cascade takes the sessions, and drop the directory row.
+   *
+   * Local only, in the one way this codebase already draws that line: `ALLOW_TEST_CREDENTIALS`
+   * is passed by `pnpm dev` on the command line and cannot be copied into a deployed
+   * Worker, and the route answers 404 without it. No session, because the suites' actors
+   * are the ones being deleted; the address pattern is the whole scope, and no real account
+   * has one.
+   */
+  .post('/admin/test/purge-fixtures', async (c) => {
+    if (c.env.ALLOW_TEST_CREDENTIALS !== '1') return c.json({ error: 'Not found' }, 404);
+    const { results } = await c.env.DB.prepare(`SELECT id FROM user WHERE email LIKE '%@example.test'`).all<{ id: string }>();
+    let wiped = 0;
+    const failed: string[] = [];
+    for (const { id } of results) {
+      try {
+        await storeFor(c.env, id).wipe();
+        wiped += 1;
+      } catch (err) {
+        // The row goes anyway: an object left with rows behind a deleted user is caught by
+        // the sweep, which treats a directory row with no user as tombstoned.
+        console.error(`purge-fixtures: wipe failed for ${id}:`, err);
+        failed.push(id);
+        continue;
+      }
+      await c.env.DB.prepare(`DELETE FROM user WHERE id = ?1`).bind(id).run();
+      await dropDirectoryRow(c.env.DB, id);
+    }
+    return c.json({ users: results.length, wiped, failed });
   });

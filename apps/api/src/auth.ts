@@ -8,7 +8,8 @@ import type { AuthProvider } from '@unbent/shared';
 import type { Env } from './types.js';
 import { canSendEmail, sendEmail } from './lib/email.js';
 import { deleteKeys, deleteUserBlobs } from './lib/blobs.js';
-import { ensureDirectoryRow } from './lib/directory.js';
+import { ensureDirectoryRow, tombstoneDirectoryRow } from './lib/directory.js';
+import { storeFor } from './lib/store-client.js';
 
 /**
  * Emails permitted to create an account, lowercased.
@@ -616,22 +617,27 @@ function createAuth(env: Env): AuthInstance {
           });
         },
         /**
-         * Sweep R2 before the user row is deleted.
+         * Sweep R2 and wipe the note store before the user row is deleted.
          *
-         * D1 handles its own cleanup — notes, attachments, tags and sessions all have
-         * `ON DELETE CASCADE` — but R2 has no foreign keys and the scoped admin sweep
-         * cannot reach objects once the account is gone. This is the hook that prevents
-         * the "stranded blobs" gap the README used to document.
+         * D1 handles its own cleanup — sessions, accounts, upload links all have
+         * `ON DELETE CASCADE` — but R2 has no foreign keys and the notes live in an object
+         * of the account's own, and neither can be reached by anything once the account is
+         * gone. This is the hook that prevents the "stranded blobs" gap the README used to
+         * document, and now the stranded-object one.
          *
-         * Blobs before rows here, which is the reverse of what `purge-notes` does, and
-         * the reversal is the whole design. There the rows go first because a failure
-         * afterwards leaves orphans that gc-blobs can still reclaim; here the user id the
-         * sweep needs is the thing the deletion is about to destroy, so after the row is
-         * gone nothing can reach the prefix again. The cost is the mirror image: if this
-         * throws, Better Auth abandons the deletion and the account survives carrying
-         * attachment rows that point at objects already deleted. That is the recoverable
-         * half — the owner can ask again — and it is why the failure is logged rather
-         * than swallowed.
+         * Blobs and store before rows here, which is the reverse of what `purge-notes`
+         * does, and the reversal is the whole design. There the rows go first because a
+         * failure afterwards leaves orphans that gc-blobs can still reclaim; here the user
+         * id the sweep needs is the thing the deletion is about to destroy, so after the
+         * row is gone nothing can reach the prefix again. The cost is the mirror image: if
+         * this throws, Better Auth abandons the deletion and the account survives carrying
+         * attachment rows that point at objects already deleted, or an empty store. That
+         * is the recoverable half — the owner can ask again — and it is why the failure is
+         * logged rather than swallowed.
+         *
+         * The object first would be wrong: its rows are what `gc-blobs` reads to know
+         * which objects are referenced, and an account that survived a failed blob sweep
+         * with its rows gone could never find its files again.
          */
         beforeDelete: async (user: { id: string }) => {
           try {
@@ -643,6 +649,22 @@ function createAuth(env: Env): AuthInstance {
             console.error(`Blob sweep failed for ${user.id}; account deletion abandoned:`, err);
             throw err;
           }
+          try {
+            await storeFor(env, user.id).wipe();
+          } catch (err) {
+            console.error(`Store wipe failed for ${user.id}; account deletion abandoned:`, err);
+            throw err;
+          }
+        },
+        /**
+         * Tombstone the directory row once the user row is gone. The row is what the daily
+         * sweep retries the wipe from if the object was reset between the wipe above and
+         * this, and it is dropped by the sweep once the object reports itself empty. A
+         * directory row whose `user` row is missing is treated as tombstoned by the sweep
+         * too, so this hook failing cannot strand an object either.
+         */
+        afterDelete: async (user: { id: string }) => {
+          await tombstoneDirectoryRow(env.DB, user.id);
         },
       },
     },
