@@ -1431,6 +1431,16 @@ describe('following links', () => {
     expect(followed).toEqual([]);
   });
 
+  /** `open` refuses a path the Worker answers, such as an attachment's address. */
+  it('falls back to a new tab when the Android app will not open a link in place', () => {
+    window.__unbent = { open: () => false };
+    const href = `${window.location.origin}/api/attachments/abc`;
+    const doc = `[File](${href})\n\nplain`;
+    const v = mount(doc, doc.length);
+    clickLabel(v);
+    expect(followed).toEqual([{ href, target: '_blank', rel: 'noopener noreferrer' }]);
+  });
+
   it('still opens an off-site link in a new tab when the Android app is hosting', () => {
     window.__unbent = { open: () => true };
     const doc = '[Example](https://example.com/page)\n\nplain';

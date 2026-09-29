@@ -44,11 +44,27 @@ export function useHostApp(): void {
         // A path on this site and nothing else: the app rebases links onto the instance
         // before asking, so anything else here is a mistake to refuse, not follow.
         if (!path.startsWith('/') || path.startsWith('//')) return false;
+        if (servedByWorker(path)) return false;
         void router.navigate({ href: path });
         return true;
       },
     });
   }, [router]);
+}
+
+/**
+ * Paths the Worker answers before the site sees them: `run_worker_first` in
+ * `apps/api/wrangler.toml`, which is the list to keep this in step with.
+ *
+ * `open` refuses these rather than hand them to the router, which has no route for them
+ * and would draw its not-found page. A link in a note to an attachment's address is the
+ * case that reaches here. Refused, the caller falls back to what it did before `open`
+ * existed: the editor opens a new tab, and the app loads the address.
+ */
+const WORKER_PREFIXES = ['/api/', '/.well-known/', '/ingest/'];
+
+function servedByWorker(path: string): boolean {
+  return WORKER_PREFIXES.some((prefix) => path.startsWith(prefix));
 }
 
 /**
