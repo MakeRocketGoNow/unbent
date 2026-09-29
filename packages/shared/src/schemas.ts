@@ -78,6 +78,47 @@ export const notebookPurposeSchema = z
   .nullable();
 
 /**
+ * Room for the longest emoji a person can pick, not for a word. A family with a skin tone
+ * on each member or a subdivision flag is one picture built from a dozen or more code
+ * points, and 32 UTF-16 units clears the longest of those with margin.
+ */
+export const MAX_NOTEBOOK_EMOJI_LENGTH = 32;
+
+/*
+   A grapheme is an emoji when it holds a pictograph, a regional indicator (half of a
+   country flag) or a keycap mark (the enclosing square of 1️⃣ and #️⃣). Testing for any
+   of those rather than for `\p{Emoji}` is deliberate: `\p{Emoji}` also matches the plain
+   digits 0–9 and `#` and `*`, which would let a bare "7" through as a notebook's icon.
+*/
+const EMOJI_PART = /\p{Extended_Pictographic}|\p{Regional_Indicator}|⃣/u;
+
+/**
+ * Whether `value` is exactly one emoji: one user-perceived character, and a pictorial one.
+ *
+ * One grapheme because it is drawn where a single icon was, at the size of one: two emoji
+ * or a word would overflow the square every row gives it. Counted with `Intl.Segmenter`
+ * because a code-point or length count gets ZWJ sequences, flags and skin tones wrong —
+ * 👩‍💻 is five code points and one picture.
+ */
+export function isSingleEmoji(value: string): boolean {
+  const graphemes = [...new Intl.Segmenter(undefined, { granularity: 'grapheme' }).segment(value)];
+  return graphemes.length === 1 && EMOJI_PART.test(value);
+}
+
+/**
+ * A notebook's emoji, drawn in place of the book beside its name. Like a purpose it may be
+ * blank, which clears it, so an empty string normalises to `null`; anything else must be a
+ * single emoji (see `isSingleEmoji`).
+ */
+export const notebookEmojiSchema = z
+  .string()
+  .trim()
+  .max(MAX_NOTEBOOK_EMOJI_LENGTH)
+  .refine((v) => v.length === 0 || isSingleEmoji(v), 'Must be a single emoji')
+  .transform((v) => (v.length > 0 ? v : null))
+  .nullable();
+
+/**
  * The `tag` filter, which may be given more than once.
  *
  * Repeated params (`?tag=a&tag=b`) rather than one delimited value, because a tag name may
@@ -610,6 +651,8 @@ export interface NotebookSummary {
   fields: number;
   /** What belongs here, shown to the person and read by the classifier; `null` when unset. */
   purpose: string | null;
+  /** Drawn in place of the book beside the name; `null` when unset, which draws the book. */
+  emoji: string | null;
 }
 
 export interface AttachmentInfo {

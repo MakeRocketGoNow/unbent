@@ -2538,7 +2538,7 @@ export class NotesRepo extends ScopedRepo {
      */
     const { results } = await this.db
       .prepare(
-        `SELECT nb.id, nb.name, nb.purpose, nb.note_count AS count,
+        `SELECT nb.id, nb.name, nb.purpose, nb.emoji, nb.note_count AS count,
                 (SELECT COUNT(*) FROM notebook_fields f
                   WHERE f.notebook_id = nb.id AND f.deleted_at IS NULL) AS fields
            FROM notebooks nb
@@ -2610,18 +2610,18 @@ export class NotesRepo extends ScopedRepo {
   }
 
   /**
-   * Updates a notebook's name and/or purpose. Returns 'conflict' when a new name is already
-   * taken by another notebook, case-insensitively.
+   * Updates a notebook's name, purpose and/or emoji. Returns 'conflict' when a new name is
+   * already taken by another notebook, case-insensitively.
    *
    * When `name` is given, every note follows automatically because they reference the id —
    * the rename is a single row update, which is the point of the notebook being an entity at
-   * all. `purpose` given as `null` clears it. An omitted key is left untouched, so the same
-   * method serves the rename-only path (route, MCP) and the purpose editor without either
-   * disturbing the other's column.
+   * all. `purpose` or `emoji` given as `null` clears it. An omitted key is left untouched, so
+   * the same method serves the rename-only path (route, MCP), the purpose editor and the
+   * emoji picker without any of them disturbing another's column.
    */
   async updateNotebook(
     id: string,
-    patch: { name?: string; purpose?: string | null },
+    patch: { name?: string; purpose?: string | null; emoji?: string | null },
   ): Promise<'ok' | 'conflict' | 'missing'> {
     const sets: string[] = [];
     const binds: unknown[] = [];
@@ -2646,6 +2646,11 @@ export class NotesRepo extends ScopedRepo {
     if (patch.purpose !== undefined) {
       sets.push(`purpose = ?${binds.length + 1}`);
       binds.push(patch.purpose);
+    }
+
+    if (patch.emoji !== undefined) {
+      sets.push(`emoji = ?${binds.length + 1}`);
+      binds.push(patch.emoji);
     }
 
     // Nothing to change: still tell the caller whether the notebook is theirs, so a PATCH

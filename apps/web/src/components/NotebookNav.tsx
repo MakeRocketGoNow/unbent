@@ -4,7 +4,7 @@ import { UNFILED } from '@unbent/shared';
 import {
   NotesRowIcon,
   InboxRowIcon,
-  NotebookRowIcon,
+  NotebookGlyph,
   PlusRowIcon,
   TagIcon,
   TrashRowIcon,
@@ -25,7 +25,7 @@ const TAG_CAP = 25;
 
 /** What the navigation needs of the notebooks. Shaped by the API, narrowed to what is drawn. */
 export interface NotebookData {
-  notebooks: { id: string; name: string; count: number }[];
+  notebooks: { id: string; name: string; count: number; emoji?: string | null }[];
   unfiled: number;
 }
 
@@ -233,9 +233,9 @@ export function NotebookNav({
               key={nb.id}
               to="/notes"
               search={scopeOf(nb.name)}
-              // `drawer-place-notebook` is how a strip knows to hide these: every notebook
-              // has the same glyph, so as icons alone they would be a column of identical
-              // squares, and the strip is opened to tell them apart.
+              // `drawer-place-notebook` is how a strip knows to hide these: a notebook with
+              // no emoji draws the same book as every other, so as icons alone they would be
+              // a column of identical squares, and the strip is opened to tell them apart.
               className={on ? 'drawer-item drawer-place-notebook current' : 'drawer-item drawer-place-notebook'}
               aria-current={on ? 'true' : undefined}
               // A name can be longer than the column; the row ellipsises it and the
@@ -243,7 +243,7 @@ export function NotebookNav({
               title={nb.name}
               onClick={picked}
             >
-              <NotebookRowIcon />
+              <NotebookGlyph emoji={nb.emoji} />
               <span className="drawer-item-label">{nb.name}</span>
               <span className="tag-count">{nb.count}</span>
             </Link>

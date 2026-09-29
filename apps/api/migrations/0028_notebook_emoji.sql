@@ -1,0 +1,15 @@
+-- A notebook can carry an emoji, drawn in place of the book beside its name.
+--
+-- Every notebook has shown the same book glyph, which says "this row is a notebook" and
+-- nothing about which one. In a drawer of a dozen notebooks that leaves the eye reading
+-- every word; a picture per notebook lets it find one by looking, the way it already finds
+-- the Inbox and the trash.
+--
+-- An emoji rather than a choice among the app's own icons: it needs no library of our
+-- own to pick from, every platform the app runs on already draws it in colour, and it
+-- carries whatever the owner means by it rather than what an icon set happened to include.
+--
+-- NULL for every notebook that exists today, which is the book they show now.
+--
+-- One ADD COLUMN, for the reason 0018 and 0019 gave: no table rebuild, so no cascade to fear.
+ALTER TABLE notebooks ADD COLUMN emoji TEXT;

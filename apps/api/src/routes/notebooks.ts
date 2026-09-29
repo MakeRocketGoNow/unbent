@@ -5,6 +5,7 @@ import {
   createFieldSchema,
   fieldScaleSchema,
   fieldTypeSchema,
+  notebookEmojiSchema,
   notebookNameSchema,
   notebookPurposeSchema,
   reorderFieldsSchema,
@@ -28,13 +29,18 @@ import type { AppEnv } from '../types.js';
 const nameBody = z.object({ name: notebookNameSchema });
 
 /**
- * A PATCH may change the name, the purpose, or both, so each is optional — but an empty body
- * changes nothing, and that is a stale client, not a request. `purpose` accepts `null` to
- * clear it; an absent key leaves that column untouched (see `updateNotebook`).
+ * A PATCH may change the name, the purpose, the emoji, or any mix, so each is optional — but
+ * an empty body changes nothing, and that is a stale client, not a request. `purpose` and
+ * `emoji` accept `null` to clear them; an absent key leaves that column untouched (see
+ * `updateNotebook`).
  */
 const updateBody = z
-  .object({ name: notebookNameSchema.optional(), purpose: notebookPurposeSchema.optional() })
-  .refine((b) => b.name !== undefined || b.purpose !== undefined, {
+  .object({
+    name: notebookNameSchema.optional(),
+    purpose: notebookPurposeSchema.optional(),
+    emoji: notebookEmojiSchema.optional(),
+  })
+  .refine((b) => b.name !== undefined || b.purpose !== undefined || b.emoji !== undefined, {
     message: 'Nothing to update',
   });
 

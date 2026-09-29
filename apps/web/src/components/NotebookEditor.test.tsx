@@ -41,13 +41,13 @@ const rating: FieldDef = {
   valueCount: 5,
 };
 
-function mount(seed: FieldDef[] = fields) {
+function mount(seed: FieldDef[] = fields, emoji: string | null = null) {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false, staleTime: Infinity } },
   });
   client.setQueryData(keys.notebookFieldCounts('nb1'), seed);
   client.setQueryData(keys.notebooks(), {
-    notebooks: [{ id: 'nb1', name: 'Receipts', count: 3, fields: seed.length, purpose: null }],
+    notebooks: [{ id: 'nb1', name: 'Receipts', count: 3, fields: seed.length, purpose: null, emoji }],
     unfiled: 0,
   });
 
@@ -142,6 +142,44 @@ describe('NotebookEditor', () => {
     await waitFor(() => expect(screen.getByText('Save failed')).toBeTruthy());
     // The actionable message rides alongside the indicator.
     expect(screen.getByText('A notebook with that name already exists.')).toBeTruthy();
+  });
+
+  /*
+   * The emoji is a choice, not typing, so it is written the moment it is made — and shown
+   * the same moment, before the write returns, so the square never shows the old picture
+   * while the list refetches behind it. Remove stands in for a pick here: choosing a cell
+   * needs frimousse's measured grid, which jsdom cannot lay out (see EmojiField.test).
+   */
+  it('saves an emoji change at once, and shows it before the save returns', async () => {
+    // What frimousse needs to open without a layout or a network, put back by hand after:
+    // `unstubAllGlobals` would also take away the suite's own `scrollTo`.
+    const { ResizeObserver: realObserver, fetch: realFetch } = globalThis;
+    globalThis.ResizeObserver = class {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    };
+    globalThis.fetch = vi.fn(() => new Promise<Response>(() => {}));
+    let finish: () => void = () => {};
+    vi.mocked(api.updateNotebook).mockImplementationOnce(
+      () => new Promise<void>((resolve) => (finish = resolve)),
+    );
+    try {
+      mount(fields, '🧾');
+
+      fireEvent.click(await screen.findByRole('button', { name: 'Change the emoji for Receipts' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Remove' }));
+
+      expect(api.updateNotebook).toHaveBeenCalledWith('nb1', { emoji: null });
+      // Still in flight, and already the book.
+      await waitFor(() =>
+        expect(screen.getByRole('button', { name: 'Choose an emoji for Receipts' })).toBeTruthy(),
+      );
+    } finally {
+      finish();
+      globalThis.ResizeObserver = realObserver;
+      globalThis.fetch = realFetch;
+    }
   });
 
   it('flushes a pending name edit when the editor unmounts, so leaving does not lose it', async () => {

@@ -1,5 +1,5 @@
 import { useNavigate } from '@tanstack/react-router';
-import { TagIcon, NotebookRowIcon } from './icons.js';
+import { TagIcon, NotebookGlyph } from './icons.js';
 import { writeTagFilter } from '../routes/notes.js';
 import { rememberedSort } from '../notebook-sort.js';
 import type { TagCount } from './TagPicker.js';
@@ -138,7 +138,7 @@ export function ScopeMatches({
             }
           >
             <span className="scope-match-icon">
-              <NotebookRowIcon />
+              <NotebookGlyph emoji={nb.emoji} />
             </span>
             <span className="scope-match-name">{nb.name}</span>
             <span className="tag-count">{nb.count}</span>

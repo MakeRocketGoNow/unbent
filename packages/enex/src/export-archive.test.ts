@@ -72,8 +72,8 @@ async function archive(source: ExportSource, filter = {}): Promise<Map<string, s
   return out;
 }
 
-const shopping: NotebookSummary = { id: 'nb-shop', name: 'Shopping', count: 1, fields: 2, purpose: null };
-const empty: NotebookSummary = { id: 'nb-empty', name: 'Nothing here', count: 0, fields: 0, purpose: null };
+const shopping: NotebookSummary = { id: 'nb-shop', name: 'Shopping', count: 1, fields: 2, purpose: null, emoji: null };
+const empty: NotebookSummary = { id: 'nb-empty', name: 'Nothing here', count: 0, fields: 0, purpose: null, emoji: null };
 const shoppingFields: FieldDef[] = [
   { id: 'f-url', notebookId: 'nb-shop', name: 'Url', type: 'url', options: [], scale: null, currency: null, position: 0 },
   { id: 'f-status', notebookId: 'nb-shop', name: 'Status', type: 'select', options: ['Want', 'Ordered'], scale: null, currency: null, position: 1 },

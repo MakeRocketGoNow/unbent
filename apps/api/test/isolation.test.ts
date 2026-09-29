@@ -896,6 +896,40 @@ describe('notebooks', () => {
     expect((await listNotebooks(alice)).find((n) => n.id === nb.id)!.purpose).toBeNull();
   });
 
+  it('sets and clears a notebook emoji, and refuses anything but one emoji', async () => {
+    const name = `Emoji ${Date.now()}`;
+    await createNote(alice, { title: 'anchor', body: 'x', notebook: name });
+    const nb = (await listNotebooks(alice)).find((n) => n.name === name)!;
+    expect(nb.emoji).toBeNull();
+
+    const patch = (emoji: string | null) =>
+      fetch(`${BASE}/api/notebooks/${nb.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', ...asUser(alice).headers },
+        body: JSON.stringify({ emoji }),
+      });
+
+    // A ZWJ sequence is several code points and one picture, and is accepted as one emoji.
+    expect((await patch('👩‍💻')).status).toBe(204);
+    expect((await listNotebooks(alice)).find((n) => n.id === nb.id)!.emoji).toBe('👩‍💻');
+
+    // Two emoji, a word, or a bare digit would not fit the square an icon is drawn in.
+    for (const bad of ['🧾🧾', 'ab', '7']) expect((await patch(bad)).status).toBe(400);
+    expect((await listNotebooks(alice)).find((n) => n.id === nb.id)!.emoji).toBe('👩‍💻');
+
+    // Another user cannot set it: the notebook is not theirs, so it is not found.
+    const theirs = await fetch(`${BASE}/api/notebooks/${nb.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', ...asUser(bob).headers },
+      body: JSON.stringify({ emoji: '🎯' }),
+    });
+    expect(theirs.status).toBe(404);
+
+    // null clears it, back to the book.
+    expect((await patch(null)).status).toBe(204);
+    expect((await listNotebooks(alice)).find((n) => n.id === nb.id)!.emoji).toBeNull();
+  });
+
   it('unfiles notes rather than deleting them', async () => {
     const name = `Doomed ${Date.now()}`;
     const a = await createNote(alice, { title: 'survivor a', body: 'x', notebook: name });

@@ -344,12 +344,13 @@ export async function createNotebook(name: string): Promise<{ id: string; name: 
 }
 
 /**
- * Changes a notebook's name and/or purpose. Either key may be omitted to leave it untouched;
- * `purpose: null` clears it. The route answers 204, so nothing is parsed on success.
+ * Changes a notebook's name, purpose and/or emoji. Any key may be omitted to leave it
+ * untouched; `purpose: null` or `emoji: null` clears it. The route answers 204, so nothing
+ * is parsed on success.
  */
 export async function updateNotebook(
   id: string,
-  patch: { name?: string; purpose?: string | null },
+  patch: { name?: string; purpose?: string | null; emoji?: string | null },
 ): Promise<void> {
   const res = await fetch(`/api/notebooks/${id}`, {
     method: 'PATCH',
