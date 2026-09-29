@@ -18,12 +18,21 @@ const tagFilter = z
   .array(z.string().trim().min(1).max(MAX_TAG_LENGTH))
   .max(20)
   .optional()
-  .describe('Only notes carrying every one of these tags.');
+  .describe('Only notes carrying every one of these tags, by exact name, case included.');
 
 const notebookFilter = z
   .string()
   .optional()
   .describe(`Only notes in this notebook, by name. "${UNFILED}" means notes in no notebook.`);
+
+/**
+ * Which date `list_notes` filters on. It follows the sort, but "title" has no date of its
+ * own and the trash is always ranged by when a note was trashed, so "whichever date the
+ * sort names" — which this used to say — was wrong for both.
+ */
+const LIST_DATE_RANGE =
+  'Inclusive (UTC). Filters the created date when sort is "created", otherwise the updated ' +
+  'date; with trashed, the date the note was trashed.';
 
 const dateOnly = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'expected YYYY-MM-DD').optional();
 
@@ -90,9 +99,15 @@ export function registerReadTools(
         notebook: notebookFilter,
         sort: z.enum(['updated', 'created', 'title']).default('updated'),
         order: z.enum(['asc', 'desc']).default('desc'),
-        from: dateOnly.describe('Inclusive, filtering whichever date the sort names.'),
-        to: dateOnly.describe('Inclusive, filtering whichever date the sort names.'),
-        trashed: z.boolean().default(false).describe('List trashed notes instead of live ones.'),
+        from: dateOnly.describe(LIST_DATE_RANGE),
+        to: dateOnly.describe(LIST_DATE_RANGE),
+        trashed: z
+          .boolean()
+          .default(false)
+          .describe(
+            'List trashed notes instead of live ones, ordered by when they were trashed ' +
+              'whatever the sort.',
+          ),
       }),
       annotations: { readOnlyHint: true, openWorldHint: false },
     },
@@ -241,7 +256,10 @@ export function registerReadTools(
     'list_tags',
     {
       title: 'List tags',
-      description: 'Every tag with how many notes carry it, most used first. Tags are flat.',
+      description:
+        'Every tag with how many notes carry it, most used first. Tags are flat, and their ' +
+        'names are case-sensitive: "Receipts" and "receipts" are two tags. Reuse a spelling ' +
+        'from here when tagging, rather than making a near-duplicate.',
       inputSchema: z.object({}),
       annotations: { readOnlyHint: true, openWorldHint: false },
     },

@@ -12,7 +12,7 @@ import { registerWriteTools } from './tools/write.js';
  * The factory runs per request, which is what lets the tools close over repos already bound
  * to the caller — the same arrangement `withRepos` gives the HTTP routes, and the reason a
  * tool never takes a user id as an argument. Isolation is then structural rather than
- * something each of the sixteen tools has to remember.
+ * something each tool has to remember.
  *
  * `legacy` is left at its default so both the 2025 and the 2026-07-28 protocol revisions are
  * served. Clients are spread across both right now, and rejecting the older one would mean

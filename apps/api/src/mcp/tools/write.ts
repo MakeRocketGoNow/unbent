@@ -43,8 +43,13 @@ const fieldsSchema = z
   .describe(
     'Custom field values keyed by field name, as list_notebooks reports them for the ' +
       'notebook. Null clears one. Only the names given change. A value must fit the ' +
-      'field\'s type: a number for number, YYYY-MM-DD for date, true/false for checkbox, ' +
-      'one of the options for select, a list of the options for multiselect.',
+      'field\'s type: a number for number (from 1 to its max when it has a rating scale, ' +
+      'in halves only when the step is 0.5), YYYY-MM-DD for date, true/false for ' +
+      'checkbox, an http(s) address for url, one of the options for select, a list of ' +
+      'the options for multiselect. Options match exactly as listed, case included; one ' +
+      'the field lacks is refused, so add it with update_notebook_field first. A ' +
+      'multiselect list is the whole selection, not an addition to it: to add one, send ' +
+      'what the note holds plus the new one.',
   );
 
 /**
@@ -96,7 +101,13 @@ const bodySchema = z
   .max(MAX_BODY_BYTES)
   .describe('Markdown. Headings, lists, tables, task lists and links all render.');
 
-const tagsSchema = z.array(tagNameSchema).max(50);
+const tagsSchema = z
+  .array(tagNameSchema)
+  .max(50)
+  .describe(
+    'Tag names, matched exactly: "Receipts" and "receipts" are two tags. Reuse the ' +
+      'spelling list_tags shows.',
+  );
 
 /**
  * A notebook name, or null to file the note in none.
@@ -224,10 +235,11 @@ export function registerWriteTools(server: McpServer, notes: NotesRepo): void {
     {
       title: 'Edit part of a note',
       description:
-        'Change a note without resending its body. Append or prepend a fragment, or replace ' +
-        'an exact span of text with another. Prefer this to update_note for anything but a ' +
-        'wholesale rewrite: it is cheaper on a long note and it cannot accidentally discard ' +
-        'the parts you did not mean to touch.',
+        'Change a note without resending its body. Append or prepend a fragment, which is ' +
+        'set off from the body by a blank line, or replace an exact span of text with ' +
+        'another. Prefer this to update_note for anything but a wholesale rewrite: it is ' +
+        'cheaper on a long note and it cannot accidentally discard the parts you did not ' +
+        'mean to touch.',
       inputSchema: z.object({
         noteId: z.string().uuid(),
         mode: z.enum(['append', 'prepend', 'replace']),
@@ -313,7 +325,9 @@ export function registerWriteTools(server: McpServer, notes: NotesRepo): void {
       title: 'Add or remove tags',
       description:
         'Add and remove tags across one or more notes without touching their other fields. ' +
-        'Tags that are already there, or already absent, are left alone. Answers with the ' +
+        'Tags that are already there, or already absent, are left alone, and a tag named ' +
+        'in both lists is added. Names match exactly, case included, so removing ' +
+        '"receipts" leaves "Receipts" in place; list_tags has the spellings. Answers with the ' +
         'notes it reached, how many changed, and any ids it could not find; get_note shows ' +
         "a note's tags afterwards.",
       inputSchema: z.object({
@@ -345,8 +359,10 @@ export function registerWriteTools(server: McpServer, notes: NotesRepo): void {
       title: 'Move notes to a notebook',
       description:
         'File one or more notes into a notebook, or out of every notebook with null. The ' +
-        'notebook is created if it does not exist. Answers with the notes it reached, how ' +
-        'many actually moved, and any ids it could not find.',
+        'name matches an existing notebook whatever its case, and one that does not exist ' +
+        'is created. Custom field values stay on the note: those from the notebook it left ' +
+        'still show on get_note and apply again if it moves back. Answers with the notes ' +
+        'it reached, how many actually moved, and any ids it could not find.',
       inputSchema: z.object({
         noteIds: noteIdsSchema,
         notebook: notebookSchema,
