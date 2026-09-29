@@ -14,6 +14,7 @@ import { Topbar } from '../components/Topbar.js';
 import { useHostApp } from '../useHostApp.js';
 import { postToApp } from '../app-bridge.js';
 import { ExportSnackbar } from '../components/ExportSnackbar.js';
+import { claimImportFor, getImportRun, subscribeImport } from '../import-run.js';
 
 export interface RouterContext {
   queryClient: QueryClient;
@@ -145,6 +146,26 @@ function AppShell() {
       if (ended && (state.progress?.indexed || state.images?.read)) {
         void queryClient.invalidateQueries({ queryKey: ['search'] });
       }
+    });
+  }, [userId, queryClient]);
+
+  /**
+   * The import run, which outlives the page it was started from.
+   *
+   * An import creates notes, notebooks and tags, so nothing cached is still true once it
+   * ends — however it ends, since a failed run has usually landed some notes first. Here
+   * rather than on the import page because the run may end while that page is not
+   * mounted. Claimed for this user first; see `ImportRun.claim`.
+   */
+  useEffect(() => {
+    if (!userId) return;
+    claimImportFor(userId);
+    let last = getImportRun().status;
+    return subscribeImport(() => {
+      const { status } = getImportRun();
+      if (status === last) return;
+      if (last === 'running') void queryClient.invalidateQueries();
+      last = status;
     });
   }, [userId, queryClient]);
 
