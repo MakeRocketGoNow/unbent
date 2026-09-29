@@ -31,9 +31,15 @@ export function slugify(title: string): string {
  *
  * The id suffix is not decoration — two notes titled "Meeting notes" would otherwise
  * collide into one directory and the second would overwrite the first.
+ *
+ * Eight characters is only unique enough for ids this instance minted, which are random.
+ * An import keeps the id it arrived with, and a Notion page's id is not random at its
+ * front: pages made in the same stretch share their leading digits, so two same-titled
+ * pages from one database can agree on all eight. `idChars` widens the suffix for the
+ * archive writer to fall back on when that happens; see `writeArchive`.
  */
-export function noteDirName(title: string, id: string): string {
-  return `${slugify(title)}-${id.replace(/-/g, '').slice(0, 8)}`;
+export function noteDirName(title: string, id: string, idChars = 8): string {
+  return `${slugify(title)}-${id.replace(/-/g, '').slice(0, idChars)}`;
 }
 
 /**
