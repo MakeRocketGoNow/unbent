@@ -64,9 +64,10 @@ fun linkPath(instance: String, link: String): String? {
  * one.
  *
  * The WebView has no tabs. Loading the address into the app (`loadUrl`) tears the page
- * down — unsaved edits, an upload, an import — which is why notifications already go
+ * down — unsaved edits, an upload in flight — which is why notifications already go
  * through `__unbent.open` instead. A same-origin `_blank` is the same situation: a link
- * in a note, a URL field, a skipped import row. Off-site addresses, and the `about:` /
+ * in a note, a URL field. Opening in place still leaves the current page, so it keeps
+ * what outlives a route change and nothing more. Off-site addresses, and the `about:` /
  * `blob:` / `javascript:` URLs the page made itself, are not paths and stay null.
  */
 fun inAppWindowPath(origin: String, url: String): String? {

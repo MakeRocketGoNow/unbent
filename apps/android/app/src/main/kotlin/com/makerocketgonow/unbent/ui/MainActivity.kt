@@ -492,8 +492,13 @@ class MainActivity : ComponentActivity() {
          * WebView would run that page with this app's session in it. On the site it is
          * [open], the same in-place navigation a notification uses. Loading the address
          * into the app used to look right — there are no tabs — but a full navigation
-         * destroys the page, so a link in a note dropped unsaved edits and a skipped
-         * import row killed the import that listed it.
+         * destroys the page, so a link in a note dropped unsaved edits and an upload in
+         * flight. In place, the editor flushes and the upload carries on.
+         *
+         * In place is still leaving the page, though, and a page that holds work of its
+         * own loses it either way. The import panel is one: its worker ends when the panel
+         * unmounts, so its skipped-note rows stay unlinked in the app while it runs
+         * (`ImportSkips.tsx`) rather than rely on this.
          */
         override fun onCreateWindow(
             view: WebView,

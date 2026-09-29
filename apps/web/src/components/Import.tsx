@@ -463,7 +463,7 @@ export function Import({ onImported }: ImportProps) {
         </details>
       )}
 
-      <ImportSkips log={skips} />
+      <ImportSkips log={skips} running={status === 'running'} />
     </div>
   );
 }
