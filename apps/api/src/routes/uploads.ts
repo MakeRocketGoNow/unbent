@@ -1,0 +1,87 @@
+import { Hono } from 'hono';
+import { MAX_ATTACHMENT_BYTES } from '@unbent/shared';
+import { AttachmentsRepo } from '../lib/attachments-repo.js';
+import { chooseContentType } from '../lib/fetch-attachment.js';
+import { NotesRepo } from '../lib/notes-repo.js';
+import { storeAttachment } from '../lib/store-attachment.js';
+import { claimUploadGrant } from '../lib/upload-grants.js';
+import type { AppEnv } from '../types.js';
+
+/** Said whenever a link cannot be used, since the fix is the same whatever the reason. */
+const ASK_AGAIN = 'Ask for a new one with prepare_attachment_upload.';
+
+/**
+ * Where a file goes that an assistant holds on its own machine: the other half of the MCP
+ * tool prepare_attachment_upload, which mints the link this route is reached by.
+ *
+ * Authorized by the token in the path and nothing else — no cookie, no bearer token. That
+ * is the point of it: the request comes from curl in an agent's shell, which has the file
+ * but should never hold the OAuth token its client signed in with. The token names one note
+ * of one user's and works once; see lib/upload-grants.ts and migration 0029.
+ *
+ * The link stores and links the file itself, rather than waiting for a third step that
+ * confirms it. Object stores that hand out presigned URLs need that step because nothing of
+ * theirs runs when the bytes land; here the Worker is the thing receiving them, so the
+ * answer to the PUT is already the answer add_attachment gives, and there is no half-done
+ * upload for anyone to forget to finish.
+ */
+export const uploads = new Hono<AppEnv>().put('/uploads/:token', async (c) => {
+  /*
+     The request's own faults first, before the link is claimed: a curl invocation that
+     sent no length, or a file over the limit, should cost the assistant a corrected
+     command, not the link as well.
+
+     A length is required because the body streams into R2, which must know it up front
+     (see `storeAttachment`). curl's -T and --data-binary both send one.
+  */
+  const length = c.req.header('Content-Length');
+  if (!length) return c.json({ error: 'Content-Length required: send the file with curl -T.' }, 411);
+  const declared = Number(length);
+  if (declared > MAX_ATTACHMENT_BYTES) {
+    return c.json(
+      { error: `Attachment exceeds ${Math.floor(MAX_ATTACHMENT_BYTES / 1024 / 1024)}MB limit` },
+      413,
+    );
+  }
+  if (declared === 0 || !c.req.raw.body) return c.json({ error: 'Empty body' }, 400);
+
+  const grant = await claimUploadGrant(c.env.DB, c.req.param('token'));
+  if (!grant) {
+    return c.json({ error: `This upload link is unknown, already used, or expired. ${ASK_AGAIN}` }, 404);
+  }
+
+  const attachments = new AttachmentsRepo(c.env.DB, grant.userId);
+  const notes = new NotesRepo(c.env.DB, grant.userId);
+  // Trashed, or gone, in the minutes since the link was made.
+  if (!(await attachments.ownsNote(grant.noteId))) {
+    return c.json({ error: 'The note this link was for is no longer there.' }, 404);
+  }
+
+  /*
+     The type the assistant declared when it asked for the link, else the extension. The
+     request's own Content-Type is ignored: curl's --data-binary labels every body
+     application/x-www-form-urlencoded, and -T sends none, so what the header says is an
+     accident of the command line and not a claim about the file.
+  */
+  const contentType = chooseContentType(grant.contentType, grant.filename);
+
+  try {
+    const stored = await storeAttachment(
+      c.env,
+      c.executionCtx,
+      { attachments, notes },
+      {
+        noteId: grant.noteId,
+        filename: grant.filename,
+        contentType,
+        body: c.req.raw.body,
+        link: grant.link,
+      },
+    );
+    return c.json({ noteId: grant.noteId, ...stored, linked: grant.link }, 201);
+  } catch (err) {
+    // A transfer cut short: the link is spent, and nothing was attached.
+    console.error('Upload through a prepared link failed:', err);
+    return c.json({ error: `The upload did not complete, and nothing was attached. ${ASK_AGAIN}` }, 400);
+  }
+});

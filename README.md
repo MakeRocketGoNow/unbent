@@ -733,9 +733,16 @@ Three are worth knowing about:
   system gave it when it read the page (a signed URL, typically good for an hour), and the
   Worker fetches that itself and stores the result exactly as an upload from the editor.
   The reply carries the filename it was stored under and the Markdown that shows it, which
-  is appended to the note unless the assistant asks to place it. There is deliberately no
-  upload tool: it would work only for files small enough not to matter, and fail silently
-  above that.
+  is appended to the note unless the assistant asks to place it. A file with no link — one
+  on the assistant's own disk, or a screenshot in its sandbox — goes the other way:
+  **`prepare_attachment_upload`** hands back a one-time URL, and the assistant's shell
+  sends the bytes there with `curl -T`. The reply to that request is the same as
+  `add_attachment`'s. The link works once, for one note, for half an hour, and needs no
+  token beside it, so the shell never holds the client's OAuth credentials. The one
+  requirement is that the assistant can reach this instance over the network: a sandbox
+  that restricts where it connects needs the instance's domain allowed. There is still
+  deliberately no tool that takes the bytes as an argument: it would work only for files
+  small enough not to matter, and fail silently above that.
 
 **Approving a client gives it standing access to everything.** It can read every note,
 create and change notes, and move them to the trash, from then on and without asking again.
@@ -1246,12 +1253,6 @@ and previews, so passkeys made there work from the app too.
   advertised, but nothing enforces a narrower grant yet, and a consent screen offering a
   choice nobody can act on would be worse than the honest sentence it shows instead.
 
-- **An assistant holding a file on disk cannot attach it.** `add_attachment` fetches by
-  URL, which is what a connector to another system can supply and what an agent on a
-  machine with the file cannot. The routes for that today are `unbent-migrate` for a whole
-  export and the HTTP upload with a session. A one-time upload URL minted by a tool, for
-  the agent to `PUT` to without ever holding the OAuth token, is the likely shape of a fix.
-
 - **iOS has no share extension yet.** Safari does not implement Web Share Target, so an iOS
   capture needs a real share extension and a paid Apple Developer account.
 
@@ -1264,6 +1265,12 @@ not expressible. `apps/api/test/isolation.test.ts` asserts this and grows with e
 that adds a route touching user data. The MCP endpoint's cases live beside it in
 `apps/api/test/mcp.test.ts`, which needs a whole OAuth flow before it can call anything and
 would otherwise swamp the suite it belongs to.
+
+One route finds its user another way. `PUT /api/uploads/:token`, the other half of
+`prepare_attachment_upload`, is authorized by the token in its path and nothing else. The
+token is looked up once, deleted as it is read, and yields the user id the scoped repos are
+then built from, exactly as a session does everywhere else. Its cases are in `mcp.test.ts`
+too, since only the tool can mint one.
 
 ## Backups and export
 

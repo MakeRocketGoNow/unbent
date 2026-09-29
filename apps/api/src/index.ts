@@ -12,6 +12,7 @@ import { notebooks } from './routes/notebooks.js';
 import { tags } from './routes/tags.js';
 import { exportRoutes } from './routes/export.js';
 import { attachments } from './routes/attachments.js';
+import { uploads } from './routes/uploads.js';
 import { admin } from './routes/admin.js';
 import { search } from './routes/search.js';
 import { importEnmlRoutes, importNotebookRoutes, importRoutes } from './routes/import.js';
@@ -54,6 +55,7 @@ const routes = app
   .route('/api', tags)
   .route('/api', exportRoutes)
   .route('/api', attachments)
+  .route('/api', uploads)
   .route('/api', admin)
   .route('/api', search)
   .route('/api', importRoutes)
