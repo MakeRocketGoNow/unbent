@@ -1272,6 +1272,9 @@ Settings → Export writes a zip of the whole account as a plain folder tree:
 ```
 first-note-2382e420/first-note-2382e420.md
 first-note-2382e420/files/agenda.pdf
+first-note-2382e420/files/whiteboard.jpg
+first-note-2382e420/text/agenda.pdf.txt
+first-note-2382e420/described/whiteboard.jpg.txt
 untitled-e080eb5b/untitled-e080eb5b.md
 notebooks/coupons.yaml
 ```
@@ -1283,8 +1286,17 @@ markdown repeats it so a search of the unpacked tree finds one file per title ra
 thousand `note.md`s. Standard `unzip` reads it; no part of this app is needed to get your
 notes back.
 
+Beside `files/`, `text/` and `described/` hold the text this instance has read from each
+file, as a plain `<filename>.txt`: `text/` for what the file's own text layer gave,
+`described/` for what the vision model read from a picture or a scan with no layer. A file
+with no text has neither. They are what makes a scanned bill answerable, so they are also
+what a person would want to `grep` in the unpacked folder — and without them a restore read
+every file again, a PDF extraction or a paid vision request per file, and got different
+words than search and Auto-fill had been built on.
+
 `notebooks/` holds what is about a notebook rather than a note: one `<slug>.yaml` per
-notebook naming its fields in order, each with its type and, where it has them, its select
+notebook with its emoji and its purpose when it has them — the purpose is what Auto-fill
+files by, so a restore without it files differently — and its fields in order, each with its type and, where it has them, its select
 or multi-select options, its rating scale or its currency. A multi-select's value is a YAML list under the
 field's name, the way `tags` is. A value in frontmatter says nothing about the field that holds it,
 and without this file a restore rebuilt every field from the first value it met — URLs and
@@ -1329,7 +1341,8 @@ The `notebooks/` files are applied first, through `POST /api/import/notebook`, s
 land against the definitions they were written under. The rule there is add, never alter: a
 field the notebook lacks is created as the file describes it, a field it already has keeps
 its type and scale (changing either clears values, which an import should not decide), and
-a select's or multi-select's options are merged. A note's value naming an option the field
+a select's or multi-select's options are merged. A notebook's emoji and purpose are set
+when it has none and otherwise kept. A note's value naming an option the field
 lacks adds that option rather than being dropped, so a vault with no `notebooks/` file still
 lands with its choices intact. Anything left unapplied is named in the import's failure log.
 An archive without `notebooks/` — an older export, a hand-made vault — imports as before,
@@ -1346,8 +1359,11 @@ fresh live copy under a new id.
 The archive is read in the browser, one note and one attachment at a time, by the same
 worker that reads ENEX files — the requests, the resumability and the per-note failure log
 are all the ENEX import's. Attachment types are recovered from the bytes and then the
-extension, since a zip carries neither, and PDF text is re-extracted so search works after a
-restore. Only the layout is assumed: markdown with frontmatter, and a `files/` directory
+extension, since a zip carries neither. A file that arrives with a `text/` or `described/`
+sidecar is uploaded with `?text=supplied`, which stops the Worker reading it, and its text is
+recorded as it was, under the reader that wrote it; nothing is extracted, nothing goes back
+to pending, and no vision request is made. A file without one — from an older export — is
+read as any upload is, so search works after that restore too. Only the layout is assumed: markdown with frontmatter, and a `files/` directory
 beside it. Directory names are ignored, so an archive unpacked, rearranged and zipped again
 by hand reads the same as the original.
 

@@ -58,9 +58,40 @@ export function noteMarkdown(note: Note): string {
   });
 }
 
+/**
+ * One of a note's files as an export page names it, with the text this instance holds for
+ * it when there is any: what the file's own text layer gave, or what the vision model read
+ * from it (`readBy: 'vision'`). Both are absent for a file with no text, or an empty row.
+ */
+export interface ExportedAttachment extends Pick<AttachmentInfo, 'filename' | 'contentType'> {
+  text?: string;
+  readBy?: 'vision';
+}
+
 /** A whole note with the names of its files: what one export page carries. */
 export interface ExportedNote extends Note {
-  attachments?: Pick<AttachmentInfo, 'filename' | 'contentType'>[];
+  attachments?: ExportedAttachment[];
+}
+
+/**
+ * Where a file's text sits in the archive, beside its `files/` directory.
+ *
+ * Without it a restore read every file again: each PDF back through extraction, and each
+ * picture and text-less scan back to pending for the vision model — a paid call per file,
+ * on an instance that may have no key at all, producing different words than the ones
+ * search and Auto-fill were built on. So the text travels with the file, as a plain
+ * `<filename>.txt` a person can `grep` in the unpacked folder.
+ *
+ * The directory says who wrote it — `text/` for the file's own text layer, `described/`
+ * for the vision model — which is the one other thing the row records. That keeps the
+ * filename exactly the file's, needs no index, and leaves a hand-unpacked archive readable.
+ * A file never has both; the export writes one or neither.
+ */
+export const TEXT_DIR = 'text';
+export const DESCRIBED_DIR = 'described';
+
+export function textSidecarPath(filename: string, readBy: 'vision' | null | undefined): string {
+  return `${readBy === 'vision' ? DESCRIBED_DIR : TEXT_DIR}/${filename}.txt`;
 }
 
 /** One page of `GET /api/export/notes`. */

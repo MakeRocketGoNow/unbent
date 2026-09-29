@@ -1,5 +1,5 @@
 import { ZipWriter } from '@zip.js/zip.js';
-import { noteDirName, noteMarkdown } from '@unbent/shared';
+import { noteDirName, noteMarkdown, textSidecarPath } from '@unbent/shared';
 import type { Note } from '@unbent/shared';
 import type { AttachmentsRepo } from './attachments-repo.js';
 
@@ -24,7 +24,10 @@ interface NoteEntryDeps {
 }
 
 /**
- * Writes one note's markdown and its `files/` into an open archive, at the archive root.
+ * Writes one note's markdown, its `files/`, and each file's text into an open archive, at
+ * the archive root. The text sits under `text/` or `described/` by who read it — the same
+ * sidecars the library export writes, so a single note's zip restores without reading its
+ * files again either.
  *
  * The markdown sits one level above its own `files/` directory, which is what makes the
  * relative `files/…` destinations in the body resolve once unpacked — the same layout the
@@ -72,6 +75,7 @@ async function writeNoteEntry(
   // then cutting the link keeps the blob (see the Attachments panel), and those leftovers
   // are still part of the note — dropping them here would make the download lossy in a
   // way the library export is not.
+  const texts = new Map((await attachments.textsForNote(note.id)).map((t) => [t.filename, t]));
   for (const file of await attachments.listForNote(note.id)) {
     const row = await attachments.resolve(note.id, file.filename);
     if (!row) continue;
@@ -80,6 +84,15 @@ async function writeNoteEntry(
     if (!object?.body) continue;
 
     await zip.add(`files/${file.filename}`, object.body, { level: 0, zip64: false });
+
+    // Plain text compresses well, unlike the file it came from.
+    const held = texts.get(file.filename);
+    if (held?.text) {
+      await zip.add(textSidecarPath(file.filename, held.readBy), new Blob([held.text]).stream(), {
+        level: 6,
+        zip64: false,
+      });
+    }
   }
 }
 

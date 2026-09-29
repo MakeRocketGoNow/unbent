@@ -72,7 +72,14 @@ async function archive(source: ExportSource, filter = {}): Promise<Map<string, s
   return out;
 }
 
-const shopping: NotebookSummary = { id: 'nb-shop', name: 'Shopping', count: 1, fields: 2, purpose: null, emoji: null };
+const shopping: NotebookSummary = {
+  id: 'nb-shop',
+  name: 'Shopping',
+  count: 1,
+  fields: 2,
+  purpose: 'Things to buy.',
+  emoji: '🛒',
+};
 const empty: NotebookSummary = { id: 'nb-empty', name: 'Nothing here', count: 0, fields: 0, purpose: null, emoji: null };
 const shoppingFields: FieldDef[] = [
   { id: 'f-url', notebookId: 'nb-shop', name: 'Url', type: 'url', options: [], scale: null, currency: null, position: 0 },
@@ -128,6 +135,46 @@ describe('writeArchive', () => {
     expect(files.get('with-files-aaaaaaaa/files/pic.png')).toBe('PNGDATA');
     // The link stays relative, so the unpacked folder works without this app.
     expect(parse(files.get('with-files-aaaaaaaa/with-files-aaaaaaaa.md')!).body).toBe('![x](files/pic.png)');
+  });
+
+  /**
+   * The text this instance holds for a file travels beside it, so a restore need not read
+   * it again: a text layer under `text/`, what the vision model read under `described/`.
+   */
+  it('writes each file’s text beside it, in a directory that says who read it', async () => {
+    const id = 'aaaaaaaa-0000-4000-8000-000000000005';
+    const files = await archive(
+      fake({
+        notes: [
+          note({
+            id,
+            title: 'Paperwork',
+            attachments: [
+              { filename: 'statement.pdf', contentType: 'application/pdf', text: 'Balance due 42.00' },
+              { filename: 'receipt.jpg', contentType: 'image/jpeg', text: 'Receipt from Acme, 3 items', readBy: 'vision' },
+              { filename: 'blank.png', contentType: 'image/png' },
+              { filename: 'gone.pdf', contentType: 'application/pdf', text: 'never written' },
+            ],
+          }),
+        ],
+        files: {
+          [`${id}/statement.pdf`]: 'PDF',
+          [`${id}/receipt.jpg`]: 'JPG',
+          [`${id}/blank.png`]: 'PNG',
+        },
+        gone: [`${id}/gone.pdf`],
+      }),
+    );
+    expect([...files.keys()].sort()).toEqual([
+      'paperwork-aaaaaaaa/described/receipt.jpg.txt',
+      'paperwork-aaaaaaaa/files/blank.png',
+      'paperwork-aaaaaaaa/files/receipt.jpg',
+      'paperwork-aaaaaaaa/files/statement.pdf',
+      'paperwork-aaaaaaaa/paperwork-aaaaaaaa.md',
+      'paperwork-aaaaaaaa/text/statement.pdf.txt',
+    ]);
+    expect(files.get('paperwork-aaaaaaaa/text/statement.pdf.txt')).toBe('Balance due 42.00');
+    expect(files.get('paperwork-aaaaaaaa/described/receipt.jpg.txt')).toBe('Receipt from Acme, 3 items');
   });
 
   it('skips a file that is gone and counts it, rather than failing the archive', async () => {
@@ -194,6 +241,8 @@ describe('writeArchive', () => {
     ]);
     expect(parseNotebook(files.get('notebooks/shopping.yaml')!)).toEqual({
       name: 'Shopping',
+      emoji: '🛒',
+      purpose: 'Things to buy.',
       fields: [
         { name: 'Url', type: 'url' },
         { name: 'Status', type: 'select', options: ['Want', 'Ordered'] },

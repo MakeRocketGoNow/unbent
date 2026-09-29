@@ -27,6 +27,11 @@ export const exportRoutes = new Hono<AppEnv>()
    * cursor walks; the web app sends `created` when there is no range, since a note edited
    * mid-export would otherwise jump above an `updated` cursor and be missed. `total` comes
    * on the first page, for a progress count.
+   *
+   * Each file comes with the text this instance holds for it, and who read it, so the
+   * archive can carry that text beside the file and a restore need not read everything
+   * again — see `textSidecarPath` in `@unbent/shared`. One more statement per page, after
+   * the page, because it needs the page's note ids.
    */
   .get('/export/notes', requireAuth, withRepos, zValidator('query', exportPageQuerySchema), async (c) => {
     const { tag: tags, notebook, field: fields, from, to, sort, cursor, limit } = c.req.valid('query');
@@ -36,6 +41,20 @@ export const exportRoutes = new Hono<AppEnv>()
       repo.listFull({ limit, cursor, ...filter }),
       cursor ? Promise.resolve<number | null>(null) : repo.count(filter),
     ]);
+
+    const withFiles = notes.filter((n) => n.attachments?.length);
+    const texts = new Map<string, { text: string; readBy: 'vision' | null }>();
+    for (const t of await c.get('attachments').textsForNotes(withFiles.map((n) => n.id))) {
+      texts.set(`${t.noteId}/${t.filename}`, t);
+    }
+    for (const note of withFiles) {
+      note.attachments = note.attachments!.map((a) => {
+        const held = texts.get(`${note.id}/${a.filename}`);
+        if (!held) return a;
+        return { ...a, text: held.text, ...(held.readBy ? { readBy: held.readBy } : {}) };
+      });
+    }
+
     return c.json({ notes, cursor: nextCursor(notes, { limit, sort }), total });
   })
 

@@ -111,8 +111,11 @@ async function importNote(
   return { status: res.status, ...body };
 }
 
-/** The API calls `importArchive` needs, over this actor's session. */
-function archiveClient(actor: Actor) {
+/**
+ * The API calls `importArchive` needs, over this actor's session. `indexing` collects what
+ * each upload said about reading its file, so a test can tell whether the Worker started.
+ */
+function archiveClient(actor: Actor, indexing: string[] = []) {
   return {
     createNote: async (input: object) =>
       json<{ id: string; created: boolean }>(
@@ -122,14 +125,32 @@ function archiveClient(actor: Actor) {
           body: JSON.stringify(input),
         }),
       ),
-    uploadFile: async (noteId: string, filename: string, mime: string, bytes: Uint8Array) =>
-      json<{ filename: string }>(
-        await api(actor, `/api/notes/${noteId}/files`, {
+    uploadFile: async (
+      noteId: string,
+      filename: string,
+      mime: string,
+      bytes: Uint8Array,
+      options?: { textSupplied?: boolean },
+    ) => {
+      const query = options?.textSupplied ? '?text=supplied' : '';
+      const stored = await json<{ filename: string; indexing?: string }>(
+        await api(actor, `/api/notes/${noteId}/files${query}`, {
           method: 'PUT',
           headers: { 'X-Filename': encodeURIComponent(filename), 'Content-Type': mime },
           body: bytes as unknown as BodyInit,
         }),
-      ),
+      );
+      indexing.push(stored.indexing ?? 'none');
+      return stored;
+    },
+    saveFileText: async (noteId: string, filename: string, text: string, readBy?: 'vision') => {
+      const res = await api(actor, `/api/notes/${noteId}/files/${encodeURIComponent(filename)}/text`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(readBy ? { text, readBy } : { text }),
+      });
+      if (!res.ok) throw new Error(`text ${filename}: ${res.status} ${await res.text()}`);
+    },
     listFiles: async (noteId: string) =>
       (await json<{ files: Array<{ filename: string }> }>(
         await api(actor, `/api/notes/${noteId}/files`),
@@ -144,7 +165,7 @@ function archiveClient(actor: Actor) {
       );
     },
     importNotebook: async (definition: object) =>
-      json<{ id: string; skipped: Array<{ name: string; reason: string }> }>(
+      json<{ id: string; skipped: Array<{ name: string; reason: string; kind?: string }> }>(
         await api(actor, '/api/import/notebook', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -169,6 +190,14 @@ async function fieldsOf(actor: Actor, notebook: string): Promise<FieldJson[]> {
   ).notebooks.find((n) => n.name === notebook);
   if (!nb) throw new Error(`no notebook ${notebook}`);
   return (await json<{ fields: FieldJson[] }>(await api(actor, `/api/notebooks/${nb.id}/fields`))).fields;
+}
+
+async function notebookOf(actor: Actor, notebook: string): Promise<NotebookSummary> {
+  const nb = (
+    await json<{ notebooks: NotebookSummary[] }>(await api(actor, '/api/notebooks'))
+  ).notebooks.find((n) => n.name === notebook);
+  if (!nb) throw new Error(`no notebook ${notebook}`);
+  return nb;
 }
 
 let alice: Actor;
@@ -339,6 +368,74 @@ describe('an export imported into another account', () => {
   });
 });
 
+describe('the text read from files, across an import', () => {
+  /**
+   * A restore used to read every file again: each PDF through extraction, each picture
+   * back to pending for the vision model. The archive now carries the text beside each
+   * file, and the import records it rather than reading anything.
+   */
+  it('arrives as it was, with nothing left pending and nothing read again', async () => {
+    const stamp = Date.now();
+    const notebook = `Paperwork ${stamp}`;
+    const source = await signUp(`imp-txt-a-${stamp}@example.test`, 'txt-password-1234', 'A');
+    const target = await signUp(`imp-txt-b-${stamp}@example.test`, 'txt-password-1234', 'B');
+
+    const created = await json<NoteJson>(
+      await api(source, '/api/notes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title: 'Statement and receipt', body: '', notebook }),
+      }),
+    );
+    const files = [
+      { filename: 'statement.pdf', mime: 'application/pdf', text: 'Balance due 42.00\nPage 2 of 2' },
+      { filename: 'receipt.jpg', mime: 'image/jpeg', text: 'Receipt from Acme, 3 items', readBy: 'vision' as const },
+    ];
+    // `text=supplied` here too: a local Worker may hold a real vision key, and these bytes
+    // are not a picture worth paying to read.
+    for (const f of files) {
+      await json(
+        await api(source, `/api/notes/${created.id}/files?text=supplied`, {
+          method: 'PUT',
+          headers: { 'X-Filename': f.filename, 'Content-Type': f.mime },
+          body: `${f.filename} bytes`,
+        }),
+      );
+      const res = await api(source, `/api/notes/${created.id}/files/${f.filename}/text`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: f.text, ...(f.readBy ? { readBy: f.readBy } : {}) }),
+      });
+      expect(res.ok).toBe(true);
+    }
+
+    const pending = async (actor: Actor) => ({
+      text: (await json<{ remaining: number }>(await api(actor, '/api/attachments/pending-text'))).remaining,
+      vision: (await json<{ remaining: number }>(await api(actor, '/api/attachments/pending-vision'))).remaining,
+    });
+    expect(await pending(source)).toEqual({ text: 0, vision: 0 });
+
+    const zip = { name: 'unbent-paperwork.zip', blob: await exportNotebook(source, notebook) };
+    const indexing: string[] = [];
+    const progress = await importArchive(zip, archiveClient(target, indexing), { extractText: true });
+    expect(progress).toMatchObject({ created: 1, failed: 0, filesUploaded: 2, filesIndexed: 2 });
+
+    // The Worker was told before the bytes landed that the text would follow, so it started
+    // no read of its own — no extraction, and no vision request — and nothing waits.
+    expect(indexing).toEqual(['client', 'client']);
+    expect(await pending(target)).toEqual({ text: 0, vision: 0 });
+
+    const read = async (actor: Actor) => {
+      const [note] = (await json<{ notes: Array<{ attachments?: Array<Record<string, string>> }> }>(
+        await api(actor, `/api/export/notes?notebook=${encodeURIComponent(notebook)}`),
+      )).notes;
+      return note!.attachments!.sort((a, b) => a.filename!.localeCompare(b.filename!));
+    };
+    expect(await read(target)).toEqual(await read(source));
+    expect((await read(target)).find((a) => a.filename === 'receipt.jpg')).toMatchObject({ readBy: 'vision' });
+  });
+});
+
 describe('notebook definitions across an import', () => {
   it('rebuild the notebook as it was, not as its values suggest', async () => {
     const stamp = Date.now();
@@ -353,6 +450,12 @@ describe('notebook definitions across an import', () => {
     const nb = (
       await json<{ notebooks: Array<{ id: string; name: string }> }>(await api(alice, '/api/notebooks'))
     ).notebooks.find((n) => n.name === notebook)!;
+    // Its icon, and the guidance Auto-fill files by: neither lives on a note.
+    await api(alice, `/api/notebooks/${nb.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ emoji: '🛒', purpose: 'Things to buy: where, how much, whether ordered.' }),
+    });
     const field = async (body: object) =>
       json<FieldJson>(
         await api(alice, `/api/notebooks/${nb.id}/fields`, {
@@ -381,6 +484,11 @@ describe('notebook definitions across an import', () => {
     const progress = await importArchive(zip, archiveClient(bob));
     expect(progress).toMatchObject({ created: 1, failed: 0 });
 
+    expect(await notebookOf(bob, notebook)).toMatchObject({
+      emoji: '🛒',
+      purpose: 'Things to buy: where, how much, whether ordered.',
+    });
+
     // Same types, options, scale and order — including the field no note had a value for,
     // which inference from values could never have brought back.
     const copied = await fieldsOf(bob, notebook);
@@ -407,6 +515,8 @@ describe('notebook definitions across an import', () => {
     const client = archiveClient(bob);
     await client.importNotebook({
       name: notebook,
+      emoji: '🧾',
+      purpose: 'Paper receipts, one per note.',
       fields: [
         { name: 'Merchant', type: 'text' },
         { name: 'Kind', type: 'select', options: ['Food'] },
@@ -418,6 +528,9 @@ describe('notebook definitions across an import', () => {
 
     const second = await client.importNotebook({
       name: notebook,
+      // The notebook has its own of both: kept, and the archive's named as not applied.
+      emoji: '🧮',
+      purpose: 'Something else entirely.',
       fields: [
         // Same type: nothing to do. Different type: left alone, and said so.
         { name: 'merchant', type: 'url' },
@@ -434,9 +547,19 @@ describe('notebook definitions across an import', () => {
       ],
     });
     expect(second.skipped).toEqual([
+      { kind: 'emoji', name: '🧮', reason: 'Already 🧾 here; left as it is' },
+      { kind: 'purpose', name: 'Something else entirely.', reason: 'Already has a purpose of its own; left as it is' },
       { name: 'merchant', reason: 'Already here as text, not url; left as it is' },
       { name: 'Fee', reason: 'Already here in USD, not EUR; left as it is' },
     ]);
+    expect(await notebookOf(bob, notebook)).toMatchObject({
+      emoji: '🧾',
+      purpose: 'Paper receipts, one per note.',
+    });
+
+    // The same values again are not a conflict, and say nothing.
+    const third = await client.importNotebook({ name: notebook, emoji: '🧾', fields: [] });
+    expect(third.skipped).toEqual([]);
 
     const fields = await fieldsOf(bob, notebook);
     expect(fields.map(({ name, type, options, scale, currency }) => ({ name, type, options, scale, currency }))).toEqual([
@@ -447,6 +570,25 @@ describe('notebook definitions across an import', () => {
       { name: 'Fee', type: 'number', options: [], scale: null, currency: 'USD' },
       { name: 'Paid', type: 'checkbox', options: [], scale: null, currency: null },
     ]);
+  });
+
+  it('give an existing notebook the emoji and purpose it does not have', async () => {
+    const notebook = `Bare ${Date.now()}`;
+    await json(
+      await api(bob, '/api/notebooks', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: notebook }),
+      }),
+    );
+    const result = await archiveClient(bob).importNotebook({
+      name: notebook,
+      emoji: '📦',
+      purpose: 'Shipping labels.',
+      fields: [],
+    });
+    expect(result.skipped).toEqual([]);
+    expect(await notebookOf(bob, notebook)).toMatchObject({ emoji: '📦', purpose: 'Shipping labels.' });
   });
 
   it('make a multi-select from a list value, and add the options a later value needs', async () => {

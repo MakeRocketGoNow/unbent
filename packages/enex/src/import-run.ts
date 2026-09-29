@@ -168,11 +168,16 @@ export interface ImportClient {
     fields?: Record<string, FieldValue>;
   }) => Promise<{ id: string; created: boolean }>;
 
+  /**
+   * `textSupplied` tells the server this file's text will follow through `saveFileText`,
+   * so it should not read the file itself; see `uploadFiles`.
+   */
   uploadFile: (
     noteId: string,
     filename: string,
     mime: string,
     bytes: Uint8Array,
+    options?: { textSupplied?: boolean },
   ) => Promise<{
     filename: string;
     /** `server` when the API is extracting the file's text itself; absent from older servers. */
@@ -182,17 +187,29 @@ export interface ImportClient {
   /** Rewrites the body once real attachment filenames are known. */
   updateBody?: (noteId: string, body: string) => Promise<void>;
 
-  /** Stores text extracted from an attachment so search can reach it. */
-  saveFileText?: (noteId: string, filename: string, text: string) => Promise<void>;
+  /**
+   * Stores text extracted from an attachment so search can reach it. `readBy: 'vision'`
+   * when the text is what the vision model read, restored from an archive's `described/`.
+   */
+  saveFileText?: (
+    noteId: string,
+    filename: string,
+    text: string,
+    readBy?: 'vision',
+  ) => Promise<void>;
 
   /**
    * Applies a notebook's definitions from the archive's `notebooks/<slug>.yaml`, before
    * any of its notes. Optional because an older server has no endpoint for it; the
    * archive still imports, with field types inferred from values as before.
+   *
+   * `skipped` names what the definition could not apply: a field by its name, or, with a
+   * `kind`, the notebook's own emoji or purpose, by the value the archive held.
    */
-  importNotebook?: (
-    definition: NotebookDefinition,
-  ) => Promise<{ id: string; skipped: Array<{ name: string; reason: string }> }>;
+  importNotebook?: (definition: NotebookDefinition) => Promise<{
+    id: string;
+    skipped: Array<{ name: string; reason: string; kind?: 'emoji' | 'purpose' }>;
+  }>;
 
   /**
    * Filenames already stored for a note.
@@ -413,6 +430,11 @@ export interface ImportFile {
   filename: string;
   mime: string;
   bytes: Uint8Array;
+  /**
+   * The text an Unbent archive carried beside the file, and who read it. Only that
+   * importer sets it; see `textSidecarPath` in `@unbent/shared`.
+   */
+  text?: { text: string; readBy: 'vision' | null };
 }
 
 /**
@@ -436,11 +458,28 @@ export async function uploadFiles(
   const renames = new Map<string, string>();
 
   for await (const file of files) {
-    const uploaded = await client.uploadFile(noteId, file.filename, file.mime, file.bytes);
+    /*
+       A file that arrived with its text is not read again, by anyone. The server is told
+       before the bytes land, because it starts reading the moment they do — a PDF through
+       extraction, a picture through the vision model, a paid request per file — and a read
+       that finished after the archive's text was saved would replace it with other words.
+       The text then goes in as it was, under the reader that wrote it. If saving it fails
+       the file is simply left unread, where the passes over pending files find it.
+    */
+    const supplied = file.text && client.saveFileText ? file.text : undefined;
+    const uploaded = supplied
+      ? await client.uploadFile(noteId, file.filename, file.mime, file.bytes, { textSupplied: true })
+      : await client.uploadFile(noteId, file.filename, file.mime, file.bytes);
     progress.filesUploaded += 1;
 
     if (uploaded.filename !== file.filename) {
       renames.set(file.filename, uploaded.filename);
+    }
+
+    if (supplied) {
+      await client.saveFileText!(noteId, uploaded.filename, supplied.text, supplied.readBy ?? undefined);
+      progress.filesIndexed += 1;
+      continue;
     }
 
     /**
