@@ -64,6 +64,15 @@ updates:
         patterns:
           - '*'
     open-pull-requests-limit: 5
+    # Not vitest 6, until Cloudflare's vitest integration supports it. apps/store-tests
+    # runs the per-account store against real Durable Object SQLite through
+    # `@cloudflare/vitest-plugin`, which peers on one vitest major at a time (4, as of
+    # 2026-09) while every other package here is on 5; the grouped major bump would move
+    # them all and leave the plugin with no vitest it can load. Minors and patches still
+    # flow. Lift this once the plugin's peer range and the workspace's major agree.
+    ignore:
+      - dependency-name: vitest
+        update-types: ['version-update:semver-major']
 
   # Android. Gradle and AndroidX move on their own schedule and the app is built in CI.
   - package-ecosystem: gradle

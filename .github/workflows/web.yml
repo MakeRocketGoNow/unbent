@@ -50,6 +50,12 @@ jobs:
       # script also drives a live wrangler dev with real D1 and R2, which does not run
       # here — that half stays local. See apps/api/test/README.md.
       - run: pnpm --filter @unbent/api test:unit
+      # The per-account note store, tested inside workerd against real Durable Object
+      # SQLite: schema, triggers, cascades and the bind limits a fake would not enforce.
+      # Its own package because Cloudflare's vitest integration pins vitest 4; see
+      # apps/store-tests/vitest.config.ts. Needs no build: the plugin tolerates the
+      # missing assets directory the loaded wrangler environment names.
+      - run: pnpm --filter @unbent/store-tests test
       - run: pnpm build
 
   # Ships main to production: the top level of apps/api/wrangler.toml, on whichever
