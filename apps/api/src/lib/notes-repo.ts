@@ -1,6 +1,5 @@
 import { ScopedRepo } from './repo.js';
 import {
-  decodeFieldValue,
   encodeFieldValue,
   endOfDay,
   excerptMarkdown,
@@ -24,346 +23,57 @@ import {
   type FieldValue,
   type Note,
   type NoteFieldsPatch,
-  type NoteFieldValue,
   type NoteSort,
   type NoteSummary,
   type NotebookDefinition,
   type NotebookSummary,
   type SearchResult,
-  fieldSortKey,
-  fieldSortsNumerically,
   DEFAULT_NOTE_SORT,
 } from '@unbent/shared';
-
-interface NoteRow {
-  id: string;
-  title: string;
-  body: string;
-  created_at: number;
-  updated_at: number;
-  notebook: string | null;
-  notebook_id: string | null;
-}
-
-/** A whole note with the names of its files: what one export page carries. */
-export type ExportedNote = Note & Pick<NoteSummary, 'attachments'>;
-
-interface SummaryRow {
-  id: string;
-  title: string;
-  body: string;
-  created_at: number;
-  updated_at: number;
-  deleted_at: number | null;
-  notebook: string | null;
-  notebook_id: string | null;
-  tags: string | null;
-  /** JSON array of `FieldJson`, from the correlated subquery in `list`. */
-  fields: string | null;
-  /** JSON array of `{filename, contentType}`, from the correlated subquery in `list`. */
-  attachments: string | null;
-}
-
-interface FieldRow {
-  id: string;
-  notebook_id: string;
-  name: string;
-  type: string;
-  options: string | null;
-  scale_max: number | null;
-  scale_step: number | null;
-  currency: string | null;
-  position: number;
-  value_count?: number;
-}
-
-/** One value as the list's `json_group_array` subquery emits it. */
-interface FieldJson {
-  fieldId: string;
-  name: string;
-  type: string;
-  text: string;
-  scaleMax: number | null;
-  scaleStep: number | null;
-  currency: string | null;
-  position: number;
-  notebookId: string;
-  notebook: string;
-}
-
-function rowToField(row: FieldRow): FieldDef {
-  return {
-    id: row.id,
-    notebookId: row.notebook_id,
-    name: row.name,
-    type: row.type as FieldType,
-    options: row.options ? (JSON.parse(row.options) as string[]) : [],
-    // Both columns or neither: a half-written scale would make the star control guess.
-    scale:
-      row.scale_max !== null && row.scale_step !== null
-        ? { max: row.scale_max, step: row.scale_step === 0.5 ? 0.5 : 1 }
-        : null,
-    currency: row.currency,
-    position: row.position,
-    ...(row.value_count !== undefined ? { valueCount: row.value_count } : {}),
-  };
-}
-
-/** Options are only stored for the types that carry them; every other type gets NULL, whatever was sent. */
-function optionsColumn(type: FieldType, options: string[]): string | null {
-  return fieldHasOptions(type) ? JSON.stringify(options) : null;
-}
+import {
+  ATTACHMENTS_SUBQUERY,
+  FIELDS_SUBQUERY,
+  PURGE_PAGE,
+  SCOPE_DRIVEN_SEARCH_MAX,
+  SEARCH_OVERFETCH,
+  SORTS,
+  TRASH_SORT,
+  currencyColumn,
+  decodeAttachmentsJson,
+  decodeCursor,
+  decodeFieldsJson,
+  fieldSort,
+  isJsonArray,
+  keysOfDeletedNotes,
+  nextCursor,
+  optionsColumn,
+  placeholders,
+  rowToField,
+  runs,
+  sameFieldText,
+  sameTagSet,
+  scaleColumns,
+  scaleTightens,
+  splitTags,
+  tierColumns,
+  tierRankMatch,
+  toFtsQuery,
+  toSearchResult,
+  uniqueTags,
+  type ExportedNote,
+  type FieldRow,
+  type NoteRow,
+  type SearchRow,
+  type SummaryRow,
+} from '../store/notes-shared.js';
 
 /**
- * Whether stored text is a JSON array, the form a multi-select's value takes. Guards the
- * one place a value is read back and rewritten rather than compared, where a row that is
- * somehow not the expected shape must be left alone, not thrown on.
+ * The names the routes, the export and the MCP tools import from here, re-exported from
+ * where they now live: the pure helpers moved to store/notes-shared.ts so the per-user
+ * store can build its queries from the same code, and nothing importing them had to move.
  */
-function isJsonArray(text: string): boolean {
-  try {
-    return Array.isArray(JSON.parse(text));
-  } catch {
-    return false;
-  }
-}
+export { keysOfDeletedNotes, nextCursor, toFtsQuery, type ExportedNote };
 
-/**
- * A currency belongs only to a plain `number`: a field converted away from number drops
- * it, for the reason `scaleColumns` gives, and a rating drops it because a rating is not
- * an amount of money — the schema refuses both in one patch, and this keeps it true when
- * a scale arrives on a field that had a currency.
- */
-function currencyColumn(
-  type: FieldType,
-  scale: FieldScale | null | undefined,
-  currency: string | null | undefined,
-): string | null {
-  return type === 'number' && !scale && currency ? currency : null;
-}
-
-/**
- * A scale belongs only to a `number`. A field converted away from number drops it, the
- * same way `optionsColumn` drops options when a field stops being a select — otherwise a
- * scale would lie in wait and re-bound the field if it ever became a number again.
- */
-function scaleColumns(type: FieldType, scale: FieldScale | null | undefined) {
-  return type === 'number' && scale
-    ? { max: scale.max, step: scale.step }
-    : { max: null, step: null };
-}
-
-/**
- * Whether moving to `next` can invalidate a value that was legal under `prev`.
- *
- * Only a tightening needs the values re-planned, and re-planning is a read plus a write of
- * every row — worth skipping when nothing can fail. A lower max cuts the top off, and a
- * coarser step (0.5 to 1) outlaws every half. Gaining a scale where there was none tightens
- * by definition, since a plain number is unbounded and may hold 0, 12 or -3. Losing one
- * never does, and neither does widening.
- */
-function scaleTightens(
-  prev: FieldScale | null,
-  next: { max: number | null; step: number | null },
-): boolean {
-  if (next.max === null || next.step === null) return false;
-  if (!prev) return true;
-  return next.max < prev.max || next.step > prev.step;
-}
-
-/**
- * A note's values in the order the editor and the list show them: the note's own
- * notebook's fields in definition order, then anything left over from a notebook the note
- * has since left. Ordered here rather than in SQL because `json_group_array(... ORDER BY)`
- * needs a newer SQLite than D1 promises.
- */
-function decodeFieldsJson(json: string | null, ownNotebookId: string | null): NoteFieldValue[] {
-  if (!json) return [];
-  const rows = JSON.parse(json) as FieldJson[];
-  return rows
-    .sort((a, b) => {
-      const aOwn = a.notebookId === ownNotebookId ? 0 : 1;
-      const bOwn = b.notebookId === ownNotebookId ? 0 : 1;
-      return aOwn - bOwn || a.notebook.localeCompare(b.notebook) || a.position - b.position;
-    })
-    .map((r) => ({
-      fieldId: r.fieldId,
-      name: r.name,
-      type: r.type as FieldType,
-      value: decodeFieldValue(r.type as FieldType, r.text),
-      // Both columns or neither, as `rowToField` does: a list row would otherwise have to
-      // guess how many glyphs a half-written scale means.
-      scale:
-        r.scaleMax !== null && r.scaleStep !== null
-          ? { max: r.scaleMax, step: r.scaleStep === 0.5 ? (0.5 as const) : (1 as const) }
-          : null,
-      currency: r.currency,
-      notebookId: r.notebookId,
-      notebook: r.notebook,
-    }));
-}
-
-/**
- * The correlated subquery that hands `list` and `get` a note's values as one JSON
- * column — the same shape as the tags subquery beside it, so the per-row cost is one
- * primary-key lookup rather than a join that multiplies rows. `json_object` rather than
- * a delimited string because a value can contain any character a delimiter could be.
- *
- * The name falls back to `f.notebook_name`, because a definition outlives the notebook it
- * belonged to (0017). An inner join here would have dropped the value from the note
- * entirely once the notebook row went, which is the data loss the tombstone exists to
- * prevent — a value is a note's own data, and a deleted notebook is not a reason to stop
- * showing it.
- *
- * Nearly every value belongs to the note's own notebook, whose name both callers have
- * already joined as `nb`, so that is used first; only a value left over from another
- * notebook looks its notebook up. Joining `notebooks` once per value, as this did, was
- * most of a list page's cost in a notebook with fields: a page of a 770-note notebook
- * with nine fields read 2.2k rows at 13k notes, now 1.6k. `COALESCE` stops at the first
- * name it finds, so the lookup runs only for a leftover.
- *
- * Callers must join the note's notebook as `nb`.
- */
-const FIELDS_SUBQUERY = `(SELECT json_group_array(json_object(
-                 'fieldId', f.id, 'name', f.name, 'type', f.type, 'text', nf.value_text,
-                 'scaleMax', f.scale_max, 'scaleStep', f.scale_step, 'currency', f.currency,
-                 'position', f.position, 'notebookId', f.notebook_id,
-                 'notebook', COALESCE(
-                   CASE WHEN f.notebook_id = n.notebook_id THEN nb.name END,
-                   (SELECT name FROM notebooks WHERE id = f.notebook_id),
-                   f.notebook_name)))
-            FROM note_fields nf
-            JOIN notebook_fields f ON f.id = nf.field_id
-           WHERE nf.note_id = n.id) AS fields`;
-
-/**
- * Unit separator (U+001F): cannot occur in a tag name, so it is a safe group_concat
- * delimiter. Written as an escape rather than a literal so the invisible byte cannot be
- * mangled by an editor or a copy-paste.
- */
-const TAG_SEP = '\u001F';
-
-/**
- * The files a note stores, for its list row: name and declared type, in the order they
- * were attached, so the first one shown is the first one filed.
- *
- * From the attachment rows rather than from links in the body. The rows are what the
- * note actually holds — a file whose link was deleted from the text is still there, and
- * a link can name a file that was never uploaded — and the row is the same source the
- * attachments panel lists from, so the two agree. The excerpt drops attachment links for
- * the same reason: the files are shown once, here.
- *
- * An inner SELECT for the order: `json_group_array` collects in scan order, and only a
- * recent SQLite accepts ORDER BY inside the aggregate itself.
- */
-const ATTACHMENTS_SUBQUERY = `(SELECT json_group_array(json_object(
-                 'filename', a.filename, 'contentType', a.content_type))
-            FROM (SELECT filename, content_type FROM attachments
-                   WHERE note_id = n.id ORDER BY created_at, filename) a) AS attachments`;
-
-function decodeAttachmentsJson(json: string | null): NonNullable<NoteSummary['attachments']> {
-  if (!json) return [];
-  return JSON.parse(json) as NonNullable<NoteSummary['attachments']>;
-}
-
-/**
- * How many rows past the page each later search tier reads, as a multiple of the limit.
- *
- * A tag, field or file tier yields one row per matching tag, value or file, not per note:
- * a note tagged with three matching tags is three rows until the window function keeps its
- * best one. The tier is read in rank order and cut off at this multiple of the page, so
- * the page is exact unless the top of a tier averages more than this many rows per note —
- * in which case the page comes back short rather than wrong. Four is well past what an
- * archive shows (most notes carry one or two files) and still bounded.
- */
-const SEARCH_OVERFETCH = 4;
-
-/**
- * The most notes a search's notebook or tag filter can name and still be searched note by
- * note rather than match by match. See `scopeDrivenSearchSql`.
- *
- * The two shapes cost differently: the FTS-driven one pays for every archive-wide match
- * until it has a page inside the scope, the scope-driven one about 20–40 rows per note in
- * scope whatever the query. Measured at 13k notes, a common word in a 4-note notebook read
- * 64k rows FTS-driven and 83 scope-driven; at 120 notes scope-driven read 2.2k, and by 770
- * it read 30k, worse than the FTS-driven page. A hundred keeps the scope-driven worst case
- * to a few thousand rows.
- */
-const SCOPE_DRIVEN_SEARCH_MAX = 100;
-
-/**
- * The four sources a search reads, in tier order, and what a row from each says about its
- * match: the FTS table, which of its columns the snippet comes from, and which of the
- * matched columns it fills. `weights` is the bm25 weighting, where a source has one — the
- * note's title counts ten times its body.
- *
- * Both query shapes — `scopeDrivenSearchSql` and the FTS-driven query in `search` — select
- * exactly these columns for every tier and differ only in how they reach the rows, so the
- * columns are written once, in `tierColumns`. A snippet's width, a tier's place or a fifth
- * source changed in one shape and not the other would rank the same note differently
- * depending on how large the filter was.
- */
-interface SearchTier {
-  tier: number;
-  fts: string;
-  /** Which of the FTS table's columns the snippet is cut from. */
-  snippet: number;
-  weights: string | null;
-  /** The matched columns this source fills; the rest are NULL. */
-  matched: { file?: string; field?: string; tag?: string };
-}
-
-const SEARCH_TIERS: Record<'note' | 'tag' | 'field' | 'file', SearchTier> = {
-  note: { tier: 0, fts: 'notes_fts', snippet: 1, weights: '10.0, 1.0', matched: {} },
-  tag: { tier: 1, fts: 'tags_fts', snippet: 0, weights: null, matched: { tag: 't.name' } },
-  field: { tier: 2, fts: 'note_fields_fts', snippet: 0, weights: null, matched: { field: 'f.name' } },
-  file: { tier: 3, fts: 'attachment_text_fts', snippet: 0, weights: null, matched: { file: 'at.filename' } },
-};
-
-/**
- * One tier's SELECT list. `row` is the alias the note's own columns come from. `rank` is
- * how the shape reads relevance: the FTS-driven query orders by the vtab's `rank` column,
- * which streams in rank order so its LIMIT can stop early (the weights are applied in its
- * WHERE, by `tierRankMatch`); the scope-driven one probes a row at a time and calls
- * `bm25()` with the weights directly. Both give the same numbers.
- */
-function tierColumns(source: keyof typeof SEARCH_TIERS, row: 'n' | 's', rank: 'vtab' | 'bm25'): string {
-  const t = SEARCH_TIERS[source];
-  const score = rank === 'vtab' ? `${t.fts}.rank` : `bm25(${t.fts}${t.weights ? `, ${t.weights}` : ''})`;
-  return `${row}.id, ${row}.title, ${row}.updated_at,
-                   snippet(${t.fts}, ${t.snippet}, '<<', '>>', '…', 24) AS snippet,
-                   ${t.matched.file ?? 'NULL'} AS matched_file,
-                   ${t.matched.field ?? 'NULL'} AS matched_field,
-                   ${t.matched.tag ?? 'NULL'} AS matched_tag,
-                   ${score} AS rank,
-                   ${t.tier} AS tier`;
-}
-
-/** The weighting the FTS-driven query's `rank` column applies. Only the note tier has one. */
-function tierRankMatch(source: keyof typeof SEARCH_TIERS): string {
-  return `${SEARCH_TIERS[source].fts}.rank MATCH 'bm25(${SEARCH_TIERS[source].weights})'`;
-}
-
-interface SearchRow {
-  id: string;
-  title: string;
-  updated_at: number;
-  snippet: string;
-  matched_file: string | null;
-  matched_field: string | null;
-  matched_tag: string | null;
-}
-
-function toSearchResult(r: SearchRow): SearchResult {
-  return {
-    id: r.id,
-    title: r.title,
-    updatedAt: r.updated_at,
-    snippet: r.snippet,
-    ...(r.matched_file ? { matchedFile: r.matched_file } : {}),
-    ...(r.matched_field ? { matchedField: r.matched_field } : {}),
-    ...(r.matched_tag ? { matchedTag: r.matched_tag } : {}),
-  };
-}
 
 /**
  * Search for a small notebook or tag: start from the notes in scope and ask each FTS table
@@ -439,32 +149,6 @@ function scopeDrivenSearchSql(owner: string, scoped: string): string {
            WHERE place = 1
            ORDER BY tier, rank, id
            LIMIT ?3`;
-}
-
-/**
- * Turns arbitrary user input into a valid FTS5 MATCH expression.
- *
- * FTS5 query syntax is a real grammar: a stray quote, a bare `*`, or a reserved word like
- * `AND` raises a SQL error rather than returning nothing. Users type search boxes, not
- * query languages, so every term is quoted as a literal phrase and the last one gets a
- * prefix `*` so results appear while typing.
- */
-export function toFtsQuery(raw: string): string {
-  const terms = raw
-    .replace(/["*()]/g, ' ')
-    .split(/\s+/)
-    .map((t) => t.trim())
-    .filter((t) => t.length > 0);
-
-  if (terms.length === 0) return '';
-
-  return terms
-    .map((term, i) => {
-      const quoted = `"${term}"`;
-      // Prefix-match only the final term: mid-query terms are complete words.
-      return i === terms.length - 1 ? `${quoted}*` : quoted;
-    })
-    .join(' AND ');
 }
 
 /**
@@ -623,205 +307,6 @@ function filterConditions(
   }
 
   return conditions;
-}
-
-/**
- * The sort column and its cursor, in one place.
- *
- * Keyset pagination compares against the column it ordered by, so the two must always
- * agree: ordering by title while paging on `updated_at` skips and repeats rows. Pairing
- * them here means a new sort cannot be added with a mismatched cursor.
- *
- * `title` is compared `COLLATE NOCASE` so paging matches the order the rows came back in;
- * a binary comparison would put every lowercase title after every uppercase one and drop
- * rows from the middle of the sequence.
- */
-const SORTS: Record<
-  NoteSort,
-  {
-    column: string;
-    /**
-     * The column a `from`/`to` range applies to under this sort: the date the rows show.
-     * For the two date sorts that is the sort column itself. Under the title sort the rows
-     * show when they were updated — see NoteListItem and the Android NoteRow — so the
-     * range reads that column; comparing epoch-ms against `n.title`, which is what falling
-     * back to the sort column did, matched nothing at all.
-     */
-    dateColumn: string;
-    collate?: string;
-    text?: boolean;
-    keyOf: (row: NoteSummary) => string | number;
-  }
-> = {
-  updated: { column: 'n.updated_at', dateColumn: 'n.updated_at', keyOf: (r) => r.updatedAt },
-  created: { column: 'n.created_at', dateColumn: 'n.created_at', keyOf: (r) => r.createdAt },
-  title: {
-    column: 'n.title',
-    dateColumn: 'n.updated_at',
-    collate: 'COLLATE NOCASE',
-    text: true,
-    keyOf: (r) => r.title,
-  },
-};
-
-/** Trash is ordered by when it was deleted, whatever sort the live list is using. */
-const TRASH_SORT = {
-  column: 'n.deleted_at',
-  dateColumn: 'n.deleted_at',
-  keyOf: (r: NoteSummary) => r.deletedAt ?? r.updatedAt,
-};
-
-/**
- * A sort by one custom field's value, built per request from its definition.
- *
- * Not an entry in `SORTS` because the column depends on the type: the numeric types
- * order by their `value_num` shadow and the rest by `value_text`, the same split
- * `fieldSortsNumerically` draws for the cursor. The column names the value row aliased
- * `sf`, which `pageRows` walks in order; notes without a value come after every note with
- * one, whichever direction. The rows show their updated date under this sort, as under the
- * title sort, so that is what a date range reads.
- */
-function fieldSort(def: FieldDef) {
-  const numeric = fieldSortsNumerically(def.type);
-  return {
-    column: numeric ? 'sf.value_num' : 'sf.value_text',
-    dateColumn: 'n.updated_at',
-    collate: numeric ? '' : ' COLLATE NOCASE',
-    text: !numeric,
-    keyOf: (r: NoteSummary) => fieldSortKey(def, r.fields),
-  };
-}
-
-/**
- * The cursor is the sort key *and* the id of the last row.
- *
- * Comparing the sort key alone is only safe when it is unique. Titles are not — an
- * archive is full of notes called "Receipt" — and a strict `<` on the key would step
- * over every row sharing the boundary value. Carrying the id makes the comparison a
- * lexicographic one on `(key, id)`, which is exactly the order the rows came back in.
- *
- * The id is appended after a separator that cannot occur in a uuid, so a title containing
- * the separator still round-trips: only the final segment is the id.
- */
-const CURSOR_SEP = '\u001F';
-
-function encodeCursor(key: string | number, id: string): string {
-  return `${key}${CURSOR_SEP}${id}`;
-}
-
-function decodeCursor(cursor: string): { key: string; id: string } | null {
-  const at = cursor.lastIndexOf(CURSOR_SEP);
-  if (at === -1) return null;
-  return { key: cursor.slice(0, at), id: cursor.slice(at + 1) };
-}
-
-/**
- * The cursor for the next page, or null if this page was not full.
- *
- * Lives beside `SORTS` rather than in the route so the column that ordered the query is
- * the column that pages it — the route no longer needs to know how a sort is implemented.
- */
-export function nextCursor(
-  items: NoteSummary[],
-  opts: {
-    limit: number;
-    sort: NoteSort;
-    trashed?: boolean | undefined;
-    /** The field the page was sorted by, when it was; see `fieldSort`. */
-    sortField?: FieldDef | undefined;
-  },
-): string | null {
-  const last = items[items.length - 1];
-  if (items.length < opts.limit || !last) return null;
-  const spec = opts.trashed
-    ? TRASH_SORT
-    : opts.sortField
-      ? fieldSort(opts.sortField)
-      : SORTS[opts.sort];
-  return encodeCursor(spec.keyOf(last), last.id);
-}
-
-function splitTags(joined: string | null): string[] {
-  if (!joined) return [];
-  return joined.split(TAG_SEP).filter((t) => t.length > 0);
-}
-
-/**
- * Attachment keys that belong to notes a purge actually deleted.
- *
- * The SELECT that finds keys and the DELETE that removes notes are separate statements,
- * and a restore from another tab or over MCP can land between them. Returning every key
- * the SELECT saw would then delete the files of a note that is live again. The singular
- * route already refuses to sweep blobs unless the row went; the batch paths have to do
- * the same per id.
- */
-export function keysOfDeletedNotes(
-  rows: Array<{ r2_key: string; note_id: string }>,
-  deletedIds: string[],
-): string[] {
-  const gone = new Set(deletedIds);
-  return rows.filter((r) => gone.has(r.note_id)).map((r) => r.r2_key);
-}
-
-/**
- * Whether a patch's tag list would leave the stored tags exactly as they are.
- *
- * Order is not significant — `note_tags` has none and `get` returns them sorted — so this
- * compares sets. Blanks and duplicates are normalized away first, matching what `setTags`
- * would have written, so `['work', 'work', ' ']` against a stored `['work']` is no edit.
- */
-/** Whether a stored value and a resent one are the same text, a list compared as a list. */
-function sameFieldText(a: FieldValue, b: FieldValue): boolean {
-  return Array.isArray(a) || Array.isArray(b)
-    ? JSON.stringify(a) === JSON.stringify(b)
-    : String(a) === String(b);
-}
-
-function sameTagSet(patch: string[], stored: string[]): boolean {
-  const next = new Set(patch.map((t) => t.trim()).filter((t) => t.length > 0));
-  if (next.size !== stored.length) return false;
-  return stored.every((t) => next.has(t));
-}
-
-/**
- * A tag list as `setTags` would write it: trimmed, blanks dropped, each name once.
- * Compared exactly, as the UNIQUE index compares them — "Receipt" and "receipt" are two tags.
- */
-function uniqueTags(tags: string[]): string[] {
-  return [...new Set(tags.map((t) => t.trim()).filter((t) => t.length > 0))];
-}
-
-/**
- * D1 binds at most 100 parameters to one statement, so a set of ids is written in runs of
- * this many, leaving room for the handful of other values a statement binds. `purge` uses
- * 99 with a single other bind; the batch methods below bind a few more, and one number
- * that is safe for all of them is easier to keep right than one per query.
- */
-const ID_RUN = 90;
-
-/** Notes one `purge` call deletes: ten runs of 99 ids, so a call stays a couple of dozen statements. */
-const PURGE_PAGE = 990;
-
-/*
- * Every statement that names notes by an `id IN (…)` run writes its owner condition as
- * `+user_id`. The unary plus is SQLite's way to keep a column's index out of the plan
- * while still applying the condition — the idiom `ownerCondition` uses for tag filters.
- * Without it the planner, which has no statistics and so takes `user_id` to be selective,
- * answered "these fifty notes" by walking a `user_id` index over every note the account
- * has and testing each against the list: 13k rows per statement at 13k notes, for a
- * selection of two, and a bulk move, tag or trash is several statements. With it, each id
- * is a primary-key lookup. The owner check still runs on every row it finds.
- */
-
-function runs<T>(items: T[], size = ID_RUN): T[][] {
-  const out: T[][] = [];
-  for (let i = 0; i < items.length; i += size) out.push(items.slice(i, i + size));
-  return out;
-}
-
-/** `?n, ?n+1, …` — `count` placeholders numbered from `from`, for an `IN (…)` list. */
-function placeholders(from: number, count: number): string {
-  return Array.from({ length: count }, (_, i) => `?${from + i}`).join(', ');
 }
 
 /**

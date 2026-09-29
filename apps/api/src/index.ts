@@ -21,6 +21,15 @@ import { previewRelay } from './routes/preview-relay.js';
 import { mcpRoutes } from './routes/mcp.js';
 import { clientErrors } from './routes/client-errors.js';
 
+/**
+ * The per-account note store, exported so the runtime can construct it. This is one of
+ * the two files allowed to import from `cloudflare:workers` as a value (the class module
+ * is the other); everywhere else reaches the object through the `USER_STORE` binding and
+ * an `import type`, so the Node-run unit tests never load a module that only exists in
+ * workerd. A static test in src/store/ holds that line.
+ */
+export { UserStore } from './store/user-store.js';
+
 const app = new Hono<AppEnv>();
 
 app.use('*', logger());

@@ -6,7 +6,9 @@
 #   - Resources are named, never identified. `wrangler deploy` provisions a D1 database
 #     and an R2 bucket with these names on the first deploy and connects to the existing
 #     ones on every deploy after, so there is no id to paste and nothing here belongs to
-#     one account. Names are per account, so keeping unbent.app's is fine.
+#     one account. Names are per account, so keeping unbent.app's is fine. The per-account
+#     note stores are Durable Objects, which need no provisioning at all: the class is
+#     exported from the Worker, and the first request for a user creates theirs.
 #   - There is no APP_URL. The Worker derives its origin from the request when none is
 #     configured (see src/lib/app-url.ts), so an instance need not know its address before
 #     its first deploy prints one. An operator who wants to pin a single origin sets it as
@@ -65,6 +67,26 @@ bucket_name = "unbent-blobs"
 [ai]
 binding = "AI"
 
+# One SQLite-backed Durable Object per account, holding that account's notes; see
+# src/store/user-store.ts and the README's "Where your notes live". Nothing to provision:
+# the class is exported from the Worker and the runtime creates each object the first time
+# a user id names it. Unlike the bindings above this one is *not* copied into the named
+# environments by wrangler, so each of them repeats it below, the same way they repeat D1
+# and R2. The migration block is inherited, so it appears once.
+[[durable_objects.bindings]]
+name = "USER_STORE"
+class_name = "UserStore"
+
+# Declares the class SQLite-backed. `new_sqlite_classes` rather than `new_classes`: the
+# key-value flavour has no `ctx.storage.sql`, and a class that has been deployed under one
+# flavour cannot be moved to the other. Never remove this block, and never remove the
+# class export while it stands: a deploy that drops an exported class needs a further
+# migration with `deleted_sqlite_classes`, or wrangler refuses it. Do not add a declarative
+# `exports` key beside this; it cannot coexist with `migrations`.
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["UserStore"]
+
 # The SPA is served by this same Worker, so "same-origin" is structural rather than a
 # routing rule that has to be kept correct in a dashboard. Session cookies and OAuth
 # callbacks then need no CORS or SameSite workarounds.
@@ -114,6 +136,10 @@ migrations_dir = "migrations"
 [[env.local.r2_buckets]]
 binding = "BLOBS"
 bucket_name = "unbent-blobs"
+
+[[env.local.durable_objects.bindings]]
+name = "USER_STORE"
+class_name = "UserStore"
 
 [env.local.vars]
 # The SPA origin for OAuth redirects and cookie scope. `pnpm dev` overrides it with the
@@ -193,6 +219,15 @@ migrations_dir = "migrations"
 binding = "BLOBS"
 bucket_name = "unbent-dev-blobs"
 
+# Each preview Worker has a namespace of its own, so a preview's per-account stores are
+# not the dev instance's, although its D1 and R2 still are. Notes therefore no longer
+# carry between a preview and dev the way they did on the shared database; `pnpm seed:demo
+# --url` fills a preview. The sweep cron (top level) is inherited and switched off here,
+# below, because a preview lives for the length of a pull request.
+[[env.preview.durable_objects.bindings]]
+name = "USER_STORE"
+class_name = "UserStore"
+
 [env.preview.assets]
 directory = "../web/dist"
 binding = "ASSETS"
@@ -242,6 +277,10 @@ migrations_dir = "migrations"
 [[env.dev.r2_buckets]]
 binding = "BLOBS"
 bucket_name = "unbent-dev-blobs"
+
+[[env.dev.durable_objects.bindings]]
+name = "USER_STORE"
+class_name = "UserStore"
 
 [env.dev.vars]
 # Unlike a preview's, this one is a constant and belongs in the file: the host does not

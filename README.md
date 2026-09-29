@@ -24,7 +24,10 @@ should never depend on it being hard.
 
 - **Cloudflare Workers** + Hono — API, and static-asset hosting for the SPA
 - **TanStack Router + Query** — real routes, typed search params, cached loaders
-- **Cloudflare D1** (SQLite) — note text, metadata, FTS5 full-text search
+- **Cloudflare D1** (SQLite) — accounts, sessions, OAuth clients, and (until the cutover
+  below lands) note text, metadata and FTS5 full-text search
+- **Cloudflare Durable Objects** (SQLite) — one per account, where the notes are moving;
+  see [Where your notes live](#where-your-notes-live)
 - **Cloudflare R2** — attachment blobs
 - **Better Auth** — OAuth (Google, GitHub)
 - **Vite + React + CodeMirror 6** — Markdown editor, styled in place (see [Editing](#editing))
@@ -1261,6 +1264,31 @@ and previews, so passkeys made there work from the app too.
 
 - **iOS has no share extension yet.** Safari does not implement Web Share Target, so an iOS
   capture needs a real share extension and a paid Apple Developer account.
+
+## Where your notes live
+
+Each account's notes are moving into a database of their own: a SQLite-backed Durable
+Object per user, `UserStore` in `apps/api/src/store/`, holding that account's notes, tags,
+notebooks, fields, attachment rows and search indexes and nothing else. D1 keeps what is
+shared across accounts — sign-in, connected apps, upload links, and a directory of accounts
+— and R2 keeps the files. The reasons are in the decision record on the issue that started
+this; the short one is that the app's partition is absolute (no sharing, no cross-account
+read anywhere), and when the natural partition is the user and each partition is tens of
+megabytes, one SQLite per user is the shape the primitive was built for. Requests get
+faster, since every statement after the first call runs in-process; restore becomes per
+account rather than per instance; and the multi-device sync that is planned next wants
+exactly one writer per user.
+
+**Today the object is deployed and tested but not yet in the request path**: every route
+still reads and writes D1. The cutover is the next change, and this section grows with it —
+how an existing account's notes are copied over on first open, what the operator can see
+(`stats`, a read-only SQL route, a dump), how account deletion wipes the object, and where
+an object is created (`STORE_JURISDICTION=eu` pins new accounts' stores to the EU; unset,
+the platform places each near its first request).
+
+What does not change: notes are Markdown with frontmatter, export is the same folder tree,
+and a restore is an import. The store is SQLite under the hood, and the dump route will hand
+back a plain schema-plus-rows file that `sqlite3` can rebuild an account from.
 
 ## Tenant isolation
 

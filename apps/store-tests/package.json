@@ -1,0 +1,19 @@
+{
+  "name": "@unbent/store-tests",
+  "version": "0.0.0",
+  "private": true,
+  "license": "FSL-1.1-Apache-2.0",
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "@cloudflare/vitest-plugin": "^1.3.2",
+    "@cloudflare/workers-types": "^5.20260915.1",
+    "@unbent/api": "workspace:*",
+    "@unbent/shared": "workspace:*",
+    "typescript": "^7.0.2",
+    "vitest": "^4.1.0"
+  }
+}

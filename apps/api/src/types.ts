@@ -1,10 +1,27 @@
 import type { NotesRepo } from './lib/notes-repo.js';
 import type { AttachmentsRepo } from './lib/attachments-repo.js';
+import type { UserStore } from './store/user-store.js';
 
 /** Bindings declared in wrangler.toml, plus secrets supplied via `wrangler secret`. */
 export interface Env {
   DB: D1Database;
   BLOBS: R2Bucket;
+  /**
+   * One SQLite-backed Durable Object per account, holding that account's notes. Reached
+   * by user id: `USER_STORE.get(USER_STORE.idFromName(userId))`. A type-only import of the
+   * class, so nothing outside src/store/ and the entry point pulls `cloudflare:workers`
+   * into its module graph — the unit tests run under Node, where that import has no
+   * meaning. See src/store/user-store.ts.
+   */
+  USER_STORE: DurableObjectNamespace<UserStore>;
+  /**
+   * Where each account's store is created. Unset — every instance today — lets the
+   * runtime place an object near the first request for it. `eu` pins every new store to
+   * the EU jurisdiction, for an operator whose users need their notes kept there; it
+   * applies to objects created after it is set, and moves none. Read once per request in
+   * `reposFor`.
+   */
+  STORE_JURISDICTION?: string;
   /**
    * Workers AI, for extracting a PDF's text on upload. Bound in production only — see
    * wrangler.toml — so it is optional here, and its absence means the browser does the
