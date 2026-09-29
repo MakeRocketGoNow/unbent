@@ -512,11 +512,14 @@ class MainActivity : ComponentActivity() {
             fun route(url: String) {
                 if (handled || url.startsWith("about:")) return
                 handled = true
-                val path = inAppWindowPath(origin, url)
-                if (path != null) {
-                    open(path)
-                } else {
-                    openOutside(this@MainActivity, classify(origin, url))
+                when (val destination = classify(origin, url)) {
+                    // A `blob:`, `data:` or `javascript:` address the page made is dropped on
+                    // purpose. It has no tab to go to, and loading it here would replace the
+                    // page exactly as a same-origin link used to. Nothing on the site opens
+                    // one in a new window; a feature that wants to should hand the app a path
+                    // or a file, not rely on this.
+                    Destination.InApp -> inAppWindowPath(origin, url)?.let { open(it) }
+                    else -> openOutside(this@MainActivity, destination)
                 }
                 // Posted through the host, not the popup. The popup is never attached to a
                 // window, and a view that is not attached holds what is posted to it until it
