@@ -27,9 +27,9 @@ export interface Sql {
    * wanted the array anyway, or a `RETURNING` count, which is the array's length. A
    * statement with nothing to return gives `[]`.
    */
-  exec<T extends Record<string, unknown> = Record<string, unknown>>(query: string, ...binds: Bind[]): T[];
+  exec<T = Record<string, unknown>>(query: string, ...binds: Bind[]): T[];
   /** The first row or null. `[0] ?? null`, written once so a missing row is `null` and never `undefined`. */
-  first<T extends Record<string, unknown> = Record<string, unknown>>(query: string, ...binds: Bind[]): T | null;
+  first<T = Record<string, unknown>>(query: string, ...binds: Bind[]): T | null;
   /**
    * Runs `fn` in one transaction, rolled back if it throws.
    *
@@ -66,7 +66,7 @@ export function instrumentedSql(
 ): Sql {
   const raw = storage.sql;
   const counters = { rowsRead: 0, rowsWritten: 0, statements: 0 };
-  const exec = <T extends Record<string, unknown>>(query: string, ...binds: Bind[]): T[] => {
+  const exec = <T,>(query: string, ...binds: Bind[]): T[] => {
     const started = Date.now();
     const cursor = raw.exec(query, ...binds.map((b) => (b === undefined ? null : b)));
     const rows = cursor.toArray() as T[];
@@ -83,7 +83,7 @@ export function instrumentedSql(
   };
   return {
     exec,
-    first: <T extends Record<string, unknown>>(query: string, ...binds: Bind[]) => exec<T>(query, ...binds)[0] ?? null,
+    first: <T,>(query: string, ...binds: Bind[]) => exec<T>(query, ...binds)[0] ?? null,
     tx: (fn) => storage.transactionSync(fn),
     counters,
     resetCounters() {

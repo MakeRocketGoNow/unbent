@@ -532,13 +532,23 @@ export function filterConditions(
     conditions.push(`${dateColumn} <= ?${binds.length}`);
   }
 
+  /*
+   * With a tag filter beside it, the notebook condition is written `+n.notebook_id`, for
+   * the reason `liveCondition` hides `deleted_at`: the per-notebook indexes lead with
+   * this column, and the planner would otherwise start from the notebook and test every
+   * note in it against the tag — 606 rows to count a tag on three notes in a 600-note
+   * notebook (measured at 3k notes). On the shared database the same index led with
+   * `user_id`, so hiding that column hid this one too; here it has to be said. Without a
+   * tag the notebook is the way in and its index is exactly what a page wants.
+   */
+  const notebookColumn = opts.tags && opts.tags.length > 0 ? '+n.notebook_id' : 'n.notebook_id';
   if (opts.notebook === UNFILED) {
-    conditions.push('n.notebook_id IS NULL');
+    conditions.push(`${notebookColumn} IS NULL`);
   } else if (opts.notebook) {
     binds.push(opts.notebook);
     // Matched by name, case-insensitively, so a URL filter written in any case works.
     conditions.push(
-      `n.notebook_id = (SELECT id FROM notebooks WHERE name = ?${binds.length} COLLATE NOCASE)`,
+      `${notebookColumn} = (SELECT id FROM notebooks WHERE name = ?${binds.length} COLLATE NOCASE)`,
     );
   }
 
@@ -734,6 +744,18 @@ export function nextCursor(
 ): string | null {
   const last = items[items.length - 1];
   if (items.length < opts.limit || !last) return null;
+  return cursorAfter(last, opts);
+}
+
+/**
+ * The cursor that resumes after `last`, whatever the page's length. `nextCursor` treats a
+ * short page as the end; a page cut short for another reason — the export's byte budget —
+ * has to say where it stopped explicitly, or the client would take the cut as the end.
+ */
+export function cursorAfter(
+  last: NoteSummary,
+  opts: { sort: NoteSort; trashed?: boolean | undefined; sortField?: FieldDef | undefined },
+): string {
   const spec = opts.trashed
     ? TRASH_SORT
     : opts.sortField
@@ -805,11 +827,16 @@ export const ID_RUN = 90;
 export const PURGE_PAGE = 990;
 
 /*
- * A statement that names notes by an `id IN (…)` run and also tests `deleted_at` needs no
- * steering: `deleted_at IS NULL AND id IN (…)` takes the primary key (measured
- * 2026-09-29). On the shared database the same statements wrote `+user_id`, because the
- * planner took that column to be selective and walked its index over the whole account
- * for a selection of two; the column is gone and the hazard with it.
+ * Every statement that names notes by an `id IN (…)` run writes its trash condition as
+ * `+deleted_at`. The unary plus is SQLite's way to keep a column's index out of the plan
+ * while still applying the condition — the idiom `liveCondition` uses for tag filters.
+ * Without it the planner, which has no statistics and so takes the first column of an
+ * index to be selective, answered "these three notes" by walking `idx_notes_updated` over
+ * every live note and testing each against the list: 3,025 rows read to trash three
+ * notes at 3k notes (measured 2026-09-29; a SELECT of the same shape over fifty notes
+ * had taken the primary key, which is why the dry run missed it). With it, each id is a
+ * primary-key lookup. The shared database wrote `+user_id` in the same places for the
+ * same reason.
  */
 
 export function runs<T>(items: T[], size = ID_RUN): T[][] {
