@@ -10,6 +10,7 @@ import {
   type NotebookDefinition,
 } from '@unbent/shared';
 import { AttachmentsStore } from './attachments.js';
+import { copiedFromD1, copyFromD1, markCopiedFromD1 } from './copy-from-d1.js';
 import { appliedMigrations, migrate } from './migrate.js';
 import { NotesStore, type CountOptions, type ListOptions, type SearchFilters } from './notes.js';
 import { cursorAfter, nextCursor } from './notes-shared.js';
@@ -17,16 +18,15 @@ import { SCHEMA } from './schema/index.js';
 import { instrumentedSql, type Sql } from './sql.js';
 
 /**
- * What the object is allowed to see of the Worker's environment: nothing.
+ * What the object is allowed to see of the Worker's environment: the D1 database, for the
+ * one-time copy of an account's rows (`copy-from-d1.ts`), and nothing else.
  *
- * `Record<never, never>` is deliberately empty rather than omitted, so the type is the
- * place to widen when the one-time copy from D1 lands (it needs `DB`, and nothing else
- * ever will). Naming `BLOBS`, `AI` or a secret here would be refused by review before it
- * was refused by the compiler, but the compiler refusing it is what makes rule 1 in
- * AGENTS.md — the object touches its SQLite and nothing else — a property of the code
- * rather than a habit.
+ * `DB` leaves when the copy does, and then this is `Record<never, never>`. Naming `BLOBS`,
+ * `AI` or a secret here would be refused by review before it was refused by the compiler,
+ * but the compiler refusing it is what makes rule 1 in AGENTS.md — the object touches its
+ * SQLite and nothing else — a property of the code rather than a habit.
  */
-export type StoreEnv = Record<never, never>;
+export type StoreEnv = { DB: D1Database };
 
 /** The `_meta` keys the object writes. Reserved names, kept in one place. */
 const META = {
@@ -59,6 +59,8 @@ export interface StoreStats {
   counts: Record<DataTable, number>;
   /** True when `wipe` has run and nothing has woken the schema since: the object is empty storage. */
   wiped: boolean;
+  /** Whether the one-time copy from D1 has run (or was found unnecessary). What the sweep writes to the directory. */
+  migratedFromD1: boolean;
 }
 
 /**
@@ -119,6 +121,10 @@ export class UserStore extends DurableObject<StoreEnv> {
     this.attachments = new AttachmentsStore(this.sql);
     ctx.blockConcurrencyWhile(async () => {
       this.bootstrap();
+      // The one-time copy of this account's rows from D1, on the first wake after the
+      // cutover and never again. Inside the block, so no request sees a half-copied
+      // account; resumable, so a reset part way loses only the page in flight.
+      await copyFromD1(this.sql, env.DB, name, () => this.notes.recountNotes());
     });
   }
 
@@ -152,9 +158,15 @@ export class UserStore extends DurableObject<StoreEnv> {
     this.wiped = false;
   }
 
-  /** Rebuilds the schema after a `wipe`, the first time anything asks for data again. */
+  /**
+   * Rebuilds the schema after a `wipe`, the first time anything asks for data again. A
+   * wiped object starts empty by design — the account was deleted, or a test fixture
+   * purged — so the copy from D1 is marked done rather than run.
+   */
   private ready(): void {
-    if (this.wiped) this.bootstrap();
+    if (!this.wiped) return;
+    this.bootstrap();
+    markCopiedFromD1(this.sql);
   }
 
   // --- Operator surface ------------------------------------------------------------------
@@ -168,7 +180,7 @@ export class UserStore extends DurableObject<StoreEnv> {
   stats(): StoreStats {
     const counts = Object.fromEntries(DATA_TABLES.map((t) => [t, 0])) as Record<DataTable, number>;
     if (this.wiped) {
-      return { userId: this.userId, databaseSize: this.ctx.storage.sql.databaseSize, migrations: [], counts, wiped: true };
+      return { userId: this.userId, databaseSize: this.ctx.storage.sql.databaseSize, migrations: [], counts, wiped: true, migratedFromD1: true };
     }
     for (const table of DATA_TABLES) {
       counts[table] = this.sql.first<{ n: number }>(`SELECT COUNT(*) AS n FROM ${table}`)?.n ?? 0;
@@ -179,6 +191,7 @@ export class UserStore extends DurableObject<StoreEnv> {
       migrations: appliedMigrations(this.ctx.storage),
       counts,
       wiped: false,
+      migratedFromD1: copiedFromD1(this.sql),
     };
   }
 
