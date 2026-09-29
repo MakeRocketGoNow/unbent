@@ -1206,6 +1206,13 @@ function followUrl(url: string, newTab: boolean): void {
  * addresses, and the same link in a browser — where a real tab exists — still fall
  * through to `_blank`. A path that is not on this site is refused the same way the
  * handler itself refuses one, rather than handed to `open` as a courtesy.
+ *
+ * The app's own `onCreateWindow` now does the same for any same-origin `_blank`, so this
+ * can look redundant. It is here for the versions of the app that predate that: they
+ * still load the address into the WebView and destroy the page, and a deploy of this
+ * site reaches them long before an app update does. Only the editor's links get it
+ * because only they are routinely same-origin — a link from one note to another. A URL
+ * field or an off-site link almost never is, and the app handles those anyway.
  */
 function followInHost(url: string): boolean {
   const open = window.__unbent?.open;
