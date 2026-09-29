@@ -5,12 +5,15 @@ import {
   MAX_BATCH_NOTES,
   MAX_BODY_BYTES,
   MAX_FIELD_VALUE_LENGTH,
+  MAX_RATING_MAX,
   MAX_TAG_LENGTH,
   MAX_TITLE_LENGTH,
+  MIN_RATING_MAX,
   UNFILED,
   currencySchema,
   fieldNameSchema,
   fieldOptionsSchema,
+  fieldScaleSchema,
   fieldTypeSchema,
   notebookNameSchema,
   notebookEmojiSchema,
@@ -43,8 +46,13 @@ const fieldsSchema = z
   .describe(
     'Custom field values keyed by field name, as list_notebooks reports them for the ' +
       'notebook. Null clears one. Only the names given change. A value must fit the ' +
-      'field\'s type: a number for number, YYYY-MM-DD for date, true/false for checkbox, ' +
-      'one of the options for select, a list of the options for multiselect.',
+      'field\'s type: a number for number (from 1 to its max when it has a rating scale, ' +
+      'in halves only when the step is 0.5), YYYY-MM-DD for date, true/false for ' +
+      'checkbox, an http(s) address for url, one of the options for select, a list of ' +
+      'the options for multiselect. Options match exactly as listed, case included; one ' +
+      'the field lacks is refused, so add it with update_notebook_field first. A ' +
+      'multiselect list is the whole selection, not an addition to it: to add one, send ' +
+      'what the note holds plus the new one.',
   );
 
 /**
@@ -96,7 +104,13 @@ const bodySchema = z
   .max(MAX_BODY_BYTES)
   .describe('Markdown. Headings, lists, tables, task lists and links all render.');
 
-const tagsSchema = z.array(tagNameSchema).max(50);
+const tagsSchema = z
+  .array(tagNameSchema)
+  .max(50)
+  .describe(
+    'Tag names, matched exactly: "Receipts" and "receipts" are two tags. Reuse the ' +
+      'spelling list_tags shows.',
+  );
 
 /**
  * A notebook name, or null to file the note in none.
@@ -224,10 +238,11 @@ export function registerWriteTools(server: McpServer, notes: NotesRepo): void {
     {
       title: 'Edit part of a note',
       description:
-        'Change a note without resending its body. Append or prepend a fragment, or replace ' +
-        'an exact span of text with another. Prefer this to update_note for anything but a ' +
-        'wholesale rewrite: it is cheaper on a long note and it cannot accidentally discard ' +
-        'the parts you did not mean to touch.',
+        'Change a note without resending its body. Append or prepend a fragment, which is ' +
+        'set off from the body by a blank line, or replace an exact span of text with ' +
+        'another. Prefer this to update_note for anything but a wholesale rewrite: it is ' +
+        'cheaper on a long note and it cannot accidentally discard the parts you did not ' +
+        'mean to touch.',
       inputSchema: z.object({
         noteId: z.string().uuid(),
         mode: z.enum(['append', 'prepend', 'replace']),
@@ -285,7 +300,10 @@ export function registerWriteTools(server: McpServer, notes: NotesRepo): void {
             `That text appears ${occurrences} times, so it is ambiguous. Include more surrounding text to pick out the one you mean.`,
           );
         }
-        body = current.body.replace(find!, content);
+        // A function, not the string itself: String.replace reads `$'`, `$&` and `$$` in a
+        // replacement string as patterns, so a shell snippet or a price in the content
+        // would splice in other parts of the body instead of landing as written.
+        body = current.body.replace(find!, () => content);
       }
 
       const note = await notes.update(noteId, { body });
@@ -310,7 +328,9 @@ export function registerWriteTools(server: McpServer, notes: NotesRepo): void {
       title: 'Add or remove tags',
       description:
         'Add and remove tags across one or more notes without touching their other fields. ' +
-        'Tags that are already there, or already absent, are left alone. Answers with the ' +
+        'Tags that are already there, or already absent, are left alone, and a tag named ' +
+        'in both lists is added. Names match exactly, case included, so removing ' +
+        '"receipts" leaves "Receipts" in place; list_tags has the spellings. Answers with the ' +
         'notes it reached, how many changed, and any ids it could not find; get_note shows ' +
         "a note's tags afterwards.",
       inputSchema: z.object({
@@ -342,8 +362,10 @@ export function registerWriteTools(server: McpServer, notes: NotesRepo): void {
       title: 'Move notes to a notebook',
       description:
         'File one or more notes into a notebook, or out of every notebook with null. The ' +
-        'notebook is created if it does not exist. Answers with the notes it reached, how ' +
-        'many actually moved, and any ids it could not find.',
+        'name matches an existing notebook whatever its case, and one that does not exist ' +
+        'is created. Custom field values stay on the note: those from the notebook it left ' +
+        'still show on get_note and apply again if it moves back. Answers with the notes ' +
+        'it reached, how many actually moved, and any ids it could not find.',
       inputSchema: z.object({
         noteIds: noteIdsSchema,
         notebook: notebookSchema,
@@ -507,8 +529,9 @@ export function registerWriteTools(server: McpServer, notes: NotesRepo): void {
       description:
         'Define a field on a notebook, so notes in it can carry a value under that name. ' +
         `Types: ${FIELD_TYPES.join(', ')}. A select or multiselect needs its options. A number ` +
-        'may carry a currency, which draws its values as money. Get the notebook id ' +
-        'from list_notebooks; set values with create_note or update_note.',
+        'may carry a currency, which draws its values as money, or a scale, which makes it ' +
+        'a rating drawn as stars; not both. Get the notebook id from list_notebooks; set ' +
+        'values with create_note or update_note.',
       inputSchema: z.object({
         notebookId: z.string().min(1),
         name: fieldNameSchema,
@@ -517,14 +540,26 @@ export function registerWriteTools(server: McpServer, notes: NotesRepo): void {
         currency: currencySchema
           .optional()
           .describe('For number: an ISO 4217 code such as USD, so values read as amounts.'),
+        scale: fieldScaleSchema
+          .optional()
+          .describe(
+            `For number: makes it a rating from 1 to max (${MIN_RATING_MAX} to ` +
+              `${MAX_RATING_MAX}), in whole steps (step 1) or halves (step 0.5).`,
+          ),
       }),
       annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
     },
-    async ({ notebookId, name, type, options, currency }) => {
+    async ({ notebookId, name, type, options, currency, scale }) => {
+      // Refused rather than passed on: the repo keeps a scale only on a number and drops a
+      // currency beside one, which is right for the editor's patches but would leave a
+      // model believing it made a rating, or money, that it did not.
+      if (scale && type !== 'number') return toolError('Only a number field can have a scale.');
+      if (scale && currency) return toolError('A rating cannot also be a currency.');
       const result = await notes.createField(notebookId, {
         name,
         type,
         options: options ?? [],
+        scale: scale ?? null,
         currency: currency ?? null,
       });
       if (result === 'missing') return notFound('notebook', notebookId);
@@ -541,17 +576,24 @@ export function registerWriteTools(server: McpServer, notes: NotesRepo): void {
     {
       title: 'Rename or retype a custom field',
       description:
-        'Change a field\'s name, type, or the options of a select or multiselect. Changing ' +
-        'the type converts the values notes already hold; any value that cannot be read as ' +
-        'the new type is cleared, and the result says how many were. Changing to select or ' +
-        'multiselect makes the existing values the options. A currency on a number is ' +
-        'display only: setting or clearing one changes no value.',
+        'Change a field\'s name, type, or the options of a select or multiselect. Omit any ' +
+        'of them to leave it unchanged. Options replace the whole list rather than adding ' +
+        'to it: to add one, send every current option (list_notebooks has them) with the ' +
+        'new one, in the order they should show. An option left out leaves the list, but ' +
+        'notes that hold it keep their value; only new choices of it are refused until it ' +
+        'is sent again. Changing the type converts the values notes already hold; any ' +
+        'value that cannot be read as the new type is cleared, and the result says how ' +
+        'many were. Changing to select or multiselect makes the existing values the ' +
+        'options. A currency on a number is display only: setting or clearing one changes ' +
+        'no value.',
       inputSchema: z.object({
         notebookId: z.string().min(1),
         fieldId: z.string().uuid(),
         name: fieldNameSchema.optional(),
         type: fieldTypeSchema.optional(),
-        options: fieldOptionsSchema.optional(),
+        options: fieldOptionsSchema
+          .optional()
+          .describe('For select and multiselect: the complete list, which replaces the current one.'),
         currency: currencySchema
           .nullable()
           .optional()

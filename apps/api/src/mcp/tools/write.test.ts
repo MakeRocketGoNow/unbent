@@ -121,6 +121,19 @@ describe('edit_note', () => {
     expect(note.body).toBe('Keep this\n');
   });
 
+  it('writes dollar signs in the content literally', async () => {
+    // `$'`, `$&` and `$$` are replacement patterns to String.replace; in a note they are
+    // shell snippets and prices, and must land as typed.
+    const { note, repo } = fakeNotes('Run: TODO\nThen done');
+    const edit = collect(repo).get('edit_note')!;
+
+    const content = "echo '$' costs $$5 ($&)";
+    const result = await edit({ noteId, mode: 'replace', find: 'TODO', content });
+
+    expect(result.isError).toBeFalsy();
+    expect(note.body).toBe(`Run: ${content}\nThen done`);
+  });
+
   it('needs a find argument to replace anything', async () => {
     const { repo } = fakeNotes('anything');
     const edit = collect(repo).get('edit_note')!;
@@ -302,5 +315,60 @@ describe('the batch tools', () => {
       missing: [other],
     });
     expect(calls.map((c) => c.method)).toEqual(['removeMany', 'restoreMany']);
+  });
+});
+
+/*
+ * A rating is a number with a scale. The repo drops a scale it cannot keep, so the tool
+ * refuses those instead: a model told "created" must have made the rating it asked for.
+ */
+describe('create_notebook_field with a scale', () => {
+  function fieldRepo() {
+    const created: unknown[] = [];
+    const repo = {
+      createField: async (_notebookId: string, input: Record<string, unknown>) => {
+        created.push(input);
+        return { id: 'f1', ...input };
+      },
+    } as unknown as NotesRepo;
+    return { created, create: collect(repo).get('create_notebook_field')! };
+  }
+
+  it('passes a scale through, making the number a rating', async () => {
+    const { created, create } = fieldRepo();
+    const result = await create({
+      notebookId: 'nb',
+      name: 'Rating',
+      type: 'number',
+      scale: { max: 5, step: 0.5 },
+    });
+    expect(result.isError).toBeFalsy();
+    expect(created).toEqual([
+      { name: 'Rating', type: 'number', options: [], scale: { max: 5, step: 0.5 }, currency: null },
+    ]);
+  });
+
+  it('leaves a plain number unscaled', async () => {
+    const { created, create } = fieldRepo();
+    await create({ notebookId: 'nb', name: 'Amount', type: 'number', currency: 'USD' });
+    expect(created).toEqual([{ name: 'Amount', type: 'number', options: [], scale: null, currency: 'USD' }]);
+  });
+
+  it('refuses a scale on anything but a number, and beside a currency', async () => {
+    const { created, create } = fieldRepo();
+    const onText = await create({ notebookId: 'nb', name: 'Mood', type: 'text', scale: { max: 5, step: 1 } });
+    expect(onText.isError).toBe(true);
+    expect(onText.content[0]!.text).toContain('Only a number');
+
+    const both = await create({
+      notebookId: 'nb',
+      name: 'Price',
+      type: 'number',
+      scale: { max: 5, step: 1 },
+      currency: 'USD',
+    });
+    expect(both.isError).toBe(true);
+    expect(both.content[0]!.text).toContain('cannot also be a currency');
+    expect(created).toHaveLength(0);
   });
 });
