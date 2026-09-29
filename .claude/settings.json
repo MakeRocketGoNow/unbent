@@ -1,0 +1,17 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "scripts/worktree-autosetup.sh",
+            "timeout": 300,
+            "statusMessage": "Setting up this worktree (dependencies, local database)…"
+          }
+        ]
+      }
+    ]
+  }
+}
