@@ -223,6 +223,14 @@ starts with no `BETTER_AUTH_SECRET` and no OAuth credentials), no dependencies, 
 local database. The setup script copies those across and seeds D1 and R2 from the main
 checkout, then prints the ports.
 
+A Claude session that starts in a worktree does this for itself: the `SessionStart` hook in
+`.claude/settings.json` runs `scripts/worktree-autosetup.sh`, which calls
+`pnpm worktree:setup --fresh` when the worktree has no dependencies or no local D1 yet, and
+does nothing in the main checkout or in a worktree already set up. `--fresh` always — an
+empty database, not a copy of the user's notes; copying the real corpus stays a command a
+person runs on purpose. Its output is in the session's context, so check it for the ports
+rather than assuming the setup still needs doing.
+
 `pnpm dev` in a worktree runs *both* halves on that worktree's own pair, so the branch's
 API code is what answers and its notes and auth config are the worktree's own — not the
 main checkout's Worker on :8787. That is a change from how this used to work; there is no

@@ -42,6 +42,11 @@ continuing — the answer is usually to start a fresh one, not to work in it.
 pnpm worktree:setup --fresh  # default; omit --fresh only when asked for the real corpus
 ```
 
+If this session *started* in the worktree, the `SessionStart` hook
+(`scripts/worktree-autosetup.sh`) has already run this and its output — the migration table
+and the ports line — is in your context. Check for it before running setup again; a second
+run is harmless but slow. A worktree you created during the session gets no hook, so run it.
+
 `git worktree add` brings tracked files and nothing else, so until this runs the worktree
 has no `.dev.vars` (the Worker starts with no `BETTER_AUTH_SECRET`), no dependencies, and
 no local database. The script copies the gitignored files across, installs, seeds D1 and R2

@@ -99,6 +99,12 @@ copy is a snapshot: the two databases drift apart from then on, which is the poi
 branch's migrations must not reach the main checkout's schema. `--fresh` starts empty
 instead.
 
+A Claude Code session opened in a worktree runs `worktree:setup --fresh` on its own, once,
+through the `SessionStart` hook in `.claude/settings.json` (`scripts/worktree-autosetup.sh`).
+It only acts in a worktree that has no dependencies or no local database yet, never in the
+main checkout, and always starts empty: copying your notes into a worktree is a choice you
+make by running `pnpm worktree:setup` without `--fresh` yourself.
+
 Social sign-in is the one thing a worktree does not get for free — Google and GitHub match
 the redirect URI including its port, so a worktree's port has to be registered with the
 provider to use it. A password — `pnpm dev` turns password sign-up on for every local
