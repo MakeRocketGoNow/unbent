@@ -5079,6 +5079,10 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
   display: flex;
   align-items: center;
   gap: 0.5rem;
+  /* Sized to its content up to the cap, not shrunk to fit: `left: 50%` leaves only half
+     the viewport as the room it is fitted into, so on a phone a longer message wrapped a
+     word to a line in a card half the screen wide. */
+  width: max-content;
   max-width: min(30rem, calc(100vw - 2rem));
   padding: 0.6rem 0.6rem 0.6rem 0.9rem;
   border-radius: 0.5rem;
