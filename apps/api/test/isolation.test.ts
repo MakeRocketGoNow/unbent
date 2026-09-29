@@ -1,13 +1,18 @@
 /**
  * Cross-tenant isolation suite.
  *
- * D1 has no row-level security, so tenant isolation is application code and nothing else.
- * This suite exists from Phase 1 and every later phase extends it: when a route that
- * touches user data is added, a case asserting the other user cannot reach it is added
- * here in the same commit.
+ * Each account's notes live in a database of their own — one Durable Object per user —
+ * so the question this suite asks is no longer whether every query remembered its
+ * `user_id`, but whether every route reaches the caller's own object and nothing else:
+ * `reposFor` binds a request to the session's store, and the object refuses a database
+ * that is not its user's. What stays in D1 — sessions, upload links, connected apps — has
+ * no row-level security, and for those tables isolation is still application code.
+ * Either way the check is the same from outside: the other user cannot reach it. This
+ * suite exists from Phase 1 and every later phase extends it; when a route that touches
+ * user data is added, a case is added here in the same commit.
  *
- * Runs against a live `wrangler dev` on :8787 with email/password temporarily enabled.
- * See test/README.md.
+ * Runs against a live `wrangler dev` with email/password temporarily enabled. See
+ * test/README.md.
  */
 import { beforeAll, describe, expect, it } from 'vitest';
 
@@ -49,9 +54,10 @@ let alice: Actor;
 let bob: Actor;
 
 /**
- * Test actors use @example.test addresses. Cleanup runs as a posttest SQL purge rather
- * than API calls: note deletion is a soft delete by design, so dropping the user row and
- * letting the FK cascade is the only way to leave the local database as it was found.
+ * Test actors use @example.test addresses. Cleanup runs as a posttest purge through the
+ * dev server rather than API calls: note deletion is a soft delete by design, and only the
+ * Worker can wipe an actor's note store, so `purge-fixtures` wipes each store and then
+ * drops the user row, which is the only way to leave the local state as it was found.
  */
 
 beforeAll(async () => {

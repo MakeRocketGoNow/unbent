@@ -1,24 +1,28 @@
 #!/usr/bin/env bash
-# Wipes local development state: D1 and R2 both.
+# Wipes local development state: D1, R2 and the per-account note stores.
 #
 # The in-app sweep is scoped to the signed-in user's prefix, so it cannot reclaim objects
 # belonging to accounts that no longer exist — test fixtures leave those behind by the
-# hundred. This clears everything and rebuilds the schema from migrations.
+# hundred. This clears everything and rebuilds the schema from migrations. The note
+# stores (`do/`) go too, for the reason reset-local-db.sh gives: an object with no account
+# behind it is a ghost.
 #
-# Local only. It never touches remote D1 or R2.
+# Local only. It never touches anything remote.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
 STATE=".wrangler/state/v3"
 BACKUP_DIR=".wrangler/backups"
 
-if [ -d "$STATE/d1" ]; then
-  mkdir -p "$BACKUP_DIR"
-  STAMP=$(date +%Y%m%d-%H%M%S)
-  cp -R "$STATE/d1" "$BACKUP_DIR/d1-$STAMP"
-  echo "backed up local d1 -> $BACKUP_DIR/d1-$STAMP"
-fi
+STAMP=$(date +%Y%m%d-%H%M%S)
+for dir in d1 do; do
+  if [ -d "$STATE/$dir" ]; then
+    mkdir -p "$BACKUP_DIR"
+    cp -R "$STATE/$dir" "$BACKUP_DIR/$dir-$STAMP"
+    echo "backed up local $dir -> $BACKUP_DIR/$dir-$STAMP"
+  fi
+done
 
-rm -rf "$STATE/d1" "$STATE/r2"
+rm -rf "$STATE/d1" "$STATE/r2" "$STATE/do"
 npx wrangler d1 migrations apply DB --local --env local
-echo "local d1 and r2 cleared, schema rebuilt"
+echo "local d1, r2 and note stores cleared, schema rebuilt"

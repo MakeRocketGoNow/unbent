@@ -79,12 +79,11 @@ describe('the per-account store', () => {
 
   /**
    * Note data lives in the object, and a route that queried D1 for it would be reading a
-   * table that is about to be frozen and then dropped. The routes that may still name
-   * `env.DB` are the ones whose data stays in D1 — the health check, the upload-grant
-   * claim, connected apps — plus the blob sweep and test-fixture purge in admin.ts, which
-   * move onto the object with the cutover and come off this list then. A new route that
-   * needs the database is either a control-plane route, added here with a reason, or a
-   * mistake.
+   * frozen table. The routes that may still name `env.DB` are the ones whose data stays in
+   * D1 — the health check, the upload-grant claim, connected apps — and admin.ts, whose
+   * one use is the test-fixture purge, which lists the throwaway accounts by their `user`
+   * rows. A new route that needs the database is either a control-plane route, added here
+   * with a reason, or a mistake.
    */
   it('keeps env.DB out of every route that is not on the control plane', () => {
     const allowed = new Set(['routes/health.ts', 'routes/uploads.ts', 'routes/connected-apps.ts', 'routes/admin.ts']);

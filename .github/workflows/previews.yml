@@ -307,7 +307,8 @@ jobs:
               ...signIn,
               '',
               `Runs against the shared \`unbent-dev\` database and bucket, which every preview`,
-              'writes to. Production is untouched. The Worker is deleted when this PR closes.',
+              'writes to; notes live in this preview\'s own per-account stores, so what you make',
+              'here stays here. Production is untouched. The Worker is deleted when this PR closes.',
               '',
               // Which push this URL is actually serving. Without it a stale comment and a
               // fresh one look identical, and the only way to tell whether a redeploy has

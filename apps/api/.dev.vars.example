@@ -136,11 +136,20 @@ ALLOWED_EMAILS=
 
 # The accounts that run this instance, by email, comma-separated — the shape of
 # ALLOWED_EMAILS above. Distinct from the pair just above, which name one legal contact for
-# the documents: this is who, when signed in, is shown a fault only an operator can fix.
-# Today that is one thing — auto-fill's title model rejecting its ANTHROPIC_API_KEY, which
-# otherwise fails silently and looks like the model simply having no better title. Unset,
-# nobody is flagged and nothing operator-only is ever surfaced, which is right for a fork.
+# the documents: this is who, when signed in, is shown a fault only an operator can fix
+# (auto-fill's title model rejecting its ANTHROPIC_API_KEY, which otherwise fails silently)
+# and who may use the note-store routes under /api/admin/store — read another account's
+# stats or dump with ?user=, run a read-only query against a store, or start the sweep
+# after a deploy. Every such read is logged with both ids. Unset, nobody is flagged and
+# nothing operator-only is reachable, which is right for a fork.
 # OPERATOR_EMAILS=you@example.com
+
+# Where each account's note store is created. Unset — the default — lets the platform
+# place an object near the first request for it, which for a personal note app is where
+# its user is. `eu` pins every store created from then on to the EU jurisdiction, for an
+# operator whose users need their notes kept there; it applies to accounts created after
+# it is set and moves none. See the README's "Where your notes live".
+# STORE_JURISDICTION=eu
 
 # Legal documents you host yourself, if you would rather not use the built-in ones.
 #

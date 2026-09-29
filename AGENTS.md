@@ -399,7 +399,8 @@ Compose screens as much as to the site.
 
 Wiping local notes during development is fine and has been offered explicitly. **Ask first
 every time**, because the plan is one final import from the real Evernote corpus and the
-state may have changed since the last conversation.
+state may have changed since the last conversation. "The database" is D1 and the note
+stores under `.wrangler/state/v3/do/` together; `db:reset` and `reset:local` clear both.
 
 That corpus is ~3 GB and ~13K notes, mostly PDFs — this is a paperless-office use case.
 Performance assumptions should hold at that scale, not at the scale of a dev database with
@@ -407,31 +408,31 @@ Performance assumptions should hold at that scale, not at the scale of a dev dat
 
 ## The per-account note store
 
-Every account's notes are moving out of the shared D1 database into one SQLite-backed
-Durable Object per user — `UserStore` in `apps/api/src/store/`, reached by
-`env.USER_STORE.idFromName(userId)`. D1 keeps the control plane: Better Auth's tables, OAuth
-and MCP clients, upload grants, and the account directory. The object is the repository:
-`NotesStore` and `AttachmentsStore` are `NotesRepo` and `AttachmentsRepo` moved onto
-`ctx.storage.sql`, with no `user_id` anywhere, because the database is the user. The
-decision and its reasons are in MAK-128; the short version is that the sync change feed and
-note history are storage features, and building them on D1 and then porting would be paying
-twice.
+Every account's notes live in one SQLite-backed Durable Object per user — `UserStore` in
+`apps/api/src/store/`, reached through `reposFor` in `lib/repos.ts`. D1 keeps the control
+plane: Better Auth's tables, OAuth and MCP clients, upload grants, and the account
+directory. The object is the repository: `NotesStore` and `AttachmentsStore` hold the SQL,
+with no `user_id` anywhere, because the database is the user; `lib/notes-repo.ts` and
+`lib/attachments-repo.ts` are facades over the stub, one RPC call per method, keeping the
+signatures every route and tool was written against. The decision and its reasons are in
+MAK-128; the short version is that the sync change feed and note history are storage
+features, and building them on D1 and then porting would be paying twice. The README's
+"Where your notes live" is the user-facing account of the same thing.
 
-**Where this stands:** the object exists, is deployed and is tested (`apps/store-tests`),
-but the routes still run on D1. The cutover — facades that keep every `NotesRepo` signature,
-the one-time copy of each account's rows, account deletion, the ops routes and the daily
-sweep — is the next change. Until it lands, a change to the notes data plane has to be made
-in both `lib/notes-repo.ts` and `store/notes.ts`; prefer making it in the store first and
-mirroring it, since the D1 copy is the one about to go.
+A change to the notes data plane is a change in `store/`, and usually nothing else: the
+facade is one line per method. A new query goes into the store with a rows-read bound in
+`apps/store-tests`; a new thing a route needs in one request goes on `UserStore` as a
+composite and on the facade as a passthrough.
 
 Five rules, held by tests where a test can hold them:
 
 1. **The object touches its SQLite and nothing else.** No `fetch`, no R2 bytes, no
    AI/Anthropic/Typesafe calls in `src/store/`. Those happen in the Worker before or after
    the object call. Blob *keys* go through the object (it owns `attachments`); bytes never
-   do. `StoreEnv` is empty so the compiler refuses a binding, and `guards.test.ts` reads the
-   source for the rest. One documented, temporary exception is coming: the one-time copy of
-   a user's rows from D1.
+   do. `StoreEnv` names only what the object may see, so the compiler refuses a binding,
+   and `guards.test.ts` reads the source for the rest. One documented, temporary exception:
+   `copy-from-d1.ts`, the one-time copy of a user's rows out of the shared tables, which
+   goes — with `DB` on `StoreEnv` — once every directory row says it has run.
 2. **Ids stay globally unique UUIDs** even inside a per-user database. `(owner, id)` is the
    key any future sharing would use, and export/import keeps working across accounts.
 3. **The owner's object is the source of truth.** If sharing ever comes, a grantee reads
@@ -440,43 +441,52 @@ Five rules, held by tests where a test can hold them:
 4. **The change feed is per user with a sequence cursor**, never global. `_meta` reserves
    `seq` for it. Nothing to build now.
 5. **Each RPC call is a billable object request.** Prefer a composite method on `UserStore`
-   (`listPage`, `exportPage`, `getWithFiles`, …) to a second call in the same request, and
-   check calls per page load when adding a route.
+   (`listPage`, `exportPage`, `getWithFiles`, `notebooksOverview`, …) to a second call in
+   the same request, and check calls per page load when adding a route.
 
-Two things about working on the store that are easy to get wrong:
+Things about working on the store that are easy to get wrong:
 
 - **Schema files are append-only.** `store/schema/0001-init.ts` is applied once per object
   and never edited again; a change is a new `0002-<name>.ts` appended to `SCHEMA`, additive,
-  applied on each object's next wake. There is no down migration.
+  applied on each object's next wake. There is no down migration. After a deploy that
+  carries one, run the sweep (`POST /api/admin/store/sweep`, operator only) so every object
+  migrates now and a failure is in the log today.
 - **Object tests need a fresh object each.** The vitest plugin's storage isolation does not
   reach SQLite-backed objects, so `freshStore()` in `apps/store-tests/test/helpers.ts` mints
   a random name per test. Never name an object in a test.
+- **The directory is the only thing that can turn a wipe on.** The sweep wipes an object
+  only for a tombstoned directory row or one whose `user` row is gone; a missing row never
+  wipes anything. Keep it that way.
+- **Local state is D1 *and* `do/`.** The reset scripts clear both; clearing one by hand
+  leaves ghost objects. `worktree:setup` copies both.
 
-## D1 reads are the budget
+## Rows read are still the budget
 
-Production runs on Workers Free: D1 refuses every read once the account has read five
-million rows in a day, and every database on the account counts, the dev instance and the
-PR previews included. The archive above ran out twice in one week before the query plans
-were fixed. So a change to a query is judged by the rows it reads on a 13k-note copy, not
-by whether it returns the right rows: `wrangler d1 insights unbent --time-period 24h
---sort-by reads --json` shows what production is actually reading, and costs no rows.
+Production runs on Workers Free, where the rows a Durable Object's SQLite reads and writes
+are metered as D1's were, and the shared database ran out of its daily reads twice in one
+week before the query plans were fixed. So a change to a query is judged by the rows it
+reads on an archive-sized store, not by whether it returns the right rows. The accounting
+is the `[store]` log line the `Sql` seam writes for any statement over two thousand rows,
+with the user id and the statement; `POST /api/admin/store/sql` runs `EXPLAIN QUERY PLAN`
+against a real account; and the rows-read test at the end of
+`apps/store-tests/test/notes-store.test.ts` bounds every hot query on a three-thousand-note
+store. A new query belongs in that test.
 
-The planner has no statistics (there is no `sqlite_stat1`) and takes `user_id` to be
-selective, when one user owns nearly every row. That is why several statements write
-`+user_id`: the unary plus keeps that column's index out of the plan while the condition
-still applies. Measure a new index or a `+` against a tiny notebook and another user as
-well as the big case — a global index once made a 30-note notebook read 13k rows.
+The planner has no statistics (there is no `sqlite_stat1`) and takes the first column of an
+index to be selective. Every notes index leads with `deleted_at`, which matches every live
+note, so `+deleted_at` — the unary plus keeps that column's index out of the plan while the
+condition still applies — is written wherever an `id IN (…)` run or a tag filter is the
+way in, and `+n.notebook_id` beside a tag filter for the same reason. `liveCondition` in
+`store/notes-shared.ts` is where it is applied. Measure a new index or a `+` against a tiny
+notebook as well as the big case; on the shared database a global index once made a
+30-note notebook read 13k rows.
 
-The same discipline holds inside the per-account store, on a different column. Rows read
-and written by a Durable Object's SQLite are metered on Free as D1's are, and with
-`user_id` gone every notes index leads with `deleted_at`, which the planner takes to be
-selective in exactly the same way: `+deleted_at` (and `+n.notebook_id` beside a tag filter)
-is the tool, `liveCondition` in `store/notes-shared.ts` is where it is applied, and the
-`[store]` log line the `Sql` seam writes for any statement over two thousand rows is the
-accounting. The rows-read test at the end of `apps/store-tests/test/notes-store.test.ts`
-bounds every hot query on a three-thousand-note store; a new query belongs in it.
+D1 still serves the control plane, and its reads still count against the same daily total,
+but nothing on the request path reads note data from it any more; the frozen note tables
+are dropped in a later migration.
 
-Do not run `PRAGMA optimize` or `ANALYZE` on production, whatever D1's documentation
-suggests. Measured on a copy of the archive, the statistics they write made the image-queue
-queries two to three times worse, and a full `ANALYZE` reads about 572k rows on its own.
-The plans this codebase depends on are pinned in SQL instead.
+Do not run `PRAGMA optimize` or `ANALYZE` on production, whatever the documentation
+suggests — not on D1, and not inside an object. Measured on a copy of the archive, the
+statistics they write made the image-queue queries two to three times worse, and a full
+`ANALYZE` reads about 572k rows on its own. The plans this codebase depends on are pinned
+in SQL instead; the read-only SQL route refuses a `PRAGMA` for this reason among others.
