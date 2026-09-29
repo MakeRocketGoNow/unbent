@@ -59,6 +59,21 @@ fun linkPath(instance: String, link: String): String? {
     return path + query
 }
 
+/**
+ * The path a `target=_blank` to this site should open in place, or null when it is not
+ * one.
+ *
+ * The WebView has no tabs. Loading the address into the app (`loadUrl`) tears the page
+ * down — unsaved edits, an upload, an import — which is why notifications already go
+ * through `__unbent.open` instead. A same-origin `_blank` is the same situation: a link
+ * in a note, a URL field, a skipped import row. Off-site addresses, and the `about:` /
+ * `blob:` / `javascript:` URLs the page made itself, are not paths and stay null.
+ */
+fun inAppWindowPath(origin: String, url: String): String? {
+    if (classify(origin, url) != Destination.InApp) return null
+    return linkPath(origin, url)
+}
+
 /** A path on this site and nothing that could be read as another host. */
 fun isSitePath(path: String): Boolean = path.startsWith("/") && !path.startsWith("//")
 

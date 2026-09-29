@@ -1387,6 +1387,7 @@ describe('following links', () => {
 
   afterEach(() => {
     vi.restoreAllMocks();
+    delete window.__unbent;
   });
 
   /** A press and release on the label, as a mouse or a tap delivers them. */
@@ -1400,6 +1401,38 @@ describe('following links', () => {
   }
 
   it('opens a web link in a new tab from a click on its label', () => {
+    const doc = '[Example](https://example.com/page)\n\nplain';
+    const v = mount(doc, doc.length);
+    clickLabel(v);
+    expect(followed).toEqual([
+      { href: 'https://example.com/page', target: '_blank', rel: 'noopener noreferrer' },
+    ]);
+  });
+
+  /**
+   * The Android WebView has no tabs: a `_blank` to this site used to load into the app
+   * itself and destroy the page. Same-origin links go through `__unbent.open` instead,
+   * the way a notification already does; off-site ones still take the new-tab path so
+   * the shell can send them to a Custom Tab.
+   */
+  it('opens a same-origin link in place when the Android app is hosting', () => {
+    const opened: string[] = [];
+    window.__unbent = {
+      open: (path) => {
+        opened.push(path);
+        return true;
+      },
+    };
+    const href = `${window.location.origin}/notes/abc?view=table`;
+    const doc = `[Other](${href})\n\nplain`;
+    const v = mount(doc, doc.length);
+    clickLabel(v);
+    expect(opened).toEqual(['/notes/abc?view=table']);
+    expect(followed).toEqual([]);
+  });
+
+  it('still opens an off-site link in a new tab when the Android app is hosting', () => {
+    window.__unbent = { open: () => true };
     const doc = '[Example](https://example.com/page)\n\nplain';
     const v = mount(doc, doc.length);
     clickLabel(v);
