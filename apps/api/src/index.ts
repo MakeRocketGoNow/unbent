@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import { logger } from 'hono/logger';
 import type { AppEnv, RawEnv } from './types.js';
 import { withAppUrl } from './lib/app-url.js';
+import { StoreUnavailable } from './lib/store-client.js';
 import { sessionMiddleware } from './lib/session.js';
 import { health } from './routes/health.js';
 import { authRoutes } from './routes/auth.js';
@@ -38,6 +39,15 @@ app.use('*', logger());
 app.use('*', sessionMiddleware);
 
 app.onError((err, c) => {
+  // The note store could not answer and will shortly — the object was reset by a deploy,
+  // or is overloaded. A 503 with Retry-After, the same shape `requireAuth` answers when
+  // the session cannot be checked, so every client already handles it: the web app
+  // retries, and the Android capture worker waits it out rather than failing the share.
+  if (err instanceof StoreUnavailable) {
+    console.warn('Store unavailable:', err.message);
+    c.header('Retry-After', String(err.retryAfterSeconds));
+    return c.json({ error: 'Your notes could not be reached right now. Try again shortly.' }, 503);
+  }
   console.error('Unhandled error:', err);
   return c.json({ error: 'Internal error' }, 500);
 });

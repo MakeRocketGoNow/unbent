@@ -8,8 +8,8 @@ import type { AppEnv } from '../types.js';
 /**
  * Destructive maintenance, all scoped to the caller's own data.
  *
- * Every route here enumerates or deletes under `users/{me}/` and filters D1 by the session
- * user, so none of them can see or touch another account. An operator-wide sweep would
+ * Every route here enumerates or deletes under `users/{me}/` and reads the session user's
+ * own note store, so none of them can see or touch another account. An operator-wide sweep would
  * need separate, deliberately privileged handling.
  */
 export const admin = new Hono<AppEnv>()
@@ -24,17 +24,20 @@ export const admin = new Hono<AppEnv>()
    *
    * Dry run by default; `?apply=1` deletes.
    */
-  .post('/admin/gc-blobs', requireAuth, async (c) => {
+  .post('/admin/gc-blobs', requireAuth, withRepos, async (c) => {
     const userId = c.get('userId')!;
     const apply = c.req.query('apply') === '1';
     const prefix = userPrefix(userId);
 
-    const { results } = await c.env.DB.prepare(
-      `SELECT r2_key FROM attachments WHERE user_id = ?1`,
-    )
-      .bind(userId)
-      .all<{ r2_key: string }>();
-    const referenced = new Set(results.map((r) => r.r2_key));
+    // Every key the account's rows reference, a page at a time from the store: an
+    // archive references thousands and an RPC result has a ceiling.
+    const referenced = new Set<string>();
+    for (let after = 0; ; ) {
+      const page = await c.get('attachments').blobKeys(after, 1000);
+      for (const key of page.keys) referenced.add(key);
+      if (page.nextRowid === null) break;
+      after = page.nextRowid;
+    }
 
     const orphans: string[] = [];
     let stored = 0;

@@ -1,0 +1,89 @@
+import { InvalidFieldValue } from '@unbent/shared';
+import type { UserStore } from '../store/user-store.js';
+import type { Env } from '../types.js';
+
+/**
+ * The Worker's side of the per-account note store: how a request reaches its user's
+ * object, and what the errors that come back over RPC mean.
+ *
+ * `NotesRepo` and `AttachmentsRepo` are facades over one stub each, keeping the method
+ * signatures every route, orchestrator and MCP tool was written against, so the cutover
+ * to the object changed the two files that construct repos and nothing that uses them.
+ * Every method is one RPC call; the composites on `UserStore` exist so a route that used
+ * to make two or three calls to D1 still makes one to the object.
+ */
+
+/** The stub for `userId`'s store. Cheap, side-effect free, and called more than once per request. */
+export function storeFor(env: Pick<Env, 'USER_STORE' | 'STORE_JURISDICTION'>, userId: string): DurableObjectStub<UserStore> {
+  if (!userId) throw new Error('Refusing to reach a store without a user id');
+  // Objects are keyed by user id and nothing else. The jurisdiction, when set, pins where
+  // new objects are created; it applies to objects created after it is set and moves
+  // none. No `locationHint`: the platform places an object near its first request, and
+  // for a personal note app that is where its user is.
+  const namespace = env.STORE_JURISDICTION
+    ? env.USER_STORE.jurisdiction(env.STORE_JURISDICTION as DurableObjectJurisdiction)
+    : env.USER_STORE;
+  return namespace.get(namespace.idFromName(userId));
+}
+
+/**
+ * The store could not answer and will shortly: the object was reset by a deploy, is
+ * overloaded, or the connection to it was lost. `onError` in index.ts turns this into a
+ * 503 with `Retry-After`, the same answer `requireAuth` gives when the session cannot be
+ * checked, and the only 503 the Android capture worker waits out rather than failing.
+ */
+export class StoreUnavailable extends Error {
+  readonly retryAfterSeconds = 60;
+  constructor(cause: unknown) {
+    super(`The note store is unavailable right now: ${cause instanceof Error ? cause.message : String(cause)}`);
+    this.name = 'StoreUnavailable';
+    this.cause = cause;
+  }
+}
+
+/** Messages the runtime uses for the transient failures of a Durable Object call. */
+const TRANSIENT = /overloaded|reset because its code was updated|transient|network connection lost|exceeded timeout|Durable Object reset/i;
+
+/**
+ * An error that crossed the RPC boundary, turned back into what the caller expects.
+ *
+ * RPC keeps a thrown error's `name`, `message` and own properties but not its class
+ * (measured 2026-09-29), so `instanceof InvalidFieldValue` in a route would be false for
+ * the error the store threw. The field name survives as an own property, which is enough
+ * to rebuild the real thing; the routes and the MCP tools then keep their `instanceof`.
+ * Transient object failures become `StoreUnavailable`. Anything else passes through as
+ * it arrived, with its message.
+ */
+export function translateStoreError(err: unknown): unknown {
+  if (err && typeof err === 'object') {
+    const e = err as { name?: unknown; message?: unknown; fieldName?: unknown; retryable?: unknown; overloaded?: unknown };
+    if (e.name === 'InvalidFieldValue' && typeof e.fieldName === 'string') {
+      return new InvalidFieldValue(e.fieldName, typeof e.message === 'string' ? e.message : '');
+    }
+    if (e.retryable === true || e.overloaded === true) return new StoreUnavailable(err);
+    if (typeof e.message === 'string' && TRANSIENT.test(e.message)) return new StoreUnavailable(err);
+  }
+  return err;
+}
+
+/**
+ * Base for the two facades. `call` is the one place a stub is invoked, so every RPC
+ * error passes through `translateStoreError` and the facades themselves are one line
+ * per method.
+ */
+export abstract class StoreRepo {
+  constructor(
+    protected readonly store: DurableObjectStub<UserStore>,
+    protected readonly userId: string,
+  ) {
+    if (!userId) throw new Error('Refusing to construct a repo without a user id');
+  }
+
+  protected async call<T>(fn: (store: DurableObjectStub<UserStore>) => Promise<T>): Promise<T> {
+    try {
+      return await fn(this.store);
+    } catch (err) {
+      throw translateStoreError(err);
+    }
+  }
+}
