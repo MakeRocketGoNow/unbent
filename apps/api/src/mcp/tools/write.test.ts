@@ -121,6 +121,19 @@ describe('edit_note', () => {
     expect(note.body).toBe('Keep this\n');
   });
 
+  it('writes dollar signs in the content literally', async () => {
+    // `$'`, `$&` and `$$` are replacement patterns to String.replace; in a note they are
+    // shell snippets and prices, and must land as typed.
+    const { note, repo } = fakeNotes('Run: TODO\nThen done');
+    const edit = collect(repo).get('edit_note')!;
+
+    const content = "echo '$' costs $$5 ($&)";
+    const result = await edit({ noteId, mode: 'replace', find: 'TODO', content });
+
+    expect(result.isError).toBeFalsy();
+    expect(note.body).toBe(`Run: ${content}\nThen done`);
+  });
+
   it('needs a find argument to replace anything', async () => {
     const { repo } = fakeNotes('anything');
     const edit = collect(repo).get('edit_note')!;

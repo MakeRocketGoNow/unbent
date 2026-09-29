@@ -285,7 +285,10 @@ export function registerWriteTools(server: McpServer, notes: NotesRepo): void {
             `That text appears ${occurrences} times, so it is ambiguous. Include more surrounding text to pick out the one you mean.`,
           );
         }
-        body = current.body.replace(find!, content);
+        // A function, not the string itself: String.replace reads `$'`, `$&` and `$$` in a
+        // replacement string as patterns, so a shell snippet or a price in the content
+        // would splice in other parts of the body instead of landing as written.
+        body = current.body.replace(find!, () => content);
       }
 
       const note = await notes.update(noteId, { body });
