@@ -99,7 +99,7 @@ export async function writeArchive(
   for (const { notebook, path } of notebooksToExport(all, filter, seenNotebooks)) {
     signal.throwIfAborted();
     const fields = await source.fields(notebook.id);
-    await zip.add(path, new TextReader(serializeNotebook(notebook.name, fields)), {
+    await zip.add(path, new TextReader(serializeNotebook(notebook, fields)), {
       level: 6,
       zip64: false,
     });

@@ -190,11 +190,22 @@ async function importNotebook(
     const definition = parseNotebook(text);
     name = definition.name;
     const { skipped } = await client.importNotebook(definition);
-    for (const s of skipped) run.problem(`Field "${s.name}" in ${name}`, s.reason);
+    for (const s of skipped) run.problem(skippedLabel(s, name), s.reason);
   } catch (err) {
     if (run.halt.signal.aborted) return;
     run.problem(`Notebook ${name}`, `Definitions not applied: ${(err as Error).message}`);
   }
+}
+
+/**
+ * What the failure log calls something a definition could not apply. A field is named;
+ * the notebook's emoji and purpose are named by the value the archive held, so the person
+ * can see what they kept and what they could have had.
+ */
+function skippedLabel(s: { name: string; kind?: 'emoji' | 'purpose' }, notebook: string): string {
+  if (s.kind === 'emoji') return `Emoji ${s.name} for ${notebook}`;
+  if (s.kind === 'purpose') return `Purpose "${s.name}" for ${notebook}`;
+  return `Field "${s.name}" in ${notebook}`;
 }
 
 /** Reads each file's bytes only when the upload reaches it. */

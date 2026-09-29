@@ -1284,7 +1284,8 @@ thousand `note.md`s. Standard `unzip` reads it; no part of this app is needed to
 notes back.
 
 `notebooks/` holds what is about a notebook rather than a note: one `<slug>.yaml` per
-notebook naming its fields in order, each with its type and, where it has them, its select
+notebook with its emoji and its purpose when it has them — the purpose is what Auto-fill
+files by, so a restore without it files differently — and its fields in order, each with its type and, where it has them, its select
 or multi-select options, its rating scale or its currency. A multi-select's value is a YAML list under the
 field's name, the way `tags` is. A value in frontmatter says nothing about the field that holds it,
 and without this file a restore rebuilt every field from the first value it met — URLs and
@@ -1329,7 +1330,8 @@ The `notebooks/` files are applied first, through `POST /api/import/notebook`, s
 land against the definitions they were written under. The rule there is add, never alter: a
 field the notebook lacks is created as the file describes it, a field it already has keeps
 its type and scale (changing either clears values, which an import should not decide), and
-a select's or multi-select's options are merged. A note's value naming an option the field
+a select's or multi-select's options are merged. A notebook's emoji and purpose are set
+when it has none and otherwise kept. A note's value naming an option the field
 lacks adds that option rather than being dropped, so a vault with no `notebooks/` file still
 lands with its choices intact. Anything left unapplied is named in the import's failure log.
 An archive without `notebooks/` — an older export, a hand-made vault — imports as before,

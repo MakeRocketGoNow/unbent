@@ -25,7 +25,7 @@ describe('the notebook definitions file', () => {
       def({ name: 'Cost', type: 'number', currency: 'EUR' }),
     ];
 
-    const text = serializeNotebook('Coupons', fields);
+    const text = serializeNotebook({ name: 'Coupons' }, fields);
     expect(parseNotebook(text)).toEqual({
       name: 'Coupons',
       fields: [
@@ -42,7 +42,7 @@ describe('the notebook definitions file', () => {
   });
 
   it('writes options, scale and currency only where the type can use them', () => {
-    const text = serializeNotebook('Coupons', [
+    const text = serializeNotebook({ name: 'Coupons' }, [
       def({ name: 'Store', type: 'text', options: ['stale'], currency: 'USD' }),
       def({ name: 'Rating', type: 'number', scale: { max: 10, step: 1 }, currency: 'USD' }),
     ]);
@@ -53,7 +53,7 @@ describe('the notebook definitions file', () => {
 
   it('keeps names YAML would otherwise misread', () => {
     const parsed = parseNotebook(
-      serializeNotebook('Re: things', [def({ name: 'Yes', type: 'checkbox' })]),
+      serializeNotebook({ name: 'Re: things' }, [def({ name: 'Yes', type: 'checkbox' })]),
     );
     expect(parsed.name).toBe('Re: things');
     expect(parsed.fields[0]?.name).toBe('Yes');
@@ -61,7 +61,35 @@ describe('the notebook definitions file', () => {
 
   it('reads a notebook with no fields', () => {
     expect(parseNotebook('name: Empty\n')).toEqual({ name: 'Empty', fields: [] });
-    expect(parseNotebook(serializeNotebook('Empty', []))).toEqual({ name: 'Empty', fields: [] });
+    expect(parseNotebook(serializeNotebook({ name: 'Empty' }, []))).toEqual({ name: 'Empty', fields: [] });
+  });
+
+  it('round-trips a notebook emoji and purpose', () => {
+    const text = serializeNotebook(
+      { name: 'Coupons', emoji: '🧾', purpose: 'Paper coupons: store, expiry, what they are for.' },
+      [def({ name: 'Store', type: 'text' })],
+    );
+    expect(parseNotebook(text)).toEqual({
+      name: 'Coupons',
+      emoji: '🧾',
+      purpose: 'Paper coupons: store, expiry, what they are for.',
+      fields: [{ name: 'Store', type: 'text' }],
+    });
+  });
+
+  it('writes a notebook with no emoji or purpose exactly as it did before either existed', () => {
+    const fields = [def({ name: 'Store', type: 'text' })];
+    const text = serializeNotebook({ name: 'Coupons', emoji: null, purpose: null }, fields);
+    expect(text).toBe('name: Coupons\nfields:\n  - name: Store\n    type: text\n');
+    expect(serializeNotebook({ name: 'Coupons' }, fields)).toBe(text);
+  });
+
+  it('refuses an emoji or purpose the settings page would refuse', () => {
+    expect(() => parseNotebook('name: X\nemoji: book\n')).toThrow(/emoji/);
+    expect(() => parseNotebook('name: X\nemoji: 🧾📚\n')).toThrow(NotebookFileError);
+    expect(() => parseNotebook(`name: X\npurpose: ${'a'.repeat(501)}\n`)).toThrow(/purpose/);
+    // Blank clears, as it does in the editor, rather than being refused.
+    expect(parseNotebook('name: X\npurpose: "  "\n').purpose).toBeNull();
   });
 
   it('refuses what the field editor refuses, and says where', () => {

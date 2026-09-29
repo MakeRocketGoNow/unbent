@@ -72,7 +72,14 @@ async function archive(source: ExportSource, filter = {}): Promise<Map<string, s
   return out;
 }
 
-const shopping: NotebookSummary = { id: 'nb-shop', name: 'Shopping', count: 1, fields: 2, purpose: null, emoji: null };
+const shopping: NotebookSummary = {
+  id: 'nb-shop',
+  name: 'Shopping',
+  count: 1,
+  fields: 2,
+  purpose: 'Things to buy.',
+  emoji: '🛒',
+};
 const empty: NotebookSummary = { id: 'nb-empty', name: 'Nothing here', count: 0, fields: 0, purpose: null, emoji: null };
 const shoppingFields: FieldDef[] = [
   { id: 'f-url', notebookId: 'nb-shop', name: 'Url', type: 'url', options: [], scale: null, currency: null, position: 0 },
@@ -194,6 +201,8 @@ describe('writeArchive', () => {
     ]);
     expect(parseNotebook(files.get('notebooks/shopping.yaml')!)).toEqual({
       name: 'Shopping',
+      emoji: '🛒',
+      purpose: 'Things to buy.',
       fields: [
         { name: 'Url', type: 'url' },
         { name: 'Status', type: 'select', options: ['Want', 'Ordered'] },

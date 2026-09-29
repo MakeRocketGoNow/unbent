@@ -3435,16 +3435,54 @@ export class NotesRepo extends ScopedRepo {
    * Existing fields keep their positions and new ones append in file order, so a fresh
    * notebook comes out in exactly the exported order and an existing one is not shuffled
    * under the person who arranged it. The notebook itself is created if it is new.
+   *
+   * The emoji and the purpose follow the same rule: set when the notebook has none, which
+   * covers every notebook this import just created, and otherwise left as they are. A
+   * notebook someone has already given its own icon or its own guidance for Auto-fill has
+   * had a decision made about it, and the archive's older one is reported rather than
+   * written over it. Each comes back with a `kind` so the log can say which it was; a
+   * skipped field has none, which is also what a server from before these keys sends.
    */
-  async importNotebook(
-    definition: NotebookDefinition,
-  ): Promise<{ id: string; skipped: Array<{ name: string; reason: string }> }> {
+  async importNotebook(definition: NotebookDefinition): Promise<{
+    id: string;
+    skipped: Array<{ name: string; reason: string; kind?: 'emoji' | 'purpose' }>;
+  }> {
     const notebookId = await this.resolveNotebook(definition.name);
     if (!notebookId) throw new Error('Notebook name is empty');
 
+    const skipped: Array<{ name: string; reason: string; kind?: 'emoji' | 'purpose' }> = [];
+
+    if (definition.emoji || definition.purpose) {
+      const current = await this.db
+        .prepare(`SELECT emoji, purpose FROM notebooks WHERE id = ?1 AND user_id = ?2`)
+        .bind(notebookId, this.userId)
+        .first<{ emoji: string | null; purpose: string | null }>();
+      const patch: { emoji?: string; purpose?: string } = {};
+      if (definition.emoji) {
+        if (!current?.emoji) patch.emoji = definition.emoji;
+        else if (current.emoji !== definition.emoji) {
+          skipped.push({
+            kind: 'emoji',
+            name: definition.emoji,
+            reason: `Already ${current.emoji} here; left as it is`,
+          });
+        }
+      }
+      if (definition.purpose) {
+        if (!current?.purpose) patch.purpose = definition.purpose;
+        else if (current.purpose !== definition.purpose) {
+          skipped.push({
+            kind: 'purpose',
+            name: definition.purpose,
+            reason: 'Already has a purpose of its own; left as it is',
+          });
+        }
+      }
+      if (patch.emoji || patch.purpose) await this.updateNotebook(notebookId, patch);
+    }
+
     const existing = (await this.listFields(notebookId)) ?? [];
     const byName = new Map(existing.map((f) => [f.name.toLowerCase(), f]));
-    const skipped: Array<{ name: string; reason: string }> = [];
 
     for (const field of definition.fields) {
       const current = byName.get(field.name.toLowerCase());

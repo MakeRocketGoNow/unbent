@@ -533,7 +533,7 @@ describe('how far along the run is', () => {
 });
 
 describe('notebook definitions in the archive', () => {
-  const shopping = serializeNotebook('Shopping', [
+  const shopping = serializeNotebook({ name: 'Shopping' }, [
     { id: 'f1', notebookId: 'nb', name: 'Url', type: 'url', options: [], scale: null, currency: null, position: 0 },
     {
       id: 'f2',
@@ -579,7 +579,7 @@ describe('notebook definitions in the archive', () => {
         fields: { Url: 'https://x.test', Status: 'Want', Priority: 4.5 },
       }),
       'notebooks/shopping.yaml': shopping,
-      'notebooks/coupons.yaml': serializeNotebook('Coupons', []),
+      'notebooks/coupons.yaml': serializeNotebook({ name: 'Coupons' }, []),
     });
     const progress = await importArchive(zip, client);
 
@@ -624,7 +624,11 @@ describe('notebook definitions in the archive', () => {
     const failures: Array<{ title: string; reason: string }> = [];
     const importNotebook = vi.fn(async () => ({
       id: 'nb',
-      skipped: [{ name: 'Priority', reason: 'Already here as text, not number; left as it is' }],
+      skipped: [
+        { kind: 'emoji' as const, name: '🛒', reason: 'Already 🧾 here; left as it is' },
+        { kind: 'purpose' as const, name: 'Things to buy.', reason: 'Already has a purpose of its own; left as it is' },
+        { name: 'Priority', reason: 'Already here as text, not number; left as it is' },
+      ],
     }));
     const { client, notes } = fakeClient({ importNotebook });
     const zip = await zipFile('unbent-export.zip', {
@@ -635,11 +639,13 @@ describe('notebook definitions in the archive', () => {
     const progress = await importArchive(zip, client, { onFailure: (f) => failures.push(f) });
 
     expect(failures).toEqual([
+      { title: 'Emoji 🛒 for Shopping', reason: 'Already 🧾 here; left as it is' },
+      { title: 'Purpose "Things to buy." for Shopping', reason: 'Already has a purpose of its own; left as it is' },
       { title: 'Field "Priority" in Shopping', reason: 'Already here as text, not number; left as it is' },
       { title: 'Notebook notebooks/broken.yaml', reason: expect.stringMatching(/^Definitions not applied: /) },
     ]);
     // Counted as failures, not as notes: the bar still measures the one note.
-    expect(progress).toMatchObject({ created: 1, failed: 2, processed: 1, notesTotal: 1 });
+    expect(progress).toMatchObject({ created: 1, failed: 4, processed: 1, notesTotal: 1 });
     expect(notes.map((n) => n.title)).toEqual(['Bike']);
   });
 });

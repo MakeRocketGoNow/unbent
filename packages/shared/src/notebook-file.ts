@@ -10,9 +10,14 @@
  * Number, with an empty field gone entirely. The values survived; their meaning did not.
  *
  * So the archive carries one `notebooks/<slug>.yaml` per notebook in scope, holding what
- * the notebook's own settings page shows: its name and its fields in order, each with its
- * type and, where it has them, its options or scale. Import reads these before any note,
- * so values land against typed definitions instead of guesses.
+ * the notebook's own settings page shows: its name, its emoji and its purpose when it has
+ * them, and its fields in order, each with its type and, where it has them, its options or
+ * scale. Import reads these before any note, so values land against typed definitions
+ * instead of guesses.
+ *
+ * The emoji and the purpose came later, and a restore lost both until they did: the
+ * notebooks came back as plain books, and Auto-fill, which reads the purpose to decide what
+ * belongs where, filed differently than it had on the instance the export came from.
  *
  * YAML rather than JSON, and it was a close call. JSON is what a program would pick; but
  * every other file in the archive is markdown with YAML frontmatter, the parser is already
@@ -38,7 +43,7 @@ import {
   type FieldScale,
   type FieldType,
 } from './fields.js';
-import { notebookNameSchema } from './schemas.js';
+import { notebookEmojiSchema, notebookNameSchema, notebookPurposeSchema } from './schemas.js';
 
 /** One field as the file describes it. No id: ids never leave the database's world. */
 export interface NotebookFileField {
@@ -52,9 +57,13 @@ export interface NotebookFileField {
   currency?: string;
 }
 
-/** A notebook as the file describes it: its name and its fields in display order. */
+/** A notebook as the file describes it: its name, its look and purpose, its fields in order. */
 export interface NotebookDefinition {
   name: string;
+  /** Drawn in place of the book. Absent, or null, when the notebook has none. */
+  emoji?: string | null;
+  /** The sentence Auto-fill reads to decide what belongs here. Absent, or null, when unset. */
+  purpose?: string | null;
   fields: NotebookFileField[];
 }
 
@@ -63,10 +72,14 @@ export interface NotebookDefinition {
  *
  * Strict where the field editor is strict — reserved names, the option cap, the rating
  * bounds — because a file that fails here was written by hand, not by the export, and a
- * clear refusal beats a definition that half-applies.
+ * clear refusal beats a definition that half-applies. The emoji and the purpose go through
+ * the same schemas the notebook's settings page saves through, so a file cannot put an icon
+ * or a sentence on a notebook that the picker or the purpose editor would have refused.
  */
 export const notebookDefinitionSchema = z.object({
   name: notebookNameSchema,
+  emoji: notebookEmojiSchema.optional(),
+  purpose: notebookPurposeSchema.optional(),
   fields: z
     .array(
       z.object({
@@ -81,10 +94,20 @@ export const notebookDefinitionSchema = z.object({
     .default([]),
 });
 
-/** The file's text for a notebook and its definitions, in the order the API lists them. */
-export function serializeNotebook(name: string, fields: FieldDef[]): string {
+/**
+ * The file's text for a notebook and its definitions, in the order the API lists them.
+ *
+ * The emoji and the purpose are written only when the notebook has them, so the file for
+ * a notebook with neither is byte for byte what it was before either key existed.
+ */
+export function serializeNotebook(
+  notebook: { name: string; emoji?: string | null; purpose?: string | null },
+  fields: FieldDef[],
+): string {
   const definition: NotebookDefinition = {
-    name,
+    name: notebook.name,
+    ...(notebook.emoji ? { emoji: notebook.emoji } : {}),
+    ...(notebook.purpose ? { purpose: notebook.purpose } : {}),
     fields: fields.map((f) => ({
       name: f.name,
       type: f.type,

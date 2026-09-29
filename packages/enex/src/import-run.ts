@@ -189,10 +189,14 @@ export interface ImportClient {
    * Applies a notebook's definitions from the archive's `notebooks/<slug>.yaml`, before
    * any of its notes. Optional because an older server has no endpoint for it; the
    * archive still imports, with field types inferred from values as before.
+   *
+   * `skipped` names what the definition could not apply: a field by its name, or, with a
+   * `kind`, the notebook's own emoji or purpose, by the value the archive held.
    */
-  importNotebook?: (
-    definition: NotebookDefinition,
-  ) => Promise<{ id: string; skipped: Array<{ name: string; reason: string }> }>;
+  importNotebook?: (definition: NotebookDefinition) => Promise<{
+    id: string;
+    skipped: Array<{ name: string; reason: string; kind?: 'emoji' | 'purpose' }>;
+  }>;
 
   /**
    * Filenames already stored for a note.

@@ -144,7 +144,7 @@ function archiveClient(actor: Actor) {
       );
     },
     importNotebook: async (definition: object) =>
-      json<{ id: string; skipped: Array<{ name: string; reason: string }> }>(
+      json<{ id: string; skipped: Array<{ name: string; reason: string; kind?: string }> }>(
         await api(actor, '/api/import/notebook', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -169,6 +169,14 @@ async function fieldsOf(actor: Actor, notebook: string): Promise<FieldJson[]> {
   ).notebooks.find((n) => n.name === notebook);
   if (!nb) throw new Error(`no notebook ${notebook}`);
   return (await json<{ fields: FieldJson[] }>(await api(actor, `/api/notebooks/${nb.id}/fields`))).fields;
+}
+
+async function notebookOf(actor: Actor, notebook: string): Promise<NotebookSummary> {
+  const nb = (
+    await json<{ notebooks: NotebookSummary[] }>(await api(actor, '/api/notebooks'))
+  ).notebooks.find((n) => n.name === notebook);
+  if (!nb) throw new Error(`no notebook ${notebook}`);
+  return nb;
 }
 
 let alice: Actor;
@@ -353,6 +361,12 @@ describe('notebook definitions across an import', () => {
     const nb = (
       await json<{ notebooks: Array<{ id: string; name: string }> }>(await api(alice, '/api/notebooks'))
     ).notebooks.find((n) => n.name === notebook)!;
+    // Its icon, and the guidance Auto-fill files by: neither lives on a note.
+    await api(alice, `/api/notebooks/${nb.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ emoji: '🛒', purpose: 'Things to buy: where, how much, whether ordered.' }),
+    });
     const field = async (body: object) =>
       json<FieldJson>(
         await api(alice, `/api/notebooks/${nb.id}/fields`, {
@@ -381,6 +395,11 @@ describe('notebook definitions across an import', () => {
     const progress = await importArchive(zip, archiveClient(bob));
     expect(progress).toMatchObject({ created: 1, failed: 0 });
 
+    expect(await notebookOf(bob, notebook)).toMatchObject({
+      emoji: '🛒',
+      purpose: 'Things to buy: where, how much, whether ordered.',
+    });
+
     // Same types, options, scale and order — including the field no note had a value for,
     // which inference from values could never have brought back.
     const copied = await fieldsOf(bob, notebook);
@@ -407,6 +426,8 @@ describe('notebook definitions across an import', () => {
     const client = archiveClient(bob);
     await client.importNotebook({
       name: notebook,
+      emoji: '🧾',
+      purpose: 'Paper receipts, one per note.',
       fields: [
         { name: 'Merchant', type: 'text' },
         { name: 'Kind', type: 'select', options: ['Food'] },
@@ -418,6 +439,9 @@ describe('notebook definitions across an import', () => {
 
     const second = await client.importNotebook({
       name: notebook,
+      // The notebook has its own of both: kept, and the archive's named as not applied.
+      emoji: '🧮',
+      purpose: 'Something else entirely.',
       fields: [
         // Same type: nothing to do. Different type: left alone, and said so.
         { name: 'merchant', type: 'url' },
@@ -434,9 +458,19 @@ describe('notebook definitions across an import', () => {
       ],
     });
     expect(second.skipped).toEqual([
+      { kind: 'emoji', name: '🧮', reason: 'Already 🧾 here; left as it is' },
+      { kind: 'purpose', name: 'Something else entirely.', reason: 'Already has a purpose of its own; left as it is' },
       { name: 'merchant', reason: 'Already here as text, not url; left as it is' },
       { name: 'Fee', reason: 'Already here in USD, not EUR; left as it is' },
     ]);
+    expect(await notebookOf(bob, notebook)).toMatchObject({
+      emoji: '🧾',
+      purpose: 'Paper receipts, one per note.',
+    });
+
+    // The same values again are not a conflict, and say nothing.
+    const third = await client.importNotebook({ name: notebook, emoji: '🧾', fields: [] });
+    expect(third.skipped).toEqual([]);
 
     const fields = await fieldsOf(bob, notebook);
     expect(fields.map(({ name, type, options, scale, currency }) => ({ name, type, options, scale, currency }))).toEqual([
@@ -447,6 +481,25 @@ describe('notebook definitions across an import', () => {
       { name: 'Fee', type: 'number', options: [], scale: null, currency: 'USD' },
       { name: 'Paid', type: 'checkbox', options: [], scale: null, currency: null },
     ]);
+  });
+
+  it('give an existing notebook the emoji and purpose it does not have', async () => {
+    const notebook = `Bare ${Date.now()}`;
+    await json(
+      await api(bob, '/api/notebooks', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: notebook }),
+      }),
+    );
+    const result = await archiveClient(bob).importNotebook({
+      name: notebook,
+      emoji: '📦',
+      purpose: 'Shipping labels.',
+      fields: [],
+    });
+    expect(result.skipped).toEqual([]);
+    expect(await notebookOf(bob, notebook)).toMatchObject({ emoji: '📦', purpose: 'Shipping labels.' });
   });
 
   it('make a multi-select from a list value, and add the options a later value needs', async () => {
