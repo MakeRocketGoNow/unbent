@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { MAX_ATTACHMENT_BYTES, filenameSchema } from '@unbent/shared';
+import { MAX_ATTACHMENT_BYTES, filenameSchema, normalizeContentType } from '@unbent/shared';
 import type { McpServer } from '@modelcontextprotocol/server';
 import type { AttachmentsRepo } from '../../lib/attachments-repo.js';
 import {
@@ -11,6 +11,7 @@ import {
 import type { NotesRepo } from '../../lib/notes-repo.js';
 import { readPendingFile, readersFrom } from '../../lib/read-attachment.js';
 import { storeAttachment } from '../../lib/store-attachment.js';
+import { UPLOAD_GRANT_TTL_MS, type UploadGrantsRepo } from '../../lib/upload-grants.js';
 import type { Env } from '../../types.js';
 import { jsonResult, notFound, toolError } from './result.js';
 
@@ -21,26 +22,37 @@ import { jsonResult, notFound, toolError } from './result.js';
 const FILES_PER_NOTE = 100;
 
 /**
- * The tool that gives a note a file.
+ * The tools that give a note a file.
  *
- * There is no upload tool, and not because one was forgotten. A tool call is JSON the
- * model writes, so the only way bytes could arrive through one is base64 in an argument —
- * and a model producing a scan that way is millions of characters of output, past what
- * any client will carry or any model will finish. Such a tool would advertise a capability
- * that works only for files small enough not to matter. What a model can hand over is a
- * URL the server can fetch, which is what every system that holds files offers when read:
- * a signed download link. See lib/fetch-attachment.ts for the fetching and
- * lib/store-attachment.ts for what happens to the bytes, which is the same thing that
- * happens to an upload from the editor.
+ * No tool takes the bytes as an argument, and not because one was forgotten. A tool call
+ * is JSON the model writes, so the only way bytes could arrive through one is base64 in an
+ * argument — and a model producing a scan that way is millions of characters of output,
+ * past what any client will carry or any model will finish; even a phone screenshot is over
+ * a million. Such a tool would advertise a capability that works only for files small
+ * enough not to matter. It was proposed again (MAK-126) and declined for the same reason.
+ *
+ * What a model can hand over instead is a URL, in one of two directions. add_attachment
+ * takes a URL the server fetches: what every system that holds files offers when read, a
+ * signed download link. prepare_attachment_upload gives a URL the other way, for a file
+ * that has no link because it is on the assistant's own disk: the assistant's shell PUTs
+ * the bytes there (routes/uploads.ts). Either way the bytes never pass through the model,
+ * and they end in lib/store-attachment.ts, the same thing that happens to an upload from
+ * the editor.
  */
 export function registerAttachmentTools(
   server: McpServer,
   env: Pick<
     Env,
-    'BLOBS' | 'AI' | 'ALLOW_TEST_CREDENTIALS' | 'ANTHROPIC_API_KEY' | 'ANTHROPIC_API_URL' | 'ANTHROPIC_MODEL'
+    | 'APP_URL'
+    | 'BLOBS'
+    | 'AI'
+    | 'ALLOW_TEST_CREDENTIALS'
+    | 'ANTHROPIC_API_KEY'
+    | 'ANTHROPIC_API_URL'
+    | 'ANTHROPIC_MODEL'
   >,
   ctx: { waitUntil(promise: Promise<unknown>): void },
-  repos: { notes: NotesRepo; attachments: AttachmentsRepo },
+  repos: { notes: NotesRepo; attachments: AttachmentsRepo; uploads: UploadGrantsRepo },
 ): void {
   /*
      The counterpart of get_attachment_text, for the file that tool reports unread. A
@@ -139,7 +151,8 @@ export function registerAttachmentTools(
         'the exact Markdown that shows it in the note. By default that Markdown is appended ' +
         'to the end of the body; pass link false and place it yourself with edit_note when ' +
         'it belongs somewhere in particular. A PDF becomes searchable once its text is ' +
-        'extracted, which happens in the background.',
+        'extracted, which happens in the background. For a file with no URL — one on your ' +
+        'own disk or in your sandbox — use prepare_attachment_upload instead.',
       inputSchema: z.object({
         noteId: z.string().uuid(),
         url: z.string().min(1).max(8192).describe('An http or https URL the file can be fetched from.'),
@@ -197,6 +210,72 @@ export function registerAttachmentTools(
             'Nothing was attached; try again, or read the source for a fresh URL.',
         );
       }
+    },
+  );
+
+  /*
+     The other direction: a file the assistant holds, with no URL to give. The tool mints
+     a one-time link and the assistant's own shell sends the bytes to it; the tool itself
+     never sees them. The link is built on APP_URL, the origin the person reaches this
+     instance on, rather than the Worker's own address, which in development is a
+     different port and in production is not a public name at all.
+  */
+  server.registerTool(
+    'prepare_attachment_upload',
+    {
+      title: 'Upload a file from your own machine',
+      description:
+        'Attach a file that you hold rather than one at a URL: a file on the machine or in ' +
+        'the sandbox where you run commands, such as a screenshot the person gave you. ' +
+        'Returns a one-time upload URL. Send the raw bytes to it with an HTTP PUT, for ' +
+        'example curl -T "photo.png" "<uploadUrl>"; the reply to that request is the same ' +
+        'JSON add_attachment returns, with the filename the file was stored under ' +
+        '(suffixed if the note already had one by that name) and the Markdown that shows ' +
+        `it. The URL works once, for this note, for ${UPLOAD_GRANT_TTL_MS / 60_000} ` +
+        `minutes, for a file up to ${Math.floor(MAX_ATTACHMENT_BYTES / 1024 / 1024)} MB; ` +
+        'if it fails or runs out, ask for another. Your environment must be able to reach ' +
+        'this server over HTTPS, so a sandbox with restricted network access needs its ' +
+        'domain allowed. The file type is taken from contentType, else from the ' +
+        "filename's extension. By default the Markdown is appended to the note; pass link " +
+        'false and place it yourself with edit_note. This tool cannot help with a file ' +
+        'you have only seen in the conversation and cannot read from disk.',
+      inputSchema: z.object({
+        noteId: z.string().uuid(),
+        filename: filenameSchema.describe('What to call the file, with its extension.'),
+        contentType: z
+          .string()
+          .max(255)
+          .optional()
+          .describe('A MIME type such as image/png. Defaults to what the extension says.'),
+        link: z
+          .boolean()
+          .default(true)
+          .describe('Append the Markdown link to the end of the note body.'),
+      }),
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: false,
+        idempotentHint: false,
+        openWorldHint: false,
+      },
+    },
+    async ({ noteId, filename, contentType, link }) => {
+      if (!(await repos.attachments.ownsNote(noteId))) return notFound('note', noteId);
+
+      const { token, expiresAt } = await repos.uploads.create({
+        noteId,
+        filename,
+        contentType: normalizeContentType(contentType) || null,
+        link,
+      });
+      const uploadUrl = `${env.APP_URL}/api/uploads/${token}`;
+      return jsonResult({
+        uploadUrl,
+        method: 'PUT',
+        expiresAt: new Date(expiresAt).toISOString(),
+        maxBytes: MAX_ATTACHMENT_BYTES,
+        example: `curl -T <path to the file> "${uploadUrl}"`,
+      });
     },
   );
 }

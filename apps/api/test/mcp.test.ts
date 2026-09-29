@@ -12,7 +12,11 @@
  *
  * Runs against a live `wrangler dev` with email/password enabled. See test/README.md.
  */
+import { execFileSync } from 'node:child_process';
+import { mkdtempSync, writeFileSync } from 'node:fs';
 import { createServer, type Server } from 'node:http';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import type { AddressInfo } from 'node:net';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
@@ -786,5 +790,164 @@ describe('add_attachment', () => {
     expect(result.text).toContain('No such note');
     expect(hits['/report.pdf'] ?? 0).toBe(fetched);
     expect(await listFiles(carol, carolNoteId)).not.toContain('report-2.pdf');
+  });
+});
+
+/**
+ * Uploading a file the assistant holds, through a link prepare_attachment_upload mints.
+ *
+ * The PUT goes to the link exactly as the tool hands it out — on the SPA origin, through
+ * whatever sits in front of the Worker — with no cookie and no bearer token, because the
+ * request is curl in an agent's shell and the link is the only credential it has. What
+ * these prove is that the link is enough, that it is enough only once, and that it is not
+ * spent by a request that was wrong on its face.
+ */
+describe('prepare_attachment_upload', () => {
+  // Not a real PNG: the type comes from the name, and nothing here decodes the image.
+  const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3, 4]);
+  let erin: Actor;
+  let frank: Actor;
+  let erinNoteId: string;
+
+  beforeAll(async () => {
+    const stamp = Date.now();
+    const erinCookie = await signUp(`mcp-erin-${stamp}@example.test`, 'erin-password-123', 'Erin');
+    const frankCookie = await signUp(`mcp-frank-${stamp}@example.test`, 'frank-password-12', 'Frank');
+    const clientId = await registerClient('Upload Assistant');
+    erin = { cookie: erinCookie, userId: '', token: await tokenFor(erinCookie, clientId, RESOURCE) };
+    frank = { cookie: frankCookie, userId: '', token: await tokenFor(frankCookie, clientId, RESOURCE) };
+
+    const created = await mcp(erin.token, 'tools/call', {
+      name: 'create_note',
+      arguments: { title: 'Erin screenshots', body: 'Before any upload.' },
+    });
+    erinNoteId = JSON.parse(toolText(created.body)).id;
+    expect(erinNoteId).toBeTruthy();
+  }, 60_000);
+
+  async function prepare(token: string, args: Record<string, unknown>) {
+    const { body } = await mcp(token, 'tools/call', { name: 'prepare_attachment_upload', arguments: args });
+    const text = toolText(body);
+    return { isError: body.result?.isError === true, text, json: () => JSON.parse(text) };
+  }
+
+  /** As curl --data-binary would send it: a length, and a Content-Type that means nothing. */
+  function put(url: string, bytes: Uint8Array) {
+    return fetch(url, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: bytes,
+    });
+  }
+
+  async function files(actor: Actor, noteId: string) {
+    const res = await fetch(`${BASE}/api/notes/${noteId}/files`, {
+      headers: { Cookie: actor.cookie, Origin: ORIGIN },
+    });
+    return ((await res.json()) as { files: Array<{ filename: string }> }).files.map((f) => f.filename);
+  }
+
+  it('is offered', async () => {
+    const { body } = await mcp(erin.token, 'tools/list');
+    const names = (body.result?.tools ?? []).map((t: { name: string }) => t.name);
+    expect(names).toContain('prepare_attachment_upload');
+  });
+
+  it('takes the bytes on a link alone, stores them, and answers as add_attachment does', async () => {
+    const link = await prepare(erin.token, { noteId: erinNoteId, filename: 'Screen shot 1.png' });
+    expect(link.isError).toBe(false);
+    const { uploadUrl, method, expiresAt } = link.json();
+    expect(uploadUrl.startsWith(`${ORIGIN}/api/uploads/`)).toBe(true);
+    expect(method).toBe('PUT');
+    expect(Date.parse(expiresAt)).toBeGreaterThan(Date.now());
+
+    const res = await put(uploadUrl, PNG);
+    expect(res.status).toBe(201);
+    expect(await res.json()).toMatchObject({
+      noteId: erinNoteId,
+      filename: 'Screen shot 1.png',
+      path: 'files/Screen shot 1.png',
+      markdown: '![Screen shot 1.png](<files/Screen shot 1.png>)',
+      // From the extension, not the request's form-encoded header.
+      contentType: 'image/png',
+      size: PNG.length,
+      linked: true,
+    });
+
+    const note = await fetch(`${BASE}/api/notes/${erinNoteId}`, {
+      headers: { Cookie: erin.cookie, Origin: ORIGIN },
+    });
+    expect(((await note.json()) as { body: string }).body).toBe(
+      'Before any upload.\n\n![Screen shot 1.png](<files/Screen shot 1.png>)',
+    );
+    const served = await fetch(`${BASE}/api/notes/${erinNoteId}/files/Screen%20shot%201.png`, {
+      headers: { Cookie: erin.cookie, Origin: ORIGIN },
+    });
+    expect(new Uint8Array(await served.arrayBuffer())).toEqual(PNG);
+  });
+
+  it('takes the file from the curl command the tool prints, as printed', async () => {
+    const { example } = (await prepare(erin.token, { noteId: erinNoteId, filename: 'from-curl.png', link: false })).json();
+    const path = join(mkdtempSync(join(tmpdir(), 'unbent-upload-')), 'local name.png');
+    writeFileSync(path, PNG);
+
+    // The placeholder is the only thing an assistant fills in; the rest runs as given.
+    const [, url] = /curl -T <path to the file> "(.+)"$/.exec(example) ?? [];
+    expect(url).toBeTruthy();
+    const out = execFileSync('curl', ['-sS', '-T', path, url!], { encoding: 'utf8' });
+    expect(JSON.parse(out)).toMatchObject({ filename: 'from-curl.png', contentType: 'image/png', size: PNG.length });
+  });
+
+  it('works once', async () => {
+    const { uploadUrl } = (await prepare(erin.token, { noteId: erinNoteId, filename: 'once.pdf', link: false })).json();
+    expect((await put(uploadUrl, PNG)).status).toBe(201);
+
+    const again = await put(uploadUrl, PNG);
+    expect(again.status).toBe(404);
+    expect(((await again.json()) as { error: string }).error).toContain('prepare_attachment_upload');
+    expect((await files(erin, erinNoteId)).filter((f) => f.startsWith('once'))).toEqual(['once.pdf']);
+  });
+
+  it('is not spent by a request that sent no length', async () => {
+    const { uploadUrl } = (await prepare(erin.token, { noteId: erinNoteId, filename: 'chunked.txt', link: false })).json();
+    const chunked = await fetch(uploadUrl, {
+      method: 'PUT',
+      body: new ReadableStream({
+        start(controller) {
+          controller.enqueue(new TextEncoder().encode('hello'));
+          controller.close();
+        },
+      }),
+      duplex: 'half',
+    } as RequestInit);
+    expect(chunked.status).toBe(411);
+
+    expect((await put(uploadUrl, new TextEncoder().encode('hello'))).status).toBe(201);
+  });
+
+  it('opens nothing for a token that was never minted', async () => {
+    const res = await put(`${ORIGIN}/api/uploads/not-a-real-token`, PNG);
+    expect(res.status).toBe(404);
+  });
+
+  it('mints nothing for a note that is not the caller\'s', async () => {
+    const result = await prepare(frank.token, { noteId: erinNoteId, filename: 'intruder.png' });
+    expect(result.isError).toBe(true);
+    expect(result.text).toContain('No such note');
+    expect(result.text).not.toContain('uploads/');
+  });
+
+  it('stores nothing on a note trashed after its link was made', async () => {
+    const created = await mcp(erin.token, 'tools/call', {
+      name: 'create_note',
+      arguments: { title: 'Soon trashed', body: '' },
+    });
+    const doomed = JSON.parse(toolText(created.body)).id;
+    const { uploadUrl } = (await prepare(erin.token, { noteId: doomed, filename: 'late.png' })).json();
+    await mcp(erin.token, 'tools/call', { name: 'delete_note', arguments: { noteId: doomed } });
+
+    const res = await put(uploadUrl, PNG);
+    expect(res.status).toBe(404);
+    expect(((await res.json()) as { error: string }).error).toContain('no longer there');
   });
 });

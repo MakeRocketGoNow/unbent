@@ -1,6 +1,7 @@
 import { McpServer, createMcpHandler } from '@modelcontextprotocol/server';
 import { AttachmentsRepo } from '../lib/attachments-repo.js';
 import { NotesRepo } from '../lib/notes-repo.js';
+import { UploadGrantsRepo } from '../lib/upload-grants.js';
 import type { Env } from '../types.js';
 import { registerAttachmentTools } from './tools/attachments.js';
 import { registerReadTools } from './tools/read.js';
@@ -31,7 +32,8 @@ export function createUnbentMcpHandler(
     const attachments = new AttachmentsRepo(env.DB, userId);
     registerReadTools(server, notes, attachments);
     registerWriteTools(server, notes);
-    registerAttachmentTools(server, env, ctx, { notes, attachments });
+    const uploads = new UploadGrantsRepo(env.DB, userId);
+    registerAttachmentTools(server, env, ctx, { notes, attachments, uploads });
     return server;
   });
 }
