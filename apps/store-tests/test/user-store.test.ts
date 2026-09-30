@@ -115,11 +115,14 @@ describe('UserStore lifecycle', () => {
     expect(rebuilt).toMatchObject({ userId, wiped: false, migrations: ['0001-init'] });
     expect(rebuilt.counts.notes).toBe(0);
 
-    // And after an eviction, a fresh wake re-migrates from nothing the same way.
+    // And after an eviction the object wakes as it was left — empty, no schema, and
+    // never to copy its account back from D1 — until something asks for its notes.
     await stub.wipe();
     await evictDurableObject(stub);
     const woke = env.USER_STORE.get(env.USER_STORE.idFromName(userId));
-    expect((await woke.stats()).migrations).toEqual(['0001-init']);
+    expect(await woke.stats()).toMatchObject({ wiped: true, migrations: [], migratedFromD1: true });
+    expect(await woke.schemaSql()).toEqual(expect.arrayContaining([expect.stringContaining('CREATE TABLE notes')]));
+    expect(await woke.stats()).toMatchObject({ wiped: false, migrations: ['0001-init'] });
   });
 
   it('dumpPage pages a table by rowid and stops with a null cursor', async () => {
