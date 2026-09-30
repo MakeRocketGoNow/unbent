@@ -87,11 +87,14 @@ describe('copy from D1', () => {
 
   /**
    * Rows read are the budget. Each page is a range seek on a `user_id` index (the real
-   * plans are pinned in `migrations.test.ts`), so a copy reads the account's rows about
-   * twice: once paging them and once counting them, the count being a covering index
-   * read. Before the indexes, every page of notes read and sorted all the remaining ones.
+   * plans are pinned against the migrations in `migrations.test.ts`, which is the guard;
+   * this keeps `d1RowsRead` honest). D1 counts an index entry and the table row it leads
+   * to as two, so paging an account reads its rows twice, the covering counts read them
+   * once more, and a link's note is probed on the way: about three and a half times the
+   * rows, measured. Before the indexes, every page of notes read and sorted all the
+   * remaining ones on top of that.
    */
-  it('reads the account about twice over, pages and counts, however many calls it takes', async () => {
+  it('reads the account a few times over, pages and counts, however many calls it takes', async () => {
     const { userId, stub } = freshStore('rows');
     await seedD1(userId, 1200);
     // Rows the seed made for this user: 2 notebooks, 1 field, 2 tags, and per note a
@@ -106,8 +109,8 @@ describe('copy from D1', () => {
     }
     expect((await stub.stats()).counts.notes).toBe(1200);
     // The other tests' links share this file's `note_tags`, walked by rowid; a few dozen.
-    expect(read).toBeLessThan(2 * rows + 500);
-    expect(read).toBeGreaterThan(rows);
+    expect(read).toBeLessThan(4 * rows + 500);
+    expect(read).toBeGreaterThan(2 * rows);
   });
 
   /**
@@ -118,12 +121,13 @@ describe('copy from D1', () => {
   it('pauses at its query budget and continues from the last committed page on the next call', async () => {
     const { userId, stub } = freshStore('budget');
     await seedD1(userId, 12);
-    // A budget of thirteen: nine are reserved for the verification's counts and the
-    // directory write, so each call fetches three pages of the sixteen the eight tables
-    // take (a page of rows and the empty page after it) before it pauses.
+    // A budget of fifteen: nine are reserved for the verification's counts and the mark
+    // at the end, and the probe, the row check and the freeze take three, so each call
+    // fetches two pages of the sixteen the eight tables take (a page of rows and the
+    // empty page after it) before it pauses.
     const statuses: string[] = [];
-    for (let calls = 0; calls < 12; calls++) {
-      const result = await stub.copyFromD1({ budget: 13 });
+    for (let calls = 0; calls < 20; calls++) {
+      const result = await stub.copyFromD1({ budget: 15 });
       statuses.push(result.status);
       if (result.status === 'done') {
         expect(result.resumed).toBe(true);
@@ -254,11 +258,11 @@ describe('copy from D1', () => {
     for (let i = 0; i < 3; i++) {
       await env.DB.prepare(`UPDATE attachment_text SET text = ?1 WHERE attachment_id = ?2`).bind(big, `${userId}-a${i}`).run();
     }
-    // The probe, the freeze, fourteen pages for the other tables (a page and the empty
-    // one after it, for seven of them), three for the texts — the first two, since the
-    // cut is by the rows before the next, then the third, then the empty one — eight
-    // counts and the copied mark: twenty-eight queries.
-    expect(await stub.copyFromD1()).toMatchObject({ status: 'done', queries: 1 + 1 + 14 + 3 + 8 + 1 });
+    // The probe, the row check, the freeze, fourteen pages for the other tables (a page
+    // and the empty one after it, for seven of them), three for the texts — the first
+    // two, since the cut is by the rows before the next, then the third, then the empty
+    // one — eight counts and the copied mark: twenty-nine queries.
+    expect(await stub.copyFromD1()).toMatchObject({ status: 'done', queries: 1 + 1 + 1 + 14 + 3 + 8 + 1 });
     expect((await stub.stats()).counts.attachment_text).toBe(3);
     expect((await stub.textFor(`${userId}-n0002`, 'scan.pdf'))?.length).toBe(big.length);
   });
