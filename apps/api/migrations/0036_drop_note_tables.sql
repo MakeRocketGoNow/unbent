@@ -11,12 +11,16 @@
 -- losing rows nobody copied. The guard is SQL rather than a step in the deploy workflow so
 -- it holds wherever migrations run — production, the dev instance, a fork's instance —
 -- and an account with rows but no directory row counts as not copied, since the LEFT JOIN
--- finds it with a null. Idempotent around a failed attempt: the guard table is created
--- if missing and emptied before it is filled.
+-- finds it with a null. An account is one that owns a note, a notebook or a tag: every
+-- other table hangs off those three by foreign key, so an account with only an empty
+-- notebook and its field definitions is counted too (found in review). Idempotent around
+-- a failed attempt: the guard table is created if missing and emptied before it is filled.
 CREATE TABLE IF NOT EXISTS _drop_guard (uncopied INTEGER NOT NULL CHECK (uncopied = 0));
 DELETE FROM _drop_guard;
 INSERT INTO _drop_guard (uncopied)
-  SELECT COUNT(*) FROM (SELECT DISTINCT user_id FROM notes) n
+  SELECT COUNT(*) FROM (
+    SELECT user_id FROM notes UNION SELECT user_id FROM notebooks UNION SELECT user_id FROM tags
+  ) n
     LEFT JOIN account_directory d ON d.user_id = n.user_id
    WHERE d.copied_at IS NULL;
 DROP TABLE _drop_guard;

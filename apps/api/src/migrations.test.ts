@@ -64,18 +64,23 @@ describe.skipIf(!sqlite3)('the D1 migrations', () => {
   });
 
   /**
-   * Two accounts with rows: one with a directory row not marked copied, one with a user
-   * row and notes but no directory row at all (the heal never reached it). Either refuses
-   * the drop, since a dropped row that was never copied is the one loss here with no way
-   * back. Refused by a CHECK, and everything is still there afterwards.
+   * Three accounts with rows: one with a directory row not marked copied, one with a user
+   * row and notes but no directory row at all (the heal never reached it), and one with
+   * no notes — an empty notebook with a field definition, and a tag — which a guard that
+   * only looked at `notes` let through (found in review). Each refuses the drop, since a
+   * dropped row that was never copied is the one loss here with no way back. Refused by
+   * a CHECK, and everything is still there afterwards.
    */
   it('refuse to drop the note tables while an account with rows is not recorded as copied', () => {
     const { run, refused } = db(file);
     run(`
-      INSERT INTO user (id, name, email, emailVerified, createdAt, updatedAt) VALUES ('m', 'M', 'm@example.test', 0, 'n', 'n'), ('unlisted', 'U', 'u@example.test', 0, 'n', 'n');
-      INSERT INTO account_directory (user_id, created_at) VALUES ('m', 1);
+      INSERT INTO user (id, name, email, emailVerified, createdAt, updatedAt) VALUES ('m', 'M', 'm@example.test', 0, 'n', 'n'), ('unlisted', 'U', 'u@example.test', 0, 'n', 'n'), ('noteless', 'N', 'x@example.test', 0, 'n', 'n');
+      INSERT INTO account_directory (user_id, created_at) VALUES ('m', 1), ('noteless', 1);
       INSERT INTO notes (id, user_id, title, body, created_at, updated_at) VALUES ('n1', 'm', 't', 'b', 1, 1);
       INSERT INTO notes (id, user_id, title, body, created_at, updated_at) VALUES ('n2', 'unlisted', 't', 'b', 1, 1);
+      INSERT INTO notebooks (id, user_id, name, created_at) VALUES ('nb', 'noteless', 'Empty', 1);
+      INSERT INTO notebook_fields (id, user_id, notebook_id, name, type, position, created_at) VALUES ('f', 'noteless', 'nb', 'Amount', 'number', 0, 1);
+      INSERT INTO tags (id, user_id, name) VALUES ('t', 'noteless', 'someday');
     `);
     expect(refused(migration(DROP))).toMatch(/CHECK constraint failed/);
     expect(run(`SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name IN ${NOTE_TABLES}`)).toBe('13');
@@ -83,12 +88,15 @@ describe.skipIf(!sqlite3)('the D1 migrations', () => {
     // The listed account is copied; the unlisted one still has rows nobody copied.
     run(`UPDATE account_directory SET copied_at = 2 WHERE user_id = 'm'`);
     expect(refused(migration(DROP))).toMatch(/CHECK constraint failed/);
+    // It too; the account with only a notebook and a tag still holds the drop.
+    run(`INSERT INTO account_directory (user_id, created_at, copied_at) VALUES ('unlisted', 1, 2)`);
+    expect(refused(migration(DROP))).toMatch(/CHECK constraint failed/);
     expect(run(`SELECT COUNT(*) FROM notes`)).toBe('2');
   });
 
   it('drop every note-plane object once every account with rows is copied, and nothing else', () => {
     const { run } = db(file);
-    run(`INSERT INTO account_directory (user_id, created_at, copied_at) VALUES ('unlisted', 1, 2)`);
+    run(`UPDATE account_directory SET copied_at = 2 WHERE user_id = 'noteless'`);
     run(migration(DROP));
     // Tables, their triggers and indexes, the FTS shadow tables and the guard: all gone.
     expect(
