@@ -1,46 +1,18 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link } from '@tanstack/react-router';
+import { DEFAULT_PAGES_NOTEBOOK, type NotionUnit } from '@unbent/enex';
 import {
-  DEFAULT_PAGES_NOTEBOOK,
-  importFormat,
-  type ImportFailure,
-  type ImportProgress,
-  type NotionUnit,
-} from '@unbent/enex';
-import type { ImportEvent, ImportRequest, NotionChoices } from '../import-worker.js';
+  getImportRun,
+  pickImportFile,
+  resetImport,
+  startImport,
+  stopImport,
+  useImportRun,
+} from '../import-run.js';
 import { Button } from './Button.js';
 import { describeImportFile } from './import-file.js';
 import { importPercent } from './import-progress.js';
 import { ImportSkips } from './ImportSkips.js';
-import { emptySkipLog, recordSkip, type SkipLog } from './import-skips.js';
-import { useSettingsBusy } from './SettingsLayout.js';
-
-interface ImportProps {
-  /** Called when notes actually landed, so the list can refresh. */
-  onImported: () => void;
-}
-
-type Status = 'idle' | 'running' | 'done' | 'error';
-
-/** What the worker said a picked zip is: this app's own export, Notion's, or neither. */
-type ZipDescription =
-  | { kind: 'unbent' }
-  | { kind: 'notion'; units: NotionUnit[] }
-  | { kind: 'unreadable'; message: string };
-
-function initialProgress(): ImportProgress {
-  return {
-    processed: 0,
-    created: 0,
-    skipped: 0,
-    failed: 0,
-    filesUploaded: 0,
-    filesIndexed: 0,
-    bytesRead: 0,
-    notesTotal: 0,
-    currentTitle: 'Starting import…',
-  };
-}
 
 /** `1 note`, `3,325 notes`. */
 function count(n: number, noun: string): string {
@@ -54,42 +26,46 @@ function formatBytes(n: number): string {
   return `${(n / 1024 ** 3).toFixed(2)} GB`;
 }
 
-export function Import({ onImported }: ImportProps) {
-  const [file, setFile] = useState<File | null>(null);
-  const [status, setStatus] = useState<Status>('idle');
-  const [progress, setProgress] = useState<ImportProgress | null>(null);
-  const [failures, setFailures] = useState<ImportFailure[]>([]);
-  const [skips, setSkips] = useState<SkipLog>(emptySkipLog);
-  const [error, setError] = useState<string | null>(null);
-  const [elapsed, setElapsed] = useState(0);
+/**
+ * The import page: a view of the run in `import-run.ts`, which outlives it.
+ *
+ * Leaving this page while a run goes, or after one, and coming back shows the same run.
+ * What is only the form's — the Notion choices, the PDF checkbox — stays here, since it
+ * means nothing once a run has started.
+ */
+export function Import() {
+  const { status, file, zip, progress, failures, skips, error, startedAt, endedAt, run } = useImportRun();
   const [extractText, setExtractText] = useState(true);
-  const [zip, setZip] = useState<ZipDescription | null>(null);
   /** The Notion units to import, by key; every non-empty one until the person unticks it. */
   const [include, setInclude] = useState<ReadonlySet<string>>(new Set());
   const [pagesNotebook, setPagesNotebook] = useState(DEFAULT_PAGES_NOTEBOOK);
   const [tagsAsTags, setTagsAsTags] = useState(true);
+  const [now, setNow] = useState(() => Date.now());
 
-  const { setImportRunning } = useSettingsBusy();
-  const worker = useRef<Worker | null>(null);
-  const startedAt = useRef(0);
-
+  // Everything importable starts ticked, each time a zip is read.
   useEffect(() => {
-    return () => worker.current?.terminate();
+    setInclude(new Set(zip?.kind === 'notion' ? zip.units.filter((u) => !u.empty).map((u) => u.key) : []));
+  }, [zip]);
+
+  /*
+   * A file picked and not started is dropped on leaving. The run is worth keeping; a
+   * pick is not, and the file input cannot be given it back — so returning would show
+   * "No file chosen" above a line naming the file, with Start enabled.
+   */
+  useEffect(() => {
+    return () => {
+      if (getImportRun().status === 'idle') pickImportFile(null);
+    };
   }, []);
-
-  // Mirrored into the section rather than set at each transition: the sub-nav has to go
-  // inert for the whole run, and there are five places status changes.
-  useEffect(() => {
-    setImportRunning(status === 'running');
-    return () => setImportRunning(false);
-  }, [status, setImportRunning]);
 
   // A long import needs a clock; without one a slow file is indistinguishable from a hang.
   useEffect(() => {
     if (status !== 'running') return;
-    const timer = setInterval(() => setElapsed(Date.now() - startedAt.current), 1000);
+    setNow(Date.now());
+    const timer = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(timer);
   }, [status]);
+  const elapsed = status === 'idle' ? 0 : Math.max(0, (endedAt ?? now) - startedAt);
 
   // What the picked file is, and so whether Start does anything. Null until one is picked.
   const picked = file ? describeImportFile(file.name, zip && zip.kind !== 'unreadable' ? zip.kind : 'reading') : null;
@@ -104,110 +80,23 @@ export function Import({ onImported }: ImportProps) {
     (picked.format !== 'zip' ||
       (zip !== null && zip.kind !== 'unreadable' && (zip.kind === 'unbent' || include.size > 0)));
 
-  /**
-   * The worker, made on first need and kept until the panel unmounts.
-   *
-   * It used to be made at Start and thrown away when the run ended. A zip is described
-   * before Start — the panel has to know whether it is Notion's to draw the picker — so it
-   * is made at whichever comes first, and a run's end leaves it for the next file.
-   */
-  const spawn = useCallback((): Worker => {
-    if (worker.current) return worker.current;
-    const w = new Worker(new URL('../import-worker.ts', import.meta.url), { type: 'module' });
-    worker.current = w;
-
-    w.onmessage = (event: MessageEvent<ImportEvent>) => {
-      const data = event.data;
-      if (data.type === 'described') {
-        if (data.kind === 'notion') {
-          setZip({ kind: 'notion', units: data.units });
-          setInclude(new Set(data.units.filter((u) => !u.empty).map((u) => u.key)));
-        } else if (data.kind === 'unbent') {
-          setZip({ kind: 'unbent' });
-        } else {
-          setZip({ kind: 'unreadable', message: data.message });
-        }
-      } else if (data.type === 'progress') {
-        setProgress(data.progress);
-      } else if (data.type === 'failure') {
-        // Cap the retained list: a bad file could otherwise produce thousands of entries
-        // and push the tab into swap.
-        setFailures((prev) => (prev.length >= 200 ? prev : [...prev, data.failure]));
-      } else if (data.type === 'skip') {
-        setSkips((prev) => recordSkip(prev, data.skip));
-      } else if (data.type === 'done') {
-        setProgress(data.progress);
-        setStatus('done');
-        onImported();
-      } else if (data.type === 'error') {
-        setError(data.message);
-        setStatus('error');
-        onImported();
-      }
-    };
-
-    w.onerror = (event) => {
-      // Module workers often report an empty message on abrupt death (e.g. nested pdf.js
-      // worker teardown). Surface something actionable rather than a blank error line.
-      setError(event.message || 'Import worker crashed — try again; already-imported notes are skipped.');
-      setStatus('error');
-      w.terminate();
-      worker.current = null;
-    };
-    return w;
-  }, [onImported]);
-
-  /** Takes a file and, for a zip, has the worker read it so the panel can say what it is. */
-  function pick(next: File | null) {
-    setFile(next);
-    setZip(null);
-    setInclude(new Set());
-    setError(null);
-    if (next && importFormat(next.name) === 'zip') {
-      spawn().postMessage({ type: 'describe', file: next } satisfies ImportRequest);
-    }
+  function start() {
+    if (!canStart) return;
+    startImport({
+      extractText,
+      ...(zip?.kind === 'notion' ? { notion: { include: [...include], pagesNotebook, tagsAsTags } } : {}),
+    });
   }
 
-  const start = useCallback(() => {
-    if (!file || !canStart) return;
-
-    setStatus('running');
-    setFailures([]);
-    setSkips(emptySkipLog);
-    setError(null);
-    // Show the running state before the worker module finishes loading. This also keeps a
-    // worker startup failure visible instead of leaving the user on an unchanged form.
-    setProgress(initialProgress());
-    startedAt.current = Date.now();
-    setElapsed(0);
-
-    const choices: NotionChoices | undefined =
-      zip?.kind === 'notion' ? { include: [...include], pagesNotebook, tagsAsTags } : undefined;
-    const request: ImportRequest = { type: 'start', file, extractText, ...(choices ? { notion: choices } : {}) };
-    spawn().postMessage(request);
-  }, [file, canStart, extractText, zip, include, pagesNotebook, tagsAsTags, spawn]);
-
-  function stop() {
-    worker.current?.postMessage({ type: 'abort' } satisfies ImportRequest);
-  }
-
-  /**
-   * Clears a finished run so another file can be picked.
+  /*
+   * "Import another file" and "Try another file" are the only way a run is forgotten.
    *
-   * The summary stays on screen until this is pressed. A small import finishes in well
-   * under a second, and previously the only way back to the file picker was closing and
-   * reopening the panel — which threw away the result before it could be read.
+   * The summary stays until one is pressed. A small import finishes in well under a
+   * second, and previously the only way back to the file picker was closing and reopening
+   * the panel — which threw away the result before it could be read.
    */
   function reset() {
-    setFile(null);
-    setZip(null);
-    setInclude(new Set());
-    setProgress(null);
-    setFailures([]);
-    setSkips(emptySkipLog);
-    setError(null);
-    setElapsed(0);
-    setStatus('idle');
+    resetImport();
   }
 
   const pct = importPercent(progress, file?.size ?? 0, status === 'done');
@@ -301,7 +190,7 @@ export function Import({ onImported }: ImportProps) {
           <input
             type="file"
             accept=".enex,.zip,.md,application/xml,text/xml,application/zip,text/markdown"
-            onChange={(e) => pick(e.target.files?.[0] ?? null)}
+            onChange={(e) => pickImportFile(e.target.files?.[0] ?? null)}
           />
 
           {file && picked && (
@@ -400,7 +289,7 @@ export function Import({ onImported }: ImportProps) {
           {status === 'running' && (
             <>
               <p className="muted small truncate">{progress.currentTitle}</p>
-              <Button variant="secondary" tone="danger" onClick={stop}>
+              <Button variant="secondary" tone="danger" onClick={stopImport}>
                 Stop
               </Button>
             </>
@@ -463,7 +352,7 @@ export function Import({ onImported }: ImportProps) {
         </details>
       )}
 
-      <ImportSkips log={skips} running={status === 'running'} />
+      <ImportSkips log={skips} run={run} />
     </div>
   );
 }

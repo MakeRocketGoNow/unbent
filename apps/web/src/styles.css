@@ -5079,6 +5079,10 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
   display: flex;
   align-items: center;
   gap: 0.5rem;
+  /* Sized to its content up to the cap, not shrunk to fit: `left: 50%` leaves only half
+     the viewport as the room it is fitted into, so on a phone a longer message wrapped a
+     word to a line in a card half the screen wide. */
+  width: max-content;
   max-width: min(30rem, calc(100vw - 2rem));
   padding: 0.6rem 0.6rem 0.6rem 0.9rem;
   border-radius: 0.5rem;
@@ -5123,6 +5127,21 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
 .snackbar-action:hover,
 .snackbar-close:hover {
   background: color-mix(in srgb, var(--bg) 18%, transparent);
+}
+
+/*
+   A link in the action's place: the same ink and the same hit area as the small quiet
+   button beside it, so the row reads as one set, but underlined, because it navigates
+   and a link should say so.
+*/
+.snackbar-link {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.25rem 0.55rem;
+  border-radius: 0.4rem;
+  font-size: 0.78rem;
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
 }
 
 @keyframes snackbar-in {
@@ -5750,9 +5769,6 @@ button.settings-nav-item {
     left: 0;
     right: auto;
   }
-
-  /* Refusing to leave a running import, like the settings sub-nav — see `Rail.tsx`. */
-  .rail[inert] { opacity: 0.45; }
 
   /*
      The rows' scrollbar sits on the divider, not a gutter's width in from it.

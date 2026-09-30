@@ -5,7 +5,6 @@ import { useSession } from '../auth-client.js';
 import { useSignOut } from '../useSignOut.js';
 import { requireSession, useShell } from '../auth-gate.js';
 import { Rail, RailHandle, useRailWidth, type RailPref } from '../components/Rail.js';
-import { SettingsBusyProvider } from '../components/SettingsLayout.js';
 import { usePersistentState } from '../usePersistentState.js';
 import { useMediaQuery, MOBILE_QUERY } from '../useMediaQuery.js';
 import { claimCacheFor } from '../queries.js';
@@ -14,6 +13,8 @@ import { Topbar } from '../components/Topbar.js';
 import { useHostApp } from '../useHostApp.js';
 import { postToApp } from '../app-bridge.js';
 import { ExportSnackbar } from '../components/ExportSnackbar.js';
+import { ImportSnackbar } from '../components/ImportSnackbar.js';
+import { claimImportFor, getImportRun, subscribeImport } from '../import-run.js';
 
 export interface RouterContext {
   queryClient: QueryClient;
@@ -149,6 +150,26 @@ function AppShell() {
   }, [userId, queryClient]);
 
   /**
+   * The import run, which outlives the page it was started from.
+   *
+   * An import creates notes, notebooks and tags, so nothing cached is still true once it
+   * ends — however it ends, since a failed run has usually landed some notes first. Here
+   * rather than on the import page because the run may end while that page is not
+   * mounted. Claimed for this user first; see `ImportRun.claim`.
+   */
+  useEffect(() => {
+    if (!userId) return;
+    claimImportFor(userId);
+    let last = getImportRun().status;
+    return subscribeImport(() => {
+      const { status } = getImportRun();
+      if (status === last) return;
+      if (last === 'running') void queryClient.invalidateQueries();
+      last = status;
+    });
+  }, [userId, queryClient]);
+
+  /**
    * The session going away under a rendered app — expiry, or a sign-out in another tab.
    * The guard cannot catch that: it runs on navigation, and this happens between them.
    */
@@ -173,9 +194,6 @@ function AppShell() {
    * a landmark should hold the page's content and nothing that is chrome for every page.
    */
   return (
-    // The import-running flag sits above the rail and the content alike: both are ways
-    // out of a running import, and both have to go inert together. See `SettingsLayout`.
-    <SettingsBusyProvider>
     <div className={`shell wide rail-${railPref}`} style={railWidth.style} ref={shellRef}>
       {/* The chain sign-out runs, and why its order matters, is in `useSignOut`. */}
       {!isMobile && (
@@ -200,7 +218,7 @@ function AppShell() {
         <Outlet />
       </main>
       <ExportSnackbar />
+      <ImportSnackbar />
     </div>
-    </SettingsBusyProvider>
   );
 }

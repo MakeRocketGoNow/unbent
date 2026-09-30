@@ -15,8 +15,6 @@ import { filters } from '../routes/notes.js';
 import { usePersistentState } from '../usePersistentState.js';
 import { Rail, RailHandle, useRailWidth, type RailPref } from './Rail.js';
 import { useRef } from 'react';
-import { SettingsBusyProvider, useSettingsBusy } from './SettingsLayout.js';
-import { useEffect } from 'react';
 
 /**
  * The desktop's navigation rail.
@@ -44,16 +42,6 @@ function stubMatchMedia(initial: boolean) {
   };
 }
 
-/** A page that reports a running import, the way the import page does while its worker runs. */
-function RunningImport() {
-  const { setImportRunning } = useSettingsBusy();
-  useEffect(() => {
-    setImportRunning(true);
-    return () => setImportRunning(false);
-  }, [setImportRunning]);
-  return <p>importing</p>;
-}
-
 /** The shell's share of the arrangement: the stored preference and the class it sets. */
 function Shell() {
   const [pref, setPref] = usePersistentState<RailPref>('rail', 'auto', (raw) =>
@@ -62,18 +50,16 @@ function Shell() {
   const width = useRailWidth();
   const shellRef = useRef<HTMLDivElement>(null);
   return (
-    <SettingsBusyProvider>
-      <div
-        data-testid="shell"
-        className={`shell wide rail-${pref}`}
-        style={width.style}
-        ref={shellRef}
-      >
-        <Rail pref={pref} onPref={setPref} email="someone@example.com" onSignOut={() => {}} />
-        <RailHandle containerRef={shellRef} width={width} onCollapse={() => setPref('collapsed')} />
-        <Outlet />
-      </div>
-    </SettingsBusyProvider>
+    <div
+      data-testid="shell"
+      className={`shell wide rail-${pref}`}
+      style={width.style}
+      ref={shellRef}
+    >
+      <Rail pref={pref} onPref={setPref} email="someone@example.com" onSignOut={() => {}} />
+      <RailHandle containerRef={shellRef} width={width} onCollapse={() => setPref('collapsed')} />
+      <Outlet />
+    </div>
   );
 }
 
@@ -96,12 +82,7 @@ function harness(initial: string, wide = true) {
     path: '/settings',
     component: () => <p>settings</p>,
   });
-  const importRoute = createRoute({
-    getParentRoute: () => rootRoute,
-    path: '/settings/import',
-    component: RunningImport,
-  });
-  const routeTree = rootRoute.addChildren([notesRoute, trashRoute, settingsRoute, importRoute]);
+  const routeTree = rootRoute.addChildren([notesRoute, trashRoute, settingsRoute]);
   const history = createMemoryHistory({ initialEntries: [initial] });
   const router = createRouter({ routeTree, history });
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -212,14 +193,6 @@ describe('Rail', () => {
     const foot = container.querySelector('.drawer-foot')!;
     expect(foot.lastElementChild?.contains(account)).toBe(true);
     expect(account.textContent).toContain('someone@example.com');
-  });
-
-  /* Every row here leaves the page a running import lives on; the rail goes inert with
-     the settings sub-nav rather than being the one way out that still works. */
-  it('goes inert while an import is running', async () => {
-    const { findByText, container } = harness('/settings/import');
-    await findByText('importing');
-    await waitFor(() => expect(container.querySelector('.rail')?.hasAttribute('inert')).toBe(true));
   });
 
   /* The open rail is sized by its handle, like the list; the width reaches the

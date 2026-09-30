@@ -1,20 +1,8 @@
 import { createFileRoute } from '@tanstack/react-router';
-import { useQueryClient } from '@tanstack/react-query';
 import { Import } from '../components/Import.js';
 
+// The cache is refreshed when a run ends by the app shell, not here: a run outlives this
+// page, so it can end while nothing of it is on screen. See `AppShell`.
 export const Route = createFileRoute('/settings/import')({
-  component: ImportRoute,
+  component: Import,
 });
-
-function ImportRoute() {
-  const queryClient = useQueryClient();
-
-  return (
-    <Import
-      onImported={() => {
-        // An import creates notes, notebooks, and tags, so nothing cached is still true.
-        void queryClient.invalidateQueries();
-      }}
-    />
-  );
-}

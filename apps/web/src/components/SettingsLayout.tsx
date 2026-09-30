@@ -1,45 +1,8 @@
-import { createContext, useContext, useMemo, useState, type ReactNode } from 'react';
+import type { ReactNode } from 'react';
 import { Link } from '@tanstack/react-router';
 import { BackArrow } from './BackArrow.js';
 import { isHosted, postToApp } from '../app-bridge.js';
-
-interface BusyContext {
-  /** Set while an import is running, so the sub-nav can refuse to unmount it. */
-  importRunning: boolean;
-  setImportRunning: (running: boolean) => void;
-}
-
-const SettingsBusy = createContext<BusyContext>({
-  importRunning: false,
-  setImportRunning: () => {},
-});
-
-/**
- * Lets the import tell the navigation it is mid-run.
- *
- * The import lives entirely in the browser, so navigating away unmounts it and terminates
- * its worker — losing however many thousand notes were left to go. It had a route of its
- * own for exactly that reason; putting it in a section with siblings hands the same foot
- * gun back unless the links go inert while it runs. The desktop's rail is a dozen more
- * ways out beside the page, so it reads this too.
- */
-export function useSettingsBusy() {
-  return useContext(SettingsBusy);
-}
-
-/**
- * Owns the flag, above everything that reads it.
- *
- * The section used to own it, which was enough while the section's own sub-nav was the
- * only navigation on screen beside a running import. The rail stands outside the section,
- * so the flag has to be held where both can reach it: the signed-in shell mounts this
- * around the rail and the routed content alike.
- */
-export function SettingsBusyProvider({ children }: { children: ReactNode }) {
-  const [importRunning, setImportRunning] = useState(false);
-  const busy = useMemo(() => ({ importRunning, setImportRunning }), [importRunning]);
-  return <SettingsBusy.Provider value={busy}>{children}</SettingsBusy.Provider>;
-}
+import { useImportRunning } from '../import-run.js';
 
 const TABS = [
   { to: '/settings/notebooks', label: 'Notebooks' },
@@ -60,7 +23,7 @@ const TABS = [
  * their own nav.
  */
 export function SettingsLayout({ children }: { children: ReactNode }) {
-  const { importRunning } = useSettingsBusy();
+  const importRunning = useImportRunning();
 
   return (
     <>
@@ -86,24 +49,18 @@ export function SettingsLayout({ children }: { children: ReactNode }) {
         </div>
 
         <nav className="settings-nav" aria-label="Settings sections">
-          {TABS.map((tab) =>
-            importRunning && tab.to !== '/settings/import' ? (
-              // Inert rather than hidden: the section should not appear to lose pages
-              // mid-import, but a stray click must not cost a long-running import.
-              <span key={tab.to} className="settings-nav-disabled" aria-disabled="true">
-                {tab.label}
-              </span>
-            ) : (
-              <Link
-                key={tab.to}
-                to={tab.to}
-                className="settings-nav-item"
-                activeProps={{ className: 'settings-nav-item active' }}
-              >
-                {tab.label}
-              </Link>
-            ),
-          )}
+          {/* Live during an import: the run is held by `import-run.ts`, not by its page,
+              so leaving the page no longer ends it. These used to go inert for the run. */}
+          {TABS.map((tab) => (
+            <Link
+              key={tab.to}
+              to={tab.to}
+              className="settings-nav-item"
+              activeProps={{ className: 'settings-nav-item active' }}
+            >
+              {tab.label}
+            </Link>
+          ))}
           {/*
               The Android app's own settings: which instance it talks to, and its version.
               Only inside the app, where they exist.
@@ -111,8 +68,8 @@ export function SettingsLayout({ children }: { children: ReactNode }) {
               A pill beside the others rather than a button of its own, because it is the
               same gesture — go to a settings page — and only its destination differs: a
               native screen, which no anchor can reach, hence a `<button>`. Inert during an
-              import like its siblings, since changing the instance reloads the site and
-              that would end the import as surely as leaving the page.
+              import, unlike its siblings: the run outlives the page but not the site, and
+              changing the instance from that screen reloads the site under it.
           */}
           {isHosted() &&
             (importRunning ? (
@@ -129,13 +86,6 @@ export function SettingsLayout({ children }: { children: ReactNode }) {
               </button>
             ))}
         </nav>
-
-        {importRunning && (
-          <p className="muted small">
-            An import is running. The other settings pages are unavailable until it
-            finishes or is stopped, because leaving this page would cancel it.
-          </p>
-        )}
 
         <div className="settings-body">{children}</div>
       </div>
