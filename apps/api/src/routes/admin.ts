@@ -245,13 +245,9 @@ export const admin = new Hono<AppEnv>()
           for (const s of schema) if (!later(s)) line(`${s};`);
           for (const table of DUMP_TABLES) {
             for (let after = 0; ; ) {
+              // Formatted inside the object, where the CPU budget is; see `dumpPage`.
               const page = await store.dumpPage(table, after, 5000);
-              for (const row of page.rows) {
-                const { _rowid, ...columns } = row;
-                void _rowid;
-                const names = Object.keys(columns);
-                line(`INSERT INTO ${table} (${names.join(', ')}) VALUES (${names.map((n) => sqlLiteral(columns[n])).join(', ')});`);
-              }
+              if (page.rows > 0) line(page.sql);
               if (page.nextRowid === null) break;
               after = page.nextRowid;
             }
@@ -290,18 +286,6 @@ export const admin = new Hono<AppEnv>()
     console.log(`[store] operator=${email} sweep`);
     return c.json(await sweepStores(c.env));
   });
-
-/** One SQLite value as a literal in the dump. The four types the engine has, and nothing else. */
-function sqlLiteral(value: unknown): string {
-  if (value === null || value === undefined) return 'NULL';
-  if (typeof value === 'number') return Number.isFinite(value) ? String(value) : 'NULL';
-  if (typeof value === 'string') return `'${value.replace(/'/g, "''")}'`;
-  if (value instanceof ArrayBuffer || ArrayBuffer.isView(value)) {
-    const bytes = value instanceof ArrayBuffer ? new Uint8Array(value) : new Uint8Array(value.buffer, value.byteOffset, value.byteLength);
-    return `X'${[...bytes].map((b) => b.toString(16).padStart(2, '0')).join('')}'`;
-  }
-  return `'${String(value).replace(/'/g, "''")}'`;
-}
 
 /**
  * Whose store a `stats` or `dump` reads: the caller's own, or, for an operator naming

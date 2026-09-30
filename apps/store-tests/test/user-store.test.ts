@@ -132,13 +132,18 @@ describe('UserStore lifecycle', () => {
         state.storage.sql.exec(`INSERT INTO notes (id, title, body, created_at, updated_at) VALUES (?1, 'T', 'b', 1, 1)`, `n${i}`);
       }
     });
+    // Pages come back as INSERT statements, one a line; see `dumpPage` for why the
+    // object formats them rather than the Worker.
+    const ids = (sql: string) => [...sql.matchAll(/^INSERT INTO notes \(id, .*VALUES \('(n\d)'/gm)].map((m) => m[1]);
     const first = await stub.dumpPage('notes', 0, 2);
-    expect(first.rows.map((r) => r.id)).toEqual(['n0', 'n1']);
+    expect(first.rows).toBe(2);
+    expect(ids(first.sql)).toEqual(['n0', 'n1']);
+    expect(first.sql).not.toContain('_rowid');
     expect(first.nextRowid).not.toBeNull();
     const second = await stub.dumpPage('notes', first.nextRowid!, 2);
-    expect(second.rows.map((r) => r.id)).toEqual(['n2', 'n3']);
+    expect(ids(second.sql)).toEqual(['n2', 'n3']);
     const third = await stub.dumpPage('notes', second.nextRowid!, 2);
-    expect(third.rows.map((r) => r.id)).toEqual(['n4']);
+    expect(ids(third.sql)).toEqual(['n4']);
     expect(third.nextRowid).toBeNull();
     await expect(stub.dumpPage('notes_fts' as 'notes')).rejects.toThrow(/not a data table/);
   });
@@ -155,13 +160,14 @@ describe('UserStore lifecycle', () => {
         sql.exec(`INSERT INTO attachment_text (attachment_id, note_id, filename, text, created_at) VALUES (?1, 'n1', ?2, ?3, 1)`, `a${i}`, `f${i}.pdf`, 'x'.repeat(5 * 1024 * 1024));
       }
     });
+    const ids = (sql: string) => [...sql.matchAll(/VALUES \('(a\d)'/g)].map((m) => m[1]);
     const first = await stub.dumpPage('attachment_text', 0, 500);
-    expect(first.rows.map((r) => r.attachment_id)).toEqual(['a0']);
+    expect(ids(first.sql)).toEqual(['a0']);
     expect(first.nextRowid).not.toBeNull();
     const second = await stub.dumpPage('attachment_text', first.nextRowid!, 500);
-    expect(second.rows.map((r) => r.attachment_id)).toEqual(['a1']);
+    expect(ids(second.sql)).toEqual(['a1']);
     const third = await stub.dumpPage('attachment_text', second.nextRowid!, 500);
-    expect(third.rows.map((r) => r.attachment_id)).toEqual(['a2']);
+    expect(ids(third.sql)).toEqual(['a2']);
     expect(third.nextRowid).toBeNull();
   });
 

@@ -342,10 +342,15 @@ export class UserStore extends DurableObject<StoreEnv> {
   }
 
   /**
-   * One page of a table's rows, by rowid, for the dump route: the operator pages every
-   * table in `DUMP_TABLES` order and writes them out as SQL between the schema's tables
-   * and its triggers, which is a file `sqlite3` rebuilds an account from. The FTS tables
-   * are not dumped; the file rebuilds them from the rows at the end.
+   * One page of a table's rows, by rowid, as INSERT statements for the dump route: the
+   * operator pages every table in `DUMP_TABLES` order and writes the pages out between
+   * the schema's tables and its triggers, which is a file `sqlite3` rebuilds an account
+   * from. The FTS tables are not dumped; the file rebuilds them from the rows at the end.
+   *
+   * The rows are turned into SQL here rather than in the Worker because of where the CPU
+   * is. A Worker invocation on the Free plan has ten milliseconds of it, and quoting
+   * eight megabytes of text takes more than that; an object request has thirty seconds.
+   * The Worker then only forwards what arrives.
    *
    * A page is at most `limit` rows and, past the first row, at most `DUMP_PAGE_BYTES` of
    * them: the result crosses RPC, which is capped at 32 MiB, and a page of scans' texts
@@ -356,7 +361,7 @@ export class UserStore extends DurableObject<StoreEnv> {
    * fifty on Free: a dump of an archive-sized account has to be a dozen pages, not a
    * hundred. The one query here that bypasses the `Sql` seam's metering, for that reason.
    */
-  dumpPage(table: DumpTable, afterRowid = 0, limit = 5000): { rows: Row[]; nextRowid: number | null } {
+  dumpPage(table: DumpTable, afterRowid = 0, limit = 5000): { sql: string; rows: number; nextRowid: number | null } {
     this.inspectable();
     if (!DUMP_TABLES.includes(table)) throw new Error(`not a data table: ${table}`);
     const cursor = this.ctx.storage.sql.exec<Row & { _rowid: number }>(
@@ -364,22 +369,25 @@ export class UserStore extends DurableObject<StoreEnv> {
       afterRowid,
       limit,
     );
-    const rows: Row[] = [];
+    const lines: string[] = [];
     let bytes = 0;
     let cut = false;
+    let last: number | null = null;
     for (const row of cursor) {
       for (const v of Object.values(row)) bytes += typeof v === 'string' ? v.length : v instanceof ArrayBuffer ? v.byteLength : 8;
       // Always at least one row, or a single oversized row could never be dumped.
-      if (bytes > DUMP_PAGE_BYTES && rows.length > 0) {
+      if (bytes > DUMP_PAGE_BYTES && lines.length > 0) {
         cut = true;
         break;
       }
-      rows.push(row);
+      const { _rowid, ...columns } = row;
+      last = _rowid;
+      const names = Object.keys(columns);
+      lines.push(`INSERT INTO ${table} (${names.join(', ')}) VALUES (${names.map((n) => sqlLiteral(columns[n])).join(', ')});`);
     }
-    const last = rows[rows.length - 1] as (Row & { _rowid: number }) | undefined;
     // More may follow when the page was cut, or was full; a short page that was not cut
     // is the end of the table.
-    return { rows, nextRowid: (cut || rows.length === limit) && last ? last._rowid : null };
+    return { sql: lines.join('\n'), rows: lines.length, nextRowid: (cut || lines.length === limit) && last !== null ? last : null };
   }
 
   /**
@@ -633,6 +641,18 @@ export class UserStore extends DurableObject<StoreEnv> {
       };
     });
   }
+}
+
+/** One SQLite value as a literal in the dump. The four types the engine has, and nothing else. */
+function sqlLiteral(value: unknown): string {
+  if (value === null || value === undefined) return 'NULL';
+  if (typeof value === 'number') return Number.isFinite(value) ? String(value) : 'NULL';
+  if (typeof value === 'string') return `'${value.replace(/'/g, "''")}'`;
+  if (value instanceof ArrayBuffer || ArrayBuffer.isView(value)) {
+    const bytes = value instanceof ArrayBuffer ? new Uint8Array(value) : new Uint8Array(value.buffer, value.byteOffset, value.byteLength);
+    return `X'${[...bytes].map((b) => b.toString(16).padStart(2, '0')).join('')}'`;
+  }
+  return `'${String(value).replace(/'/g, "''")}'`;
 }
 
 // Re-exported so the facade and the tests can name the option shapes without reaching
