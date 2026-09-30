@@ -495,10 +495,11 @@ class MainActivity : ComponentActivity() {
          * destroys the page, so a link in a note dropped unsaved edits and an upload in
          * flight. In place, the editor flushes and the upload carries on.
          *
-         * In place is still leaving the page, though, and a page that holds work of its
-         * own loses it either way. The import panel is one: its worker ends when the panel
-         * unmounts, so its skipped-note rows stay unlinked in the app while it runs
-         * (`ImportSkips.tsx`) rather than rely on this.
+         * In place is still leaving the page, though, so it keeps only what outlives a
+         * route change. Work a page does in the background has to be held above the page
+         * to survive it, the way an import run is (`import-run.ts`) — its skipped-note
+         * rows used to go unlinked in the app mid-run, because leaving ended the import.
+         * They are ordinary in-place links now and never reach this.
          */
         override fun onCreateWindow(
             view: WebView,
