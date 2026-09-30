@@ -29,7 +29,12 @@ export { DATA_TABLES, DUMP_TABLES, type DataTable, type DumpTable };
  */
 export type StoreEnv = Record<never, never>;
 
-/** The `_meta` keys the object writes. Reserved names, kept in one place. */
+/**
+ * The `_meta` keys the object writes. Reserved names, kept in one place. Objects that
+ * existed at the cutover also hold `migrated_from_d1`, the mark the one-time copy out of
+ * the shared tables left; nothing reads or writes it now, and the schema file's comment
+ * still names it because that file is never edited once applied.
+ */
 const META = {
   /** The user this object belongs to: `ctx.id.name`, written on first wake, refused on a mismatch after. */
   userId: 'user_id',
