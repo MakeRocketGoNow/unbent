@@ -57,6 +57,12 @@ export interface OverflowItem {
    * Only meaningful on a button item. A link that navigates is not a setting.
    */
   selected?: boolean;
+  /**
+   * Shown but not available right now — Sign out in a browser with no connection. Faded
+   * in place rather than dropped, so the menu keeps its shape and `title` says why. Only
+   * meaningful on a button item.
+   */
+  disabled?: boolean;
 }
 
 /**
@@ -215,6 +221,8 @@ export function OverflowMenu({
                 // item does not have, and announcing one invites the question of how to
                 // press it.
                 aria-pressed={item.selected === undefined ? undefined : item.selected}
+                disabled={item.disabled}
+                title={item.title}
                 onClick={() => {
                   setOpen(false);
                   item.onSelect?.();

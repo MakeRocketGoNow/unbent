@@ -1,5 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { configQuery } from '../queries.js';
+import { useOffline } from '../connectivity.js';
+import { isHosted } from '../app-bridge.js';
 import { OverflowMenu, type OverflowItem } from './OverflowMenu.js';
 
 interface AccountMenuProps {
@@ -47,6 +49,7 @@ function initialOf(email: string): string {
 export function AccountMenu({ email, onSignOut, withAddress = false }: AccountMenuProps) {
   const config = useQuery(configQuery());
   const legal = config.data?.legal;
+  const signOutNeedsConnection = useOffline() && !isHosted();
 
   return (
     <OverflowMenu
@@ -82,7 +85,15 @@ export function AccountMenu({ email, onSignOut, withAddress = false }: AccountMe
         // also whichever kind of link this instance needs: the built-in documents are
         // routes, an operator's own are another site.
         ...(legal ? [legalItem('Privacy', legal.privacy), legalItem('Terms', legal.terms)] : []),
-        { label: 'Sign out', onSelect: onSignOut, tone: 'danger' },
+        /*
+         * With no connection a browser cannot sign anyone out: the session cookie is
+         * HttpOnly, so only the server can end it, and a sign-out that only cleared this
+         * page would be undone by the next load. Said, rather than pretended. The Android
+         * app can — it clears its own cookies when told — so there it stays available.
+         */
+        signOutNeedsConnection
+          ? { label: 'Sign out', tone: 'danger', disabled: true, title: 'Signing out needs a connection' }
+          : { label: 'Sign out', onSelect: onSignOut, tone: 'danger' },
       ]}
     />
   );

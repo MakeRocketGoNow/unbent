@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { renderHook, waitFor } from '@testing-library/react';
 import { useSignOut } from './useSignOut.js';
-import { endSessionLater, refreshSession, signOut } from './auth-client.js';
+import { refreshSession, signOut } from './auth-client.js';
 import { rememberSession, rememberedSession } from './session-memory.js';
 
 const navigate = vi.fn();
@@ -9,7 +9,6 @@ vi.mock('@tanstack/react-router', () => ({ useNavigate: () => navigate }));
 vi.mock('./auth-client.js', () => ({
   signOut: vi.fn().mockResolvedValue({}),
   refreshSession: vi.fn().mockResolvedValue(null),
-  endSessionLater: vi.fn(),
 }));
 
 /**
@@ -57,28 +56,31 @@ describe('useSignOut', () => {
   });
 
   /*
-   * No connection: the request rejects, and the sign-out must still happen on the device —
-   * the remembered user and the kept notes gone, the page on `/login` — with the server's
-   * half left for when it can be asked.
+   * The request could not reach the server. In a browser nothing has been signed out —
+   * the HttpOnly cookie is still good — so nothing is cleared and nothing pretends it was;
+   * the menu offers Sign out there only with a connection. In the Android app the app
+   * clears its own cookies when told, so the sign-out completes on the device.
    */
-  it('signs out on the device when the request cannot reach the server', async () => {
+  it('leaves a browser signed in when the server did not hear the sign-out', async () => {
     vi.mocked(signOut).mockRejectedValueOnce(new TypeError('Failed to fetch'));
+    rememberSession({ id: 'u1', email: 'someone@example.com' });
+    renderHook(() => useSignOut()).result.current();
+    await new Promise((r) => setTimeout(r, 20));
+    expect(navigate).not.toHaveBeenCalled();
+    expect(rememberedSession()).not.toBeNull();
+  });
+
+  it('signs out on the device inside the app even when the server did not hear it', async () => {
+    vi.mocked(signOut).mockRejectedValueOnce(new TypeError('Failed to fetch'));
+    const postMessage = vi.fn();
+    window.UnbentApp = { postMessage };
     const deleted = vi.fn(async () => true);
     vi.stubGlobal('caches', { delete: deleted });
     rememberSession({ id: 'u1', email: 'someone@example.com' });
     renderHook(() => useSignOut()).result.current();
-    await waitFor(() => expect(navigate).toHaveBeenCalledWith({ to: '/login', replace: true }));
+    await waitFor(() => expect(postMessage).toHaveBeenCalledWith('{"type":"signed-out"}'));
     expect(rememberedSession()).toBeNull();
     expect(deleted).toHaveBeenCalledTimes(2);
-    expect(endSessionLater).toHaveBeenCalled();
-    // Nothing to refresh from with no connection.
-    expect(refreshSession).not.toHaveBeenCalled();
     vi.unstubAllGlobals();
-  });
-
-  it('leaves nothing to finish later when the server heard it', async () => {
-    renderHook(() => useSignOut()).result.current();
-    await waitFor(() => expect(navigate).toHaveBeenCalled());
-    expect(endSessionLater).not.toHaveBeenCalled();
   });
 });

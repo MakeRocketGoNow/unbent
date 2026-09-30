@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { markSignOutPending, pendingSignOut, rememberSession, rememberedSession } from './session-memory.js';
+import { rememberSession, rememberedSession } from './session-memory.js';
 
 /**
  * Who `ensureSession` says is signed in, against Better Auth's real session store with
@@ -182,45 +182,6 @@ describe('ensureSession', () => {
       const session = await auth.ensureSession();
       expect(session?.user.id).toBe('u1');
       expect(auth.sessionCheckAbandoned()).toBe(false);
-    });
-  });
-
-  /*
-     A sign-out made offline is finished the next time the server can be asked — but only
-     for the session it was meant for. Someone who signed in again since, a Google redirect
-     included, has a new session and must not be signed out on arrival.
-  */
-  describe('a sign-out made offline', () => {
-    it('answers nobody while there is still no network, without asking', async () => {
-      markSignOutPending('s1');
-      vi.stubGlobal('navigator', { ...navigator, onLine: false });
-      const fetch = vi.fn(async () => json(200, SESSION));
-      vi.stubGlobal('fetch', fetch);
-      expect(await (await freshEnsureSession())()).toBeNull();
-      expect(fetch).not.toHaveBeenCalled();
-    });
-
-    it('ends that session once the server can be asked', async () => {
-      markSignOutPending('s1');
-      rememberSession(USER);
-      const fetch = vi.fn(async (input: RequestInfo | URL) =>
-        String(input).includes('/sign-out') ? json(200, { success: true }) : json(200, SESSION),
-      );
-      vi.stubGlobal('fetch', fetch);
-      expect(await (await freshEnsureSession())()).toBeNull();
-      expect(fetch.mock.calls.some(([url]) => String(url).includes('/sign-out'))).toBe(true);
-      expect(pendingSignOut()).toBeNull();
-      expect(rememberedSession()).toBeNull();
-    });
-
-    it('leaves a newer session alone and forgets the old one', async () => {
-      markSignOutPending('an-older-session');
-      const fetch = vi.fn(async (_input: RequestInfo | URL) => json(200, SESSION));
-      vi.stubGlobal('fetch', fetch);
-      const session = await (await freshEnsureSession())();
-      expect(session?.user.id).toBe('u1');
-      expect(fetch.mock.calls.some(([url]) => String(url).includes('/sign-out'))).toBe(false);
-      expect(pendingSignOut()).toBeNull();
     });
   });
 

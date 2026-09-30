@@ -1676,7 +1676,13 @@ th[aria-sort] .note-th-sort { color: var(--fg); }
   white-space: nowrap;
 }
 
-.overflow-item:hover { background: color-mix(in srgb, var(--fg) 8%, transparent); }
+.overflow-item:hover:not(:disabled) { background: color-mix(in srgb, var(--fg) 8%, transparent); }
+
+/* An item that cannot be used right now keeps its place; see `OverflowItem.disabled`. */
+.overflow-item:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
 .overflow-item.danger { color: var(--bad); }
 
 /*

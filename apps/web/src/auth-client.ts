@@ -2,14 +2,7 @@ import { createAuthClient } from 'better-auth/react';
 import { emailOTPClient } from 'better-auth/client/plugins';
 import { oauthProviderClient } from '@better-auth/oauth-provider/client';
 import { passkeyClient } from '@better-auth/passkey/client';
-import {
-  clearSignOutPending,
-  forgetSession,
-  markSignOutPending,
-  pendingSignOut,
-  rememberSession,
-  rememberedSession,
-} from './session-memory.js';
+import { forgetSession, rememberSession, rememberedSession } from './session-memory.js';
 import { clearOfflineCaches } from './offline-cache.js';
 import { offlineNow, recheck, subscribeConnectivity } from './connectivity.js';
 
@@ -100,8 +93,6 @@ export const oauth2 = authClient.oauth2 as unknown as ConsentClient;
  */
 export interface Session {
   user: { id: string; email: string; name?: string };
-  /** The server's record of this sign-in, which a sign-out made offline ends later by id. */
-  session?: { id: string };
 }
 
 /**
@@ -227,59 +218,7 @@ export function recordSession(state: Pick<SessionState, 'data' | 'error' | 'isPe
  * recorded when it lands, so a session the server has since refused is caught the next
  * time it can be asked.
  */
-export async function ensureSession(): Promise<Session | null> {
-  const pending = pendingSignOut();
-  if (pending === null) return checkSession();
-  return finishSignOut(pending);
-}
-
-/**
- * Ends the session a sign-out made offline could not (`pendingSignOut`), and until it
- * has, answers that nobody is signed in — the person asked to leave, and the device must
- * not carry on as them.
- *
- * With no network nothing is asked. Online, the session check says which session the
- * cookie belongs to: the pending one is ended now; any other — someone signed in again
- * since — is left alone and the pending one forgotten, since there is no longer a cookie
- * for it on this device. Whatever the check remembered of the old user is forgotten again.
- */
-async function finishSignOut(pending: string): Promise<null | Session> {
-  if (typeof navigator !== 'undefined' && navigator.onLine === false) return null;
-  const answer = await checkSession();
-  const state = sessionStore.get();
-  if (state.data?.session?.id !== pending) {
-    // The server answered for another session, or for none: nothing left to end.
-    if (state.data || !state.error || state.error.status === 401) clearSignOutPending();
-    return state.data ? answer : null;
-  }
-  forgetSession();
-  await clearOfflineCaches();
-  const ended = await Promise.race([
-    signOut().then((res) => !res?.error, () => false),
-    new Promise<false>((resolve) => setTimeout(() => resolve(false), SESSION_CHECK_TIMEOUT)),
-  ]);
-  if (ended) {
-    clearSignOutPending();
-    // Emptied before anything reads it: the store still holds the session just ended, and
-    // `/login`'s loader, asking next, would wave the person back into the notes — whose
-    // loaders then fail with the dead cookie — until Better Auth's own refetch caught up.
-    // The same reason `useSignOut` refreshes before it navigates.
-    await refreshSession().catch(() => null);
-  }
-  return null;
-}
-
-/**
- * Records that the current session must be ended the next time the server can be asked —
- * a sign-out that could not reach it. See `finishSignOut`.
- */
-export function endSessionLater(): void {
-  const id = sessionStore.get().data?.session?.id;
-  if (id) markSignOutPending(id);
-}
-
-/** The session check itself, as `ensureSession` describes it. */
-function checkSession(): Promise<Session | null> {
+export function ensureSession(): Promise<Session | null> {
   return new Promise((resolve) => {
     let stop: (() => void) | undefined;
     let settled = false;
