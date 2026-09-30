@@ -1,7 +1,6 @@
 import { beforeAll, describe, expect, it } from 'vitest';
 import { env, evictDurableObject, runInDurableObject } from 'cloudflare:test';
 import { BATCH, sweepStores } from '@unbent/api/lib/sweep';
-import { createD1NoteTables, seedD1 } from './helpers.js';
 
 /**
  * The sweep, against real objects and a local D1 carrying the three control-plane
@@ -9,10 +8,9 @@ import { createD1NoteTables, seedD1 } from './helpers.js';
  * shape migrations 0002, 0030 and 0001 give them. What is checked is the sweep's one
  * invariant and its jobs: a live account is woken and measured and never wiped; a
  * tombstoned account, or one whose user row is gone, is wiped and its row dropped once
- * the object is empty; an account not yet copied from D1 — never opened, or opened
- * before the walk reached it — has its copy run; an account with no directory row gets
- * one; and a walk longer than a batch continues across invocations from where it left
- * off.
+ * the object is empty; an account never opened gets its object created and measured; an
+ * account with no directory row gets one; and a walk longer than a batch continues
+ * across invocations from where it left off.
  *
  * The D1 here is this file's own, so rows from other files never appear in it, but every
  * test in this file shares it: the counts asserted are lower bounds, and the batching
@@ -39,7 +37,7 @@ async function directory(id: string, deletedAt: number | null = null) {
   await env.DB.prepare(`INSERT INTO account_directory (user_id, created_at, deleted_at) VALUES (?1, 1, ?2)`).bind(id, deletedAt).run();
 }
 async function row(id: string) {
-  return env.DB.prepare(`SELECT * FROM account_directory WHERE user_id = ?1`).bind(id).first<{ note_count: number; storage_bytes: number; migrated_at: number | null; copied_at: number | null }>();
+  return env.DB.prepare(`SELECT * FROM account_directory WHERE user_id = ?1`).bind(id).first<{ note_count: number; storage_bytes: number }>();
 }
 const stub = (id: string) => env.USER_STORE.get(env.USER_STORE.idFromName(id));
 
@@ -83,8 +81,7 @@ describe('the store sweep', () => {
     await directory(orphan);
     await stub(orphan).create({ id: crypto.randomUUID(), title: 'Orphaned', body: 'x', tags: [] });
 
-    // Never opened: no object exists until the sweep names it, and its copy from D1 —
-    // which finds no note tables in this file's D1 — runs and marks it.
+    // Never opened: no object exists until the sweep names it.
     const fresh = uid('fresh');
     await user(fresh);
     await directory(fresh);
@@ -98,10 +95,8 @@ describe('the store sweep', () => {
     expect(reports.flatMap((r) => r.failed)).toEqual([]);
     expect(reports.reduce((n, r) => n + r.visited, 0)).toBeGreaterThanOrEqual(6);
     expect(reports.reduce((n, r) => n + r.wiped, 0)).toBeGreaterThanOrEqual(3);
-    // The live, fresh and unlisted accounts had not been copied; the walk did it.
-    expect(reports.reduce((n, r) => n + r.copiedNow, 0)).toBeGreaterThanOrEqual(3);
 
-    expect(await row(live)).toMatchObject({ note_count: 2, migrated_at: expect.any(Number), copied_at: expect.any(Number) });
+    expect(await row(live)).toMatchObject({ note_count: 2 });
     expect((await row(live))!.storage_bytes).toBeGreaterThan(0);
     expect((await stub(live).stats()).counts.notes).toBe(2);
 
@@ -112,12 +107,13 @@ describe('the store sweep', () => {
     expect((await stub(halfDeleted).stats()).wiped).toBe(true);
     expect(await env.DB.prepare(`SELECT deleted_at FROM account_directory WHERE user_id = ?1`).bind(halfDeleted).first<{ deleted_at: number | null }>()).toMatchObject({ deleted_at: expect.any(Number) });
 
-    expect(await row(fresh)).toMatchObject({ note_count: 0, migrated_at: expect.any(Number) });
+    // Woken and measured: the object exists now, with a schema and no notes.
+    expect((await row(fresh))!.storage_bytes).toBeGreaterThan(0);
     const freshMeta = await runInDurableObject(stub(fresh), (_i, state) =>
-      state.storage.sql.exec<{ key: string }>(`SELECT key FROM _meta WHERE key = 'migrated_from_d1'`).toArray(),
+      state.storage.sql.exec<{ value: string }>(`SELECT value FROM _meta WHERE key = 'user_id'`).toArray(),
     );
-    expect(freshMeta).toEqual([{ key: 'migrated_from_d1' }]);
-    expect(await row(unlisted)).toMatchObject({ note_count: 0, migrated_at: expect.any(Number) });
+    expect(freshMeta).toEqual([{ value: fresh }]);
+    expect((await row(unlisted))!.storage_bytes).toBeGreaterThan(0);
 
     // Running again changes nothing for the living and finds nothing left of the dead.
     const again = await fullPass();
@@ -137,40 +133,18 @@ describe('the store sweep', () => {
     // these accounts was visited exactly once in the pass.
     expect(reports.length).toBeGreaterThan(1);
     expect(reports.slice(0, -1).every((r) => !r.done && r.visited === BATCH)).toBe(true);
-    for (const id of ids) expect(await row(id)).toMatchObject({ migrated_at: expect.any(Number) });
+    for (const id of ids) expect((await row(id))!.storage_bytes).toBeGreaterThan(0);
     // The pass ended, so the next invocation starts from the top of the directory again.
     const cursor = await env.DB.prepare(`SELECT value FROM _unbent_meta WHERE key = 'store_sweep_cursor'`).first<{ value: string }>();
     expect(cursor?.value).toBe('');
   });
 
-  it('copies an account that has rows in D1, and names one whose copy cannot be verified', async () => {
-    await createD1NoteTables();
-    const copied = uid('copied');
-    await user(copied);
-    await seedD1(copied, 3);
-    // Two files on one note under the same filename: the store refuses one, and the
-    // copy reports the mismatch rather than marking the account.
-    const mismatched = uid('mismatched');
-    await user(mismatched);
-    await seedD1(mismatched, 2);
-    await env.DB.prepare(`INSERT INTO attachments (id, note_id, user_id, filename, content_type, size, r2_key, created_at) VALUES (?1, ?2, ?3, 'scan.pdf', 'application/pdf', 1, 'k', 1)`).bind(`${mismatched}-dup`, `${mismatched}-n0001`, mismatched).run();
-
-    const reports = await fullPass();
-    expect(reports.flatMap((r) => r.failed)).toEqual([]);
-    expect(await row(copied)).toMatchObject({ note_count: 3, migrated_at: expect.any(Number), copied_at: expect.any(Number) });
-    expect((await stub(copied).stats()).counts.notes).toBe(3);
-    expect(reports.flatMap((r) => r.mismatched)).toContain(mismatched);
-    // Measured like any other account, never marked migrated, and named again next pass.
-    expect(await row(mismatched)).toMatchObject({ note_count: 2, migrated_at: null, copied_at: null });
-    expect((await fullPass()).flatMap((r) => r.mismatched)).toContain(mismatched);
-  });
-
   /**
    * A preview Worker shares the dev instance's D1 but has objects of its own, empty
-   * copies at best, so its walk does nothing at all: it must not heal, measure, freeze,
-   * drop a row or move the cursor in a directory that is dev's.
+   * copies at best, so its walk does nothing at all: it must not heal, measure, drop a
+   * row or move the cursor in a directory that is dev's.
    */
-  it('does nothing when the freeze is off, as on a preview', async () => {
+  it('does nothing when the sweep is switched off, as on a preview', async () => {
     const preview = uid('preview');
     await user(preview);
     await directory(preview);
@@ -183,12 +157,12 @@ describe('the store sweep', () => {
     await directory(dead, Date.now());
     const cursorBefore = await env.DB.prepare(`SELECT value FROM _unbent_meta WHERE key = 'store_sweep_cursor'`).first<{ value: string }>();
 
-    const report = await sweepStores({ ...env, STORE_FREEZE_D1: '0' });
+    const report = await sweepStores({ ...env, STORE_SWEEP: '0' });
     expect(report).toMatchObject({ visited: 0, done: true, failed: [] });
-    expect(await row(preview)).toMatchObject({ note_count: 0, storage_bytes: 0, migrated_at: null, copied_at: null });
+    expect(await row(preview)).toMatchObject({ note_count: 0, storage_bytes: 0 });
     expect(await row(unlisted)).toBeNull();
     expect(await row(dead)).not.toBeNull();
-    expect((await stub(preview).usage()).copiedFromD1).toBe(false);
+    expect((await stub(preview).usage()).notes).toBe(1);
     const cursorAfter = await env.DB.prepare(`SELECT value FROM _unbent_meta WHERE key = 'store_sweep_cursor'`).first<{ value: string }>();
     expect(cursorAfter?.value ?? null).toBe(cursorBefore?.value ?? null);
   });
@@ -211,6 +185,6 @@ describe('the store sweep', () => {
     const reports = await fullPass();
     expect(reports.flatMap((r) => r.failed)).toContain(broken);
     expect(reports.flatMap((r) => r.failed)).not.toContain(fine);
-    expect(await row(fine)).toMatchObject({ migrated_at: expect.any(Number) });
+    expect((await row(fine))!.storage_bytes).toBeGreaterThan(0);
   });
 });

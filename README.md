@@ -539,9 +539,8 @@ away from production but not from each other. Accounts and sessions made on one 
 therefore work on another and on `dev.unbent.app`. Notes do not travel: each Worker has its
 own namespace of per-account note stores, so a note made on one PR's preview is on that
 preview alone. It is a scratch environment, and nothing in it is backed up. A preview also
-never writes the shared directory (`STORE_FREEZE_D1 = "0"` in its wrangler block): its
-copy records nothing there, since the mark is what freezes an account's rows in the shared
-D1 and the dev instance may still be writing them, and its sweep does nothing at all.
+never writes the shared account directory (`STORE_SWEEP = "0"` in its wrangler block): the
+directory is dev's, so a preview's sweep does nothing at all.
 
 The environment is called `preview` rather than `dev` because the custom domain cannot live
 in a block previews reuse: `--name` changes which script a deploy targets but not which
@@ -1305,7 +1304,7 @@ reads and writes through it. Five rules hold the shape, and tests hold the rules
 1. **The object touches its SQLite and nothing else.** No outbound call inside it: R2 bytes,
    the language model, the auto-fill API and mail all happen in the Worker before or after
    the call. Blob *keys* go through the object, which owns the attachment rows; bytes never
-   do. (One temporary exception, below.)
+   do.
 2. **Ids stay globally unique UUIDs** even inside a per-user database, so `(owner, id)` is
    unambiguous forever and an archive imported into two accounts keeps its ids in both.
 3. **The owner's object is the source of truth.** If sharing ever comes, a grantee reads
@@ -1314,40 +1313,15 @@ reads and writes through it. Five rules hold the shape, and tests hold the rules
 5. **Each call to the object is a billable request.** A route asks once for what it needs,
    through composite methods, rather than two or three times.
 
-**Accounts that predate this** are copied over when the sweep, or the operator, asks: the
-rows the shared database held for that user, paged out of D1 and written into the object
-in one resumable pass, with the counts and search index rebuilt on the way and what
-landed checked against what D1 held, table by table. Nothing about opening the app reads
-D1, so between the deploy and the sweep an account not yet copied opens empty; the
-runbook below closes that window in minutes, and a note written in it survives the copy —
-its tag and notebook are merged by name with the ones D1 delivers rather than refused.
-That copy is the exception to rule 1, and it goes once every account's directory row says
-it has run (`copied_at`, written only when a copy verified); the frozen D1 tables are
-dropped in a later migration, behind a guard that reads the same column. The copy spends at most
-forty D1 queries a call, since a Free plan invocation may make fifty, and answers `paused`
-with its place committed; the sweep continues it next pass, and the operator's route
-calls again at once.
-
-Migration 0032 freezes each account's rows in the shared tables from the moment that
-account's copy starts (`account_directory.migrated_at`, written by the copy before it
-reads a page, and cleared again if the copy cannot be verified — so it says the copy
-started, and `copied_at` says it finished): a write to them for such
-an account, from an old isolate draining during the deploy or from anything else, fails
-with "notes moved to the per-account store" rather than landing after its page was read
-and disappearing. Rows of an account not yet copied are still writable,
-which is what lets the dev instance, whose database a preview of the cutover shares, keep
-saving notes until the cutover itself lands there. Deleting an account still works: the
-triggers only fire while the account's `user` row exists, and a `user` delete cascades
-through these tables — with updates, not only deletes, which is why 0031 had to be
-replaced by 0032.
-
-**Rolling the cutover back** is three steps, in order, and the middle one is easy to
-forget: dump each account's store, since the shared rows are frozen at the cutover and
-everything written since lives only in the object; apply
-`apps/api/scripts/unfreeze-note-tables.sql` by hand with `wrangler d1 execute` (it drops
-the sixteen triggers, and it is not a migration precisely so that nothing applies it on its
-own); then revert and deploy. A reverted Worker with the triggers still in place cannot
-save a note for any migrated account.
+**The cutover** (September 2026) copied every account's rows out of the shared D1 tables
+into its store, verified each table's count against what D1 held, and then dropped the
+tables: migration 0036, guarded so it refuses to run while any account with rows is not
+recorded as copied. The directory's `migrated_at` and `copied_at` are its record — when
+each account's rows were frozen against writes during the deploy, and when they were
+verified copied. The copy, the freeze that protected the rows, and the operator's route for
+it are in the history of MakeRocketGoNow/unbent#202; nothing in the code reads D1 for notes
+any more, and there is no way back to the shared tables. Restoring an account is per
+account, from its dump (below).
 
 **Schema changes** are files in `apps/api/src/store/schema/`, applied per object on its next
 wake, additive only. The sweep is what makes that safe to rely on: it wakes every object —
@@ -1356,13 +1330,6 @@ invocation's fifty subrequests on Free — so a migration that fails for one acc
 the log with the user id on it, and it can be run on demand after a deploy. Each visit
 reads a few rows of the account (its size and the stored note counts), never a table.
 
-**An account whose copy cannot be verified** — a row the store's constraints refuse that
-the shared database allowed, two files on one note under one filename, say — is reported
-and left alone: the account is not marked migrated, so its rows in the shared tables stay
-writable, and nothing reads them again until the operator fixes them there and calls the
-copy with `?retry=1`. The account keeps working on what landed meanwhile; `stats` shows
-the reason, and the sweep names the account every pass.
-
 **What the operator can see.** An object has no console, so the Worker has one, under
 `/api/admin/store` for a session in `OPERATOR_EMAILS`:
 
@@ -1370,20 +1337,11 @@ the reason, and the sweep names the account every pass.
   name the directory does not have is refused, since a store is created for any name it
   is asked for.
 - `POST …/sql` — one `SELECT` (or `EXPLAIN`) against a store, always rolled back.
-- `POST …/copy` — the one-time copy of one account's rows from D1, now, calling the object
-  until it answers something other than `paused`; `?retry=1` after a mismatch. For the
-  canary after the cutover deploys, before the sweep takes the rest. Two numbers in its
-  answer matter for an account that predates the cutover: `merged` must be 0, since a
-  merge there means two notebooks or tags the shared database held apart were folded
-  into one; and on the largest account `calls` should be above 1 and the status `done`,
-  which confirms that the object's D1 queries count against its own subrequest budget
-  rather than the route's.
 - `GET …/dump` — the store as SQL text, `sqlite3 account.db < dump.sql` rebuilds it: what
   `d1 export` was, and how a migration is rehearsed against a real account before it
   ships — dump, load, run the new schema file's SQL against the copy.
 - `POST …/sweep` — one batch of the walk, now; call until it says `done`, then once more
-  if any account was `deferred`. The walk also runs the copy for any account not yet
-  copied, so after the cutover it is what copies everyone.
+  if any account was `deferred`.
 
 Reading another account's store is logged with both ids. Rows read and written inside an
 object are metered as D1's were, and every statement over a threshold is logged with the

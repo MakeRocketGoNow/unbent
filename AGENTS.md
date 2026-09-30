@@ -429,10 +429,8 @@ Five rules, held by tests where a test can hold them:
 1. **The object touches its SQLite and nothing else.** No `fetch`, no R2 bytes, no
    AI/Anthropic/Typesafe calls in `src/store/`. Those happen in the Worker before or after
    the object call. Blob *keys* go through the object (it owns `attachments`); bytes never
-   do. `StoreEnv` names only what the object may see, so the compiler refuses a binding,
-   and `guards.test.ts` reads the source for the rest. One documented, temporary exception:
-   `copy-from-d1.ts`, the one-time copy of a user's rows out of the shared tables, which
-   goes — with `DB` on `StoreEnv` — once every directory row says it has run.
+   do. `StoreEnv` names nothing, so the compiler refuses a binding, and `guards.test.ts`
+   reads the source for the rest.
 2. **Ids stay globally unique UUIDs** even inside a per-user database. `(owner, id)` is the
    key any future sharing would use, and export/import keeps working across accounts.
 3. **The owner's object is the source of truth.** If sharing ever comes, a grantee reads
@@ -459,24 +457,22 @@ Things about working on the store that are easy to get wrong:
   wipes anything, and a row is dropped only once the user row is gone too. Keep it that
   way.
 - **Subrequests are the budget inside one invocation.** Fifty on Free, and every D1 query
-  and every store call counts. The copy from D1 spends forty queries a call and answers
-  `paused`; the sweep walks twenty accounts a run at two store calls each; the operator's
-  `copy` and `dump` routes make forty store calls at most; anything new that loops over
-  accounts or pages D1 needs the same shape. CPU is a budget too — ten milliseconds an
+  and every store call counts. The sweep walks twenty accounts a run at two store calls
+  each; the operator's `dump` route makes forty store calls at most; anything new that
+  loops over accounts or pages D1 needs the same shape. CPU is a budget too — ten milliseconds an
   invocation on Free, thirty seconds inside an object — so work over a big result, like
   turning a dump page into SQL text, is done in the object and forwarded.
 - **Nothing periodic may scan a table.** The sweep reads `usage()` — the one `note_counts`
   row and the database size — never `stats()`, which counts every table and is the
   operator's. An hourly `stats()` on an archive-sized account would read every row of it
   twenty-four times a day. The rows-read test bounds `usage` at a handful.
-- **The copy from D1 runs only when asked.** The sweep asks for every account whose
-  object says it has not run, the operator's `POST /api/admin/store/copy` asks for one;
-  a wake never reads D1. It ran in the constructor once, and three reviews each found a
-  runtime property it depended on and got wrong (what a reset discards, whose
-  subrequests it spent, what a person saw meanwhile). Keep it a method that answers —
-  `done`, `paused`, `mismatch`, `already` — never a throw from the constructor. A
-  mismatch is recorded and retried only by the operator, with `?retry=1`, after the D1
-  rows are fixed; `stats` shows the reason.
+- **A new D1 index changes `main`'s plans, not only the statement it was added for.**
+  The planner has no statistics, so an index is taken by every statement on its table
+  that can use its first column: at the cutover, a plain `user_id` index added for the
+  copy turned a file lookup by note into a read of every file of the account. Before
+  adding one, `EXPLAIN QUERY PLAN` the table's other statements on a SQLite built from
+  `apps/api/migrations/` (`migrations.test.ts` shows how), and prefer an expression
+  index, which only its own spelling can use.
 - **Local state is D1 *and* `do/`.** The reset scripts clear both; clearing one by hand
   leaves ghost objects. `worktree:setup` copies both.
 
@@ -501,9 +497,8 @@ way in, and `+n.notebook_id` beside a tag filter for the same reason. `liveCondi
 notebook as well as the big case; on the shared database a global index once made a
 30-note notebook read 13k rows.
 
-D1 still serves the control plane, and its reads still count against the same daily total,
-but nothing on the request path reads note data from it any more; the frozen note tables
-are dropped in a later migration.
+D1 serves the control plane only — the note tables were dropped by migration 0036 after
+the cutover — and its reads still count against the same daily total.
 
 Do not run `PRAGMA optimize` or `ANALYZE` on production, whatever the documentation
 suggests — not on D1, and not inside an object. Measured on a copy of the archive, the

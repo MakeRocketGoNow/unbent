@@ -31,9 +31,10 @@
  */
 export default `
 -- Per-object facts nothing else has a home for: which user this is
--- ('user_id', written on first wake and refused on a mismatch after), whether the one-time
--- copy from D1 has run ('migrated_from_d1') and how far it got ('copy_cursor'), and, kept
--- for the change feed, the per-user sequence ('seq') and 'last_active_at'.
+-- ('user_id', written on first wake and refused on a mismatch after), the marker the
+-- cutover's copy out of the shared tables left behind ('migrated_from_d1', in objects that
+-- existed then; nothing reads it now), and, kept for the change feed, the per-user
+-- sequence ('seq') and 'last_active_at'.
 CREATE TABLE _meta (
   key   TEXT PRIMARY KEY,
   value TEXT NOT NULL

@@ -10,7 +10,6 @@ import {
   type NotebookDefinition,
 } from '@unbent/shared';
 import { AttachmentsStore } from './attachments.js';
-import { copiedFromD1, copyFromD1, copyMismatch, markCopiedFromD1, type CopyOptions, type CopyResult } from './copy-from-d1.js';
 import { appliedMigrations, migrate } from './migrate.js';
 import { NotesStore, type CountOptions, type ListOptions, type SearchFilters } from './notes.js';
 import { cursorAfter, nextCursor } from './notes-shared.js';
@@ -21,23 +20,14 @@ import { DATA_TABLES, DUMP_TABLES, type DataTable, type DumpTable } from './tabl
 export { DATA_TABLES, DUMP_TABLES, type DataTable, type DumpTable };
 
 /**
- * What the object is allowed to see of the Worker's environment: the D1 database, for the
- * one-time copy of an account's rows (`copy-from-d1.ts`), and nothing else.
- *
- * `DB` leaves when the copy does, and then this is `Record<never, never>`. Naming `BLOBS`,
- * `AI` or a secret here would be refused by review before it was refused by the compiler,
- * but the compiler refusing it is what makes rule 1 in AGENTS.md — the object touches its
- * SQLite and nothing else — a property of the code rather than a habit.
+ * What the object is allowed to see of the Worker's environment: nothing. Naming `BLOBS`,
+ * `AI`, `DB` or a secret here would be refused by review before it was refused by the
+ * compiler, but the compiler refusing it is what makes rule 1 in AGENTS.md — the object
+ * touches its SQLite and nothing else — a property of the code rather than a habit. It
+ * carried `DB` for the one-time copy out of the shared tables at the cutover; that went
+ * with the tables (migration 0036).
  */
-export type StoreEnv = {
-  DB: D1Database;
-  /**
-   * `"0"` on the pull-request previews, which share the dev instance's D1 while dev still
-   * runs `main`: a preview's copy must not write `migrated_at` there, or the freeze would
-   * refuse that account's writes on dev until the merge. See wrangler.toml.
-   */
-  STORE_FREEZE_D1?: string;
-};
+export type StoreEnv = Record<never, never>;
 
 /** The `_meta` keys the object writes. Reserved names, kept in one place. */
 const META = {
@@ -47,12 +37,11 @@ const META = {
 
 /**
  * The one key in the object's key-value storage, which `deleteAll` clears and `wipe` then
- * writes: that this object was wiped. It is what stops a wiped object copying its account
- * back from D1 on its next wake — `deleteAll` takes the `_meta` row that says the copy has
- * run, and without this a deletion that failed after the wipe would bring the account back
- * as it was at the cutover, with its files already gone from R2 (found in review). Read
- * before the schema is touched, so a wiped object stays empty storage until something
- * asks for its notes.
+ * writes: that this object was wiped. Read before the schema is touched, so a deleted
+ * account's object stays empty storage across an eviction rather than growing a schema
+ * again on every wake, and `stats` and `usage` can confirm the deletion without
+ * rebuilding anything. (At the cutover it was also what kept a wiped object from copying
+ * its account back out of the shared tables; those are gone.)
  */
 const WIPED_KEY = 'wiped';
 
@@ -69,14 +58,6 @@ export interface StoreStats {
   counts: Record<DataTable, number>;
   /** True when `wipe` has run and nothing has woken the schema since: the object is empty storage. */
   wiped: boolean;
-  /**
-   * Whether the one-time copy from D1 has run (or was found unnecessary): `copied_at` in
-   * the directory, which the sweep writes from this. The `_meta` key behind it is still
-   * `migrated_from_d1`, since objects on dev already hold it.
-   */
-  copiedFromD1: boolean;
-  /** Why the copy's last verification failed, while it waits for the operator; see `copyFromD1`. */
-  copyMismatch: string | null;
 }
 
 /**
@@ -90,12 +71,8 @@ export interface StoreUsage {
   databaseSize: number;
   /** Live and trashed notes together: what the account holds. */
   notes: number;
-  copiedFromD1: boolean;
   wiped: boolean;
 }
-
-/** What `copyFromD1` answers: the copy's own result, with the usage the sweep records. */
-export type StoreCopyResult = CopyResult & { usage: StoreUsage };
 
 /**
  * How many bytes of note bodies and file texts one export page carries before it is cut
@@ -126,8 +103,7 @@ export const DUMP_PAGE_BYTES = 8 * 1024 * 1024;
  * a half-applied schema: each schema file the object has no record of is applied in one
  * transaction, and on every wake the object checks that foreign keys are enforced (the
  * engine's default, but the cascades depend on it) and that `_meta.user_id` is the name
- * it was created under. Every wake is local reads only: nothing here reaches D1 until
- * something calls `copyFromD1`.
+ * it was created under. Every wake is local reads only.
  *
  * Every public method is one billable request to the object, so the surface has two
  * layers: the repository methods one for one, for the facade that keeps `NotesRepo`'s
@@ -204,12 +180,11 @@ export class UserStore extends DurableObject<StoreEnv> {
   /**
    * Rebuilds the schema after a `wipe`, the first time anything asks for data again. A
    * wiped object starts empty by design — the account was deleted, or a test fixture
-   * purged — so the copy from D1 is marked done rather than run.
+   * purged.
    */
   private ready(): void {
     if (!this.wiped) return;
     this.bootstrap();
-    markCopiedFromD1(this.sql);
     this.ctx.storage.kv.delete(WIPED_KEY);
   }
 
@@ -224,7 +199,7 @@ export class UserStore extends DurableObject<StoreEnv> {
   stats(): StoreStats {
     const counts = Object.fromEntries(DATA_TABLES.map((t) => [t, 0])) as Record<DataTable, number>;
     if (this.wiped) {
-      return { userId: this.userId, databaseSize: this.ctx.storage.sql.databaseSize, migrations: [], counts, wiped: true, copiedFromD1: true, copyMismatch: null };
+      return { userId: this.userId, databaseSize: this.ctx.storage.sql.databaseSize, migrations: [], counts, wiped: true };
     }
     for (const table of DATA_TABLES) {
       counts[table] = this.sql.first<{ n: number }>(`SELECT COUNT(*) AS n FROM ${table}`)?.n ?? 0;
@@ -235,58 +210,19 @@ export class UserStore extends DurableObject<StoreEnv> {
       migrations: appliedMigrations(this.ctx.storage),
       counts,
       wiped: false,
-      copiedFromD1: copiedFromD1(this.sql),
-      copyMismatch: copyMismatch(this.sql),
     };
   }
 
   /** What the sweep records: a few rows per account, never a table scan. See `StoreUsage`. */
   usage(): StoreUsage {
     const databaseSize = this.ctx.storage.sql.databaseSize;
-    if (this.wiped) return { databaseSize, notes: 0, copiedFromD1: true, wiped: true };
+    if (this.wiped) return { databaseSize, notes: 0, wiped: true };
     const counts = this.sql.first<{ live: number; trashed: number }>(`SELECT live, trashed FROM note_counts WHERE id = 1`);
     return {
       databaseSize,
       notes: (counts?.live ?? 0) + (counts?.trashed ?? 0),
-      copiedFromD1: copiedFromD1(this.sql),
       wiped: false,
     };
-  }
-
-  /**
-   * Runs, or continues, the one-time copy of this account's rows from D1; see
-   * copy-from-d1.ts for what it promises and what it answers. The sweep calls it for
-   * every account not yet copied, and the operator's route for one; nothing else does,
-   * and in particular no wake. The answer carries the usage the sweep would otherwise
-   * have to ask for in a second call, whatever the copy did.
-   *
-   * Under `blockConcurrencyWhile`, so two callers cannot interleave — the sweep and the
-   * operator at once would each count the pages the other inserted as its own — and so
-   * nothing reads the account between two of its pages. The callback swallows its error
-   * and rethrows it outside the block: a throw *inside* one resets the object, and a
-   * reset discards writes the runtime has not yet confirmed (measured 2026-09-30), which
-   * could take the committed cursor with it.
-   */
-  async copyFromD1(opts: Pick<CopyOptions, 'retry' | 'budget'> = {}): Promise<StoreCopyResult> {
-    // A wiped object answers without rebuilding its schema, as `stats` and `usage` do:
-    // the operator's route accepts any account the directory names, tombstoned ones
-    // included, and a deleted account must not get an empty database back from a typo.
-    if (this.wiped) return { status: 'already', usage: this.usage() };
-    this.ready();
-    let outcome: CopyResult | Error | undefined;
-    await this.ctx.blockConcurrencyWhile(async () => {
-      try {
-        outcome = await copyFromD1(this.sql, this.env.DB, this.userId, () => this.notes.recountNotes(), {
-          freeze: this.env.STORE_FREEZE_D1 !== '0',
-          retry: opts.retry,
-          budget: opts.budget,
-        });
-      } catch (err) {
-        outcome = err instanceof Error ? err : new Error(String(err));
-      }
-    });
-    if (outcome instanceof Error) throw outcome;
-    return { ...outcome!, usage: this.usage() };
   }
 
   /**
@@ -297,8 +233,7 @@ export class UserStore extends DurableObject<StoreEnv> {
    * marker written here is read before the schema is touched on the next wake. `ready()`
    * rebuilds the schema if a data method is called afterwards, so a wiped object that is
    * reached again — a deletion that failed further along and was retried, a test —
-   * behaves as a brand-new one that starts empty rather than copying its old rows back
-   * from D1 or throwing "no such table".
+   * behaves as a brand-new one that starts empty rather than throwing "no such table".
    */
   async wipe(): Promise<void> {
     await this.ctx.storage.deleteAll();
@@ -687,4 +622,3 @@ function sqlLiteral(value: unknown): string {
 // into the store modules.
 export type { CountOptions, ListOptions, SearchFilters };
 export type { FieldDef, FieldValue, NoteFieldsPatch };
-export type { CopyResult };
