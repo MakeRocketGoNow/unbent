@@ -4,7 +4,7 @@ import { z } from 'zod';
 import { requireAuth } from '../lib/session.js';
 import { withRepos } from '../lib/repos-middleware.js';
 import { deleteKeys } from '../lib/blobs.js';
-import { dropDirectoryRow } from '../lib/directory.js';
+import { directoryRow, dropDirectoryRow } from '../lib/directory.js';
 import { isOperator } from '../lib/instance.js';
 import { userPrefix } from '../lib/repo.js';
 import { storeFor } from '../lib/store-client.js';
@@ -173,7 +173,7 @@ export const admin = new Hono<AppEnv>()
 
   /** Row counts, size and schema version of one store. */
   .get('/admin/store/stats', requireAuth, async (c) => {
-    const target = operatorTarget(c);
+    const target = await operatorTarget(c);
     if (target instanceof Response) return target;
     return c.json(await storeFor(c.env, target).stats());
   })
@@ -191,6 +191,11 @@ export const admin = new Hono<AppEnv>()
       if (!isOperator(c.env, email)) return c.json({ error: 'Not found' }, 404);
       const { query, binds, user } = c.req.valid('json');
       const target = user ?? c.get('userId')!;
+      // The same check `operatorTarget` makes: a store is created for any name it is
+      // asked for, so an id nothing knows must be refused before it is one.
+      if (target !== c.get('userId') && !(await directoryRow(c.env.DB, target))) {
+        return c.json({ error: 'No such account' }, 404);
+      }
       console.log(`[store] operator=${email} sql user=${target}`);
       try {
         return c.json(await storeFor(c.env, target).readOnlySql(query, binds));
@@ -219,7 +224,7 @@ export const admin = new Hono<AppEnv>()
    * sits in the Worker's memory at once.
    */
   .get('/admin/store/dump', requireAuth, async (c) => {
-    const target = operatorTarget(c);
+    const target = await operatorTarget(c);
     if (target instanceof Response) return target;
     const store = storeFor(c.env, target);
     const encoder = new TextEncoder();
@@ -270,9 +275,10 @@ export const admin = new Hono<AppEnv>()
   })
 
   /**
-   * The daily walk, on demand: after a deploy that carries a schema file, so every account
-   * is migrated within minutes rather than a day, and after the cutover, so every account
-   * is copied. See lib/sweep.ts.
+   * One batch of the walk, on demand: after a deploy that carries a schema file, so every
+   * account is migrated within minutes rather than hours, and after the cutover, so every
+   * account is copied. The answer says whether the pass is `done`; a runbook calls again
+   * until it is, then once more if any account was `deferred`. See lib/sweep.ts.
    */
   .post('/admin/store/sweep', requireAuth, async (c) => {
     const email = c.get('user')?.email;
@@ -298,13 +304,18 @@ function sqlLiteral(value: unknown): string {
  * `?user=`, someone else's — logged, because that is one person reading another's notes.
  * A non-operator naming anyone is answered as if the route did not exist, the way every
  * other "is this mine" check here answers.
+ *
+ * The name has to be in the directory. `storeFor` gets or creates an object for any
+ * string, so a mistyped id would bootstrap a schema, probe D1 and leave an object behind
+ * that no directory row knows about and the sweep would never find.
  */
-function operatorTarget(c: { env: AppEnv['Bindings']; req: { query(name: string): string | undefined }; get(key: 'userId'): string | undefined; get(key: 'user'): { email: string } | undefined }): string | Response {
+async function operatorTarget(c: { env: AppEnv['Bindings']; req: { query(name: string): string | undefined }; get(key: 'userId'): string | undefined; get(key: 'user'): { email: string } | undefined }): Promise<string | Response> {
   const asked = c.req.query('user');
   const own = c.get('userId')!;
   if (!asked || asked === own) return own;
   const email = c.get('user')?.email;
   if (!isOperator(c.env, email)) return Response.json({ error: 'Not found' }, { status: 404 });
+  if (!(await directoryRow(c.env.DB, asked))) return Response.json({ error: 'No such account' }, { status: 404 });
   console.log(`[store] operator=${email} read user=${asked}`);
   return asked;
 }
