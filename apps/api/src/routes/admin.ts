@@ -238,12 +238,11 @@ export const admin = new Hono<AppEnv>()
     const target = await operatorTarget(c);
     if (target instanceof Response) return target;
     const chunks = dumpChunks(storeFor(c.env, target), target);
-    const encoder = new TextEncoder();
     const body = new ReadableStream<Uint8Array>({
       async pull(controller) {
         const next = await chunks.next();
         if (next.done) controller.close();
-        else controller.enqueue(encoder.encode(next.value));
+        else controller.enqueue(next.value);
       },
       cancel() {
         void chunks.return(undefined);
@@ -301,11 +300,13 @@ export const admin = new Hono<AppEnv>()
 
 /**
  * The dump as chunks: the header and the tables, then each page of each table as the
- * object formats it, then the triggers, the FTS tables and their rebuild. A generator so
- * the stream above fetches one chunk per pull and a page is only read from the object
- * once the client has taken the last one.
+ * object formats and encodes it, then the triggers, the FTS tables and their rebuild. A
+ * generator so the stream above fetches one chunk per pull and a page is only read from
+ * the object once the client has taken the last one. Bytes throughout: the pages arrive
+ * encoded, and the Worker touches none of their content (see `dumpPage`).
  */
-async function* dumpChunks(store: DurableObjectStub<UserStore>, target: string): AsyncGenerator<string> {
+async function* dumpChunks(store: DurableObjectStub<UserStore>, target: string): AsyncGenerator<Uint8Array> {
+  const encoder = new TextEncoder();
   const schema = await store.schemaSql();
   const later = (s: string) => /^CREATE (VIRTUAL TABLE|TRIGGER)\b/i.test(s);
   const head = [
@@ -315,12 +316,12 @@ async function* dumpChunks(store: DurableObjectStub<UserStore>, target: string):
     'BEGIN;',
     ...schema.filter((s) => !later(s)).map((s) => `${s};`),
   ];
-  yield `${head.join('\n')}\n`;
+  yield encoder.encode(`${head.join('\n')}\n`);
   for (const table of DUMP_TABLES) {
     for (let after = 0; ; ) {
-      // Formatted inside the object, where the CPU budget is; see `dumpPage`.
+      // Formatted and encoded inside the object, where the CPU budget is; see `dumpPage`.
       const page = await store.dumpPage(table, after, 5000);
-      if (page.rows > 0) yield `${page.sql}\n`;
+      if (page.rows > 0) yield page.bytes;
       if (page.nextRowid === null) break;
       after = page.nextRowid;
     }
@@ -331,7 +332,7 @@ async function* dumpChunks(store: DurableObjectStub<UserStore>, target: string):
     tail.push(`INSERT INTO ${name}(${name}) VALUES ('rebuild');`);
   }
   tail.push('COMMIT;', 'PRAGMA foreign_keys = ON;');
-  yield `${tail.join('\n')}\n`;
+  yield encoder.encode(`${tail.join('\n')}\n`);
 }
 
 /**

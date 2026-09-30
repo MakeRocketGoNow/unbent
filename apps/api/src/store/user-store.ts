@@ -354,7 +354,9 @@ export class UserStore extends DurableObject<StoreEnv> {
    * The rows are turned into SQL here rather than in the Worker because of where the CPU
    * is. A Worker invocation on the Free plan has ten milliseconds of it, and quoting
    * eight megabytes of text takes more than that; an object request has thirty seconds.
-   * The Worker then only forwards what arrives.
+   * Encoded to bytes here too, for the same reason: a string crossing RPC is decoded on
+   * the Worker's side and would be encoded again for the response, both linear in the
+   * page, where a byte array crosses as a copy and is written out as it is.
    *
    * A page is at most `limit` rows and, past the first row, at most `DUMP_PAGE_BYTES` of
    * them: the result crosses RPC, which is capped at 32 MiB, and a page of scans' texts
@@ -365,7 +367,7 @@ export class UserStore extends DurableObject<StoreEnv> {
    * fifty on Free: a dump of an archive-sized account has to be a dozen pages, not a
    * hundred. The one query here that bypasses the `Sql` seam's metering, for that reason.
    */
-  dumpPage(table: DumpTable, afterRowid = 0, limit = 5000): { sql: string; rows: number; nextRowid: number | null } {
+  dumpPage(table: DumpTable, afterRowid = 0, limit = 5000): { bytes: Uint8Array; rows: number; nextRowid: number | null } {
     this.ready();
     if (!DUMP_TABLES.includes(table)) throw new Error(`not a data table: ${table}`);
     const cursor = this.ctx.storage.sql.exec<Row & { _rowid: number }>(
@@ -391,7 +393,11 @@ export class UserStore extends DurableObject<StoreEnv> {
     }
     // More may follow when the page was cut, or was full; a short page that was not cut
     // is the end of the table.
-    return { sql: lines.join('\n'), rows: lines.length, nextRowid: (cut || lines.length === limit) && last !== null ? last : null };
+    return {
+      bytes: new TextEncoder().encode(lines.length ? `${lines.join('\n')}\n` : ''),
+      rows: lines.length,
+      nextRowid: (cut || lines.length === limit) && last !== null ? last : null,
+    };
   }
 
   /**
