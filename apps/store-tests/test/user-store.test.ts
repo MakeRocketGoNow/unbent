@@ -140,6 +140,28 @@ describe('UserStore lifecycle', () => {
     await expect(stub.dumpPage('notes_fts' as 'notes')).rejects.toThrow(/not a data table/);
   });
 
+  it('dumpPage cuts a page at its byte budget and keeps paging from the cut', async () => {
+    const { stub } = freshStore('dumpbytes');
+    // Three texts of five megabytes each: two fit the eight-megabyte budget only one at a
+    // time, so a page of five hundred still hands back one row and a cursor.
+    await runInDurableObject(stub, (_i, state) => {
+      const sql = state.storage.sql;
+      sql.exec(`INSERT INTO notes (id, title, body, created_at, updated_at) VALUES ('n1', 'T', 'b', 1, 1)`);
+      for (let i = 0; i < 3; i++) {
+        sql.exec(`INSERT INTO attachments (id, note_id, filename, content_type, size, r2_key, created_at) VALUES (?1, 'n1', ?2, 'application/pdf', 1, ?1, 1)`, `a${i}`, `f${i}.pdf`);
+        sql.exec(`INSERT INTO attachment_text (attachment_id, note_id, filename, text, created_at) VALUES (?1, 'n1', ?2, ?3, 1)`, `a${i}`, `f${i}.pdf`, 'x'.repeat(5 * 1024 * 1024));
+      }
+    });
+    const first = await stub.dumpPage('attachment_text', 0, 500);
+    expect(first.rows.map((r) => r.attachment_id)).toEqual(['a0']);
+    expect(first.nextRowid).not.toBeNull();
+    const second = await stub.dumpPage('attachment_text', first.nextRowid!, 500);
+    expect(second.rows.map((r) => r.attachment_id)).toEqual(['a1']);
+    const third = await stub.dumpPage('attachment_text', second.nextRowid!, 500);
+    expect(third.rows.map((r) => r.attachment_id)).toEqual(['a2']);
+    expect(third.nextRowid).toBeNull();
+  });
+
   it('nested transactions commit once and a throw unwinds all of it', async () => {
     const { stub } = freshStore('tx');
     const result = await runInDurableObject(stub, (instance: unknown) => {

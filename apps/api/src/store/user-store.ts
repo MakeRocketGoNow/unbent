@@ -64,6 +64,12 @@ export interface StoreStats {
 export const EXPORT_PAGE_BYTES = 8 * 1024 * 1024;
 
 /**
+ * The same budget for a dump page: `attachment_text` rows are up to half a million
+ * characters each, and five hundred of them would pass the RPC ceiling many times over.
+ */
+export const DUMP_PAGE_BYTES = 8 * 1024 * 1024;
+
+/**
  * One account's notes, in a SQLite database of their own.
  *
  * The object is the repository. Every route and MCP tool in the Worker reaches a user's
@@ -167,7 +173,7 @@ export class UserStore extends DurableObject<StoreEnv> {
     return { userId: this.userId };
   }
 
-  /** Row counts, size and schema version, for the ops route and the daily sweep. */
+  /** Row counts, size and schema version, for the ops route and the sweep. */
   stats(): StoreStats {
     const counts = Object.fromEntries(DATA_TABLES.map((t) => [t, 0])) as Record<DataTable, number>;
     if (this.wiped) {
@@ -247,17 +253,33 @@ export class UserStore extends DurableObject<StoreEnv> {
    * table in `DUMP_TABLES` order and writes them out as SQL between the schema's tables
    * and its triggers, which is a file `sqlite3` rebuilds an account from. The FTS tables
    * are not dumped; the file rebuilds them from the rows at the end.
+   *
+   * A page is at most `limit` rows and, past the first row, at most `DUMP_PAGE_BYTES` of
+   * them: the result crosses RPC, which is capped at 32 MiB, and a page of scans' texts
+   * would pass that at five hundred rows. The cut is by the rows' own sizes as they are
+   * read, so the caller pages on `nextRowid` and never needs to know a cut happened.
    */
   dumpPage(table: DumpTable, afterRowid = 0, limit = 500): { rows: Row[]; nextRowid: number | null } {
     this.ready();
     if (!DUMP_TABLES.includes(table)) throw new Error(`not a data table: ${table}`);
-    const rows = this.sql.exec<Row & { _rowid: number }>(
+    const read = this.sql.exec<Row & { _rowid: number }>(
       `SELECT rowid AS _rowid, * FROM ${table} WHERE rowid > ?1 ORDER BY rowid LIMIT ?2`,
       afterRowid,
       limit,
     );
-    const last = rows[rows.length - 1];
-    return { rows, nextRowid: rows.length === limit && last ? last._rowid : null };
+    const rows: Row[] = [];
+    let bytes = 0;
+    for (const row of read) {
+      for (const v of Object.values(row)) bytes += typeof v === 'string' ? v.length : v instanceof ArrayBuffer ? v.byteLength : 8;
+      // Always at least one row, or a single oversized row could never be dumped.
+      if (bytes > DUMP_PAGE_BYTES && rows.length > 0) break;
+      rows.push(row);
+    }
+    const last = rows[rows.length - 1] as (Row & { _rowid: number }) | undefined;
+    // More may follow when the page was cut, or was full; a short page that was not cut
+    // is the end of the table.
+    const more = rows.length < read.length || read.length === limit;
+    return { rows, nextRowid: more && last ? last._rowid : null };
   }
 
   /**
