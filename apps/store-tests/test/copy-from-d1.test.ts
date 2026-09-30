@@ -125,6 +125,26 @@ describe('copy from D1', () => {
   });
 
   /**
+   * Tag links are paged by note — the next thousand of the user's notes and every link
+   * they have — and a note with no links yields a placeholder row rather than nothing, so
+   * that a run of unlinked notes cannot come back as an empty page, which would read as
+   * the end of the table and drop every link after it. The placeholders are dropped, the
+   * links land, and verification against D1's count still passes.
+   */
+  it('copies tag links for notes that have them and skips the placeholders for notes that do not', async () => {
+    const { userId, stub } = freshStore('unlinked');
+    await seedD1(userId, 8);
+    // Notes two to five keep no link at all; the rest keep theirs.
+    await env.DB.prepare(`DELETE FROM note_tags WHERE note_id IN (?1, ?2, ?3, ?4)`).bind(`${userId}-n0002`, `${userId}-n0003`, `${userId}-n0004`, `${userId}-n0005`).run();
+    const result = await stub.copyFromD1();
+    expect(result).toMatchObject({ status: 'done', copied: { notes: 8, note_tags: 4 }, skipped: 0 });
+    expect((await stub.get(`${userId}-n0003`))?.tags).toEqual([]);
+    expect((await stub.get(`${userId}-n0006`))?.tags).toEqual(['work']);
+    // Four links landed; the seed trashes notes 0 and 7, so two count.
+    expect((await stub.listTags()).reduce((n, t) => n + t.count, 0)).toBe(2);
+  });
+
+  /**
    * D1 queries count against an invocation's subrequests, fifty on Free, so a call
    * spends a budget and then answers `paused` with its progress committed. The budget is
    * an option for this test; the Worker never passes one.
