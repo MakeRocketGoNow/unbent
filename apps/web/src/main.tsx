@@ -8,6 +8,8 @@ import { installPosthog } from './posthog.js';
 import { installLaunchFiles } from './launch-files.js';
 import { configQuery } from './queries.js';
 import { registerServiceWorker } from './sw-register.js';
+import { installConnectivity } from './connectivity.js';
+import { isOfflineError } from './notes-api.js';
 import './styles.css';
 
 /*
@@ -32,6 +34,13 @@ const queryClient = new QueryClient({
        * while offline and resume with the connection.
        */
       networkMode: 'offlineFirst',
+      /*
+       * Not a request that failed for want of a connection. Retries pause while offline,
+       * so a read the worker had no copy of would sit "loading" until the connection came
+       * back, and the page could never say it isn't available offline. It fails at once
+       * instead, and the refetch on reconnect (`connectivity.ts`) asks again.
+       */
+      retry: (failureCount, error) => !isOfflineError(error) && failureCount < 3,
     },
     mutations: {
       // The same for writes: fail now, where the page can say so, rather than wait
@@ -40,6 +49,13 @@ const queryClient = new QueryClient({
     },
   },
 });
+
+/*
+ * Whether the server can be reached, for the banner, the editor and React Query's
+ * pausing alike; see `connectivity.ts`. Before the first request, so the first failure is
+ * heard.
+ */
+installConnectivity(queryClient);
 
 /*
  * Error tracking, on the instances that have it — see `posthog.ts`.

@@ -2,7 +2,7 @@ import { cleanupOutdatedCaches, createHandlerBoundToURL, precacheAndRoute } from
 import { registerRoute } from 'workbox-routing';
 import { CacheFirst, NetworkFirst, type StrategyOptions } from 'workbox-strategies';
 import { ExpirationPlugin } from 'workbox-expiration';
-import { API_CACHE, FILES_CACHE, VIEW_HEADER, classify, servesShell } from './routes.js';
+import { API_CACHE, FILES_CACHE, SERVED_HEADER, VIEW_HEADER, classify, servesShell } from './routes.js';
 
 /**
  * The service worker: what lets the installed app open with no connection.
@@ -60,6 +60,25 @@ const DAY = 24 * 60 * 60;
 type Plugin = NonNullable<StrategyOptions['plugins']>[number];
 
 /**
+ * Marks a read answered from the cache, so the page knows the network failed without
+ * having to ask again (`SERVED_HEADER`). Network-first only reads its cache when the
+ * network has failed or timed out, so every response this sees is one of those. The body
+ * is passed through as it is; only the headers are copied.
+ */
+const servedFromCache: Plugin = {
+  cachedResponseWillBeUsed: async ({ cachedResponse }) => {
+    if (!cachedResponse) return cachedResponse;
+    const headers = new Headers(cachedResponse.headers);
+    headers.set(SERVED_HEADER, 'cache');
+    return new Response(cachedResponse.body, {
+      status: cachedResponse.status,
+      statusText: cachedResponse.statusText,
+      headers,
+    });
+  },
+};
+
+/**
  * What the note list and an open note were last drawn from, for drawing them again with
  * no connection. Which reads these are is `classify` in `routes.ts`.
  *
@@ -81,7 +100,10 @@ registerRoute(
   new NetworkFirst({
     cacheName: API_CACHE,
     networkTimeoutSeconds: 10,
-    plugins: [new ExpirationPlugin({ maxEntries: 500, maxAgeSeconds: 30 * DAY, purgeOnQuotaError: true })],
+    plugins: [
+      servedFromCache,
+      new ExpirationPlugin({ maxEntries: 500, maxAgeSeconds: 30 * DAY, purgeOnQuotaError: true }),
+    ],
   }),
 );
 

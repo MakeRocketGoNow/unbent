@@ -4,6 +4,7 @@ import { oauthProviderClient } from '@better-auth/oauth-provider/client';
 import { passkeyClient } from '@better-auth/passkey/client';
 import { forgetSession, rememberSession, rememberedSession } from './session-memory.js';
 import { clearOfflineCaches } from './offline-cache.js';
+import { reportUnreachable } from './connectivity.js';
 
 /**
  * Same-origin in both dev (Vite proxy) and production (Pages routes /api to the Worker),
@@ -214,7 +215,10 @@ export function ensureSession(): Promise<Session | null> {
       settled = true;
       clearTimeout(timer);
       checkAbandoned = timedOut && state.isPending;
-      const { session } = answerFor(state, rememberedSession());
+      const { session, unreachable } = answerFor(state, rememberedSession());
+      // A check that never got an answer is the first sign the connection is gone; one the
+      // server answered with an error is not, and must not raise the offline banner.
+      if (unreachable && state.error?.status === undefined) reportUnreachable();
       void recordSession(state).then(() => resolve(session));
       stop?.();
     };

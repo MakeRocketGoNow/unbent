@@ -52,6 +52,13 @@ export const FILES_CACHE = 'files-v1';
 export const VIEW_HEADER = 'X-Unbent-View';
 
 /**
+ * The header the worker adds to a read it answered from its cache because the network
+ * failed — how the page learns it is offline from the very request that needed the network
+ * (`request` in `notes-api.ts`), rather than from a second request asking.
+ */
+export const SERVED_HEADER = 'X-Unbent-Served';
+
+/**
  * The reads the note list and an open note are drawn from, which the worker keeps the
  * last copy of: the list pages and their counts, a note, its files' metadata, the tags,
  * the notebooks and a notebook's fields, and the instance's config. Nothing else — search,

@@ -10,6 +10,7 @@ import { useMediaQuery, MOBILE_QUERY } from '../useMediaQuery.js';
 import { claimCacheFor } from '../queries.js';
 import { startIndexing, subscribeIndexing } from '../index-files.js';
 import { Topbar } from '../components/Topbar.js';
+import { OfflineBanner } from '../components/OfflineBanner.js';
 import { useHostApp } from '../useHostApp.js';
 import { postToApp } from '../app-bridge.js';
 import { ExportSnackbar } from '../components/ExportSnackbar.js';
@@ -222,6 +223,7 @@ function AppShell() {
         {/* The phone's chrome, on the pages that have no heading of their own; the
             stylesheet hides it above the breakpoint, where the rail is the chrome. */}
         <Topbar email={session.user.email} onSignOut={signOutAndLeave} />
+        <OfflineBanner />
         <Outlet />
       </main>
       <ExportSnackbar />

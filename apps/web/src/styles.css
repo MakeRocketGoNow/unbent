@@ -508,6 +508,43 @@ button.link {
   padding: var(--shell-pad-top) 1.5rem 1rem var(--shell-pad-left);
 }
 
+/*
+   The offline line (`OfflineBanner.tsx`): the first row of the signed-in column while the
+   server is out of reach.
+
+   `flex: none` because the column is a flex box that shrinks its children to fit the
+   viewport-height frame; the line keeps its height and the view below it gives up the
+   room. The gap under it is the column's own top padding again, so the view's head sits
+   the same distance below the line as it sits below the window's edge without it.
+
+   Muted ink on a wash of the text colour rather than a border or the danger colour: it
+   has to be noticed once and then read as part of the page for as long as the connection
+   stays gone. The wash is the text colour mixed in, so dark mode gets a faint lighter band
+   from the same rule. The live region around it stays in the tree when the line is gone
+   and takes no room then.
+*/
+.offline-status {
+  flex: none;
+}
+
+.offline-banner {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0 0 var(--shell-pad-top);
+  padding: 0.45rem 0.75rem;
+  border-radius: 0.5rem;
+  background: color-mix(in srgb, var(--fg) 6%, transparent);
+  color: var(--muted);
+  font-size: 0.875rem;
+  line-height: 1.35;
+}
+
+/* The glyph keeps its size when the sentence wraps to two lines on a phone. */
+.offline-banner > svg {
+  flex: none;
+}
+
 .notes {
   display: grid;
   /*
