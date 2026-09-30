@@ -60,6 +60,21 @@ describe('the per-account store', () => {
   });
 
   /**
+   * The one exception to rule 1, held to its one file. `StoreEnv` carries `DB` for the
+   * copy of an account's rows out of the shared database, so the compiler no longer
+   * refuses a D1 binding inside the store; this does. The allowance goes when the copy
+   * does, and this test then shrinks to "nothing in the store names D1".
+   */
+  it('reaches D1 from the one-time copy and nowhere else', () => {
+    const allowed = new Set(['store/copy-from-d1.ts', 'store/user-store.ts']);
+    for (const file of walk(join(SRC, 'store'))) {
+      if (/\bD1Database\b|\benv\.DB\b|\bDB\s*:/.test(code(file))) {
+        expect(allowed.has(rel(file)), `${rel(file)} reaches D1`).toBe(true);
+      }
+    }
+  });
+
+  /**
    * `cloudflare:workers` exists only inside workerd. The unit tests run under Node, so a
    * value import of it anywhere in a module graph a unit test reaches breaks that test at
    * import time — and `auth.ts` and the routes are reached by several. The class module
