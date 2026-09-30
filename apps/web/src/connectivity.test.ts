@@ -1,5 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { QueryClient } from '@tanstack/react-query';
 import {
+  installConnectivity,
   offlineNow,
   reportReachable,
   reportUnreachable,
@@ -41,6 +43,24 @@ describe('connectivity', () => {
     await vi.advanceTimersByTimeAsync(1_000);
     expect(health).toHaveBeenCalledWith('/api/health', { cache: 'no-store' });
     // A 503 is still an answer: the server is there, the database hiccuped.
+    expect(offlineNow()).toBe(false);
+  });
+
+  /*
+     Airplane mode off: the browser says online a moment before the radio carries anything,
+     and the refetch that event starts can fail in that moment. The app must not then sit
+     offline for the ordinary twenty seconds.
+   */
+  it('asks again within seconds when a request fails just after the network came back', async () => {
+    installConnectivity(new QueryClient());
+    vi.useFakeTimers();
+    const health = vi.fn(async () => new Response('{}', { status: 200 }));
+    vi.stubGlobal('fetch', health);
+    window.dispatchEvent(new Event('online'));
+    reportUnreachable();
+    expect(offlineNow()).toBe(true);
+    await vi.advanceTimersByTimeAsync(3_000);
+    expect(health).toHaveBeenCalledTimes(1);
     expect(offlineNow()).toBe(false);
   });
 

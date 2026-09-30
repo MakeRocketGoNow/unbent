@@ -72,6 +72,20 @@ let pollDelay = FIRST_POLL;
 let pollTimer: ReturnType<typeof setTimeout> | undefined;
 
 /**
+ * Right after the browser says the network is back, the first ask comes much sooner.
+ *
+ * `online` fires when the operating system has a network, which on a phone leaving
+ * airplane mode is a moment before the radio carries anything. The refetch that event
+ * starts can land in that moment and fail, which puts the app straight back offline —
+ * and with the ordinary twenty seconds before the next ask, someone who had just turned
+ * the network back on watched the banner sit there. Within half a minute of the event,
+ * the first ask is three seconds out instead.
+ */
+const QUICK_POLL = 3_000;
+const QUICK_WINDOW = 30_000;
+let onlineAt = -Infinity;
+
+/**
  * Asks the server whether it is there, when only asking can tell. Not while the browser
  * itself says it is offline — its `online` event will say when that changes, and a request
  * before then can only fail.
@@ -84,11 +98,12 @@ function schedulePoll(): void {
     return;
   }
   if (pollTimer !== undefined) return;
+  const delay = pollDelay === FIRST_POLL && Date.now() - onlineAt < QUICK_WINDOW ? QUICK_POLL : pollDelay;
   pollTimer = setTimeout(() => {
     pollTimer = undefined;
     pollDelay = Math.min(pollDelay * 2, LAST_POLL);
     void probe();
-  }, pollDelay);
+  }, delay);
 }
 
 async function probe(): Promise<void> {
@@ -115,7 +130,9 @@ async function probe(): Promise<void> {
  */
 export function installConnectivity(queryClient: QueryClient): void {
   window.addEventListener('online', () => {
-    // The browser says the network is back; trust it until a request says otherwise.
+    // The browser says the network is back; trust it until a request says otherwise, and
+    // if one does, ask again soon (`QUICK_POLL`).
+    onlineAt = Date.now();
     unreachable = false;
     evaluate();
   });
@@ -179,6 +196,7 @@ export function resetConnectivity(): void {
   clearTimeout(pollTimer);
   pollTimer = undefined;
   pollDelay = FIRST_POLL;
+  onlineAt = -Infinity;
   listeners.clear();
   readFromCache.clear();
   noteListeners.clear();
