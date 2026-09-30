@@ -141,8 +141,12 @@ interface Table {
   page: number;
   /** The column whose length bounds a page by `PAGE_CHARS`, for the tables with big rows. */
   sizeColumn?: string;
-  /** How the user's rows are found: by their own `user_id`, or through the note's. */
-  scope: 'user_id' | 'via_note';
+  /**
+   * How the user's rows are found: by their own `user_id`, or a note at a time through
+   * the note's — for a table with no `user_id`, whose page is then `page` notes' worth of
+   * rows rather than `page` rows; see `selectPage`.
+   */
+  scope: 'user_id' | 'by_note';
   /** The store's foreign keys out of this table, checked per row since D1 never did. */
   parents?: Parent[];
   /** The condition that finds a row already here by name, for the tables merged rather than refused. */
@@ -171,7 +175,7 @@ const TABLES: Table[] = [
     name: 'note_tags',
     columns: ['note_id', 'tag_id'],
     page: 1000,
-    scope: 'via_note',
+    scope: 'by_note',
     parents: [
       { column: 'note_id', table: 'notes', onMissing: 'skip' },
       { column: 'tag_id', table: 'tags', onMissing: 'skip' },
@@ -294,17 +298,25 @@ function readProgress(sql: Sql): Progress {
  * whatever its size, and the page ends at the first row that would take it over. One
  * query either way, which is what the budget counts.
  *
- * A table found through its note is walked by its own rowid with `CROSS JOIN`, which
- * fixes the join order: `note_tags` first, by rowid from the cursor, then the note by
- * primary key. Left to itself the planner starts from the user's notes, gathers every
- * link they have and sorts the lot, for every page.
+ * A table with no `user_id` of its own (`note_tags`) is paged by note: the next `page`
+ * of the user's notes by rowid, through the copy's index, and every link they have, with
+ * the last note's rowid as the cursor. Walking the links by their own rowid read the
+ * whole table across every account for each account copied, and starting from the
+ * user's notes without a bound gathered and sorted every link per page (both found in
+ * review). It is a LEFT JOIN so a note with no links still yields a row — with a null
+ * link, which the caller drops — because a run of unlinked notes would otherwise come
+ * back as an empty page, and an empty page means the end of the table.
  */
 function selectPage(t: Table): string {
   const cols = t.columns.map((c) => `t.${c}`).join(', ');
-  const from =
-    t.scope === 'user_id'
-      ? `FROM ${t.name} t WHERE (t.user_id || '') = ?1 AND t.rowid > ?2`
-      : `FROM ${t.name} t CROSS JOIN notes n ON n.id = t.note_id WHERE (n.user_id || '') = ?1 AND t.rowid > ?2`;
+  if (t.scope === 'by_note') {
+    return `SELECT n.rowid AS rid, ${cols}
+              FROM notes n LEFT JOIN ${t.name} t ON t.note_id = n.id
+             WHERE (n.user_id || '') = ?1 AND n.rowid > ?2
+               AND n.rowid <= (SELECT MAX(rowid) FROM (SELECT rowid FROM notes WHERE (user_id || '') = ?1 AND rowid > ?2 ORDER BY rowid LIMIT ?3))
+             ORDER BY n.rowid`;
+  }
+  const from = `FROM ${t.name} t WHERE (t.user_id || '') = ?1 AND t.rowid > ?2`;
   if (!t.sizeColumn) return `SELECT t.rowid AS rid, ${cols} ${from} ORDER BY t.rowid LIMIT ?3`;
   return `SELECT * FROM (
             SELECT t.rowid AS rid, ${cols},
@@ -430,6 +442,8 @@ export async function copyFromD1(sql: Sql, db: D1Database, userId: string, recou
         if (results.length === 0) break;
         sql.tx(() => {
           rows: for (const r of results) {
+            // A note with no rows here, carried so the page is not empty; see `selectPage`.
+            if (t.scope === 'by_note' && r[t.columns[0]!] === null) continue;
             for (const p of t.parents ?? []) {
               const value = progress.merged[p.table]?.[r[p.column] as string] ?? r[p.column];
               r[p.column] = value;
