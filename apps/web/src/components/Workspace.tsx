@@ -1091,6 +1091,7 @@ export function Workspace({ noteId, readOnly = false, backTo = '/notes' }: Works
           body={draft.body}
           editorView={editorView}
           onBodyRewrite={rewriteBody}
+          readOnly={locked}
         />
       )}
 

@@ -186,3 +186,33 @@ describe('Attachments', () => {
     expect(screen.getByTestId('draft-body').textContent).toBe(n2Body);
   });
 });
+
+/*
+ * A locked note — offline, or a copy read from the offline cache — takes no changes, and
+ * that includes this panel. Insert link most of all: it writes into the editor directly,
+ * where read-only does not reach, and the draft would be saved over a newer copy later.
+ * The controls fade in place; Copy and the download link keep working.
+ */
+describe('Attachments on a locked note', () => {
+  it('fades every control that changes the note, and keeps the ones that read', async () => {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } });
+    seed(client, 'n1', [scan]);
+    const onBodyRewrite = vi.fn();
+    render(
+      <QueryClientProvider client={client}>
+        <Attachments noteId="n1" body="no link here" editorView={null} onBodyRewrite={onBodyRewrite} readOnly />
+      </QueryClientProvider>,
+    );
+    openPanel();
+    const button = (name: string) => screen.getByRole<HTMLButtonElement>('button', { name });
+    expect(button('Insert link').disabled).toBe(true);
+    expect(button('Delete').disabled).toBe(true);
+    expect(button('More actions for scan.pdf').disabled).toBe(true);
+    expect(button('Insert link').title).toBe('Not available offline');
+    expect(button('Copy').disabled).toBe(false);
+    expect(screen.getByRole('link', { name: 'scan.pdf' })).toBeTruthy();
+
+    fireEvent.click(button('Insert link'));
+    expect(onBodyRewrite).not.toHaveBeenCalled();
+  });
+});
