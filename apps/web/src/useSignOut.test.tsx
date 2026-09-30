@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { renderHook, waitFor } from '@testing-library/react';
 import { useSignOut } from './useSignOut.js';
 import { refreshSession, signOut } from './auth-client.js';
+import { rememberSession, rememberedSession } from './session-memory.js';
 
 const navigate = vi.fn();
 vi.mock('@tanstack/react-router', () => ({ useNavigate: () => navigate }));
@@ -37,5 +38,20 @@ describe('useSignOut', () => {
     // Refreshing would make the shell report `unauthorized` to an app that is already
     // signing out.
     expect(refreshSession).not.toHaveBeenCalled();
+  });
+
+  /*
+   * The device's memory of who was signed in is what lets the app open offline as them
+   * (`session-memory.ts`). Inside the app the hook returns before refreshing the session,
+   * so the forgetting has to happen ahead of that — the path most likely to skip it.
+   */
+  it.each([
+    ['in a browser', false],
+    ['inside the app', true],
+  ])('forgets who was signed in, %s', async (_, hosted) => {
+    rememberSession({ id: 'u1', email: 'someone@example.com' });
+    if (hosted) window.UnbentApp = { postMessage: vi.fn() };
+    renderHook(() => useSignOut()).result.current();
+    await waitFor(() => expect(rememberedSession()).toBeNull());
   });
 });

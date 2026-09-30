@@ -1,7 +1,7 @@
 import { createRootRouteWithContext, Outlet, useNavigate } from '@tanstack/react-router';
 import { useEffect, useRef } from 'react';
 import { useQueryClient, type QueryClient } from '@tanstack/react-query';
-import { useSession } from '../auth-client.js';
+import { useAppSession } from '../useAppSession.js';
 import { useSignOut } from '../useSignOut.js';
 import { requireSession, useShell } from '../auth-gate.js';
 import { Rail, RailHandle, useRailWidth, type RailPref } from '../components/Rail.js';
@@ -90,12 +90,14 @@ function PlainShell() {
  * The signed-in app: chrome, and the background work that only makes sense for a user.
  *
  * There is no gate here any more. The route guard has established a session before this
- * renders, so `useSession` is read for two things: the address in the chrome, and
+ * renders, so the session is read for two things: the address in the chrome, and
  * liveness — a session that expires, or a sign-out in another tab, arrives through this
  * hook and nowhere else, and has to move the user off a screen they can no longer load.
+ * Through `useAppSession`, so a check that merely failed to reach the server — no signal —
+ * is not mistaken for either.
  */
 function AppShell() {
-  const { data: session, isPending } = useSession();
+  const { session, isPending } = useAppSession();
   const navigate = useNavigate();
   const signOutAndLeave = useSignOut();
   const queryClient = useQueryClient();

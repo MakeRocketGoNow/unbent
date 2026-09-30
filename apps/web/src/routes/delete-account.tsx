@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { Button } from '../components/Button.js';
 import { deleteUser, refreshSession, signOut, useSession } from '../auth-client.js';
 import { GOODBYE } from '../auth-gate.js';
+import { forgetSession } from '../session-memory.js';
 
 /**
  * Caught rather than rejected, the same as the reset page: a link that a mail client has
@@ -71,6 +72,9 @@ function DeleteAccountPage() {
       await signOut()
         .then(() => refreshSession())
         .catch(() => {});
+      // Whatever sign-out managed, the account is gone: this device must not open offline
+      // as someone who no longer exists (`session-memory.ts`).
+      forgetSession();
       await navigate({ to: GOODBYE });
     } catch (err) {
       setError((err as Error).message || 'That link could not be used.');

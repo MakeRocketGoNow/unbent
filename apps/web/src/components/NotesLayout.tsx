@@ -64,7 +64,7 @@ import { Confirm } from './Confirm.js';
 import { MoveSheet } from './MoveSheet.js';
 import { TagsSheet } from './TagsSheet.js';
 import { editOpenNoteFiling } from '../open-note-fields.js';
-import { useSession } from '../auth-client.js';
+import { useAppSession } from '../useAppSession.js';
 import { useSignOut } from '../useSignOut.js';
 
 /** Sidebar plus the routed workspace. Filters come from the URL; nothing here is mirrored into state. */
@@ -104,7 +104,7 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
    * and the topbar is hidden over the phone's list, so this is where it is reached there —
    * the root layout has already established the session by the time this renders.
    */
-  const { data: session } = useSession();
+  const { session } = useAppSession();
   const signOutAndLeave = useSignOut();
 
   const filter = {

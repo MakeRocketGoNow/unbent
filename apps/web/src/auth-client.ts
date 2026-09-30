@@ -2,6 +2,7 @@ import { createAuthClient } from 'better-auth/react';
 import { emailOTPClient } from 'better-auth/client/plugins';
 import { oauthProviderClient } from '@better-auth/oauth-provider/client';
 import { passkeyClient } from '@better-auth/passkey/client';
+import { forgetSession, rememberSession, rememberedSession } from './session-memory.js';
 
 /**
  * Same-origin in both dev (Vite proxy) and production (Pages routes /api to the Worker),
@@ -108,8 +109,13 @@ export interface Session {
  * Subscribing is what mounts the store, and mounting is what starts the first fetch —
  * which is why `ensureSession` subscribes rather than polling `get()`.
  */
-interface SessionState {
+export interface SessionState {
   data: Session | null;
+  /**
+   * Why the last check failed. A refusal from the server carries its `status`; a request
+   * that never arrived is the `TypeError` fetch threw, which has none.
+   */
+  error: { status?: number } | null;
   isPending: boolean;
   refetch: () => Promise<void>;
 }
@@ -122,29 +128,88 @@ interface SessionStore {
 const sessionStore = authClient.$store.atoms.session as SessionStore;
 
 /**
- * The session, once it is known.
+ * How long the guard waits for the session check before treating the server as out of
+ * reach.
+ *
+ * The check has no timeout of its own — Better Auth hands its fetch an abort signal, which
+ * turns off the fetch library's timer — so on a connection that is up but carries nothing,
+ * the guard used to wait for as long as the operating system kept the socket open, with the
+ * app showing nothing at all. Ten seconds is the same bound the app's own requests use.
+ */
+export const SESSION_CHECK_TIMEOUT = 10_000;
+
+/**
+ * What the session check's state says about who is signed in.
+ *
+ * Only the server can say nobody is: a 401, or an answer with no session in it. Anything
+ * else — a request that never arrived, a check still waiting when the guard gave up, a
+ * server error that is not a refusal — says only that the server could not be asked, and
+ * then the app carries on as whoever was last signed in on this device (`session-memory`).
+ * With nobody remembered there is nothing to carry on as, and the answer is the same
+ * "nobody" it always was.
+ *
+ * `unreachable` is true whenever the answer is the remembered one, for the chrome that
+ * has to say so.
+ */
+export function answerFor(
+  state: Pick<SessionState, 'data' | 'error' | 'isPending'>,
+  remembered: Session | null,
+): { session: Session | null; unreachable: boolean } {
+  if (state.data) return { session: state.data, unreachable: false };
+  const refused = !state.isPending && (state.error == null || state.error.status === 401);
+  if (refused) return { session: null, unreachable: false };
+  return { session: remembered, unreachable: remembered !== null };
+}
+
+/**
+ * Whether the guard gave up waiting on a check that is still in flight. Read by
+ * `useAppSession`, so the chrome does not sit on "Loading…" behind a guard that has
+ * already let the page through.
+ */
+let checkAbandoned = false;
+
+export const sessionCheckAbandoned = () => checkAbandoned;
+
+/**
+ * Keeps the device's memory of who is signed in in step with what the server says: the
+ * user when there is one, nothing when the server says there is nobody, and unchanged
+ * when it could not be asked.
+ */
+export function recordSession(state: Pick<SessionState, 'data' | 'error' | 'isPending'>): void {
+  if (state.data) rememberSession(state.data.user);
+  else if (!state.isPending && (state.error == null || state.error.status === 401)) forgetSession();
+}
+
+/**
+ * The session, once it is known — or, when the server cannot be asked, whoever was last
+ * signed in on this device.
  *
  * Resolves straight away when the store has already settled, and otherwise waits for the
- * first fetch to land. This is what a route guard awaits: it must not let a route's
- * loader run before it knows whether there is anybody to load for.
+ * first fetch to land, for at most `SESSION_CHECK_TIMEOUT`. This is what a route guard
+ * awaits: it must not let a route's loader run before it knows whether there is anybody
+ * to load for, and it must not send someone to sign in because their phone has no signal.
+ * See `answerFor` for which failures mean which.
  */
 export function ensureSession(): Promise<Session | null> {
-  const current = sessionStore.get();
-  if (!current.isPending) return Promise.resolve(current.data);
-
   return new Promise((resolve) => {
     let stop: (() => void) | undefined;
     let settled = false;
-    const check = (state: SessionState) => {
-      if (settled || state.isPending) return;
+    const finish = (state: SessionState, timedOut: boolean) => {
+      if (settled) return;
       settled = true;
-      resolve(state.data);
+      clearTimeout(timer);
+      checkAbandoned = timedOut && state.isPending;
+      recordSession(state);
+      resolve(answerFor(state, rememberedSession()).session);
       stop?.();
     };
-    stop = sessionStore.subscribe(check);
+    const timer = setTimeout(() => finish(sessionStore.get(), true), SESSION_CHECK_TIMEOUT);
+    stop = sessionStore.subscribe((state) => {
+      if (!state.isPending) finish(state, false);
+    });
     // `subscribe` calls back synchronously with the value it already has, before it has
-    // returned the unsubscribe — so a store that settled between the check above and
-    // here is torn down on this line instead of inside the callback.
+    // returned the unsubscribe — so a store that had already settled is torn down on this
+    // line instead of inside the callback.
     if (settled) stop();
   });
 }
