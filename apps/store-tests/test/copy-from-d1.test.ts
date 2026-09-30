@@ -204,7 +204,9 @@ describe('copy from D1', () => {
     const stats = await woke.stats();
     expect(stats).toMatchObject({ wiped: true, migratedFromD1: true });
     expect(stats.counts.notes).toBe(0);
-    expect(await woke.copyFromD1()).toMatchObject({ status: 'already' });
+    expect(await woke.copyFromD1()).toMatchObject({ status: 'already', usage: { wiped: true } });
+    // And asking did not rebuild it: it is still empty storage.
+    expect((await woke.stats()).wiped).toBe(true);
     // Asked for its notes, it starts as a brand-new empty account rather than copying.
     await woke.create({ id: crypto.randomUUID(), title: 'Fresh start', body: '', tags: [] });
     expect((await woke.stats()).counts).toMatchObject({ notes: 1, attachments: 0 });

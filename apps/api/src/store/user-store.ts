@@ -264,6 +264,10 @@ export class UserStore extends DurableObject<StoreEnv> {
    * could take the committed cursor with it.
    */
   async copyFromD1(opts: Pick<CopyOptions, 'retry' | 'budget'> = {}): Promise<StoreCopyResult> {
+    // A wiped object answers without rebuilding its schema, as `stats` and `usage` do:
+    // the operator's route accepts any account the directory names, tombstoned ones
+    // included, and a deleted account must not get an empty database back from a typo.
+    if (this.wiped) return { status: 'already', usage: this.usage() };
     this.ready();
     let outcome: CopyResult | Error | undefined;
     await this.ctx.blockConcurrencyWhile(async () => {
