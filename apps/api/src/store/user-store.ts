@@ -63,6 +63,8 @@ export interface StoreStats {
   wiped: boolean;
   /** Whether the one-time copy from D1 has run (or was found unnecessary). What the sweep writes to the directory. */
   migratedFromD1: boolean;
+  /** Wakes whose copy failed verification; the copy stops trying at `MAX_FAILURES`. */
+  copyFailures: number;
 }
 
 /**
@@ -128,14 +130,14 @@ export class UserStore extends DurableObject<StoreEnv> {
     this.notes = new NotesStore(this.sql);
     this.attachments = new AttachmentsStore(this.sql);
     ctx.blockConcurrencyWhile(async () => {
-      this.bootstrap();
-      // The one-time copy of this account's rows from D1, on the first wake after the
       // A wiped object wakes as it was left: empty, with no schema, and with the copy
       // from D1 never to run again. `ready()` rebuilds the schema if anything asks.
       if (ctx.storage.kv.get(WIPED_KEY) === true) {
         this.wiped = true;
         return;
       }
+      this.bootstrap();
+      // The one-time copy of this account's rows from D1, on the first wake after the
       // cutover and never again. Inside the block, so no request sees a half-copied
       // account; resumable, so a reset part way loses only the page in flight.
       await copyFromD1(this.sql, env.DB, name, () => this.notes.recountNotes(), () => ctx.storage.sync());
@@ -181,9 +183,9 @@ export class UserStore extends DurableObject<StoreEnv> {
     if (!this.wiped) return;
     this.bootstrap();
     markCopiedFromD1(this.sql);
+    this.ctx.storage.kv.delete(WIPED_KEY);
   }
 
-    this.ctx.storage.kv.delete(WIPED_KEY);
   // --- Operator surface ------------------------------------------------------------------
 
   /** Cheap liveness: wakes the object (and so runs any pending migration) and names it. */
@@ -195,7 +197,7 @@ export class UserStore extends DurableObject<StoreEnv> {
   stats(): StoreStats {
     const counts = Object.fromEntries(DATA_TABLES.map((t) => [t, 0])) as Record<DataTable, number>;
     if (this.wiped) {
-      return { userId: this.userId, databaseSize: this.ctx.storage.sql.databaseSize, migrations: [], counts, wiped: true, migratedFromD1: true };
+      return { userId: this.userId, databaseSize: this.ctx.storage.sql.databaseSize, migrations: [], counts, wiped: true, migratedFromD1: true, copyFailures: 0 };
     }
     for (const table of DATA_TABLES) {
       counts[table] = this.sql.first<{ n: number }>(`SELECT COUNT(*) AS n FROM ${table}`)?.n ?? 0;
@@ -207,6 +209,7 @@ export class UserStore extends DurableObject<StoreEnv> {
       counts,
       wiped: false,
       migratedFromD1: copiedFromD1(this.sql),
+      copyFailures: Number(this.sql.first<{ value: string }>(`SELECT value FROM _meta WHERE key = 'copy_failures'`)?.value ?? 0),
     };
   }
 
@@ -223,6 +226,8 @@ export class UserStore extends DurableObject<StoreEnv> {
    */
   async wipe(): Promise<void> {
     await this.ctx.storage.deleteAll();
+    // After `deleteAll`, so it is the one thing left; see `WIPED_KEY`.
+    this.ctx.storage.kv.put(WIPED_KEY, true);
     this.wiped = true;
   }
 
@@ -306,8 +311,7 @@ export class UserStore extends DurableObject<StoreEnv> {
     const last = rows[rows.length - 1] as (Row & { _rowid: number }) | undefined;
     // More may follow when the page was cut, or was full; a short page that was not cut
     // is the end of the table.
-    const more = rows.length < read.length || read.length === limit;
-    return { rows, nextRowid: more && last ? last._rowid : null };
+    return { rows, nextRowid: (cut || rows.length === limit) && last ? last._rowid : null };
   }
 
   /**

@@ -37,11 +37,25 @@ import type { Sql } from './sql.js';
  * retryable, which the facade turns into a 503 with Retry-After; the next request, or the
  * sweep's next try, continues. An archive-sized account (4k notes, 4k files, 2.4k texts)
  * is about 55 queries at these page sizes: two wakes.
+ *
+ * A copy that cannot pass verification stops asking. Each failed verification is counted
+ * in `_meta`, and after `MAX_FAILURES` the wake fails at once without a query, so an
+ * account with a row the store refuses does not read its whole archive out of D1 on every
+ * request for ever. The count is in `stats`, and the sweep names the account.
  */
 
 const META_MIGRATED = 'migrated_from_d1';
 const META_CURSOR = 'copy_cursor';
 const META_REPAIRED = 'copy_repaired';
+/**
+ * How many wakes have failed verification. A mismatch the rescan cannot mend — a row the
+ * store's constraints refuse that D1 allowed — would otherwise cost a full read of the
+ * account from D1 on every request, for ever, against the read budget sign-in shares.
+ * After `MAX_FAILURES` the copy fails fast, without touching D1, and the sweep reports the
+ * account; the operator's `sql` route is how to look.
+ */
+const META_FAILURES = 'copy_failures';
+export const MAX_FAILURES = 3;
 /**
  * A knob for the store tests, which have no other way to trip the budget cheaply: an
  * integer under this key, written through `runInDurableObject`, replaces `D1_CALL_BUDGET`
@@ -115,6 +129,14 @@ export interface CopyReport {
   resumed: boolean;
 }
 
+/** Thrown, without a D1 query, once verification has failed `MAX_FAILURES` times. Not retryable. */
+export class CopyStuck extends Error {
+  constructor(readonly failures: number) {
+    super(`copy from D1 failed verification ${failures} times; the account's rows need a look (see the sql route)`);
+    this.name = 'CopyStuck';
+  }
+}
+
 /**
  * Thrown when a wake has spent its query budget with the copy still to finish. Carries
  * `retryable`, which survives RPC as an own property and is what `translateStoreError`
@@ -179,6 +201,8 @@ export async function copyFromD1(
   flush: () => Promise<void>,
 ): Promise<CopyReport | null> {
   if (copiedFromD1(sql)) return null;
+  const failures = Number(readMeta(sql, META_FAILURES) ?? 0);
+  if (failures >= MAX_FAILURES) throw new CopyStuck(failures);
   const started = Date.now();
   const budget = Number(readMeta(sql, META_TEST_BUDGET)) || D1_CALL_BUDGET;
 
@@ -300,8 +324,13 @@ export async function copyFromD1(
     // verified the same tail and failed the same way for good.
     const incomplete = async (why: string): Promise<Error> => {
       sql.exec('DELETE FROM _meta WHERE key = ?1', META_CURSOR);
+      sql.exec(
+        `INSERT INTO _meta (key, value) VALUES (?1, '1')
+         ON CONFLICT(key) DO UPDATE SET value = CAST(_meta.value AS INTEGER) + 1`,
+        META_FAILURES,
+      );
       await flush();
-      return new Error(`copy from D1 incomplete: ${why}; the next wake rescans every table`);
+      return new Error(`copy from D1 incomplete: ${why}; the next wake rescans every table (failure ${failures + 1} of ${MAX_FAILURES})`);
     };
     for (const name of ['notebooks', 'notebook_fields', 'tags', 'notes']) {
       if (actual(name) !== expected[name]) {
@@ -316,9 +345,18 @@ export async function copyFromD1(
       throw await incomplete(`child tables are ${short} rows short, ${repaired} repaired`);
     }
 
+    // The account's D1 rows are frozen from this moment: the directory row is what the
+    // freeze triggers read (migration 0032), so it is written here, by the copy that
+    // verified, rather than left to the sweep — the window between the two is one an
+    // old isolate could write into. One query, inside the budget's reserve.
+    await spend('directory', 0);
+    await db
+      .prepare(`UPDATE account_directory SET migrated_at = COALESCE(migrated_at, ?2) WHERE user_id = ?1`)
+      .bind(userId, Date.now())
+      .run();
     sql.tx(() => {
       markCopiedFromD1(sql);
-      sql.exec('DELETE FROM _meta WHERE key IN (?1, ?2, ?3)', META_CURSOR, META_REPAIRED, META_TEST_BUDGET);
+      sql.exec('DELETE FROM _meta WHERE key IN (?1, ?2, ?3, ?4)', META_CURSOR, META_REPAIRED, META_TEST_BUDGET, META_FAILURES);
     });
     const report = { copied, repaired, corrections, ms: Date.now() - started, resumed: cursor !== null };
     console.log(
@@ -335,12 +373,3 @@ export async function copyFromD1(
     throw err;
   }
 }
-    // The account's D1 rows are frozen from this moment: the directory row is what the
-    // freeze triggers read (migration 0032), so it is written here, by the copy that
-    // verified, rather than left to the sweep — the window between the two is one an
-    // old isolate could write into. One query, inside the budget's reserve.
-    await spend('directory', 0);
-    await db
-      .prepare(`UPDATE account_directory SET migrated_at = COALESCE(migrated_at, ?2) WHERE user_id = ?1`)
-      .bind(userId, Date.now())
-      .run();

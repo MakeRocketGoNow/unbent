@@ -240,4 +240,56 @@ describe('copy from D1', () => {
     );
     expect(meta).toEqual(['migrated_from_d1', 'user_id']);
   });
+
+  /**
+   * Found in review: `wipe` set its flag in memory only, so a wiped object copied its
+   * account back from D1 on its next wake after eviction — a deletion that failed after
+   * the wipe would have brought the account back as it was at the cutover, with its files
+   * already gone from R2. The marker in the object's key-value storage is what stops it.
+   */
+  it('stays empty after a wipe and an eviction while D1 still holds the rows', async () => {
+    const { userId, stub } = freshStore('wiped');
+    await seedD1(userId, 5);
+    expect((await stub.stats()).counts.notes).toBe(5);
+    await stub.wipe();
+    await evict(stub);
+
+    const woke = env.USER_STORE.get(env.USER_STORE.idFromName(userId));
+    const stats = await woke.stats();
+    expect(stats).toMatchObject({ wiped: true, migratedFromD1: true });
+    expect(stats.counts.notes).toBe(0);
+    // Asked for its notes, it starts as a brand-new empty account rather than copying.
+    await woke.create({ id: crypto.randomUUID(), title: 'Fresh start', body: '', tags: [] });
+    expect((await woke.stats()).counts).toMatchObject({ notes: 1, attachments: 0 });
+    await evict(woke);
+    expect((await env.USER_STORE.get(env.USER_STORE.idFromName(userId)).stats()).counts.notes).toBe(1);
+  });
+
+  /**
+   * A mismatch the rescan cannot mend: two notebooks in D1 whose names differ only in
+   * case, which the store's `UNIQUE(name COLLATE NOCASE)` folds into one. Each wake would
+   * otherwise re-read the whole account from D1 and fail again, for ever; after three
+   * failures the copy stops asking and says so without a query.
+   */
+  it('stops rescanning after three failed verifications', async () => {
+    const { userId, stub } = freshStore('stuck');
+    await seedD1(userId, 3);
+    await env.DB.prepare(`INSERT INTO notebooks VALUES (?1, ?2, 'receipts', 1, NULL, NULL, 0)`).bind(`${userId}-dup`, userId).run();
+
+    const errors: string[] = [];
+    for (let wake = 0; wake < 5; wake++) {
+      const s = env.USER_STORE.get(env.USER_STORE.idFromName(userId));
+      try {
+        await s.stats();
+        errors.push('ok');
+      } catch (err) {
+        errors.push((err as Error).name === 'CopyStuck' ? 'stuck' : (err as Error).message.includes('rescans') ? 'rescan' : String(err));
+      }
+      await evict(s);
+    }
+    expect(errors).toEqual(['rescan', 'rescan', 'rescan', 'stuck', 'stuck']);
+    // The directory row never got its `migrated_at`, so the account's D1 rows stay writable.
+    const dir = await env.DB.prepare(`SELECT migrated_at FROM account_directory WHERE user_id = ?1`).bind(userId).first<{ migrated_at: number | null }>();
+    expect(dir?.migrated_at).toBeNull();
+  });
 });
