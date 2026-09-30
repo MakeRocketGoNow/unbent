@@ -126,6 +126,50 @@ describe('ensureSession', () => {
     expect(answer).toEqual({ user: USER });
   });
 
+  /*
+     A cold start offline leaves the store holding the network error from then. Once the
+     connection is back, a navigation must not read that old error as news — it put the
+     app back offline on every page change — and the app must ask again by itself.
+  */
+  describe('after a cold start offline', () => {
+    async function freshGraph() {
+      vi.resetModules();
+      return {
+        auth: await import('./auth-client.js'),
+        connectivity: await import('./connectivity.js'),
+      };
+    }
+
+    it('does not take the old error for a new one on the next navigation', async () => {
+      rememberSession(USER);
+      vi.stubGlobal('fetch', vi.fn(async () => Promise.reject(new TypeError('Failed to fetch'))));
+      const { auth, connectivity } = await freshGraph();
+      await auth.ensureSession();
+      expect(connectivity.offlineNow()).toBe(true);
+
+      connectivity.reportReachable();
+      expect(await auth.ensureSession()).toEqual({ user: USER });
+      expect(connectivity.offlineNow()).toBe(false);
+    });
+
+    it('asks for the session again when the connection comes back', async () => {
+      rememberSession(USER);
+      const fetch = vi.fn(async () => Promise.reject(new TypeError('Failed to fetch')) as Promise<Response>);
+      vi.stubGlobal('fetch', fetch);
+      const { auth, connectivity } = await freshGraph();
+      auth.installSessionRecheck();
+      await auth.ensureSession();
+      expect(connectivity.offlineNow()).toBe(true);
+
+      fetch.mockImplementation(async () => json(200, SESSION));
+      connectivity.reportReachable();
+      await vi.waitFor(() => expect(fetch).toHaveBeenCalledTimes(2));
+      const session = await auth.ensureSession();
+      expect(session?.user.id).toBe('u1');
+      expect(auth.sessionCheckAbandoned()).toBe(false);
+    });
+  });
+
   it('stops waiting on a check that hangs', async () => {
     rememberSession(USER);
     vi.useFakeTimers();

@@ -4,7 +4,7 @@ import { oauthProviderClient } from '@better-auth/oauth-provider/client';
 import { passkeyClient } from '@better-auth/passkey/client';
 import { forgetSession, rememberSession, rememberedSession } from './session-memory.js';
 import { clearOfflineCaches } from './offline-cache.js';
-import { reportUnreachable } from './connectivity.js';
+import { offlineNow, reportUnreachable, subscribeConnectivity } from './connectivity.js';
 
 /**
  * Same-origin in both dev (Vite proxy) and production (Pages routes /api to the Worker),
@@ -224,6 +224,14 @@ export function ensureSession(): Promise<Session | null> {
       resolve(remembered);
       return;
     }
+    /*
+       A store that has already settled is answering from an earlier check. After a cold
+       start offline that answer is the network error from then, and Better Auth keeps it
+       until something asks again (`installSessionRecheck`) — so it says nothing about the
+       connection now, and treating it as news put the app back offline on every
+       navigation once the connection had returned.
+    */
+    const settledBefore = !sessionStore.get().isPending;
     const finish = (state: SessionState, timedOut: boolean) => {
       if (settled) return;
       settled = true;
@@ -231,8 +239,10 @@ export function ensureSession(): Promise<Session | null> {
       checkAbandoned = timedOut && state.isPending;
       const { session, unreachable } = answerFor(state, rememberedSession());
       // A check that never got an answer is the first sign the connection is gone; one the
-      // server answered with an error is not, and must not raise the offline banner.
-      if (unreachable && state.error?.status === undefined) reportUnreachable();
+      // server answered with an error is not, and must not raise the offline banner. Only
+      // a check made during this call counts, or one abandoned by the timeout.
+      const fresh = timedOut || !settledBefore;
+      if (fresh && unreachable && state.error?.status === undefined) reportUnreachable();
       void recordSession(state).then(() => resolve(session));
       stop?.();
     };
@@ -244,6 +254,29 @@ export function ensureSession(): Promise<Session | null> {
     // returned the unsubscribe — so a store that had already settled is torn down on this
     // line instead of inside the callback.
     if (settled) stop();
+  });
+}
+
+/**
+ * Asks for the session again when the app comes back online, if the last check never got
+ * an answer.
+ *
+ * Better Auth asks again by itself only on the browser's `online` event and on focus. On a
+ * phone leaving airplane mode that `online` request often lands before the radio carries
+ * anything and fails too, and the store then holds that failure for as long as the app
+ * stays in front — the app believed in a server it could reach and a session it could
+ * not confirm. This follows the app's own connectivity (`connectivity.ts`), which knows
+ * the server is back from a real answer, and asks once on each return.
+ */
+export function installSessionRecheck(): () => void {
+  let wasOffline = offlineNow();
+  return subscribeConnectivity(() => {
+    const offline = offlineNow();
+    if (wasOffline && !offline) {
+      const state = sessionStore.get();
+      if (!state.data && state.error && state.error.status === undefined) void state.refetch();
+    }
+    wasOffline = offline;
   });
 }
 

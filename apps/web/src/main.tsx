@@ -9,6 +9,7 @@ import { installLaunchFiles } from './launch-files.js';
 import { configQuery } from './queries.js';
 import { registerServiceWorker } from './sw-register.js';
 import { installConnectivity } from './connectivity.js';
+import { installSessionRecheck } from './auth-client.js';
 import { isOfflineError } from './notes-api.js';
 import './styles.css';
 
@@ -56,6 +57,7 @@ const queryClient = new QueryClient({
  * heard.
  */
 installConnectivity(queryClient);
+installSessionRecheck();
 
 /*
  * Error tracking, on the instances that have it — see `posthog.ts`.
