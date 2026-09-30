@@ -63,6 +63,15 @@ export const VIEW_HEADER = 'X-Unbent-View';
 export const SERVED_HEADER = 'X-Unbent-Served';
 
 /**
+ * The header on a read made in bulk rather than by someone looking — today the import's
+ * per-note file list (`listFiles` in `import-worker.ts`). Its reads match the note views'
+ * allowlist, and a re-import of an archive makes thousands of them, which would push out
+ * of the 500-entry cache every note someone actually opened. Marked, they pass straight
+ * through, the same rule `VIEW_HEADER` applies to file bytes.
+ */
+export const BULK_HEADER = 'X-Unbent-Bulk';
+
+/**
  * The reads the note list and an open note are drawn from, which the worker keeps the
  * last copy of: the list pages and their counts, a note, its files' metadata, the tags,
  * the notebooks and a notebook's fields, and the instance's config. Nothing else — search,
@@ -95,6 +104,8 @@ export interface RequestFacts {
   destination: string;
   /** Whether the page marked the request as someone looking at the file (`VIEW_HEADER`). */
   viewed: boolean;
+  /** Whether the request was marked as a bulk read nobody is looking at (`BULK_HEADER`). */
+  bulk: boolean;
   /** The worker's own origin. */
   origin: string;
 }
@@ -116,7 +127,7 @@ export interface RequestFacts {
  */
 export function classify(request: RequestFacts): 'api' | 'file' | undefined {
   const { url } = request;
-  if (request.method !== 'GET' || url.origin !== request.origin) return undefined;
+  if (request.method !== 'GET' || url.origin !== request.origin || request.bulk) return undefined;
   if (CACHED_READS.some((shape) => shape.test(url.pathname))) return 'api';
   if (
     FILE_BYTES.test(url.pathname) &&

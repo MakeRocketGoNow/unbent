@@ -418,7 +418,9 @@ another device gets saved over.
 **File bytes are kept only when someone looks at them:** an `<img>`, or a fetch carrying
 `X-Unbent-View: 1`, which the PDF viewer sends. The indexer and export read every file in the
 archive through the same addresses. A new bulk read of file bytes must not send that header;
-a new viewer must.
+a new viewer must. The same goes for the note data: a read made in bulk that matches the
+allowlist — the import's per-note file list — sends `X-Unbent-Bulk: 1` and is never cached,
+or a re-import would push every opened note out of the cache.
 
 **Only two things say the app is offline:** the browser's `navigator.onLine`, and a
 check of `/api/health` with a timeout (`connectivity.ts`). Nothing else decides. A request

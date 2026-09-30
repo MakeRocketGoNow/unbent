@@ -43,6 +43,7 @@ const facts = (path: string, over: Partial<RequestFacts> = {}): RequestFacts => 
   method: 'GET',
   destination: '',
   viewed: false,
+  bulk: false,
   origin: ORIGIN,
   ...over,
 });
@@ -78,6 +79,10 @@ describe('classify', () => {
     '/api/admin/store/stats',
   ])('passes %s straight through', (path) => {
     expect(classify(facts(path))).toBeUndefined();
+  });
+
+  it('leaves a bulk read alone, like the import’s per-note file list', () => {
+    expect(classify(facts('/api/notes/8f0c2d1e/files', { bulk: true }))).toBeUndefined();
   });
 
   it('never caches a write', () => {
