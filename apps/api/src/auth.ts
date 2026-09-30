@@ -506,7 +506,13 @@ function createAuth(env: Env): AuthInstance {
            * lib/directory.ts.
            */
           after: async (user: { id: string }) => {
-            await ensureDirectoryRow(env.DB, user.id);
+            try {
+              await ensureDirectoryRow(env.DB, user.id);
+            } catch (err) {
+              // The sweep heals a missing row within the hour, so a failed write here must
+              // not fail the sign-up the user row already succeeded at.
+              console.error(`directory row for ${user.id} not written; the sweep will add it:`, err);
+            }
           },
         },
       },
