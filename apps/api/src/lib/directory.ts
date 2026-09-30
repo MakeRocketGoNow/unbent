@@ -4,8 +4,9 @@
  * why it exists and why it has no foreign key to `user`.
  *
  * Nothing here runs on the request path. A row is written when an account is created,
- * tombstoned when it is deleted, and otherwise touched only by the sweep, which
- * walks the directory and asks each object for its `stats`. The counts it carries are
+ * tombstoned when it is deleted, marked migrated by the copy from D1, and otherwise
+ * touched only by the sweep, which walks the directory and asks each object for its
+ * `usage` (never `stats`, which counts every table). The counts it carries are
  * therefore as fresh as the last sweep, which is right for a cross-account view and
  * wrong for anything a user is shown about their own account — that comes from the
  * object.
