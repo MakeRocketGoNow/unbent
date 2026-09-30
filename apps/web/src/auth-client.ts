@@ -258,7 +258,14 @@ async function finishSignOut(pending: string): Promise<null | Session> {
     signOut().then((res) => !res?.error, () => false),
     new Promise<false>((resolve) => setTimeout(() => resolve(false), SESSION_CHECK_TIMEOUT)),
   ]);
-  if (ended) clearSignOutPending();
+  if (ended) {
+    clearSignOutPending();
+    // Emptied before anything reads it: the store still holds the session just ended, and
+    // `/login`'s loader, asking next, would wave the person back into the notes — whose
+    // loaders then fail with the dead cookie — until Better Auth's own refetch caught up.
+    // The same reason `useSignOut` refreshes before it navigates.
+    await refreshSession().catch(() => null);
+  }
   return null;
 }
 
