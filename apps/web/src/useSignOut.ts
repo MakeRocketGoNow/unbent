@@ -1,3 +1,4 @@
+import { useSyncExternalStore } from 'react';
 import { useNavigate } from '@tanstack/react-router';
 import { signOut, refreshSession } from './auth-client.js';
 import { isHosted, postToApp } from './app-bridge.js';
@@ -27,9 +28,38 @@ import { clearOfflineCaches } from './offline-cache.js';
  * It lives beside `auth-client.ts` rather than inside it because that module is deliberately
  * free of the router and of React; this is the seam where the two meet.
  */
+/**
+ * A sign-out the server did not confirm, in a browser — shown by `SignOutSnackbar`, once,
+ * in the shell. The menu that was pressed has closed by then, so without it the press
+ * would simply do nothing.
+ */
+let failed = false;
+const failListeners = new Set<() => void>();
+
+function setFailed(next: boolean): void {
+  if (next === failed) return;
+  failed = next;
+  for (const listener of failListeners) listener();
+}
+
+export function useSignOutFailed(): { failed: boolean; dismiss: () => void } {
+  const current = useSyncExternalStore(
+    (listener) => {
+      failListeners.add(listener);
+      return () => {
+        failListeners.delete(listener);
+      };
+    },
+    () => failed,
+    () => false,
+  );
+  return { failed: current, dismiss: () => setFailed(false) };
+}
+
 export function useSignOut(): () => void {
   const navigate = useNavigate();
   return () => {
+    setFailed(false);
     void signOut()
       .then((res) => !res?.error, () => false)
       .then(async (ended) => {
@@ -37,11 +67,14 @@ export function useSignOut(): () => void {
          * In a browser, a sign-out the server did not hear has not happened: the session
          * cookie is HttpOnly and only the server can end it, so clearing this page would
          * be undone by the next load. Nothing is touched, and nothing is reported as a
-         * crash. The menu offers Sign out only with a connection there (`AccountMenu`), so
-         * this is the rare failure online. The Android app goes on below: it clears its
+         * crash, but it is said (`SignOutSnackbar`). The menu offers Sign out only with a
+         * connection there (`AccountMenu`), so this is the rare failure online. The Android app goes on below: it clears its
          * own cookies when told, which completes the sign-out on the device either way.
          */
-        if (!ended && !isHosted()) return;
+        if (!ended && !isHosted()) {
+          setFailed(true);
+          return;
+        }
         // Before anything that can return early: whoever this device remembers as signed
         // in (`session-memory.ts`), and the copies of their notes kept for reading offline
         // (`offline-cache.ts`), must not outlive a sign-out — or the next time the app

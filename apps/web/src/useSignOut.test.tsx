@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { renderHook, waitFor } from '@testing-library/react';
+import { fireEvent, render, renderHook, screen, waitFor } from '@testing-library/react';
 import { useSignOut } from './useSignOut.js';
+import { SignOutSnackbar } from './components/SignOutSnackbar.js';
 import { refreshSession, signOut } from './auth-client.js';
 import { rememberSession, rememberedSession } from './session-memory.js';
 
@@ -61,13 +62,19 @@ describe('useSignOut', () => {
    * the menu offers Sign out there only with a connection. In the Android app the app
    * clears its own cookies when told, so the sign-out completes on the device.
    */
-  it('leaves a browser signed in when the server did not hear the sign-out', async () => {
+  it('leaves a browser signed in when the server did not hear the sign-out, and says so', async () => {
     vi.mocked(signOut).mockRejectedValueOnce(new TypeError('Failed to fetch'));
     rememberSession({ id: 'u1', email: 'someone@example.com' });
+    render(<SignOutSnackbar />);
     renderHook(() => useSignOut()).result.current();
-    await new Promise((r) => setTimeout(r, 20));
+    expect(await screen.findByText('Couldn’t sign out.')).toBeTruthy();
     expect(navigate).not.toHaveBeenCalled();
     expect(rememberedSession()).not.toBeNull();
+
+    // Try again, and this time the server hears it.
+    fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+    await waitFor(() => expect(navigate).toHaveBeenCalledWith({ to: '/login', replace: true }));
+    expect(screen.queryByText('Couldn’t sign out.')).toBeNull();
   });
 
   it('signs out on the device inside the app even when the server did not hear it', async () => {

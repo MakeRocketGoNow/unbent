@@ -16,6 +16,7 @@ import { useHostApp } from '../useHostApp.js';
 import { postToApp } from '../app-bridge.js';
 import { ExportSnackbar } from '../components/ExportSnackbar.js';
 import { ImportSnackbar } from '../components/ImportSnackbar.js';
+import { SignOutSnackbar } from '../components/SignOutSnackbar.js';
 import { claimImportFor, getImportRun, subscribeImport } from '../import-run.js';
 import { takeUpdate } from '../sw-register.js';
 
@@ -233,6 +234,7 @@ function AppShell() {
       </main>
       <ExportSnackbar />
       <ImportSnackbar />
+      <SignOutSnackbar />
     </div>
   );
 }
