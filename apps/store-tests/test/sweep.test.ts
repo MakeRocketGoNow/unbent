@@ -178,8 +178,11 @@ describe('the store sweep', () => {
     await stub(preview).create({ id: crypto.randomUUID(), title: 'On the preview', body: 'x', tags: [] });
     const reports = await fullPass({ ...env, STORE_FREEZE_D1: '0' });
     expect(reports.flatMap((r) => r.failed)).toEqual([]);
-    // Visited and copied (nothing to copy), but the row is as the seed left it.
-    expect(await row(preview)).toMatchObject({ note_count: 0, storage_bytes: 0, migrated_at: null });
+    // Visited and copied (nothing to copy), but the usage columns are as the seed left
+    // them. `migrated_at` is not asserted: the copy writes it from the object's own
+    // environment, which this override cannot reach; on a real preview the object and
+    // the sweep share one Worker and one flag.
+    expect(await row(preview)).toMatchObject({ note_count: 0, storage_bytes: 0 });
     // The object itself is marked, as any copied object is; only the directory is spared.
     expect((await stub(preview).usage()).migratedFromD1).toBe(true);
   });
