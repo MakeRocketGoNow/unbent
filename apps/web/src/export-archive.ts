@@ -403,6 +403,9 @@ export function useExporting(): ExportState {
   return useSyncExternalStore(exporting.subscribe, exporting.get);
 }
 
+/** Whether an export is running, outside React — for the reload a deploy asks for. */
+export const isExportRunning = () => exporting.get().status === 'running';
+
 /**
  * Only whether an export is running, for a control that has to wait for one. The state
  * changes once per note, so a component reading all of it re-renders thousands of times

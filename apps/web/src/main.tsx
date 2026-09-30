@@ -88,10 +88,12 @@ installLaunchFiles(queryClient, (noteId) => {
 });
 
 /*
- * The service worker, which lets the installed app open with no connection; see
- * `sw-register.ts`. After the router, so nothing it does can delay the first render.
+ * The service worker, which lets the installed app open with no connection, and the
+ * hand-off to a new deploy; see `sw-register.ts`. After the router, so nothing it does
+ * can delay the first render, and given the router's committed path so a deploy can be
+ * taken on a change of page rather than a change of filter.
  */
-registerServiceWorker();
+registerServiceWorker(() => (router.state.resolvedLocation ?? router.state.location).pathname);
 
 declare module '@tanstack/react-router' {
   interface Register {

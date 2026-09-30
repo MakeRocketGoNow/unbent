@@ -51,3 +51,13 @@ registerRoute(
   ({ request, url }) => request.mode === 'navigate' && servesShell(url),
   createHandlerBoundToURL('/index.html'),
 );
+
+/**
+ * A new deploy's worker installs and then waits, because taking over at once would hand
+ * a page still running the previous build a cache that no longer holds its chunks. The
+ * page decides when: on its next change of page, when nothing it holds would be lost —
+ * see `takeUpdate` in `sw-register.ts`, whose `messageSkipWaiting` sends this.
+ */
+self.addEventListener('message', (event) => {
+  if ((event.data as { type?: unknown } | null)?.type === 'SKIP_WAITING') void self.skipWaiting();
+});

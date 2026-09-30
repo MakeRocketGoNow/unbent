@@ -17,6 +17,7 @@ import {
 } from '../useListKeys.js';
 import { registerOpenNoteFieldEdit, registerOpenNoteFilingEdit } from '../open-note-fields.js';
 import { useIsNewNote } from '../useNewNote.js';
+import { holdPage } from '../busy.js';
 import { useMediaQuery, MOBILE_QUERY, TOUCH_QUERY } from '../useMediaQuery.js';
 import { useKeyboardInset } from '../useKeyboardInset.js';
 import {
@@ -344,6 +345,16 @@ export function Workspace({ noteId, readOnly = false, backTo = '/notes' }: Works
     enabled: editing,
     resetKey: noteId,
   });
+
+  /*
+     Typing the autosave has not sent, a save in flight or one that failed and waits to
+     be retried, and files still uploading all live in this page and nowhere else. While
+     any of them is true, a waiting deploy does not reload the app on the next navigation
+     — see `busy.ts`.
+  */
+  const [uploadsPending, setUploadsPending] = useState(0);
+  const unsent = saveState === 'dirty' || saveState === 'saving' || saveState === 'error';
+  useEffect(() => (unsent || uploadsPending > 0 ? holdPage() : undefined), [unsent, uploadsPending]);
 
   /*
      A field value the type cannot read yet — a number at "12.", a URL at "http://" — is
@@ -1074,6 +1085,7 @@ export function Workspace({ noteId, readOnly = false, backTo = '/notes' }: Works
                     return new Map(files.map((f) => [f.from, f.filename]));
                   }
             }
+            onUploadsPending={setUploadsPending}
             onSaveRemoteImage={readOnly ? undefined : saveRemoteImage}
             onDeleteAttachment={
               readOnly

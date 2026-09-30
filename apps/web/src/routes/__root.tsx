@@ -15,6 +15,7 @@ import { postToApp } from '../app-bridge.js';
 import { ExportSnackbar } from '../components/ExportSnackbar.js';
 import { ImportSnackbar } from '../components/ImportSnackbar.js';
 import { claimImportFor, getImportRun, subscribeImport } from '../import-run.js';
+import { takeUpdate } from '../sw-register.js';
 
 export interface RouterContext {
   queryClient: QueryClient;
@@ -34,7 +35,11 @@ export const Route = createRootRouteWithContext<RouterContext>()({
    * loaders run. See `claimCacheFor` for why it is keyed on the user rather than hung off
    * signing out.
    */
-  beforeLoad: async ({ location, context }) => {
+  beforeLoad: async ({ location, context, preload }) => {
+    // First, so a waiting deploy loads the destination fresh instead of it being drawn in
+    // the old build and then replaced; see `takeUpdate`.
+    const update = takeUpdate(location, preload);
+    if (update) await update;
     const session = await requireSession(location);
     claimCacheFor(context.queryClient, session?.user.id);
   },
