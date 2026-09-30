@@ -87,6 +87,18 @@ export async function sweepStores(env: Pick<Env, 'DB' | 'USER_STORE' | 'STORE_JU
   const started = Date.now();
   const report: SweepReport = { visited: 0, migrated: 0, copied: 0, mismatched: [], wiped: 0, dropped: 0, failed: [], deferred: [], done: false, ms: 0 };
 
+  // A preview Worker shares the dev instance's D1 but has objects of its own, empty
+  // copies at best, so nothing this walk could learn there is worth writing to dev's
+  // directory — and most of what it writes would be wrong: it would drop dev's row for
+  // an account gone on dev after wiping the preview's object rather than dev's, leaving
+  // dev's object with no row and so nothing that could ever wipe it; it would move dev's
+  // cursor; and it would freeze accounts dev is still writing. The flag that says a
+  // preview may not write the freeze mark says it may not write the directory at all.
+  if (env.STORE_FREEZE_D1 === '0') {
+    console.log('[store] sweep skipped: this Worker may not write the shared directory (STORE_FREEZE_D1=0)');
+    return { ...report, done: true };
+  }
+
   // Heal first: every user has a row, so every account is reachable from here.
   await env.DB.prepare(
     `INSERT INTO account_directory (user_id, created_at)
@@ -173,18 +185,12 @@ async function sweepOne(
       report.mismatched.push(row.userId);
     }
   }
-  // A preview shares the dev instance's directory and its objects are empty copies, so
-  // nothing it measured may be written there: not `migrated_at`, which would freeze the
-  // account's rows on dev (see `STORE_FREEZE_D1` in wrangler.toml), and not the usage
-  // columns, which would zero dev's numbers until its own next pass.
-  if (env.STORE_FREEZE_D1 !== '0') {
-    writes.push(
-      recordDirectoryUsageStatement(env.DB, row.userId, {
-        storageBytes: usage.databaseSize,
-        noteCount: usage.notes,
-        copied: usage.migratedFromD1,
-      }),
-    );
-  }
+  writes.push(
+    recordDirectoryUsageStatement(env.DB, row.userId, {
+      storageBytes: usage.databaseSize,
+      noteCount: usage.notes,
+      copied: usage.migratedFromD1,
+    }),
+  );
   if (usage.migratedFromD1) report.migrated += 1;
 }

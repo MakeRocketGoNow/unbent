@@ -538,9 +538,9 @@ away from production but not from each other. Accounts and sessions made on one 
 therefore work on another and on `dev.unbent.app`. Notes do not travel: each Worker has its
 own namespace of per-account note stores, so a note made on one PR's preview is on that
 preview alone. It is a scratch environment, and nothing in it is backed up. A preview also
-never records an account as migrated in the shared directory (`STORE_FREEZE_D1 = "0"` in
-its wrangler block), since that is what freezes the account's rows in the shared D1, and
-the dev instance may still be writing them.
+never writes the shared directory (`STORE_FREEZE_D1 = "0"` in its wrangler block): its
+copy records nothing there, since the mark is what freezes an account's rows in the shared
+D1 and the dev instance may still be writing them, and its sweep does nothing at all.
 
 The environment is called `preview` rather than `dev` because the custom domain cannot live
 in a block previews reuse: `--name` changes which script a deploy targets but not which

@@ -167,24 +167,30 @@ describe('the store sweep', () => {
 
   /**
    * A preview Worker shares the dev instance's D1 but has objects of its own, empty
-   * copies at best, so its walk must write nothing into the shared directory: not the
-   * mark that freezes an account's rows on dev, and not usage numbers that would replace
-   * dev's with zeros until dev's next pass.
+   * copies at best, so its walk does nothing at all: it must not heal, measure, freeze,
+   * drop a row or move the cursor in a directory that is dev's.
    */
-  it('writes nothing to the directory when the freeze is off, as on a preview', async () => {
+  it('does nothing when the freeze is off, as on a preview', async () => {
     const preview = uid('preview');
     await user(preview);
     await directory(preview);
     await stub(preview).create({ id: crypto.randomUUID(), title: 'On the preview', body: 'x', tags: [] });
-    const reports = await fullPass({ ...env, STORE_FREEZE_D1: '0' });
-    expect(reports.flatMap((r) => r.failed)).toEqual([]);
-    // Visited and copied (nothing to copy), but the usage columns are as the seed left
-    // them. `migrated_at` is not asserted: the copy writes it from the object's own
-    // environment, which this override cannot reach; on a real preview the object and
-    // the sweep share one Worker and one flag.
-    expect(await row(preview)).toMatchObject({ note_count: 0, storage_bytes: 0 });
-    // The object itself is marked, as any copied object is; only the directory is spared.
-    expect((await stub(preview).usage()).migratedFromD1).toBe(true);
+    // A user with no row, which a real pass would heal, and a tombstoned row with no
+    // user, which a real pass would drop.
+    const unlisted = uid('preview-unlisted');
+    await user(unlisted);
+    const dead = uid('preview-dead');
+    await directory(dead, Date.now());
+    const cursorBefore = await env.DB.prepare(`SELECT value FROM _unbent_meta WHERE key = 'store_sweep_cursor'`).first<{ value: string }>();
+
+    const report = await sweepStores({ ...env, STORE_FREEZE_D1: '0' });
+    expect(report).toMatchObject({ visited: 0, done: true, failed: [] });
+    expect(await row(preview)).toMatchObject({ note_count: 0, storage_bytes: 0, migrated_at: null, copied_at: null });
+    expect(await row(unlisted)).toBeNull();
+    expect(await row(dead)).not.toBeNull();
+    expect((await stub(preview).usage()).migratedFromD1).toBe(false);
+    const cursorAfter = await env.DB.prepare(`SELECT value FROM _unbent_meta WHERE key = 'store_sweep_cursor'`).first<{ value: string }>();
+    expect(cursorAfter?.value ?? null).toBe(cursorBefore?.value ?? null);
   });
 
   it('counts one account\'s failure and carries on to the next', async () => {
