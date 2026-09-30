@@ -10,9 +10,9 @@ import {
 } from '@tanstack/react-router';
 import type { Note } from '@unbent/shared';
 import * as api from '../notes-api.js';
-import { OfflineError } from '../notes-api.js';
+import { OfflineError, markServedFromCache } from '../notes-api.js';
 import { keys } from '../queries.js';
-import { noteRead, reportReachable, reportUnreachable } from '../connectivity.js';
+import { reportReachable, reportUnreachable } from '../connectivity.js';
 import { Workspace } from './Workspace.js';
 
 vi.mock('../notes-api.js', async (importOriginal) => ({
@@ -99,31 +99,67 @@ describe('a note while offline', () => {
     await waitFor(async () => expect((await title()).readOnly).toBe(false));
   });
 
-  it('stays locked after the connection returns while its copy came from the cache', async () => {
-    mount();
-    act(() => {
-      noteRead(note.id, true);
-      reportUnreachable();
+  /** Opens the note as the service worker's cache answered it, with no connection. */
+  const openFromCache = () =>
+    mount((client) => {
+      // As `noteQuery` has it: every copy its own object, so a server copy equal to the
+      // cached one is not handed back as the cached object. In the app every read goes
+      // through the query's own options; here `setQueryData` stands in for the server.
+      client.setQueryDefaults(keys.note(note.id), { structuralSharing: false });
+      client.removeQueries({ queryKey: keys.note(note.id) });
+      client.setQueryData(keys.note(note.id), markServedFromCache({ ...note }));
     });
+
+  it('stays locked after the connection returns while its copy came from the cache', async () => {
+    openFromCache();
+    act(() => reportUnreachable());
     act(() => reportReachable());
     expect((await title()).readOnly).toBe(true);
   });
 
   it('takes the server’s copy, not the cached one, when it unlocks', async () => {
-    const client = mount();
-    act(() => {
-      noteRead(note.id, true);
-    });
+    const client = openFromCache();
     expect((await title()).value).toBe('Trip notes');
+    expect((await title()).readOnly).toBe(true);
 
     // The server answers with what another device saved meanwhile.
     act(() => {
-      noteRead(note.id, false);
       client.setQueryData(keys.note(note.id), { ...note, title: 'Trip notes, day two', body: 'written at home' });
     });
     await waitFor(async () => expect((await title()).value).toBe('Trip notes, day two'));
     expect((await title()).readOnly).toBe(false);
     // Taken as the new baseline, not as an edit to save back.
+    await new Promise((r) => setTimeout(r, 1000));
+    expect(api.updateNote).not.toHaveBeenCalled();
+  });
+
+  /*
+     The connection back on a radio not yet carrying anything: the first refetch can be
+     answered from the cache again. That copy is not the server's, and the note must stay
+     locked on it until the server's arrives.
+  */
+  it('waits for the server’s copy even after the cache answered again', async () => {
+    const client = openFromCache();
+    act(() => {
+      client.setQueryData(keys.note(note.id), markServedFromCache({ ...note }));
+    });
+    expect((await title()).readOnly).toBe(true);
+    expect((await title()).value).toBe('Trip notes');
+
+    act(() => {
+      client.setQueryData(keys.note(note.id), { ...note, title: 'Trip notes, day two' });
+    });
+    await waitFor(async () => expect((await title()).value).toBe('Trip notes, day two'));
+    expect((await title()).readOnly).toBe(false);
+  });
+
+  it('unlocks without touching the draft when the server’s copy is the same', async () => {
+    const client = openFromCache();
+    act(() => {
+      client.setQueryData(keys.note(note.id), { ...note });
+    });
+    await waitFor(async () => expect((await title()).readOnly).toBe(false));
+    expect((await title()).value).toBe('Trip notes');
     await new Promise((r) => setTimeout(r, 1000));
     expect(api.updateNote).not.toHaveBeenCalled();
   });

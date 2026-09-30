@@ -5,8 +5,8 @@ import type { EditorView } from '@codemirror/view';
 import type { FieldDef, FieldType, FieldValue, Note } from '@unbent/shared';
 import { localizeImageLinks, remoteImageUrls } from '@unbent/shared';
 import * as api from '../notes-api.js';
-import { isOfflineError, isStatus } from '../notes-api.js';
-import { useNoteReadFromCache, useOffline } from '../connectivity.js';
+import { isOfflineError, isStatus, servedFromCache } from '../notes-api.js';
+import { useOffline } from '../connectivity.js';
 import { buildNotePatch, rememberFieldDefs, unstoreableFieldIds } from '../note-patch.js';
 import { useAutosave, SAVE_LABEL } from '../useAutosave.js';
 import { usePersistentState, clamp } from '../usePersistentState.js';
@@ -92,15 +92,21 @@ export function Workspace({ noteId, readOnly = false, backTo = '/notes' }: Works
      Offline, or showing a copy that came from the service worker's cache: the note reads
      as usual and nothing about it can change. A copy from the cache stays locked after
      the connection returns, until the server has answered for this note — see
-     `useNoteReadFromCache` for why unlocking the old text would be a lost edit.
+     `servedFromCache` for why unlocking the old text would be a lost edit.
 
      Kept apart from `readOnly`, which is the trash's and turns the autosave off. This
      leaves the autosave running, so typing the lock arrived a second too late for is
      held and saved when the connection comes back rather than dropped.
   */
   const offline = useOffline();
-  const readFromCache = useNoteReadFromCache(noteId);
-  const locked = offline || readFromCache;
+  const readFromCache = servedFromCache(note);
+  /*
+     The cached copy the draft was seeded from, until the server's copy replaces it. State,
+     not a ref, so the note stays locked through the render in which the server's copy
+     arrives and the effect below has not yet re-seeded the draft from it.
+  */
+  const [seededFromCache, setSeededFromCache] = useState<typeof note>(undefined);
+  const locked = offline || readFromCache || seededFromCache !== undefined;
   const notebooks = useQuery(notebooksQuery());
   const tags = useQuery(tagsQuery());
   const config = useQuery(configQuery());
@@ -257,11 +263,6 @@ export function Workspace({ noteId, readOnly = false, backTo = '/notes' }: Works
     return () => registerEditorFocus(null);
   }, [editorView]);
   /**
-   * The copy the draft was seeded from, while that copy came from the cache. Cleared once
-   * the server's copy replaces it; see the effect after the seed.
-   */
-  const seededFromCache = useRef<typeof note>(undefined);
-  /**
    * Bumped when the draft is seeded again for the same note, so the autosave takes the new
    * seed as its baseline instead of as an edit to save.
    */
@@ -274,7 +275,7 @@ export function Workspace({ noteId, readOnly = false, backTo = '/notes' }: Works
     setDraft(seedFrom(note));
     setDraftFor(note.id);
     setEditorOverride(null);
-    seededFromCache.current = readFromCache ? note : undefined;
+    setSeededFromCache(readFromCache ? note : undefined);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [noteId, note !== undefined]);
 
@@ -285,17 +286,21 @@ export function Workspace({ noteId, readOnly = false, backTo = '/notes' }: Works
      keystroke would save it over whatever another device saved meanwhile. The editor is
      rebuilt on the new text for the same reason; with nothing typed, there is no history
      worth keeping.
+
+     The first copy on screen that did not come from the cache is the server's answer.
+     Another copy from the cache — the first refetch after the connection returns can be
+     answered from it, on a radio not yet carrying anything — is not, and keeps waiting.
+     A copy from the server that says the same as the cached one leaves the draft alone.
   */
   useEffect(() => {
-    const seeded = seededFromCache.current;
-    if (!seeded || readFromCache || !note) return;
-    seededFromCache.current = undefined;
-    if (note === seeded) return;
+    if (!seededFromCache || !note || servedFromCache(note)) return;
+    setSeededFromCache(undefined);
+    if (JSON.stringify(seedFrom(note)) === JSON.stringify(seedFrom(seededFromCache))) return;
     setDraft(seedFrom(note));
     setEditorOverride(null);
     setEditorRevision((n) => n + 1);
     setSeedGeneration((n) => n + 1);
-  }, [note, readFromCache]);
+  }, [note, seededFromCache]);
 
   /*
      A new note opens with the caret in its title.
