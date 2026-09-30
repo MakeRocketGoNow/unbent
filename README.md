@@ -1320,10 +1320,24 @@ by hand after the deploy. The copy spends at most forty D1 queries a wake, since
 plan invocation may make fifty, and an archive-sized account takes two wakes: the request
 that woke it is answered 503 with Retry-After and the next one finishes.
 
-Before the new Worker goes out, migration 0031 freezes the shared tables: a write to them
-from an old isolate draining during the deploy fails with "notes moved to the per-account
-store" rather than landing after its table was copied and disappearing. Deletes stay
-allowed, because deleting an account still cascades through them.
+Migration 0032 freezes each account's rows in the shared tables from the moment that
+account's copy is verified (`account_directory.migrated_at`, written by the copy itself):
+a write to them for a migrated account, from an old isolate draining during the deploy or
+from anything else, fails with "notes moved to the per-account store" rather than landing
+after the copy and disappearing. Rows of an account not yet copied are still writable,
+which is what lets the dev instance, whose database a preview of the cutover shares, keep
+saving notes until the cutover itself lands there. Deleting an account still works: the
+triggers only fire while the account's `user` row exists, and a `user` delete cascades
+through these tables — with updates, not only deletes, which is why 0031 had to be
+replaced by 0032.
+
+**Rolling the cutover back** is three steps, in order, and the middle one is easy to
+forget: dump each account's store, since the shared rows are frozen at the cutover and
+everything written since lives only in the object; apply
+`apps/api/scripts/unfreeze-note-tables.sql` by hand with `wrangler d1 execute` (it drops
+the sixteen triggers, and it is not a migration precisely so that nothing applies it on its
+own); then revert and deploy. A reverted Worker with the triggers still in place cannot
+save a note for any migrated account.
 
 **Schema changes** are files in `apps/api/src/store/schema/`, applied per object on its next
 wake, additive only. The sweep is what makes that safe to rely on: it wakes every object —
@@ -1349,9 +1363,11 @@ object are metered as D1's were, and every statement over a threshold is logged 
 user id — which is the accounting `wrangler d1 insights` used to give.
 
 **Where an object lives.** The platform creates each account's object near the first
-request for it, and objects do not move. `STORE_JURISDICTION=eu` pins every store created
-from then on to the EU, for an operator whose users need that; it applies to new accounts
-and moves none.
+request for it, and objects do not move. `STORE_JURISDICTION=eu` keeps every store in the
+EU, for an operator whose users need that. It is decided once, before the instance's first
+account, and never changed: the jurisdiction is part of how a store is found, so the same
+account names a different, empty object with it set than without, and changing it on a
+running instance would make every account's notes vanish from view.
 
 **Deleting an account** wipes its object; see [Deleting an account](#deleting-an-account).
 Locally, the objects are files under `.wrangler/state/v3/do/`, which `sqlite3` opens, and
