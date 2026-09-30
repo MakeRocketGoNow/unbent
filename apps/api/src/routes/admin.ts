@@ -221,7 +221,11 @@ export const admin = new Hono<AppEnv>()
    * copy says which schema files it is at and whose it was.
    *
    * Paged out of the object by rowid as it streams, so an archive's worth of texts never
-   * sits in the Worker's memory at once.
+   * sits in the Worker's memory at once. Big pages, cut by bytes inside the object: every
+   * page is one store call and an invocation has fifty on Free, so a 13k-note archive with
+   * 4k files and 2.4k texts (about 22 MB of them) is roughly a dozen calls — the small
+   * tables one each, notes three, texts three or four by the byte cut — where five
+   * hundred rows a page would have been sixty and failed partway through the texts.
    */
   .get('/admin/store/dump', requireAuth, async (c) => {
     const target = await operatorTarget(c);
@@ -241,7 +245,7 @@ export const admin = new Hono<AppEnv>()
           for (const s of schema) if (!later(s)) line(`${s};`);
           for (const table of DUMP_TABLES) {
             for (let after = 0; ; ) {
-              const page = await store.dumpPage(table, after, 500);
+              const page = await store.dumpPage(table, after, 5000);
               for (const row of page.rows) {
                 const { _rowid, ...columns } = row;
                 void _rowid;
