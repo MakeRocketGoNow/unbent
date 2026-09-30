@@ -205,11 +205,25 @@ export function recordSession(state: Pick<SessionState, 'data' | 'error' | 'isPe
  * awaits: it must not let a route's loader run before it knows whether there is anybody
  * to load for, and it must not send someone to sign in because their phone has no signal.
  * See `answerFor` for which failures mean which.
+ *
+ * When the browser already says there is no network and someone is remembered, it does
+ * not wait at all. Airplane mode on Android is the case: the WebView's request did not
+ * fail fast there, it hung, and the app opened to a blank page for the whole ten seconds
+ * before the timeout let it through. The check still runs, and its answer is still
+ * recorded when it lands, so a session the server has since refused is caught the next
+ * time it can be asked.
  */
 export function ensureSession(): Promise<Session | null> {
   return new Promise((resolve) => {
     let stop: (() => void) | undefined;
     let settled = false;
+    const remembered = rememberedSession();
+    if (typeof navigator !== 'undefined' && navigator.onLine === false && remembered && sessionStore.get().isPending) {
+      checkAbandoned = true;
+      reportUnreachable();
+      resolve(remembered);
+      return;
+    }
     const finish = (state: SessionState, timedOut: boolean) => {
       if (settled) return;
       settled = true;

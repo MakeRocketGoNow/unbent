@@ -109,6 +109,23 @@ describe('ensureSession', () => {
     });
   });
 
+  /*
+     Airplane mode: the browser says there is no network before any request is made, and
+     on Android the request then hangs rather than failing. Waiting for it — even for the
+     timeout — is a blank page at launch, so a remembered user is answered at once.
+  */
+  it('does not wait for the check when the browser already says it is offline', async () => {
+    rememberSession(USER);
+    vi.stubGlobal('navigator', { ...navigator, onLine: false });
+    vi.stubGlobal('fetch', vi.fn(() => new Promise<Response>(() => {})));
+    const ensureSession = await freshEnsureSession();
+    const answer = await Promise.race([
+      ensureSession(),
+      new Promise((resolve) => setTimeout(() => resolve('waited'), 200)),
+    ]);
+    expect(answer).toEqual({ user: USER });
+  });
+
   it('stops waiting on a check that hangs', async () => {
     rememberSession(USER);
     vi.useFakeTimers();
