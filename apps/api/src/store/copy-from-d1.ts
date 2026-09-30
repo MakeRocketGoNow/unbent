@@ -151,6 +151,14 @@ interface Table {
   parents?: Parent[];
   /** The condition that finds a row already here by name, for the tables merged rather than refused. */
   mergeOn?: string;
+  /**
+   * How the user is named in this table's statements: the expression the copy's own
+   * index (0035) is on, or, for `attachment_text`, the plain column, because that table
+   * has had a plain `user_id` index since long before the copy — `main`'s own, which the
+   * copy may share. Spelling the expression there would leave the index unused and walk
+   * the table by rowid (caught by the plan test).
+   */
+  userKey?: 'column';
 }
 
 const TABLES: Table[] = [
@@ -204,6 +212,7 @@ const TABLES: Table[] = [
     page: 200,
     sizeColumn: 'text',
     scope: 'user_id',
+    userKey: 'column',
     parents: [
       { column: 'attachment_id', table: 'attachments', onMissing: 'skip' },
       { column: 'note_id', table: 'notes', onMissing: 'skip' },
@@ -307,6 +316,11 @@ function readProgress(sql: Sql): Progress {
  * link, which the caller drops — because a run of unlinked notes would otherwise come
  * back as an empty page, and an empty page means the end of the table.
  */
+/** The user predicate for a table, spelled so the index it has is the one the planner takes. */
+function userIs(t: Table, alias: string): string {
+  return t.userKey === 'column' ? `${alias}user_id = ?1` : `(${alias}user_id || '') = ?1`;
+}
+
 function selectPage(t: Table): string {
   const cols = t.columns.map((c) => `t.${c}`).join(', ');
   if (t.scope === 'by_note') {
@@ -316,7 +330,7 @@ function selectPage(t: Table): string {
                AND n.rowid <= (SELECT MAX(rowid) FROM (SELECT rowid FROM notes WHERE (user_id || '') = ?1 AND rowid > ?2 ORDER BY rowid LIMIT ?3))
              ORDER BY n.rowid`;
   }
-  const from = `FROM ${t.name} t WHERE (t.user_id || '') = ?1 AND t.rowid > ?2`;
+  const from = `FROM ${t.name} t WHERE ${userIs(t, 't.')} AND t.rowid > ?2`;
   if (!t.sizeColumn) return `SELECT t.rowid AS rid, ${cols} ${from} ORDER BY t.rowid LIMIT ?3`;
   return `SELECT * FROM (
             SELECT t.rowid AS rid, ${cols},
@@ -327,7 +341,7 @@ function selectPage(t: Table): string {
 
 function countSql(t: Table): string {
   return t.scope === 'user_id'
-    ? `SELECT COUNT(*) AS n FROM ${t.name} WHERE (user_id || '') = ?1`
+    ? `SELECT COUNT(*) AS n FROM ${t.name} WHERE ${userIs(t, '')}`
     : `SELECT COUNT(*) AS n FROM ${t.name} t JOIN notes n ON n.id = t.note_id WHERE (n.user_id || '') = ?1`;
 }
 
