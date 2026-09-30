@@ -670,7 +670,14 @@ function createAuth(env: Env): AuthInstance {
          * too, so this hook failing cannot strand an object either.
          */
         afterDelete: async (user: { id: string }) => {
-          await tombstoneDirectoryRow(env.DB, user.id);
+          try {
+            await tombstoneDirectoryRow(env.DB, user.id);
+          } catch (err) {
+            // The user row is already gone, so the deletion has happened and must not be
+            // reported as failed; the sweep treats a row whose user is missing as
+            // tombstoned, so the wipe is still retried from it.
+            console.error(`directory tombstone for ${user.id} not written; the sweep will treat it as gone:`, err);
+          }
         },
       },
     },
