@@ -525,7 +525,7 @@ export async function copyFromD1(sql: Sql, db: D1Database, userId: string, recou
     const merged = Object.values(progress.merged).reduce((n, m) => n + Object.keys(m).length, 0);
     const report = { status: 'done' as const, copied: progress.inserted, skipped, unfiled, merged, corrections, queries, d1RowsRead, ms: Date.now() - started, resumed };
     console.log(
-      `[store] migrated user=${userId} notes=${report.copied['notes'] ?? 0} attachments=${report.copied['attachments'] ?? 0} texts=${report.copied['attachment_text'] ?? 0} skipped=${skipped} unfiled=${unfiled} merged=${merged} corrections=${corrections} queries=${queries} d1RowsRead=${d1RowsRead} resumed=${resumed} ms=${report.ms}`,
+      `[store] copied user=${userId} notes=${report.copied['notes'] ?? 0} attachments=${report.copied['attachments'] ?? 0} texts=${report.copied['attachment_text'] ?? 0} skipped=${skipped} unfiled=${unfiled} merged=${merged} corrections=${corrections} queries=${queries} d1RowsRead=${d1RowsRead} resumed=${resumed} ms=${report.ms}`,
     );
     return report;
   } catch (err) {

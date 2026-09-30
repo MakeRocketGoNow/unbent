@@ -31,17 +31,17 @@ describe('copy from D1', () => {
     await env.DB.prepare(`INSERT INTO attachments (id, note_id, user_id, filename, content_type, size, r2_key, created_at) VALUES (?1, 'nowhere', ?2, 'lost.pdf', 'application/pdf', 1, 'k', 1)`).bind(`${userId}-lost`, userId).run();
 
     // Waking reads nothing from D1: the object is empty and says the copy has not run.
-    expect(await stub.stats()).toMatchObject({ migratedFromD1: false, copyMismatch: null });
+    expect(await stub.stats()).toMatchObject({ copiedFromD1: false, copyMismatch: null });
     expect((await stub.stats()).counts.notes).toBe(0);
 
     const result = await stub.copyFromD1();
     expect(result).toMatchObject({ status: 'done', resumed: false, corrections: 0, unfiled: 1, skipped: 1, merged: 0 });
     if (result.status !== 'done') throw new Error('unreachable');
     expect(result.copied).toEqual({ notebooks: 2, notebook_fields: 1, tags: 2, notes: 30, note_tags: 30, note_fields: 15, attachments: 30, attachment_text: 30 });
-    expect(result.usage).toMatchObject({ notes: 30, migratedFromD1: true });
+    expect(result.usage).toMatchObject({ notes: 30, copiedFromD1: true });
 
     const stats = await stub.stats();
-    expect(stats.migratedFromD1).toBe(true);
+    expect(stats.copiedFromD1).toBe(true);
     expect(stats.counts).toMatchObject({ notebooks: 2, notebook_fields: 1, tags: 2, notes: 30, note_tags: 30, note_fields: 15, attachments: 30, attachment_text: 30 });
 
     // Counts came from the triggers, not from the 999s the shared rows carried; the
@@ -90,8 +90,8 @@ describe('copy from D1', () => {
     const { userId, stub } = freshStore('empty');
     await env.DB.prepare(`INSERT INTO account_directory (user_id, created_at) VALUES (?1, 1)`).bind(userId).run();
     // The probe, the freeze, the row check, the mark.
-    expect(await stub.copyFromD1()).toMatchObject({ status: 'done', copied: {}, queries: 4, usage: { notes: 0, migratedFromD1: true } });
-    expect(await stub.stats()).toMatchObject({ migratedFromD1: true });
+    expect(await stub.copyFromD1()).toMatchObject({ status: 'done', copied: {}, queries: 4, usage: { notes: 0, copiedFromD1: true } });
+    expect(await stub.stats()).toMatchObject({ copiedFromD1: true });
     const dir = await env.DB.prepare(`SELECT migrated_at, copied_at FROM account_directory WHERE user_id = ?1`).bind(userId).first<{ migrated_at: number | null; copied_at: number | null }>();
     expect(dir).toEqual({ migrated_at: expect.any(Number), copied_at: expect.any(Number) });
   });
@@ -207,7 +207,7 @@ describe('copy from D1', () => {
     expect(first).toMatchObject({ status: 'mismatch', reason: expect.stringMatching(/^attachments: 3 of 4 rows landed/) });
     // Recorded, not marked, and the `migrated_at` the copy wrote before its first page
     // is cleared again, so the account's D1 rows are writable for the operator.
-    expect(await stub.stats()).toMatchObject({ migratedFromD1: false, copyMismatch: (first as { reason: string }).reason });
+    expect(await stub.stats()).toMatchObject({ copiedFromD1: false, copyMismatch: (first as { reason: string }).reason });
     const dir = await env.DB.prepare(`SELECT migrated_at, copied_at FROM account_directory WHERE user_id = ?1`).bind(userId).first<{ migrated_at: number | null; copied_at: number | null }>();
     expect(dir).toEqual({ migrated_at: null, copied_at: null });
     // The account is not refused anything: what landed is there to use.
@@ -220,9 +220,9 @@ describe('copy from D1', () => {
     await env.DB.prepare(`UPDATE attachments SET filename = 'scan (2).pdf' WHERE id = ?1`).bind(`${userId}-dup`).run();
     expect(await stub.copyFromD1()).toMatchObject({ status: 'mismatch' });
     const retried = await stub.copyFromD1({ retry: true });
-    expect(retried).toMatchObject({ status: 'done', copied: { attachments: 4, notes: 3 }, usage: { migratedFromD1: true } });
+    expect(retried).toMatchObject({ status: 'done', copied: { attachments: 4, notes: 3 }, usage: { copiedFromD1: true } });
     expect((await stub.listAttachments(`${userId}-n0001`)).map((a) => a.filename)).toEqual(['scan.pdf', 'scan (2).pdf']);
-    expect(await stub.stats()).toMatchObject({ migratedFromD1: true, copyMismatch: null });
+    expect(await stub.stats()).toMatchObject({ copiedFromD1: true, copyMismatch: null });
     expect(await metaKeys(stub)).toEqual(['migrated_from_d1', 'user_id']);
   });
 
@@ -243,7 +243,7 @@ describe('copy from D1', () => {
 
     const woke = env.USER_STORE.get(env.USER_STORE.idFromName(userId));
     const stats = await woke.stats();
-    expect(stats).toMatchObject({ wiped: true, migratedFromD1: true });
+    expect(stats).toMatchObject({ wiped: true, copiedFromD1: true });
     expect(stats.counts.notes).toBe(0);
     expect(await woke.copyFromD1()).toMatchObject({ status: 'already', usage: { wiped: true } });
     // And asking did not rebuild it: it is still empty storage.

@@ -69,8 +69,12 @@ export interface StoreStats {
   counts: Record<DataTable, number>;
   /** True when `wipe` has run and nothing has woken the schema since: the object is empty storage. */
   wiped: boolean;
-  /** Whether the one-time copy from D1 has run (or was found unnecessary). What the sweep writes to the directory. */
-  migratedFromD1: boolean;
+  /**
+   * Whether the one-time copy from D1 has run (or was found unnecessary): `copied_at` in
+   * the directory, which the sweep writes from this. The `_meta` key behind it is still
+   * `migrated_from_d1`, since objects on dev already hold it.
+   */
+  copiedFromD1: boolean;
   /** Why the copy's last verification failed, while it waits for the operator; see `copyFromD1`. */
   copyMismatch: string | null;
 }
@@ -86,7 +90,7 @@ export interface StoreUsage {
   databaseSize: number;
   /** Live and trashed notes together: what the account holds. */
   notes: number;
-  migratedFromD1: boolean;
+  copiedFromD1: boolean;
   wiped: boolean;
 }
 
@@ -220,7 +224,7 @@ export class UserStore extends DurableObject<StoreEnv> {
   stats(): StoreStats {
     const counts = Object.fromEntries(DATA_TABLES.map((t) => [t, 0])) as Record<DataTable, number>;
     if (this.wiped) {
-      return { userId: this.userId, databaseSize: this.ctx.storage.sql.databaseSize, migrations: [], counts, wiped: true, migratedFromD1: true, copyMismatch: null };
+      return { userId: this.userId, databaseSize: this.ctx.storage.sql.databaseSize, migrations: [], counts, wiped: true, copiedFromD1: true, copyMismatch: null };
     }
     for (const table of DATA_TABLES) {
       counts[table] = this.sql.first<{ n: number }>(`SELECT COUNT(*) AS n FROM ${table}`)?.n ?? 0;
@@ -231,7 +235,7 @@ export class UserStore extends DurableObject<StoreEnv> {
       migrations: appliedMigrations(this.ctx.storage),
       counts,
       wiped: false,
-      migratedFromD1: copiedFromD1(this.sql),
+      copiedFromD1: copiedFromD1(this.sql),
       copyMismatch: copyMismatch(this.sql),
     };
   }
@@ -239,12 +243,12 @@ export class UserStore extends DurableObject<StoreEnv> {
   /** What the sweep records: a few rows per account, never a table scan. See `StoreUsage`. */
   usage(): StoreUsage {
     const databaseSize = this.ctx.storage.sql.databaseSize;
-    if (this.wiped) return { databaseSize, notes: 0, migratedFromD1: true, wiped: true };
+    if (this.wiped) return { databaseSize, notes: 0, copiedFromD1: true, wiped: true };
     const counts = this.sql.first<{ live: number; trashed: number }>(`SELECT live, trashed FROM note_counts WHERE id = 1`);
     return {
       databaseSize,
       notes: (counts?.live ?? 0) + (counts?.trashed ?? 0),
-      migratedFromD1: copiedFromD1(this.sql),
+      copiedFromD1: copiedFromD1(this.sql),
       wiped: false,
     };
   }

@@ -52,10 +52,10 @@ import type { Env } from '../types.js';
  */
 export interface SweepReport {
   visited: number;
-  /** Accounts whose object reported the copy from D1 done. */
-  migrated: number;
-  /** Accounts this batch copied from D1. */
+  /** Accounts whose object says its copy from D1 has run: `copied_at` in the directory. */
   copied: number;
+  /** Accounts whose copy this batch ran to the end. */
+  copiedNow: number;
   /** Accounts whose copy failed verification; the operator's `sql` route is how to look, `copy` with `retry` the way on. */
   mismatched: string[];
   wiped: number;
@@ -85,7 +85,7 @@ async function readCursor(db: D1Database): Promise<string> {
 
 export async function sweepStores(env: Pick<Env, 'DB' | 'USER_STORE' | 'STORE_JURISDICTION' | 'STORE_FREEZE_D1'>): Promise<SweepReport> {
   const started = Date.now();
-  const report: SweepReport = { visited: 0, migrated: 0, copied: 0, mismatched: [], wiped: 0, dropped: 0, failed: [], deferred: [], done: false, ms: 0 };
+  const report: SweepReport = { visited: 0, copied: 0, copiedNow: 0, mismatched: [], wiped: 0, dropped: 0, failed: [], deferred: [], done: false, ms: 0 };
 
   // A preview Worker shares the dev instance's D1 but has objects of its own, empty
   // copies at best, so nothing this walk could learn there is worth writing to dev's
@@ -132,7 +132,7 @@ export async function sweepStores(env: Pick<Env, 'DB' | 'USER_STORE' | 'STORE_JU
 
   report.ms = Date.now() - started;
   console.log(
-    `[store] sweep visited=${report.visited} migrated=${report.migrated} copied=${report.copied} mismatched=${report.mismatched.length} wiped=${report.wiped} dropped=${report.dropped} deferred=${report.deferred.length} failed=${report.failed.length} done=${report.done} ms=${report.ms}`,
+    `[store] sweep visited=${report.visited} copied=${report.copied} copiedNow=${report.copiedNow} mismatched=${report.mismatched.length} wiped=${report.wiped} dropped=${report.dropped} deferred=${report.deferred.length} failed=${report.failed.length} done=${report.done} ms=${report.ms}`,
   );
   return report;
 }
@@ -169,7 +169,7 @@ async function sweepOne(
   // failure there surfaces here as this row's error. `usage`, not `stats`: this runs
   // every hour for every account, and must not scan a table.
   let usage: StoreUsage = await store.usage();
-  if (!usage.migratedFromD1) {
+  if (!usage.copiedFromD1) {
     // Not copied yet: an account from before the cutover the walk has not reached, or
     // a new one, whose copy finds nothing and marks it. One call; the object spends its
     // own query budget on D1 and answers `paused` if it runs out, and the next pass
@@ -177,7 +177,7 @@ async function sweepOne(
     const copy = await store.copyFromD1();
     usage = copy.usage;
     if (copy.status === 'done') {
-      report.copied += 1;
+      report.copiedNow += 1;
     } else if (copy.status === 'paused') {
       report.deferred.push(row.userId);
     } else if (copy.status === 'mismatch') {
@@ -189,8 +189,8 @@ async function sweepOne(
     recordDirectoryUsageStatement(env.DB, row.userId, {
       storageBytes: usage.databaseSize,
       noteCount: usage.notes,
-      copied: usage.migratedFromD1,
+      copied: usage.copiedFromD1,
     }),
   );
-  if (usage.migratedFromD1) report.migrated += 1;
+  if (usage.copiedFromD1) report.copied += 1;
 }

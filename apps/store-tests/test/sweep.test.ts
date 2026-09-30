@@ -99,7 +99,7 @@ describe('the store sweep', () => {
     expect(reports.reduce((n, r) => n + r.visited, 0)).toBeGreaterThanOrEqual(6);
     expect(reports.reduce((n, r) => n + r.wiped, 0)).toBeGreaterThanOrEqual(3);
     // The live, fresh and unlisted accounts had not been copied; the walk did it.
-    expect(reports.reduce((n, r) => n + r.copied, 0)).toBeGreaterThanOrEqual(3);
+    expect(reports.reduce((n, r) => n + r.copiedNow, 0)).toBeGreaterThanOrEqual(3);
 
     expect(await row(live)).toMatchObject({ note_count: 2, migrated_at: expect.any(Number), copied_at: expect.any(Number) });
     expect((await row(live))!.storage_bytes).toBeGreaterThan(0);
@@ -188,7 +188,7 @@ describe('the store sweep', () => {
     expect(await row(preview)).toMatchObject({ note_count: 0, storage_bytes: 0, migrated_at: null, copied_at: null });
     expect(await row(unlisted)).toBeNull();
     expect(await row(dead)).not.toBeNull();
-    expect((await stub(preview).usage()).migratedFromD1).toBe(false);
+    expect((await stub(preview).usage()).copiedFromD1).toBe(false);
     const cursorAfter = await env.DB.prepare(`SELECT value FROM _unbent_meta WHERE key = 'store_sweep_cursor'`).first<{ value: string }>();
     expect(cursorAfter?.value ?? null).toBe(cursorBefore?.value ?? null);
   });

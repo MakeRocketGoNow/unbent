@@ -120,7 +120,7 @@ describe('UserStore lifecycle', () => {
     await stub.wipe();
     await evictDurableObject(stub);
     const woke = env.USER_STORE.get(env.USER_STORE.idFromName(userId));
-    expect(await woke.stats()).toMatchObject({ wiped: true, migrations: [], migratedFromD1: true });
+    expect(await woke.stats()).toMatchObject({ wiped: true, migrations: [], copiedFromD1: true });
     expect(await woke.schemaSql()).toEqual(expect.arrayContaining([expect.stringContaining('CREATE TABLE notes')]));
     expect(await woke.stats()).toMatchObject({ wiped: false, migrations: ['0001-init'] });
   });
