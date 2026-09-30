@@ -381,7 +381,16 @@ export async function copyFromD1(sql: Sql, db: D1Database, userId: string, recou
   const run = async (statement: D1PreparedStatement): Promise<void> => {
     d1RowsRead += (await statement.run()).meta.rows_read ?? 0;
   };
-  const nothing = () => ({ status: 'done' as const, copied: {}, skipped: 0, unfiled: 0, merged: 0, corrections: 0, queries, d1RowsRead, ms: Date.now() - started, resumed: false });
+  // Nothing to copy: marked in the object, and recorded as finished where the runbook
+  // reads it, the same as a copy that had rows.
+  const nothing = async () => {
+    if (opts.freeze) {
+      spend('copied', 0);
+      await run(db.prepare(`UPDATE account_directory SET copied_at = COALESCE(copied_at, ?2) WHERE user_id = ?1`).bind(userId, Date.now()));
+    }
+    markCopiedFromD1(sql);
+    return { status: 'done' as const, copied: {}, skipped: 0, unfiled: 0, merged: 0, corrections: 0, queries, d1RowsRead, ms: Date.now() - started, resumed: false };
+  };
 
   try {
     // A database with no note tables — a fresh instance, the test environment, or an
@@ -389,26 +398,24 @@ export async function copyFromD1(sql: Sql, db: D1Database, userId: string, recou
     // question is never asked again.
     spend('probe', 0);
     const hasTables = (await all<{ hit: number }>(db.prepare(`SELECT 1 AS hit FROM sqlite_master WHERE type = 'table' AND name = 'notes'`)))[0];
-    if (!hasTables) {
-      markCopiedFromD1(sql);
-      return nothing();
-    }
-    // An account with no rows here — every account made after the cutover — is done in
-    // one more query rather than sixteen, and without freezing anything. The sweep
-    // records it as copied from the object's answer.
-    spend('any', 0);
-    const any = (await all<{ hit: number }>(db.prepare(ANY_ROWS_SQL).bind(userId)))[0];
-    if (!any?.hit) {
-      markCopiedFromD1(sql);
-      return nothing();
-    }
+    if (!hasTables) return nothing();
 
-    // Frozen from here, before a page is read; see the module comment. Idempotent, so a
-    // resumed call pays one query to say it again. Not on a preview; see `opts.freeze`.
+    // Frozen from here, before anything is read; see the module comment. Before the row
+    // check below as well as before the pages: an account with no rows *now* could still
+    // get one from an old isolate draining during the deploy, and it would land after the
+    // check and be lost without a trace (found in review). Freezing an account that will
+    // never have rows here costs one write and nothing else. Idempotent, so a resumed call
+    // pays one query to say it again. Not on a preview; see `opts.freeze`.
     if (opts.freeze) {
       spend('freeze', 0);
       await run(db.prepare(`UPDATE account_directory SET migrated_at = COALESCE(migrated_at, ?2) WHERE user_id = ?1`).bind(userId, Date.now()));
     }
+
+    // An account with no rows here — every account made after the cutover — is done in
+    // one more query rather than sixteen.
+    spend('any', 0);
+    const any = (await all<{ hit: number }>(db.prepare(ANY_ROWS_SQL).bind(userId)))[0];
+    if (!any?.hit) return nothing();
 
     const progress = readProgress(sql);
     const resumed = progress.cursor !== null;

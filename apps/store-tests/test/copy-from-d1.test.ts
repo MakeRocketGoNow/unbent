@@ -79,10 +79,21 @@ describe('copy from D1', () => {
     expect(await metaKeys(again)).toEqual(['migrated_from_d1', 'user_id']);
   });
 
-  it('marks an account with nothing in D1 done, in two queries', async () => {
-    const { stub } = freshStore('empty');
-    expect(await stub.copyFromD1()).toMatchObject({ status: 'done', copied: {}, queries: 2, usage: { notes: 0, migratedFromD1: true } });
+  /**
+   * An account with no rows in D1 — every account made after the cutover, and any
+   * account that never had a note — is done without a page read. Its D1 rows are frozen
+   * all the same, before the check: a row could still arrive from an old isolate draining
+   * during the deploy, and frozen it is refused rather than lost (found in review). And it
+   * is recorded as finished, so the runbook's check does not wait on the sweep for it.
+   */
+  it('marks an account with nothing in D1 done in four queries, frozen and recorded all the same', async () => {
+    const { userId, stub } = freshStore('empty');
+    await env.DB.prepare(`INSERT INTO account_directory (user_id, created_at) VALUES (?1, 1)`).bind(userId).run();
+    // The probe, the freeze, the row check, the mark.
+    expect(await stub.copyFromD1()).toMatchObject({ status: 'done', copied: {}, queries: 4, usage: { notes: 0, migratedFromD1: true } });
     expect(await stub.stats()).toMatchObject({ migratedFromD1: true });
+    const dir = await env.DB.prepare(`SELECT migrated_at, copied_at FROM account_directory WHERE user_id = ?1`).bind(userId).first<{ migrated_at: number | null; copied_at: number | null }>();
+    expect(dir).toEqual({ migrated_at: expect.any(Number), copied_at: expect.any(Number) });
   });
 
   /**
