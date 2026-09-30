@@ -420,10 +420,19 @@ another device gets saved over.
 archive through the same addresses. A new bulk read of file bytes must not send that header;
 a new viewer must.
 
-**Every API call goes through `request()` in `notes-api.ts`.** That is how the app learns
-the connection is gone — a fetch with no answer becomes an `OfflineError`, and an answer the
-worker served from its cache carries `X-Unbent-Served: cache`. A call made with bare `fetch`
-elsewhere cannot raise the banner or lock the editor.
+**API calls from the page go through `request()` in `notes-api.ts`.** That is how the app
+learns the connection is gone — a fetch with no answer becomes an `OfflineError`, and an
+answer the worker served from its cache carries `X-Unbent-Served: cache`. A call made with
+bare `fetch` cannot raise the banner or lock the editor. Code that retries on a network
+error must recognise `OfflineError` as one (`transient` in `export-archive.ts`): it is an
+`ApiError` with status 0, not the `TypeError` fetch throws. Two deliberate exceptions, and
+nothing else should join them:
+
+- `apiFetch` in `attachment-text.ts` — the indexer. It runs inside the import Web Worker,
+  where the page's connectivity store does not exist, and it reports its own failures to
+  the page. (It must also never send `X-Unbent-View`; neither must export.)
+- `device-api.ts` — Better Auth's device and one-time-token endpoints under `/api/auth/`,
+  which the service worker never touches and whose screens report their own failures.
 
 **The caches are keyed by address, not by account.** `clearOfflineCaches()` runs on
 sign-out, on a refused session, on account deletion and when a different person signs in. A

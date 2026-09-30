@@ -4,6 +4,7 @@ import { Button } from '../components/Button.js';
 import { Confirm } from '../components/Confirm.js';
 import { CopyIcon } from '../components/icons.js';
 import { oauth2 } from '../auth-client.js';
+import { request } from '../notes-api.js';
 
 export const Route = createFileRoute('/settings/connected-apps')({
   component: ConnectedAppsPage,
@@ -118,7 +119,8 @@ function ConnectedAppsPage() {
        * removes the record that permission was given and leaves the app's tokens working.
        * See apps/api/src/lib/connected-apps.ts.
        */
-      const res = await fetch(`/api/connected-apps/${encodeURIComponent(grant.id)}/disconnect`, {
+      // Through `request`, so a disconnect tried with no connection says so at once.
+      const res = await request(`/api/connected-apps/${encodeURIComponent(grant.id)}/disconnect`, {
         method: 'POST',
       });
       if (!res.ok) {

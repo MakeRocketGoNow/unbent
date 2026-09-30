@@ -148,7 +148,9 @@ const liveSource: ExportSource = {
   page: (filter, cursor, signal) => retrying(signal, () => api.exportPage(filter, cursor, PAGE)),
   file: (noteId, filename, signal) =>
     retrying(signal, async () => {
-      const res = await fetch(`/api/notes/${noteId}/files/${encodeURIComponent(filename)}`, { signal });
+      // Unmarked: an export reads every file, and must not fill the offline cache with
+      // them (`classify` in `sw/routes.ts`).
+      const res = await api.request(`/api/notes/${noteId}/files/${encodeURIComponent(filename)}`, { signal });
       // Gone since the page listed it — its note deleted mid-export, or the object missing
       // from storage. Skipped and counted; see `ExportSource.file`.
       if (res.status === 404) return null;
