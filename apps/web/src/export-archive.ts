@@ -109,8 +109,14 @@ const PAGE = 100;
  */
 const RETRY_DELAYS = [1_000, 4_000, 15_000];
 
-/** A failure worth retrying: the server's 5xx, or fetch's TypeError for a network error. */
-function transient(err: unknown): boolean {
+/**
+ * A failure worth retrying: the server's 5xx, or a network error — fetch's own TypeError,
+ * or the `OfflineError` the API client turns one into. The second is an `ApiError` with
+ * status 0, so it has to be named before the status test, or a page request that met a
+ * dropped connection would be taken for a refusal and end the whole export.
+ */
+export function transient(err: unknown): boolean {
+  if (api.isOfflineError(err)) return true;
   return err instanceof api.ApiError ? err.status >= 500 : err instanceof TypeError;
 }
 

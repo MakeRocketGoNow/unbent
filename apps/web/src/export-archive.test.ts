@@ -8,10 +8,12 @@ import {
   createExporting,
   isExportOf,
   savedAs,
+  transient,
   type Exporting,
   type ExportState,
 } from './export-archive.js';
 import type { HostApp } from './app-bridge.js';
+import { ApiError, OfflineError } from './notes-api.js';
 
 /**
  * The store around the archive writer: what a page sees while an export runs. The
@@ -265,5 +267,24 @@ describe('appDestination', () => {
     await settled(exporting);
     expect(exporting.get().status).not.toBe('done');
     expect(app.saveAbort).toHaveBeenCalledWith('job-1');
+  });
+});
+
+/*
+ * What the export retries. A dropped connection reaches it two ways: fetch's own TypeError
+ * from a file read, and the `OfflineError` the API client makes of one for a page read.
+ * The second is an `ApiError` with status 0, and was taken for a refusal — one blip on a
+ * page ended an hour-long export.
+ */
+describe('transient', () => {
+  it('retries a dropped connection, however it arrives', () => {
+    expect(transient(new TypeError('Failed to fetch'))).toBe(true);
+    expect(transient(new OfflineError())).toBe(true);
+  });
+
+  it('retries the server’s 5xx and nothing else it says', () => {
+    expect(transient(new ApiError(503, 'busy'))).toBe(true);
+    expect(transient(new ApiError(404, 'gone'))).toBe(false);
+    expect(transient(new ApiError(401, 'signed out'))).toBe(false);
   });
 });
