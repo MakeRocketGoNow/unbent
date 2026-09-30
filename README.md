@@ -1312,16 +1312,18 @@ reads and writes through it. Five rules hold the shape, and tests hold the rules
 5. **Each call to the object is a billable request.** A route asks once for what it needs,
    through composite methods, rather than two or three times.
 
-**Accounts that predate this** are copied over on their object's first wake: the rows the
-shared database held for that user, paged out of D1 and written into the object in one
-resumable pass, with the counts and search index rebuilt on the way and every table's row
-count checked against what D1 held. That copy is the exception to rule 1, and it goes once
-every account's directory row says it has run; the frozen D1 tables are dropped in a later
-migration. The sweep wakes every object, so the copy runs for everyone within hours of the
-cutover rather than on each person's next open — or at once, if the operator runs the sweep
-by hand after the deploy. The copy spends at most forty D1 queries a wake, since a Free
-plan invocation may make fifty, and an archive-sized account takes two wakes: the request
-that woke it is answered 503 with Retry-After and the next one finishes.
+**Accounts that predate this** are copied over when the sweep, or the operator, asks: the
+rows the shared database held for that user, paged out of D1 and written into the object
+in one resumable pass, with the counts and search index rebuilt on the way and what
+landed checked against what D1 held, table by table. Nothing about opening the app reads
+D1, so between the deploy and the sweep an account not yet copied opens empty; the
+runbook below closes that window in minutes, and a note written in it survives the copy —
+its tag and notebook are merged by name with the ones D1 delivers rather than refused.
+That copy is the exception to rule 1, and it goes once every account's directory row says
+it has run; the frozen D1 tables are dropped in a later migration. The copy spends at most
+forty D1 queries a call, since a Free plan invocation may make fifty, and answers `paused`
+with its place committed; the sweep continues it next pass, and the operator's route
+calls again at once.
 
 Migration 0032 freezes each account's rows in the shared tables from the moment that
 account's copy is verified (`account_directory.migrated_at`, written by the copy itself):
@@ -1350,10 +1352,11 @@ the log with the user id on it, and it can be run on demand after a deploy. Each
 reads a few rows of the account (its size and the stored note counts), never a table.
 
 **An account whose copy cannot be verified** — a row the store's constraints refuse that
-the shared database allowed — stops trying after three wakes and says so. Its owner's
-requests are refused until it is dealt with, but the object stays up: the operator can
-read it with the SQL route, the sweep names it every pass, and deleting the account, or
-wiping the store so it starts empty, still works.
+the shared database allowed, two files on one note under one filename, say — is reported
+and left alone: the account is not marked migrated, so its rows in the shared tables stay
+writable, and nothing reads them again until the operator fixes them there and calls the
+copy with `?retry=1`. The account keeps working on what landed meanwhile; `stats` shows
+the reason, and the sweep names the account every pass.
 
 **What the operator can see.** An object has no console, so the Worker has one, under
 `/api/admin/store` for a session in `OPERATOR_EMAILS`:
@@ -1362,11 +1365,15 @@ wiping the store so it starts empty, still works.
   name the directory does not have is refused, since a store is created for any name it
   is asked for.
 - `POST …/sql` — one `SELECT` (or `EXPLAIN`) against a store, always rolled back.
+- `POST …/copy` — the one-time copy of one account's rows from D1, now, calling the object
+  until it answers something other than `paused`; `?retry=1` after a mismatch. For the
+  canary after the cutover deploys, before the sweep takes the rest.
 - `GET …/dump` — the store as SQL text, `sqlite3 account.db < dump.sql` rebuilds it: what
   `d1 export` was, and how a migration is rehearsed against a real account before it
   ships — dump, load, run the new schema file's SQL against the copy.
 - `POST …/sweep` — one batch of the walk, now; call until it says `done`, then once more
-  if any account was `deferred`.
+  if any account was `deferred`. The walk also runs the copy for any account not yet
+  copied, so after the cutover it is what copies everyone.
 
 Reading another account's store is logged with both ids. Rows read and written inside an
 object are metered as D1's were, and every statement over a threshold is logged with the

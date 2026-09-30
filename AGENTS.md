@@ -459,17 +459,24 @@ Things about working on the store that are easy to get wrong:
   wipes anything, and a row is dropped only once the user row is gone too. Keep it that
   way.
 - **Subrequests are the budget inside one invocation.** Fifty on Free, and every D1 query
-  and every store call counts. The copy from D1 spends forty a wake and pauses; the sweep
-  walks twenty accounts a run; anything new that loops over accounts or pages D1 needs
-  the same shape.
+  and every store call counts. The copy from D1 spends forty queries a call and answers
+  `paused`; the sweep walks twenty accounts a run at two store calls each; the operator's
+  `copy` and `dump` routes make forty store calls at most; anything new that loops over
+  accounts or pages D1 needs the same shape. CPU is a budget too — ten milliseconds an
+  invocation on Free, thirty seconds inside an object — so work over a big result, like
+  turning a dump page into SQL text, is done in the object and forwarded.
 - **Nothing periodic may scan a table.** The sweep reads `usage()` — the one `note_counts`
   row and the database size — never `stats()`, which counts every table and is the
   operator's. An hourly `stats()` on an archive-sized account would read every row of it
   twenty-four times a day. The rows-read test bounds `usage` at a handful.
-- **A stuck copy stays up.** An account whose copy from D1 gave up refuses its data
-  methods and nothing else: `stats`, `usage`, the read-only SQL route and `wipe` still
-  work, so the operator can look and a deletion can finish. Do not turn that into a
-  constructor throw.
+- **The copy from D1 runs only when asked.** The sweep asks for every account whose
+  object says it has not run, the operator's `POST /api/admin/store/copy` asks for one;
+  a wake never reads D1. It ran in the constructor once, and three reviews each found a
+  runtime property it depended on and got wrong (what a reset discards, whose
+  subrequests it spent, what a person saw meanwhile). Keep it a method that answers —
+  `done`, `paused`, `mismatch`, `already` — never a throw from the constructor. A
+  mismatch is recorded and retried only by the operator, with `?retry=1`, after the D1
+  rows are fixed; `stats` shows the reason.
 - **Local state is D1 *and* `do/`.** The reset scripts clear both; clearing one by hand
   leaves ghost objects. `worktree:setup` copies both.
 

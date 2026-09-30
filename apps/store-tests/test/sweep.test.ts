@@ -9,9 +9,10 @@ import { createD1NoteTables, seedD1 } from './helpers.js';
  * shape migrations 0002, 0030 and 0001 give them. What is checked is the sweep's one
  * invariant and its jobs: a live account is woken and measured and never wiped; a
  * tombstoned account, or one whose user row is gone, is wiped and its row dropped once
- * the object is empty; an account never opened gets its object created, and so its copy
- * run; an account with no directory row gets one; and a walk longer than a batch
- * continues across invocations from where it left off.
+ * the object is empty; an account not yet copied from D1 — never opened, or opened
+ * before the walk reached it — has its copy run; an account with no directory row gets
+ * one; and a walk longer than a batch continues across invocations from where it left
+ * off.
  *
  * The D1 here is this file's own, so rows from other files never appear in it, but every
  * test in this file shares it: the counts asserted are lower bounds, and the batching
@@ -82,7 +83,8 @@ describe('the store sweep', () => {
     await directory(orphan);
     await stub(orphan).create({ id: crypto.randomUUID(), title: 'Orphaned', body: 'x', tags: [] });
 
-    // Never opened: no object exists until the sweep names it.
+    // Never opened: no object exists until the sweep names it, and its copy from D1 —
+    // which finds no note tables in this file's D1 — runs and marks it.
     const fresh = uid('fresh');
     await user(fresh);
     await directory(fresh);
@@ -96,6 +98,8 @@ describe('the store sweep', () => {
     expect(reports.flatMap((r) => r.failed)).toEqual([]);
     expect(reports.reduce((n, r) => n + r.visited, 0)).toBeGreaterThanOrEqual(6);
     expect(reports.reduce((n, r) => n + r.wiped, 0)).toBeGreaterThanOrEqual(3);
+    // The live, fresh and unlisted accounts had not been copied; the walk did it.
+    expect(reports.reduce((n, r) => n + r.copied, 0)).toBeGreaterThanOrEqual(3);
 
     expect(await row(live)).toMatchObject({ note_count: 2, migrated_at: expect.any(Number) });
     expect((await row(live))!.storage_bytes).toBeGreaterThan(0);
@@ -139,24 +143,26 @@ describe('the store sweep', () => {
     expect(cursor?.value).toBe('');
   });
 
-  it('names an account whose copy gave up, and still measures the rest', async () => {
+  it('copies an account that has rows in D1, and names one whose copy cannot be verified', async () => {
     await createD1NoteTables();
-    const stuck = uid('stuck');
-    await user(stuck);
-    await seedD1(stuck, 2);
-    // Two notebooks whose names differ only in case: the store folds them, the count
-    // never matches, and after three wakes the copy stops trying.
-    await env.DB.prepare(`INSERT INTO notebooks VALUES (?1, ?2, 'receipts', 1, NULL, NULL, 0)`).bind(`${stuck}-dup`, stuck).run();
-    for (let i = 0; i < 3; i++) {
-      const s = stub(stuck);
-      await s.stats().catch(() => undefined);
-      await evictDurableObject(s).catch(() => undefined);
-    }
+    const copied = uid('copied');
+    await user(copied);
+    await seedD1(copied, 3);
+    // Two files on one note under the same filename: the store refuses one, and the
+    // copy reports the mismatch rather than marking the account.
+    const mismatched = uid('mismatched');
+    await user(mismatched);
+    await seedD1(mismatched, 2);
+    await env.DB.prepare(`INSERT INTO attachments (id, note_id, user_id, filename, content_type, size, r2_key, created_at) VALUES (?1, ?2, ?3, 'scan.pdf', 'application/pdf', 1, 'k', 1)`).bind(`${mismatched}-dup`, `${mismatched}-n0001`, mismatched).run();
+
     const reports = await fullPass();
-    expect(reports.flatMap((r) => r.stuck)).toContain(stuck);
-    expect(reports.flatMap((r) => r.failed)).not.toContain(stuck);
-    // Measured like any other account, and never marked migrated.
-    expect(await row(stuck)).toMatchObject({ migrated_at: null });
+    expect(reports.flatMap((r) => r.failed)).toEqual([]);
+    expect(await row(copied)).toMatchObject({ note_count: 3, migrated_at: expect.any(Number) });
+    expect((await stub(copied).stats()).counts.notes).toBe(3);
+    expect(reports.flatMap((r) => r.mismatched)).toContain(mismatched);
+    // Measured like any other account, never marked migrated, and named again next pass.
+    expect(await row(mismatched)).toMatchObject({ note_count: 2, migrated_at: null });
+    expect((await fullPass()).flatMap((r) => r.mismatched)).toContain(mismatched);
   });
 
   it('counts one account\'s failure and carries on to the next', async () => {

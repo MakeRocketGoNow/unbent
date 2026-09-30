@@ -88,8 +88,9 @@ tag = "v1"
 new_sqlite_classes = ["UserStore"]
 
 # The walk over every account's note store (src/lib/sweep.ts): wakes each object so a
-# pending migration runs and fails in the log rather than in front of its owner, records
-# each account's size in the directory, and finishes any deletion that was interrupted.
+# pending migration runs and fails in the log rather than in front of its owner, runs the
+# one-time copy from D1 for any account not yet copied, records each account's size in
+# the directory, and finishes any deletion that was interrupted.
 # Hourly, and a batch of twenty accounts per run rather than all of them: every store call
 # and D1 query counts against an invocation's subrequests, fifty on Workers Free, so the
 # walk keeps its place in D1 and continues each hour until a pass is done, then starts

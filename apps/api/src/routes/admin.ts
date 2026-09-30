@@ -12,6 +12,9 @@ import { sweepStores } from '../lib/sweep.js';
 import { DUMP_TABLES } from '../store/tables.js';
 import type { AppEnv } from '../types.js';
 
+/** Store calls one `copy` request makes before answering `paused` itself: under the Free plan's fifty subrequests, with the directory check on top. */
+const COPY_CALLS = 40;
+
 /**
  * Destructive maintenance, all scoped to the caller's own data.
  *
@@ -160,15 +163,16 @@ export const admin = new Hono<AppEnv>()
 
   /*
      The operator's window into a note store. An object has no console: nothing lists its
-     tables, nothing runs a query against it, nothing copies it out. These four routes are
+     tables, nothing runs a query against it, nothing copies it out. These five routes are
      that console, and they are what `wrangler d1 execute` and `d1 export` used to be for
      the shared database.
 
      `stats` and `dump` are the signed-in user's own by default; a session in
      OPERATOR_EMAILS may name another account with `?user=`, and every such read is logged
      with both ids, since it is one person reading another's notes and the log is the
-     record of it. `sql` and `sweep` are the operator's alone: the first is a raw query
-     over someone's notes, the second walks every account.
+     record of it. `sql`, `copy` and `sweep` are the operator's alone: a raw query over
+     someone's notes, the one-time copy of an account from D1, and the walk over every
+     account.
   */
 
   /** Row counts, size and schema version of one store. */
@@ -275,6 +279,33 @@ export const admin = new Hono<AppEnv>()
   })
 
   /**
+   * The one-time copy of one account's rows from D1, now: for the canary after the
+   * cutover deploys — the owner's account, the biggest, before the sweep takes the rest
+   * — and for an account whose copy the sweep reported as `mismatched`, once its rows in
+   * D1 are fixed, with `?retry=1`. The object answers `paused` each time it spends its
+   * query budget, and this calls again until it answers anything else; each call is one
+   * subrequest here, and the object's D1 queries are its own, so an archive-sized
+   * account is two or three calls of the forty this allows.
+   */
+  .post('/admin/store/copy', requireAuth, async (c) => {
+    const email = c.get('user')?.email;
+    if (!isOperator(c.env, email)) return c.json({ error: 'Not found' }, 404);
+    const target = c.req.query('user') ?? c.get('userId')!;
+    if (target !== c.get('userId') && !(await directoryRow(c.env.DB, target))) {
+      return c.json({ error: 'No such account' }, 404);
+    }
+    const retry = c.req.query('retry') === '1';
+    console.log(`[store] operator=${email} copy user=${target} retry=${retry}`);
+    const store = storeFor(c.env, target);
+    let calls = 0;
+    for (;;) {
+      calls += 1;
+      const result = await store.copyFromD1(calls === 1 ? { retry } : {});
+      if (result.status !== 'paused' || calls >= COPY_CALLS) return c.json({ ...result, calls });
+    }
+  })
+
+  /**
    * One batch of the walk, on demand: after a deploy that carries a schema file, so every
    * account is migrated within minutes rather than hours, and after the cutover, so every
    * account is copied. The answer says whether the pass is `done`; a runbook calls again
@@ -286,6 +317,7 @@ export const admin = new Hono<AppEnv>()
     console.log(`[store] operator=${email} sweep`);
     return c.json(await sweepStores(c.env));
   });
+
 
 /**
  * Whose store a `stats` or `dump` reads: the caller's own, or, for an operator naming

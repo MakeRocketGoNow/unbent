@@ -4,69 +4,76 @@ import type { Sql } from './sql.js';
  * The one-time copy of an account's rows out of the shared D1 database into its object.
  *
  * This is the documented exception to rule 1 (the object touches its SQLite and nothing
- * else): it reads D1, once, on the first wake after the cutover, and never again. It
- * exists so that the accounts that predate the per-account store — the owner's and a few
- * friends' — arrive in their objects without anyone exporting and importing, and it is
- * deleted, along with `DB` on `StoreEnv`, once every account's directory row says it has
- * run. Nothing else in src/store/ may take a D1 binding.
+ * else): it reads D1, once per account, and never again. It exists so that the accounts
+ * that predate the per-account store — the owner's and a few friends' — arrive in their
+ * objects without anyone exporting and importing, and it is deleted, along with `DB` on
+ * `StoreEnv`, once every account's directory row says it has run. Nothing else in
+ * src/store/ may take a D1 binding.
+ *
+ * It runs only when asked. The sweep asks, for every account whose object has not yet
+ * been copied, and the operator's route asks for one account at a time; nothing about a
+ * wake — a person opening the app — reads D1. That is a deliberate retreat from an
+ * earlier shape, where the copy ran in the constructor on first wake: it then had to be
+ * right about the runtime's reset semantics, about which writes survive a throw, about
+ * the subrequests the request that woke the object had already spent, and about what a
+ * person sees while it runs, and three rounds of review each found a case it was wrong
+ * about. A copy that runs inside an ordinary request, called by code that expects an
+ * answer rather than a page, has none of those questions to get wrong. What it costs is
+ * a window between the deploy and the sweep in which an account not yet copied opens
+ * empty; the runbook closes it in minutes, and a note written in that window survives
+ * the copy (see verification, below).
  *
  * Shape: the tables are copied in dependency order, each paged out of D1 by `rowid` and
- * written in one transaction per page with the page's last rowid recorded in
- * `_meta.copy_cursor`. A reset part way — the object's CPU budget, a deploy — resumes at
- * the last committed page; `INSERT OR IGNORE` makes the overlap harmless. Foreign keys
- * are off for the copy and back on after it, because the shared database never enforced
- * them and a row that points at nothing there (a note whose notebook was removed by a
- * path that forgot to unfile it) must not stop the copy: such rows are repaired after —
- * unfiled, or dropped when they are links — and counted in the log line.
+ * written in one transaction per page with the page's last rowid recorded in `_meta`, so
+ * a call that stops at its query budget, or a run cut short by anything else, resumes at
+ * the last committed page. Foreign keys stay on. The shared database never enforced
+ * them, so a row there may point at nothing — a note whose notebook was removed by a path
+ * that forgot to unfile it, a tag link whose note is gone — and such a row is dealt with
+ * as it arrives rather than by a repair pass afterwards: a note is unfiled, anything else
+ * is skipped and counted. `INSERT OR IGNORE` makes a rescan a no-op for rows already
+ * here.
  *
  * Counts are not copied. The notebook and tag counts and the account totals are rebuilt
  * by the triggers as the rows arrive, and `recountNotes` confirms them at the end;
  * `has_text` is set by the text rows' trigger the same way. FTS is filled by the insert
  * triggers.
  *
- * At the end the object's counts are compared with D1's. A mismatch throws, which resets
- * the object, and drops the cursor first, so the next wake rescans every table from the
- * start (`INSERT OR IGNORE` makes that a no-op for rows already here) and verifies again;
- * the sweep surfaces an account that never converges. The repair count is kept in
- * `_meta` across wakes for the same reason: a wake that verifies what an earlier wake
- * repaired has to know how many rows that was.
+ * A tag or notebook the store already has under the same name is merged rather than
+ * refused: the D1 row's id is mapped to the existing row's, and every row that points
+ * at it is rewritten as it arrives. That is what makes the window above survivable —
+ * the first thing a person does in an empty account is make a note with their usual
+ * tag, and without this the tag D1 then delivers would collide with it — and it is also
+ * what the store's own uniqueness means for two D1 notebooks whose names differ only in
+ * case, which `UNIQUE(name COLLATE NOCASE)` cannot hold apart.
+ *
+ * Verification is by what landed, not by what the tables hold: the rows each page
+ * inserted are counted (`RETURNING`, so a row the store ignored is not) and kept with the
+ * cursor, and at the end inserted plus skipped plus merged must equal D1's count for
+ * every table. A note the owner wrote before the copy ran does not upset that, where
+ * comparing table totals would have called it a row too many. A mismatch is a row the
+ * store refused for a reason it cannot mend — two files on one note under the same
+ * filename, say — or D1 having changed underneath; it is recorded, the account is not
+ * marked, and nothing tries again until the operator says so with `retry`, after looking
+ * with the SQL route and fixing the rows in D1 (which are not frozen, since the account
+ * is not migrated). A retry rescans every table, so a row the operator mended in D1 is
+ * fetched, and re-counts what it skips from zero, since a rescan skips the same rows
+ * again.
  *
  * D1 queries count against the subrequests one invocation may make — fifty on Workers
- * Free — and the copy runs inside the first request's invocation. So each wake spends at
- * most `D1_CALL_BUDGET` queries, then persists where it got to and throws an error marked
- * retryable, which the facade turns into a 503 with Retry-After; the next request, or the
- * sweep's next try, continues. An archive-sized account (4k notes, 4k files, 2.4k texts)
- * is about 55 queries at these page sizes: two wakes.
- *
- * A copy that cannot pass verification stops asking. Each failed verification is counted
- * in `_meta`, and after `MAX_FAILURES` the wake fails at once without a query, so an
- * account with a row the store refuses does not read its whole archive out of D1 on every
- * request for ever. The count is in `stats`, and the sweep names the account.
+ * Free — so each call spends at most `D1_CALL_BUDGET` and then answers `paused` with
+ * its progress committed; the caller calls again. An archive-sized account (4k notes, 4k
+ * files, 2.4k texts) is about 55 queries at these page sizes: two calls.
  */
 
 const META_MIGRATED = 'migrated_from_d1';
-const META_CURSOR = 'copy_cursor';
-const META_REPAIRED = 'copy_repaired';
-/**
- * How many wakes have failed verification. A mismatch the rescan cannot mend — a row the
- * store's constraints refuse that D1 allowed — would otherwise cost a full read of the
- * account from D1 on every request, for ever, against the read budget sign-in shares.
- * After `MAX_FAILURES` the copy fails fast, without touching D1, and the sweep reports the
- * account; the operator's `sql` route is how to look.
- */
-const META_FAILURES = 'copy_failures';
-export const MAX_FAILURES = 3;
-/**
- * A knob for the store tests, which have no other way to trip the budget cheaply: an
- * integer under this key, written through `runInDurableObject`, replaces `D1_CALL_BUDGET`
- * for that object. Nothing in the Worker writes it.
- */
-const META_TEST_BUDGET = 'test_copy_budget';
+/** JSON: where the copy got to and what it has counted; see `Progress`. Gone once the copy is done. */
+const META_PROGRESS = 'copy_progress';
+/** The reason the last verification failed. While it is set, only a `retry` runs the copy. */
+const META_MISMATCH = 'copy_mismatch';
 
 /**
- * D1 queries one wake may spend before it hands back to the caller. Under the Free plan's
- * fifty, with room for the queries the first request's own handler made before it reached
- * the object.
+ * D1 queries one call may spend before it answers `paused`. Under the Free plan's fifty,
+ * with the verification's own queries reserved on top (see `spend`).
  */
 export const D1_CALL_BUDGET = 40;
 
@@ -81,6 +88,19 @@ export const D1_CALL_BUDGET = 40;
  * eight megabytes decoded.
  */
 export const PAGE_CHARS = 4_000_000;
+
+/** A column that points at another table's row: rewritten if that row was merged, and checked. */
+interface Parent {
+  column: string;
+  table: string;
+  /**
+   * When the row pointed at is not here: `unfile` nulls the column and keeps the row (a
+   * note's notebook); `skip` drops the row; `keep` does nothing, for a reference the
+   * store's schema deliberately does not enforce (a field's notebook, which a tombstone
+   * outlives).
+   */
+  onMissing: 'unfile' | 'skip' | 'keep';
+}
 
 /** How D1 stores the marker on the shared tables. Read here and nowhere else in the store. */
 interface Table {
@@ -97,31 +117,56 @@ interface Table {
   sizeColumn?: string;
   /** How the user's rows are found: by their own `user_id`, or through the note's. */
   scope: 'user_id' | 'via_note';
+  /** The store's foreign keys out of this table, checked per row since D1 never did. */
+  parents?: Parent[];
+  /** The condition that finds a row already here by name, for the tables merged rather than refused. */
+  mergeOn?: string;
 }
 
 const TABLES: Table[] = [
-  { name: 'notebooks', columns: ['id', 'name', 'created_at', 'purpose', 'emoji'], page: 1000, scope: 'user_id' },
+  { name: 'notebooks', columns: ['id', 'name', 'created_at', 'purpose', 'emoji'], page: 1000, scope: 'user_id', mergeOn: 'name = ?1 COLLATE NOCASE' },
   {
     name: 'notebook_fields',
     columns: ['id', 'notebook_id', 'name', 'type', 'options', 'position', 'created_at', 'deleted_at', 'notebook_name', 'scale_max', 'scale_step', 'currency'],
     page: 1000,
     scope: 'user_id',
+    parents: [{ column: 'notebook_id', table: 'notebooks', onMissing: 'keep' }],
   },
-  { name: 'tags', columns: ['id', 'name'], page: 1000, scope: 'user_id' },
+  { name: 'tags', columns: ['id', 'name'], page: 1000, scope: 'user_id', mergeOn: 'name = ?1' },
   {
     name: 'notes',
     columns: ['id', 'title', 'body', 'created_at', 'updated_at', 'deleted_at', 'source_enex', 'content_hash', 'notebook_id'],
     page: 500,
     sizeColumn: 'body',
     scope: 'user_id',
+    parents: [{ column: 'notebook_id', table: 'notebooks', onMissing: 'unfile' }],
   },
-  { name: 'note_tags', columns: ['note_id', 'tag_id'], page: 1000, scope: 'via_note' },
-  { name: 'note_fields', columns: ['note_id', 'field_id', 'value_text', 'value_num'], page: 1000, scope: 'user_id' },
+  {
+    name: 'note_tags',
+    columns: ['note_id', 'tag_id'],
+    page: 1000,
+    scope: 'via_note',
+    parents: [
+      { column: 'note_id', table: 'notes', onMissing: 'skip' },
+      { column: 'tag_id', table: 'tags', onMissing: 'skip' },
+    ],
+  },
+  {
+    name: 'note_fields',
+    columns: ['note_id', 'field_id', 'value_text', 'value_num'],
+    page: 1000,
+    scope: 'user_id',
+    parents: [
+      { column: 'note_id', table: 'notes', onMissing: 'skip' },
+      { column: 'field_id', table: 'notebook_fields', onMissing: 'skip' },
+    ],
+  },
   {
     name: 'attachments',
     columns: ['id', 'note_id', 'filename', 'content_type', 'size', 'r2_key', 'created_at'],
     page: 1000,
     scope: 'user_id',
+    parents: [{ column: 'note_id', table: 'notes', onMissing: 'skip' }],
   },
   {
     name: 'attachment_text',
@@ -129,40 +174,60 @@ const TABLES: Table[] = [
     page: 200,
     sizeColumn: 'text',
     scope: 'user_id',
+    parents: [
+      { column: 'attachment_id', table: 'attachments', onMissing: 'skip' },
+      { column: 'note_id', table: 'notes', onMissing: 'skip' },
+    ],
   },
 ];
 
-export interface CopyReport {
-  /** Rows copied per table, in this run. */
-  copied: Record<string, number>;
-  /** Rows the repair pass unfiled or dropped because they pointed at nothing, over every wake. */
-  repaired: number;
-  /** Stored counts `recountNotes` had to correct after the copy; expected 0. */
-  corrections: number;
-  ms: number;
-  resumed: boolean;
+/** What `_meta.copy_progress` holds between calls. */
+interface Progress {
+  /** `<table>:<rowid>` of the last committed page, or null before the first. */
+  cursor: string | null;
+  /** Rows landed per table, over every call: what verification compares with D1. */
+  inserted: Record<string, number>;
+  /** Rows dropped per table for a missing parent, over the current scan. */
+  skipped: Record<string, number>;
+  /** Per table, the D1 id of each row merged into a row already here, and that row's id. */
+  merged: Record<string, Record<string, string>>;
 }
 
-/** Thrown, without a D1 query, once verification has failed `MAX_FAILURES` times. Not retryable. */
-export class CopyStuck extends Error {
-  constructor(readonly failures: number) {
-    super(`copy from D1 failed verification ${failures} times; the account's rows need a look (see the sql route)`);
-    this.name = 'CopyStuck';
-  }
+export interface CopyOptions {
+  /**
+   * Whether to write `migrated_at` to the directory, which freezes the account's D1
+   * rows (migration 0032). Off on the pull-request previews, which share the dev
+   * instance's D1 while dev still runs the old code and writes it: a preview's copy
+   * of an account would otherwise refuse that account's saves on dev until the merge.
+   */
+  freeze: boolean;
+  /** Runs the copy again after a recorded mismatch. Nothing else does. */
+  retry?: boolean | undefined;
+  /** D1 queries this call may spend; the tests' way to see a pause. Defaults to `D1_CALL_BUDGET`. */
+  budget?: number | undefined;
 }
 
-/**
- * Thrown when a wake has spent its query budget with the copy still to finish. Carries
- * `retryable`, which survives RPC as an own property and is what `translateStoreError`
- * reads to answer the caller with a 503 and Retry-After rather than a failure.
- */
-export class CopyIncomplete extends Error {
-  readonly retryable = true;
-  constructor(readonly queries: number, readonly at: string) {
-    super(`copy from D1 paused after ${queries} queries at ${at}; the next request continues it`);
-    this.name = 'CopyIncomplete';
-  }
-}
+export type CopyResult =
+  /** Nothing to do: the copy has run (or the account started empty by design). */
+  | { status: 'already' }
+  /** The budget is spent with tables still to copy; progress is committed, call again. */
+  | { status: 'paused'; queries: number; at: string }
+  /** Verification failed, now or on an earlier call; the account is not marked. See `retry`. */
+  | { status: 'mismatch'; reason: string; queries: number }
+  | {
+      status: 'done';
+      /** Rows landed per table, over every call. */
+      copied: Record<string, number>;
+      /** Rows dropped for a missing parent, notes unfiled for one, and tags and notebooks merged by name. */
+      skipped: number;
+      unfiled: number;
+      merged: number;
+      /** Stored counts `recountNotes` had to correct after the copy; expected 0. */
+      corrections: number;
+      queries: number;
+      ms: number;
+      resumed: boolean;
+    };
 
 /** Whether the copy has run for this object. */
 export function copiedFromD1(sql: Sql): boolean {
@@ -174,15 +239,22 @@ export function markCopiedFromD1(sql: Sql): void {
   sql.exec('INSERT INTO _meta (key, value) VALUES (?1, ?2) ON CONFLICT(key) DO NOTHING', META_MIGRATED, String(Date.now()));
 }
 
+/** The recorded reason the last verification failed, for `stats`. */
+export function copyMismatch(sql: Sql): string | null {
+  return readMeta(sql, META_MISMATCH);
+}
+
 function readMeta(sql: Sql, key: string): string | null {
   return sql.first<{ value: string }>('SELECT value FROM _meta WHERE key = ?1', key)?.value ?? null;
 }
 
-function readCursor(sql: Sql): { table: string; rowid: number } | null {
-  const value = readMeta(sql, META_CURSOR);
-  if (value === null) return null;
-  const at = value.lastIndexOf(':');
-  return { table: value.slice(0, at), rowid: Number(value.slice(at + 1)) };
+function writeMeta(sql: Sql, key: string, value: string): void {
+  sql.exec('INSERT INTO _meta (key, value) VALUES (?1, ?2) ON CONFLICT(key) DO UPDATE SET value = excluded.value', key, value);
+}
+
+function readProgress(sql: Sql): Progress {
+  const raw = readMeta(sql, META_PROGRESS);
+  return raw ? (JSON.parse(raw) as Progress) : { cursor: null, inserted: {}, skipped: {}, merged: {} };
 }
 
 /**
@@ -213,171 +285,131 @@ function countSql(t: Table): string {
     : `SELECT COUNT(*) AS n FROM ${t.name} t JOIN notes n ON n.id = t.note_id WHERE n.user_id = ?1`;
 }
 
+/** Internal: the budget is spent. Never leaves this module. */
+class Paused {
+  constructor(readonly at: string) {}
+}
+
 /**
- * Runs the copy for `userId`, or returns null when it has already run. Idempotent and
- * resumable; see the module comment. `recount` is `NotesStore.recountNotes`, passed in
- * so this module owes nothing to the store's shape.
+ * Runs, or continues, the copy for `userId`. `recount` is `NotesStore.recountNotes`,
+ * passed in so this module owes nothing to the store's shape. Answers rather than throws
+ * for everything the copy itself can decide (see `CopyResult`); a D1 failure propagates.
  */
-export async function copyFromD1(
-  sql: Sql,
-  db: D1Database,
-  userId: string,
-  recount: () => number,
-  /** `ctx.storage.sync`: forces pending writes to disk before a throw resets the object. */
-  flush: () => Promise<void>,
-  opts: {
-    /**
-     * Whether to write `migrated_at` to the directory, which freezes the account's D1
-     * rows (migration 0032). Off on the pull-request previews, which share the dev
-     * instance's D1 while dev still runs the old code and writes it: a preview's copy
-     * of an account would otherwise refuse that account's saves on dev until the merge.
-     */
-    freeze: boolean;
-  } = { freeze: true },
-): Promise<CopyReport | null> {
-  if (copiedFromD1(sql)) return null;
-  const failures = Number(readMeta(sql, META_FAILURES) ?? 0);
-  if (failures >= MAX_FAILURES) throw new CopyStuck(failures);
+export async function copyFromD1(sql: Sql, db: D1Database, userId: string, recount: () => number, opts: CopyOptions): Promise<CopyResult> {
+  if (copiedFromD1(sql)) return { status: 'already' };
+  const mismatch = readMeta(sql, META_MISMATCH);
+  if (mismatch !== null && !opts.retry) return { status: 'mismatch', reason: mismatch, queries: 0 };
   const started = Date.now();
-  const budget = Number(readMeta(sql, META_TEST_BUDGET)) || D1_CALL_BUDGET;
+  const budget = opts.budget ?? D1_CALL_BUDGET;
 
   // Every D1 query goes through here, so the budget is counted where it is spent. A page
-  // is fetched only while the verification's own queries — one count per table — would
-  // still fit after it; past that, the wake stops with its state persisted and tells the
-  // caller to come back. The verification itself never pauses: its progress is not
-  // persisted, so a wake that could pause inside it would restart it every time and
+  // is fetched only while the verification's own queries — one count per table, and the
+  // directory write — would still fit after it; past that, the call stops with its state
+  // committed and answers `paused`. The verification itself never pauses: its progress is
+  // not persisted, so a call that could pause inside it would restart it every time and
   // never finish.
   let queries = 0;
-  const spend = async (at: string, reserve = TABLES.length + 1) => {
-    if (queries + 1 + reserve > budget) {
-      await flush();
-      throw new CopyIncomplete(queries, at);
-    }
+  const spend = (at: string, reserve = TABLES.length + 1) => {
+    if (queries + 1 + reserve > budget) throw new Paused(at);
     queries += 1;
   };
 
-  // A database with no note tables — a fresh instance, the test environment, or an
-  // instance after the tables are dropped — has nothing to copy. The flag is set so the
-  // question is never asked again.
-  await spend('probe', 0);
-  const hasTables = await db
-    .prepare(`SELECT 1 AS hit FROM sqlite_master WHERE type = 'table' AND name = 'notes'`)
-    .first<{ hit: number }>();
-  if (!hasTables) {
-    markCopiedFromD1(sql);
-    return { copied: {}, repaired: 0, corrections: 0, ms: Date.now() - started, resumed: false };
-  }
-
-  const cursor = readCursor(sql);
-  if (cursor) console.log(`[store] copy resumed user=${userId} at=${cursor.table}:${cursor.rowid}`);
-  const copied: Record<string, number> = {};
-  // Off for the copy, on again after: the shared database never enforced these, and a
-  // dangling reference there must not stop the copy here. Outside any transaction, where
-  // the pragma is a no-op.
-  sql.exec('PRAGMA foreign_keys = OFF');
   try {
-    let skipping = cursor !== null;
+    // A database with no note tables — a fresh instance, the test environment, or an
+    // instance after the tables are dropped — has nothing to copy. The flag is set so the
+    // question is never asked again.
+    spend('probe', 0);
+    const hasTables = await db.prepare(`SELECT 1 AS hit FROM sqlite_master WHERE type = 'table' AND name = 'notes'`).first<{ hit: number }>();
+    if (!hasTables) {
+      markCopiedFromD1(sql);
+      return { status: 'done', copied: {}, skipped: 0, unfiled: 0, merged: 0, corrections: 0, queries, ms: Date.now() - started, resumed: false };
+    }
+
+    const progress = readProgress(sql);
+    const resumed = progress.cursor !== null;
+    if (mismatch !== null) {
+      // A retry: rescan from the first row. Rows already here are ignored by the insert
+      // and stay counted; rows skipped last time are skipped and counted again, so that
+      // count starts over.
+      sql.exec('DELETE FROM _meta WHERE key = ?1', META_MISMATCH);
+      progress.cursor = null;
+      progress.skipped = {};
+    }
+    if (resumed) console.log(`[store] copy resumed user=${userId} at=${progress.cursor}`);
+    let unfiled = 0;
+
+    let skipping = progress.cursor !== null;
     for (const t of TABLES) {
       let rowid = 0;
       if (skipping) {
-        if (t.name !== cursor!.table) continue; // already copied whole on an earlier run
-        rowid = cursor!.rowid;
+        const at = progress.cursor!.lastIndexOf(':');
+        if (t.name !== progress.cursor!.slice(0, at)) continue; // already copied whole on an earlier call
+        rowid = Number(progress.cursor!.slice(at + 1));
         skipping = false;
       }
       const insert = `INSERT OR IGNORE INTO ${t.name} (${t.columns.join(', ')})
-                      VALUES (${t.columns.map((_, i) => `?${i + 1}`).join(', ')})`;
+                      VALUES (${t.columns.map((_, i) => `?${i + 1}`).join(', ')}) RETURNING 1 AS n`;
       for (;;) {
-        await spend(`${t.name}:${rowid}`);
+        spend(`${t.name}:${rowid}`);
         const page = await db
           .prepare(selectPage(t))
           .bind(userId, rowid, t.page, ...(t.sizeColumn ? [PAGE_CHARS] : []))
           .all<Record<string, unknown> & { rid: number }>();
         if (page.results.length === 0) break;
         sql.tx(() => {
-          for (const r of page.results) {
-            sql.exec(insert, ...t.columns.map((c) => r[c] as string | number | null));
+          rows: for (const r of page.results) {
+            for (const p of t.parents ?? []) {
+              const value = progress.merged[p.table]?.[r[p.column] as string] ?? r[p.column];
+              r[p.column] = value;
+              if (value === null || value === undefined || p.onMissing === 'keep') continue;
+              if (sql.first<{ hit: number }>(`SELECT 1 AS hit FROM ${p.table} WHERE id = ?1`, value as string)) continue;
+              if (p.onMissing === 'unfile') {
+                r[p.column] = null;
+                unfiled += 1;
+              } else {
+                progress.skipped[t.name] = (progress.skipped[t.name] ?? 0) + 1;
+                continue rows;
+              }
+            }
+            const landed = sql.exec<{ n: number }>(insert, ...t.columns.map((c) => (r[c] ?? null) as string | number | null)).length;
+            progress.inserted[t.name] = (progress.inserted[t.name] ?? 0) + landed;
+            if (landed === 0 && t.mergeOn) {
+              // Not inserted, and there is a row of this name: merge into it, unless the
+              // row of this name is this row, already here from an earlier page.
+              const existing = sql.first<{ id: string }>(`SELECT id FROM ${t.name} WHERE ${t.mergeOn}`, r['name'] as string);
+              if (existing && existing.id !== r['id']) (progress.merged[t.name] ??= {})[r['id'] as string] = existing.id;
+            }
           }
-          const last = page.results[page.results.length - 1]!;
-          sql.exec(
-            'INSERT INTO _meta (key, value) VALUES (?1, ?2) ON CONFLICT(key) DO UPDATE SET value = excluded.value',
-            META_CURSOR,
-            `${t.name}:${last.rid}`,
-          );
+          progress.cursor = `${t.name}:${page.results[page.results.length - 1]!.rid}`;
+          writeMeta(sql, META_PROGRESS, JSON.stringify(progress));
         });
-        copied[t.name] = (copied[t.name] ?? 0) + page.results.length;
         rowid = page.results[page.results.length - 1]!.rid;
       }
-    }
-
-    // Rows the shared database let point at nothing. A note in a notebook that is gone
-    // is unfiled, which is what deleting the notebook should have done; a link or a
-    // value or a file whose note is gone is dropped, since nothing could ever read it.
-    // The count accumulates in `_meta` across wakes: a later wake that only verifies
-    // must still know how many rows an earlier one took away.
-    let repairedNow = 0;
-    const fix = (statement: string) => {
-      repairedNow += sql.exec<{ n: number }>(`${statement} RETURNING 1 AS n`).length;
-    };
-    sql.tx(() => {
-      fix(`UPDATE notes SET notebook_id = NULL WHERE notebook_id IS NOT NULL AND notebook_id NOT IN (SELECT id FROM notebooks)`);
-      fix(`DELETE FROM note_tags WHERE note_id NOT IN (SELECT id FROM notes) OR tag_id NOT IN (SELECT id FROM tags)`);
-      fix(`DELETE FROM note_fields WHERE note_id NOT IN (SELECT id FROM notes) OR field_id NOT IN (SELECT id FROM notebook_fields)`);
-      fix(`DELETE FROM attachments WHERE note_id NOT IN (SELECT id FROM notes)`);
-      fix(`DELETE FROM attachment_text WHERE attachment_id NOT IN (SELECT id FROM attachments) OR note_id NOT IN (SELECT id FROM notes)`);
-      sql.exec(
-        `INSERT INTO _meta (key, value) VALUES (?1, ?2)
-         ON CONFLICT(key) DO UPDATE SET value = CAST(_meta.value AS INTEGER) + CAST(excluded.value AS INTEGER)`,
-        META_REPAIRED,
-        String(repairedNow),
-      );
-    });
-    const repaired = Number(readMeta(sql, META_REPAIRED) ?? 0);
-    sql.exec('PRAGMA foreign_keys = ON');
-    const violations = sql.exec('PRAGMA foreign_key_check');
-    if (violations.length > 0) {
-      throw new Error(`copy from D1 left ${violations.length} foreign key violations after repair`);
     }
 
     // The triggers built every count as the rows arrived; this proves it, and is the
     // only recount an object should ever need.
     const corrections = recount();
 
-    // What arrived against what D1 holds. Read at the end rather than the start, since
-    // the tables are frozen and a count is a query the budget has to cover. The tables
-    // the repair can touch may come up short by exactly what it removed, over every
-    // wake; every other table must match. A mismatch drops the cursor before it throws,
-    // so the next wake rescans from the first row rather than verifying the same tail.
-    const actual = (name: string) => sql.first<{ n: number }>(`SELECT COUNT(*) AS n FROM ${name}`)?.n ?? 0;
-    const expected: Record<string, number> = {};
+    // What landed against what D1 holds, table by table. Read at the end rather than the
+    // start, since a count is a query the budget has to cover and the tables are still
+    // being read. A mismatch is recorded with the cursor dropped, so a retry rescans
+    // from the first row rather than verifying the same tail.
     for (const t of TABLES) {
-      await spend(`count:${t.name}`, 0);
-      expected[t.name] = (await db.prepare(countSql(t)).bind(userId).first<{ n: number }>())?.n ?? 0;
-    }
-    // Flushed to disk before the throw: the throw resets the object, and a write the
-    // runtime has not yet confirmed is discarded with it — measured 2026-09-30, where the
-    // DELETE alone, even in its own transaction, never reached the next wake, which then
-    // verified the same tail and failed the same way for good.
-    const incomplete = async (why: string): Promise<Error> => {
-      sql.exec('DELETE FROM _meta WHERE key = ?1', META_CURSOR);
-      sql.exec(
-        `INSERT INTO _meta (key, value) VALUES (?1, '1')
-         ON CONFLICT(key) DO UPDATE SET value = CAST(_meta.value AS INTEGER) + 1`,
-        META_FAILURES,
-      );
-      await flush();
-      return new Error(`copy from D1 incomplete: ${why}; the next wake rescans every table (failure ${failures + 1} of ${MAX_FAILURES})`);
-    };
-    for (const name of ['notebooks', 'notebook_fields', 'tags', 'notes']) {
-      if (actual(name) !== expected[name]) {
-        throw await incomplete(`${name} has ${actual(name)} rows, D1 has ${expected[name]}`);
+      spend(`count:${t.name}`, 0);
+      const expected = (await db.prepare(countSql(t)).bind(userId).first<{ n: number }>())?.n ?? 0;
+      const inserted = progress.inserted[t.name] ?? 0;
+      const skipped = progress.skipped[t.name] ?? 0;
+      const merged = Object.keys(progress.merged[t.name] ?? {}).length;
+      if (inserted + skipped + merged !== expected) {
+        const reason = `${t.name}: ${inserted + skipped + merged} of ${expected} rows landed (${inserted} copied, ${skipped} skipped for a missing parent, ${merged} merged by name)`;
+        sql.tx(() => {
+          writeMeta(sql, META_MISMATCH, reason);
+          writeMeta(sql, META_PROGRESS, JSON.stringify({ ...progress, cursor: null }));
+        });
+        console.error(`[store] copy mismatch user=${userId} ${reason}`);
+        return { status: 'mismatch', reason, queries };
       }
-    }
-    let short = 0;
-    for (const name of ['note_tags', 'note_fields', 'attachments', 'attachment_text']) {
-      short += (expected[name] ?? 0) - actual(name);
-    }
-    if (short > repaired || short < 0) {
-      throw await incomplete(`child tables are ${short} rows short, ${repaired} repaired`);
     }
 
     // The account's D1 rows are frozen from this moment: the directory row is what the
@@ -386,27 +418,24 @@ export async function copyFromD1(
     // old isolate could write into. One query, inside the budget's reserve. Not on a
     // preview; see `opts.freeze`.
     if (opts.freeze) {
-      await spend('directory', 0);
-      await db
-        .prepare(`UPDATE account_directory SET migrated_at = COALESCE(migrated_at, ?2) WHERE user_id = ?1`)
-        .bind(userId, Date.now())
-        .run();
+      spend('directory', 0);
+      await db.prepare(`UPDATE account_directory SET migrated_at = COALESCE(migrated_at, ?2) WHERE user_id = ?1`).bind(userId, Date.now()).run();
     }
     sql.tx(() => {
       markCopiedFromD1(sql);
-      sql.exec('DELETE FROM _meta WHERE key IN (?1, ?2, ?3, ?4)', META_CURSOR, META_REPAIRED, META_TEST_BUDGET, META_FAILURES);
+      sql.exec('DELETE FROM _meta WHERE key IN (?1, ?2)', META_PROGRESS, META_MISMATCH);
     });
-    const report = { copied, repaired, corrections, ms: Date.now() - started, resumed: cursor !== null };
+    const skipped = Object.values(progress.skipped).reduce((n, v) => n + v, 0);
+    const merged = Object.values(progress.merged).reduce((n, m) => n + Object.keys(m).length, 0);
+    const report = { status: 'done' as const, copied: progress.inserted, skipped, unfiled, merged, corrections, queries, ms: Date.now() - started, resumed };
     console.log(
-      `[store] migrated user=${userId} notes=${actual('notes')} attachments=${actual('attachments')} texts=${actual('attachment_text')} repaired=${repaired} corrections=${corrections} queries=${queries} resumed=${report.resumed} ms=${report.ms}`,
+      `[store] migrated user=${userId} notes=${report.copied['notes'] ?? 0} attachments=${report.copied['attachments'] ?? 0} texts=${report.copied['attachment_text'] ?? 0} skipped=${skipped} unfiled=${unfiled} merged=${merged} corrections=${corrections} queries=${queries} resumed=${resumed} ms=${report.ms}`,
     );
     return report;
   } catch (err) {
-    // Whatever happened, the engine must not be left with foreign keys off: the object is
-    // about to reset, but the pragma is per connection and the next wake checks it.
-    sql.exec('PRAGMA foreign_keys = ON');
-    if (err instanceof CopyIncomplete) {
-      console.log(`[store] copy paused user=${userId} queries=${err.queries} at=${err.at}`);
+    if (err instanceof Paused) {
+      console.log(`[store] copy paused user=${userId} queries=${queries} at=${err.at}`);
+      return { status: 'paused', queries, at: err.at };
     }
     throw err;
   }

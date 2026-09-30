@@ -3,8 +3,8 @@
  * read of their own store, and what only an operator may do. Runs against a live
  * `wrangler dev`; see test/README.md.
  *
- * The operator's own paths — `?user=` on another account, the SQL route, the sweep — are
- * exercised only on the refusal side here: the suite signs up throwaway actors, and none
+ * The operator's own paths — `?user=` on another account, the SQL route, the copy, the
+ * sweep — are exercised only on the refusal side here: the suite signs up throwaway actors, and none
  * of them is in the instance's OPERATOR_EMAILS. The sweep itself is tested against real
  * objects in apps/store-tests.
  */
@@ -59,14 +59,12 @@ describe('store stats', () => {
       userId: string;
       counts: { notes: number; tags: number };
       migrations: string[];
-      migratedFromD1: boolean;
       wiped: boolean;
     };
     expect(stats.userId).toBe(alice.userId);
     expect(stats.counts.notes).toBe(1);
     expect(stats.counts.tags).toBe(1);
     expect(stats.migrations).toEqual(['0001-init']);
-    expect(stats.migratedFromD1).toBe(true);
     expect(stats.wiped).toBe(false);
   });
 
@@ -135,6 +133,8 @@ describe('operator-only routes', () => {
       body: JSON.stringify({ query: 'SELECT COUNT(*) AS n FROM notes' }),
     }));
     expect(sql.status).toBe(404);
+    const copy = await fetch(`${BASE}/api/admin/store/copy`, as(alice, { method: 'POST' }));
+    expect(copy.status).toBe(404);
     const sweep = await fetch(`${BASE}/api/admin/store/sweep`, as(alice, { method: 'POST' }));
     expect(sweep.status).toBe(404);
   });

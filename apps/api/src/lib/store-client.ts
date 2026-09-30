@@ -57,9 +57,9 @@ const TRANSIENT = /overloaded|reset because its code was updated|transient|netwo
  * the error the store threw. The field name survives as an own property, which is enough
  * to rebuild the real thing; the routes and the MCP tools then keep their `instanceof`.
  * Transient object failures become `StoreUnavailable`: the runtime's own (a reset, an
- * overload, a lost connection), an invocation that ran out of subrequests, and an error
- * the object marked `retryable` itself — the copy from D1 pausing at its query budget,
- * which the next request continues. Anything else passes through as it arrived.
+ * overload, a lost connection), which carry `retryable` or `overloaded` as own
+ * properties, and an invocation that ran out of subrequests. Anything else passes
+ * through as it arrived.
  */
 export function translateStoreError(err: unknown): unknown {
   if (err && typeof err === 'object') {

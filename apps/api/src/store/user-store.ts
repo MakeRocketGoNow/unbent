@@ -10,7 +10,7 @@ import {
   type NotebookDefinition,
 } from '@unbent/shared';
 import { AttachmentsStore } from './attachments.js';
-import { copiedFromD1, copyFromD1, CopyStuck, markCopiedFromD1 } from './copy-from-d1.js';
+import { copiedFromD1, copyFromD1, copyMismatch, markCopiedFromD1, type CopyOptions, type CopyResult } from './copy-from-d1.js';
 import { appliedMigrations, migrate } from './migrate.js';
 import { NotesStore, type CountOptions, type ListOptions, type SearchFilters } from './notes.js';
 import { cursorAfter, nextCursor } from './notes-shared.js';
@@ -71,10 +71,8 @@ export interface StoreStats {
   wiped: boolean;
   /** Whether the one-time copy from D1 has run (or was found unnecessary). What the sweep writes to the directory. */
   migratedFromD1: boolean;
-  /** Wakes whose copy failed verification; the copy stops trying at `MAX_FAILURES`. */
-  copyFailures: number;
-  /** The copy has given up (`MAX_FAILURES` reached): data calls refuse, inspection and wiping still work. */
-  stuck: boolean;
+  /** Why the copy's last verification failed, while it waits for the operator; see `copyFromD1`. */
+  copyMismatch: string | null;
 }
 
 /**
@@ -90,8 +88,10 @@ export interface StoreUsage {
   notes: number;
   migratedFromD1: boolean;
   wiped: boolean;
-  stuck: boolean;
 }
+
+/** What `copyFromD1` answers: the copy's own result, with the usage the sweep records. */
+export type StoreCopyResult = CopyResult & { usage: StoreUsage };
 
 /**
  * How many bytes of note bodies and file texts one export page carries before it is cut
@@ -122,7 +122,8 @@ export const DUMP_PAGE_BYTES = 8 * 1024 * 1024;
  * a half-applied schema: each schema file the object has no record of is applied in one
  * transaction, and on every wake the object checks that foreign keys are enforced (the
  * engine's default, but the cascades depend on it) and that `_meta.user_id` is the name
- * it was created under. Every other wake is local reads only.
+ * it was created under. Every wake is local reads only: nothing here reaches D1 until
+ * something calls `copyFromD1`.
  *
  * Every public method is one billable request to the object, so the surface has two
  * layers: the repository methods one for one, for the facade that keeps `NotesRepo`'s
@@ -143,14 +144,6 @@ export class UserStore extends DurableObject<StoreEnv> {
   private notes: NotesStore;
   private attachments: AttachmentsStore;
   private wiped = false;
-  /**
-   * Set when the copy from D1 has given up. The object stays up rather than resetting,
-   * so the operator can inspect it and a deletion can still wipe it; only the data
-   * methods refuse, through `ready()`. A reset would have made every call fail the same
-   * way — the inspection route the error message points at included — and left no way
-   * back short of shipping code (found in review).
-   */
-  private stuck: CopyStuck | null = null;
 
   constructor(ctx: DurableObjectState, env: StoreEnv) {
     super(ctx, env);
@@ -171,17 +164,6 @@ export class UserStore extends DurableObject<StoreEnv> {
         return;
       }
       this.bootstrap();
-      // The one-time copy of this account's rows from D1, on the first wake after the
-      // cutover and never again. Inside the block, so no request sees a half-copied
-      // account; resumable, so a reset part way loses only the page in flight.
-      try {
-        await copyFromD1(this.sql, env.DB, name, () => this.notes.recountNotes(), () => ctx.storage.sync(), {
-          freeze: env.STORE_FREEZE_D1 !== '0',
-        });
-      } catch (err) {
-        if (!(err instanceof CopyStuck)) throw err;
-        this.stuck = err;
-      }
     });
   }
 
@@ -221,15 +203,6 @@ export class UserStore extends DurableObject<StoreEnv> {
    * purged — so the copy from D1 is marked done rather than run.
    */
   private ready(): void {
-    this.inspectable();
-    if (this.stuck) throw this.stuck;
-  }
-
-  /**
-   * What the operator's methods need and no more: a schema to read, rebuilt after a
-   * wipe. A stuck copy does not stop these, which is the point of staying up.
-   */
-  private inspectable(): void {
     if (!this.wiped) return;
     this.bootstrap();
     markCopiedFromD1(this.sql);
@@ -247,7 +220,7 @@ export class UserStore extends DurableObject<StoreEnv> {
   stats(): StoreStats {
     const counts = Object.fromEntries(DATA_TABLES.map((t) => [t, 0])) as Record<DataTable, number>;
     if (this.wiped) {
-      return { userId: this.userId, databaseSize: this.ctx.storage.sql.databaseSize, migrations: [], counts, wiped: true, migratedFromD1: true, copyFailures: 0, stuck: false };
+      return { userId: this.userId, databaseSize: this.ctx.storage.sql.databaseSize, migrations: [], counts, wiped: true, migratedFromD1: true, copyMismatch: null };
     }
     for (const table of DATA_TABLES) {
       counts[table] = this.sql.first<{ n: number }>(`SELECT COUNT(*) AS n FROM ${table}`)?.n ?? 0;
@@ -259,23 +232,53 @@ export class UserStore extends DurableObject<StoreEnv> {
       counts,
       wiped: false,
       migratedFromD1: copiedFromD1(this.sql),
-      copyFailures: Number(this.sql.first<{ value: string }>(`SELECT value FROM _meta WHERE key = 'copy_failures'`)?.value ?? 0),
-      stuck: this.stuck !== null,
+      copyMismatch: copyMismatch(this.sql),
     };
   }
 
   /** What the sweep records: a few rows per account, never a table scan. See `StoreUsage`. */
   usage(): StoreUsage {
     const databaseSize = this.ctx.storage.sql.databaseSize;
-    if (this.wiped) return { databaseSize, notes: 0, migratedFromD1: true, wiped: true, stuck: false };
+    if (this.wiped) return { databaseSize, notes: 0, migratedFromD1: true, wiped: true };
     const counts = this.sql.first<{ live: number; trashed: number }>(`SELECT live, trashed FROM note_counts WHERE id = 1`);
     return {
       databaseSize,
       notes: (counts?.live ?? 0) + (counts?.trashed ?? 0),
       migratedFromD1: copiedFromD1(this.sql),
       wiped: false,
-      stuck: this.stuck !== null,
     };
+  }
+
+  /**
+   * Runs, or continues, the one-time copy of this account's rows from D1; see
+   * copy-from-d1.ts for what it promises and what it answers. The sweep calls it for
+   * every account not yet copied, and the operator's route for one; nothing else does,
+   * and in particular no wake. The answer carries the usage the sweep would otherwise
+   * have to ask for in a second call, whatever the copy did.
+   *
+   * Under `blockConcurrencyWhile`, so two callers cannot interleave — the sweep and the
+   * operator at once would each count the pages the other inserted as its own — and so
+   * nothing reads the account between two of its pages. The callback swallows its error
+   * and rethrows it outside the block: a throw *inside* one resets the object, and a
+   * reset discards writes the runtime has not yet confirmed (measured 2026-09-30), which
+   * could take the committed cursor with it.
+   */
+  async copyFromD1(opts: Pick<CopyOptions, 'retry' | 'budget'> = {}): Promise<StoreCopyResult> {
+    this.ready();
+    let outcome: CopyResult | Error | undefined;
+    await this.ctx.blockConcurrencyWhile(async () => {
+      try {
+        outcome = await copyFromD1(this.sql, this.env.DB, this.userId, () => this.notes.recountNotes(), {
+          freeze: this.env.STORE_FREEZE_D1 !== '0',
+          retry: opts.retry,
+          budget: opts.budget,
+        });
+      } catch (err) {
+        outcome = err instanceof Error ? err : new Error(String(err));
+      }
+    });
+    if (outcome instanceof Error) throw outcome;
+    return { ...outcome!, usage: this.usage() };
   }
 
   /**
@@ -294,9 +297,6 @@ export class UserStore extends DurableObject<StoreEnv> {
     // After `deleteAll`, so it is the one thing left; see `WIPED_KEY`.
     this.ctx.storage.kv.put(WIPED_KEY, true);
     this.wiped = true;
-    // A wiped account starts empty and never copies again, so there is nothing to be
-    // stuck on: this is also the operator's way out for an account whose copy gave up.
-    this.stuck = null;
   }
 
   /**
@@ -318,7 +318,7 @@ export class UserStore extends DurableObject<StoreEnv> {
     truncated: boolean;
     rowsRead: number;
   } {
-    this.inspectable();
+    this.ready();
     const head = query.trimStart().slice(0, 8).toUpperCase();
     if (!/^(SELECT|WITH|EXPLAIN)\b/.test(head)) {
       throw new Error('readOnlySql runs SELECT, WITH or EXPLAIN statements only');
@@ -362,7 +362,7 @@ export class UserStore extends DurableObject<StoreEnv> {
    * hundred. The one query here that bypasses the `Sql` seam's metering, for that reason.
    */
   dumpPage(table: DumpTable, afterRowid = 0, limit = 5000): { sql: string; rows: number; nextRowid: number | null } {
-    this.inspectable();
+    this.ready();
     if (!DUMP_TABLES.includes(table)) throw new Error(`not a data table: ${table}`);
     const cursor = this.ctx.storage.sql.exec<Row & { _rowid: number }>(
       `SELECT rowid AS _rowid, * FROM ${table} WHERE rowid > ?1 ORDER BY rowid LIMIT ?2`,
@@ -397,7 +397,7 @@ export class UserStore extends DurableObject<StoreEnv> {
    * the virtual table, which creates them itself and refuses to if they already exist.
    */
   schemaSql(): string[] {
-    this.inspectable();
+    this.ready();
     return this.sql
       .exec<{ sql: string }>(
         `SELECT sql FROM sqlite_master
@@ -659,3 +659,4 @@ function sqlLiteral(value: unknown): string {
 // into the store modules.
 export type { CountOptions, ListOptions, SearchFilters };
 export type { FieldDef, FieldValue, NoteFieldsPatch };
+export type { CopyResult };
