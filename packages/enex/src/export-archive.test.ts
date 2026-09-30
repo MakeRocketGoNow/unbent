@@ -216,6 +216,27 @@ describe('writeArchive', () => {
     expect(source.pages).toBe(3);
   });
 
+  it('gives two same-titled notes whose ids share a prefix a directory each', async () => {
+    // The shape a Notion import leaves: page ids made close together agree on their first
+    // eight digits, and a database of visits repeats its titles.
+    const files = await archive(
+      fake({
+        notes: [
+          note({ id: '1f2e3d4c-aaaa-4000-8000-000000000001', title: 'Acme Diner', body: 'first' }),
+          note({ id: '1f2e3d4c-bbbb-4000-8000-000000000002', title: 'Acme Diner', body: 'second' }),
+          // The same note listed twice still writes, rather than failing the archive.
+          note({ id: '1f2e3d4c-bbbb-4000-8000-000000000002', title: 'Acme Diner', body: 'second' }),
+        ],
+      }),
+    );
+    expect([...files.keys()].sort()).toEqual([
+      'acme-diner-1f2e3d4c/acme-diner-1f2e3d4c.md',
+      'acme-diner-1f2e3d4cbbbb40008000000000000002-2/acme-diner-1f2e3d4cbbbb40008000000000000002-2.md',
+      'acme-diner-1f2e3d4cbbbb40008000000000000002/acme-diner-1f2e3d4cbbbb40008000000000000002.md',
+    ]);
+    expect(parse(files.get('acme-diner-1f2e3d4c/acme-diner-1f2e3d4c.md')!).body).toBe('first');
+  });
+
   it('writes a valid archive that says so when there is nothing to export', async () => {
     const files = await archive(fake({ notes: [] }));
     expect([...files.keys()]).toEqual(['README.txt']);

@@ -1,10 +1,17 @@
 import { useEffect, useRef } from 'react';
+import { Link, type LinkProps } from '@tanstack/react-router';
 
 import { Button } from './Button';
 
 export interface SnackbarAction {
   label: string;
   onClick: () => void;
+}
+
+/** A place to go about the result, e.g. the page a background run reports on. */
+export interface SnackbarLink {
+  label: string;
+  to: LinkProps['to'];
 }
 
 export interface SnackbarProps {
@@ -18,6 +25,12 @@ export interface SnackbarProps {
   tone: 'info' | 'error';
   /** One optional action, e.g. Undo. Its click dismisses the snackbar too. */
   action?: SnackbarAction;
+  /**
+   * Or a link, when what there is to do about it is go and look. A link and not an
+   * action, because it navigates: it can be opened in a new tab and should be. It does
+   * not dismiss — a snackbar that is about a page hides itself on that page.
+   */
+  link?: SnackbarLink;
   /**
    * Milliseconds until it clears itself. Omit — the error case — and it stays until the
    * close button, so a failure is never lost to a timer before it is read.
@@ -43,7 +56,7 @@ export interface SnackbarProps {
  * `role="status"` with `aria-live="polite"` so a screen reader hears the outcome without
  * being yanked from what it was on — the same register the reader gets the "Saved" in.
  */
-export function Snackbar({ message, tone, action, duration, onDismiss }: SnackbarProps) {
+export function Snackbar({ message, tone, action, link, duration, onDismiss }: SnackbarProps) {
   // The latest onDismiss without resetting the timer when the parent re-renders: the timer
   // is tied to this message's life, not to each render of it.
   const dismissRef = useRef(onDismiss);
@@ -70,6 +83,11 @@ export function Snackbar({ message, tone, action, duration, onDismiss }: Snackba
         >
           {action.label}
         </Button>
+      )}
+      {link && (
+        <Link to={link.to} className="snackbar-action snackbar-link">
+          {link.label}
+        </Link>
       )}
       <Button
         variant="quiet"

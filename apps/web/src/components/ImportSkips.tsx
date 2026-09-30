@@ -9,12 +9,18 @@ import { groupByMatch, type SkipGroup, type SkipLog } from './import-skips.js';
  * copies inside the file. Listing them with the reason, and a way to open the note that
  * was kept, turns the question into something the person can check.
  */
-export function ImportSkips({ log }: { log: SkipLog }) {
+export function ImportSkips({ log, run }: { log: SkipLog; run: number }) {
   const total = log.duplicateCount + log.presentCount;
   if (total === 0) return null;
 
   return (
-    <details className="import-skips">
+    <details
+      className="import-skips"
+      open={openFor === run}
+      onToggle={(e) => {
+        openFor = e.currentTarget.open ? run : null;
+      }}
+    >
       <summary className="small">
         {notes(total)} skipped
       </summary>
@@ -48,6 +54,13 @@ export function ImportSkips({ log }: { log: SkipLog }) {
   );
 }
 
+/**
+ * The run whose list was left open. A row opens its note in place, and Back remounts
+ * this; without it the list came back closed, so reading down it meant reopening it after
+ * every note. Keyed by run so the next import's list starts closed.
+ */
+let openFor: number | null = null;
+
 function notes(count: number): string {
   return `${count.toLocaleString()} note${count === 1 ? '' : 's'}`;
 }
@@ -62,16 +75,11 @@ function SkipList({ groups }: { groups: SkipGroup[] }) {
     <ul className="small">
       {groups.map((group) => (
         <li key={group.noteId}>
-          {/* A new tab, because leaving this page unmounts the panel. During a run that
-              terminates the worker and ends the import; after one it throws the summary
-              away before the rest of this list has been read. */}
-          <Link
-            to="/notes/$noteId"
-            params={{ noteId: group.noteId }}
-            target="_blank"
-            rel="noopener"
-            className="link"
-          >
+          {/* In place, like any other link to a note. These opened a new tab while
+              leaving this page ended the run and lost the summary; the run is held by
+              `import-run.ts` now, so Back returns to the same list. A new tab was also
+              no answer in the Android app, which has none. */}
+          <Link to="/notes/$noteId" params={{ noteId: group.noteId }} className="link">
             {group.title}
           </Link>
           {group.copies > 1 && <span className="muted"> ×{group.copies}</span>}

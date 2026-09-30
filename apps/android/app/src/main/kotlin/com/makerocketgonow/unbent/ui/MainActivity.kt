@@ -485,10 +485,21 @@ class MainActivity : ComponentActivity() {
         ): Boolean = chooser.open(filePathCallback, fileChooserParams)
 
         /**
-         * `target=_blank`. Every one on the site is a link off it — a note's URL field, a
-         * provider's page — which belongs in a Custom Tab, not a second WebView with the
-         * app's session in it. The new window is a throwaway that exists only to learn the
-         * address it was asked to open, send it where [classify] says, and go.
+         * `target=_blank`. The new window is a throwaway that exists only to learn the
+         * address it was asked to open, send it where it belongs, and go.
+         *
+         * Off the site that is a Custom Tab (or the mail app, the dialer): a second
+         * WebView would run that page with this app's session in it. On the site it is
+         * [open], the same in-place navigation a notification uses. Loading the address
+         * into the app used to look right — there are no tabs — but a full navigation
+         * destroys the page, so a link in a note dropped unsaved edits and an upload in
+         * flight. In place, the editor flushes and the upload carries on.
+         *
+         * In place is still leaving the page, though, so it keeps only what outlives a
+         * route change. Work a page does in the background has to be held above the page
+         * to survive it, the way an import run is (`import-run.ts`) — its skipped-note
+         * rows used to go unlinked in the app mid-run, because leaving ended the import.
+         * They are ordinary in-place links now and never reach this.
          */
         override fun onCreateWindow(
             view: WebView,
@@ -503,7 +514,12 @@ class MainActivity : ComponentActivity() {
                 if (handled || url.startsWith("about:")) return
                 handled = true
                 when (val destination = classify(origin, url)) {
-                    Destination.InApp -> this@MainActivity.webView?.loadUrl(url)
+                    // A `blob:`, `data:` or `javascript:` address the page made is dropped on
+                    // purpose. It has no tab to go to, and loading it here would replace the
+                    // page exactly as a same-origin link used to. Nothing on the site opens
+                    // one in a new window; a feature that wants to should hand the app a path
+                    // or a file, not rely on this.
+                    Destination.InApp -> inAppWindowPath(origin, url)?.let { open(it) }
                     else -> openOutside(this@MainActivity, destination)
                 }
                 // Posted through the host, not the popup. The popup is never attached to a
