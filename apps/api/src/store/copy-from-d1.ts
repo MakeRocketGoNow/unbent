@@ -44,7 +44,12 @@ import type { Sql } from './sql.js';
  * the first thing a person does in an empty account is make a note with their usual
  * tag, and without this the tag D1 then delivers would collide with it — and it is also
  * what the store's own uniqueness means for two D1 notebooks whose names differ only in
- * case, which `UNIQUE(name COLLATE NOCASE)` cannot hold apart.
+ * case, which `UNIQUE(name COLLATE NOCASE)` cannot hold apart. That second kind is a
+ * silent change to an account's structure, so every merge is counted in the result and
+ * the runbook expects zero for an account that predates the cutover. Fields are not
+ * merged: a `notebook_fields` row that collides on `(notebook_id, name)` after its
+ * notebook was merged is ignored by the insert and surfaces as a mismatch, because two
+ * fields of one name can differ in type and a wrong merge would be worse than a stop.
  *
  * Verification is by what landed, not by what the tables hold: the rows each page
  * inserted are counted (`RETURNING`, so a row the store ignored is not) and kept with the

@@ -1368,7 +1368,12 @@ the reason, and the sweep names the account every pass.
 - `POST …/sql` — one `SELECT` (or `EXPLAIN`) against a store, always rolled back.
 - `POST …/copy` — the one-time copy of one account's rows from D1, now, calling the object
   until it answers something other than `paused`; `?retry=1` after a mismatch. For the
-  canary after the cutover deploys, before the sweep takes the rest.
+  canary after the cutover deploys, before the sweep takes the rest. Two numbers in its
+  answer matter for an account that predates the cutover: `merged` must be 0, since a
+  merge there means two notebooks or tags the shared database held apart were folded
+  into one; and on the largest account `calls` should be above 1 and the status `done`,
+  which confirms that the object's D1 queries count against its own subrequest budget
+  rather than the route's.
 - `GET …/dump` — the store as SQL text, `sqlite3 account.db < dump.sql` rebuilds it: what
   `d1 export` was, and how a migration is rehearsed against a real account before it
   ships — dump, load, run the new schema file's SQL against the copy.
