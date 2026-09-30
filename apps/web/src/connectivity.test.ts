@@ -64,6 +64,38 @@ describe('connectivity', () => {
     expect(offlineNow()).toBe(false);
   });
 
+  /*
+     Back online, what was read during the outage — maybe from the worker's cache — and what
+     failed then are fetched again. What was read before it came from the server and is left
+     to React Query's staleness: refetching it too reloaded every page of a long list on
+     every flip of a patchy connection.
+   */
+  it('refetches only what was read or failed while offline', async () => {
+    const client = new QueryClient();
+    installConnectivity(client);
+    vi.useFakeTimers();
+    vi.setSystemTime(1_000_000);
+    client.setQueryData(['before'], 'from the server');
+
+    vi.setSystemTime(1_060_000);
+    reportUnreachable();
+    vi.setSystemTime(1_061_000);
+    client.setQueryData(['during'], 'maybe from the cache');
+    await client
+      .fetchQuery({
+        queryKey: ['failed'],
+        queryFn: () => Promise.reject(new Error('offline')),
+        retry: false,
+        networkMode: 'offlineFirst',
+      })
+      .catch(() => {});
+
+    reportReachable();
+    expect(client.getQueryState(['during'])?.isInvalidated).toBe(true);
+    expect(client.getQueryState(['failed'])?.isInvalidated).toBe(true);
+    expect(client.getQueryState(['before'])?.isInvalidated).toBe(false);
+  });
+
   it('waits longer between each unanswered ask', async () => {
     vi.useFakeTimers();
     const health = vi.fn(async () => Promise.reject(new TypeError('Failed to fetch')));

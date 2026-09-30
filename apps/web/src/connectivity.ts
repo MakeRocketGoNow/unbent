@@ -23,6 +23,8 @@ import { onlineManager, type QueryClient } from '@tanstack/react-query';
  */
 
 let offline = typeof navigator !== 'undefined' ? navigator.onLine === false : false;
+/** When the app last went offline — at load, if it started that way. See the reconnect. */
+let offlineSince = offline ? Date.now() : Infinity;
 /** Requests failing while the browser believes it is online. */
 let unreachable = false;
 const listeners = new Set<() => void>();
@@ -30,6 +32,7 @@ const listeners = new Set<() => void>();
 function set(next: boolean): void {
   if (next === offline) return;
   offline = next;
+  if (next) offlineSince = Date.now();
   for (const listener of listeners) listener();
 }
 
@@ -123,10 +126,15 @@ async function probe(): Promise<void> {
  * read `navigator.onLine` at startup either. Here it pauses retries exactly when the
  * banner shows, and resumes them when the banner goes.
  *
- * On the way back, everything on screen is fetched again rather than only what React
- * Query has marked stale: anything read while offline came from the worker's cache, and
- * could be older than the thirty seconds that would otherwise protect it. That is also
- * what lets a note opened from the cache be edited again (see `Workspace`).
+ * On the way back, what was read during the outage is fetched again even if React Query
+ * thinks it fresh: it may have come from the worker's cache, and be older than the thirty
+ * seconds that would otherwise protect it — which is also what lets a note opened from the
+ * cache be edited again (see `Workspace`). So is anything that failed during it, like a
+ * note that was not available offline. Everything read before the outage came from the
+ * server and is left to React Query's own staleness, which refetches it on reconnect once
+ * it is older than thirty seconds and not before. Invalidating everything instead refetched
+ * every loaded page of a long list on every flip of a patchy connection, and rows read are
+ * the production budget.
  */
 export function installConnectivity(queryClient: QueryClient): void {
   window.addEventListener('online', () => {
@@ -150,7 +158,12 @@ export function installConnectivity(queryClient: QueryClient): void {
 
   let was = offline;
   subscribeConnectivity(() => {
-    if (was && !offline) void queryClient.invalidateQueries();
+    if (was && !offline) {
+      const since = offlineSince;
+      void queryClient.invalidateQueries({
+        predicate: ({ state }) => state.dataUpdatedAt >= since || state.errorUpdatedAt >= since,
+      });
+    }
     was = offline;
   });
 }
@@ -197,6 +210,7 @@ export function resetConnectivity(): void {
   pollTimer = undefined;
   pollDelay = FIRST_POLL;
   onlineAt = -Infinity;
+  offlineSince = Infinity;
   listeners.clear();
   readFromCache.clear();
   noteListeners.clear();
