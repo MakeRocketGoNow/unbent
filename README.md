@@ -24,10 +24,9 @@ should never depend on it being hard.
 
 - **Cloudflare Workers** + Hono — API, and static-asset hosting for the SPA
 - **TanStack Router + Query** — real routes, typed search params, cached loaders
-- **Cloudflare D1** (SQLite) — accounts, sessions, OAuth clients, and (until the cutover
-  below lands) note text, metadata and FTS5 full-text search
-- **Cloudflare Durable Objects** (SQLite) — one per account, where the notes are moving;
-  see [Where your notes live](#where-your-notes-live)
+- **Cloudflare Durable Objects** (SQLite) — one per account, holding its notes, metadata
+  and FTS5 full-text search; see [Where your notes live](#where-your-notes-live)
+- **Cloudflare D1** (SQLite) — accounts, sessions, OAuth clients, and the account directory
 - **Cloudflare R2** — attachment blobs
 - **Better Auth** — OAuth (Google, GitHub)
 - **Vite + React + CodeMirror 6** — Markdown editor, styled in place (see [Editing](#editing))
@@ -95,12 +94,12 @@ pnpm dev          # web http://localhost:5217  api http://localhost:8817
 ```
 
 `worktree:setup` copies the gitignored files git cannot bring across (`.dev.vars`,
-`local.properties`), installs, and seeds the worktree's local D1 and R2 with a copy of the
-main checkout's — so the same notes are there, and because the session cookie on localhost
-is host-only and ports do not scope cookies, the browser arrives already signed in. The
-copy is a snapshot: the two databases drift apart from then on, which is the point, since a
-branch's migrations must not reach the main checkout's schema. `--fresh` starts empty
-instead.
+`local.properties`), installs, and seeds the worktree's local state with a copy of the main
+checkout's — D1, R2 and the per-account note stores under `do/` — so the same notes are
+there, and because the session cookie on localhost is host-only and ports do not scope
+cookies, the browser arrives already signed in. The copy is a snapshot: the two drift apart
+from then on, which is the point, since a branch's migrations must not reach the main
+checkout's schema. `--fresh` starts empty instead.
 
 A Claude Code session opened in a worktree runs `worktree:setup --fresh` on its own, once,
 through the `SessionStart` hook in `.claude/settings.json` (`scripts/worktree-autosetup.sh`).
@@ -433,8 +432,10 @@ recurring line about something already settled, which is how a log line stops be
 `https://dev.unbent.app` is one standing Worker, `unbent-dev`, deployed from `main` by
 `.github/workflows/previews.yml` and configured as `[env.dev]` in `apps/api/wrangler.toml`.
 It runs on the `unbent-dev` D1 and the `unbent-dev-blobs` bucket that every preview also
-uses, so it is a second window onto the same scratch data rather than a fourth environment
-with data of its own.
+uses, so accounts, sessions and files are one scratch set across all of them. Notes are
+not: each Worker has its own namespace of per-account note stores, so a note made on the
+dev instance is on the dev instance and a note made on a preview stays on that preview.
+`pnpm seed:demo --url` fills either with sample notes.
 
 It exists because a preview cannot be a stable host, and several things need one:
 
@@ -450,9 +451,11 @@ Before it, production was the only instance anywhere with a hostname stable enou
 a sign-in flow against — which is a poor place to find out that one does not work.
 
 It is not staging, and should not be treated as one. Nothing in it is backed up, every
-preview writes to the same database, and a PR's migration lands there before the PR merges
-— so the dev instance can be briefly wrong for the code `main` is running. That is the same
-sharp edge previews have, with the same fix.
+preview writes to the same control-plane database, and a PR's D1 migration lands there
+before the PR merges — so the dev instance can be briefly wrong for the code `main` is
+running. That is the same sharp edge previews have, with the same fix. A change to the note
+store's schema has no such edge: it is applied per object, on each object's next wake,
+by whichever Worker owns the object.
 
 Unlike a preview it carries the `ai` binding, so it extracts a PDF's text on the server as
 production does. An instance is only worth having if the path it exercises is production's,
@@ -529,12 +532,16 @@ preview built on them would run against the production database with `APP_URL` s
 reading `https://unbent.app`, and refuse every sign-in from the preview host as an invalid
 origin. That is why the Worker and its `APP_URL` are per PR.
 
-The data underneath is not. All previews share the `unbent-dev` D1 and the
+The control plane underneath is not. All previews share the `unbent-dev` D1 and the
 `unbent-dev-blobs` bucket, configured as `[env.preview]` in `apps/api/wrangler.toml` and
 served with a stable hostname by [the dev instance](#the-dev-instance) above — kept well
-away from production but not from each other. It is a scratch environment: notes made on
-one PR's preview are visible from another's and from `dev.unbent.app`, and nothing in it is
-backed up.
+away from production but not from each other. Accounts and sessions made on one preview
+therefore work on another and on `dev.unbent.app`. Notes do not travel: each Worker has its
+own namespace of per-account note stores, so a note made on one PR's preview is on that
+preview alone. It is a scratch environment, and nothing in it is backed up. A preview also
+never writes the shared directory (`STORE_FREEZE_D1 = "0"` in its wrangler block): its
+copy records nothing there, since the mark is what freezes an account's rows in the shared
+D1 and the dev instance may still be writing them, and its sweep does nothing at all.
 
 The environment is called `preview` rather than `dev` because the custom domain cannot live
 in a block previews reuse: `--name` changes which script a deploy targets but not which
@@ -561,8 +568,8 @@ back to, as ["Choosing sign-in methods"](#choosing-sign-in-methods) describes �
 passkeys, each bound to the one preview host it was created on. The relay is the fast path;
 these are the ones that need no round trip.
 
-Migrations are the sharp edge. A PR that adds one applies it to the shared database on its
-first preview deploy, and nothing rolls it back when the PR is abandoned. Wrangler tracks
+D1 migrations are the sharp edge. A PR that adds one applies it to the shared database on
+its first preview deploy, and nothing rolls it back when the PR is abandoned. Wrangler tracks
 what it has applied by filename, so the stale file is simply never reconsidered — but its
 schema change stays, and the next migration written against a schema that does not have it
 fails on the preview while passing everywhere else. It reaches `dev.unbent.app` too, which
@@ -1033,9 +1040,13 @@ does. The Android app is the site in a WebView, so it has the same control.
 
 ## Local database
 
-`pnpm --filter @unbent/api db:reset` rebuilds the local D1 from migrations, copying the
-current state into `.wrangler/backups/` first. Use it instead of removing the state
-directory by hand — that has no undo and has already cost one set of local notes.
+`pnpm --filter @unbent/api db:reset` rebuilds the local D1 from migrations and clears the
+local note stores, copying both into `.wrangler/backups/` first. Use it instead of removing
+the state directory by hand — that has no undo and has already cost one set of local notes.
+The two go together: local notes live in Durable Objects under `.wrangler/state/v3/do/`,
+keyed by the user ids in D1, and resetting one without the other leaves ghost objects
+behind — notes with no account, or a fresh account whose first open finds an object already
+holding someone's earlier state.
 
 ## Deleting notes
 
@@ -1052,10 +1063,10 @@ Maintenance page:
 The API equivalents are `POST /api/admin/purge-notes?scope=trashed|all&confirm=DELETE` and
 `POST /api/admin/gc-blobs?apply=1`. Both are scoped to the caller's own data.
 
-For local development, `pnpm --filter @unbent/api reset:local` clears D1 and R2 entirely and
-rebuilds the schema, backing up D1 first. Use that rather than the in-app sweep to clear
-fixtures left by deleted test users — the scoped sweep cannot reach another account's
-prefix by design.
+For local development, `pnpm --filter @unbent/api reset:local` clears D1, R2 and the note
+stores entirely and rebuilds the schema, backing up D1 and the stores first. Use that rather
+than the in-app sweep to clear fixtures left by deleted test users — the scoped sweep cannot
+reach another account's prefix by design.
 
 ## Deleting an account
 
@@ -1071,9 +1082,12 @@ no cookies fails, webmail read in the browser that holds the session is exactly 
 cookies do not cover. `/reset-password` has the same shape for the same reason — an emailed
 token names an intention, and the click that acts on it should be a person's.
 
-Pressing it removes the user row, cascading away every note, tag, notebook and attachment
-record, after sweeping `users/{id}/` out of R2, which no foreign key would have done. Then
-it signs the browser out and lands on `/goodbye`. The sign-out is not a formality: the
+Pressing it sweeps `users/{id}/` out of R2, wipes the account's note store — the object
+holding every note, tag, notebook, field and attachment record — and then removes the user
+row, whose cascade takes the sessions. Then it signs the browser out and lands on
+`/goodbye`. The account's row in the directory is tombstoned last, and the sweep drops it
+once the object reports itself empty and the user row is gone, retrying the wipe if it was
+interrupted. The sign-out is not a formality: the
 deleting request re-writes the session-cache cookie from the session it resolved on the way
 in, so without it the browser would keep a five-minute claim to an account that no longer
 exists.
@@ -1097,18 +1111,21 @@ simply absent there rather than drawing a control the server would answer with a
 local development `sendEmail` prints the link to the Worker console instead of sending it,
 which is how the flow is exercised without a Resend account.
 
-If the R2 sweep fails, the deletion is abandoned rather than half-finished: the account
-survives with attachment rows pointing at objects that are already gone, and the failure is
-logged with the user id. Asking again is the fix. Blobs go before rows here, the reverse of
-`purge-notes`, because the user id the sweep needs is exactly what the deletion destroys.
+If the R2 sweep or the store wipe fails, the deletion is abandoned rather than
+half-finished: the account survives with attachment rows pointing at objects that are
+already gone, or with an empty store, and the failure is logged with the user id. Asking
+again is the fix. Blobs and store go before the row here, the reverse of `purge-notes`,
+because the user id both need is exactly what the deletion destroys; blobs before the store
+because the store's rows are what the blob sweep reads to know which objects are
+referenced.
 
 ## Blob garbage collection
 
 R2 has no foreign keys, so objects can outlive their metadata — a crash between the upload
-and the metadata insert, or a user row cascading away its attachment rows without its
-prefix having been swept first. `POST /api/admin/gc-blobs` sweeps the caller's own prefix
-and reports what it finds; add `?apply=1` to delete. It is scoped to `users/{caller}/` by
-design, so it can never see or remove another account's objects.
+and the metadata insert, or a store wiped without its prefix having been swept first.
+`POST /api/admin/gc-blobs` reads every key the caller's note store references, sweeps the
+caller's own prefix and reports what it finds; add `?apply=1` to delete. It is scoped to
+`users/{caller}/` by design, so it can never see or remove another account's objects.
 
 ## Android app
 
@@ -1269,38 +1286,139 @@ and previews, so passkeys made there work from the app too.
 
 ## Where your notes live
 
-Each account's notes are moving into a database of their own: a SQLite-backed Durable
-Object per user, `UserStore` in `apps/api/src/store/`, holding that account's notes, tags,
-notebooks, fields, attachment rows and search indexes and nothing else. D1 keeps what is
-shared across accounts — sign-in, connected apps, upload links, and a directory of accounts
-— and R2 keeps the files. The reasons are in the decision record on the issue that started
-this; the short one is that the app's partition is absolute (no sharing, no cross-account
-read anywhere), and when the natural partition is the user and each partition is tens of
+Each account's notes are in a database of their own: a SQLite-backed Durable Object per
+user, `UserStore` in `apps/api/src/store/`, holding that account's notes, tags, notebooks,
+fields, attachment rows and search indexes and nothing else. D1 keeps what is shared across
+accounts — sign-in, connected apps, upload links, and a directory of accounts — and R2
+keeps the files. The reasons are in the decision record on the issue that started this; the
+short one is that the app's partition is absolute (no sharing, no cross-account read
+anywhere), and when the natural partition is the user and each partition is tens of
 megabytes, one SQLite per user is the shape the primitive was built for. Requests get
 faster, since every statement after the first call runs in-process; restore becomes per
 account rather than per instance; and the multi-device sync that is planned next wants
 exactly one writer per user.
 
-**Today the object is deployed and tested but not yet in the request path**: every route
-still reads and writes D1. The cutover is the next change, and this section grows with it —
-how an existing account's notes are copied over on first open, what the operator can see
-(`stats`, a read-only SQL route, a dump), how account deletion wipes the object, and where
-an object is created (`STORE_JURISDICTION=eu` pins new accounts' stores to the EU; unset,
-the platform places each near its first request).
+The Worker authenticates and forwards. `requireAuth` runs there; `reposFor` binds the
+request to the session's own object, and every route, MCP tool, export page and import then
+reads and writes through it. Five rules hold the shape, and tests hold the rules:
+
+1. **The object touches its SQLite and nothing else.** No outbound call inside it: R2 bytes,
+   the language model, the auto-fill API and mail all happen in the Worker before or after
+   the call. Blob *keys* go through the object, which owns the attachment rows; bytes never
+   do. (One temporary exception, below.)
+2. **Ids stay globally unique UUIDs** even inside a per-user database, so `(owner, id)` is
+   unambiguous forever and an archive imported into two accounts keeps its ids in both.
+3. **The owner's object is the source of truth.** If sharing ever comes, a grantee reads
+   and writes through the owner's object.
+4. **The change feed is per user, with a sequence cursor.** Never a global one.
+5. **Each call to the object is a billable request.** A route asks once for what it needs,
+   through composite methods, rather than two or three times.
+
+**Accounts that predate this** are copied over when the sweep, or the operator, asks: the
+rows the shared database held for that user, paged out of D1 and written into the object
+in one resumable pass, with the counts and search index rebuilt on the way and what
+landed checked against what D1 held, table by table. Nothing about opening the app reads
+D1, so between the deploy and the sweep an account not yet copied opens empty; the
+runbook below closes that window in minutes, and a note written in it survives the copy —
+its tag and notebook are merged by name with the ones D1 delivers rather than refused.
+That copy is the exception to rule 1, and it goes once every account's directory row says
+it has run (`copied_at`, written only when a copy verified); the frozen D1 tables are
+dropped in a later migration, behind a guard that reads the same column. The copy spends at most
+forty D1 queries a call, since a Free plan invocation may make fifty, and answers `paused`
+with its place committed; the sweep continues it next pass, and the operator's route
+calls again at once.
+
+Migration 0032 freezes each account's rows in the shared tables from the moment that
+account's copy starts (`account_directory.migrated_at`, written by the copy before it
+reads a page, and cleared again if the copy cannot be verified — so it says the copy
+started, and `copied_at` says it finished): a write to them for such
+an account, from an old isolate draining during the deploy or from anything else, fails
+with "notes moved to the per-account store" rather than landing after its page was read
+and disappearing. Rows of an account not yet copied are still writable,
+which is what lets the dev instance, whose database a preview of the cutover shares, keep
+saving notes until the cutover itself lands there. Deleting an account still works: the
+triggers only fire while the account's `user` row exists, and a `user` delete cascades
+through these tables — with updates, not only deletes, which is why 0031 had to be
+replaced by 0032.
+
+**Rolling the cutover back** is three steps, in order, and the middle one is easy to
+forget: dump each account's store, since the shared rows are frozen at the cutover and
+everything written since lives only in the object; apply
+`apps/api/scripts/unfreeze-note-tables.sql` by hand with `wrangler d1 execute` (it drops
+the sixteen triggers, and it is not a migration precisely so that nothing applies it on its
+own); then revert and deploy. A reverted Worker with the triggers still in place cannot
+save a note for any migrated account.
+
+**Schema changes** are files in `apps/api/src/store/schema/`, applied per object on its next
+wake, additive only. The sweep is what makes that safe to rely on: it wakes every object —
+twenty an hour, from a cursor it keeps in D1, since every store call counts against an
+invocation's fifty subrequests on Free — so a migration that fails for one account fails in
+the log with the user id on it, and it can be run on demand after a deploy. Each visit
+reads a few rows of the account (its size and the stored note counts), never a table.
+
+**An account whose copy cannot be verified** — a row the store's constraints refuse that
+the shared database allowed, two files on one note under one filename, say — is reported
+and left alone: the account is not marked migrated, so its rows in the shared tables stay
+writable, and nothing reads them again until the operator fixes them there and calls the
+copy with `?retry=1`. The account keeps working on what landed meanwhile; `stats` shows
+the reason, and the sweep names the account every pass.
+
+**What the operator can see.** An object has no console, so the Worker has one, under
+`/api/admin/store` for a session in `OPERATOR_EMAILS`:
+
+- `GET …/stats` — row counts, size and schema version, the caller's own or `?user=`'s. A
+  name the directory does not have is refused, since a store is created for any name it
+  is asked for.
+- `POST …/sql` — one `SELECT` (or `EXPLAIN`) against a store, always rolled back.
+- `POST …/copy` — the one-time copy of one account's rows from D1, now, calling the object
+  until it answers something other than `paused`; `?retry=1` after a mismatch. For the
+  canary after the cutover deploys, before the sweep takes the rest. Two numbers in its
+  answer matter for an account that predates the cutover: `merged` must be 0, since a
+  merge there means two notebooks or tags the shared database held apart were folded
+  into one; and on the largest account `calls` should be above 1 and the status `done`,
+  which confirms that the object's D1 queries count against its own subrequest budget
+  rather than the route's.
+- `GET …/dump` — the store as SQL text, `sqlite3 account.db < dump.sql` rebuilds it: what
+  `d1 export` was, and how a migration is rehearsed against a real account before it
+  ships — dump, load, run the new schema file's SQL against the copy.
+- `POST …/sweep` — one batch of the walk, now; call until it says `done`, then once more
+  if any account was `deferred`. The walk also runs the copy for any account not yet
+  copied, so after the cutover it is what copies everyone.
+
+Reading another account's store is logged with both ids. Rows read and written inside an
+object are metered as D1's were, and every statement over a threshold is logged with the
+user id — which is the accounting `wrangler d1 insights` used to give.
+
+**Where an object lives.** The platform creates each account's object near the first
+request for it, and objects do not move. `STORE_JURISDICTION=eu` keeps every store in the
+EU, for an operator whose users need that. It is decided once, before the instance's first
+account, and never changed: the jurisdiction is part of how a store is found, so the same
+account names a different, empty object with it set than without, and changing it on a
+running instance would make every account's notes vanish from view.
+
+**Deleting an account** wipes its object; see [Deleting an account](#deleting-an-account).
+Locally, the objects are files under `.wrangler/state/v3/do/`, which `sqlite3` opens, and
+the reset scripts clear them with the database they belong to.
 
 What does not change: notes are Markdown with frontmatter, export is the same folder tree,
-and a restore is an import. The store is SQLite under the hood, and the dump route will hand
-back a plain schema-plus-rows file that `sqlite3` can rebuild an account from.
+and a restore is an import.
 
 ## Tenant isolation
 
-D1 has no row-level security, so isolation is application code and nothing else. Data access
-goes through the scoped repos in `apps/api/src/lib/repo.ts`, which take the user id as a
-constructor argument — route handlers never touch `env.DB` directly, so an unscoped query is
-not expressible. `apps/api/test/isolation.test.ts` asserts this and grows with every phase
-that adds a route touching user data. The MCP endpoint's cases live beside it in
-`apps/api/test/mcp.test.ts`, which needs a whole OAuth flow before it can call anything and
-would otherwise swamp the suite it belongs to.
+Notes are isolated by construction: each account's are in a database of their own, and no
+query can name another account's rows because no such rows exist where the query runs.
+`reposFor` in `apps/api/src/lib/repos.ts` binds a request to the session's own object, and
+the object refuses on every wake a database whose stored owner is not the user it was
+created for. Route handlers never reach for a store or for `env.DB` themselves; a static
+test in `apps/api/src/store/guards.test.ts` holds that line.
+
+What stays in D1 — sessions, OAuth clients, upload links, the account directory — has no
+row-level security, so for those tables isolation is still application code: the scoped
+repos in `apps/api/src/lib/repo.ts` take the user id as a constructor argument, and an
+unscoped query is not expressible from a route. `apps/api/test/isolation.test.ts` asserts
+all of this from outside and grows with every phase that adds a route touching user data.
+The MCP endpoint's cases live beside it in `apps/api/test/mcp.test.ts`, which needs a whole
+OAuth flow before it can call anything and would otherwise swamp the suite it belongs to.
 
 One route finds its user another way. `PUT /api/uploads/:token`, the other half of
 `prepare_attachment_upload`, is authorized by the token in its path and nothing else. The
@@ -1352,8 +1470,8 @@ The browser builds the archive. `GET /api/export/notes` hands back a page of who
 fetches each file through the note's own file route, and writes the zip with the names and
 markdown that `packages/shared/src/export-format.ts` defines. It used to be one request
 that streamed the whole zip, and that request read every note and every file from the
-Worker as it went; a Worker request may make only so many calls to D1 and R2 (a thousand
-on Workers Free), and a library is tens of thousands of them, so the backup could never have
+Worker as it went; a Worker request may make only so many calls to storage (a thousand on
+Workers Free), and a library is tens of thousands of them, so the backup could never have
 finished on the archive it existed for. In Chrome and Edge the zip streams straight to a
 file the person chooses, so a library larger than the tab's memory still exports; other
 browsers hold it in memory and hand it over as a download when it is done.

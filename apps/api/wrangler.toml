@@ -87,6 +87,19 @@ class_name = "UserStore"
 tag = "v1"
 new_sqlite_classes = ["UserStore"]
 
+# The walk over every account's note store (src/lib/sweep.ts): wakes each object so a
+# pending migration runs and fails in the log rather than in front of its owner, runs the
+# one-time copy from D1 for any account not yet copied, records each account's size in
+# the directory, and finishes any deletion that was interrupted.
+# Hourly, and a batch of twenty accounts per run rather than all of them: every store call
+# and D1 query counts against an invocation's subrequests, fifty on Workers Free, so the
+# walk keeps its place in D1 and continues each hour until a pass is done, then starts
+# over. Inherited by the named environments, which is right for `dev` and wrong for a
+# preview that lives for one pull request; `[env.preview.triggers]` below switches it off
+# there. The minute is arbitrary.
+[triggers]
+crons = ["17 * * * *"]
+
 # The SPA is served by this same Worker, so "same-origin" is structural rather than a
 # routing rule that has to be kept correct in a dashboard. Session cookies and OAuth
 # callbacks then need no CORS or SameSite workarounds.
@@ -222,11 +235,23 @@ bucket_name = "unbent-dev-blobs"
 # Each preview Worker has a namespace of its own, so a preview's per-account stores are
 # not the dev instance's, although its D1 and R2 still are. Notes therefore no longer
 # carry between a preview and dev the way they did on the shared database; `pnpm seed:demo
-# --url` fills a preview. The sweep cron (top level) is inherited and switched off here,
+# --url` fills a preview. The sweep cron (top level) is inherited and switched off just
 # below, because a preview lives for the length of a pull request.
 [[env.preview.durable_objects.bindings]]
 name = "USER_STORE"
 class_name = "UserStore"
+
+[env.preview.triggers]
+crons = []
+
+# A preview shares the dev instance's D1, and the dev instance runs `main`, which until the
+# cutover merges still writes notes there. Migration 0032 freezes an account's rows the
+# moment its store's copy starts — so a preview's copy must not record it, or signing in
+# to the preview with an account you use on dev would refuse that account's saves on dev
+# until the merge. The same flag makes the sweep do nothing on a preview: every row it
+# would write, drop or move belongs to dev. Off here and nowhere else.
+[env.preview.vars]
+STORE_FREEZE_D1 = "0"
 
 [env.preview.assets]
 directory = "../web/dist"

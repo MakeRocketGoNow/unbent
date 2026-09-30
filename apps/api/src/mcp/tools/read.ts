@@ -112,18 +112,10 @@ export function registerReadTools(
       annotations: { readOnlyHint: true, openWorldHint: false },
     },
     async ({ limit, cursor, tag, notebook, sort, order, from, to, trashed }) => {
-      const items = await notes.list({
-        limit,
-        cursor,
-        tags: tag,
-        notebook,
-        sort,
-        order,
-        from,
-        to,
-        trashed,
-      });
-      const total = await notes.count({ tags: tag, notebook, trashed, from, to, sort });
+      const { items, total } = await notes.listPage(
+        { limit, cursor, tags: tag, notebook, sort, order, from, to, trashed },
+        { tags: tag, notebook, trashed, from, to, sort },
+      );
       // The same helper the HTTP route uses, so a cursor means the same thing on both and
       // cannot disagree with the sort that produced the page.
       const cursorForNext = nextCursor(items, { limit, sort, trashed });
@@ -149,9 +141,9 @@ export function registerReadTools(
       annotations: { readOnlyHint: true, openWorldHint: false },
     },
     async ({ noteId }) => {
-      const note = await notes.get(noteId);
-      if (!note) return notFound('note', noteId);
-      const files = await attachments.listForNote(noteId);
+      const found = await notes.getWithFiles(noteId);
+      if (!found) return notFound('note', noteId);
+      const { note, files } = found;
       return jsonResult({
         ...noteRef(note),
         body: note.body,
@@ -223,11 +215,7 @@ export function registerReadTools(
       annotations: { readOnlyHint: true, openWorldHint: false },
     },
     async () => {
-      const [notebooks, unfiled, fields] = await Promise.all([
-        notes.listNotebooks(),
-        notes.countUnfiledNotes(),
-        notes.listAllFields(),
-      ]);
+      const { notebooks, unfiled, fields = [] } = await notes.notebooksOverview({ fields: true });
       return jsonResult({
         notebooks: notebooks.map((nb) => ({
           id: nb.id,

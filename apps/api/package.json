@@ -45,6 +45,7 @@
   "exports": {
     ".": "./src/index.ts",
     "./store": "./src/store/user-store.ts",
-    "./store/*": "./src/store/*.ts"
+    "./store/*": "./src/store/*.ts",
+    "./lib/*": "./src/lib/*.ts"
   }
 }

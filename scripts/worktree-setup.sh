@@ -68,9 +68,10 @@ elif [ "$FRESH" = 1 ]; then
 else
   MAIN_STATE="$MAIN/apps/api/.wrangler/state/v3"
   mkdir -p "$STATE"
-  # d1 and r2 only: `cache` is disposable and `observability` is hundreds of megabytes of
-  # logs that mean nothing outside the run that wrote them.
-  for dir in d1 r2; do
+  # d1, r2 and do — the objects that hold each account's notes — but not `cache`, which is
+  # disposable, or `observability`, which is hundreds of megabytes of logs that mean
+  # nothing outside the run that wrote them.
+  for dir in d1 r2 do; do
     if [ -d "$MAIN_STATE/$dir" ]; then
       cp -R "$MAIN_STATE/$dir" "$STATE/$dir"
       echo "seeded  $dir from $MAIN"

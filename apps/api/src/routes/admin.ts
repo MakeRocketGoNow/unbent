@@ -1,15 +1,26 @@
 import { Hono } from 'hono';
+import { zValidator } from '@hono/zod-validator';
+import { z } from 'zod';
 import { requireAuth } from '../lib/session.js';
 import { withRepos } from '../lib/repos-middleware.js';
 import { deleteKeys } from '../lib/blobs.js';
+import { directoryRow, dropDirectoryRow } from '../lib/directory.js';
+import { isOperator } from '../lib/instance.js';
 import { userPrefix } from '../lib/repo.js';
+import { storeFor } from '../lib/store-client.js';
+import { sweepStores } from '../lib/sweep.js';
+import { DUMP_TABLES } from '../store/tables.js';
+import type { UserStore } from '../store/user-store.js';
 import type { AppEnv } from '../types.js';
+
+/** Store calls one `copy` request makes before answering `paused` itself: under the Free plan's fifty subrequests, with the directory check on top. */
+const COPY_CALLS = 40;
 
 /**
  * Destructive maintenance, all scoped to the caller's own data.
  *
- * Every route here enumerates or deletes under `users/{me}/` and filters D1 by the session
- * user, so none of them can see or touch another account. An operator-wide sweep would
+ * Every route here enumerates or deletes under `users/{me}/` and reads the session user's
+ * own note store, so none of them can see or touch another account. An operator-wide sweep would
  * need separate, deliberately privileged handling.
  */
 export const admin = new Hono<AppEnv>()
@@ -24,17 +35,20 @@ export const admin = new Hono<AppEnv>()
    *
    * Dry run by default; `?apply=1` deletes.
    */
-  .post('/admin/gc-blobs', requireAuth, async (c) => {
+  .post('/admin/gc-blobs', requireAuth, withRepos, async (c) => {
     const userId = c.get('userId')!;
     const apply = c.req.query('apply') === '1';
     const prefix = userPrefix(userId);
 
-    const { results } = await c.env.DB.prepare(
-      `SELECT r2_key FROM attachments WHERE user_id = ?1`,
-    )
-      .bind(userId)
-      .all<{ r2_key: string }>();
-    const referenced = new Set(results.map((r) => r.r2_key));
+    // Every key the account's rows reference, a page at a time from the store: an
+    // archive references thousands and an RPC result has a ceiling.
+    const referenced = new Set<string>();
+    for (let after = 0; ; ) {
+      const page = await c.get('attachments').blobKeys(after, 1000);
+      for (const key of page.keys) referenced.add(key);
+      if (page.nextRowid === null) break;
+      after = page.nextRowid;
+    }
 
     const orphans: string[] = [];
     let stored = 0;
@@ -109,4 +123,235 @@ export const admin = new Hono<AppEnv>()
    */
   .post('/admin/recount-notes', requireAuth, withRepos, async (c) => {
     return c.json({ corrected: await c.get('notes').recountNotes() });
+  })
+
+  /**
+   * Removes the accounts the test suites create, with their note stores.
+   *
+   * The live suites sign up throwaway `@example.test` actors, and `pnpm test` purges them
+   * afterwards. That used to be one SQL statement against local D1 — delete the user rows
+   * and let the cascade take the notes — but the notes are in objects now, and nothing but
+   * the Worker can reach one. So the purge is a route: wipe each actor's store, then delete
+   * the user row, whose cascade takes the sessions, and drop the directory row.
+   *
+   * Local only, in the one way this codebase already draws that line: `ALLOW_TEST_CREDENTIALS`
+   * is passed by `pnpm dev` on the command line and cannot be copied into a deployed
+   * Worker, and the route answers 404 without it. No session, because the suites' actors
+   * are the ones being deleted; the address pattern is the whole scope, and no real account
+   * has one.
+   */
+  .post('/admin/test/purge-fixtures', async (c) => {
+    if (c.env.ALLOW_TEST_CREDENTIALS !== '1') return c.json({ error: 'Not found' }, 404);
+    const { results } = await c.env.DB.prepare(`SELECT id FROM user WHERE email LIKE '%@example.test'`).all<{ id: string }>();
+    let wiped = 0;
+    const failed: string[] = [];
+    for (const { id } of results) {
+      try {
+        await storeFor(c.env, id).wipe();
+        wiped += 1;
+      } catch (err) {
+        // The row goes anyway: an object left with rows behind a deleted user is caught by
+        // the sweep, which treats a directory row with no user as tombstoned.
+        console.error(`purge-fixtures: wipe failed for ${id}:`, err);
+        failed.push(id);
+        continue;
+      }
+      await c.env.DB.prepare(`DELETE FROM user WHERE id = ?1`).bind(id).run();
+      await dropDirectoryRow(c.env.DB, id);
+    }
+    return c.json({ users: results.length, wiped, failed });
+  })
+
+  /*
+     The operator's window into a note store. An object has no console: nothing lists its
+     tables, nothing runs a query against it, nothing copies it out. These five routes are
+     that console, and they are what `wrangler d1 execute` and `d1 export` used to be for
+     the shared database.
+
+     `stats` and `dump` are the signed-in user's own by default; a session in
+     OPERATOR_EMAILS may name another account with `?user=`, and every such read is logged
+     with both ids, since it is one person reading another's notes and the log is the
+     record of it. `sql`, `copy` and `sweep` are the operator's alone: a raw query over
+     someone's notes, the one-time copy of an account from D1, and the walk over every
+     account.
+  */
+
+  /** Row counts, size and schema version of one store. */
+  .get('/admin/store/stats', requireAuth, async (c) => {
+    const target = await operatorTarget(c);
+    if (target instanceof Response) return target;
+    return c.json(await storeFor(c.env, target).stats());
+  })
+
+  /**
+   * One SELECT against one store, rolled back whatever it does; see `readOnlySql`. For
+   * `EXPLAIN QUERY PLAN` on a slow account as much as for looking at rows.
+   */
+  .post(
+    '/admin/store/sql',
+    requireAuth,
+    zValidator('json', z.object({ query: z.string().min(1), binds: z.array(z.union([z.string(), z.number(), z.null()])).default([]), user: z.string().optional() })),
+    async (c) => {
+      const email = c.get('user')?.email;
+      if (!isOperator(c.env, email)) return c.json({ error: 'Not found' }, 404);
+      const { query, binds, user } = c.req.valid('json');
+      const target = user ?? c.get('userId')!;
+      // The same check `operatorTarget` makes: a store is created for any name it is
+      // asked for, so an id nothing knows must be refused before it is one.
+      if (target !== c.get('userId') && !(await directoryRow(c.env.DB, target))) {
+        return c.json({ error: 'No such account' }, 404);
+      }
+      console.log(`[store] operator=${email} sql user=${target}`);
+      try {
+        return c.json(await storeFor(c.env, target).readOnlySql(query, binds));
+      } catch (err) {
+        // The query's own error — a misspelt column, a refused statement — is the answer.
+        return c.json({ error: err instanceof Error ? err.message : String(err) }, 400);
+      }
+    },
+  )
+
+  /**
+   * One store as SQL text: `sqlite3 account.db < dump.sql` rebuilds it, with nothing from
+   * this repository needed. What `d1 export` was for the shared database, and how a
+   * migration is rehearsed against a real account before it ships: dump, load, run the
+   * new schema file's SQL against the copy.
+   *
+   * The order is what makes the file loadable rather than merely complete. Tables and
+   * indexes come first, then every row, then the triggers and the FTS tables, then a
+   * rebuild of each FTS index from the rows. Rows before triggers, because the count
+   * triggers would otherwise add every note a second time to counts the notebook and tag
+   * rows already carry, and the FTS insert triggers would index each row on the way in
+   * only to have `rebuild` do it again. `_migrations` and `_meta` travel too, so the
+   * copy says which schema files it is at and whose it was.
+   *
+   * Paged out of the object by rowid as it streams, one page per pull, so an archive's
+   * worth of texts never sits in the Worker's memory at once — not even for a client that
+   * reads slowly, which is what enqueuing every page from `start` would have allowed.
+   * Big pages, cut by bytes inside the object: every
+   * page is one store call and an invocation has fifty on Free, so a 13k-note archive with
+   * 4k files and 2.4k texts (about 22 MB of them) is roughly a dozen calls — the small
+   * tables one each, notes three, texts three or four by the byte cut — where five
+   * hundred rows a page would have been sixty and failed partway through the texts.
+   */
+  .get('/admin/store/dump', requireAuth, async (c) => {
+    const target = await operatorTarget(c);
+    if (target instanceof Response) return target;
+    const chunks = dumpChunks(storeFor(c.env, target), target);
+    const body = new ReadableStream<Uint8Array>({
+      async pull(controller) {
+        const next = await chunks.next();
+        if (next.done) controller.close();
+        else controller.enqueue(next.value);
+      },
+      cancel() {
+        void chunks.return(undefined);
+      },
+    });
+    return new Response(body, {
+      headers: {
+        'Content-Type': 'application/sql; charset=utf-8',
+        'Content-Disposition': `attachment; filename="unbent-store-${target}.sql"`,
+        'Cache-Control': 'no-store',
+      },
+    });
+  })
+
+  /**
+   * The one-time copy of one account's rows from D1, now: for the canary after the
+   * cutover deploys — the owner's account, the biggest, before the sweep takes the rest
+   * — and for an account whose copy the sweep reported as `mismatched`, once its rows in
+   * D1 are fixed, with `?retry=1`. The object answers `paused` each time it spends its
+   * query budget, and this calls again until it answers anything else; each call is one
+   * subrequest here, and the object's D1 queries are its own, so an archive-sized
+   * account is two or three calls of the forty this allows.
+   */
+  .post('/admin/store/copy', requireAuth, async (c) => {
+    const email = c.get('user')?.email;
+    if (!isOperator(c.env, email)) return c.json({ error: 'Not found' }, 404);
+    const target = c.req.query('user') ?? c.get('userId')!;
+    if (target !== c.get('userId') && !(await directoryRow(c.env.DB, target))) {
+      return c.json({ error: 'No such account' }, 404);
+    }
+    const retry = c.req.query('retry') === '1';
+    console.log(`[store] operator=${email} copy user=${target} retry=${retry}`);
+    const store = storeFor(c.env, target);
+    let calls = 0;
+    for (;;) {
+      calls += 1;
+      const result = await store.copyFromD1(calls === 1 ? { retry } : {});
+      if (result.status !== 'paused' || calls >= COPY_CALLS) return c.json({ ...result, calls });
+    }
+  })
+
+  /**
+   * One batch of the walk, on demand: after a deploy that carries a schema file, so every
+   * account is migrated within minutes rather than hours, and after the cutover, so every
+   * account is copied. The answer says whether the pass is `done`; a runbook calls again
+   * until it is, then once more if any account was `deferred`. See lib/sweep.ts.
+   */
+  .post('/admin/store/sweep', requireAuth, async (c) => {
+    const email = c.get('user')?.email;
+    if (!isOperator(c.env, email)) return c.json({ error: 'Not found' }, 404);
+    console.log(`[store] operator=${email} sweep`);
+    return c.json(await sweepStores(c.env));
   });
+
+
+/**
+ * The dump as chunks: the header and the tables, then each page of each table as the
+ * object formats and encodes it, then the triggers, the FTS tables and their rebuild. A
+ * generator so the stream above fetches one chunk per pull and a page is only read from
+ * the object once the client has taken the last one. Bytes throughout: the pages arrive
+ * encoded, and the Worker touches none of their content (see `dumpPage`).
+ */
+async function* dumpChunks(store: DurableObjectStub<UserStore>, target: string): AsyncGenerator<Uint8Array> {
+  const encoder = new TextEncoder();
+  const schema = await store.schemaSql();
+  const later = (s: string) => /^CREATE (VIRTUAL TABLE|TRIGGER)\b/i.test(s);
+  const head = [
+    `-- Unbent note store of account ${target}, dumped ${new Date().toISOString()}`,
+    `-- Rebuild with: sqlite3 account.db < this-file.sql`,
+    'PRAGMA foreign_keys = OFF;',
+    'BEGIN;',
+    ...schema.filter((s) => !later(s)).map((s) => `${s};`),
+  ];
+  yield encoder.encode(`${head.join('\n')}\n`);
+  for (const table of DUMP_TABLES) {
+    for (let after = 0; ; ) {
+      // Formatted and encoded inside the object, where the CPU budget is; see `dumpPage`.
+      const page = await store.dumpPage(table, after, 5000);
+      if (page.rows > 0) yield page.bytes;
+      if (page.nextRowid === null) break;
+      after = page.nextRowid;
+    }
+  }
+  const tail = schema.filter(later).map((s) => `${s};`);
+  for (const fts of schema.filter((s) => /^CREATE VIRTUAL TABLE/i.test(s))) {
+    const name = /^CREATE VIRTUAL TABLE\s+(\S+)/i.exec(fts)![1];
+    tail.push(`INSERT INTO ${name}(${name}) VALUES ('rebuild');`);
+  }
+  tail.push('COMMIT;', 'PRAGMA foreign_keys = ON;');
+  yield encoder.encode(`${tail.join('\n')}\n`);
+}
+
+/**
+ * Whose store a `stats` or `dump` reads: the caller's own, or, for an operator naming
+ * `?user=`, someone else's — logged, because that is one person reading another's notes.
+ * A non-operator naming anyone is answered as if the route did not exist, the way every
+ * other "is this mine" check here answers.
+ *
+ * The name has to be in the directory. `storeFor` gets or creates an object for any
+ * string, so a mistyped id would bootstrap a schema, probe D1 and leave an object behind
+ * that no directory row knows about and the sweep would never find.
+ */
+async function operatorTarget(c: { env: AppEnv['Bindings']; req: { query(name: string): string | undefined }; get(key: 'userId'): string | undefined; get(key: 'user'): { email: string } | undefined }): Promise<string | Response> {
+  const asked = c.req.query('user');
+  const own = c.get('userId')!;
+  if (!asked || asked === own) return own;
+  const email = c.get('user')?.email;
+  if (!isOperator(c.env, email)) return Response.json({ error: 'Not found' }, { status: 404 });
+  if (!(await directoryRow(c.env.DB, asked))) return Response.json({ error: 'No such account' }, { status: 404 });
+  console.log(`[store] operator=${email} read user=${asked}`);
+  return asked;
+}

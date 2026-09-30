@@ -241,7 +241,14 @@ describe('an imported note keeps its id', () => {
     expect(note.body).toBe('changed by hand');
   });
 
-  it('gets a fresh id when someone else already holds that one', async () => {
+  /**
+   * Ids are unique per account, not per instance: each account's notes live in a database
+   * of their own, so the same archive imported by two people keeps its ids for both, and
+   * `(owner, id)` is the key anything cross-account would use. On the shared database the
+   * second import had to mint a fresh id because the column was one primary key for
+   * everyone; that was the constraint, never the intent.
+   */
+  it('keeps the id when someone else holds the same one in their own account', async () => {
     const id = crypto.randomUUID();
     await importNote(alice, { id, title: 'Shared zip', body: 'same file, two people' });
 
@@ -249,10 +256,18 @@ describe('an imported note keeps its id', () => {
 
     expect(bobs.status).toBe(201);
     expect(bobs.created).toBe(true);
-    expect(bobs.id).not.toBe(id);
-    // And each sees only their own.
-    expect((await api(bob, `/api/notes/${id}`)).status).toBe(404);
-    expect((await api(alice, `/api/notes/${bobs.id}`)).status).toBe(404);
+    expect(bobs.id).toBe(id);
+    // And each sees only their own copy under that id.
+    const alices = await json<NoteJson>(await api(alice, `/api/notes/${id}`));
+    const bobsNote = await json<NoteJson>(await api(bob, `/api/notes/${id}`));
+    expect(alices.title).toBe('Shared zip');
+    expect(bobsNote.title).toBe('Shared zip');
+    await api(alice, `/api/notes/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ title: 'Alice edited hers' }),
+    });
+    expect((await json<NoteJson>(await api(bob, `/api/notes/${id}`))).title).toBe('Shared zip');
   });
 
   it('still dedupes by content when the note carries no id', async () => {
@@ -334,15 +349,15 @@ describe('an export imported into another account', () => {
     expect(progress.failed).toBe(0);
     expect(progress.filesUploaded).toBe(1);
 
-    // Alice holds the exported id on this same instance, so Bob's copy gets a fresh one —
-    // the id survives only across instances, which one dev server cannot stage. Find the
-    // copy by the notebook that came with it instead.
+    // The exported id survives into Bob's account, although Alice still holds it in hers:
+    // each account is its own database. Found by the notebook that came with it, which is
+    // how a restore is judged, and then read back by the id it kept.
     const listed = await json<{ items: NoteJson[] }>(
       await api(bob, `/api/notes?notebook=${encodeURIComponent(notebook)}`),
     );
     expect(listed.items).toHaveLength(1);
     const copy = await json<NoteJson>(await api(bob, `/api/notes/${listed.items[0]!.id}`));
-    expect(copy.id).not.toBe(created.id);
+    expect(copy.id).toBe(created.id);
     expect(copy.title).toBe(original.title);
     expect(copy.body).toBe(original.body);
     expect(copy.tags.sort()).toEqual(['moving', 'two words']);

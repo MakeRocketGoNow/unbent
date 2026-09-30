@@ -1,8 +1,7 @@
 import { Hono } from 'hono';
 import { MAX_ATTACHMENT_BYTES } from '@unbent/shared';
-import { AttachmentsRepo } from '../lib/attachments-repo.js';
 import { chooseContentType } from '../lib/fetch-attachment.js';
-import { NotesRepo } from '../lib/notes-repo.js';
+import { reposFor } from '../lib/repos.js';
 import { storeAttachment } from '../lib/store-attachment.js';
 import { claimUploadGrant } from '../lib/upload-grants.js';
 import type { AppEnv } from '../types.js';
@@ -50,8 +49,7 @@ export const uploads = new Hono<AppEnv>().put('/uploads/:token', async (c) => {
     return c.json({ error: `This upload link is unknown, already used, or expired. ${ASK_AGAIN}` }, 404);
   }
 
-  const attachments = new AttachmentsRepo(c.env.DB, grant.userId);
-  const notes = new NotesRepo(c.env.DB, grant.userId);
+  const { attachments, notes } = reposFor(c.env, grant.userId);
   // Trashed, or gone, in the minutes since the link was made.
   if (!(await attachments.ownsNote(grant.noteId))) {
     return c.json({ error: 'The note this link was for is no longer there.' }, 404);
