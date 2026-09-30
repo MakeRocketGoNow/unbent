@@ -1038,6 +1038,20 @@ are left alone: a document has no opinion to read.
 `POST /api/notes/:id/autofill` answers with the suggestions and applies nothing; the client
 does. The Android app is the site in a WebView, so it has the same control.
 
+## Reading without a connection
+
+The installed app — and the Android app, which is the site in a WebView — opens with no
+signal. A service worker keeps the app itself on the device, and the last copy of what was
+read: the note list, each note that was opened, and the images and PDFs that were looked at.
+A line across the top says you are offline; the note reads exactly as it did, and nothing
+about it can change until the connection is back. Search needs the server and says so. A
+lost connection is never taken for signing out.
+
+This is the floor, not offline editing. Changes are made online, as before; keeping the
+whole library on the device and writing to it first is the sync work that follows (a change
+feed from each account's store, then a local copy in the browser). What the worker keeps,
+and why it is network-first rather than cache-first, is in `apps/web/src/sw/`.
+
 ## Local database
 
 `pnpm --filter @unbent/api db:reset` rebuilds the local D1 from migrations and clears the

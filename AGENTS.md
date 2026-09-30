@@ -395,6 +395,69 @@ bars and the keyboard are the app's, not the browser's. What stays native is the
 screen, the share sheet and App settings, and the UI rules in this file apply to those
 Compose screens as much as to the site.
 
+## The offline shell
+
+The app opens with no connection: a service worker (`apps/web/src/sw/sw.ts`) keeps the built
+app on the device and the last copy of what was read. It is the read-only floor — offline
+editing is the sync work after it — and it has a few rules that are easy to break from code
+that never mentions it.
+
+**What it keeps is an allowlist, by the whole shape of the path.** `classify` in
+`src/sw/routes.ts` names the reads the list and an open note are drawn from; everything else
+passes straight through. A new view that should read offline adds its GET there, with a case
+in `routes.test.ts`. Never match by prefix: GETs that must not be cached — a note's export, a
+field-conversion preview — sit under the same prefixes.
+
+**Reads are network-first, never cache-first.** React Query already caches in memory and
+every save invalidates exactly what it changed; a worker answering from its own copy first
+would hand that refetch the note as it was before the save. For the same reason a note read
+from the cache stays locked after the connection returns, until the server answers for it —
+saves carry no precondition yet (MAK-113), so unlocking old text is how an edit made on
+another device gets saved over.
+
+**File bytes are kept only when someone looks at them:** an `<img>`, or a fetch carrying
+`X-Unbent-View: 1`, which the PDF viewer sends. The indexer and export read every file in the
+archive through the same addresses. A new bulk read of file bytes must not send that header;
+a new viewer must.
+
+**Every API call goes through `request()` in `notes-api.ts`.** That is how the app learns
+the connection is gone — a fetch with no answer becomes an `OfflineError`, and an answer the
+worker served from its cache carries `X-Unbent-Served: cache`. A call made with bare `fetch`
+elsewhere cannot raise the banner or lock the editor.
+
+**The caches are keyed by address, not by account.** `clearOfflineCaches()` runs on
+sign-out, on a refused session, on account deletion and when a different person signs in. A
+new way for the account on a device to change hands has to call it too, or the next person
+to open the app offline is shown the last one's notes.
+
+**Offline is not `readOnly`.** The trash's `readOnly` turns the autosave off and drops the
+draft; offline locks the inputs and leaves the autosave running, so typing that landed a
+moment before the lock is saved when the connection returns. A new control that changes a
+note should follow `locked` in `Workspace`, and a new CodeMirror handler that dispatches on
+its own must check `state.readOnly` — `EditorView.editable` stops only the keyboard.
+
+**Deploys wait for a change of page.** A new worker installs and waits; the next time
+someone goes to another page, and nothing a reload would lose is in flight (`busy.ts`), the
+app loads that page from the new deploy. Work that lives only in the page — an upload, a run
+like import or export — should hold the page through `holdPage()` or be one of the runs
+`pageBusy()` already asks.
+
+**Never delete `sw.js`.** The Worker answers an unknown path with `index.html`, so a deleted
+worker script is a 200 the browser cannot install, and the old worker stays in charge on
+every device indefinitely. To retire the worker, ship one that unregisters itself and
+empties its caches.
+
+**Testing it.** Vite's dev server does not run the worker. Build the web app and load the
+Worker's own port, which serves `apps/web/dist` beside the API — this checkout's
+`API_PORT`, not Vite's. The Browser pane cannot register a service worker at all ("an
+unknown error occurred when fetching the script"), so drive a headless Chrome over the
+DevTools protocol instead. Take a connection away with `Network.emulateNetworkConditions`
+on the page *and* on every service-worker target, attaching one session per target and
+reusing it: emulation is per session, and a second attach leaves the first one's
+conditions in force. The real check is still airplane mode on the phone, with
+`adb reverse --remove-all` as well when the app points at a local instance — airplane mode
+alone does not cut the adb tunnel.
+
 ## The local database is disposable — but ask
 
 Wiping local notes during development is fine and has been offered explicitly. **Ask first
