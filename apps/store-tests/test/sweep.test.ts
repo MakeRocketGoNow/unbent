@@ -44,10 +44,10 @@ async function row(id: string) {
 const stub = (id: string) => env.USER_STORE.get(env.USER_STORE.idFromName(id));
 
 /** Runs batches until a pass over the whole directory is done, returning the reports. */
-async function fullPass() {
+async function fullPass(over: Parameters<typeof sweepStores>[0] = env) {
   const reports = [];
   for (let i = 0; i < 20; i++) {
-    const report = await sweepStores(env);
+    const report = await sweepStores(over);
     reports.push(report);
     if (report.done) break;
   }
@@ -163,6 +163,25 @@ describe('the store sweep', () => {
     // Measured like any other account, never marked migrated, and named again next pass.
     expect(await row(mismatched)).toMatchObject({ note_count: 2, migrated_at: null });
     expect((await fullPass()).flatMap((r) => r.mismatched)).toContain(mismatched);
+  });
+
+  /**
+   * A preview Worker shares the dev instance's D1 but has objects of its own, empty
+   * copies at best, so its walk must write nothing into the shared directory: not the
+   * mark that freezes an account's rows on dev, and not usage numbers that would replace
+   * dev's with zeros until dev's next pass.
+   */
+  it('writes nothing to the directory when the freeze is off, as on a preview', async () => {
+    const preview = uid('preview');
+    await user(preview);
+    await directory(preview);
+    await stub(preview).create({ id: crypto.randomUUID(), title: 'On the preview', body: 'x', tags: [] });
+    const reports = await fullPass({ ...env, STORE_FREEZE_D1: '0' });
+    expect(reports.flatMap((r) => r.failed)).toEqual([]);
+    // Visited and copied (nothing to copy), but the row is as the seed left it.
+    expect(await row(preview)).toMatchObject({ note_count: 0, storage_bytes: 0, migrated_at: null });
+    // The object itself is marked, as any copied object is; only the directory is spared.
+    expect((await stub(preview).usage()).migratedFromD1).toBe(true);
   });
 
   it('counts one account\'s failure and carries on to the next', async () => {

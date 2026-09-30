@@ -173,13 +173,18 @@ async function sweepOne(
       report.mismatched.push(row.userId);
     }
   }
-  writes.push(
-    recordDirectoryUsageStatement(env.DB, row.userId, {
-      storageBytes: usage.databaseSize,
-      noteCount: usage.notes,
-      // `migrated_at` is what freezes the account's D1 rows; a preview must not write it.
-      migrated: usage.migratedFromD1 && env.STORE_FREEZE_D1 !== '0',
-    }),
-  );
+  // A preview shares the dev instance's directory and its objects are empty copies, so
+  // nothing it measured may be written there: not `migrated_at`, which would freeze the
+  // account's rows on dev (see `STORE_FREEZE_D1` in wrangler.toml), and not the usage
+  // columns, which would zero dev's numbers until its own next pass.
+  if (env.STORE_FREEZE_D1 !== '0') {
+    writes.push(
+      recordDirectoryUsageStatement(env.DB, row.userId, {
+        storageBytes: usage.databaseSize,
+        noteCount: usage.notes,
+        migrated: usage.migratedFromD1,
+      }),
+    );
+  }
   if (usage.migratedFromD1) report.migrated += 1;
 }
