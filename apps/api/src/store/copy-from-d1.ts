@@ -189,7 +189,7 @@ export async function copyFromD1(
   // persisted, so a wake that could pause inside it would restart it every time and
   // never finish.
   let queries = 0;
-  const spend = async (at: string, reserve = TABLES.length) => {
+  const spend = async (at: string, reserve = TABLES.length + 1) => {
     if (queries + 1 + reserve > budget) {
       await flush();
       throw new CopyIncomplete(queries, at);
@@ -335,3 +335,12 @@ export async function copyFromD1(
     throw err;
   }
 }
+    // The account's D1 rows are frozen from this moment: the directory row is what the
+    // freeze triggers read (migration 0032), so it is written here, by the copy that
+    // verified, rather than left to the sweep — the window between the two is one an
+    // old isolate could write into. One query, inside the budget's reserve.
+    await spend('directory', 0);
+    await db
+      .prepare(`UPDATE account_directory SET migrated_at = COALESCE(migrated_at, ?2) WHERE user_id = ?1`)
+      .bind(userId, Date.now())
+      .run();

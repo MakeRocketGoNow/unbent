@@ -22,12 +22,14 @@ CREATE TABLE IF NOT EXISTS note_tags (note_id TEXT NOT NULL, tag_id TEXT NOT NUL
 CREATE TABLE IF NOT EXISTS note_fields (note_id TEXT NOT NULL, field_id TEXT NOT NULL, user_id TEXT NOT NULL, value_text TEXT NOT NULL, value_num REAL, PRIMARY KEY (note_id, field_id));
 CREATE TABLE IF NOT EXISTS attachments (id TEXT PRIMARY KEY, note_id TEXT NOT NULL, user_id TEXT NOT NULL, filename TEXT NOT NULL, content_type TEXT NOT NULL, size INTEGER NOT NULL, md5 TEXT, r2_key TEXT NOT NULL, created_at INTEGER NOT NULL, has_text INTEGER NOT NULL DEFAULT 0);
 CREATE TABLE IF NOT EXISTS attachment_text (attachment_id TEXT PRIMARY KEY, note_id TEXT NOT NULL, user_id TEXT NOT NULL, filename TEXT NOT NULL, text TEXT NOT NULL, created_at INTEGER NOT NULL, read_by TEXT);
+CREATE TABLE IF NOT EXISTS account_directory (user_id TEXT PRIMARY KEY, created_at INTEGER NOT NULL, migrated_at INTEGER, storage_bytes INTEGER NOT NULL DEFAULT 0, note_count INTEGER NOT NULL DEFAULT 0, last_active_at INTEGER, deleted_at INTEGER);
 `;
 
 /** Fills D1 for `user`: `notes` notes across two notebooks, tagged, valued, with a scan each. */
 async function seedD1(user: string, notes: number) {
   const stmts: D1PreparedStatement[] = [];
   const p = (sql: string, ...binds: unknown[]) => stmts.push(env.DB.prepare(sql).bind(...binds));
+  p(`INSERT INTO account_directory (user_id, created_at) VALUES (?1, 1)`, user);
   p(`INSERT INTO notebooks VALUES (?1, ?2, 'Receipts', 1, 'Bills', '🧾', 999)`, `${user}-nb1`, user);
   p(`INSERT INTO notebooks VALUES (?1, ?2, 'Recipes', 1, NULL, NULL, 999)`, `${user}-nb2`, user);
   p(`INSERT INTO notebook_fields (id, user_id, notebook_id, name, type, position, created_at) VALUES (?1, ?2, ?3, 'Amount', 'number', 0, 1)`, `${user}-f1`, user, `${user}-nb1`);
@@ -103,6 +105,9 @@ describe('copy from D1', () => {
     expect(await stub.pendingTextCount()).toBe(0);
     expect((await stub.get(`${userId}-n0001`))?.fields?.[0]).toMatchObject({ name: 'Amount', value: 1 });
     expect(await stub.get(`${userId}-other`)).toBeNull();
+    // The copy wrote the directory row itself: from here the account's D1 rows are frozen.
+    const dir = await env.DB.prepare(`SELECT migrated_at FROM account_directory WHERE user_id = ?1`).bind(userId).first<{ migrated_at: number | null }>();
+    expect(dir?.migrated_at).toEqual(expect.any(Number));
 
     // A second wake copies nothing: the flag stands and the rows are as they were.
     await evictDurableObject(stub);
