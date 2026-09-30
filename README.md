@@ -1326,10 +1326,11 @@ with its place committed; the sweep continues it next pass, and the operator's r
 calls again at once.
 
 Migration 0032 freezes each account's rows in the shared tables from the moment that
-account's copy is verified (`account_directory.migrated_at`, written by the copy itself):
-a write to them for a migrated account, from an old isolate draining during the deploy or
-from anything else, fails with "notes moved to the per-account store" rather than landing
-after the copy and disappearing. Rows of an account not yet copied are still writable,
+account's copy starts (`account_directory.migrated_at`, written by the copy before it
+reads a page, and cleared again if the copy cannot be verified): a write to them for such
+an account, from an old isolate draining during the deploy or from anything else, fails
+with "notes moved to the per-account store" rather than landing after its page was read
+and disappearing. Rows of an account not yet copied are still writable,
 which is what lets the dev instance, whose database a preview of the cutover shares, keep
 saving notes until the cutover itself lands there. Deleting an account still works: the
 triggers only fire while the account's `user` row exists, and a `user` delete cascades

@@ -106,6 +106,10 @@ describe('copy from D1', () => {
         break;
       }
       expect(result).toMatchObject({ status: 'paused', at: expect.stringMatching(/^\w+:\d+$/) });
+      // Frozen from the first call, before the copy is anywhere near done: a write to
+      // the account's D1 rows from now on is refused rather than missed.
+      const dir = await env.DB.prepare(`SELECT migrated_at FROM account_directory WHERE user_id = ?1`).bind(userId).first<{ migrated_at: number | null }>();
+      expect(dir?.migrated_at).toEqual(expect.any(Number));
       // Nothing copied yet is lost across a pause, or across an eviction in between.
       if (calls === 2) await evictDurableObject(stub);
     }
@@ -160,8 +164,8 @@ describe('copy from D1', () => {
 
     const first = await stub.copyFromD1();
     expect(first).toMatchObject({ status: 'mismatch', reason: expect.stringMatching(/^attachments: 3 of 4 rows landed/) });
-    // Recorded, not marked, and the directory row never got its `migrated_at`, so the
-    // account's D1 rows stay writable for the operator.
+    // Recorded, not marked, and the `migrated_at` the copy wrote before its first page
+    // is cleared again, so the account's D1 rows are writable for the operator.
     expect(await stub.stats()).toMatchObject({ migratedFromD1: false, copyMismatch: (first as { reason: string }).reason });
     const dir = await env.DB.prepare(`SELECT migrated_at FROM account_directory WHERE user_id = ?1`).bind(userId).first<{ migrated_at: number | null }>();
     expect(dir?.migrated_at).toBeNull();
@@ -222,11 +226,11 @@ describe('copy from D1', () => {
     for (let i = 0; i < 3; i++) {
       await env.DB.prepare(`UPDATE attachment_text SET text = ?1 WHERE attachment_id = ?2`).bind(big, `${userId}-a${i}`).run();
     }
-    // Fourteen pages for the other tables (a page and the empty one after it, for seven
-    // of them), three for the texts — the first two, since the cut is by the rows before
-    // the next, then the third, then the empty one — the probe, eight counts and the
-    // directory write: twenty-seven queries.
-    expect(await stub.copyFromD1()).toMatchObject({ status: 'done', queries: 1 + 14 + 3 + 8 + 1 });
+    // The probe, the freeze, fourteen pages for the other tables (a page and the empty
+    // one after it, for seven of them), three for the texts — the first two, since the
+    // cut is by the rows before the next, then the third, then the empty one — and
+    // eight counts: twenty-seven queries.
+    expect(await stub.copyFromD1()).toMatchObject({ status: 'done', queries: 1 + 1 + 14 + 3 + 8 });
     expect((await stub.stats()).counts.attachment_text).toBe(3);
     expect((await stub.textFor(`${userId}-n0002`, 'scan.pdf'))?.length).toBe(big.length);
   });

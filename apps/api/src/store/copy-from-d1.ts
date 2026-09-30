@@ -59,6 +59,14 @@ import type { Sql } from './sql.js';
  * fetched, and re-counts what it skips from zero, since a rescan skips the same rows
  * again.
  *
+ * The account's rows in D1 are frozen from the copy's first query, not from its last:
+ * `account_directory.migrated_at` is written before a page is read, and migration 0032's
+ * triggers then refuse every insert and update to that account's rows. That is what
+ * makes a write from a draining old isolate refused, visibly, rather than lost — one
+ * that landed after its page was read would otherwise never arrive here, and a count
+ * would not catch an update. A copy that cannot be verified clears the mark again, so
+ * the operator can fix the rows where they are.
+ *
  * D1 queries count against the subrequests one invocation may make — fifty on Workers
  * Free — so each call spends at most `D1_CALL_BUDGET` and then answers `paused` with
  * its progress committed; the caller calls again. An archive-sized account (4k notes, 4k
@@ -304,8 +312,8 @@ export async function copyFromD1(sql: Sql, db: D1Database, userId: string, recou
 
   // Every D1 query goes through here, so the budget is counted where it is spent. A page
   // is fetched only while the verification's own queries — one count per table, and the
-  // directory write — would still fit after it; past that, the call stops with its state
-  // committed and answers `paused`. The verification itself never pauses: its progress is
+  // unfreeze a mismatch needs — would still fit after it; past that, the call stops with
+  // its state committed and answers `paused`. The verification itself never pauses: its progress is
   // not persisted, so a call that could pause inside it would restart it every time and
   // never finish.
   let queries = 0;
@@ -323,6 +331,13 @@ export async function copyFromD1(sql: Sql, db: D1Database, userId: string, recou
     if (!hasTables) {
       markCopiedFromD1(sql);
       return { status: 'done', copied: {}, skipped: 0, unfiled: 0, merged: 0, corrections: 0, queries, ms: Date.now() - started, resumed: false };
+    }
+
+    // Frozen from here, before a page is read; see the module comment. Idempotent, so a
+    // resumed call pays one query to say it again. Not on a preview; see `opts.freeze`.
+    if (opts.freeze) {
+      spend('freeze', 0);
+      await db.prepare(`UPDATE account_directory SET migrated_at = COALESCE(migrated_at, ?2) WHERE user_id = ?1`).bind(userId, Date.now()).run();
     }
 
     const progress = readProgress(sql);
@@ -407,20 +422,17 @@ export async function copyFromD1(sql: Sql, db: D1Database, userId: string, recou
           writeMeta(sql, META_MISMATCH, reason);
           writeMeta(sql, META_PROGRESS, JSON.stringify({ ...progress, cursor: null }));
         });
+        // Unfrozen again: D1 is still this account's truth, and the operator fixes the
+        // rows there. The one query the reserve keeps for this.
+        if (opts.freeze) {
+          spend('unfreeze', 0);
+          await db.prepare(`UPDATE account_directory SET migrated_at = NULL WHERE user_id = ?1`).bind(userId).run();
+        }
         console.error(`[store] copy mismatch user=${userId} ${reason}`);
         return { status: 'mismatch', reason, queries };
       }
     }
 
-    // The account's D1 rows are frozen from this moment: the directory row is what the
-    // freeze triggers read (migration 0032), so it is written here, by the copy that
-    // verified, rather than left to the sweep — the window between the two is one an
-    // old isolate could write into. One query, inside the budget's reserve. Not on a
-    // preview; see `opts.freeze`.
-    if (opts.freeze) {
-      spend('directory', 0);
-      await db.prepare(`UPDATE account_directory SET migrated_at = COALESCE(migrated_at, ?2) WHERE user_id = ?1`).bind(userId, Date.now()).run();
-    }
     sql.tx(() => {
       markCopiedFromD1(sql);
       sql.exec('DELETE FROM _meta WHERE key IN (?1, ?2)', META_PROGRESS, META_MISMATCH);
