@@ -19,3 +19,12 @@ export const DATA_TABLES = [
   'attachment_text',
 ] as const;
 export type DataTable = (typeof DATA_TABLES)[number];
+
+/**
+ * What a dump carries: the data tables, the account totals (`note_counts` is one row the
+ * triggers keep, and the dump writes its rows before its triggers, so it has to travel as
+ * a row), and the object's own two, so a file rebuilt from it says which schema files it
+ * is at and whose it is. None of the three extras is counted as data.
+ */
+export const DUMP_TABLES = ['_migrations', '_meta', 'note_counts', ...DATA_TABLES] as const;
+export type DumpTable = (typeof DUMP_TABLES)[number];

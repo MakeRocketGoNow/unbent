@@ -9,7 +9,7 @@ import { isOperator } from '../lib/instance.js';
 import { userPrefix } from '../lib/repo.js';
 import { storeFor } from '../lib/store-client.js';
 import { sweepStores } from '../lib/sweep.js';
-import { DATA_TABLES } from '../store/tables.js';
+import { DUMP_TABLES } from '../store/tables.js';
 import type { AppEnv } from '../types.js';
 
 /**
@@ -202,11 +202,21 @@ export const admin = new Hono<AppEnv>()
   )
 
   /**
-   * Every row of one store as JSON lines: the schema first, then each data table's rows
-   * with the table named on each line, paged out of the object by rowid as it streams.
-   * What `d1 export` was for the shared database — a file an account can be rebuilt from
-   * locally, and the rehearsal for a migration. The FTS tables are not in it; their
-   * triggers refill them when the rows are put back.
+   * One store as SQL text: `sqlite3 account.db < dump.sql` rebuilds it, with nothing from
+   * this repository needed. What `d1 export` was for the shared database, and how a
+   * migration is rehearsed against a real account before it ships: dump, load, run the
+   * new schema file's SQL against the copy.
+   *
+   * The order is what makes the file loadable rather than merely complete. Tables and
+   * indexes come first, then every row, then the triggers and the FTS tables, then a
+   * rebuild of each FTS index from the rows. Rows before triggers, because the count
+   * triggers would otherwise add every note a second time to counts the notebook and tag
+   * rows already carry, and the FTS insert triggers would index each row on the way in
+   * only to have `rebuild` do it again. `_migrations` and `_meta` travel too, so the
+   * copy says which schema files it is at and whose it was.
+   *
+   * Paged out of the object by rowid as it streams, so an archive's worth of texts never
+   * sits in the Worker's memory at once.
    */
   .get('/admin/store/dump', requireAuth, async (c) => {
     const target = operatorTarget(c);
@@ -215,20 +225,35 @@ export const admin = new Hono<AppEnv>()
     const encoder = new TextEncoder();
     const body = new ReadableStream<Uint8Array>({
       async start(controller) {
+        const line = (text: string) => controller.enqueue(encoder.encode(`${text}\n`));
         try {
-          controller.enqueue(encoder.encode(`${JSON.stringify({ schema: await store.schemaSql() })}\n`));
-          for (const table of DATA_TABLES) {
+          const schema = await store.schemaSql();
+          const later = (s: string) => /^CREATE (VIRTUAL TABLE|TRIGGER)\b/i.test(s);
+          line(`-- Unbent note store of account ${target}, dumped ${new Date().toISOString()}`);
+          line(`-- Rebuild with: sqlite3 account.db < this-file.sql`);
+          line('PRAGMA foreign_keys = OFF;');
+          line('BEGIN;');
+          for (const s of schema) if (!later(s)) line(`${s};`);
+          for (const table of DUMP_TABLES) {
             for (let after = 0; ; ) {
               const page = await store.dumpPage(table, after, 500);
               for (const row of page.rows) {
                 const { _rowid, ...columns } = row;
                 void _rowid;
-                controller.enqueue(encoder.encode(`${JSON.stringify({ table, row: columns })}\n`));
+                const names = Object.keys(columns);
+                line(`INSERT INTO ${table} (${names.join(', ')}) VALUES (${names.map((n) => sqlLiteral(columns[n])).join(', ')});`);
               }
               if (page.nextRowid === null) break;
               after = page.nextRowid;
             }
           }
+          for (const s of schema) if (later(s)) line(`${s};`);
+          for (const fts of schema.filter((s) => /^CREATE VIRTUAL TABLE/i.test(s))) {
+            const name = /^CREATE VIRTUAL TABLE\s+(\S+)/i.exec(fts)![1];
+            line(`INSERT INTO ${name}(${name}) VALUES ('rebuild');`);
+          }
+          line('COMMIT;');
+          line('PRAGMA foreign_keys = ON;');
           controller.close();
         } catch (err) {
           controller.error(err);
@@ -237,8 +262,8 @@ export const admin = new Hono<AppEnv>()
     });
     return new Response(body, {
       headers: {
-        'Content-Type': 'application/x-ndjson; charset=utf-8',
-        'Content-Disposition': `attachment; filename="unbent-store-${target}.jsonl"`,
+        'Content-Type': 'application/sql; charset=utf-8',
+        'Content-Disposition': `attachment; filename="unbent-store-${target}.sql"`,
         'Cache-Control': 'no-store',
       },
     });
@@ -255,6 +280,18 @@ export const admin = new Hono<AppEnv>()
     console.log(`[store] operator=${email} sweep`);
     return c.json(await sweepStores(c.env));
   });
+
+/** One SQLite value as a literal in the dump. The four types the engine has, and nothing else. */
+function sqlLiteral(value: unknown): string {
+  if (value === null || value === undefined) return 'NULL';
+  if (typeof value === 'number') return Number.isFinite(value) ? String(value) : 'NULL';
+  if (typeof value === 'string') return `'${value.replace(/'/g, "''")}'`;
+  if (value instanceof ArrayBuffer || ArrayBuffer.isView(value)) {
+    const bytes = value instanceof ArrayBuffer ? new Uint8Array(value) : new Uint8Array(value.buffer, value.byteOffset, value.byteLength);
+    return `X'${[...bytes].map((b) => b.toString(16).padStart(2, '0')).join('')}'`;
+  }
+  return `'${String(value).replace(/'/g, "''")}'`;
+}
 
 /**
  * Whose store a `stats` or `dump` reads: the caller's own, or, for an operator naming

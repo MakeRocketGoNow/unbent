@@ -16,9 +16,9 @@ import { NotesStore, type CountOptions, type ListOptions, type SearchFilters } f
 import { cursorAfter, nextCursor } from './notes-shared.js';
 import { SCHEMA } from './schema/index.js';
 import { instrumentedSql, type Sql } from './sql.js';
-import { DATA_TABLES, type DataTable } from './tables.js';
+import { DATA_TABLES, DUMP_TABLES, type DataTable, type DumpTable } from './tables.js';
 
-export { DATA_TABLES, type DataTable };
+export { DATA_TABLES, DUMP_TABLES, type DataTable, type DumpTable };
 
 /**
  * What the object is allowed to see of the Worker's environment: the D1 database, for the
@@ -244,13 +244,13 @@ export class UserStore extends DurableObject<StoreEnv> {
 
   /**
    * One page of a table's rows, by rowid, for the dump route: the operator pages every
-   * data table in `DATA_TABLES` order and writes them out with `schemaSql` at the top,
-   * which is a file `sqlite3` can rebuild an account from. The FTS tables are not dumped;
-   * their triggers refill them as the rows are re-inserted.
+   * table in `DUMP_TABLES` order and writes them out as SQL between the schema's tables
+   * and its triggers, which is a file `sqlite3` rebuilds an account from. The FTS tables
+   * are not dumped; the file rebuilds them from the rows at the end.
    */
-  dumpPage(table: DataTable, afterRowid = 0, limit = 500): { rows: Row[]; nextRowid: number | null } {
+  dumpPage(table: DumpTable, afterRowid = 0, limit = 500): { rows: Row[]; nextRowid: number | null } {
     this.ready();
-    if (!DATA_TABLES.includes(table)) throw new Error(`not a data table: ${table}`);
+    if (!DUMP_TABLES.includes(table)) throw new Error(`not a data table: ${table}`);
     const rows = this.sql.exec<Row & { _rowid: number }>(
       `SELECT rowid AS _rowid, * FROM ${table} WHERE rowid > ?1 ORDER BY rowid LIMIT ?2`,
       afterRowid,
@@ -260,11 +260,20 @@ export class UserStore extends DurableObject<StoreEnv> {
     return { rows, nextRowid: rows.length === limit && last ? last._rowid : null };
   }
 
-  /** The CREATE statements the database holds, in creation order: the dump's first line. */
+  /**
+   * The CREATE statements the database holds, in creation order, for the dump. Each FTS5
+   * virtual table's shadow tables (`notes_fts_data`, `_idx`, `_docsize`, `_config`) are
+   * left out: SQLite lists them in `sqlite_master` as ordinary tables, but they belong to
+   * the virtual table, which creates them itself and refuses to if they already exist.
+   */
   schemaSql(): string[] {
     this.ready();
     return this.sql
-      .exec<{ sql: string }>(`SELECT sql FROM sqlite_master WHERE sql IS NOT NULL ORDER BY rowid`)
+      .exec<{ sql: string }>(
+        `SELECT sql FROM sqlite_master
+          WHERE sql IS NOT NULL AND NOT (type = 'table' AND name GLOB '*_fts_*')
+          ORDER BY rowid`,
+      )
       .map((r) => r.sql);
   }
 

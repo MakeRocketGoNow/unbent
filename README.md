@@ -1327,8 +1327,9 @@ and can be run on demand after a deploy.
 
 - `GET …/stats` — row counts, size and schema version, the caller's own or `?user=`'s.
 - `POST …/sql` — one `SELECT` (or `EXPLAIN`) against a store, always rolled back.
-- `GET …/dump` — every row as JSON lines, schema first: what `d1 export` was. `sqlite3`
-  can rebuild an account from it, and it is how a migration is rehearsed against a real one.
+- `GET …/dump` — the store as SQL text, `sqlite3 account.db < dump.sql` rebuilds it: what
+  `d1 export` was, and how a migration is rehearsed against a real account before it
+  ships — dump, load, run the new schema file's SQL against the copy.
 - `POST …/sweep` — the daily walk, now.
 
 Reading another account's store is logged with both ids. Rows read and written inside an
