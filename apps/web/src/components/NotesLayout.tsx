@@ -372,7 +372,14 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
     editField.mutate({ noteId, def, value });
   };
 
-  const error = list.error ?? (offline ? null : search.error) ?? editField.error;
+  /*
+     The offline sentences below are about the list — a page of it never loaded on this
+     device. A cell edit that failed for want of a connection is not that, and saying the
+     list is incomplete to someone who just edited a cell would be wrong; the cells and the
+     selection bar are locked offline anyway, so it can only be the edit that was in flight.
+  */
+  const error =
+    list.error ?? (offline ? null : search.error) ?? (isOfflineError(editField.error) ? null : editField.error);
 
   /*
    * Whether the rows on screen are the rows for the heading above them.
@@ -986,7 +993,9 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
             onKeyDown={onListKeysWithSelection}
             tableRef={tableRef}
             empty={emptyMessage}
-            onEdit={onEditCell}
+            // Offline the cells show their values and take no edits, as the open note does:
+            // nothing can change until the connection is back.
+            onEdit={offline ? undefined : onEditCell}
             selection={{
               has: selection.has,
               active: selection.active,
@@ -1083,8 +1092,8 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
               type="button"
               className="icon-btn"
               aria-label="Move to notebook"
-              title="Move to notebook"
-              disabled={bulkBusy}
+              title={offline ? 'Not available offline' : 'Move to notebook'}
+              disabled={bulkBusy || offline}
               onClick={() => setBulkSheet('move')}
             >
               <NotebookActionIcon />
@@ -1093,8 +1102,8 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
               type="button"
               className="icon-btn"
               aria-label="Tags"
-              title="Tags"
-              disabled={bulkBusy}
+              title={offline ? 'Not available offline' : 'Tags'}
+              disabled={bulkBusy || offline}
               onClick={() => setBulkSheet('tags')}
             >
               <TagActionIcon />
@@ -1103,8 +1112,8 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
               type="button"
               className="icon-btn danger"
               aria-label="Delete"
-              title="Delete"
-              disabled={bulkBusy}
+              title={offline ? 'Not available offline' : 'Delete'}
+              disabled={bulkBusy || offline}
               onClick={() => setPendingTrash(true)}
             >
               <TrashIcon />
