@@ -314,8 +314,14 @@ export class UserStore extends DurableObject<StoreEnv> {
    * PRAGMA that changes engine state, and for making the refusal an error the operator
    * reads rather than a silent no-op.
    *
-   * Rows are capped because the result crosses RPC (32 MiB) and lands in a JSON response;
-   * an operator wanting more pages with LIMIT/OFFSET like anyone else.
+   * The result is capped, at `maxRows` rows and at `DUMP_PAGE_BYTES` of them, because it
+   * crosses RPC (32 MiB) and lands in a JSON response; an operator wanting more pages
+   * with LIMIT/OFFSET like anyone else. The cap is applied as the rows are read off the
+   * raw cursor, not to a result already built: `SELECT * FROM attachment_text` on an
+   * archive would otherwise pull every text into the object's memory before the first
+   * five hundred were kept, and five hundred texts can pass the RPC ceiling on their own
+   * (found in review). The one other query here that bypasses the seam's metering, for
+   * that reason; what it read is counted off the cursor instead.
    */
   readOnlySql(query: string, binds: Array<string | number | null> = [], maxRows = 500): {
     rows: Row[];
@@ -327,22 +333,30 @@ export class UserStore extends DurableObject<StoreEnv> {
     if (!/^(SELECT|WITH|EXPLAIN)\b/.test(head)) {
       throw new Error('readOnlySql runs SELECT, WITH or EXPLAIN statements only');
     }
-    const before = this.sql.counters.rowsRead;
-    let rows: Row[] = [];
+    const rows: Row[] = [];
+    let truncated = false;
+    let rowsRead = 0;
     const ROLLBACK = Symbol('rollback');
     try {
       this.sql.tx(() => {
-        rows = this.sql.exec<Row>(query, ...binds);
+        const cursor = this.ctx.storage.sql.exec<Row>(query, ...binds);
+        let bytes = 0;
+        for (const row of cursor) {
+          for (const v of Object.values(row)) bytes += typeof v === 'string' ? v.length : v instanceof ArrayBuffer ? v.byteLength : 8;
+          // Always at least one row, so a single oversized row can still be looked at.
+          if (rows.length >= maxRows || (bytes > DUMP_PAGE_BYTES && rows.length > 0)) {
+            truncated = true;
+            break;
+          }
+          rows.push(row);
+        }
+        rowsRead = cursor.rowsRead;
         throw ROLLBACK;
       });
     } catch (err) {
       if (err !== ROLLBACK) throw err;
     }
-    return {
-      rows: rows.slice(0, maxRows),
-      truncated: rows.length > maxRows,
-      rowsRead: this.sql.counters.rowsRead - before,
-    };
+    return { rows, truncated, rowsRead };
   }
 
   /**

@@ -149,6 +149,28 @@ describe('UserStore lifecycle', () => {
     await expect(stub.dumpPage('notes_fts' as 'notes')).rejects.toThrow(/not a data table/);
   });
 
+  it('readOnlySql stops reading at its byte budget rather than loading the result first', async () => {
+    const { stub } = freshStore('readonlybytes');
+    await runInDurableObject(stub, (_i, state) => {
+      const sql = state.storage.sql;
+      sql.exec(`INSERT INTO notes (id, title, body, created_at, updated_at) VALUES ('n1', 'T', 'b', 1, 1)`);
+      for (let i = 0; i < 4; i++) {
+        sql.exec(`INSERT INTO attachments (id, note_id, filename, content_type, size, r2_key, created_at) VALUES (?1, 'n1', ?2, 'application/pdf', 1, ?1, 1)`, `a${i}`, `f${i}.pdf`);
+        sql.exec(`INSERT INTO attachment_text (attachment_id, note_id, filename, text, created_at) VALUES (?1, 'n1', ?2, ?3, 1)`, `a${i}`, `f${i}.pdf`, 'x'.repeat(5 * 1024 * 1024));
+      }
+    });
+    // Four texts of five megabytes: the first is kept, the second passes the budget and
+    // stops the read there, and the rows behind it were never pulled off the cursor.
+    const result = await stub.readOnlySql('SELECT attachment_id, text FROM attachment_text ORDER BY rowid');
+    expect(result.rows.map((r) => r.attachment_id)).toEqual(['a0']);
+    expect(result.truncated).toBe(true);
+    expect(result.rowsRead).toBeLessThan(4);
+    // The row cap works the same way, without a byte in sight.
+    const capped = await stub.readOnlySql('SELECT attachment_id FROM attachment_text ORDER BY rowid', [], 2);
+    expect(capped.rows.map((r) => r.attachment_id)).toEqual(['a0', 'a1']);
+    expect(capped.truncated).toBe(true);
+  });
+
   it('dumpPage cuts a page at its byte budget and keeps paging from the cut', async () => {
     const { stub } = freshStore('dumpbytes');
     // Three texts of five megabytes each: two fit the eight-megabyte budget only one at a
