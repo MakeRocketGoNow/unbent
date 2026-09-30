@@ -16,8 +16,12 @@
  * reason: each is a real server response rather than a route of the SPA. A shell for
  * `/api/auth/callback/google` would swallow a sign-in, and one for
  * `/api/notes/…/files/…?download=1` would open the app where a download was asked for.
+ *
+ * `routes.test.ts` reads `wrangler.toml` and holds the two lists together: a prefix added
+ * there and not here would have every device with the worker answer its page loads with
+ * the app, and only another deploy could take that back.
  */
-const WORKER_PREFIXES = ['/api/', '/.well-known/', '/ingest/'];
+export const WORKER_PREFIXES = ['/api/', '/.well-known/', '/ingest/'];
 
 /**
  * Whether a page load at this address should be answered with the app itself.

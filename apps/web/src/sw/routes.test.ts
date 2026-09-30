@@ -1,5 +1,8 @@
+import { readFileSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { classify, servesShell, type RequestFacts } from './routes.js';
+import { WORKER_PREFIXES, classify, servesShell, type RequestFacts } from './routes.js';
 
 const at = (path: string) => new URL(path, 'https://unbent.example');
 
@@ -102,5 +105,24 @@ describe('classify', () => {
     expect(
       classify(facts('https://images.example/receipt.png', { destination: 'image' })),
     ).toBeUndefined();
+  });
+});
+
+/*
+ * The Worker answers some paths itself, ahead of its SPA fallback (`run_worker_first` in
+ * `apps/api/wrangler.toml`, once per environment). The service worker must leave page
+ * loads of exactly those alone, or it would answer an OAuth callback with the app on every
+ * device that has it — until another deploy.
+ */
+describe('WORKER_PREFIXES', () => {
+  it('is the Worker’s own run_worker_first, in every environment', () => {
+    const here = dirname(fileURLToPath(import.meta.url));
+    const toml = readFileSync(resolve(here, '../../../api/wrangler.toml'), 'utf8');
+    const blocks = [...toml.matchAll(/^\s*run_worker_first\s*=\s*\[([\s\S]*?)\]/gm)];
+    expect(blocks.length).toBeGreaterThan(0);
+    for (const [, body] of blocks) {
+      const entries = [...body!.matchAll(/^\s*"([^"]+)"/gm)].map(([, path]) => path!.replace(/\*$/, ''));
+      expect(new Set(entries)).toEqual(new Set(WORKER_PREFIXES));
+    }
   });
 });
