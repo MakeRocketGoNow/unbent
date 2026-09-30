@@ -1,3 +1,8 @@
+-- Superseded by 0032, which drops these triggers and recreates them per account. Kept
+-- because the dev database applied it first; on any other database it is live only for
+-- the seconds before 0032 runs, and wrangler tracks migrations by name, so the SQL below
+-- must not change. Read 0032 for the policy.
+--
 -- Freezes the note tables this database no longer serves.
 --
 -- Every account's notes are read and written in its own object from this deploy on (see
