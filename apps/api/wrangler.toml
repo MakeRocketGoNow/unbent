@@ -87,14 +87,17 @@ class_name = "UserStore"
 tag = "v1"
 new_sqlite_classes = ["UserStore"]
 
-# The daily walk over every account's note store (src/lib/sweep.ts): wakes each object so
-# a pending migration runs and fails in the log rather than in front of its owner, records
+# The walk over every account's note store (src/lib/sweep.ts): wakes each object so a
+# pending migration runs and fails in the log rather than in front of its owner, records
 # each account's size in the directory, and finishes any deletion that was interrupted.
-# Inherited by the named environments, which is right for `dev` and wrong for a preview
-# that lives for one pull request; `[env.preview.triggers]` below switches it off there.
-# The hour is arbitrary and quiet.
+# Hourly, and a batch of twenty accounts per run rather than all of them: every store call
+# and D1 query counts against an invocation's subrequests, fifty on Workers Free, so the
+# walk keeps its place in D1 and continues each hour until a pass is done, then starts
+# over. Inherited by the named environments, which is right for `dev` and wrong for a
+# preview that lives for one pull request; `[env.preview.triggers]` below switches it off
+# there. The minute is arbitrary.
 [triggers]
-crons = ["17 4 * * *"]
+crons = ["17 * * * *"]
 
 # The SPA is served by this same Worker, so "same-origin" is structural rather than a
 # routing rule that has to be kept correct in a dashboard. Session cookies and OAuth

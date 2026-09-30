@@ -4,7 +4,7 @@
 -- apps/api/src/store/), and nothing in the control plane can see inside one: there is no
 -- query across objects, no list of them, and no way to ask "how many notes does this
 -- instance hold" without waking every object. This row is the cross-account view — the
--- one place billing, usage limits, the daily sweep and account deletion can read without
+-- one place billing, usage limits, the sweep and account deletion can read without
 -- touching an object — kept up to date by the sweep, which walks these rows and asks each
 -- object for its `stats`.
 --

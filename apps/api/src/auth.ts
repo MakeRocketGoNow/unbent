@@ -657,7 +657,7 @@ function createAuth(env: Env): AuthInstance {
           }
         },
         /**
-         * Tombstone the directory row once the user row is gone. The row is what the daily
+         * Tombstone the directory row once the user row is gone. The row is what the
          * sweep retries the wipe from if the object was reset between the wipe above and
          * this, and it is dropped by the sweep once the object reports itself empty. A
          * directory row whose `user` row is missing is treated as tombstoned by the sweep

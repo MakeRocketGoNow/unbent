@@ -99,7 +99,7 @@ export default {
     return app.fetch(request, withAppUrl(env, request), ctx);
   },
   /**
-   * The daily sweep over every account's note store; see lib/sweep.ts for what it is for.
+   * The walk over every account's note store, one batch an hour; see lib/sweep.ts.
    * `[triggers]` in wrangler.toml is when. `waitUntil` so the walk is not cut off at the
    * handler's return, and nothing else here needs `APP_URL` settled.
    */

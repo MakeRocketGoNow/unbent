@@ -449,14 +449,19 @@ Things about working on the store that are easy to get wrong:
 - **Schema files are append-only.** `store/schema/0001-init.ts` is applied once per object
   and never edited again; a change is a new `0002-<name>.ts` appended to `SCHEMA`, additive,
   applied on each object's next wake. There is no down migration. After a deploy that
-  carries one, run the sweep (`POST /api/admin/store/sweep`, operator only) so every object
-  migrates now and a failure is in the log today.
+  carries one, run the sweep (`POST /api/admin/store/sweep`, operator only, one batch per
+  call until `done`) so every object migrates now and a failure is in the log today.
 - **Object tests need a fresh object each.** The vitest plugin's storage isolation does not
   reach SQLite-backed objects, so `freshStore()` in `apps/store-tests/test/helpers.ts` mints
   a random name per test. Never name an object in a test.
 - **The directory is the only thing that can turn a wipe on.** The sweep wipes an object
   only for a tombstoned directory row or one whose `user` row is gone; a missing row never
-  wipes anything. Keep it that way.
+  wipes anything, and a row is dropped only once the user row is gone too. Keep it that
+  way.
+- **Subrequests are the budget inside one invocation.** Fifty on Free, and every D1 query
+  and every store call counts. The copy from D1 spends forty a wake and pauses; the sweep
+  walks twenty accounts a run; anything new that loops over accounts or pages D1 needs
+  the same shape.
 - **Local state is D1 *and* `do/`.** The reset scripts clear both; clearing one by hand
   leaves ghost objects. `worktree:setup` copies both.
 

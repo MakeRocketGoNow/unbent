@@ -1080,8 +1080,9 @@ token names an intention, and the click that acts on it should be a person's.
 Pressing it sweeps `users/{id}/` out of R2, wipes the account's note store — the object
 holding every note, tag, notebook, field and attachment record — and then removes the user
 row, whose cascade takes the sessions. Then it signs the browser out and lands on
-`/goodbye`. The account's row in the directory is tombstoned last, and the daily sweep drops
-it once the object reports itself empty, retrying the wipe if it was interrupted. The sign-out is not a formality: the
+`/goodbye`. The account's row in the directory is tombstoned last, and the sweep drops it
+once the object reports itself empty and the user row is gone, retrying the wipe if it was
+interrupted. The sign-out is not a formality: the
 deleting request re-writes the session-cache cookie from the session it resolved on the way
 in, so without it the browser would keep a five-minute claim to an account that no longer
 exists.
@@ -1313,24 +1314,35 @@ shared database held for that user, paged out of D1 and written into the object 
 resumable pass, with the counts and search index rebuilt on the way and every table's row
 count checked against what D1 held. That copy is the exception to rule 1, and it goes once
 every account's directory row says it has run; the frozen D1 tables are dropped in a later
-migration. The daily sweep wakes every object, so the copy runs for everyone within a day of
-the cutover rather than on each person's next open — or at once, if the operator runs the
-sweep by hand after the deploy.
+migration. The sweep wakes every object, so the copy runs for everyone within hours of the
+cutover rather than on each person's next open — or at once, if the operator runs the sweep
+by hand after the deploy. The copy spends at most forty D1 queries a wake, since a Free
+plan invocation may make fifty, and an archive-sized account takes two wakes: the request
+that woke it is answered 503 with Retry-After and the next one finishes.
+
+Before the new Worker goes out, migration 0031 freezes the shared tables: a write to them
+from an old isolate draining during the deploy fails with "notes moved to the per-account
+store" rather than landing after its table was copied and disappearing. Deletes stay
+allowed, because deleting an account still cascades through them.
 
 **Schema changes** are files in `apps/api/src/store/schema/`, applied per object on its next
-wake, additive only. The sweep is what makes that safe to rely on: it wakes every object
-daily, so a migration that fails for one account fails in the log with the user id on it,
-and can be run on demand after a deploy.
+wake, additive only. The sweep is what makes that safe to rely on: it wakes every object —
+twenty an hour, from a cursor it keeps in D1, since every store call counts against an
+invocation's fifty subrequests on Free — so a migration that fails for one account fails in
+the log with the user id on it, and it can be run on demand after a deploy.
 
 **What the operator can see.** An object has no console, so the Worker has one, under
 `/api/admin/store` for a session in `OPERATOR_EMAILS`:
 
-- `GET …/stats` — row counts, size and schema version, the caller's own or `?user=`'s.
+- `GET …/stats` — row counts, size and schema version, the caller's own or `?user=`'s. A
+  name the directory does not have is refused, since a store is created for any name it
+  is asked for.
 - `POST …/sql` — one `SELECT` (or `EXPLAIN`) against a store, always rolled back.
 - `GET …/dump` — the store as SQL text, `sqlite3 account.db < dump.sql` rebuilds it: what
   `d1 export` was, and how a migration is rehearsed against a real account before it
   ships — dump, load, run the new schema file's SQL against the copy.
-- `POST …/sweep` — the daily walk, now.
+- `POST …/sweep` — one batch of the walk, now; call until it says `done`, then once more
+  if any account was `deferred`.
 
 Reading another account's store is logged with both ids. Rows read and written inside an
 object are metered as D1's were, and every statement over a threshold is logged with the
