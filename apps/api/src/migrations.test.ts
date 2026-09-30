@@ -4,6 +4,7 @@ import { mkdtempSync, readdirSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { beforeAll, describe, expect, it } from 'vitest';
+import { copyQueries } from './store/copy-from-d1.js';
 
 /**
  * The D1 migrations, applied in order to a real SQLite by the `sqlite3` CLI, and then the
@@ -61,6 +62,24 @@ describe.skipIf(!sqlite3)('the D1 migrations', () => {
     const { run } = db(file);
     for (const f of files) run(migration(f));
     expect(run(`SELECT COUNT(*) FROM sqlite_master WHERE type = 'trigger' AND name LIKE '%frozen%'`)).toBe('16');
+  });
+
+  /**
+   * The copy from D1 pages every table by `user_id = ? AND rowid > ? ORDER BY rowid`, and
+   * before 0034 the planner answered most of those with every row of the account and a
+   * sort, per page, and two of them with a walk over every account (found in review).
+   * The plans are the promise, so they are pinned against the real migrations: a range
+   * seek by user and rowid for each page, no sort, no table scan, and no scan for a count.
+   */
+  it('serve the copy from D1 a page at a time by index, with no sort and no scan', () => {
+    const { run } = db(file);
+    for (const q of copyQueries()) {
+      const page = run(`EXPLAIN QUERY PLAN ${q.page}`);
+      expect(page, `${q.table} page: ${page}`).not.toMatch(/TEMP B-TREE|SCAN [a-z_]+/);
+      expect(page, `${q.table} page: ${page}`).toMatch(/rowid>\?/);
+      const count = run(`EXPLAIN QUERY PLAN ${q.count}`);
+      expect(count, `${q.table} count: ${count}`).not.toMatch(/SCAN [a-z_]+/);
+    }
   });
 
   it('freeze a migrated account\'s rows, leave an unmigrated one\'s alone, and still let a user be deleted', () => {

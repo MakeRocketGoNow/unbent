@@ -79,10 +79,35 @@ describe('copy from D1', () => {
     expect(await metaKeys(again)).toEqual(['migrated_from_d1', 'user_id']);
   });
 
-  it('marks an account with nothing in D1 done', async () => {
+  it('marks an account with nothing in D1 done, in two queries', async () => {
     const { stub } = freshStore('empty');
-    expect(await stub.copyFromD1()).toMatchObject({ status: 'done', copied: {}, usage: { notes: 0, migratedFromD1: true } });
+    expect(await stub.copyFromD1()).toMatchObject({ status: 'done', copied: {}, queries: 2, usage: { notes: 0, migratedFromD1: true } });
     expect(await stub.stats()).toMatchObject({ migratedFromD1: true });
+  });
+
+  /**
+   * Rows read are the budget. Each page is a range seek on a `user_id` index (the real
+   * plans are pinned in `migrations.test.ts`), so a copy reads the account's rows about
+   * twice: once paging them and once counting them, the count being a covering index
+   * read. Before the indexes, every page of notes read and sorted all the remaining ones.
+   */
+  it('reads the account about twice over, pages and counts, however many calls it takes', async () => {
+    const { userId, stub } = freshStore('rows');
+    await seedD1(userId, 1200);
+    // Rows the seed made for this user: 2 notebooks, 1 field, 2 tags, and per note a
+    // note, a link, a file and a text, with a value on every other note.
+    const rows = 2 + 1 + 2 + 1200 * 4 + 600;
+    let read = 0;
+    for (let calls = 0; calls < 20; calls++) {
+      const result = await stub.copyFromD1();
+      read += result.status === 'already' ? 0 : result.d1RowsRead;
+      if (result.status === 'done') break;
+      expect(result.status).toBe('paused');
+    }
+    expect((await stub.stats()).counts.notes).toBe(1200);
+    // The other tests' links share this file's `note_tags`, walked by rowid; a few dozen.
+    expect(read).toBeLessThan(2 * rows + 500);
+    expect(read).toBeGreaterThan(rows);
   });
 
   /**

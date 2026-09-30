@@ -77,7 +77,12 @@ import type { Sql } from './sql.js';
  *
  * D1 queries count against the subrequests one invocation may make — fifty on Workers
  * Free — so each call spends at most `D1_CALL_BUDGET` and then answers `paused` with
- * its progress committed; the caller calls again. An archive-sized account (4k notes, 4k
+ * its progress committed; the caller calls again. Rows read count too, against the daily
+ * budget the shared database ran out of twice: every page is a range seek on an index
+ * led by `user_id` (migration 0034; `migrations.test.ts` pins the plans), an account with
+ * no rows is done in two queries rather than eighteen, and what each call read is in its
+ * answer as `d1RowsRead`, so "the copy reads each account about once" is a number in the
+ * log rather than a belief. An archive-sized account (4k notes, 4k
  * files, 2.4k texts) is about 55 queries at these page sizes: two calls.
  */
 
@@ -228,9 +233,9 @@ export type CopyResult =
   /** Nothing to do: the copy has run (or the account started empty by design). */
   | { status: 'already' }
   /** The budget is spent with tables still to copy; progress is committed, call again. */
-  | { status: 'paused'; queries: number; at: string }
+  | { status: 'paused'; queries: number; d1RowsRead: number; at: string }
   /** Verification failed, now or on an earlier call; the account is not marked. See `retry`. */
-  | { status: 'mismatch'; reason: string; queries: number }
+  | { status: 'mismatch'; reason: string; queries: number; d1RowsRead: number }
   | {
       status: 'done';
       /** Rows landed per table, over every call. */
@@ -242,6 +247,8 @@ export type CopyResult =
       /** Stored counts `recountNotes` had to correct after the copy; expected 0. */
       corrections: number;
       queries: number;
+      /** Rows D1 reports this call read, over every query; about the account's row count, once. */
+      d1RowsRead: number;
       ms: number;
       resumed: boolean;
     };
@@ -281,13 +288,18 @@ function readProgress(sql: Sql): Progress {
  * while the total *before* it is under `PAGE_CHARS` — so the first row is always kept,
  * whatever its size, and the page ends at the first row that would take it over. One
  * query either way, which is what the budget counts.
+ *
+ * A table found through its note is walked by its own rowid with `CROSS JOIN`, which
+ * fixes the join order: `note_tags` first, by rowid from the cursor, then the note by
+ * primary key. Left to itself the planner starts from the user's notes, gathers every
+ * link they have and sorts the lot, for every page.
  */
 function selectPage(t: Table): string {
   const cols = t.columns.map((c) => `t.${c}`).join(', ');
   const from =
     t.scope === 'user_id'
       ? `FROM ${t.name} t WHERE t.user_id = ?1 AND t.rowid > ?2`
-      : `FROM ${t.name} t JOIN notes n ON n.id = t.note_id WHERE n.user_id = ?1 AND t.rowid > ?2`;
+      : `FROM ${t.name} t CROSS JOIN notes n ON n.id = t.note_id WHERE n.user_id = ?1 AND t.rowid > ?2`;
   if (!t.sizeColumn) return `SELECT t.rowid AS rid, ${cols} ${from} ORDER BY t.rowid LIMIT ?3`;
   return `SELECT * FROM (
             SELECT t.rowid AS rid, ${cols},
@@ -300,6 +312,17 @@ function countSql(t: Table): string {
   return t.scope === 'user_id'
     ? `SELECT COUNT(*) AS n FROM ${t.name} WHERE user_id = ?1`
     : `SELECT COUNT(*) AS n FROM ${t.name} t JOIN notes n ON n.id = t.note_id WHERE n.user_id = ?1`;
+}
+
+/** Whether the user has any rows here at all: the four tables everything else hangs off. */
+const ANY_ROWS_SQL = `SELECT (EXISTS (SELECT 1 FROM notes WHERE user_id = ?1)
+                           OR EXISTS (SELECT 1 FROM notebooks WHERE user_id = ?1)
+                           OR EXISTS (SELECT 1 FROM tags WHERE user_id = ?1)
+                           OR EXISTS (SELECT 1 FROM attachments WHERE user_id = ?1)) AS hit`;
+
+/** Every statement the copy runs against D1 with a plan worth pinning; see `migrations.test.ts`. */
+export function copyQueries(): Array<{ table: string; page: string; count: string }> {
+  return TABLES.map((t) => ({ table: t.name, page: selectPage(t), count: countSql(t) }));
 }
 
 /** Internal: the budget is spent. Never leaves this module. */
@@ -315,7 +338,7 @@ class Paused {
 export async function copyFromD1(sql: Sql, db: D1Database, userId: string, recount: () => number, opts: CopyOptions): Promise<CopyResult> {
   if (copiedFromD1(sql)) return { status: 'already' };
   const mismatch = readMeta(sql, META_MISMATCH);
-  if (mismatch !== null && !opts.retry) return { status: 'mismatch', reason: mismatch, queries: 0 };
+  if (mismatch !== null && !opts.retry) return { status: 'mismatch', reason: mismatch, queries: 0, d1RowsRead: 0 };
   const started = Date.now();
   const budget = opts.budget ?? D1_CALL_BUDGET;
 
@@ -330,23 +353,44 @@ export async function copyFromD1(sql: Sql, db: D1Database, userId: string, recou
     if (queries + 1 + reserve > budget) throw new Paused(at);
     queries += 1;
   };
+  // Every D1 statement goes through one of these two, so the rows D1 reports it read are
+  // added up where they are spent.
+  let d1RowsRead = 0;
+  const all = async <T>(statement: D1PreparedStatement): Promise<T[]> => {
+    const res = await statement.all<T>();
+    d1RowsRead += res.meta.rows_read ?? 0;
+    return res.results;
+  };
+  const run = async (statement: D1PreparedStatement): Promise<void> => {
+    d1RowsRead += (await statement.run()).meta.rows_read ?? 0;
+  };
+  const nothing = () => ({ status: 'done' as const, copied: {}, skipped: 0, unfiled: 0, merged: 0, corrections: 0, queries, d1RowsRead, ms: Date.now() - started, resumed: false });
 
   try {
     // A database with no note tables — a fresh instance, the test environment, or an
     // instance after the tables are dropped — has nothing to copy. The flag is set so the
     // question is never asked again.
     spend('probe', 0);
-    const hasTables = await db.prepare(`SELECT 1 AS hit FROM sqlite_master WHERE type = 'table' AND name = 'notes'`).first<{ hit: number }>();
+    const hasTables = (await all<{ hit: number }>(db.prepare(`SELECT 1 AS hit FROM sqlite_master WHERE type = 'table' AND name = 'notes'`)))[0];
     if (!hasTables) {
       markCopiedFromD1(sql);
-      return { status: 'done', copied: {}, skipped: 0, unfiled: 0, merged: 0, corrections: 0, queries, ms: Date.now() - started, resumed: false };
+      return nothing();
+    }
+    // An account with no rows here — every account made after the cutover — is done in
+    // one more query rather than sixteen, and without freezing anything. The sweep
+    // records it as copied from the object's answer.
+    spend('any', 0);
+    const any = (await all<{ hit: number }>(db.prepare(ANY_ROWS_SQL).bind(userId)))[0];
+    if (!any?.hit) {
+      markCopiedFromD1(sql);
+      return nothing();
     }
 
     // Frozen from here, before a page is read; see the module comment. Idempotent, so a
     // resumed call pays one query to say it again. Not on a preview; see `opts.freeze`.
     if (opts.freeze) {
       spend('freeze', 0);
-      await db.prepare(`UPDATE account_directory SET migrated_at = COALESCE(migrated_at, ?2) WHERE user_id = ?1`).bind(userId, Date.now()).run();
+      await run(db.prepare(`UPDATE account_directory SET migrated_at = COALESCE(migrated_at, ?2) WHERE user_id = ?1`).bind(userId, Date.now()));
     }
 
     const progress = readProgress(sql);
@@ -375,13 +419,12 @@ export async function copyFromD1(sql: Sql, db: D1Database, userId: string, recou
                       VALUES (${t.columns.map((_, i) => `?${i + 1}`).join(', ')}) RETURNING 1 AS n`;
       for (;;) {
         spend(`${t.name}:${rowid}`);
-        const page = await db
-          .prepare(selectPage(t))
-          .bind(userId, rowid, t.page, ...(t.sizeColumn ? [PAGE_CHARS] : []))
-          .all<Record<string, unknown> & { rid: number }>();
-        if (page.results.length === 0) break;
+        const results = await all<Record<string, unknown> & { rid: number }>(
+          db.prepare(selectPage(t)).bind(userId, rowid, t.page, ...(t.sizeColumn ? [PAGE_CHARS] : [])),
+        );
+        if (results.length === 0) break;
         sql.tx(() => {
-          rows: for (const r of page.results) {
+          rows: for (const r of results) {
             for (const p of t.parents ?? []) {
               const value = progress.merged[p.table]?.[r[p.column] as string] ?? r[p.column];
               r[p.column] = value;
@@ -404,10 +447,10 @@ export async function copyFromD1(sql: Sql, db: D1Database, userId: string, recou
               if (existing && existing.id !== r['id']) (progress.merged[t.name] ??= {})[r['id'] as string] = existing.id;
             }
           }
-          progress.cursor = `${t.name}:${page.results[page.results.length - 1]!.rid}`;
+          progress.cursor = `${t.name}:${results[results.length - 1]!.rid}`;
           writeMeta(sql, META_PROGRESS, JSON.stringify(progress));
         });
-        rowid = page.results[page.results.length - 1]!.rid;
+        rowid = results[results.length - 1]!.rid;
       }
     }
 
@@ -421,7 +464,7 @@ export async function copyFromD1(sql: Sql, db: D1Database, userId: string, recou
     // from the first row rather than verifying the same tail.
     for (const t of TABLES) {
       spend(`count:${t.name}`, 0);
-      const expected = (await db.prepare(countSql(t)).bind(userId).first<{ n: number }>())?.n ?? 0;
+      const expected = (await all<{ n: number }>(db.prepare(countSql(t)).bind(userId)))[0]?.n ?? 0;
       const inserted = progress.inserted[t.name] ?? 0;
       const skipped = progress.skipped[t.name] ?? 0;
       const merged = Object.keys(progress.merged[t.name] ?? {}).length;
@@ -435,10 +478,10 @@ export async function copyFromD1(sql: Sql, db: D1Database, userId: string, recou
         // rows there. The one query the reserve keeps for this.
         if (opts.freeze) {
           spend('unfreeze', 0);
-          await db.prepare(`UPDATE account_directory SET migrated_at = NULL WHERE user_id = ?1`).bind(userId).run();
+          await run(db.prepare(`UPDATE account_directory SET migrated_at = NULL WHERE user_id = ?1`).bind(userId));
         }
         console.error(`[store] copy mismatch user=${userId} ${reason}`);
-        return { status: 'mismatch', reason, queries };
+        return { status: 'mismatch', reason, queries, d1RowsRead };
       }
     }
 
@@ -446,7 +489,7 @@ export async function copyFromD1(sql: Sql, db: D1Database, userId: string, recou
     // for the end, in place of the unfreeze a mismatch would have needed.
     if (opts.freeze) {
       spend('copied', 0);
-      await db.prepare(`UPDATE account_directory SET copied_at = COALESCE(copied_at, ?2) WHERE user_id = ?1`).bind(userId, Date.now()).run();
+      await run(db.prepare(`UPDATE account_directory SET copied_at = COALESCE(copied_at, ?2) WHERE user_id = ?1`).bind(userId, Date.now()));
     }
     sql.tx(() => {
       markCopiedFromD1(sql);
@@ -454,15 +497,15 @@ export async function copyFromD1(sql: Sql, db: D1Database, userId: string, recou
     });
     const skipped = Object.values(progress.skipped).reduce((n, v) => n + v, 0);
     const merged = Object.values(progress.merged).reduce((n, m) => n + Object.keys(m).length, 0);
-    const report = { status: 'done' as const, copied: progress.inserted, skipped, unfiled, merged, corrections, queries, ms: Date.now() - started, resumed };
+    const report = { status: 'done' as const, copied: progress.inserted, skipped, unfiled, merged, corrections, queries, d1RowsRead, ms: Date.now() - started, resumed };
     console.log(
-      `[store] migrated user=${userId} notes=${report.copied['notes'] ?? 0} attachments=${report.copied['attachments'] ?? 0} texts=${report.copied['attachment_text'] ?? 0} skipped=${skipped} unfiled=${unfiled} merged=${merged} corrections=${corrections} queries=${queries} resumed=${resumed} ms=${report.ms}`,
+      `[store] migrated user=${userId} notes=${report.copied['notes'] ?? 0} attachments=${report.copied['attachments'] ?? 0} texts=${report.copied['attachment_text'] ?? 0} skipped=${skipped} unfiled=${unfiled} merged=${merged} corrections=${corrections} queries=${queries} d1RowsRead=${d1RowsRead} resumed=${resumed} ms=${report.ms}`,
     );
     return report;
   } catch (err) {
     if (err instanceof Paused) {
-      console.log(`[store] copy paused user=${userId} queries=${queries} at=${err.at}`);
-      return { status: 'paused', queries, at: err.at };
+      console.log(`[store] copy paused user=${userId} queries=${queries} d1RowsRead=${d1RowsRead} at=${err.at}`);
+      return { status: 'paused', queries, d1RowsRead, at: err.at };
     }
     throw err;
   }
