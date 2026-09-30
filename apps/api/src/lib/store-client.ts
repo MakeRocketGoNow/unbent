@@ -16,10 +16,15 @@ import type { Env } from '../types.js';
 /** The stub for `userId`'s store. Cheap, side-effect free, and called more than once per request. */
 export function storeFor(env: Pick<Env, 'USER_STORE' | 'STORE_JURISDICTION'>, userId: string): DurableObjectStub<UserStore> {
   if (!userId) throw new Error('Refusing to reach a store without a user id');
-  // Objects are keyed by user id and nothing else. The jurisdiction, when set, pins where
-  // new objects are created; it applies to objects created after it is set and moves
-  // none. No `locationHint`: the platform places an object near its first request, and
-  // for a personal note app that is where its user is.
+  // Objects are keyed by user id and nothing else. The jurisdiction, when set, is part of
+  // the key: `idFromName` on a jurisdiction namespace names a different object from the
+  // same user id on the plain namespace. So it is set once, before an instance's first
+  // account, and never changed — turning it on for a running instance would point every
+  // account at a new, empty object, and turning it off would do the same. Recording a
+  // jurisdiction per account in the directory would allow a change, at a D1 read per
+  // request to find the store; not worth it for a setting a self-hoster decides once. No
+  // `locationHint`: the platform places an object near its first request, and for a
+  // personal note app that is where its user is.
   const namespace = env.STORE_JURISDICTION
     ? env.USER_STORE.jurisdiction(env.STORE_JURISDICTION as DurableObjectJurisdiction)
     : env.USER_STORE;

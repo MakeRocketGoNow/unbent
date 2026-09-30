@@ -144,11 +144,16 @@ ALLOWED_EMAILS=
 # nothing operator-only is reachable, which is right for a fork.
 # OPERATOR_EMAILS=you@example.com
 
-# Where each account's note store is created. Unset — the default — lets the platform
-# place an object near the first request for it, which for a personal note app is where
-# its user is. `eu` pins every store created from then on to the EU jurisdiction, for an
-# operator whose users need their notes kept there; it applies to accounts created after
-# it is set and moves none. See the README's "Where your notes live".
+# Where each account's note store lives. Unset — the default — lets the platform place an
+# object near the first request for it, which for a personal note app is where its user
+# is. `eu` keeps every store in the EU jurisdiction, for an operator whose users need their
+# notes kept there.
+#
+# Decide it before the instance's first account, and never change it. The jurisdiction is
+# part of how a store is found: the same user id names a different, empty object with it
+# set than without, so changing it on a running instance would make every account's notes
+# vanish from view (and reappear if it were changed back). See the README's "Where your
+# notes live".
 # STORE_JURISDICTION=eu
 
 # Legal documents you host yourself, if you would rather not use the built-in ones.
