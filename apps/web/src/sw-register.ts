@@ -92,7 +92,14 @@ export function takeUpdate(to: { pathname: string; href: string }, preload: bool
   const worker = wb;
   updateReady = false;
   return new Promise<never>(() => {
-    const go = () => location.assign(to.href);
+    // Once: `controlling` and the timer can both fire, and a second `assign` on a slow
+    // load would restart the navigation already under way.
+    let gone = false;
+    const go = () => {
+      if (gone) return;
+      gone = true;
+      location.assign(to.href);
+    };
     worker.addEventListener('controlling', go);
     worker.messageSkipWaiting();
     setTimeout(go, 3000);
