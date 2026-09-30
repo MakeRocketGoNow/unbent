@@ -71,12 +71,16 @@ export interface ImportRun {
   /** Forgets a finished run so another file can be picked. Ignored while one is going. */
   reset(): void;
   /**
-   * Ties the run to whoever is signed in, and throws it away if that changes.
+   * Ties the run to whoever is signed in, and throws it away if that changes or if
+   * nobody is.
    *
    * The summary lists note titles, and a run still going after a sign-out is sending the
    * next person's cookies. Neither should reach a different account on the same browser.
+   * `undefined` is a sign-out: the worker used to die with the panel, and now it has to
+   * be stopped here or it keeps posting until the next request 401s — or until a second
+   * person signs in on this tab and the request goes out as them.
    */
-  claim(userId: string): void;
+  claim(userId: string | undefined): void;
   subscribe(listener: () => void): () => void;
   get(): ImportRunState;
 }
@@ -215,14 +219,20 @@ export function createImportRun(
       set({ ...initial, run: state.run });
     },
     claim(userId) {
-      if (owner !== null && owner !== userId) {
+      const next = userId ?? null;
+      if (next === owner) return;
+      // A different person, or nobody. Signing out used to unmount the panel and kill
+      // the worker; the run now outlives the page, so it has to be dropped here or the
+      // next fetch uses whoever's cookie is in the jar. The titles in the summary are
+      // the other half — they must not be sitting there when the next person arrives.
+      if (owner !== null || state.status === 'running') {
         worker?.terminate();
         worker = null;
         describing = 0;
         globalThis.removeEventListener?.('beforeunload', guard);
         set({ ...initial, run: state.run });
       }
-      owner = userId;
+      owner = next;
     },
     subscribe(listener) {
       listeners.add(listener);
@@ -238,7 +248,7 @@ export const pickImportFile = (file: File | null) => importRun.pick(file);
 export const startImport = (options: { extractText: boolean; notion?: NotionChoices }) => importRun.start(options);
 export const stopImport = () => importRun.stop();
 export const resetImport = () => importRun.reset();
-export const claimImportFor = (userId: string) => importRun.claim(userId);
+export const claimImportFor = (userId: string | undefined) => importRun.claim(userId);
 export const subscribeImport = (listener: () => void) => importRun.subscribe(listener);
 export const getImportRun = () => importRun.get();
 

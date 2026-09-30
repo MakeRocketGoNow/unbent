@@ -33,10 +33,18 @@ export const Route = createRootRouteWithContext<RouterContext>()({
    * served the first one's notes out of the cache; this is the last moment before those
    * loaders run. See `claimCacheFor` for why it is keyed on the user rather than hung off
    * signing out.
+   *
+   * The import run is claimed here for the same hand-off. It lives above the page now, so
+   * a sign-out no longer kills its worker, and the worker sends the document's cookies
+   * with every note it creates. Waiting until `AppShell` paints is a frame too late: the
+   * cookie is already the new person's. Only a real session is passed — a public page
+   * returns no user from the gate even when someone is signed in, and treating that as a
+   * sign-out would abort a run because `/privacy` was opened.
    */
   beforeLoad: async ({ location, context }) => {
     const session = await requireSession(location);
     claimCacheFor(context.queryClient, session?.user.id);
+    if (session?.user.id) claimImportFor(session.user.id);
   },
   component: RootLayout,
 });
@@ -155,11 +163,22 @@ function AppShell() {
    * An import creates notes, notebooks and tags, so nothing cached is still true once it
    * ends — however it ends, since a failed run has usually landed some notes first. Here
    * rather than on the import page because the run may end while that page is not
-   * mounted. Claimed for this user first; see `ImportRun.claim`.
+   * mounted. Claimed for this user first, and for nobody when the session goes away
+   * under this shell (expiry, or a sign-out that has emptied the store but not yet
+   * navigated). See `ImportRun.claim`. Calling it with `undefined` is what stops the
+   * worker before the next person signs in; the `beforeLoad` claim cannot see a sign-out
+   * on a public page, only a new user arriving at an app route.
    */
   useEffect(() => {
-    if (!userId) return;
+    const wasRunning = getImportRun().status === 'running';
     claimImportFor(userId);
+    // Claim resets a running import without going through `done`/`error`, so the
+    // subscriber below never sees the transition. Notes already created still need a
+    // refetch — especially when the same person signs back in and keeps their cache.
+    if (wasRunning && getImportRun().status !== 'running') {
+      void queryClient.invalidateQueries();
+    }
+    if (!userId) return;
     let last = getImportRun().status;
     return subscribeImport(() => {
       const { status } = getImportRun();
