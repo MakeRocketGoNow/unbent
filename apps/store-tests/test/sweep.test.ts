@@ -26,7 +26,7 @@ beforeAll(async () => {
   await env.DB.exec(
     [
       `CREATE TABLE IF NOT EXISTS user (id TEXT PRIMARY KEY, name TEXT NOT NULL, email TEXT NOT NULL UNIQUE, emailVerified INTEGER NOT NULL DEFAULT 0, image TEXT, createdAt TEXT NOT NULL, updatedAt TEXT NOT NULL);`,
-      `CREATE TABLE IF NOT EXISTS account_directory (user_id TEXT PRIMARY KEY, created_at INTEGER NOT NULL, migrated_at INTEGER, storage_bytes INTEGER NOT NULL DEFAULT 0, note_count INTEGER NOT NULL DEFAULT 0, last_active_at INTEGER, deleted_at INTEGER);`,
+      `CREATE TABLE IF NOT EXISTS account_directory (user_id TEXT PRIMARY KEY, created_at INTEGER NOT NULL, migrated_at INTEGER, storage_bytes INTEGER NOT NULL DEFAULT 0, note_count INTEGER NOT NULL DEFAULT 0, last_active_at INTEGER, deleted_at INTEGER, copied_at INTEGER);`,
       `CREATE TABLE IF NOT EXISTS _unbent_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);`,
     ].join(' '),
   );
@@ -39,7 +39,7 @@ async function directory(id: string, deletedAt: number | null = null) {
   await env.DB.prepare(`INSERT INTO account_directory (user_id, created_at, deleted_at) VALUES (?1, 1, ?2)`).bind(id, deletedAt).run();
 }
 async function row(id: string) {
-  return env.DB.prepare(`SELECT * FROM account_directory WHERE user_id = ?1`).bind(id).first<{ note_count: number; storage_bytes: number; migrated_at: number | null }>();
+  return env.DB.prepare(`SELECT * FROM account_directory WHERE user_id = ?1`).bind(id).first<{ note_count: number; storage_bytes: number; migrated_at: number | null; copied_at: number | null }>();
 }
 const stub = (id: string) => env.USER_STORE.get(env.USER_STORE.idFromName(id));
 
@@ -101,7 +101,7 @@ describe('the store sweep', () => {
     // The live, fresh and unlisted accounts had not been copied; the walk did it.
     expect(reports.reduce((n, r) => n + r.copied, 0)).toBeGreaterThanOrEqual(3);
 
-    expect(await row(live)).toMatchObject({ note_count: 2, migrated_at: expect.any(Number) });
+    expect(await row(live)).toMatchObject({ note_count: 2, migrated_at: expect.any(Number), copied_at: expect.any(Number) });
     expect((await row(live))!.storage_bytes).toBeGreaterThan(0);
     expect((await stub(live).stats()).counts.notes).toBe(2);
 
@@ -157,11 +157,11 @@ describe('the store sweep', () => {
 
     const reports = await fullPass();
     expect(reports.flatMap((r) => r.failed)).toEqual([]);
-    expect(await row(copied)).toMatchObject({ note_count: 3, migrated_at: expect.any(Number) });
+    expect(await row(copied)).toMatchObject({ note_count: 3, migrated_at: expect.any(Number), copied_at: expect.any(Number) });
     expect((await stub(copied).stats()).counts.notes).toBe(3);
     expect(reports.flatMap((r) => r.mismatched)).toContain(mismatched);
     // Measured like any other account, never marked migrated, and named again next pass.
-    expect(await row(mismatched)).toMatchObject({ note_count: 2, migrated_at: null });
+    expect(await row(mismatched)).toMatchObject({ note_count: 2, migrated_at: null, copied_at: null });
     expect((await fullPass()).flatMap((r) => r.mismatched)).toContain(mismatched);
   });
 

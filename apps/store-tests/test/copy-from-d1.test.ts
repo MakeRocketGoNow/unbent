@@ -66,9 +66,9 @@ describe('copy from D1', () => {
     expect(await stub.pendingTextCount()).toBe(0);
     expect((await stub.get(`${userId}-n0001`))?.fields?.[0]).toMatchObject({ name: 'Amount', value: 1 });
     expect(await stub.get(`${userId}-other`)).toBeNull();
-    // The copy wrote the directory row itself: from here the account's D1 rows are frozen.
-    const dir = await env.DB.prepare(`SELECT migrated_at FROM account_directory WHERE user_id = ?1`).bind(userId).first<{ migrated_at: number | null }>();
-    expect(dir?.migrated_at).toEqual(expect.any(Number));
+    // The copy wrote the directory row itself: frozen from its start, and now finished.
+    const dir = await env.DB.prepare(`SELECT migrated_at, copied_at FROM account_directory WHERE user_id = ?1`).bind(userId).first<{ migrated_at: number | null; copied_at: number | null }>();
+    expect(dir).toEqual({ migrated_at: expect.any(Number), copied_at: expect.any(Number) });
 
     // A second call copies nothing, and so does one after an eviction: the flag stands.
     expect(await stub.copyFromD1()).toMatchObject({ status: 'already' });
@@ -106,10 +106,11 @@ describe('copy from D1', () => {
         break;
       }
       expect(result).toMatchObject({ status: 'paused', at: expect.stringMatching(/^\w+:\d+$/) });
-      // Frozen from the first call, before the copy is anywhere near done: a write to
-      // the account's D1 rows from now on is refused rather than missed.
-      const dir = await env.DB.prepare(`SELECT migrated_at FROM account_directory WHERE user_id = ?1`).bind(userId).first<{ migrated_at: number | null }>();
-      expect(dir?.migrated_at).toEqual(expect.any(Number));
+      // Frozen from the first call, before the copy is anywhere near done — a write to
+      // the account's D1 rows from now on is refused rather than missed — and not yet
+      // recorded as copied, which is the column that means done.
+      const dir = await env.DB.prepare(`SELECT migrated_at, copied_at FROM account_directory WHERE user_id = ?1`).bind(userId).first<{ migrated_at: number | null; copied_at: number | null }>();
+      expect(dir).toEqual({ migrated_at: expect.any(Number), copied_at: null });
       // Nothing copied yet is lost across a pause, or across an eviction in between.
       if (calls === 2) await evictDurableObject(stub);
     }
@@ -167,8 +168,8 @@ describe('copy from D1', () => {
     // Recorded, not marked, and the `migrated_at` the copy wrote before its first page
     // is cleared again, so the account's D1 rows are writable for the operator.
     expect(await stub.stats()).toMatchObject({ migratedFromD1: false, copyMismatch: (first as { reason: string }).reason });
-    const dir = await env.DB.prepare(`SELECT migrated_at FROM account_directory WHERE user_id = ?1`).bind(userId).first<{ migrated_at: number | null }>();
-    expect(dir?.migrated_at).toBeNull();
+    const dir = await env.DB.prepare(`SELECT migrated_at, copied_at FROM account_directory WHERE user_id = ?1`).bind(userId).first<{ migrated_at: number | null; copied_at: number | null }>();
+    expect(dir).toEqual({ migrated_at: null, copied_at: null });
     // The account is not refused anything: what landed is there to use.
     expect((await stub.list({ limit: 5 })).length).toBe(2); // the third is in the trash
     // Asked again without `retry`, the answer is the record, with no query spent.
@@ -230,9 +231,9 @@ describe('copy from D1', () => {
     }
     // The probe, the freeze, fourteen pages for the other tables (a page and the empty
     // one after it, for seven of them), three for the texts — the first two, since the
-    // cut is by the rows before the next, then the third, then the empty one — and
-    // eight counts: twenty-seven queries.
-    expect(await stub.copyFromD1()).toMatchObject({ status: 'done', queries: 1 + 1 + 14 + 3 + 8 });
+    // cut is by the rows before the next, then the third, then the empty one — eight
+    // counts and the copied mark: twenty-eight queries.
+    expect(await stub.copyFromD1()).toMatchObject({ status: 'done', queries: 1 + 1 + 14 + 3 + 8 + 1 });
     expect((await stub.stats()).counts.attachment_text).toBe(3);
     expect((await stub.textFor(`${userId}-n0002`, 'scan.pdf'))?.length).toBe(big.length);
   });

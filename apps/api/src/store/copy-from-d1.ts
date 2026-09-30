@@ -70,7 +70,10 @@ import type { Sql } from './sql.js';
  * makes a write from a draining old isolate refused, visibly, rather than lost — one
  * that landed after its page was read would otherwise never arrive here, and a count
  * would not catch an update. A copy that cannot be verified clears the mark again, so
- * the operator can fix the rows where they are.
+ * the operator can fix the rows where they are. That the account's copy *finished* is a
+ * different fact with a different column, `copied_at`, written when verification passes
+ * and nowhere earlier: it is what the runbook checks and what the migration that drops
+ * these tables will refuse to run without.
  *
  * D1 queries count against the subrequests one invocation may make — fifty on Workers
  * Free — so each call spends at most `D1_CALL_BUDGET` and then answers `paused` with
@@ -208,10 +211,11 @@ interface Progress {
 
 export interface CopyOptions {
   /**
-   * Whether to write `migrated_at` to the directory, which freezes the account's D1
-   * rows (migration 0032). Off on the pull-request previews, which share the dev
-   * instance's D1 while dev still runs the old code and writes it: a preview's copy
-   * of an account would otherwise refuse that account's saves on dev until the merge.
+   * Whether the copy may write the directory: `migrated_at` before its first page, which
+   * freezes the account's D1 rows (migration 0032), and `copied_at` when it has
+   * verified. Off on the pull-request previews, which share the dev instance's D1 while
+   * dev still runs the old code and writes it: a preview's copy of an account would
+   * otherwise refuse that account's saves on dev until the merge.
    */
   freeze: boolean;
   /** Runs the copy again after a recorded mismatch. Nothing else does. */
@@ -317,8 +321,8 @@ export async function copyFromD1(sql: Sql, db: D1Database, userId: string, recou
 
   // Every D1 query goes through here, so the budget is counted where it is spent. A page
   // is fetched only while the verification's own queries — one count per table, and the
-  // unfreeze a mismatch needs — would still fit after it; past that, the call stops with
-  // its state committed and answers `paused`. The verification itself never pauses: its progress is
+  // directory write that follows, `copied_at` or the unfreeze — would still fit after it;
+  // past that, the call stops with its state committed and answers `paused`. The verification itself never pauses: its progress is
   // not persisted, so a call that could pause inside it would restart it every time and
   // never finish.
   let queries = 0;
@@ -438,6 +442,12 @@ export async function copyFromD1(sql: Sql, db: D1Database, userId: string, recou
       }
     }
 
+    // Finished, and said so where the runbook reads it. The one query the reserve keeps
+    // for the end, in place of the unfreeze a mismatch would have needed.
+    if (opts.freeze) {
+      spend('copied', 0);
+      await db.prepare(`UPDATE account_directory SET copied_at = COALESCE(copied_at, ?2) WHERE user_id = ?1`).bind(userId, Date.now()).run();
+    }
     sql.tx(() => {
       markCopiedFromD1(sql);
       sql.exec('DELETE FROM _meta WHERE key IN (?1, ?2)', META_PROGRESS, META_MISMATCH);

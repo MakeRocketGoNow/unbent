@@ -33,7 +33,7 @@ CREATE TABLE IF NOT EXISTS note_tags (note_id TEXT NOT NULL, tag_id TEXT NOT NUL
 CREATE TABLE IF NOT EXISTS note_fields (note_id TEXT NOT NULL, field_id TEXT NOT NULL, user_id TEXT NOT NULL, value_text TEXT NOT NULL, value_num REAL, PRIMARY KEY (note_id, field_id));
 CREATE TABLE IF NOT EXISTS attachments (id TEXT PRIMARY KEY, note_id TEXT NOT NULL, user_id TEXT NOT NULL, filename TEXT NOT NULL, content_type TEXT NOT NULL, size INTEGER NOT NULL, md5 TEXT, r2_key TEXT NOT NULL, created_at INTEGER NOT NULL, has_text INTEGER NOT NULL DEFAULT 0);
 CREATE TABLE IF NOT EXISTS attachment_text (attachment_id TEXT PRIMARY KEY, note_id TEXT NOT NULL, user_id TEXT NOT NULL, filename TEXT NOT NULL, text TEXT NOT NULL, created_at INTEGER NOT NULL, read_by TEXT);
-CREATE TABLE IF NOT EXISTS account_directory (user_id TEXT PRIMARY KEY, created_at INTEGER NOT NULL, migrated_at INTEGER, storage_bytes INTEGER NOT NULL DEFAULT 0, note_count INTEGER NOT NULL DEFAULT 0, last_active_at INTEGER, deleted_at INTEGER);
+CREATE TABLE IF NOT EXISTS account_directory (user_id TEXT PRIMARY KEY, created_at INTEGER NOT NULL, migrated_at INTEGER, storage_bytes INTEGER NOT NULL DEFAULT 0, note_count INTEGER NOT NULL DEFAULT 0, last_active_at INTEGER, deleted_at INTEGER, copied_at INTEGER);
 `;
 
 

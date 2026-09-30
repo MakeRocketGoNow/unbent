@@ -23,7 +23,8 @@ CREATE TABLE account_directory (
   user_id        TEXT PRIMARY KEY,
   created_at     INTEGER NOT NULL,
   -- Written by the copy before it reads a page, which is what freezes the account's rows
-  -- here (migration 0032); cleared again if the copy cannot be verified.
+  -- here (migration 0032); cleared again if the copy cannot be verified. Whether the copy
+  -- *finished* is `copied_at`, added by 0033.
   migrated_at    INTEGER,
   -- What the object last reported, for the cross-account view. Zero until the first sweep.
   storage_bytes  INTEGER NOT NULL DEFAULT 0,

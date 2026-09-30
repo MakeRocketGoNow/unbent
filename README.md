@@ -1320,14 +1320,16 @@ D1, so between the deploy and the sweep an account not yet copied opens empty; t
 runbook below closes that window in minutes, and a note written in it survives the copy —
 its tag and notebook are merged by name with the ones D1 delivers rather than refused.
 That copy is the exception to rule 1, and it goes once every account's directory row says
-it has run; the frozen D1 tables are dropped in a later migration. The copy spends at most
+it has run (`copied_at`, written only when a copy verified); the frozen D1 tables are
+dropped in a later migration, behind a guard that reads the same column. The copy spends at most
 forty D1 queries a call, since a Free plan invocation may make fifty, and answers `paused`
 with its place committed; the sweep continues it next pass, and the operator's route
 calls again at once.
 
 Migration 0032 freezes each account's rows in the shared tables from the moment that
 account's copy starts (`account_directory.migrated_at`, written by the copy before it
-reads a page, and cleared again if the copy cannot be verified): a write to them for such
+reads a page, and cleared again if the copy cannot be verified — so it says the copy
+started, and `copied_at` says it finished): a write to them for such
 an account, from an old isolate draining during the deploy or from anything else, fails
 with "notes moved to the per-account store" rather than landing after its page was read
 and disappearing. Rows of an account not yet copied are still writable,

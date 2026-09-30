@@ -15,7 +15,10 @@
 export interface DirectoryRow {
   userId: string;
   createdAt: number;
+  /** When the copy from D1 started: the freeze marker 0032's triggers read. */
   migratedAt: number | null;
+  /** When the copy from D1 verified, or the sweep found the object saying it had. */
+  copiedAt: number | null;
   storageBytes: number;
   noteCount: number;
   lastActiveAt: number | null;
@@ -26,6 +29,7 @@ interface RawRow {
   user_id: string;
   created_at: number;
   migrated_at: number | null;
+  copied_at: number | null;
   storage_bytes: number;
   note_count: number;
   last_active_at: number | null;
@@ -36,6 +40,7 @@ const toRow = (r: RawRow): DirectoryRow => ({
   userId: r.user_id,
   createdAt: r.created_at,
   migratedAt: r.migrated_at,
+  copiedAt: r.copied_at,
   storageBytes: r.storage_bytes,
   noteCount: r.note_count,
   lastActiveAt: r.last_active_at,
@@ -75,20 +80,25 @@ export async function dropDirectoryRow(db: D1Database, userId: string): Promise<
   await dropDirectoryRowStatement(db, userId).run();
 }
 
-/** What the sweep writes back after asking an object for its stats, as a statement it batches. */
+/**
+ * What the sweep writes back after asking an object for its usage, as a statement it
+ * batches. An object that says its copy from D1 has run is recorded as copied and, since
+ * nothing may write its D1 rows again, as frozen; both are set once and kept.
+ */
 export function recordDirectoryUsageStatement(
   db: D1Database,
   userId: string,
-  usage: { storageBytes: number; noteCount: number; migrated: boolean },
+  usage: { storageBytes: number; noteCount: number; copied: boolean },
 ): D1PreparedStatement {
   return db
     .prepare(
       `UPDATE account_directory
           SET storage_bytes = ?2, note_count = ?3,
+              copied_at = CASE WHEN ?4 THEN COALESCE(copied_at, ?5) ELSE copied_at END,
               migrated_at = CASE WHEN ?4 THEN COALESCE(migrated_at, ?5) ELSE migrated_at END
         WHERE user_id = ?1`,
     )
-    .bind(userId, usage.storageBytes, usage.noteCount, usage.migrated ? 1 : 0, Date.now());
+    .bind(userId, usage.storageBytes, usage.noteCount, usage.copied ? 1 : 0, Date.now());
 }
 
 export async function directoryRow(db: D1Database, userId: string): Promise<DirectoryRow | null> {

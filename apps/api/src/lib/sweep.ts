@@ -182,7 +182,7 @@ async function sweepOne(
       recordDirectoryUsageStatement(env.DB, row.userId, {
         storageBytes: usage.databaseSize,
         noteCount: usage.notes,
-        migrated: usage.migratedFromD1,
+        copied: usage.migratedFromD1,
       }),
     );
   }
