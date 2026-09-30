@@ -52,11 +52,15 @@ export function registerServiceWorker(pathNow: () => string): void {
  * the new deploy instead of drawing it in the old one. No prompt: a reload on the way to
  * a page that was about to be drawn anyway is not something to ask about.
  *
- * Only on a change of page. A filter or a sort is a navigation too, but reloading the
- * whole app under someone narrowing a list would read as the list breaking. Never for a
+ * Only on a change of section — notes to settings, settings to trash — the first segment
+ * of the path. Within one it would read as the app breaking: opening a note from the list
+ * is the most common navigation there is, and reloading the split view then lost the
+ * list's place and every page loaded past the first, with the note just clicked suddenly
+ * off screen. A filter or a sort is a navigation too, for the same reason. Never for a
  * preload, which is a hover rather than a decision; never inside the Android app's embed
  * pages, whose lifecycle the app owns; and never while the page is holding work a reload
- * would lose (`busy.ts`) — the next navigation gets another chance.
+ * would lose (`busy.ts`) — the next navigation gets another chance. Coming back to the
+ * app after it was out of view is the other moment (`checkForUpdatesOnReturn`).
  */
 export function shouldApplyUpdate(state: {
   ready: boolean;
@@ -67,8 +71,10 @@ export function shouldApplyUpdate(state: {
 }): boolean {
   if (!state.ready || state.busy || state.preload) return false;
   if (state.to.startsWith('/embed/') || state.from.startsWith('/embed/')) return false;
-  return state.from !== state.to;
+  return section(state.from) !== section(state.to);
 }
+
+const section = (path: string) => path.split('/')[1] ?? '';
 
 /**
  * Called from the root route's `beforeLoad` with the destination. When the update should
@@ -89,25 +95,34 @@ export function takeUpdate(to: { pathname: string; href: string }, preload: bool
     to: to.pathname,
   });
   if (!apply || !wb) return undefined;
-  const worker = wb;
   updateReady = false;
-  return new Promise<never>(() => {
-    // Once: `controlling` and the timer can both fire, and a second `assign` on a slow
-    // load would restart the navigation already under way.
-    let gone = false;
-    const go = () => {
-      if (gone) return;
-      gone = true;
-      location.assign(to.href);
-    };
-    worker.addEventListener('controlling', go);
-    worker.messageSkipWaiting();
-    setTimeout(go, 3000);
-  });
+  return new Promise<never>(() => handOver(wb!, to.href));
+}
+
+/** Lets the waiting worker take over, then loads `href` from it. */
+function handOver(worker: Workbox, href: string): void {
+  // Once: `controlling` and the timer can both fire, and a second `assign` on a slow
+  // load would restart the navigation already under way.
+  let gone = false;
+  const go = () => {
+    if (gone) return;
+    gone = true;
+    location.assign(href);
+  };
+  worker.addEventListener('controlling', go);
+  worker.messageSkipWaiting();
+  setTimeout(go, 3000);
 }
 
 /**
- * Asks for a new worker when the app comes back into view, at most every half hour.
+ * Coming back into view: take a deploy that is already waiting, and otherwise ask for one.
+ *
+ * The return is the quietest moment there is — nothing on screen is mid-use — so a waiting
+ * deploy is taken then, in place, when the page holds nothing a reload would lose and is
+ * not one of the Android app's embed pages. It is how an app someone keeps open in one
+ * section, the notes list most of all, still reaches a new deploy.
+ *
+ * Asking for a new worker happens at most every half hour.
  *
  * The browser checks on its own only when a page of the site is loaded from the network —
  * never, for an app that is resumed rather than reopened. Half an hour because a deploy
@@ -118,7 +133,13 @@ const UPDATE_CHECK_INTERVAL = 30 * 60 * 1000;
 function checkForUpdatesOnReturn(worker: Workbox): void {
   let last = Date.now();
   document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState !== 'visible' || Date.now() - last < UPDATE_CHECK_INTERVAL) return;
+    if (document.visibilityState !== 'visible') return;
+    if (updateReady && !pageBusy() && !location.pathname.startsWith('/embed/')) {
+      updateReady = false;
+      handOver(worker, location.href);
+      return;
+    }
+    if (Date.now() - last < UPDATE_CHECK_INTERVAL) return;
     last = Date.now();
     void worker.update().catch(() => {});
   });

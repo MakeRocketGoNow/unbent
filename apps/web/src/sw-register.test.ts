@@ -5,9 +5,8 @@ import { holdPage, pageBusy } from './busy.js';
 const ready = { ready: true, busy: false, preload: false, from: '/notes', to: '/settings' };
 
 describe('shouldApplyUpdate', () => {
-  it('takes a waiting deploy on the way to another page', () => {
+  it('takes a waiting deploy on the way to another section', () => {
     expect(shouldApplyUpdate(ready)).toBe(true);
-    expect(shouldApplyUpdate({ ...ready, from: '/notes/a', to: '/notes/b' })).toBe(true);
   });
 
   it('does nothing without a deploy waiting', () => {
@@ -20,6 +19,14 @@ describe('shouldApplyUpdate', () => {
 
   it('never reloads for a hover preload', () => {
     expect(shouldApplyUpdate({ ...ready, preload: true })).toBe(false);
+  });
+
+  /* Opening a note from the list is the most common navigation there is; reloading the
+     split view there lost the list's place. Within a section, never. */
+  it('leaves list to note and note to note alone', () => {
+    expect(shouldApplyUpdate({ ...ready, from: '/notes', to: '/notes/a' })).toBe(false);
+    expect(shouldApplyUpdate({ ...ready, from: '/notes/a', to: '/notes/b' })).toBe(false);
+    expect(shouldApplyUpdate({ ...ready, from: '/settings/tags', to: '/settings/notebooks' })).toBe(false);
   });
 
   it('leaves a change of filter on the same page alone', () => {
