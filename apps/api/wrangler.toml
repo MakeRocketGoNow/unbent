@@ -243,6 +243,14 @@ class_name = "UserStore"
 [env.preview.triggers]
 crons = []
 
+# A preview shares the dev instance's D1, and the dev instance runs `main`, which until the
+# cutover merges still writes notes there. Migration 0032 freezes an account's rows the
+# moment its store's copy is recorded as done — so a preview of the cutover must not record
+# it, or signing in to the preview with an account you use on dev would refuse that
+# account's saves on dev until the merge. Off here and nowhere else.
+[env.preview.vars]
+STORE_FREEZE_D1 = "0"
+
 [env.preview.assets]
 directory = "../web/dist"
 binding = "ASSETS"

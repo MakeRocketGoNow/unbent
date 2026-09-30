@@ -70,19 +70,31 @@ const META_TEST_BUDGET = 'test_copy_budget';
  */
 export const D1_CALL_BUDGET = 40;
 
+/**
+ * The most characters of text one page carries, for the two tables whose rows can be
+ * large. A text is capped at half a million characters when stored and a body at what D1
+ * allows a row, and two hundred of the largest texts in one page would have been a
+ * hundred million characters — past the object's memory once decoded, on exactly the
+ * run of consecutive big scans an imported batch of PDFs leaves (found in review). A
+ * page stops once the rows before the next one pass this, and always carries at least
+ * one row, so the biggest single text still fits with room to spare. Four million is
+ * eight megabytes decoded.
+ */
+export const PAGE_CHARS = 4_000_000;
+
 /** How D1 stores the marker on the shared tables. Read here and nowhere else in the store. */
 interface Table {
   name: string;
   /** Columns copied, in D1's names; the object's are the same. */
   columns: string[];
   /**
-   * Rows per page. Sized against the budget above rather than the object's transaction:
-   * the dry run wrote 200 notes a transaction in milliseconds, and every page is one
-   * query. Texts are capped at half a million characters each when stored (their average
-   * in production is nine kilobytes), so a page of two hundred is a few megabytes usually
-   * and a hundred at the very worst, well inside a Worker's memory.
+   * Rows per page, at most. Sized against the query budget rather than the object's
+   * transaction: the dry run wrote 200 notes a transaction in milliseconds, and every
+   * page is one query.
    */
   page: number;
+  /** The column whose length bounds a page by `PAGE_CHARS`, for the tables with big rows. */
+  sizeColumn?: string;
   /** How the user's rows are found: by their own `user_id`, or through the note's. */
   scope: 'user_id' | 'via_note';
 }
@@ -100,6 +112,7 @@ const TABLES: Table[] = [
     name: 'notes',
     columns: ['id', 'title', 'body', 'created_at', 'updated_at', 'deleted_at', 'source_enex', 'content_hash', 'notebook_id'],
     page: 500,
+    sizeColumn: 'body',
     scope: 'user_id',
   },
   { name: 'note_tags', columns: ['note_id', 'tag_id'], page: 1000, scope: 'via_note' },
@@ -114,6 +127,7 @@ const TABLES: Table[] = [
     name: 'attachment_text',
     columns: ['attachment_id', 'note_id', 'filename', 'text', 'created_at', 'read_by'],
     page: 200,
+    sizeColumn: 'text',
     scope: 'user_id',
   },
 ];
@@ -171,14 +185,26 @@ function readCursor(sql: Sql): { table: string; rowid: number } | null {
   return { table: value.slice(0, at), rowid: Number(value.slice(at + 1)) };
 }
 
+/**
+ * One page: the user's rows past the cursor, in rowid order, up to the row limit. For a
+ * table with big rows the page is also cut by size, in the same query: a running total of
+ * the size column over the page is computed with a window function, and a row is kept
+ * while the total *before* it is under `PAGE_CHARS` — so the first row is always kept,
+ * whatever its size, and the page ends at the first row that would take it over. One
+ * query either way, which is what the budget counts.
+ */
 function selectPage(t: Table): string {
   const cols = t.columns.map((c) => `t.${c}`).join(', ');
-  return t.scope === 'user_id'
-    ? `SELECT t.rowid AS rid, ${cols} FROM ${t.name} t
-        WHERE t.user_id = ?1 AND t.rowid > ?2 ORDER BY t.rowid LIMIT ?3`
-    : `SELECT t.rowid AS rid, ${cols} FROM ${t.name} t
-         JOIN notes n ON n.id = t.note_id
-        WHERE n.user_id = ?1 AND t.rowid > ?2 ORDER BY t.rowid LIMIT ?3`;
+  const from =
+    t.scope === 'user_id'
+      ? `FROM ${t.name} t WHERE t.user_id = ?1 AND t.rowid > ?2`
+      : `FROM ${t.name} t JOIN notes n ON n.id = t.note_id WHERE n.user_id = ?1 AND t.rowid > ?2`;
+  if (!t.sizeColumn) return `SELECT t.rowid AS rid, ${cols} ${from} ORDER BY t.rowid LIMIT ?3`;
+  return `SELECT * FROM (
+            SELECT t.rowid AS rid, ${cols},
+                   SUM(length(t.${t.sizeColumn})) OVER (ORDER BY t.rowid) - length(t.${t.sizeColumn}) AS before
+            ${from} ORDER BY t.rowid LIMIT ?3
+          ) WHERE before < ?4`;
 }
 
 function countSql(t: Table): string {
@@ -199,6 +225,15 @@ export async function copyFromD1(
   recount: () => number,
   /** `ctx.storage.sync`: forces pending writes to disk before a throw resets the object. */
   flush: () => Promise<void>,
+  opts: {
+    /**
+     * Whether to write `migrated_at` to the directory, which freezes the account's D1
+     * rows (migration 0032). Off on the pull-request previews, which share the dev
+     * instance's D1 while dev still runs the old code and writes it: a preview's copy
+     * of an account would otherwise refuse that account's saves on dev until the merge.
+     */
+    freeze: boolean;
+  } = { freeze: true },
 ): Promise<CopyReport | null> {
   if (copiedFromD1(sql)) return null;
   const failures = Number(readMeta(sql, META_FAILURES) ?? 0);
@@ -255,7 +290,7 @@ export async function copyFromD1(
         await spend(`${t.name}:${rowid}`);
         const page = await db
           .prepare(selectPage(t))
-          .bind(userId, rowid, t.page)
+          .bind(userId, rowid, t.page, ...(t.sizeColumn ? [PAGE_CHARS] : []))
           .all<Record<string, unknown> & { rid: number }>();
         if (page.results.length === 0) break;
         sql.tx(() => {
@@ -348,12 +383,15 @@ export async function copyFromD1(
     // The account's D1 rows are frozen from this moment: the directory row is what the
     // freeze triggers read (migration 0032), so it is written here, by the copy that
     // verified, rather than left to the sweep — the window between the two is one an
-    // old isolate could write into. One query, inside the budget's reserve.
-    await spend('directory', 0);
-    await db
-      .prepare(`UPDATE account_directory SET migrated_at = COALESCE(migrated_at, ?2) WHERE user_id = ?1`)
-      .bind(userId, Date.now())
-      .run();
+    // old isolate could write into. One query, inside the budget's reserve. Not on a
+    // preview; see `opts.freeze`.
+    if (opts.freeze) {
+      await spend('directory', 0);
+      await db
+        .prepare(`UPDATE account_directory SET migrated_at = COALESCE(migrated_at, ?2) WHERE user_id = ?1`)
+        .bind(userId, Date.now())
+        .run();
+    }
     sql.tx(() => {
       markCopiedFromD1(sql);
       sql.exec('DELETE FROM _meta WHERE key IN (?1, ?2, ?3, ?4)', META_CURSOR, META_REPAIRED, META_TEST_BUDGET, META_FAILURES);
