@@ -37,6 +37,17 @@ const META = {
   userId: 'user_id',
 } as const;
 
+/**
+ * The one key in the object's key-value storage, which `deleteAll` clears and `wipe` then
+ * writes: that this object was wiped. It is what stops a wiped object copying its account
+ * back from D1 on its next wake — `deleteAll` takes the `_meta` row that says the copy has
+ * run, and without this a deletion that failed after the wipe would bring the account back
+ * as it was at the cutover, with its files already gone from R2 (found in review). Read
+ * before the schema is touched, so a wiped object stays empty storage until something
+ * asks for its notes.
+ */
+const WIPED_KEY = 'wiped';
+
 /** One row as SQLite hands it back: the four value types it has, by column name. */
 export type Row = Record<string, SqlStorageValue>;
 
@@ -119,6 +130,12 @@ export class UserStore extends DurableObject<StoreEnv> {
     ctx.blockConcurrencyWhile(async () => {
       this.bootstrap();
       // The one-time copy of this account's rows from D1, on the first wake after the
+      // A wiped object wakes as it was left: empty, with no schema, and with the copy
+      // from D1 never to run again. `ready()` rebuilds the schema if anything asks.
+      if (ctx.storage.kv.get(WIPED_KEY) === true) {
+        this.wiped = true;
+        return;
+      }
       // cutover and never again. Inside the block, so no request sees a half-copied
       // account; resumable, so a reset part way loses only the page in flight.
       await copyFromD1(this.sql, env.DB, name, () => this.notes.recountNotes(), () => ctx.storage.sync());
@@ -166,6 +183,7 @@ export class UserStore extends DurableObject<StoreEnv> {
     markCopiedFromD1(this.sql);
   }
 
+    this.ctx.storage.kv.delete(WIPED_KEY);
   // --- Operator surface ------------------------------------------------------------------
 
   /** Cheap liveness: wakes the object (and so runs any pending migration) and names it. */
@@ -196,10 +214,12 @@ export class UserStore extends DurableObject<StoreEnv> {
    * Deletes everything: every table, the schema, the `_meta` row. For account deletion and
    * for the test fixtures' purge.
    *
-   * The instance stays alive and empty. `ready()` rebuilds the schema if a data method is
-   * called afterwards, so a wiped object that is reached again — a deletion that failed
-   * further along and was retried, a test — behaves as a brand-new one rather than
-   * throwing "no such table" until it is evicted.
+   * The instance stays alive and empty, and stays that way across an eviction: the
+   * marker written here is read before the schema is touched on the next wake. `ready()`
+   * rebuilds the schema if a data method is called afterwards, so a wiped object that is
+   * reached again — a deletion that failed further along and was retried, a test —
+   * behaves as a brand-new one that starts empty rather than copying its old rows back
+   * from D1 or throwing "no such table".
    */
   async wipe(): Promise<void> {
     await this.ctx.storage.deleteAll();
@@ -257,22 +277,30 @@ export class UserStore extends DurableObject<StoreEnv> {
    * A page is at most `limit` rows and, past the first row, at most `DUMP_PAGE_BYTES` of
    * them: the result crosses RPC, which is capped at 32 MiB, and a page of scans' texts
    * would pass that at five hundred rows. The cut is by the rows' own sizes as they are
-   * read, so the caller pages on `nextRowid` and never needs to know a cut happened.
+   * read — off the raw cursor, row by row, so the cut bounds the object's memory and not
+   * only the result, and the caller may ask for thousands of rows a page and get as many
+   * as fit. That matters because every page is one store call, and an invocation has
+   * fifty on Free: a dump of an archive-sized account has to be a dozen pages, not a
+   * hundred. The one query here that bypasses the `Sql` seam's metering, for that reason.
    */
-  dumpPage(table: DumpTable, afterRowid = 0, limit = 500): { rows: Row[]; nextRowid: number | null } {
+  dumpPage(table: DumpTable, afterRowid = 0, limit = 5000): { rows: Row[]; nextRowid: number | null } {
     this.ready();
     if (!DUMP_TABLES.includes(table)) throw new Error(`not a data table: ${table}`);
-    const read = this.sql.exec<Row & { _rowid: number }>(
+    const cursor = this.ctx.storage.sql.exec<Row & { _rowid: number }>(
       `SELECT rowid AS _rowid, * FROM ${table} WHERE rowid > ?1 ORDER BY rowid LIMIT ?2`,
       afterRowid,
       limit,
     );
     const rows: Row[] = [];
     let bytes = 0;
-    for (const row of read) {
+    let cut = false;
+    for (const row of cursor) {
       for (const v of Object.values(row)) bytes += typeof v === 'string' ? v.length : v instanceof ArrayBuffer ? v.byteLength : 8;
       // Always at least one row, or a single oversized row could never be dumped.
-      if (bytes > DUMP_PAGE_BYTES && rows.length > 0) break;
+      if (bytes > DUMP_PAGE_BYTES && rows.length > 0) {
+        cut = true;
+        break;
+      }
       rows.push(row);
     }
     const last = rows[rows.length - 1] as (Row & { _rowid: number }) | undefined;
