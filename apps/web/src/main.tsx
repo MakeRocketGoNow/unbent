@@ -7,6 +7,7 @@ import { installErrorReporting } from './report-error.js';
 import { installPosthog } from './posthog.js';
 import { installLaunchFiles } from './launch-files.js';
 import { configQuery } from './queries.js';
+import { registerServiceWorker } from './sw-register.js';
 import './styles.css';
 
 /*
@@ -85,6 +86,12 @@ const router = createRouter({
 installLaunchFiles(queryClient, (noteId) => {
   void router.navigate({ to: '/notes/$noteId', params: { noteId } });
 });
+
+/*
+ * The service worker, which lets the installed app open with no connection; see
+ * `sw-register.ts`. After the router, so nothing it does can delay the first render.
+ */
+registerServiceWorker();
 
 declare module '@tanstack/react-router' {
   interface Register {
