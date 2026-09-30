@@ -187,15 +187,20 @@ export const sessionCheckAbandoned = () => checkAbandoned;
  * leaves both alone when it could not be asked.
  *
  * Forgetting also empties what the service worker kept of their notes and files, and so
- * does a *different* user arriving — those copies are keyed by address, not by account
- * (`offline-cache.ts`). Resolves once they are gone, so the guard can hold a route's
- * loaders until nothing of the previous account can be served.
+ * does anyone arriving who is not the user this device remembers — those copies are keyed
+ * by address, not by account (`offline-cache.ts`). Resolves once they are gone, so the
+ * guard can hold a route's loaders until nothing of the previous account can be served.
+ *
+ * "Not the remembered user" includes nobody remembered at all, which is every first sign-in
+ * after a sign-out. Clearing at sign-out is not enough on its own: a read the worker had
+ * in flight when the page deleted the caches still writes its answer when it lands, which
+ * puts the previous account's rows back. It costs a delete of nothing on most sign-ins.
  */
 export function recordSession(state: Pick<SessionState, 'data' | 'error' | 'isPending'>): Promise<void> {
   if (state.data) {
     const previous = rememberedSession();
     rememberSession(state.data.user);
-    if (previous && previous.user.id !== state.data.user.id) return clearOfflineCaches();
+    if (previous?.user.id !== state.data.user.id) return clearOfflineCaches();
     return Promise.resolve();
   }
   if (!state.isPending && (state.error == null || state.error.status === 401)) {

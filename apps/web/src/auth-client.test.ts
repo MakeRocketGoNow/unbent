@@ -87,6 +87,12 @@ describe('ensureSession', () => {
       expect(deleted.mock.calls.map(([name]) => name).sort()).toEqual(['api-v1', 'files-v1']);
     });
 
+    it('are emptied on the first sign-in after nobody was remembered', async () => {
+      vi.stubGlobal('fetch', vi.fn(async () => json(200, SESSION)));
+      await (await freshEnsureSession())();
+      expect(deleted.mock.calls.map(([name]) => name).sort()).toEqual(['api-v1', 'files-v1']);
+    });
+
     it('are kept when the same person comes back', async () => {
       rememberSession(USER);
       vi.stubGlobal('fetch', vi.fn(async () => json(200, SESSION)));
