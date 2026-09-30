@@ -2072,11 +2072,24 @@ export function richMarkdown(options: RichMarkdownOptions = {}): Extension {
           const repaint = update.transactions.some((tr) =>
             tr.effects.some((e) => e.is(pdfNamesChanged) || e.is(imageFailed)),
           );
+          /*
+             The parse finishing is a repaint too. CodeMirror parses only for twenty
+             milliseconds when a state is created and does the rest in idle time, and that
+             rest arrives as a transaction that changes neither the document nor the
+             selection. On a desktop a note parses inside the budget and this never
+             matters; on a phone the parser's first run can overshoot it, and then the view
+             was built from an empty tree and drew the note as bare markdown — images and
+             PDFs as their brackets — until something else happened to repaint. Seen on
+             the Android emulator, where the first tap into the note was what finally drew
+             it. Comparing the trees is the documented way to notice the parse landing.
+          */
+          const parsed = syntaxTree(update.startState) !== syntaxTree(update.state);
           if (
             update.docChanged ||
             update.viewportChanged ||
             update.selectionSet ||
             update.focusChanged ||
+            parsed ||
             repaint
           ) {
             this.decorations = buildDecorations(update.view, options);
