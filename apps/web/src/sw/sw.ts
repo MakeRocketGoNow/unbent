@@ -37,6 +37,24 @@ precacheAndRoute(self.__WB_MANIFEST);
 cleanupOutdatedCaches();
 
 /**
+ * Take charge of the pages already open the moment this worker is active, rather than
+ * waiting for their next load.
+ *
+ * Without this the page that registers the worker is never under it: the first session
+ * after installing the app — sign in, open a note, walk into a tunnel — kept nothing,
+ * because none of its reads passed through the worker. On the phone that first session
+ * is the one a reviewer tries. It is also what makes the deploy hand-off prompt: the
+ * `controlling` event `takeUpdate` waits for fires only when the new worker claims the
+ * page, and without a claim it fell back to its timer every time.
+ *
+ * Safe for an update, because this worker activates only when the page has asked it to
+ * (`SKIP_WAITING`) and is about to load its destination fresh anyway.
+ */
+self.addEventListener('activate', (event) => {
+  event.waitUntil(self.clients.claim());
+});
+
+/**
  * Every page load of the app is answered with the cached `index.html`, and the router
  * takes it from there — the same thing the Worker's SPA fallback does, without needing
  * the Worker.
