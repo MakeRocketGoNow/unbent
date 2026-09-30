@@ -73,6 +73,42 @@ describe('ensureSession', () => {
     expect(await (await freshEnsureSession())()).toBeNull();
   });
 
+  describe('the notes kept for reading offline', () => {
+    const deleted = vi.fn(async (_name: string) => true);
+    beforeEach(() => {
+      deleted.mockClear();
+      vi.stubGlobal('caches', { delete: deleted });
+    });
+
+    it('are emptied when a different person signs in on this device', async () => {
+      rememberSession({ id: 'someone-else', email: 'else@example.com' });
+      vi.stubGlobal('fetch', vi.fn(async () => json(200, SESSION)));
+      await (await freshEnsureSession())();
+      expect(deleted.mock.calls.map(([name]) => name).sort()).toEqual(['api-v1', 'files-v1']);
+    });
+
+    it('are kept when the same person comes back', async () => {
+      rememberSession(USER);
+      vi.stubGlobal('fetch', vi.fn(async () => json(200, SESSION)));
+      await (await freshEnsureSession())();
+      expect(deleted).not.toHaveBeenCalled();
+    });
+
+    it('are emptied when the server refuses the session', async () => {
+      rememberSession(USER);
+      vi.stubGlobal('fetch', vi.fn(async () => json(401, { message: 'Unauthorized' })));
+      await (await freshEnsureSession())();
+      expect(deleted).toHaveBeenCalledTimes(2);
+    });
+
+    it('are kept when the server could not be asked', async () => {
+      rememberSession(USER);
+      vi.stubGlobal('fetch', vi.fn(async () => Promise.reject(new TypeError('Failed to fetch'))));
+      await (await freshEnsureSession())();
+      expect(deleted).not.toHaveBeenCalled();
+    });
+  });
+
   it('stops waiting on a check that hangs', async () => {
     rememberSession(USER);
     vi.useFakeTimers();

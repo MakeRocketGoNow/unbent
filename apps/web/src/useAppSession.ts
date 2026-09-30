@@ -23,7 +23,7 @@ export function useAppSession(): { session: Session | null; isPending: boolean; 
   const state = useSession() as unknown as SessionState;
   const waiting = state.isPending && !sessionCheckAbandoned();
   useEffect(() => {
-    if (!waiting) recordSession(state);
+    if (!waiting) void recordSession(state);
     // `state` is a fresh object on every render; what it says is these three.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [waiting, state.data, state.error, state.isPending]);

@@ -34,3 +34,85 @@ export function servesShell(url: URL): boolean {
   const last = url.pathname.slice(url.pathname.lastIndexOf('/') + 1);
   return !last.includes('.');
 }
+
+/**
+ * The two runtime caches, named here because the page empties them too — on sign-out, on
+ * a session the server refuses, and when a different account signs in on this device
+ * (`offline-cache.ts`). The version is in the name so a later change of shape can drop a
+ * cache outright; the local store MAK-140 builds replaces `api-v1` that way.
+ */
+export const API_CACHE = 'api-v1';
+export const FILES_CACHE = 'files-v1';
+
+/**
+ * The header the page puts on a fetch of a file's bytes that someone is looking at —
+ * today only the PDF viewer's (`loadPdf`). An image needs none: the browser marks an
+ * `<img>` load itself, as `destination: 'image'`.
+ */
+export const VIEW_HEADER = 'X-Unbent-View';
+
+/**
+ * The reads the note list and an open note are drawn from, which the worker keeps the
+ * last copy of: the list pages and their counts, a note, its files' metadata, the tags,
+ * the notebooks and a notebook's fields, and the instance's config. Nothing else — search,
+ * export, admin, a file's extracted text, the auth endpoints — has any use offline, and
+ * every write goes straight through.
+ *
+ * Matched by the whole shape of the path, never by prefix, because GETs that must not be
+ * cached live under these same prefixes: `/api/notes/<id>/export` is a download,
+ * `/api/notebooks/<id>/fields/<field>/conversion` is a question about a change about to
+ * be made. One path segment per `[^/]+`; an id or a file name is always one segment,
+ * encoded.
+ */
+const CACHED_READS = [
+  /^\/api\/notes$/,
+  /^\/api\/notes\/[^/]+$/,
+  /^\/api\/notes\/[^/]+\/files$/,
+  /^\/api\/tags$/,
+  /^\/api\/notebooks$/,
+  /^\/api\/notebooks\/[^/]+\/fields$/,
+  /^\/api\/config$/,
+];
+
+/** A file's bytes: `/api/notes/<id>/files/<name>`, and not its `/text`. */
+const FILE_BYTES = /^\/api\/notes\/[^/]+\/files\/[^/]+$/;
+
+export interface RequestFacts {
+  url: URL;
+  method: string;
+  /** `Request.destination`: `'image'` for an `<img>`, empty for a `fetch`. */
+  destination: string;
+  /** Whether the page marked the request as someone looking at the file (`VIEW_HEADER`). */
+  viewed: boolean;
+  /** The worker's own origin. */
+  origin: string;
+}
+
+/**
+ * Which runtime cache, if any, answers a request.
+ *
+ * `api`: the reads above, from the network first and from the cache only when the network
+ * fails. `file`: a file's bytes when someone is looking at them, from the cache first —
+ * they are served `immutable`, so a copy never goes stale.
+ *
+ * "Looking at" is the rule that matters for files. The indexer reads every PDF in the
+ * archive to extract its text, and an export reads every file; both fetch the same
+ * addresses the viewer does, and caching those would fill the budget with the archive and
+ * push out what the person actually opened. They carry no mark and pass straight through.
+ * A download (`?download=1`) is a save, not a view, and passes through too; so does an
+ * image from another site, which the rich editor also draws as an `<img>` but whose size
+ * an opaque response hides.
+ */
+export function classify(request: RequestFacts): 'api' | 'file' | undefined {
+  const { url } = request;
+  if (request.method !== 'GET' || url.origin !== request.origin) return undefined;
+  if (CACHED_READS.some((shape) => shape.test(url.pathname))) return 'api';
+  if (
+    FILE_BYTES.test(url.pathname) &&
+    !url.searchParams.has('download') &&
+    (request.destination === 'image' || request.viewed)
+  ) {
+    return 'file';
+  }
+  return undefined;
+}

@@ -1,6 +1,8 @@
 import { cleanupOutdatedCaches, createHandlerBoundToURL, precacheAndRoute } from 'workbox-precaching';
 import { registerRoute } from 'workbox-routing';
-import { servesShell } from './routes.js';
+import { CacheFirst, NetworkFirst, type StrategyOptions } from 'workbox-strategies';
+import { ExpirationPlugin } from 'workbox-expiration';
+import { API_CACHE, FILES_CACHE, VIEW_HEADER, classify, servesShell } from './routes.js';
 
 /**
  * The service worker: what lets the installed app open with no connection.
@@ -50,6 +52,87 @@ cleanupOutdatedCaches();
 registerRoute(
   ({ request, url }) => request.mode === 'navigate' && servesShell(url),
   createHandlerBoundToURL('/index.html'),
+);
+
+const DAY = 24 * 60 * 60;
+
+/** A Workbox plugin, named through the strategies' options rather than `workbox-core`, which is not a dependency of its own here. */
+type Plugin = NonNullable<StrategyOptions['plugins']>[number];
+
+/**
+ * What the note list and an open note were last drawn from, for drawing them again with
+ * no connection. Which reads these are is `classify` in `routes.ts`.
+ *
+ * Network first, always, and the cache only when the network fails — never the other way
+ * round. The page already caches in memory with React Query, and every save invalidates
+ * exactly the entries it changed; a worker that answered from its own copy first would
+ * hand that refetch the note as it was before the save, and an editor seeded from such a
+ * copy would save over an edit made on another device. Two caches with one silently
+ * winning is what `main.tsx` refuses for the router, for the same reason.
+ *
+ * Ten seconds for a connection that is up but carries nothing: the cached copy is
+ * answered then, and the late response still updates the cache when it lands. Five
+ * hundred reads for a month: a note is a few kilobytes, and an archive-sized account's
+ * every body together is a couple of megabytes.
+ */
+registerRoute(
+  ({ request, url }) =>
+    classify({ url, method: request.method, destination: request.destination, viewed: false, origin: self.location.origin }) === 'api',
+  new NetworkFirst({
+    cacheName: API_CACHE,
+    networkTimeoutSeconds: 10,
+    plugins: [new ExpirationPlugin({ maxEntries: 500, maxAgeSeconds: 30 * DAY, purgeOnQuotaError: true })],
+  }),
+);
+
+/**
+ * Twenty megabytes. A file over it is still shown online and simply not kept: a scanned
+ * archive has the odd enormous PDF, and a phone's storage is better spent on the many
+ * ordinary files someone opened than on one of those. Choosing notebooks to keep whole is
+ * MAK-141's, with a budget in bytes.
+ */
+const MAX_KEPT_FILE = 20 * 1024 * 1024;
+
+/**
+ * Keeps only a complete, ordinary answer of a size worth keeping. A plugin that decides
+ * this replaces Workbox's own "200 or opaque" check rather than adding to it, so the status
+ * is checked here too.
+ */
+const keepableFile: Plugin = {
+  cacheWillUpdate: async ({ response }) => {
+    if (response.status !== 200) return null;
+    const length = Number(response.headers.get('Content-Length') ?? 0);
+    return length > MAX_KEPT_FILE ? null : response;
+  },
+};
+
+/**
+ * The bytes of a file someone looked at — an image drawn in a note, a PDF opened in the
+ * viewer — so the same note reads the same with no connection.
+ *
+ * Cache first, because these never change: the Worker serves them `immutable`, keyed by
+ * the attachment. Only what was looked at, never what the indexer or an export read in
+ * bulk — see `classify` for why that distinction is the whole rule.
+ *
+ * A hundred and fifty files for a month, oldest-opened out first. A count rather than a
+ * byte budget for now; MAK-141 gives this cache a budget and lets whole notebooks be kept.
+ */
+registerRoute(
+  ({ request, url }) =>
+    classify({
+      url,
+      method: request.method,
+      destination: request.destination,
+      viewed: request.headers.get(VIEW_HEADER) === '1',
+      origin: self.location.origin,
+    }) === 'file',
+  new CacheFirst({
+    cacheName: FILES_CACHE,
+    plugins: [
+      keepableFile,
+      new ExpirationPlugin({ maxEntries: 150, maxAgeSeconds: 30 * DAY, purgeOnQuotaError: true }),
+    ],
+  }),
 );
 
 /**

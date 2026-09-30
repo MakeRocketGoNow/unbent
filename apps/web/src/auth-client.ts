@@ -3,6 +3,7 @@ import { emailOTPClient } from 'better-auth/client/plugins';
 import { oauthProviderClient } from '@better-auth/oauth-provider/client';
 import { passkeyClient } from '@better-auth/passkey/client';
 import { forgetSession, rememberSession, rememberedSession } from './session-memory.js';
+import { clearOfflineCaches } from './offline-cache.js';
 
 /**
  * Same-origin in both dev (Vite proxy) and production (Pages routes /api to the Worker),
@@ -171,13 +172,27 @@ let checkAbandoned = false;
 export const sessionCheckAbandoned = () => checkAbandoned;
 
 /**
- * Keeps the device's memory of who is signed in in step with what the server says: the
- * user when there is one, nothing when the server says there is nobody, and unchanged
- * when it could not be asked.
+ * Keeps the device in step with what the server says about who is signed in: remembers
+ * the user when there is one, forgets them when the server says there is nobody, and
+ * leaves both alone when it could not be asked.
+ *
+ * Forgetting also empties what the service worker kept of their notes and files, and so
+ * does a *different* user arriving — those copies are keyed by address, not by account
+ * (`offline-cache.ts`). Resolves once they are gone, so the guard can hold a route's
+ * loaders until nothing of the previous account can be served.
  */
-export function recordSession(state: Pick<SessionState, 'data' | 'error' | 'isPending'>): void {
-  if (state.data) rememberSession(state.data.user);
-  else if (!state.isPending && (state.error == null || state.error.status === 401)) forgetSession();
+export function recordSession(state: Pick<SessionState, 'data' | 'error' | 'isPending'>): Promise<void> {
+  if (state.data) {
+    const previous = rememberedSession();
+    rememberSession(state.data.user);
+    if (previous && previous.user.id !== state.data.user.id) return clearOfflineCaches();
+    return Promise.resolve();
+  }
+  if (!state.isPending && (state.error == null || state.error.status === 401)) {
+    forgetSession();
+    return clearOfflineCaches();
+  }
+  return Promise.resolve();
 }
 
 /**
@@ -199,8 +214,8 @@ export function ensureSession(): Promise<Session | null> {
       settled = true;
       clearTimeout(timer);
       checkAbandoned = timedOut && state.isPending;
-      recordSession(state);
-      resolve(answerFor(state, rememberedSession()).session);
+      const { session } = answerFor(state, rememberedSession());
+      void recordSession(state).then(() => resolve(session));
       stop?.();
     };
     const timer = setTimeout(() => finish(sessionStore.get(), true), SESSION_CHECK_TIMEOUT);

@@ -2,6 +2,7 @@ import { useNavigate } from '@tanstack/react-router';
 import { signOut, refreshSession } from './auth-client.js';
 import { postToApp } from './app-bridge.js';
 import { forgetSession } from './session-memory.js';
+import { clearOfflineCaches } from './offline-cache.js';
 
 /**
  * Sign out, and land somewhere that makes sense afterwards.
@@ -31,9 +32,11 @@ export function useSignOut(): () => void {
   return () => {
     void signOut().then(() => {
       // Before anything that can return early: whoever this device remembers as signed in
-      // (`session-memory.ts`) must not outlive a sign-out, or the next time the app opened
+      // (`session-memory.ts`), and the copies of their notes kept for reading offline
+      // (`offline-cache.ts`), must not outlive a sign-out — or the next time the app opened
       // with no connection it would carry on as them.
       forgetSession();
+      void clearOfflineCaches();
       /*
        * Inside the Android app, the app still holds its own copy of the session and
        * would put it back into the page on the next launch, as if the sign-out had

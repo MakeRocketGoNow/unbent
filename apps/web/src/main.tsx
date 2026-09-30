@@ -24,6 +24,19 @@ const queryClient = new QueryClient({
       // focus would be pure noise. Mutations invalidate what they affect instead.
       refetchOnWindowFocus: false,
       staleTime: 30_000,
+      /*
+       * Always make the first attempt, even when the browser says it is offline, because
+       * the service worker may hold the answer (`sw/sw.ts`). React Query's default waits
+       * for the connection instead — so the request never reached the worker, and a
+       * route loader awaiting it waited with the page on its way in. Retries still pause
+       * while offline and resume with the connection.
+       */
+      networkMode: 'offlineFirst',
+    },
+    mutations: {
+      // The same for writes: fail now, where the page can say so, rather than wait
+      // silently and replay later a change the person has stopped expecting.
+      networkMode: 'offlineFirst',
     },
   },
 });
