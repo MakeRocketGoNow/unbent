@@ -715,6 +715,8 @@ describe('rows read on an archive-sized store', () => {
       }),
       await measure('search common word', () => stub.search('receipt', 50)),
       await measure('search in a small tag', () => stub.search('receipt', 50, { tags: ['rare'] })),
+      // What the sweep reads every hour, for every account: it must never scan a table.
+      await measure('usage', () => stub.usage()),
       await measure('trash one', () => stub.remove('n00010')),
       await measure('trash many', () => stub.removeMany(['n00011', 'n00012', 'n00013'])),
     ];
@@ -730,6 +732,7 @@ describe('rows read on an archive-sized store', () => {
       'field sort page': 600,
       get: 10,
       'stored counts': 10,
+      usage: 4,
       'search common word': 2500,
       'search in a small tag': 80,
       'trash one': 12,

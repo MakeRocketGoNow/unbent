@@ -537,7 +537,10 @@ served with a stable hostname by [the dev instance](#the-dev-instance) above —
 away from production but not from each other. Accounts and sessions made on one preview
 therefore work on another and on `dev.unbent.app`. Notes do not travel: each Worker has its
 own namespace of per-account note stores, so a note made on one PR's preview is on that
-preview alone. It is a scratch environment, and nothing in it is backed up.
+preview alone. It is a scratch environment, and nothing in it is backed up. A preview also
+never records an account as migrated in the shared directory (`STORE_FREEZE_D1 = "0"` in
+its wrangler block), since that is what freezes the account's rows in the shared D1, and
+the dev instance may still be writing them.
 
 The environment is called `preview` rather than `dev` because the custom domain cannot live
 in a block previews reuse: `--name` changes which script a deploy targets but not which
@@ -1343,7 +1346,14 @@ save a note for any migrated account.
 wake, additive only. The sweep is what makes that safe to rely on: it wakes every object —
 twenty an hour, from a cursor it keeps in D1, since every store call counts against an
 invocation's fifty subrequests on Free — so a migration that fails for one account fails in
-the log with the user id on it, and it can be run on demand after a deploy.
+the log with the user id on it, and it can be run on demand after a deploy. Each visit
+reads a few rows of the account (its size and the stored note counts), never a table.
+
+**An account whose copy cannot be verified** — a row the store's constraints refuse that
+the shared database allowed — stops trying after three wakes and says so. Its owner's
+requests are refused until it is dealt with, but the object stays up: the operator can
+read it with the SQL route, the sweep names it every pass, and deleting the account, or
+wiping the store so it starts empty, still works.
 
 **What the operator can see.** An object has no console, so the Worker has one, under
 `/api/admin/store` for a session in `OPERATOR_EMAILS`:

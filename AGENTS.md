@@ -462,6 +462,14 @@ Things about working on the store that are easy to get wrong:
   and every store call counts. The copy from D1 spends forty a wake and pauses; the sweep
   walks twenty accounts a run; anything new that loops over accounts or pages D1 needs
   the same shape.
+- **Nothing periodic may scan a table.** The sweep reads `usage()` — the one `note_counts`
+  row and the database size — never `stats()`, which counts every table and is the
+  operator's. An hourly `stats()` on an archive-sized account would read every row of it
+  twenty-four times a day. The rows-read test bounds `usage` at a handful.
+- **A stuck copy stays up.** An account whose copy from D1 gave up refuses its data
+  methods and nothing else: `stats`, `usage`, the read-only SQL route and `wipe` still
+  work, so the operator can look and a deletion can finish. Do not turn that into a
+  constructor throw.
 - **Local state is D1 *and* `do/`.** The reset scripts clear both; clearing one by hand
   leaves ghost objects. `worktree:setup` copies both.
 

@@ -1,6 +1,6 @@
 import { beforeAll, describe, expect, it } from 'vitest';
 import { env, evictDurableObject, runInDurableObject } from 'cloudflare:test';
-import { freshStore } from './helpers.js';
+import { createD1NoteTables, freshStore, seedD1 } from './helpers.js';
 
 /**
  * The one-time copy of an account's rows from the shared D1 database into its object.
@@ -13,48 +13,7 @@ import { freshStore } from './helpers.js';
  * flag is set so a second wake copies nothing, and a copy that stopped part way resumes.
  */
 
-const D1_SCHEMA = `
-CREATE TABLE IF NOT EXISTS notebooks (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, name TEXT NOT NULL, created_at INTEGER NOT NULL, purpose TEXT, emoji TEXT, note_count INTEGER NOT NULL DEFAULT 0);
-CREATE TABLE IF NOT EXISTS notebook_fields (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, notebook_id TEXT NOT NULL, name TEXT NOT NULL, type TEXT NOT NULL, options TEXT, position INTEGER NOT NULL, created_at INTEGER NOT NULL, deleted_at INTEGER, notebook_name TEXT, scale_max INTEGER, scale_step REAL, currency TEXT);
-CREATE TABLE IF NOT EXISTS tags (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, name TEXT NOT NULL, note_count INTEGER NOT NULL DEFAULT 0);
-CREATE TABLE IF NOT EXISTS notes (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, title TEXT NOT NULL DEFAULT '', body TEXT NOT NULL DEFAULT '', created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, deleted_at INTEGER, source_enex TEXT, content_hash TEXT, notebook_id TEXT);
-CREATE TABLE IF NOT EXISTS note_tags (note_id TEXT NOT NULL, tag_id TEXT NOT NULL, PRIMARY KEY (note_id, tag_id));
-CREATE TABLE IF NOT EXISTS note_fields (note_id TEXT NOT NULL, field_id TEXT NOT NULL, user_id TEXT NOT NULL, value_text TEXT NOT NULL, value_num REAL, PRIMARY KEY (note_id, field_id));
-CREATE TABLE IF NOT EXISTS attachments (id TEXT PRIMARY KEY, note_id TEXT NOT NULL, user_id TEXT NOT NULL, filename TEXT NOT NULL, content_type TEXT NOT NULL, size INTEGER NOT NULL, md5 TEXT, r2_key TEXT NOT NULL, created_at INTEGER NOT NULL, has_text INTEGER NOT NULL DEFAULT 0);
-CREATE TABLE IF NOT EXISTS attachment_text (attachment_id TEXT PRIMARY KEY, note_id TEXT NOT NULL, user_id TEXT NOT NULL, filename TEXT NOT NULL, text TEXT NOT NULL, created_at INTEGER NOT NULL, read_by TEXT);
-CREATE TABLE IF NOT EXISTS account_directory (user_id TEXT PRIMARY KEY, created_at INTEGER NOT NULL, migrated_at INTEGER, storage_bytes INTEGER NOT NULL DEFAULT 0, note_count INTEGER NOT NULL DEFAULT 0, last_active_at INTEGER, deleted_at INTEGER);
-`;
-
-/** Fills D1 for `user`: `notes` notes across two notebooks, tagged, valued, with a scan each. */
-async function seedD1(user: string, notes: number) {
-  const stmts: D1PreparedStatement[] = [];
-  const p = (sql: string, ...binds: unknown[]) => stmts.push(env.DB.prepare(sql).bind(...binds));
-  p(`INSERT INTO account_directory (user_id, created_at) VALUES (?1, 1)`, user);
-  p(`INSERT INTO notebooks VALUES (?1, ?2, 'Receipts', 1, 'Bills', '🧾', 999)`, `${user}-nb1`, user);
-  p(`INSERT INTO notebooks VALUES (?1, ?2, 'Recipes', 1, NULL, NULL, 999)`, `${user}-nb2`, user);
-  p(`INSERT INTO notebook_fields (id, user_id, notebook_id, name, type, position, created_at) VALUES (?1, ?2, ?3, 'Amount', 'number', 0, 1)`, `${user}-f1`, user, `${user}-nb1`);
-  p(`INSERT INTO tags VALUES (?1, ?2, 'home', 999)`, `${user}-t1`, user);
-  p(`INSERT INTO tags VALUES (?1, ?2, 'work', 999)`, `${user}-t2`, user);
-  for (let i = 0; i < notes; i++) {
-    const id = `${user}-n${String(i).padStart(4, '0')}`;
-    // The last note points at a notebook the shared database no longer has.
-    const nb = i === notes - 1 ? 'gone' : i % 2 ? `${user}-nb1` : `${user}-nb2`;
-    p(`INSERT INTO notes (id, user_id, title, body, created_at, updated_at, deleted_at, content_hash, notebook_id) VALUES (?1, ?2, ?3, 'acme receipt', ?4, ?4, ?5, ?6, ?7)`, id, user, `Note ${i}`, 1000 + i, i % 7 === 0 ? 5 : null, `h${i}`, nb);
-    p(`INSERT INTO note_tags VALUES (?1, ?2)`, id, i % 3 ? `${user}-t1` : `${user}-t2`);
-    if (i % 2) p(`INSERT INTO note_fields VALUES (?1, ?2, ?3, ?4, ?4)`, id, `${user}-f1`, user, String(i));
-    p(`INSERT INTO attachments (id, note_id, user_id, filename, content_type, size, r2_key, created_at, has_text) VALUES (?1, ?2, ?3, 'scan.pdf', 'application/pdf', 1, ?4, 1, 1)`, `${user}-a${i}`, id, user, `users/${user}/notes/${id}/files/a-scan.pdf`);
-    p(`INSERT INTO attachment_text VALUES (?1, ?2, ?3, 'scan.pdf', ?4, 1, NULL)`, `${user}-a${i}`, id, user, `invoice ${i} from globex`);
-  }
-  // A link whose note is gone, which the shared database's cascade may have missed.
-  p(`INSERT INTO note_tags VALUES ('nowhere', ?1)`, `${user}-t1`);
-  // Another user's rows, which must not come across.
-  p(`INSERT INTO notes (id, user_id, title, body, created_at, updated_at) VALUES (?1, 'someone-else', 'Theirs', 'x', 1, 1)`, `${user}-other`);
-  for (let i = 0; i < stmts.length; i += 100) await env.DB.batch(stmts.slice(i, i + 100));
-}
-
-beforeAll(async () => {
-  await env.DB.exec(D1_SCHEMA.trim().split('\n').join(' '));
-});
+beforeAll(createD1NoteTables);
 
 /** Evicts an object if it is running; one whose constructor threw has already gone. */
 async function evict(stub: DurableObjectStub) {
@@ -287,9 +246,45 @@ describe('copy from D1', () => {
       }
       await evict(s);
     }
-    expect(errors).toEqual(['rescan', 'rescan', 'rescan', 'stuck', 'stuck']);
+    // Three rescans, then the copy gives up — and from then on `stats` answers, because
+    // the object stays up; what refuses is a data call, checked below.
+    expect(errors).toEqual(['rescan', 'rescan', 'rescan', 'ok', 'ok']);
     // The directory row never got its `migrated_at`, so the account's D1 rows stay writable.
     const dir = await env.DB.prepare(`SELECT migrated_at FROM account_directory WHERE user_id = ?1`).bind(userId).first<{ migrated_at: number | null }>();
     expect(dir?.migrated_at).toBeNull();
+
+    // Stuck is not dead: the object stays up, so the operator can look and a deletion can
+    // still wipe it. Only the data methods refuse. Found in review — a reset had made
+    // every call fail, including the inspection the error message points at.
+    const s = env.USER_STORE.get(env.USER_STORE.idFromName(userId));
+    expect(await s.stats()).toMatchObject({ stuck: true, copyFailures: 3, migratedFromD1: false });
+    expect(await s.usage()).toMatchObject({ stuck: true, migratedFromD1: false });
+    expect((await s.readOnlySql('SELECT COUNT(*) AS n FROM notebooks')).rows).toEqual([{ n: 2 }]);
+    await expect(s.list({ limit: 5 })).rejects.toMatchObject({ name: 'CopyStuck' });
+    await s.wipe();
+    expect(await s.stats()).toMatchObject({ wiped: true, stuck: false });
+    await s.create({ id: crypto.randomUUID(), title: 'Started over', body: '', tags: [] });
+    expect(await s.stats()).toMatchObject({ stuck: false, migratedFromD1: true });
+    expect((await s.stats()).counts.notes).toBe(1);
+  });
+
+  /**
+   * A run of large texts must not be one page: two hundred of the largest would have been
+   * a hundred million characters, past the object's memory once decoded. Pages are cut by
+   * total size in the query itself, with the first row always kept, so three texts of
+   * three million characters arrive as three pages and a copy of an archive of big scans
+   * cannot get stuck on a page it cannot hold.
+   */
+  it('copies a run of large texts a page at a time', async () => {
+    const { userId, stub } = freshStore('bigtext');
+    await seedD1(userId, 3);
+    const big = 'lorem ipsum '.repeat(250_000); // 3,000,000 characters
+    for (let i = 0; i < 3; i++) {
+      await env.DB.prepare(`UPDATE attachment_text SET text = ?1 WHERE attachment_id = ?2`).bind(big, `${userId}-a${i}`).run();
+    }
+    const stats = await stub.stats();
+    expect(stats.migratedFromD1).toBe(true);
+    expect(stats.counts.attachment_text).toBe(3);
+    expect((await stub.textFor(`${userId}-n0002`, 'scan.pdf'))?.length).toBe(big.length);
   });
 });

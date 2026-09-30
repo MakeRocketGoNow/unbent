@@ -50,6 +50,8 @@ export interface SweepReport {
   visited: number;
   /** Accounts whose object reported the copy from D1 done. */
   migrated: number;
+  /** Accounts whose copy has given up; the operator's `sql` route is how to look, `wipe` the way out. */
+  stuck: string[];
   wiped: number;
   dropped: number;
   failed: string[];
@@ -74,9 +76,9 @@ async function readCursor(db: D1Database): Promise<string> {
   return row?.value ?? '';
 }
 
-export async function sweepStores(env: Pick<Env, 'DB' | 'USER_STORE' | 'STORE_JURISDICTION'>): Promise<SweepReport> {
+export async function sweepStores(env: Pick<Env, 'DB' | 'USER_STORE' | 'STORE_JURISDICTION' | 'STORE_FREEZE_D1'>): Promise<SweepReport> {
   const started = Date.now();
-  const report: SweepReport = { visited: 0, migrated: 0, wiped: 0, dropped: 0, failed: [], deferred: [], done: false, ms: 0 };
+  const report: SweepReport = { visited: 0, migrated: 0, stuck: [], wiped: 0, dropped: 0, failed: [], deferred: [], done: false, ms: 0 };
 
   // Heal first: every user has a row, so every account is reachable from here.
   await env.DB.prepare(
@@ -111,7 +113,7 @@ export async function sweepStores(env: Pick<Env, 'DB' | 'USER_STORE' | 'STORE_JU
 
   report.ms = Date.now() - started;
   console.log(
-    `[store] sweep visited=${report.visited} migrated=${report.migrated} wiped=${report.wiped} dropped=${report.dropped} deferred=${report.deferred.length} failed=${report.failed.length} done=${report.done} ms=${report.ms}`,
+    `[store] sweep visited=${report.visited} migrated=${report.migrated} stuck=${report.stuck.length} wiped=${report.wiped} dropped=${report.dropped} deferred=${report.deferred.length} failed=${report.failed.length} done=${report.done} ms=${report.ms}`,
   );
   return report;
 }
@@ -122,7 +124,7 @@ function isDeferral(err: unknown): boolean {
 }
 
 async function sweepOne(
-  env: Pick<Env, 'DB' | 'USER_STORE' | 'STORE_JURISDICTION'>,
+  env: Pick<Env, 'DB' | 'USER_STORE' | 'STORE_JURISDICTION' | 'STORE_FREEZE_D1'>,
   row: DirectoryRow & { userExists: boolean },
   report: SweepReport,
   writes: D1PreparedStatement[],
@@ -138,21 +140,27 @@ async function sweepOne(
     // otherwise re-create a live row for an account that is empty. `stats` on a wiped
     // object reports without rebuilding the schema; anything else would leave a fresh
     // empty database behind for a deleted account.
-    if (!row.userExists && (await store.stats()).wiped) {
+    if (!row.userExists && (await store.usage()).wiped) {
       writes.push(dropDirectoryRowStatement(env.DB, row.userId));
       report.dropped += 1;
     }
     return;
   }
   // Waking the object is the point: a pending migration or the copy from D1 runs in its
-  // constructor, and a failure there surfaces here as this row's error.
-  const stats = await store.stats();
+  // constructor, and a failure there surfaces here as this row's error. `usage`, not
+  // `stats`: this runs every hour for every account, and must not scan a table.
+  const usage = await store.usage();
   writes.push(
     recordDirectoryUsageStatement(env.DB, row.userId, {
-      storageBytes: stats.databaseSize,
-      noteCount: stats.counts.notes,
-      migrated: stats.migratedFromD1,
+      storageBytes: usage.databaseSize,
+      noteCount: usage.notes,
+      // `migrated_at` is what freezes the account's D1 rows; a preview must not write it.
+      migrated: usage.migratedFromD1 && env.STORE_FREEZE_D1 !== '0',
     }),
   );
-  if (stats.migratedFromD1) report.migrated += 1;
+  if (usage.migratedFromD1) report.migrated += 1;
+  if (usage.stuck) {
+    console.error(`[store] copy stuck for user=${row.userId}; inspect with the sql route, wipe to start the account empty`);
+    report.stuck.push(row.userId);
+  }
 }

@@ -1,6 +1,7 @@
 import { beforeAll, describe, expect, it } from 'vitest';
 import { env, evictDurableObject, runInDurableObject } from 'cloudflare:test';
 import { BATCH, sweepStores } from '@unbent/api/lib/sweep';
+import { createD1NoteTables, seedD1 } from './helpers.js';
 
 /**
  * The sweep, against real objects and a local D1 carrying the three control-plane
@@ -136,6 +137,26 @@ describe('the store sweep', () => {
     // The pass ended, so the next invocation starts from the top of the directory again.
     const cursor = await env.DB.prepare(`SELECT value FROM _unbent_meta WHERE key = 'store_sweep_cursor'`).first<{ value: string }>();
     expect(cursor?.value).toBe('');
+  });
+
+  it('names an account whose copy gave up, and still measures the rest', async () => {
+    await createD1NoteTables();
+    const stuck = uid('stuck');
+    await user(stuck);
+    await seedD1(stuck, 2);
+    // Two notebooks whose names differ only in case: the store folds them, the count
+    // never matches, and after three wakes the copy stops trying.
+    await env.DB.prepare(`INSERT INTO notebooks VALUES (?1, ?2, 'receipts', 1, NULL, NULL, 0)`).bind(`${stuck}-dup`, stuck).run();
+    for (let i = 0; i < 3; i++) {
+      const s = stub(stuck);
+      await s.stats().catch(() => undefined);
+      await evictDurableObject(s).catch(() => undefined);
+    }
+    const reports = await fullPass();
+    expect(reports.flatMap((r) => r.stuck)).toContain(stuck);
+    expect(reports.flatMap((r) => r.failed)).not.toContain(stuck);
+    // Measured like any other account, and never marked migrated.
+    expect(await row(stuck)).toMatchObject({ migrated_at: null });
   });
 
   it('counts one account\'s failure and carries on to the next', async () => {
