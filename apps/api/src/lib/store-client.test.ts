@@ -21,6 +21,7 @@ describe('translateStoreError', () => {
       'Durable Object reset because its code was updated.',
       'Network connection lost.',
       'Durable Object storage operation exceeded timeout which caused object to be reset.',
+      'Too many subrequests.',
     ]) {
       const translated = translateStoreError(new Error(message));
       expect(translated, message).toBeInstanceOf(StoreUnavailable);

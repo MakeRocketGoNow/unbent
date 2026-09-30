@@ -115,7 +115,7 @@ export class UserStore extends DurableObject<StoreEnv> {
       // The one-time copy of this account's rows from D1, on the first wake after the
       // cutover and never again. Inside the block, so no request sees a half-copied
       // account; resumable, so a reset part way loses only the page in flight.
-      await copyFromD1(this.sql, env.DB, name, () => this.notes.recountNotes());
+      await copyFromD1(this.sql, env.DB, name, () => this.notes.recountNotes(), () => ctx.storage.sync());
     });
   }
 

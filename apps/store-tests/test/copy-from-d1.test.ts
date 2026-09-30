@@ -54,6 +54,15 @@ beforeAll(async () => {
   await env.DB.exec(D1_SCHEMA.trim().split('\n').join(' '));
 });
 
+/** Evicts an object if it is running; one whose constructor threw has already gone. */
+async function evict(stub: DurableObjectStub) {
+  try {
+    await evictDurableObject(stub);
+  } catch (err) {
+    if (!/not currently running/.test(String(err))) throw err;
+  }
+}
+
 describe('copy from D1', () => {
   it('copies every row of the account on first wake, rebuilds counts and search, and repairs what dangled', async () => {
     const { userId, stub } = freshStore('copy');
@@ -141,5 +150,89 @@ describe('copy from D1', () => {
     expect(stats.migratedFromD1).toBe(true);
     expect(stats.counts).toMatchObject({ notes: 12, note_tags: 12, note_fields: 6, attachments: 12, attachment_text: 12 });
     expect(await woke.recountNotes()).toBe(0);
+  });
+
+  /**
+   * The case a review caught: a wake that ran the repair pass and then failed — the
+   * verification, a reset — used to leave the cursor on the last table and the repair
+   * count at zero, so every later wake verified the same tail, found the child tables
+   * short by rows an earlier wake had removed, and threw again, for good. Now the repair
+   * count is kept across wakes and a failed verification drops the cursor, so the next
+   * wake rescans and converges.
+   */
+  it('converges after a wake that fails once after the repair pass', async () => {
+    const { userId, stub } = freshStore('after-repair');
+    await seedD1(userId, 8);
+    await stub.ping();
+    const before = (await stub.stats()).counts;
+
+    // The state such a failure leaves: copy done and repaired, flag unset, cursor at the
+    // end of the last table — and one row the object no longer has, as a reset between
+    // a page's transaction and the next could leave it.
+    const tail = (await env.DB.prepare(`SELECT MAX(rowid) AS rid FROM attachment_text WHERE user_id = ?1`).bind(userId).first<{ rid: number }>())!.rid;
+    await runInDurableObject(stub, (_i, state) => {
+      const sql = state.storage.sql;
+      sql.exec(`DELETE FROM _meta WHERE key IN ('migrated_from_d1', 'copy_repaired')`);
+      sql.exec(`INSERT INTO _meta (key, value) VALUES ('copy_cursor', ?1)`, `attachment_text:${tail}`);
+      sql.exec(`DELETE FROM note_tags WHERE rowid = (SELECT MIN(rowid) FROM note_tags)`);
+    });
+    await evictDurableObject(stub);
+
+    // First wake: nothing new past the cursor, nothing to repair, a child table short by
+    // one → verification fails, and the cursor is dropped on the way out.
+    const first = env.USER_STORE.get(env.USER_STORE.idFromName(userId));
+    await expect(first.stats()).rejects.toThrow(/rescans every table/);
+    // Second wake: a full rescan puts the row back and verification passes.
+    await evict(first);
+    const second = env.USER_STORE.get(env.USER_STORE.idFromName(userId));
+    const stats = await second.stats();
+    expect(stats.migratedFromD1).toBe(true);
+    expect(stats.counts).toEqual(before);
+    expect(await second.recountNotes()).toBe(0);
+    const meta = await runInDurableObject(second, (_i, state) =>
+      state.storage.sql.exec<{ key: string }>(`SELECT key FROM _meta ORDER BY key`).toArray().map((r) => r.key),
+    );
+    expect(meta).toEqual(['migrated_from_d1', 'user_id']);
+  });
+
+  /**
+   * D1 queries count against an invocation's subrequests, fifty on Free, so a wake
+   * spends a budget and then pauses with an error the facade answers as a 503. The
+   * budget is a knob in `_meta` for this test; nothing in the Worker writes it.
+   */
+  it('pauses at its query budget with a retryable error and finishes on later wakes', async () => {
+    const { userId, stub } = freshStore('budget');
+    await seedD1(userId, 6);
+    // A budget of twelve: eight are reserved for the verification's counts, so each wake
+    // fetches three pages of the sixteen the eight tables take (a page of rows and the
+    // empty page after it) before it pauses.
+    await runInDurableObject(stub, (_i, state) => {
+      const sql = state.storage.sql;
+      sql.exec(`DELETE FROM _meta WHERE key = 'migrated_from_d1'`);
+      sql.exec(`INSERT INTO _meta (key, value) VALUES ('test_copy_budget', '12')`);
+    });
+    await evictDurableObject(stub);
+
+    let wakes = 0;
+    for (;;) {
+      wakes += 1;
+      const s = env.USER_STORE.get(env.USER_STORE.idFromName(userId));
+      try {
+        const stats = await s.stats();
+        expect(stats.migratedFromD1).toBe(true);
+        expect(stats.counts).toMatchObject({ notes: 6, note_tags: 6, attachments: 6, attachment_text: 6 });
+        break;
+      } catch (err) {
+        expect(err).toMatchObject({ name: 'CopyIncomplete', retryable: true });
+        await evict(s);
+      }
+      expect(wakes).toBeLessThan(12);
+    }
+    // Several wakes were needed, and the copy picked up where it left off each time.
+    expect(wakes).toBeGreaterThan(3);
+    const meta = await runInDurableObject(env.USER_STORE.get(env.USER_STORE.idFromName(userId)), (_i, state) =>
+      state.storage.sql.exec<{ key: string }>(`SELECT key FROM _meta ORDER BY key`).toArray().map((r) => r.key),
+    );
+    expect(meta).toEqual(['migrated_from_d1', 'user_id']);
   });
 });

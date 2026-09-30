@@ -42,7 +42,7 @@ export class StoreUnavailable extends Error {
 }
 
 /** Messages the runtime uses for the transient failures of a Durable Object call. */
-const TRANSIENT = /overloaded|reset because its code was updated|transient|network connection lost|exceeded timeout|Durable Object reset/i;
+const TRANSIENT = /overloaded|reset because its code was updated|transient|network connection lost|exceeded timeout|Durable Object reset|too many subrequests/i;
 
 /**
  * An error that crossed the RPC boundary, turned back into what the caller expects.
@@ -51,8 +51,10 @@ const TRANSIENT = /overloaded|reset because its code was updated|transient|netwo
  * (measured 2026-09-29), so `instanceof InvalidFieldValue` in a route would be false for
  * the error the store threw. The field name survives as an own property, which is enough
  * to rebuild the real thing; the routes and the MCP tools then keep their `instanceof`.
- * Transient object failures become `StoreUnavailable`. Anything else passes through as
- * it arrived, with its message.
+ * Transient object failures become `StoreUnavailable`: the runtime's own (a reset, an
+ * overload, a lost connection), an invocation that ran out of subrequests, and an error
+ * the object marked `retryable` itself — the copy from D1 pausing at its query budget,
+ * which the next request continues. Anything else passes through as it arrived.
  */
 export function translateStoreError(err: unknown): unknown {
   if (err && typeof err === 'object') {
