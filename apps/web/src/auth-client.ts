@@ -11,7 +11,7 @@ import {
   rememberedSession,
 } from './session-memory.js';
 import { clearOfflineCaches } from './offline-cache.js';
-import { offlineNow, reportUnreachable, subscribeConnectivity } from './connectivity.js';
+import { offlineNow, recheck, subscribeConnectivity } from './connectivity.js';
 
 /**
  * Same-origin in both dev (Vite proxy) and production (Pages routes /api to the Worker),
@@ -286,7 +286,7 @@ function checkSession(): Promise<Session | null> {
     const remembered = rememberedSession();
     if (typeof navigator !== 'undefined' && navigator.onLine === false && remembered && sessionStore.get().isPending) {
       checkAbandoned = true;
-      reportUnreachable();
+      recheck();
       resolve(remembered);
       return;
     }
@@ -304,11 +304,11 @@ function checkSession(): Promise<Session | null> {
       clearTimeout(timer);
       checkAbandoned = timedOut && state.isPending;
       const { session, unreachable } = answerFor(state, rememberedSession());
-      // A check that never got an answer is the first sign the connection is gone; one the
-      // server answered with an error is not, and must not raise the offline banner. Only
-      // a check made during this call counts, or one abandoned by the timeout.
+      // A check that never got an answer is reason to ask whether the server can be
+      // reached; one the server answered with an error is not. Only a check made during
+      // this call counts, or one abandoned by the timeout.
       const fresh = timedOut || !settledBefore;
-      if (fresh && unreachable && state.error?.status === undefined) reportUnreachable();
+      if (fresh && unreachable && state.error?.status === undefined) recheck();
       void recordSession(state).then(() => resolve(session));
       stop?.();
     };

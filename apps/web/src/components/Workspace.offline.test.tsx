@@ -12,7 +12,7 @@ import type { Note } from '@unbent/shared';
 import * as api from '../notes-api.js';
 import { OfflineError, markServedFromCache } from '../notes-api.js';
 import { keys } from '../queries.js';
-import { reportReachable, reportUnreachable } from '../connectivity.js';
+import { setReachableForTests } from '../connectivity.js';
 import { Workspace } from './Workspace.js';
 
 vi.mock('../notes-api.js', async (importOriginal) => ({
@@ -84,7 +84,7 @@ afterEach(() => {
 describe('a note while offline', () => {
   it('is readable, and nothing about it can be changed', async () => {
     mount();
-    act(() => reportUnreachable());
+    act(() => setReachableForTests(false));
     expect((await title()).readOnly).toBe(true);
     expect(screen.getByRole<HTMLButtonElement>('button', { name: 'More actions' }).disabled).toBe(true);
     expect(screen.getByRole<HTMLButtonElement>('button', { name: 'Auto-fill' }).disabled).toBe(true);
@@ -93,9 +93,9 @@ describe('a note while offline', () => {
 
   it('unlocks when the connection returns, if it was read from the server', async () => {
     mount();
-    act(() => reportUnreachable());
+    act(() => setReachableForTests(false));
     expect((await title()).readOnly).toBe(true);
-    act(() => reportReachable());
+    act(() => setReachableForTests(true));
     await waitFor(async () => expect((await title()).readOnly).toBe(false));
   });
 
@@ -112,8 +112,8 @@ describe('a note while offline', () => {
 
   it('stays locked after the connection returns while its copy came from the cache', async () => {
     openFromCache();
-    act(() => reportUnreachable());
-    act(() => reportReachable());
+    act(() => setReachableForTests(false));
+    act(() => setReachableForTests(true));
     expect((await title()).readOnly).toBe(true);
   });
 

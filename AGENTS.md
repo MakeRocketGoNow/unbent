@@ -420,10 +420,18 @@ another device gets saved over.
 archive through the same addresses. A new bulk read of file bytes must not send that header;
 a new viewer must.
 
-**API calls from the page go through `request()` in `notes-api.ts`.** That is how the app
-learns the connection is gone — a fetch with no answer becomes an `OfflineError`, and an
-answer the worker served from its cache carries `X-Unbent-Served: cache`. A call made with
-bare `fetch` cannot raise the banner or lock the editor. Code that retries on a network
+**Only two things say the app is offline:** the browser's `navigator.onLine`, and a
+check of `/api/health` with a timeout (`connectivity.ts`). Nothing else decides. A request
+that gets no answer, a read the worker answered from its cache, a slow save, an answer
+while offline — each only asks for a check (`recheck`). Letting request outcomes flip the
+state directly was tried, and every new kind of answer became a new way to flicker between
+locked and unlocked on a connection that carries nothing. Don't add another input; call
+`recheck`.
+
+**API calls from the page go through `request()` in `notes-api.ts`,** which is where those
+checks are asked for: a fetch with no answer becomes an `OfflineError`, and an answer the
+worker served from its cache carries `X-Unbent-Served: cache`. A call made with bare `fetch`
+never asks, so it cannot raise the banner or lock the editor. Code that retries on a network
 error must recognise `OfflineError` as one (`transient` in `export-archive.ts`): it is an
 `ApiError` with status 0, not the `TypeError` fetch throws. Two deliberate exceptions, and
 nothing else should join them:

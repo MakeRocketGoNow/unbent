@@ -146,30 +146,39 @@ describe('ensureSession', () => {
       };
     }
 
+    const isHealth = (input: RequestInfo | URL) => String(input) === '/api/health';
+
     it('does not take the old error for a new one on the next navigation', async () => {
       rememberSession(USER);
-      vi.stubGlobal('fetch', vi.fn(async () => Promise.reject(new TypeError('Failed to fetch'))));
+      const fetch = vi.fn(async (_input: RequestInfo | URL) => Promise.reject(new TypeError('Failed to fetch')) as Promise<Response>);
+      vi.stubGlobal('fetch', fetch);
       const { auth, connectivity } = await freshGraph();
       await auth.ensureSession();
-      expect(connectivity.offlineNow()).toBe(true);
+      await vi.waitFor(() => expect(connectivity.offlineNow()).toBe(true));
 
-      connectivity.reportReachable();
+      // The server is confirmed back; the store still holds the old network error.
+      connectivity.setReachableForTests(true);
+      const checks = fetch.mock.calls.filter(([url]) => isHealth(url)).length;
       expect(await auth.ensureSession()).toEqual({ user: USER });
+      // Not news: no check is asked for, and the app stays online.
+      expect(fetch.mock.calls.filter(([url]) => isHealth(url)).length).toBe(checks);
       expect(connectivity.offlineNow()).toBe(false);
     });
 
     it('asks for the session again when the connection comes back', async () => {
       rememberSession(USER);
-      const fetch = vi.fn(async () => Promise.reject(new TypeError('Failed to fetch')) as Promise<Response>);
+      const fetch = vi.fn(async (_input: RequestInfo | URL) => Promise.reject(new TypeError('Failed to fetch')) as Promise<Response>);
       vi.stubGlobal('fetch', fetch);
       const { auth, connectivity } = await freshGraph();
       auth.installSessionRecheck();
       await auth.ensureSession();
-      expect(connectivity.offlineNow()).toBe(true);
+      await vi.waitFor(() => expect(connectivity.offlineNow()).toBe(true));
 
-      fetch.mockImplementation(async () => json(200, SESSION));
-      connectivity.reportReachable();
-      await vi.waitFor(() => expect(fetch).toHaveBeenCalledTimes(2));
+      fetch.mockImplementation(async (input) => (isHealth(input) ? json(200, {}) : json(200, SESSION)));
+      const sessionChecks = () => fetch.mock.calls.filter(([url]) => String(url).includes('/get-session')).length;
+      const before = sessionChecks();
+      connectivity.setReachableForTests(true);
+      await vi.waitFor(() => expect(sessionChecks()).toBe(before + 1));
       const session = await auth.ensureSession();
       expect(session?.user.id).toBe('u1');
       expect(auth.sessionCheckAbandoned()).toBe(false);

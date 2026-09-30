@@ -15,7 +15,7 @@ import type {
   NotebookSummary,
   SearchResult,
 } from '@unbent/shared';
-import { offlineNow, reportReachable, reportUnreachable } from './connectivity.js';
+import { offlineNow, recheck } from './connectivity.js';
 import { SERVED_HEADER } from './sw/routes.js';
 
 /**
@@ -71,14 +71,15 @@ export function isOfflineError(err: unknown): err is OfflineError {
 
 /**
  * Every call below goes through this rather than `fetch`, so there is one place that
- * notices the connection is gone.
+ * notices the connection may have changed.
  *
- * A fetch that rejects before any answer becomes an `OfflineError` and tells the
- * connectivity store (`connectivity.ts`), which is what raises the banner and locks the
- * editor. An answer the service worker served from its cache because the network failed
- * carries `X-Unbent-Served: cache` and tells it the same; any other answer tells it the
- * server is there. The caller's own abort is passed through untouched — the editor cancels
- * uploads, and that is not a lost connection.
+ * A fetch that rejects before any answer becomes an `OfflineError`. That, an answer the
+ * service worker served from its cache because the network failed (`X-Unbent-Served:
+ * cache`), and any answer while the app believes it is offline all ask the connectivity
+ * store to check the server (`recheck`) — none of them decides by itself, since a kept
+ * file answers with no network and a slow save fails with one (see `connectivity.ts`).
+ * The caller's own abort is passed through untouched — the editor cancels uploads, and
+ * that is not a lost connection.
  *
  * A write made while the store already says offline fails at once rather than waiting on
  * a socket: the banner has already said changes can't be saved. A read still goes out,
@@ -86,7 +87,7 @@ export function isOfflineError(err: unknown): err is OfflineError {
  *
  * `timeout` is for the autosave, which must not hang: on a connection that is up and
  * carries nothing, a save with no answer used to leave the editor accepting typing for
- * minutes. After it, the save counts as offline and the editor locks.
+ * minutes. After it the save fails, and the check decides whether the editor locks.
  */
 export async function request(input: string, init: RequestInit & { timeout?: number } = {}): Promise<Response> {
   const { timeout, signal: callerSignal, ...rest } = init;
@@ -105,13 +106,12 @@ export async function request(input: string, init: RequestInit & { timeout?: num
     res = await fetch(input, { ...rest, ...(signal ? { signal } : {}) });
   } catch (err) {
     if (callerSignal?.aborted) throw err;
-    reportUnreachable();
+    recheck();
     throw new OfflineError();
   } finally {
     clearTimeout(timer);
   }
-  if (res.headers.get(SERVED_HEADER) === 'cache') reportUnreachable();
-  else reportReachable();
+  if (res.headers.get(SERVED_HEADER) === 'cache' || offlineNow()) recheck();
   return res;
 }
 
