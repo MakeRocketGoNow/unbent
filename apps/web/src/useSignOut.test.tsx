@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { renderHook, waitFor } from '@testing-library/react';
 import { useSignOut } from './useSignOut.js';
-import { refreshSession, signOut } from './auth-client.js';
+import { endSessionLater, refreshSession, signOut } from './auth-client.js';
 import { rememberSession, rememberedSession } from './session-memory.js';
 
 const navigate = vi.fn();
@@ -9,6 +9,7 @@ vi.mock('@tanstack/react-router', () => ({ useNavigate: () => navigate }));
 vi.mock('./auth-client.js', () => ({
   signOut: vi.fn().mockResolvedValue({}),
   refreshSession: vi.fn().mockResolvedValue(null),
+  endSessionLater: vi.fn(),
 }));
 
 /**
@@ -53,5 +54,31 @@ describe('useSignOut', () => {
     if (hosted) window.UnbentApp = { postMessage: vi.fn() };
     renderHook(() => useSignOut()).result.current();
     await waitFor(() => expect(rememberedSession()).toBeNull());
+  });
+
+  /*
+   * No connection: the request rejects, and the sign-out must still happen on the device —
+   * the remembered user and the kept notes gone, the page on `/login` — with the server's
+   * half left for when it can be asked.
+   */
+  it('signs out on the device when the request cannot reach the server', async () => {
+    vi.mocked(signOut).mockRejectedValueOnce(new TypeError('Failed to fetch'));
+    const deleted = vi.fn(async () => true);
+    vi.stubGlobal('caches', { delete: deleted });
+    rememberSession({ id: 'u1', email: 'someone@example.com' });
+    renderHook(() => useSignOut()).result.current();
+    await waitFor(() => expect(navigate).toHaveBeenCalledWith({ to: '/login', replace: true }));
+    expect(rememberedSession()).toBeNull();
+    expect(deleted).toHaveBeenCalledTimes(2);
+    expect(endSessionLater).toHaveBeenCalled();
+    // Nothing to refresh from with no connection.
+    expect(refreshSession).not.toHaveBeenCalled();
+    vi.unstubAllGlobals();
+  });
+
+  it('leaves nothing to finish later when the server heard it', async () => {
+    renderHook(() => useSignOut()).result.current();
+    await waitFor(() => expect(navigate).toHaveBeenCalled());
+    expect(endSessionLater).not.toHaveBeenCalled();
   });
 });

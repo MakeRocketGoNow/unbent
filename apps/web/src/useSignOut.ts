@@ -1,5 +1,5 @@
 import { useNavigate } from '@tanstack/react-router';
-import { signOut, refreshSession } from './auth-client.js';
+import { endSessionLater, signOut, refreshSession } from './auth-client.js';
 import { postToApp } from './app-bridge.js';
 import { forgetSession } from './session-memory.js';
 import { clearOfflineCaches } from './offline-cache.js';
@@ -30,26 +30,42 @@ import { clearOfflineCaches } from './offline-cache.js';
 export function useSignOut(): () => void {
   const navigate = useNavigate();
   return () => {
-    void signOut().then(() => {
-      // Before anything that can return early: whoever this device remembers as signed in
-      // (`session-memory.ts`), and the copies of their notes kept for reading offline
-      // (`offline-cache.ts`), must not outlive a sign-out — or the next time the app opened
-      // with no connection it would carry on as them.
-      forgetSession();
-      void clearOfflineCaches();
-      /*
-       * Inside the Android app, the app still holds its own copy of the session and
-       * would put it back into the page on the next launch, as if the sign-out had
-       * never happened. Telling it is what makes it forget, and it replaces this screen
-       * with its own sign-in.
-       *
-       * Told before the session store is refreshed, not after. Emptying the store is what
-       * makes the shell in `__root.tsx` post `unauthorized` and navigate to `/login`, so
-       * refreshing first would send the app a session check it is about to throw away,
-       * and flash `/login` in a screen on its way out.
-       */
-      if (postToApp({ type: 'signed-out' })) return;
-      return refreshSession().then(() => navigate({ to: '/login', replace: true }));
-    });
+    /*
+     * The request can fail — no connection — and the sign-out still has to happen on this
+     * device, so everything below runs whatever it answered. Someone tapping Sign out on a
+     * shared phone in a tunnel means it. A rejection is not a crash to report either.
+     */
+    void signOut()
+      .then((res) => !res?.error, () => false)
+      .then(async (ended) => {
+        // The server kept the session: end it the next time it can be asked
+        // (`finishSignOut`), or a browser's HttpOnly cookie would sign the person straight
+        // back in on the next load. Recorded before the store is touched below.
+        if (!ended) endSessionLater();
+        // Before anything that can return early: whoever this device remembers as signed
+        // in (`session-memory.ts`), and the copies of their notes kept for reading offline
+        // (`offline-cache.ts`), must not outlive a sign-out — or the next time the app
+        // opened with no connection it would carry on as them. Awaited, so they are gone
+        // before the page moves on.
+        forgetSession();
+        await clearOfflineCaches();
+        /*
+         * Inside the Android app, the app still holds its own copy of the session and
+         * would put it back into the page on the next launch, as if the sign-out had
+         * never happened. Telling it is what makes it forget — it clears its cookies too,
+         * which is what makes an offline sign-out complete there — and it replaces this
+         * screen with its own sign-in.
+         *
+         * Told before the session store is refreshed, not after. Emptying the store is what
+         * makes the shell in `__root.tsx` post `unauthorized` and navigate to `/login`, so
+         * refreshing first would send the app a session check it is about to throw away,
+         * and flash `/login` in a screen on its way out.
+         */
+        if (postToApp({ type: 'signed-out' })) return;
+        // Offline there is nothing to refresh from; the pending sign-out is what keeps
+        // `/login` from waving the person back in (`ensureSession`).
+        if (ended) await refreshSession().catch(() => null);
+        await navigate({ to: '/login', replace: true });
+      });
   };
 }
