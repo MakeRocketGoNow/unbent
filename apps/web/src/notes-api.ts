@@ -15,7 +15,7 @@ import type {
   NotebookSummary,
   SearchResult,
 } from '@unbent/shared';
-import { offlineNow, reportReachable, reportUnreachable } from './connectivity.js';
+import { noteRead, offlineNow, reportReachable, reportUnreachable } from './connectivity.js';
 import { SERVED_HEADER } from './sw/routes.js';
 
 /**
@@ -201,7 +201,11 @@ export async function listNotes(
 }
 
 export async function getNote(id: string): Promise<Note> {
-  return json<Note>(await request(`/api/notes/${id}`));
+  const res = await request(`/api/notes/${id}`);
+  const note = await json<Note>(res);
+  // Where this copy came from decides whether it may be edited; see `noteRead`.
+  noteRead(id, res.headers.get(SERVED_HEADER) === 'cache');
+  return note;
 }
 
 export async function createNote(input: {

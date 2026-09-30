@@ -49,6 +49,13 @@ interface EditorToolbarProps {
      */
     split?: { on: boolean; onToggle: () => void };
   };
+  /**
+   * A note that takes no changes — offline, or in the trash. Formatting, Attach and the
+   * table control are disabled, the way the preview view disables them, rather than
+   * hidden: the bar keeps its shape, and the view switcher stays usable because it
+   * changes nothing.
+   */
+  readOnly?: boolean;
 }
 
 interface Action {
@@ -143,7 +150,7 @@ function usePickerStyles() {
  * was clicked — a picker over a table, a silent insert in the formatting bar. Choosing the
  * size up front is also simply what people expect of a table button.
  */
-function TableButton({ view }: { view: EditorView | null }) {
+function TableButton({ view, disabled = false }: { view: EditorView | null; disabled?: boolean }) {
   const [open, setOpen] = useState(false);
   const host = useRef<HTMLDivElement>(null);
   const anchor = useRef<HTMLSpanElement>(null);
@@ -193,7 +200,7 @@ function TableButton({ view }: { view: EditorView | null }) {
         aria-label="Table"
         aria-expanded={open}
         aria-haspopup="dialog"
-        disabled={!view}
+        disabled={!view || disabled}
         // onMouseDown for the same reason the formatting buttons use it: a click would
         // blur the editor first and drop the selection the command acts on.
         onMouseDown={(e) => {
@@ -283,6 +290,7 @@ export function EditorToolbar({
   noteView,
   docked = false,
   keyboardInset = 0,
+  readOnly = false,
 }: EditorToolbarProps) {
   function apply(run: StateCommand) {
     if (!view) return;
@@ -298,6 +306,7 @@ export function EditorToolbar({
      back in different places is worse than their being briefly greyed.
   */
   const editing = noteView.current !== 'preview';
+  const canEdit = editing && !readOnly;
 
   /*
      Whether the docked run has more to the right of what is on screen.
@@ -352,7 +361,7 @@ export function EditorToolbar({
             className={`tb-btn ${action.className ?? ''}`}
             title={action.title}
             aria-label={action.title}
-            disabled={!view || !editing}
+            disabled={!view || !canEdit}
             // onMouseDown, not onClick: a click would blur the editor first and drop the
             // selection the command is meant to act on.
             onMouseDown={(e) => {
@@ -364,8 +373,8 @@ export function EditorToolbar({
           </button>
         ))}
 
-        <AttachButton view={view} disabled={!editing} docked={docked} />
-        {editing && <TableButton view={view} />}
+        <AttachButton view={view} disabled={!canEdit} docked={docked} />
+        {editing && <TableButton view={view} disabled={readOnly} />}
       </div>
 
       {/*

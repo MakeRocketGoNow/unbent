@@ -138,6 +138,40 @@ export function installConnectivity(queryClient: QueryClient): void {
   });
 }
 
+/**
+ * The notes whose last read came from the service worker's cache rather than the server.
+ *
+ * Such a note stays locked even once the connection is back, until the server has
+ * answered for it. Its copy may be older than one saved from another device, and the
+ * editor seeds its draft once per note and saves without a precondition (that is MAK-113)
+ * — so unlocking it on the stale text would let the first keystroke save the old body
+ * over the newer one. The refetch on reconnect is what clears it; `Workspace` then seeds
+ * again from the server's copy.
+ */
+const readFromCache = new Set<string>();
+const noteListeners = new Set<() => void>();
+
+/** Called for every read of one note, with where the answer came from. */
+export function noteRead(id: string, fromCache: boolean): void {
+  if (readFromCache.has(id) === fromCache) return;
+  if (fromCache) readFromCache.add(id);
+  else readFromCache.delete(id);
+  for (const listener of noteListeners) listener();
+}
+
+export function useNoteReadFromCache(id: string): boolean {
+  return useSyncExternalStore(
+    (listener) => {
+      noteListeners.add(listener);
+      return () => {
+        noteListeners.delete(listener);
+      };
+    },
+    () => readFromCache.has(id),
+    () => false,
+  );
+}
+
 /** Test seam: back to a browser that is online, with nothing failing and nothing polling. */
 export function resetConnectivity(): void {
   unreachable = false;
@@ -146,4 +180,6 @@ export function resetConnectivity(): void {
   pollTimer = undefined;
   pollDelay = FIRST_POLL;
   listeners.clear();
+  readFromCache.clear();
+  noteListeners.clear();
 }

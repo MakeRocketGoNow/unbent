@@ -2,10 +2,11 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate } from '@tanstack/react-router';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { EditorView } from '@codemirror/view';
-import type { FieldDef, FieldType, FieldValue } from '@unbent/shared';
+import type { FieldDef, FieldType, FieldValue, Note } from '@unbent/shared';
 import { localizeImageLinks, remoteImageUrls } from '@unbent/shared';
 import * as api from '../notes-api.js';
-import { isStatus } from '../notes-api.js';
+import { isOfflineError, isStatus } from '../notes-api.js';
+import { useNoteReadFromCache, useOffline } from '../connectivity.js';
 import { buildNotePatch, rememberFieldDefs, unstoreableFieldIds } from '../note-patch.js';
 import { useAutosave, SAVE_LABEL } from '../useAutosave.js';
 import { usePersistentState, clamp } from '../usePersistentState.js';
@@ -61,6 +62,20 @@ const EDITOR_MIN = 0.2;
 const EDITOR_MAX = 0.8;
 
 
+/** The draft a note's saved copy starts as. */
+function seedFrom(note: Note) {
+  return {
+    title: note.title,
+    body: note.body,
+    tags: note.tags,
+    notebook: note.notebook ?? null,
+    fields: Object.fromEntries((note.fields ?? []).map((v) => [v.fieldId, v.value])) as Record<
+      string,
+      FieldValue | null
+    >,
+  };
+}
+
 interface WorkspaceProps {
   noteId: string;
   /** Trashed notes are readable but never written to. */
@@ -73,6 +88,19 @@ export function Workspace({ noteId, readOnly = false, backTo = '/notes' }: Works
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { data: note, error, refetch } = useQuery(noteQuery(noteId));
+  /*
+     Offline, or showing a copy that came from the service worker's cache: the note reads
+     as usual and nothing about it can change. A copy from the cache stays locked after
+     the connection returns, until the server has answered for this note — see
+     `useNoteReadFromCache` for why unlocking the old text would be a lost edit.
+
+     Kept apart from `readOnly`, which is the trash's and turns the autosave off. This
+     leaves the autosave running, so typing the lock arrived a second too late for is
+     held and saved when the connection comes back rather than dropped.
+  */
+  const offline = useOffline();
+  const readFromCache = useNoteReadFromCache(noteId);
+  const locked = offline || readFromCache;
   const notebooks = useQuery(notebooksQuery());
   const tags = useQuery(tagsQuery());
   const config = useQuery(configQuery());
@@ -228,21 +256,46 @@ export function Workspace({ noteId, readOnly = false, backTo = '/notes' }: Works
     });
     return () => registerEditorFocus(null);
   }, [editorView]);
+  /**
+   * The copy the draft was seeded from, while that copy came from the cache. Cleared once
+   * the server's copy replaces it; see the effect after the seed.
+   */
+  const seededFromCache = useRef<typeof note>(undefined);
+  /**
+   * Bumped when the draft is seeded again for the same note, so the autosave takes the new
+   * seed as its baseline instead of as an edit to save.
+   */
+  const [seedGeneration, setSeedGeneration] = useState(0);
+
   // Seed the draft when a different note loads. Keyed on id, not on the note object,
   // so a background refetch never discards what is being typed.
   useEffect(() => {
     if (!note) return;
-    setDraft({
-      title: note.title,
-      body: note.body,
-      tags: note.tags,
-      notebook: note.notebook ?? null,
-      fields: Object.fromEntries((note.fields ?? []).map((v) => [v.fieldId, v.value])),
-    });
+    setDraft(seedFrom(note));
     setDraftFor(note.id);
     setEditorOverride(null);
+    seededFromCache.current = readFromCache ? note : undefined;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [noteId, note !== undefined]);
+
+  /*
+     The one refetch that does replace the draft: the server's copy arriving for a note
+     that was seeded from the cache. Nothing typed is lost — the note was locked the whole
+     time — and the old text must not survive into the unlocked editor, where the first
+     keystroke would save it over whatever another device saved meanwhile. The editor is
+     rebuilt on the new text for the same reason; with nothing typed, there is no history
+     worth keeping.
+  */
+  useEffect(() => {
+    const seeded = seededFromCache.current;
+    if (!seeded || readFromCache || !note) return;
+    seededFromCache.current = undefined;
+    if (note === seeded) return;
+    setDraft(seedFrom(note));
+    setEditorOverride(null);
+    setEditorRevision((n) => n + 1);
+    setSeedGeneration((n) => n + 1);
+  }, [note, readFromCache]);
 
   /*
      A new note opens with the caret in its title.
@@ -343,8 +396,19 @@ export function Workspace({ noteId, readOnly = false, backTo = '/notes' }: Works
     // `draftFor === noteId` keeps a draft still holding the previous note's text from
     // being written over this one during the render between navigation and reseeding.
     enabled: editing,
-    resetKey: noteId,
+    resetKey: `${noteId}:${seedGeneration}`,
   });
+
+  /*
+     The connection back: a save that failed for want of one — typing that landed in the
+     moment before the editor locked — goes now rather than waiting for the next keystroke,
+     which a locked editor could not have taken anyway.
+  */
+  const wasOffline = useRef(offline);
+  useEffect(() => {
+    if (wasOffline.current && !offline) void flush();
+    wasOffline.current = offline;
+  }, [offline, flush]);
 
   /*
      Typing the autosave has not sent, a save in flight or one that failed and waits to
@@ -367,8 +431,17 @@ export function Workspace({ noteId, readOnly = false, backTo = '/notes' }: Works
      400 that took the body down with it.
   */
   const holdingField = editing && unstoreableFieldIds(draft, note, knownFieldDefs).length > 0;
-  const saveLabel =
-    holdingField && saveState === 'saved' ? SAVE_LABEL.dirty : SAVE_LABEL[saveState];
+  /*
+     A save that failed because the connection went is not "Save failed" in red: nothing is
+     wrong with the note, the typing is held, and it goes when the connection does. The
+     banner has said why; this says what it means for this note.
+  */
+  const unsavedOffline = saveState === 'error' && offline;
+  const saveLabel = unsavedOffline
+    ? 'Not saved — offline'
+    : holdingField && saveState === 'saved'
+      ? SAVE_LABEL.dirty
+      : SAVE_LABEL[saveState];
 
   /**
    * Adds a definition to the note's notebook from the note itself. The definitions
@@ -395,7 +468,7 @@ export function Workspace({ noteId, readOnly = false, backTo = '/notes' }: Works
       notebooks={notebooks.data?.notebooks}
       tags={draft.tags}
       suggestions={tags.data?.map((t) => t.name) ?? []}
-      readOnly={readOnly}
+      readOnly={readOnly || locked}
       onNotebook={(next) => setDraft((d) => ({ ...d, notebook: next }))}
       onTags={(next) => setDraft((d) => ({ ...d, tags: next }))}
     />
@@ -421,7 +494,7 @@ export function Workspace({ noteId, readOnly = false, backTo = '/notes' }: Works
         values={draft.fields}
         carried={note.fields ?? []}
         notebookId={currentNotebook?.id ?? null}
-        readOnly={readOnly}
+        readOnly={readOnly || locked}
         onChange={(fieldId, value) =>
           setDraft((d) => ({ ...d, fields: { ...d.fields, [fieldId]: value } }))
         }
@@ -656,6 +729,13 @@ export function Workspace({ noteId, readOnly = false, backTo = '/notes' }: Works
    */
   if (error) {
     const missing = isStatus(error, 404);
+    /*
+       A third case: no connection, and no copy of this note on the device, because it was
+       never opened here. Not a failure — muted, like the 404 — and no Retry, since the
+       note loads by itself when the connection returns (`connectivity.ts` refetches what
+       is on screen).
+    */
+    const unavailable = isOfflineError(error);
     return (
       <section className="workspace">
         {/*
@@ -686,12 +766,14 @@ export function Workspace({ noteId, readOnly = false, backTo = '/notes' }: Works
         </div>
 
         <div className="workspace-error">
-          <p className={missing ? 'muted' : 'bad'}>
+          <p className={missing || unavailable ? 'muted' : 'bad'}>
             {missing
               ? "That note doesn't exist, or was deleted."
-              : `Couldn't load that note. ${(error as Error).message}`}
+              : unavailable
+                ? "This note hasn't been opened on this device, so it isn't available offline."
+                : `Couldn't load that note. ${(error as Error).message}`}
           </p>
-          {missing ? (
+          {unavailable ? null : missing ? (
             <Button
               variant="secondary"
               onClick={() => void navigate({ to: '/notes', search: (p) => p })}
@@ -800,7 +882,7 @@ export function Workspace({ noteId, readOnly = false, backTo = '/notes' }: Works
             className="title-input"
             value={draft.title}
             placeholder="Untitled"
-            readOnly={readOnly}
+            readOnly={readOnly || locked}
             onChange={(e) => setDraft((d) => ({ ...d, title: e.target.value }))}
             onKeyDown={(e) => {
               if (e.key !== 'Enter') return;
@@ -814,7 +896,7 @@ export function Workspace({ noteId, readOnly = false, backTo = '/notes' }: Works
           {/* Cut with an ellipsis before the title is, and carried whole in the tooltip;
               see `.workspace-status`. */}
           <span
-            className={`workspace-status ${saveState === 'error' ? 'bad' : 'muted'} small`}
+            className={`workspace-status ${saveState === 'error' && !unsavedOffline ? 'bad' : 'muted'} small`}
             title={webImagesStatus ?? saveLabel}
           >
             {readOnly ? 'In trash' : (webImagesStatus ?? saveLabel)}
@@ -834,9 +916,15 @@ export function Workspace({ noteId, readOnly = false, backTo = '/notes' }: Works
               variant="quiet"
               size="small"
               className={`autofill-btn${autofilling ? ' busy' : ''}`}
-              disabled={autofilling}
+              // Disabled rather than withdrawn offline, so the title beside it does not
+              // widen when the connection drops and narrow when it returns.
+              disabled={autofilling || locked}
               aria-label={autofilling ? 'Reading…' : 'Auto-fill'}
-              title="Fill in the title, notebook, tags and fields from what the note and its files say"
+              title={
+                locked
+                  ? 'Auto-fill needs a connection'
+                  : 'Fill in the title, notebook, tags and fields from what the note and its files say'
+              }
               onClick={() => void runAutofill()}
             >
               <AutofillIcon />
@@ -868,6 +956,10 @@ export function Workspace({ noteId, readOnly = false, backTo = '/notes' }: Works
             <span className="overflow-slot">
               <OverflowMenu
                 label="More actions"
+                // Every item here needs the server. Faded, not withdrawn, for the reason
+                // Auto-fill is.
+                disabled={locked}
+                title={locked ? 'Not available offline' : undefined}
                 items={[
                   // Only when there is something to save; the count says how much.
                   ...(remoteImages.length > 0
@@ -1012,6 +1104,7 @@ export function Workspace({ noteId, readOnly = false, backTo = '/notes' }: Works
         */
         docked={isMobile}
         keyboardInset={keyboardInset}
+        readOnly={readOnly || locked}
         noteView={{
           current: noteView,
           onChange: setNoteView,
@@ -1057,6 +1150,7 @@ export function Workspace({ noteId, readOnly = false, backTo = '/notes' }: Works
             key={`${note.id}-${editorRevision}`}
             noteId={note.id}
             initialValue={editorOverride ?? note.body}
+            readOnly={readOnly || locked}
             // So rich mode draws a viewer for an imported PDF whose name lacks the
             // extension, the same as the preview pane does.
             pdfFilenames={pdfFilenames}
