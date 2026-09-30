@@ -65,20 +65,42 @@ describe.skipIf(!sqlite3)('the D1 migrations', () => {
   });
 
   /**
-   * The copy from D1 pages every table by `user_id = ? AND rowid > ? ORDER BY rowid`, and
-   * before 0034 the planner answered most of those with every row of the account and a
-   * sort, per page, and two of them with a walk over every account (found in review).
-   * The plans are the promise, so they are pinned against the real migrations: a range
-   * seek by user and rowid for each page, no sort, no table scan, and no scan for a count.
+   * The copy from D1 pages every table by user and rowid, and before 0034 the planner
+   * answered most of those with every row of the account and a sort, per page, and two
+   * of them with a walk over every account (found in review). The plans are the promise,
+   * so they are pinned against the real migrations: every page leads with a range seek on
+   * an index by user and rowid, no sort, no table scan, and no scan for a count or for
+   * the row check.
+   *
+   * And the other half of the promise, found in the next review: the indexes 0034 added
+   * for the copy were plain `user_id` indexes, which `main`'s own statements — served from
+   * this database by dev until the cutover merges, by production while a deploy drains,
+   * and by a rolled-back Worker — then picked over their narrow ones, so a file lookup by
+   * note read every file of the account. 0035 makes them expression indexes only the
+   * copy's spelling matches. The three statements below are `main`'s, as written in
+   * `lib/attachments-repo.ts` and `lib/notes-repo.ts` there, and each must keep the index
+   * it had.
    */
-  it('serve the copy from D1 a page at a time by index, with no sort and no scan', () => {
+  it('serve the copy from D1 by index, and leave main\'s statements their own indexes', () => {
     const { run } = db(file);
-    for (const q of copyQueries()) {
+    const { tables, anyRows } = copyQueries();
+    for (const q of tables) {
       const page = run(`EXPLAIN QUERY PLAN ${q.page}`);
+      expect(page, `${q.table} page: ${page}`).toMatch(/SEARCH \w+ USING (COVERING )?INDEX \S+ \((<expr>|user_id)=\? AND rowid>\?/);
       expect(page, `${q.table} page: ${page}`).not.toMatch(/TEMP B-TREE|SCAN [a-z_]+/);
-      expect(page, `${q.table} page: ${page}`).toMatch(/rowid>\?/);
       const count = run(`EXPLAIN QUERY PLAN ${q.count}`);
       expect(count, `${q.table} count: ${count}`).not.toMatch(/SCAN [a-z_]+/);
+    }
+    expect(run(`EXPLAIN QUERY PLAN ${anyRows}`)).not.toMatch(/SCAN [a-z_]+/);
+
+    for (const [sql, index] of [
+      [`SELECT filename FROM attachments WHERE note_id = ?1 AND user_id = ?2`, 'idx_attachments_note'],
+      [`SELECT a.filename FROM attachments a JOIN notes n ON n.id = a.note_id WHERE a.note_id = ?1 AND a.user_id = ?2 AND n.user_id = ?2`, 'idx_attachments_note'],
+      [`SELECT id FROM notes WHERE user_id = ?1 AND content_hash = ?2 AND deleted_at IS NULL`, 'idx_notes_user_hash'],
+    ] as const) {
+      const plan = run(`EXPLAIN QUERY PLAN ${sql}`);
+      expect(plan, `${sql}: ${plan}`).toContain(index);
+      expect(plan, `${sql}: ${plan}`).not.toContain('_copy');
     }
   });
 

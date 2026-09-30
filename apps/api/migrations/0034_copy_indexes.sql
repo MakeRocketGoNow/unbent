@@ -1,5 +1,9 @@
 -- Indexes for the one-time copy of each account's rows out of these tables.
 --
+-- SUPERSEDED by 0035, which drops these and recreates them as expression indexes: plain
+-- ones on `user_id` were picked up by `main`'s own statements and made them read whole
+-- accounts. Kept as written because the dev database has already run it.
+--
 -- The copy pages a table by `WHERE user_id = ? AND rowid > ? ORDER BY rowid`. With the
 -- indexes these tables had, the planner (no statistics here, as ever) took the `user_id`
 -- prefix of some other index and then sorted every remaining row of the account for each

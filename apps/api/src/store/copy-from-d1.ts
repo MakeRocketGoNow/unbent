@@ -79,10 +79,15 @@ import type { Sql } from './sql.js';
  * Free — so each call spends at most `D1_CALL_BUDGET` and then answers `paused` with
  * its progress committed; the caller calls again. Rows read count too, against the daily
  * budget the shared database ran out of twice: every page is a range seek on an index
- * led by `user_id` (migration 0034; `migrations.test.ts` pins the plans), an account with
- * no rows is done in two queries rather than eighteen, and what each call read is in its
- * answer as `d1RowsRead`, so "the copy reads each account about once" is a number in the
- * log rather than a belief. An archive-sized account (4k notes, 4k
+ * of the copy's own (migration 0035; `migrations.test.ts` pins the plans), an account
+ * with no rows is done in a few queries rather than eighteen, and what each call read is
+ * in its answer as `d1RowsRead`, so "the copy reads each account about once" is a number
+ * in the log rather than a belief. The index is on the expression `(user_id || '')`
+ * rather than the column, and every statement here spells that expression: a plain
+ * index on `user_id` was taken up by `main`'s own statements — a file lookup by note, the
+ * import's duplicate check — and turned them into reads of whole accounts, on the
+ * database dev still serves `main` from (found in review). An expression index is
+ * matched only by the expression, so it is the copy's alone. An archive-sized account (4k notes, 4k
  * files, 2.4k texts) is about 55 queries at these page sizes: two calls.
  */
 
@@ -298,8 +303,8 @@ function selectPage(t: Table): string {
   const cols = t.columns.map((c) => `t.${c}`).join(', ');
   const from =
     t.scope === 'user_id'
-      ? `FROM ${t.name} t WHERE t.user_id = ?1 AND t.rowid > ?2`
-      : `FROM ${t.name} t CROSS JOIN notes n ON n.id = t.note_id WHERE n.user_id = ?1 AND t.rowid > ?2`;
+      ? `FROM ${t.name} t WHERE (t.user_id || '') = ?1 AND t.rowid > ?2`
+      : `FROM ${t.name} t CROSS JOIN notes n ON n.id = t.note_id WHERE (n.user_id || '') = ?1 AND t.rowid > ?2`;
   if (!t.sizeColumn) return `SELECT t.rowid AS rid, ${cols} ${from} ORDER BY t.rowid LIMIT ?3`;
   return `SELECT * FROM (
             SELECT t.rowid AS rid, ${cols},
@@ -310,19 +315,19 @@ function selectPage(t: Table): string {
 
 function countSql(t: Table): string {
   return t.scope === 'user_id'
-    ? `SELECT COUNT(*) AS n FROM ${t.name} WHERE user_id = ?1`
-    : `SELECT COUNT(*) AS n FROM ${t.name} t JOIN notes n ON n.id = t.note_id WHERE n.user_id = ?1`;
+    ? `SELECT COUNT(*) AS n FROM ${t.name} WHERE (user_id || '') = ?1`
+    : `SELECT COUNT(*) AS n FROM ${t.name} t JOIN notes n ON n.id = t.note_id WHERE (n.user_id || '') = ?1`;
 }
 
 /** Whether the user has any rows here at all: the four tables everything else hangs off. */
-const ANY_ROWS_SQL = `SELECT (EXISTS (SELECT 1 FROM notes WHERE user_id = ?1)
-                           OR EXISTS (SELECT 1 FROM notebooks WHERE user_id = ?1)
-                           OR EXISTS (SELECT 1 FROM tags WHERE user_id = ?1)
-                           OR EXISTS (SELECT 1 FROM attachments WHERE user_id = ?1)) AS hit`;
+const ANY_ROWS_SQL = `SELECT (EXISTS (SELECT 1 FROM notes WHERE (user_id || '') = ?1)
+                           OR EXISTS (SELECT 1 FROM notebooks WHERE (user_id || '') = ?1)
+                           OR EXISTS (SELECT 1 FROM tags WHERE (user_id || '') = ?1)
+                           OR EXISTS (SELECT 1 FROM attachments WHERE (user_id || '') = ?1)) AS hit`;
 
 /** Every statement the copy runs against D1 with a plan worth pinning; see `migrations.test.ts`. */
-export function copyQueries(): Array<{ table: string; page: string; count: string }> {
-  return TABLES.map((t) => ({ table: t.name, page: selectPage(t), count: countSql(t) }));
+export function copyQueries(): { tables: Array<{ table: string; page: string; count: string }>; anyRows: string } {
+  return { tables: TABLES.map((t) => ({ table: t.name, page: selectPage(t), count: countSql(t) })), anyRows: ANY_ROWS_SQL };
 }
 
 /** Internal: the budget is spent. Never leaves this module. */

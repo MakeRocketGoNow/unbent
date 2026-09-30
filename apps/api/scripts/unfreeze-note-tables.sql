@@ -1,4 +1,6 @@
 -- Unfreezes the shared note tables: the first step of rolling the per-account store back.
+-- Also drops the copy's indexes (0034/0035), so a reverted Worker's plans are exactly what
+-- they were before the cutover.
 --
 -- Migration 0032 refuses inserts and updates to these tables for any account whose store
 -- holds its notes (`account_directory.migrated_at` set). A Worker rolled back to before the
@@ -30,3 +32,10 @@ DROP TRIGGER IF EXISTS attachments_frozen_insert;
 DROP TRIGGER IF EXISTS attachments_frozen_update;
 DROP TRIGGER IF EXISTS attachment_text_frozen_insert;
 DROP TRIGGER IF EXISTS attachment_text_frozen_update;
+
+DROP INDEX IF EXISTS idx_notes_copy;
+DROP INDEX IF EXISTS idx_notebooks_copy;
+DROP INDEX IF EXISTS idx_tags_copy;
+DROP INDEX IF EXISTS idx_notebook_fields_copy;
+DROP INDEX IF EXISTS idx_note_fields_copy;
+DROP INDEX IF EXISTS idx_attachments_copy;
