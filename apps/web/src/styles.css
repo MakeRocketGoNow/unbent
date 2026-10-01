@@ -35,6 +35,10 @@
   --good: #1a7f45;
   --bad: #b3261e;
   --accent: #2f6f4f;
+  /* The mark of an instance that is not production: the favicon's badge and the account
+     menu's dot (instance-marker.ts). Amber reads as "not the usual one" on light and dark
+     alike and stays clear of the accent's green, so one value serves both themes. */
+  --instance-mark: #e8a33a;
   /*
      A chip's fill and ink — a chosen select option, a tag. Derived from the accent here,
      so the site draws them as it always has; the Android app's embed sets them to
@@ -2306,6 +2310,26 @@ a.sidebar-status:hover {
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
+}
+
+/* The instance line under the address on a scratch instance ("PR 222 · notes are its own").
+   The same kind of line as the address, so the two read as one block: the divider moves
+   below the second, and the dot is the favicon's badge, so the two marks read as one. */
+.overflow-email:has(+ .overflow-instance) {
+  padding-bottom: 0.15rem;
+  margin-bottom: 0;
+  border-bottom: 0;
+}
+.overflow-email.overflow-instance { padding-top: 0; }
+.overflow-instance::before {
+  content: '';
+  display: inline-block;
+  width: 0.5rem;
+  height: 0.5rem;
+  margin-right: 0.4rem;
+  border-radius: 50%;
+  background: var(--instance-mark);
+  vertical-align: 0.05em;
 }
 
 /*

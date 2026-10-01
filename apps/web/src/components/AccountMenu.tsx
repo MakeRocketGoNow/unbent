@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { configQuery } from '../queries.js';
+import { instanceLine } from '../instance-marker.js';
 import { useOffline } from '../connectivity.js';
 import { isHosted } from '../app-bridge.js';
 import { OverflowMenu, type OverflowItem } from './OverflowMenu.js';
@@ -49,6 +50,7 @@ function initialOf(email: string): string {
 export function AccountMenu({ email, onSignOut, withAddress = false }: AccountMenuProps) {
   const config = useQuery(configQuery());
   const legal = config.data?.legal;
+  const instance = config.data ? instanceLine(config.data) : null;
   const signOutNeedsConnection = useOffline() && !isHosted();
 
   return (
@@ -75,6 +77,12 @@ export function AccountMenu({ email, onSignOut, withAddress = false }: AccountMe
         // rather than selectable: it names the account, it does not act on it. It
         // truncates to one line, so it carries the full address as a tooltip.
         { label: email, className: 'overflow-email', static: true, title: email },
+        // Which instance this is, when it is not production — "PR 222 · notes are its
+        // own" — and on a preview, whose notes an edit here changes. Under the address
+        // because it is the same kind of line: it says where you are, it does nothing.
+        ...(instance
+          ? [{ label: instance, className: 'overflow-email overflow-instance', static: true, title: instance }]
+          : []),
         // Findable once signed in, which is the half the sign-in screen's own links cannot
         // cover. They are reference, not something to act on, and they sit above Sign out
         // so the destructive item stays last.

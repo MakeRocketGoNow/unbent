@@ -7,6 +7,7 @@ import { installErrorReporting } from './report-error.js';
 import { installPosthog } from './posthog.js';
 import { installLaunchFiles } from './launch-files.js';
 import { configQuery } from './queries.js';
+import { applyInstanceMarker } from './instance-marker.js';
 import { registerServiceWorker } from './sw-register.js';
 import { installConnectivity } from './connectivity.js';
 import { installSessionRecheck } from './auth-client.js';
@@ -74,7 +75,12 @@ installSessionRecheck();
  */
 void queryClient
   .ensureQueryData(configQuery())
-  .then((config) => (config.posthog ? installPosthog(config.posthog) : undefined))
+  .then((config) => {
+    // Before the error tracker, which needs nothing from it: a scratch instance's tab
+    // should say so as early as the page can know it is one.
+    applyInstanceMarker(config);
+    return config.posthog ? installPosthog(config.posthog) : undefined;
+  })
   .catch(() => {});
 
 const router = createRouter({
