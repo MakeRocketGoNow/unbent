@@ -47,6 +47,13 @@ export interface Env {
    */
   INSTANCE_LABEL?: string;
   /**
+   * Which kind of scratch instance this is — `dev`, `preview` or `local` — for the page to
+   * colour its marks by and to decide whether the drawer wears a ribbon (dev and previews
+   * do; local does not, so the store screenshots shot against `pnpm dev` stay clean). Set
+   * beside `INSTANCE_LABEL` in wrangler.toml; anything else reads as unset.
+   */
+  INSTANCE_KIND?: string;
+  /**
    * Workers AI, for extracting a PDF's text on upload. Bound in production only — see
    * wrangler.toml — so it is optional here, and its absence means the browser does the
    * extracting, as it did before.

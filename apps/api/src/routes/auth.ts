@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import type { AppConfig } from '@unbent/shared';
+import { INSTANCE_KINDS, type AppConfig, type InstanceKind } from '@unbent/shared';
 import { accountDeletionOffered, getAuth, offeredProviders } from '../auth.js';
 import { legalLinksOf, operatorOf, posthogOf } from '../lib/instance.js';
 import { previewRelayOrigin } from '../lib/preview-relay.js';
@@ -55,6 +55,7 @@ export const authRoutes = new Hono<AppEnv>()
       vision: canUseLlm(c.env),
       ownStores: c.env.PREVIEW_OWN_STORES === '1' || undefined,
       instanceLabel: instanceLabelOf(c.env),
+      instanceKind: instanceKindOf(c.env),
     } satisfies AppConfig);
   });
 
@@ -66,4 +67,10 @@ export const authRoutes = new Hono<AppEnv>()
 export function instanceLabelOf(env: Pick<Env, 'INSTANCE_LABEL'>): string | undefined {
   const label = env.INSTANCE_LABEL?.trim();
   return label ? label.slice(0, 24) : undefined;
+}
+
+/** `INSTANCE_KIND` when it is one the page knows how to draw; see `AppConfig.instanceKind`. */
+export function instanceKindOf(env: Pick<Env, 'INSTANCE_KIND'>): InstanceKind | undefined {
+  const kind = env.INSTANCE_KIND?.trim().toLowerCase();
+  return (INSTANCE_KINDS as readonly string[]).includes(kind ?? '') ? (kind as InstanceKind) : undefined;
 }

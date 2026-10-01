@@ -311,7 +311,17 @@ export interface AppConfig {
    * the real one for scratch. Absent on production, which draws none of it.
    */
   instanceLabel?: string;
+  /**
+   * Which kind of instance the label names, for the colour of its marks and whether the
+   * drawer carries a corner ribbon: `dev` and `preview` do, `local` keeps to the quieter
+   * marks. Absent with the label on production, and on an instance whose setting is not
+   * one of the three.
+   */
+  instanceKind?: InstanceKind;
 }
+
+export const INSTANCE_KINDS = ['dev', 'preview', 'local'] as const;
+export type InstanceKind = (typeof INSTANCE_KINDS)[number];
 
 /**
  * What auto-fill proposes for a note, as `POST /notes/:id/autofill` answers.
