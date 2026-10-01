@@ -7,7 +7,7 @@ import { requireSession, useShell } from '../auth-gate.js';
 import { Rail, RailHandle, useRailWidth, type RailPref } from '../components/Rail.js';
 import { usePersistentState } from '../usePersistentState.js';
 import { useMediaQuery, MOBILE_QUERY } from '../useMediaQuery.js';
-import { claimCacheFor } from '../queries.js';
+import { handOver } from '../hand-over.js';
 import { startIndexing, subscribeIndexing } from '../index-files.js';
 import { Topbar } from '../components/Topbar.js';
 import { OfflineBanner } from '../components/OfflineBanner.js';
@@ -32,20 +32,8 @@ export const Route = createRootRouteWithContext<RouterContext>()({
    * silent hole, and here rather than in the component below because a component renders
    * after the loaders it wraps have already run. See `auth-gate.ts` for what that cost.
    *
-   * The cache is handed over in the same breath, and for the same timing reason. Loaders
-   * resolve through `ensureQueryData`, so a second person signing in without reloading was
-   * served the first one's notes out of the cache; this is the last moment before those
-   * loaders run. See `claimCacheFor` for why it is keyed on the user rather than hung off
-   * signing out.
-   *
-   * The import run is claimed here too, as the last line of defence rather than the
-   * first. By the time a new person reaches this guard their sign-in has already set the
-   * cookie the worker sends, so a run still going here has had a moment to send as them.
-   * What actually ends a run is earlier: `useSignOut` and the shell drop it when the
-   * session goes, and the importer stops on its first 401. This catches a sign-out none of
-   * those saw. Only a real session is passed — a public page returns no user from the
-   * gate even when someone is signed in, and treating that as a sign-out would abort a run
-   * because `/privacy` was opened. See `ImportRun.claim`.
+   * What the tab holds for one person is handed over in the same breath, and for the same
+   * timing reason: this is the last moment before the loaders run. See `handOver`.
    */
   beforeLoad: async ({ location, context, preload }) => {
     // First, so a waiting deploy loads the destination fresh instead of it being drawn in
@@ -53,8 +41,7 @@ export const Route = createRootRouteWithContext<RouterContext>()({
     const update = takeUpdate(location, preload);
     if (update) await update;
     const session = await requireSession(location);
-    claimCacheFor(context.queryClient, session?.user.id);
-    if (session?.user.id) claimImportFor(session.user.id);
+    handOver(context.queryClient, session?.user.id);
   },
   component: RootLayout,
 });
