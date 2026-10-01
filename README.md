@@ -541,12 +541,15 @@ other. Accounts, sessions and notes made on one preview are therefore on every o
 `dev.unbent.app`. It is a scratch environment, and nothing in it is backed up.
 
 The stores are shared by binding the `UserStore` class the `unbent-dev` Worker exports,
-and a Durable Object runs the code of the Worker that exports it. So every preview's note
-queries are `main`'s, whatever the PR changed: a PR that touches `apps/api/src/store/` is
-not exercised on its preview, and the preview's comment says so. Try those changes in a
-local `pnpm dev`, where the branch's store code is the one that runs. Giving each preview
-stores of its own was the first arrangement, and it left every preview empty, with nothing
-that could fill it.
+and a Durable Object runs the code of the Worker that exports it — so a preview reading
+dev's stores runs `main`'s note queries, whatever the PR changed. A PR that touches
+`apps/api/src/store/` therefore gets stores of its own instead: the workflow deploys it
+without that binding and with `PREVIEW_OWN_STORES=1`, so its own store code is what
+answers, and says so on the preview's comment. Those stores start empty, and the empty
+note list (and Settings → Maintenance) offers **Fill with sample notes**, which loads the
+same invented notes `pnpm seed:demo` does, through the preview's own API. Accounts and the
+files bucket are still dev's on such a preview, which is why its Maintenance leaves out
+the orphaned-file sweep and the API refuses it.
 
 A preview's sweep does nothing (`STORE_FREEZE_D1 = "0"` in its wrangler block, and no
 cron): the dev instance's own sweep walks these stores and keeps the directory, and a
