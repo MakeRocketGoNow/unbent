@@ -1,9 +1,10 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, renderHook, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, renderHook, screen, waitFor } from '@testing-library/react';
 import { useSignOut } from './useSignOut.js';
 import { SignOutSnackbar } from './components/SignOutSnackbar.js';
 import { refreshSession, signOut } from './auth-client.js';
 import { rememberSession, rememberedSession } from './session-memory.js';
+import { setReachableForTests } from './connectivity.js';
 
 const navigate = vi.fn();
 vi.mock('@tanstack/react-router', () => ({ useNavigate: () => navigate }));
@@ -19,6 +20,7 @@ vi.mock('./auth-client.js', () => ({
  */
 describe('useSignOut', () => {
   afterEach(() => {
+    cleanup();
     delete window.UnbentApp;
     vi.clearAllMocks();
   });
@@ -75,6 +77,23 @@ describe('useSignOut', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
     await waitFor(() => expect(navigate).toHaveBeenCalledWith({ to: '/login', replace: true }));
     expect(screen.queryByText('Couldn’t sign out.')).toBeNull();
+  });
+
+  /* Try again could only fail the same way with no connection, so it is withdrawn and the
+     reason given instead; it comes back with the connection. */
+  it('says signing out needs a connection, with nothing to retry, while offline', async () => {
+    vi.mocked(signOut).mockRejectedValueOnce(new TypeError('Failed to fetch'));
+    render(<SignOutSnackbar />);
+    renderHook(() => useSignOut()).result.current();
+    await screen.findByText('Couldn’t sign out.');
+
+    act(() => setReachableForTests(false));
+    expect(screen.getByText('Signing out needs a connection.')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Try again' })).toBeNull();
+
+    act(() => setReachableForTests(true));
+    expect(screen.getByText('Couldn’t sign out.')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Dismiss notification' }));
   });
 
   it('signs out on the device inside the app even when the server did not hear it', async () => {
