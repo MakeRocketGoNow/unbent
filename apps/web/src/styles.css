@@ -1285,6 +1285,34 @@ th[aria-sort] .note-th-sort { color: var(--fg); }
   text-decoration: none;
   border-radius: 0.3rem;
 }
+/*
+   A search's hint beside the name — "in scan.pdf" — when the match was in a file. One
+   line, as every cell is: the name keeps its room and the hint gives way first, both
+   cut with an ellipsis, since a file name is as unbounded as a title.
+*/
+.note-row-link:has(.note-row-match) {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+}
+.note-row-title {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.note-row-match {
+  flex: 0 4 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 0.75rem;
+  font-weight: 400;
+  color: var(--accent);
+}
+.note-th-sort:disabled { cursor: default; }
+.note-th-sort:disabled:hover { color: inherit; }
+
 /* The same ring as a sidebar entry's, so keyboard focus looks the same in both drawings. */
 .note-row-link:focus-visible {
   outline: 2px solid var(--accent);
@@ -1627,9 +1655,11 @@ th[aria-sort] .note-th-sort { color: var(--fg); }
 /*
    List or table, as one icon that flips. Outside a notebook there is no table to switch
    to, and it fades rather than hides: its name carries the reason — see `NotesViewToggle`.
-   A note's ⋯ fades the same way while offline; see `OverflowMenu`'s `disabled`.
+   A note's ⋯ fades the same way while offline; see `OverflowMenu`'s `disabled`, and the
+   sort icon over a search in the table; see `NotesSort`'s `disabledReason`.
 */
 .overflow-trigger:disabled,
+.icon-btn.sort-toggle:disabled,
 .icon-btn.view-toggle:disabled {
   opacity: 0.4;
   cursor: default;

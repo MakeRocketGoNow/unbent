@@ -14,6 +14,17 @@ interface NoteTableProps {
   columns: NoteColumn[];
   /** The URL's ordering, which is what the headers show and what a click changes. */
   search: SortSearch;
+  /**
+   * The rows are a search's matches, in order of relevance: the headers show no order and
+   * take no clicks, since a column order over the best fifty matches could leave out the
+   * very rows it promises first. The table's own order is back when the search ends.
+   */
+  ranked?: boolean;
+  /**
+   * Why a row matched, beside its name, when nothing else on the row says — a search
+   * that found the word in one of the note's files. Keyed by note id.
+   */
+  hints?: ReadonlyMap<string, string> | undefined;
   /** The notebook the rows belong to, which names the table. */
   notebook: string;
   /** Live notes in the notebook, for the table's row count; null until known. */
@@ -80,6 +91,8 @@ export function NoteTable({
   notes,
   columns,
   search,
+  ranked = false,
+  hints,
   notebook,
   total,
   busy,
@@ -103,7 +116,7 @@ export function NoteTable({
     >
       <table
         className={selection ? 'note-table selectable' : 'note-table'}
-        aria-label={`Notes in ${notebook}`}
+        aria-label={ranked ? `Matches in ${notebook}` : `Notes in ${notebook}`}
         aria-rowcount={total ?? undefined}
         aria-multiselectable={selection ? true : undefined}
       >
@@ -125,7 +138,7 @@ export function NoteTable({
               </th>
             )}
             {columns.map((col) => {
-              const state = col.sortTarget ? columnSortState(col.sortTarget, search) : null;
+              const state = col.sortTarget && !ranked ? columnSortState(col.sortTarget, search) : null;
               const target = col.sortTarget;
               return (
                 <th
@@ -141,6 +154,10 @@ export function NoteTable({
                       // The direction is in the name, since the arrow is the only other
                       // place it shows and an arrow is not read aloud.
                       aria-label={`Sort by ${col.label}${state ? `, ${state === 'asc' ? 'ascending' : 'descending'}` : ''}`}
+                      // Disabled rather than withdrawn, so the header row keeps its shape
+                      // as a search starts and ends — see `ranked`.
+                      disabled={ranked}
+                      title={ranked ? 'Matches are in order of relevance' : undefined}
                       onClick={() => onSort(target)}
                     >
                       {col.label}
@@ -191,7 +208,7 @@ export function NoteTable({
               )}
               {columns.map((col) => (
                 <td key={col.id} data-align={col.align}>
-                  {cell(col, note, onEdit, selection)}
+                  {cell(col, note, onEdit, selection, hints?.get(note.id))}
                 </td>
               ))}
             </tr>
@@ -230,6 +247,7 @@ function cell(
   note: NoteSummary,
   onEdit: NoteTableProps['onEdit'],
   selection: TableSelection | undefined,
+  hint: string | undefined,
 ): ReactNode {
   switch (col.kind) {
     case 'name':
@@ -256,7 +274,14 @@ function cell(
             }
           }}
         >
-          {note.title || 'Untitled'}
+          {hint ? (
+            <>
+              <span className="note-row-title">{note.title || 'Untitled'}</span>
+              <span className="note-row-match">{hint}</span>
+            </>
+          ) : (
+            note.title || 'Untitled'
+          )}
         </Link>
       );
     case 'field': {

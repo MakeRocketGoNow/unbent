@@ -14,6 +14,7 @@ import type {
   NoteSummary,
   NotebookSummary,
   SearchResult,
+  SearchResultRow,
 } from '@unbent/shared';
 import { offlineNow, recheck } from './connectivity.js';
 import { SERVED_HEADER } from './sw/routes.js';
@@ -805,17 +806,27 @@ export async function exportPage(
   return json<ExportPage>(await request(`/api/export/notes${qs ? `?${qs}` : ''}`));
 }
 
+/** A search match, with its note's list row when the search asked for rows. */
+export type SearchHit = SearchResult | SearchResultRow;
+
+/**
+ * `rows` asks for each match's list row as well, for a table drawing the search in its
+ * columns — see `rows` on the search query. The sidebar's results draw a title and a
+ * snippet and leave it off, since the rows cost the server a page's worth of reads.
+ */
 export async function searchNotes(
   q: string,
   filter: { tag?: string[]; notebook?: string; field?: string[]; from?: string; to?: string } = {},
-): Promise<SearchResult[]> {
+  rows = false,
+): Promise<SearchHit[]> {
   const params = new URLSearchParams({ q });
   for (const t of filter.tag ?? []) params.append('tag', t);
   if (filter.notebook) params.set('notebook', filter.notebook);
   for (const f of filter.field ?? []) params.append('field', f);
   if (filter.from) params.set('from', filter.from);
   if (filter.to) params.set('to', filter.to);
-  const { results } = await json<{ results: SearchResult[] }>(
+  if (rows) params.set('rows', '1');
+  const { results } = await json<{ results: SearchHit[] }>(
     await request(`/api/search?${params.toString()}`),
   );
   return results;

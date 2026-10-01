@@ -26,7 +26,7 @@ interface NotesViewToggleProps {
  * `aria-pressed` — a name that changes and a pressed state that changes are two answers
  * to one question. It sits with the filter and sort icons because it is, like them, about
  * what is on screen rather than about adding to it. The caller decides whether it renders
- * at all: a phone never draws the table, and a search result is ranked, not columned.
+ * at all: a phone never draws the table.
  */
 export function NotesViewToggle({ value, onChange, tableDisabledReason }: NotesViewToggleProps) {
   const next: NotesViewMode = value === 'table' ? 'list' : 'table';
