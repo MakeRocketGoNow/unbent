@@ -8,11 +8,11 @@
  * feature built for custom fields has something real-shaped to run against: the table
  * view, sorting and filtering by field, a field's settings page, auto-fill's prompt.
  *
- * Between them they hold every field type, a rating at both steps, a currency, selects
- * long and short, and a notebook with no fields at all. The names, options and every
- * value are invented. They were shaped after a real account's notebooks, and that is
- * all that was taken: no option list, notebook name or value is copied from one, because
- * an option list can be a list of people.
+ * Between them they hold every field type; a number plain, as a rating at both steps and
+ * as a currency; selects long and short; and a notebook with no fields at all. The names,
+ * options and every value are invented. They were shaped after a real account's
+ * notebooks, and that is all that was taken: no option list, notebook name or value is
+ * copied from one, because an option list can be a list of people.
  */
 export const NOTEBOOKS = [
   { name: 'Recipes', fields: [] },
@@ -53,6 +53,9 @@ export const NOTEBOOKS = [
       { name: 'URL', type: 'url' },
       // Half-step, so the one rating that allows a half star is exercised somewhere.
       { name: 'Rating', type: 'number', scale: { max: 5, step: 0.5 } },
+      // A plain number — no scale, no currency — the one variant of `number` nothing else
+      // here has. A series' total runs past a thousand, so grouping is exercised too.
+      { name: 'Runtime (min)', type: 'number' },
     ],
   },
   {
