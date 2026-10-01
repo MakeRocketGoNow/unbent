@@ -1,3 +1,4 @@
+import { useSyncExternalStore } from 'react';
 import { Workbox } from 'workbox-window';
 import { pageBusy } from './busy.js';
 
@@ -22,6 +23,19 @@ let wb: Workbox | undefined;
 /** A new deploy's worker has installed and is waiting to take over. */
 let updateReady = false;
 
+/*
+   Whether to say so — see `UpdateSnackbar`. Separate from `updateReady`, which the
+   automatic moments below consume: the notice is dismissed by a person, and dismissing it
+   leaves the deploy waiting for those moments all the same.
+*/
+let noticeShown = false;
+const noticeListeners = new Set<() => void>();
+function setNotice(shown: boolean): void {
+  if (noticeShown === shown) return;
+  noticeShown = shown;
+  for (const listener of noticeListeners) listener();
+}
+
 /** Where the page currently is, for telling a change of page from a change of filter. */
 let currentPath: () => string = () => location.pathname;
 
@@ -42,6 +56,7 @@ export function registerServiceWorker(pathNow: () => string): void {
       return;
     }
     updateReady = true;
+    setNotice(true);
   });
   wb.register().catch(() => {
     // An insecure origin, a private window that refuses storage, a WebView built without
@@ -96,6 +111,48 @@ function reloadAllowed(): boolean {
     // Storage refused: without the guard a failed activation could loop, so wait instead.
     return false;
   }
+}
+
+/**
+ * Whether to show that a deploy is waiting, for `UpdateSnackbar`, and the two answers to
+ * it.
+ *
+ * The automatic moments are careful on purpose and can take a long time to come: someone
+ * who keeps the notes list open and keeps using it reaches neither a change of section
+ * nor five minutes away. Without a word they ran the old build with no way to know
+ * there was a new one, and nothing they did would bring it. The notice says it once and
+ * leaves the choice with them; it never reloads on its own.
+ */
+export function useUpdateNotice(): { shown: boolean; reload: () => void; dismiss: () => void } {
+  const shown = useSyncExternalStore(
+    (listener) => {
+      noticeListeners.add(listener);
+      return () => noticeListeners.delete(listener);
+    },
+    () => noticeShown,
+  );
+  return { shown, reload: reloadIntoUpdate, dismiss: () => setNotice(false) };
+}
+
+/**
+ * The notice's Reload: into the waiting deploy, on the page someone is on. If the page is
+ * holding work a reload would lose — a save not yet sent, an upload — it waits for that
+ * to finish rather than refusing, since a press of Reload is a decision already made;
+ * the note's own status says when its save is done.
+ */
+function reloadIntoUpdate(): void {
+  setNotice(false);
+  const worker = wb;
+  if (!worker) return;
+  const go = () => {
+    if (pageBusy()) {
+      setTimeout(go, 250);
+      return;
+    }
+    updateReady = false;
+    handOver(worker, location.href);
+  };
+  go();
 }
 
 /**
