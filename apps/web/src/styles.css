@@ -4325,6 +4325,15 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
 }
 
 /*
+   A destructive control rings in its own red. The brand green around red text read as two
+   saturated hues fighting — festive, not careful — and the ring is where the eye lands as
+   the question is asked, so it should repeat what the button does rather than contradict
+   it. The bin earlier in the row takes the same ring for the same reason.
+*/
+.attachment-tool.danger:focus-visible,
+.attachment-tool-confirm.danger:focus-visible { outline-color: var(--bad); }
+
+/*
    The viewer: a `<dialog>` that is the whole screen.
 
    Full-bleed rather than a box in the middle, because the thing inside it is the size of
