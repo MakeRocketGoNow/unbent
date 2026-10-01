@@ -285,6 +285,16 @@ export function Workspace({ noteId, readOnly = false, backTo = '/notes' }: Works
    */
   const [conflict, setConflict] = useState<{ id: string; current: Note } | null>(null);
   const conflicted = conflict !== null && conflict.id === noteId;
+  const conflictNotice = useRef<HTMLDivElement>(null);
+  /*
+     The notice sits under the head but scrolls with the note, and the refusal comes while
+     someone is typing — on a long note, far below it. The inputs lock at the same moment,
+     so without this the editor simply stops taking keys, with the two ways out off-screen
+     above. Guarded because jsdom has no scrollIntoView, as `Confirm` guards it.
+  */
+  useEffect(() => {
+    if (conflicted) conflictNotice.current?.scrollIntoView?.({ block: 'nearest', behavior: 'smooth' });
+  }, [conflicted]);
   /**
    * Whether the note's inputs take edits: not offline, and not while a conflict waits on a
    * choice. Typing on during one would only be refused again, and the choice is between
@@ -1147,7 +1157,7 @@ export function Workspace({ noteId, readOnly = false, backTo = '/notes' }: Works
           what each costs so the buttons can stay two words.
       */}
       {conflicted && (
-        <div className="conflict-notice" role="alert">
+        <div ref={conflictNotice} className="conflict-notice" role="alert">
           <p>
             <strong>This note changed on another device.</strong>{' '}
             <span className="muted">

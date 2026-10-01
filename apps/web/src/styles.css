@@ -5177,7 +5177,10 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
 .conflict-notice {
   width: 100%;
   min-width: 0;
-  margin: 0.75rem 0 0.25rem;
+  /* Block only: the inline margins are the column's centring, `.workspace-main > *`. */
+  margin-block: 0.75rem 0.25rem;
+  /* Scrolled into view when it appears; this keeps it out from under the sticky head. */
+  scroll-margin-top: calc(var(--workspace-head-h) + 0.5rem);
   padding: 0.7rem 0.9rem;
   display: flex;
   flex-direction: column;
