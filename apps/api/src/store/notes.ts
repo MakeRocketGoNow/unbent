@@ -637,10 +637,13 @@ export class NotesStore {
    *
    * `ifUpdatedAt` makes the write conditional on the note still being the copy the
    * writer last saw. When it has been saved since, nothing is written and the note as it
-   * stands comes back as `{ stale }`; the routes answer 409 with it. Checked after the
-   * no-op guard rather than before: a patch that would change nothing overwrites nothing,
-   * so refusing it would only raise a conflict about a write that was never going to
-   * happen — the editor resending exactly what another device already saved, say.
+   * stands comes back as `{ stale }`; the routes answer 409 with it. Checked before the
+   * no-op guard, even though a patch that would change nothing overwrites nothing. A 200
+   * for it tells the writer its copy is current: the editor took the note that came back
+   * as its new base, while its draft still held the old version of whatever else the other
+   * device had changed — and the next keystroke sent that old text with a precondition that
+   * passed. The writer is the one that can tell a stale no-op from a harmless one (the
+   * editor's `holdsTheirChanges`), so it is the one that gets asked.
    */
   update(
     id: string,
@@ -658,10 +661,11 @@ export class NotesStore {
       const current = this.get(id);
       if (!current) return null;
 
+      if (ifUpdatedAt !== undefined && ifUpdatedAt !== current.updatedAt) return { stale: current };
+
       const effective = this.changedKeysOnly(changes, current);
       // Nothing in the patch differs from what is stored, so the note keeps its date.
       if (effective === null) return current;
-      if (ifUpdatedAt !== undefined && ifUpdatedAt !== current.updatedAt) return { stale: current };
 
       // Field values are validated before anything is written: a value the field cannot
       // hold fails the whole patch rather than landing after the title has changed.

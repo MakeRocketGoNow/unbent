@@ -94,15 +94,17 @@ describe('a save carrying ifUpdatedAt', () => {
     expect(((await res.json()) as Note).body).toBe('Three');
   });
 
-  it('is not a conflict when the patch would change nothing', async () => {
-    // Both devices made the same edit: writing it again overwrites nothing.
+  it('is refused even when the patch would change nothing', async () => {
+    // The other device renamed the note and rewrote the body; this one typed the same
+    // rename. A 200 would hand the writer the new copy as current while its draft still
+    // holds the old body, and its next save would put that body back.
     const note = await create({ title: 'Coupons', body: 'Same' });
     await tick();
-    const moved = (await (await patch(note.id, { title: 'Renamed' })).json()) as Note;
+    const moved = (await (await patch(note.id, { title: 'Renamed', body: 'Rewritten' })).json()) as Note;
 
     const res = await patch(note.id, { title: 'Renamed', ifUpdatedAt: note.updatedAt });
-    expect(res.status).toBe(200);
-    expect(((await res.json()) as Note).updatedAt).toBe(moved.updatedAt);
+    expect(res.status).toBe(409);
+    expect(((await res.json()) as { stale: Note }).stale.updatedAt).toBe(moved.updatedAt);
   });
 
   it('is refused for a title, tag or notebook change as well as a body', async () => {

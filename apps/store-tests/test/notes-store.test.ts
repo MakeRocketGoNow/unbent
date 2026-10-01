@@ -85,9 +85,10 @@ describe('notes: create, read, update', () => {
     expect(refused).toEqual({ stale: expect.objectContaining({ body: 'edited on the phone', updatedAt: saved.updatedAt }) });
     expect((await stub.get(created.id))?.body).toBe('edited on the phone');
 
-    // A patch that would change nothing overwrites nothing, so it is not a conflict.
+    // Refused even when it would change nothing: an answer of "saved" would tell the
+    // writer its copy is current, and the rest of that copy is not.
     const same = await stub.update(created.id, { body: 'edited on the phone', ifUpdatedAt: created.updatedAt });
-    expect(same).toMatchObject({ body: 'edited on the phone', updatedAt: saved.updatedAt });
+    expect(same).toEqual({ stale: expect.objectContaining({ updatedAt: saved.updatedAt }) });
 
     // Against the copy as it now stands, the same edit goes through; without the
     // precondition it always does.

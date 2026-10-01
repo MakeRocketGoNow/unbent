@@ -160,6 +160,19 @@ describe('a save after another device saved the note', () => {
     expect((await title()).readOnly).toBe(false);
   });
 
+  it('asks when the same edit was made elsewhere alongside one the draft does not have', async () => {
+    // The phone renamed the note and rewrote the body; this tab types the same rename.
+    // The rename alone would change nothing, but taking the phone's copy as current here
+    // would leave the old body in the draft to be saved over the phone's on the next key.
+    const server = serverHolding({ ...note, title: 'Trip notes, renamed', body: 'as edited on the phone', updatedAt: 200 });
+    mount();
+    await typeTitle('Trip notes, renamed');
+
+    await screen.findByRole('alert', {}, { timeout: 3000 });
+    expect(api.updateNote).toHaveBeenCalledTimes(1);
+    expect(server.get().body).toBe('as edited on the phone');
+  });
+
   it('saves again without asking when the note only moved on to what the draft already says', async () => {
     // Both devices made the same rename; the phone's save landed first.
     serverHolding({ ...note, title: 'Trip notes, renamed', updatedAt: 200 });
