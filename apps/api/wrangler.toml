@@ -88,9 +88,8 @@ tag = "v1"
 new_sqlite_classes = ["UserStore"]
 
 # The walk over every account's note store (src/lib/sweep.ts): wakes each object so a
-# pending migration runs and fails in the log rather than in front of its owner, runs the
-# one-time copy from D1 for any account not yet copied, records each account's size in
-# the directory, and finishes any deletion that was interrupted.
+# pending migration runs and fails in the log rather than in front of its owner, records
+# each account's size in the directory, and finishes any deletion that was interrupted.
 # Hourly, and a batch of twenty accounts per run rather than all of them: every store call
 # and D1 query counts against an invocation's subrequests, fifty on Workers Free, so the
 # walk keeps its place in D1 and continues each hour until a pass is done, then starts
@@ -272,14 +271,12 @@ script_name = "unbent-dev"
 [env.preview.triggers]
 crons = []
 
-# A preview shares the dev instance's D1, and the dev instance runs `main`, which until the
-# cutover merges still writes notes there. Migration 0032 freezes an account's rows the
-# moment its store's copy starts — so a preview's copy must not record it, or signing in
-# to the preview with an account you use on dev would refuse that account's saves on dev
-# until the merge. The same flag makes the sweep do nothing on a preview: every row it
-# would write, drop or move belongs to dev. Off here and nowhere else.
+# A preview shares the dev instance's D1 and, unless its PR changes the store, its note
+# stores too, so every row its sweep would write, drop or move in the account directory
+# belongs to dev, and dev's own sweep already walks them. The sweep does nothing with this
+# set (src/lib/sweep.ts). Off here and nowhere else.
 [env.preview.vars]
-STORE_FREEZE_D1 = "0"
+STORE_SWEEP = "0"
 # Every preview is one; its label, "PR <number>", comes from the deploy command.
 INSTANCE_KIND = "preview"
 

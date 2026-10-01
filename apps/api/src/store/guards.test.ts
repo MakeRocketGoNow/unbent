@@ -60,17 +60,14 @@ describe('the per-account store', () => {
   });
 
   /**
-   * The one exception to rule 1, held to its one file. `StoreEnv` carries `DB` for the
-   * copy of an account's rows out of the shared database, so the compiler no longer
-   * refuses a D1 binding inside the store; this does. The allowance goes when the copy
-   * does, and this test then shrinks to "nothing in the store names D1".
+   * Rule 1's other half: the object never reaches the shared database either. `StoreEnv`
+   * names nothing, so the compiler refuses a binding; this catches a D1 type or binding
+   * named in the source another way. (The cutover's one-time copy was the one exception,
+   * and went with the tables it read.)
    */
-  it('reaches D1 from the one-time copy and nowhere else', () => {
-    const allowed = new Set(['store/copy-from-d1.ts', 'store/user-store.ts']);
+  it('never names D1 inside the store', () => {
     for (const file of walk(join(SRC, 'store'))) {
-      if (/\bD1Database\b|\benv\.DB\b|\bDB\s*:/.test(code(file))) {
-        expect(allowed.has(rel(file)), `${rel(file)} reaches D1`).toBe(true);
-      }
+      expect(/\bD1Database\b|\benv\.DB\b|\bDB\s*:/.test(code(file)), `${rel(file)} reaches D1`).toBe(false);
     }
   });
 

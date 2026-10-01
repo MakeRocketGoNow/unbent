@@ -23,12 +23,12 @@ export interface Env {
    */
   STORE_JURISDICTION?: string;
   /**
-   * `"0"` stops the copy and the sweep writing `account_directory.migrated_at`, which is
-   * what freezes an account's rows in the shared D1 tables (migration 0032). Set only on
-   * the pull-request previews, which share the dev instance's D1 while dev still runs
-   * `main` and writes those rows; anywhere else it is unset and the freeze is on.
+   * `"0"` makes the sweep do nothing. Set only on the pull-request previews, which share
+   * the dev instance's D1 and usually its note stores: everything the sweep would write
+   * to the directory there belongs to dev, and dev's own sweep already walks it. Anywhere
+   * else it is unset and the sweep runs.
    */
-  STORE_FREEZE_D1?: string;
+  STORE_SWEEP?: string;
   /**
    * `"1"` on a pull-request preview whose note stores are its own rather than the dev
    * instance's: the preview workflow sets it when the PR changes `src/store/`, so the PR's
