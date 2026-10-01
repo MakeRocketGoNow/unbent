@@ -31,11 +31,11 @@ const RESTAURANTS = [
   ['Northside Pizza Works', 'Margherita', 3, 'Maybe', 'Good crust, underseasoned sauce.', ['pizza'], 55],
   ['Little Fig Bakery', 'Cardamom bun', 5, 'Yes', 'Go before ten or they are gone.', ['breakfast', 'bakery'], 62],
   ['Ember & Oak', 'Smoked brisket plate', 4, 'Yes', 'Bark was excellent, beans forgettable.', ['bbq'], 70],
-  ['Moss Creek Diner', 'Hash and eggs', 2, 'No', 'Cold plate, long wait. Coffee was fine.', ['breakfast'], 77],
+  ['Gravelpine Diner', 'Hash and eggs', 2, 'No', 'Cold plate, long wait. Coffee was fine.', ['breakfast'], 77],
   ['Golden Wok Express', 'General chicken', 3, 'Maybe', 'Exactly what you expect, which is the point.', ['takeout'], 85],
   ['Pine & Pepper', 'Mushroom risotto', 4, 'Yes', 'Rich without being heavy.', ['vegetarian', 'date-night'], 94],
   ['Riverbend Ramen', 'Tonkotsu ramen', 5, 'Yes', 'Broth like velvet. Egg cooked exactly right.', ['noodles'], 103],
-  ['The Quiet Fork', 'Tasting menu', 3, 'No', 'Beautiful plates, left hungry, very expensive.', ['date-night'], 118],
+  ['The Ninefold Fork', 'Tasting menu', 3, 'No', 'Beautiful plates, left hungry, very expensive.', ['date-night'], 118],
   ['Sunrise Pho House', 'Rare beef pho', 4, 'Yes', 'Clean broth, huge basil plate.', ['noodles', 'cheap-eats'], 131],
   ['Old Mill Brewpub', 'Fish and chips', 3, 'Maybe', 'Batter crisp, chips soggy.', ['pub'], 146],
   ['Casa Verde', 'Chile relleno', 4, 'Yes', 'Roasted properly, not drowned in sauce.', ['spicy'], 160],
@@ -43,7 +43,7 @@ const RESTAURANTS = [
   ['Smokestack Burgers', 'Double smash burger', 5, 'Yes', 'Crispy edges, soft bun, perfect.', ['burgers', 'cheap-eats'], 190],
   ['Tidewater Kitchen', 'Shrimp and grits', 4, 'Yes', 'Grits creamy, shrimp a bit overcooked.', ['seafood'], 214],
   ['Kettle & Crumb', 'Tomato soup and grilled cheese', 4, 'Yes', 'Exactly right on a cold day.', ['lunch', 'comfort-food'], 240],
-  ['Basil Street Thai', 'Pad see ew', 2, 'No', 'Sweet and gluey. Will try somewhere else.', ['noodles', 'takeout'], 266],
+  ['Tamarind Lantern Thai', 'Pad see ew', 2, 'No', 'Sweet and gluey. Will try somewhere else.', ['noodles', 'takeout'], 266],
 ];
 
 const WATCH = [
@@ -93,7 +93,7 @@ const COUPONS = [
 const CONTACTS = [
   // [name, company, role, email, phone, website, categories, met (days ago)]
   ['Casey Mason', 'Mason & Daughters Plumbing', 'Owner', 'casey@example.com', '555-0101', 'https://plumbing.example.com', ['Home', 'Trades'], 40],
-  ['Jordan Baker', 'Northwind Coffee', 'Roaster', 'jordan@northwind.example.com', '555-0102', 'https://northwind.example.com', ['Food & Drink'], 52],
+  ['Jordan Bellweather', 'Northwind Coffee', 'Roaster', 'jordan@northwind.example.com', '555-0102', 'https://northwind.example.com', ['Food & Drink'], 52],
   ['Riley Carter', 'Contoso Auto Repair', 'Service advisor', 'service@contoso-auto.example.com', '555-0103', 'https://auto.example.org', ['Auto'], 67],
   ['Morgan Fisher', 'Tailspin Bikes', 'Mechanic', 'morgan@tailspin.example.net', '555-0104', '', ['Outdoors'], 85],
   ['Avery Cooper', 'Fabrikam Electric', 'Electrician', 'avery@fabrikam.example.com', '555-0105', 'https://electric.example.com', ['Home', 'Trades'], 101],
@@ -103,7 +103,7 @@ const CONTACTS = [
   ['Jamie Hunter', 'Trailhead Outfitters', 'Guide', 'jamie@trailhead.example.net', '555-0109', 'https://trailhead.example.net', ['Outdoors'], 171],
   ['Taylor Brooks', 'Adventure Works', 'Store manager', 'taylor@adventure-works.example.com', '555-0110', 'https://adventure-works.example.com', ['Outdoors', 'Food & Drink'], 190],
   ['Robin Fletcher', 'Contoso Dental', 'Front desk', 'frontdesk@contoso-dental.example.com', '555-0111', 'https://dental.example.com', ['Health'], 215],
-  ['Alex Turner', 'Proseware Roofing', 'Estimator', 'alex@proseware.example.com', '555-0112', '', ['Home', 'Trades'], 240],
+  ['Alex Thornbury', 'Proseware Roofing', 'Estimator', 'alex@proseware.example.com', '555-0112', '', ['Home', 'Trades'], 240],
   // The one that has broken a layout before: an address far wider than any column.
   [
     'Pat Underwood',
@@ -325,11 +325,11 @@ const AWKWARD = [
   },
   {
     key: 'trash/restaurant',
-    title: 'Moss Creek Diner (again)',
+    title: 'Gravelpine Diner (again)',
     notebook: 'Restaurants',
     body: 'Logged twice.',
     tags: [],
-    fields: { Restaurant: 'Moss Creek Diner', Rating: 2 },
+    fields: { Restaurant: 'Gravelpine Diner', Rating: 2 },
     age: 78,
     trashed: true,
   },

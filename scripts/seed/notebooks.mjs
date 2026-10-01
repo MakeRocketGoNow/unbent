@@ -10,9 +10,12 @@
  *
  * Between them they hold every field type; a number plain, as a rating at both steps and
  * as a currency; selects long and short; and a notebook with no fields at all. The names,
- * options and every value are invented. They were shaped after a real account's
- * notebooks, and that is all that was taken: no option list, notebook name or value is
- * copied from one, because an option list can be a list of people.
+ * options and every value are invented, with one deliberate exception: the field shapes,
+ * and option lists that say nothing about anyone — a watch list's Type, Status and
+ * Priority, a Yes/Maybe/No — were taken from a real account's notebooks, because those are
+ * what the features have to handle. Nothing else was: no notebook name, no value, and no
+ * option list that names people, places or services, because an option list can be a
+ * list of people.
  */
 export const NOTEBOOKS = [
   { name: 'Recipes', fields: [] },
