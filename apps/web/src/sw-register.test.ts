@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { shouldApplyOnReturn, shouldApplyUpdate } from './sw-register.js';
+import { shouldApplyOnLoad, shouldApplyOnReturn, shouldApplyUpdate } from './sw-register.js';
 import { holdPage, pageBusy } from './busy.js';
 
 const ready = { ready: true, busy: false, preload: false, from: '/notes', to: '/settings' };
@@ -60,6 +60,28 @@ describe('shouldApplyOnReturn', () => {
 
   it('stays out of the Android app’s embed pages', () => {
     expect(shouldApplyOnReturn({ ...back, path: '/embed/notes/a' })).toBe(false);
+  });
+});
+
+const loaded = { untouched: true, busy: false, path: '/notes' };
+
+describe('shouldApplyOnLoad', () => {
+  /* A reload is how anyone asks for the newest version; the worker answering it with the
+     old shell made a deploy impossible to try. */
+  it('takes a deploy found while the page has only just loaded', () => {
+    expect(shouldApplyOnLoad(loaded)).toBe(true);
+  });
+
+  it('leaves a page someone has started using to the careful rules', () => {
+    expect(shouldApplyOnLoad({ ...loaded, untouched: false })).toBe(false);
+  });
+
+  it('waits while the page holds work a reload would lose', () => {
+    expect(shouldApplyOnLoad({ ...loaded, busy: true })).toBe(false);
+  });
+
+  it('stays out of the Android app’s embed pages', () => {
+    expect(shouldApplyOnLoad({ ...loaded, path: '/embed/notes/a' })).toBe(false);
   });
 });
 
