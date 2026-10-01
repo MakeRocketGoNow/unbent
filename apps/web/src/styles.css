@@ -1106,6 +1106,15 @@ button.link {
 
 .empty { padding: 0.6rem 0.7rem; }
 
+/* The offer under an empty list on a preview with stores of its own (`SampleNotes`):
+   the empty line's inset, so the sentence and the button start where "No notes yet" does. */
+.sample-notes {
+  display: grid;
+  gap: 0.5rem;
+  padding: 0 0.7rem 0.6rem;
+}
+.sample-notes p { margin: 0; }
+
 /* ---------------------------------------------------------------------------------
    The list as a table — `NoteTable`, inside a notebook at desktop width.
 

@@ -26,6 +26,7 @@
     "@tanstack/react-router": "^1.170.41",
     "@unbent/api": "workspace:*",
     "@unbent/enex": "workspace:*",
+    "@unbent/seed": "workspace:*",
     "@unbent/shared": "workspace:*",
     "@zip.js/zip.js": "^2.22.0",
     "better-auth": "^1.7.7",

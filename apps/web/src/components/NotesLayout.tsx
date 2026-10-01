@@ -13,6 +13,7 @@ import {
   searchQuery,
   trashCountQuery,
   invalidateNoteMembership,
+  configQuery,
 } from '../queries.js';
 import { useNotesLayout } from '../useNotesLayout.js';
 import { ResizeHandle } from './ResizeHandle.js';
@@ -22,6 +23,7 @@ import { useFocusSearch } from '../useFocusSearch.js';
 import { markNewNote } from '../useNewNote.js';
 import { SearchResults } from './SearchResults.js';
 import { IndexingStatus } from './IndexingStatus.js';
+import { SampleNotes } from './SampleNotes.js';
 import { Button } from './Button';
 import { NotebookMissing } from './NotebookMissing.js';
 import { ExportLink } from './ExportLink.js';
@@ -156,6 +158,7 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
       ? notebooks.data?.notebooks.find((nb) => nb.name === notebook)?.id
       : undefined;
   const fieldDefs = useQuery(notebookFieldsQuery(notebookId));
+  const config = useQuery(configQuery());
   /** The definition behind a sort by a field, once the notebook's fields have loaded. */
   const sortFieldDef = sortField ? fieldDefs.data?.find((d) => d.id === sortField) : undefined;
   /*
@@ -1141,6 +1144,18 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
           {results === null && emptyMessage && (
             <li className="muted small empty">{emptyMessage}</li>
           )}
+          {/* Only on All notes with nothing applied: an empty notebook or filter is not an
+              empty account, and filling it from there would read as filling that notebook. */}
+          {results === null &&
+            emptyMessage &&
+            config.data?.ownStores &&
+            !notebook &&
+            !tag &&
+            fieldFilters.length === 0 && (
+              <li>
+                <SampleNotes layout="empty" />
+              </li>
+            )}
         </ul>
         )}
 
