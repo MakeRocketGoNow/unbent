@@ -305,6 +305,7 @@ jobs:
         working-directory: apps/api
         env:
           OWN_STORES: ${{ steps.store.outputs.own }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
         run: |
           printf 'BETTER_AUTH_SECRET=%s\nALLOWED_EMAILS=%s\n' \
             "$DEV_BETTER_AUTH_SECRET" "$DEV_ALLOWED_EMAILS" > "$RUNNER_TEMP/preview-secrets.env"
@@ -339,8 +340,10 @@ jobs:
             config=wrangler.own-stores.toml
             own_var=(--var "PREVIEW_OWN_STORES:1")
           fi
+          # The PR's number, so a tab of this preview reads "PR 222 · Unbent".
           pnpm exec wrangler deploy --config "$config" --env preview --name "$WORKER_NAME" \
-            --var "APP_URL:$PREVIEW_URL" "${relay_var[@]}" "${own_var[@]}" \
+            --var "APP_URL:$PREVIEW_URL" --var "INSTANCE_LABEL:PR $PR_NUMBER" \
+            "${relay_var[@]}" "${own_var[@]}" \
             --secrets-file "$RUNNER_TEMP/preview-secrets.env"
           rm -f "$RUNNER_TEMP/preview-secrets.env"
 

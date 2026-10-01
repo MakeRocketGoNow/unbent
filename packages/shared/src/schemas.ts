@@ -304,6 +304,13 @@ export interface AppConfig {
    * preview that reads the dev instance's stores.
    */
   ownStores?: boolean;
+  /**
+   * What this instance is, when it is not the one people use — "Dev", "PR 222", "Local".
+   * The page puts it in front of the tab title, badges the favicon, and names it in the
+   * account menu, so a tab of a scratch instance cannot be mistaken for the real one, or
+   * the real one for scratch. Absent on production, which draws none of it.
+   */
+  instanceLabel?: string;
 }
 
 /**

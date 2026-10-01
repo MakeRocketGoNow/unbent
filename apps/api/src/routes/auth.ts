@@ -5,7 +5,7 @@ import { legalLinksOf, operatorOf, posthogOf } from '../lib/instance.js';
 import { previewRelayOrigin } from '../lib/preview-relay.js';
 import { canAutofill } from '../lib/jev.js';
 import { canUseLlm } from '../lib/llm.js';
-import type { AppEnv } from '../types.js';
+import type { AppEnv, Env } from '../types.js';
 
 export const authRoutes = new Hono<AppEnv>()
   /**
@@ -54,5 +54,16 @@ export const authRoutes = new Hono<AppEnv>()
       autofill: canAutofill(c.env),
       vision: canUseLlm(c.env),
       ownStores: c.env.PREVIEW_OWN_STORES === '1' || undefined,
+      instanceLabel: instanceLabelOf(c.env),
     } satisfies AppConfig);
   });
+
+/**
+ * `INSTANCE_LABEL`, trimmed and kept short. It goes in front of every tab title, where a
+ * long one would push "Unbent" out of a narrow tab, so anything past a couple of words is
+ * a mistake in the setting rather than something to show. Blank reads as unset.
+ */
+export function instanceLabelOf(env: Pick<Env, 'INSTANCE_LABEL'>): string | undefined {
+  const label = env.INSTANCE_LABEL?.trim();
+  return label ? label.slice(0, 24) : undefined;
+}

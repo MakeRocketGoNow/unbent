@@ -39,6 +39,14 @@ export interface Env {
    */
   PREVIEW_OWN_STORES?: string;
   /**
+   * What to call this instance in the page's tab title, favicon and account menu when it
+   * is not the one people use: "Dev" on the dev instance, "PR 222" on a preview, "Local"
+   * under `pnpm dev`. Unset on production, which is how the page knows to draw none of
+   * it. A plain var rather than something derived from the hostname, so a self-hoster's
+   * staging copy can say "Staging" without the code knowing its name.
+   */
+  INSTANCE_LABEL?: string;
+  /**
    * Workers AI, for extracting a PDF's text on upload. Bound in production only — see
    * wrangler.toml — so it is optional here, and its absence means the browser does the
    * extracting, as it did before.
