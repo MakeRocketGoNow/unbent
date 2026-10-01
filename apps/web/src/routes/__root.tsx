@@ -38,12 +38,14 @@ export const Route = createRootRouteWithContext<RouterContext>()({
    * loaders run. See `claimCacheFor` for why it is keyed on the user rather than hung off
    * signing out.
    *
-   * The import run is claimed here for the same hand-off. It lives above the page now, so
-   * a sign-out no longer kills its worker, and the worker sends the document's cookies
-   * with every note it creates. Waiting until `AppShell` paints is a frame too late: the
-   * cookie is already the new person's. Only a real session is passed — a public page
-   * returns no user from the gate even when someone is signed in, and treating that as a
-   * sign-out would abort a run because `/privacy` was opened.
+   * The import run is claimed here too, as the last line of defence rather than the
+   * first. By the time a new person reaches this guard their sign-in has already set the
+   * cookie the worker sends, so a run still going here has had a moment to send as them.
+   * What actually ends a run is earlier: the shell drops it when the session goes, and the
+   * importer stops on its first 401. This catches a sign-out none of
+   * those saw. Only a real session is passed — a public page returns no user from the
+   * gate even when someone is signed in, and treating that as a sign-out would abort a run
+   * because `/privacy` was opened. See `ImportRun.claim`.
    */
   beforeLoad: async ({ location, context, preload }) => {
     // First, so a waiting deploy loads the destination fresh instead of it being drawn in
