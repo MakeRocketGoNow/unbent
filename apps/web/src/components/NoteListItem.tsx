@@ -110,7 +110,11 @@ export function NoteListItem({
   };
 
   return (
-    <li className={selection?.selected ? 'note-entry selected' : 'note-entry'}>
+    <li
+      className={['note-entry', selection?.selected && 'selected', actions && 'with-actions']
+        .filter(Boolean)
+        .join(' ')}
+    >
       <Link
         to={to}
         params={{ noteId: note.id }}
