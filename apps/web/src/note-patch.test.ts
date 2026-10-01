@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { FieldDef, FieldValue, Note, NoteFieldValue } from '@unbent/shared';
 import {
   buildNotePatch,
+  holdsTheirChanges,
   rememberFieldDefs,
   unstoreableFieldIds,
   type NoteDraft,
@@ -338,5 +339,64 @@ describe('unstoreableFieldIds', () => {
         [amount, kind],
       ),
     ).toEqual([]);
+  });
+});
+
+/**
+ * Whether a save refused as stale can go again without asking: every change made to the
+ * note since the draft's copy is one the draft already holds. Each case is paired with the
+ * one beside it that must still ask, since a check that always said yes would be the
+ * silent overwrite all over again.
+ */
+describe('holdsTheirChanges', () => {
+  const base = { title: 'Trip', body: 'Body', tags: ['a'], notebook: null, fields: [] as NoteFieldValue[] };
+  const draftOf = (over: Partial<NoteDraft> = {}): NoteDraft => ({
+    title: 'Trip',
+    body: 'Body',
+    tags: ['a'],
+    notebook: null,
+    fields: {},
+    ...over,
+  });
+
+  it('says yes when the other side made the edit the draft already has', () => {
+    const current = { ...base, title: 'Trip, renamed' };
+    expect(holdsTheirChanges(draftOf({ title: 'Trip, renamed' }), base, current)).toBe(true);
+    expect(holdsTheirChanges(draftOf({ title: 'Trip, mine' }), base, current)).toBe(false);
+  });
+
+  it('says no when the other side changed something the draft still has the old version of', () => {
+    // A body edited here and a title edited there do not collide, but the draft's title is
+    // the old one, and saving it on would put that back.
+    const current = { ...base, title: 'Trip, renamed' };
+    expect(holdsTheirChanges(draftOf({ body: 'Body, edited here' }), base, current)).toBe(false);
+  });
+
+  it('compares tags as a set, the way a bulk tag reaches the draft', () => {
+    const current = { ...base, tags: ['a', 'b'] };
+    expect(holdsTheirChanges(draftOf({ tags: ['b', 'a'], body: 'Body, edited' }), base, current)).toBe(true);
+    expect(holdsTheirChanges(draftOf({ tags: ['a'] }), base, current)).toBe(false);
+  });
+
+  it('takes a bulk move the draft was told about', () => {
+    const current = { ...base, notebook: 'Coupons' };
+    expect(holdsTheirChanges(draftOf({ notebook: 'Coupons' }), base, current)).toBe(true);
+    expect(holdsTheirChanges(draftOf(), base, current)).toBe(false);
+  });
+
+  it('reads field values by what they say, and a cleared value as a change', () => {
+    const value = (v: FieldValue): NoteFieldValue[] => [
+      { fieldId: amount.id, name: 'Amount', type: 'number', value: v, notebook: 'Receipts' } as NoteFieldValue,
+    ];
+    const was = { ...base, fields: value(12) };
+    expect(holdsTheirChanges(draftOf({ fields: { [amount.id]: '13' } }), was, { ...was, fields: value(13) })).toBe(true);
+    expect(holdsTheirChanges(draftOf({ fields: { [amount.id]: 12 } }), was, { ...was, fields: value(13) })).toBe(false);
+    expect(holdsTheirChanges(draftOf({ fields: { [amount.id]: 12 } }), was, { ...was, fields: [] })).toBe(false);
+    expect(holdsTheirChanges(draftOf({ fields: { [amount.id]: null } }), was, { ...was, fields: [] })).toBe(true);
+  });
+
+  it('says yes when nothing the draft can see has changed at all', () => {
+    // The date moved for something the draft does not hold — an attachment, say.
+    expect(holdsTheirChanges(draftOf({ body: 'Body, edited' }), base, { ...base })).toBe(true);
   });
 });

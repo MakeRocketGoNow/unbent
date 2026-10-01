@@ -7,7 +7,13 @@ import { localizeImageLinks, remoteImageUrls } from '@unbent/shared';
 import * as api from '../notes-api.js';
 import { isOfflineError, isStatus, servedFromCache } from '../notes-api.js';
 import { useOffline } from '../connectivity.js';
-import { buildNotePatch, rememberFieldDefs, unstoreableFieldIds } from '../note-patch.js';
+import {
+  buildNotePatch,
+  holdsTheirChanges,
+  rememberFieldDefs,
+  seedFrom,
+  unstoreableFieldIds,
+} from '../note-patch.js';
 import { useAutosave, SAVE_LABEL } from '../useAutosave.js';
 import { usePersistentState, clamp } from '../usePersistentState.js';
 import {
@@ -61,20 +67,6 @@ const EDITOR_DEFAULT = 0.5;
 const EDITOR_MIN = 0.2;
 const EDITOR_MAX = 0.8;
 
-
-/** The draft a note's saved copy starts as. */
-function seedFrom(note: Note) {
-  return {
-    title: note.title,
-    body: note.body,
-    tags: note.tags,
-    notebook: note.notebook ?? null,
-    fields: Object.fromEntries((note.fields ?? []).map((v) => [v.fieldId, v.value])) as Record<
-      string,
-      FieldValue | null
-    >,
-  };
-}
 
 interface WorkspaceProps {
   noteId: string;
@@ -268,10 +260,61 @@ export function Workspace({ noteId, readOnly = false, backTo = '/notes' }: Works
    */
   const [seedGeneration, setSeedGeneration] = useState(0);
 
+  /**
+   * The copy of each note the draft is measured against: what it was seeded from, then
+   * what each save came back as. A save sends only what differs from it, and names its
+   * `updatedAt` so the server can refuse the save if the note has moved on since.
+   *
+   * Kept apart from the query cache's copy on purpose. That one is replaced by any
+   * refetch, and a draft diffed against a copy it was never seeded from sends its stale
+   * keys as edits: the phone's new title arrives in the cache, the draft still holds the
+   * old one, and the next keystroke in the body writes the old title back — with a
+   * precondition that passes, because it was taken from the same fresh copy.
+   *
+   * By note id rather than one ref, because a save can outlive the note being open:
+   * switching notes flushes the outgoing draft after the incoming note has been seeded,
+   * and that flush must still be measured against the note it belongs to.
+   */
+  const bases = useRef(new Map<string, Note>());
+
+  /**
+   * A save refused because the note changed on another device, with the note as it now
+   * stands. The note head offers both ways out; the editor is locked until one is taken,
+   * so the typing stays exactly as it was on screen. By id, so it never shows on another
+   * note opened meanwhile.
+   */
+  const [conflict, setConflict] = useState<{ id: string; current: Note } | null>(null);
+  const conflicted = conflict !== null && conflict.id === noteId;
+  /**
+   * Whether the note's inputs take edits: not offline, and not while a conflict waits on a
+   * choice. Typing on during one would only be refused again, and the choice is between
+   * two versions the person can see — a third, still moving, would make it a guess.
+   */
+  const frozen = locked || conflicted;
+
+  /** Set by "Keep mine": the next save of this note goes against this copy instead. */
+  const keepMine = useRef<{ id: string; updatedAt: number } | null>(null);
+
+  /**
+   * Re-seeds the open note from a copy of it the server just gave, rebuilding the editor
+   * only when the body is what changed — a title or a tag from elsewhere has no reason to
+   * throw away the caret and the undo history. The bump to `seedGeneration` makes the
+   * autosave take the new copy as its baseline rather than as an edit to save.
+   */
+  function reseed(from: Note, showing: string) {
+    bases.current.set(from.id, from);
+    queryClient.setQueryData(keys.note(from.id), from);
+    setDraft(seedFrom(from));
+    setEditorOverride(null);
+    if (from.body !== showing) setEditorRevision((n) => n + 1);
+    setSeedGeneration((n) => n + 1);
+  }
+
   // Seed the draft when a different note loads. Keyed on id, not on the note object,
   // so a background refetch never discards what is being typed.
   useEffect(() => {
     if (!note) return;
+    bases.current.set(note.id, note);
     setDraft(seedFrom(note));
     setDraftFor(note.id);
     setEditorOverride(null);
@@ -295,6 +338,7 @@ export function Workspace({ noteId, readOnly = false, backTo = '/notes' }: Works
   useEffect(() => {
     if (!seededFromCache || !note || servedFromCache(note)) return;
     setSeededFromCache(undefined);
+    bases.current.set(note.id, note);
     if (JSON.stringify(seedFrom(note)) === JSON.stringify(seedFrom(seededFromCache))) return;
     setDraft(seedFrom(note));
     setEditorOverride(null);
@@ -329,7 +373,8 @@ export function Workspace({ noteId, readOnly = false, backTo = '/notes' }: Works
   }, [noteId, note !== undefined]);
 
   async function save(value: typeof draft) {
-    if (!note) return 'unchanged';
+    const base = bases.current.get(noteId);
+    if (!note || !base) return 'unchanged';
     /*
        Only the keys that actually changed, and only field values the type can store.
        Sending the whole draft used to 400 a body save on a half-typed number, and to
@@ -341,10 +386,41 @@ export function Workspace({ noteId, readOnly = false, backTo = '/notes' }: Works
        "Saved" for a save that never left the browser — a space typed and deleted is the
        ordinary way to get here.
     */
-    const patch = buildNotePatch(value, note, knownFieldDefs);
+    const patch = buildNotePatch(value, base, knownFieldDefs);
     if (!patch) return 'unchanged';
-    const updated = await api.updateNote(noteId, patch);
+
+    /*
+       Against the copy the draft came from, so a save made after another device saved
+       this note is refused rather than written over it (MAK-113). "Keep mine" sends it
+       again against the copy the refusal brought back, which is still a precondition:
+       a third save landing while the choice was on screen is refused in turn.
+    */
+    const choosing = keepMine.current?.id === noteId ? keepMine.current : null;
+    let updated: Note;
+    try {
+      updated = await api.updateNote(noteId, { ...patch, ifUpdatedAt: choosing?.updatedAt ?? base.updatedAt });
+    } catch (err) {
+      if (!api.isNoteChanged(err)) throw err;
+      // Nothing of theirs would be lost — see `holdsTheirChanges` — so this is a date that
+      // moved, not a choice to put to anyone.
+      if (!choosing && holdsTheirChanges(value, base, err.current)) {
+        updated = await api.updateNote(noteId, { ...patch, ifUpdatedAt: err.current.updatedAt });
+      } else {
+        // A "Keep mine" refused in turn asks again, against the newer copy it brought back.
+        keepMine.current = null;
+        setConflict({ id: noteId, current: err.current });
+        throw err;
+      }
+    }
+    bases.current.set(noteId, updated);
     queryClient.setQueryData(keys.note(noteId), updated);
+    if (choosing) {
+      // Kept: the note is now this draft plus whatever of theirs the draft never touched —
+      // a title renamed elsewhere survives a body kept here — so the editor shows that.
+      keepMine.current = null;
+      setConflict(null);
+      reseed(updated, value.body);
+    }
     // The lists get the saved row rather than a refetch of every page they hold — see
     // `applySaveToLists`, which refetches only a list the save may have moved it in or out of.
     applySaveToLists(queryClient, updated, {
@@ -395,14 +471,66 @@ export function Workspace({ noteId, readOnly = false, backTo = '/notes' }: Works
     );
   }, [editing, noteId]);
 
-  const { state: saveState, flush } = useAutosave(draft, save, {
+  const {
+    state: saveState,
+    flush,
+    discard,
+  } = useAutosave(draft, save, {
     // Never autosave while viewing the trash: a note in the bin is a record of what was
     // deleted, and writing to it would be editing something the user believes is gone.
     // `draftFor === noteId` keeps a draft still holding the previous note's text from
     // being written over this one during the render between navigation and reseeding.
     enabled: editing,
     resetKey: `${noteId}:${seedGeneration}`,
+    isConflict: api.isNoteChanged,
   });
+
+  /** Reload: the other device's version, and the typing here dropped. */
+  function takeTheirs() {
+    if (!conflict) return;
+    discard();
+    keepMine.current = null;
+    setConflict(null);
+    reseed(conflict.current, draftRef.current.body);
+    applySaveToLists(queryClient, conflict.current, { title: true, notebook: true, tags: true, fields: true });
+  }
+
+  /** Keep mine: this draft saved over the version the refusal brought back. */
+  function keepOurs() {
+    if (!conflict) return;
+    keepMine.current = { id: conflict.id, updatedAt: conflict.current.updatedAt };
+    void flush();
+  }
+
+  /*
+     Coming back to the tab is the usual moment another device has saved this note: the
+     phone was in use while the tab sat in the background. With nothing typed here since
+     the last save, the server's copy simply replaces the draft, and the first keystroke
+     is made on top of it rather than refused for having been made against the old one.
+
+     Only when the draft is clean, and only if it is still clean when the answer arrives:
+     typing that started during the fetch is left alone, and the precondition settles it
+     at its save. A copy from the offline cache is not the server's answer and changes
+     nothing. Refetching through the query keeps the cache in step either way.
+  */
+  const saveStateRef = useRef(saveState);
+  saveStateRef.current = saveState;
+  useEffect(() => {
+    if (!editing) return;
+    const clean = () => saveStateRef.current === 'idle' || saveStateRef.current === 'saved';
+    const onShow = async () => {
+      if (document.visibilityState !== 'visible' || !clean()) return;
+      const before = draftRef.current;
+      const { data: fresh } = await refetch();
+      const base = bases.current.get(noteId);
+      if (!fresh || !base || servedFromCache(fresh) || fresh.updatedAt === base.updatedAt) return;
+      if (draftRef.current !== before || !clean()) return;
+      reseed(fresh, before.body);
+    };
+    document.addEventListener('visibilitychange', onShow);
+    return () => document.removeEventListener('visibilitychange', onShow);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editing, noteId]);
 
   /*
      The connection back: a save that failed for want of one — typing that landed in the
@@ -422,7 +550,8 @@ export function Workspace({ noteId, readOnly = false, backTo = '/notes' }: Works
      — see `busy.ts`.
   */
   const [uploadsPending, setUploadsPending] = useState(0);
-  const unsent = saveState === 'dirty' || saveState === 'saving' || saveState === 'error';
+  const unsent =
+    saveState === 'dirty' || saveState === 'saving' || saveState === 'error' || saveState === 'conflict';
   useEffect(() => (unsent || uploadsPending > 0 ? holdPage() : undefined), [unsent, uploadsPending]);
 
   /*
@@ -473,7 +602,7 @@ export function Workspace({ noteId, readOnly = false, backTo = '/notes' }: Works
       notebooks={notebooks.data?.notebooks}
       tags={draft.tags}
       suggestions={tags.data?.map((t) => t.name) ?? []}
-      readOnly={readOnly || locked}
+      readOnly={readOnly || frozen}
       onNotebook={(next) => setDraft((d) => ({ ...d, notebook: next }))}
       onTags={(next) => setDraft((d) => ({ ...d, tags: next }))}
     />
@@ -499,7 +628,7 @@ export function Workspace({ noteId, readOnly = false, backTo = '/notes' }: Works
         values={draft.fields}
         carried={note.fields ?? []}
         notebookId={currentNotebook?.id ?? null}
-        readOnly={readOnly || locked}
+        readOnly={readOnly || frozen}
         onChange={(fieldId, value) =>
           setDraft((d) => ({ ...d, fields: { ...d.fields, [fieldId]: value } }))
         }
@@ -887,7 +1016,7 @@ export function Workspace({ noteId, readOnly = false, backTo = '/notes' }: Works
             className="title-input"
             value={draft.title}
             placeholder="Untitled"
-            readOnly={readOnly || locked}
+            readOnly={readOnly || frozen}
             onChange={(e) => setDraft((d) => ({ ...d, title: e.target.value }))}
             onKeyDown={(e) => {
               if (e.key !== 'Enter') return;
@@ -901,7 +1030,7 @@ export function Workspace({ noteId, readOnly = false, backTo = '/notes' }: Works
           {/* Cut with an ellipsis before the title is, and carried whole in the tooltip;
               see `.workspace-status`. */}
           <span
-            className={`workspace-status ${saveState === 'error' && !unsavedOffline ? 'bad' : 'muted'} small`}
+            className={`workspace-status ${(saveState === 'error' && !unsavedOffline) || saveState === 'conflict' ? 'bad' : 'muted'} small`}
             title={webImagesStatus ?? saveLabel}
           >
             {readOnly ? 'In trash' : (webImagesStatus ?? saveLabel)}
@@ -923,7 +1052,7 @@ export function Workspace({ noteId, readOnly = false, backTo = '/notes' }: Works
               className={`autofill-btn${autofilling ? ' busy' : ''}`}
               // Disabled rather than withdrawn offline, so the title beside it does not
               // widen when the connection drops and narrow when it returns.
-              disabled={autofilling || locked}
+              disabled={autofilling || frozen}
               aria-label={autofilling ? 'Reading…' : 'Auto-fill'}
               title={
                 locked
@@ -988,6 +1117,37 @@ export function Workspace({ noteId, readOnly = false, backTo = '/notes' }: Works
           )}
         </div>
       </div>
+
+      {/*
+          A save this note refused because another device saved it first (MAK-113). Under
+          the head, where the save state reports, and inline rather than a dialog: the
+          typing it is about stays on screen, locked, to be read before choosing, and a
+          modal would cover exactly that. No dismiss — the typing exists nowhere but here
+          until one of the two is chosen, and closing the question would leave it so.
+
+          Neither action is filled: each throws a version away, and which one is right
+          depends on what was typed where, which only the person knows. The sentence names
+          what each costs so the buttons can stay two words.
+      */}
+      {conflicted && (
+        <div className="conflict-notice" role="alert">
+          <p>
+            <strong>This note changed on another device.</strong>{' '}
+            <span className="muted">
+              Reload shows that version and drops what you typed here. Keep mine saves yours
+              over it.
+            </span>
+          </p>
+          <div className="conflict-notice-actions">
+            <Button size="small" disabled={saveState === 'saving'} onClick={takeTheirs}>
+              Reload
+            </Button>
+            <Button size="small" disabled={saveState === 'saving'} onClick={keepOurs}>
+              {saveState === 'saving' ? 'Saving…' : 'Keep mine'}
+            </Button>
+          </div>
+        </div>
+      )}
 
       {/*
           Operator-only: the title model rejected its key. Shown only to whoever runs the
@@ -1091,7 +1251,7 @@ export function Workspace({ noteId, readOnly = false, backTo = '/notes' }: Works
           body={draft.body}
           editorView={editorView}
           onBodyRewrite={rewriteBody}
-          readOnly={locked}
+          readOnly={frozen}
         />
       )}
 
@@ -1110,7 +1270,7 @@ export function Workspace({ noteId, readOnly = false, backTo = '/notes' }: Works
         */
         docked={isMobile}
         keyboardInset={keyboardInset}
-        readOnly={readOnly || locked}
+        readOnly={readOnly || frozen}
         noteView={{
           current: noteView,
           onChange: setNoteView,
@@ -1156,7 +1316,7 @@ export function Workspace({ noteId, readOnly = false, backTo = '/notes' }: Works
             key={`${note.id}-${editorRevision}`}
             noteId={note.id}
             initialValue={editorOverride ?? note.body}
-            readOnly={readOnly || locked}
+            readOnly={readOnly || frozen}
             // So rich mode draws a viewer for an imported PDF whose name lacks the
             // extension, the same as the preview pane does.
             pdfFilenames={pdfFilenames}

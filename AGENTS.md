@@ -415,9 +415,10 @@ field-conversion preview — sit under the same prefixes.
 **Reads are network-first, never cache-first.** React Query already caches in memory and
 every save invalidates exactly what it changed; a worker answering from its own copy first
 would hand that refetch the note as it was before the save. For the same reason a note read
-from the cache stays locked after the connection returns, until the server answers for it —
-saves carry no precondition yet (MAK-113), so unlocking old text is how an edit made on
-another device gets saved over.
+from the cache stays locked after the connection returns, until the server answers for it.
+Every editor save names the copy it was made from (`ifUpdatedAt`), so a save against old text
+is refused rather than written over an edit from another device — but unlocking that text
+would turn the first keystroke into a conflict the person has to settle, for nothing.
 
 **File bytes are kept only when someone looks at them:** an `<img>`, or a fetch carrying
 `X-Unbent-View: 1`, which the PDF viewer sends. The indexer and export read every file in the

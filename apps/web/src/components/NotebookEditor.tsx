@@ -225,7 +225,7 @@ export function NotebookEditor({ notebookId, onChanged, onDeleted }: NotebookEdi
    * One state for the header, from the two autosaves: the worse of the two, since the header
    * only says whether the page is safe to leave. Error beats saving beats dirty beats saved.
    */
-  const RANK = { error: 4, saving: 3, dirty: 2, saved: 1, idle: 0 } as const;
+  const RANK = { conflict: 5, error: 4, saving: 3, dirty: 2, saved: 1, idle: 0 } as const;
   const saveState: SaveState = RANK[nameState] >= RANK[purposeState] ? nameState : purposeState;
 
   /** Runs a mutation, then refetches this page and the app behind it. */

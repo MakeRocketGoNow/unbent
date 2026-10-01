@@ -5168,6 +5168,38 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
 }
 
 /*
+   A save refused because another device saved the note first; see Workspace's
+   `conflicted`. The operator notice's box and tint, since both say "something here needs
+   you", but the sentence and the two choices stack rather than share a row: the choices
+   are the point, and squeezed beside two sentences on a phone they wrapped one word to a
+   line. The buttons sit at the right, under the end of the sentence they answer.
+*/
+.conflict-notice {
+  width: 100%;
+  min-width: 0;
+  margin: 0.75rem 0 0.25rem;
+  padding: 0.7rem 0.9rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  border: 1px solid color-mix(in srgb, var(--bad) 35%, var(--border));
+  border-radius: 0.45rem;
+  background: color-mix(in srgb, var(--bad) 6%, transparent);
+  font-size: 0.9rem;
+}
+
+.conflict-notice p {
+  margin: 0;
+}
+
+.conflict-notice-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}
+
+/*
    The snackbar: a one-shot result that lands at the bottom of the screen and clears
    itself — Auto-fill's outcome, moved out of the header status line where it used to fade
    beside the title (and fight the "Saved" for the room a phone gives the title).

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
-export type SaveState = 'idle' | 'dirty' | 'saving' | 'saved' | 'error';
+export type SaveState = 'idle' | 'dirty' | 'saving' | 'saved' | 'error' | 'conflict';
 
 /**
  * The one vocabulary for a save's state, so every place that shows one says the same words.
@@ -13,6 +13,8 @@ export const SAVE_LABEL: Record<SaveState, string> = {
   saving: 'Saving…',
   saved: 'Saved',
   error: 'Save failed',
+  // The editor says why beside it; this only has to say the typing is not on the server.
+  conflict: 'Not saved',
 };
 
 /**
@@ -42,9 +44,23 @@ export function useAutosave<T>(
    * Returning nothing still means "written", so a save that does not care keeps working.
    */
   save: (value: T) => Promise<void | 'unchanged'>,
-  opts: { delay?: number; enabled?: boolean; resetKey?: string } = {},
+  opts: {
+    delay?: number;
+    enabled?: boolean;
+    resetKey?: string;
+    /**
+     * Whether a failed save was refused because what it would overwrite has changed,
+     * rather than failing for want of a connection or a server. Such a save is held as an
+     * ordinary failure is, so the typing is not lost, but its state is `conflict`: the
+     * caller has to decide between the two versions, and `error` would read as something
+     * a retry could fix.
+     */
+    isConflict?: (err: unknown) => boolean;
+  } = {},
 ) {
-  const { delay = 800, enabled = true, resetKey } = opts;
+  const { delay = 800, enabled = true, resetKey, isConflict } = opts;
+  const isConflictRef = useRef(isConflict);
+  isConflictRef.current = isConflict;
 
   const [state, setState] = useState<SaveState>('idle');
   const [error, setError] = useState<string | null>(null);
@@ -138,7 +154,7 @@ export function useAutosave<T>(
         baseline.current.value = next.value;
       }
     } catch (err) {
-      setState('error');
+      setState(isConflictRef.current?.(err) ? 'conflict' : 'error');
       setError((err as Error).message);
       // Retry only if nothing newer has been queued or taken while this save was in flight.
       if (pending.current === null && epoch.current === next.epoch) {
@@ -192,5 +208,25 @@ export function useAutosave<T>(
     };
   }, [flush]);
 
-  return { state, error, flush };
+  /**
+   * Drops whatever is waiting to be saved, and any failed save waiting to be retried.
+   *
+   * For a caller that has decided the draft is not to be written at all — the editor's
+   * "Reload" on a conflict, which replaces the typing with the other device's version.
+   * Re-seeding alone is not enough: a new `resetKey` flushes what is pending, which would
+   * send the very text being discarded. The epoch moves too, so a save still in flight
+   * that fails afterwards does not put its snapshot back.
+   */
+  const discard = useCallback(() => {
+    if (timer.current) {
+      clearTimeout(timer.current);
+      timer.current = null;
+    }
+    pending.current = null;
+    epoch.current++;
+    setState('idle');
+    setError(null);
+  }, []);
+
+  return { state, error, flush, discard };
 }

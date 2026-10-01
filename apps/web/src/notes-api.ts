@@ -205,10 +205,11 @@ export async function listNotes(
  * The copies of notes the service worker answered from its cache, rather than the server.
  *
  * Such a copy is shown but never edited: it may be older than a version saved from another
- * device, and the editor seeds its draft once per note and saves without a precondition
- * (that is MAK-113), so unlocking it would let the first keystroke save the old text over
- * the newer one. `Workspace` locks while the note on screen is one of these, and seeds its
- * draft again from the first copy that is not.
+ * device, and the editor seeds its draft once per note. Its saves name the copy they were
+ * made from, so the server would refuse the old text rather than take it, but unlocking it
+ * would make the first keystroke a conflict to settle for no reason. `Workspace` locks
+ * while the note on screen is one of these, and seeds its draft again from the first copy
+ * that is not.
  *
  * Kept on the object, not beside it by id. A flag by id changed when the server's answer
  * was parsed, a moment before React Query stored it, and a cached answer to one refetch
@@ -255,6 +256,26 @@ export async function createNote(input: {
 /** How long a save may go unanswered before it counts as offline. */
 export const SAVE_TIMEOUT = 10_000;
 
+/**
+ * A save refused because the note was saved somewhere else after the copy it was made
+ * from — the 409 `updateNote` gets for a stale `ifUpdatedAt`. Carries the note as it now
+ * stands, so the editor can offer it without reading it again.
+ *
+ * An `ApiError`, so code that only asks "did the save fail" still sees a failure; its own
+ * class because the editor must not treat it as one to retry. Retrying would only be
+ * refused again, and retrying without the precondition is the overwrite this exists to stop.
+ */
+export class NoteChangedError extends ApiError {
+  constructor(readonly current: Note) {
+    super(409, 'This note changed on another device.');
+    this.name = 'NoteChangedError';
+  }
+}
+
+export function isNoteChanged(err: unknown): err is NoteChangedError {
+  return err instanceof NoteChangedError;
+}
+
 export async function updateNote(
   id: string,
   patch: {
@@ -264,17 +285,26 @@ export async function updateNote(
     notebook?: string | null;
     /** Merged: only the ids given change, and null clears one. */
     fields?: NoteFieldsPatch;
+    /**
+     * The `updatedAt` of the copy this patch was made from. The save is refused with a
+     * `NoteChangedError` when the note has been saved since; see `updateNoteSchema`.
+     */
+    ifUpdatedAt?: number;
   },
 ): Promise<Note> {
-  return json<Note>(
-    await request(`/api/notes/${id}`, {
-      method: 'PATCH',
-      headers: jsonHeaders,
-      body: JSON.stringify(patch),
-      // The autosave: see `request` for why it must not hang.
-      timeout: SAVE_TIMEOUT,
-    }),
-  );
+  const res = await request(`/api/notes/${id}`, {
+    method: 'PATCH',
+    headers: jsonHeaders,
+    body: JSON.stringify(patch),
+    // The autosave: see `request` for why it must not hang.
+    timeout: SAVE_TIMEOUT,
+  });
+  if (res.status === 409) {
+    // A clone, so a 409 without a note in it still reaches `json` with its body unread.
+    const body = (await res.clone().json().catch(() => null)) as { stale?: Note } | null;
+    if (body?.stale) throw new NoteChangedError(body.stale);
+  }
+  return json<Note>(res);
 }
 
 /**

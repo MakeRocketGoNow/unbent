@@ -266,7 +266,7 @@ function EmbeddedNote({ noteId }: { noteId: string }) {
    * asks whether it is safe to leave. Saving beats dirty beats saved; an error anywhere
    * is an error.
    */
-  const RANK = { error: 4, saving: 3, dirty: 2, saved: 1, idle: 0 } as const;
+  const RANK = { conflict: 5, error: 4, saving: 3, dirty: 2, saved: 1, idle: 0 } as const;
   const saveState = RANK[fieldsState] > RANK[bodyState] ? fieldsState : bodyState;
   const flush = useCallback(async () => {
     await Promise.all([flushBody(), flushFields()]);
