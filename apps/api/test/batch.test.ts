@@ -172,8 +172,9 @@ describe('the batch verbs', () => {
     expect(
       await call(alice, 'POST', '/notes/trash', { ids: [a.id, b.id, theirs.id] }),
     ).toEqual({ trashed: 2 });
-    expect(await status(alice, 'GET', `/notes/${a.id}`)).toBe(404);
-    expect(await status(bob, 'GET', `/notes/${theirs.id}`)).toBe(200);
+    // A trashed note still reads by id, marked; bob's, named in alice's request, is untouched.
+    expect(await call(alice, 'GET', `/notes/${a.id}`)).toHaveProperty('deletedAt');
+    expect(await call(bob, 'GET', `/notes/${theirs.id}`)).not.toHaveProperty('deletedAt');
     // Again: already in the trash, nothing to count.
     expect(await call(alice, 'POST', '/notes/trash', { ids: [a.id, b.id] })).toEqual({ trashed: 0 });
 

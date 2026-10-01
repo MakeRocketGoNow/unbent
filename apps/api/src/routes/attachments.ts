@@ -32,12 +32,12 @@ export const attachments = new Hono<AppEnv>()
   .use('/notes/:id/files', requireAuth, withRepos)
   .use('/notes/:id/files/*', requireAuth, withRepos)
 
+  // A trashed note's files are listed and served, like the note itself (`GET /notes/:id`);
+  // everything that writes or copies still asks for a live note.
   .get('/notes/:id/files', async (c) => {
-    const noteId = c.req.param('id');
-    if (!(await c.get('attachments').ownsNote(noteId))) {
-      return c.json({ error: 'Not found' }, 404);
-    }
-    return c.json({ files: await c.get('attachments').listForNote(noteId) });
+    const files = await c.get('attachments').filesForNote(c.req.param('id'));
+    if (!files) return c.json({ error: 'Not found' }, 404);
+    return c.json({ files });
   })
 
   /**
@@ -178,7 +178,7 @@ export const attachments = new Hono<AppEnv>()
     const noteId = c.req.param('id');
     const filename = decodeURIComponent(c.req.param('filename'));
 
-    const row = await c.get('attachments').resolve(noteId, filename);
+    const row = await c.get('attachments').resolve(noteId, filename, { includeTrashed: true });
     if (!row) return c.json({ error: 'Not found' }, 404);
 
     // R2 handles If-None-Match itself and skips streaming the body on a match.

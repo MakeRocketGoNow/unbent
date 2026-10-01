@@ -30,10 +30,14 @@ describe('attachments', () => {
     expect(await stub.ownsNote(n.id)).toBe(true);
     expect(await stub.ownsNote('ghost')).toBe(false);
 
-    // A trashed note's files resolve to nothing, as before, and come back with the note.
+    // A trashed note's files resolve to nothing for anything that would change them, and
+    // come back with the note. Only the trash's own view of the note reads them.
     await stub.remove(n.id);
     expect(await stub.resolveAttachment(n.id, 'scan.pdf')).toBeNull();
     expect(await stub.ownsNote(n.id)).toBe(false);
+    expect(await stub.resolveAttachment(n.id, 'scan.pdf', { includeTrashed: true })).toMatchObject({ id: 'a1' });
+    expect((await stub.filesForNote(n.id))!.map((f) => f.filename)).toEqual(['scan.pdf', 'scan-2.pdf']);
+    expect(await stub.filesForNote('ghost')).toBeNull();
     await stub.restore(n.id);
     expect(await stub.removeAttachment(n.id, 'scan.pdf')).toEqual(expect.stringContaining('a1-scan.pdf'));
     expect(await stub.removeAttachment(n.id, 'scan.pdf')).toBeNull();

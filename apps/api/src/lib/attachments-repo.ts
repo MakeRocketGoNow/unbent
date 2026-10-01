@@ -16,13 +16,21 @@ import type { AttachmentRow, PendingFile } from '../store/attachments.js';
  * call that records the row.
  */
 export class AttachmentsRepo extends StoreRepo {
-  /** Resolves `files/<filename>` within a live note. Null when there is no such file. */
-  resolve(noteId: string, filename: string): Promise<AttachmentRow | null> {
-    return this.call((s) => s.resolveAttachment(noteId, filename));
+  /**
+   * Resolves `files/<filename>` within a live note, or a trashed one too with
+   * `includeTrashed`. Null when there is no such file.
+   */
+  resolve(noteId: string, filename: string, opts?: { includeTrashed?: boolean }): Promise<AttachmentRow | null> {
+    return this.call((s) => s.resolveAttachment(noteId, filename, opts));
   }
 
   listForNote(noteId: string): Promise<AttachmentInfo[]> {
     return this.call((s) => s.listAttachments(noteId));
+  }
+
+  /** A note's files, live or trashed, or null when there is no such note. */
+  filesForNote(noteId: string): Promise<AttachmentInfo[] | null> {
+    return this.call((s) => s.filesForNote(noteId));
   }
 
   /** True when the note exists and is not deleted. Ownership is the object's; see `reposFor`. */

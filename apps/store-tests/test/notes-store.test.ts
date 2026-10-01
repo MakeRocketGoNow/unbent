@@ -54,6 +54,23 @@ describe('notes: create, read, update', () => {
     ]);
   });
 
+  it('reads a trashed note only when asked, marked with when it was trashed', async () => {
+    const { stub } = freshStore('trashed-read');
+    const created = await stub.create(note({ tags: ['kept'] }));
+    await stub.remove(created.id);
+    expect(await stub.get(created.id)).toBeNull();
+    expect(await stub.get(created.id, { includeTrashed: true })).toMatchObject({
+      id: created.id,
+      tags: ['kept'],
+      deletedAt: expect.any(Number),
+    });
+    // Reading it is all the flag allows: a write still finds nothing there.
+    expect(await stub.update(created.id, { title: 'Edited in the bin' })).toBeNull();
+    await stub.restore(created.id);
+    expect(await stub.get(created.id, { includeTrashed: true })).not.toHaveProperty('deletedAt');
+    expect(await stub.get('ghost', { includeTrashed: true })).toBeNull();
+  });
+
   it('drops keys that match what is stored, so a no-op patch keeps the date', async () => {
     const { stub } = freshStore('noop');
     const created = await stub.create(note({ tags: ['b', 'a'] }));
@@ -788,6 +805,9 @@ describe('rows read on an archive-sized store', () => {
       await measure('usage', () => stub.usage()),
       await measure('trash one', () => stub.remove('n00010')),
       await measure('trash many', () => stub.removeMany(['n00011', 'n00012', 'n00013'])),
+      // The trash opening a note: the same read without `deleted_at`, which must stay a
+      // lookup by id rather than a walk of the trash.
+      await measure('get trashed', () => stub.get('n00010', { includeTrashed: true })),
     ];
     console.log(results.map((r) => `${r.label}: ${r.rowsRead}`).join('\n'));
     const bounds: Record<string, number> = {
@@ -808,6 +828,7 @@ describe('rows read on an archive-sized store', () => {
       'search rows in a notebook': 1500,
       'trash one': 12,
       'trash many': 40,
+      'get trashed': 10,
     };
     for (const r of results) {
       expect(r.rowsRead, r.label).toBeLessThanOrEqual(bounds[r.label]!);

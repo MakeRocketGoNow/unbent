@@ -95,13 +95,19 @@ const toPending = (r: PendingRow): PendingFile => ({
 export class AttachmentsStore {
   constructor(private readonly sql: Sql) {}
 
-  /** Resolves `files/<filename>` within a live note. Null when there is no such file. */
-  resolve(noteId: string, filename: string): AttachmentRow | null {
+  /**
+   * Resolves `files/<filename>` within a live note. Null when there is no such file.
+   *
+   * `includeTrashed` is for `GET /notes/:id/files/:filename` alone, so a note open in the
+   * trash still draws its images and PDFs. Copying, renaming and re-reading a file all
+   * resolve it too, and none of those may start from the trash.
+   */
+  resolve(noteId: string, filename: string, opts: { includeTrashed?: boolean | undefined } = {}): AttachmentRow | null {
     return this.sql.first<AttachmentRow>(
       `SELECT a.id, a.filename, a.content_type, a.size, a.r2_key
          FROM attachments a
          JOIN notes n ON n.id = a.note_id
-        WHERE a.note_id = ?1 AND a.filename = ?2 AND n.deleted_at IS NULL`,
+        WHERE a.note_id = ?1 AND a.filename = ?2${opts.includeTrashed ? '' : ' AND n.deleted_at IS NULL'}`,
       noteId,
       filename,
     );
@@ -119,6 +125,11 @@ export class AttachmentsStore {
   /** True when the note exists and is not deleted. What `ownsNote` asked on the shared database. */
   noteIsLive(noteId: string): boolean {
     return this.sql.first(`SELECT 1 AS hit FROM notes WHERE id = ?1 AND deleted_at IS NULL`, noteId) !== null;
+  }
+
+  /** True when the note exists, live or in the trash. For reads only; see `NotesStore.get`. */
+  noteExists(noteId: string): boolean {
+    return this.sql.first(`SELECT 1 AS hit FROM notes WHERE id = ?1`, noteId) !== null;
   }
 
   /**

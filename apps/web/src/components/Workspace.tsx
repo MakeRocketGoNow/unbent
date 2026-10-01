@@ -76,10 +76,18 @@ interface WorkspaceProps {
   backTo?: '/notes' | '/trash';
 }
 
-export function Workspace({ noteId, readOnly = false, backTo = '/notes' }: WorkspaceProps) {
+export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/notes' }: WorkspaceProps) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { data: note, error, refetch } = useQuery(noteQuery(noteId));
+  /*
+     A trashed note is read-only wherever it is opened, not only from the trash. The
+     server serves one by id so the trash can show it, which means a link saved before the
+     note was deleted, or a note trashed on another device while it is open here, now
+     loads instead of failing — and would load editable, with every save refused, if this
+     followed the route alone.
+  */
+  const readOnly = inTrashView || note?.deletedAt !== undefined;
   /*
      Offline, or showing a copy that came from the service worker's cache: the note reads
      as usual and nothing about it can change. A copy from the cache stays locked after
