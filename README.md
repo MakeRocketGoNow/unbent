@@ -227,6 +227,7 @@ says otherwise; `pnpm exec wrangler secret put NAME` from `apps/api`, or the das
 | `BETTER_AUTH_SECRET` | signing sessions | **required**; declared so in `wrangler.toml` |
 | `ALLOWED_EMAILS` | who may create an account | comma-separated; empty means anyone, and the Worker warns |
 | `PUBLIC_SIGNUPS=1` | saying an empty allowlist is deliberate | silences that warning and nothing else |
+| `FRONT_PAGE=1` | the front page at `/` for signed-out visitors | unbent.app's own pitch and prices, so leave it unset on yours; unset, `/` is the sign-in screen |
 | `APP_URL` | pinning one origin | see [Your own domain](#your-own-domain); also a GitHub secret the deploy carries |
 | `OPERATOR_NAME`, `OPERATOR_EMAIL` | the built-in privacy policy and terms | both or neither; see [Who runs this instance](#who-runs-this-instance) |
 | `OPERATOR_EMAILS` | who is shown what only the people running the instance can fix | comma-separated, like `ALLOWED_EMAILS`; unset means nobody. A separate list from the pair above, which is one legal contact rather than a set of sign-ins. `DEV_OPERATOR_EMAILS` as a GitHub secret carries a list to the dev instance and previews |

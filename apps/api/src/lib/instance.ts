@@ -77,6 +77,17 @@ export function legalLinksOf(env: Env): AppConfig['legal'] | undefined {
   return undefined;
 }
 
+/**
+ * Whether `/` shows the front page to someone signed out, rather than the sign-in screen.
+ *
+ * Exactly `'1'`, the convention `PUBLIC_SIGNUPS` uses, so a stray value does not publish
+ * a price list. `undefined` rather than `false` when off, so `/api/config` drops the field
+ * and an instance older than it reads the same as one that never set it.
+ */
+export function frontPageOf(env: Pick<Env, 'FRONT_PAGE'>): true | undefined {
+  return env.FRONT_PAGE?.trim() === '1' || undefined;
+}
+
 /** PostHog's US cloud, which is where a project lives unless its owner chose otherwise. */
 const DEFAULT_POSTHOG_HOST = 'https://us.i.posthog.com';
 
