@@ -432,10 +432,11 @@ recurring line about something already settled, which is how a log line stops be
 `https://dev.unbent.app` is one standing Worker, `unbent-dev`, deployed from `main` by
 `.github/workflows/previews.yml` and configured as `[env.dev]` in `apps/api/wrangler.toml`.
 It runs on the `unbent-dev` D1 and the `unbent-dev-blobs` bucket that every preview also
-uses, so accounts, sessions and files are one scratch set across all of them. Notes are
-not: each Worker has its own namespace of per-account note stores, so a note made on the
-dev instance is on the dev instance and a note made on a preview stays on that preview.
-`pnpm seed:demo --url` fills either with sample notes.
+uses, so accounts, sessions and files are one scratch set across all of them, and the
+previews bind its note stores too (see [Preview deployments](#preview-deployments)), so a
+note is one set across all of them as well. `pnpm seed:demo` is local only — it signs up a
+password written into the script — so there is no seeding either of them; they hold
+whatever was made there.
 
 It exists because a preview cannot be a stable host, and several things need one:
 
@@ -532,15 +533,27 @@ preview built on them would run against the production database with `APP_URL` s
 reading `https://unbent.app`, and refuse every sign-in from the preview host as an invalid
 origin. That is why the Worker and its `APP_URL` are per PR.
 
-The control plane underneath is not. All previews share the `unbent-dev` D1 and the
-`unbent-dev-blobs` bucket, configured as `[env.preview]` in `apps/api/wrangler.toml` and
-served with a stable hostname by [the dev instance](#the-dev-instance) above — kept well
-away from production but not from each other. Accounts and sessions made on one preview
-therefore work on another and on `dev.unbent.app`. Notes do not travel: each Worker has its
-own namespace of per-account note stores, so a note made on one PR's preview is on that
-preview alone. It is a scratch environment, and nothing in it is backed up. A preview also
-never writes the shared account directory (`STORE_SWEEP = "0"` in its wrangler block): the
-directory is dev's, so a preview's sweep does nothing at all.
+The data underneath is not. All previews share the `unbent-dev` D1, the `unbent-dev-blobs`
+bucket and the dev instance's note stores, configured as `[env.preview]` in
+`apps/api/wrangler.toml` and served with a stable hostname by [the dev
+instance](#the-dev-instance) above — kept well away from production but not from each
+other. Accounts, sessions and notes made on one preview are therefore on every other and on
+`dev.unbent.app`. It is a scratch environment, and nothing in it is backed up.
+
+The stores are shared by binding the `UserStore` class the `unbent-dev` Worker exports,
+and a Durable Object runs the code of the Worker that exports it — so a preview reading
+dev's stores runs `main`'s note queries, whatever the PR changed. A PR that touches
+`apps/api/src/store/` therefore gets stores of its own instead: the workflow deploys it
+without that binding and with `PREVIEW_OWN_STORES=1`, so its own store code is what
+answers, and says so on the preview's comment. Those stores start empty, and the empty
+note list (and Settings → Maintenance) offers **Fill with sample notes**, which loads the
+same invented notes `pnpm seed:demo` does, through the preview's own API. Accounts and the
+files bucket are still dev's on such a preview, which is why its Maintenance leaves out
+the orphaned-file sweep and the API refuses it.
+
+A preview's sweep does nothing (`STORE_SWEEP = "0"` in its wrangler block, and no
+cron): the dev instance's own sweep walks these stores and keeps the directory, and a
+second walk running a PR's code would race it.
 
 The environment is called `preview` rather than `dev` because the custom domain cannot live
 in a block previews reuse: `--name` changes which script a deploy targets but not which
@@ -1036,6 +1049,20 @@ are left alone: a document has no opinion to read.
 
 `POST /api/notes/:id/autofill` answers with the suggestions and applies nothing; the client
 does. The Android app is the site in a WebView, so it has the same control.
+
+## Reading without a connection
+
+The installed app — and the Android app, which is the site in a WebView — opens with no
+signal. A service worker keeps the app itself on the device, and the last copy of what was
+read: the note list, each note that was opened, and the images and PDFs that were looked at.
+A line across the top says you are offline; the note reads exactly as it did, and nothing
+about it can change until the connection is back. Search needs the server and says so. A
+lost connection is never taken for signing out.
+
+This is the floor, not offline editing. Changes are made online, as before; keeping the
+whole library on the device and writing to it first is the sync work that follows (a change
+feed from each account's store, then a local copy in the browser). What the worker keeps,
+and why it is network-first rather than cache-first, is in `apps/web/src/sw/`.
 
 ## Local database
 

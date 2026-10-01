@@ -24,10 +24,35 @@ export interface Env {
   STORE_JURISDICTION?: string;
   /**
    * `"0"` makes the sweep do nothing. Set only on the pull-request previews, which share
-   * the dev instance's D1 but have objects of their own: everything the sweep would write
-   * to the directory there belongs to dev. Anywhere else it is unset and the sweep runs.
+   * the dev instance's D1 and usually its note stores: everything the sweep would write
+   * to the directory there belongs to dev, and dev's own sweep already walks it. Anywhere
+   * else it is unset and the sweep runs.
    */
   STORE_SWEEP?: string;
+  /**
+   * `"1"` on a pull-request preview whose note stores are its own rather than the dev
+   * instance's: the preview workflow sets it when the PR changes `src/store/`, so the PR's
+   * store code is what answers instead of `main`'s. Those stores start empty, and the page
+   * offers to fill them with the seed (`AppConfig.ownStores`). Accounts and the files
+   * bucket are still the dev instance's, which is why the orphaned-file sweep refuses to
+   * run here. Unset everywhere else.
+   */
+  PREVIEW_OWN_STORES?: string;
+  /**
+   * What to call this instance in the page's tab title, favicon and account menu when it
+   * is not the one people use: "Dev" on the dev instance, "PR 222" on a preview, "Local"
+   * under `pnpm dev`. Unset on production, which is how the page knows to draw none of
+   * it. A plain var rather than something derived from the hostname, so a self-hoster's
+   * staging copy can say "Staging" without the code knowing its name.
+   */
+  INSTANCE_LABEL?: string;
+  /**
+   * Which kind of scratch instance this is — `dev`, `preview` or `local` — for the page to
+   * colour its marks by and to decide whether the drawer wears a ribbon (dev and previews
+   * do; local does not, so the store screenshots shot against `pnpm dev` stay clean). Set
+   * beside `INSTANCE_LABEL` in wrangler.toml; anything else reads as unset.
+   */
+  INSTANCE_KIND?: string;
   /**
    * Workers AI, for extracting a PDF's text on upload. Bound in production only — see
    * wrangler.toml — so it is optional here, and its absence means the browser does the

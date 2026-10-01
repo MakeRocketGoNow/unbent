@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { EditorView, keymap, placeholder as cmPlaceholder } from '@codemirror/view';
-import { EditorState } from '@codemirror/state';
+import { Compartment, EditorState } from '@codemirror/state';
 import { defaultKeymap, history, historyKeymap } from '@codemirror/commands';
 import { markdown } from '@codemirror/lang-markdown';
 import { GFM } from '@lezer/markdown';
@@ -9,6 +9,7 @@ import { pdfNamesChanged, richMarkdown } from '../editor/rich-markdown.js';
 import { markdownKeymap } from '../editor/markdown-commands.js';
 import { tableTools } from '../editor/table-toolbar.js';
 import { fileDropCursor } from '../editor/drop-cursor.js';
+import { proseSpellcheck } from '../editor/spellcheck.js';
 import { attachments } from '../editor/attach.js';
 import { attachmentClipboard } from '../editor/clipboard.js';
 import { copyAttachmentToClipboard } from '../attachment-clipboard.js';
@@ -77,6 +78,25 @@ interface EditorProps {
   onEscape?: () => void;
   /** Receives the view so a toolbar can act on it. */
   onViewReady?: (view: EditorView | null) => void;
+  /**
+   * Show the document without accepting any change to it — offline, or a note in the
+   * trash. Flips in place rather than rebuilding the view, so the undo history and the
+   * caret survive going offline and coming back.
+   */
+  readOnly?: boolean;
+}
+
+/**
+ * Whether the document takes changes, as its own slot in the configuration so it can be
+ * swapped without touching the rest.
+ *
+ * Both halves: `editable` takes the keyboard and the caret away from the content (and
+ * marks it `contenteditable="false"`, which the stylesheet hides the widgets' editing
+ * tools on), and `readOnly` is what CodeMirror's own drop and paste handling, and this
+ * codebase's handlers that dispatch directly, check before changing anything.
+ */
+function readOnlyExtension(on: boolean) {
+  return [EditorView.editable.of(!on), EditorState.readOnly.of(on)];
 }
 
 /**
@@ -100,8 +120,13 @@ export function Editor({
   autoFocus = true,
   onEscape,
   onViewReady,
+  readOnly = false,
 }: EditorProps) {
   const host = useRef<HTMLDivElement>(null);
+  // One per editor, held across rebuilds; the view reads the current value when it is made.
+  const readOnlySlot = useRef(new Compartment());
+  const readOnlyRef = useRef(readOnly);
+  readOnlyRef.current = readOnly;
   // Read at mount, never a dependency: this flips as the user moves between the mouse and
   // the arrow keys, and rebuilding the view on that would discard the document's history.
   const autoFocusRef = useRef(autoFocus);
@@ -167,6 +192,7 @@ export function Editor({
         doc,
         selection,
         extensions: [
+          readOnlySlot.current.of(readOnlyExtension(readOnlyRef.current)),
           history(),
           // Markdown shortcuts come first so Mod-b and Mod-i win over any default binding.
           /*
@@ -226,6 +252,8 @@ export function Editor({
               ]
             : []),
           EditorView.lineWrapping,
+          // Spellcheck, autocorrect and sentence capitals, which CodeMirror turns off.
+          proseSpellcheck(),
           // Draws the insertion point a dragged file will land on. The browser shows one
           // for dragged text but not for files, so this is the only aim the drop has.
           fileDropCursor(),
@@ -351,6 +379,17 @@ export function Editor({
     if (!view || !rich) return;
     view.dispatch({ effects: pdfNamesChanged.of(null) });
   }, [pdfFilenames, rich]);
+
+  /**
+   * Going offline and coming back. Reconfigured in place: rebuilding the view would throw
+   * away the history and the caret, which is exactly what someone reading through a
+   * tunnel expects to still have when the connection returns.
+   */
+  useEffect(() => {
+    const view = viewRef.current;
+    if (!view || view.state.readOnly === readOnly) return;
+    view.dispatch({ effects: readOnlySlot.current.reconfigure(readOnlyExtension(readOnly)) });
+  }, [readOnly]);
 
   return <div ref={host} className="editor-host" />;
 }

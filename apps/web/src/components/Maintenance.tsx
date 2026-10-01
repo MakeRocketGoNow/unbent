@@ -4,6 +4,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import * as api from '../notes-api.js';
 import { deleteUser, useSession } from '../auth-client.js';
 import { Backfill } from './Backfill.js';
+import { SampleNotes } from './SampleNotes.js';
 import { Confirm } from './Confirm.js';
 import { Button } from './Button.js';
 import { useMaintenance } from './use-maintenance.js';
@@ -146,6 +147,12 @@ export function Maintenance() {
         <Backfill vision={config.data?.vision === true} />
       </section>
 
+      {/* After the indexing passes, which the page's opening line calls the first, and
+          before anything that removes: this one only adds. Here as well as on the empty
+          list, because the list offers it only while the account is empty, and a second
+          run is how a preview picks up a seed that changed since the first. */}
+      {config.data?.ownStores && <SampleNotes layout="section" />}
+
       {/*
           Second because it is the other pass that changes nothing a person wrote: the
           counts are derived from the notes, so the worst a recount can do is put a right
@@ -248,23 +255,32 @@ export function Maintenance() {
             old single button destroyed first and reported the count afterwards, which is
             no help at all if the number is a surprise.
         */}
-        <Button
-          variant="primary"
-          disabled={busy}
-          onClick={() => {
-            reset();
-            setSweep(null);
-            void run(async () => {
-              const r = await api.gcBlobs(false);
-              setSweep(r);
-              return r.orphaned === 0
-                ? `Nothing to sweep — ${plural(r.stored, 'file')}, all referenced.`
-                : `${r.orphaned} of ${plural(r.stored, 'file')} stored have no attachment record.`;
-            });
-          }}
-        >
-          Check for orphaned files
-        </Button>
+        {/* Said rather than hidden: someone testing the sweep on a preview should learn
+            why it is not there, not wonder whether it was removed. The API refuses too. */}
+        {config.data?.ownStores ? (
+          <p className="muted small">
+            Not on this preview: its notes are its own, but its files are the dev
+            instance&apos;s, so every one of them would look like an orphan here.
+          </p>
+        ) : (
+          <Button
+            variant="primary"
+            disabled={busy}
+            onClick={() => {
+              reset();
+              setSweep(null);
+              void run(async () => {
+                const r = await api.gcBlobs(false);
+                setSweep(r);
+                return r.orphaned === 0
+                  ? `Nothing to sweep — ${plural(r.stored, 'file')}, all referenced.`
+                  : `${r.orphaned} of ${plural(r.stored, 'file')} stored have no attachment record.`;
+              });
+            }}
+          >
+            Check for orphaned files
+          </Button>
+        )}
 
         {sweep && sweep.orphaned > 0 && (
           <>

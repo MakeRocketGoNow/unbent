@@ -10,6 +10,9 @@
  * and drawing a page; components decide what to show and when.
  */
 
+import { request } from '../notes-api.js';
+import { VIEW_HEADER } from '../sw/routes.js';
+
 type PdfModule = typeof import('pdfjs-dist');
 
 /** Loaded once per session, and only when a PDF is actually previewed. */
@@ -60,7 +63,10 @@ export interface LoadedPdf {
 export async function loadPdf(url: string, signal?: AbortSignal): Promise<LoadedPdf> {
   const lib = await loadPdfjs();
 
-  const res = await fetch(url, signal ? { signal } : undefined);
+  // Marked as a view, so the service worker keeps these bytes for reading offline — the
+  // indexer and export fetch the same address unmarked, and are not kept. See `classify`.
+  // Through `request`, so a PDF that was never kept says the app is offline when it fails.
+  const res = await request(url, { headers: { [VIEW_HEADER]: '1' }, ...(signal ? { signal } : {}) });
   if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
   const bytes = new Uint8Array(await res.arrayBuffer());
 

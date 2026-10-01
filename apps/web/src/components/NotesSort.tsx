@@ -26,6 +26,13 @@ interface NotesSortProps {
    * outside a notebook: a field belongs to one, and "All notes" has no fields to order by.
    */
   fields?: FieldDef[] | undefined;
+  /**
+   * Why there is no order to choose, when there is not: a search drawn as a table, whose
+   * matches are ranked. The icon fades and stays where it was rather than leaving the row,
+   * which would slide the search field along it under the typing — see `NotesViewToggle`
+   * for the same fade.
+   */
+  disabledReason?: string | undefined;
 }
 
 /**
@@ -55,7 +62,7 @@ interface NotesSortProps {
  * column's whole problem was rows of controls above a list with no room left for notes.
  * Above the breakpoint the sheet is drawn as a panel beside the list — see `Sheet`.
  */
-export function NotesSort({ notebook, sort, order, sortField, fields = [] }: NotesSortProps) {
+export function NotesSort({ notebook, sort, order, sortField, fields = [], disabledReason }: NotesSortProps) {
   const navigate = useNavigate();
   const [picking, setPicking] = useState(false);
   /*
@@ -86,8 +93,10 @@ export function NotesSort({ notebook, sort, order, sortField, fields = [] }: Not
     <>
       <button
         type="button"
-        className="icon-btn"
-        aria-label={`Sort notes, currently ${label}`}
+        className="icon-btn sort-toggle"
+        aria-label={disabledReason ? `Sort notes, ${disabledReason}` : `Sort notes, currently ${label}`}
+        title={disabledReason}
+        disabled={disabledReason !== undefined}
         onClick={() => setPicking(true)}
       >
         <SortIcon />

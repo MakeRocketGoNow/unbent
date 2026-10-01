@@ -140,9 +140,9 @@ describe('the store sweep', () => {
   });
 
   /**
-   * A preview Worker shares the dev instance's D1 but has objects of its own, empty
-   * copies at best, so its walk does nothing at all: it must not heal, measure, drop a
-   * row or move the cursor in a directory that is dev's.
+   * A preview Worker shares the dev instance's D1, and usually its note stores, so its
+   * walk does nothing at all: it must not heal, measure, drop a row or move the cursor in
+   * a directory that is dev's.
    */
   it('does nothing when the sweep is switched off, as on a preview', async () => {
     const preview = uid('preview');

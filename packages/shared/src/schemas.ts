@@ -295,7 +295,33 @@ export interface AppConfig {
    * request the instance has to be able to make.
    */
   vision?: boolean;
+  /**
+   * This instance is a pull-request preview with note stores of its own, because its PR
+   * changes the store and only its own stores run that code. They start empty, so the
+   * page offers to fill them with sample notes; and the files bucket is shared with the
+   * dev instance, so Maintenance leaves out the orphaned-file sweep, which would see every
+   * file of the dev instance's as an orphan here. Absent everywhere else, including on a
+   * preview that reads the dev instance's stores.
+   */
+  ownStores?: boolean;
+  /**
+   * What this instance is, when it is not the one people use — "Dev", "PR 222", "Local".
+   * The page puts it in front of the tab title, badges the favicon, and names it in the
+   * account menu, so a tab of a scratch instance cannot be mistaken for the real one, or
+   * the real one for scratch. Absent on production, which draws none of it.
+   */
+  instanceLabel?: string;
+  /**
+   * Which kind of instance the label names, for the colour of its marks and whether the
+   * drawer carries a corner ribbon: `dev` and `preview` do, `local` keeps to the quieter
+   * marks. Absent with the label on production, and on an instance whose setting is not
+   * one of the three.
+   */
+  instanceKind?: InstanceKind;
 }
+
+export const INSTANCE_KINDS = ['dev', 'preview', 'local'] as const;
+export type InstanceKind = (typeof INSTANCE_KINDS)[number];
 
 /**
  * What auto-fill proposes for a note, as `POST /notes/:id/autofill` answers.
@@ -503,6 +529,16 @@ export const searchQuerySchema = z.object({
   field: fieldFilterSchema,
   from: dateOnlySchema.optional(),
   to: dateOnlySchema.optional(),
+  /**
+   * Each match also carries its note's list row — fields, tags, dates, files — as
+   * `SearchResultRow`, for a table drawing the search in its columns. Off by default: the
+   * sidebar's results draw a title and a snippet, and the row costs a read of every
+   * match's tags, fields and files. Same "1" rule as `exact`.
+   */
+  rows: z
+    .string()
+    .optional()
+    .transform((v) => v === '1'),
 });
 
 /**
@@ -672,4 +708,9 @@ export interface SearchResult {
   matchedField?: string;
   /** Set when the match came from one of the note's tags; the tag's name. */
   matchedTag?: string;
+}
+
+/** A search match with the row the note list draws for that note; see `rows` on the query. */
+export interface SearchResultRow extends SearchResult {
+  note: NoteSummary;
 }

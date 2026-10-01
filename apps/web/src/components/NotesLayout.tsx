@@ -3,6 +3,7 @@ import { Link, useNavigate } from '@tanstack/react-router';
 import { useQuery, useInfiniteQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import { DEFAULT_NOTE_SORT, UNFILED, type FieldDef, type FieldValue } from '@unbent/shared';
 import * as api from '../notes-api.js';
+import { isOfflineError, type SearchHit } from '../notes-api.js';
 import { Route } from '../routes/notes.js';
 import {
   notesQuery,
@@ -10,9 +11,9 @@ import {
   notebooksQuery,
   notebookFieldsQuery,
   searchQuery,
-  MIN_SEARCH_LENGTH,
   trashCountQuery,
   invalidateNoteMembership,
+  configQuery,
 } from '../queries.js';
 import { useNotesLayout } from '../useNotesLayout.js';
 import { ResizeHandle } from './ResizeHandle.js';
@@ -22,6 +23,7 @@ import { useFocusSearch } from '../useFocusSearch.js';
 import { markNewNote } from '../useNewNote.js';
 import { SearchResults } from './SearchResults.js';
 import { IndexingStatus } from './IndexingStatus.js';
+import { SampleNotes } from './SampleNotes.js';
 import { Button } from './Button';
 import { NotebookMissing } from './NotebookMissing.js';
 import { ExportLink } from './ExportLink.js';
@@ -64,7 +66,8 @@ import { Confirm } from './Confirm.js';
 import { MoveSheet } from './MoveSheet.js';
 import { TagsSheet } from './TagsSheet.js';
 import { editOpenNoteFiling } from '../open-note-fields.js';
-import { useSession } from '../auth-client.js';
+import { useAppSession } from '../useAppSession.js';
+import { useOffline } from '../connectivity.js';
 import { useSignOut } from '../useSignOut.js';
 
 /** Sidebar plus the routed workspace. Filters come from the URL; nothing here is mirrored into state. */
@@ -104,7 +107,7 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
    * and the topbar is hidden over the phone's list, so this is where it is reached there —
    * the root layout has already established the session by the time this renders.
    */
-  const { data: session } = useSession();
+  const { session } = useAppSession();
   const signOutAndLeave = useSignOut();
 
   const filter = {
@@ -155,6 +158,7 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
       ? notebooks.data?.notebooks.find((nb) => nb.name === notebook)?.id
       : undefined;
   const fieldDefs = useQuery(notebookFieldsQuery(notebookId));
+  const config = useQuery(configQuery());
   /** The definition behind a sort by a field, once the notebook's fields have loaded. */
   const sortFieldDef = sortField ? fieldDefs.data?.find((d) => d.id === sortField) : undefined;
   /*
@@ -226,7 +230,13 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
     const timer = setTimeout(() => setDebounced(q), 300);
     return () => clearTimeout(timer);
   }, [q]);
-  const search = useQuery(searchQuery(debounced, filter));
+  /*
+     Offline, there is nothing to search: the server does it, and the worker keeps no copy
+     of results. So no request goes out, and the list says why instead of "No matches",
+     which would be a claim about the notes rather than about the connection. The tag and
+     notebook picks still show — they are matched against lists already on the device.
+  */
+  const offline = useOffline();
 
   /*
    * One sidebar at every width, with the breakpoint deciding a handful of props rather
@@ -250,6 +260,29 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
    * tree.
    */
   const isMobile = useMediaQuery(MOBILE_QUERY);
+
+  /*
+   * The list as a table of the notebook's fields — the URL's `view`, seeded from the
+   * last one seen when the URL has not said yet (`useNotesView`), honoured only where a
+   * table makes sense: inside one notebook (columns are its fields) and at desktop width
+   * (a phone has no room for columns). Everywhere else the list is drawn, the toggle
+   * shows that, and the choice is kept — the table is back the moment there is a
+   * notebook to draw it for.
+   *
+   * A search does not leave it. Searching a table is looking for rows, and the columns
+   * are why the table is open; the matches are drawn in it — see `tableRows`. The list
+   * used to take over while searching, and in this notebook that was a different layout
+   * under the field at every keystroke.
+   */
+  const view = useNotesView(viewParam);
+  const tableMode = view === 'table' && !isMobile && notebookId !== undefined;
+
+  /* The table draws each match as a row of its columns, so it asks for the rows. */
+  const search = useQuery({
+    ...searchQuery(debounced, filter, tableMode),
+    enabled: !offline && debounced.trim() !== '',
+  });
+
   const [sheetOpen, setSheetOpen] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
   /*
@@ -297,13 +330,35 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
     });
 
   /**
-   * Null means "not searching", which is distinct from searching and finding nothing. A
-   * query too short to send (see MIN_SEARCH_LENGTH) is still searching — the field is in
-   * use and the tag and notebook picks show — but it has no note results to wait for.
+   * Null means "not searching", which is distinct from searching and finding nothing.
+   *
+   * A search whose first answer is still on its way is searching too, with no results
+   * yet (`awaiting`). It was read as not searching, which drew the notebook's unsearched
+   * notes for the length of every request, so the list flickered as you typed. Later
+   * requests keep the last answer on screen (`searchQuery`), so this is only the first.
    */
   const needle = debounced.trim();
-  const tooShort = needle !== '' && needle.length < MIN_SEARCH_LENGTH;
-  const results = needle === '' ? null : tooShort ? [] : (search.data ?? null);
+  const searchOffline = offline && needle !== '';
+  const answered = search.data !== undefined && (!tableMode || search.data.every((r) => 'note' in r));
+  const awaiting = needle !== '' && !searchOffline && !answered;
+  const results = needle === '' ? null : searchOffline || !answered ? [] : search.data;
+  /*
+   * The matches as the table's rows, in the search's order — which is relevance, so the
+   * headers show no sort while a search is on and the table's own order comes back with
+   * the list. Holding a column order over the matches would be a claim the search
+   * cannot back: it returns the best fifty, so "newest first" could leave out the
+   * newest. The rows are only drawn once they are the table's: a search answered before
+   * the view changed carries none (`answered`).
+   */
+  const tableRows = results?.flatMap((r) => ('note' in r ? [r.note] : [])) ?? null;
+  /*
+   * The matches on screen are the previous term's while the next one's request is out —
+   * see `searchQuery` — and are dimmed for it. Only then: a search that has ended, or one
+   * held back offline, is a query that never runs, and `keepPreviousData` holds the last
+   * results as its placeholder for as long as it stays that way. Read bare, that left the
+   * notebook's own list dimmed after a search was cleared, until a reload.
+   */
+  const searchStale = needle !== '' && !searchOffline && search.isPlaceholderData;
   /** Whether the results will be headed by picks, which is when the notes need a caption too. */
   const picks = scopeMatches(debounced, tags.data ?? [], notebooks.data, selectedTags, notebook);
   const hasPicks = picks.tags.length > 0 || picks.notebooks.length > 0;
@@ -325,21 +380,32 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
    * and the editor saves them. The row is still patched here so the two agree at once.
    */
   const listKey = keys.notes(filter, ordering);
-  const patchRow = (noteId: string, def: FieldDef, value: FieldValue | null) =>
+  /* A table drawing a search draws the search's rows, so an edit there patches those. */
+  const searchKey = keys.search(debounced, filter, true);
+  const patchRow = (noteId: string, def: FieldDef, value: FieldValue | null) => {
     queryClient.setQueryData(listKey, (data: Parameters<typeof patchNotePages>[0]) =>
       patchNotePages(data, noteId, (n) => patchNoteFields(n, def, notebook ?? '', value)),
     );
+    queryClient.setQueryData(searchKey, (data: SearchHit[] | undefined) =>
+      data?.map((r) =>
+        'note' in r && r.id === noteId ? { ...r, note: patchNoteFields(r.note, def, notebook ?? '', value) } : r,
+      ),
+    );
+  };
   const editField = useMutation({
     mutationFn: ({ noteId, def, value }: { noteId: string; def: FieldDef; value: FieldValue | null }) =>
       api.updateNote(noteId, { fields: { [def.id]: value } }),
     onMutate: async ({ noteId, def, value }) => {
       await queryClient.cancelQueries({ queryKey: listKey });
+      await queryClient.cancelQueries({ queryKey: searchKey });
       const previous = queryClient.getQueryData(listKey);
+      const previousSearch = queryClient.getQueryData(searchKey);
       patchRow(noteId, def, value);
-      return { previous };
+      return { previous, previousSearch };
     },
     onError: (_err, _vars, context) => {
       if (context?.previous) queryClient.setQueryData(listKey, context.previous);
+      if (context?.previousSearch) queryClient.setQueryData(searchKey, context.previousSearch);
     },
     onSuccess: (updated) => {
       // Only a note already in the cache: reopening it should show what the table saved.
@@ -359,7 +425,14 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
     editField.mutate({ noteId, def, value });
   };
 
-  const error = list.error ?? search.error ?? editField.error;
+  /*
+     The offline sentences below are about the list — a page of it never loaded on this
+     device. A cell edit that failed for want of a connection is not that, and saying the
+     list is incomplete to someone who just edited a cell would be wrong; the cells and the
+     selection bar are locked offline anyway, so it can only be the edit that was in flight.
+  */
+  const error =
+    list.error ?? (offline ? null : search.error) ?? (isOfflineError(editField.error) ? null : editField.error);
 
   /*
    * Whether the rows on screen are the rows for the heading above them.
@@ -377,16 +450,6 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
   /** Search results are on screen, which changes what is worth offering beside them. */
   const searching = results !== null;
 
-  /*
-   * The list as a table of the notebook's fields — the URL's `view`, seeded from the
-   * last one seen when the URL has not said yet (`useNotesView`), honoured only where a
-   * table makes sense: inside one notebook (columns are its fields), at desktop width (a phone has no room
-   * for columns), and not over search results (which are ranked, not columned).
-   * Everywhere else the list is drawn, the toggle shows that, and the choice is kept —
-   * the table is back the moment there is a notebook to draw it for.
-   */
-  const view = useNotesView(viewParam);
-  const tableMode = view === 'table' && !isMobile && !searching && notebookId !== undefined;
   const layout = useNotesLayout('/notes/$noteId', { mode: tableMode ? 'table' : 'list' });
   /*
    * The table with no note open is the whole window wide, and a header laid out for a
@@ -402,7 +465,7 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
    * note is the anchor a Shift-click ranges from until something else is picked; and any
    * change of scope drops the selection, since it names rows that are no longer on screen.
    */
-  const rowIds = notes.map((n) => n.id);
+  const rowIds = (tableMode && tableRows ? tableRows : notes).map((n) => n.id);
   const selection = useSelection(rowIds, {
     anchor: layout.open,
     resetKey: JSON.stringify([filter, ordering, debounced]),
@@ -425,7 +488,7 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
       selection.clear();
       return;
     }
-    if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'a' && results === null) {
+    if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'a' && (results === null || tableMode)) {
       event.preventDefault();
       selection.selectAll();
       return;
@@ -564,6 +627,21 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
       : null;
 
   /**
+   * The same for a search drawn as a table, in the sidebar's words for each case. Nothing
+   * while the first answer is on its way: "No matches" would be a claim about the notes,
+   * and the header's count already says it is searching.
+   */
+  const searchEmpty = searchOffline ? 'Search needs a connection.' : awaiting ? null : 'No matches.';
+  /*
+   * Why a match is in the table when its row cannot show it: the word was in one of the
+   * note's files, which have no column. A match in a field or a tag is in that column,
+   * and one in the body is the note itself, as in the sidebar's results.
+   */
+  const matchHints = new Map(
+    (results ?? []).flatMap((r) => (r.matchedFile ? [[r.id, `in ${r.matchedFile}`] as const] : [])),
+  );
+
+  /**
    * Where the list is, for the heading — see `scopeLabel` for the rule, which is the
    * rail's rule, so the heading and the row you picked agree. At every width: on a desktop
    * the rail marks the place, but the rail can be a strip of icons, and the column has to
@@ -589,7 +667,9 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
    */
   const countLabel =
     results !== null
-      ? `${results.length} matches`
+      ? awaiting
+        ? 'Searching…'
+        : `${results.length} matches`
       : loading
         ? 'Loading…'
         : `${total ?? notes.length} notes`;
@@ -654,25 +734,27 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
           onOpenFilters={() => setSheetOpen(true)}
           onOpenMenu={isMobile ? () => setDrawerOpen(true) : undefined}
           filtered={sheetFiltered}
-          /* Hidden while searching — results come back ranked by relevance, and
-             reordering them by date would throw away that ranking. Nothing else is
-             lost with it: Settings, which used to share this corner, is on the
-             drawer's floor. */
+          /* Not offered while searching — results come back ranked by relevance, and
+             reordering them by date would throw away that ranking. The list hides it;
+             the table fades it, since there it shares a row with the search field and
+             leaving would slide the field under the typing. Nothing else is lost with
+             it: Settings, which used to share this corner, is on the drawer's floor. */
           sort={
-            results === null ? (
+            results === null || tableMode ? (
               <NotesSort
                 notebook={notebook}
                 sort={sort}
                 order={order}
                 sortField={sortField}
                 fields={fieldDefs.data ?? []}
+                disabledReason={results !== null ? 'matches are in order of relevance' : undefined}
               />
             ) : null
           }
-          /* Hidden where the table is never drawn — a phone, a search — and disabled with
-             the reason outside a notebook, where there are no fields to column. */
+          /* Hidden where the table is never drawn — a phone — and disabled with the reason
+             outside a notebook, where there are no fields to column. */
           view={
-            !isMobile && !searching ? (
+            !isMobile ? (
               <NotesViewToggle
                 value={tableMode ? 'table' : 'list'}
                 onChange={chooseView}
@@ -688,14 +770,40 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
              desktop, where a column has nothing for a button to float clear of. */
           action={
             isMobile ? undefined : (
-              <Button variant="primary" onClick={() => void newNote()}>
+              <Button
+                variant="primary"
+                onClick={() => void newNote()}
+                // Disabled, not withdrawn, while offline: a new note is a write, and the
+                // row keeps its shape. The same for the phone's floating button below.
+                disabled={offline}
+                title={offline ? 'New notes need a connection' : undefined}
+              >
                 New
               </Button>
             )
           }
         />
 
-        {error && <p className="bad small">{(error as Error).message}</p>}
+        {error &&
+          (isOfflineError(error) ? (
+            /* No copy on the device: the list was never loaded here, or its next page
+               was never reached. Muted, like the note's own version of this — it loads by
+               itself when the connection returns. */
+            <p className="muted small">
+              {notes.length > 0
+                ? "The rest of this list isn't available offline."
+                : "This list hasn't been opened on this device, so it isn't available offline."}
+            </p>
+          ) : (
+            <p className="bad small">{(error as Error).message}</p>
+          ))}
+        {/* The cell edit that was in flight when the connection went: its `onError` puts
+            the old value back, and without this the cell would just snap back with no
+            reason given. Past tense rather than "you're offline", because it stays until
+            the next edit and the connection may be back long before that. */}
+        {isOfflineError(editField.error) && (
+          <p className="muted small">That change wasn’t saved: the connection dropped.</p>
+        )}
         {bulkError && <p className="bad small">{bulkError}</p>}
         <NotebookMissing notebook={notebook} notebooks={notebooks} />
 
@@ -927,27 +1035,38 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
           * one every time a thumb reached for the scroll bar.
           */}
         {isMobile && !selection.active && (
-          <button type="button" className="fab" aria-label="New note" onClick={() => void newNote()}>
+          <button
+            type="button"
+            className="fab"
+            aria-label="New note"
+            disabled={offline}
+            title={offline ? 'New notes need a connection' : undefined}
+            onClick={() => void newNote()}
+          >
             <PlusIcon />
           </button>
         )}
 
         {tableMode ? (
           <NoteTable
-            notes={notes}
+            notes={tableRows ?? notes}
             columns={columns}
             search={{ sort, order, sortField }}
+            ranked={searching}
+            hints={matchHints}
             notebook={notebook ?? ''}
-            total={total}
-            busy={stale}
-            hasNextPage={list.hasNextPage}
+            total={results?.length ?? total}
+            busy={searching ? searchStale : stale}
+            hasNextPage={!searching && list.hasNextPage}
             isFetchingNextPage={list.isFetchingNextPage}
             onLoadMore={() => void list.fetchNextPage()}
             onSort={sortBy}
             onKeyDown={onListKeysWithSelection}
             tableRef={tableRef}
-            empty={emptyMessage}
-            onEdit={onEditCell}
+            empty={searching ? searchEmpty : emptyMessage}
+            // Offline the cells show their values and take no edits, as the open note does:
+            // nothing can change until the connection is back.
+            onEdit={offline ? undefined : onEditCell}
             selection={{
               has: selection.has,
               active: selection.active,
@@ -961,7 +1080,7 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
         <ul
           className={selection.active ? 'note-list selecting' : 'note-list'}
           ref={listRef}
-          aria-busy={stale || undefined}
+          aria-busy={(searching ? searchStale : stale) || undefined}
           aria-multiselectable={results === null ? true : undefined}
           onKeyDown={onListKeysWithSelection}
         >
@@ -984,9 +1103,12 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
           )}
           {results !== null && hasPicks && <li className="list-caption">Notes</li>}
           {results !== null &&
-            (tooShort ? (
-              <li className="muted small empty">Keep typing to search notes.</li>
-            ) : (
+            (searchOffline ? (
+              <li className="muted small empty">Search needs a connection.</li>
+            ) : awaiting ? null : (
+              // Nothing until the first answer: "No matches" would be a claim about the
+              // notes, and a line that flashes for the length of a fast request is the
+              // flicker this is avoiding. The count in the header says it is searching.
               <SearchResults results={results} />
             ))}
 
@@ -1022,6 +1144,18 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
           {results === null && emptyMessage && (
             <li className="muted small empty">{emptyMessage}</li>
           )}
+          {/* Only on All notes with nothing applied: an empty notebook or filter is not an
+              empty account, and filling it from there would read as filling that notebook. */}
+          {results === null &&
+            emptyMessage &&
+            config.data?.ownStores &&
+            !notebook &&
+            !tag &&
+            fieldFilters.length === 0 && (
+              <li>
+                <SampleNotes layout="empty" />
+              </li>
+            )}
         </ul>
         )}
 
@@ -1042,8 +1176,8 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
               type="button"
               className="icon-btn"
               aria-label="Move to notebook"
-              title="Move to notebook"
-              disabled={bulkBusy}
+              title={offline ? 'Not available offline' : 'Move to notebook'}
+              disabled={bulkBusy || offline}
               onClick={() => setBulkSheet('move')}
             >
               <NotebookActionIcon />
@@ -1052,8 +1186,8 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
               type="button"
               className="icon-btn"
               aria-label="Tags"
-              title="Tags"
-              disabled={bulkBusy}
+              title={offline ? 'Not available offline' : 'Tags'}
+              disabled={bulkBusy || offline}
               onClick={() => setBulkSheet('tags')}
             >
               <TagActionIcon />
@@ -1062,8 +1196,8 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
               type="button"
               className="icon-btn danger"
               aria-label="Delete"
-              title="Delete"
-              disabled={bulkBusy}
+              title={offline ? 'Not available offline' : 'Delete'}
+              disabled={bulkBusy || offline}
               onClick={() => setPendingTrash(true)}
             >
               <TrashIcon />

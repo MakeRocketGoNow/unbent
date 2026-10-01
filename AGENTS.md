@@ -311,9 +311,13 @@ or a long-press on the launcher icon — and so does the sign-in screen's footer
 local instance for anything that writes.
 
 `pnpm seed:demo` creates `demo@example.com` on this checkout's dev server and fills it with
-ten presentable sample notes. It is idempotent, so re-running updates rather than
-duplicates; `--reset` clears the account's notes first, and `--url` aims it somewhere else
-on localhost. It refuses any host that is not loopback, because it signs up a password
+`packages/seed/`: ten presentable notes, five notebooks with every kind of custom field and
+invented records in each, receipts with PDF and image scans whose text is searchable, the
+cases that have broken a layout before, a few notes in the trash, and three hundred
+generated notes for volume. Load it before trying a change to fields, tables, search or
+the list, rather than making notes by hand. It is idempotent, so re-running updates rather
+than duplicates; `--reset` clears the account's notes first, `--small` loads only the ten
+the store screenshots are of, and `--url` aims it somewhere else on localhost. It refuses any host that is not loopback, because it signs up a password
 written down in the script. Sign-up works because `pnpm dev` passes
 `ALLOW_TEST_CREDENTIALS=1` to the Worker — local only, see `passwordEnabled` in
 `apps/api/src/auth.ts`.
@@ -394,6 +398,90 @@ reaches the phone on deploy. Check it at phone width and inside the app — Back
 bars and the keyboard are the app's, not the browser's. What stays native is the sign-in
 screen, the share sheet and App settings, and the UI rules in this file apply to those
 Compose screens as much as to the site.
+
+## The offline shell
+
+The app opens with no connection: a service worker (`apps/web/src/sw/sw.ts`) keeps the built
+app on the device and the last copy of what was read. It is the read-only floor — offline
+editing is the sync work after it — and it has a few rules that are easy to break from code
+that never mentions it.
+
+**What it keeps is an allowlist, by the whole shape of the path.** `classify` in
+`src/sw/routes.ts` names the reads the list and an open note are drawn from; everything else
+passes straight through. A new view that should read offline adds its GET there, with a case
+in `routes.test.ts`. Never match by prefix: GETs that must not be cached — a note's export, a
+field-conversion preview — sit under the same prefixes.
+
+**Reads are network-first, never cache-first.** React Query already caches in memory and
+every save invalidates exactly what it changed; a worker answering from its own copy first
+would hand that refetch the note as it was before the save. For the same reason a note read
+from the cache stays locked after the connection returns, until the server answers for it —
+saves carry no precondition yet (MAK-113), so unlocking old text is how an edit made on
+another device gets saved over.
+
+**File bytes are kept only when someone looks at them:** an `<img>`, or a fetch carrying
+`X-Unbent-View: 1`, which the PDF viewer sends. The indexer and export read every file in the
+archive through the same addresses. A new bulk read of file bytes must not send that header;
+a new viewer must. The same goes for the note data: a read made in bulk that matches the
+allowlist — the import's per-note file list — sends `X-Unbent-Bulk: 1` and is never cached,
+or a re-import would push every opened note out of the cache.
+
+**Only two things say the app is offline:** the browser's `navigator.onLine`, and a
+check of `/api/health` with a timeout (`connectivity.ts`). Nothing else decides. A request
+that gets no answer, a read the worker answered from its cache, a slow save, an answer
+while offline — each only asks for a check (`recheck`). Letting request outcomes flip the
+state directly was tried, and every new kind of answer became a new way to flicker between
+locked and unlocked on a connection that carries nothing. Don't add another input; call
+`recheck`.
+
+**API calls from the page go through `request()` in `notes-api.ts`,** which is where those
+checks are asked for: a fetch with no answer becomes an `OfflineError`, and an answer the
+worker served from its cache carries `X-Unbent-Served: cache`. A call made with bare `fetch`
+never asks, so it cannot raise the banner or lock the editor. Code that retries on a network
+error must recognise `OfflineError` as one (`transient` in `export-archive.ts`): it is an
+`ApiError` with status 0, not the `TypeError` fetch throws. Two deliberate exceptions, and
+nothing else should join them:
+
+- `apiFetch` in `attachment-text.ts` — the indexer. It runs inside the import Web Worker,
+  where the page's connectivity store does not exist, and it reports its own failures to
+  the page. (It must also never send `X-Unbent-View`; neither must export.)
+- `device-api.ts` — Better Auth's device and one-time-token endpoints under `/api/auth/`,
+  which the service worker never touches and whose screens report their own failures.
+
+**The caches are keyed by address, not by account.** `clearOfflineCaches()` runs on
+sign-out, on a refused session, on account deletion and when a different person signs in. A
+new way for the account on a device to change hands has to call it too, or the next person
+to open the app offline is shown the last one's notes.
+
+**Offline is not `readOnly`.** The trash's `readOnly` turns the autosave off and drops the
+draft; offline locks the inputs and leaves the autosave running, so typing that landed a
+moment before the lock is saved when the connection returns. A new control that changes a
+note should follow `locked` in `Workspace`, and a new CodeMirror handler that dispatches on
+its own must check `state.readOnly` — `EditorView.editable` stops only the keyboard.
+
+**Deploys wait for a change of section.** A new worker installs and waits; the next time
+someone goes to another section (notes to settings, not list to note), or comes back to the
+app after five minutes away, and nothing a reload would lose is in flight (`busy.ts`), the
+app loads the page from the new deploy. Not on every return: a quick tab switch comes back
+to a list mid-read. Work that lives only in the page — an upload, a run
+like import or export — should hold the page through `holdPage()` or be one of the runs
+`pageBusy()` already asks.
+
+**Never delete `sw.js`.** The Worker answers an unknown path with `index.html`, so a deleted
+worker script is a 200 the browser cannot install, and the old worker stays in charge on
+every device indefinitely. To retire the worker, ship one that unregisters itself and
+empties its caches.
+
+**Testing it.** Vite's dev server does not run the worker. Build the web app and load the
+Worker's own port, which serves `apps/web/dist` beside the API — this checkout's
+`API_PORT`, not Vite's. The Browser pane cannot register a service worker at all ("an
+unknown error occurred when fetching the script"), so drive a headless Chrome over the
+DevTools protocol instead. Take a connection away with `Network.emulateNetworkConditions`
+on the page *and* on every service-worker target, attaching one session per target and
+reusing it: emulation is per session, and a second attach leaves the first one's
+conditions in force. The real check is still airplane mode on the phone, with
+`adb reverse --remove-all` as well when the app points at a local instance — airplane mode
+alone does not cut the adb tunnel.
 
 ## The local database is disposable — but ask
 

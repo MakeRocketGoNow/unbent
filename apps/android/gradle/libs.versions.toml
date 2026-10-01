@@ -1,20 +1,20 @@
 [versions]
-agp = "9.4.0"
-kotlin = "2.4.10"
-coreKtx = "1.19.0"
+agp = "9.4.1"
+kotlin = "2.4.20"
+coreKtx = "1.19.1"
 appcompat = "1.8.0"
 material = "1.14.0"
 browser = "1.10.0"
-work = "2.11.2"
+work = "2.12.0"
 okhttp = "5.5.0"
 coroutines = "1.11.0"
 junit = "4.13.2"
-robolectric = "4.16.1"
+robolectric = "4.17"
 androidxTestCore = "1.7.0"
 credentials = "1.6.0"
-googleid = "1.2.0"
+googleid = "1.2.1"
 serialization = "1.11.0"
-composeBom = "2026.08.00"
+composeBom = "2026.09.00"
 # Discontinued by Google — 1.7.8 is the final release, and the Compose BOM no longer
 # carries it. The four icons the native screens still draw (back, close, and the capture
 # sheet's two arrows) are all from the core set, so it stays pinned here rather than

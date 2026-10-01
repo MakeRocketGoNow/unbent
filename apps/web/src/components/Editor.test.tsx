@@ -1,6 +1,7 @@
-import { describe, it, expect, afterEach } from 'vitest';
+import { describe, it, expect, afterEach, vi } from 'vitest';
 import { render, cleanup, act } from '@testing-library/react';
 import type { EditorView } from '@codemirror/view';
+import { undoDepth } from '@codemirror/commands';
 import { Editor } from './Editor.js';
 
 /**
@@ -124,5 +125,73 @@ describe('Editor across Rich / Source', () => {
 
     expect(view).not.toBeNull();
     expect(view!.state.doc.toString()).toBe('second note');
+  });
+});
+
+/**
+ * Read-only is how a note looks offline, and it comes and goes with the connection. It has
+ * to arrive without rebuilding the view — a rebuild would lose the undo history and the
+ * caret of someone reading through a tunnel — and it has to hold against the paths that
+ * change the document without the keyboard: a dropped file most of all, because the
+ * editor's own drop handler runs before CodeMirror's and does not ask.
+ */
+describe('Editor read-only', () => {
+  afterEach(cleanup);
+
+  function mount(readOnly: boolean, onUpload = vi.fn(async () => 'files/x.png')) {
+    let view: EditorView | null = null;
+    const props = {
+      noteId: 'n1',
+      initialValue: 'saved body',
+      onChange: () => {},
+      onUpload,
+      onViewReady: (v: EditorView | null) => {
+        view = v;
+      },
+    };
+    const result = render(<Editor {...props} readOnly={readOnly} />);
+    return {
+      view: () => view!,
+      setReadOnly: (next: boolean) => result.rerender(<Editor {...props} readOnly={next} />),
+      onUpload,
+    };
+  }
+
+  it('takes no typing and says so in the markup', () => {
+    const { view } = mount(true);
+    expect(view().state.readOnly).toBe(true);
+    expect(view().contentDOM.getAttribute('contenteditable')).toBe('false');
+  });
+
+  it('flips in place, keeping the history and the caret', () => {
+    const editor = mount(false);
+    const before = editor.view();
+    act(() => {
+      before.dispatch({ changes: { from: 10, insert: ' typed' }, selection: { anchor: 4 } });
+    });
+
+    editor.setReadOnly(true);
+    expect(editor.view()).toBe(before);
+    expect(before.state.readOnly).toBe(true);
+
+    editor.setReadOnly(false);
+    expect(editor.view()).toBe(before);
+    expect(before.state.readOnly).toBe(false);
+    expect(before.state.doc.toString()).toBe('saved body typed');
+    expect(before.state.selection.main.head).toBe(4);
+    expect(undoDepth(before.state)).toBe(1);
+  });
+
+  it('refuses a dropped file', () => {
+    const { view, onUpload } = mount(true);
+    const file = new File(['x'], 'receipt.png', { type: 'image/png' });
+    const drop = new Event('drop', { bubbles: true, cancelable: true }) as DragEvent;
+    Object.defineProperty(drop, 'dataTransfer', { value: { files: [file] } });
+    act(() => {
+      view().contentDOM.dispatchEvent(drop);
+    });
+    expect(drop.defaultPrevented).toBe(true);
+    expect(onUpload).not.toHaveBeenCalled();
+    expect(view().state.doc.toString()).toBe('saved body');
   });
 });

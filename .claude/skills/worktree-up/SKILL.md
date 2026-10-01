@@ -103,17 +103,19 @@ Verify both halves before moving on:
 pnpm seed:demo
 ```
 
-Creates `demo@example.com` / `demo-password-1234` with ten presentable notes across five
-notebooks. Idempotent — re-running updates rather than duplicates; `--reset` clears the
-account's notes first.
+Creates `demo@example.com` / `demo-password-1234` and loads `packages/seed/`: about four
+hundred invented notes — the ten presentable ones, notebooks with every custom field type,
+receipts with searchable PDF and image scans, layout edge cases, a few in the trash.
+Idempotent — re-running updates rather than duplicates; `--reset` clears the account's
+notes first, `--small` loads only the ten.
 
 **It needs the server from step 3 already running** — it signs up over HTTP against the
 running instance. It refuses any host that is not loopback. Sign-up works because
 `pnpm dev` passes `ALLOW_TEST_CREDENTIALS=1`; see `passwordEnabled` in
 `apps/api/src/auth.ts`.
 
-`EMAIL`/`PASSWORD`/`NAME` are module constants with no CLI override — only `--url` and
-`--reset` are options. **Seeding a different address means editing the script or driving
+`EMAIL`/`PASSWORD`/`NAME` are module constants with no CLI override — only `--url`,
+`--reset` and `--small` are options. **Seeding a different address means editing the script or driving
 the auth endpoints by hand; don't do either with the user's real email address without
 asking.** A local account under a real address buys nothing a demo account doesn't, and it
 dies with the worktree's D1 anyway.

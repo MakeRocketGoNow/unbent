@@ -157,6 +157,10 @@ class_name = "UserStore"
 # The SPA origin for OAuth redirects and cookie scope. `pnpm dev` overrides it with the
 # checkout's own port; this is the value a bare `wrangler dev --env local` gets.
 APP_URL = "http://localhost:5173"
+# In front of the tab title and on the favicon, so a local tab is never taken for
+# production's (see `INSTANCE_LABEL` in src/types.ts).
+INSTANCE_LABEL = "Local"
+INSTANCE_KIND = "local"
 
 # No `[env.local.secrets]`, and the omission is load-bearing. Once an environment declares
 # `secrets`, `wrangler dev` loads from .dev.vars only the names that list contains and the
@@ -177,10 +181,11 @@ run_worker_first = [
 
 # Preview instances, one per pull request. unbent.app's own; see the header.
 #
-# One Worker per PR, `unbent-pr-<N>`, all of them bound to the same `unbent-dev` D1 and
-# `unbent-dev-blobs` R2 that `[env.dev]` below serves. The Worker is per PR only because
-# its URL — and therefore APP_URL — has to differ; the data is shared on purpose. Nothing
-# here touches production. Deployed and torn down by .github/workflows/previews.yml.
+# One Worker per PR, `unbent-pr-<N>`, all of them bound to the same `unbent-dev` D1,
+# `unbent-dev-blobs` R2 and note stores that `[env.dev]` below serves. The Worker is per
+# PR only because its URL — and therefore APP_URL — has to differ; the data is shared on
+# purpose. Nothing here touches production. Deployed and torn down by
+# .github/workflows/previews.yml.
 #
 # Named `preview` rather than `dev` because that is what it is. The dev *instance* is the
 # block below: a Worker that outlives any one PR. Calling this one `dev` left the only
@@ -231,23 +236,49 @@ migrations_dir = "migrations"
 binding = "BLOBS"
 bucket_name = "unbent-dev-blobs"
 
-# Each preview Worker has a namespace of its own, so a preview's per-account stores are
-# not the dev instance's, although its D1 and R2 still are. Notes therefore no longer
-# carry between a preview and dev the way they did on the shared database; `pnpm seed:demo
-# --url` fills a preview. The sweep cron (top level) is inherited and switched off just
-# below, because a preview lives for the length of a pull request.
+# The dev instance's note stores, not the preview's own: `script_name` binds the class
+# that the `unbent-dev` Worker exports, so a preview reads and writes the same objects
+# dev.unbent.app does, and a note made on either is on both — what the shared D1 gave
+# before the notes moved into per-account objects. Without it each preview Worker has a
+# namespace of its own, empty, and the account you sign in with (the same user id, from
+# the shared D1) finds no notes; that is how the cutover shipped, and nothing could fill
+# it, since `seed:demo` refuses any host but loopback and the D1 rows a copy could have
+# read are gone.
+#
+# The cost is that an object runs the code of the Worker that exports it. Every store
+# call a preview makes here is answered by `main`'s `src/store/` — dev's deploy — and
+# never the PR's, so a PR that changed a query would not be exercised on its preview, a
+# method it adds would be missing, and a schema file it appends would never be applied.
+# So a PR that touches `src/store/` does not get this line: the workflow deploys it from
+# a copy of this file without `script_name`, with `PREVIEW_OWN_STORES=1`, and its preview
+# has stores of its own running its own code. They start empty, and the page offers to
+# fill them with the seed (`packages/seed/`). Measured over the PRs merged since
+# mid-August, about one in five touched the note queries; the rest read the dev
+# instance's notes. Either way a PR's store schema cannot reach dev's notes before it
+# merges, the way a PR's D1 migration reaches dev's database.
+#
+# Previews still export `UserStore`, and the inherited migration block still declares it,
+# so every preview Worker has a namespace of its own whether it reads it or not. That is
+# what the store-changing previews use, and why dropping one line is all it takes.
+#
+# The sweep cron (top level) is inherited and switched off just below: dev's own sweep
+# walks these objects, and a second walk running a PR's code would race it.
 [[env.preview.durable_objects.bindings]]
 name = "USER_STORE"
 class_name = "UserStore"
+script_name = "unbent-dev"
 
 [env.preview.triggers]
 crons = []
 
-# A preview shares the dev instance's D1 but has objects of its own, so every row its
-# sweep would write, drop or move in the account directory belongs to dev. The sweep does
-# nothing with this set (src/lib/sweep.ts). Off here and nowhere else.
+# A preview shares the dev instance's D1 and, unless its PR changes the store, its note
+# stores too, so every row its sweep would write, drop or move in the account directory
+# belongs to dev, and dev's own sweep already walks them. The sweep does nothing with this
+# set (src/lib/sweep.ts). Off here and nowhere else.
 [env.preview.vars]
 STORE_SWEEP = "0"
+# Every preview is one; its label, "PR <number>", comes from the deploy command.
+INSTANCE_KIND = "preview"
 
 [env.preview.assets]
 directory = "../web/dist"
@@ -283,7 +314,8 @@ enabled = true
 # instance is the same fix.
 [env.dev]
 # Replaces the name outright rather than suffixing the environment onto the top-level one,
-# which would otherwise deploy this as `unbent-api-dev`.
+# which would otherwise deploy this as `unbent-api-dev`. The previews' `USER_STORE` names
+# this Worker by `script_name`, so a rename here strands them on stores that don't exist.
 name = "unbent-dev"
 # One hostname and one origin. A workers.dev URL alongside the custom domain would be a
 # second origin that APP_URL does not name, so every sign-in through it would fail on an
@@ -307,6 +339,10 @@ class_name = "UserStore"
 # Unlike a preview's, this one is a constant and belongs in the file: the host does not
 # change, so there is nothing for a deploy to supply and nothing to go stale.
 APP_URL = "https://dev.unbent.app"
+# What the page calls this instance in its tab title, favicon and account menu. A
+# preview's is per PR and comes from the deploy command instead.
+INSTANCE_LABEL = "Dev"
+INSTANCE_KIND = "dev"
 
 [env.dev.secrets]
 required = ["BETTER_AUTH_SECRET"]

@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import { useRouter } from '@tanstack/react-router';
 import { exposeToApp, isHosted, postToApp } from './app-bridge.js';
 import { HOME } from './auth-gate.js';
+import { WORKER_PREFIXES } from './sw/routes.js';
 
 /**
  * The signed-in site's half of being hosted by the Android app. Does nothing in a browser.
@@ -52,16 +53,16 @@ export function useHostApp(): void {
   }, [router]);
 }
 
-/**
+/*
  * Paths the Worker answers before the site sees them: `run_worker_first` in
- * `apps/api/wrangler.toml`, which is the list to keep this in step with.
+ * `apps/api/wrangler.toml`, held to it by a test beside `WORKER_PREFIXES` — the service
+ * worker leaves the same paths alone.
  *
  * `open` refuses these rather than hand them to the router, which has no route for them
  * and would draw its not-found page. A link in a note to an attachment's address is the
  * case that reaches here. Refused, the caller falls back to what it did before `open`
  * existed: the editor opens a new tab, and the app loads the address.
  */
-const WORKER_PREFIXES = ['/api/', '/.well-known/', '/ingest/'];
 
 function servedByWorker(path: string): boolean {
   return WORKER_PREFIXES.some((prefix) => path.startsWith(prefix));

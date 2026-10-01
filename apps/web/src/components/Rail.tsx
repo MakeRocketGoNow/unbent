@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link, useRouterState, useSearch } from '@tanstack/react-router';
 import { AccountMenu } from './AccountMenu.js';
+import { InstanceRibbon } from './InstanceRibbon.js';
 import { notebooksQuery, tagsQuery, trashCountQuery } from '../queries.js';
 import { useMediaQuery, RAIL_WIDE_QUERY } from '../useMediaQuery.js';
 import { NotebookNav, type NavPlace } from './NotebookNav.js';
@@ -114,6 +115,7 @@ export function Rail({ pref, onPref, email, onSignOut }: RailProps) {
 
   return (
     <aside className="rail" aria-label="Navigation">
+      <InstanceRibbon placement="rail" />
       <div className="rail-inner">
         <div className="rail-head">
           {/* The wordmark, as it was in the top bar: a link home. Gone in the strip —

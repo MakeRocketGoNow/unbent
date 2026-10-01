@@ -16,5 +16,8 @@
   "include": [
     "src",
     "vite.config.ts"
+  ],
+  "exclude": [
+    "src/sw/sw.ts"
   ]
 }

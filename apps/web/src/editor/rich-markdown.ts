@@ -319,6 +319,9 @@ class TaskWidget extends WidgetType {
     box.className = 'cm-md-task';
     box.addEventListener('mousedown', (event) => {
       event.preventDefault();
+      // A read-only note (offline, or in the trash) keeps its ticks as they are; this
+      // dispatches directly, which `readOnly` alone would not stop.
+      if (view.state.readOnly) return;
       // Rewrite just the marker character; everything else is untouched.
       view.dispatch({
         changes: { from: this.pos + 1, to: this.pos + 2, insert: this.checked ? ' ' : 'x' },
@@ -473,6 +476,9 @@ function attachmentToolbar(
   remove.addEventListener('click', (event) => {
     event.preventDefault();
     event.stopPropagation();
+    // Before the question, not only at the edit: a read-only note must not offer to
+    // delete a file on the server and then refuse to change the note.
+    if (view.state.readOnly) return;
     if (stored && opts.remove) {
       askToDelete(tools, () => deleteStored(view, host, opts.source, stored.filename, opts.remove!));
     } else {
@@ -640,7 +646,8 @@ function saveButton(
   button.addEventListener('click', (event) => {
     event.preventDefault();
     event.stopPropagation();
-    if (busy) return;
+    // Saving rewrites the link to the stored copy — an edit a read-only note refuses.
+    if (busy || view.state.readOnly) return;
     busy = true;
     button.setAttribute('aria-label', 'Saving…');
     button.title = 'Saving…';
@@ -699,6 +706,8 @@ function findWidgetNode(view: EditorView, host: HTMLElement, source: 'Image' | '
  * or every removed picture would leave a double gap in the paragraph rhythm.
  */
 function removeWidgetSource(view: EditorView, host: HTMLElement, source: 'Image' | 'Link'): void {
+  // The one place every widget's delete arrives; a read-only note keeps what it shows.
+  if (view.state.readOnly) return;
   const node = findWidgetNode(view, host, source);
   if (!node) return;
 
@@ -2063,11 +2072,24 @@ export function richMarkdown(options: RichMarkdownOptions = {}): Extension {
           const repaint = update.transactions.some((tr) =>
             tr.effects.some((e) => e.is(pdfNamesChanged) || e.is(imageFailed)),
           );
+          /*
+             The parse finishing is a repaint too. CodeMirror parses only for twenty
+             milliseconds when a state is created and does the rest in idle time, and that
+             rest arrives as a transaction that changes neither the document nor the
+             selection. On a desktop a note parses inside the budget and this never
+             matters; on a phone the parser's first run can overshoot it, and then the view
+             was built from an empty tree and drew the note as bare markdown — images and
+             PDFs as their brackets — until something else happened to repaint. Seen on
+             the Android emulator, where the first tap into the note was what finally drew
+             it. Comparing the trees is the documented way to notice the parse landing.
+          */
+          const parsed = syntaxTree(update.startState) !== syntaxTree(update.state);
           if (
             update.docChanged ||
             update.viewportChanged ||
             update.selectionSet ||
             update.focusChanged ||
+            parsed ||
             repaint
           ) {
             this.decorations = buildDecorations(update.view, options);

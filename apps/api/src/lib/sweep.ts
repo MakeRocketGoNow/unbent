@@ -74,12 +74,12 @@ export async function sweepStores(env: Pick<Env, 'DB' | 'USER_STORE' | 'STORE_JU
   const started = Date.now();
   const report: SweepReport = { visited: 0, wiped: 0, dropped: 0, failed: [], deferred: [], done: false, ms: 0 };
 
-  // A preview Worker shares the dev instance's D1 but has objects of its own, so nothing
-  // this walk could learn there is worth writing to dev's directory — and most of what
-  // it writes would be wrong: it would drop dev's row for an account gone on dev after
-  // wiping the preview's object rather than dev's, leaving dev's object with no row and
-  // so nothing that could ever wipe it, and it would move dev's cursor. Off by a var on
-  // the preview environment (wrangler.toml), and nowhere else.
+  // A preview Worker shares the dev instance's D1 and its note stores (`script_name` in
+  // wrangler.toml), so the directory and every object this walk would visit are dev's,
+  // and dev's own sweep already walks them. A second walk from a preview would run a
+  // PR's code over dev's accounts, move dev's cursor out from under it, and race it to
+  // wipe and drop. Off by a var on the preview environment (wrangler.toml), and nowhere
+  // else.
   if (env.STORE_SWEEP === '0') {
     console.log('[store] sweep skipped: this Worker may not write the shared directory (STORE_SWEEP=0)');
     return { ...report, done: true };

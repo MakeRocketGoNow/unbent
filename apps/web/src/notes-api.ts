@@ -14,7 +14,10 @@ import type {
   NoteSummary,
   NotebookSummary,
   SearchResult,
+  SearchResultRow,
 } from '@unbent/shared';
+import { offlineNow, recheck } from './connectivity.js';
+import { SERVED_HEADER } from './sw/routes.js';
 
 /**
  * Thin fetch wrappers over the notes API. Same-origin, so cookies travel automatically.
@@ -45,6 +48,72 @@ export class ApiError extends Error {
 /** True when `err` is an ApiError with the given status. */
 export function isStatus(err: unknown, status: number): boolean {
   return err instanceof ApiError && err.status === status;
+}
+
+/**
+ * A request that got no answer from the server: no connection, or one that carried
+ * nothing for as long as the call was allowed to wait.
+ *
+ * An `ApiError` with status 0, so everything that already branches on `ApiError` keeps
+ * working, but its own class so the offline states can be told from real failures:
+ * "Couldn't load that note" in red is the wrong thing to say about a note that simply
+ * was never opened on this device.
+ */
+export class OfflineError extends ApiError {
+  constructor() {
+    super(0, "You're offline.");
+    this.name = 'OfflineError';
+  }
+}
+
+export function isOfflineError(err: unknown): err is OfflineError {
+  return err instanceof OfflineError;
+}
+
+/**
+ * Every call below goes through this rather than `fetch`, so there is one place that
+ * notices the connection may have changed.
+ *
+ * A fetch that rejects before any answer becomes an `OfflineError`. That, an answer the
+ * service worker served from its cache because the network failed (`X-Unbent-Served:
+ * cache`), and any answer while the app believes it is offline all ask the connectivity
+ * store to check the server (`recheck`) — none of them decides by itself, since a kept
+ * file answers with no network and a slow save fails with one (see `connectivity.ts`).
+ * The caller's own abort is passed through untouched — the editor cancels uploads, and
+ * that is not a lost connection.
+ *
+ * A write made while the store already says offline fails at once rather than waiting on
+ * a socket: the banner has already said changes can't be saved. A read still goes out,
+ * because the worker may hold its answer.
+ *
+ * `timeout` is for the autosave, which must not hang: on a connection that is up and
+ * carries nothing, a save with no answer used to leave the editor accepting typing for
+ * minutes. After it the save fails, and the check decides whether the editor locks.
+ */
+export async function request(input: string, init: RequestInit & { timeout?: number } = {}): Promise<Response> {
+  const { timeout, signal: callerSignal, ...rest } = init;
+  if ((rest.method ?? 'GET').toUpperCase() !== 'GET' && offlineNow()) throw new OfflineError();
+
+  const controller = timeout ? new AbortController() : undefined;
+  const timer = controller ? setTimeout(() => controller.abort(), timeout) : undefined;
+  if (controller && callerSignal) {
+    if (callerSignal.aborted) controller.abort();
+    else callerSignal.addEventListener('abort', () => controller.abort(), { once: true });
+  }
+  const signal = controller?.signal ?? callerSignal;
+
+  let res: Response;
+  try {
+    res = await fetch(input, { ...rest, ...(signal ? { signal } : {}) });
+  } catch (err) {
+    if (callerSignal?.aborted) throw err;
+    recheck();
+    throw new OfflineError();
+  } finally {
+    clearTimeout(timer);
+  }
+  if (res.headers.get(SERVED_HEADER) === 'cache' || offlineNow()) recheck();
+  return res;
 }
 
 /** How much of an error body is worth repeating; the rest is never the useful part. */
@@ -129,11 +198,42 @@ export async function listNotes(
   if (opts.exact) params.set('exact', '1');
   if (opts.limit) params.set('limit', String(opts.limit));
   const qs = params.toString();
-  return json<NotePage>(await fetch(`/api/notes${qs ? `?${qs}` : ''}`));
+  return json<NotePage>(await request(`/api/notes${qs ? `?${qs}` : ''}`));
+}
+
+/**
+ * The copies of notes the service worker answered from its cache, rather than the server.
+ *
+ * Such a copy is shown but never edited: it may be older than a version saved from another
+ * device, and the editor seeds its draft once per note and saves without a precondition
+ * (that is MAK-113), so unlocking it would let the first keystroke save the old text over
+ * the newer one. `Workspace` locks while the note on screen is one of these, and seeds its
+ * draft again from the first copy that is not.
+ *
+ * Kept on the object, not beside it by id. A flag by id changed when the server's answer
+ * was parsed, a moment before React Query stored it, and a cached answer to one refetch
+ * could land after the server's answer to the next — either way the editor unlocked on
+ * the cached text. The object is exactly the copy on screen, so neither ordering exists.
+ * `noteQuery` turns structural sharing off for this to hold: with it on, a server copy
+ * equal to a cached one would come back as the cached object, still marked.
+ */
+const cachedCopies = new WeakSet<Note>();
+
+export function servedFromCache(note: Note | undefined): boolean {
+  return note !== undefined && cachedCopies.has(note);
+}
+
+/** Marks a copy as answered from the cache. `getNote`'s; exported for tests. */
+export function markServedFromCache(note: Note): Note {
+  cachedCopies.add(note);
+  return note;
 }
 
 export async function getNote(id: string): Promise<Note> {
-  return json<Note>(await fetch(`/api/notes/${id}`));
+  const res = await request(`/api/notes/${id}`);
+  const note = await json<Note>(res);
+  // Where this copy came from decides whether it may be edited; see `servedFromCache`.
+  return res.headers.get(SERVED_HEADER) === 'cache' ? markServedFromCache(note) : note;
 }
 
 export async function createNote(input: {
@@ -144,13 +244,16 @@ export async function createNote(input: {
   fields?: NoteFieldsPatch;
 }): Promise<Note> {
   return json<Note>(
-    await fetch('/api/notes', {
+    await request('/api/notes', {
       method: 'POST',
       headers: jsonHeaders,
       body: JSON.stringify(input),
     }),
   );
 }
+
+/** How long a save may go unanswered before it counts as offline. */
+export const SAVE_TIMEOUT = 10_000;
 
 export async function updateNote(
   id: string,
@@ -164,10 +267,12 @@ export async function updateNote(
   },
 ): Promise<Note> {
   return json<Note>(
-    await fetch(`/api/notes/${id}`, {
+    await request(`/api/notes/${id}`, {
       method: 'PATCH',
       headers: jsonHeaders,
       body: JSON.stringify(patch),
+      // The autosave: see `request` for why it must not hang.
+      timeout: SAVE_TIMEOUT,
     }),
   );
 }
@@ -179,30 +284,30 @@ export async function updateNote(
  */
 export async function autofillNote(id: string): Promise<AutofillSuggestion> {
   return json<AutofillSuggestion>(
-    await fetch(`/api/notes/${encodeURIComponent(id)}/autofill`, { method: 'POST' }),
+    await request(`/api/notes/${encodeURIComponent(id)}/autofill`, { method: 'POST' }),
   );
 }
 
 /** A new note with this one's title, body, filing and files. */
 export async function duplicateNote(id: string): Promise<Note> {
   return json<Note>(
-    await fetch(`/api/notes/${encodeURIComponent(id)}/duplicate`, { method: 'POST' }),
+    await request(`/api/notes/${encodeURIComponent(id)}/duplicate`, { method: 'POST' }),
   );
 }
 
 export async function deleteNote(id: string): Promise<void> {
-  const res = await fetch(`/api/notes/${id}`, { method: 'DELETE' });
+  const res = await request(`/api/notes/${id}`, { method: 'DELETE' });
   if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
 }
 
 /** Restores a trashed note. */
 export async function restoreNote(id: string): Promise<Note> {
-  return json<Note>(await fetch(`/api/notes/${id}/restore`, { method: 'POST' }));
+  return json<Note>(await request(`/api/notes/${id}/restore`, { method: 'POST' }));
 }
 
 /** Permanently deletes one trashed note and its attachments. Irreversible. */
 export async function deleteNotePermanently(id: string): Promise<void> {
-  const res = await fetch(`/api/notes/${id}/permanent`, { method: 'DELETE' });
+  const res = await request(`/api/notes/${id}/permanent`, { method: 'DELETE' });
   if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
 }
 
@@ -221,7 +326,7 @@ export async function updateNotes(
   patch: { notebook?: string | null; addTags?: string[]; removeTags?: string[] },
 ): Promise<{ matched: number; changed: number }> {
   return json(
-    await fetch('/api/notes', {
+    await request('/api/notes', {
       method: 'PATCH',
       headers: jsonHeaders,
       body: JSON.stringify({ ids, ...patch }),
@@ -232,7 +337,7 @@ export async function updateNotes(
 /** Moves several notes to the trash. */
 export async function deleteNotes(ids: string[]): Promise<{ trashed: number }> {
   return json(
-    await fetch('/api/notes/trash', {
+    await request('/api/notes/trash', {
       method: 'POST',
       headers: jsonHeaders,
       body: JSON.stringify({ ids }),
@@ -243,7 +348,7 @@ export async function deleteNotes(ids: string[]): Promise<{ trashed: number }> {
 /** Restores several trashed notes. */
 export async function restoreNotes(ids: string[]): Promise<{ restored: number }> {
   return json(
-    await fetch('/api/notes/restore', {
+    await request('/api/notes/restore', {
       method: 'POST',
       headers: jsonHeaders,
       body: JSON.stringify({ ids }),
@@ -254,7 +359,7 @@ export async function restoreNotes(ids: string[]): Promise<{ restored: number }>
 /** Permanently deletes several trashed notes and their attachments. Irreversible. */
 export async function deleteNotesPermanently(ids: string[]): Promise<{ deleted: number }> {
   return json(
-    await fetch('/api/notes/purge', {
+    await request('/api/notes/purge', {
       method: 'POST',
       headers: jsonHeaders,
       body: JSON.stringify({ ids }),
@@ -267,7 +372,7 @@ export async function deleteNotesPermanently(ids: string[]): Promise<{ deleted: 
  * the login screen is what asks.
  */
 export async function getConfig(): Promise<AppConfig> {
-  return json<AppConfig>(await fetch('/api/config'));
+  return json<AppConfig>(await request('/api/config'));
 }
 
 /** A tag as the list reports it: its id, which a rename addresses, and how many live notes carry it. */
@@ -278,7 +383,7 @@ export interface TagSummary {
 }
 
 export async function listTags(): Promise<TagSummary[]> {
-  const { tags } = await json<{ tags: TagSummary[] }>(await fetch('/api/tags'));
+  const { tags } = await json<{ tags: TagSummary[] }>(await request('/api/tags'));
   return tags;
 }
 
@@ -305,7 +410,7 @@ export async function renameTag(
   name: string,
   opts?: { merge?: boolean },
 ): Promise<{ id: string; name: string; merged: boolean }> {
-  const res = await fetch(`/api/tags/${id}${opts?.merge ? '?merge=1' : ''}`, {
+  const res = await request(`/api/tags/${id}${opts?.merge ? '?merge=1' : ''}`, {
     method: 'PATCH',
     headers: jsonHeaders,
     body: JSON.stringify({ name }),
@@ -316,7 +421,7 @@ export async function renameTag(
 
 /** Takes the tag off every note that carries it. The notes stay. */
 export async function deleteTag(id: string): Promise<void> {
-  const res = await fetch(`/api/tags/${id}`, { method: 'DELETE' });
+  const res = await request(`/api/tags/${id}`, { method: 'DELETE' });
   if (!res.ok) throw new Error(await httpErrorMessage(res));
 }
 
@@ -329,12 +434,12 @@ export interface NotebookList {
 }
 
 export async function listNotebooks(): Promise<NotebookList> {
-  return json<NotebookList>(await fetch('/api/notebooks'));
+  return json<NotebookList>(await request('/api/notebooks'));
 }
 
 /** Creates an empty notebook. Throws with a readable message when the name is taken. */
 export async function createNotebook(name: string): Promise<{ id: string; name: string }> {
-  const res = await fetch('/api/notebooks', {
+  const res = await request('/api/notebooks', {
     method: 'POST',
     headers: jsonHeaders,
     body: JSON.stringify({ name }),
@@ -352,7 +457,7 @@ export async function updateNotebook(
   id: string,
   patch: { name?: string; purpose?: string | null; emoji?: string | null },
 ): Promise<void> {
-  const res = await fetch(`/api/notebooks/${id}`, {
+  const res = await request(`/api/notebooks/${id}`, {
     method: 'PATCH',
     headers: jsonHeaders,
     body: JSON.stringify(patch),
@@ -376,7 +481,7 @@ export async function deleteNotebook(
   const params = new URLSearchParams();
   if (opts?.trashNotes) params.set('trashNotes', '1');
   const qs = params.toString();
-  const res = await fetch(`/api/notebooks/${id}${qs ? `?${qs}` : ''}`, { method: 'DELETE' });
+  const res = await request(`/api/notebooks/${id}${qs ? `?${qs}` : ''}`, { method: 'DELETE' });
   if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
 }
 
@@ -387,7 +492,7 @@ export async function listNotebookFields(
   { counts = false }: { counts?: boolean } = {},
 ): Promise<FieldDef[]> {
   const { fields } = await json<{ fields: FieldDef[] }>(
-    await fetch(`/api/notebooks/${notebookId}/fields${counts ? '?counts=1' : ''}`),
+    await request(`/api/notebooks/${notebookId}/fields${counts ? '?counts=1' : ''}`),
   );
   return fields;
 }
@@ -403,7 +508,7 @@ export async function createNotebookField(
     currency?: string | null;
   },
 ): Promise<FieldDef> {
-  const res = await fetch(`/api/notebooks/${notebookId}/fields`, {
+  const res = await request(`/api/notebooks/${notebookId}/fields`, {
     method: 'POST',
     headers: jsonHeaders,
     body: JSON.stringify(input),
@@ -427,7 +532,7 @@ export async function updateNotebookField(
     currency?: string | null;
   },
 ): Promise<{ field: FieldDef; cleared: number }> {
-  const res = await fetch(`/api/notebooks/${notebookId}/fields/${fieldId}`, {
+  const res = await request(`/api/notebooks/${notebookId}/fields/${fieldId}`, {
     method: 'PATCH',
     headers: jsonHeaders,
     body: JSON.stringify(patch),
@@ -447,13 +552,13 @@ export async function previewFieldConversion(
   // explicit empty scale is how a rating becoming a plain number asks for the count.
   if (scale !== undefined) query.set('scale', scale ? `${scale.max}:${scale.step}` : '');
   return json(
-    await fetch(`/api/notebooks/${notebookId}/fields/${fieldId}/conversion?${query}`),
+    await request(`/api/notebooks/${notebookId}/fields/${fieldId}/conversion?${query}`),
   );
 }
 
 /** Sets the order. `ids` must be every field of the notebook, each once. */
 export async function reorderNotebookFields(notebookId: string, ids: string[]): Promise<void> {
-  const res = await fetch(`/api/notebooks/${notebookId}/fields/order`, {
+  const res = await request(`/api/notebooks/${notebookId}/fields/order`, {
     method: 'PUT',
     headers: jsonHeaders,
     body: JSON.stringify({ ids }),
@@ -463,7 +568,7 @@ export async function reorderNotebookFields(notebookId: string, ids: string[]): 
 
 /** Deletes a field and every value under it. */
 export async function deleteNotebookField(notebookId: string, fieldId: string): Promise<void> {
-  const res = await fetch(`/api/notebooks/${notebookId}/fields/${fieldId}`, { method: 'DELETE' });
+  const res = await request(`/api/notebooks/${notebookId}/fields/${fieldId}`, { method: 'DELETE' });
   if (!res.ok) throw new ApiError(res.status, await httpErrorMessage(res));
 }
 
@@ -475,7 +580,7 @@ export async function countOptionUsage(
 ): Promise<number> {
   const query = new URLSearchParams({ option });
   const { notes } = await json<{ notes: number }>(
-    await fetch(`/api/notebooks/${notebookId}/fields/${fieldId}/option-usage?${query}`),
+    await request(`/api/notebooks/${notebookId}/fields/${fieldId}/option-usage?${query}`),
   );
   return notes;
 }
@@ -493,7 +598,7 @@ export async function removeNotebookFieldOption(
 ): Promise<{ field: FieldDef; cleared: number }> {
   const query = new URLSearchParams({ option, ...(clear ? { clear: '1' } : {}) });
   return json(
-    await fetch(`/api/notebooks/${notebookId}/fields/${fieldId}/option?${query}`, {
+    await request(`/api/notebooks/${notebookId}/fields/${fieldId}/option?${query}`, {
       method: 'DELETE',
     }),
   );
@@ -522,7 +627,7 @@ export async function uploadFile(
   file: File,
   opts: { signal?: AbortSignal } = {},
 ): Promise<UploadedFile> {
-  const res = await fetch(`/api/notes/${noteId}/files`, {
+  const res = await request(`/api/notes/${noteId}/files`, {
     method: 'PUT',
     headers: {
       'X-Filename': encodeURIComponent(file.name),
@@ -574,7 +679,7 @@ export interface ReadPass {
  */
 export async function readPendingFiles(limit = 3, count = true): Promise<ReadPass> {
   return json(
-    await fetch('/api/attachments/read', {
+    await request('/api/attachments/read', {
       method: 'POST',
       headers: jsonHeaders,
       body: JSON.stringify({ limit, count }),
@@ -587,14 +692,14 @@ export async function readPendingFiles(limit = 3, count = true): Promise<ReadPas
  * cost, in requests, before one is started. Free to ask, unlike the pass.
  */
 export async function pendingImages(): Promise<number> {
-  const { remaining } = await json<{ remaining: number }>(await fetch('/api/attachments/pending-vision'));
+  const { remaining } = await json<{ remaining: number }>(await request('/api/attachments/pending-vision'));
   return remaining;
 }
 
 /** Attachment metadata for one note — includes files no longer linked in the body. */
 export async function listAttachments(noteId: string): Promise<AttachmentInfo[]> {
   const { files } = await json<{ files: AttachmentInfo[] }>(
-    await fetch(`/api/notes/${noteId}/files`),
+    await request(`/api/notes/${noteId}/files`),
   );
   return files;
 }
@@ -613,7 +718,7 @@ export interface FetchedWebImage extends AttachmentInfo {
  */
 export async function fetchWebImage(noteId: string, url: string): Promise<FetchedWebImage> {
   return json(
-    await fetch(`/api/notes/${encodeURIComponent(noteId)}/files/fetch`, {
+    await request(`/api/notes/${encodeURIComponent(noteId)}/files/fetch`, {
       method: 'POST',
       headers: jsonHeaders,
       body: JSON.stringify({ url }),
@@ -639,7 +744,7 @@ export async function copyAttachments(
   input: { from: string; filenames: string[]; move?: boolean; link?: boolean },
 ): Promise<{ files: CopiedAttachment[]; missing: string[] }> {
   return json(
-    await fetch(`/api/notes/${encodeURIComponent(toNoteId)}/files/copy`, {
+    await request(`/api/notes/${encodeURIComponent(toNoteId)}/files/copy`, {
       method: 'POST',
       headers: jsonHeaders,
       body: JSON.stringify(input),
@@ -652,7 +757,7 @@ export async function copyAttachments(
  * Does not rewrite the note body — callers strip links when needed.
  */
 export async function deleteAttachment(noteId: string, filename: string): Promise<void> {
-  const res = await fetch(
+  const res = await request(
     `/api/notes/${noteId}/files/${encodeURIComponent(filename)}`,
     { method: 'DELETE' },
   );
@@ -698,21 +803,31 @@ export async function exportPage(
   limit?: number,
 ): Promise<ExportPage> {
   const qs = exportQuery(filter, { cursor, limit }).toString();
-  return json<ExportPage>(await fetch(`/api/export/notes${qs ? `?${qs}` : ''}`));
+  return json<ExportPage>(await request(`/api/export/notes${qs ? `?${qs}` : ''}`));
 }
 
+/** A search match, with its note's list row when the search asked for rows. */
+export type SearchHit = SearchResult | SearchResultRow;
+
+/**
+ * `rows` asks for each match's list row as well, for a table drawing the search in its
+ * columns — see `rows` on the search query. The sidebar's results draw a title and a
+ * snippet and leave it off, since the rows cost the server a page's worth of reads.
+ */
 export async function searchNotes(
   q: string,
   filter: { tag?: string[]; notebook?: string; field?: string[]; from?: string; to?: string } = {},
-): Promise<SearchResult[]> {
+  rows = false,
+): Promise<SearchHit[]> {
   const params = new URLSearchParams({ q });
   for (const t of filter.tag ?? []) params.append('tag', t);
   if (filter.notebook) params.set('notebook', filter.notebook);
   for (const f of filter.field ?? []) params.append('field', f);
   if (filter.from) params.set('from', filter.from);
   if (filter.to) params.set('to', filter.to);
-  const { results } = await json<{ results: SearchResult[] }>(
-    await fetch(`/api/search?${params.toString()}`),
+  if (rows) params.set('rows', '1');
+  const { results } = await json<{ results: SearchHit[] }>(
+    await request(`/api/search?${params.toString()}`),
   );
   return results;
 }
@@ -736,7 +851,7 @@ export async function purgeNotes(scope: 'trashed' | 'all'): Promise<PurgeResult>
   try {
     for (;;) {
       const page = await json<PurgeResult & { remaining: number }>(
-        await fetch(`/api/admin/purge-notes?scope=${scope}&confirm=DELETE`, { method: 'POST' }),
+        await request(`/api/admin/purge-notes?scope=${scope}&confirm=DELETE`, { method: 'POST' }),
       );
       total.notesDeleted += page.notesDeleted;
       total.filesDeleted += page.filesDeleted;
@@ -767,11 +882,11 @@ export interface GcResult {
 /** Sweeps R2 objects with no attachment row. Dry run unless `apply` is true. */
 export async function gcBlobs(apply: boolean): Promise<GcResult> {
   return json<GcResult>(
-    await fetch(`/api/admin/gc-blobs${apply ? '?apply=1' : ''}`, { method: 'POST' }),
+    await request(`/api/admin/gc-blobs${apply ? '?apply=1' : ''}`, { method: 'POST' }),
   );
 }
 
 /** Counts every notebook, tag and total again from the notes; `corrected` is how many were wrong. */
 export async function recountNotes(): Promise<{ corrected: number }> {
-  return json<{ corrected: number }>(await fetch('/api/admin/recount-notes', { method: 'POST' }));
+  return json<{ corrected: number }>(await request('/api/admin/recount-notes', { method: 'POST' }));
 }

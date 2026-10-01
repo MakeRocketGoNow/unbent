@@ -35,6 +35,13 @@ interface TagInputProps {
    * nothing to type that it does not already say.
    */
   restrict?: boolean;
+  /**
+   * Shown, not edited — a note in the trash, or any note while offline. The chips stay as
+   * words; the × on each and the "+ Add" entry go, since a control that is drawn but
+   * cannot be used is the thing this app keeps removing. Nothing at all to show reads as
+   * "No tags" rather than as an empty row, which would look like a layout fault.
+   */
+  readOnly?: boolean;
 }
 
 /**
@@ -63,6 +70,7 @@ export function TagInput({
   label = 'tag',
   reorderable = false,
   restrict = false,
+  readOnly = false,
 }: TagInputProps) {
   const [draft, setDraft] = useState('');
   /**
@@ -148,6 +156,22 @@ export function TagInput({
   });
 
   const open = isOpen && available.length > 0;
+
+  if (readOnly) {
+    return (
+      <div className="tag-input read-only">
+        {tags.length === 0 ? (
+          <span className="tag-none">No {label}s</span>
+        ) : (
+          tags.map((t) => (
+            <span key={t} className="tag-chip" data-tint={tintIndex(t)}>
+              {t}
+            </span>
+          ))
+        )}
+      </div>
+    );
+  }
 
   return (
     <div className="tag-input" onClick={() => inputRef.current?.focus()}>

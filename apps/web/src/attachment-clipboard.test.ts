@@ -55,7 +55,7 @@ describe('copyAttachmentToClipboard', () => {
     stubClipboard(async (items) => void written.push(...items));
     const bytes = new Blob(['png'], { type: 'image/png' });
     // Not a real Response: jsdom's Blob and Node's Response disagree about streams.
-    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, blob: async () => bytes })));
+    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, headers: new Headers(), blob: async () => bytes })));
 
     expect(await copyAttachmentToClipboard(NOTE, png, { origin: ORIGIN })).toBe('image');
     const { parts } = written[0]!;
@@ -63,7 +63,10 @@ describe('copyAttachmentToClipboard', () => {
     expect(await text(parts['text/html'])).toBe(
       `<img src="${ORIGIN}/api/notes/note-1/files/photo.png" alt="photo.png">`,
     );
-    expect(fetch).toHaveBeenCalledWith(`${ORIGIN}/api/notes/note-1/files/photo.png`);
+    // Marked as a view, so the service worker answers from the copy it kept offline.
+    expect(fetch).toHaveBeenCalledWith(`${ORIGIN}/api/notes/note-1/files/photo.png`, {
+      headers: { 'X-Unbent-View': '1' },
+    });
     expect(await text(parts['image/png'])).toBe('png');
   });
 

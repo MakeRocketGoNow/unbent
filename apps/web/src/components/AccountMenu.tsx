@@ -1,5 +1,8 @@
 import { useQuery } from '@tanstack/react-query';
 import { configQuery } from '../queries.js';
+import { instanceLine } from '../instance-marker.js';
+import { useOffline } from '../connectivity.js';
+import { isHosted } from '../app-bridge.js';
 import { OverflowMenu, type OverflowItem } from './OverflowMenu.js';
 
 interface AccountMenuProps {
@@ -47,6 +50,8 @@ function initialOf(email: string): string {
 export function AccountMenu({ email, onSignOut, withAddress = false }: AccountMenuProps) {
   const config = useQuery(configQuery());
   const legal = config.data?.legal;
+  const instance = config.data ? instanceLine(config.data) : null;
+  const signOutNeedsConnection = useOffline() && !isHosted();
 
   return (
     <OverflowMenu
@@ -72,6 +77,19 @@ export function AccountMenu({ email, onSignOut, withAddress = false }: AccountMe
         // rather than selectable: it names the account, it does not act on it. It
         // truncates to one line, so it carries the full address as a tooltip.
         { label: email, className: 'overflow-email', static: true, title: email },
+        // Which instance this is, when it is not production — "PR 222 · notes are its
+        // own" — and on a preview, whose notes an edit here changes. Under the address
+        // because it is the same kind of line: it says where you are, it does nothing.
+        ...(instance
+          ? [
+              {
+                label: instance,
+                className: `overflow-email overflow-instance instance-${config.data?.instanceKind ?? 'mark'}`,
+                static: true,
+                title: instance,
+              },
+            ]
+          : []),
         // Findable once signed in, which is the half the sign-in screen's own links cannot
         // cover. They are reference, not something to act on, and they sit above Sign out
         // so the destructive item stays last.
@@ -82,7 +100,15 @@ export function AccountMenu({ email, onSignOut, withAddress = false }: AccountMe
         // also whichever kind of link this instance needs: the built-in documents are
         // routes, an operator's own are another site.
         ...(legal ? [legalItem('Privacy', legal.privacy), legalItem('Terms', legal.terms)] : []),
-        { label: 'Sign out', onSelect: onSignOut, tone: 'danger' },
+        /*
+         * With no connection a browser cannot sign anyone out: the session cookie is
+         * HttpOnly, so only the server can end it, and a sign-out that only cleared this
+         * page would be undone by the next load. Said, rather than pretended. The Android
+         * app can — it clears its own cookies when told — so there it stays available.
+         */
+        signOutNeedsConnection
+          ? { label: 'Sign out', tone: 'danger', disabled: true, title: 'Signing out needs a connection' }
+          : { label: 'Sign out', onSelect: onSignOut, tone: 'danger' },
       ]}
     />
   );

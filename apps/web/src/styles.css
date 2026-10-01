@@ -35,6 +35,18 @@
   --good: #1a7f45;
   --bad: #b3261e;
   --accent: #2f6f4f;
+  /* The marks of an instance that is not production — the favicon's badge, the account
+     menu's dot, the drawer's ribbon (instance-marker.ts) — one colour per kind, so a dev
+     tab and a preview's differ at a glance. None is red, which would read as "this is the
+     dangerous one" when these are the safe ones, and none is the accent's green. Each
+     reads on light and dark alike, so the dark theme does not redefine them. The `-ink`
+     is the ribbon's text on that colour: dark on amber, white on violet. */
+  --instance-dev: #e8a33a;
+  --instance-dev-ink: #1c1a17;
+  --instance-preview: #7b5cd6;
+  --instance-preview-ink: #ffffff;
+  --instance-local: #8c8781;
+  --instance-mark: var(--instance-local);
   /*
      A chip's fill and ink — a chosen select option, a tag. Derived from the accent here,
      so the site draws them as it always has; the Android app's embed sets them to
@@ -506,6 +518,43 @@ button.link {
      custom property on the row rather than a literal here; change it there.
   */
   padding: var(--shell-pad-top) 1.5rem 1rem var(--shell-pad-left);
+}
+
+/*
+   The offline line (`OfflineBanner.tsx`): the first row of the signed-in column while the
+   server is out of reach.
+
+   `flex: none` because the column is a flex box that shrinks its children to fit the
+   viewport-height frame; the line keeps its height and the view below it gives up the
+   room. The gap under it is the column's own top padding again, so the view's head sits
+   the same distance below the line as it sits below the window's edge without it.
+
+   Muted ink on a wash of the text colour rather than a border or the danger colour: it
+   has to be noticed once and then read as part of the page for as long as the connection
+   stays gone. The wash is the text colour mixed in, so dark mode gets a faint lighter band
+   from the same rule. The live region around it stays in the tree when the line is gone
+   and takes no room then.
+*/
+.offline-status {
+  flex: none;
+}
+
+.offline-banner {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0 0 var(--shell-pad-top);
+  padding: 0.45rem 0.75rem;
+  border-radius: 0.5rem;
+  background: color-mix(in srgb, var(--fg) 6%, transparent);
+  color: var(--muted);
+  font-size: 0.875rem;
+  line-height: 1.35;
+}
+
+/* The glyph keeps its size when the sentence wraps to two lines on a phone. */
+.offline-banner > svg {
+  flex: none;
 }
 
 .notes {
@@ -1069,6 +1118,15 @@ button.link {
 
 .empty { padding: 0.6rem 0.7rem; }
 
+/* The offer under an empty list on a preview with stores of its own (`SampleNotes`):
+   the empty line's inset, so the sentence and the button start where "No notes yet" does. */
+.sample-notes {
+  display: grid;
+  gap: 0.5rem;
+  padding: 0 0.7rem 0.6rem;
+}
+.sample-notes p { margin: 0; }
+
 /* ---------------------------------------------------------------------------------
    The list as a table — `NoteTable`, inside a notebook at desktop width.
 
@@ -1248,6 +1306,34 @@ th[aria-sort] .note-th-sort { color: var(--fg); }
   text-decoration: none;
   border-radius: 0.3rem;
 }
+/*
+   A search's hint beside the name — "in scan.pdf" — when the match was in a file. One
+   line, as every cell is: the name keeps its room and the hint gives way first, both
+   cut with an ellipsis, since a file name is as unbounded as a title.
+*/
+.note-row-link:has(.note-row-match) {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+}
+.note-row-title {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.note-row-match {
+  flex: 0 4 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 0.75rem;
+  font-weight: 400;
+  color: var(--accent);
+}
+.note-th-sort:disabled { cursor: default; }
+.note-th-sort:disabled:hover { color: inherit; }
+
 /* The same ring as a sidebar entry's, so keyboard focus looks the same in both drawings. */
 .note-row-link:focus-visible {
   outline: 2px solid var(--accent);
@@ -1590,7 +1676,11 @@ th[aria-sort] .note-th-sort { color: var(--fg); }
 /*
    List or table, as one icon that flips. Outside a notebook there is no table to switch
    to, and it fades rather than hides: its name carries the reason — see `NotesViewToggle`.
+   A note's ⋯ fades the same way while offline; see `OverflowMenu`'s `disabled`, and the
+   sort icon over a search in the table; see `NotesSort`'s `disabledReason`.
 */
+.overflow-trigger:disabled,
+.icon-btn.sort-toggle:disabled,
 .icon-btn.view-toggle:disabled {
   opacity: 0.4;
   cursor: default;
@@ -1637,7 +1727,13 @@ th[aria-sort] .note-th-sort { color: var(--fg); }
   white-space: nowrap;
 }
 
-.overflow-item:hover { background: color-mix(in srgb, var(--fg) 8%, transparent); }
+.overflow-item:hover:not(:disabled) { background: color-mix(in srgb, var(--fg) 8%, transparent); }
+
+/* An item that cannot be used right now keeps its place; see `OverflowItem.disabled`. */
+.overflow-item:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
 .overflow-item.danger { color: var(--bad); }
 
 /*
@@ -2222,6 +2318,97 @@ a.sidebar-status:hover {
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
+}
+
+/* The instance line under the address on a scratch instance ("PR 222 · notes are its own").
+   The same kind of line as the address, so the two read as one block: the divider moves
+   below the second, and the dot is the favicon's badge, so the two marks read as one. */
+.overflow-email:has(+ .overflow-instance) {
+  padding-bottom: 0.15rem;
+  margin-bottom: 0;
+  border-bottom: 0;
+}
+.overflow-email.overflow-instance { padding-top: 0; }
+.overflow-instance::before {
+  content: '';
+  display: inline-block;
+  width: 0.5rem;
+  height: 0.5rem;
+  margin-right: 0.4rem;
+  border-radius: 50%;
+  background: var(--instance-mark);
+  vertical-align: 0.05em;
+}
+.overflow-instance.instance-dev::before { background: var(--instance-dev); }
+.overflow-instance.instance-preview::before { background: var(--instance-preview); }
+.overflow-instance.instance-local::before { background: var(--instance-local); }
+
+/* The corner ribbon on the drawer and the rail (`InstanceRibbon`): "Dev", or "PR 224".
+
+   A box in the corner that clips a band turned 45°, so the band's ends are cut by the
+   navigation's own edges, the way a ribbon on a printed corner is. Small enough to stay
+   clear of the wordmark at both widths, and of the drawer's account button on the other
+   side. The pointer goes through: it
+   covers nothing a person needs, but a corner that swallowed clicks would still be a
+   trap. Above the head, so the rows scrolling under it cannot cover it. */
+.instance-ribbon {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 3;
+  width: 3rem;
+  height: 3rem;
+  overflow: hidden;
+  pointer-events: none;
+}
+/* The band's centre sits about 14px in along each edge. Measured, not guessed: the rail's
+   wordmark starts at 19px across and 21px down, and a band any further out crossed its
+   first letter. That leaves about 40px of band between the edges, which "PR 224" fits at
+   this size; a longer label is cut by the corner rather than pushing the band out. */
+.instance-ribbon span {
+  position: absolute;
+  top: 0.45rem;
+  left: -1.65rem;
+  width: 5rem;
+  transform: rotate(-45deg);
+  padding: 0.1rem 0;
+  font: 700 0.55rem/1.2 var(--font-ui);
+  letter-spacing: 0.03em;
+  text-align: center;
+  text-transform: uppercase;
+  white-space: nowrap;
+  overflow: hidden;
+  box-shadow: 0 1px 2px rgb(0 0 0 / 25%);
+}
+/* Pinned to the screen's corner rather than a panel's, above everything that scrolls
+   under it — the pointer goes through, so being on top costs nothing. */
+.instance-ribbon-page {
+  position: fixed;
+  z-index: 40;
+}
+
+/* The phone's drawer has more room: its wordmark starts about 57px along the diagonal,
+   against the rail's 40, so the band can sit further out and be larger there — the drawer
+   is also the only place a phone shows it, where the rail is always on screen. */
+.sheet .instance-ribbon {
+  width: 4.25rem;
+  height: 4.25rem;
+}
+.sheet .instance-ribbon span {
+  top: 0.74rem;
+  left: -1.75rem;
+  width: 6rem;
+  padding: 0.12rem 0;
+  font-size: 0.65rem;
+  letter-spacing: 0.05em;
+}
+.instance-ribbon.instance-dev span {
+  background: var(--instance-dev);
+  color: var(--instance-dev-ink);
+}
+.instance-ribbon.instance-preview span {
+  background: var(--instance-preview);
+  color: var(--instance-preview-ink);
 }
 
 /*
@@ -3076,6 +3263,24 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
      there is nothing for a minimum to protect against.
   */
   cursor: text;
+}
+
+/*
+   Shown, not edited — the trash, or offline (`TagInput`'s `readOnly`). No text cursor over
+   words that cannot be typed into. The row can be empty of chips here, so it keeps their
+   height itself and the property list's rhythm does not move when a note locks. "No tags"
+   is inset by the same half-rem as the "+ Add tag" it stands in for, which is also where
+   the notebook's name starts in the row above.
+*/
+.tag-input.read-only {
+  min-height: 1.65rem;
+  cursor: default;
+}
+
+.tag-none {
+  padding-inline: 0.5rem;
+  font-size: 0.85rem;
+  color: var(--muted);
 }
 
 /*
@@ -4061,6 +4266,23 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
 
 /* The bin is tinted like every other destructive control, and stays last in the row. */
 .attachment-tool.danger { color: var(--bad); }
+
+/*
+   A read-only note — offline, or in the trash — keeps the tools that read (full screen,
+   download, copy) and drops the two that change it: saving a web image into the note, and
+   the bin. CodeMirror marks the content `contenteditable="false"` when the editor takes no
+   changes, which is the hook; the handlers refuse too (`rich-markdown.ts`), but a control
+   that is drawn and then does nothing is a worse answer than one that is not drawn. A
+   task's checkbox stays as a picture of the state it records, and stops taking clicks.
+*/
+.cm-content[contenteditable='false'] .attachment-tool.zoom-save,
+.cm-content[contenteditable='false'] .attachment-tool.zoom-remove {
+  display: none;
+}
+
+.cm-content[contenteditable='false'] .cm-md-task {
+  pointer-events: none;
+}
 
 /*
    The pill as the question: "Delete file? Delete · Cancel". Stays visible while asking,
@@ -5803,6 +6025,16 @@ button.settings-nav-item {
     justify-content: center;
     padding-left: 0;
   }
+  /* The strip is too narrow for a band with words in it without crossing the expand
+     button, so the ribbon folds down to a corner of the same colour: still there, still
+     the kind's colour, with the words a hover away in the expanded rail and the tab. */
+  .rail .instance-ribbon {
+    width: 0.9rem;
+    height: 0.9rem;
+  }
+  .rail .instance-ribbon span { display: none; }
+  .rail .instance-ribbon.instance-dev { background: linear-gradient(135deg, var(--instance-dev) 50%, transparent 50%); }
+  .rail .instance-ribbon.instance-preview { background: linear-gradient(135deg, var(--instance-preview) 50%, transparent 50%); }
   .rail .drawer-item {
     justify-content: center;
     gap: 0;
@@ -6100,7 +6332,15 @@ button.settings-nav-item {
   cursor: pointer;
 }
 
-.fab:hover { opacity: 0.92; }
+.fab:hover:not(:disabled) { opacity: 0.92; }
+
+/* Offline: a new note is a write. Faded in place rather than removed, like the desktop's
+   New, so the thumb that reaches for it finds it where it always is. */
+.fab:disabled {
+  opacity: 0.45;
+  cursor: default;
+  box-shadow: none;
+}
 
 .fab:focus-visible {
   outline: 2px solid var(--accent);

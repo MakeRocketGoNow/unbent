@@ -487,6 +487,21 @@ export class UserStore extends DurableObject<StoreEnv> {
   }
 
   /**
+   * `GET /search?rows=1`: the matches, each with the row the note list would draw for it,
+   * so a table can show a search in its own columns. One call where the search and a
+   * lookup of its notes would be two.
+   */
+  searchRows(rawQuery: string, limit: number, filters: SearchFilters = {}, scopeDrivenSearchMax?: number) {
+    this.ready();
+    const results = this.notes.search(rawQuery, limit, filters, scopeDrivenSearchMax);
+    const rows = new Map(this.notes.summariesFor(results.map((r) => r.id)).map((n) => [n.id, n]));
+    return results.flatMap((r) => {
+      const note = rows.get(r.id);
+      return note ? [{ ...r, note }] : [];
+    });
+  }
+
+  /**
    * `GET /export/notes`: whole notes, the texts held for their files, the total on the
    * first page, and the cursor to continue from.
    *

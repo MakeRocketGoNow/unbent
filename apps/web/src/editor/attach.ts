@@ -93,6 +93,10 @@ export function attachments(config: AttachConfig): Extension {
         const files = [...(event.dataTransfer?.files ?? [])];
         if (files.length === 0) return false;
         event.preventDefault();
+        // Taken and dropped on a read-only note. These handlers run before CodeMirror's
+        // own, which are the ones that respect `readOnly`; declining would hand the
+        // browser a file to open in place of the app.
+        if (view.state.readOnly) return true;
         // Insert where the file was dropped, not where the cursor happened to be.
         const at = view.posAtCoords({ x: event.clientX, y: event.clientY });
         void insertUploads(view, files, at ?? view.state.selection.main.head);
@@ -111,6 +115,7 @@ export function attachments(config: AttachConfig): Extension {
           return false;
         }
         event.preventDefault();
+        if (view.state.readOnly) return true;
         void insertUploads(view, files, view.state.selection.main.head);
         return true;
       },
@@ -136,6 +141,9 @@ export function pendingUploads(view: EditorView): number {
  * settled by the placeholders.
  */
 export async function insertUploads(view: EditorView, files: File[], at: number): Promise<void> {
+  // The one routine every way in shares — drop, paste, the toolbar's Attach — so the
+  // read-only check here covers any caller that forgot its own.
+  if (view.state.readOnly) return;
   const { upload } = view.state.facet(attachConfig);
   const pending = view.plugin(pendingPlugin);
   if (!upload || !pending || files.length === 0) return;

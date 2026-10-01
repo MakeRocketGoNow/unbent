@@ -36,6 +36,11 @@ export interface SheetProps {
    * otherwise sized to. The shape stays the sheet's; this is for sizing, not restyling.
    */
   className?: string | undefined;
+  /**
+   * Drawn in the dialog's own top-left corner, outside the scrolling body, so it stays
+   * put while the rows scroll: the drawer's instance ribbon. Positions itself.
+   */
+  corner?: ReactNode;
   children: ReactNode;
 }
 
@@ -166,6 +171,7 @@ export function Sheet({
   onBack,
   side = 'bottom',
   className,
+  corner,
   children,
 }: SheetProps) {
   const ref = useRef<HTMLDialogElement>(null);
@@ -219,6 +225,7 @@ export function Sheet({
         if (e.target === ref.current) onClose();
       }}
     >
+      {corner}
       <div className="sheet-body">
         {/*
             The handle. The drawn bar is 4px; the element is taller than that (see

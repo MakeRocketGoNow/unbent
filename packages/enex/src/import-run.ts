@@ -355,7 +355,20 @@ export class ImportRun {
           ? { status, count: this.streak.count + 1 }
           : { status, count: 1 };
 
-      if (
+      if (status === 401) {
+        // Not a streak: one is enough. The run's credentials are gone, and every request
+        // after this one carries whatever session the browser holds next — which, once
+        // somebody else signs in on the same device, is theirs. Waiting for five would
+        // leave that window open for as long as the next note takes to parse.
+        this.stopped = new ImportStoppedError(
+          status,
+          this.streak.count,
+          `Stopped because you were signed out. ` +
+            `${progress.created.toLocaleString()} notes were imported before that. ` +
+            `Sign in and import the same file again to continue; everything that landed is skipped.`,
+        );
+        this.halt.abort();
+      } else if (
         status !== undefined &&
         !isNoteFailure(status) &&
         this.streak.count >= FAILURE_STREAK_LIMIT

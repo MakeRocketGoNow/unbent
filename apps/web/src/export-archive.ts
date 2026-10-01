@@ -109,8 +109,14 @@ const PAGE = 100;
  */
 const RETRY_DELAYS = [1_000, 4_000, 15_000];
 
-/** A failure worth retrying: the server's 5xx, or fetch's TypeError for a network error. */
-function transient(err: unknown): boolean {
+/**
+ * A failure worth retrying: the server's 5xx, or a network error — fetch's own TypeError,
+ * or the `OfflineError` the API client turns one into. The second is an `ApiError` with
+ * status 0, so it has to be named before the status test, or a page request that met a
+ * dropped connection would be taken for a refusal and end the whole export.
+ */
+export function transient(err: unknown): boolean {
+  if (api.isOfflineError(err)) return true;
   return err instanceof api.ApiError ? err.status >= 500 : err instanceof TypeError;
 }
 
@@ -142,7 +148,9 @@ const liveSource: ExportSource = {
   page: (filter, cursor, signal) => retrying(signal, () => api.exportPage(filter, cursor, PAGE)),
   file: (noteId, filename, signal) =>
     retrying(signal, async () => {
-      const res = await fetch(`/api/notes/${noteId}/files/${encodeURIComponent(filename)}`, { signal });
+      // Unmarked: an export reads every file, and must not fill the offline cache with
+      // them (`classify` in `sw/routes.ts`).
+      const res = await api.request(`/api/notes/${noteId}/files/${encodeURIComponent(filename)}`, { signal });
       // Gone since the page listed it — its note deleted mid-export, or the object missing
       // from storage. Skipped and counted; see `ExportSource.file`.
       if (res.status === 404) return null;
@@ -402,6 +410,9 @@ export function isExportOf(state: ExportState, filter: ExportFilter): boolean {
 export function useExporting(): ExportState {
   return useSyncExternalStore(exporting.subscribe, exporting.get);
 }
+
+/** Whether an export is running, outside React — for the reload a deploy asks for. */
+export const isExportRunning = () => exporting.get().status === 'running';
 
 /**
  * Only whether an export is running, for a control that has to wait for one. The state

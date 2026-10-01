@@ -82,7 +82,7 @@ export const keys = {
    */
   exactCount: (filter: ExactCountFilter) =>
     filter.trashed ? (['trash', 'exact-count'] as const) : (['notes', 'exact-count', filter] as const),
-  search: (q: string, filter: NoteFilter = {}) => ['search', q, filter] as const,
+  search: (q: string, filter: NoteFilter = {}, rows = false) => ['search', q, filter, { rows }] as const,
   config: () => ['config'] as const,
   pendingImages: () => ['pending-images'] as const,
 };
@@ -154,6 +154,13 @@ export const noteQuery = (id: string) =>
     queryKey: keys.note(id),
     queryFn: () => api.getNote(id),
     retry: false,
+    /*
+     * Every fetch keeps its own object, even when it matches the last one. Whether a copy
+     * came from the offline cache is recorded on the object (`servedFromCache`), and
+     * structural sharing would hand back the previous, cached object for a server answer
+     * that happens to be equal — leaving the note locked with nothing left to unlock it.
+     */
+    structuralSharing: false,
   });
 
 /**
@@ -285,21 +292,28 @@ export function invalidateNoteMembership(queryClient: QueryClient) {
 }
 
 /**
- * The shortest query sent to the server. One character is not a search anyone means: the
- * last term is prefix-matched, so "t" asks for every word in the archive that starts with
- * a t, and it is only ever on its way to a longer word. It is also the costliest request
- * a search box sends — D1 bills every row a query reads, and a one-letter prefix reads the
- * most — so a pause after the first letter, which is most pauses on a phone, spent the
- * most for the answer nobody reads. Tag and notebook matches still show for one letter;
- * they are filtered from lists the client already holds.
+ * Notes matching a search — any search, one letter included.
+ *
+ * One letter used to send nothing, with "Keep typing to search notes." in place of
+ * results: a one-letter prefix was the costliest request on D1, which billed every row it
+ * read. In the per-account store it costs what any page of results does — the rows-read
+ * meter sees the fifty matches and their joins, not the index walk behind them (measured:
+ * 502 rows for "t" and for a whole word on a three-thousand-note store). Without the cost
+ * there was only the confusion left: a field that took a letter and showed nothing.
+ *
+ * `keepPreviousData` for the reason `notesQuery` has it, and more so: every settled pause
+ * in typing is a new key, so without it the results vanished at each one and came back
+ * when the request landed. The previous term's results stay instead, marked through
+ * `isPlaceholderData` so the list can dim them.
+ *
+ * `rows` asks for each match's list row as well, for the table — see `searchNotes`.
  */
-export const MIN_SEARCH_LENGTH = 2;
-
-export const searchQuery = (q: string, filter: NoteFilter = {}) =>
+export const searchQuery = (q: string, filter: NoteFilter = {}, rows = false) =>
   queryOptions({
-    queryKey: keys.search(q, filter),
-    queryFn: () => api.searchNotes(q, filter),
-    enabled: q.trim().length >= MIN_SEARCH_LENGTH,
+    queryKey: keys.search(q, filter, rows),
+    queryFn: () => api.searchNotes(q, filter, rows),
+    enabled: q.trim() !== '',
+    placeholderData: keepPreviousData,
   });
 
 /** One of the scopes a destructive action names a count for; empty means every live note. */
