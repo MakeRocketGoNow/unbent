@@ -8124,3 +8124,285 @@ button.settings-nav-item {
 .tags-sheet-row .tag-count { margin-left: auto; font-size: 0.85rem; }
 
 .tags-sheet-empty { margin: 0.25rem 0; }
+
+/* ---------------------------------------------------------------------------------
+   The front page: unbent.app's `/` for someone signed out (`FrontPage.tsx`).
+
+   One column of sections on one rhythm — every section is the same distance from the
+   next, set once on `.front-section` rather than tuned per block — and one width,
+   `.front-width`, which every band shares so their left edges line up down the page.
+   Wider than the app's 46rem reading column because the screenshots need the room; the
+   text inside stays at a reading measure on its own.
+   --------------------------------------------------------------------------------- */
+.front {
+  --front-gap: 5rem;
+  /* Black in both themes: a shadow mixed from the ink, as everything else here is, turns
+     into a pale glow under the screenshots on the dark one. */
+  --front-shadow: rgb(0 0 0 / 0.28);
+  min-height: 100vh;
+}
+
+@media (prefers-color-scheme: dark) {
+  .front { --front-shadow: rgb(0 0 0 / 0.6); }
+}
+
+.front-width {
+  width: 100%;
+  max-width: 64rem;
+  margin-inline: auto;
+  padding-inline: 1.5rem;
+}
+
+.front-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding-block: 1.25rem;
+}
+
+.front-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  font-size: 1.15rem;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+}
+
+.front-brand img { border-radius: 0.4rem; }
+
+/* The way back for people who already have an account: a link, drawn as one. */
+.front a:not(.btn) {
+  color: var(--accent);
+  text-decoration: underline;
+  text-underline-offset: 0.15em;
+}
+
+.front a:not(.btn):hover { color: var(--fg); }
+
+.front-signin { font-weight: 500; }
+
+.front-hero {
+  padding-top: 3.5rem;
+  text-align: center;
+}
+
+.front-hero h1 {
+  max-width: 40rem;
+  margin: 0 auto;
+  font-size: 2.75rem;
+  line-height: 1.15;
+  letter-spacing: -0.025em;
+  text-wrap: balance;
+}
+
+.front-lead {
+  max-width: 36rem;
+  margin: 1.25rem auto 0;
+  font-size: 1.15rem;
+  color: var(--muted);
+  text-wrap: pretty;
+}
+
+.front-cta {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.6rem;
+  margin-top: 2rem;
+}
+
+.front-cta p { margin: 0; font-size: 0.9rem; }
+
+/* The page's one filled control, sized for the hero rather than for a toolbar. */
+.front-cta-button {
+  padding: 0.75rem 1.5rem;
+  font-size: 1rem;
+  border-radius: 0.5rem;
+}
+
+/*
+   The desktop shot, with the phone standing in front of its lower right corner.
+
+   The phone is placed in percentages of the desktop shot so the pair scales as one picture
+   at every width, rather than the phone holding a fixed size while the desktop shrinks
+   behind it. The bottom padding is the part of the phone that hangs below the desktop.
+*/
+.front-shots {
+  position: relative;
+  margin-block: 3.5rem 0;
+  padding-bottom: 6%;
+}
+
+.front-shot img {
+  display: block;
+  width: 100%;
+  height: auto;
+  border: 1px solid var(--border);
+  background: var(--bg);
+}
+
+.front-shot-desktop img {
+  border-radius: 0.75rem;
+  box-shadow: 0 1.5rem 3rem -1.5rem var(--front-shadow);
+}
+
+.front-shot-phone {
+  position: absolute;
+  right: 4%;
+  bottom: 0;
+  width: 22%;
+}
+
+.front-shot-phone img {
+  border-radius: 1.4rem;
+  box-shadow: 0 1rem 2.5rem -1rem var(--front-shadow);
+}
+
+.front-section { padding-top: var(--front-gap); }
+
+.front-section h2 {
+  margin: 0;
+  font-size: 1.6rem;
+  letter-spacing: -0.015em;
+}
+
+.front-intro {
+  max-width: 40rem;
+  margin: 0.5rem 0 0;
+}
+
+/* Three across on a desktop, as many as fit below that; each a short paragraph. */
+.front-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(17rem, 1fr));
+  gap: 2rem 2.5rem;
+  margin-top: 1.75rem;
+}
+
+.front-point h3 {
+  margin: 0;
+  font-size: 1.05rem;
+}
+
+.front-point p {
+  margin: 0.35rem 0 0;
+  color: var(--muted);
+}
+
+.front-point .enex-help { margin-top: 0.6rem; }
+
+.front-point-icon {
+  display: inline-flex;
+  margin-bottom: 0.5rem;
+  color: var(--accent);
+}
+
+.front-pricing {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 2.5rem;
+  align-items: start;
+  margin-top: 1.75rem;
+}
+
+.front-plan {
+  padding: 1.5rem 1.75rem;
+  border: 1px solid var(--border);
+  border-radius: 0.75rem;
+}
+
+.front-amount {
+  margin: 0;
+  font-size: 1.1rem;
+  color: var(--muted);
+}
+
+.front-amount strong {
+  font-size: 2.5rem;
+  letter-spacing: -0.02em;
+  color: var(--fg);
+}
+
+.front-plan ul {
+  margin: 1rem 0;
+  padding-left: 1.2rem;
+}
+
+.front-plan li + li { margin-top: 0.3rem; }
+
+.front-plan > p:last-child { margin: 0; font-size: 0.9rem; }
+
+.front-lapse h3 {
+  margin: 0;
+  font-size: 1.05rem;
+}
+
+.front-lapse p {
+  margin: 0.35rem 0 0;
+  color: var(--muted);
+}
+
+.front-footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem 1.5rem;
+  margin-top: var(--front-gap);
+  padding-block: 0 2.5rem;
+  font-size: 0.9rem;
+}
+
+/* The rule above the footer, as a full-width row of its own rather than a border: a border
+   on `.front-width` runs out through the side padding, past the edge every section above
+   it aligns to. */
+.front-footer::before {
+  content: '';
+  flex-basis: 100%;
+  height: 1px;
+  margin-bottom: 1rem;
+  background: var(--border);
+}
+
+.front-footer nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1.25rem;
+}
+
+.front-footer p { margin: 0; }
+
+@media (max-width: 860px) {
+  .front { --front-gap: 3.5rem; }
+
+  .front-width { padding-inline: 1rem; }
+
+  .front-hero { padding-top: 2rem; }
+
+  .front-hero h1 { font-size: 2rem; }
+
+  .front-lead { font-size: 1.05rem; }
+
+  /* Full width under a thumb, the way the app's own primary actions are on a phone. */
+  .front-cta { align-items: stretch; }
+
+  .front-cta-button { width: 100%; }
+
+  .front-shots { margin-top: 2.5rem; }
+
+  /* Bigger relative to the desktop shot, which is small enough here that a 22% phone
+     would be a thumbnail — but no bigger than the desktop shot is tall, or the phone
+     stands up out of the top of it. 27% of the width is a phone 58% of the width tall,
+     inside the desktop shot's 62.5% plus the hang below it. */
+  .front-shot-phone { width: 27%; right: 3%; }
+
+  .front-shot-phone img { border-radius: 0.9rem; }
+
+  .front-grid { gap: 1.75rem; }
+
+  .front-pricing { grid-template-columns: minmax(0, 1fr); gap: 2rem; }
+
+  .front-plan { padding: 1.25rem; }
+}

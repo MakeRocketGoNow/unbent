@@ -5,14 +5,17 @@ import {
   ArrowUp,
   ArrowUpDown,
   Book,
+  Bot,
   Calendar,
   Check,
   ChevronLeft,
   ChevronRight,
   CloudOff,
+  Code,
   Coins,
   Copy,
   Download,
+  FileSearch,
   FileText,
   Film,
   Funnel,
@@ -35,6 +38,7 @@ import {
   Search,
   Settings,
   SlidersHorizontal,
+  Smartphone,
   Sparkles,
   SquareCheck,
   Star,
@@ -576,4 +580,36 @@ export function chevronRightMarkup(): string {
 /** A tray with an arrow into it, beside the viewer's Download link. */
 export function downloadIconMarkup(): string {
   return iconMarkup(DOWNLOAD_PATHS, 18);
+}
+
+/*
+   The front page's features, one glyph heading each.
+
+   Larger than anything in the app, because each stands at the top of a short paragraph as
+   its picture rather than beside a line of text as its label, and accent-coloured by the
+   stylesheet for the same reason. Named for what they illustrate, so the page reads as a
+   list of features rather than of icons.
+*/
+function FeatureIcon({ icon: Icon }: { icon: LucideIcon }) {
+  return <Icon size={22} strokeWidth={2} aria-hidden="true" focusable="false" />;
+}
+
+export function SearchFilesFeatureIcon() {
+  return <FeatureIcon icon={FileSearch} />;
+}
+
+export function FieldsFeatureIcon() {
+  return <FeatureIcon icon={Table2} />;
+}
+
+export function AssistantFeatureIcon() {
+  return <FeatureIcon icon={Bot} />;
+}
+
+export function AndroidFeatureIcon() {
+  return <FeatureIcon icon={Smartphone} />;
+}
+
+export function SourceFeatureIcon() {
+  return <FeatureIcon icon={Code} />;
 }
