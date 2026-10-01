@@ -8374,6 +8374,19 @@ button.settings-nav-item {
 
 .front-footer p { margin: 0; }
 
+/* The mark beside the word, sized to the footer's smaller text rather than to a sign-in
+   button's, and outside the underline, which is drawn under the word alone. */
+.front-source {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35em;
+}
+
+.front-source .provider-icon {
+  width: 1em;
+  height: 1em;
+}
+
 @media (max-width: 860px) {
   .front { --front-gap: 3.5rem; }
 

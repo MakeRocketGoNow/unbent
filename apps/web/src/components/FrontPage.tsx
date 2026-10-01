@@ -5,6 +5,7 @@ import { configQuery } from '../queries.js';
 import { LOGIN } from '../auth-gate.js';
 import { EnexHelp, NotionHelp } from './ImportHelp.js';
 import { LegalLink } from './LegalLink.js';
+import { ProviderIcon } from './provider-icons.js';
 import {
   AndroidFeatureIcon,
   AssistantFeatureIcon,
@@ -191,7 +192,11 @@ export function FrontPage() {
           {legal && <LegalLink href={legal.privacy}>Privacy</LegalLink>}
           {legal && <LegalLink href={legal.terms}>Terms</LegalLink>}
           {operator && <a href={`mailto:${operator.email}`}>Contact</a>}
-          <a href={SOURCE_URL} rel="noopener noreferrer">
+          {/* The mark says where the link goes before the word does — the one footer
+              link that leaves for another site. The sign-in screen's copy of it, so
+              there is one GitHub mark in the app. */}
+          <a href={SOURCE_URL} rel="noopener noreferrer" className="front-source">
+            <ProviderIcon provider="github" />
             Source
           </a>
         </nav>
