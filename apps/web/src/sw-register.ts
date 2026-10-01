@@ -1,3 +1,4 @@
+import { useSyncExternalStore } from 'react';
 import { Workbox } from 'workbox-window';
 import { pageBusy } from './busy.js';
 
@@ -22,24 +23,136 @@ let wb: Workbox | undefined;
 /** A new deploy's worker has installed and is waiting to take over. */
 let updateReady = false;
 
+/*
+   Whether to say so — see `UpdateSnackbar`. Separate from `updateReady`, which the
+   automatic moments below consume: the notice is dismissed by a person, and dismissing it
+   leaves the deploy waiting for those moments all the same.
+*/
+let noticeShown = false;
+const noticeListeners = new Set<() => void>();
+function setNotice(shown: boolean): void {
+  if (noticeShown === shown) return;
+  noticeShown = shown;
+  for (const listener of noticeListeners) listener();
+}
+
 /** Where the page currently is, for telling a change of page from a change of filter. */
 let currentPath: () => string = () => location.pathname;
+
+/** Nothing has been clicked, typed, scrolled or touched since the page loaded. */
+let untouched = true;
 
 export function registerServiceWorker(pathNow: () => string): void {
   recoverFromMissingChunks();
   if (!import.meta.env.PROD || !('serviceWorker' in navigator)) return;
   currentPath = pathNow;
-  wb = new Workbox('/sw.js');
+  watchFirstTouch();
+  const worker = (wb = new Workbox('/sw.js'));
   // Fires for a worker that installed during this visit and for one already waiting when
   // the page loaded, which is the Android app's usual case: it resumes rather than reloads.
-  wb.addEventListener('waiting', () => {
+  worker.addEventListener('waiting', () => {
+    if (shouldApplyOnLoad({ untouched, busy: pageBusy(), path: location.pathname }) && reloadAllowed()) {
+      handOver(worker, location.href);
+      return;
+    }
     updateReady = true;
+    setNotice(true);
   });
   wb.register().catch(() => {
     // An insecure origin, a private window that refuses storage, a WebView built without
     // it: the app still works, it just cannot open offline.
   });
   checkForUpdatesOnReturn(wb);
+}
+
+/**
+ * Whether a deploy found while the page has only just loaded should be taken at once.
+ *
+ * A reload is how anyone asks for the newest version, and the worker answers every load
+ * from the shell it holds — so without this, reloading after a deploy drew the old build,
+ * and so did every reload after it until a change of section or a long absence. That made
+ * a deploy impossible to try: the one gesture that should show it never did. The browser
+ * checks for a new worker on every load, so the deploy is found during the load the
+ * person asked for; taking it then costs one quick second load, before there is anything
+ * on the page to lose.
+ *
+ * "Only just loaded" is until the first click, key, scroll or touch, not a time: someone
+ * looking at a page they just reloaded loses nothing to a second load however long they
+ * look, and someone who has started reading or typing gets the careful rules below
+ * instead. Never inside the Android app's embed pages, and never while the page holds
+ * work a reload would lose.
+ */
+export function shouldApplyOnLoad(state: { untouched: boolean; busy: boolean; path: string }): boolean {
+  return state.untouched && !state.busy && !state.path.startsWith('/embed/');
+}
+
+function watchFirstTouch(): void {
+  const touched = () => {
+    untouched = false;
+    for (const type of TOUCHES) window.removeEventListener(type, touched, true);
+  };
+  for (const type of TOUCHES) window.addEventListener(type, touched, { capture: true, passive: true });
+}
+const TOUCHES = ['pointerdown', 'keydown', 'wheel', 'touchstart'] as const;
+
+/*
+   At most one such load a minute. If the waiting worker never takes over — a failed
+   activation — `handOver` still loads the page after its timer, the old worker answers
+   again, the deploy is still waiting, and without this the page would load itself every
+   three seconds. The same guard as `recoverFromMissingChunks`.
+*/
+const UPDATED_ON_LOAD_AT = 'unbent.update-on-load';
+function reloadAllowed(): boolean {
+  try {
+    if (Date.now() - Number(sessionStorage.getItem(UPDATED_ON_LOAD_AT) ?? 0) < 60_000) return false;
+    sessionStorage.setItem(UPDATED_ON_LOAD_AT, String(Date.now()));
+    return true;
+  } catch {
+    // Storage refused: without the guard a failed activation could loop, so wait instead.
+    return false;
+  }
+}
+
+/**
+ * Whether to show that a deploy is waiting, for `UpdateSnackbar`, and the two answers to
+ * it.
+ *
+ * The automatic moments are careful on purpose and can take a long time to come: someone
+ * who keeps the notes list open and keeps using it reaches neither a change of section
+ * nor five minutes away. Without a word they ran the old build with no way to know
+ * there was a new one, and nothing they did would bring it. The notice says it once and
+ * leaves the choice with them; it never reloads on its own.
+ */
+export function useUpdateNotice(): { shown: boolean; reload: () => void; dismiss: () => void } {
+  const shown = useSyncExternalStore(
+    (listener) => {
+      noticeListeners.add(listener);
+      return () => noticeListeners.delete(listener);
+    },
+    () => noticeShown,
+  );
+  return { shown, reload: reloadIntoUpdate, dismiss: () => setNotice(false) };
+}
+
+/**
+ * The notice's Reload: into the waiting deploy, on the page someone is on. If the page is
+ * holding work a reload would lose — a save not yet sent, an upload — it waits for that
+ * to finish rather than refusing, since a press of Reload is a decision already made;
+ * the note's own status says when its save is done.
+ */
+function reloadIntoUpdate(): void {
+  setNotice(false);
+  const worker = wb;
+  if (!worker) return;
+  const go = () => {
+    if (pageBusy()) {
+      setTimeout(go, 250);
+      return;
+    }
+    updateReady = false;
+    handOver(worker, location.href);
+  };
+  go();
 }
 
 /**
