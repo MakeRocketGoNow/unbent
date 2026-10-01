@@ -311,7 +311,7 @@ or a long-press on the launcher icon — and so does the sign-in screen's footer
 local instance for anything that writes.
 
 `pnpm seed:demo` creates `demo@example.com` on this checkout's dev server and fills it with
-`scripts/seed/`: ten presentable notes, five notebooks with every kind of custom field and
+`packages/seed/`: ten presentable notes, five notebooks with every kind of custom field and
 invented records in each, receipts with PDF and image scans whose text is searchable, the
 cases that have broken a layout before, a few notes in the trash, and three hundred
 generated notes for volume. Load it before trying a change to fields, tables, search or
