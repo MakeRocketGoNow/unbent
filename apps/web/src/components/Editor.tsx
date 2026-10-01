@@ -9,6 +9,7 @@ import { pdfNamesChanged, richMarkdown } from '../editor/rich-markdown.js';
 import { markdownKeymap } from '../editor/markdown-commands.js';
 import { tableTools } from '../editor/table-toolbar.js';
 import { fileDropCursor } from '../editor/drop-cursor.js';
+import { proseSpellcheck } from '../editor/spellcheck.js';
 import { attachments } from '../editor/attach.js';
 import { attachmentClipboard } from '../editor/clipboard.js';
 import { copyAttachmentToClipboard } from '../attachment-clipboard.js';
@@ -251,6 +252,8 @@ export function Editor({
               ]
             : []),
           EditorView.lineWrapping,
+          // Spellcheck, autocorrect and sentence capitals, which CodeMirror turns off.
+          proseSpellcheck(),
           // Draws the insertion point a dragged file will land on. The browser shows one
           // for dragged text but not for files, so this is the only aim the drop has.
           fileDropCursor(),
