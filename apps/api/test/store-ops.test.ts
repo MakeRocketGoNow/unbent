@@ -3,8 +3,8 @@
  * read of their own store, and what only an operator may do. Runs against a live
  * `wrangler dev`; see test/README.md.
  *
- * The operator's own paths — `?user=` on another account, the SQL route, the sweep — are
- * exercised only on the refusal side here: the suite signs up throwaway actors, and none
+ * The operator's own paths — `?user=` on another account, the SQL route, the sweep and its
+ * token — are exercised only on the refusal side here: the suite signs up throwaway actors, and none
  * of them is in the instance's OPERATOR_EMAILS. The sweep itself is tested against real
  * objects in apps/store-tests.
  */
@@ -135,5 +135,15 @@ describe('operator-only routes', () => {
     expect(sql.status).toBe(404);
     const sweep = await fetch(`${BASE}/api/admin/store/sweep`, as(alice, { method: 'POST' }));
     expect(sweep.status).toBe(404);
+  });
+
+  it('refuse a sweep token the instance was not given, and never fall through to the session', async () => {
+    // The local Worker has no SWEEP_TOKEN, so no token can match; a signed-in caller with
+    // the header is judged on the header alone. Without it, signed out, the answer is the
+    // session check's 401 as before.
+    const headers = { 'X-Unbent-Sweep-Token': 'x'.repeat(64) };
+    expect((await fetch(`${BASE}/api/admin/store/sweep`, { method: 'POST', headers: { ...headers, Origin: ORIGIN } })).status).toBe(404);
+    expect((await fetch(`${BASE}/api/admin/store/sweep`, as(alice, { method: 'POST', headers }))).status).toBe(404);
+    expect((await fetch(`${BASE}/api/admin/store/sweep`, { method: 'POST', headers: { Origin: ORIGIN } })).status).toBe(401);
   });
 });

@@ -238,6 +238,7 @@ says otherwise; `pnpm exec wrangler secret put NAME` from `apps/api`, or the das
 | `TYPESAFE_API_KEY` | filing a note from what it says | see [Filing a note from what it says](#filing-a-note-from-what-it-says); `DEV_TYPESAFE_API_KEY` as a GitHub secret carries a separate key to the dev instance and previews |
 | `ANTHROPIC_API_KEY`, `ANTHROPIC_MODEL` | reading images and text-less scans, and writing titles | see [Reading images](#reading-images); `DEV_ANTHROPIC_API_KEY` as a GitHub secret carries a separate key to the dev instance and previews |
 | `ANDROID_ASSET_LINKS` | an Android build of your own | see [Android app](#android-app) |
+| `SWEEP_TOKEN` | sweeping the note stores at the end of each deploy | a GitHub secret the deploy carries to the Worker, `openssl rand -hex 32`; see [Where your notes live](#where-your-notes-live). `DEV_SWEEP_TOKEN` does the same for the dev instance |
 | Custom domain | serving from your own name | dashboard, not config |
 | `ANDROID_APPLICATION_ID`, `ANDROID_DEFAULT_INSTANCE` | the Android build in CI | GitHub repository **variables**; `unbent.applicationId` and `unbent.defaultInstance` in `local.properties` locally |
 | `CLOUDFLARE_WORKERS_SUBDOMAIN`, `DEV_BETTER_AUTH_SECRET`, `DEV_ALLOWED_EMAILS` | a dev instance and PR previews of your own | GitHub; see [The dev instance](#the-dev-instance) — every job skips itself without them |
@@ -611,6 +612,7 @@ summary rather than failing.
 | `DEV_TYPESAFE_API_KEY` | secret, optional | Auto-fill on the dev instance and every preview; a key of its own, so what they spend stays apart from production's — see [Filing a note from what it says](#filing-a-note-from-what-it-says) |
 | `DEV_ANTHROPIC_API_KEY` | secret, optional | Reading images on the dev instance and every preview; a key of its own, for the same reason — see [Reading images](#reading-images) |
 | `DEV_OPERATOR_EMAILS` | secret, optional | who is an operator on the dev instance and every preview, sent as their `OPERATOR_EMAILS`. Not implied by `DEV_ALLOWED_EMAILS`; unset, nobody is, and anything operator-only cannot be tried outside production. Removing it later leaves the dev instance's last list in place until `wrangler secret delete OPERATOR_EMAILS --env dev` |
+| `DEV_SWEEP_TOKEN` | secret, optional | the dev instance's `SWEEP_TOKEN`, so its deploy ends with a sweep of its note stores as production's does; its own value, not production's. Previews get none and never sweep |
 
 The subdomain is a variable rather than a secret because the workflow has to build the URL
 before deploying — `APP_URL` is baked in at deploy time — and a masked value would arrive
@@ -1354,8 +1356,12 @@ account, from its dump (below).
 wake, additive only. The sweep is what makes that safe to rely on: it wakes every object —
 twenty an hour, from a cursor it keeps in D1, since every store call counts against an
 invocation's fifty subrequests on Free — so a migration that fails for one account fails in
-the log with the user id on it, and it can be run on demand after a deploy. Each visit
-reads a few rows of the account (its size and the stored note counts), never a table.
+the log with the user id on it. Each visit reads a few rows of the account (its size and
+the stored note counts), never a table. The deploy runs a whole pass as its last step, when
+the repository has a `SWEEP_TOKEN` secret: `scripts/sweep-stores.mjs` sends the token in
+place of a session, calls the sweep until it is done, and fails the deploy if any account's
+store did not wake. Without the secret the step skips and the cron gets there within the
+day.
 
 **What the operator can see.** An object has no console, so the Worker has one, under
 `/api/admin/store` for a session in `OPERATOR_EMAILS`:
@@ -1367,8 +1373,9 @@ reads a few rows of the account (its size and the stored note counts), never a t
 - `GET …/dump` — the store as SQL text, `sqlite3 account.db < dump.sql` rebuilds it: what
   `d1 export` was, and how a migration is rehearsed against a real account before it
   ships — dump, load, run the new schema file's SQL against the copy.
-- `POST …/sweep` — one batch of the walk, now; call until it says `done`, then once more
-  if any account was `deferred`.
+- `POST …/sweep` — one batch of the walk, now; call until it says `done`. Also open to the
+  deploy, with the deployment's `SWEEP_TOKEN` in an `X-Unbent-Sweep-Token` header instead of
+  a session.
 
 Reading another account's store is logged with both ids. Rows read and written inside an
 object are metered as D1's were, and every statement over a threshold is logged with the

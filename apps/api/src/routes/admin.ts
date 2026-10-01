@@ -1,4 +1,5 @@
 import { Hono } from 'hono';
+import { createMiddleware } from 'hono/factory';
 import { zValidator } from '@hono/zod-validator';
 import { z } from 'zod';
 import { requireAuth } from '../lib/session.js';
@@ -9,9 +10,23 @@ import { isOperator } from '../lib/instance.js';
 import { userPrefix } from '../lib/repo.js';
 import { storeFor } from '../lib/store-client.js';
 import { sweepStores } from '../lib/sweep.js';
+import { SWEEP_TOKEN_HEADER, sweepTokenMatches } from '../lib/sweep-token.js';
 import { DUMP_TABLES } from '../store/tables.js';
 import type { UserStore } from '../store/user-store.js';
 import type { AppEnv } from '../types.js';
+
+/**
+ * The deploy job's way into the sweep. Passes a request without the header on to the
+ * session checks; answers one with it, either by sweeping or with the same 404 a
+ * non-operator gets.
+ */
+const sweepByToken = createMiddleware<AppEnv>(async (c, next) => {
+  const presented = c.req.header(SWEEP_TOKEN_HEADER);
+  if (presented === undefined) return next();
+  if (!(await sweepTokenMatches(c.env, presented))) return c.json({ error: 'Not found' }, 404);
+  console.log('[store] token sweep');
+  return c.json(await sweepStores(c.env));
+});
 
 /**
  * Destructive maintenance, all scoped to the caller's own data.
@@ -175,7 +190,8 @@ export const admin = new Hono<AppEnv>()
      OPERATOR_EMAILS may name another account with `?user=`, and every such read is logged
      with both ids, since it is one person reading another's notes and the log is the
      record of it. `sql` and `sweep` are the operator's alone: a raw query over someone's
-     notes, and the walk over every account.
+     notes, and the walk over every account — which a deploy job may also start, with the
+     deployment's sweep token instead of a session.
   */
 
   /** Row counts, size and schema version of one store. */
@@ -262,10 +278,14 @@ export const admin = new Hono<AppEnv>()
   /**
    * One batch of the walk, on demand: after a deploy that carries a schema file, so every
    * account is migrated within minutes rather than hours. The answer says whether the
-   * pass is `done`; a runbook calls again until it is, then once more if any account was
-   * `deferred`. See lib/sweep.ts.
+   * pass is `done`; a caller calls again until it is. See lib/sweep.ts.
+   *
+   * Two ways in. The deploy workflows send `SWEEP_TOKEN` in a header, since CI has no
+   * session (scripts/sweep-stores.mjs); a person sends an operator session. A request
+   * carrying the header is judged on the token alone and never falls through to the
+   * session, so a wrong token is a 404 rather than a 401 that reads as "sign in".
    */
-  .post('/admin/store/sweep', requireAuth, async (c) => {
+  .post('/admin/store/sweep', sweepByToken, requireAuth, async (c) => {
     const email = c.get('user')?.email;
     if (!isOperator(c.env, email)) return c.json({ error: 'Not found' }, 404);
     console.log(`[store] operator=${email} sweep`);
