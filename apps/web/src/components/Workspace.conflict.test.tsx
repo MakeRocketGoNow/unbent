@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest';
 import { render, screen, cleanup, waitFor, act, fireEvent } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -43,6 +44,15 @@ const note: Note = {
 /** The same note as the phone saved it. */
 const phone: Note = { ...note, body: 'as edited on the phone', updatedAt: 200 };
 
+/** Which note the workspace has open; the tests that switch notes call it. */
+let openNote: (id: string) => void = () => {};
+
+function Host() {
+  const [id, setId] = useState(note.id);
+  openNote = setId;
+  return <Workspace noteId={id} />;
+}
+
 function mount(seed?: (client: QueryClient) => void) {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false, staleTime: Infinity } },
@@ -54,7 +64,7 @@ function mount(seed?: (client: QueryClient) => void) {
   client.setQueryData(keys.notebooks(), { notebooks: [], unfiled: 1 });
   seed?.(client);
 
-  const rootRoute = createRootRoute({ component: () => <Workspace noteId={note.id} /> });
+  const rootRoute = createRootRoute({ component: Host });
   const notesRoute = createRoute({ getParentRoute: () => rootRoute, path: '/notes' });
   const router = createRouter({
     routeTree: rootRoute.addChildren([notesRoute]),
@@ -97,6 +107,9 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
+  // The tests that hide or show the tab set it on the document itself; this brings back
+  // the prototype's.
+  delete (document as { visibilityState?: unknown }).visibilityState;
   vi.unstubAllGlobals();
   vi.clearAllMocks();
 });
@@ -187,6 +200,31 @@ describe('a save after another device saved the note', () => {
       ['Grocer', 100],
       ['Grocery', 101],
     ]);
+  });
+
+  it('drops the refused typing when the note is left, rather than carrying it to the next', async () => {
+    const other: Note = { ...note, id: 'n2', title: 'Packing list', updatedAt: 300 };
+    serverHolding(phone);
+    mount((client) => {
+      client.setQueryData(keys.note(other.id), other);
+      client.setQueryData(keys.attachments(other.id), []);
+    });
+    await typeTitle('Trip notes, typed here');
+    await screen.findByRole('alert', {}, { timeout: 3000 });
+
+    act(() => openNote(other.id));
+
+    await waitFor(async () => expect((await title()).value).toBe('Packing list'));
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect(screen.queryByText('Not saved')).toBeNull();
+    expect((await title()).readOnly).toBe(false);
+    // Nothing more goes out for the note that was left, now or when the tab is hidden.
+    act(() => {
+      Object.defineProperty(document, 'visibilityState', { value: 'hidden', configurable: true });
+      document.dispatchEvent(new Event('visibilitychange'));
+    });
+    await new Promise((r) => setTimeout(r, 1000));
+    expect(api.updateNote).toHaveBeenCalledTimes(1);
   });
 
   it('asks when the same edit was made elsewhere alongside one the draft does not have', async () => {

@@ -295,6 +295,23 @@ export function Workspace({ noteId, readOnly = false, backTo = '/notes' }: Works
   /** Set by "Keep mine": the next save of this note goes against this copy instead. */
   const keepMine = useRef<{ id: string; updatedAt: number } | null>(null);
 
+  /*
+     Leaving a note with the question unanswered drops what was typed there, as Reload
+     would. The refused save is still held for a retry, and the switch would flush it: refused
+     again, it set the save state the incoming note shows to "Not saved" with no notice to
+     say why, kept the page held against a deploy, and went out again on every tab hide.
+
+     Declared before the autosave so this runs ahead of its own reset, which is where the
+     flush happens.
+  */
+  useEffect(() => {
+    if (!conflict || conflict.id === noteId) return;
+    discard();
+    keepMine.current = null;
+    setConflict(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [noteId]);
+
   /**
    * Re-seeds the open note from a copy of it the server just gave, rebuilding the editor
    * only when the body is what changed — a title or a tag from elsewhere has no reason to
