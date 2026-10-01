@@ -155,6 +155,14 @@ export interface Env {
    */
   OPERATOR_EMAILS?: string;
   /**
+   * What a deploy job sends to start the note-store sweep without a session, in the
+   * `X-Unbent-Sweep-Token` header; see lib/sweep-token.ts. Per deployment, carried by the
+   * deploy workflows from a repository secret of the same name (`DEV_SWEEP_TOKEN` for the
+   * dev instance), so the job that sends it and the Worker that checks it always agree.
+   * Unset — every fresh instance — the sweep route answers operator sessions only.
+   */
+  SWEEP_TOKEN?: string;
+  /**
    * Legal documents hosted somewhere other than this app, for an operator whose lawyers
    * wrote their own.
    *

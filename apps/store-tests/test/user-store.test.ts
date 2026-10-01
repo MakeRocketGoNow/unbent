@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { env, evictDurableObject, runInDurableObject } from 'cloudflare:test';
 import type { Sql } from '@unbent/api/store/sql';
+import { isRestoreUnsupported, readRestoreRefusal } from '@unbent/api/store/restore';
 import { freshStore } from './helpers.js';
 
 /**
@@ -219,5 +220,53 @@ describe('UserStore lifecycle', () => {
       return sql.exec<{ id: string }>('SELECT id FROM notes ORDER BY id').map((r) => r.id);
     });
     expect(result).toEqual(['inner', 'outer']);
+  });
+});
+
+/**
+ * Point-in-time restore, as far as it can be tested here: not at all. Miniflare exposes
+ * the bookmark methods but refuses every one that reads history — `getBookmarkForTime`
+ * and `onNextSessionRestoreBookmark` both throw "does not implement point-in-time
+ * recovery" (measured 2026-10-01, workerd under @cloudflare/vitest-plugin 1.3) — and
+ * `getCurrentBookmark` answers all zeros. So the round trip, restoring and then undoing
+ * with the bookmark the restore hands back, is verified on a deployed instance instead:
+ * a preview of a PR that touches `src/store/` has stores of its own on the real runtime.
+ *
+ * What these pin is the local behaviour the route depends on: the refusal is the one
+ * `isRestoreUnsupported` recognises, so `pnpm dev` answers 501 rather than a confusing
+ * 400, and a refused restore leaves the store exactly as it was and still serving. If
+ * Miniflare gains history, the first test fails, and that is the moment to replace both
+ * with the real round trip.
+ */
+describe('UserStore point-in-time restore under Miniflare', () => {
+  it('is refused as unsupported, for a time and for a bookmark', async () => {
+    const { stub } = freshStore('restore');
+    await stub.ping();
+    const bookmark = '0000007b-0000b26e-00001538-0c3e87bb37b3db5cc52eedb93cd3b96b';
+    for (const target of [{ at: Date.now() - 60_000 }, { bookmark }]) {
+      const preview = await stub.restorePreview(target).then(
+        () => null,
+        (err: unknown) => err,
+      );
+      // A bookmark is passed through by the preview without asking the runtime.
+      if ('at' in target) expect(isRestoreUnsupported(preview)).toBe(true);
+      const restore = await stub.restoreTo(target).then(
+        () => null,
+        (err: unknown) => err,
+      );
+      expect(isRestoreUnsupported(restore)).toBe(true);
+      // Marked as refused before scheduling, which is what lets the route say so.
+      expect(readRestoreRefusal(restore)).not.toBeNull();
+    }
+  });
+
+  it('leaves the store as it was when refused', async () => {
+    const { userId, stub } = freshStore('restore-kept');
+    await runInDurableObject(stub, (_i, state) => {
+      state.storage.sql.exec(`INSERT INTO tags (id, name) VALUES ('t', 'home')`);
+    });
+    await stub.restoreTo({ at: Date.now() - 60_000 }).catch(() => undefined);
+    const again = env.USER_STORE.get(env.USER_STORE.idFromName(userId));
+    expect((await again.stats()).counts.tags).toBe(1);
   });
 });

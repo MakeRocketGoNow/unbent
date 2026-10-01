@@ -1,4 +1,5 @@
-import { Hono } from 'hono';
+import { Hono, type Context } from 'hono';
+import { createMiddleware } from 'hono/factory';
 import { zValidator } from '@hono/zod-validator';
 import { z } from 'zod';
 import { requireAuth } from '../lib/session.js';
@@ -9,9 +10,24 @@ import { isOperator } from '../lib/instance.js';
 import { userPrefix } from '../lib/repo.js';
 import { storeFor } from '../lib/store-client.js';
 import { sweepStores } from '../lib/sweep.js';
+import { SWEEP_TOKEN_HEADER, sweepTokenMatches } from '../lib/sweep-token.js';
 import { DUMP_TABLES } from '../store/tables.js';
-import type { UserStore } from '../store/user-store.js';
+import { BOOKMARK_PATTERN, RESTORE_WINDOW_MS, isRestoreUnsupported, readRestoreAbort, readRestoreRefusal } from '../store/restore.js';
+import type { StoreStats, UserStore } from '../store/user-store.js';
 import type { AppEnv } from '../types.js';
+
+/**
+ * The deploy job's way into the sweep. Passes a request without the header on to the
+ * session checks; answers one with it, either by sweeping or with the same 404 a
+ * non-operator gets.
+ */
+const sweepByToken = createMiddleware<AppEnv>(async (c, next) => {
+  const presented = c.req.header(SWEEP_TOKEN_HEADER);
+  if (presented === undefined) return next();
+  if (!(await sweepTokenMatches(c.env, presented))) return c.json({ error: 'Not found' }, 404);
+  console.log('[store] token sweep');
+  return c.json(await sweepStores(c.env, { restart: c.req.query('restart') === '1' }));
+});
 
 /**
  * Destructive maintenance, all scoped to the caller's own data.
@@ -167,15 +183,16 @@ export const admin = new Hono<AppEnv>()
 
   /*
      The operator's window into a note store. An object has no console: nothing lists its
-     tables, nothing runs a query against it, nothing copies it out. These four routes are
-     that console, and they are what `wrangler d1 execute` and `d1 export` used to be for
-     the shared database.
+     tables, nothing runs a query against it, nothing copies it out. These routes are that
+     console, and they are what `wrangler d1 execute`, `d1 export` and Time Travel used to
+     be for the shared database.
 
      `stats` and `dump` are the signed-in user's own by default; a session in
      OPERATOR_EMAILS may name another account with `?user=`, and every such read is logged
      with both ids, since it is one person reading another's notes and the log is the
-     record of it. `sql` and `sweep` are the operator's alone: a raw query over someone's
-     notes, and the walk over every account.
+     record of it. `sql`, `restore` and `sweep` are the operator's alone: a raw query over
+     someone's notes, winding them back, and the walk over every account — which a deploy
+     job may also start, with the deployment's sweep token instead of a session.
   */
 
   /** Row counts, size and schema version of one store. */
@@ -210,6 +227,147 @@ export const admin = new Hono<AppEnv>()
         // The query's own error — a misspelt column, a refused statement — is the answer.
         return c.json({ error: err instanceof Error ? err.message : String(err) }, 400);
       }
+    },
+  )
+
+  /**
+   * Winds one account's store back to a moment in the last thirty days: the rollback for a
+   * bad migration or a bad edit. `{ user, at }` with `at` in milliseconds or ISO 8601, or
+   * `{ user, bookmark }` to restore to a bookmark this route handed out — which is how a
+   * restore is undone. `user` defaults to the caller, as on `sql`.
+   *
+   * A dry run unless the body says `confirm: "RESTORE"`: the dry run resolves the time to
+   * a bookmark, which is where a time outside the window is refused, and shows the store
+   * as it is now. Dump the store before the real thing (`GET …/dump?user=`): the undo
+   * bookmark covers a restore to the wrong time for thirty days, and the dump covers it
+   * after that, outside the platform.
+   *
+   * The object restarts to apply the restore, so the call into it fails by design and the
+   * reason it fails with carries the undo bookmark (see `UserStore.restoreTo`). The route
+   * then reads the restored store's stats through a fresh stub, since the old one is
+   * broken by the restart, and answers with both. If that read fails, the restore still
+   * happened; `stats` again shows the result.
+   *
+   * Logged with both ids before the call, and with the undo bookmark by the object, so
+   * the record exists however the request ends.
+   */
+  .post(
+    '/admin/store/restore',
+    requireAuth,
+    zValidator(
+      'json',
+      z
+        .object({
+          user: z.string().optional(),
+          at: z.union([z.number().int().positive(), z.string().min(1)]).optional(),
+          bookmark: z.string().regex(BOOKMARK_PATTERN).optional(),
+          confirm: z.literal('RESTORE').optional(),
+        })
+        .refine((b) => (b.at === undefined) !== (b.bookmark === undefined), { message: 'Give exactly one of `at` or `bookmark`.' }),
+    ),
+    async (c) => {
+      const email = c.get('user')?.email;
+      if (!isOperator(c.env, email)) return c.json({ error: 'Not found' }, 404);
+      const { user, at, bookmark, confirm } = c.req.valid('json');
+      const target = user ?? c.get('userId')!;
+      if (target !== c.get('userId')) {
+        const row = await directoryRow(c.env.DB, target);
+        if (!row) return c.json({ error: 'No such account' }, 404);
+        // A deleted account's store was wiped, and the wipe is history like anything
+        // else: a restore would bring its notes back, and they would sit there until the
+        // sweep wiped them again. The directory's tombstone is the one thing that decides
+        // an account is gone (see lib/sweep.ts), so it decides this too.
+        if (row.deletedAt !== null) return c.json({ error: 'That account was deleted; its store is not restored.' }, 409);
+      }
+
+      let to: { at: number } | { bookmark: string };
+      if (bookmark !== undefined) {
+        to = { bookmark };
+      } else {
+        const ms = typeof at === 'number' ? at : Date.parse(at!);
+        if (Number.isNaN(ms)) return c.json({ error: '`at` is neither milliseconds nor an ISO 8601 time.' }, 400);
+        if (ms > Date.now()) return c.json({ error: '`at` is in the future.' }, 400);
+        if (ms < Date.now() - RESTORE_WINDOW_MS) return c.json({ error: '`at` is more than thirty days ago; the store keeps no history that far back.' }, 400);
+        to = { at: ms };
+      }
+
+      const store = storeFor(c.env, target);
+      if (confirm !== 'RESTORE') {
+        try {
+          const preview = await store.restorePreview(to);
+          return c.json({
+            dryRun: true,
+            user: target,
+            ...preview,
+            hint: `Dump the store first (GET /api/admin/store/dump?user=${target}), then repeat this request with "confirm": "RESTORE".`,
+          });
+        } catch (err) {
+          const refused = readRestoreRefusal(err);
+          if (refused !== null) return restoreRefused(c, refused);
+          // A dry run schedules nothing, so whatever this was, nothing changed. Not
+          // necessarily the connection: the object can fail on wake too, a pending
+          // migration say, and the log line below is where that error is.
+          console.error(`[store] restore preview failed for user=${target}:`, err);
+          return c.json({ error: 'The dry run failed; nothing was scheduled. The Worker log has the error.' }, 502);
+        }
+      }
+
+      console.log(`[store] operator=${email} restore user=${target} to=${'at' in to ? new Date(to.at).toISOString() : to.bookmark}`);
+      let undo: string | null;
+      try {
+        await store.restoreTo(to);
+        // `restoreTo` aborts the object and so never returns; getting here means it did not,
+        // which leaves the restore scheduled to fire by itself on the next restart — the
+        // delayed hazard `restoreTo` exists to avoid. Said loudly, in the log and the answer.
+        console.error(`[store] restore for user=${target} returned instead of restarting; it will apply on the store's next restart`);
+        return c.json(
+          {
+            error:
+              'The store did not restart, so the restore is scheduled but not yet applied. It will apply by itself the next time the store restarts; call this again to apply it now.',
+          },
+          500,
+        );
+      } catch (err) {
+        const abort = readRestoreAbort(err);
+        const refused = abort.scheduled ? null : readRestoreRefusal(err);
+        if (refused !== null) return restoreRefused(c, refused);
+        if (!abort.scheduled) {
+          // Neither the abort nor a refusal: a dropped connection, an internal error, an
+          // abort whose reason the runtime replaced. The restore may have been scheduled,
+          // or applied, so this must not read as "nothing happened".
+          console.error(`[store] restore outcome unknown for user=${target}:`, err);
+          return c.json(
+            {
+              error:
+                'The restore may have been applied. Check for a "[store] restore scheduled" line in the Worker log, and GET /api/admin/store/stats, before trying again.',
+            },
+            502,
+          );
+        }
+        undo = abort.undo;
+      }
+
+      let stats: StoreStats | null = null;
+      try {
+        stats = await storeFor(c.env, target).stats();
+      } catch (err) {
+        console.error(`[store] stats after restore failed for user=${target}:`, err);
+      }
+      return c.json({
+        restored: true,
+        user: target,
+        undo,
+        stats,
+        note: [
+          'The store restarted to apply the restore, so the request inside it failed by design.',
+          undo
+            ? 'To undo, restore to the `undo` bookmark.'
+            : 'The undo bookmark did not survive the restart; the Worker log has it on the "[store] restore scheduled" line.',
+          stats ? null : 'Reading the restored store failed; call GET /api/admin/store/stats again.',
+        ]
+          .filter(Boolean)
+          .join(' '),
+      });
     },
   )
 
@@ -262,16 +420,35 @@ export const admin = new Hono<AppEnv>()
   /**
    * One batch of the walk, on demand: after a deploy that carries a schema file, so every
    * account is migrated within minutes rather than hours. The answer says whether the
-   * pass is `done`; a runbook calls again until it is, then once more if any account was
-   * `deferred`. See lib/sweep.ts.
+   * pass is `done`; a caller sends `?restart=1` on the first call, so the pass starts at
+   * the top rather than wherever the cron's cursor is, and calls again without it until
+   * it is. See lib/sweep.ts.
+   *
+   * Two ways in. The deploy workflows send `SWEEP_TOKEN` in a header, since CI has no
+   * session (scripts/sweep-stores.mjs); a person sends an operator session. A request
+   * carrying the header is judged on the token alone and never falls through to the
+   * session, so a wrong token is a 404 rather than a 401 that reads as "sign in".
    */
-  .post('/admin/store/sweep', requireAuth, async (c) => {
+  .post('/admin/store/sweep', sweepByToken, requireAuth, async (c) => {
     const email = c.get('user')?.email;
     if (!isOperator(c.env, email)) return c.json({ error: 'Not found' }, 404);
     console.log(`[store] operator=${email} sweep`);
-    return c.json(await sweepStores(c.env));
+    return c.json(await sweepStores(c.env, { restart: c.req.query('restart') === '1' }));
   });
 
+
+/**
+ * A restore the runtime refused before scheduling anything: 501 where it keeps no history
+ * at all (Miniflare, so `pnpm dev`), otherwise 400 with the runtime's own words — a
+ * bookmark it does not know, a time it cannot reach. Only for a refusal the object marked
+ * (`readRestoreRefusal`); any other failure is not known to be harmless.
+ */
+function restoreRefused(c: Context<AppEnv>, message: string): Response {
+  if (isRestoreUnsupported(message)) {
+    return c.json({ error: 'This runtime keeps no history to restore from. Restores work on a deployed instance only.' }, 501);
+  }
+  return c.json({ error: message }, 400);
+}
 
 /**
  * The dump as chunks: the header and the tables, then each page of each table as the

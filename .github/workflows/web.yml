@@ -94,6 +94,11 @@ jobs:
       # of the same name has to be gone before a secret can take it, which only the upload
       # that drops the var can arrange.
       APP_URL: ${{ secrets.APP_URL }}
+      # Optional: what the last step below sends to start the note-store sweep, since CI has
+      # no session to start it with. Sent to the Worker with the deploy, the same way as the
+      # values above, so the two ends cannot disagree. Unset, the step skips and the hourly
+      # cron is what reaches every account after a deploy. `openssl rand -hex 32`.
+      SWEEP_TOKEN: ${{ secrets.SWEEP_TOKEN }}
     steps:
       - uses: actions/checkout@v7
       - uses: pnpm/action-setup@v6
@@ -150,6 +155,10 @@ jobs:
       # value per line, and refuses anything that is not JSON before it reaches the Worker.
       - name: Deploy Worker
         working-directory: apps/api
+        env:
+          # Where wrangler records what it deployed and to which addresses; the sweep below
+          # reads the address from it.
+          WRANGLER_OUTPUT_FILE_PATH: ${{ runner.temp }}/wrangler-output.ndjson
         run: |
           : > "$RUNNER_TEMP/secrets.env"
           if [ -n "$BETTER_AUTH_SECRET" ]; then
@@ -161,9 +170,21 @@ jobs:
           if [ -n "$APP_URL" ]; then
             printf 'APP_URL=%s\n' "$APP_URL" >> "$RUNNER_TEMP/secrets.env"
           fi
+          if [ -n "$SWEEP_TOKEN" ]; then
+            printf 'SWEEP_TOKEN=%s\n' "$SWEEP_TOKEN" >> "$RUNNER_TEMP/secrets.env"
+          fi
           if [ -s "$RUNNER_TEMP/secrets.env" ]; then
             pnpm exec wrangler deploy --env "" --secrets-file "$RUNNER_TEMP/secrets.env"
           else
             pnpm exec wrangler deploy --env ""
           fi
           rm -f "$RUNNER_TEMP/secrets.env"
+
+      # Wakes every account's note store now, so a schema file this deploy carried is
+      # applied everywhere within minutes, and a store it broke turns this job red rather
+      # than waiting for the hourly cron to put it in a log nobody is watching. The
+      # address is APP_URL when one is pinned, and otherwise the one the deploy recorded.
+      # See scripts/sweep-stores.mjs.
+      - name: Sweep the note stores
+        if: env.SWEEP_TOKEN != ''
+        run: node scripts/sweep-stores.mjs --origin "$APP_URL" --wrangler-output "$RUNNER_TEMP/wrangler-output.ndjson"

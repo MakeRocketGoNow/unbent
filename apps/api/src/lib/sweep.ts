@@ -35,6 +35,13 @@ import type { Env } from '../types.js';
  * The D1 side is kept to a handful of queries per batch: the page is one, its users'
  * existence rides on a join, and the writes go out as one `batch`.
  *
+ * `restart` starts the batch from the top of the directory instead of the cursor. The
+ * deploy's pass sends it on its first call: the cursor is the cron's, and usually sits
+ * partway through the directory, so a pass that resumed from it would end at the bottom
+ * having never visited the accounts above it — and a migration that broke one of those
+ * would go green. The cron never sends it, and carries on from wherever the pass left
+ * the cursor.
+ *
  * The walk starts by healing the directory. An account created between the directory
  * migration and the Worker that writes rows for new accounts, or whose row write failed,
  * has none, and would otherwise be invisible to everything here.
@@ -70,7 +77,10 @@ async function readCursor(db: D1Database): Promise<string> {
   return row?.value ?? '';
 }
 
-export async function sweepStores(env: Pick<Env, 'DB' | 'USER_STORE' | 'STORE_JURISDICTION' | 'STORE_SWEEP'>): Promise<SweepReport> {
+export async function sweepStores(
+  env: Pick<Env, 'DB' | 'USER_STORE' | 'STORE_JURISDICTION' | 'STORE_SWEEP'>,
+  opts: { restart?: boolean } = {},
+): Promise<SweepReport> {
   const started = Date.now();
   const report: SweepReport = { visited: 0, wiped: 0, dropped: 0, failed: [], deferred: [], done: false, ms: 0 };
 
@@ -92,7 +102,7 @@ export async function sweepStores(env: Pick<Env, 'DB' | 'USER_STORE' | 'STORE_JU
      ON CONFLICT(user_id) DO NOTHING`,
   ).run();
 
-  const after = await readCursor(env.DB);
+  const after = opts.restart ? '' : await readCursor(env.DB);
   const rows = await listDirectory(env.DB, after, BATCH);
   const writes: D1PreparedStatement[] = [];
   for (const row of rows) {

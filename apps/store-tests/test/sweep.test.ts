@@ -140,6 +140,32 @@ describe('the store sweep', () => {
   });
 
   /**
+   * The deploy's pass must visit every account, but the cursor is the cron's and is
+   * usually partway down the directory. A batch resumed from the bottom ends at once;
+   * `restart` starts at the top whatever the cursor says.
+   */
+  it('starts from the top of the directory when asked to, whatever the cursor says', async () => {
+    const early = uid('restart');
+    await user(early);
+    await directory(early);
+    // Past every id in the directory, as a cursor left near the end of a pass would be.
+    const park = () =>
+      env.DB.prepare(`INSERT INTO _unbent_meta (key, value) VALUES ('store_sweep_cursor', '~') ON CONFLICT(key) DO UPDATE SET value = excluded.value`).run();
+
+    await park();
+    const resumed = await sweepStores(env);
+    expect(resumed).toMatchObject({ visited: 0, done: true });
+
+    await park();
+    const restarted = await sweepStores(env, { restart: true });
+    expect(restarted.visited).toBeGreaterThan(0);
+    // The rest of the pass carries on from where the restarted batch left the cursor.
+    const reports = [restarted, ...(restarted.done ? [] : await fullPass())];
+    expect(reports[reports.length - 1]!.done).toBe(true);
+    expect((await row(early))!.storage_bytes).toBeGreaterThan(0);
+  });
+
+  /**
    * A preview Worker shares the dev instance's D1, and usually its note stores, so its
    * walk does nothing at all: it must not heal, measure, drop a row or move the cursor in
    * a directory that is dev's.

@@ -43,6 +43,14 @@ jobs:
   dev:
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     runs-on: ubuntu-latest
+    # Queued rather than cancelled mid-run, for the reason web.yml gives for production: a
+    # deploy must finish. (A third push replaces one still waiting, which is fine; the
+    # newest run ships everything.) Queued at all because the job ends in a sweep, and two
+    # sweeps side by side move the same cursor, skip each other's batches and undercount —
+    # and the second's restart would send the first back to the top mid-walk.
+    concurrency:
+      group: dev-deploy
+      cancel-in-progress: false
     env:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
@@ -80,6 +88,11 @@ jobs:
       # Optional; the same document production serves, so the Android app's passkeys work
       # against the dev instance and previews too.
       ANDROID_ASSET_LINKS: ${{ secrets.ANDROID_ASSET_LINKS }}
+      # The dev instance's own sweep token, for the sweep at the end of this job; see
+      # SWEEP_TOKEN in web.yml. Not production's, so a leak of one is not the other. Unset,
+      # that step skips. The previews get none: they have no accounts of their own worth
+      # walking, their sweep is switched off (`STORE_SWEEP = "0"`), and so is their cron.
+      DEV_SWEEP_TOKEN: ${{ secrets.DEV_SWEEP_TOKEN }}
     steps:
       # `secrets` cannot be read in an `if:`, so presence is decided once here, as an
       # output, and every later step reads it. The auth secret is the one that decides:
@@ -138,6 +151,8 @@ jobs:
       - name: Deploy the dev instance
         if: steps.configured.outputs.ready == 'true'
         working-directory: apps/api
+        env:
+          WRANGLER_OUTPUT_FILE_PATH: ${{ runner.temp }}/wrangler-output.ndjson
         run: |
           printf 'BETTER_AUTH_SECRET=%s\nALLOWED_EMAILS=%s\n' \
             "$DEV_BETTER_AUTH_SECRET" "$DEV_ALLOWED_EMAILS" > "$RUNNER_TEMP/dev-secrets.env"
@@ -164,6 +179,9 @@ jobs:
           if [ -n "$DEV_ANTHROPIC_API_KEY" ]; then
             printf 'ANTHROPIC_API_KEY=%s\n' "$DEV_ANTHROPIC_API_KEY" >> "$RUNNER_TEMP/dev-secrets.env"
           fi
+          if [ -n "$DEV_SWEEP_TOKEN" ]; then
+            printf 'SWEEP_TOKEN=%s\n' "$DEV_SWEEP_TOKEN" >> "$RUNNER_TEMP/dev-secrets.env"
+          fi
           # The subdomain is what lets the dev instance validate a preview's return origin
           # before minting a sign-in token for it. A plain var rather than a secret: it is
           # public (it is in every preview's URL) and it is not per-PR. Omitted when the
@@ -174,6 +192,15 @@ jobs:
           fi
           pnpm exec wrangler deploy --env dev "${relay_var[@]}" --secrets-file "$RUNNER_TEMP/dev-secrets.env"
           rm -f "$RUNNER_TEMP/dev-secrets.env"
+
+      # The same last step as production's, for the same reason: a schema file that breaks
+      # one of the dev instance's stores shows red here, on the push that carried it. The
+      # address is the custom domain the deploy recorded. See scripts/sweep-stores.mjs.
+      - name: Sweep the dev instance's note stores
+        if: steps.configured.outputs.ready == 'true' && env.DEV_SWEEP_TOKEN != ''
+        env:
+          SWEEP_TOKEN: ${{ secrets.DEV_SWEEP_TOKEN }}
+        run: node scripts/sweep-stores.mjs --wrangler-output "$RUNNER_TEMP/wrangler-output.ndjson"
 
   # One Worker per PR, at a URL of its own, so a branch can be tried out rather than read.
   #

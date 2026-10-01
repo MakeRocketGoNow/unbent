@@ -144,6 +144,13 @@ ALLOWED_EMAILS=
 # nothing operator-only is reachable, which is right for a fork.
 # OPERATOR_EMAILS=you@example.com
 
+# Lets a deploy job start the note-store sweep without a session, sent in the
+# X-Unbent-Sweep-Token header by scripts/sweep-stores.mjs. The deploy workflows carry it from
+# the SWEEP_TOKEN repository secret, so set it there rather than here; locally there is no
+# deploy to sweep after. At least 32 characters: `openssl rand -hex 32`. Unset, only an
+# operator's session can start the sweep.
+# SWEEP_TOKEN=
+
 # Where each account's note store lives. Unset — the default — lets the platform place an
 # object near the first request for it, which for a personal note app is where its user
 # is. `eu` keeps every store in the EU jurisdiction, for an operator whose users need their

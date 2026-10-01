@@ -238,6 +238,7 @@ says otherwise; `pnpm exec wrangler secret put NAME` from `apps/api`, or the das
 | `TYPESAFE_API_KEY` | filing a note from what it says | see [Filing a note from what it says](#filing-a-note-from-what-it-says); `DEV_TYPESAFE_API_KEY` as a GitHub secret carries a separate key to the dev instance and previews |
 | `ANTHROPIC_API_KEY`, `ANTHROPIC_MODEL` | reading images and text-less scans, and writing titles | see [Reading images](#reading-images); `DEV_ANTHROPIC_API_KEY` as a GitHub secret carries a separate key to the dev instance and previews |
 | `ANDROID_ASSET_LINKS` | an Android build of your own | see [Android app](#android-app) |
+| `SWEEP_TOKEN` | sweeping the note stores at the end of each deploy | a GitHub secret the deploy carries to the Worker, `openssl rand -hex 32`; see [Where your notes live](#where-your-notes-live). `DEV_SWEEP_TOKEN` does the same for the dev instance |
 | Custom domain | serving from your own name | dashboard, not config |
 | `ANDROID_APPLICATION_ID`, `ANDROID_DEFAULT_INSTANCE` | the Android build in CI | GitHub repository **variables**; `unbent.applicationId` and `unbent.defaultInstance` in `local.properties` locally |
 | `CLOUDFLARE_WORKERS_SUBDOMAIN`, `DEV_BETTER_AUTH_SECRET`, `DEV_ALLOWED_EMAILS` | a dev instance and PR previews of your own | GitHub; see [The dev instance](#the-dev-instance) — every job skips itself without them |
@@ -611,6 +612,7 @@ summary rather than failing.
 | `DEV_TYPESAFE_API_KEY` | secret, optional | Auto-fill on the dev instance and every preview; a key of its own, so what they spend stays apart from production's — see [Filing a note from what it says](#filing-a-note-from-what-it-says) |
 | `DEV_ANTHROPIC_API_KEY` | secret, optional | Reading images on the dev instance and every preview; a key of its own, for the same reason — see [Reading images](#reading-images) |
 | `DEV_OPERATOR_EMAILS` | secret, optional | who is an operator on the dev instance and every preview, sent as their `OPERATOR_EMAILS`. Not implied by `DEV_ALLOWED_EMAILS`; unset, nobody is, and anything operator-only cannot be tried outside production. Removing it later leaves the dev instance's last list in place until `wrangler secret delete OPERATOR_EMAILS --env dev` |
+| `DEV_SWEEP_TOKEN` | secret, optional | the dev instance's `SWEEP_TOKEN`, so its deploy ends with a sweep of its note stores as production's does; its own value, not production's. Previews get none and never sweep |
 
 The subdomain is a variable rather than a secret because the workflow has to build the URL
 before deploying — `APP_URL` is baked in at deploy time — and a masked value would arrive
@@ -1348,14 +1350,19 @@ each account's rows were frozen against writes during the deploy, and when they 
 verified copied. The copy, the freeze that protected the rows, and the operator's route for
 it are in the history of MakeRocketGoNow/unbent#202; nothing in the code reads D1 for notes
 any more, and there is no way back to the shared tables. Restoring an account is per
-account, from its dump (below).
+account: to a moment in the last thirty days, or from its dump (below).
 
 **Schema changes** are files in `apps/api/src/store/schema/`, applied per object on its next
 wake, additive only. The sweep is what makes that safe to rely on: it wakes every object —
 twenty an hour, from a cursor it keeps in D1, since every store call counts against an
 invocation's fifty subrequests on Free — so a migration that fails for one account fails in
-the log with the user id on it, and it can be run on demand after a deploy. Each visit
-reads a few rows of the account (its size and the stored note counts), never a table.
+the log with the user id on it. Each visit reads a few rows of the account (its size and
+the stored note counts), never a table. The deploy runs a whole pass as its last step, when
+the repository has a `SWEEP_TOKEN` secret: `scripts/sweep-stores.mjs` sends the token in
+place of a session, starts the walk from the top rather than from the cron's cursor, calls
+the sweep until it is done, and fails the deploy if any account's
+store did not wake. Without the secret the step skips and the cron gets there within the
+day.
 
 **What the operator can see.** An object has no console, so the Worker has one, under
 `/api/admin/store` for a session in `OPERATOR_EMAILS`:
@@ -1367,12 +1374,38 @@ reads a few rows of the account (its size and the stored note counts), never a t
 - `GET …/dump` — the store as SQL text, `sqlite3 account.db < dump.sql` rebuilds it: what
   `d1 export` was, and how a migration is rehearsed against a real account before it
   ships — dump, load, run the new schema file's SQL against the copy.
-- `POST …/sweep` — one batch of the walk, now; call until it says `done`, then once more
-  if any account was `deferred`.
+- `POST …/restore` — winds one store back to a moment in the last thirty days; see below.
+- `POST …/sweep` — one batch of the walk, now; `?restart=1` on the first call starts from
+  the top of the directory, then call without it until it says `done`. Also open to the
+  deploy, with the deployment's `SWEEP_TOKEN` in an `X-Unbent-Sweep-Token` header instead of
+  a session.
 
 Reading another account's store is logged with both ids. Rows read and written inside an
 object are metered as D1's were, and every statement over a threshold is logged with the
 user id — which is the accounting `wrangler d1 insights` used to give.
+
+**Winding a store back.** Every store keeps thirty days of history, and `POST …/restore`
+puts one back as it was at a moment in them — the rollback for a schema file that broke an
+account, or an edit that should not have happened. It is for one account at a time and
+the operator only; moving notes between accounts or instances is export and import. A
+deleted account is refused: its wipe is part of the history, and winding back past it
+would bring back notes its owner asked to have removed.
+
+1. `GET …/dump?user=<id>` and keep the file. It is the copy that outlives the thirty days.
+2. `POST …/restore` with `{ "user": "<id>", "at": "2026-09-30T12:00:00Z" }`. Without
+   `confirm` this is a dry run: it says which bookmark the time resolves to, refuses one
+   outside the window, and shows the store as it is now.
+3. Repeat with `"confirm": "RESTORE"`. The store restarts to apply it, and the answer has
+   the restored store's counts and an `undo` bookmark — the store as it was the instant
+   before. `{ "user": "<id>", "bookmark": "<undo>", "confirm": "RESTORE" }` reverses it.
+
+The whole database goes back together, schema version included, so a restore to before a
+schema file is migrated again on the next wake. Files are in R2, not the store, and are
+not wound back: one uploaded since is an orphan, which the account's own
+[file sweep](#deleting-an-account) reclaims, and one deleted since comes back as a row
+with nothing behind it. Local development has no
+history to restore from — Miniflare refuses, and the route answers 501 — so a restore is
+tried on a preview of a PR that touches `src/store/`, which has stores of its own.
 
 **Where an object lives.** The platform creates each account's object near the first
 request for it, and objects do not move. `STORE_JURISDICTION=eu` keeps every store in the

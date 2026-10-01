@@ -13,6 +13,7 @@ import { AttachmentsStore } from './attachments.js';
 import { appliedMigrations, migrate } from './migrate.js';
 import { NotesStore, type CountOptions, type ListOptions, type SearchFilters } from './notes.js';
 import { cursorAfter, nextCursor } from './notes-shared.js';
+import { restoreAbortReason, restoreRefusedReason } from './restore.js';
 import { SCHEMA } from './schema/index.js';
 import { instrumentedSql, type Sql } from './sql.js';
 import { DATA_TABLES, DUMP_TABLES, type DataTable, type DumpTable } from './tables.js';
@@ -245,6 +246,63 @@ export class UserStore extends DurableObject<StoreEnv> {
     // After `deleteAll`, so it is the one thing left; see `WIPED_KEY`.
     this.ctx.storage.kv.put(WIPED_KEY, true);
     this.wiped = true;
+  }
+
+  /**
+   * What a restore to `target` would wind back to, without scheduling anything: the
+   * bookmark a time resolves to, and the store as it is now. The operator's dry run, and
+   * the way to find out that a time is outside the thirty days before anything is at stake.
+   * One call for both, since each is a billable request.
+   */
+  async restorePreview(target: { at: number } | { bookmark: string }): Promise<{ bookmark: string; current: StoreStats }> {
+    let bookmark: string;
+    try {
+      bookmark = 'bookmark' in target ? target.bookmark : await this.ctx.storage.getBookmarkForTime(target.at);
+    } catch (err) {
+      throw new Error(restoreRefusedReason(err));
+    }
+    return { bookmark, current: this.stats() };
+  }
+
+  /**
+   * Winds the whole database back to `target` — a time in the last thirty days, or a
+   * bookmark — and restarts the object so the restore happens. For a bad migration or a
+   * bad edit; restoring another account's notes into this one is the export and import.
+   *
+   * Never returns. The runtime applies a restore when a session starts, so the object
+   * aborts itself to start one, and the request in flight — this one — fails with the
+   * abort's reason. That reason carries the bookmark of the store as it was just before
+   * the restore (`restoreAbortReason`), which is the undo: restoring to it puts everything
+   * back, the same way, for thirty days. It is logged here too, in case the message does
+   * not survive the trip to the caller.
+   *
+   * One call that schedules and aborts, rather than one to schedule and a second to
+   * restart. Between two calls the restore would be scheduled but not yet applied; if the
+   * second never arrived, it would fire whenever the object next restarted — an eviction,
+   * a deploy, days later — and wind back whatever had been written in between. Here
+   * nothing awaits between scheduling and aborting, so no other request can land in the
+   * gap either.
+   *
+   * Everything in the object's storage goes back together: the tables, the schema
+   * version, `_meta`, the wiped mark in key-value storage. A restore to before a schema
+   * file was applied is migrated again on the wake that follows. R2 is not the object's
+   * and is untouched, so files uploaded after the restored time are orphans the
+   * account's own blob sweep reclaims, and files deleted since come back as rows pointing
+   * at nothing.
+   */
+  async restoreTo(target: { at: number } | { bookmark: string }): Promise<void> {
+    // A failure here is before anything is scheduled, and is marked so: the route answers
+    // it as refused. Any other failure of this call is one whose outcome it cannot know.
+    let bookmark: string;
+    let undo: string;
+    try {
+      bookmark = 'bookmark' in target ? target.bookmark : await this.ctx.storage.getBookmarkForTime(target.at);
+      undo = await this.ctx.storage.onNextSessionRestoreBookmark(bookmark);
+    } catch (err) {
+      throw new Error(restoreRefusedReason(err));
+    }
+    console.log(`[store] restore scheduled user=${this.userId} to=${bookmark} undo=${undo}`);
+    this.ctx.abort(restoreAbortReason(bookmark, undo));
   }
 
   /**
