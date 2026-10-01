@@ -41,8 +41,8 @@ export const Route = createRootRouteWithContext<RouterContext>()({
    * The import run is claimed here too, as the last line of defence rather than the
    * first. By the time a new person reaches this guard their sign-in has already set the
    * cookie the worker sends, so a run still going here has had a moment to send as them.
-   * What actually ends a run is earlier: the shell drops it when the session goes, and the
-   * importer stops on its first 401. This catches a sign-out none of
+   * What actually ends a run is earlier: `useSignOut` and the shell drop it when the
+   * session goes, and the importer stops on its first 401. This catches a sign-out none of
    * those saw. Only a real session is passed — a public page returns no user from the
    * gate even when someone is signed in, and treating that as a sign-out would abort a run
    * because `/privacy` was opened. See `ImportRun.claim`.

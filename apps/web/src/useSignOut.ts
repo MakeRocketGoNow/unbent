@@ -4,6 +4,7 @@ import { signOut, refreshSession } from './auth-client.js';
 import { isHosted, postToApp } from './app-bridge.js';
 import { forgetSession } from './session-memory.js';
 import { clearOfflineCaches } from './offline-cache.js';
+import { claimImportFor } from './import-run.js';
 
 /**
  * Sign out, and land somewhere that makes sense afterwards.
@@ -80,7 +81,14 @@ export function useSignOut(): () => void {
         // (`offline-cache.ts`), must not outlive a sign-out — or the next time the app
         // opened with no connection it would carry on as them. Awaited, so they are gone
         // before the page moves on.
+        //
+        // A running import is the same kind of leftover, and worse: its worker sends
+        // whatever cookie the page holds, so the next person to sign in here would get
+        // its notes. The shell drops it too when the session store empties, but inside
+        // the Android app the store is never refreshed (below), so that never happens.
+        // See `ImportRun.claim`.
         forgetSession();
+        claimImportFor(undefined);
         await clearOfflineCaches();
         /*
          * Inside the Android app, the app still holds its own copy of the session and
