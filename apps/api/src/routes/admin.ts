@@ -26,7 +26,7 @@ const sweepByToken = createMiddleware<AppEnv>(async (c, next) => {
   if (presented === undefined) return next();
   if (!(await sweepTokenMatches(c.env, presented))) return c.json({ error: 'Not found' }, 404);
   console.log('[store] token sweep');
-  return c.json(await sweepStores(c.env));
+  return c.json(await sweepStores(c.env, { restart: c.req.query('restart') === '1' }));
 });
 
 /**
@@ -385,7 +385,9 @@ export const admin = new Hono<AppEnv>()
   /**
    * One batch of the walk, on demand: after a deploy that carries a schema file, so every
    * account is migrated within minutes rather than hours. The answer says whether the
-   * pass is `done`; a caller calls again until it is. See lib/sweep.ts.
+   * pass is `done`; a caller sends `?restart=1` on the first call, so the pass starts at
+   * the top rather than wherever the cron's cursor is, and calls again without it until
+   * it is. See lib/sweep.ts.
    *
    * Two ways in. The deploy workflows send `SWEEP_TOKEN` in a header, since CI has no
    * session (scripts/sweep-stores.mjs); a person sends an operator session. A request
@@ -396,7 +398,7 @@ export const admin = new Hono<AppEnv>()
     const email = c.get('user')?.email;
     if (!isOperator(c.env, email)) return c.json({ error: 'Not found' }, 404);
     console.log(`[store] operator=${email} sweep`);
-    return c.json(await sweepStores(c.env));
+    return c.json(await sweepStores(c.env, { restart: c.req.query('restart') === '1' }));
   });
 
 

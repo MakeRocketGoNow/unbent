@@ -18,9 +18,11 @@
  *
  * Each call is one batch — twenty accounts, since an invocation has fifty subrequests on
  * Workers Free — and the answer says whether the pass is `done`, so this calls until it
- * is. The hourly cron moves the same cursor, so a cron batch landing mid-pass skips this
- * pass past twenty accounts; those were swept, by the cron, and only their counts are
- * missing from the report here.
+ * is. The first call says `?restart=1`: the cursor is shared with the hourly cron and is
+ * usually partway down the directory, and a pass resumed from there would report done
+ * without having visited the accounts above it. A cron batch landing mid-pass still moves
+ * the same cursor and skips this pass past twenty accounts; those were swept, by the
+ * cron, and only their counts are missing from the report here.
  *
  * Only counts are printed. The Actions log of a public repository is public, and the ids
  * of the accounts that failed are already in the Worker's log beside the error, which is
@@ -104,7 +106,7 @@ const totals = { batches: 0, visited: 0, wiped: 0, dropped: 0, failed: 0, deferr
 let done = false;
 while (!done) {
   if (totals.batches >= MAX_BATCHES) fail(`The sweep was not done after ${MAX_BATCHES} batches.`);
-  const report = await batch(url, token);
+  const report = await batch(totals.batches === 0 ? `${url}?restart=1` : url, token);
   totals.batches += 1;
   totals.visited += report.visited;
   totals.wiped += report.wiped;

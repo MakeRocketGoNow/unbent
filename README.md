@@ -1359,7 +1359,8 @@ invocation's fifty subrequests on Free — so a migration that fails for one acc
 the log with the user id on it. Each visit reads a few rows of the account (its size and
 the stored note counts), never a table. The deploy runs a whole pass as its last step, when
 the repository has a `SWEEP_TOKEN` secret: `scripts/sweep-stores.mjs` sends the token in
-place of a session, calls the sweep until it is done, and fails the deploy if any account's
+place of a session, starts the walk from the top rather than from the cron's cursor, calls
+the sweep until it is done, and fails the deploy if any account's
 store did not wake. Without the secret the step skips and the cron gets there within the
 day.
 
@@ -1374,7 +1375,8 @@ day.
   `d1 export` was, and how a migration is rehearsed against a real account before it
   ships — dump, load, run the new schema file's SQL against the copy.
 - `POST …/restore` — winds one store back to a moment in the last thirty days; see below.
-- `POST …/sweep` — one batch of the walk, now; call until it says `done`. Also open to the
+- `POST …/sweep` — one batch of the walk, now; `?restart=1` on the first call starts from
+  the top of the directory, then call without it until it says `done`. Also open to the
   deploy, with the deployment's `SWEEP_TOKEN` in an `X-Unbent-Sweep-Token` header instead of
   a session.
 
