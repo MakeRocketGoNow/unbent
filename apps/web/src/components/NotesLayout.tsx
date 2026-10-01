@@ -742,7 +742,7 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
         {isOfflineError(editField.error) && (
           <p className="muted small">That change wasn’t saved: the connection dropped.</p>
         )}
-        {bulkError &&<p className="bad small">{bulkError}</p>}
+        {bulkError && <p className="bad small">{bulkError}</p>}
         <NotebookMissing notebook={notebook} notebooks={notebooks} />
 
         {/*
