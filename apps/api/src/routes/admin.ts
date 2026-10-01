@@ -337,8 +337,6 @@ export const admin = new Hono<AppEnv>()
   )
 
   /**
-   * One store as SQL text:
-  /**
    * One store as SQL text: `sqlite3 account.db < dump.sql` rebuilds it, with nothing from
    * this repository needed. What `d1 export` was for the shared database, and how a
    * migration is rehearsed against a real account before it ships: dump, load, run the
