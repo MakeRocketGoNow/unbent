@@ -31,17 +31,27 @@ export function instanceToken(kind: AppConfig['instanceKind']): string {
 }
 
 /**
- * What the drawer's corner ribbon says, or nothing. Dev and previews wear one — the two
- * a person moves between and can mistake for each other or for production. Local does
- * not: the store screenshots are shot against `pnpm dev`, and a ribbon would be in them.
- * A preview's says its PR, from the label, since "Preview" alone does not say which.
+ * What the corner ribbon says, or nothing. Dev and previews wear one — the two a person
+ * moves between and can mistake for each other or for production. Local does not: the
+ * store screenshots are shot against `pnpm dev`, and a ribbon would be in them. A
+ * preview's says its PR, from the label, since "Preview" alone does not say which.
+ *
+ * `short` is for the compact ribbon — the rail's, and the phone's screen corner — whose
+ * band has about 39px of length. "PR 224" fits it and "PR 1234" does not, and four-digit
+ * PRs are coming, so a preview there reads "#1234": the number is the part that tells two
+ * previews apart, and the colour already says it is one. The drawer's larger band keeps
+ * the full label.
  */
 export function ribbonOf(
   config: Pick<AppConfig, 'instanceLabel' | 'instanceKind'> | undefined,
-): { kind: 'dev' | 'preview'; text: string } | null {
+): { kind: 'dev' | 'preview'; text: string; short: string } | null {
   if (!config?.instanceLabel) return null;
-  if (config.instanceKind === 'dev') return { kind: 'dev', text: 'Dev' };
-  if (config.instanceKind === 'preview') return { kind: 'preview', text: config.instanceLabel };
+  if (config.instanceKind === 'dev') return { kind: 'dev', text: 'Dev', short: 'Dev' };
+  if (config.instanceKind === 'preview') {
+    const label = config.instanceLabel;
+    const number = /^PR\s*(\d+)$/i.exec(label)?.[1];
+    return { kind: 'preview', text: label, short: number ? `#${number}` : label };
+  }
   return null;
 }
 

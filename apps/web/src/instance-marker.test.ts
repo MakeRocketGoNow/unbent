@@ -36,11 +36,23 @@ describe('instanceLine', () => {
 
 describe('ribbonOf', () => {
   it('gives dev a ribbon that says so', () => {
-    expect(ribbonOf({ instanceLabel: 'Dev', instanceKind: 'dev' })).toEqual({ kind: 'dev', text: 'Dev' });
+    expect(ribbonOf({ instanceLabel: 'Dev', instanceKind: 'dev' })).toEqual({ kind: 'dev', text: 'Dev', short: 'Dev' });
   });
 
   it('gives a preview a ribbon naming its PR, since "Preview" alone does not say which', () => {
-    expect(ribbonOf({ instanceLabel: 'PR 224', instanceKind: 'preview' })).toEqual({ kind: 'preview', text: 'PR 224' });
+    expect(ribbonOf({ instanceLabel: 'PR 224', instanceKind: 'preview' })).toEqual({
+      kind: 'preview',
+      text: 'PR 224',
+      short: '#224',
+    });
+  });
+
+  it('shortens a four-digit PR to its number for the compact band, which "PR 1234" overruns', () => {
+    expect(ribbonOf({ instanceLabel: 'PR 1234', instanceKind: 'preview' })?.short).toBe('#1234');
+  });
+
+  it('keeps a preview label that is not "PR <n>" as it is', () => {
+    expect(ribbonOf({ instanceLabel: 'Branch x', instanceKind: 'preview' })?.short).toBe('Branch x');
   });
 
   it('gives local none, so screenshots shot against `pnpm dev` carry no ribbon', () => {

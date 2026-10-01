@@ -115,7 +115,7 @@ export function Rail({ pref, onPref, email, onSignOut }: RailProps) {
 
   return (
     <aside className="rail" aria-label="Navigation">
-      <InstanceRibbon />
+      <InstanceRibbon placement="rail" />
       <div className="rail-inner">
         <div className="rail-head">
           {/* The wordmark, as it was in the top bar: a link home. Gone in the strip —

@@ -5,6 +5,7 @@ import { useAppSession } from '../useAppSession.js';
 import { useSignOut } from '../useSignOut.js';
 import { requireSession, useShell } from '../auth-gate.js';
 import { Rail, RailHandle, useRailWidth, type RailPref } from '../components/Rail.js';
+import { InstanceRibbon } from '../components/InstanceRibbon.js';
 import { usePersistentState } from '../usePersistentState.js';
 import { useMediaQuery, MOBILE_QUERY } from '../useMediaQuery.js';
 import { handOver } from '../hand-over.js';
@@ -82,6 +83,7 @@ function EmbedShell() {
 function PlainShell() {
   return (
     <main className="shell centered">
+      <InstanceRibbon placement="page" />
       <Outlet />
     </main>
   );
@@ -235,6 +237,9 @@ function AppShell() {
           />
         </>
       )}
+      {/* The phone has no rail, and its drawer is closed most of the time, so the ribbon
+          is pinned to the screen's corner instead; see `InstanceRibbon`. */}
+      {isMobile && <InstanceRibbon placement="page" />}
       <main className="shell-main">
         {/* The phone's chrome, on the pages that have no heading of their own; the
             stylesheet hides it above the breakpoint, where the rail is the chrome. */}

@@ -12,15 +12,26 @@ import { ribbonOf } from '../instance-marker.js';
  * The pointer goes through it, and assistive tech skips it; the tab title and the account
  * menu say the same in words.
  *
+ * `page` is the same ribbon pinned to the screen's own corner, for the phone, where the
+ * drawer is closed most of the time, and for the sign-in screen, which has no navigation
+ * at all. At phone width that corner holds the menu or back button, so it is the compact
+ * size: it ends 37px along the diagonal and the button's glyph begins at 39, so it sits
+ * beside the glyph rather than over it, and the pointer goes through to the button.
+ *
  * Production and local draw none; see `ribbonOf`.
  */
-export function InstanceRibbon() {
+export function InstanceRibbon({ placement }: { placement: 'rail' | 'drawer' | 'page' }) {
   const config = useQuery(configQuery());
   const ribbon = ribbonOf(config.data);
   if (!ribbon) return null;
+  // Only the drawer's band is long enough for the whole label; see `ribbonOf`.
+  const text = placement === 'drawer' ? ribbon.text : ribbon.short;
   return (
-    <div className={`instance-ribbon instance-${ribbon.kind}`} aria-hidden="true">
-      <span>{ribbon.text}</span>
+    <div
+      className={`instance-ribbon instance-${ribbon.kind}${placement === 'page' ? ' instance-ribbon-page' : ''}`}
+      aria-hidden="true"
+    >
+      <span>{text}</span>
     </div>
   );
 }

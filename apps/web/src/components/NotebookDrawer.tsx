@@ -49,7 +49,7 @@ export function NotebookDrawer({
       title="Unbent"
       side="start"
       headAction={<AccountMenu email={email} onSignOut={onSignOut} />}
-      corner={<InstanceRibbon />}
+      corner={<InstanceRibbon placement="drawer" />}
     >
       <NotebookNav
         notebook={notebook}
