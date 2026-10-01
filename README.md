@@ -532,16 +532,24 @@ preview built on them would run against the production database with `APP_URL` s
 reading `https://unbent.app`, and refuse every sign-in from the preview host as an invalid
 origin. That is why the Worker and its `APP_URL` are per PR.
 
-The control plane underneath is not. All previews share the `unbent-dev` D1 and the
-`unbent-dev-blobs` bucket, configured as `[env.preview]` in `apps/api/wrangler.toml` and
-served with a stable hostname by [the dev instance](#the-dev-instance) above — kept well
-away from production but not from each other. Accounts and sessions made on one preview
-therefore work on another and on `dev.unbent.app`. Notes do not travel: each Worker has its
-own namespace of per-account note stores, so a note made on one PR's preview is on that
-preview alone. It is a scratch environment, and nothing in it is backed up. A preview also
-never writes the shared directory (`STORE_FREEZE_D1 = "0"` in its wrangler block): its
-copy records nothing there, since the mark is what freezes an account's rows in the shared
-D1 and the dev instance may still be writing them, and its sweep does nothing at all.
+The data underneath is not. All previews share the `unbent-dev` D1, the `unbent-dev-blobs`
+bucket and the dev instance's note stores, configured as `[env.preview]` in
+`apps/api/wrangler.toml` and served with a stable hostname by [the dev
+instance](#the-dev-instance) above — kept well away from production but not from each
+other. Accounts, sessions and notes made on one preview are therefore on every other and on
+`dev.unbent.app`. It is a scratch environment, and nothing in it is backed up.
+
+The stores are shared by binding the `UserStore` class the `unbent-dev` Worker exports,
+and a Durable Object runs the code of the Worker that exports it. So every preview's note
+queries are `main`'s, whatever the PR changed: a PR that touches `apps/api/src/store/` is
+not exercised on its preview, and the preview's comment says so. Try those changes in a
+local `pnpm dev`, where the branch's store code is the one that runs. Giving each preview
+stores of its own was the first arrangement, and it left every preview empty, with nothing
+that could fill it.
+
+A preview's sweep does nothing (`STORE_FREEZE_D1 = "0"` in its wrangler block, and no
+cron): the dev instance's own sweep walks these stores and keeps the directory, and a
+second walk running a PR's code would race it.
 
 The environment is called `preview` rather than `dev` because the custom domain cannot live
 in a block previews reuse: `--name` changes which script a deploy targets but not which
