@@ -24,6 +24,7 @@ import {
   type NotebookDefinition,
   type NotebookSummary,
   type SearchResult,
+  type StaleNote,
   DEFAULT_NOTE_SORT,
 } from '@unbent/shared';
 import type { Bind, Sql } from './sql.js';
@@ -633,6 +634,13 @@ export class NotesStore {
    * The read and the writes are one transaction, so the note this compared against is
    * the note it writes over; on the shared database a save from another tab could land
    * between the two.
+   *
+   * `ifUpdatedAt` makes the write conditional on the note still being the copy the
+   * writer last saw. When it has been saved since, nothing is written and the note as it
+   * stands comes back as `{ stale }`; the routes answer 409 with it. Checked after the
+   * no-op guard rather than before: a patch that would change nothing overwrites nothing,
+   * so refusing it would only raise a conflict about a write that was never going to
+   * happen — the editor resending exactly what another device already saved, say.
    */
   update(
     id: string,
@@ -642,15 +650,18 @@ export class NotesStore {
       tags?: string[] | undefined;
       notebook?: string | null | undefined;
       fields?: NoteFieldsPatch | undefined;
+      ifUpdatedAt?: number | undefined;
     },
-  ): Note | null {
+  ): Note | StaleNote | null {
+    const { ifUpdatedAt, ...changes } = patch;
     return this.sql.tx(() => {
       const current = this.get(id);
       if (!current) return null;
 
-      const effective = this.changedKeysOnly(patch, current);
+      const effective = this.changedKeysOnly(changes, current);
       // Nothing in the patch differs from what is stored, so the note keeps its date.
       if (effective === null) return current;
+      if (ifUpdatedAt !== undefined && ifUpdatedAt !== current.updatedAt) return { stale: current };
 
       // Field values are validated before anything is written: a value the field cannot
       // hold fails the whole patch rather than landing after the title has changed.

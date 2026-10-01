@@ -386,6 +386,19 @@ export const updateNoteSchema = z.object({
   notebook: notebookNameSchema.nullable().optional(),
   /** Merged into the note's values: absent keys are untouched, null clears one. */
   fields: noteFieldsPatchSchema.optional(),
+  /**
+   * The `updatedAt` of the copy this patch was written against. When the note has been
+   * saved since — by another device, another tab, an assistant over MCP — the patch is
+   * refused with a 409 carrying the note as it now stands, rather than written over it.
+   *
+   * Optional, so a writer that means "whatever is there, replace it" still can; the web
+   * editor always sends it. A timestamp rather than a revision counter because the column
+   * already exists and every client already holds it: `updated_at` only moves when a write
+   * changes something (see `NotesStore.update`), which is exactly the property a
+   * precondition needs. Two writes in the same millisecond could share one, which needs
+   * two devices saving one note within a millisecond of each other.
+   */
+  ifUpdatedAt: z.number().int().nonnegative().optional(),
 });
 
 /**
@@ -649,6 +662,15 @@ export interface NoteSummary {
 
 export interface Note extends NoteSummary {
   body: string;
+}
+
+/**
+ * A save refused because the note changed after the copy it was written against — see
+ * `ifUpdatedAt`. Carries the note as it now stands, so the writer has both sides without
+ * a second read; the API sends this as the 409's body.
+ */
+export interface StaleNote {
+  stale: Note;
 }
 
 /** A notebook as the list reports it. */

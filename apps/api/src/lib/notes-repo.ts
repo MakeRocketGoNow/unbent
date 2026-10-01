@@ -10,6 +10,7 @@ import type {
   NotebookSummary,
   SearchResult,
   SearchResultRow,
+  StaleNote,
 } from '@unbent/shared';
 import { StoreRepo } from './store-client.js';
 import type { AttachmentInfo } from '@unbent/shared';
@@ -99,9 +100,10 @@ export class NotesRepo extends StoreRepo {
       tags?: string[] | undefined;
       notebook?: string | null | undefined;
       fields?: NoteFieldsPatch | undefined;
+      ifUpdatedAt?: number | undefined;
     },
-  ): Promise<Note | null> {
-    return this.call((s) => s.update(id, patch));
+  ): Promise<Note | StaleNote | null> {
+    return this.call(async (s) => s.update(id, patch));
   }
 
   appendToBody(id: string, markdown: string): Promise<boolean> {

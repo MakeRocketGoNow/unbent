@@ -60,11 +60,16 @@ function fakeNotes(
       listNotebooks: async () => (opts.notebook ? [{ ...opts.notebook, count: 1, fields: 0 }] : []),
       listFields: async (notebookId: string) =>
         notebookId === opts.notebook?.id ? (opts.fields ?? []) : null,
-      update: async (id: string, patch: { body?: string; fields?: Record<string, unknown> }) => {
+      update: async (
+        id: string,
+        patch: { body?: string; fields?: Record<string, unknown>; ifUpdatedAt?: number },
+      ) => {
         if (id !== note.id) return null;
         patches.push(patch);
+        if (patch.ifUpdatedAt !== undefined && patch.ifUpdatedAt !== note.updatedAt) return { stale: { ...note } };
         if (patch.fields?.['bad-value']) throw new InvalidFieldValue('Amount', 'must be a number');
         if (patch.body !== undefined) note.body = patch.body;
+        note.updatedAt += 1;
         return { ...note };
       },
       appendToBody: async (id: string, markdown: string) => {
@@ -165,6 +170,50 @@ describe('edit_note', () => {
     await edit({ noteId, mode: 'prepend', content: '# Heading' });
 
     expect(note.body).toBe('# Heading\n\nExisting.');
+  });
+
+  it('refuses rather than overwrite a save that landed between its read and its write', async () => {
+    const { note, repo } = fakeNotes('Buy milk');
+    // The editor's autosave, arriving after edit_note has read the body.
+    const get = repo.get.bind(repo);
+    repo.get = async (id: string) => {
+      const read = await get(id);
+      note.body = 'Buy milk and eggs';
+      note.updatedAt += 1;
+      return read;
+    };
+    const edit = collect(repo).get('edit_note')!;
+
+    const result = await edit({ noteId, mode: 'replace', find: 'Buy milk', content: 'Buy oat milk' });
+
+    expect(result.isError).toBe(true);
+    expect(result.content[0]?.text).toContain('changed after you read it');
+    // The current text goes back with the refusal, so the retry needs no extra read.
+    expect(result.content[0]?.text).toContain('Buy milk and eggs');
+    expect(note.body).toBe('Buy milk and eggs');
+  });
+});
+
+describe('update_note with ifUpdatedAt', () => {
+  it('writes when the note is the copy that was read, and refuses once it has moved on', async () => {
+    const { note, repo } = fakeNotes('Original');
+    const update = collect(repo).get('update_note')!;
+    const read = new Date(note.updatedAt).toISOString();
+
+    const first = await update({ noteId, body: 'First', ifUpdatedAt: read });
+    expect(first.isError).toBeFalsy();
+    expect(note.body).toBe('First');
+
+    // The same read, used again: the note has been saved since.
+    const second = await update({ noteId, body: 'Second', ifUpdatedAt: read });
+    expect(second.isError).toBe(true);
+    expect(second.content[0]?.text).toContain('changed after you read it');
+    expect(note.body).toBe('First');
+
+    // Without the precondition, the write is unconditional, as it always was.
+    const third = await update({ noteId, body: 'Third' });
+    expect(third.isError).toBeFalsy();
+    expect(note.body).toBe('Third');
   });
 });
 
