@@ -13,8 +13,8 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@better-auth/oauth-provider": "^1.7.5",
-    "@better-auth/passkey": "1.7.5",
+    "@better-auth/oauth-provider": "^1.7.7",
+    "@better-auth/passkey": "1.7.7",
     "@better-auth/utils": "0.4.2",
     "@codemirror/commands": "^6.11.1",
     "@codemirror/lang-markdown": "^6.5.2",
@@ -29,7 +29,7 @@
     "@unbent/enex": "workspace:*",
     "@unbent/shared": "workspace:*",
     "@zip.js/zip.js": "^2.15.0",
-    "better-auth": "^1.7.5",
+    "better-auth": "^1.7.7",
     "codemirror": "^6.0.2",
     "downshift": "^9.4.0",
     "frimousse": "^0.4.0",
