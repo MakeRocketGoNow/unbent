@@ -544,6 +544,57 @@ describe('a write through MCP that changes nothing', () => {
 });
 
 /**
+ * update_note with `ifUpdatedAt`: an assistant that read a note, and a person who saved it
+ * in the editor before the assistant wrote. The precondition is what turns that into a
+ * refusal carrying the person's text, rather than the assistant's write landing over it.
+ */
+describe('a write through MCP against a copy that has since changed', () => {
+  it('refuses update_note and hands back the note as it now stands', async () => {
+    const created = JSON.parse(
+      toolText(
+        (
+          await mcp(alice.token, 'tools/call', {
+            name: 'create_note',
+            arguments: { title: 'Coupons', body: 'Read by the assistant' },
+          })
+        ).body,
+      ),
+    ) as { id: string; updatedAt: string };
+    await new Promise((resolve) => setTimeout(resolve, 5));
+
+    // The person saves from the editor.
+    const saved = await fetch(`${BASE}/api/notes/${created.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', Cookie: alice.cookie, Origin: ORIGIN },
+      body: JSON.stringify({ body: 'Saved by the person' }),
+    });
+    expect(saved.status).toBe(200);
+
+    const refused = await mcp(alice.token, 'tools/call', {
+      name: 'update_note',
+      arguments: { noteId: created.id, body: 'Written by the assistant', ifUpdatedAt: created.updatedAt },
+    });
+    expect(refused.body.result?.isError).toBe(true);
+    expect(toolText(refused.body)).toContain('changed after you read it');
+    expect(toolText(refused.body)).toContain('Saved by the person');
+
+    const read = JSON.parse(
+      toolText(
+        (await mcp(alice.token, 'tools/call', { name: 'get_note', arguments: { noteId: created.id } })).body,
+      ),
+    ) as { body: string; updatedAt: string };
+    expect(read.body).toBe('Saved by the person');
+
+    // Against the copy it just read, the same write goes through.
+    const retried = await mcp(alice.token, 'tools/call', {
+      name: 'update_note',
+      arguments: { noteId: created.id, body: 'Written by the assistant', ifUpdatedAt: read.updatedAt },
+    });
+    expect(retried.body.result?.isError).toBeFalsy();
+  });
+});
+
+/**
  * Attaching a file by URL.
  *
  * The bytes come from a throwaway HTTP server in this process rather than from the

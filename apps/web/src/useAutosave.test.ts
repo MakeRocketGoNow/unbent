@@ -262,6 +262,40 @@ describe('useAutosave in-flight failure', () => {
     expect(save).toHaveBeenLastCalledWith('second edit');
     expect(save.mock.calls.at(-1)?.[0]).not.toBe('first edit');
   });
+
+  it('still sends the outgoing note’s last edit when switching notes mid-save', async () => {
+    // Saves go one at a time, so a slow save holds the next one back; the switch must
+    // take the outgoing edit then, before typing in the next note can take its place.
+    const sent: string[] = [];
+    let releaseFirst!: () => void;
+    let n = 0;
+    const saveFor = (note: string) => async (v: string) => {
+      sent.push(`${note}:${v}`);
+      if (++n === 1) await new Promise<void>((r) => (releaseFirst = r));
+    };
+    const { rerender } = renderHook(
+      ({ value, key }) => useAutosave(value, saveFor(key), { delay: 10, resetKey: key }),
+      { initialProps: { value: 'A0', key: 'A' } },
+    );
+    rerender({ value: 'A1', key: 'A' });
+    await act(async () => {
+      vi.advanceTimersByTime(20);
+    });
+    rerender({ value: 'A2', key: 'A' });
+    rerender({ value: 'B0', key: 'B' });
+    rerender({ value: 'B1', key: 'B' });
+    await act(async () => {
+      releaseFirst();
+      await Promise.resolve();
+      vi.advanceTimersByTime(50);
+      await Promise.resolve();
+    });
+    await act(async () => {
+      vi.advanceTimersByTime(50);
+    });
+
+    expect(sent).toEqual(['A:A1', 'A:A2', 'B:B1']);
+  });
 });
 
 /**
@@ -402,5 +436,74 @@ describe('useAutosave with nothing to save', () => {
     });
     expect(save).toHaveBeenLastCalledWith({ body: 'Line four' });
     expect(result.current.state).toBe('saved');
+  });
+});
+
+/**
+ * A save refused because the note changed elsewhere is held like any failed save — the
+ * typing must not be lost — but reported as `conflict`, which the editor answers with a
+ * choice rather than a retry. `discard` is the "Reload" half of that choice: the held
+ * value is dropped, and re-seeding afterwards must not flush it on the way out.
+ */
+describe('useAutosave conflicts', () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  const refused = Object.assign(new Error('changed'), { refused: true });
+  const isConflict = (err: unknown) => (err as { refused?: boolean }).refused === true;
+
+  it('reports a refused save as a conflict and keeps it for the next flush', async () => {
+    const save = vi.fn().mockRejectedValueOnce(refused).mockResolvedValue(undefined);
+    const { result, rerender } = renderHook(
+      ({ value }) => useAutosave(value, save, { delay: 10, resetKey: 'n', isConflict }),
+      { initialProps: { value: 'seed' } },
+    );
+    rerender({ value: 'typed' });
+    await act(async () => {
+      vi.advanceTimersByTime(20);
+    });
+    expect(result.current.state).toBe('conflict');
+
+    await act(async () => {
+      await result.current.flush();
+    });
+    expect(save).toHaveBeenLastCalledWith('typed');
+    expect(result.current.state).toBe('saved');
+  });
+
+  it('still calls any other failure an error', async () => {
+    const save = vi.fn().mockRejectedValue(new Error('offline'));
+    const { result, rerender } = renderHook(
+      ({ value }) => useAutosave(value, save, { delay: 10, resetKey: 'n', isConflict }),
+      { initialProps: { value: 'seed' } },
+    );
+    rerender({ value: 'typed' });
+    await act(async () => {
+      vi.advanceTimersByTime(20);
+    });
+    expect(result.current.state).toBe('error');
+  });
+
+  it('discards the held value, so re-seeding does not send it', async () => {
+    const save = vi.fn().mockRejectedValueOnce(refused).mockResolvedValue(undefined);
+    const { result, rerender } = renderHook(
+      ({ value, resetKey }) => useAutosave(value, save, { delay: 10, resetKey, isConflict }),
+      { initialProps: { value: 'seed', resetKey: 'n:0' } },
+    );
+    rerender({ value: 'typed', resetKey: 'n:0' });
+    await act(async () => {
+      vi.advanceTimersByTime(20);
+    });
+    expect(save).toHaveBeenCalledTimes(1);
+
+    act(() => result.current.discard());
+    expect(result.current.state).toBe('idle');
+    // What Reload does next: the other version, as a new seed.
+    rerender({ value: 'theirs', resetKey: 'n:1' });
+    await act(async () => {
+      vi.advanceTimersByTime(50);
+      await result.current.flush();
+    });
+    expect(save).toHaveBeenCalledTimes(1);
   });
 });

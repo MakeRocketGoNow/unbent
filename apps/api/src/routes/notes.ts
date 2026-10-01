@@ -101,10 +101,17 @@ export const notes = new Hono<AppEnv>()
     return c.json(note);
   })
 
+  /**
+   * A patch carrying `ifUpdatedAt` for a note saved since is a 409, with the note as it now
+   * stands under `stale` so the client can show both sides without reading it again.
+   */
   .patch('/notes/:id', zValidator('json', updateNoteSchema), async (c) => {
     try {
       const note = await c.get('notes').update(c.req.param('id'), c.req.valid('json'));
       if (!note) return c.json({ error: 'Not found' }, 404);
+      if ('stale' in note) {
+        return c.json({ error: 'This note changed after the copy this save was made from', stale: note.stale }, 409);
+      }
       return c.json(note);
     } catch (err) {
       if (err instanceof InvalidFieldValue) return c.json({ error: fieldError(err) }, 400);

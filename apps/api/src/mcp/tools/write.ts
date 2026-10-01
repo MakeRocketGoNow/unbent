@@ -26,7 +26,7 @@ import {
 } from '@unbent/shared';
 import type { McpServer } from '@modelcontextprotocol/server';
 import type { NotesRepo } from '../../lib/notes-repo.js';
-import { jsonResult, noteRef, notFound, toolError } from './result.js';
+import { jsonResult, noteRef, notFound, staleNote, toolError } from './result.js';
 
 /**
  * Custom field values by field *name*, the way list_notebooks reports them and get_note
@@ -185,7 +185,9 @@ export function registerWriteTools(server: McpServer, notes: NotesRepo): void {
         'supplied changes, but what is supplied replaces rather than merges — passing tags ' +
         'sets the tag list to exactly that. Custom field values are the exception: only the ' +
         'names given change, and null clears one. To change part of a body without ' +
-        'resending it, use edit_note.',
+        'resending it, use edit_note. Pass the updatedAt get_note gave you as ' +
+        'ifUpdatedAt and the update is refused if the note was saved since, rather than ' +
+        'overwriting someone else\'s edit.',
       inputSchema: z.object({
         noteId: z.string().uuid(),
         title: z.string().max(MAX_TITLE_LENGTH).optional(),
@@ -193,10 +195,15 @@ export function registerWriteTools(server: McpServer, notes: NotesRepo): void {
         tags: tagsSchema.optional(),
         notebook: notebookSchema.optional(),
         fields: fieldsSchema.optional(),
+        ifUpdatedAt: z
+          .string()
+          .datetime()
+          .optional()
+          .describe('The note\'s updatedAt from get_note, exactly as it was given.'),
       }),
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     },
-    async ({ noteId, title, body, tags, notebook, fields }) => {
+    async ({ noteId, title, body, tags, notebook, fields, ifUpdatedAt }) => {
       const target = normalizeNotebook(notebook);
       let patch: NoteFieldsPatch | undefined;
       if (fields && Object.keys(fields).length > 0) {
@@ -223,8 +230,12 @@ export function registerWriteTools(server: McpServer, notes: NotesRepo): void {
           tags,
           notebook: target,
           ...(patch ? { fields: patch } : {}),
+          // ISO-8601 out, so ISO-8601 back in; `noteRef` keeps the milliseconds, which is
+          // what makes the round trip exact.
+          ...(ifUpdatedAt ? { ifUpdatedAt: Date.parse(ifUpdatedAt) } : {}),
         });
         if (!note) return notFound('note', noteId);
+        if ('stale' in note) return staleNote(note.stale);
         return jsonResult(noteRef(note));
       } catch (err) {
         if (err instanceof InvalidFieldValue) return toolError(`${err.fieldName} ${err.message}.`);
@@ -271,9 +282,9 @@ export function registerWriteTools(server: McpServer, notes: NotesRepo): void {
       /**
        * Append has a repo method that does it in SQL, so it neither reads the body back nor
        * races another writer over it. The other two modes have to read, and are read-modify-
-       * write: two edits to one note in the same instant can lose one. Acceptable here, and
-       * worth stating — the alternative is a compare-and-swap on a column that does not
-       * exist yet, for a conflict that needs two agents editing one note at once.
+       * write, so the write is made conditional on the read: it carries the `updatedAt` it
+       * read, and a save that landed in between — the editor's autosave, another agent —
+       * refuses it rather than being overwritten with a body built from the older text.
        */
       if (mode === 'append') {
         const ok = await notes.appendToBody(noteId, content);
@@ -306,8 +317,9 @@ export function registerWriteTools(server: McpServer, notes: NotesRepo): void {
         body = current.body.replace(find!, () => content);
       }
 
-      const note = await notes.update(noteId, { body });
+      const note = await notes.update(noteId, { body, ifUpdatedAt: current.updatedAt });
       if (!note) return notFound('note', noteId);
+      if ('stale' in note) return staleNote(note.stale);
       return jsonResult(noteRef(note));
     },
   );

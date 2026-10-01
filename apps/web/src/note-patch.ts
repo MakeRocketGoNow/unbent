@@ -24,6 +24,65 @@ export type NotePatch = {
   fields?: NoteFieldsPatch;
 };
 
+/** The draft a note's saved copy starts as. */
+export function seedFrom(note: Pick<Note, 'title' | 'body' | 'tags' | 'notebook' | 'fields'>): NoteDraft {
+  return {
+    title: note.title,
+    body: note.body,
+    tags: note.tags,
+    notebook: note.notebook ?? null,
+    fields: Object.fromEntries((note.fields ?? []).map((v) => [v.fieldId, v.value])) as Record<
+      string,
+      FieldValue | null
+    >,
+  };
+}
+
+/**
+ * Whether a save refused as stale would take nothing from the note as it now stands:
+ * every change made to it since `base` — the copy the editor last had from the server —
+ * is one the draft already holds.
+ *
+ * Then the refusal was not a conflict, only a date that moved, and the editor saves again
+ * against the new copy instead of asking. The ordinary way here is a bulk action on the
+ * list that included the open note: it refiles the note on the server, moving its date,
+ * and hands the same notebook and tags to the draft (`registerOpenNoteFilingEdit`). Two
+ * devices making the same edit is the other. Anything else — a title changed elsewhere
+ * that the draft still has the old version of — is a real choice, and the person makes it.
+ *
+ * Tags compare as sets, as the server compares them: it returns them sorted, and the
+ * draft holds them in the order they were added.
+ */
+export function holdsTheirChanges(
+  draft: NoteDraft,
+  base: Pick<Note, 'title' | 'body' | 'tags' | 'notebook' | 'fields'>,
+  current: Pick<Note, 'title' | 'body' | 'tags' | 'notebook' | 'fields'>,
+): boolean {
+  const was = seedFrom(base);
+  const now = seedFrom(current);
+
+  if (now.title !== was.title && draft.title !== now.title) return false;
+  if (now.body !== was.body && draft.body !== now.body) return false;
+  if (now.notebook !== was.notebook && draft.notebook !== now.notebook) return false;
+  if (!sameTagSet(now.tags, was.tags) && !sameTagSet(draft.tags, now.tags)) return false;
+
+  for (const id of new Set([...Object.keys(now.fields), ...Object.keys(was.fields)])) {
+    const theirs = now.fields[id] ?? null;
+    if (sameOrBothEmpty(theirs, was.fields[id] ?? null)) continue;
+    if (!sameOrBothEmpty(draft.fields[id] ?? null, theirs)) return false;
+  }
+  return true;
+}
+
+function sameTagSet(a: string[], b: string[]): boolean {
+  return a.length === b.length && a.every((tag) => b.includes(tag));
+}
+
+function sameOrBothEmpty(a: FieldValue | null, b: FieldValue | null): boolean {
+  if (a === null || b === null) return a === b;
+  return sameFieldValue(a, b);
+}
+
 /**
  * Definitions this session has already loaded, so a notebook change does not forget
  * the types a draft value was typed against.

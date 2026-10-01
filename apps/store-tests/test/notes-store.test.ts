@@ -58,16 +58,63 @@ describe('notes: create, read, update', () => {
     const { stub } = freshStore('noop');
     const created = await stub.create(note({ tags: ['b', 'a'] }));
     const same = await stub.update(created.id, { title: created.title, tags: ['a', 'b', ' b '] });
-    expect(same?.updatedAt).toBe(created.updatedAt);
+    expect(same).toMatchObject({ updatedAt: created.updatedAt });
 
     await new Promise((r) => setTimeout(r, 2));
     const changed = await stub.update(created.id, { title: 'Beta', notebook: 'Taxes', tags: ['c'] });
     expect(changed).toMatchObject({ title: 'Beta', notebook: 'Taxes', tags: ['c'] });
-    expect(changed!.updatedAt).toBeGreaterThan(created.updatedAt);
+    expect((changed as { updatedAt: number }).updatedAt).toBeGreaterThan(created.updatedAt);
     // The old tags lost their live note; the new notebook was created on the way.
     expect(await stub.listTags()).toEqual([{ id: expect.any(String), name: 'c', count: 1 }]);
     expect((await stub.listNotebooks()).map((n) => [n.name, n.count])).toEqual([['Taxes', 1]]);
     expect(await stub.update('nope', { title: 'x' })).toBeNull();
+  });
+
+  it('refuses a patch made against an older copy, and hands back the note as it stands', async () => {
+    const { stub } = freshStore('stale');
+    const created = await stub.create(note({ body: 'first draft' }));
+    await new Promise((r) => setTimeout(r, 2));
+
+    // Another device saves; this one still holds `created`.
+    const elsewhere = await stub.update(created.id, { body: 'edited on the phone', ifUpdatedAt: created.updatedAt });
+    expect(elsewhere).toMatchObject({ body: 'edited on the phone' });
+    const saved = elsewhere as { updatedAt: number };
+    expect(saved.updatedAt).toBeGreaterThan(created.updatedAt);
+
+    const refused = await stub.update(created.id, { body: 'typed on the desktop', ifUpdatedAt: created.updatedAt });
+    expect(refused).toEqual({ stale: expect.objectContaining({ body: 'edited on the phone', updatedAt: saved.updatedAt }) });
+    expect((await stub.get(created.id))?.body).toBe('edited on the phone');
+
+    // Refused even when it would change nothing: an answer of "saved" would tell the
+    // writer its copy is current, and the rest of that copy is not.
+    const same = await stub.update(created.id, { body: 'edited on the phone', ifUpdatedAt: created.updatedAt });
+    expect(same).toEqual({ stale: expect.objectContaining({ updatedAt: saved.updatedAt }) });
+
+    // Against the copy as it now stands, the same edit goes through; without the
+    // precondition it always does.
+    expect(await stub.update(created.id, { body: 'typed on the desktop', ifUpdatedAt: saved.updatedAt })).toMatchObject({
+      body: 'typed on the desktop',
+    });
+    expect(await stub.update(created.id, { body: 'whatever is there' })).toMatchObject({ body: 'whatever is there' });
+    expect(await stub.update('nope', { title: 'x', ifUpdatedAt: 1 })).toBeNull();
+  });
+
+  it('moves the date forward on every write, however close together they land', async () => {
+    // Back to back, with no pause: the clock may read the same millisecond for all of
+    // them, and a write that kept the last one's date would pass a precondition made
+    // against the copy before it.
+    const { stub } = freshStore('stamp');
+    const created = await stub.create(note({ body: 'one' }));
+    const dates = [created.updatedAt];
+    for (const body of ['two', 'three', 'four']) {
+      dates.push(((await stub.update(created.id, { body })) as { updatedAt: number }).updatedAt);
+    }
+    await stub.appendToBody(created.id, 'five');
+    dates.push((await stub.get(created.id))!.updatedAt);
+    await stub.updateMany([created.id], { addTags: ['six'] });
+    dates.push((await stub.get(created.id))!.updatedAt);
+
+    for (let i = 1; i < dates.length; i++) expect(dates[i]).toBeGreaterThan(dates[i - 1]!);
   });
 
   it('refuses a value its field cannot hold, before writing anything, with the field named', async () => {

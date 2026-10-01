@@ -1,4 +1,4 @@
-import { fieldsByName, type NoteSummary } from '@unbent/shared';
+import { fieldsByName, type Note, type NoteSummary } from '@unbent/shared';
 
 /**
  * How every tool here answers.
@@ -57,4 +57,18 @@ export function notFound(kind: string, what: string) {
  */
 export function toolError(message: string) {
   return { isError: true as const, content: [{ type: 'text' as const, text: message }] };
+}
+
+/**
+ * A write refused because the note was saved after the copy it was built from — by the
+ * person in the editor, or another agent. The note as it now stands goes back with the
+ * error, so the model can redo its change against the current text in one more call
+ * rather than reading the note again first.
+ */
+export function staleNote(current: Note) {
+  return toolError(
+    `The note changed after you read it (it was saved at ${new Date(current.updatedAt).toISOString()}), ` +
+      'so nothing was written. Redo the change against the note as it is now:\n\n' +
+      JSON.stringify({ ...noteRef(current), body: current.body }, null, 2),
+  );
 }

@@ -24,6 +24,7 @@ import {
   type NotebookDefinition,
   type NotebookSummary,
   type SearchResult,
+  type StaleNote,
   DEFAULT_NOTE_SORT,
 } from '@unbent/shared';
 import type { Bind, Sql } from './sql.js';
@@ -633,6 +634,16 @@ export class NotesStore {
    * The read and the writes are one transaction, so the note this compared against is
    * the note it writes over; on the shared database a save from another tab could land
    * between the two.
+   *
+   * `ifUpdatedAt` makes the write conditional on the note still being the copy the
+   * writer last saw. When it has been saved since, nothing is written and the note as it
+   * stands comes back as `{ stale }`; the routes answer 409 with it. Checked before the
+   * no-op guard, even though a patch that would change nothing overwrites nothing. A 200
+   * for it tells the writer its copy is current: the editor took the note that came back
+   * as its new base, while its draft still held the old version of whatever else the other
+   * device had changed — and the next keystroke sent that old text with a precondition that
+   * passed. The writer is the one that can tell a stale no-op from a harmless one (the
+   * editor's `holdsTheirChanges`), so it is the one that gets asked.
    */
   update(
     id: string,
@@ -642,15 +653,29 @@ export class NotesStore {
       tags?: string[] | undefined;
       notebook?: string | null | undefined;
       fields?: NoteFieldsPatch | undefined;
+      ifUpdatedAt?: number | undefined;
     },
-  ): Note | null {
+  ): Note | StaleNote | null {
+    const { ifUpdatedAt, ...changes } = patch;
     return this.sql.tx(() => {
       const current = this.get(id);
       if (!current) return null;
 
-      const effective = this.changedKeysOnly(patch, current);
+      if (ifUpdatedAt !== undefined && ifUpdatedAt !== current.updatedAt) return { stale: current };
+
+      const effective = this.changedKeysOnly(changes, current);
       // Nothing in the patch differs from what is stored, so the note keeps its date.
       if (effective === null) return current;
+
+      /*
+         The new date, always past the old one. `ifUpdatedAt` is only as sound as "every
+         write moves `updated_at`", and the clock alone does not promise that: inside a
+         Workers invocation `Date.now()` stands still until there is I/O, so two writes
+         the object serves back to back can read the same millisecond — an assistant's
+         `edit_note` and an autosave arriving together, say — and the second would carry
+         the first one's date, letting a save made against the first copy through.
+      */
+      const stamp = Math.max(Date.now(), current.updatedAt + 1);
 
       // Field values are validated before anything is written: a value the field cannot
       // hold fails the whole patch rather than landing after the title has changed.
@@ -674,7 +699,7 @@ export class NotesStore {
       }
 
       if (sets.length > 0) {
-        binds.push(Date.now());
+        binds.push(stamp);
         sets.push(`updated_at = ?${binds.length}`);
         binds.push(id);
         const changed = this.sql.exec<{ id: string }>(
@@ -695,7 +720,7 @@ export class NotesStore {
         this.sweepTombstonedFields();
       }
       if (effective.tags !== undefined || fieldWrites.length > 0) {
-        this.sql.exec(`UPDATE notes SET updated_at = ?1 WHERE id = ?2`, Date.now(), id);
+        this.sql.exec(`UPDATE notes SET updated_at = ?1 WHERE id = ?2`, stamp, id);
       }
 
       return this.get(id);
@@ -778,10 +803,11 @@ export class NotesStore {
    * simplest correct one.
    */
   appendToBody(id: string, markdown: string): boolean {
+    // The date goes past the old one, always, as `update` has it: see the stamp there.
     const changed = this.sql.exec<{ id: string }>(
       `UPDATE notes
           SET body = CASE WHEN body = '' THEN ?1 ELSE body || char(10) || char(10) || ?1 END,
-              updated_at = ?2
+              updated_at = MAX(?2, updated_at + 1)
         WHERE id = ?3 AND deleted_at IS NULL
         RETURNING id`,
       markdown,
@@ -1055,7 +1081,8 @@ export class NotesStore {
       const now = Date.now();
       for (const run of runs([...changed])) {
         this.sql.exec(
-          `UPDATE notes SET updated_at = ?1 WHERE id IN (${placeholders(2, run.length)})`,
+          // Past each note's old date, always, as `update` has it: see the stamp there.
+          `UPDATE notes SET updated_at = MAX(?1, updated_at + 1) WHERE id IN (${placeholders(2, run.length)})`,
           now,
           ...run,
         );
