@@ -48,6 +48,16 @@ jobs:
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
       DEV_BETTER_AUTH_SECRET: ${{ secrets.DEV_BETTER_AUTH_SECRET }}
       DEV_ALLOWED_EMAILS: ${{ secrets.DEV_ALLOWED_EMAILS }}
+      # Who runs the dev instance and the previews, the shape of DEV_ALLOWED_EMAILS, sent
+      # as the OPERATOR_EMAILS the Worker reads. Optional, and deliberately not implied by
+      # the allowlist: being let in to sign in is not the same as being shown what only the
+      # people running an instance can fix. Unset — a fork, or before anyone sets it —
+      # nobody is an operator here, which is the Worker's own default; set, whatever
+      # production shows its operators can be tried somewhere that is not production.
+      #
+      # Unsetting it later does not take it back: `--secrets-file` below only adds, so the
+      # Worker keeps the last list until `wrangler secret delete OPERATOR_EMAILS --env dev`.
+      DEV_OPERATOR_EMAILS: ${{ secrets.DEV_OPERATOR_EMAILS }}
       # The account's workers.dev subdomain, which the dev instance uses to recognise a
       # legitimate preview host before handing it a sign-in token — see the preview relay
       # in apps/api/src/lib/preview-relay.ts. The same variable the preview job reads to
@@ -131,6 +141,10 @@ jobs:
         run: |
           printf 'BETTER_AUTH_SECRET=%s\nALLOWED_EMAILS=%s\n' \
             "$DEV_BETTER_AUTH_SECRET" "$DEV_ALLOWED_EMAILS" > "$RUNNER_TEMP/dev-secrets.env"
+          # Unset, nobody on the dev instance is an operator.
+          if [ -n "$DEV_OPERATOR_EMAILS" ]; then
+            printf 'OPERATOR_EMAILS=%s\n' "$DEV_OPERATOR_EMAILS" >> "$RUNNER_TEMP/dev-secrets.env"
+          fi
           if [ -n "$ANDROID_ASSET_LINKS" ]; then
             printf 'ANDROID_ASSET_LINKS=%s\n' "$(printf '%s' "$ANDROID_ASSET_LINKS" | jq -c .)" >> "$RUNNER_TEMP/dev-secrets.env"
           fi
@@ -196,6 +210,9 @@ jobs:
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
       DEV_BETTER_AUTH_SECRET: ${{ secrets.DEV_BETTER_AUTH_SECRET }}
       DEV_ALLOWED_EMAILS: ${{ secrets.DEV_ALLOWED_EMAILS }}
+      # The dev instance's operators, for the reason the dev job gives. A preview shares the
+      # dev instance's database and its sign-in, so the same people run both.
+      DEV_OPERATOR_EMAILS: ${{ secrets.DEV_OPERATOR_EMAILS }}
       # Optional; the same document production serves, so the Android app's passkeys work
       # against the dev instance and previews too.
       ANDROID_ASSET_LINKS: ${{ secrets.ANDROID_ASSET_LINKS }}
@@ -261,6 +278,9 @@ jobs:
         run: |
           printf 'BETTER_AUTH_SECRET=%s\nALLOWED_EMAILS=%s\n' \
             "$DEV_BETTER_AUTH_SECRET" "$DEV_ALLOWED_EMAILS" > "$RUNNER_TEMP/preview-secrets.env"
+          if [ -n "$DEV_OPERATOR_EMAILS" ]; then
+            printf 'OPERATOR_EMAILS=%s\n' "$DEV_OPERATOR_EMAILS" >> "$RUNNER_TEMP/preview-secrets.env"
+          fi
           if [ -n "$ANDROID_ASSET_LINKS" ]; then
             printf 'ANDROID_ASSET_LINKS=%s\n' "$(printf '%s' "$ANDROID_ASSET_LINKS" | jq -c .)" >> "$RUNNER_TEMP/preview-secrets.env"
           fi
@@ -307,7 +327,8 @@ jobs:
               ...signIn,
               '',
               `Runs against the shared \`unbent-dev\` database and bucket, which every preview`,
-              'writes to. Production is untouched. The Worker is deleted when this PR closes.',
+              'writes to; notes live in this preview\'s own per-account stores, so what you make',
+              'here stays here. Production is untouched. The Worker is deleted when this PR closes.',
               '',
               // Which push this URL is actually serving. Without it a stale comment and a
               // fresh one look identical, and the only way to tell whether a redeploy has

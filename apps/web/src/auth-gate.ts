@@ -218,8 +218,9 @@ export async function requireSession(location: ParsedLocation): Promise<Session 
   // Inside the Android app, sign-in is the app's own screen, which offers the phone's
   // account sheet; the one below would be a second sign-in form inside it. The redirect
   // still happens, so the page never renders a route it cannot load, but it is the app
-  // that decides what comes next — and it checks first, because `ensureSession` answers
-  // null for a phone with no signal as readily as for a session that has ended.
+  // that decides what comes next — and it checks first. `ensureSession` no longer answers
+  // null for a phone with no signal when it knows who was signed in (see `answerFor`), but
+  // it still does on a device that has never remembered anyone.
   postToApp({ type: 'unauthorized' });
 
   const back = returnTo(location.href);

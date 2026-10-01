@@ -28,6 +28,7 @@ async function renderOnce(dpr: number) {
   vi.stubGlobal('devicePixelRatio', dpr);
   global.fetch = vi.fn(async () => ({
     ok: true,
+    headers: new Headers(),
     arrayBuffer: async () => new ArrayBuffer(8),
   })) as never;
 

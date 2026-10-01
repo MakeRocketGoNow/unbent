@@ -23,6 +23,13 @@ export interface Env {
    */
   STORE_JURISDICTION?: string;
   /**
+   * `"0"` stops the copy and the sweep writing `account_directory.migrated_at`, which is
+   * what freezes an account's rows in the shared D1 tables (migration 0032). Set only on
+   * the pull-request previews, which share the dev instance's D1 while dev still runs
+   * `main` and writes those rows; anywhere else it is unset and the freeze is on.
+   */
+  STORE_FREEZE_D1?: string;
+  /**
    * Workers AI, for extracting a PDF's text on upload. Bound in production only — see
    * wrangler.toml — so it is optional here, and its absence means the browser does the
    * extracting, as it did before.

@@ -212,6 +212,9 @@ function buildToolbar(view: EditorView): { dom: HTMLElement; destroy: () => void
  * the way Typora's does rather than covering the row being edited.
  */
 function tableToolbar(state: EditorState): Tooltip | null {
+  // Every control on it rewrites the table, which a read-only note — offline, or in the
+  // trash — must not do. Its commands dispatch directly, so `readOnly` would not stop them.
+  if (state.readOnly) return null;
   const range = state.selection.main;
   // A selection spanning the table is a text operation, not a structural one.
   if (!range.empty) return null;
@@ -242,8 +245,9 @@ function tableToolbar(state: EditorState): Tooltip | null {
 const tableToolbarField = StateField.define<Tooltip | null>({
   create: tableToolbar,
   update(value, tr) {
-    // Rebuilding only when something moved keeps the DOM — and an open picker — alive.
-    if (!tr.docChanged && !tr.selection) return value;
+    // Rebuilding only when something moved keeps the DOM — and an open picker — alive. A
+    // change of read-only state is a reconfiguration, and moves the answer too.
+    if (!tr.docChanged && !tr.selection && tr.startState.readOnly === tr.state.readOnly) return value;
     return tableToolbar(tr.state);
   },
   provide: (field) => showTooltip.from(field),

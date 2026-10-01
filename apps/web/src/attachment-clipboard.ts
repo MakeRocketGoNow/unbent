@@ -1,4 +1,6 @@
 import { type AttachmentInfo, attachmentUrl, formatAttachmentMarkdown } from '@unbent/shared';
+import { request } from './notes-api.js';
+import { VIEW_HEADER } from './sw/routes.js';
 
 /**
  * Puts one attachment on the system clipboard, as a link and — for a picture — as a picture.
@@ -56,9 +58,14 @@ export async function copyAttachmentToClipboard(
   return 'link';
 }
 
-/** The picture as PNG, converting through a canvas when it is stored as something else. */
+/**
+ * The picture as PNG, converting through a canvas when it is stored as something else.
+ *
+ * Marked as a view (`VIEW_HEADER`): the copy is of a picture on screen, so the service
+ * worker answers from the copy it kept and an image can be copied with no connection.
+ */
 async function fetchAsPng(url: string): Promise<Blob> {
-  const res = await fetch(url);
+  const res = await request(url, { headers: { [VIEW_HEADER]: '1' } });
   if (!res.ok) throw new Error(`${res.status}`);
   const blob = await res.blob();
   if (blob.type === 'image/png') return blob;

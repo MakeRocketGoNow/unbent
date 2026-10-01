@@ -10,23 +10,34 @@ import {
   type NotebookDefinition,
 } from '@unbent/shared';
 import { AttachmentsStore } from './attachments.js';
+import { copiedFromD1, copyFromD1, copyMismatch, markCopiedFromD1, type CopyOptions, type CopyResult } from './copy-from-d1.js';
 import { appliedMigrations, migrate } from './migrate.js';
 import { NotesStore, type CountOptions, type ListOptions, type SearchFilters } from './notes.js';
 import { cursorAfter, nextCursor } from './notes-shared.js';
 import { SCHEMA } from './schema/index.js';
 import { instrumentedSql, type Sql } from './sql.js';
+import { DATA_TABLES, DUMP_TABLES, type DataTable, type DumpTable } from './tables.js';
+
+export { DATA_TABLES, DUMP_TABLES, type DataTable, type DumpTable };
 
 /**
- * What the object is allowed to see of the Worker's environment: nothing.
+ * What the object is allowed to see of the Worker's environment: the D1 database, for the
+ * one-time copy of an account's rows (`copy-from-d1.ts`), and nothing else.
  *
- * `Record<never, never>` is deliberately empty rather than omitted, so the type is the
- * place to widen when the one-time copy from D1 lands (it needs `DB`, and nothing else
- * ever will). Naming `BLOBS`, `AI` or a secret here would be refused by review before it
- * was refused by the compiler, but the compiler refusing it is what makes rule 1 in
- * AGENTS.md — the object touches its SQLite and nothing else — a property of the code
- * rather than a habit.
+ * `DB` leaves when the copy does, and then this is `Record<never, never>`. Naming `BLOBS`,
+ * `AI` or a secret here would be refused by review before it was refused by the compiler,
+ * but the compiler refusing it is what makes rule 1 in AGENTS.md — the object touches its
+ * SQLite and nothing else — a property of the code rather than a habit.
  */
-export type StoreEnv = Record<never, never>;
+export type StoreEnv = {
+  DB: D1Database;
+  /**
+   * `"0"` on the pull-request previews, which share the dev instance's D1 while dev still
+   * runs `main`: a preview's copy must not write `migrated_at` there, or the freeze would
+   * refuse that account's writes on dev until the merge. See wrangler.toml.
+   */
+  STORE_FREEZE_D1?: string;
+};
 
 /** The `_meta` keys the object writes. Reserved names, kept in one place. */
 const META = {
@@ -34,21 +45,20 @@ const META = {
   userId: 'user_id',
 } as const;
 
+/**
+ * The one key in the object's key-value storage, which `deleteAll` clears and `wipe` then
+ * writes: that this object was wiped. It is what stops a wiped object copying its account
+ * back from D1 on its next wake — `deleteAll` takes the `_meta` row that says the copy has
+ * run, and without this a deletion that failed after the wipe would bring the account back
+ * as it was at the cutover, with its files already gone from R2 (found in review). Read
+ * before the schema is touched, so a wiped object stays empty storage until something
+ * asks for its notes.
+ */
+const WIPED_KEY = 'wiped';
+
 /** One row as SQLite hands it back: the four value types it has, by column name. */
 export type Row = Record<string, SqlStorageValue>;
 
-/** The tables `dumpPage` will page and `stats` counts. FTS tables are rebuilt from these, never dumped. */
-export const DATA_TABLES = [
-  'notebooks',
-  'notebook_fields',
-  'tags',
-  'notes',
-  'note_tags',
-  'note_fields',
-  'attachments',
-  'attachment_text',
-] as const;
-export type DataTable = (typeof DATA_TABLES)[number];
 
 /** What `stats` reports: the shape the ops route and the sweep read. */
 export interface StoreStats {
@@ -59,7 +69,33 @@ export interface StoreStats {
   counts: Record<DataTable, number>;
   /** True when `wipe` has run and nothing has woken the schema since: the object is empty storage. */
   wiped: boolean;
+  /**
+   * Whether the one-time copy from D1 has run (or was found unnecessary): `copied_at` in
+   * the directory, which the sweep writes from this. The `_meta` key behind it is still
+   * `migrated_from_d1`, since objects on dev already hold it.
+   */
+  copiedFromD1: boolean;
+  /** Why the copy's last verification failed, while it waits for the operator; see `copyFromD1`. */
+  copyMismatch: string | null;
 }
+
+/**
+ * What the sweep records, and nothing that costs a table scan: the size the runtime
+ * reports and the one `note_counts` row. `stats` counts every table and is the operator's;
+ * an hourly pass calling it on an archive-sized account would have read every row of the
+ * account twenty-four times a day (found in review), against the same daily row budget
+ * the shared database ran out of twice.
+ */
+export interface StoreUsage {
+  databaseSize: number;
+  /** Live and trashed notes together: what the account holds. */
+  notes: number;
+  copiedFromD1: boolean;
+  wiped: boolean;
+}
+
+/** What `copyFromD1` answers: the copy's own result, with the usage the sweep records. */
+export type StoreCopyResult = CopyResult & { usage: StoreUsage };
 
 /**
  * How many bytes of note bodies and file texts one export page carries before it is cut
@@ -69,6 +105,12 @@ export interface StoreStats {
  * cursor from its last row, so the client walks on as if the page had been full.
  */
 export const EXPORT_PAGE_BYTES = 8 * 1024 * 1024;
+
+/**
+ * The same budget for a dump page: `attachment_text` rows are up to half a million
+ * characters each, and five hundred of them would pass the RPC ceiling many times over.
+ */
+export const DUMP_PAGE_BYTES = 8 * 1024 * 1024;
 
 /**
  * One account's notes, in a SQLite database of their own.
@@ -84,7 +126,8 @@ export const EXPORT_PAGE_BYTES = 8 * 1024 * 1024;
  * a half-applied schema: each schema file the object has no record of is applied in one
  * transaction, and on every wake the object checks that foreign keys are enforced (the
  * engine's default, but the cascades depend on it) and that `_meta.user_id` is the name
- * it was created under. Every other wake is local reads only.
+ * it was created under. Every wake is local reads only: nothing here reaches D1 until
+ * something calls `copyFromD1`.
  *
  * Every public method is one billable request to the object, so the surface has two
  * layers: the repository methods one for one, for the facade that keeps `NotesRepo`'s
@@ -118,6 +161,12 @@ export class UserStore extends DurableObject<StoreEnv> {
     this.notes = new NotesStore(this.sql);
     this.attachments = new AttachmentsStore(this.sql);
     ctx.blockConcurrencyWhile(async () => {
+      // A wiped object wakes as it was left: empty, with no schema, and with the copy
+      // from D1 never to run again. `ready()` rebuilds the schema if anything asks.
+      if (ctx.storage.kv.get(WIPED_KEY) === true) {
+        this.wiped = true;
+        return;
+      }
       this.bootstrap();
     });
   }
@@ -152,9 +201,16 @@ export class UserStore extends DurableObject<StoreEnv> {
     this.wiped = false;
   }
 
-  /** Rebuilds the schema after a `wipe`, the first time anything asks for data again. */
+  /**
+   * Rebuilds the schema after a `wipe`, the first time anything asks for data again. A
+   * wiped object starts empty by design — the account was deleted, or a test fixture
+   * purged — so the copy from D1 is marked done rather than run.
+   */
   private ready(): void {
-    if (this.wiped) this.bootstrap();
+    if (!this.wiped) return;
+    this.bootstrap();
+    markCopiedFromD1(this.sql);
+    this.ctx.storage.kv.delete(WIPED_KEY);
   }
 
   // --- Operator surface ------------------------------------------------------------------
@@ -164,11 +220,11 @@ export class UserStore extends DurableObject<StoreEnv> {
     return { userId: this.userId };
   }
 
-  /** Row counts, size and schema version, for the ops route and the daily sweep. */
+  /** Row counts, size and schema version, for the ops route and the sweep. */
   stats(): StoreStats {
     const counts = Object.fromEntries(DATA_TABLES.map((t) => [t, 0])) as Record<DataTable, number>;
     if (this.wiped) {
-      return { userId: this.userId, databaseSize: this.ctx.storage.sql.databaseSize, migrations: [], counts, wiped: true };
+      return { userId: this.userId, databaseSize: this.ctx.storage.sql.databaseSize, migrations: [], counts, wiped: true, copiedFromD1: true, copyMismatch: null };
     }
     for (const table of DATA_TABLES) {
       counts[table] = this.sql.first<{ n: number }>(`SELECT COUNT(*) AS n FROM ${table}`)?.n ?? 0;
@@ -179,20 +235,75 @@ export class UserStore extends DurableObject<StoreEnv> {
       migrations: appliedMigrations(this.ctx.storage),
       counts,
       wiped: false,
+      copiedFromD1: copiedFromD1(this.sql),
+      copyMismatch: copyMismatch(this.sql),
     };
+  }
+
+  /** What the sweep records: a few rows per account, never a table scan. See `StoreUsage`. */
+  usage(): StoreUsage {
+    const databaseSize = this.ctx.storage.sql.databaseSize;
+    if (this.wiped) return { databaseSize, notes: 0, copiedFromD1: true, wiped: true };
+    const counts = this.sql.first<{ live: number; trashed: number }>(`SELECT live, trashed FROM note_counts WHERE id = 1`);
+    return {
+      databaseSize,
+      notes: (counts?.live ?? 0) + (counts?.trashed ?? 0),
+      copiedFromD1: copiedFromD1(this.sql),
+      wiped: false,
+    };
+  }
+
+  /**
+   * Runs, or continues, the one-time copy of this account's rows from D1; see
+   * copy-from-d1.ts for what it promises and what it answers. The sweep calls it for
+   * every account not yet copied, and the operator's route for one; nothing else does,
+   * and in particular no wake. The answer carries the usage the sweep would otherwise
+   * have to ask for in a second call, whatever the copy did.
+   *
+   * Under `blockConcurrencyWhile`, so two callers cannot interleave — the sweep and the
+   * operator at once would each count the pages the other inserted as its own — and so
+   * nothing reads the account between two of its pages. The callback swallows its error
+   * and rethrows it outside the block: a throw *inside* one resets the object, and a
+   * reset discards writes the runtime has not yet confirmed (measured 2026-09-30), which
+   * could take the committed cursor with it.
+   */
+  async copyFromD1(opts: Pick<CopyOptions, 'retry' | 'budget'> = {}): Promise<StoreCopyResult> {
+    // A wiped object answers without rebuilding its schema, as `stats` and `usage` do:
+    // the operator's route accepts any account the directory names, tombstoned ones
+    // included, and a deleted account must not get an empty database back from a typo.
+    if (this.wiped) return { status: 'already', usage: this.usage() };
+    this.ready();
+    let outcome: CopyResult | Error | undefined;
+    await this.ctx.blockConcurrencyWhile(async () => {
+      try {
+        outcome = await copyFromD1(this.sql, this.env.DB, this.userId, () => this.notes.recountNotes(), {
+          freeze: this.env.STORE_FREEZE_D1 !== '0',
+          retry: opts.retry,
+          budget: opts.budget,
+        });
+      } catch (err) {
+        outcome = err instanceof Error ? err : new Error(String(err));
+      }
+    });
+    if (outcome instanceof Error) throw outcome;
+    return { ...outcome!, usage: this.usage() };
   }
 
   /**
    * Deletes everything: every table, the schema, the `_meta` row. For account deletion and
    * for the test fixtures' purge.
    *
-   * The instance stays alive and empty. `ready()` rebuilds the schema if a data method is
-   * called afterwards, so a wiped object that is reached again — a deletion that failed
-   * further along and was retried, a test — behaves as a brand-new one rather than
-   * throwing "no such table" until it is evicted.
+   * The instance stays alive and empty, and stays that way across an eviction: the
+   * marker written here is read before the schema is touched on the next wake. `ready()`
+   * rebuilds the schema if a data method is called afterwards, so a wiped object that is
+   * reached again — a deletion that failed further along and was retried, a test —
+   * behaves as a brand-new one that starts empty rather than copying its old rows back
+   * from D1 or throwing "no such table".
    */
   async wipe(): Promise<void> {
     await this.ctx.storage.deleteAll();
+    // After `deleteAll`, so it is the one thing left; see `WIPED_KEY`.
+    this.ctx.storage.kv.put(WIPED_KEY, true);
     this.wiped = true;
   }
 
@@ -207,8 +318,14 @@ export class UserStore extends DurableObject<StoreEnv> {
    * PRAGMA that changes engine state, and for making the refusal an error the operator
    * reads rather than a silent no-op.
    *
-   * Rows are capped because the result crosses RPC (32 MiB) and lands in a JSON response;
-   * an operator wanting more pages with LIMIT/OFFSET like anyone else.
+   * The result is capped, at `maxRows` rows and at `DUMP_PAGE_BYTES` of them, because it
+   * crosses RPC (32 MiB) and lands in a JSON response; an operator wanting more pages
+   * with LIMIT/OFFSET like anyone else. The cap is applied as the rows are read off the
+   * raw cursor, not to a result already built: `SELECT * FROM attachment_text` on an
+   * archive would otherwise pull every text into the object's memory before the first
+   * five hundred were kept, and five hundred texts can pass the RPC ceiling on their own
+   * (found in review). The one other query here that bypasses the seam's metering, for
+   * that reason; what it read is counted off the cursor instead.
    */
   readOnlySql(query: string, binds: Array<string | number | null> = [], maxRows = 500): {
     rows: Row[];
@@ -220,47 +337,101 @@ export class UserStore extends DurableObject<StoreEnv> {
     if (!/^(SELECT|WITH|EXPLAIN)\b/.test(head)) {
       throw new Error('readOnlySql runs SELECT, WITH or EXPLAIN statements only');
     }
-    const before = this.sql.counters.rowsRead;
-    let rows: Row[] = [];
+    const rows: Row[] = [];
+    let truncated = false;
+    let rowsRead = 0;
     const ROLLBACK = Symbol('rollback');
     try {
       this.sql.tx(() => {
-        rows = this.sql.exec<Row>(query, ...binds);
+        const cursor = this.ctx.storage.sql.exec<Row>(query, ...binds);
+        let bytes = 0;
+        for (const row of cursor) {
+          for (const v of Object.values(row)) bytes += typeof v === 'string' ? v.length : v instanceof ArrayBuffer ? v.byteLength : 8;
+          // Always at least one row, so a single oversized row can still be looked at.
+          if (rows.length >= maxRows || (bytes > DUMP_PAGE_BYTES && rows.length > 0)) {
+            truncated = true;
+            break;
+          }
+          rows.push(row);
+        }
+        rowsRead = cursor.rowsRead;
         throw ROLLBACK;
       });
     } catch (err) {
       if (err !== ROLLBACK) throw err;
     }
-    return {
-      rows: rows.slice(0, maxRows),
-      truncated: rows.length > maxRows,
-      rowsRead: this.sql.counters.rowsRead - before,
-    };
+    return { rows, truncated, rowsRead };
   }
 
   /**
-   * One page of a table's rows, by rowid, for the dump route: the operator pages every
-   * data table in `DATA_TABLES` order and writes them out with `schemaSql` at the top,
-   * which is a file `sqlite3` can rebuild an account from. The FTS tables are not dumped;
-   * their triggers refill them as the rows are re-inserted.
+   * One page of a table's rows, by rowid, as INSERT statements for the dump route: the
+   * operator pages every table in `DUMP_TABLES` order and writes the pages out between
+   * the schema's tables and its triggers, which is a file `sqlite3` rebuilds an account
+   * from. The FTS tables are not dumped; the file rebuilds them from the rows at the end.
+   *
+   * The rows are turned into SQL here rather than in the Worker because of where the CPU
+   * is. A Worker invocation on the Free plan has ten milliseconds of it, and quoting
+   * eight megabytes of text takes more than that; an object request has thirty seconds.
+   * Encoded to bytes here too, for the same reason: a string crossing RPC is decoded on
+   * the Worker's side and would be encoded again for the response, both linear in the
+   * page, where a byte array crosses as a copy and is written out as it is.
+   *
+   * A page is at most `limit` rows and, past the first row, at most `DUMP_PAGE_BYTES` of
+   * them: the result crosses RPC, which is capped at 32 MiB, and a page of scans' texts
+   * would pass that at five hundred rows. The cut is by the rows' own sizes as they are
+   * read — off the raw cursor, row by row, so the cut bounds the object's memory and not
+   * only the result, and the caller may ask for thousands of rows a page and get as many
+   * as fit. That matters because every page is one store call, and an invocation has
+   * fifty on Free: a dump of an archive-sized account has to be a dozen pages, not a
+   * hundred. The one query here that bypasses the `Sql` seam's metering, for that reason.
    */
-  dumpPage(table: DataTable, afterRowid = 0, limit = 500): { rows: Row[]; nextRowid: number | null } {
+  dumpPage(table: DumpTable, afterRowid = 0, limit = 5000): { bytes: Uint8Array; rows: number; nextRowid: number | null } {
     this.ready();
-    if (!DATA_TABLES.includes(table)) throw new Error(`not a data table: ${table}`);
-    const rows = this.sql.exec<Row & { _rowid: number }>(
+    if (!DUMP_TABLES.includes(table)) throw new Error(`not a data table: ${table}`);
+    const cursor = this.ctx.storage.sql.exec<Row & { _rowid: number }>(
       `SELECT rowid AS _rowid, * FROM ${table} WHERE rowid > ?1 ORDER BY rowid LIMIT ?2`,
       afterRowid,
       limit,
     );
-    const last = rows[rows.length - 1];
-    return { rows, nextRowid: rows.length === limit && last ? last._rowid : null };
+    const lines: string[] = [];
+    let bytes = 0;
+    let cut = false;
+    let last: number | null = null;
+    for (const row of cursor) {
+      for (const v of Object.values(row)) bytes += typeof v === 'string' ? v.length : v instanceof ArrayBuffer ? v.byteLength : 8;
+      // Always at least one row, or a single oversized row could never be dumped.
+      if (bytes > DUMP_PAGE_BYTES && lines.length > 0) {
+        cut = true;
+        break;
+      }
+      const { _rowid, ...columns } = row;
+      last = _rowid;
+      const names = Object.keys(columns);
+      lines.push(`INSERT INTO ${table} (${names.join(', ')}) VALUES (${names.map((n) => sqlLiteral(columns[n])).join(', ')});`);
+    }
+    // More may follow when the page was cut, or was full; a short page that was not cut
+    // is the end of the table.
+    return {
+      bytes: new TextEncoder().encode(lines.length ? `${lines.join('\n')}\n` : ''),
+      rows: lines.length,
+      nextRowid: (cut || lines.length === limit) && last !== null ? last : null,
+    };
   }
 
-  /** The CREATE statements the database holds, in creation order: the dump's first line. */
+  /**
+   * The CREATE statements the database holds, in creation order, for the dump. Each FTS5
+   * virtual table's shadow tables (`notes_fts_data`, `_idx`, `_docsize`, `_config`) are
+   * left out: SQLite lists them in `sqlite_master` as ordinary tables, but they belong to
+   * the virtual table, which creates them itself and refuses to if they already exist.
+   */
   schemaSql(): string[] {
     this.ready();
     return this.sql
-      .exec<{ sql: string }>(`SELECT sql FROM sqlite_master WHERE sql IS NOT NULL ORDER BY rowid`)
+      .exec<{ sql: string }>(
+        `SELECT sql FROM sqlite_master
+          WHERE sql IS NOT NULL AND NOT (type = 'table' AND name GLOB '*_fts_*')
+          ORDER BY rowid`,
+      )
       .map((r) => r.sql);
   }
 
@@ -500,7 +671,20 @@ export class UserStore extends DurableObject<StoreEnv> {
   }
 }
 
+/** One SQLite value as a literal in the dump. The four types the engine has, and nothing else. */
+function sqlLiteral(value: unknown): string {
+  if (value === null || value === undefined) return 'NULL';
+  if (typeof value === 'number') return Number.isFinite(value) ? String(value) : 'NULL';
+  if (typeof value === 'string') return `'${value.replace(/'/g, "''")}'`;
+  if (value instanceof ArrayBuffer || ArrayBuffer.isView(value)) {
+    const bytes = value instanceof ArrayBuffer ? new Uint8Array(value) : new Uint8Array(value.buffer, value.byteOffset, value.byteLength);
+    return `X'${[...bytes].map((b) => b.toString(16).padStart(2, '0')).join('')}'`;
+  }
+  return `'${String(value).replace(/'/g, "''")}'`;
+}
+
 // Re-exported so the facade and the tests can name the option shapes without reaching
 // into the store modules.
 export type { CountOptions, ListOptions, SearchFilters };
 export type { FieldDef, FieldValue, NoteFieldsPatch };
+export type { CopyResult };

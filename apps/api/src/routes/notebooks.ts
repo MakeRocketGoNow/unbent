@@ -53,11 +53,7 @@ export const notebooks = new Hono<AppEnv>()
    * the scope selector hides its "Unfiled" option when that count is zero.
    */
   .get('/notebooks', async (c) => {
-    const repo = c.get('notes');
-    const [notebooks, unfiled] = await Promise.all([
-      repo.listNotebooks(),
-      repo.countUnfiledNotes(),
-    ]);
+    const { notebooks, unfiled } = await c.get('notes').notebooksOverview();
     return c.json({ notebooks, unfiled });
   })
 

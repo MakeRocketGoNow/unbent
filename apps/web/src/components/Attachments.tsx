@@ -28,6 +28,17 @@ interface AttachmentsProps {
    * destination and remount with the rewritten body.
    */
   onBodyRewrite: (nextBody: string) => void;
+  /**
+   * The note takes no changes right now — offline, or a copy read from the offline cache
+   * that the server has not yet answered for (`locked` in `Workspace`). Every control here
+   * that changes the note or its files is faded in place, as Auto-fill and ⋯ are, so
+   * nothing moves when the connection drops; Copy and the download link still work.
+   *
+   * Insert link most of all: it dispatches into the editor directly, which CodeMirror's
+   * read-only does not stop, and a draft made dirty on a cached copy would be saved over
+   * an edit made on another device when the connection returned.
+   */
+  readOnly?: boolean;
 }
 
 function formatBytes(n: number): string {
@@ -53,6 +64,7 @@ export function Attachments({
   body,
   editorView,
   onBodyRewrite,
+  readOnly = false,
 }: AttachmentsProps) {
   const queryClient = useQueryClient();
   const { data: files = [], isLoading, error } = useQuery(attachmentsQuery(noteId));
@@ -131,8 +143,16 @@ export function Attachments({
   useEffect(() => {
     if (unlinkedCount > 0) setHadUnlinked(true);
   }, [unlinkedCount, noteId]);
+  // A question left open when the note locks would go on offering what it can no longer do.
+  useEffect(() => {
+    if (!readOnly) return;
+    setPending(null);
+    setSending(null);
+    setCleaning(false);
+  }, [readOnly]);
 
   function insertLink(file: AttachmentInfo) {
+    if (readOnly) return;
     const markdown = formatAttachmentMarkdown(file.filename, `files/${file.filename}`, {
       image: file.contentType.startsWith('image/'),
     });
@@ -304,7 +324,8 @@ export function Attachments({
             variant="quiet"
             tone="danger"
             size="small"
-            disabled={busy !== null}
+            disabled={busy !== null || readOnly}
+            title={readOnly ? 'Not available offline' : undefined}
             onClick={() => {
               setPending(null);
               setSending(null);
@@ -374,6 +395,8 @@ export function Attachments({
                 <OverflowMenu
                   label={`More actions for ${file.filename}`}
                   className="attachments-more"
+                  disabled={readOnly}
+                  title={readOnly ? 'Not available offline' : undefined}
                   items={[
                     {
                       label: 'Copy to note…',
@@ -395,7 +418,8 @@ export function Attachments({
                   <Button
                     variant="quiet"
                     size="small"
-                    disabled={busy !== null}
+                    disabled={busy !== null || readOnly}
+                    title={readOnly ? 'Not available offline' : undefined}
                     onClick={() => insertLink(file)}
                   >
                     Insert link
@@ -405,7 +429,8 @@ export function Attachments({
                   variant="quiet"
                   tone="danger"
                   size="small"
-                  disabled={busy !== null}
+                  disabled={busy !== null || readOnly}
+                  title={readOnly ? 'Not available offline' : undefined}
                   onClick={() => {
                     setSending(null);
                     setPending(file.filename);

@@ -329,13 +329,10 @@ export const attachments = new Hono<AppEnv>()
        gets it.
     */
     const counted = c.req.query('count') !== '0';
-    const [pending, remaining] = await Promise.all([
-      c.get('attachments').needingText(limit, note),
-      counted ? c.get('attachments').pendingTextCount(note) : undefined,
-    ]);
+    const { files, remaining } = await c.get('attachments').pendingText(limit, note, counted);
 
     return c.json({
-      pending: pending.map((p) => ({ noteId: p.noteId, filename: p.filename })),
+      pending: files.map((p) => ({ noteId: p.noteId, filename: p.filename })),
       ...(remaining !== undefined ? { remaining } : {}),
     });
   })

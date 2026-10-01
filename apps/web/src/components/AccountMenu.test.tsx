@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach, vi } from 'vitest';
-import { render, cleanup, fireEvent } from '@testing-library/react';
+import { render, cleanup, fireEvent, act } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
   createMemoryHistory,
@@ -10,6 +10,7 @@ import {
 import type { AppConfig } from '@unbent/shared';
 import { keys } from '../queries.js';
 import { AccountMenu } from './AccountMenu.js';
+import { setReachableForTests } from '../connectivity.js';
 
 const BUILT_IN = { privacy: '/privacy', terms: '/terms' };
 
@@ -116,5 +117,39 @@ describe('AccountMenu', () => {
     fireEvent.click(await findByLabelText('Account: someone@example.com'));
     expect(getByText('Privacy').getAttribute('href')).toBe('https://example.com/p');
     expect(getByText('Terms').getAttribute('href')).toBe('https://example.com/t');
+  });
+
+  /*
+   * A browser cannot sign anyone out with no connection: the cookie is HttpOnly, and only
+   * the server can end the session. Sign out stays in its place, faded, saying why. In the
+   * Android app it stays available — the app clears its own cookies when told.
+   */
+  describe('with no connection', () => {
+    afterEach(() => {
+      delete window.UnbentApp;
+      act(() => setReachableForTests(true));
+    });
+
+    it('fades Sign out in a browser, and says why', async () => {
+      const onSignOut = vi.fn();
+      const { findByLabelText, getByText } = harness('someone@example.com', onSignOut);
+      act(() => setReachableForTests(false));
+      fireEvent.click(await findByLabelText('Account: someone@example.com'));
+      const item = getByText('Sign out') as HTMLButtonElement;
+      expect(item.disabled).toBe(true);
+      expect(item.title).toBe('Signing out needs a connection');
+      fireEvent.click(item);
+      expect(onSignOut).not.toHaveBeenCalled();
+    });
+
+    it('keeps Sign out inside the Android app', async () => {
+      window.UnbentApp = { postMessage: vi.fn() };
+      const onSignOut = vi.fn();
+      const { findByLabelText, getByText } = harness('someone@example.com', onSignOut);
+      act(() => setReachableForTests(false));
+      fireEvent.click(await findByLabelText('Account: someone@example.com'));
+      fireEvent.click(getByText('Sign out'));
+      expect(onSignOut).toHaveBeenCalled();
+    });
   });
 });

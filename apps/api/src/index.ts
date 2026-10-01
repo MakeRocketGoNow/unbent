@@ -2,6 +2,8 @@ import { Hono } from 'hono';
 import { logger } from 'hono/logger';
 import type { AppEnv, RawEnv } from './types.js';
 import { withAppUrl } from './lib/app-url.js';
+import { StoreUnavailable } from './lib/store-client.js';
+import { sweepStores } from './lib/sweep.js';
 import { sessionMiddleware } from './lib/session.js';
 import { health } from './routes/health.js';
 import { authRoutes } from './routes/auth.js';
@@ -38,6 +40,15 @@ app.use('*', logger());
 app.use('*', sessionMiddleware);
 
 app.onError((err, c) => {
+  // The note store could not answer and will shortly — the object was reset by a deploy,
+  // or is overloaded. A 503 with Retry-After, the same shape `requireAuth` answers when
+  // the session cannot be checked, so every client already handles it: the web app
+  // retries, and the Android capture worker waits it out rather than failing the share.
+  if (err instanceof StoreUnavailable) {
+    console.warn('Store unavailable:', err.message);
+    c.header('Retry-After', String(err.retryAfterSeconds));
+    return c.json({ error: 'Your notes could not be reached right now. Try again shortly.' }, 503);
+  }
   console.error('Unhandled error:', err);
   return c.json({ error: 'Internal error' }, 500);
 });
@@ -86,5 +97,13 @@ export type AppType = typeof routes;
 export default {
   fetch(request: Request, env: RawEnv, ctx: ExecutionContext): Response | Promise<Response> {
     return app.fetch(request, withAppUrl(env, request), ctx);
+  },
+  /**
+   * The walk over every account's note store, one batch an hour; see lib/sweep.ts.
+   * `[triggers]` in wrangler.toml is when. `waitUntil` so the walk is not cut off at the
+   * handler's return, and nothing else here needs `APP_URL` settled.
+   */
+  scheduled(_controller: ScheduledController, env: RawEnv, ctx: ExecutionContext): void {
+    ctx.waitUntil(sweepStores(env));
   },
 };

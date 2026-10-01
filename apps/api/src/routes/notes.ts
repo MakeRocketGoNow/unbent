@@ -68,12 +68,12 @@ export const notes = new Hono<AppEnv>()
     // The count has to see the same range as the list, or the header contradicts the rows.
     const filter = { tags, notebook, fields, trashed, from, to, sort, ...bySort };
 
-    const [items, total] = await Promise.all([
-      repo.list({ limit, cursor, tags, notebook, fields, trashed, sort, order, from, to, ...bySort }),
-      // Only counted on the first page: a paging client already knows the total, and this
-      // is a second query on a hot path.
-      cursor ? Promise.resolve<number | null>(null) : repo.count({ ...filter, exact }),
-    ]);
+    // One call to the store for both. Only counted on the first page: a paging client
+    // already knows the total, and the count is the expensive half.
+    const { items, total } = await repo.listPage(
+      { limit, cursor, tags, notebook, fields, trashed, sort, order, from, to, ...bySort },
+      cursor ? null : { ...filter, exact },
+    );
 
     // The cursor is derived from the sort that produced the page, so the two cannot
     // disagree; see `nextCursor`.
@@ -172,8 +172,10 @@ export const notes = new Hono<AppEnv>()
     const notes = c.get('notes');
     const attachments = c.get('attachments');
 
-    const note = await notes.get(id);
-    if (!note) return c.json({ error: 'Not found' }, 404);
+    // The note and its own unread files, in one call; the read below wants both.
+    const prelude = await notes.autofillPrelude(id, OWN_FILES_TO_READ);
+    if (!prelude) return c.json({ error: 'Not found' }, 404);
+    const { note, forText, forVision } = prelude;
     if (!canAutofill(c.env)) return c.json({ error: 'Auto-fill is not set up on this instance' }, 503);
 
     /*
@@ -193,10 +195,6 @@ export const notes = new Hono<AppEnv>()
     */
     const readers = readersFrom(c.env);
     if (readers.converter || readers.llm) {
-      const [forText, forVision] = await Promise.all([
-        attachments.needingText(OWN_FILES_TO_READ, id),
-        attachments.needingVision(OWN_FILES_TO_READ, id),
-      ]);
       const pending = [
         ...forText.map((f) => ({ ...f, pending: 'text' as const })),
         ...forVision.map((f) => ({ ...f, pending: 'vision' as const })),
@@ -204,17 +202,17 @@ export const notes = new Hono<AppEnv>()
       if (pending.length > 0) await readPendingFiles(c.env.BLOBS, readers, attachments, pending);
     }
 
-    const [files, notebooks, fields, examples] = await Promise.all([
-      attachments.textsForNote(id),
-      notes.listNotebooks(),
-      notes.listAllFields(),
-      /*
-         The most-used tags with their examples, which are all auto-fill asks about. More
-         than its cap: it drops the note's own tags first, and compares them without case,
-         so a note tagged "Tax" also drops "tax".
-      */
-      notes.sampleTitles(id, EXAMPLES_PER_OPTION, MAX_TAGS_ASKED + 2 * note.tags.length),
-    ]);
+    /*
+       Everything the model is shown beside the note, in one call: the files' text (read
+       just above, where it was pending), the notebooks and fields, and the most-used tags
+       with their examples. More tags than auto-fill's cap: it drops the note's own tags
+       first, and compares them without case, so a note tagged "Tax" also drops "tax".
+    */
+    const { files, notebooks, fields, examples } = await notes.autofillContext(
+      id,
+      EXAMPLES_PER_OPTION,
+      MAX_TAGS_ASKED + 2 * note.tags.length,
+    );
 
     try {
       const suggestion = await autofill(

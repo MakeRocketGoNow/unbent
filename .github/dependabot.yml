@@ -39,6 +39,15 @@ updates:
         patterns:
           - 'better-auth'
           - '@better-auth/*'
+      # The service worker's toolchain, which has to move as one. `vite-plugin-pwa` writes
+      # the precache list with its own `workbox-build`, and the worker imports Workbox's
+      # runtime modules directly, pinned to that same version (apps/web/package.json). A
+      # bump of either side alone would build a worker from two Workbox versions — the
+      # core-versus-plugin skew the better-auth family taught this file to avoid.
+      pwa:
+        patterns:
+          - 'vite-plugin-pwa'
+          - 'workbox-*'
       minor-and-patch:
         update-types:
           - minor

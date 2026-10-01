@@ -4,7 +4,6 @@ import { exportPageQuerySchema, noteDirName, noteMarkdown } from '@unbent/shared
 import { requireAuth } from '../lib/session.js';
 import { withRepos } from '../lib/repos-middleware.js';
 import { exportNoteZipStream } from '../lib/export.js';
-import { nextCursor } from '../lib/notes-repo.js';
 import type { AppEnv } from '../types.js';
 
 export const exportRoutes = new Hono<AppEnv>()
@@ -35,27 +34,27 @@ export const exportRoutes = new Hono<AppEnv>()
    */
   .get('/export/notes', requireAuth, withRepos, zValidator('query', exportPageQuerySchema), async (c) => {
     const { tag: tags, notebook, field: fields, from, to, sort, cursor, limit } = c.req.valid('query');
-    const repo = c.get('notes');
     const filter = { tags, notebook, fields, from, to, sort };
-    const [notes, total] = await Promise.all([
-      repo.listFull({ limit, cursor, ...filter }),
-      cursor ? Promise.resolve<number | null>(null) : repo.count(filter),
-    ]);
+    // One call: the page, the total on the first page, the files' texts, and the cursor.
+    // The store computes the cursor rather than this route because it can cut a page
+    // short — a page of scans' texts can pass the size an RPC result may be — and a short
+    // page from `nextCursor`'s point of view would read as the end.
+    const { notes, total, texts: held, cursor: next } = await c
+      .get('notes')
+      .exportPage({ limit, cursor, ...filter }, cursor ? null : filter);
 
-    const withFiles = notes.filter((n) => n.attachments?.length);
     const texts = new Map<string, { text: string; readBy: 'vision' | null }>();
-    for (const t of await c.get('attachments').textsForNotes(withFiles.map((n) => n.id))) {
-      texts.set(`${t.noteId}/${t.filename}`, t);
-    }
-    for (const note of withFiles) {
-      note.attachments = note.attachments!.map((a) => {
-        const held = texts.get(`${note.id}/${a.filename}`);
-        if (!held) return a;
-        return { ...a, text: held.text, ...(held.readBy ? { readBy: held.readBy } : {}) };
+    for (const t of held) texts.set(`${t.noteId}/${t.filename}`, t);
+    for (const note of notes) {
+      if (!note.attachments?.length) continue;
+      note.attachments = note.attachments.map((a) => {
+        const text = texts.get(`${note.id}/${a.filename}`);
+        if (!text) return a;
+        return { ...a, text: text.text, ...(text.readBy ? { readBy: text.readBy } : {}) };
       });
     }
 
-    return c.json({ notes, cursor: nextCursor(notes, { limit, sort }), total });
+    return c.json({ notes, cursor: next, total });
   })
 
   /**

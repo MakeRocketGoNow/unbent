@@ -115,11 +115,14 @@ describe('UserStore lifecycle', () => {
     expect(rebuilt).toMatchObject({ userId, wiped: false, migrations: ['0001-init'] });
     expect(rebuilt.counts.notes).toBe(0);
 
-    // And after an eviction, a fresh wake re-migrates from nothing the same way.
+    // And after an eviction the object wakes as it was left — empty, no schema, and
+    // never to copy its account back from D1 — until something asks for its notes.
     await stub.wipe();
     await evictDurableObject(stub);
     const woke = env.USER_STORE.get(env.USER_STORE.idFromName(userId));
-    expect((await woke.stats()).migrations).toEqual(['0001-init']);
+    expect(await woke.stats()).toMatchObject({ wiped: true, migrations: [], copiedFromD1: true });
+    expect(await woke.schemaSql()).toEqual(expect.arrayContaining([expect.stringContaining('CREATE TABLE notes')]));
+    expect(await woke.stats()).toMatchObject({ wiped: false, migrations: ['0001-init'] });
   });
 
   it('dumpPage pages a table by rowid and stops with a null cursor', async () => {
@@ -129,15 +132,66 @@ describe('UserStore lifecycle', () => {
         state.storage.sql.exec(`INSERT INTO notes (id, title, body, created_at, updated_at) VALUES (?1, 'T', 'b', 1, 1)`, `n${i}`);
       }
     });
+    // Pages come back as INSERT statements, one a line, already encoded; see `dumpPage`
+    // for why the object formats and encodes them rather than the Worker.
+    const text = (bytes: Uint8Array) => new TextDecoder().decode(bytes);
+    const ids = (bytes: Uint8Array) => [...text(bytes).matchAll(/^INSERT INTO notes \(id, .*VALUES \('(n\d)'/gm)].map((m) => m[1]);
     const first = await stub.dumpPage('notes', 0, 2);
-    expect(first.rows.map((r) => r.id)).toEqual(['n0', 'n1']);
+    expect(first.rows).toBe(2);
+    expect(ids(first.bytes)).toEqual(['n0', 'n1']);
+    expect(text(first.bytes)).not.toContain('_rowid');
     expect(first.nextRowid).not.toBeNull();
     const second = await stub.dumpPage('notes', first.nextRowid!, 2);
-    expect(second.rows.map((r) => r.id)).toEqual(['n2', 'n3']);
+    expect(ids(second.bytes)).toEqual(['n2', 'n3']);
     const third = await stub.dumpPage('notes', second.nextRowid!, 2);
-    expect(third.rows.map((r) => r.id)).toEqual(['n4']);
+    expect(ids(third.bytes)).toEqual(['n4']);
     expect(third.nextRowid).toBeNull();
     await expect(stub.dumpPage('notes_fts' as 'notes')).rejects.toThrow(/not a data table/);
+  });
+
+  it('readOnlySql stops reading at its byte budget rather than loading the result first', async () => {
+    const { stub } = freshStore('readonlybytes');
+    await runInDurableObject(stub, (_i, state) => {
+      const sql = state.storage.sql;
+      sql.exec(`INSERT INTO notes (id, title, body, created_at, updated_at) VALUES ('n1', 'T', 'b', 1, 1)`);
+      for (let i = 0; i < 4; i++) {
+        sql.exec(`INSERT INTO attachments (id, note_id, filename, content_type, size, r2_key, created_at) VALUES (?1, 'n1', ?2, 'application/pdf', 1, ?1, 1)`, `a${i}`, `f${i}.pdf`);
+        sql.exec(`INSERT INTO attachment_text (attachment_id, note_id, filename, text, created_at) VALUES (?1, 'n1', ?2, ?3, 1)`, `a${i}`, `f${i}.pdf`, 'x'.repeat(5 * 1024 * 1024));
+      }
+    });
+    // Four texts of five megabytes: the first is kept, the second passes the budget and
+    // stops the read there, and the rows behind it were never pulled off the cursor.
+    const result = await stub.readOnlySql('SELECT attachment_id, text FROM attachment_text ORDER BY rowid');
+    expect(result.rows.map((r) => r.attachment_id)).toEqual(['a0']);
+    expect(result.truncated).toBe(true);
+    expect(result.rowsRead).toBeLessThan(4);
+    // The row cap works the same way, without a byte in sight.
+    const capped = await stub.readOnlySql('SELECT attachment_id FROM attachment_text ORDER BY rowid', [], 2);
+    expect(capped.rows.map((r) => r.attachment_id)).toEqual(['a0', 'a1']);
+    expect(capped.truncated).toBe(true);
+  });
+
+  it('dumpPage cuts a page at its byte budget and keeps paging from the cut', async () => {
+    const { stub } = freshStore('dumpbytes');
+    // Three texts of five megabytes each: two fit the eight-megabyte budget only one at a
+    // time, so a page of five hundred still hands back one row and a cursor.
+    await runInDurableObject(stub, (_i, state) => {
+      const sql = state.storage.sql;
+      sql.exec(`INSERT INTO notes (id, title, body, created_at, updated_at) VALUES ('n1', 'T', 'b', 1, 1)`);
+      for (let i = 0; i < 3; i++) {
+        sql.exec(`INSERT INTO attachments (id, note_id, filename, content_type, size, r2_key, created_at) VALUES (?1, 'n1', ?2, 'application/pdf', 1, ?1, 1)`, `a${i}`, `f${i}.pdf`);
+        sql.exec(`INSERT INTO attachment_text (attachment_id, note_id, filename, text, created_at) VALUES (?1, 'n1', ?2, ?3, 1)`, `a${i}`, `f${i}.pdf`, 'x'.repeat(5 * 1024 * 1024));
+      }
+    });
+    const ids = (bytes: Uint8Array) => [...new TextDecoder().decode(bytes).matchAll(/VALUES \('(a\d)'/g)].map((m) => m[1]);
+    const first = await stub.dumpPage('attachment_text', 0, 500);
+    expect(ids(first.bytes)).toEqual(['a0']);
+    expect(first.nextRowid).not.toBeNull();
+    const second = await stub.dumpPage('attachment_text', first.nextRowid!, 500);
+    expect(ids(second.bytes)).toEqual(['a1']);
+    const third = await stub.dumpPage('attachment_text', second.nextRowid!, 500);
+    expect(ids(third.bytes)).toEqual(['a2']);
+    expect(third.nextRowid).toBeNull();
   });
 
   it('nested transactions commit once and a throw unwinds all of it', async () => {

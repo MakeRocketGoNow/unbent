@@ -113,6 +113,15 @@ export function addErrorSink(sink: ErrorSink): () => void {
 export function reportError(value: unknown, kind: 'error' | 'rejection'): void {
   try {
     if (count >= MAX_REPORTS) return;
+    /*
+     * A request that got no answer because there was no connection (`OfflineError` in
+     * `notes-api.ts`) is not a bug. Several are fired and forgotten — the sidebar's counts,
+     * the indexer's pass — and each would otherwise arrive here as a crash from every phone
+     * that went into a tunnel. Recognised by name rather than by class so this module stays
+     * free of the app's; and when the connection returns, the report could not be sent now
+     * anyway.
+     */
+    if ((value as { name?: unknown } | null)?.name === 'OfflineError') return;
     const message = messageOf(value).slice(0, 1000);
     if (!message || sent.has(message)) return;
     sent.add(message);

@@ -1,0 +1,12 @@
+-- Records when an account's copy from D1 finished, apart from when its rows were frozen.
+--
+-- `migrated_at` used to mean both: it was written when the copy verified, and 0032's
+-- triggers read it to refuse writes to the account's rows. Then the copy started writing it
+-- *before* its first page, so that a write from a draining isolate is refused rather than
+-- missed (see src/store/copy-from-d1.ts) — and from that moment a copy in progress looked
+-- finished to anything reading the column as "done": the deploy runbook's check, and the
+-- guard the migration that drops these tables will use (found in review). Two meanings,
+-- two columns. `migrated_at` stays the freeze marker 0032 reads, written when a copy
+-- starts; this one is written only when a copy verified — by the copy itself, and by the
+-- sweep for any object that says its copy has run.
+ALTER TABLE account_directory ADD COLUMN copied_at INTEGER;

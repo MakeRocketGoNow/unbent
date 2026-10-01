@@ -395,11 +395,96 @@ bars and the keyboard are the app's, not the browser's. What stays native is the
 screen, the share sheet and App settings, and the UI rules in this file apply to those
 Compose screens as much as to the site.
 
+## The offline shell
+
+The app opens with no connection: a service worker (`apps/web/src/sw/sw.ts`) keeps the built
+app on the device and the last copy of what was read. It is the read-only floor — offline
+editing is the sync work after it — and it has a few rules that are easy to break from code
+that never mentions it.
+
+**What it keeps is an allowlist, by the whole shape of the path.** `classify` in
+`src/sw/routes.ts` names the reads the list and an open note are drawn from; everything else
+passes straight through. A new view that should read offline adds its GET there, with a case
+in `routes.test.ts`. Never match by prefix: GETs that must not be cached — a note's export, a
+field-conversion preview — sit under the same prefixes.
+
+**Reads are network-first, never cache-first.** React Query already caches in memory and
+every save invalidates exactly what it changed; a worker answering from its own copy first
+would hand that refetch the note as it was before the save. For the same reason a note read
+from the cache stays locked after the connection returns, until the server answers for it —
+saves carry no precondition yet (MAK-113), so unlocking old text is how an edit made on
+another device gets saved over.
+
+**File bytes are kept only when someone looks at them:** an `<img>`, or a fetch carrying
+`X-Unbent-View: 1`, which the PDF viewer sends. The indexer and export read every file in the
+archive through the same addresses. A new bulk read of file bytes must not send that header;
+a new viewer must. The same goes for the note data: a read made in bulk that matches the
+allowlist — the import's per-note file list — sends `X-Unbent-Bulk: 1` and is never cached,
+or a re-import would push every opened note out of the cache.
+
+**Only two things say the app is offline:** the browser's `navigator.onLine`, and a
+check of `/api/health` with a timeout (`connectivity.ts`). Nothing else decides. A request
+that gets no answer, a read the worker answered from its cache, a slow save, an answer
+while offline — each only asks for a check (`recheck`). Letting request outcomes flip the
+state directly was tried, and every new kind of answer became a new way to flicker between
+locked and unlocked on a connection that carries nothing. Don't add another input; call
+`recheck`.
+
+**API calls from the page go through `request()` in `notes-api.ts`,** which is where those
+checks are asked for: a fetch with no answer becomes an `OfflineError`, and an answer the
+worker served from its cache carries `X-Unbent-Served: cache`. A call made with bare `fetch`
+never asks, so it cannot raise the banner or lock the editor. Code that retries on a network
+error must recognise `OfflineError` as one (`transient` in `export-archive.ts`): it is an
+`ApiError` with status 0, not the `TypeError` fetch throws. Two deliberate exceptions, and
+nothing else should join them:
+
+- `apiFetch` in `attachment-text.ts` — the indexer. It runs inside the import Web Worker,
+  where the page's connectivity store does not exist, and it reports its own failures to
+  the page. (It must also never send `X-Unbent-View`; neither must export.)
+- `device-api.ts` — Better Auth's device and one-time-token endpoints under `/api/auth/`,
+  which the service worker never touches and whose screens report their own failures.
+
+**The caches are keyed by address, not by account.** `clearOfflineCaches()` runs on
+sign-out, on a refused session, on account deletion and when a different person signs in. A
+new way for the account on a device to change hands has to call it too, or the next person
+to open the app offline is shown the last one's notes.
+
+**Offline is not `readOnly`.** The trash's `readOnly` turns the autosave off and drops the
+draft; offline locks the inputs and leaves the autosave running, so typing that landed a
+moment before the lock is saved when the connection returns. A new control that changes a
+note should follow `locked` in `Workspace`, and a new CodeMirror handler that dispatches on
+its own must check `state.readOnly` — `EditorView.editable` stops only the keyboard.
+
+**Deploys wait for a change of section.** A new worker installs and waits; the next time
+someone goes to another section (notes to settings, not list to note), or comes back to the
+app after five minutes away, and nothing a reload would lose is in flight (`busy.ts`), the
+app loads the page from the new deploy. Not on every return: a quick tab switch comes back
+to a list mid-read. Work that lives only in the page — an upload, a run
+like import or export — should hold the page through `holdPage()` or be one of the runs
+`pageBusy()` already asks.
+
+**Never delete `sw.js`.** The Worker answers an unknown path with `index.html`, so a deleted
+worker script is a 200 the browser cannot install, and the old worker stays in charge on
+every device indefinitely. To retire the worker, ship one that unregisters itself and
+empties its caches.
+
+**Testing it.** Vite's dev server does not run the worker. Build the web app and load the
+Worker's own port, which serves `apps/web/dist` beside the API — this checkout's
+`API_PORT`, not Vite's. The Browser pane cannot register a service worker at all ("an
+unknown error occurred when fetching the script"), so drive a headless Chrome over the
+DevTools protocol instead. Take a connection away with `Network.emulateNetworkConditions`
+on the page *and* on every service-worker target, attaching one session per target and
+reusing it: emulation is per session, and a second attach leaves the first one's
+conditions in force. The real check is still airplane mode on the phone, with
+`adb reverse --remove-all` as well when the app points at a local instance — airplane mode
+alone does not cut the adb tunnel.
+
 ## The local database is disposable — but ask
 
 Wiping local notes during development is fine and has been offered explicitly. **Ask first
 every time**, because the plan is one final import from the real Evernote corpus and the
-state may have changed since the last conversation.
+state may have changed since the last conversation. "The database" is D1 and the note
+stores under `.wrangler/state/v3/do/` together; `db:reset` and `reset:local` clear both.
 
 That corpus is ~3 GB and ~13K notes, mostly PDFs — this is a paperless-office use case.
 Performance assumptions should hold at that scale, not at the scale of a dev database with
@@ -407,31 +492,31 @@ Performance assumptions should hold at that scale, not at the scale of a dev dat
 
 ## The per-account note store
 
-Every account's notes are moving out of the shared D1 database into one SQLite-backed
-Durable Object per user — `UserStore` in `apps/api/src/store/`, reached by
-`env.USER_STORE.idFromName(userId)`. D1 keeps the control plane: Better Auth's tables, OAuth
-and MCP clients, upload grants, and the account directory. The object is the repository:
-`NotesStore` and `AttachmentsStore` are `NotesRepo` and `AttachmentsRepo` moved onto
-`ctx.storage.sql`, with no `user_id` anywhere, because the database is the user. The
-decision and its reasons are in MAK-128; the short version is that the sync change feed and
-note history are storage features, and building them on D1 and then porting would be paying
-twice.
+Every account's notes live in one SQLite-backed Durable Object per user — `UserStore` in
+`apps/api/src/store/`, reached through `reposFor` in `lib/repos.ts`. D1 keeps the control
+plane: Better Auth's tables, OAuth and MCP clients, upload grants, and the account
+directory. The object is the repository: `NotesStore` and `AttachmentsStore` hold the SQL,
+with no `user_id` anywhere, because the database is the user; `lib/notes-repo.ts` and
+`lib/attachments-repo.ts` are facades over the stub, one RPC call per method, keeping the
+signatures every route and tool was written against. The decision and its reasons are in
+MAK-128; the short version is that the sync change feed and note history are storage
+features, and building them on D1 and then porting would be paying twice. The README's
+"Where your notes live" is the user-facing account of the same thing.
 
-**Where this stands:** the object exists, is deployed and is tested (`apps/store-tests`),
-but the routes still run on D1. The cutover — facades that keep every `NotesRepo` signature,
-the one-time copy of each account's rows, account deletion, the ops routes and the daily
-sweep — is the next change. Until it lands, a change to the notes data plane has to be made
-in both `lib/notes-repo.ts` and `store/notes.ts`; prefer making it in the store first and
-mirroring it, since the D1 copy is the one about to go.
+A change to the notes data plane is a change in `store/`, and usually nothing else: the
+facade is one line per method. A new query goes into the store with a rows-read bound in
+`apps/store-tests`; a new thing a route needs in one request goes on `UserStore` as a
+composite and on the facade as a passthrough.
 
 Five rules, held by tests where a test can hold them:
 
 1. **The object touches its SQLite and nothing else.** No `fetch`, no R2 bytes, no
    AI/Anthropic/Typesafe calls in `src/store/`. Those happen in the Worker before or after
    the object call. Blob *keys* go through the object (it owns `attachments`); bytes never
-   do. `StoreEnv` is empty so the compiler refuses a binding, and `guards.test.ts` reads the
-   source for the rest. One documented, temporary exception is coming: the one-time copy of
-   a user's rows from D1.
+   do. `StoreEnv` names only what the object may see, so the compiler refuses a binding,
+   and `guards.test.ts` reads the source for the rest. One documented, temporary exception:
+   `copy-from-d1.ts`, the one-time copy of a user's rows out of the shared tables, which
+   goes — with `DB` on `StoreEnv` — once every directory row says it has run.
 2. **Ids stay globally unique UUIDs** even inside a per-user database. `(owner, id)` is the
    key any future sharing would use, and export/import keeps working across accounts.
 3. **The owner's object is the source of truth.** If sharing ever comes, a grantee reads
@@ -440,43 +525,72 @@ Five rules, held by tests where a test can hold them:
 4. **The change feed is per user with a sequence cursor**, never global. `_meta` reserves
    `seq` for it. Nothing to build now.
 5. **Each RPC call is a billable object request.** Prefer a composite method on `UserStore`
-   (`listPage`, `exportPage`, `getWithFiles`, …) to a second call in the same request, and
-   check calls per page load when adding a route.
+   (`listPage`, `exportPage`, `getWithFiles`, `notebooksOverview`, …) to a second call in
+   the same request, and check calls per page load when adding a route.
 
-Two things about working on the store that are easy to get wrong:
+Things about working on the store that are easy to get wrong:
 
 - **Schema files are append-only.** `store/schema/0001-init.ts` is applied once per object
   and never edited again; a change is a new `0002-<name>.ts` appended to `SCHEMA`, additive,
-  applied on each object's next wake. There is no down migration.
+  applied on each object's next wake. There is no down migration. After a deploy that
+  carries one, run the sweep (`POST /api/admin/store/sweep`, operator only, one batch per
+  call until `done`) so every object migrates now and a failure is in the log today.
 - **Object tests need a fresh object each.** The vitest plugin's storage isolation does not
   reach SQLite-backed objects, so `freshStore()` in `apps/store-tests/test/helpers.ts` mints
   a random name per test. Never name an object in a test.
+- **The directory is the only thing that can turn a wipe on.** The sweep wipes an object
+  only for a tombstoned directory row or one whose `user` row is gone; a missing row never
+  wipes anything, and a row is dropped only once the user row is gone too. Keep it that
+  way.
+- **Subrequests are the budget inside one invocation.** Fifty on Free, and every D1 query
+  and every store call counts. The copy from D1 spends forty queries a call and answers
+  `paused`; the sweep walks twenty accounts a run at two store calls each; the operator's
+  `copy` and `dump` routes make forty store calls at most; anything new that loops over
+  accounts or pages D1 needs the same shape. CPU is a budget too — ten milliseconds an
+  invocation on Free, thirty seconds inside an object — so work over a big result, like
+  turning a dump page into SQL text, is done in the object and forwarded.
+- **Nothing periodic may scan a table.** The sweep reads `usage()` — the one `note_counts`
+  row and the database size — never `stats()`, which counts every table and is the
+  operator's. An hourly `stats()` on an archive-sized account would read every row of it
+  twenty-four times a day. The rows-read test bounds `usage` at a handful.
+- **The copy from D1 runs only when asked.** The sweep asks for every account whose
+  object says it has not run, the operator's `POST /api/admin/store/copy` asks for one;
+  a wake never reads D1. It ran in the constructor once, and three reviews each found a
+  runtime property it depended on and got wrong (what a reset discards, whose
+  subrequests it spent, what a person saw meanwhile). Keep it a method that answers —
+  `done`, `paused`, `mismatch`, `already` — never a throw from the constructor. A
+  mismatch is recorded and retried only by the operator, with `?retry=1`, after the D1
+  rows are fixed; `stats` shows the reason.
+- **Local state is D1 *and* `do/`.** The reset scripts clear both; clearing one by hand
+  leaves ghost objects. `worktree:setup` copies both.
 
-## D1 reads are the budget
+## Rows read are still the budget
 
-Production runs on Workers Free: D1 refuses every read once the account has read five
-million rows in a day, and every database on the account counts, the dev instance and the
-PR previews included. The archive above ran out twice in one week before the query plans
-were fixed. So a change to a query is judged by the rows it reads on a 13k-note copy, not
-by whether it returns the right rows: `wrangler d1 insights unbent --time-period 24h
---sort-by reads --json` shows what production is actually reading, and costs no rows.
+Production runs on Workers Free, where the rows a Durable Object's SQLite reads and writes
+are metered as D1's were, and the shared database ran out of its daily reads twice in one
+week before the query plans were fixed. So a change to a query is judged by the rows it
+reads on an archive-sized store, not by whether it returns the right rows. The accounting
+is the `[store]` log line the `Sql` seam writes for any statement over two thousand rows,
+with the user id and the statement; `POST /api/admin/store/sql` runs `EXPLAIN QUERY PLAN`
+against a real account; and the rows-read test at the end of
+`apps/store-tests/test/notes-store.test.ts` bounds every hot query on a three-thousand-note
+store. A new query belongs in that test.
 
-The planner has no statistics (there is no `sqlite_stat1`) and takes `user_id` to be
-selective, when one user owns nearly every row. That is why several statements write
-`+user_id`: the unary plus keeps that column's index out of the plan while the condition
-still applies. Measure a new index or a `+` against a tiny notebook and another user as
-well as the big case — a global index once made a 30-note notebook read 13k rows.
+The planner has no statistics (there is no `sqlite_stat1`) and takes the first column of an
+index to be selective. Every notes index leads with `deleted_at`, which matches every live
+note, so `+deleted_at` — the unary plus keeps that column's index out of the plan while the
+condition still applies — is written wherever an `id IN (…)` run or a tag filter is the
+way in, and `+n.notebook_id` beside a tag filter for the same reason. `liveCondition` in
+`store/notes-shared.ts` is where it is applied. Measure a new index or a `+` against a tiny
+notebook as well as the big case; on the shared database a global index once made a
+30-note notebook read 13k rows.
 
-The same discipline holds inside the per-account store, on a different column. Rows read
-and written by a Durable Object's SQLite are metered on Free as D1's are, and with
-`user_id` gone every notes index leads with `deleted_at`, which the planner takes to be
-selective in exactly the same way: `+deleted_at` (and `+n.notebook_id` beside a tag filter)
-is the tool, `liveCondition` in `store/notes-shared.ts` is where it is applied, and the
-`[store]` log line the `Sql` seam writes for any statement over two thousand rows is the
-accounting. The rows-read test at the end of `apps/store-tests/test/notes-store.test.ts`
-bounds every hot query on a three-thousand-note store; a new query belongs in it.
+D1 still serves the control plane, and its reads still count against the same daily total,
+but nothing on the request path reads note data from it any more; the frozen note tables
+are dropped in a later migration.
 
-Do not run `PRAGMA optimize` or `ANALYZE` on production, whatever D1's documentation
-suggests. Measured on a copy of the archive, the statistics they write made the image-queue
-queries two to three times worse, and a full `ANALYZE` reads about 572k rows on its own.
-The plans this codebase depends on are pinned in SQL instead.
+Do not run `PRAGMA optimize` or `ANALYZE` on production, whatever the documentation
+suggests — not on D1, and not inside an object. Measured on a copy of the archive, the
+statistics they write made the image-queue queries two to three times worse, and a full
+`ANALYZE` reads about 572k rows on its own. The plans this codebase depends on are pinned
+in SQL instead; the read-only SQL route refuses a `PRAGMA` for this reason among others.

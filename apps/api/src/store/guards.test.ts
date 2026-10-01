@@ -60,6 +60,21 @@ describe('the per-account store', () => {
   });
 
   /**
+   * The one exception to rule 1, held to its one file. `StoreEnv` carries `DB` for the
+   * copy of an account's rows out of the shared database, so the compiler no longer
+   * refuses a D1 binding inside the store; this does. The allowance goes when the copy
+   * does, and this test then shrinks to "nothing in the store names D1".
+   */
+  it('reaches D1 from the one-time copy and nowhere else', () => {
+    const allowed = new Set(['store/copy-from-d1.ts', 'store/user-store.ts']);
+    for (const file of walk(join(SRC, 'store'))) {
+      if (/\bD1Database\b|\benv\.DB\b|\bDB\s*:/.test(code(file))) {
+        expect(allowed.has(rel(file)), `${rel(file)} reaches D1`).toBe(true);
+      }
+    }
+  });
+
+  /**
    * `cloudflare:workers` exists only inside workerd. The unit tests run under Node, so a
    * value import of it anywhere in a module graph a unit test reaches breaks that test at
    * import time — and `auth.ts` and the routes are reached by several. The class module
@@ -79,12 +94,11 @@ describe('the per-account store', () => {
 
   /**
    * Note data lives in the object, and a route that queried D1 for it would be reading a
-   * table that is about to be frozen and then dropped. The routes that may still name
-   * `env.DB` are the ones whose data stays in D1 — the health check, the upload-grant
-   * claim, connected apps — plus the blob sweep and test-fixture purge in admin.ts, which
-   * move onto the object with the cutover and come off this list then. A new route that
-   * needs the database is either a control-plane route, added here with a reason, or a
-   * mistake.
+   * frozen table. The routes that may still name `env.DB` are the ones whose data stays in
+   * D1 — the health check, the upload-grant claim, connected apps — and admin.ts, whose
+   * one use is the test-fixture purge, which lists the throwaway accounts by their `user`
+   * rows. A new route that needs the database is either a control-plane route, added here
+   * with a reason, or a mistake.
    */
   it('keeps env.DB out of every route that is not on the control plane', () => {
     const allowed = new Set(['routes/health.ts', 'routes/uploads.ts', 'routes/connected-apps.ts', 'routes/admin.ts']);
