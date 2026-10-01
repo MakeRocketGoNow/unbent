@@ -732,6 +732,8 @@ describe('rows read on an archive-sized store', () => {
         await stub.count({ trashed: true });
       }),
       await measure('search common word', () => stub.search('receipt', 50)),
+      // One letter is sent as typed now; its prefix walk is the index's, not the meter's.
+      await measure('search one letter', () => stub.search('r', 50)),
       await measure('search in a small tag', () => stub.search('receipt', 50, { tags: ['rare'] })),
       // A table's search: the page above, plus the rows the list would draw for its matches.
       await measure('search rows in a notebook', () => stub.searchRows('receipt', 50, { notebook: 'Notebook 0' })),
@@ -754,6 +756,7 @@ describe('rows read on an archive-sized store', () => {
       'stored counts': 10,
       usage: 4,
       'search common word': 2500,
+      'search one letter': 2500,
       'search in a small tag': 80,
       'search rows in a notebook': 1500,
       'trash one': 12,

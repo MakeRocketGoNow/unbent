@@ -11,7 +11,6 @@ import {
   notebooksQuery,
   notebookFieldsQuery,
   searchQuery,
-  MIN_SEARCH_LENGTH,
   trashCountQuery,
   invalidateNoteMembership,
 } from '../queries.js';
@@ -278,7 +277,7 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
   /* The table draws each match as a row of its columns, so it asks for the rows. */
   const search = useQuery({
     ...searchQuery(debounced, filter, tableMode),
-    enabled: !offline && debounced.trim().length >= MIN_SEARCH_LENGTH,
+    enabled: !offline && debounced.trim() !== '',
   });
 
   const [sheetOpen, setSheetOpen] = useState(false);
@@ -328,9 +327,7 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
     });
 
   /**
-   * Null means "not searching", which is distinct from searching and finding nothing. A
-   * query too short to send (see MIN_SEARCH_LENGTH) is still searching — the field is in
-   * use and the tag and notebook picks show — but it has no note results to wait for.
+   * Null means "not searching", which is distinct from searching and finding nothing.
    *
    * A search whose first answer is still on its way is searching too, with no results
    * yet (`awaiting`). It was read as not searching, which drew the notebook's unsearched
@@ -338,11 +335,10 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
    * requests keep the last answer on screen (`searchQuery`), so this is only the first.
    */
   const needle = debounced.trim();
-  const tooShort = needle !== '' && needle.length < MIN_SEARCH_LENGTH;
-  const searchOffline = offline && needle !== '' && !tooShort;
+  const searchOffline = offline && needle !== '';
   const answered = search.data !== undefined && (!tableMode || search.data.every((r) => 'note' in r));
-  const awaiting = needle !== '' && !tooShort && !searchOffline && !answered;
-  const results = needle === '' ? null : tooShort || searchOffline || !answered ? [] : search.data;
+  const awaiting = needle !== '' && !searchOffline && !answered;
+  const results = needle === '' ? null : searchOffline || !answered ? [] : search.data;
   /*
    * The matches as the table's rows, in the search's order — which is relevance, so the
    * headers show no sort while a search is on and the table's own order comes back with
@@ -355,11 +351,11 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
   /*
    * The matches on screen are the previous term's while the next one's request is out —
    * see `searchQuery` — and are dimmed for it. Only then: a search that has ended, or one
-   * too short to send, is a query that never runs, and `keepPreviousData` holds the last
+   * held back offline, is a query that never runs, and `keepPreviousData` holds the last
    * results as its placeholder for as long as it stays that way. Read bare, that left the
    * notebook's own list dimmed after a search was cleared, until a reload.
    */
-  const searchStale = needle !== '' && !tooShort && !searchOffline && search.isPlaceholderData;
+  const searchStale = needle !== '' && !searchOffline && search.isPlaceholderData;
   /** Whether the results will be headed by picks, which is when the notes need a caption too. */
   const picks = scopeMatches(debounced, tags.data ?? [], notebooks.data, selectedTags, notebook);
   const hasPicks = picks.tags.length > 0 || picks.notebooks.length > 0;
@@ -632,13 +628,7 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
    * while the first answer is on its way: "No matches" would be a claim about the notes,
    * and the header's count already says it is searching.
    */
-  const searchEmpty = tooShort
-    ? 'Keep typing to search notes.'
-    : searchOffline
-      ? 'Search needs a connection.'
-      : awaiting
-        ? null
-        : 'No matches.';
+  const searchEmpty = searchOffline ? 'Search needs a connection.' : awaiting ? null : 'No matches.';
   /*
    * Why a match is in the table when its row cannot show it: the word was in one of the
    * note's files, which have no column. A match in a field or a tag is in that column,
@@ -1110,9 +1100,7 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
           )}
           {results !== null && hasPicks && <li className="list-caption">Notes</li>}
           {results !== null &&
-            (tooShort ? (
-              <li className="muted small empty">Keep typing to search notes.</li>
-            ) : searchOffline ? (
+            (searchOffline ? (
               <li className="muted small empty">Search needs a connection.</li>
             ) : awaiting ? null : (
               // Nothing until the first answer: "No matches" would be a claim about the

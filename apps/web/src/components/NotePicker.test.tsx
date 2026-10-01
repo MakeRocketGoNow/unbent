@@ -64,6 +64,15 @@ describe('NotePicker', () => {
     expect(onPick).toHaveBeenCalledWith({ id: 'n9', title: 'Podcast Bookmarks', updatedAt: 9 });
   });
 
+  it('searches from the first letter', async () => {
+    vi.mocked(api.listNotes).mockResolvedValue({ items: [], cursor: null, total: 0 });
+    vi.mocked(api.searchNotes).mockResolvedValue([{ id: 'n9', title: 'Podcast Bookmarks', updatedAt: 9, snippet: '' }]);
+    const { container, getByLabelText } = harness();
+    fireEvent.change(getByLabelText('Find a note'), { target: { value: 'p' } });
+    await waitFor(() => expect(titles(container)).toEqual(['Podcast Bookmarks']));
+    expect(api.searchNotes).toHaveBeenCalledWith('p');
+  });
+
   it('cancels on Escape and on the button', async () => {
     vi.mocked(api.listNotes).mockResolvedValue({ items: [], cursor: null, total: 0 });
     const { getByLabelText, getByText, onCancel } = harness();
