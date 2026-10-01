@@ -176,25 +176,26 @@ function AppShell() {
   /**
    * The import run, which outlives the page it was started from.
    *
+   * Claimed for this user, and for nobody when the session goes away under this shell —
+   * expiry, or a sign-out in another tab. See `ImportRun.claim`; `useSignOut` drops it
+   * for a sign-out made here, and the `beforeLoad` claim catches one neither saw.
+   */
+  useEffect(() => {
+    claimImportFor(userId);
+  }, [userId]);
+
+  /**
    * An import creates notes, notebooks and tags, so nothing cached is still true once it
    * ends — however it ends, since a failed run has usually landed some notes first. Here
    * rather than on the import page because the run may end while that page is not
-   * mounted. Claimed for this user first, and for nobody when the session goes away
-   * under this shell (expiry, or a sign-out that has emptied the store but not yet
-   * navigated). See `ImportRun.claim`. Calling it with `undefined` is what stops the
-   * worker before the next person signs in; the `beforeLoad` claim cannot see a sign-out
-   * on a public page, only a new user arriving at an app route.
+   * mounted.
+   *
+   * A separate effect from the claim, and not keyed on the user, so it is still listening
+   * when a claim throws a running import away. That reset is an ending like any other —
+   * notes landed before it, and the same person signing back in keeps their cache — and
+   * an effect that resubscribed on the user's change would be torn down just before it.
    */
   useEffect(() => {
-    const wasRunning = getImportRun().status === 'running';
-    claimImportFor(userId);
-    // Claim resets a running import without going through `done`/`error`, so the
-    // subscriber below never sees the transition. Notes already created still need a
-    // refetch — especially when the same person signs back in and keeps their cache.
-    if (wasRunning && getImportRun().status !== 'running') {
-      void queryClient.invalidateQueries();
-    }
-    if (!userId) return;
     let last = getImportRun().status;
     return subscribeImport(() => {
       const { status } = getImportRun();
@@ -202,7 +203,7 @@ function AppShell() {
       if (last === 'running') void queryClient.invalidateQueries();
       last = status;
     });
-  }, [userId, queryClient]);
+  }, [queryClient]);
 
   /**
    * The session going away under a rendered app — expiry, or a sign-out in another tab.
