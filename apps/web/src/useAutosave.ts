@@ -171,33 +171,58 @@ export function useAutosave<T>(
     [],
   );
 
+  /**
+   * Sends one snapshot once the save ahead of it is back. A loop, since another send
+   * waiting on the same save may start first; waiters wake in the order they began to
+   * wait, so snapshots go out in the order they were taken.
+   */
+  const send = useCallback(
+    async (next: { value: T; save: (value: T) => Promise<void | 'unchanged'>; epoch: number }) => {
+      while (inFlight.current) await inFlight.current;
+      const run = write(next);
+      inFlight.current = run;
+      try {
+        await run;
+      } finally {
+        if (inFlight.current === run) inFlight.current = null;
+      }
+    },
+    [write],
+  );
+
   const flush = useCallback(async () => {
     if (timer.current) {
       clearTimeout(timer.current);
       timer.current = null;
     }
     // Waited out before `pending` is read, so this flush sends the newest value, against
-    // the copy the save before it came back with. A loop, since another flush waiting on
-    // the same save may start the next one first.
+    // the copy the save before it came back with.
     while (inFlight.current) await inFlight.current;
     const next = pending.current;
     if (next === null) return;
     pending.current = null;
-
-    const run = write(next);
-    inFlight.current = run;
-    try {
-      await run;
-    } finally {
-      if (inFlight.current === run) inFlight.current = null;
-    }
-  }, [write]);
+    await send(next);
+  }, [send]);
 
   useEffect(() => {
     const noteChanged = !baseline.current || baseline.current.key !== resetKey;
 
     if (noteChanged) {
-      if (pending.current) void flush();
+      /*
+         The outgoing note's last edit is taken now, not when the save ahead of it comes
+         back. `flush` reads `pending` only after waiting, and in that wait the first
+         keystroke in the incoming note takes the slot, so the outgoing edit was dropped
+         without a word whenever a save was slow.
+      */
+      const outgoing = pending.current;
+      if (outgoing) {
+        pending.current = null;
+        if (timer.current) {
+          clearTimeout(timer.current);
+          timer.current = null;
+        }
+        void send(outgoing);
+      }
       if (!enabled) {
         // Drop the baseline so the first enabled value for this key is a seed.
         // Setting it to the still-showing outgoing draft would make the incoming
@@ -224,7 +249,7 @@ export function useAutosave<T>(
     return () => {
       if (timer.current) clearTimeout(timer.current);
     };
-  }, [value, delay, enabled, flush, resetKey]);
+  }, [value, delay, enabled, flush, send, resetKey]);
 
   // Flush on tab hide and on unmount so leaving the page never drops the last edit.
   useEffect(() => {

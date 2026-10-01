@@ -262,6 +262,40 @@ describe('useAutosave in-flight failure', () => {
     expect(save).toHaveBeenLastCalledWith('second edit');
     expect(save.mock.calls.at(-1)?.[0]).not.toBe('first edit');
   });
+
+  it('still sends the outgoing note’s last edit when switching notes mid-save', async () => {
+    // Saves go one at a time, so a slow save holds the next one back; the switch must
+    // take the outgoing edit then, before typing in the next note can take its place.
+    const sent: string[] = [];
+    let releaseFirst!: () => void;
+    let n = 0;
+    const saveFor = (note: string) => async (v: string) => {
+      sent.push(`${note}:${v}`);
+      if (++n === 1) await new Promise<void>((r) => (releaseFirst = r));
+    };
+    const { rerender } = renderHook(
+      ({ value, key }) => useAutosave(value, saveFor(key), { delay: 10, resetKey: key }),
+      { initialProps: { value: 'A0', key: 'A' } },
+    );
+    rerender({ value: 'A1', key: 'A' });
+    await act(async () => {
+      vi.advanceTimersByTime(20);
+    });
+    rerender({ value: 'A2', key: 'A' });
+    rerender({ value: 'B0', key: 'B' });
+    rerender({ value: 'B1', key: 'B' });
+    await act(async () => {
+      releaseFirst();
+      await Promise.resolve();
+      vi.advanceTimersByTime(50);
+      await Promise.resolve();
+    });
+    await act(async () => {
+      vi.advanceTimersByTime(50);
+    });
+
+    expect(sent).toEqual(['A:A1', 'A:A2', 'B:B1']);
+  });
 });
 
 /**
