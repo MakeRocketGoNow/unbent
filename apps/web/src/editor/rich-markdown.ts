@@ -2392,8 +2392,14 @@ export function richMarkdown(options: RichMarkdownOptions = {}): Extension {
        * break keeps the line's height and hangs an empty text line under the picture. It has
        * no content and the image's own padding already spaces the picture, so hide it and
        * the gap below a focused image matches the gap below an unfocused one.
+       *
+       * A PDF's line always holds text — its link stays on screen above the pages — so its
+       * break was never collapsed at all, and every PDF carried a blank line under its
+       * page count that an image did not. Two PDFs in a row read as twice as far apart as
+       * two pictures. The same rule closes it, and both kinds of attachment now end on
+       * their own padding.
        */
-      '.cm-md-image + br': { display: 'none' },
+      '.cm-md-image + br, .cm-md-pdf + br': { display: 'none' },
 
       '.cm-md-image': { display: 'block', padding: '0.35rem 0 0.6rem' },
       /**
