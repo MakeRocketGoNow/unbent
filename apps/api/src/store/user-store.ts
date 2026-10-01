@@ -13,7 +13,7 @@ import { AttachmentsStore } from './attachments.js';
 import { appliedMigrations, migrate } from './migrate.js';
 import { NotesStore, type CountOptions, type ListOptions, type SearchFilters } from './notes.js';
 import { cursorAfter, nextCursor } from './notes-shared.js';
-import { restoreAbortReason } from './restore.js';
+import { restoreAbortReason, restoreRefusedReason } from './restore.js';
 import { SCHEMA } from './schema/index.js';
 import { instrumentedSql, type Sql } from './sql.js';
 import { DATA_TABLES, DUMP_TABLES, type DataTable, type DumpTable } from './tables.js';
@@ -255,7 +255,12 @@ export class UserStore extends DurableObject<StoreEnv> {
    * One call for both, since each is a billable request.
    */
   async restorePreview(target: { at: number } | { bookmark: string }): Promise<{ bookmark: string; current: StoreStats }> {
-    const bookmark = 'bookmark' in target ? target.bookmark : await this.ctx.storage.getBookmarkForTime(target.at);
+    let bookmark: string;
+    try {
+      bookmark = 'bookmark' in target ? target.bookmark : await this.ctx.storage.getBookmarkForTime(target.at);
+    } catch (err) {
+      throw new Error(restoreRefusedReason(err));
+    }
     return { bookmark, current: this.stats() };
   }
 
@@ -286,8 +291,16 @@ export class UserStore extends DurableObject<StoreEnv> {
    * at nothing.
    */
   async restoreTo(target: { at: number } | { bookmark: string }): Promise<void> {
-    const bookmark = 'bookmark' in target ? target.bookmark : await this.ctx.storage.getBookmarkForTime(target.at);
-    const undo = await this.ctx.storage.onNextSessionRestoreBookmark(bookmark);
+    // A failure here is before anything is scheduled, and is marked so: the route answers
+    // it as refused. Any other failure of this call is one whose outcome it cannot know.
+    let bookmark: string;
+    let undo: string;
+    try {
+      bookmark = 'bookmark' in target ? target.bookmark : await this.ctx.storage.getBookmarkForTime(target.at);
+      undo = await this.ctx.storage.onNextSessionRestoreBookmark(bookmark);
+    } catch (err) {
+      throw new Error(restoreRefusedReason(err));
+    }
     console.log(`[store] restore scheduled user=${this.userId} to=${bookmark} undo=${undo}`);
     this.ctx.abort(restoreAbortReason(bookmark, undo));
   }

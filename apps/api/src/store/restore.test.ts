@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { BOOKMARK_PATTERN, isRestoreUnsupported, readRestoreAbort, restoreAbortReason } from './restore.js';
+import {
+  BOOKMARK_PATTERN,
+  isRestoreUnsupported,
+  readRestoreAbort,
+  readRestoreRefusal,
+  restoreAbortReason,
+  restoreRefusedReason,
+} from './restore.js';
 
 const BOOKMARK = '0000007b-0000b26e-00001538-0c3e87bb37b3db5cc52eedb93cd3b96b';
 const UNDO = '0000007b-0000b26f-00001539-1d4f98cc48c4ec6dd63ffec04de4ca7c';
@@ -25,6 +32,27 @@ describe('restore abort reason', () => {
   it('knows the runtime that keeps no history', () => {
     expect(isRestoreUnsupported(new Error("This Durable Object's storage back-end does not implement point-in-time recovery."))).toBe(true);
     expect(isRestoreUnsupported(new Error('something else'))).toBe(false);
+  });
+});
+
+/**
+ * A refusal is the one failure the route may call harmless, because the object marks it
+ * before anything is scheduled. Everything unmarked has to read as "outcome unknown".
+ */
+describe('restore refusal', () => {
+  const runtime = "This Durable Object's storage back-end does not implement point-in-time recovery.";
+
+  it('carries the runtime\'s words through the mark, bare or wrapped', () => {
+    const reason = restoreRefusedReason(new Error(runtime));
+    expect(readRestoreRefusal(new Error(reason))).toBe(runtime);
+    expect(readRestoreRefusal(new Error(`Error: ${reason}`))).toBe(runtime);
+    expect(isRestoreUnsupported(new Error(reason))).toBe(true);
+  });
+
+  it('is not read into an unmarked failure or the abort', () => {
+    expect(readRestoreRefusal(new Error('Network connection lost.'))).toBeNull();
+    expect(readRestoreRefusal(new Error('internal error'))).toBeNull();
+    expect(readRestoreRefusal(new Error(restoreAbortReason(BOOKMARK, UNDO)))).toBeNull();
   });
 });
 

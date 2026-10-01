@@ -17,6 +17,7 @@ export const BOOKMARK_PATTERN = /^[0-9a-f]{8}(-[0-9a-f]{8}){2}-[0-9a-f]{16,}$/i;
 export const RESTORE_WINDOW_MS = 30 * 24 * 60 * 60 * 1000;
 
 const MARK = 'store restore scheduled';
+const REFUSED = 'store restore refused: ';
 
 /**
  * The reason `restoreTo` aborts the object with. The runtime hands it, as the error's
@@ -37,6 +38,25 @@ export function readRestoreAbort(err: unknown): { scheduled: boolean; undo: stri
   const message = err instanceof Error ? err.message : String(err);
   if (!message.includes(MARK)) return { scheduled: false, undo: null };
   return { scheduled: true, undo: /undo=([0-9a-f-]+)/i.exec(message)?.[1] ?? null };
+}
+
+/**
+ * The message `restoreTo` and `restorePreview` rethrow a runtime refusal with — an unknown
+ * bookmark, a time out of reach, no history at all — so the route can tell "refused,
+ * nothing happened" from every other failure. Anything without this mark or the abort's
+ * is an outcome nobody knows: a dropped connection, an internal error, an abort whose
+ * reason the runtime replaced. For a restore that may already have been scheduled, the
+ * route says so rather than calling it refused.
+ */
+export function restoreRefusedReason(err: unknown): string {
+  return `${REFUSED}${err instanceof Error ? err.message : String(err)}`;
+}
+
+/** The runtime's own words, if `err` is a refusal `restoreRefusedReason` marked; null otherwise. */
+export function readRestoreRefusal(err: unknown): string | null {
+  const message = err instanceof Error ? err.message : String(err);
+  const at = message.indexOf(REFUSED);
+  return at === -1 ? null : message.slice(at + REFUSED.length);
 }
 
 /** The runtime's refusal where there is no history to restore from: Miniflare, today. */

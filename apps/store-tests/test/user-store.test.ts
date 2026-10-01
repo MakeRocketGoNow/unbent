@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { env, evictDurableObject, runInDurableObject } from 'cloudflare:test';
 import type { Sql } from '@unbent/api/store/sql';
-import { isRestoreUnsupported } from '@unbent/api/store/restore';
+import { isRestoreUnsupported, readRestoreRefusal } from '@unbent/api/store/restore';
 import { freshStore } from './helpers.js';
 
 /**
@@ -255,6 +255,8 @@ describe('UserStore point-in-time restore under Miniflare', () => {
         (err: unknown) => err,
       );
       expect(isRestoreUnsupported(restore)).toBe(true);
+      // Marked as refused before scheduling, which is what lets the route say so.
+      expect(readRestoreRefusal(restore)).not.toBeNull();
     }
   });
 

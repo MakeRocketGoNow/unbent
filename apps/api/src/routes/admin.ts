@@ -12,7 +12,7 @@ import { storeFor } from '../lib/store-client.js';
 import { sweepStores } from '../lib/sweep.js';
 import { SWEEP_TOKEN_HEADER, sweepTokenMatches } from '../lib/sweep-token.js';
 import { DUMP_TABLES } from '../store/tables.js';
-import { BOOKMARK_PATTERN, RESTORE_WINDOW_MS, isRestoreUnsupported, readRestoreAbort } from '../store/restore.js';
+import { BOOKMARK_PATTERN, RESTORE_WINDOW_MS, isRestoreUnsupported, readRestoreAbort, readRestoreRefusal } from '../store/restore.js';
 import type { StoreStats, UserStore } from '../store/user-store.js';
 import type { AppEnv } from '../types.js';
 
@@ -296,7 +296,11 @@ export const admin = new Hono<AppEnv>()
             hint: `Dump the store first (GET /api/admin/store/dump?user=${target}), then repeat this request with "confirm": "RESTORE".`,
           });
         } catch (err) {
-          return restoreRefused(c, err);
+          const refused = readRestoreRefusal(err);
+          if (refused !== null) return restoreRefused(c, refused);
+          // A dry run schedules nothing, so whatever this was, nothing changed.
+          console.error(`[store] restore preview failed for user=${target}:`, err);
+          return c.json({ error: 'The store could not be reached. Nothing was scheduled; try again.' }, 502);
         }
       }
 
@@ -308,7 +312,21 @@ export const admin = new Hono<AppEnv>()
         return c.json({ error: 'The store did not restart, so the restore is scheduled but not applied. Call this again.' }, 500);
       } catch (err) {
         const abort = readRestoreAbort(err);
-        if (!abort.scheduled) return restoreRefused(c, err);
+        const refused = abort.scheduled ? null : readRestoreRefusal(err);
+        if (refused !== null) return restoreRefused(c, refused);
+        if (!abort.scheduled) {
+          // Neither the abort nor a refusal: a dropped connection, an internal error, an
+          // abort whose reason the runtime replaced. The restore may have been scheduled,
+          // or applied, so this must not read as "nothing happened".
+          console.error(`[store] restore outcome unknown for user=${target}:`, err);
+          return c.json(
+            {
+              error:
+                'The restore may have been applied. Check for a "[store] restore scheduled" line in the Worker log, and GET /api/admin/store/stats, before trying again.',
+            },
+            502,
+          );
+        }
         undo = abort.undo;
       }
 
@@ -403,13 +421,13 @@ export const admin = new Hono<AppEnv>()
 
 
 /**
- * A restore the runtime would not do: 501 where it keeps no history at all (Miniflare, so
- * `pnpm dev`), otherwise 400 with the runtime's own words — a bookmark it does not know, a
- * time it cannot reach.
+ * A restore the runtime refused before scheduling anything: 501 where it keeps no history
+ * at all (Miniflare, so `pnpm dev`), otherwise 400 with the runtime's own words — a
+ * bookmark it does not know, a time it cannot reach. Only for a refusal the object marked
+ * (`readRestoreRefusal`); any other failure is not known to be harmless.
  */
-function restoreRefused(c: Context<AppEnv>, err: unknown): Response {
-  const message = err instanceof Error ? err.message : String(err);
-  if (isRestoreUnsupported(err)) {
+function restoreRefused(c: Context<AppEnv>, message: string): Response {
+  if (isRestoreUnsupported(message)) {
     return c.json({ error: 'This runtime keeps no history to restore from. Restores work on a deployed instance only.' }, 501);
   }
   return c.json({ error: message }, 400);
