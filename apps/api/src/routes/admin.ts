@@ -304,9 +304,11 @@ export const admin = new Hono<AppEnv>()
         } catch (err) {
           const refused = readRestoreRefusal(err);
           if (refused !== null) return restoreRefused(c, refused);
-          // A dry run schedules nothing, so whatever this was, nothing changed.
+          // A dry run schedules nothing, so whatever this was, nothing changed. Not
+          // necessarily the connection: the object can fail on wake too, a pending
+          // migration say, and the log line below is where that error is.
           console.error(`[store] restore preview failed for user=${target}:`, err);
-          return c.json({ error: 'The store could not be reached. Nothing was scheduled; try again.' }, 502);
+          return c.json({ error: 'The dry run failed; nothing was scheduled. The Worker log has the error.' }, 502);
         }
       }
 
