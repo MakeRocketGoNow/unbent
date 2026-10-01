@@ -393,10 +393,9 @@ export const updateNoteSchema = z.object({
    *
    * Optional, so a writer that means "whatever is there, replace it" still can; the web
    * editor always sends it. A timestamp rather than a revision counter because the column
-   * already exists and every client already holds it: `updated_at` only moves when a write
-   * changes something (see `NotesStore.update`), which is exactly the property a
-   * precondition needs. Two writes in the same millisecond could share one, which needs
-   * two devices saving one note within a millisecond of each other.
+   * already exists and every client already holds it: `updated_at` moves on every write
+   * that changes something, always forward and never onto the value it had (see the stamp
+   * in `NotesStore.update`), and only then — exactly the property a precondition needs.
    */
   ifUpdatedAt: z.number().int().nonnegative().optional(),
 });

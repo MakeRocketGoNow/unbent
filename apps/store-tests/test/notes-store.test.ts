@@ -99,6 +99,24 @@ describe('notes: create, read, update', () => {
     expect(await stub.update('nope', { title: 'x', ifUpdatedAt: 1 })).toBeNull();
   });
 
+  it('moves the date forward on every write, however close together they land', async () => {
+    // Back to back, with no pause: the clock may read the same millisecond for all of
+    // them, and a write that kept the last one's date would pass a precondition made
+    // against the copy before it.
+    const { stub } = freshStore('stamp');
+    const created = await stub.create(note({ body: 'one' }));
+    const dates = [created.updatedAt];
+    for (const body of ['two', 'three', 'four']) {
+      dates.push(((await stub.update(created.id, { body })) as { updatedAt: number }).updatedAt);
+    }
+    await stub.appendToBody(created.id, 'five');
+    dates.push((await stub.get(created.id))!.updatedAt);
+    await stub.updateMany([created.id], { addTags: ['six'] });
+    dates.push((await stub.get(created.id))!.updatedAt);
+
+    for (let i = 1; i < dates.length; i++) expect(dates[i]).toBeGreaterThan(dates[i - 1]!);
+  });
+
   it('refuses a value its field cannot hold, before writing anything, with the field named', async () => {
     const { stub } = freshStore('invalid');
     const nb = (await stub.createNotebook('Coupons'))!;
