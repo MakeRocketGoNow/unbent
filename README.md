@@ -1387,7 +1387,9 @@ user id — which is the accounting `wrangler d1 insights` used to give.
 **Winding a store back.** Every store keeps thirty days of history, and `POST …/restore`
 puts one back as it was at a moment in them — the rollback for a schema file that broke an
 account, or an edit that should not have happened. It is for one account at a time and
-the operator only; moving notes between accounts or instances is export and import.
+the operator only; moving notes between accounts or instances is export and import. A
+deleted account is refused: its wipe is part of the history, and winding back past it
+would bring back notes its owner asked to have removed.
 
 1. `GET …/dump?user=<id>` and keep the file. It is the copy that outlives the thirty days.
 2. `POST …/restore` with `{ "user": "<id>", "at": "2026-09-30T12:00:00Z" }`. Without

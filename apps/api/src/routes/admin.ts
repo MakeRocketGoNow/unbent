@@ -270,8 +270,14 @@ export const admin = new Hono<AppEnv>()
       if (!isOperator(c.env, email)) return c.json({ error: 'Not found' }, 404);
       const { user, at, bookmark, confirm } = c.req.valid('json');
       const target = user ?? c.get('userId')!;
-      if (target !== c.get('userId') && !(await directoryRow(c.env.DB, target))) {
-        return c.json({ error: 'No such account' }, 404);
+      if (target !== c.get('userId')) {
+        const row = await directoryRow(c.env.DB, target);
+        if (!row) return c.json({ error: 'No such account' }, 404);
+        // A deleted account's store was wiped, and the wipe is history like anything
+        // else: a restore would bring its notes back, and they would sit there until the
+        // sweep wiped them again. The directory's tombstone is the one thing that decides
+        // an account is gone (see lib/sweep.ts), so it decides this too.
+        if (row.deletedAt !== null) return c.json({ error: 'That account was deleted; its store is not restored.' }, 409);
       }
 
       let to: { at: number } | { bookmark: string };
