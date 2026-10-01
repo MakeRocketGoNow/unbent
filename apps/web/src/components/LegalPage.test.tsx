@@ -111,6 +111,6 @@ describe('LegalPage', () => {
 
   it('offers a way back into the app from every state', async () => {
     const { findByText } = harness('terms', {});
-    expect((await findByText('Back to Unbent')).getAttribute('href')).toBe('/login');
+    expect((await findByText('Back to Unbent')).getAttribute('href')).toBe('/');
   });
 });
