@@ -98,70 +98,100 @@ export function useAutosave<T>(
    */
   const baseline = useRef<{ key: string | undefined; value: T } | null>(null);
 
+  /**
+   * The save on its way to the server, if one is.
+   *
+   * Saves go one at a time. Each names the copy of the note it was made against, and that
+   * copy only moves on when a save comes back, so a second save started while the first
+   * was still out carried the same copy as the first — and whichever landed second was
+   * refused as a conflict with the tab's own typing. That takes only a save slower than the
+   * debounce: a phone on a poor connection, a store waking up. One at a time also means
+   * saves arrive in the order they were typed.
+   */
+  const inFlight = useRef<Promise<void> | null>(null);
+
+  /** One save of one snapshot, start to finish. Never throws: a failure is state. */
+  const write = useCallback(
+    async (next: { value: T; save: (value: T) => Promise<void | 'unchanged'>; epoch: number }) => {
+      const baselineKey = baseline.current?.key;
+      setState('saving');
+      try {
+        const outcome = await next.save(next.value);
+        if (outcome === 'unchanged') {
+          /*
+             The save found nothing to write, so 'Saved' would be announcing work that never
+             happened — the flash this exists to stop. 'idle' renders no label at all, which
+             is the honest answer for a draft that matches what the server holds, and it also
+             clears the 'Unsaved' a round-trip through an edit leaves behind.
+
+             'saving' is still set above rather than held back until the outcome is known:
+             the Android back handler waits for the state to leave 'saving'/'dirty' before
+             letting the user leave the screen, so a real write must be visible there for the
+             whole round-trip. 'idle' satisfies that wait, correctly — there is nothing to
+             finish.
+
+             The baseline still moves to this value. It is what the server has, so the next
+             edit is measured against it; leaving it behind would make an identical draft
+             look unsaved forever.
+          */
+          setState('idle');
+          setError(null);
+          if (baseline.current && baseline.current.key === baselineKey) {
+            baseline.current.value = next.value;
+          }
+          return;
+        }
+        setState('saved');
+        setError(null);
+        /*
+           What the server holds is now `next.value`, so that is the value an edit is
+           measured against from here on. Left at the seed, a body that came back to exactly
+           its loaded text after a save looked like "no edit" and was never sent — the
+           server kept the intermediate version. Attaching a file makes that the common
+           case: the upload's placeholder autosaves, and abandoning the upload restores
+           the seed.
+
+           Skip the write when the key moved during the await: the baseline now belongs to
+           the incoming note, and putting the outgoing body there would make the incoming
+           seed look like an edit — or worse, become the value a later flush measures
+           against.
+        */
+        if (baseline.current && baseline.current.key === baselineKey) {
+          baseline.current.value = next.value;
+        }
+      } catch (err) {
+        setState(isConflictRef.current?.(err) ? 'conflict' : 'error');
+        setError((err as Error).message);
+        // Retry only if nothing newer has been queued or taken while this save was in flight.
+        if (pending.current === null && epoch.current === next.epoch) {
+          pending.current = next;
+        }
+      }
+    },
+    [],
+  );
+
   const flush = useCallback(async () => {
     if (timer.current) {
       clearTimeout(timer.current);
       timer.current = null;
     }
+    // Waited out before `pending` is read, so this flush sends the newest value, against
+    // the copy the save before it came back with. A loop, since another flush waiting on
+    // the same save may start the next one first.
+    while (inFlight.current) await inFlight.current;
     const next = pending.current;
     if (next === null) return;
     pending.current = null;
 
-    const baselineKey = baseline.current?.key;
-    setState('saving');
+    const run = write(next);
+    inFlight.current = run;
     try {
-      const outcome = await next.save(next.value);
-      if (outcome === 'unchanged') {
-        /*
-           The save found nothing to write, so 'Saved' would be announcing work that never
-           happened — the flash this exists to stop. 'idle' renders no label at all, which
-           is the honest answer for a draft that matches what the server holds, and it also
-           clears the 'Unsaved' a round-trip through an edit leaves behind.
-
-           'saving' is still set above rather than held back until the outcome is known:
-           the Android back handler waits for the state to leave 'saving'/'dirty' before
-           letting the user leave the screen, so a real write must be visible there for the
-           whole round-trip. 'idle' satisfies that wait, correctly — there is nothing to
-           finish.
-
-           The baseline still moves to this value. It is what the server has, so the next
-           edit is measured against it; leaving it behind would make an identical draft
-           look unsaved forever.
-        */
-        setState('idle');
-        setError(null);
-        if (baseline.current && baseline.current.key === baselineKey) {
-          baseline.current.value = next.value;
-        }
-        return;
-      }
-      setState('saved');
-      setError(null);
-      /*
-         What the server holds is now `next.value`, so that is the value an edit is
-         measured against from here on. Left at the seed, a body that came back to exactly
-         its loaded text after a save looked like "no edit" and was never sent — the
-         server kept the intermediate version. Attaching a file makes that the common
-         case: the upload's placeholder autosaves, and abandoning the upload restores
-         the seed.
-
-         Skip the write when the key moved during the await: the baseline now belongs to
-         the incoming note, and putting the outgoing body there would make the incoming
-         seed look like an edit — or worse, become the value a later flush measures
-         against.
-      */
-      if (baseline.current && baseline.current.key === baselineKey) {
-        baseline.current.value = next.value;
-      }
-    } catch (err) {
-      setState(isConflictRef.current?.(err) ? 'conflict' : 'error');
-      setError((err as Error).message);
-      // Retry only if nothing newer has been queued or taken while this save was in flight.
-      if (pending.current === null && epoch.current === next.epoch) {
-        pending.current = next;
-      }
+      await run;
+    } finally {
+      if (inFlight.current === run) inFlight.current = null;
     }
-  }, []);
+  }, [write]);
 
   useEffect(() => {
     const noteChanged = !baseline.current || baseline.current.key !== resetKey;

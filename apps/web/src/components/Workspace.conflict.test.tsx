@@ -160,6 +160,35 @@ describe('a save after another device saved the note', () => {
     expect((await title()).readOnly).toBe(false);
   });
 
+  it('does not take its own slow save for another device', async () => {
+    // A save slower than the debounce: the second edit's save must wait for the first to
+    // come back, or both name the same copy and the second is refused.
+    serverHolding(note);
+    const server = vi.mocked(api.updateNote).getMockImplementation()!;
+    let release!: () => void;
+    const held = new Promise<void>((resolve) => (release = resolve));
+    vi.mocked(api.updateNote).mockImplementationOnce(async (id, patch) => {
+      await held;
+      return server(id, patch);
+    });
+    mount();
+
+    await typeTitle('Grocer');
+    await waitFor(() => expect(api.updateNote).toHaveBeenCalledTimes(1), { timeout: 3000 });
+    await typeTitle('Grocery');
+    await new Promise((r) => setTimeout(r, 1200));
+    expect(api.updateNote).toHaveBeenCalledTimes(1);
+
+    release();
+    await waitFor(() => expect(api.updateNote).toHaveBeenCalledTimes(2), { timeout: 3000 });
+    await waitFor(() => expect(screen.getByText('Saved')).toBeTruthy());
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect(vi.mocked(api.updateNote).mock.calls.map((c) => [c[1].title, c[1].ifUpdatedAt])).toEqual([
+      ['Grocer', 100],
+      ['Grocery', 101],
+    ]);
+  });
+
   it('asks when the same edit was made elsewhere alongside one the draft does not have', async () => {
     // The phone renamed the note and rewrote the body; this tab types the same rename.
     // The rename alone would change nothing, but taking the phone's copy as current here
