@@ -503,6 +503,16 @@ export const searchQuerySchema = z.object({
   field: fieldFilterSchema,
   from: dateOnlySchema.optional(),
   to: dateOnlySchema.optional(),
+  /**
+   * Each match also carries its note's list row — fields, tags, dates, files — as
+   * `SearchResultRow`, for a table drawing the search in its columns. Off by default: the
+   * sidebar's results draw a title and a snippet, and the row costs a read of every
+   * match's tags, fields and files. Same "1" rule as `exact`.
+   */
+  rows: z
+    .string()
+    .optional()
+    .transform((v) => v === '1'),
 });
 
 /**
@@ -672,4 +682,9 @@ export interface SearchResult {
   matchedField?: string;
   /** Set when the match came from one of the note's tags; the tag's name. */
   matchedTag?: string;
+}
+
+/** A search match with the row the note list draws for that note; see `rows` on the query. */
+export interface SearchResultRow extends SearchResult {
+  note: NoteSummary;
 }

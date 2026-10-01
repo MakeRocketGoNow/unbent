@@ -290,6 +290,24 @@ describe('notes: search', () => {
     expect(await stub.search('shared', 10, { notebook: UNFILED })).toEqual([]);
     expect(await stub.search('shared', 10, { notebook: 'no such notebook' })).toEqual([]);
   });
+
+  it("carries each match's list row, in the search's order, for a table", async () => {
+    const { stub } = freshStore('search-rows');
+    const nb = (await stub.createNotebook('Receipts'))!;
+    const vendor = (await stub.createField(nb.id, { name: 'Vendor', type: 'text', options: [] })) as { id: string };
+    const inTitle = await stub.create(note({ title: 'Coffee', body: 'nothing', notebook: 'Receipts', tags: ['cafe'] }));
+    const inField = await stub.create(note({ title: 'Bill', body: 'nothing', notebook: 'Receipts', fields: { [vendor.id]: 'Acme Coffee' } }));
+    await stub.create(note({ title: 'Elsewhere', body: 'coffee', notebook: 'Other' }));
+
+    const plain = await stub.search('coffee', 10, { notebook: 'Receipts' });
+    const rows = await stub.searchRows('coffee', 10, { notebook: 'Receipts' });
+    // The same matches, ranked the same, each with what the list would draw for it.
+    expect(rows.map(({ note: _, ...r }) => r)).toEqual(plain);
+    expect(rows.map((r) => r.id)).toEqual([inTitle.id, inField.id]);
+    expect(rows[0]!.note).toEqual((await stub.list({ limit: 10, notebook: 'Receipts' })).find((n) => n.id === inTitle.id));
+    expect(rows[1]!.note.fields).toEqual([expect.objectContaining({ fieldId: vendor.id, value: 'Acme Coffee' })]);
+    expect(rows[0]!.note.tags).toEqual(['cafe']);
+  });
 });
 
 describe('notes: bulk actions and purging', () => {
@@ -715,6 +733,8 @@ describe('rows read on an archive-sized store', () => {
       }),
       await measure('search common word', () => stub.search('receipt', 50)),
       await measure('search in a small tag', () => stub.search('receipt', 50, { tags: ['rare'] })),
+      // A table's search: the page above, plus the rows the list would draw for its matches.
+      await measure('search rows in a notebook', () => stub.searchRows('receipt', 50, { notebook: 'Notebook 0' })),
       // What the sweep reads every hour, for every account: it must never scan a table.
       await measure('usage', () => stub.usage()),
       await measure('trash one', () => stub.remove('n00010')),
@@ -735,6 +755,7 @@ describe('rows read on an archive-sized store', () => {
       usage: 4,
       'search common word': 2500,
       'search in a small tag': 80,
+      'search rows in a notebook': 1500,
       'trash one': 12,
       'trash many': 40,
     };
