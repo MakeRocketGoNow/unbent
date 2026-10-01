@@ -53,5 +53,6 @@ export const authRoutes = new Hono<AppEnv>()
       previewRelay: relayOrigin ? { origin: relayOrigin } : undefined,
       autofill: canAutofill(c.env),
       vision: canUseLlm(c.env),
+      ownStores: c.env.PREVIEW_OWN_STORES === '1' || undefined,
     } satisfies AppConfig);
   });

@@ -36,6 +36,12 @@ export const admin = new Hono<AppEnv>()
    * Dry run by default; `?apply=1` deletes.
    */
   .post('/admin/gc-blobs', requireAuth, withRepos, async (c) => {
+    // A preview with stores of its own still shares the dev instance's bucket, where this
+    // account's files are referenced by dev's store and not by this one. Every one of them
+    // would read as an orphan here, and `?apply=1` would delete the lot from dev.
+    if (c.env.PREVIEW_OWN_STORES === '1') {
+      return c.json({ error: 'Not on a preview with stores of its own: the files belong to the dev instance.' }, 409);
+    }
     const userId = c.get('userId')!;
     const apply = c.req.query('apply') === '1';
     const prefix = userPrefix(userId);
