@@ -312,11 +312,18 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
    * Null means "not searching", which is distinct from searching and finding nothing. A
    * query too short to send (see MIN_SEARCH_LENGTH) is still searching — the field is in
    * use and the tag and notebook picks show — but it has no note results to wait for.
+   *
+   * A search whose first answer is still on its way is searching too, with no results
+   * yet (`awaiting`). It was read as not searching, which drew the notebook's list for
+   * the length of every request — and in a notebook shown as a table, put the table back
+   * between keystrokes, so the page swapped layouts as you typed. Later requests keep
+   * the last answer on screen (`searchQuery`), so this is only the first one.
    */
   const needle = debounced.trim();
   const tooShort = needle !== '' && needle.length < MIN_SEARCH_LENGTH;
   const searchOffline = offline && needle !== '' && !tooShort;
-  const results = needle === '' ? null : tooShort || searchOffline ? [] : (search.data ?? null);
+  const awaiting = needle !== '' && !tooShort && !searchOffline && search.data === undefined;
+  const results = needle === '' ? null : tooShort || searchOffline ? [] : (search.data ?? []);
   /** Whether the results will be headed by picks, which is when the notes need a caption too. */
   const picks = scopeMatches(debounced, tags.data ?? [], notebooks.data, selectedTags, notebook);
   const hasPicks = picks.tags.length > 0 || picks.notebooks.length > 0;
@@ -609,7 +616,9 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
    */
   const countLabel =
     results !== null
-      ? `${results.length} matches`
+      ? awaiting
+        ? 'Searching…'
+        : `${results.length} matches`
       : loading
         ? 'Loading…'
         : `${total ?? notes.length} notes`;
@@ -1016,7 +1025,7 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
         <ul
           className={selection.active ? 'note-list selecting' : 'note-list'}
           ref={listRef}
-          aria-busy={stale || undefined}
+          aria-busy={stale || search.isPlaceholderData || undefined}
           aria-multiselectable={results === null ? true : undefined}
           onKeyDown={onListKeysWithSelection}
         >
@@ -1043,7 +1052,10 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
               <li className="muted small empty">Keep typing to search notes.</li>
             ) : searchOffline ? (
               <li className="muted small empty">Search needs a connection.</li>
-            ) : (
+            ) : awaiting ? null : (
+              // Nothing until the first answer: "No matches" would be a claim about the
+              // notes, and a line that flashes for the length of a fast request is the
+              // flicker this is avoiding. The count in the header says it is searching.
               <SearchResults results={results} />
             ))}
 

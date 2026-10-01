@@ -302,11 +302,20 @@ export function invalidateNoteMembership(queryClient: QueryClient) {
  */
 export const MIN_SEARCH_LENGTH = 2;
 
+/**
+ * Notes matching a search.
+ *
+ * `keepPreviousData` for the reason `notesQuery` has it, and more so: every settled pause
+ * in typing is a new key, so without it the results vanished at each one and came back
+ * when the request landed. The previous term's results stay instead, marked through
+ * `isPlaceholderData` so the list can dim them.
+ */
 export const searchQuery = (q: string, filter: NoteFilter = {}) =>
   queryOptions({
     queryKey: keys.search(q, filter),
     queryFn: () => api.searchNotes(q, filter),
     enabled: q.trim().length >= MIN_SEARCH_LENGTH,
+    placeholderData: keepPreviousData,
   });
 
 /** One of the scopes a destructive action names a count for; empty means every live note. */
