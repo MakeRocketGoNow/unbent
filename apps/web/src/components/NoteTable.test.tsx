@@ -99,6 +99,28 @@ describe('NoteTable', () => {
     expect(onSort).toHaveBeenCalledWith({ kind: 'note', sort: 'title' });
   });
 
+  it('shows no order over a search, whose matches are ranked, and takes no header clicks', async () => {
+    const onSort = vi.fn();
+    const { findByRole, getByRole, queryAllByRole } = harness({
+      search: { sortField: 'f-cost', order: 'asc' },
+      ranked: true,
+      onSort,
+    });
+    await findByRole('table', { name: 'Matches in Travel' });
+    expect(queryAllByRole('columnheader').filter((h) => h.hasAttribute('aria-sort'))).toEqual([]);
+    const header = getByRole('button', { name: 'Sort by Cost' });
+    expect((header as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(header);
+    expect(onSort).not.toHaveBeenCalled();
+  });
+
+  it("names the file a search matched in beside the row's name", async () => {
+    const { findByRole } = harness({ ranked: true, hints: new Map([['n1', 'in Report (final) v2.pdf']]) });
+    const link = await findByRole('link', { name: /Ski trip/ });
+    expect(link.textContent).toBe('Ski tripin Report (final) v2.pdf');
+    expect(link.querySelector('.note-row-match')?.textContent).toBe('in Report (final) v2.pdf');
+  });
+
   it('marks the default sort when the URL carries none', async () => {
     const { findByRole, getByRole } = harness();
     await findByRole('table');

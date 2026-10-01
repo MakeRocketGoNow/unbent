@@ -14,15 +14,16 @@ export const search = new Hono<AppEnv>().get(
   withRepos,
   zValidator('query', searchQuerySchema),
   async (c) => {
-    const { q, limit, tag: tags, notebook, field: fields, from, to } = c.req.valid('query');
+    const { q, limit, tag: tags, notebook, field: fields, from, to, rows } = c.req.valid('query');
     const notes = c.get('notes');
     // The live suite's way to reach both query shapes on the same notes; see
     // `NotesRepo.scopeDrivenSearchMax`. Behind the same local-only flag as the suite's
     // password sign-in, so no deployed instance can be steered by it.
     const forced = c.env.ALLOW_TEST_CREDENTIALS === '1' ? Number(c.req.header(SCOPE_MAX_HEADER)) : NaN;
     if (Number.isFinite(forced)) notes.scopeDrivenSearchMax = forced;
+    const filters = { tags, notebook, fields, from, to };
     return c.json({
-      results: await notes.search(q, limit, { tags, notebook, fields, from, to }),
+      results: rows ? await notes.searchRows(q, limit, filters) : await notes.search(q, limit, filters),
     });
   },
 );

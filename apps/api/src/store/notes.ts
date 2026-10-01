@@ -150,25 +150,29 @@ export class NotesStore {
    * everything before it.
    */
   list(opts: ListOptions): NoteSummary[] {
-    return this.pageRows(opts).map((r) => {
-      const fields = decodeFieldsJson(r.fields, r.notebook_id);
-      const attachments = decodeAttachmentsJson(r.attachments);
-      return {
-        id: r.id,
-        title: r.title,
-        createdAt: r.created_at,
-        updatedAt: r.updated_at,
-        tags: splitTags(r.tags),
-        notebook: r.notebook,
-        notebookId: r.notebook_id,
-        // Omitted when empty: most rows in a large archive have none, and a page of fifty
-        // should not carry fifty empty arrays. Same for the files.
-        ...(fields.length > 0 ? { fields } : {}),
-        ...(attachments.length > 0 ? { attachments } : {}),
-        excerpt: excerptMarkdown(r.body),
-        deletedAt: r.deleted_at ?? undefined,
-      };
-    });
+    return this.pageRows(opts).map(toSummary);
+  }
+
+  /**
+   * The list's rows for a handful of notes named by id, in the order named — the rows a
+   * search found, drawn as a table's. Live notes only; an id that is not one is left out.
+   *
+   * The same outer select as a page, so a row here is exactly the row the list would draw
+   * for that note. By primary key, in runs under the bind cap: a search's page is at most
+   * a hundred ids, so this reads those notes and their tags, fields and files, and nothing
+   * else.
+   */
+  summariesFor(ids: string[]): NoteSummary[] {
+    const byId = new Map<string, NoteSummary>();
+    for (const run of runs([...new Set(ids)])) {
+      const page = `SELECT n.id, n.title, n.body, n.created_at, n.updated_at, n.deleted_at, n.notebook_id,
+                           NULL AS sort_key
+                      FROM notes n
+                     WHERE n.id IN (${run.map((_, i) => `?${i + 1}`).join(', ')})
+                       AND +n.deleted_at IS NULL`;
+      for (const r of this.summaryRows(page, run, 'n.id')) byId.set(r.id, toSummary(r));
+    }
+    return ids.flatMap((id) => byId.get(id) ?? []);
   }
 
   /**
@@ -327,6 +331,15 @@ export class NotesStore {
        can name it: SQLite then keeps the subquery's order rather than sorting again, and
        a key without the collation would have cost a second sort on title pages.
     */
+    return this.summaryRows(
+      page,
+      binds,
+      `${byField ? '(n.sort_key IS NULL) ASC, ' : ''}n.sort_key ${direction}, n.id ${direction}`,
+    );
+  }
+
+  /** The rows `page` chose, with their notebook, tags, fields and files; see `pageRows`. */
+  private summaryRows(page: string, binds: Bind[], orderBy: string): SummaryRow[] {
     return this.sql.exec<SummaryRow>(
       `SELECT n.id, n.title, n.body, n.created_at, n.updated_at, n.deleted_at,
               nb.name AS notebook, n.notebook_id,
@@ -337,7 +350,7 @@ export class NotesStore {
               ${ATTACHMENTS_SUBQUERY}
          FROM (${page}) n
          LEFT JOIN notebooks nb ON nb.id = n.notebook_id
-        ORDER BY ${byField ? '(n.sort_key IS NULL) ASC, ' : ''}n.sort_key ${direction}, n.id ${direction}`,
+        ORDER BY ${orderBy}`,
       ...binds,
     );
   }
@@ -2603,4 +2616,25 @@ export class NotesStore {
       this.sql.exec(`INSERT INTO note_tags (note_id, tag_id) SELECT ?1, id FROM tags WHERE name = ?2`, noteId, name);
     }
   }
+}
+
+/** A list row as the client sees it. */
+function toSummary(r: SummaryRow): NoteSummary {
+  const fields = decodeFieldsJson(r.fields, r.notebook_id);
+  const attachments = decodeAttachmentsJson(r.attachments);
+  return {
+    id: r.id,
+    title: r.title,
+    createdAt: r.created_at,
+    updatedAt: r.updated_at,
+    tags: splitTags(r.tags),
+    notebook: r.notebook,
+    notebookId: r.notebook_id,
+    // Omitted when empty: most rows in a large archive have none, and a page of fifty
+    // should not carry fifty empty arrays. Same for the files.
+    ...(fields.length > 0 ? { fields } : {}),
+    ...(attachments.length > 0 ? { attachments } : {}),
+    excerpt: excerptMarkdown(r.body),
+    deletedAt: r.deleted_at ?? undefined,
+  };
 }

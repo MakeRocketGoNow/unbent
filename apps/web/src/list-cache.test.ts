@@ -132,6 +132,24 @@ describe('applySaveToLists', () => {
     expect(invalidate.mock.calls.map((c) => c[0]?.queryKey)).toEqual([['notes', {}, { sort: 'title' }]]);
   });
 
+  it("rebuilds a search's row for the saved note in place, leaving its rank and rowless searches alone", () => {
+    const qc = new QueryClient();
+    const hit = (id: string) => ({ id, title: id, updatedAt: 1, snippet: '' });
+    qc.setQueryData(['search', 'trip', {}, { rows: true }], [
+      { ...hit('a'), note: row('a', 30) },
+      { ...hit('b'), note: row('b', 20) },
+    ]);
+    const rowless = [hit('a'), hit('b')];
+    qc.setQueryData(['search', 'trip', {}, { rows: false }], rowless);
+
+    applySaveToLists(qc, saved('b', 40, { title: 'Zed', tags: ['new'] }), { title: true, tags: true });
+
+    const rows = qc.getQueryData<Array<{ id: string; title: string; note: NoteSummary }>>(['search', 'trip', {}, { rows: true }])!;
+    expect(rows.map((r) => r.id)).toEqual(['a', 'b']);
+    expect(rows[1]).toMatchObject({ title: 'Zed', note: { title: 'Zed', tags: ['new'], updatedAt: 40 } });
+    expect(qc.getQueryData(['search', 'trip', {}, { rows: false }])).toBe(rowless);
+  });
+
   it('invalidates the exact counts when the filing changed', () => {
     const qc = new QueryClient();
     qc.setQueryData(['notes', 'exact-count', { notebook: 'Travel' }], 12);

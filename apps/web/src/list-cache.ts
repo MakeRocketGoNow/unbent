@@ -1,6 +1,6 @@
 import type { InfiniteData, QueryClient, QueryKey } from '@tanstack/react-query';
 import { DEFAULT_NOTE_SORT, excerptMarkdown, UNFILED, type Note, type NoteSummary } from '@unbent/shared';
-import type { NotePage } from './notes-api.js';
+import type { NotePage, SearchHit } from './notes-api.js';
 import type { NoteFilter, NoteOrdering } from './queries.js';
 
 /** Which parts of a note a save changed, as far as a list's membership and order care. */
@@ -41,6 +41,23 @@ export function applySaveToLists(queryClient: QueryClient, saved: Note, change: 
     if (next === 'refetch') void queryClient.invalidateQueries({ queryKey: key, exact: true });
     else if (next !== data) queryClient.setQueryData(key, next);
   }
+  /*
+     A table drawing a search draws each match's list row, so those rows follow the save
+     too. In place, and never refetched: the matches are ranked, a save does not re-rank
+     them, and the sidebar's results — titles and snippets — have never followed a save
+     either. A search that carries no rows has nothing here to change.
+  */
+  for (const [key, data] of queryClient.getQueriesData<SearchHit[]>({ queryKey: ['search'] })) {
+    if (!data?.some((r) => 'note' in r && r.id === saved.id)) continue;
+    queryClient.setQueryData<SearchHit[]>(key, searchAfterSave(data, saved));
+  }
+}
+
+/** A search's matches with one saved note's row rebuilt; see `applySaveToLists`. */
+export function searchAfterSave(results: SearchHit[], saved: Note): SearchHit[] {
+  return results.map((r) =>
+    'note' in r && r.id === saved.id ? { ...r, title: saved.title, note: summaryOf(saved, r.note) } : r,
+  );
 }
 
 function noteListKey(key: QueryKey): { filter: NoteFilter; ordering: NoteOrdering } | null {

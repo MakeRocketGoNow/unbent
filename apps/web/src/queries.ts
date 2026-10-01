@@ -82,7 +82,7 @@ export const keys = {
    */
   exactCount: (filter: ExactCountFilter) =>
     filter.trashed ? (['trash', 'exact-count'] as const) : (['notes', 'exact-count', filter] as const),
-  search: (q: string, filter: NoteFilter = {}) => ['search', q, filter] as const,
+  search: (q: string, filter: NoteFilter = {}, rows = false) => ['search', q, filter, { rows }] as const,
   config: () => ['config'] as const,
   pendingImages: () => ['pending-images'] as const,
 };
@@ -302,11 +302,22 @@ export function invalidateNoteMembership(queryClient: QueryClient) {
  */
 export const MIN_SEARCH_LENGTH = 2;
 
-export const searchQuery = (q: string, filter: NoteFilter = {}) =>
+/**
+ * Notes matching a search.
+ *
+ * `keepPreviousData` for the reason `notesQuery` has it, and more so: every settled pause
+ * in typing is a new key, so without it the results vanished at each one and came back
+ * when the request landed. The previous term's results stay instead, marked through
+ * `isPlaceholderData` so the list can dim them.
+ *
+ * `rows` asks for each match's list row as well, for the table — see `searchNotes`.
+ */
+export const searchQuery = (q: string, filter: NoteFilter = {}, rows = false) =>
   queryOptions({
-    queryKey: keys.search(q, filter),
-    queryFn: () => api.searchNotes(q, filter),
+    queryKey: keys.search(q, filter, rows),
+    queryFn: () => api.searchNotes(q, filter, rows),
     enabled: q.trim().length >= MIN_SEARCH_LENGTH,
+    placeholderData: keepPreviousData,
   });
 
 /** One of the scopes a destructive action names a count for; empty means every live note. */
