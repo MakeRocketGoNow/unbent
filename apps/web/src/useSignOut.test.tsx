@@ -5,6 +5,7 @@ import { SignOutSnackbar } from './components/SignOutSnackbar.js';
 import { refreshSession, signOut } from './auth-client.js';
 import { rememberSession, rememberedSession } from './session-memory.js';
 import { setReachableForTests } from './connectivity.js';
+import { claimImportFor } from './import-run.js';
 
 const navigate = vi.fn();
 vi.mock('@tanstack/react-router', () => ({ useNavigate: () => navigate }));
@@ -12,6 +13,7 @@ vi.mock('./auth-client.js', () => ({
   signOut: vi.fn().mockResolvedValue({}),
   refreshSession: vi.fn().mockResolvedValue(null),
 }));
+vi.mock('./import-run.js', () => ({ claimImportFor: vi.fn() }));
 
 /**
  * Where signing out lands. In a browser, the sign-in page. Inside the Android app, nowhere
@@ -59,6 +61,20 @@ describe('useSignOut', () => {
   });
 
   /*
+   * A running import sends whatever cookie the page holds, so it must not outlive the
+   * session it was started under. Inside the app the store is never refreshed, so the
+   * shell's own drop never runs — this is the only one on that path.
+   */
+  it.each([
+    ['in a browser', false],
+    ['inside the app', true],
+  ])('drops a running import, %s', async (_, hosted) => {
+    if (hosted) window.UnbentApp = { postMessage: vi.fn() };
+    renderHook(() => useSignOut()).result.current();
+    await waitFor(() => expect(claimImportFor).toHaveBeenCalledWith(undefined));
+  });
+
+  /*
    * The request could not reach the server. In a browser nothing has been signed out —
    * the HttpOnly cookie is still good — so nothing is cleared and nothing pretends it was;
    * the menu offers Sign out there only with a connection. In the Android app the app
@@ -72,6 +88,7 @@ describe('useSignOut', () => {
     expect(await screen.findByText('Couldn’t sign out.')).toBeTruthy();
     expect(navigate).not.toHaveBeenCalled();
     expect(rememberedSession()).not.toBeNull();
+    expect(claimImportFor).not.toHaveBeenCalled();
 
     // Try again, and this time the server hears it.
     fireEvent.click(screen.getByRole('button', { name: 'Try again' }));

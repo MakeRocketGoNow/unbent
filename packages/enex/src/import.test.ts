@@ -642,6 +642,30 @@ describe('a server that stops responding', () => {
     expect(createNote).toHaveBeenCalledTimes(healthy + FAILURE_STREAK_LIMIT);
   });
 
+  /**
+   * A 401 is the session ending, not the host going away. The requests after it go out with
+   * whatever cookie the browser holds next, which may be the next person's, so the run
+   * ends on the first one rather than spending the streak.
+   */
+  it('stops on the first 401', async () => {
+    const createNote = vi.fn(async (input: { title: string }) => {
+      if (input.title === 'N0') return { id: 'note-1', created: true };
+      throw statusError(401);
+    });
+    const { client } = fakeClient({ createNote });
+
+    const failures: string[] = [];
+    const run = importEnex(enexFile('N.enex', manyNotes(20)), client, {
+      onFailure: (f) => failures.push(f.title),
+    });
+
+    await expect(run).rejects.toBeInstanceOf(ImportStoppedError);
+    await expect(run).rejects.toMatchObject({ status: 401, streak: 1 });
+    await expect(run).rejects.toThrow(/signed out.*1 notes were imported before that/s);
+    expect(failures).toEqual(['N1']);
+    expect(createNote).toHaveBeenCalledTimes(2);
+  });
+
   it('says how much landed before it gave up', async () => {
     const { client } = fakeClient({
       createNote: vi.fn(async (input) => {

@@ -131,6 +131,43 @@ describe('the import run', () => {
     expect(worker().terminated).toBe(true);
   });
 
+  /**
+   * The run outlives the import page, so a sign-out no longer unmounts the worker. The
+   * next fetch would go out with no cookie, or with the next person's, unless claiming
+   * nobody stops it here. The titles in a finished summary are dropped for the same
+   * reason they are dropped for a different user.
+   */
+  it('throws the run away when nobody is signed in', () => {
+    const { run, worker } = harness();
+    run.claim('user-a');
+    run.pick(file('Notes.enex'));
+    run.start({ extractText: true });
+    worker().emit({ type: 'skip', skip: { title: 'Kept', noteId: 'n-1', earlierInFile: true } });
+
+    run.claim(undefined);
+    expect(run.get().status).toBe('idle');
+    expect(run.get().file).toBeNull();
+    expect(run.get().skips.duplicateCount).toBe(0);
+    expect(worker().terminated).toBe(true);
+
+    run.claim(undefined);
+    expect(run.get().status).toBe('idle');
+  });
+
+  it('drops a finished summary when nobody is signed in', () => {
+    const { run, worker } = harness();
+    run.claim('user-a');
+    run.pick(file('Notes.enex'));
+    run.start({ extractText: true });
+    worker().emit({ type: 'skip', skip: { title: 'Kept', noteId: 'n-1', earlierInFile: true } });
+    worker().emit({ type: 'done', progress: progress(1) });
+    expect(run.get().status).toBe('done');
+
+    run.claim(undefined);
+    expect(run.get().status).toBe('idle');
+    expect(run.get().skips.duplicateCount).toBe(0);
+  });
+
   it('counts runs, so a dismissal for one does not hide the next', () => {
     const { run, worker } = harness();
     run.pick(file('Notes.enex'));

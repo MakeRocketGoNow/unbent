@@ -7,7 +7,7 @@ import { requireSession, useShell } from '../auth-gate.js';
 import { Rail, RailHandle, useRailWidth, type RailPref } from '../components/Rail.js';
 import { usePersistentState } from '../usePersistentState.js';
 import { useMediaQuery, MOBILE_QUERY } from '../useMediaQuery.js';
-import { claimCacheFor } from '../queries.js';
+import { handOver } from '../hand-over.js';
 import { startIndexing, subscribeIndexing } from '../index-files.js';
 import { Topbar } from '../components/Topbar.js';
 import { OfflineBanner } from '../components/OfflineBanner.js';
@@ -32,11 +32,8 @@ export const Route = createRootRouteWithContext<RouterContext>()({
    * silent hole, and here rather than in the component below because a component renders
    * after the loaders it wraps have already run. See `auth-gate.ts` for what that cost.
    *
-   * The cache is handed over in the same breath, and for the same timing reason. Loaders
-   * resolve through `ensureQueryData`, so a second person signing in without reloading was
-   * served the first one's notes out of the cache; this is the last moment before those
-   * loaders run. See `claimCacheFor` for why it is keyed on the user rather than hung off
-   * signing out.
+   * What the tab holds for one person is handed over in the same breath, and for the same
+   * timing reason: this is the last moment before the loaders run. See `handOver`.
    */
   beforeLoad: async ({ location, context, preload }) => {
     // First, so a waiting deploy loads the destination fresh instead of it being drawn in
@@ -44,7 +41,7 @@ export const Route = createRootRouteWithContext<RouterContext>()({
     const update = takeUpdate(location, preload);
     if (update) await update;
     const session = await requireSession(location);
-    claimCacheFor(context.queryClient, session?.user.id);
+    handOver(context.queryClient, session?.user.id);
   },
   component: RootLayout,
 });
@@ -166,14 +163,26 @@ function AppShell() {
   /**
    * The import run, which outlives the page it was started from.
    *
+   * Claimed for this user, and for nobody when the session goes away under this shell —
+   * expiry, or a sign-out in another tab. See `ImportRun.claim`; `useSignOut` drops it
+   * for a sign-out made here, and the `beforeLoad` claim catches one neither saw.
+   */
+  useEffect(() => {
+    claimImportFor(userId);
+  }, [userId]);
+
+  /**
    * An import creates notes, notebooks and tags, so nothing cached is still true once it
    * ends — however it ends, since a failed run has usually landed some notes first. Here
    * rather than on the import page because the run may end while that page is not
-   * mounted. Claimed for this user first; see `ImportRun.claim`.
+   * mounted.
+   *
+   * A separate effect from the claim, and not keyed on the user, so it is still listening
+   * when a claim throws a running import away. That reset is an ending like any other —
+   * notes landed before it, and the same person signing back in keeps their cache — and
+   * an effect that resubscribed on the user's change would be torn down just before it.
    */
   useEffect(() => {
-    if (!userId) return;
-    claimImportFor(userId);
     let last = getImportRun().status;
     return subscribeImport(() => {
       const { status } = getImportRun();
@@ -181,7 +190,7 @@ function AppShell() {
       if (last === 'running') void queryClient.invalidateQueries();
       last = status;
     });
-  }, [userId, queryClient]);
+  }, [queryClient]);
 
   /**
    * The session going away under a rendered app — expiry, or a sign-out in another tab.
