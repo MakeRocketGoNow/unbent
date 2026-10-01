@@ -56,6 +56,10 @@ jobs:
       # apps/store-tests/vitest.config.ts. Needs no build: the plugin tolerates the
       # missing assets directory the loaded wrangler environment names.
       - run: pnpm --filter @unbent/store-tests test
+      # The seed's invariants: every value fits its field, every file opens. What the
+      # previews of store changes fill themselves with, and checked nowhere else between
+      # real loads.
+      - run: pnpm --filter @unbent/seed test
       - run: pnpm build
 
   # Ships main to production: the top level of apps/api/wrangler.toml, on whichever
