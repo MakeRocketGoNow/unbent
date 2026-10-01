@@ -14,6 +14,10 @@
     <link rel="manifest" href="/manifest.webmanifest" />
     <meta name="theme-color" content="#2F6B4F" />
     <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
+    <!-- The tab's icon. There was none, so a browser asked for /favicon.ico, which the
+         SPA fallback answers with this page, and drew a blank. The PWA's own icon, which
+         instance-marker.ts badges on an instance that is not production. -->
+    <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png" />
   </head>
   <body>
     <div id="root"></div>

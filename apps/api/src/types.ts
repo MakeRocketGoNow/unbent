@@ -39,6 +39,21 @@ export interface Env {
    */
   PREVIEW_OWN_STORES?: string;
   /**
+   * What to call this instance in the page's tab title, favicon and account menu when it
+   * is not the one people use: "Dev" on the dev instance, "PR 222" on a preview, "Local"
+   * under `pnpm dev`. Unset on production, which is how the page knows to draw none of
+   * it. A plain var rather than something derived from the hostname, so a self-hoster's
+   * staging copy can say "Staging" without the code knowing its name.
+   */
+  INSTANCE_LABEL?: string;
+  /**
+   * Which kind of scratch instance this is — `dev`, `preview` or `local` — for the page to
+   * colour its marks by and to decide whether the drawer wears a ribbon (dev and previews
+   * do; local does not, so the store screenshots shot against `pnpm dev` stay clean). Set
+   * beside `INSTANCE_LABEL` in wrangler.toml; anything else reads as unset.
+   */
+  INSTANCE_KIND?: string;
+  /**
    * Workers AI, for extracting a PDF's text on upload. Bound in production only — see
    * wrangler.toml — so it is optional here, and its absence means the browser does the
    * extracting, as it did before.

@@ -1,11 +1,11 @@
 import { Hono } from 'hono';
-import type { AppConfig } from '@unbent/shared';
+import { INSTANCE_KINDS, type AppConfig, type InstanceKind } from '@unbent/shared';
 import { accountDeletionOffered, getAuth, offeredProviders } from '../auth.js';
 import { legalLinksOf, operatorOf, posthogOf } from '../lib/instance.js';
 import { previewRelayOrigin } from '../lib/preview-relay.js';
 import { canAutofill } from '../lib/jev.js';
 import { canUseLlm } from '../lib/llm.js';
-import type { AppEnv } from '../types.js';
+import type { AppEnv, Env } from '../types.js';
 
 export const authRoutes = new Hono<AppEnv>()
   /**
@@ -54,5 +54,23 @@ export const authRoutes = new Hono<AppEnv>()
       autofill: canAutofill(c.env),
       vision: canUseLlm(c.env),
       ownStores: c.env.PREVIEW_OWN_STORES === '1' || undefined,
+      instanceLabel: instanceLabelOf(c.env),
+      instanceKind: instanceKindOf(c.env),
     } satisfies AppConfig);
   });
+
+/**
+ * `INSTANCE_LABEL`, trimmed and kept short. It goes in front of every tab title, where a
+ * long one would push "Unbent" out of a narrow tab, so anything past a couple of words is
+ * a mistake in the setting rather than something to show. Blank reads as unset.
+ */
+export function instanceLabelOf(env: Pick<Env, 'INSTANCE_LABEL'>): string | undefined {
+  const label = env.INSTANCE_LABEL?.trim();
+  return label ? label.slice(0, 24) : undefined;
+}
+
+/** `INSTANCE_KIND` when it is one the page knows how to draw; see `AppConfig.instanceKind`. */
+export function instanceKindOf(env: Pick<Env, 'INSTANCE_KIND'>): InstanceKind | undefined {
+  const kind = env.INSTANCE_KIND?.trim().toLowerCase();
+  return (INSTANCE_KINDS as readonly string[]).includes(kind ?? '') ? (kind as InstanceKind) : undefined;
+}

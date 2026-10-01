@@ -158,6 +158,10 @@ class_name = "UserStore"
 # The SPA origin for OAuth redirects and cookie scope. `pnpm dev` overrides it with the
 # checkout's own port; this is the value a bare `wrangler dev --env local` gets.
 APP_URL = "http://localhost:5173"
+# In front of the tab title and on the favicon, so a local tab is never taken for
+# production's (see `INSTANCE_LABEL` in src/types.ts).
+INSTANCE_LABEL = "Local"
+INSTANCE_KIND = "local"
 
 # No `[env.local.secrets]`, and the omission is load-bearing. Once an environment declares
 # `secrets`, `wrangler dev` loads from .dev.vars only the names that list contains and the
@@ -276,6 +280,8 @@ crons = []
 # would write, drop or move belongs to dev. Off here and nowhere else.
 [env.preview.vars]
 STORE_FREEZE_D1 = "0"
+# Every preview is one; its label, "PR <number>", comes from the deploy command.
+INSTANCE_KIND = "preview"
 
 [env.preview.assets]
 directory = "../web/dist"
@@ -336,6 +342,10 @@ class_name = "UserStore"
 # Unlike a preview's, this one is a constant and belongs in the file: the host does not
 # change, so there is nothing for a deploy to supply and nothing to go stale.
 APP_URL = "https://dev.unbent.app"
+# What the page calls this instance in its tab title, favicon and account menu. A
+# preview's is per PR and comes from the deploy command instead.
+INSTANCE_LABEL = "Dev"
+INSTANCE_KIND = "dev"
 
 [env.dev.secrets]
 required = ["BETTER_AUTH_SECRET"]
