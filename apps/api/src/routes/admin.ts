@@ -314,8 +314,17 @@ export const admin = new Hono<AppEnv>()
       let undo: string | null;
       try {
         await store.restoreTo(to);
-        // `restoreTo` aborts the object and so never returns; getting here means it did not.
-        return c.json({ error: 'The store did not restart, so the restore is scheduled but not applied. Call this again.' }, 500);
+        // `restoreTo` aborts the object and so never returns; getting here means it did not,
+        // which leaves the restore scheduled to fire by itself on the next restart — the
+        // delayed hazard `restoreTo` exists to avoid. Said loudly, in the log and the answer.
+        console.error(`[store] restore for user=${target} returned instead of restarting; it will apply on the store's next restart`);
+        return c.json(
+          {
+            error:
+              'The store did not restart, so the restore is scheduled but not yet applied. It will apply by itself the next time the store restarts; call this again to apply it now.',
+          },
+          500,
+        );
       } catch (err) {
         const abort = readRestoreAbort(err);
         const refused = abort.scheduled ? null : readRestoreRefusal(err);
