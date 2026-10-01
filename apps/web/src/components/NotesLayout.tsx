@@ -735,7 +735,14 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
           ) : (
             <p className="bad small">{(error as Error).message}</p>
           ))}
-        {bulkError && <p className="bad small">{bulkError}</p>}
+        {/* The cell edit that was in flight when the connection went: its `onError` puts
+            the old value back, and without this the cell would just snap back with no
+            reason given. Past tense rather than "you're offline", because it stays until
+            the next edit and the connection may be back long before that. */}
+        {isOfflineError(editField.error) && (
+          <p className="muted small">That change wasn’t saved: the connection dropped.</p>
+        )}
+        {bulkError &&<p className="bad small">{bulkError}</p>}
         <NotebookMissing notebook={notebook} notebooks={notebooks} />
 
         {/*
