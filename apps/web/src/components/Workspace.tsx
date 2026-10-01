@@ -431,7 +431,15 @@ export function Workspace({ noteId, readOnly = false, backTo = '/notes' }: Works
       // Nothing of theirs would be lost — see `holdsTheirChanges` — so this is a date that
       // moved, not a choice to put to anyone.
       if (!choosing && holdsTheirChanges(value, base, err.current)) {
-        updated = await api.updateNote(noteId, { ...patch, ifUpdatedAt: err.current.updatedAt });
+        try {
+          updated = await api.updateNote(noteId, { ...patch, ifUpdatedAt: err.current.updatedAt });
+        } catch (again) {
+          // A third save landed between the two. That one is a choice, put the same way as
+          // a first refusal: let through bare, it left a red "Not saved" with no notice and
+          // the inputs still open.
+          if (api.isNoteChanged(again)) setConflict({ id: noteId, current: again.current });
+          throw again;
+        }
       } else {
         // A "Keep mine" refused in turn asks again, against the newer copy it brought back.
         keepMine.current = null;

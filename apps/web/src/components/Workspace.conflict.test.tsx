@@ -240,6 +240,26 @@ describe('a save after another device saved the note', () => {
     expect(server.get().body).toBe('as edited on the phone');
   });
 
+  it('asks when its quiet second try is refused as well', async () => {
+    // The first refusal is benign — the phone made the same rename — but a third save
+    // lands before the retry does.
+    const renamed: Note = { ...note, title: 'Trip notes, renamed', updatedAt: 200 };
+    const third: Note = { ...renamed, body: 'and a third device', updatedAt: 300 };
+    vi.mocked(api.updateNote)
+      .mockRejectedValueOnce(new NoteChangedError(renamed))
+      .mockRejectedValueOnce(new NoteChangedError(third));
+    mount();
+    await typeTitle('Trip notes, renamed');
+
+    await screen.findByRole('alert', {}, { timeout: 3000 });
+    expect((await title()).readOnly).toBe(true);
+    expect(vi.mocked(api.updateNote).mock.calls.map((c) => c[1].ifUpdatedAt)).toEqual([100, 200]);
+
+    // With a way out, which the bare refusal never offered.
+    fireEvent.click(screen.getByRole('button', { name: 'Reload' }));
+    await waitFor(() => expect(screen.queryByRole('alert')).toBeNull());
+  });
+
   it('saves again without asking when the note only moved on to what the draft already says', async () => {
     // Both devices made the same rename; the phone's save landed first.
     serverHolding({ ...note, title: 'Trip notes, renamed', updatedAt: 200 });
