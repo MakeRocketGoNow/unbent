@@ -1,3 +1,6 @@
+import { afterEach } from 'vitest';
+import { resetConnectivity } from './connectivity.js';
+
 /**
  * The DOM measurement APIs jsdom leaves off Range.
  *
@@ -55,3 +58,15 @@ if (typeof Range !== 'undefined') {
     Range.prototype.getBoundingClientRect = () => new DOMRect(0, 0, 0, 0);
   }
 }
+
+/**
+ * Every test starts online.
+ *
+ * Whether the server can be reached is module state (`connectivity.ts`), because the whole
+ * page has to agree on it. A test that renders a view with some query left unseeded sends
+ * that request to jsdom's `fetch`, which fails, and the API client rightly reports a lost
+ * connection. The failure is harmless inside that test; left standing, it put the next
+ * test in the same file offline, where the note it rendered was read-only and its actions
+ * disabled, for no reason the test could see.
+ */
+afterEach(() => resetConnectivity());

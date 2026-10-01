@@ -3,6 +3,7 @@ import { Link, useNavigate } from '@tanstack/react-router';
 import { useQuery, useInfiniteQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import { DEFAULT_NOTE_SORT, UNFILED, type FieldDef, type FieldValue } from '@unbent/shared';
 import * as api from '../notes-api.js';
+import { isOfflineError } from '../notes-api.js';
 import { Route } from '../routes/notes.js';
 import {
   notesQuery,
@@ -64,7 +65,8 @@ import { Confirm } from './Confirm.js';
 import { MoveSheet } from './MoveSheet.js';
 import { TagsSheet } from './TagsSheet.js';
 import { editOpenNoteFiling } from '../open-note-fields.js';
-import { useSession } from '../auth-client.js';
+import { useAppSession } from '../useAppSession.js';
+import { useOffline } from '../connectivity.js';
 import { useSignOut } from '../useSignOut.js';
 
 /** Sidebar plus the routed workspace. Filters come from the URL; nothing here is mirrored into state. */
@@ -104,7 +106,7 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
    * and the topbar is hidden over the phone's list, so this is where it is reached there —
    * the root layout has already established the session by the time this renders.
    */
-  const { data: session } = useSession();
+  const { session } = useAppSession();
   const signOutAndLeave = useSignOut();
 
   const filter = {
@@ -226,7 +228,17 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
     const timer = setTimeout(() => setDebounced(q), 300);
     return () => clearTimeout(timer);
   }, [q]);
-  const search = useQuery(searchQuery(debounced, filter));
+  /*
+     Offline, there is nothing to search: the server does it, and the worker keeps no copy
+     of results. So no request goes out, and the list says why instead of "No matches",
+     which would be a claim about the notes rather than about the connection. The tag and
+     notebook picks still show — they are matched against lists already on the device.
+  */
+  const offline = useOffline();
+  const search = useQuery({
+    ...searchQuery(debounced, filter),
+    enabled: !offline && debounced.trim().length >= MIN_SEARCH_LENGTH,
+  });
 
   /*
    * One sidebar at every width, with the breakpoint deciding a handful of props rather
@@ -303,7 +315,8 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
    */
   const needle = debounced.trim();
   const tooShort = needle !== '' && needle.length < MIN_SEARCH_LENGTH;
-  const results = needle === '' ? null : tooShort ? [] : (search.data ?? null);
+  const searchOffline = offline && needle !== '' && !tooShort;
+  const results = needle === '' ? null : tooShort || searchOffline ? [] : (search.data ?? null);
   /** Whether the results will be headed by picks, which is when the notes need a caption too. */
   const picks = scopeMatches(debounced, tags.data ?? [], notebooks.data, selectedTags, notebook);
   const hasPicks = picks.tags.length > 0 || picks.notebooks.length > 0;
@@ -359,7 +372,14 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
     editField.mutate({ noteId, def, value });
   };
 
-  const error = list.error ?? search.error ?? editField.error;
+  /*
+     The offline sentences below are about the list — a page of it never loaded on this
+     device. A cell edit that failed for want of a connection is not that, and saying the
+     list is incomplete to someone who just edited a cell would be wrong; the cells and the
+     selection bar are locked offline anyway, so it can only be the edit that was in flight.
+  */
+  const error =
+    list.error ?? (offline ? null : search.error) ?? (isOfflineError(editField.error) ? null : editField.error);
 
   /*
    * Whether the rows on screen are the rows for the heading above them.
@@ -688,14 +708,40 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
              desktop, where a column has nothing for a button to float clear of. */
           action={
             isMobile ? undefined : (
-              <Button variant="primary" onClick={() => void newNote()}>
+              <Button
+                variant="primary"
+                onClick={() => void newNote()}
+                // Disabled, not withdrawn, while offline: a new note is a write, and the
+                // row keeps its shape. The same for the phone's floating button below.
+                disabled={offline}
+                title={offline ? 'New notes need a connection' : undefined}
+              >
                 New
               </Button>
             )
           }
         />
 
-        {error && <p className="bad small">{(error as Error).message}</p>}
+        {error &&
+          (isOfflineError(error) ? (
+            /* No copy on the device: the list was never loaded here, or its next page
+               was never reached. Muted, like the note's own version of this — it loads by
+               itself when the connection returns. */
+            <p className="muted small">
+              {notes.length > 0
+                ? "The rest of this list isn't available offline."
+                : "This list hasn't been opened on this device, so it isn't available offline."}
+            </p>
+          ) : (
+            <p className="bad small">{(error as Error).message}</p>
+          ))}
+        {/* The cell edit that was in flight when the connection went: its `onError` puts
+            the old value back, and without this the cell would just snap back with no
+            reason given. Past tense rather than "you're offline", because it stays until
+            the next edit and the connection may be back long before that. */}
+        {isOfflineError(editField.error) && (
+          <p className="muted small">That change wasn’t saved: the connection dropped.</p>
+        )}
         {bulkError && <p className="bad small">{bulkError}</p>}
         <NotebookMissing notebook={notebook} notebooks={notebooks} />
 
@@ -927,7 +973,14 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
           * one every time a thumb reached for the scroll bar.
           */}
         {isMobile && !selection.active && (
-          <button type="button" className="fab" aria-label="New note" onClick={() => void newNote()}>
+          <button
+            type="button"
+            className="fab"
+            aria-label="New note"
+            disabled={offline}
+            title={offline ? 'New notes need a connection' : undefined}
+            onClick={() => void newNote()}
+          >
             <PlusIcon />
           </button>
         )}
@@ -947,7 +1000,9 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
             onKeyDown={onListKeysWithSelection}
             tableRef={tableRef}
             empty={emptyMessage}
-            onEdit={onEditCell}
+            // Offline the cells show their values and take no edits, as the open note does:
+            // nothing can change until the connection is back.
+            onEdit={offline ? undefined : onEditCell}
             selection={{
               has: selection.has,
               active: selection.active,
@@ -986,6 +1041,8 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
           {results !== null &&
             (tooShort ? (
               <li className="muted small empty">Keep typing to search notes.</li>
+            ) : searchOffline ? (
+              <li className="muted small empty">Search needs a connection.</li>
             ) : (
               <SearchResults results={results} />
             ))}
@@ -1042,8 +1099,8 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
               type="button"
               className="icon-btn"
               aria-label="Move to notebook"
-              title="Move to notebook"
-              disabled={bulkBusy}
+              title={offline ? 'Not available offline' : 'Move to notebook'}
+              disabled={bulkBusy || offline}
               onClick={() => setBulkSheet('move')}
             >
               <NotebookActionIcon />
@@ -1052,8 +1109,8 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
               type="button"
               className="icon-btn"
               aria-label="Tags"
-              title="Tags"
-              disabled={bulkBusy}
+              title={offline ? 'Not available offline' : 'Tags'}
+              disabled={bulkBusy || offline}
               onClick={() => setBulkSheet('tags')}
             >
               <TagActionIcon />
@@ -1062,8 +1119,8 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
               type="button"
               className="icon-btn danger"
               aria-label="Delete"
-              title="Delete"
-              disabled={bulkBusy}
+              title={offline ? 'Not available offline' : 'Delete'}
+              disabled={bulkBusy || offline}
               onClick={() => setPendingTrash(true)}
             >
               <TrashIcon />

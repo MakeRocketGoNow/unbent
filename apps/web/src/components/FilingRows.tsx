@@ -107,7 +107,7 @@ export function FilingRows({
           <TagIcon />
         </span>
         <span className="note-field-label">Tags</span>
-        <TagInput tags={tags} suggestions={suggestions} onChange={onTags} />
+        <TagInput tags={tags} suggestions={suggestions} onChange={onTags} readOnly={readOnly} />
         <span className="note-field-side" />
       </div>
     </>

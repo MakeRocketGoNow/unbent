@@ -57,6 +57,12 @@ export interface OverflowItem {
    * Only meaningful on a button item. A link that navigates is not a setting.
    */
   selected?: boolean;
+  /**
+   * Shown but not available right now — Sign out in a browser with no connection. Faded
+   * in place rather than dropped, so the menu keeps its shape and `title` says why. Only
+   * meaningful on a button item.
+   */
+  disabled?: boolean;
 }
 
 /**
@@ -86,6 +92,13 @@ interface OverflowMenuProps {
   className?: string;
   /** Extra class on the trigger, for one that is not a ⋯-sized square. */
   triggerClassName?: string;
+  /**
+   * Every item needs something the page cannot do right now — offline, a note's actions
+   * all do. The trigger stays where it is, faded, rather than going: a head that loses its
+   * ⋯ when the connection drops moves the title under the reader's eye. `title` says why.
+   */
+  disabled?: boolean;
+  title?: string;
 }
 
 export function OverflowMenu({
@@ -94,9 +107,16 @@ export function OverflowMenu({
   trigger,
   className,
   triggerClassName,
+  disabled = false,
+  title,
 }: OverflowMenuProps) {
   const [open, setOpen] = useState(false);
   const wrap = useRef<HTMLDivElement>(null);
+
+  // A menu left open when its actions become unavailable would offer them anyway.
+  useEffect(() => {
+    if (disabled) setOpen(false);
+  }, [disabled]);
 
   useEffect(() => {
     if (!open) return;
@@ -129,6 +149,8 @@ export function OverflowMenu({
         aria-label={label}
         aria-expanded={open}
         aria-haspopup="true"
+        disabled={disabled}
+        title={title}
         onClick={() => setOpen((o) => !o)}
       >
         {trigger ?? '⋯'}
@@ -199,6 +221,8 @@ export function OverflowMenu({
                 // item does not have, and announcing one invites the question of how to
                 // press it.
                 aria-pressed={item.selected === undefined ? undefined : item.selected}
+                disabled={item.disabled}
+                title={item.title}
                 onClick={() => {
                   setOpen(false);
                   item.onSelect?.();

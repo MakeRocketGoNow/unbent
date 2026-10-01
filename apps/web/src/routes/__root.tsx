@@ -1,7 +1,7 @@
 import { createRootRouteWithContext, Outlet, useNavigate } from '@tanstack/react-router';
 import { useEffect, useRef } from 'react';
 import { useQueryClient, type QueryClient } from '@tanstack/react-query';
-import { useSession } from '../auth-client.js';
+import { useAppSession } from '../useAppSession.js';
 import { useSignOut } from '../useSignOut.js';
 import { requireSession, useShell } from '../auth-gate.js';
 import { Rail, RailHandle, useRailWidth, type RailPref } from '../components/Rail.js';
@@ -10,11 +10,15 @@ import { useMediaQuery, MOBILE_QUERY } from '../useMediaQuery.js';
 import { claimCacheFor } from '../queries.js';
 import { startIndexing, subscribeIndexing } from '../index-files.js';
 import { Topbar } from '../components/Topbar.js';
+import { OfflineBanner } from '../components/OfflineBanner.js';
+import { useOffline } from '../connectivity.js';
 import { useHostApp } from '../useHostApp.js';
 import { postToApp } from '../app-bridge.js';
 import { ExportSnackbar } from '../components/ExportSnackbar.js';
 import { ImportSnackbar } from '../components/ImportSnackbar.js';
+import { SignOutSnackbar } from '../components/SignOutSnackbar.js';
 import { claimImportFor, getImportRun, subscribeImport } from '../import-run.js';
+import { takeUpdate } from '../sw-register.js';
 
 export interface RouterContext {
   queryClient: QueryClient;
@@ -34,7 +38,11 @@ export const Route = createRootRouteWithContext<RouterContext>()({
    * loaders run. See `claimCacheFor` for why it is keyed on the user rather than hung off
    * signing out.
    */
-  beforeLoad: async ({ location, context }) => {
+  beforeLoad: async ({ location, context, preload }) => {
+    // First, so a waiting deploy loads the destination fresh instead of it being drawn in
+    // the old build and then replaced; see `takeUpdate`.
+    const update = takeUpdate(location, preload);
+    if (update) await update;
     const session = await requireSession(location);
     claimCacheFor(context.queryClient, session?.user.id);
   },
@@ -85,12 +93,15 @@ function PlainShell() {
  * The signed-in app: chrome, and the background work that only makes sense for a user.
  *
  * There is no gate here any more. The route guard has established a session before this
- * renders, so `useSession` is read for two things: the address in the chrome, and
+ * renders, so the session is read for two things: the address in the chrome, and
  * liveness — a session that expires, or a sign-out in another tab, arrives through this
  * hook and nowhere else, and has to move the user off a screen they can no longer load.
+ * Through `useAppSession`, so a check that merely failed to reach the server — no signal —
+ * is not mistaken for either.
  */
 function AppShell() {
-  const { data: session, isPending } = useSession();
+  const { session, isPending } = useAppSession();
+  const offline = useOffline();
   const navigate = useNavigate();
   const signOutAndLeave = useSignOut();
   const queryClient = useQueryClient();
@@ -135,10 +146,13 @@ function AppShell() {
    *
    * Attachment text is what search reads, so a result cached before the pass ran is
    * stale once it has indexed something. Nothing else in the cache is.
+   *
+   * Not while offline, when every file it asked for would fail: it waits for the
+   * connection and starts then. The pass still runs at most once a session.
    */
   useEffect(() => {
     if (!userId) return;
-    startIndexing({ auto: true });
+    if (!offline) startIndexing({ auto: true });
     return subscribeIndexing((state) => {
       // A stopped pass indexed what it got through, which makes a cached search as stale;
       // an image the server read is text in the same index as a PDF's.
@@ -147,7 +161,7 @@ function AppShell() {
         void queryClient.invalidateQueries({ queryKey: ['search'] });
       }
     });
-  }, [userId, queryClient]);
+  }, [userId, offline, queryClient]);
 
   /**
    * The import run, which outlives the page it was started from.
@@ -215,10 +229,12 @@ function AppShell() {
         {/* The phone's chrome, on the pages that have no heading of their own; the
             stylesheet hides it above the breakpoint, where the rail is the chrome. */}
         <Topbar email={session.user.email} onSignOut={signOutAndLeave} />
+        <OfflineBanner />
         <Outlet />
       </main>
       <ExportSnackbar />
       <ImportSnackbar />
+      <SignOutSnackbar />
     </div>
   );
 }

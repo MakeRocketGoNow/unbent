@@ -292,3 +292,25 @@ describe('TagInput restricted to its suggestions', () => {
     expect(onChange).toHaveBeenCalledWith(['Xbox']);
   });
 });
+
+/**
+ * Read-only is the trash and every note while offline. Tags there are shown as words, with
+ * nothing on the row that would take a click and then go nowhere.
+ */
+describe('TagInput read-only', () => {
+  afterEach(cleanup);
+
+  it('shows the tags without anything to change them with', () => {
+    render(<TagInput tags={['travel', 'receipts']} suggestions={[]} onChange={vi.fn()} readOnly />);
+    expect(screen.getByText('travel')).toBeTruthy();
+    expect(screen.getByText('receipts')).toBeTruthy();
+    expect(screen.queryByRole('button')).toBeNull();
+    expect(screen.queryByRole('combobox')).toBeNull();
+    expect(screen.queryByText(/Add tag/)).toBeNull();
+  });
+
+  it('says there are none rather than drawing an empty row', () => {
+    render(<TagInput tags={[]} suggestions={[]} onChange={vi.fn()} readOnly />);
+    expect(screen.getByText('No tags')).toBeTruthy();
+  });
+});

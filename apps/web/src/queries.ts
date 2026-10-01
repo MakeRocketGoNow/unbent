@@ -154,6 +154,13 @@ export const noteQuery = (id: string) =>
     queryKey: keys.note(id),
     queryFn: () => api.getNote(id),
     retry: false,
+    /*
+     * Every fetch keeps its own object, even when it matches the last one. Whether a copy
+     * came from the offline cache is recorded on the object (`servedFromCache`), and
+     * structural sharing would hand back the previous, cached object for a server answer
+     * that happens to be equal — leaving the note locked with nothing left to unlock it.
+     */
+    structuralSharing: false,
   });
 
 /**

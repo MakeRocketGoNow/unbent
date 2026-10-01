@@ -7,6 +7,10 @@ import { installErrorReporting } from './report-error.js';
 import { installPosthog } from './posthog.js';
 import { installLaunchFiles } from './launch-files.js';
 import { configQuery } from './queries.js';
+import { registerServiceWorker } from './sw-register.js';
+import { installConnectivity } from './connectivity.js';
+import { installSessionRecheck } from './auth-client.js';
+import { isOfflineError } from './notes-api.js';
 import './styles.css';
 
 /*
@@ -23,9 +27,37 @@ const queryClient = new QueryClient({
       // focus would be pure noise. Mutations invalidate what they affect instead.
       refetchOnWindowFocus: false,
       staleTime: 30_000,
+      /*
+       * Always make the first attempt, even when the browser says it is offline, because
+       * the service worker may hold the answer (`sw/sw.ts`). React Query's default waits
+       * for the connection instead — so the request never reached the worker, and a
+       * route loader awaiting it waited with the page on its way in. Retries still pause
+       * while offline and resume with the connection.
+       */
+      networkMode: 'offlineFirst',
+      /*
+       * Not a request that failed for want of a connection. Retries pause while offline,
+       * so a read the worker had no copy of would sit "loading" until the connection came
+       * back, and the page could never say it isn't available offline. It fails at once
+       * instead, and the refetch on reconnect (`connectivity.ts`) asks again.
+       */
+      retry: (failureCount, error) => !isOfflineError(error) && failureCount < 3,
+    },
+    mutations: {
+      // The same for writes: fail now, where the page can say so, rather than wait
+      // silently and replay later a change the person has stopped expecting.
+      networkMode: 'offlineFirst',
     },
   },
 });
+
+/*
+ * Whether the server can be reached, for the banner, the editor and React Query's
+ * pausing alike; see `connectivity.ts`. Before the first request, so the first failure is
+ * heard.
+ */
+installConnectivity(queryClient);
+installSessionRecheck();
 
 /*
  * Error tracking, on the instances that have it — see `posthog.ts`.
@@ -85,6 +117,14 @@ const router = createRouter({
 installLaunchFiles(queryClient, (noteId) => {
   void router.navigate({ to: '/notes/$noteId', params: { noteId } });
 });
+
+/*
+ * The service worker, which lets the installed app open with no connection, and the
+ * hand-off to a new deploy; see `sw-register.ts`. After the router, so nothing it does
+ * can delay the first render, and given the router's committed path so a deploy can be
+ * taken on a change of page rather than a change of filter.
+ */
+registerServiceWorker(() => (router.state.resolvedLocation ?? router.state.location).pathname);
 
 declare module '@tanstack/react-router' {
   interface Register {

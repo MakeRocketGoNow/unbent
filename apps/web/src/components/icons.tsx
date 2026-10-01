@@ -9,6 +9,7 @@ import {
   Check,
   ChevronLeft,
   ChevronRight,
+  CloudOff,
   Coins,
   Copy,
   Download,
@@ -163,6 +164,16 @@ export function TrashRowIcon() {
 
 export function SettingsRowIcon() {
   return <RowIcon icon={Settings} />;
+}
+
+/**
+ * The offline banner's glyph. A `RowIcon`, because it labels the line of text beside it
+ * rather than standing alone; a cloud with a stroke through it rather than a crossed-out
+ * signal, because what is out of reach is the server, which a working Wi-Fi bar can be
+ * without.
+ */
+export function OfflineIcon() {
+  return <RowIcon icon={CloudOff} />;
 }
 
 /*

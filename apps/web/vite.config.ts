@@ -4,6 +4,7 @@ import { dirname, join } from 'node:path';
 import { defineConfig, type Plugin } from 'vite';
 import react from '@vitejs/plugin-react';
 import { tanstackRouter } from '@tanstack/router-plugin/vite';
+import { VitePWA } from 'vite-plugin-pwa';
 
 /**
  * Absolute path to the DOM-free build of decode-named-character-reference.
@@ -74,6 +75,48 @@ export default defineConfig({
     tanstackRouter({ target: 'react', autoCodeSplitting: true }),
     react(),
     pdfjsWasm(),
+    /*
+     * The service worker that lets the installed app open with no connection — see
+     * `src/sw/sw.ts`.
+     *
+     * `injectManifest`, so the plugin's whole job is to build that file and write this
+     * build's file list into it. The worker's behaviour is ours, written against Workbox's
+     * runtime modules, which are pinned to the exact version the plugin's `workbox-build`
+     * carries and move with it as one Dependabot group. Registration is `workbox-window`,
+     * not the plugin's virtual module (`src/sw-register.ts`). Held at that distance on
+     * purpose: `apps/store-tests` is on a vitest major of its own because a plugin lagged
+     * its host, and if this one ever lags Vite, a small plugin that writes the file list
+     * replaces it without the worker changing.
+     *
+     * `manifest: false` because `public/manifest.webmanifest` is written by hand — its file
+     * handlers are what a scanner hands files to — and generating one would replace it.
+     * Off in development, where Vite serves modules the worker would cache under names the
+     * next edit changes; the worker is tried against the built app the Worker serves.
+     */
+    VitePWA({
+      strategies: 'injectManifest',
+      srcDir: 'src/sw',
+      filename: 'sw.ts',
+      manifest: false,
+      injectRegister: false,
+      injectManifest: {
+        globPatterns: ['**/*.{html,js,mjs,css,wasm,png,svg,webmanifest}'],
+        globIgnores: [
+          /*
+           * pdf.js's pure-JavaScript stand-ins for its WebAssembly decoders, for browsers
+           * without WebAssembly — none this app runs in. Half a megabyte that would be
+           * fetched on every install and never read.
+           */
+          '**/*_nowasm_fallback.js',
+          /*
+           * The import worker parses ENEX and Markdown and uploads as it goes, so it has
+           * nothing to do offline; it is the largest chunk after pdf.js and loads only
+           * when an import starts, which the HTTP cache already covers.
+           */
+          '**/import-worker-*.js',
+        ],
+      },
+    }),
   ],
   resolve: {
     // better-auth/react is a linked workspace dependency with its own nested react

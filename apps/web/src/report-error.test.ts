@@ -5,6 +5,7 @@ import {
   installErrorReporting,
   resetErrorReporting,
 } from './report-error.js';
+import { OfflineError } from './notes-api.js';
 
 /**
  * The reporter's failure modes, which are all worse than the errors it reports.
@@ -45,6 +46,12 @@ describe('reportError', () => {
     expect(() => reportError(new Error('boom'), 'error')).not.toThrow();
     await Promise.resolve();
     expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  /** A request lost to a missing connection is not a crash, however many were in flight. */
+  it('does not report a request that got no answer for want of a connection', () => {
+    reportError(new OfflineError(), 'rejection');
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   /** Rule 3: a component throwing on every render must not become a request per render. */
