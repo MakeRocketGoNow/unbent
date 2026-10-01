@@ -43,10 +43,11 @@ jobs:
   dev:
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     runs-on: ubuntu-latest
-    # Queued, never cancelled, for the reason web.yml gives for production: two merges close
-    # together must both ship. Queued at all because the job ends in a sweep, and two sweeps
-    # side by side move the same cursor, skip each other's batches and undercount — and the
-    # second's restart would send the first back to the top mid-walk.
+    # Queued rather than cancelled mid-run, for the reason web.yml gives for production: a
+    # deploy must finish. (A third push replaces one still waiting, which is fine; the
+    # newest run ships everything.) Queued at all because the job ends in a sweep, and two
+    # sweeps side by side move the same cursor, skip each other's batches and undercount —
+    # and the second's restart would send the first back to the top mid-walk.
     concurrency:
       group: dev-deploy
       cancel-in-progress: false
