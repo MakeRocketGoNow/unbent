@@ -432,10 +432,11 @@ recurring line about something already settled, which is how a log line stops be
 `https://dev.unbent.app` is one standing Worker, `unbent-dev`, deployed from `main` by
 `.github/workflows/previews.yml` and configured as `[env.dev]` in `apps/api/wrangler.toml`.
 It runs on the `unbent-dev` D1 and the `unbent-dev-blobs` bucket that every preview also
-uses, so accounts, sessions and files are one scratch set across all of them. Notes are
-not: each Worker has its own namespace of per-account note stores, so a note made on the
-dev instance is on the dev instance and a note made on a preview stays on that preview.
-`pnpm seed:demo --url` fills either with sample notes.
+uses, so accounts, sessions and files are one scratch set across all of them, and the
+previews bind its note stores too (see [Preview deployments](#preview-deployments)), so a
+note is one set across all of them as well. `pnpm seed:demo` is local only — it signs up a
+password written into the script — so there is no seeding either of them; they hold
+whatever was made there.
 
 It exists because a preview cannot be a stable host, and several things need one:
 
