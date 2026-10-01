@@ -311,9 +311,13 @@ or a long-press on the launcher icon — and so does the sign-in screen's footer
 local instance for anything that writes.
 
 `pnpm seed:demo` creates `demo@example.com` on this checkout's dev server and fills it with
-ten presentable sample notes. It is idempotent, so re-running updates rather than
-duplicates; `--reset` clears the account's notes first, and `--url` aims it somewhere else
-on localhost. It refuses any host that is not loopback, because it signs up a password
+`scripts/seed/`: ten presentable notes, five notebooks with every kind of custom field and
+invented records in each, receipts with PDF and image scans whose text is searchable, the
+cases that have broken a layout before, a few notes in the trash, and three hundred
+generated notes for volume. Load it before trying a change to fields, tables, search or
+the list, rather than making notes by hand. It is idempotent, so re-running updates rather
+than duplicates; `--reset` clears the account's notes first, `--small` loads only the ten
+the store screenshots are of, and `--url` aims it somewhere else on localhost. It refuses any host that is not loopback, because it signs up a password
 written down in the script. Sign-up works because `pnpm dev` passes
 `ALLOW_TEST_CREDENTIALS=1` to the Worker — local only, see `passwordEnabled` in
 `apps/api/src/auth.ts`.

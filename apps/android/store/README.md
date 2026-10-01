@@ -55,7 +55,7 @@ To reproduce:
 
 ```sh
 pnpm dev                 # note the port it prints; a worktree is not on 5173
-pnpm seed:demo           # demo@example.com, ten sample notes, idempotent
+pnpm seed:demo --reset --small   # demo@example.com, only the ten sample notes the shots are of
 adb reverse tcp:<port> tcp:<port>
 ```
 
