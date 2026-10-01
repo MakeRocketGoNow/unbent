@@ -43,6 +43,13 @@ jobs:
   dev:
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     runs-on: ubuntu-latest
+    # Queued, never cancelled, for the reason web.yml gives for production: two merges close
+    # together must both ship. Queued at all because the job ends in a sweep, and two sweeps
+    # side by side move the same cursor, skip each other's batches and undercount — and the
+    # second's restart would send the first back to the top mid-walk.
+    concurrency:
+      group: dev-deploy
+      cancel-in-progress: false
     env:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
