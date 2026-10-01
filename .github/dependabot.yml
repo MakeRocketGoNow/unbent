@@ -79,9 +79,18 @@ updates:
     # 2026-09) while every other package here is on 5; the grouped major bump would move
     # them all and leave the plugin with no vitest it can load. Minors and patches still
     # flow. Lift this once the plugin's peer range and the workspace's major agree.
+    #
+    # Not `@better-auth/utils` at all, while the root `pnpm.overrides` pins it. Every
+    # `better-auth` package requires exactly 0.4.2 while `better-call` asks for ^0.5.0, and
+    # the pin is what keeps one copy in the graph. Dependabot does not read the override: it
+    # bumps the manifests, leaves the pin, and produces a lockfile that fails
+    # `--frozen-lockfile` — which is how it arrived in every minor-and-patch group until
+    # this line. Lift it with the override, once upstream agrees on a range. `ignore` covers
+    # version updates only, so an advisory against utils still opens a security update.
     ignore:
       - dependency-name: vitest
         update-types: ['version-update:semver-major']
+      - dependency-name: '@better-auth/utils'
 
   # Android. Gradle and AndroidX move on their own schedule and the app is built in CI.
   - package-ecosystem: gradle
