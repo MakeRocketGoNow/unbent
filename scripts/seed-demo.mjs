@@ -3,11 +3,11 @@
  * Sample notes on a local instance: for trying a branch against something real-shaped,
  * and for screenshots.
  *
- * What it loads is `scripts/seed/` — ten presentable notes, five notebooks with every kind
+ * What it loads is `packages/seed/` — ten presentable notes, five notebooks with every kind
  * of custom field and a few dozen invented records in each, receipts with PDF and image
  * scans whose text is searchable, the cases that have broken a layout before, a few notes
  * in the trash, and three hundred generated notes behind them for volume. Nothing in it
- * is anybody's; see the header of `seed/records.mjs`. `--small` loads only the ten, for
+ * is anybody's; see the header of `packages/seed/src/records.mjs`. `--small` loads only the ten, for
  * the store screenshots, which are of those.
  *
  * No credential is stored anywhere. The password below is a constant in a script that
@@ -33,7 +33,7 @@ import { dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { portsFor } from './ports.mjs';
-import { clearNotes, loadSeed } from './seed/load.mjs';
+import { clearNotes, loadSeed } from '../packages/seed/src/load.mjs';
 
 const EMAIL = 'demo@example.com';
 const PASSWORD = 'demo-password-1234';

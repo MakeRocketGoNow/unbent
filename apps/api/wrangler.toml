@@ -243,18 +243,20 @@ bucket_name = "unbent-dev-blobs"
 # read are gone.
 #
 # The cost is that an object runs the code of the Worker that exports it. Every store
-# call a preview makes is answered by `main`'s `src/store/` — dev's deploy — and never the
-# PR's, so a PR that changes a query is not exercised on its preview, a method it adds is
-# missing there, and a schema file it appends is never applied. The workflow says so on
-# the preview's comment when the PR touches `src/store/`; those changes are proven
-# locally and in `apps/store-tests`. Measured over the PRs merged since mid-August, about
-# one in five touched the note queries, and the rest gain the dev instance's notes. The
-# same property is a safety: a PR's store schema cannot reach dev's notes before it
+# call a preview makes here is answered by `main`'s `src/store/` — dev's deploy — and
+# never the PR's, so a PR that changed a query would not be exercised on its preview, a
+# method it adds would be missing, and a schema file it appends would never be applied.
+# So a PR that touches `src/store/` does not get this line: the workflow deploys it from
+# a copy of this file without `script_name`, with `PREVIEW_OWN_STORES=1`, and its preview
+# has stores of its own running its own code. They start empty, and the page offers to
+# fill them with the seed (`packages/seed/`). Measured over the PRs merged since
+# mid-August, about one in five touched the note queries; the rest read the dev
+# instance's notes. Either way a PR's store schema cannot reach dev's notes before it
 # merges, the way a PR's D1 migration reaches dev's database.
 #
 # Previews still export `UserStore`, and the inherited migration block still declares it,
-# so each preview Worker also has an unused namespace of its own. Harmless, and it keeps
-# this block one line from the isolated arrangement if that is ever wanted back.
+# so every preview Worker has a namespace of its own whether it reads it or not. That is
+# what the store-changing previews use, and why dropping one line is all it takes.
 #
 # The sweep cron (top level) is inherited and switched off just below: dev's own sweep
 # walks these objects, and a second walk running a PR's code would race it.

@@ -1,0 +1,19 @@
+{
+  "name": "@unbent/seed",
+  "version": "0.0.0",
+  "private": true,
+  "license": "FSL-1.1-Apache-2.0",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./src/load.d.mts",
+      "default": "./src/load.mjs"
+    }
+  },
+  "scripts": {
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "vitest": "^5.0.3"
+  }
+}

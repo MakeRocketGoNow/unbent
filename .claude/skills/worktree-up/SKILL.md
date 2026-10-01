@@ -103,7 +103,7 @@ Verify both halves before moving on:
 pnpm seed:demo
 ```
 
-Creates `demo@example.com` / `demo-password-1234` and loads `scripts/seed/`: about four
+Creates `demo@example.com` / `demo-password-1234` and loads `packages/seed/`: about four
 hundred invented notes — the ten presentable ones, notebooks with every custom field type,
 receipts with searchable PDF and image scans, layout edge cases, a few in the trash.
 Idempotent — re-running updates rather than duplicates; `--reset` clears the account's

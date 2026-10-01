@@ -269,12 +269,42 @@ jobs:
         working-directory: apps/api
         run: pnpm migrate:dev
 
+      # A preview reads the dev instance's note stores, and those run `main`'s store code
+      # (USER_STORE under [env.preview] in wrangler.toml). For a PR that changes that code,
+      # the preview gets stores of its own instead, so the PR's code is what answers; they
+      # start empty and the page offers to fill them with the seed. Decided by the PR's
+      # files rather than a label, so nobody has to remember to ask. A rename counts from
+      # either side, so a file moved out of `store/` is still a store change.
+      - name: Does this PR change the note store?
+        if: steps.configured.outputs.ready == 'true'
+        id: store
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          files=$(gh api --paginate "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER/files" \
+            --jq '.[] | .filename, (.previous_filename // empty)')
+          if grep -q '^apps/api/src/store/' <<<"$files"; then
+            echo "own=true" >> "$GITHUB_OUTPUT"
+            echo "Changes apps/api/src/store/: this preview gets note stores of its own." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "own=false" >> "$GITHUB_OUTPUT"
+          fi
+
       # `--name` replaces the Worker name outright; the secrets travel with the deploy for
       # the reason the dev job gives, and here it matters more, since every PR's first
       # deploy creates a Worker that has never had a secret.
+      #
+      # Stores of its own are the same config without the binding's `script_name`, written
+      # beside wrangler.toml so its relative paths still resolve. Generated rather than a
+      # second environment in the file, which would repeat every binding and drift from
+      # this one; the count check stops a deploy that would quietly keep dev's stores if
+      # the line were ever reworded.
       - name: Deploy the preview Worker
         if: steps.configured.outputs.ready == 'true'
         working-directory: apps/api
+        env:
+          OWN_STORES: ${{ steps.store.outputs.own }}
         run: |
           printf 'BETTER_AUTH_SECRET=%s\nALLOWED_EMAILS=%s\n' \
             "$DEV_BETTER_AUTH_SECRET" "$DEV_ALLOWED_EMAILS" > "$RUNNER_TEMP/preview-secrets.env"
@@ -297,14 +327,29 @@ jobs:
           if [ -n "$DEV_INSTANCE_ORIGIN" ]; then
             relay_var=(--var "PREVIEW_RELAY_ORIGIN:$DEV_INSTANCE_ORIGIN")
           fi
-          pnpm exec wrangler deploy --env preview --name "$WORKER_NAME" --var "APP_URL:$PREVIEW_URL" \
-            "${relay_var[@]}" --secrets-file "$RUNNER_TEMP/preview-secrets.env"
+          config=wrangler.toml
+          own_var=()
+          if [ "$OWN_STORES" = true ]; then
+            binding='^script_name = "unbent-dev"$'
+            if [ "$(grep -c "$binding" wrangler.toml)" != 1 ]; then
+              echo "Expected exactly one '$binding' line in wrangler.toml to drop for stores of its own." >&2
+              exit 1
+            fi
+            grep -v "$binding" wrangler.toml > wrangler.own-stores.toml
+            config=wrangler.own-stores.toml
+            own_var=(--var "PREVIEW_OWN_STORES:1")
+          fi
+          pnpm exec wrangler deploy --config "$config" --env preview --name "$WORKER_NAME" \
+            --var "APP_URL:$PREVIEW_URL" "${relay_var[@]}" "${own_var[@]}" \
+            --secrets-file "$RUNNER_TEMP/preview-secrets.env"
           rm -f "$RUNNER_TEMP/preview-secrets.env"
 
       # Edited in place rather than appended to, so a PR with thirty pushes has one comment.
       - name: Comment the preview URL
         if: steps.configured.outputs.ready == 'true'
         uses: actions/github-script@v9
+        env:
+          OWN_STORES: ${{ steps.store.outputs.own }}
         with:
           script: |
             const marker = '<!-- unbent-preview -->';
@@ -322,23 +367,15 @@ jobs:
                 ];
             const { owner, repo } = context.repo;
             const issue_number = context.payload.pull_request.number;
-            // A preview's note stores are the dev instance's, which run main's store code
-            // rather than this PR's (see USER_STORE under [env.preview] in wrangler.toml).
-            // Said on the comment, because the failure is silent: a changed query answers
-            // the way main's does, and nothing on the preview looks wrong.
-            const files = await github.paginate(github.rest.pulls.listFiles, {
-              owner, repo, pull_number: issue_number, per_page: 100,
-            });
-            const touchesStore = files.some((f) =>
-              [f.filename, f.previous_filename].some((n) => n?.startsWith('apps/api/src/store/')),
-            );
-            const storeWarning = touchesStore
+            // Which stores this preview reads decides what its notes are, and a person
+            // signing in to an empty preview should know why it is empty.
+            const ownStores = process.env.OWN_STORES === 'true';
+            const storeNote = ownStores
               ? [
-                  '> [!WARNING]',
-                  '> This PR changes `apps/api/src/store/`, and none of that runs here. Notes are',
-                  '> served by the dev instance\'s stores, which run `main`\'s store code: changed',
-                  '> queries answer as they do on `main`, new store methods are missing, and new',
-                  '> schema files are not applied. Try those changes in a local `pnpm dev`.',
+                  '> [!NOTE]',
+                  '> This PR changes `apps/api/src/store/`, so this preview keeps notes of its own',
+                  '> and its store code is what runs. They start empty: **Fill with sample notes**',
+                  '> on the empty list, or in Settings → Maintenance, adds invented ones.',
                   '',
                 ]
               : [];
@@ -346,12 +383,20 @@ jobs:
               marker,
               `### Preview: ${process.env.PREVIEW_URL}`,
               '',
-              ...storeWarning,
+              ...storeNote,
               ...signIn,
               '',
-              `Runs against the shared \`unbent-dev\` database, bucket and note stores — the same`,
-              'notes as the dev instance, so what you change here changes there too. Production',
-              'is untouched. The Worker is deleted when this PR closes.',
+              ...(ownStores
+                ? [
+                    `Runs against the shared \`unbent-dev\` database and bucket, so accounts and`,
+                    'sign-in are the dev instance\'s; the notes are this preview\'s alone. Production',
+                    'is untouched. The Worker is deleted when this PR closes.',
+                  ]
+                : [
+                    `Runs against the shared \`unbent-dev\` database, bucket and note stores — the same`,
+                    'notes as the dev instance, so what you change here changes there too. Production',
+                    'is untouched. The Worker is deleted when this PR closes.',
+                  ]),
               '',
               // Which push this URL is actually serving. Without it a stale comment and a
               // fresh one look identical, and the only way to tell whether a redeploy has

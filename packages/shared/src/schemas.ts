@@ -295,6 +295,15 @@ export interface AppConfig {
    * request the instance has to be able to make.
    */
   vision?: boolean;
+  /**
+   * This instance is a pull-request preview with note stores of its own, because its PR
+   * changes the store and only its own stores run that code. They start empty, so the
+   * page offers to fill them with sample notes; and the files bucket is shared with the
+   * dev instance, so Maintenance leaves out the orphaned-file sweep, which would see every
+   * file of the dev instance's as an orphan here. Absent everywhere else, including on a
+   * preview that reads the dev instance's stores.
+   */
+  ownStores?: boolean;
 }
 
 /**

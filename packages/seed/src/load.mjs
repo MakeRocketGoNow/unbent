@@ -13,7 +13,8 @@
  * running — the branch's routes and the branch's store — and so the same loader can be
  * driven from anywhere that can make an authenticated request. It takes a `request`
  * function and adds nothing of its own (no origin, no cookie), and imports nothing from
- * Node, so a page could run it as well as `scripts/seed-demo.mjs` does.
+ * Node, so the web app runs it as well as `scripts/seed-demo.mjs` does: a pull-request
+ * preview whose stores are its own offers it as "Fill with sample notes".
  */
 import { bulkNotes } from './bulk.mjs';
 import { makePdf, makeReceiptPng } from './files.mjs';
@@ -124,7 +125,13 @@ async function pool(items, size, task) {
  * Loads the seed. Safe to run again: a note the seed made before is updated in place, a
  * missing file is uploaded, and a note the seed puts in the trash is not made twice.
  */
-export async function loadSeed({ request, now = Date.now(), small = false, log = () => {} }) {
+export async function loadSeed({
+  request,
+  now = Date.now(),
+  small = false,
+  log = () => {},
+  onProgress = () => {},
+}) {
   for (const notebook of NOTEBOOKS) {
     if (small && !SHOWCASE_NOTEBOOKS.has(notebook.name)) continue;
     const res = await json(request, '/api/import/notebook', 'POST', notebook);
@@ -139,7 +146,15 @@ export async function loadSeed({ request, now = Date.now(), small = false, log =
 
   const counts = { created: 0, updated: 0, files: 0, trashed: 0, skipped: 0 };
   const notes = seedNotes({ small });
+  let done = 0;
+  onProgress(0, notes.length);
   await pool(notes, 6, async (note) => {
+    await loadOne(note);
+    onProgress(++done, notes.length);
+  });
+  return counts;
+
+  async function loadOne(note) {
     if (note.trashed && inTrash.has(note.title)) {
       counts.skipped++;
       return;
@@ -180,8 +195,7 @@ export async function loadSeed({ request, now = Date.now(), small = false, log =
       await expectOk(await request(`/api/notes/${id}`, { method: 'DELETE' }), `trash ${note.key}`);
       counts.trashed++;
     }
-  });
-  return counts;
+  }
 }
 
 /** Deletes every note in the account for good, trash included. Notebooks and fields stay. */

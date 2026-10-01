@@ -30,6 +30,15 @@ export interface Env {
    */
   STORE_FREEZE_D1?: string;
   /**
+   * `"1"` on a pull-request preview whose note stores are its own rather than the dev
+   * instance's: the preview workflow sets it when the PR changes `src/store/`, so the PR's
+   * store code is what answers instead of `main`'s. Those stores start empty, and the page
+   * offers to fill them with the seed (`AppConfig.ownStores`). Accounts and the files
+   * bucket are still the dev instance's, which is why the orphaned-file sweep refuses to
+   * run here. Unset everywhere else.
+   */
+  PREVIEW_OWN_STORES?: string;
+  /**
    * Workers AI, for extracting a PDF's text on upload. Bound in production only — see
    * wrangler.toml — so it is optional here, and its absence means the browser does the
    * extracting, as it did before.
