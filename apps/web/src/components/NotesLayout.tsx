@@ -352,6 +352,14 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
    * the view changed carries none (`answered`).
    */
   const tableRows = results?.flatMap((r) => ('note' in r ? [r.note] : [])) ?? null;
+  /*
+   * The matches on screen are the previous term's while the next one's request is out —
+   * see `searchQuery` — and are dimmed for it. Only then: a search that has ended, or one
+   * too short to send, is a query that never runs, and `keepPreviousData` holds the last
+   * results as its placeholder for as long as it stays that way. Read bare, that left the
+   * notebook's own list dimmed after a search was cleared, until a reload.
+   */
+  const searchStale = needle !== '' && !tooShort && !searchOffline && search.isPlaceholderData;
   /** Whether the results will be headed by picks, which is when the notes need a caption too. */
   const picks = scopeMatches(debounced, tags.data ?? [], notebooks.data, selectedTags, notebook);
   const hasPicks = picks.tags.length > 0 || picks.notebooks.length > 0;
@@ -1055,7 +1063,7 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
             hints={matchHints}
             notebook={notebook ?? ''}
             total={results?.length ?? total}
-            busy={searching ? search.isPlaceholderData : stale}
+            busy={searching ? searchStale : stale}
             hasNextPage={!searching && list.hasNextPage}
             isFetchingNextPage={list.isFetchingNextPage}
             onLoadMore={() => void list.fetchNextPage()}
@@ -1079,7 +1087,7 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
         <ul
           className={selection.active ? 'note-list selecting' : 'note-list'}
           ref={listRef}
-          aria-busy={stale || search.isPlaceholderData || undefined}
+          aria-busy={(searching ? searchStale : stale) || undefined}
           aria-multiselectable={results === null ? true : undefined}
           onKeyDown={onListKeysWithSelection}
         >
