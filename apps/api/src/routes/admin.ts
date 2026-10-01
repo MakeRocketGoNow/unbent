@@ -1,4 +1,4 @@
-import { Hono } from 'hono';
+import { Hono, type Context } from 'hono';
 import { createMiddleware } from 'hono/factory';
 import { zValidator } from '@hono/zod-validator';
 import { z } from 'zod';
@@ -12,7 +12,8 @@ import { storeFor } from '../lib/store-client.js';
 import { sweepStores } from '../lib/sweep.js';
 import { SWEEP_TOKEN_HEADER, sweepTokenMatches } from '../lib/sweep-token.js';
 import { DUMP_TABLES } from '../store/tables.js';
-import type { UserStore } from '../store/user-store.js';
+import { BOOKMARK_PATTERN, RESTORE_WINDOW_MS, isRestoreUnsupported, readRestoreAbort } from '../store/restore.js';
+import type { StoreStats, UserStore } from '../store/user-store.js';
 import type { AppEnv } from '../types.js';
 
 /**
@@ -182,16 +183,16 @@ export const admin = new Hono<AppEnv>()
 
   /*
      The operator's window into a note store. An object has no console: nothing lists its
-     tables, nothing runs a query against it, nothing copies it out. These four routes are
-     that console, and they are what `wrangler d1 execute` and `d1 export` used to be for
-     the shared database.
+     tables, nothing runs a query against it, nothing copies it out. These routes are that
+     console, and they are what `wrangler d1 execute`, `d1 export` and Time Travel used to
+     be for the shared database.
 
      `stats` and `dump` are the signed-in user's own by default; a session in
      OPERATOR_EMAILS may name another account with `?user=`, and every such read is logged
      with both ids, since it is one person reading another's notes and the log is the
-     record of it. `sql` and `sweep` are the operator's alone: a raw query over someone's
-     notes, and the walk over every account — which a deploy job may also start, with the
-     deployment's sweep token instead of a session.
+     record of it. `sql`, `restore` and `sweep` are the operator's alone: a raw query over
+     someone's notes, winding them back, and the walk over every account — which a deploy
+     job may also start, with the deployment's sweep token instead of a session.
   */
 
   /** Row counts, size and schema version of one store. */
@@ -229,6 +230,114 @@ export const admin = new Hono<AppEnv>()
     },
   )
 
+  /**
+   * Winds one account's store back to a moment in the last thirty days: the rollback for a
+   * bad migration or a bad edit. `{ user, at }` with `at` in milliseconds or ISO 8601, or
+   * `{ user, bookmark }` to restore to a bookmark this route handed out — which is how a
+   * restore is undone. `user` defaults to the caller, as on `sql`.
+   *
+   * A dry run unless the body says `confirm: "RESTORE"`: the dry run resolves the time to
+   * a bookmark, which is where a time outside the window is refused, and shows the store
+   * as it is now. Dump the store before the real thing (`GET …/dump?user=`): the undo
+   * bookmark covers a restore to the wrong time for thirty days, and the dump covers it
+   * after that, outside the platform.
+   *
+   * The object restarts to apply the restore, so the call into it fails by design and the
+   * reason it fails with carries the undo bookmark (see `UserStore.restoreTo`). The route
+   * then reads the restored store's stats through a fresh stub, since the old one is
+   * broken by the restart, and answers with both. If that read fails, the restore still
+   * happened; `stats` again shows the result.
+   *
+   * Logged with both ids before the call, and with the undo bookmark by the object, so
+   * the record exists however the request ends.
+   */
+  .post(
+    '/admin/store/restore',
+    requireAuth,
+    zValidator(
+      'json',
+      z
+        .object({
+          user: z.string().optional(),
+          at: z.union([z.number().int().positive(), z.string().min(1)]).optional(),
+          bookmark: z.string().regex(BOOKMARK_PATTERN).optional(),
+          confirm: z.literal('RESTORE').optional(),
+        })
+        .refine((b) => (b.at === undefined) !== (b.bookmark === undefined), { message: 'Give exactly one of `at` or `bookmark`.' }),
+    ),
+    async (c) => {
+      const email = c.get('user')?.email;
+      if (!isOperator(c.env, email)) return c.json({ error: 'Not found' }, 404);
+      const { user, at, bookmark, confirm } = c.req.valid('json');
+      const target = user ?? c.get('userId')!;
+      if (target !== c.get('userId') && !(await directoryRow(c.env.DB, target))) {
+        return c.json({ error: 'No such account' }, 404);
+      }
+
+      let to: { at: number } | { bookmark: string };
+      if (bookmark !== undefined) {
+        to = { bookmark };
+      } else {
+        const ms = typeof at === 'number' ? at : Date.parse(at!);
+        if (Number.isNaN(ms)) return c.json({ error: '`at` is neither milliseconds nor an ISO 8601 time.' }, 400);
+        if (ms > Date.now()) return c.json({ error: '`at` is in the future.' }, 400);
+        if (ms < Date.now() - RESTORE_WINDOW_MS) return c.json({ error: '`at` is more than thirty days ago; the store keeps no history that far back.' }, 400);
+        to = { at: ms };
+      }
+
+      const store = storeFor(c.env, target);
+      if (confirm !== 'RESTORE') {
+        try {
+          const preview = await store.restorePreview(to);
+          return c.json({
+            dryRun: true,
+            user: target,
+            ...preview,
+            hint: `Dump the store first (GET /api/admin/store/dump?user=${target}), then repeat this request with "confirm": "RESTORE".`,
+          });
+        } catch (err) {
+          return restoreRefused(c, err);
+        }
+      }
+
+      console.log(`[store] operator=${email} restore user=${target} to=${'at' in to ? new Date(to.at).toISOString() : to.bookmark}`);
+      let undo: string | null;
+      try {
+        await store.restoreTo(to);
+        // `restoreTo` aborts the object and so never returns; getting here means it did not.
+        return c.json({ error: 'The store did not restart, so the restore is scheduled but not applied. Call this again.' }, 500);
+      } catch (err) {
+        const abort = readRestoreAbort(err);
+        if (!abort.scheduled) return restoreRefused(c, err);
+        undo = abort.undo;
+      }
+
+      let stats: StoreStats | null = null;
+      try {
+        stats = await storeFor(c.env, target).stats();
+      } catch (err) {
+        console.error(`[store] stats after restore failed for user=${target}:`, err);
+      }
+      return c.json({
+        restored: true,
+        user: target,
+        undo,
+        stats,
+        note: [
+          'The store restarted to apply the restore, so the request inside it failed by design.',
+          undo
+            ? 'To undo, restore to the `undo` bookmark.'
+            : 'The undo bookmark did not survive the restart; the Worker log has it on the "[store] restore scheduled" line.',
+          stats ? null : 'Reading the restored store failed; call GET /api/admin/store/stats again.',
+        ]
+          .filter(Boolean)
+          .join(' '),
+      });
+    },
+  )
+
+  /**
+   * One store as SQL text:
   /**
    * One store as SQL text: `sqlite3 account.db < dump.sql` rebuilds it, with nothing from
    * this repository needed. What `d1 export` was for the shared database, and how a
@@ -292,6 +401,19 @@ export const admin = new Hono<AppEnv>()
     return c.json(await sweepStores(c.env));
   });
 
+
+/**
+ * A restore the runtime would not do: 501 where it keeps no history at all (Miniflare, so
+ * `pnpm dev`), otherwise 400 with the runtime's own words — a bookmark it does not know, a
+ * time it cannot reach.
+ */
+function restoreRefused(c: Context<AppEnv>, err: unknown): Response {
+  const message = err instanceof Error ? err.message : String(err);
+  if (isRestoreUnsupported(err)) {
+    return c.json({ error: 'This runtime keeps no history to restore from. Restores work on a deployed instance only.' }, 501);
+  }
+  return c.json({ error: message }, 400);
+}
 
 /**
  * The dump as chunks: the header and the tables, then each page of each table as the

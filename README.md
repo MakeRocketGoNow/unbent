@@ -1350,7 +1350,7 @@ each account's rows were frozen against writes during the deploy, and when they 
 verified copied. The copy, the freeze that protected the rows, and the operator's route for
 it are in the history of MakeRocketGoNow/unbent#202; nothing in the code reads D1 for notes
 any more, and there is no way back to the shared tables. Restoring an account is per
-account, from its dump (below).
+account: to a moment in the last thirty days, or from its dump (below).
 
 **Schema changes** are files in `apps/api/src/store/schema/`, applied per object on its next
 wake, additive only. The sweep is what makes that safe to rely on: it wakes every object —
@@ -1373,6 +1373,7 @@ day.
 - `GET …/dump` — the store as SQL text, `sqlite3 account.db < dump.sql` rebuilds it: what
   `d1 export` was, and how a migration is rehearsed against a real account before it
   ships — dump, load, run the new schema file's SQL against the copy.
+- `POST …/restore` — winds one store back to a moment in the last thirty days; see below.
 - `POST …/sweep` — one batch of the walk, now; call until it says `done`. Also open to the
   deploy, with the deployment's `SWEEP_TOKEN` in an `X-Unbent-Sweep-Token` header instead of
   a session.
@@ -1380,6 +1381,27 @@ day.
 Reading another account's store is logged with both ids. Rows read and written inside an
 object are metered as D1's were, and every statement over a threshold is logged with the
 user id — which is the accounting `wrangler d1 insights` used to give.
+
+**Winding a store back.** Every store keeps thirty days of history, and `POST …/restore`
+puts one back as it was at a moment in them — the rollback for a schema file that broke an
+account, or an edit that should not have happened. It is for one account at a time and
+the operator only; moving notes between accounts or instances is export and import.
+
+1. `GET …/dump?user=<id>` and keep the file. It is the copy that outlives the thirty days.
+2. `POST …/restore` with `{ "user": "<id>", "at": "2026-09-30T12:00:00Z" }`. Without
+   `confirm` this is a dry run: it says which bookmark the time resolves to, refuses one
+   outside the window, and shows the store as it is now.
+3. Repeat with `"confirm": "RESTORE"`. The store restarts to apply it, and the answer has
+   the restored store's counts and an `undo` bookmark — the store as it was the instant
+   before. `{ "user": "<id>", "bookmark": "<undo>", "confirm": "RESTORE" }` reverses it.
+
+The whole database goes back together, schema version included, so a restore to before a
+schema file is migrated again on the next wake. Files are in R2, not the store, and are
+not wound back: one uploaded since is an orphan, which the account's own
+[file sweep](#deleting-an-account) reclaims, and one deleted since comes back as a row
+with nothing behind it. Local development has no
+history to restore from — Miniflare refuses, and the route answers 501 — so a restore is
+tried on a preview of a PR that touches `src/store/`, which has stores of its own.
 
 **Where an object lives.** The platform creates each account's object near the first
 request for it, and objects do not move. `STORE_JURISDICTION=eu` keeps every store in the

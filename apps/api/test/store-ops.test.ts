@@ -3,8 +3,8 @@
  * read of their own store, and what only an operator may do. Runs against a live
  * `wrangler dev`; see test/README.md.
  *
- * The operator's own paths — `?user=` on another account, the SQL route, the sweep and its
- * token — are exercised only on the refusal side here: the suite signs up throwaway actors, and none
+ * The operator's own paths — `?user=` on another account, the SQL route, the restore, the
+ * sweep and its token — are exercised only on the refusal side here: the suite signs up throwaway actors, and none
  * of them is in the instance's OPERATOR_EMAILS. The sweep itself is tested against real
  * objects in apps/store-tests.
  */
@@ -135,6 +135,14 @@ describe('operator-only routes', () => {
     expect(sql.status).toBe(404);
     const sweep = await fetch(`${BASE}/api/admin/store/sweep`, as(alice, { method: 'POST' }));
     expect(sweep.status).toBe(404);
+    // Not even on the caller's own store, and not even as a dry run: winding notes back is
+    // the operator's, whoever's notes they are.
+    const restore = await fetch(`${BASE}/api/admin/store/restore`, as(alice, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ at: Date.now() - 60_000, confirm: 'RESTORE' }),
+    }));
+    expect(restore.status).toBe(404);
   });
 
   it('refuse a sweep token the instance was not given, and never fall through to the session', async () => {
