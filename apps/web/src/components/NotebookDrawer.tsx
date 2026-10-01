@@ -1,5 +1,6 @@
 import { Sheet } from './Sheet.js';
 import { AccountMenu } from './AccountMenu.js';
+import { InstanceRibbon } from './InstanceRibbon.js';
 import { NotebookNav, type NotebookData } from './NotebookNav.js';
 import type { TagCount } from './TagPicker.js';
 
@@ -48,6 +49,7 @@ export function NotebookDrawer({
       title="Unbent"
       side="start"
       headAction={<AccountMenu email={email} onSignOut={onSignOut} />}
+      corner={<InstanceRibbon />}
     >
       <NotebookNav
         notebook={notebook}

@@ -81,7 +81,14 @@ export function AccountMenu({ email, onSignOut, withAddress = false }: AccountMe
         // own" — and on a preview, whose notes an edit here changes. Under the address
         // because it is the same kind of line: it says where you are, it does nothing.
         ...(instance
-          ? [{ label: instance, className: 'overflow-email overflow-instance', static: true, title: instance }]
+          ? [
+              {
+                label: instance,
+                className: `overflow-email overflow-instance instance-${config.data?.instanceKind ?? 'mark'}`,
+                static: true,
+                title: instance,
+              },
+            ]
           : []),
         // Findable once signed in, which is the half the sign-in screen's own links cannot
         // cover. They are reference, not something to act on, and they sit above Sign out

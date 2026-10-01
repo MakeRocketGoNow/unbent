@@ -15,11 +15,34 @@ import type { AppConfig } from '@unbent/shared';
  * PR would be judged in a frame production never has. The title and the favicon are
  * outside the page, so they cost the layout nothing.
  */
-export function applyInstanceMarker(config: Pick<AppConfig, 'instanceLabel'>): void {
+export function applyInstanceMarker(config: Pick<AppConfig, 'instanceLabel' | 'instanceKind'>): void {
   const label = config.instanceLabel;
   if (!label) return;
   document.title = instanceTitle(label, document.title);
-  void badgeFavicon();
+  void badgeFavicon(config.instanceKind);
+}
+
+/**
+ * The colour token for an instance's marks: the kind's own, so a dev tab, a preview's and
+ * a local one differ at a glance, or the plain mark for a label with no known kind.
+ */
+export function instanceToken(kind: AppConfig['instanceKind']): string {
+  return kind ? `--instance-${kind}` : '--instance-mark';
+}
+
+/**
+ * What the drawer's corner ribbon says, or nothing. Dev and previews wear one — the two
+ * a person moves between and can mistake for each other or for production. Local does
+ * not: the store screenshots are shot against `pnpm dev`, and a ribbon would be in them.
+ * A preview's says its PR, from the label, since "Preview" alone does not say which.
+ */
+export function ribbonOf(
+  config: Pick<AppConfig, 'instanceLabel' | 'instanceKind'> | undefined,
+): { kind: 'dev' | 'preview'; text: string } | null {
+  if (!config?.instanceLabel) return null;
+  if (config.instanceKind === 'dev') return { kind: 'dev', text: 'Dev' };
+  if (config.instanceKind === 'preview') return { kind: 'preview', text: config.instanceLabel };
+  return null;
 }
 
 /** `PR 222 · Unbent`. Not doubled if the title already carries it. */
@@ -45,14 +68,15 @@ export function instanceLine(
 }
 
 /**
- * The app icon with a dot in its corner, drawn once on load, in `--instance-mark` from
- * styles.css — the same colour as the account menu's dot, so the two read as one mark.
+ * The app icon with a dot in its corner, drawn once on load, in the kind's colour from
+ * styles.css (`instanceToken`) — the same as the account menu's dot and the drawer's
+ * ribbon, so they read as one mark.
  *
  * Drawn rather than shipped as a second file, so it cannot drift from the real icon when
  * that changes. If anything fails — no canvas, the icon did not load — the tab keeps the
  * plain icon, and the title still says which instance it is.
  */
-async function badgeFavicon(): Promise<void> {
+async function badgeFavicon(kind: AppConfig['instanceKind']): Promise<void> {
   const link = document.querySelector<HTMLLinkElement>('link[rel="icon"]');
   if (!link) return;
   try {
@@ -74,7 +98,7 @@ async function badgeFavicon(): Promise<void> {
     ctx.beginPath();
     ctx.arc(size - 12, 12, 9, 0, Math.PI * 2);
     ctx.fillStyle =
-      getComputedStyle(document.documentElement).getPropertyValue('--instance-mark').trim() || '#e8a33a';
+      getComputedStyle(document.documentElement).getPropertyValue(instanceToken(kind)).trim() || '#e8a33a';
     ctx.fill();
     link.href = canvas.toDataURL('image/png');
   } catch {
