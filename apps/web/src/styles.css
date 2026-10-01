@@ -4101,6 +4101,15 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
 .tb-strike { text-decoration: line-through; }
 
 /* Stale or unreachable note: the id stays in the URL, so explain rather than blank out. */
+/*
+   A note that failed to load stacks its two pieces — the back arrow's row, shown on a
+   phone, and the message — instead of setting them side by side as the note's own
+   `.workspace` row would. Side by side, the message's box shrank to its text at the left
+   of the pane, so the centred text read as left-aligned with its button hanging off-centre
+   below; and on a phone the arrow sat beside it, halfway down the screen.
+*/
+.workspace-failed { flex-direction: column; }
+
 .workspace-error {
   display: flex;
   flex-direction: column;

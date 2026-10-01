@@ -929,7 +929,7 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
     */
     const unavailable = isOfflineError(error);
     return (
-      <section className="workspace">
+      <section className="workspace workspace-failed">
         {/*
             The way back, which this branch used to leave out.
 
@@ -966,9 +966,11 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
                 : `Couldn't load that note. ${(error as Error).message}`}
           </p>
           {unavailable ? null : missing ? (
+            // Where the back arrow goes, not always the note list: a note deleted forever
+            // from another tab, then picked here, should leave the trash open behind it.
             <Button
               variant="secondary"
-              onClick={() => void navigate({ to: '/notes', search: (p) => p })}
+              onClick={() => void navigate({ to: backTo, search: (p) => p })}
             >
               Clear
             </Button>
