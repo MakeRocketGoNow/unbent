@@ -21,26 +21,25 @@
     "release": "wrangler deploy --env \"\""
   },
   "dependencies": {
-    "@better-auth/mcp": "^1.7.5",
-    "@better-auth/oauth-provider": "^1.7.5",
-    "@better-auth/passkey": "1.7.5",
-    "@better-auth/utils": "0.4.2",
+    "@better-auth/mcp": "^1.7.7",
+    "@better-auth/oauth-provider": "^1.7.7",
+    "@better-auth/passkey": "1.7.7",
     "@hono/zod-validator": "^0.9.1",
-    "@modelcontextprotocol/server": "^2.0.0",
+    "@modelcontextprotocol/server": "^2.2.0",
     "@unbent/enex": "workspace:*",
     "@unbent/shared": "workspace:*",
-    "better-auth": "^1.7.5",
-    "hono": "^4.13.8",
+    "better-auth": "^1.7.7",
+    "hono": "^4.13.12",
     "zod": "^4.6.5"
   },
   "devDependencies": {
-    "@cloudflare/workers-types": "^5.20260915.1",
-    "@types/node": "^26.6.0",
-    "@zip.js/zip.js": "^2.15.0",
-    "tsx": "^4.23.13",
+    "@cloudflare/workers-types": "^5.20261001.1",
+    "@types/node": "^26.6.3",
+    "@zip.js/zip.js": "^2.22.0",
+    "tsx": "^4.23.15",
     "typescript": "^7.0.2",
-    "vitest": "^5.0.1",
-    "wrangler": "^4.132.0"
+    "vitest": "^5.0.3",
+    "wrangler": "^4.145.0"
   },
   "exports": {
     ".": "./src/index.ts",
