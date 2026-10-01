@@ -60,7 +60,7 @@ export function registerServiceWorker(pathNow: () => string): void {
  * preload, which is a hover rather than a decision; never inside the Android app's embed
  * pages, whose lifecycle the app owns; and never while the page is holding work a reload
  * would lose (`busy.ts`) — the next navigation gets another chance. Coming back to the
- * app after it was out of view is the other moment (`checkForUpdatesOnReturn`).
+ * app after a real absence is the other moment (`checkForUpdatesOnReturn`).
  */
 export function shouldApplyUpdate(state: {
   ready: boolean;
@@ -117,24 +117,52 @@ function handOver(worker: Workbox, href: string): void {
 /**
  * Coming back into view: take a deploy that is already waiting, and otherwise ask for one.
  *
- * The return is the quietest moment there is — nothing on screen is mid-use — so a waiting
- * deploy is taken then, in place, when the page holds nothing a reload would lose and is
- * not one of the Android app's embed pages. It is how an app someone keeps open in one
- * section, the notes list most of all, still reaches a new deploy.
+ * A return after a real absence is the quietest moment there is: whatever was on screen
+ * was left, not mid-use. So a waiting deploy is taken then, in place, when the page holds
+ * nothing a reload would lose and is not one of the Android app's embed pages. It is how
+ * an app someone keeps open in one section, the notes list most of all, still reaches a
+ * new deploy.
  *
- * Asking for a new worker happens at most every half hour.
+ * Only after five minutes away. `visibilitychange` fires on every tab switch, every
+ * un-minimise, every glance at another app on a phone; taking the deploy on all of them
+ * reset a list someone was three hundred rows into because they had gone to copy
+ * something, and lost text in the fields `pageBusy()` does not track, a rename or the
+ * search box. A short absence keeps the page, and the deploy waits for the next change of
+ * section or the next long absence.
  *
- * The browser checks on its own only when a page of the site is loaded from the network —
+ * Asking for a new worker happens at most every half hour, whatever the absence. The
+ * browser checks on its own only when a page of the site is loaded from the network —
  * never, for an app that is resumed rather than reopened. Half an hour because a deploy
  * is not urgent, and every check is a request for `sw.js`.
  */
 const UPDATE_CHECK_INTERVAL = 30 * 60 * 1000;
+const AWAY_FOR_UPDATE = 5 * 60 * 1000;
+
+export function shouldApplyOnReturn(state: {
+  ready: boolean;
+  busy: boolean;
+  path: string;
+  awayFor: number;
+}): boolean {
+  if (!state.ready || state.busy || state.path.startsWith('/embed/')) return false;
+  return state.awayFor >= AWAY_FOR_UPDATE;
+}
 
 function checkForUpdatesOnReturn(worker: Workbox): void {
   let last = Date.now();
+  let hiddenAt = Date.now();
   document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState !== 'visible') return;
-    if (updateReady && !pageBusy() && !location.pathname.startsWith('/embed/')) {
+    if (document.visibilityState !== 'visible') {
+      hiddenAt = Date.now();
+      return;
+    }
+    const apply = shouldApplyOnReturn({
+      ready: updateReady,
+      busy: pageBusy(),
+      path: location.pathname,
+      awayFor: Date.now() - hiddenAt,
+    });
+    if (apply) {
       updateReady = false;
       handOver(worker, location.href);
       return;

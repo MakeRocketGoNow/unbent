@@ -455,9 +455,11 @@ moment before the lock is saved when the connection returns. A new control that 
 note should follow `locked` in `Workspace`, and a new CodeMirror handler that dispatches on
 its own must check `state.readOnly` — `EditorView.editable` stops only the keyboard.
 
-**Deploys wait for a change of page.** A new worker installs and waits; the next time
-someone goes to another page, and nothing a reload would lose is in flight (`busy.ts`), the
-app loads that page from the new deploy. Work that lives only in the page — an upload, a run
+**Deploys wait for a change of section.** A new worker installs and waits; the next time
+someone goes to another section (notes to settings, not list to note), or comes back to the
+app after five minutes away, and nothing a reload would lose is in flight (`busy.ts`), the
+app loads the page from the new deploy. Not on every return: a quick tab switch comes back
+to a list mid-read. Work that lives only in the page — an upload, a run
 like import or export — should hold the page through `holdPage()` or be one of the runs
 `pageBusy()` already asks.
 

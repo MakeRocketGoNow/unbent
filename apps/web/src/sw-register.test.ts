@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { shouldApplyUpdate } from './sw-register.js';
+import { shouldApplyOnReturn, shouldApplyUpdate } from './sw-register.js';
 import { holdPage, pageBusy } from './busy.js';
 
 const ready = { ready: true, busy: false, preload: false, from: '/notes', to: '/settings' };
@@ -36,6 +36,30 @@ describe('shouldApplyUpdate', () => {
   it('stays out of the Android app’s embed pages', () => {
     expect(shouldApplyUpdate({ ...ready, from: '/embed/notes/a', to: '/notes' })).toBe(false);
     expect(shouldApplyUpdate({ ...ready, from: '/notes', to: '/embed/notes/a' })).toBe(false);
+  });
+});
+
+const back = { ready: true, busy: false, path: '/notes', awayFor: 10 * 60 * 1000 };
+
+describe('shouldApplyOnReturn', () => {
+  it('takes a waiting deploy on coming back after a real absence', () => {
+    expect(shouldApplyOnReturn(back)).toBe(true);
+  });
+
+  /* A tab switch to copy something comes back to a list mid-read; reloading it there lost
+     the place. The deploy waits for a change of section or a longer absence. */
+  it('leaves the page alone after a quick switch away', () => {
+    expect(shouldApplyOnReturn({ ...back, awayFor: 2000 })).toBe(false);
+    expect(shouldApplyOnReturn({ ...back, awayFor: 4 * 60 * 1000 })).toBe(false);
+  });
+
+  it('does nothing without a deploy waiting, or with work a reload would lose', () => {
+    expect(shouldApplyOnReturn({ ...back, ready: false })).toBe(false);
+    expect(shouldApplyOnReturn({ ...back, busy: true })).toBe(false);
+  });
+
+  it('stays out of the Android app’s embed pages', () => {
+    expect(shouldApplyOnReturn({ ...back, path: '/embed/notes/a' })).toBe(false);
   });
 });
 
