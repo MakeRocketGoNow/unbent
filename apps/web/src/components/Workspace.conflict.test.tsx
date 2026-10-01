@@ -227,6 +227,35 @@ describe('a save after another device saved the note', () => {
     expect(api.updateNote).toHaveBeenCalledTimes(1);
   });
 
+  it('lets a refusal that comes back after the note was left go quietly', async () => {
+    // The last edit of note A is still out when the person moves to B, and the phone saved
+    // A meanwhile. Nobody is on A to ask; B must not inherit A's question.
+    const other: Note = { ...note, id: 'n2', title: 'Packing list', updatedAt: 300 };
+    let refuse!: () => void;
+    vi.mocked(api.updateNote).mockImplementationOnce(
+      () => new Promise((_, reject) => (refuse = () => reject(new NoteChangedError(phone)))),
+    );
+    const client = mount((c) => {
+      c.setQueryData(keys.note(other.id), other);
+      c.setQueryData(keys.attachments(other.id), []);
+    });
+    await typeTitle('Trip notes, typed here');
+    await waitFor(() => expect(api.updateNote).toHaveBeenCalledTimes(1), { timeout: 3000 });
+
+    act(() => openNote(other.id));
+    await waitFor(async () => expect((await title()).value).toBe('Packing list'));
+    await act(async () => refuse());
+
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect(screen.queryByText('Not saved')).toBeNull();
+    expect((await title()).readOnly).toBe(false);
+    // What reopening A will show is the phone's copy, with nothing waiting to be decided.
+    expect(client.getQueryData<Note>(keys.note(note.id))).toMatchObject({ body: 'as edited on the phone' });
+    act(() => openNote(note.id));
+    await waitFor(async () => expect((await title()).value).toBe('Trip notes'));
+    expect(screen.queryByRole('alert')).toBeNull();
+  });
+
   it('asks when the same edit was made elsewhere alongside one the draft does not have', async () => {
     // The phone renamed the note and rewrote the body; this tab types the same rename.
     // The rename alone would change nothing, but taking the phone's copy as current here

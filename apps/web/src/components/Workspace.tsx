@@ -428,6 +428,18 @@ export function Workspace({ noteId, readOnly = false, backTo = '/notes' }: Works
       updated = await api.updateNote(noteId, { ...patch, ifUpdatedAt: choosing?.updatedAt ?? base.updatedAt });
     } catch (err) {
       if (!api.isNoteChanged(err)) throw err;
+      /*
+         Refused after the note was left: the last edit queued behind a slow save, and
+         another device saved the note meanwhile. There is no one on that note to ask, so
+         the edit goes, as leaving a note with the question open drops it — raising the
+         conflict anyway put a red "Not saved" on the note now open and a notice on this
+         one for whenever it was next opened. The newer copy goes into the cache instead,
+         so that is what reopening it shows. 'unchanged' because nothing was written.
+      */
+      const left = (current: Note) => {
+        queryClient.setQueryData(keys.note(noteId), current);
+        return 'unchanged' as const;
+      };
       // Nothing of theirs would be lost — see `holdsTheirChanges` — so this is a date that
       // moved, not a choice to put to anyone.
       if (!choosing && holdsTheirChanges(value, base, err.current)) {
@@ -437,12 +449,15 @@ export function Workspace({ noteId, readOnly = false, backTo = '/notes' }: Works
           // A third save landed between the two. That one is a choice, put the same way as
           // a first refusal: let through bare, it left a red "Not saved" with no notice and
           // the inputs still open.
-          if (api.isNoteChanged(again)) setConflict({ id: noteId, current: again.current });
+          if (!api.isNoteChanged(again)) throw again;
+          if (noteIdRef.current !== noteId) return left(again.current);
+          setConflict({ id: noteId, current: again.current });
           throw again;
         }
       } else {
         // A "Keep mine" refused in turn asks again, against the newer copy it brought back.
         keepMine.current = null;
+        if (noteIdRef.current !== noteId) return left(err.current);
         setConflict({ id: noteId, current: err.current });
         throw err;
       }
