@@ -81,6 +81,28 @@ export function currentLibraryUser(): string | null {
 }
 
 /**
+ * Hears how many writes the open library's outbox holds, as it changes, starting now.
+ * Nothing until the library has opened; nothing at all on a device without one.
+ */
+export function subscribeWrites(listener: (pending: number) => void): () => void {
+  let stop: (() => void) | undefined;
+  let alive = true;
+  const open = current?.library;
+  if (open) {
+    open.then(
+      (lib) => {
+        if (alive) stop = lib.outbox.subscribe((s) => listener(s.pending));
+      },
+      () => {},
+    );
+  }
+  return () => {
+    alive = false;
+    stop?.();
+  };
+}
+
+/**
  * Waits, for at most `ms`, for the writes the open library's outbox holds to reach the
  * server, and answers with how many are still waiting. What a sign-out does first: the
  * wipe that follows removes the outbox, and the menu offers Sign out only with a

@@ -5,7 +5,7 @@ import { isHosted, postToApp } from './app-bridge.js';
 import { forgetSession } from './session-memory.js';
 import { clearOfflineCaches } from './offline-cache.js';
 import { claimImportFor } from './import-run.js';
-import { settleWrites } from './store/library.js';
+import { settleWrites, subscribeWrites } from './store/library.js';
 
 /**
  * Changes the server has not taken, when Sign out was pressed and the outbox did not
@@ -42,19 +42,28 @@ export function useUnsyncedQuestion(): UnsyncedQuestion | null {
   );
 }
 
-/** Asks whether to leave with `count` changes unsynced; resolves with the answer. */
+/**
+ * Asks whether to leave with `count` changes unsynced; resolves with the answer. The
+ * question follows the outbox while it is up: when the count reaches nothing the warning
+ * is no longer true, so the question comes down and the sign-out goes on — and the count
+ * it shows is the current one until then. A second press of Sign out while a question is
+ * up answers the first one with "stay" rather than leaving its chain hanging.
+ */
 function askToLeave(count: number): Promise<boolean> {
+  unsynced?.stay();
   return new Promise((resolve) => {
-    setUnsynced({
-      count,
-      leave: () => {
-        setUnsynced(null);
-        resolve(true);
-      },
-      stay: () => {
-        setUnsynced(null);
-        resolve(false);
-      },
+    let stop = () => {};
+    const answer = (leave: boolean) => {
+      stop();
+      setUnsynced(null);
+      resolve(leave);
+    };
+    const ask = (n: number) => setUnsynced({ count: n, leave: () => answer(true), stay: () => answer(false) });
+    ask(count);
+    stop = subscribeWrites((pending) => {
+      if (!unsynced) return;
+      if (pending === 0) answer(true);
+      else if (pending !== unsynced.count) ask(pending);
     });
   });
 }

@@ -3,14 +3,14 @@ import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { SignOutConfirm } from './SignOutConfirm.js';
 import { useSignOut } from '../useSignOut.js';
 
-vi.mock('../store/library.js', () => ({ settleWrites: vi.fn() }));
+vi.mock('../store/library.js', () => ({ settleWrites: vi.fn(), subscribeWrites: vi.fn(() => () => {}) }));
 vi.mock('../auth-client.js', () => ({ signOut: vi.fn(async () => ({})), refreshSession: vi.fn(async () => null) }));
 vi.mock('../offline-cache.js', () => ({ clearOfflineCaches: vi.fn(async () => {}) }));
 vi.mock('../import-run.js', () => ({ claimImportFor: vi.fn() }));
 vi.mock('../session-memory.js', () => ({ forgetSession: vi.fn() }));
 vi.mock('../app-bridge.js', () => ({ isHosted: () => false, postToApp: () => false }));
 vi.mock('@tanstack/react-router', () => ({ useNavigate: () => vi.fn(async () => {}) }));
-import { settleWrites } from '../store/library.js';
+import { settleWrites, subscribeWrites } from '../store/library.js';
 import { signOut } from '../auth-client.js';
 import { clearOfflineCaches } from '../offline-cache.js';
 
@@ -67,6 +67,37 @@ describe('signing out with unsynced changes', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Sign out' }));
     await flush();
     expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Cancel' }));
+  });
+
+  it('comes down and goes on signing out once the outbox drains, and shows the count as it falls', async () => {
+    vi.mocked(settleWrites).mockResolvedValue(3);
+    let heard: (pending: number) => void = () => {};
+    vi.mocked(subscribeWrites).mockImplementation((l) => {
+      heard = l;
+      return () => {};
+    });
+    render(<Host />);
+    fireEvent.click(screen.getByRole('button', { name: 'Sign out' }));
+    await flush();
+    expect(screen.getByText(/3 changes haven't synced yet/)).toBeTruthy();
+    await act(async () => heard(1));
+    expect(screen.getByText(/1 change hasn't synced yet/)).toBeTruthy();
+    await act(async () => heard(0));
+    expect(screen.queryByText(/synced yet/)).toBeNull();
+    expect(signOut).toHaveBeenCalledTimes(1);
+  });
+
+  it('a second press answers the first question with stay, and asks again', async () => {
+    vi.mocked(settleWrites).mockResolvedValue(2);
+    render(<Host />);
+    fireEvent.click(screen.getByRole('button', { name: 'Sign out' }));
+    await flush();
+    fireEvent.click(screen.getByRole('button', { name: 'Sign out' }));
+    await flush();
+    expect(screen.getAllByText(/synced yet/)).toHaveLength(1);
+    fireEvent.click(screen.getByRole('button', { name: 'Sign out anyway' }));
+    await flush();
+    expect(signOut).toHaveBeenCalledTimes(1);
   });
 
   it('asks nothing when the outbox drained', async () => {
