@@ -127,10 +127,10 @@ importers:
         specifier: ^0.2.26
         version: 0.2.26(@journeyapps/wa-sqlite@1.7.2)(typescript@7.0.2)
       '@tanstack/db':
-        specifier: ^0.11.1
+        specifier: 0.11.1
         version: 0.11.1(typescript@7.0.2)
       '@tanstack/offline-transactions':
-        specifier: ^1.0.59
+        specifier: 1.0.59
         version: 1.0.59(typescript@7.0.2)
       '@tanstack/react-db':
         specifier: ^0.5.1
