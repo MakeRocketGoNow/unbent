@@ -18,6 +18,7 @@ import { Workspace } from './Workspace.js';
 vi.mock('../notes-api.js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../notes-api.js')>()),
   updateNote: vi.fn(),
+  getNote: vi.fn(),
 }));
 
 /**
@@ -112,9 +113,10 @@ describe('a note while offline', () => {
     await waitFor(() => expect(screen.getByRole<HTMLButtonElement>('button', { name: 'Auto-fill' }).disabled).toBe(false));
   });
 
-  it('says a note the copy does not hold yet is not available, without calling it a failure', async () => {
+  it('says a note the copy does not hold yet is not available offline, without calling it a failure', async () => {
     // A library that has never taken its snapshot: the copy, not the note, is what is missing.
     const lib = installTestLibrary({ cursor: null });
+    act(() => setReachableForTests(false));
     mount((client) => {
       client.removeQueries({ queryKey: keys.note(note.id) });
     });
@@ -123,6 +125,19 @@ describe('a note while offline', () => {
     );
     expect(line.className).toContain('muted');
     expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
+    expect(api.getNote).not.toHaveBeenCalled();
+    lib.uninstall();
+  });
+
+  it('asks the server for a note the copy does not hold yet while there is a connection', async () => {
+    // A link followed during the first copy, which on a phone can take minutes.
+    const lib = installTestLibrary({ cursor: null });
+    vi.mocked(api.getNote).mockResolvedValue({ ...note, title: 'Trip notes, from the server' });
+    mount((client) => {
+      client.removeQueries({ queryKey: keys.note(note.id) });
+    });
+    expect((await title()).value).toBe('Trip notes, from the server');
+    expect(api.getNote).toHaveBeenCalledWith(note.id);
     lib.uninstall();
   });
 });

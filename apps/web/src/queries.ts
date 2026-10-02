@@ -7,6 +7,7 @@ import {
 import type { AttachmentInfo, FieldDef, Note, NoteSort, NoteSummary, NotebookSummary } from '@unbent/shared';
 import * as api from './notes-api.js';
 import { ApiError, OfflineError } from './notes-api.js';
+import { offlineNow } from './connectivity.js';
 import { count, list, lookups, notebookFields, notebookList, summaries, tagSummaries, toAttachmentInfo, toNote, type Lookups, type Snapshot } from './store/derive.js';
 import type { LocalNote } from './store/collections.js';
 import { LIBRARY_ROOTS, currentLibrary, onLibraryChange, type ReadableLibrary as Library } from './store/library.js';
@@ -287,10 +288,16 @@ export const noteQuery = (id: string) =>
       if (!lib) return api.getNote(id);
       const row = lib.notes.get(id);
       // A library that has never taken its snapshot holds nothing yet, and a note not in
-      // it is not missing — the copy is: say that (the workspace's offline line) rather
-      // than that the note does not exist. Once a snapshot has been taken, an id the
-      // copy does not hold gets the answer the route gave for an id that is not a note.
-      if (!row && lib.state().cursor === null) throw new OfflineError();
+      // it is not missing — the copy is. With a connection the server answers for it, as
+      // it did before the copy existed: a link followed during the first copy opens, and
+      // on a phone that copy can take minutes. Without one, say so (the workspace's
+      // offline line) rather than that the note does not exist. Once a snapshot has been
+      // taken, an id the copy does not hold gets the answer the route gave for an id that
+      // is not a note.
+      if (!row && lib.state().cursor === null) {
+        if (!offlineNow()) return api.getNote(id);
+        throw new OfflineError();
+      }
       if (!row) throw new ApiError(404, 'Not found');
       return toNote(row, view(lib).lookups);
     },

@@ -447,9 +447,10 @@ it, so anything written during the walk is replayed. Collections are ready as so
 persistence has restored them, not after the first pull. Pulls are event-driven — open, tab
 shown, connection back, socket nudge, after a replayed write — never a timer.
 
-**A note the copy does not hold while no snapshot has been taken reads as not available,
-not as missing.** `noteQuery` throws `OfflineError` for that; a 404 means the id is not a
-note.
+**A note the copy does not hold while no snapshot has been taken is asked of the server, or
+reads as not available — never as missing.** `noteQuery` asks the server while there is a
+connection, since the copy can take minutes on a phone and a followed link should open, and
+throws `OfflineError` without one; a 404 means the id is not a note.
 
 **A row made here may name what the server has not.** A note filed into a notebook that
 does not exist yet, or tagged with a tag nobody has used, carries `notebookName` and
