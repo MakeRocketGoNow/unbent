@@ -119,7 +119,7 @@ describe('a note while offline', () => {
       client.removeQueries({ queryKey: keys.note(note.id) });
     });
     const line = await screen.findByText(
-      "This note hasn't been opened on this device, so it isn't available offline.",
+      "This note isn't on this device yet. It will be once your notes have finished copying here.",
     );
     expect(line.className).toContain('muted');
     expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();

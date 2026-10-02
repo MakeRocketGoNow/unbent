@@ -942,7 +942,7 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
             {missing
               ? "That note doesn't exist, or was deleted."
               : unavailable
-                ? "This note hasn't been opened on this device, so it isn't available offline."
+                ? "This note isn't on this device yet. It will be once your notes have finished copying here."
                 : `Couldn't load that note. ${(error as Error).message}`}
           </p>
           {unavailable ? null : missing ? (
