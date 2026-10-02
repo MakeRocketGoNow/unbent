@@ -551,7 +551,12 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
     if (!editing || !note || conflicted) return;
     const clean = saveStateRef.current === 'idle' || saveStateRef.current === 'saved';
     const base = bases.current.get(noteId);
-    if (!base || note.updatedAt === base.updatedAt) return;
+    /*
+       Only ever forward. A copy older than the base is not another device's save: it is
+       the row between a replayed write of our own ending and the feed delivering the
+       server's copy, and taking it would reseed the editor with text already replaced.
+    */
+    if (!base || note.updatedAt <= base.updatedAt) return;
     /*
        Another device saved this note and the feed has brought its copy. With nothing
        typed here since the last save the copy simply replaces the draft, and the first

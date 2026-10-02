@@ -117,7 +117,7 @@ export function createOutbox(userId: string, lib: Omit<WritableLibrary, 'outbox'
             // mine" refused in turn is that choice again, with the newer copy.
             if (against !== undefined || !holdsTheirChanges(value, base, err.current)) {
               conflicts.set(noteId, err.current);
-              void lib.engine.pull();
+              await lib.engine.pull();
               throw new NonRetriableError(`Note ${noteId} changed on another device`);
             }
             try {
@@ -125,12 +125,12 @@ export function createOutbox(userId: string, lib: Omit<WritableLibrary, 'outbox'
             } catch (again) {
               if (!isNoteChanged(again)) return refusal(again);
               conflicts.set(noteId, again.current);
-              void lib.engine.pull();
+              await lib.engine.pull();
               throw new NonRetriableError(`Note ${noteId} changed on another device`);
             }
           }
           acks.forEach((l) => l(noteId, updated));
-          void lib.engine.pull();
+          await settled();
         } finally {
           touch();
         }
@@ -139,7 +139,7 @@ export function createOutbox(userId: string, lib: Omit<WritableLibrary, 'outbox'
         const input = transaction.metadata as unknown as Parameters<typeof api.createNote>[0];
         try {
           await api.createNote(input).catch(refusal);
-          void lib.engine.pull();
+          await settled();
         } finally {
           touch();
         }
@@ -148,7 +148,7 @@ export function createOutbox(userId: string, lib: Omit<WritableLibrary, 'outbox'
         const { sourceId, copyId } = transaction.metadata as unknown as { sourceId: string; copyId: string };
         try {
           await api.duplicateNote(sourceId, copyId).catch(refusal);
-          void lib.engine.pull();
+          await settled();
         } finally {
           touch();
         }
@@ -180,11 +180,20 @@ export function createOutbox(userId: string, lib: Omit<WritableLibrary, 'outbox'
   async function run(fn: () => Promise<void>): Promise<void> {
     try {
       await fn();
-      void lib.engine.pull();
+      await settled();
     } finally {
       touch();
     }
   }
+  /**
+   * After the server took a write: its copy, brought here before the entry ends. Ending
+   * an entry drops the optimistic change from the row, and what the row shows then is
+   * the last copy the feed delivered — the one from before the write — until the pull
+   * lands. Left to run on its own (seen in review, 2026-10-02) that window flashed the old
+   * title in the list, and the workspace took the old copy for a change of theirs and
+   * reseeded the editor with it. `pull` never rejects and waits out a queued second run.
+   */
+  const settled = () => lib.engine.pull();
 
   const unsubscribeConnectivity = subscribeConnectivity(touch);
   return {
