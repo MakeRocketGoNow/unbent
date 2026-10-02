@@ -25,7 +25,9 @@ describe('the feed records note writes', () => {
     const nb = (await stub.listNotebooks())[0]!;
     const tags = await stub.listTags();
     const rows = await feedRows(stub);
-    // The notebook and tags are recorded by the helpers that made them, before the note.
+    // The notebook and tags are recorded by the helpers that made them, before the note,
+    // and written together at the commit with one counter write (feed.test.ts holds the
+    // count); here the order and the set.
     expect(rows).toEqual([
       { entity: 'notebook', id: nb.id },
       { entity: 'tag', id: tags.find((t) => t.name === 'home')!.id },
@@ -243,8 +245,9 @@ describe('the feed records tag, notebook and field writes', () => {
     const first = await stub.importNotebook({ name: 'Podcast Bookmarks', emoji: '🎙️', fields: [{ name: 'Show', type: 'text' }] });
     const rows = await feedRows(stub);
     // resolveNotebook created it, updateNotebook set the emoji, createField added the field.
-    expect(rows.every((r) => r.entity === 'notebook' && r.id === first.id)).toBe(true);
-    expect(rows.length).toBe(3);
+    // resolveNotebook created it, updateNotebook set the emoji, createField added the
+    // field — one transaction, so one row.
+    expect(rows).toEqual([{ entity: 'notebook', id: first.id }]);
     const seq = await feedSeq(stub);
     await stub.importNotebook({ name: 'Podcast Bookmarks', emoji: '🎙️', fields: [{ name: 'Show', type: 'text' }] });
     expect(await feedRows(stub, seq)).toEqual([]);

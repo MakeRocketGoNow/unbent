@@ -575,8 +575,10 @@ Rules that hold it together, each with a test:
 
 - **Record inside the transaction that made the change, after the change.** `Feed.record`
   opens no transaction of its own, so every write method calls it from its `tx()` — the
-  single-statement methods gained one for this — and a write that rolls back takes its
-  rows with it. `feed-coverage.test.ts` greps the object's methods and calls every write
+  single-statement methods gained one for this. The rows are held until the outermost
+  `tx()` is about to commit (`Sql.onCommit`) and written then, with the counter once, so
+  a write that records from several helpers still costs one counter write, and a write
+  that rolls back wrote nothing. `feed-coverage.test.ts` greps the object's methods and calls every write
   once: a method that writes a data row without advancing the counter fails by name, and
   a new method lands in one of its three lists or fails there too.
 - **A row for every entity whose rendered shape changed, from the method that knows.**
@@ -591,8 +593,8 @@ Rules that hold it together, each with a test:
 - **No counts in the feed.** Tagging, filing and trashing a note move a notebook's and a
   tag's counts without recording either, so a count carried on a tag or notebook row
   would be wrong by the next write. A client derives counts from the notes it holds.
-- **One row written per change and one per transaction**, measured and bounded in
-  `feed.test.ts`. No other index on `changes`: each would be a row written per change.
+- **One row written per change and one per transaction**, by construction (the flush at
+  commit), measured and bounded in `feed.test.ts`. No other index on `changes`: each would be a row written per change.
   Pruning (50,000 rows, 90 days) reads nothing until it has something to delete, and
   deletes old rows 500 a write by key range, never by a subquery that scans.
 - **A cursor the feed cannot serve gets `reset`, never a partial page.** Past the counter

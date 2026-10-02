@@ -457,19 +457,14 @@ export class UserStore extends DurableObject<StoreEnv> {
    *
    * The push is the feed's last seq, sent on every socket attached to this object, after
    * the method — and so its transaction — has returned. A method that threw rolled its
-   * transaction back, feed row included, so what `record` noted is dropped unsent. The
-   * sockets are told nothing but the number; they pull the page themselves, which keeps
-   * the push an optimisation the feed is complete without.
+   * transaction back before its feed rows were written, so there is nothing to announce
+   * and the throw passes straight through. The sockets are told nothing but the number;
+   * they pull the page themselves, which keeps the push an optimisation the feed is
+   * complete without.
    */
   private writing<T>(fn: () => T): T {
     this.ready();
-    let result: T;
-    try {
-      result = fn();
-    } catch (err) {
-      this.feed.takeAnnouncement();
-      throw err;
-    }
+    const result = fn();
     this.announce();
     return result;
   }

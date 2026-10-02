@@ -47,16 +47,43 @@ export const PRUNE_BATCH = 500;
 export class Feed {
   /** The last seq a write on this instance recorded and the object has not yet announced. */
   private unannounced: number | null = null;
+  /** What the transaction in progress has recorded and not yet written, last word per entity. */
+  private pending = new Map<string, Change>();
+  /** The time the pending rows will carry: the latest a `record` call named. */
+  private at: number | null = null;
 
-  constructor(private readonly sql: Sql) {}
+  constructor(private readonly sql: Sql) {
+    sql.onCommit(() => this.flush());
+    sql.onRollback(() => this.discard());
+  }
 
   /**
-   * Appends one row per entity, numbered from `_meta.seq`, and prunes.
+   * Notes one row per entity, to be written when the transaction commits.
    *
-   * Call inside the transaction that made the change, after the change, so the row and
-   * the write commit or roll back together; private helpers may call it too, since it
-   * opens no transaction of its own. Repeats within one call collapse to the last word,
-   * so a method that files a note and then re-tags it records the note once.
+   * Call inside the transaction that made the change, after the change; private helpers
+   * may call it too, since it opens no transaction of its own. Nothing is written here:
+   * the rows are held until the outermost `tx()` is about to commit (`Sql.onCommit`),
+   * then written together with one counter update and one prune. A `create` that makes
+   * three tags and a notebook on the way records from four places and still writes its
+   * counter once; and a write that throws rolls back with nothing noted. Repeats collapse
+   * to the last word per entity, so a method that files a note and then re-tags it
+   * records the note once. Outside any transaction the rows are written at once.
+   */
+  record(changes: Change[], now = Date.now()): void {
+    for (const c of changes) {
+      const key = `${c.entity}:${c.id}`;
+      this.pending.delete(key);
+      this.pending.set(key, c);
+    }
+    if (this.pending.size === 0) return;
+    this.at = now;
+    if (!this.sql.inTransaction) this.flush();
+  }
+
+  /**
+   * Writes what `record` noted: one row per entity, numbered from `_meta.seq`, the counter
+   * once, and the prune. Run by the outermost transaction's commit hook, so the rows and
+   * the writes they describe commit together.
    *
    * The counter is read, advanced by the number of rows, and written back once: one row
    * written per change and one per transaction (measured 2026-10-02 against the
@@ -64,15 +91,13 @@ export class Feed {
    * time through `RETURNING`). An upsert rather than an UPDATE, so a store rebuilt after
    * a wipe — whose 0002 ran against an empty `_meta` — still counts from zero.
    *
-   * Returns the last seq handed out, or null when there was nothing to record.
+   * Returns the last seq handed out, or null when there was nothing to write.
    */
-  record(changes: Change[], now = Date.now()): number | null {
-    const last = new Map<string, Change>();
-    for (const c of changes) last.set(`${c.entity}:${c.id}`, c);
-    if (last.size === 0) return null;
-
+  flush(): number | null {
+    if (this.pending.size === 0) return null;
+    const now = this.at ?? Date.now();
     let seq = this.seq();
-    for (const c of last.values()) {
+    for (const c of this.pending.values()) {
       this.sql.exec(
         `INSERT INTO changes (seq, entity, id, deleted, at) VALUES (?1, ?2, ?3, ?4, ?5)`,
         ++seq,
@@ -87,8 +112,15 @@ export class Feed {
       String(seq),
     );
     this.prune(seq, now);
+    this.discard();
     this.unannounced = seq;
     return seq;
+  }
+
+  /** Drops what was noted and not written: the transaction rolled back. */
+  private discard(): void {
+    this.pending.clear();
+    this.at = null;
   }
 
   /**
@@ -127,9 +159,9 @@ export class Feed {
 
   /**
    * The seq to announce on the object's sockets, once, after the write's transaction has
-   * returned — or null when nothing was recorded since the last announcement. Taken after
-   * the transaction rather than sent inside it, so a write that rolled back announces
-   * nothing: the object takes and drops it on the way out of a throw (`UserStore.writing`).
+   * returned — or null when nothing was written since the last announcement. Set by
+   * `flush`, which a rolled-back transaction never reaches, so a write that threw
+   * announces nothing.
    */
   takeAnnouncement(): number | null {
     const seq = this.unannounced;
