@@ -141,16 +141,23 @@ describe('FeedEngine', () => {
     stop.forEach((s) => s());
   });
 
-  it('drops a stored position the server refuses for good and walks again from the start', async () => {
+  it('drops a stored position the server refuses for good and walks again from nothing', async () => {
     const refused = Object.assign(new Error('Bad cursor'), { status: 400 });
     const h = harness({
       '/api/changes/snapshot?limit=2&cursor=stale': [refused],
       '/api/changes/snapshot?limit=2': snapshotFirst([note('a'), note('b')], null, 20),
     });
+    // What the first attempt applied: a note purged since, which the new walk will not
+    // bring and the feed from the new seq will never delete.
+    h.c.note.rows.set('a', note('a'));
+    h.c.note.rows.set('gone', note('gone', { files: [file('f1', 'gone')] }));
+    h.c.attachment.rows.set('f1', file('f1', 'gone'));
     h.setCursor({ seq: 10, epoch: 'e1', resume: 'stale', total: 3 });
     const stop = Object.entries(h.c).map(([k, c]) => h.engine.register(k as 'note', c as never));
     await h.engine.settled();
     expect(h.requests).toEqual(['/api/changes/snapshot?limit=2&cursor=stale', '/api/changes/snapshot?limit=2']);
+    expect([...h.c.note.rows.keys()]).toEqual(['a', 'b']);
+    expect([...h.c.attachment.rows.keys()]).toEqual([]);
     expect(h.cursorWrites).toEqual([null, { seq: 20, epoch: 'e1' }]);
     expect(h.engine.state).toMatchObject({ phase: 'current', cursor: { seq: 20, epoch: 'e1' } });
     stop.forEach((s) => s());

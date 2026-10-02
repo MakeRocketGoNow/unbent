@@ -197,11 +197,14 @@ export class FeedEngine {
         /*
          * A stored position the server refuses — a page cursor from before its shape
          * changed, say — would fail the same way on every pull, and a walk with a
-         * position never reaches the feed's `reset`. Refused for good, the position is
-         * dropped and the walk starts over; refused for now, it is kept and tried again.
+         * position never reaches the feed's `reset`. Refused for good, the walk starts
+         * over from nothing, as a reset does: the rows the first attempt applied go too,
+         * since a note purged in between is in neither the new snapshot nor the feed from
+         * its `seq`, and kept it would have stayed on the device for good (review of
+         * #232). Refused for now, the position is kept and tried again.
          */
         if (from && cursor && refusedForGood(err)) {
-          await this.options.writeCursor(null);
+          await this.truncateAll();
           await this.snapshot(null);
           return;
         }
