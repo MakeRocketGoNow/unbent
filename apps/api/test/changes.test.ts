@@ -147,4 +147,18 @@ describe('GET /api/changes/socket', () => {
   it('refuses a plain GET with 426', async () => {
     expect((await fetch(`${BASE}/api/changes/socket`, { headers: headers() })).status).toBe(426);
   });
+
+  it('refuses an upgrade from another origin, and takes one with none', async () => {
+    const url = `${BASE.replace(/^http/, 'ws')}/api/changes/socket`;
+    // Node's fetch refuses to send an `Upgrade` header, so each case is a real handshake.
+    const handshake = (origin?: string) =>
+      new Promise<'open' | 'refused'>((resolve) => {
+        const ws = new WebSocket(url, { headers: { Cookie: cookie, ...(origin ? { Origin: origin } : {}) } } as unknown as string[]);
+        ws.addEventListener('open', () => { ws.close(); resolve('open'); });
+        ws.addEventListener('error', () => resolve('refused'));
+      });
+    expect(await handshake('https://elsewhere.example')).toBe('refused');
+    expect(await handshake()).toBe('open');
+    expect(await handshake(ORIGIN)).toBe('open');
+  });
 });
