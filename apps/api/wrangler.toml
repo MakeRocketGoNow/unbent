@@ -279,6 +279,9 @@ crons = []
 STORE_SWEEP = "0"
 # Every preview is one; its label, "PR <number>", comes from the deploy command.
 INSTANCE_KIND = "preview"
+# unbent.app's front page, so a PR that changes it can be seen before it ships. Production
+# sets it as a secret rather than here, where a fork would inherit it (src/types.ts).
+FRONT_PAGE = "1"
 
 [env.preview.assets]
 directory = "../web/dist"
@@ -343,6 +346,8 @@ APP_URL = "https://dev.unbent.app"
 # preview's is per PR and comes from the deploy command instead.
 INSTANCE_LABEL = "Dev"
 INSTANCE_KIND = "dev"
+# The front page, as production shows it; see the same line under the previews.
+FRONT_PAGE = "1"
 
 [env.dev.secrets]
 required = ["BETTER_AUTH_SECRET"]

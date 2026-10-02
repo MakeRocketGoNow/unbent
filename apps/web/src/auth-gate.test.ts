@@ -22,6 +22,15 @@ describe('shellFor', () => {
     expect(shellFor('/settings/notebooks')).toBe('app');
   });
 
+  /**
+   * The bare root is where a link to the site lands, so it must render for someone with no
+   * session — the front page is for exactly them. Its route sends a signed-in visitor on to
+   * the notes; the gate in front of everything else must not get there first.
+   */
+  it('gives the bare root a shell of its own, without a session', () => {
+    expect(shellFor('/')).toBe('front');
+  });
+
   it('lets the sign-in and reset pages render without a session', () => {
     expect(shellFor('/login')).toBe('plain');
     expect(shellFor('/reset-password')).toBe('plain');

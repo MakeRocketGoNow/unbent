@@ -62,6 +62,9 @@ export const Route = createRootRouteWithContext<RouterContext>()({
  * far end of a password-reset mail. They are centred on an otherwise empty page, with no
  * topbar to sign out of.
  *
+ * `front` is the bare root, which on the public instance is the front page for someone
+ * signed out, and lays itself out.
+ *
  * Split into separate components rather than branched inside one so the session hook runs
  * only where a session is the layout's business.
  */
@@ -69,6 +72,7 @@ function RootLayout() {
   const shell = useShell();
   if (shell === 'embed') return <EmbedShell />;
   if (shell === 'plain') return <PlainShell />;
+  if (shell === 'front') return <FrontShell />;
   return <AppShell />;
 }
 
@@ -86,6 +90,20 @@ function PlainShell() {
       <InstanceRibbon placement="page" />
       <Outlet />
     </main>
+  );
+}
+
+/**
+ * The front page draws its own header and footer, full width, so the shell adds nothing
+ * but the instance's ribbon — the page is only ever shown on the dev instance, previews
+ * and production, and the first two must still say which they are.
+ */
+function FrontShell() {
+  return (
+    <>
+      <InstanceRibbon placement="page" />
+      <Outlet />
+    </>
   );
 }
 

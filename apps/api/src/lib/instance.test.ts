@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  frontPageOf,
   isOperator,
   legalLinksOf,
   operatorEmails,
@@ -152,5 +153,24 @@ describe('posthogHost and posthogAssetsHost', () => {
   it('serves both from one origin when PostHog is self-hosted', () => {
     const own = env({ POSTHOG_HOST: 'https://posthog.example.com' });
     expect(posthogAssetsHost(own)).toBe('https://posthog.example.com');
+  });
+});
+
+/**
+ * The front page states unbent.app's prices, so the case that matters is the fork that
+ * set nothing — and the one that set something other than the documented value, which
+ * must not publish an offer by accident either.
+ */
+describe('frontPageOf', () => {
+  it('is off unless the instance says it is the public one', () => {
+    expect(frontPageOf({})).toBeUndefined();
+    expect(frontPageOf({ FRONT_PAGE: '0' })).toBeUndefined();
+    expect(frontPageOf({ FRONT_PAGE: 'true' })).toBeUndefined();
+    expect(frontPageOf({ FRONT_PAGE: '' })).toBeUndefined();
+  });
+
+  it('is on for exactly 1', () => {
+    expect(frontPageOf({ FRONT_PAGE: '1' })).toBe(true);
+    expect(frontPageOf({ FRONT_PAGE: ' 1 ' })).toBe(true);
   });
 });

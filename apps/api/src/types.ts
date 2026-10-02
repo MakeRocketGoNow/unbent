@@ -122,6 +122,18 @@ export interface Env {
    */
   PUBLIC_SIGNUPS?: string;
   /**
+   * '1' declares that this is the instance the public signs up to — unbent.app — and
+   * turns on the front page at `/` for signed-out visitors: what Unbent is, what it costs,
+   * and the way in.
+   *
+   * Opt-in for the reason the operator's name is: that page states unbent.app's prices and
+   * trial, and a fork deployed unchanged must not publish somebody else's offer on its own
+   * domain. Unset, `/` is the sign-in screen, as it always was. Separate from
+   * PUBLIC_SIGNUPS, which says only that an open allowlist is deliberate — a family
+   * instance can be open to sign-ups without having anything to sell. See `frontPageOf`.
+   */
+  FRONT_PAGE?: string;
+  /**
    * Resend credentials, for password reset mail. Both must be set for mail to be sent;
    * without them a reset link is logged rather than delivered, which is what local
    * development wants and what a deployed instance must not do. See lib/email.ts.

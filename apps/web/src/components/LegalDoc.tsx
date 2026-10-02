@@ -56,11 +56,11 @@ export function LegalDoc({ doc }: { doc: LegalDocument }) {
         </section>
       ))}
 
-      {/* `/` redirects to the note list, which is gated — so a signed-out reader would
-          bounce through it to the sign-in screen. Pointing there directly skips the
-          detour, and someone already signed in is sent on to their notes from there. */}
+      {/* `/`, which is wherever this reader belongs: their notes if signed in, the
+          front page on the public instance, and the sign-in screen anywhere else. It
+          used to be `/login`, when `/` only bounced through the gated note list. */}
       <p className="legal-back">
-        <Link to="/login">Back to Unbent</Link>
+        <Link to="/">Back to Unbent</Link>
       </p>
     </article>
   );

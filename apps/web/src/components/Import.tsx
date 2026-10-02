@@ -10,6 +10,7 @@ import {
   useImportRun,
 } from '../import-run.js';
 import { Button } from './Button.js';
+import { EnexHelp, NotionHelp } from './ImportHelp.js';
 import { describeImportFile } from './import-file.js';
 import { importPercent } from './import-progress.js';
 import { ImportSkips } from './ImportSkips.js';
@@ -143,49 +144,8 @@ export function Import() {
             the same file again — nothing duplicates.
           </p>
 
-          {/* Evernote has no export API, so the .enex has to be produced by hand before
-              this page is any use at all. Someone arriving here without one has nowhere
-              to go, which made the whole feature undiscoverable for the person it is for. */}
-          <details className="enex-help">
-            <summary className="small">How do I get an .enex file?</summary>
-            <div className="small">
-              <p>
-                <strong>From Evernote desktop.</strong> Select the notes or a notebook, then
-                File → Export notes. Choose ENEX. The desktop app is the only place Evernote
-                offers this; the web client cannot.
-              </p>
-              <p>
-                <strong>For a whole account.</strong> Exporting tens of thousands of notes by
-                hand is unreliable, and the desktop app tends to give up partway.{' '}
-                <a
-                  href="https://github.com/vzhd1701/evernote-backup"
-                  target="_blank"
-                  rel="noreferrer noopener"
-                  className="link"
-                >
-                  evernote-backup
-                </a>{' '}
-                syncs the account and writes one .enex per notebook. Import them one at a
-                time here.
-              </p>
-            </div>
-          </details>
-
-          {/* Notion has no export API either, and its export lives three menus deep. */}
-          <details className="enex-help">
-            <summary className="small">How do I export from Notion?</summary>
-            <div className="small">
-              <p>
-                <strong>The whole workspace.</strong> Settings → Settings → Export content → Export
-                all workspace content. Choose Markdown &amp; CSV, and include subpages. Notion emails
-                a link to the zip.
-              </p>
-              <p>
-                <strong>One database or page.</strong> Open it, then ··· → Export, with the same
-                choices. The zip imports the same way; it just holds less.
-              </p>
-            </div>
-          </details>
+          <EnexHelp />
+          <NotionHelp />
 
           <input
             type="file"

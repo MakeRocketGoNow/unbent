@@ -96,13 +96,12 @@ export function LegalPage({ which }: { which: LegalWhich }) {
   );
 }
 
-/* The same destination `LegalDoc` uses, and for the same reason: `/` redirects to the note
-   list, which is gated, so a signed-out reader would bounce through it to the sign-in
-   screen anyway. */
+/* The same destination `LegalDoc` uses, and for the same reason: `/` sends each reader
+   where they belong — notes, front page or sign-in. */
 function BackToApp() {
   return (
     <p className="legal-back">
-      <Link to="/login">Back to Unbent</Link>
+      <Link to="/">Back to Unbent</Link>
     </p>
   );
 }

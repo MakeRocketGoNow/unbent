@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import { INSTANCE_KINDS, type AppConfig, type InstanceKind } from '@unbent/shared';
 import { accountDeletionOffered, getAuth, offeredProviders } from '../auth.js';
-import { legalLinksOf, operatorOf, posthogOf } from '../lib/instance.js';
+import { frontPageOf, legalLinksOf, operatorOf, posthogOf } from '../lib/instance.js';
 import { previewRelayOrigin } from '../lib/preview-relay.js';
 import { canAutofill } from '../lib/jev.js';
 import { canUseLlm } from '../lib/llm.js';
@@ -38,6 +38,9 @@ export const authRoutes = new Hono<AppEnv>()
    * `vision` likewise: Maintenance runs the pass over images only where the server
    * has a reader for them.
    *
+   * `frontPage` is the operator's again: on only where the instance says it is the public
+   * one, since the page it turns on states that instance's prices. See `frontPageOf`.
+   *
    * `satisfies` rather than a return annotation: the fields whose value is `undefined` are
    * dropped by `JSON.stringify` on the way out, which is exactly the "absent means not
    * offered" reading the client already applies to `accountDeletion`.
@@ -56,6 +59,7 @@ export const authRoutes = new Hono<AppEnv>()
       ownStores: c.env.PREVIEW_OWN_STORES === '1' || undefined,
       instanceLabel: instanceLabelOf(c.env),
       instanceKind: instanceKindOf(c.env),
+      frontPage: frontPageOf(c.env),
     } satisfies AppConfig);
   });
 

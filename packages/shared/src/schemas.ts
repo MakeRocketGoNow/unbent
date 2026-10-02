@@ -318,6 +318,15 @@ export interface AppConfig {
    * one of the three.
    */
   instanceKind?: InstanceKind;
+  /**
+   * This instance is the public one — unbent.app — and `/` shows a signed-out visitor
+   * the front page: what Unbent is, what it costs, and the way in.
+   *
+   * Absent everywhere else, which keeps `/` the sign-in screen. The page states one
+   * operator's prices and trial, so like `operator` it has no honest default: a fork
+   * deployed unchanged must not advertise somebody else's offer. `FRONT_PAGE=1` in the API.
+   */
+  frontPage?: boolean;
 }
 
 export const INSTANCE_KINDS = ['dev', 'preview', 'local'] as const;

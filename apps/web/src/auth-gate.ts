@@ -52,11 +52,25 @@ export const HOW_TO_DELETE = '/delete-my-account';
  * The legal pages are the other kind: read by people who have no account and never will.
  * The Play listing links to the privacy policy, so it cannot sit behind a sign-in.
  *
+ * `front` is the bare root, described at `FRONT` below.
+ *
  * Everything else is `app`, which is the useful default: a route added tomorrow is behind
  * the session unless somebody deliberately lists it here. One function rather than a
  * predicate beside a switch, so what renders and what is gated cannot disagree.
  */
-export type Shell = 'app' | 'embed' | 'plain';
+export type Shell = 'app' | 'embed' | 'plain' | 'front';
+
+/**
+ * The bare root: the front page for a signed-out visitor on the public instance, and only
+ * a doorway everywhere else.
+ *
+ * A shell of its own rather than one more `PUBLIC` path, because `plain` centres a narrow
+ * card on an empty page and the front page is a page, full width, with its own header. It
+ * is ungated for the same reason the sign-in screen is — the person it is for has no
+ * session — and the route decides the rest: someone signed in goes to `HOME`, and an
+ * instance with no front page sends everyone else to `LOGIN`. See `routes/index.tsx`.
+ */
+export const FRONT = '/';
 
 /**
  * The pages that render without a session, listed rather than inferred.
@@ -92,6 +106,7 @@ export function shellFor(pathname: string): Shell {
   // Tolerant of a trailing slash, which a hand-typed address or an external link may carry
   // and which never means a different page.
   const path = pathname.length > 1 ? pathname.replace(/\/$/, '') : pathname;
+  if (path === FRONT) return 'front';
   if (PUBLIC.has(path)) return 'plain';
   return 'app';
 }
@@ -208,7 +223,7 @@ export function takeRelayRedirect(): string {
  * Returns the session it established, because *who* it belongs to is the caller's business
  * too: `claimCacheFor` in `queries.ts` reads the user id off it to notice the query cache
  * changing hands between two people in a tab nobody reloaded. `undefined` means this path
- * asked for no session — the two ungated shells — rather than that there is nobody.
+ * asked for no session — the ungated shells — rather than that there is nobody.
  */
 export async function requireSession(location: ParsedLocation): Promise<Session | undefined> {
   if (shellFor(location.pathname) !== 'app') return undefined;
