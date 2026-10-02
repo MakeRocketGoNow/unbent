@@ -16,18 +16,46 @@ describe('UserStore lifecycle', () => {
 
     const stats = await stub.stats();
     expect(stats.userId).toBe(userId);
-    expect(stats.migrations).toEqual(['0001-init']);
+    expect(stats.migrations).toEqual(['0001-init', '0002-changes']);
     expect(stats.counts.notes).toBe(0);
 
     // A second wake of the same object applies nothing and reads the same schema. The
     // `_meta.user_id` row written on the first wake is what a mismatch is checked against.
     await evictDurableObject(stub);
     const again = env.USER_STORE.get(env.USER_STORE.idFromName(userId));
-    expect((await again.stats()).migrations).toEqual(['0001-init']);
+    expect((await again.stats()).migrations).toEqual(['0001-init', '0002-changes']);
     const meta = await runInDurableObject(again, (_i, state) =>
       state.storage.sql.exec<{ value: string }>(`SELECT value FROM _meta WHERE key = 'user_id'`).toArray(),
     );
     expect(meta).toEqual([{ value: userId }]);
+  });
+
+  it('applies a schema file that arrived after the object was in use, on its next wake', async () => {
+    const { userId, stub } = freshStore('later-file');
+    await stub.ping();
+    // Put the object back where one that was created under 0001 alone would be: the feed
+    // table gone, no record of 0002, the counter and epoch rows never written, with a
+    // note already in it. What 0002 has to tolerate is exactly this.
+    await runInDurableObject(stub, (_i, state) => {
+      const sql = state.storage.sql;
+      sql.exec(`INSERT INTO notes (id, title, body, created_at, updated_at) VALUES ('n1', 'T', 'b', 1, 1)`);
+      sql.exec(`DROP TABLE changes`);
+      sql.exec(`DELETE FROM _migrations WHERE name = '0002-changes'`);
+      sql.exec(`DELETE FROM _meta WHERE key IN ('seq', 'feed_epoch')`);
+    });
+    await evictDurableObject(stub);
+    const woke = env.USER_STORE.get(env.USER_STORE.idFromName(userId));
+    const stats = await woke.stats();
+    expect(stats.migrations).toEqual(['0001-init', '0002-changes']);
+    expect(stats.counts.notes).toBe(1);
+    expect(stats.counts.changes).toBe(0);
+    const meta = await runInDurableObject(woke, (_i, state) =>
+      state.storage.sql.exec<{ key: string; value: string }>(`SELECT key, value FROM _meta WHERE key IN ('seq', 'feed_epoch') ORDER BY key`).toArray(),
+    );
+    expect(meta).toEqual([
+      { key: 'feed_epoch', value: expect.stringMatching(/^[0-9a-f]{32}$/) },
+      { key: 'seq', value: '0' },
+    ]);
   });
 
   it('enforces foreign keys, so a purged note takes its files, text, tags and values with it', async () => {
@@ -113,7 +141,7 @@ describe('UserStore lifecycle', () => {
     // Reached again on the same instance: schema back, still this user's, empty.
     expect(await stub.schemaSql()).toEqual(expect.arrayContaining([expect.stringContaining('CREATE TABLE notes')]));
     const rebuilt = await stub.stats();
-    expect(rebuilt).toMatchObject({ userId, wiped: false, migrations: ['0001-init'] });
+    expect(rebuilt).toMatchObject({ userId, wiped: false, migrations: ['0001-init', '0002-changes'] });
     expect(rebuilt.counts.notes).toBe(0);
 
     // And after an eviction the object wakes as it was left — empty, no schema, and
@@ -123,7 +151,7 @@ describe('UserStore lifecycle', () => {
     const woke = env.USER_STORE.get(env.USER_STORE.idFromName(userId));
     expect(await woke.stats()).toMatchObject({ wiped: true, migrations: [] });
     expect(await woke.schemaSql()).toEqual(expect.arrayContaining([expect.stringContaining('CREATE TABLE notes')]));
-    expect(await woke.stats()).toMatchObject({ wiped: false, migrations: ['0001-init'] });
+    expect(await woke.stats()).toMatchObject({ wiped: false, migrations: ['0001-init', '0002-changes'] });
   });
 
   it('dumpPage pages a table by rowid and stops with a null cursor', async () => {

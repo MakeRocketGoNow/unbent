@@ -17,6 +17,13 @@ export const DATA_TABLES = [
   'note_fields',
   'attachments',
   'attachment_text',
+  /*
+   * The change feed (0002). Not note data, but counted and dumped with it: `stats`
+   * showing how long an account's feed is says whether retention is doing its job, and a
+   * dump that rebuilds a store must rebuild the feed too or every client of it would
+   * resync from nothing. Last because it references nothing and nothing references it.
+   */
+  'changes',
 ] as const;
 export type DataTable = (typeof DATA_TABLES)[number];
 
