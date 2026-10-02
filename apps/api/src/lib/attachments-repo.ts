@@ -1,6 +1,6 @@
 import type { AttachmentInfo } from '@unbent/shared';
 import { StoreRepo } from './store-client.js';
-import type { AttachmentRow, PendingFile } from '../store/attachments.js';
+import type { AttachmentRow, AttachmentsStore, PendingFile } from '../store/attachments.js';
 
 /**
  * Attachment metadata for one user, answered by that user's store.
@@ -54,8 +54,10 @@ export class AttachmentsRepo extends StoreRepo {
     contentType: string;
     size: number;
     r2Key: string;
-  }): Promise<AttachmentInfo> {
-    return this.call((s) => s.recordAttachment(input));
+  }): Promise<AttachmentInfo>;
+  record(input: Parameters<AttachmentsStore['record']>[0], opts: { ifAbsent: true }): Promise<AttachmentInfo | null>;
+  record(input: Parameters<AttachmentsStore['record']>[0], opts?: { ifAbsent?: boolean }): Promise<AttachmentInfo | null> {
+    return this.call((s) => s.recordAttachment(input, opts));
   }
 
   /** Returns the R2 key to delete, or null when there is no such file on a live note. */

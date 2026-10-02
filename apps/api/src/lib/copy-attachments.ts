@@ -44,7 +44,23 @@ export interface CopyAttachmentsResult {
 export async function copyAttachments(
   blobs: R2Bucket,
   repos: { attachments: AttachmentsRepo; notes: NotesRepo },
-  input: { from: string; to: string; filenames: string[]; move?: boolean; link?: boolean },
+  input: {
+    from: string;
+    to: string;
+    filenames: string[];
+    move?: boolean;
+    link?: boolean;
+    /**
+     * Keep the source's names, and skip a name the destination already holds rather
+     * than suffixing a second copy. For a duplicate: the copy is meant to be the source,
+     * and a replay of the request that is still running in the first — the usual reason
+     * a client replays is a timeout on a note with large files — would otherwise have
+     * both copy the same file, one of them as `scan-2.pdf`. The decision is the store's,
+     * made when the row is recorded, so two requests cannot both pass it; the loser
+     * deletes the object it had already written.
+     */
+    skipExisting?: boolean;
+  },
 ): Promise<CopyAttachmentsResult> {
   const { attachments } = repos;
   const files: CopiedAttachment[] = [];
@@ -74,7 +90,7 @@ export async function copyAttachments(
       continue;
     }
 
-    const filename = await attachments.availableFilename(input.to, requested);
+    const filename = input.skipExisting ? requested : await attachments.availableFilename(input.to, requested);
     const id = crypto.randomUUID();
     const key = attachments.buildKey(input.to, id, filename);
     const stored = await blobs.put(key, object.body, {
@@ -82,14 +98,13 @@ export async function copyAttachments(
     });
     if (!stored) throw new Error(`Copy failed for ${requested}`);
 
-    const info = await attachments.record({
-      id,
-      noteId: input.to,
-      filename,
-      contentType: source.content_type,
-      size: stored.size,
-      r2Key: key,
-    });
+    const row = { id, noteId: input.to, filename, contentType: source.content_type, size: stored.size, r2Key: key };
+    const info = input.skipExisting ? await attachments.record(row, { ifAbsent: true }) : await attachments.record(row);
+    if (!info) {
+      // Another request recorded this name first; its copy is the file. Ours is an orphan.
+      await blobs.delete(key);
+      continue;
+    }
     await attachments.copyText(source.id, { attachmentId: id, noteId: input.to, filename });
 
     let moved = false;

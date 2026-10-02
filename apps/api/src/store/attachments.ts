@@ -218,18 +218,30 @@ export class AttachmentsStore {
     return `${stem}-${crypto.randomUUID().slice(0, 8)}${ext}`;
   }
 
-  record(input: {
-    id: string;
-    noteId: string;
-    filename: string;
-    contentType: string;
-    size: number;
-    r2Key: string;
-  }): AttachmentInfo {
+  /**
+   * Records a stored file. A name the note already holds is the unique index's error —
+   * except with `ifAbsent`, which answers null and writes nothing, for a copy that must
+   * not become a second file when another request is copying the same name: two replays
+   * of one duplicate, say. Decided here, where the two requests are serialised, rather
+   * than by a check in the Worker that both would pass.
+   */
+  record(
+    input: {
+      id: string;
+      noteId: string;
+      filename: string;
+      contentType: string;
+      size: number;
+      r2Key: string;
+    },
+    opts: { ifAbsent?: boolean | undefined } = {},
+  ): AttachmentInfo | null {
     return this.sql.tx(() => {
-      this.sql.exec(
+      const inserted = this.sql.exec<{ id: string }>(
         `INSERT INTO attachments (id, note_id, filename, content_type, size, r2_key, created_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)`,
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+         ${opts.ifAbsent ? 'ON CONFLICT(note_id, filename) DO NOTHING' : ''}
+         RETURNING id`,
         input.id,
         input.noteId,
         input.filename,
@@ -238,6 +250,7 @@ export class AttachmentsStore {
         input.r2Key,
         Date.now(),
       );
+      if (inserted.length === 0) return null;
       // The file, and the note it changes the shape of: a client keeps a note's files
       // with the note, and a row on its own would leave the note's list stale.
       this.feed.record([

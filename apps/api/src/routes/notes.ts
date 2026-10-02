@@ -163,12 +163,14 @@ export const notes = new Hono<AppEnv>()
     // On a replay, copy only what the first attempt did not reach. A lost answer is often
     // a Worker that died partway through the copy, after the note itself was committed,
     // and a replay that returned the note as it stood would leave it short of files for
-    // good. Comparing by filename: a copy keeps its source's names.
+    // good. Comparing by filename: a copy keeps its source's names. `skipExisting` is
+    // for the replay that arrives while the first request is still copying: both see
+    // the same file missing, and the store lets one of them record it.
     const files = await attachments.listForNote(id);
     const have = existing ? new Set((await attachments.listForNote(note.id)).map((f) => f.filename)) : new Set<string>();
     const missing = files.map((f) => f.filename).filter((f) => !have.has(f));
     if (missing.length > 0) {
-      await copyAttachments(c.env.BLOBS, { attachments, notes }, { from: id, to: note.id, filenames: missing });
+      await copyAttachments(c.env.BLOBS, { attachments, notes }, { from: id, to: note.id, filenames: missing, skipExisting: true });
     }
     return c.json(note, existing ? 200 : 201);
   })

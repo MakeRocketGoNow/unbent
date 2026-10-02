@@ -60,6 +60,20 @@ describe('POST /notes/:id/duplicate with an id', () => {
 });
 
 describe('a replayed duplicate', () => {
+  it('arriving while the first request is still copying does not copy a file twice', async () => {
+    const source = (await (await fetch(`${BASE}/api/notes`, { method: 'POST', headers: headers(), body: JSON.stringify({ title: 'Source', body: 'b' }) })).json()) as { id: string };
+    for (const name of ['one.txt', 'two.txt', 'three.txt']) {
+      const up = await fetch(`${BASE}/api/notes/${source.id}/files`, { method: 'PUT', headers: { Cookie: cookie, Origin: ORIGIN, 'Content-Type': 'text/plain', 'X-Filename': name }, body: `contents of ${name}` });
+      expect(up.status).toBe(201);
+    }
+    const copyId = crypto.randomUUID();
+    const request = () => fetch(`${BASE}/api/notes/${source.id}/duplicate`, { method: 'POST', headers: headers(), body: JSON.stringify({ id: copyId }) });
+    const [a, b] = await Promise.all([request(), request()]);
+    expect([a.status, b.status].sort()).toEqual([200, 201]);
+    const names = ((await (await fetch(`${BASE}/api/notes/${copyId}/files`, { headers: headers() })).json()) as { files: Array<{ filename: string }> }).files.map((f) => f.filename).sort();
+    expect(names).toEqual(['one.txt', 'three.txt', 'two.txt']);
+  });
+
   it('copies the files the first attempt did not reach', async () => {
     const source = (await (await fetch(`${BASE}/api/notes`, { method: 'POST', headers: headers(), body: JSON.stringify({ title: 'Source', body: 'b' }) })).json()) as { id: string };
     for (const name of ['one.txt', 'two.txt']) {

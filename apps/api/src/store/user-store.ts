@@ -561,7 +561,7 @@ export class UserStore extends DurableObject<StoreEnv> {
   listAttachments(noteId: string) { this.ready(); return this.attachments.listForNote(noteId); }
   ownsNote(noteId: string) { this.ready(); return this.attachments.noteIsLive(noteId); }
   availableFilename(noteId: string, desired: string) { this.ready(); return this.attachments.availableFilename(noteId, desired); }
-  recordAttachment(input: Parameters<AttachmentsStore['record']>[0]) { return this.writing(() => this.attachments.record(input)); }
+  recordAttachment(input: Parameters<AttachmentsStore['record']>[0], opts?: Parameters<AttachmentsStore['record']>[1]) { return this.writing(() => this.attachments.record(input, opts)); }
   removeAttachment(noteId: string, filename: string) { return this.writing(() => this.attachments.remove(noteId, filename)); }
   recordText(input: Parameters<AttachmentsStore['recordText']>[0]) { return this.writing(() => this.attachments.recordText(input)); }
   copyText(fromAttachmentId: string, to: { attachmentId: string; noteId: string; filename: string }) {
