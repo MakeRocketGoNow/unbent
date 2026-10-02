@@ -150,6 +150,9 @@ export class UserStore extends DurableObject<StoreEnv> {
     this.notes = new NotesStore(this.sql, this.feed);
     this.attachments = new AttachmentsStore(this.sql, this.feed);
     ctx.blockConcurrencyWhile(async () => {
+      // Pings on the feed's sockets are answered at the edge, without waking the object;
+      // object-wide and idempotent, so set once here rather than on every handshake.
+      ctx.setWebSocketAutoResponse(new WebSocketRequestResponsePair('ping', 'pong'));
       // A wiped object wakes as it was left: empty, with no schema, and with the copy
       // from D1 never to run again. `ready()` rebuilds the schema if anything asks.
       if (ctx.storage.kv.get(WIPED_KEY) === true) {
@@ -740,7 +743,8 @@ export class UserStore extends DurableObject<StoreEnv> {
    * RPC; measured 2026-10-02). Accepted through the hibernation API, so a device that is
    * connected and idle costs the object nothing: it is evicted between events, the
    * socket stays open at the edge, and `getWebSockets()` on the next wake still lists it.
-   * Pings are answered at the edge too (`setWebSocketAutoResponse`), without a wake.
+   * Pings are answered at the edge too (`setWebSocketAutoResponse`, set once in the
+   * constructor), without a wake.
    *
    * The only thing ever sent is `{"seq": N}` after a write, from `announce`. Nothing is
    * read: the handler below ignores every message, so a client cannot ask the object
@@ -756,7 +760,6 @@ export class UserStore extends DurableObject<StoreEnv> {
     }
     const pair = new WebSocketPair();
     this.ctx.acceptWebSocket(pair[1]);
-    this.ctx.setWebSocketAutoResponse(new WebSocketRequestResponsePair('ping', 'pong'));
     return new Response(null, { status: 101, webSocket: pair[0] });
   }
 
