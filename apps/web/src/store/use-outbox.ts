@@ -42,6 +42,44 @@ export function useOutbox(): Outbox | null {
   return outbox;
 }
 
+/**
+ * Whether this device has a library: `'none'` when nobody has opened one on this tab or
+ * the device cannot keep one, `'opening'` while it opens, `'open'` after. For the chrome
+ * that must not tell a device able to keep its changes that it cannot, in the moment
+ * before the library has opened (review of #232).
+ */
+export function useLibraryPresence(): 'none' | 'opening' | 'open' {
+  const [presence, setPresence] = useState<'none' | 'opening' | 'open'>(() => (currentLibrary() ? 'opening' : 'none'));
+  useEffect(() => {
+    let alive = true;
+    let generation = 0;
+    const follow = () => {
+      const mine = ++generation;
+      const open = currentLibrary();
+      if (!open) {
+        setPresence('none');
+        return;
+      }
+      setPresence('opening');
+      open.then(
+        () => {
+          if (alive && mine === generation) setPresence('open');
+        },
+        () => {
+          if (alive && mine === generation) setPresence('none');
+        },
+      );
+    };
+    follow();
+    const stop = subscribeLibrary(follow);
+    return () => {
+      alive = false;
+      stop();
+    };
+  }, []);
+  return presence;
+}
+
 /** How many writes wait for the server, and the conflicts waiting on a choice. */
 export function useSyncStatus(): SyncStatus {
   const outbox = useOutbox();

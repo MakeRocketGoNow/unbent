@@ -1,5 +1,5 @@
 import { useOffline } from '../connectivity.js';
-import { useOutbox, useSyncStatus } from '../store/use-outbox.js';
+import { useLibraryPresence, useSyncStatus } from '../store/use-outbox.js';
 import { OfflineIcon } from './icons.js';
 
 /**
@@ -23,20 +23,21 @@ import { OfflineIcon } from './icons.js';
  *
  * The second sentence is a promise only the tab holding the outbox can keep: in any other
  * tab of the same account a write is a request, and offline it fails. That tab says so
- * instead, and names the way out — the first tab, which is where the outbox is. A device
- * with no library at all (a browser without the file system it lives in) keeps nothing
- * and queues nothing, and is told what the old shell told it.
+ * instead, and says where the changes are kept — another tab, since tabs have no order
+ * anyone can see. A device with no library at all (a browser without the file system it
+ * lives in) keeps nothing and queues nothing, and is told what the old shell told it; a
+ * library still opening is not that, and gets the promise, since it is about to keep it.
  */
 export function OfflineBanner() {
   const offline = useOffline();
-  const outbox = useOutbox();
+  const presence = useLibraryPresence();
   const { durable } = useSyncStatus();
   const line =
-    outbox === null
+    presence === 'none'
       ? "You're offline. Changes can't be saved until you're back."
-      : durable
+      : presence === 'opening' || durable
         ? "You're offline. Your notes are here, and what you change will sync when you're back."
-        : "You're offline. Your notes are here, but changes can't be saved from this tab until you're back — use your first tab.";
+        : "You're offline. Changes can't be saved from this tab while offline — another Unbent tab is keeping your changes.";
   return (
     <div className="offline-status" role="status">
       {offline && (
