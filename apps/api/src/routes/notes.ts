@@ -95,8 +95,12 @@ export const notes = new Hono<AppEnv>()
     }
   })
 
+  /**
+   * A trashed note is served too, carrying `deletedAt`: the trash opens one read-only so
+   * it can be looked at before it is restored or destroyed. Every write still refuses it.
+   */
   .get('/notes/:id', async (c) => {
-    const note = await c.get('notes').get(c.req.param('id'));
+    const note = await c.get('notes').get(c.req.param('id'), { includeTrashed: true });
     if (!note) return c.json({ error: 'Not found' }, 404);
     return c.json(note);
   })

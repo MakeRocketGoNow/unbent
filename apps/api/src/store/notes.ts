@@ -492,14 +492,23 @@ export class NotesStore {
     });
   }
 
-  /** One live note, or null. A trashed note reads as missing here; the trash has its own list. */
-  get(id: string): Note | null {
-    const row = this.sql.first<NoteRow & { fields: string | null }>(
+  /**
+   * One live note, or null.
+   *
+   * A trashed note reads as missing unless `includeTrashed` asks for it, and then it
+   * carries `deletedAt`. Missing is the right default: every caller inside this store
+   * reads a note in order to change it, and a write must never reach the trash. Only
+   * `GET /notes/:id` passes the flag, because the trash shows a deleted note before
+   * anyone decides whether to restore it — and without the flag that view could only
+   * ever say the note did not exist.
+   */
+  get(id: string, opts: { includeTrashed?: boolean | undefined } = {}): Note | null {
+    const row = this.sql.first<NoteRow & { fields: string | null; deleted_at: number | null }>(
       `SELECT n.id, n.title, n.body, n.created_at, n.updated_at, nb.name AS notebook,
-              n.notebook_id, ${FIELDS_SUBQUERY}
+              n.notebook_id, n.deleted_at, ${FIELDS_SUBQUERY}
          FROM notes n
          LEFT JOIN notebooks nb ON nb.id = n.notebook_id
-        WHERE n.id = ?1 AND n.deleted_at IS NULL`,
+        WHERE n.id = ?1${opts.includeTrashed ? '' : ' AND n.deleted_at IS NULL'}`,
       id,
     );
     if (!row) return null;
@@ -530,6 +539,7 @@ export class NotesStore {
       notebook: row.notebook,
       notebookId: row.notebook_id,
       ...(fields.length > 0 ? { fields } : {}),
+      ...(row.deleted_at !== null ? { deletedAt: row.deleted_at } : {}),
     };
   }
 

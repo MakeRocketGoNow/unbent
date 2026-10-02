@@ -162,7 +162,7 @@ describe('note CRUD', () => {
     expect((await patch({ tags: [] })).tags).toEqual([]);
   });
 
-  it('soft-deletes so the note leaves the list and 404s', async () => {
+  it('soft-deletes so the note leaves the list and reads as trashed', async () => {
     const n = await createNote(alice, { title: 'Doomed', body: 'x' });
 
     const del = await fetch(`${BASE}/api/notes/${n.id}`, {
@@ -171,7 +171,9 @@ describe('note CRUD', () => {
     });
     expect(del.status).toBe(204);
 
-    expect((await fetch(`${BASE}/api/notes/${n.id}`, asUser(alice))).status).toBe(404);
+    // Still readable by id — the trash opens it — but marked, so no view takes it as live.
+    const read = await fetch(`${BASE}/api/notes/${n.id}`, asUser(alice)).then((r) => r.json());
+    expect(read.deletedAt).toBeGreaterThan(0);
 
     const { items } = await fetch(`${BASE}/api/notes`, asUser(alice)).then((r) => r.json());
     expect(items.map((i: { id: string }) => i.id)).not.toContain(n.id);
@@ -733,12 +735,60 @@ describe('trash', () => {
     expect(gone.status).toBe(404);
   });
 
+  it('reads a trashed note and its files by id, and refuses to change either', async () => {
+    const note = await createNote(alice, { title: 'Look before restoring', body: 'x' });
+    const put = await fetch(`${BASE}/api/notes/${note.id}/files`, {
+      method: 'PUT',
+      headers: { Cookie: alice.cookie, Origin: ORIGIN, 'X-Filename': 'scan.txt', 'Content-Type': 'text/plain' },
+      body: 'scanned text',
+    });
+    expect(put.ok).toBe(true);
+    await fetch(`${BASE}/api/notes/${note.id}`, { method: 'DELETE', ...asUser(alice) });
+
+    // The trash opens it read-only, so the reads answer…
+    const read = await fetch(`${BASE}/api/notes/${note.id}`, asUser(alice));
+    expect(read.status).toBe(200);
+    const body = await read.json();
+    expect(body.title).toBe('Look before restoring');
+    expect(body.deletedAt).toBeGreaterThan(0);
+
+    const files = await fetch(`${BASE}/api/notes/${note.id}/files`, asUser(alice)).then((r) => r.json());
+    expect(files.files.map((f: { filename: string }) => f.filename)).toEqual(['scan.txt']);
+    const bytes = await fetch(`${BASE}/api/notes/${note.id}/files/scan.txt`, asUser(alice));
+    expect(bytes.status).toBe(200);
+    expect(await bytes.text()).toBe('scanned text');
+
+    // …and nothing that writes does.
+    const patch = await fetch(`${BASE}/api/notes/${note.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', Cookie: alice.cookie, Origin: ORIGIN },
+      body: JSON.stringify({ title: 'Edited in the bin' }),
+    });
+    expect(patch.status).toBe(404);
+    const removeFile = await fetch(`${BASE}/api/notes/${note.id}/files/scan.txt`, {
+      method: 'DELETE',
+      ...asUser(alice),
+    });
+    expect(removeFile.status).toBe(404);
+
+    // A live note reads without the mark.
+    await fetch(`${BASE}/api/notes/${note.id}/restore`, { method: 'POST', ...asUser(alice) });
+    const restored = await fetch(`${BASE}/api/notes/${note.id}`, asUser(alice)).then((r) => r.json());
+    expect(restored).not.toHaveProperty('deletedAt');
+  });
+
   it("does not expose another user's trash", async () => {
     const note = await createNote(alice, { title: "Alice's trashed note", body: 'x' });
     await fetch(`${BASE}/api/notes/${note.id}`, { method: 'DELETE', ...asUser(alice) });
 
     const bobTrash = await fetch(`${BASE}/api/notes?trashed=1`, asUser(bob)).then((r) => r.json());
     expect(bobTrash.items.some((n: { id: string }) => n.id === note.id)).toBe(false);
+
+    // Nor read it by id, now that its owner can.
+    const read = await fetch(`${BASE}/api/notes/${note.id}`, asUser(bob));
+    expect(read.status).toBe(404);
+    const files = await fetch(`${BASE}/api/notes/${note.id}/files`, asUser(bob));
+    expect(files.status).toBe(404);
 
     // And bob cannot act on it by id.
     const restore = await fetch(`${BASE}/api/notes/${note.id}/restore`, {
@@ -952,7 +1002,9 @@ describe('notebooks', () => {
     for (const id of [a.id, b.id]) {
       const note = await fetch(`${BASE}/api/notes/${id}`, asUser(alice));
       expect(note.status).toBe(200);
-      expect((await note.json()).notebook).toBeNull();
+      const read = await note.json();
+      expect(read.notebook).toBeNull();
+      expect(read).not.toHaveProperty('deletedAt');
     }
     expect((await listNotebooks(alice)).some((n) => n.name === name)).toBe(false);
   });
@@ -969,9 +1021,10 @@ describe('notebooks', () => {
     });
     expect(res.status).toBe(204);
 
-    // Soft-deleted: gone from the live list, present in the trash, notebook gone.
+    // Soft-deleted: trashed, present in the trash, notebook gone.
     for (const id of [a.id, b.id]) {
-      expect((await fetch(`${BASE}/api/notes/${id}`, asUser(alice))).status).toBe(404);
+      const read = await fetch(`${BASE}/api/notes/${id}`, asUser(alice)).then((r) => r.json());
+      expect(read.deletedAt).toBeGreaterThan(0);
     }
     const trash = await fetch(`${BASE}/api/notes?trashed=1`, asUser(alice)).then((r) => r.json());
     expect(trash.items.some((n: { id: string }) => n.id === a.id)).toBe(true);
@@ -1680,7 +1733,9 @@ describe('cross-tenant access', () => {
       headers: { Cookie: bob.cookie, Origin: ORIGIN },
     });
     expect(res.status).toBe(404);
-    expect((await fetch(`${BASE}/api/notes/${aliceNote.id}`, asUser(alice))).status).toBe(200);
+    // Not trashed: a trashed note reads by id too, so the mark is what tells them apart.
+    const still = await fetch(`${BASE}/api/notes/${aliceNote.id}`, asUser(alice)).then((r) => r.json());
+    expect(still).not.toHaveProperty('deletedAt');
   });
 
   it('bob cannot ask for an alice note to be auto-filled', async () => {
@@ -1924,6 +1979,7 @@ describe('tags', () => {
     expect((await listTags(alice)).find((t) => t.name === gone)).toBeUndefined();
     const still = await fetch(`${BASE}/api/notes/${note.id}`, asUser(alice));
     expect(still.status).toBe(200);
+    expect(await still.json()).not.toHaveProperty('deletedAt');
   });
 
   it("answers 404 for another user's tag, on both mutations", async () => {

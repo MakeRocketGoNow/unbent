@@ -453,7 +453,7 @@ export class UserStore extends DurableObject<StoreEnv> {
   listFull(opts: ListOptions) { this.ready(); return this.notes.listFull(opts); }
   count(opts: CountOptions = {}) { this.ready(); return this.notes.count(opts); }
   recountNotes() { this.ready(); return this.notes.recountNotes(); }
-  get(id: string) { this.ready(); return this.notes.get(id); }
+  get(id: string, opts?: { includeTrashed?: boolean | undefined }) { this.ready(); return this.notes.get(id, opts); }
   create(input: Parameters<NotesStore['create']>[0]) { this.ready(); return this.notes.create(input); }
   duplicate(id: string, newId: string) { this.ready(); return this.notes.duplicate(id, newId); }
   update(id: string, patch: Parameters<NotesStore['update']>[1]) { this.ready(); return this.notes.update(id, patch); }
@@ -511,7 +511,7 @@ export class UserStore extends DurableObject<StoreEnv> {
   // out of context (`record`). `ownsNote` keeps its name for the facade's sake although
   // ownership is not what it checks any more; see `AttachmentsStore.noteIsLive`.
 
-  resolveAttachment(noteId: string, filename: string) { this.ready(); return this.attachments.resolve(noteId, filename); }
+  resolveAttachment(noteId: string, filename: string, opts?: { includeTrashed?: boolean | undefined }) { this.ready(); return this.attachments.resolve(noteId, filename, opts); }
   listAttachments(noteId: string) { this.ready(); return this.attachments.listForNote(noteId); }
   ownsNote(noteId: string) { this.ready(); return this.attachments.noteIsLive(noteId); }
   availableFilename(noteId: string, desired: string) { this.ready(); return this.attachments.availableFilename(noteId, desired); }
@@ -618,6 +618,16 @@ export class UserStore extends DurableObject<StoreEnv> {
       if (!note) return null;
       return { note, files: this.attachments.listForNote(id) };
     });
+  }
+
+  /**
+   * `GET /notes/:id/files`: the note's files, or null when there is no such note. A
+   * trashed note's are listed, for the trash's read-only view of it; see `NotesStore.get`.
+   * One call where the route used to make two, asking whether the note was there first.
+   */
+  filesForNote(noteId: string): ReturnType<AttachmentsStore['listForNote']> | null {
+    this.ready();
+    return this.sql.tx(() => (this.attachments.noteExists(noteId) ? this.attachments.listForNote(noteId) : null));
   }
 
   /** `GET /notebooks` and MCP `list_notebooks`: the notebooks, the unfiled count, and every field if asked. */

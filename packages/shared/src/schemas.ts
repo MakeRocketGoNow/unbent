@@ -690,7 +690,7 @@ export interface NoteSummary {
   attachments?: Pick<AttachmentInfo, 'filename' | 'contentType'>[];
   /** The body's prose, marks removed, for the row. Empty when the body has no prose. */
   excerpt?: string;
-  /** When this note was trashed. Only present on notes listed from the trash. */
+  /** When this note was trashed. Only present on a trashed note: the trash's list, or one read by id. */
   deletedAt?: number;
 }
 

@@ -73,8 +73,9 @@ export class NotesRepo extends StoreRepo {
     return this.call((s) => s.recountNotes());
   }
 
-  get(id: string): Promise<Note | null> {
-    return this.call((s) => s.get(id));
+  /** A live note, or a trashed one too with `includeTrashed`; see `NotesStore.get`. */
+  get(id: string, opts?: { includeTrashed?: boolean }): Promise<Note | null> {
+    return this.call((s) => s.get(id, opts));
   }
 
   create(input: {
