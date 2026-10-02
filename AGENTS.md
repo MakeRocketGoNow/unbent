@@ -525,8 +525,8 @@ Five rules, held by tests where a test can hold them:
 3. **The owner's object is the source of truth.** If sharing ever comes, a grantee reads
    and writes through the owner's object; the grantee's holds a shortcut. Nothing to build
    now.
-4. **The change feed is per user with a sequence cursor**, never global. `_meta` reserves
-   `seq` for it. Nothing to build now.
+4. **The change feed is per user with a sequence cursor**, never global. Built: see
+   [The change feed](#the-change-feed) below.
 5. **Each RPC call is a billable object request.** Prefer a composite method on `UserStore`
    (`listPage`, `exportPage`, `getWithFiles`, `notebooksOverview`, …) to a second call in
    the same request, and check calls per page load when adding a route.
@@ -564,6 +564,62 @@ Things about working on the store that are easy to get wrong:
   index, which only its own spelling can use.
 - **Local state is D1 *and* `do/`.** The reset scripts clear both; clearing one by hand
   leaves ghost objects. `worktree:setup` copies both.
+
+### The change feed
+
+Every write to a store records what it touched in the `changes` table (`0002-changes`),
+and `GET /api/changes?since=` answers "what changed since N?" from it; the contract is in
+`packages/shared/src/feed.ts`, the writer in `store/feed.ts`, the reader on `UserStore`
+(`changesSince`, `snapshotPage`). MAK-139 built it; MAK-140's local store is its reader.
+Rules that hold it together, each with a test:
+
+- **Record inside the transaction that made the change, after the change.** `Feed.record`
+  opens no transaction of its own, so every write method calls it from its `tx()` — the
+  single-statement methods gained one for this. The rows are held until the outermost
+  `tx()` is about to commit (`Sql.onCommit`) and written then, with the counter once, so
+  a write that records from several helpers still costs one counter write, and a write
+  that rolls back wrote nothing. `feed-coverage.test.ts` greps the object's methods and calls every write
+  once: a method that writes a data row without advancing the counter fails by name, and
+  a new method lands in one of its three lists or fails there too.
+- **A row for every entity whose rendered shape changed, from the method that knows.**
+  A feed note carries its tags and notebook by id only (`tagIds`, `notebookId`), never by
+  name, so a tag or notebook rename is one row and a delete one tombstone, and a client
+  renders the names from the tags and notebooks it holds; a merge names the notes whose
+  ids moved. Field values keep their carried names for the one definition a client
+  cannot hold, a deleted notebook's tombstone; see `FeedNote`. A field conversion, deletion or
+  cleared option records the notes whose values it rewrote. A notebook is one row except
+  a delete, which names the notes it unfiled. A file added or removed records the file
+  and its note; text arriving records the file alone. `feed-writes.test.ts` pins each
+  method. A tag on an imported archive renamed must never be the archive sent again.
+- **The trash is an update; only a purge is a tombstone.** A client keeps its trash.
+- **No counts in the feed.** Tagging, filing and trashing a note move a notebook's and a
+  tag's counts without recording either, so a count carried on a tag or notebook row
+  would be wrong by the next write. A client derives counts from the notes it holds.
+- **One row written per change and one per transaction**, by construction (the flush at
+  commit), measured and bounded in `feed.test.ts`. No other index on `changes`: each would be a row written per change.
+  Pruning (50,000 rows, 90 days) reads nothing until it has something to delete, and
+  deletes old rows 500 a write by key range, never by a subquery that scans.
+- **A cursor the feed cannot serve gets `reset`, never a partial page.** From another
+  epoch than the one the client sends with its cursor (`?epoch=`; a client that follows
+  the feed always sends it), past the counter, or before the oldest row kept. The restore
+  route changes the epoch (`feedRestored`) once a restore is applied and tells the sockets;
+  `POST /api/admin/store/feed-epoch` does it by hand.
+- **The push is an optimisation and carries only a number.** `GET /api/changes/socket` is
+  forwarded to the object's `fetch`, the one `fetch(` the guard test allows in `store/`
+  and the only way a socket reaches an object (it cannot cross RPC). Accepted through the
+  hibernation API, so an idle device costs no duration; keep timers and alarms out of the
+  object, or it never hibernates. After a write that recorded, `{"seq": N}` goes to every
+  socket and nothing else; incoming messages are ignored and pings are answered at the
+  edge. A client that never connects a socket is still complete: pull on open, on focus,
+  after a write.
+- **A page is cut on bytes** (`FEED_PAGE_BYTES`, 4 MB of bodies) and always carries at
+  least one note, so it never nears the 32 MiB RPC ceiling; `more` says to call again.
+  `changesSince` and `snapshotPage` are bounded in the rows-read test at about nine rows
+  per note.
+- **Ids may come from the client.** `POST /notes` and a duplicate take an optional UUID
+  and answer 200 with the holder of a taken id, so a replayed request makes no second
+  note (`createOrFind` / `duplicateOrFind`, which say `existing` beside a plain `Note`;
+  `create` itself still refuses a taken id). Nothing else needs a client id yet.
 
 ## Rows read are still the budget
 

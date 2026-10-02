@@ -1,4 +1,6 @@
 import type {
+  FeedPage,
+  FeedReset,
   FieldDef,
   FieldScale,
   FieldType,
@@ -10,6 +12,7 @@ import type {
   NotebookSummary,
   SearchResult,
   SearchResultRow,
+  SnapshotPage,
   StaleNote,
 } from '@unbent/shared';
 import { StoreRepo } from './store-client.js';
@@ -91,6 +94,16 @@ export class NotesRepo extends StoreRepo {
 
   duplicate(id: string, newId: string): Promise<Note | null> {
     return this.call((s) => s.duplicate(id, newId));
+  }
+
+  /** `create` for an id the client chose, which may be a replay's; see `NotesStore.createOrFind`. */
+  createOrFind(input: Parameters<NotesRepo['create']>[0]): Promise<{ note: Note; existing: boolean }> {
+    return this.call((s) => s.createOrFind(input));
+  }
+
+  /** `duplicate` with the same replay rule for the copy's id. */
+  duplicateOrFind(id: string, newId: string): Promise<{ note: Note; existing: boolean } | null> {
+    return this.call((s) => s.duplicateOrFind(id, newId));
   }
 
   update(
@@ -317,6 +330,18 @@ export class NotesRepo extends StoreRepo {
   /** A note with its files, for MCP's `get_note`. Null when there is no such live note. */
   getWithFiles(id: string): Promise<{ note: Note; files: AttachmentInfo[] } | null> {
     return this.call((s) => s.getWithFiles(id));
+  }
+
+  /** `GET /changes`: what changed after `since`, whole, or `reset`; see `UserStore.changesSince`. */
+  changesSince(since: number, limit: number, epoch?: string): Promise<FeedPage | FeedReset> {
+    // Awaited and named: the stub types a union return as an intersection of promise
+    // shapes that does not assign to the plain union, although the value is one.
+    return this.call(async (s) => (await s.changesSince(since, limit, epoch)) as FeedPage | FeedReset);
+  }
+
+  /** `GET /changes/snapshot`: a page of the whole library by note id; see `UserStore.snapshotPage`. */
+  snapshotPage(cursor: string | null, limit: number): Promise<SnapshotPage> {
+    return this.call((s) => s.snapshotPage(cursor, limit));
   }
 
   /** The notebooks, the unfiled count, and every field when asked, in one call. */

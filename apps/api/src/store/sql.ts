@@ -39,6 +39,17 @@ export interface Sql {
    * outermost boundary, and a throw anywhere inside unwinds all of it.
    */
   tx<T>(fn: () => T): T;
+  /** True inside a `tx`: what a helper asks to know whether to defer work to the commit. */
+  readonly inTransaction: boolean;
+  /**
+   * Runs `hook` inside the outermost `tx`, after its function and before it commits —
+   * once per transaction however deeply nested the calls that asked. The change feed
+   * flushes its rows here, so a write that records from several helpers writes its
+   * counter once.
+   */
+  onCommit(hook: () => void): void;
+  /** Runs `hook` when the outermost `tx` is rolled back by a throw. */
+  onRollback(hook: () => void): void;
   /** Rows read and written since the counters were last reset, for tests and the ops routes. */
   readonly counters: { rowsRead: number; rowsWritten: number; statements: number };
   resetCounters(): void;
@@ -81,10 +92,33 @@ export function instrumentedSql(
     }
     return rows;
   };
+  // Nesting is the runtime's (savepoints; see `tx` on the interface); the depth is kept
+  // only to know which call is the outermost, whose end is where the hooks run.
+  let depth = 0;
+  const commitHooks: Array<() => void> = [];
+  const rollbackHooks: Array<() => void> = [];
   return {
     exec,
     first: <T,>(query: string, ...binds: Bind[]) => exec<T>(query, ...binds)[0] ?? null,
-    tx: (fn) => storage.transactionSync(fn),
+    tx: (fn) =>
+      storage.transactionSync(() => {
+        depth += 1;
+        try {
+          const result = fn();
+          if (depth === 1) for (const hook of commitHooks) hook();
+          return result;
+        } catch (err) {
+          if (depth === 1) for (const hook of rollbackHooks) hook();
+          throw err;
+        } finally {
+          depth -= 1;
+        }
+      }),
+    get inTransaction() {
+      return depth > 0;
+    },
+    onCommit: (hook) => commitHooks.push(hook),
+    onRollback: (hook) => rollbackHooks.push(hook),
     counters,
     resetCounters() {
       counters.rowsRead = 0;

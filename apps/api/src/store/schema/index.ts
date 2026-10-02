@@ -1,4 +1,5 @@
 import init from './0001-init.js';
+import changes from './0002-changes.js';
 
 /** One schema file: its name, as recorded in `_migrations`, and the SQL it applies. */
 export interface SchemaFile {
@@ -21,4 +22,7 @@ export interface SchemaFile {
  * esbuild and has no rule for importing `.sql`; the D1 migrations are files because
  * `wrangler d1 migrations apply` reads them from disk, which nothing does here.
  */
-export const SCHEMA: SchemaFile[] = [{ name: '0001-init', sql: init }];
+export const SCHEMA: SchemaFile[] = [
+  { name: '0001-init', sql: init },
+  { name: '0002-changes', sql: changes },
+];

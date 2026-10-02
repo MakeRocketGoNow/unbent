@@ -4,12 +4,17 @@ import {
   type FieldDef,
   type FieldScale,
   type FieldType,
+  type FeedNote,
+  type FeedPage,
+  type FeedReset,
   type FieldValue,
   type Note,
   type NoteFieldsPatch,
   type NotebookDefinition,
+  type SnapshotPage,
 } from '@unbent/shared';
 import { AttachmentsStore } from './attachments.js';
+import { cutByBytes, Feed, FEED_META, FEED_PAGE_BYTES, lastWordPerEntity, type FeedRow } from './feed.js';
 import { appliedMigrations, migrate } from './migrate.js';
 import { NotesStore, type CountOptions, type ListOptions, type SearchFilters } from './notes.js';
 import { cursorAfter, nextCursor } from './notes-shared.js';
@@ -39,6 +44,8 @@ export type StoreEnv = Record<never, never>;
 const META = {
   /** The user this object belongs to: `ctx.id.name`, written on first wake, refused on a mismatch after. */
   userId: 'user_id',
+  /** The change feed's counter and epoch; see `FEED_META`, which the feed reads them by. */
+  ...FEED_META,
 } as const;
 
 /**
@@ -127,6 +134,7 @@ export const DUMP_PAGE_BYTES = 8 * 1024 * 1024;
 export class UserStore extends DurableObject<StoreEnv> {
   readonly userId: string;
   private sql: Sql;
+  private feed: Feed;
   private notes: NotesStore;
   private attachments: AttachmentsStore;
   private wiped = false;
@@ -140,9 +148,13 @@ export class UserStore extends DurableObject<StoreEnv> {
     if (!name) throw new Error('UserStore must be created with idFromName(userId)');
     this.userId = name;
     this.sql = instrumentedSql(ctx.storage, name);
-    this.notes = new NotesStore(this.sql);
-    this.attachments = new AttachmentsStore(this.sql);
+    this.feed = new Feed(this.sql);
+    this.notes = new NotesStore(this.sql, this.feed);
+    this.attachments = new AttachmentsStore(this.sql, this.feed);
     ctx.blockConcurrencyWhile(async () => {
+      // Pings on the feed's sockets are answered at the edge, without waking the object;
+      // object-wide and idempotent, so set once here rather than on every handshake.
+      ctx.setWebSocketAutoResponse(new WebSocketRequestResponsePair('ping', 'pong'));
       // A wiped object wakes as it was left: empty, with no schema, and with the copy
       // from D1 never to run again. `ready()` rebuilds the schema if anything asks.
       if (ctx.storage.kv.get(WIPED_KEY) === true) {
@@ -442,68 +454,102 @@ export class UserStore extends DurableObject<StoreEnv> {
     this.sql.resetCounters();
   }
 
+  /**
+   * Every write passes through here: the store's method, then the push.
+   *
+   * The push is the feed's last seq, sent on every socket attached to this object, after
+   * the method — and so its transaction — has returned. A method that threw rolled its
+   * transaction back before its feed rows were written, so there is nothing to announce
+   * and the throw passes straight through. The sockets are told nothing but the number;
+   * they pull the page themselves, which keeps the push an optimisation the feed is
+   * complete without.
+   */
+  private writing<T>(fn: () => T): T {
+    this.ready();
+    const result = fn();
+    this.announce();
+    return result;
+  }
+
+  private announce(): void {
+    const seq = this.feed.takeAnnouncement();
+    if (seq !== null) this.tell(seq);
+  }
+
+  /** `{"seq": N}` to every socket: the one message the push ever sends. */
+  private tell(seq: number): void {
+    const message = JSON.stringify({ seq });
+    for (const ws of this.ctx.getWebSockets()) {
+      try {
+        ws.send(message);
+      } catch {
+        // Closing under us; its close event is on its way.
+      }
+    }
+  }
+
   // --- Notes: the repository, one for one -----------------------------------------------
   //
-  // Each of these is `NotesStore`'s method of the same name, behind `ready()`. They are
-  // spelled out rather than proxied so the RPC surface is a list a reader can grep, the
-  // types cross the boundary as written, and a method the object should not expose cannot
-  // leak through a wildcard.
+  // Each of these is `NotesStore`'s method of the same name, behind `ready()` — or, for a
+  // write, behind `writing()`, which announces afterwards. They are spelled out rather
+  // than proxied so the RPC surface is a list a reader can grep, the types cross the
+  // boundary as written, and a method the object should not expose cannot leak through a
+  // wildcard.
 
   list(opts: ListOptions) { this.ready(); return this.notes.list(opts); }
   listFull(opts: ListOptions) { this.ready(); return this.notes.listFull(opts); }
   count(opts: CountOptions = {}) { this.ready(); return this.notes.count(opts); }
-  recountNotes() { this.ready(); return this.notes.recountNotes(); }
+  recountNotes() { return this.writing(() => this.notes.recountNotes()); }
   get(id: string, opts?: { includeTrashed?: boolean | undefined }) { this.ready(); return this.notes.get(id, opts); }
-  create(input: Parameters<NotesStore['create']>[0]) { this.ready(); return this.notes.create(input); }
-  duplicate(id: string, newId: string) { this.ready(); return this.notes.duplicate(id, newId); }
-  update(id: string, patch: Parameters<NotesStore['update']>[1]) { this.ready(); return this.notes.update(id, patch); }
-  appendToBody(id: string, markdown: string) { this.ready(); return this.notes.appendToBody(id, markdown); }
-  remove(id: string) { this.ready(); return this.notes.remove(id); }
-  restore(id: string) { this.ready(); return this.notes.restore(id); }
-  purgeOne(id: string) { this.ready(); return this.notes.purgeOne(id); }
-  removeMany(ids: string[]) { this.ready(); return this.notes.removeMany(ids); }
-  restoreMany(ids: string[]) { this.ready(); return this.notes.restoreMany(ids); }
-  purgeMany(ids: string[]) { this.ready(); return this.notes.purgeMany(ids); }
-  updateMany(ids: string[], patch: Parameters<NotesStore['updateMany']>[1]) { this.ready(); return this.notes.updateMany(ids, patch); }
-  importNote(input: Parameters<NotesStore['importNote']>[0]) { this.ready(); return this.notes.importNote(input); }
-  setBody(id: string, body: string) { this.ready(); return this.notes.setBody(id, body); }
+  create(input: Parameters<NotesStore['create']>[0]) { return this.writing(() => this.notes.create(input)); }
+  duplicate(id: string, newId: string) { return this.writing(() => this.notes.duplicate(id, newId)); }
+  createOrFind(input: Parameters<NotesStore['createOrFind']>[0]) { return this.writing(() => this.notes.createOrFind(input)); }
+  duplicateOrFind(id: string, newId: string) { return this.writing(() => this.notes.duplicateOrFind(id, newId)); }
+  update(id: string, patch: Parameters<NotesStore['update']>[1]) { return this.writing(() => this.notes.update(id, patch)); }
+  appendToBody(id: string, markdown: string) { return this.writing(() => this.notes.appendToBody(id, markdown)); }
+  remove(id: string) { return this.writing(() => this.notes.remove(id)); }
+  restore(id: string) { return this.writing(() => this.notes.restore(id)); }
+  purgeOne(id: string) { return this.writing(() => this.notes.purgeOne(id)); }
+  removeMany(ids: string[]) { return this.writing(() => this.notes.removeMany(ids)); }
+  restoreMany(ids: string[]) { return this.writing(() => this.notes.restoreMany(ids)); }
+  purgeMany(ids: string[]) { return this.writing(() => this.notes.purgeMany(ids)); }
+  updateMany(ids: string[], patch: Parameters<NotesStore['updateMany']>[1]) { return this.writing(() => this.notes.updateMany(ids, patch)); }
+  importNote(input: Parameters<NotesStore['importNote']>[0]) { return this.writing(() => this.notes.importNote(input)); }
+  setBody(id: string, body: string) { return this.writing(() => this.notes.setBody(id, body)); }
   search(rawQuery: string, limit: number, filters: SearchFilters = {}, scopeDrivenSearchMax?: number) {
     this.ready();
     return this.notes.search(rawQuery, limit, filters, scopeDrivenSearchMax);
   }
-  purge(scope: 'trashed' | 'all', limit?: number) { this.ready(); return this.notes.purge(scope, limit); }
+  purge(scope: 'trashed' | 'all', limit?: number) { return this.writing(() => this.notes.purge(scope, limit)); }
   listTags() { this.ready(); return this.notes.listTags(); }
   sampleTitles(exclude: string, perGroup: number, tagLimit: number) { this.ready(); return this.notes.sampleTitles(exclude, perGroup, tagLimit); }
-  renameTag(id: string, name: string, opts?: { merge?: boolean | undefined }) { this.ready(); return this.notes.renameTag(id, name, opts); }
-  deleteTag(id: string) { this.ready(); return this.notes.deleteTag(id); }
+  renameTag(id: string, name: string, opts?: { merge?: boolean | undefined }) { return this.writing(() => this.notes.renameTag(id, name, opts)); }
+  deleteTag(id: string) { return this.writing(() => this.notes.deleteTag(id)); }
   countUnfiledNotes() { this.ready(); return this.notes.countUnfiledNotes(); }
   listNotebooks() { this.ready(); return this.notes.listNotebooks(); }
-  createNotebook(name: string) { this.ready(); return this.notes.createNotebook(name); }
-  updateNotebook(id: string, patch: Parameters<NotesStore['updateNotebook']>[1]) { this.ready(); return this.notes.updateNotebook(id, patch); }
-  deleteNotebook(id: string, opts?: { trashNotes?: boolean | undefined }) { this.ready(); return this.notes.deleteNotebook(id, opts); }
+  createNotebook(name: string) { return this.writing(() => this.notes.createNotebook(name)); }
+  updateNotebook(id: string, patch: Parameters<NotesStore['updateNotebook']>[1]) { return this.writing(() => this.notes.updateNotebook(id, patch)); }
+  deleteNotebook(id: string, opts?: { trashNotes?: boolean | undefined }) { return this.writing(() => this.notes.deleteNotebook(id, opts)); }
   listFields(notebookId: string, opts?: { counts?: boolean | undefined }) { this.ready(); return this.notes.listFields(notebookId, opts); }
   fieldById(id: string) { this.ready(); return this.notes.fieldById(id); }
   listAllFields() { this.ready(); return this.notes.listAllFields(); }
   createField(notebookId: string, input: { name: string; type: FieldType; options: string[]; scale?: FieldScale | null | undefined; currency?: string | null | undefined }) {
-    this.ready();
-    return this.notes.createField(notebookId, input);
+    return this.writing(() => this.notes.createField(notebookId, input));
   }
   updateField(notebookId: string, fieldId: string, patch: Parameters<NotesStore['updateField']>[2]) {
-    this.ready();
-    return this.notes.updateField(notebookId, fieldId, patch);
+    return this.writing(() => this.notes.updateField(notebookId, fieldId, patch));
   }
   previewConversion(notebookId: string, fieldId: string, to: FieldType, toScale?: FieldScale | null | undefined) {
     this.ready();
     return this.notes.previewConversion(notebookId, fieldId, to, toScale);
   }
-  reorderFields(notebookId: string, ids: string[]) { this.ready(); return this.notes.reorderFields(notebookId, ids); }
-  deleteField(notebookId: string, fieldId: string) { this.ready(); return this.notes.deleteField(notebookId, fieldId); }
+  reorderFields(notebookId: string, ids: string[]) { return this.writing(() => this.notes.reorderFields(notebookId, ids)); }
+  deleteField(notebookId: string, fieldId: string) { return this.writing(() => this.notes.deleteField(notebookId, fieldId)); }
   countOptionUsage(notebookId: string, fieldId: string, option: string) { this.ready(); return this.notes.countOptionUsage(notebookId, fieldId, option); }
   removeFieldOption(notebookId: string, fieldId: string, option: string, clear: boolean) {
-    this.ready();
-    return this.notes.removeFieldOption(notebookId, fieldId, option, clear);
+    return this.writing(() => this.notes.removeFieldOption(notebookId, fieldId, option, clear));
   }
-  importNotebook(definition: NotebookDefinition) { this.ready(); return this.notes.importNotebook(definition); }
+  importNotebook(definition: NotebookDefinition) { return this.writing(() => this.notes.importNotebook(definition)); }
 
   // --- Attachments: the repository, one for one -----------------------------------------
   //
@@ -515,12 +561,11 @@ export class UserStore extends DurableObject<StoreEnv> {
   listAttachments(noteId: string) { this.ready(); return this.attachments.listForNote(noteId); }
   ownsNote(noteId: string) { this.ready(); return this.attachments.noteIsLive(noteId); }
   availableFilename(noteId: string, desired: string) { this.ready(); return this.attachments.availableFilename(noteId, desired); }
-  recordAttachment(input: Parameters<AttachmentsStore['record']>[0]) { this.ready(); return this.attachments.record(input); }
-  removeAttachment(noteId: string, filename: string) { this.ready(); return this.attachments.remove(noteId, filename); }
-  recordText(input: Parameters<AttachmentsStore['recordText']>[0]) { this.ready(); return this.attachments.recordText(input); }
+  recordAttachment(input: Parameters<AttachmentsStore['record']>[0], opts?: Parameters<AttachmentsStore['record']>[1]) { return this.writing(() => this.attachments.record(input, opts)); }
+  removeAttachment(noteId: string, filename: string) { return this.writing(() => this.attachments.remove(noteId, filename)); }
+  recordText(input: Parameters<AttachmentsStore['recordText']>[0]) { return this.writing(() => this.attachments.recordText(input)); }
   copyText(fromAttachmentId: string, to: { attachmentId: string; noteId: string; filename: string }) {
-    this.ready();
-    return this.attachments.copyText(fromAttachmentId, to);
+    return this.writing(() => this.attachments.copyText(fromAttachmentId, to));
   }
   needingText(limit: number, noteId?: string) { this.ready(); return this.attachments.needingText(limit, noteId); }
   needingVision(limit: number, noteId?: string) { this.ready(); return this.attachments.needingVision(limit, noteId); }
@@ -691,6 +736,188 @@ export class UserStore extends DurableObject<StoreEnv> {
         forVision: this.attachments.needingVision(filesPerNote, noteId),
       };
     });
+  }
+
+  // --- Push ------------------------------------------------------------------------------
+
+  /**
+   * `GET /changes/socket`: the Worker checks the session and forwards the upgrade here
+   * with `stub.fetch`, the one way a socket reaches an object (a WebSocket cannot cross
+   * RPC; measured 2026-10-02). Accepted through the hibernation API, so a device that is
+   * connected and idle costs the object nothing: it is evicted between events, the
+   * socket stays open at the edge, and `getWebSockets()` on the next wake still lists it.
+   * Pings are answered at the edge too (`setWebSocketAutoResponse`, set once in the
+   * constructor), without a wake.
+   *
+   * The only thing ever sent is `{"seq": N}` after a write, from `announce`. Nothing is
+   * read: the handler below ignores every message, so a client cannot ask the object
+   * for anything over the socket — the feed is a GET, session-checked in the Worker. A
+   * leaked socket therefore leaks that something changed, and nothing else.
+   *
+   * This is the one `fetch(` in `src/store/`: a handler, not a call. guards.test.ts
+   * allows exactly this declaration and no other.
+   */
+  override async fetch(request: Request): Promise<Response> {
+    if (request.headers.get('Upgrade')?.toLowerCase() !== 'websocket') {
+      return new Response('Expected a WebSocket upgrade', { status: 426 });
+    }
+    const pair = new WebSocketPair();
+    this.ctx.acceptWebSocket(pair[1]);
+    return new Response(null, { status: 101, webSocket: pair[0] });
+  }
+
+  /** Incoming messages are not a protocol; see `fetch`. */
+  override async webSocketMessage(): Promise<void> {}
+
+  override async webSocketClose(ws: WebSocket, code: number, reason: string): Promise<void> {
+    try {
+      ws.close(code, reason);
+    } catch {
+      // Already closed from the other side.
+    }
+  }
+
+  override async webSocketError(ws: WebSocket): Promise<void> {
+    try {
+      ws.close(1011, 'error');
+    } catch {
+      // Already closed.
+    }
+  }
+
+  // --- The change feed ------------------------------------------------------------------
+
+  /**
+   * `GET /changes`: everything that changed after `since`, whole, in one call.
+   *
+   * The rows after the cursor are read off the primary key — only what the page returns
+   * — then collapsed to the last word per entity and loaded whole: notes with their
+   * tags, values and files, notebooks with their definitions, tags, files. Cut short
+   * when the bodies pass `FEED_PAGE_BYTES`, with `next` at the last row kept, so a page
+   * never nears the RPC ceiling; a page of a hundred changed notes reads about 860 rows
+   * (measured 2026-10-02, bounded in the rows-read test).
+   *
+   * `reset` rather than a partial answer for a cursor the feed cannot serve: one from
+   * another epoch than the store's, which a point-in-time restore makes of every cursor
+   * (checked here when the client sends its epoch, so the rarest path does not depend on
+   * every client comparing); one past the counter, the same restore seen by a client
+   * that sent no epoch; or one before the oldest row kept, which pruning makes of a
+   * device away too long.
+   *
+   * The byte cut is decided before a body is read. Sizes are one small row per candidate
+   * (`bodyBytes`), so a page of hundreds of large notes costs the object a few hundred
+   * integers, never hundreds of bodies at once.
+   */
+  changesSince(since: number, limit: number, clientEpoch?: string): FeedPage | FeedReset {
+    this.ready();
+    return this.sql.tx(() => {
+      const seq = this.feed.seq();
+      const epoch = this.feed.epoch();
+      if (clientEpoch !== undefined && clientEpoch !== epoch) return { reset: true, seq, epoch };
+      if (since > seq) return { reset: true, seq, epoch };
+      const oldest = this.sql.first<{ seq: number }>(`SELECT seq FROM changes ORDER BY seq LIMIT 1`);
+      if (oldest && since < oldest.seq - 1) return { reset: true, seq, epoch };
+
+      const rows = this.sql.exec<FeedRow>(
+        `SELECT seq, entity, id, deleted FROM changes WHERE seq > ?1 ORDER BY seq LIMIT ?2`,
+        since,
+        limit,
+      );
+      const full = rows.length === limit;
+
+      // The cut decides which rows stay, and it is made on the bodies' sizes alone —
+      // one small row per candidate — before any body is loaded. Loading every
+      // candidate whole and cutting afterwards would have held up to five hundred
+      // bodies of up to 1.8 MB each in the object at once, past its memory, on a page
+      // that one large import is enough to produce; and a page that fails never
+      // advances the cursor, so the account's feed would stay stuck on it.
+      const wanted = lastWordPerEntity(rows);
+      const sizes = this.notes.bodyBytes(wanted.filter((c) => c.entity === 'note' && !c.deleted).map((c) => c.id));
+      const cut = cutByBytes(rows, (id) => sizes.get(id) ?? 0);
+      const kept = rows.slice(0, cut);
+      const changes = lastWordPerEntity(kept);
+
+      const ids = (entity: FeedRow['entity'], deleted: boolean) =>
+        changes.filter((c) => c.entity === entity && !!c.deleted === deleted).map((c) => c.id);
+      const keptNoteIds = ids('note', false);
+      const notes = new Map(this.notes.wholeNotes(keptNoteIds).map((n) => [n.id, n]));
+      const files = this.attachments.filesForNotes(keptNoteIds);
+      const feedNotes: FeedNote[] = keptNoteIds.flatMap((id) => {
+        const note = notes.get(id);
+        // Named by a row but not a note any more: purged by a later write than this page
+        // reaches, whose tombstone the next page carries.
+        return note ? [{ ...note, files: files.get(id) ?? [] }] : [];
+      });
+
+      return {
+        reset: false,
+        seq,
+        epoch,
+        next: kept.length > 0 ? kept[kept.length - 1]!.seq : since,
+        more: cut < rows.length || full,
+        notes: feedNotes,
+        notebooks: this.notes.notebooksWhole(ids('notebook', false)),
+        tags: this.notes.tagsWhole(ids('tag', false)),
+        attachments: this.attachments.attachmentsWhole(ids('attachment', false)),
+        tombstones: changes.filter((c) => c.deleted).map((c) => ({ entity: c.entity, id: c.id })),
+      };
+    });
+  }
+
+  /**
+   * `GET /changes/snapshot`: a page of the whole library by note id, for a client with
+   * no copy yet; see `SnapshotPage` for the contract. The first page carries the
+   * notebooks, the tags and the total as well, and the `seq` every page reports is the
+   * counter at the time, which the client stores before applying the first page.
+   */
+  snapshotPage(cursor: string | null, limit: number): SnapshotPage {
+    this.ready();
+    return this.sql.tx(() => {
+      const seq = this.feed.seq();
+      const epoch = this.feed.epoch();
+      const ids = this.notes.idsAfter(cursor, limit);
+      // Sizes first, bodies after the cut, as `changesSince` does and for the same reason.
+      const sizes = this.notes.bodyBytes(ids);
+      const rows: FeedRow[] = ids.map((id, i) => ({ seq: i, entity: 'note', id, deleted: 0 }));
+      const cut = cutByBytes(rows, (id) => sizes.get(id) ?? 0, FEED_PAGE_BYTES);
+      const kept = ids.slice(0, cut);
+      const notes = new Map(this.notes.wholeNotes(kept).map((n) => [n.id, n]));
+      const files = this.attachments.filesForNotes(kept);
+      const page: SnapshotPage = {
+        seq,
+        epoch,
+        notes: kept.flatMap((id) => {
+          const note = notes.get(id);
+          return note ? [{ ...note, files: files.get(id) ?? [] }] : [];
+        }),
+        next: cut < ids.length || ids.length === limit ? (kept[kept.length - 1] ?? null) : null,
+      };
+      if (cursor === null) {
+        page.notebooks = this.notes.notebooksWhole(null);
+        page.tags = this.notes.tagsWhole(null);
+        page.total = this.notes.totalNotes();
+      }
+      return page;
+    });
+  }
+
+  /**
+   * Names a new history, after a point-in-time restore. The restore winds `_meta.seq`
+   * back with everything else, and a client whose cursor sits in the rewound range would
+   * read what is written again on top of it as if it had seen it. The restore route
+   * calls this once the store is back; every client then sees an epoch it does not hold
+   * and starts over. The one write on the object the feed does not record, since it is
+   * the feed starting again — so the sockets are told by hand: most dropped on the
+   * restore's restart, but one that reconnected first, and every one after the
+   * hand-run `POST /admin/store/feed-epoch`, would otherwise keep the old history until
+   * its next focus.
+   */
+  feedRestored(): { epoch: string } {
+    this.ready();
+    const epoch = crypto.randomUUID().replace(/-/g, '');
+    this.sql.exec(`INSERT INTO _meta (key, value) VALUES (?1, ?2) ON CONFLICT(key) DO UPDATE SET value = excluded.value`, META.epoch, epoch);
+    this.tell(this.feed.seq());
+    return { epoch };
   }
 }
 

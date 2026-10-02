@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import { zValidator } from '@hono/zod-validator';
 import {
   createNoteSchema,
+  duplicateNoteSchema,
   InvalidFieldValue,
   listNotesQuerySchema,
   noteBatchSchema,
@@ -84,11 +85,15 @@ export const notes = new Hono<AppEnv>()
     });
   })
 
+  /**
+   * 201 with the note, or 200 with the note that already holds the id the client chose
+   * — a replay of a request whose answer was lost, which must not make a second note.
+   */
   .post('/notes', zValidator('json', createNoteSchema), async (c) => {
-    const input = c.req.valid('json');
+    const { id, ...input } = c.req.valid('json');
     try {
-      const note = await c.get('notes').create({ id: crypto.randomUUID(), ...input });
-      return c.json(note, 201);
+      const { note, existing } = await c.get('notes').createOrFind({ id: id ?? crypto.randomUUID(), ...input });
+      return c.json(note, existing ? 200 : 201);
     } catch (err) {
       if (err instanceof InvalidFieldValue) return c.json({ error: fieldError(err) }, 400);
       throw err;
@@ -147,18 +152,27 @@ export const notes = new Hono<AppEnv>()
     const id = c.req.param('id');
     const notes = c.get('notes');
     const attachments = c.get('attachments');
-    const copy = await notes.duplicate(id, crypto.randomUUID());
+    // The body is optional — the copy's id, chosen by the client for the reason
+    // `createNoteSchema.id` gives — so it is read by hand rather than required.
+    const body = duplicateNoteSchema.safeParse(await c.req.json().catch(() => ({})));
+    if (!body.success) return c.json({ error: 'The copy\'s id must be a UUID' }, 400);
+    const copy = await notes.duplicateOrFind(id, body.data.id ?? crypto.randomUUID());
     if (!copy) return c.json({ error: 'Not found' }, 404);
+    const { note, existing } = copy;
 
+    // On a replay, copy only what the first attempt did not reach. A lost answer is often
+    // a Worker that died partway through the copy, after the note itself was committed,
+    // and a replay that returned the note as it stood would leave it short of files for
+    // good. Comparing by filename: a copy keeps its source's names. `skipExisting` is
+    // for the replay that arrives while the first request is still copying: both see
+    // the same file missing, and the store lets one of them record it.
     const files = await attachments.listForNote(id);
-    if (files.length > 0) {
-      await copyAttachments(
-        c.env.BLOBS,
-        { attachments, notes },
-        { from: id, to: copy.id, filenames: files.map((f) => f.filename) },
-      );
+    const have = existing ? new Set((await attachments.listForNote(note.id)).map((f) => f.filename)) : new Set<string>();
+    const missing = files.map((f) => f.filename).filter((f) => !have.has(f));
+    if (missing.length > 0) {
+      await copyAttachments(c.env.BLOBS, { attachments, notes }, { from: id, to: note.id, filenames: missing, skipExisting: true });
     }
-    return c.json(copy, 201);
+    return c.json(note, existing ? 200 : 201);
   })
 
   /**

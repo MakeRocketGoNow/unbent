@@ -77,6 +77,10 @@ describe('classify', () => {
     '/api/health',
     '/api/auth/get-session',
     '/api/admin/store/stats',
+    // The change feed is never answered from a cache: a cached page would replay stale
+    // rows over a client's cursor, and a snapshot is the one read that must be current.
+    '/api/changes?since=120&limit=200',
+    '/api/changes/snapshot?cursor=8f0c2d1e&limit=200',
   ])('passes %s straight through', (path) => {
     expect(classify(facts(path))).toBeUndefined();
   });

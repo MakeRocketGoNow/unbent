@@ -203,6 +203,19 @@ export const admin = new Hono<AppEnv>()
   })
 
   /**
+   * Gives one store's change feed a new epoch, so every device holding a cursor into it
+   * starts over from a snapshot. The restore route does this itself once a restore is
+   * applied; this is the hand-run version for when that step failed (the answer says
+   * so), or for any other reason to make every device of an account resync.
+   */
+  .post('/admin/store/feed-epoch', requireAuth, async (c) => {
+    const target = await operatorTarget(c);
+    if (target instanceof Response) return target;
+    console.log(`[store] operator=${c.get('user')?.email} feed-epoch user=${target}`);
+    return c.json({ user: target, ...(await storeFor(c.env, target).feedRestored()) });
+  })
+
+  /**
    * One SELECT against one store, rolled back whatever it does; see `readOnlySql`. For
    * `EXPLAIN QUERY PLAN` on a slow account as much as for looking at rows.
    */
@@ -347,6 +360,16 @@ export const admin = new Hono<AppEnv>()
         undo = abort.undo;
       }
 
+      // The restore wound the feed's counter back with everything else; a new epoch
+      // tells every device holding a cursor from the old history to start over, which
+      // is the only safe thing a device under a rewound counter can do. Named before the
+      // stats so the answer below can say whether it happened.
+      let feedEpoch: string | null = null;
+      try {
+        feedEpoch = (await storeFor(c.env, target).feedRestored()).epoch;
+      } catch (err) {
+        console.error(`[store] feedRestored after restore failed for user=${target}:`, err);
+      }
       let stats: StoreStats | null = null;
       try {
         stats = await storeFor(c.env, target).stats();
@@ -357,6 +380,7 @@ export const admin = new Hono<AppEnv>()
         restored: true,
         user: target,
         undo,
+        feedEpoch,
         stats,
         note: [
           'The store restarted to apply the restore, so the request inside it failed by design.',
@@ -364,6 +388,7 @@ export const admin = new Hono<AppEnv>()
             ? 'To undo, restore to the `undo` bookmark.'
             : 'The undo bookmark did not survive the restart; the Worker log has it on the "[store] restore scheduled" line.',
           stats ? null : 'Reading the restored store failed; call GET /api/admin/store/stats again.',
+          feedEpoch ? null : 'The feed was not given a new epoch; devices with a cursor may miss what is written next. Call POST /api/admin/store/feed-epoch for this account.',
         ]
           .filter(Boolean)
           .join(' '),

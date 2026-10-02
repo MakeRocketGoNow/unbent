@@ -767,7 +767,17 @@ describe('rows read on an archive-sized store', () => {
           if (i % 2 === 0) sql.exec(`INSERT INTO note_tags VALUES (?1, 'common')`, `n${String(i).padStart(5, '0')}`);
           if (i % 1000 === 0) sql.exec(`INSERT INTO note_tags VALUES (?1, 'rare')`, `n${String(i).padStart(5, '0')}`);
           if (i % 5 === 0) sql.exec(`INSERT INTO note_fields (note_id, field_id, value_text, value_num) VALUES (?1, 'amount', ?2, ?2)`, `n${String(i).padStart(5, '0')}`, i);
+          if (i % 3 === 0) sql.exec(`INSERT INTO attachments (id, note_id, filename, content_type, size, r2_key, created_at) VALUES (?1, ?2, 'scan.pdf', 'application/pdf', 10, ?1, 1)`, `att-n${String(i).padStart(5, '0')}`, `n${String(i).padStart(5, '0')}`);
         }
+        // The feed as an import leaves it — one row per note — and then a thousand edits
+        // over the first hundred notes, so a page can be dense with repeats.
+        // Dated now: rows past the age window would be pruned by the first write below,
+        // and the trash measurements would then be paying for the prune.
+        const now = Date.now();
+        for (let i = 0; i < 4000; i++) {
+          sql.exec(`INSERT INTO changes (seq, entity, id, deleted, at) VALUES (?1, 'note', ?2, 0, ?3)`, i + 1, `n${String(i < 3000 ? i : i % 100).padStart(5, '0')}`, now);
+        }
+        sql.exec(`UPDATE _meta SET value = '4000' WHERE key = 'seq'`);
       });
     });
     expect(await stub.recountNotes()).toBe(0);
@@ -808,6 +818,15 @@ describe('rows read on an archive-sized store', () => {
       // The trash opening a note: the same read without `deleted_at`, which must stay a
       // lookup by id rather than a walk of the trash.
       await measure('get trashed', () => stub.get('n00010', { includeTrashed: true })),
+      // The feed: a page of a hundred changed notes loaded whole, from the start and from
+      // the dense tail; a hydration page of the same size; and the two checks a cursor
+      // the feed cannot serve costs.
+      await measure('feed page', () => stub.changesSince(0, 100)),
+      await measure('feed page dense', () => stub.changesSince(3000, 100)),
+      await measure('feed nothing new', async () => stub.changesSince((await stub.changesSince(99_999_999, 1)).seq, 100)),
+      await measure('feed reset', () => stub.changesSince(99_999, 100)),
+      await measure('snapshot page', () => stub.snapshotPage(null, 100)),
+      await measure('snapshot page deep', () => stub.snapshotPage('n02000', 100)),
     ];
     console.log(results.map((r) => `${r.label}: ${r.rowsRead}`).join('\n'));
     const bounds: Record<string, number> = {
@@ -826,12 +845,47 @@ describe('rows read on an archive-sized store', () => {
       'search one letter': 2500,
       'search in a small tag': 80,
       'search rows in a notebook': 1500,
-      'trash one': 12,
-      'trash many': 40,
+      // A write reads its feed row back in (the insert counts one), the counter, and the
+      // oldest row for the age prune: three more for one note, five for three (2026-10-02).
+      'trash one': 20,
+      'trash many': 50,
       'get trashed': 10,
+      // About thirteen rows per note: its size, read ahead of the cut, then the note
+      // whole — the row, its tags by id and name, values and files, each probed by id —
+      // plus the hundred feed rows (measured 2026-10-02 at 1,336).
+      'feed page': 1500,
+      'feed page dense': 1500,
+      'feed nothing new': 8,
+      'feed reset': 4,
+      'snapshot page': 1500,
+      'snapshot page deep': 1500,
     };
     for (const r of results) {
       expect(r.rowsRead, r.label).toBeLessThanOrEqual(bounds[r.label]!);
     }
+  });
+});
+
+describe('notes: an id the client chose', () => {
+  it('answers a taken id with the note that holds it, trashed or not, and writes nothing', async () => {
+    const { stub } = freshStore('client-id');
+    const first = await stub.createOrFind(note({ id: 'client-chosen', title: 'Mine' }));
+    expect(first).toEqual({ note: expect.objectContaining({ id: 'client-chosen', title: 'Mine' }), existing: false });
+    expect(first.note).not.toHaveProperty('existing');
+    const again = await stub.createOrFind(note({ id: 'client-chosen', title: 'Replayed' }));
+    expect(again).toEqual({ note: expect.objectContaining({ id: 'client-chosen', title: 'Mine' }), existing: true });
+    expect(await stub.count()).toBe(1);
+    await stub.remove('client-chosen');
+    const trashed = await stub.createOrFind(note({ id: 'client-chosen', title: 'Replayed again' }));
+    expect(trashed).toEqual({ note: expect.objectContaining({ id: 'client-chosen', title: 'Mine', deletedAt: expect.any(Number) }), existing: true });
+    // The plain create keeps the insert's own refusal of a taken id.
+    await expect(stub.create(note({ id: 'client-chosen', title: 'Again' }))).rejects.toThrow();
+    // A duplicate replayed with the copy's id finds the copy.
+    const source = await stub.create(note({ title: 'Source' }));
+    const copy = await stub.duplicateOrFind(source.id, 'copy-chosen');
+    expect(copy).toEqual({ note: expect.objectContaining({ id: 'copy-chosen', title: 'Source' }), existing: false });
+    expect(await stub.duplicateOrFind(source.id, 'copy-chosen')).toEqual({ note: expect.objectContaining({ id: 'copy-chosen' }), existing: true });
+    expect(await stub.duplicateOrFind('ghost', 'another')).toBeNull();
+    expect(await stub.count()).toBe(2);
   });
 });

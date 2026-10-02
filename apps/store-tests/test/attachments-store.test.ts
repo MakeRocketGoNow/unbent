@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { runInDurableObject } from 'cloudflare:test';
-import { freshStore } from './helpers.js';
+import { feedRows, freshStore } from './helpers.js';
 
 /** `AttachmentsStore` through the object, with the `has_text` and FTS triggers live. */
 describe('attachments', () => {
@@ -127,5 +127,19 @@ describe('attachments', () => {
     expect(second.keys).toEqual(['k2', 'k3']);
     const third = await stub.allBlobKeys(second.nextRowid!, 2);
     expect(third).toEqual({ keys: ['k4'], nextRowid: null });
+  });
+});
+
+describe('attachments: recording a name the note already holds', () => {
+  it('is refused by the index, or skipped with ifAbsent, and never recorded twice in the feed', async () => {
+    const { stub } = freshStore('att-absent');
+    const n = await stub.create({ id: 'n1', title: 'T', body: '', tags: [] });
+    const row = (id: string) => ({ id, noteId: n.id, filename: 'scan.pdf', contentType: 'application/pdf', size: 3, r2Key: `k/${id}` });
+    expect(await stub.recordAttachment(row('a1'))).toEqual({ filename: 'scan.pdf', contentType: 'application/pdf', size: 3 });
+    await expect(stub.recordAttachment(row('a2'))).rejects.toThrow();
+    expect(await stub.recordAttachment(row('a3'), { ifAbsent: true })).toBeNull();
+    expect((await stub.listAttachments(n.id)).map((f) => f.filename)).toEqual(['scan.pdf']);
+    const rows = await feedRows(stub);
+    expect(rows.filter((r) => r.entity === 'attachment')).toEqual([{ entity: 'attachment', id: 'a1' }]);
   });
 });

@@ -17,6 +17,9 @@ import {
   type FieldScale,
   type FieldType,
   type FieldValue,
+  type FeedNote,
+  type FeedNotebook,
+  type FeedTag,
   type Note,
   type NoteFieldsPatch,
   type NoteSort,
@@ -27,6 +30,7 @@ import {
   type StaleNote,
   DEFAULT_NOTE_SORT,
 } from '@unbent/shared';
+import type { Change, Feed } from './feed.js';
 import type { Bind, Sql } from './sql.js';
 import {
   ATTACHMENTS_SUBQUERY,
@@ -142,8 +146,14 @@ type Statement = [sql: string, binds: Bind[]];
  * here, so a page of fifty notes is fifty excerpts on the wire. `listFull` is the export's
  * and returns bodies on purpose; its caller pages by bytes.
  */
+/** A note as `wholeNotes` reads it: a `FeedNote` without its files, which the object adds. */
+export type WholeNote = Omit<FeedNote, 'files'>;
+
 export class NotesStore {
-  constructor(private readonly sql: Sql) {}
+  constructor(
+    private readonly sql: Sql,
+    private readonly feed: Feed,
+  ) {}
 
   /**
    * A page of notes, ordered by the requested sort. Keyset pagination keeps deep pages
@@ -174,6 +184,85 @@ export class NotesStore {
       for (const r of this.summaryRows(page, run, 'n.id')) byId.set(r.id, toSummary(r));
     }
     return ids.flatMap((id) => byId.get(id) ?? []);
+  }
+
+  /**
+   * Whole notes by id, trashed ones included, in no particular order: what the change feed
+   * and the snapshot carry. The body, the tags, the values and the notebook's name, as
+   * `get` returns them, read in runs under the bind cap with the same correlated
+   * subqueries a list page uses — about eight rows per note with its tags, values and
+   * files (measured 2026-10-02). An id that is not a note is left out; a trashed one
+   * carries `deletedAt`, since the trash is part of the copy a client keeps.
+   */
+  wholeNotes(ids: string[]): WholeNote[] {
+    const notes: WholeNote[] = [];
+    for (const run of runs([...new Set(ids)])) {
+      const page = `SELECT n.id, n.title, n.body, n.created_at, n.updated_at, n.deleted_at, n.notebook_id,
+                           NULL AS sort_key
+                      FROM notes n
+                     WHERE n.id IN (${placeholders(1, run.length)})`;
+      // Tags by id, for the feed's `tagIds`: the join rows alone, no names (see
+      // `FeedNote` for why none are carried); the page query is asked to leave its name
+      // subquery out too.
+      const tagsOf = new Map<string, string[]>();
+      for (const t of this.sql.exec<{ note_id: string; tag_id: string }>(
+        `SELECT note_id, tag_id FROM note_tags WHERE note_id IN (${placeholders(1, run.length)}) ORDER BY note_id, tag_id`,
+        ...run,
+      )) {
+        tagsOf.get(t.note_id)?.push(t.tag_id) ?? tagsOf.set(t.note_id, [t.tag_id]);
+      }
+      for (const r of this.summaryRows(page, run, 'n.id', { tags: false })) {
+        const fields = decodeFieldsJson(r.fields, r.notebook_id);
+        notes.push({
+          id: r.id,
+          title: r.title,
+          body: r.body,
+          createdAt: r.created_at,
+          updatedAt: r.updated_at,
+          tagIds: tagsOf.get(r.id) ?? [],
+          notebookId: r.notebook_id,
+          ...(fields.length > 0 ? { fields } : {}),
+          ...(r.deleted_at !== null ? { deletedAt: r.deleted_at } : {}),
+        });
+      }
+    }
+    return notes;
+  }
+
+  /**
+   * How many bytes each note's body holds, by id, trashed included: what the feed cuts a
+   * page on before it loads anything. Bytes, not characters: `octet_length` counts the
+   * UTF-8 the body is stored as, where `length` would count characters and undercount
+   * non-Latin text by up to three times against the RPC ceiling the cut protects.
+   */
+  bodyBytes(ids: string[]): Map<string, number> {
+    const out = new Map<string, number>();
+    for (const run of runs([...new Set(ids)])) {
+      for (const r of this.sql.exec<{ id: string; bytes: number }>(
+        `SELECT id, octet_length(body) AS bytes FROM notes WHERE id IN (${placeholders(1, run.length)})`,
+        ...run,
+      )) {
+        out.set(r.id, r.bytes);
+      }
+    }
+    return out;
+  }
+
+  /**
+   * The next `limit` note ids after `cursor` in id order, trashed included: the
+   * snapshot's walk. Ids are UUIDs, so the order means nothing and costs nothing — the
+   * primary key is the index, and a page deep into the walk seeks straight to it.
+   */
+  idsAfter(cursor: string | null, limit: number): string[] {
+    return this.sql
+      .exec<{ id: string }>(`SELECT id FROM notes WHERE id > ?1 ORDER BY id LIMIT ?2`, cursor ?? '', limit)
+      .map((r) => r.id);
+  }
+
+  /** Every note the snapshot's walk will visit: live and trashed, from the stored counts. */
+  totalNotes(): number {
+    const t = this.totals();
+    return t.live + t.trashed;
   }
 
   /**
@@ -339,14 +428,22 @@ export class NotesStore {
     );
   }
 
-  /** The rows `page` chose, with their notebook, tags, fields and files; see `pageRows`. */
-  private summaryRows(page: string, binds: Bind[], orderBy: string): SummaryRow[] {
+  /**
+   * The rows `page` chose, with their notebook, tags, fields and files; see `pageRows`.
+   * `tags: false` leaves the tag names out, for a caller that reads the join rows itself
+   * (`wholeNotes` wants ids too) and would otherwise pay for them twice.
+   */
+  private summaryRows(page: string, binds: Bind[], orderBy: string, opts: { tags?: boolean } = {}): SummaryRow[] {
+    const tags =
+      opts.tags === false
+        ? 'NULL AS tags'
+        : `(SELECT group_concat(t.name, char(31)) FROM note_tags nt
+                 JOIN tags t ON t.id = nt.tag_id
+                WHERE nt.note_id = n.id) AS tags`;
     return this.sql.exec<SummaryRow>(
       `SELECT n.id, n.title, n.body, n.created_at, n.updated_at, n.deleted_at,
               nb.name AS notebook, n.notebook_id,
-              (SELECT group_concat(t.name, char(31)) FROM note_tags nt
-                 JOIN tags t ON t.id = nt.tag_id
-                WHERE nt.note_id = n.id) AS tags,
+              ${tags},
               ${FIELDS_SUBQUERY},
               ${ATTACHMENTS_SUBQUERY}
          FROM (${page}) n
@@ -547,6 +644,8 @@ export class NotesStore {
    * One transaction for the note, its tags and its values: a bad field value throws
    * before anything is written (it is validated first, as it always was), and a failure
    * after the insert now takes the insert with it rather than leaving a half-made note.
+   * An id already held is the insert's own error; `createOrFind` is the way in for a
+   * caller whose id may be a replay's.
    */
   create(input: {
     id: string;
@@ -572,8 +671,9 @@ export class NotesStore {
       );
 
       if (input.tags.length > 0) this.setTags(input.id, input.tags);
+      if (fieldWrites.length > 0) this.run(fieldWrites);
+      this.feed.record([{ entity: 'note', id: input.id }]);
       if (fieldWrites.length > 0) {
-        this.run(fieldWrites);
         // Read back rather than hand-built: the values carry their definitions' names and
         // types, which only the database knows.
         return this.get(input.id)!;
@@ -618,6 +718,30 @@ export class NotesStore {
         notebook: source.notebook,
         ...(Object.keys(fields).length > 0 ? { fields } : {}),
       });
+    });
+  }
+
+  /**
+   * `create` for an id the client chose, which may be a replay's. Ids come from the
+   * client now as well as the server — a note made offline has its address before the
+   * server hears of it — and a request replayed after a dropped answer must find its
+   * note rather than make a second one. An id already held answers with the note that
+   * holds it, trashed or not, as `existing`, and writes nothing; the routes answer 200
+   * for that and 201 for a note made here. The note itself stays a plain `Note`.
+   */
+  createOrFind(input: Parameters<NotesStore['create']>[0]): { note: Note; existing: boolean } {
+    return this.sql.tx(() => {
+      if (this.idTaken(input.id)) return { note: this.get(input.id, { includeTrashed: true })!, existing: true };
+      return { note: this.create(input), existing: false };
+    });
+  }
+
+  /** `duplicate` with the same replay rule as `createOrFind` for the copy's id. */
+  duplicateOrFind(id: string, newId: string): { note: Note; existing: boolean } | null {
+    return this.sql.tx(() => {
+      if (this.idTaken(newId)) return { note: this.get(newId, { includeTrashed: true })!, existing: true };
+      const note = this.duplicate(id, newId);
+      return note ? { note, existing: false } : null;
     });
   }
 
@@ -733,6 +857,7 @@ export class NotesStore {
         this.sql.exec(`UPDATE notes SET updated_at = ?1 WHERE id = ?2`, stamp, id);
       }
 
+      this.feed.record([{ entity: 'note', id }]);
       return this.get(id);
     });
   }
@@ -813,18 +938,21 @@ export class NotesStore {
    * simplest correct one.
    */
   appendToBody(id: string, markdown: string): boolean {
-    // The date goes past the old one, always, as `update` has it: see the stamp there.
-    const changed = this.sql.exec<{ id: string }>(
-      `UPDATE notes
-          SET body = CASE WHEN body = '' THEN ?1 ELSE body || char(10) || char(10) || ?1 END,
-              updated_at = MAX(?2, updated_at + 1)
-        WHERE id = ?3 AND deleted_at IS NULL
-        RETURNING id`,
-      markdown,
-      Date.now(),
-      id,
-    );
-    return changed.length > 0;
+    return this.sql.tx(() => {
+      // The date goes past the old one, always, as `update` has it: see the stamp there.
+      const changed = this.sql.exec<{ id: string }>(
+        `UPDATE notes
+            SET body = CASE WHEN body = '' THEN ?1 ELSE body || char(10) || char(10) || ?1 END,
+                updated_at = MAX(?2, updated_at + 1)
+          WHERE id = ?3 AND deleted_at IS NULL
+          RETURNING id`,
+        markdown,
+        Date.now(),
+        id,
+      );
+      this.feed.record(changed.map((r) => ({ entity: 'note', id: r.id })));
+      return changed.length > 0;
+    });
   }
 
   /*
@@ -836,12 +964,17 @@ export class NotesStore {
 
   /** Soft delete — trash, not destroy. Returns false when there is no such live note. */
   remove(id: string): boolean {
-    const changed = this.sql.exec<{ id: string }>(
-      `UPDATE notes SET deleted_at = ?1 WHERE id = ?2 AND deleted_at IS NULL RETURNING id`,
-      Date.now(),
-      id,
-    );
-    return changed.length > 0;
+    return this.sql.tx(() => {
+      const changed = this.sql.exec<{ id: string }>(
+        `UPDATE notes SET deleted_at = ?1 WHERE id = ?2 AND deleted_at IS NULL RETURNING id`,
+        Date.now(),
+        id,
+      );
+      // The trash is an update to the feed — the note is still there, with `deletedAt`
+      // — and only a purge is a tombstone.
+      this.feed.record(changed.map((r) => ({ entity: 'note', id: r.id })));
+      return changed.length > 0;
+    });
   }
 
   /**
@@ -852,11 +985,14 @@ export class NotesStore {
    * reorder the note to the top of the list as though it had just been written.
    */
   restore(id: string): boolean {
-    const changed = this.sql.exec<{ id: string }>(
-      `UPDATE notes SET deleted_at = NULL WHERE id = ?1 AND deleted_at IS NOT NULL RETURNING id`,
-      id,
-    );
-    return changed.length > 0;
+    return this.sql.tx(() => {
+      const changed = this.sql.exec<{ id: string }>(
+        `UPDATE notes SET deleted_at = NULL WHERE id = ?1 AND deleted_at IS NOT NULL RETURNING id`,
+        id,
+      );
+      this.feed.record(changed.map((r) => ({ entity: 'note', id: r.id })));
+      return changed.length > 0;
+    });
   }
 
   /**
@@ -884,6 +1020,7 @@ export class NotesStore {
       // This note may have held the last value a tombstoned definition was keeping alive.
       const deleted = gone.length > 0;
       if (deleted) this.sweepTombstonedFields();
+      this.feed.record(gone.map((r) => ({ entity: 'note', id: r.id, deleted: true })));
       return { deleted, keys: deleted ? keys : [] };
     });
   }
@@ -918,6 +1055,7 @@ export class NotesStore {
         );
         trashed.push(...rows.map((r) => r.id));
       }
+      this.feed.record(trashed.map((id) => ({ entity: 'note', id })));
       return trashed;
     });
   }
@@ -935,6 +1073,7 @@ export class NotesStore {
         );
         restored.push(...rows.map((r) => r.id));
       }
+      this.feed.record(restored.map((id) => ({ entity: 'note', id })));
       return restored;
     });
   }
@@ -973,6 +1112,7 @@ export class NotesStore {
         );
         deleted += gone.length;
         keys.push(...keysOfDeletedNotes(keyRows, gone.map((r) => r.id)));
+        this.feed.record(gone.map((r) => ({ entity: 'note', id: r.id, deleted: true })));
       }
 
       if (deleted > 0) this.sweepAfterPurge();
@@ -1061,9 +1201,7 @@ export class NotesStore {
       }
 
       // Tag rows before the joins that look them up.
-      for (const name of adding.keys()) {
-        this.sql.exec(`INSERT INTO tags (id, name) VALUES (?1, ?2) ON CONFLICT(name) DO NOTHING`, crypto.randomUUID(), name);
-      }
+      for (const name of adding.keys()) this.ensureTag(name);
       for (const [name, noteIds] of adding) {
         for (const run of runs(noteIds)) {
           this.sql.exec(
@@ -1097,6 +1235,7 @@ export class NotesStore {
           ...run,
         );
       }
+      this.feed.record([...changed].map((id) => ({ entity: 'note', id })));
 
       return { matched, changed: [...changed] };
     });
@@ -1160,21 +1299,29 @@ export class NotesStore {
          * preserved: only unfiled notes are re-attached.
          */
         let skippedFields: string[] = [];
+        // Recorded only when something about the note moved: a re-import of an unchanged
+        // archive is thousands of these, and a row for each would have every device read
+        // the whole account again for nothing.
+        let touched = false;
         if (input.notebook) {
           const notebookId = this.resolveNotebook(input.notebook);
-          this.sql.exec(
-            `UPDATE notes SET notebook_id = ?1 WHERE id = ?2 AND notebook_id IS NULL`,
+          const refiled = this.sql.exec<{ id: string }>(
+            `UPDATE notes SET notebook_id = ?1 WHERE id = ?2 AND notebook_id IS NULL RETURNING id`,
             notebookId,
             existing.id,
           );
+          touched = refiled.length > 0;
           // Same rule as the re-file above: restore values a deleted field took with it,
           // but never overwrite a value the person has since changed.
           if (notebookId && input.fields) {
-            skippedFields = this.applyImportedFields(existing.id, notebookId, input.fields, true);
+            const applied = this.applyImportedFields(existing.id, notebookId, input.fields, true);
+            skippedFields = applied.skipped;
+            touched ||= applied.changed;
           }
         } else if (input.fields) {
           skippedFields = Object.keys(input.fields);
         }
+        if (touched) this.feed.record([{ entity: 'note', id: existing.id }]);
         return { id: existing.id, created: false, skippedFields };
       }
 
@@ -1208,10 +1355,11 @@ export class NotesStore {
       let skippedFields: string[] = [];
       if (input.fields) {
         skippedFields = notebookId
-          ? this.applyImportedFields(id, notebookId, input.fields, false)
+          ? this.applyImportedFields(id, notebookId, input.fields, false).skipped
           : Object.keys(input.fields);
       }
 
+      this.feed.record([{ entity: 'note', id }]);
       return { id, created: true, skippedFields };
     });
   }
@@ -1236,7 +1384,10 @@ export class NotesStore {
 
   /** Replaces a note's body after its attachment links are known. */
   setBody(id: string, body: string): void {
-    this.sql.exec(`UPDATE notes SET body = ?1 WHERE id = ?2`, body, id);
+    this.sql.tx(() => {
+      const changed = this.sql.exec<{ id: string }>(`UPDATE notes SET body = ?1 WHERE id = ?2 RETURNING id`, body, id);
+      this.feed.record(changed.map((r) => ({ entity: 'note', id: r.id })));
+    });
   }
 
   /**
@@ -1486,6 +1637,8 @@ export class NotesStore {
         );
       }
 
+      this.feed.record(deletedIds.map((id) => ({ entity: 'note', id, deleted: true })));
+
       // Whether the scope is exhausted comes from what this page saw, not from the stored
       // counts. A short page means the query ran out of notes; a full one means there may be
       // more. The counts only supply the number the client shows, and they can drift —
@@ -1511,7 +1664,10 @@ export class NotesStore {
    * not know it was the last.
    */
   private sweepAfterPurge(): void {
-    this.sql.exec(`DELETE FROM tags WHERE id NOT IN (SELECT tag_id FROM note_tags)`);
+    const gone = this.sql.exec<{ id: string }>(`DELETE FROM tags WHERE id NOT IN (SELECT tag_id FROM note_tags) RETURNING id`);
+    this.feed.record(gone.map((r) => ({ entity: 'tag', id: r.id, deleted: true })));
+    // Tombstoned definitions are not in the feed: their notebook's tombstone already
+    // told every client to drop them, and nothing lists them after that.
     this.sweepTombstonedFields();
   }
 
@@ -1654,10 +1810,20 @@ export class NotesStore {
 
       if (!other) {
         this.sql.exec(`UPDATE tags SET name = ?1 WHERE id = ?2`, trimmed, id);
+        // One row: a feed note carries its tags by id too, and the client looks the new
+        // name up, as it does a notebook's. Naming every note under the tag instead was
+        // the first shape, and a tag on an imported archive renamed would have sent every
+        // device the archive again.
+        this.feed.record([{ entity: 'tag', id }]);
         return { id, name: trimmed, merged: false };
       }
 
       if (!opts?.merge) return 'conflict';
+
+      // A merge changes each note's tag ids — the old one goes, the other arrives — so
+      // the notes are named here; bounded by the tag's note count, which the merge walks
+      // anyway. Read before the join rows move.
+      const carrying = this.notesCarrying(id);
 
       // One transaction, so a note can never be left with neither tag. The join rows are
       // moved by hand before the row goes, so the count triggers see each link leave and
@@ -1670,6 +1836,7 @@ export class NotesStore {
       );
       this.sql.exec(`DELETE FROM note_tags WHERE tag_id = ?1`, id);
       this.sql.exec(`DELETE FROM tags WHERE id = ?1`, id);
+      this.feed.record([{ entity: 'tag', id, deleted: true }, { entity: 'tag', id: other.id }, ...carrying]);
       return { id: other.id, name: trimmed, merged: true };
     });
   }
@@ -1685,8 +1852,18 @@ export class NotesStore {
       if (!owned) return false;
       this.sql.exec(`DELETE FROM note_tags WHERE tag_id = ?1`, id);
       this.sql.exec(`DELETE FROM tags WHERE id = ?1`, id);
+      // The tombstone alone: a client drops the id from every note it holds, the way it
+      // would drop a notebook's. See `renameTag` for why not a row per note.
+      this.feed.record([{ entity: 'tag', id, deleted: true }]);
       return true;
     });
+  }
+
+  /** The feed rows for every note carrying a tag, trashed ones included: what a merge changes. */
+  private notesCarrying(tagId: string): Change[] {
+    return this.sql
+      .exec<{ note_id: string }>(`SELECT note_id FROM note_tags WHERE tag_id = ?1`, tagId)
+      .map((r) => ({ entity: 'note', id: r.note_id }));
   }
 
   // --- Notebooks ----------------------------------------------------------------------
@@ -1721,6 +1898,54 @@ export class NotesStore {
   }
 
   /**
+   * Notebooks by id with their live field definitions, for the feed. Every notebook when
+   * `ids` is null — the snapshot's first page — since a library has a handful. The
+   * definitions come in one query over the ids rather than one per notebook, in display
+   * order, and are dealt out after. No counts; see `FeedNotebook`.
+   */
+  notebooksWhole(ids: string[] | null): FeedNotebook[] {
+    const runsOf = ids === null ? [null] : runs([...new Set(ids)]);
+    const out: FeedNotebook[] = [];
+    for (const run of runsOf) {
+      const where = run ? `WHERE nb.id IN (${placeholders(1, run.length)})` : '';
+      const notebooks = this.sql.exec<Omit<FeedNotebook, 'fieldDefs'>>(
+        `SELECT nb.id, nb.name, nb.purpose, nb.emoji
+           FROM notebooks nb ${where}
+          ORDER BY nb.name COLLATE NOCASE`,
+        ...(run ?? []),
+      );
+      const byId = new Map(notebooks.map((nb) => [nb.id, { ...nb, fieldDefs: [] as FieldDef[] }]));
+      const fieldWhere = run ? `AND f.notebook_id IN (${placeholders(1, run.length)})` : '';
+      for (const row of this.sql.exec<FieldRow>(
+        `SELECT f.id, f.notebook_id, f.name, f.type, f.options, f.scale_max, f.scale_step, f.currency, f.position
+           FROM notebook_fields f
+          WHERE f.deleted_at IS NULL ${fieldWhere}
+          ORDER BY f.notebook_id, f.position`,
+        ...(run ?? []),
+      )) {
+        byId.get(row.notebook_id)?.fieldDefs.push(rowToField(row));
+      }
+      out.push(...byId.values());
+    }
+    return out;
+  }
+
+  /** Tags by id, or every tag when `ids` is null. No count; see `FeedTag`. */
+  tagsWhole(ids: string[] | null): FeedTag[] {
+    const runsOf = ids === null ? [null] : runs([...new Set(ids)]);
+    const out: FeedTag[] = [];
+    for (const run of runsOf) {
+      out.push(
+        ...this.sql.exec<FeedTag>(
+          `SELECT id, name FROM tags ${run ? `WHERE id IN (${placeholders(1, run.length)})` : ''} ORDER BY name`,
+          ...(run ?? []),
+        ),
+      );
+    }
+    return out;
+  }
+
+  /**
    * Maps a notebook name to its id, creating the notebook if it is new.
    *
    * Get-or-create rather than reject: filing a note into a notebook that does not exist yet
@@ -1733,12 +1958,14 @@ export class NotesStore {
     const trimmed = name?.trim();
     if (!trimmed) return null;
 
-    this.sql.exec(
-      `INSERT INTO notebooks (id, name, created_at) VALUES (?1, ?2, ?3) ON CONFLICT(name) DO NOTHING`,
+    const created = this.sql.exec<{ id: string }>(
+      `INSERT INTO notebooks (id, name, created_at) VALUES (?1, ?2, ?3) ON CONFLICT(name) DO NOTHING RETURNING id`,
       crypto.randomUUID(),
       trimmed,
       Date.now(),
     );
+    // A notebook that came into being here is as much a change as one made by name.
+    this.feed.record(created.map((r) => ({ entity: 'notebook', id: r.id })));
     const row = this.sql.first<{ id: string }>(`SELECT id FROM notebooks WHERE name = ?1 COLLATE NOCASE`, trimmed);
     return row?.id ?? null;
   }
@@ -1748,16 +1975,19 @@ export class NotesStore {
     const trimmed = name.trim();
     if (!trimmed) return null;
 
-    // RETURNING says whether the row went in: nothing back means the name already exists,
-    // case-insensitively, and the conflict target is the NOCASE unique (measured).
-    const inserted = this.sql.exec<{ id: string; name: string }>(
-      `INSERT INTO notebooks (id, name, created_at) VALUES (?1, ?2, ?3)
-       ON CONFLICT(name) DO NOTHING RETURNING id, name`,
-      crypto.randomUUID(),
-      trimmed,
-      Date.now(),
-    );
-    return inserted[0] ?? null;
+    return this.sql.tx(() => {
+      // RETURNING says whether the row went in: nothing back means the name already exists,
+      // case-insensitively, and the conflict target is the NOCASE unique (measured).
+      const inserted = this.sql.exec<{ id: string; name: string }>(
+        `INSERT INTO notebooks (id, name, created_at) VALUES (?1, ?2, ?3)
+         ON CONFLICT(name) DO NOTHING RETURNING id, name`,
+        crypto.randomUUID(),
+        trimmed,
+        Date.now(),
+      );
+      this.feed.record(inserted.map((r) => ({ entity: 'notebook', id: r.id })));
+      return inserted[0] ?? null;
+    });
   }
 
   /**
@@ -1814,6 +2044,8 @@ export class NotesStore {
         `UPDATE notebooks SET ${sets.join(', ')} WHERE id = ?${binds.length} RETURNING id`,
         ...binds,
       );
+      // The notebook alone: its notes refer to it by id, and a client joins the name.
+      this.feed.record(changed.map((r) => ({ entity: 'notebook', id: r.id })));
       return changed.length > 0 ? 'ok' : 'missing';
     });
   }
@@ -1848,15 +2080,13 @@ export class NotesStore {
       if (!owned) return false;
 
       const now = Date.now();
-      if (opts?.trashNotes) {
-        this.sql.exec(
-          `UPDATE notes SET deleted_at = COALESCE(deleted_at, ?1), notebook_id = NULL WHERE notebook_id = ?2`,
-          now,
-          id,
-        );
-      } else {
-        this.sql.exec(`UPDATE notes SET notebook_id = NULL WHERE notebook_id = ?1`, id);
-      }
+      const unfiled = opts?.trashNotes
+        ? this.sql.exec<{ id: string }>(
+            `UPDATE notes SET deleted_at = COALESCE(deleted_at, ?1), notebook_id = NULL WHERE notebook_id = ?2 RETURNING id`,
+            now,
+            id,
+          )
+        : this.sql.exec<{ id: string }>(`UPDATE notes SET notebook_id = NULL WHERE notebook_id = ?1 RETURNING id`, id);
       // The definitions are tombstoned rather than deleted, taking the notebook's name
       // with them: it is the label the values are read back with, and the row that
       // carried it is about to go. In the same transaction as that delete so a definition
@@ -1874,6 +2104,10 @@ export class NotesStore {
       // A notebook with no values to preserve leaves nothing worth keeping, so its
       // tombstones go at once rather than waiting for a note that will never reference them.
       this.sweepTombstonedFields();
+      this.feed.record([
+        { entity: 'notebook', id, deleted: true },
+        ...unfiled.map((r) => ({ entity: 'note' as const, id: r.id })),
+      ]);
       return true;
     });
   }
@@ -2017,6 +2251,8 @@ export class NotesStore {
         Date.now(),
       );
 
+      // A notebook row covers its definitions, so a field change is a notebook change.
+      this.feed.record([{ entity: 'notebook', id: notebookId }]);
       return this.getField(notebookId, id) ?? 'missing';
     });
   }
@@ -2064,6 +2300,7 @@ export class NotesStore {
 
       let options = patch.options ?? current.options;
       let cleared = 0;
+      let touched: Change[] = [];
       const type = patch.type ?? current.type;
       // `undefined` leaves the scale alone; `null` clears it back to a plain number.
       const scale = patch.scale === undefined ? current.scale : patch.scale;
@@ -2077,6 +2314,7 @@ export class NotesStore {
       if (type !== current.type || scaleTightens(current.scale, stored)) {
         const converted = this.convertFieldValues(fieldId, current.type, type, scale);
         cleared = converted.cleared;
+        touched = converted.touched;
         if (converted.seededOptions) options = converted.seededOptions;
       }
 
@@ -2094,6 +2332,9 @@ export class NotesStore {
         notebookId,
       );
 
+      // The definition's notebook, and every note whose stored value the conversion
+      // rewrote or cleared: their rendered values changed without a write of their own.
+      this.feed.record([{ entity: 'notebook', id: notebookId }, ...touched]);
       const field = this.getField(notebookId, fieldId);
       return field ? { field, cleared } : 'missing';
     });
@@ -2137,6 +2378,7 @@ export class NotesStore {
       ids.forEach((id, position) => {
         this.sql.exec(`UPDATE notebook_fields SET position = ?1 WHERE id = ?2`, position, id);
       });
+      this.feed.record([{ entity: 'notebook', id: notebookId }]);
       return true;
     });
   }
@@ -2152,8 +2394,12 @@ export class NotesStore {
     return this.sql.tx(() => {
       const field = this.getField(notebookId, fieldId);
       if (!field) return false;
-      this.sql.exec(`DELETE FROM note_fields WHERE field_id = ?1`, fieldId);
+      const held = this.sql.exec<{ note_id: string }>(`DELETE FROM note_fields WHERE field_id = ?1 RETURNING note_id`, fieldId);
       this.sql.exec(`DELETE FROM notebook_fields WHERE id = ?1`, fieldId);
+      this.feed.record([
+        { entity: 'notebook', id: notebookId },
+        ...held.map((r) => ({ entity: 'note' as const, id: r.note_id })),
+      ]);
       return true;
     });
   }
@@ -2216,6 +2462,7 @@ export class NotesStore {
       if (!field.options.includes(option)) return null;
 
       let cleared = 0;
+      const touched: Change[] = [];
       if (clear) {
         for (const { noteId, text } of this.fieldValueRows(fieldId)) {
           // A multi-select stores a JSON list; a select stores the bare option. Only rows
@@ -2236,13 +2483,17 @@ export class NotesStore {
               );
             }
             cleared += 1;
+            touched.push({ entity: 'note', id: noteId });
           } else if (text === option) {
             this.sql.exec(`DELETE FROM note_fields WHERE note_id = ?1 AND field_id = ?2`, noteId, fieldId);
             cleared += 1;
+            touched.push({ entity: 'note', id: noteId });
           }
         }
       }
 
+      // The notebook itself is recorded by `updateField` below.
+      this.feed.record(touched);
       const updated = this.updateField(notebookId, fieldId, {
         options: field.options.filter((o) => o !== option),
       });
@@ -2284,7 +2535,7 @@ export class NotesStore {
     from: FieldType,
     to: FieldType,
     toScale?: FieldScale | null | undefined,
-  ): { cleared: number; seededOptions?: string[] } {
+  ): { cleared: number; touched: Change[]; seededOptions?: string[] } {
     const rows = this.fieldValueRows(fieldId);
     const plan = planConversion(from, to, rows, toScale);
 
@@ -2303,6 +2554,7 @@ export class NotesStore {
 
     return {
       cleared: plan.drop.length,
+      touched: [...plan.keep.map((k) => k.row.noteId), ...plan.drop.map((r) => r.noteId)].map((id) => ({ entity: 'note', id })),
       ...(plan.seededOptions ? { seededOptions: plan.seededOptions } : {}),
     };
   }
@@ -2419,8 +2671,9 @@ export class NotesStore {
     notebookId: string,
     fields: Record<string, FieldValue>,
     onlyMissing: boolean,
-  ): string[] {
+  ): { skipped: string[]; changed: boolean } {
     const skipped: string[] = [];
+    let changed = false;
     for (const [rawName, value] of Object.entries(fields)) {
       const name = rawName.trim();
       if (!name || isReservedFieldName(name)) {
@@ -2468,21 +2721,23 @@ export class NotesStore {
         continue;
       }
 
-      this.sql.exec(
+      const written = this.sql.exec<{ note_id: string }>(
         `INSERT INTO note_fields (note_id, field_id, value_text, value_num)
          VALUES (?1, ?2, ?3, ?4)
          ON CONFLICT(note_id, field_id) DO ${
            onlyMissing
              ? 'NOTHING'
              : 'UPDATE SET value_text = excluded.value_text, value_num = excluded.value_num'
-         }`,
+         }
+         RETURNING note_id`,
         noteId,
         def.id,
         encoded.text,
         encoded.num,
       );
+      changed ||= written.length > 0;
     }
-    return skipped;
+    return { skipped, changed };
   }
 
   /**
@@ -2649,9 +2904,24 @@ export class NotesStore {
     const unique = uniqueTags(tags);
     this.sql.exec(`DELETE FROM note_tags WHERE note_id = ?1`, noteId);
     for (const name of unique) {
-      this.sql.exec(`INSERT INTO tags (id, name) VALUES (?1, ?2) ON CONFLICT(name) DO NOTHING`, crypto.randomUUID(), name);
+      this.ensureTag(name);
       this.sql.exec(`INSERT INTO note_tags (note_id, tag_id) SELECT ?1, id FROM tags WHERE name = ?2`, noteId, name);
     }
+  }
+
+  /**
+   * Get-or-create of a tag row by name, recording the row when it is new. The one place
+   * tags come into being, so the feed cannot miss one: a tag's id is what a client
+   * renames or deletes it by, and a note's tags are names, so the row has to arrive by
+   * its own entry.
+   */
+  private ensureTag(name: string): void {
+    const created = this.sql.exec<{ id: string }>(
+      `INSERT INTO tags (id, name) VALUES (?1, ?2) ON CONFLICT(name) DO NOTHING RETURNING id`,
+      crypto.randomUUID(),
+      name,
+    );
+    this.feed.record(created.map((r) => ({ entity: 'tag', id: r.id })));
   }
 }
 

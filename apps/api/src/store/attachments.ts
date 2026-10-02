@@ -1,4 +1,6 @@
-import { type AttachmentInfo, splitExt } from '@unbent/shared';
+import { type AttachmentInfo, type FeedAttachment, splitExt } from '@unbent/shared';
+import type { Feed } from './feed.js';
+import { placeholders, runs } from './notes-shared.js';
 import type { Sql } from './sql.js';
 
 export interface AttachmentRow {
@@ -62,6 +64,27 @@ function visionPendingHalves(noteParam: string | null): { pictures: string; pdfs
   };
 }
 
+/** An `attachments` row as the feed reads it. */
+interface FeedAttachmentRow {
+  id: string;
+  note_id: string;
+  filename: string;
+  content_type: string;
+  size: number;
+  has_text: number;
+  created_at: number;
+}
+
+const toFeedAttachment = (r: FeedAttachmentRow): FeedAttachment => ({
+  id: r.id,
+  noteId: r.note_id,
+  filename: r.filename,
+  contentType: r.content_type,
+  size: r.size,
+  hasText: r.has_text === 1,
+  createdAt: r.created_at,
+});
+
 interface PendingRow {
   id: string;
   note_id: string;
@@ -93,7 +116,10 @@ const toPending = (r: PendingRow): PendingFile => ({
  * Worker builds it from the session (`buildKey` on the facade). Bytes never come this way.
  */
 export class AttachmentsStore {
-  constructor(private readonly sql: Sql) {}
+  constructor(
+    private readonly sql: Sql,
+    private readonly feed: Feed,
+  ) {}
 
   /**
    * Resolves `files/<filename>` within a live note. Null when there is no such file.
@@ -120,6 +146,44 @@ export class AttachmentsStore {
         noteId,
       )
       .map((r) => ({ filename: r.filename, contentType: r.content_type, size: r.size }));
+  }
+
+  /**
+   * The files of several notes at once, oldest first within a note, as the feed carries
+   * a file (id and `hasText` included, so a snapshot seeds the client's files and a
+   * tombstone by id matches one it holds). In runs under the bind cap;
+   * `idx_attachments_note` serves each run.
+   */
+  filesForNotes(noteIds: string[]): Map<string, FeedAttachment[]> {
+    const out = new Map<string, FeedAttachment[]>();
+    for (const run of runs([...new Set(noteIds)])) {
+      for (const r of this.sql.exec<FeedAttachmentRow>(
+        `SELECT id, note_id, filename, content_type, size, has_text, created_at FROM attachments
+          WHERE note_id IN (${placeholders(1, run.length)})
+          ORDER BY note_id, created_at, filename`,
+        ...run,
+      )) {
+        const files = out.get(r.note_id) ?? [];
+        files.push(toFeedAttachment(r));
+        out.set(r.note_id, files);
+      }
+    }
+    return out;
+  }
+
+  /** Files by their own id, as the feed carries a file whose text arrived. */
+  attachmentsWhole(ids: string[]): FeedAttachment[] {
+    const out: FeedAttachment[] = [];
+    for (const run of runs([...new Set(ids)])) {
+      for (const r of this.sql.exec<FeedAttachmentRow>(
+        `SELECT id, note_id, filename, content_type, size, has_text, created_at FROM attachments
+          WHERE id IN (${placeholders(1, run.length)})`,
+        ...run,
+      )) {
+        out.push(toFeedAttachment(r));
+      }
+    }
+    return out;
   }
 
   /** True when the note exists and is not deleted. What `ownsNote` asked on the shared database. */
@@ -154,26 +218,47 @@ export class AttachmentsStore {
     return `${stem}-${crypto.randomUUID().slice(0, 8)}${ext}`;
   }
 
-  record(input: {
-    id: string;
-    noteId: string;
-    filename: string;
-    contentType: string;
-    size: number;
-    r2Key: string;
-  }): AttachmentInfo {
-    this.sql.exec(
-      `INSERT INTO attachments (id, note_id, filename, content_type, size, r2_key, created_at)
-       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)`,
-      input.id,
-      input.noteId,
-      input.filename,
-      input.contentType,
-      input.size,
-      input.r2Key,
-      Date.now(),
-    );
-    return { filename: input.filename, contentType: input.contentType, size: input.size };
+  /**
+   * Records a stored file. A name the note already holds is the unique index's error —
+   * except with `ifAbsent`, which answers null and writes nothing, for a copy that must
+   * not become a second file when another request is copying the same name: two replays
+   * of one duplicate, say. Decided here, where the two requests are serialised, rather
+   * than by a check in the Worker that both would pass.
+   */
+  record(
+    input: {
+      id: string;
+      noteId: string;
+      filename: string;
+      contentType: string;
+      size: number;
+      r2Key: string;
+    },
+    opts: { ifAbsent?: boolean | undefined } = {},
+  ): AttachmentInfo | null {
+    return this.sql.tx(() => {
+      const inserted = this.sql.exec<{ id: string }>(
+        `INSERT INTO attachments (id, note_id, filename, content_type, size, r2_key, created_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+         ${opts.ifAbsent ? 'ON CONFLICT(note_id, filename) DO NOTHING' : ''}
+         RETURNING id`,
+        input.id,
+        input.noteId,
+        input.filename,
+        input.contentType,
+        input.size,
+        input.r2Key,
+        Date.now(),
+      );
+      if (inserted.length === 0) return null;
+      // The file, and the note it changes the shape of: a client keeps a note's files
+      // with the note, and a row on its own would leave the note's list stale.
+      this.feed.record([
+        { entity: 'attachment', id: input.id },
+        { entity: 'note', id: input.noteId },
+      ]);
+      return { filename: input.filename, contentType: input.contentType, size: input.size };
+    });
   }
 
   /** Returns the R2 key to delete, or null when there is no such file on a live note. */
@@ -182,6 +267,10 @@ export class AttachmentsStore {
       const row = this.resolve(noteId, filename);
       if (!row) return null;
       this.sql.exec(`DELETE FROM attachments WHERE id = ?1`, row.id);
+      this.feed.record([
+        { entity: 'attachment', id: row.id, deleted: true },
+        { entity: 'note', id: noteId },
+      ]);
       return row.r2_key;
     });
   }
@@ -204,17 +293,21 @@ export class AttachmentsStore {
      */
     readBy?: 'vision' | null | undefined;
   }): void {
-    this.sql.exec(
-      `INSERT INTO attachment_text (attachment_id, note_id, filename, text, read_by, created_at)
-       VALUES (?1, ?2, ?3, ?4, ?5, ?6)
-       ON CONFLICT(attachment_id) DO UPDATE SET text = excluded.text, read_by = excluded.read_by`,
-      input.attachmentId,
-      input.noteId,
-      input.filename,
-      input.text,
-      input.readBy ?? null,
-      Date.now(),
-    );
+    this.sql.tx(() => {
+      this.sql.exec(
+        `INSERT INTO attachment_text (attachment_id, note_id, filename, text, read_by, created_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+         ON CONFLICT(attachment_id) DO UPDATE SET text = excluded.text, read_by = excluded.read_by`,
+        input.attachmentId,
+        input.noteId,
+        input.filename,
+        input.text,
+        input.readBy ?? null,
+        Date.now(),
+      );
+      // Text arriving is a change to the file's row (`hasText`), not to the note.
+      this.feed.record([{ entity: 'attachment', id: input.attachmentId }]);
+    });
   }
 
   /**
@@ -226,17 +319,21 @@ export class AttachmentsStore {
    * with no text yet leaves the copy without one too, and the backfill finds it there.
    */
   copyText(fromAttachmentId: string, to: { attachmentId: string; noteId: string; filename: string }): void {
-    this.sql.exec(
-      `INSERT INTO attachment_text (attachment_id, note_id, filename, text, read_by, created_at)
-       SELECT ?1, ?2, ?3, text, read_by, ?4
-         FROM attachment_text
-        WHERE attachment_id = ?5`,
-      to.attachmentId,
-      to.noteId,
-      to.filename,
-      Date.now(),
-      fromAttachmentId,
-    );
+    this.sql.tx(() => {
+      const copied = this.sql.exec<{ attachment_id: string }>(
+        `INSERT INTO attachment_text (attachment_id, note_id, filename, text, read_by, created_at)
+         SELECT ?1, ?2, ?3, text, read_by, ?4
+           FROM attachment_text
+          WHERE attachment_id = ?5
+         RETURNING attachment_id`,
+        to.attachmentId,
+        to.noteId,
+        to.filename,
+        Date.now(),
+        fromAttachmentId,
+      );
+      this.feed.record(copied.map((r) => ({ entity: 'attachment', id: r.attachment_id })));
+    });
   }
 
   /**
