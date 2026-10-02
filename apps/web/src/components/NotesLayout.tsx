@@ -69,6 +69,7 @@ import { TagsSheet } from './TagsSheet.js';
 import { editOpenNoteFiling } from '../open-note-fields.js';
 import { useAppSession } from '../useAppSession.js';
 import { useOffline } from '../connectivity.js';
+import { useLibraryArriving } from '../store/use-feed-state.js';
 import { useSignOut } from '../useSignOut.js';
 
 /** Sidebar plus the routed workspace. Filters come from the URL; nothing here is mirrored into state. */
@@ -614,9 +615,20 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
       search: (prev) => ({ ...prev, ...nextColumnSort(target, prev) }),
     });
   };
+  /**
+   * While the library is still arriving on this device, an empty list is not an empty
+   * account: the rows are on their way. Said in the list's own words, and the offer of
+   * sample notes withheld, since filling an account whose notes are a page away would be
+   * the wrong answer to the wrong question.
+   */
+  const arriving = useLibraryArriving();
   /** The list's empty state, in words; both renderings say the same thing. */
   const emptyMessage =
-    notes.length === 0 && !error && !list.isPending
+    notes.length === 0 && !error && !list.isPending && arriving
+      ? arriving.stage === 'opening'
+        ? 'Opening your notes…'
+        : 'Copying your notes to this device…'
+      : notes.length === 0 && !error && !list.isPending
       ? tag
         ? `No notes tagged ${tag}.`
         : fieldFilters.length > 0
@@ -672,7 +684,7 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
       ? awaiting
         ? 'Searching…'
         : `${results.length} matches`
-      : loading
+      : loading || (arriving && notes.length === 0)
         ? 'Loading…'
         : `${total ?? notes.length} notes`;
 
@@ -1144,6 +1156,7 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
               empty account, and filling it from there would read as filling that notebook. */}
           {results === null &&
             emptyMessage &&
+            !arriving &&
             config.data?.ownStores &&
             !notebook &&
             !tag &&
