@@ -437,13 +437,15 @@ base must be the row as the server last had it, not the optimistic one — `sync
 
 **The feed engine is pure and the cursor lives beside the rows.** `store/feed.ts` is given a
 way to fetch, a cursor store and the collections' sync controls; it walks the snapshot when
-there is no cursor, storing the first page's `seq` before applying it, follows the feed page
-by page after, and on `reset` empties everything and walks again. The cursor is a fifth,
-local-only collection in the same file, written after a page's rows have committed, so a
-page cut short by a closed tab is applied again (every apply is an upsert). Collections are
-ready as soon as persistence has restored them, not after the first pull. Pulls are
-event-driven — open, tab shown, connection back, socket nudge, after a replayed write —
-never a timer.
+there is no cursor, follows the feed page by page after, and on `reset` empties everything
+and walks again. The position is a fifth, local-only collection in the same file, written
+after each page's rows have committed: during the walk it is the first page's `seq` and the
+page to resume from, so a copy cut short by a closed tab continues where it stopped (an
+archive on a phone is minutes of pages) and a page cut short is applied again (every apply
+is an upsert); once the walk is whole it is that `seq` alone, and the feed is followed from
+it, so anything written during the walk is replayed. Collections are ready as soon as
+persistence has restored them, not after the first pull. Pulls are event-driven — open, tab
+shown, connection back, socket nudge, after a replayed write — never a timer.
 
 **A note the copy does not hold while no snapshot has been taken reads as not available,
 not as missing.** `noteQuery` throws `OfflineError` for that; a 404 means the id is not a

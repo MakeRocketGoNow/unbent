@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { FeedAttachment, FeedNote, FeedNotebook, FeedPage, FeedReset, FeedTag, SnapshotPage } from '@unbent/shared';
-import { FeedEngine, type Controls, type Cursor } from './feed.js';
+import { FeedEngine, type Controls, type Position } from './feed.js';
 
 /**
  * The feed's reader against a fake server and fake collections: what a page does to the
@@ -72,8 +72,8 @@ const file = (id: string, noteId: string): FeedAttachment => ({ id, noteId, file
 
 function harness(answers: Record<string, unknown[] | unknown>) {
   const requests: string[] = [];
-  let cursor: Cursor | null = null;
-  const cursorWrites: Array<Cursor | null> = [];
+  let cursor: Position | null = null;
+  const cursorWrites: Array<Position | null> = [];
   const c = { note: fake<FeedNote>((n) => n.id), notebook: fake<FeedNotebook>((n) => n.id), tag: fake<FeedTag>((t) => t.id), attachment: fake<FeedAttachment>((a) => a.id) };
   const engine = new FeedEngine({
     fetchJson: async <T,>(path: string): Promise<T> => {
@@ -95,7 +95,7 @@ function harness(answers: Record<string, unknown[] | unknown>) {
     },
     pageSize: 2,
   });
-  return { engine, c, requests, cursorWrites, cursor: () => cursor };
+  return { engine, c, requests, cursorWrites, cursor: () => cursor, setCursor: (p: Position | null) => void (cursor = p) };
 }
 
 const snapshotFirst = (notes: FeedNote[], next: string | null, seq = 10): SnapshotPage => ({ seq, epoch: 'e1', notes, next, notebooks: [{ id: 'nb1', name: 'Receipts', purpose: null, emoji: null, fieldDefs: [] }], tags: [{ id: 't1', name: 'home' }], total: 3 });
@@ -114,12 +114,45 @@ describe('FeedEngine', () => {
     expect([...h.c.notebook.rows.keys()]).toEqual(['nb1']);
     expect([...h.c.tag.rows.keys()]).toEqual(['t1']);
     expect([...h.c.attachment.rows.keys()]).toEqual(['f1']);
-    // The cursor is the first page's seq, not the last's: what was written during the
-    // walk is replayed by the feed.
-    expect(h.cursorWrites).toEqual([{ seq: 10, epoch: 'e1' }]);
+    // The position after the first page, then the cursor once the walk is whole: the
+    // first page's seq, not the last's, so what was written during the walk is replayed
+    // by the feed.
+    expect(h.cursorWrites).toEqual([{ seq: 10, epoch: 'e1', resume: 'b', total: 3 }, { seq: 10, epoch: 'e1' }]);
     expect(h.engine.state).toMatchObject({ phase: 'current', total: 3, applied: 3, lastError: null, pulls: 1 });
     expect(h.c.note.ready).toBe(1);
     Object.values(stop).forEach((s) => s());
+  });
+
+  it('resumes a walk that was cut short where it stopped, and never applies a page over a stale cursor', async () => {
+    const h = harness({
+      '/api/changes/snapshot?limit=2': snapshotFirst([note('a'), note('b')], 'b'),
+      '/api/changes/snapshot?limit=2&cursor=b': [new Error('the tab closed'), { seq: 12, epoch: 'e1', notes: [note('c')], next: null } satisfies SnapshotPage],
+    });
+    const stop = Object.entries(h.c).map(([k, c]) => h.engine.register(k as 'note', c as never));
+    await h.engine.settled();
+    expect(h.engine.state).toMatchObject({ phase: 'failed', cursor: null, applied: 2, total: 3 });
+    expect(h.cursor()).toEqual({ seq: 10, epoch: 'e1', resume: 'b', total: 3 });
+
+    await h.engine.pull();
+    expect(h.requests).toEqual(['/api/changes/snapshot?limit=2', '/api/changes/snapshot?limit=2&cursor=b', '/api/changes/snapshot?limit=2&cursor=b']);
+    expect([...h.c.note.rows.keys()]).toEqual(['a', 'b', 'c']);
+    expect(h.engine.state).toMatchObject({ phase: 'current', cursor: { seq: 10, epoch: 'e1' }, applied: 3, total: 3 });
+    expect(h.cursor()).toEqual({ seq: 10, epoch: 'e1' });
+    stop.forEach((s) => s());
+  });
+
+  it('on a fresh start, picks a stored position up and reads only the pages left', async () => {
+    const h = harness({
+      '/api/changes/snapshot?limit=2&cursor=b': { seq: 12, epoch: 'e1', notes: [note('c')], next: null } satisfies SnapshotPage,
+    });
+    h.c.note.rows.set('a', note('a'));
+    h.c.note.rows.set('b', note('b'));
+    h.setCursor({ seq: 10, epoch: 'e1', resume: 'b', total: 3 });
+    const stop = Object.entries(h.c).map(([k, c]) => h.engine.register(k as 'note', c as never));
+    await h.engine.settled();
+    expect(h.requests).toEqual(['/api/changes/snapshot?limit=2&cursor=b']);
+    expect(h.engine.state).toMatchObject({ phase: 'current', cursor: { seq: 10, epoch: 'e1' }, applied: 3, total: 3 });
+    stop.forEach((s) => s());
   });
 
   it('follows the feed from the cursor, page after page while more, and moves the cursor after each', async () => {

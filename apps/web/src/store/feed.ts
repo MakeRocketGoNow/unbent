@@ -10,11 +10,14 @@ import type { FeedAttachment, FeedEntity, FeedNote, FeedNotebook, FeedPage, Feed
  * is what lets a test drive it with a fake server and fake collections.
  *
  * Two ways in. With no cursor the library is walked whole through the snapshot, page by
- * page, and the `seq` the first page reports is stored *before* the first page is
- * applied, so anything written during the walk is replayed by the feed afterwards (every
- * apply is an upsert). With a cursor, pages of the feed are pulled until one is not full.
- * A `reset` — the cursor from another epoch, past the counter, or pruned — empties all
- * four collections and walks again; the feed is never applied over a stale cursor.
+ * page. After each page the walk's position is stored — the `seq` the first page
+ * reported, and the page to continue from — so a walk cut short by a closed tab resumes
+ * where it stopped rather than from nothing (an archive on a phone is minutes of pages),
+ * and the feed is then followed from that `seq`, so anything written during the walk is
+ * replayed by it afterwards (every apply is an upsert). With a cursor and no page to
+ * resume, pages of the feed are pulled until one is not full. A `reset` — the cursor from
+ * another epoch, past the counter, or pruned — empties all four collections and walks
+ * again; the feed is never applied over a stale cursor.
  *
  * When to pull is the caller's: on open, when the tab is shown again, when the
  * connection returns, when the socket says the feed moved, and after each replayed write.
@@ -24,6 +27,17 @@ import type { FeedAttachment, FeedEntity, FeedNote, FeedNotebook, FeedPage, Feed
 export interface Cursor {
   seq: number;
   epoch: string;
+}
+
+/**
+ * What is kept between pulls: the cursor, and while a first copy is under way, the
+ * snapshot page to resume from and the total the first page reported for the progress
+ * line. A position with `resume` is a copy not yet complete; the feed is not followed
+ * from it until the walk ends.
+ */
+export interface Position extends Cursor {
+  resume?: string | null;
+  total?: number | null;
 }
 
 /** What a collection's sync function gives the engine, plus whether it holds a key. */
@@ -59,8 +73,8 @@ export interface FeedState {
 
 export interface FeedOptions {
   fetchJson: <T>(path: string) => Promise<T>;
-  readCursor: () => Promise<Cursor | null>;
-  writeCursor: (cursor: Cursor | null) => Promise<void>;
+  readCursor: () => Promise<Position | null>;
+  writeCursor: (position: Position | null) => Promise<void>;
   pageSize?: number;
   onState?: (state: FeedState) => void;
 }
@@ -135,10 +149,13 @@ export class FeedEngine {
   }
 
   private async once(): Promise<void> {
-    if (!this.state.cursor) this.state.cursor = await this.options.readCursor();
     if (!this.state.cursor) {
-      await this.snapshot();
-      return;
+      const stored = await this.options.readCursor();
+      if (!stored || stored.resume) {
+        await this.snapshot(stored);
+        return;
+      }
+      this.state.cursor = { seq: stored.seq, epoch: stored.epoch };
     }
     const limit = this.options.pageSize ?? 200;
     for (;;) {
@@ -150,7 +167,7 @@ export class FeedEngine {
         this.state.phase = 'reset';
         this.changed();
         await this.truncateAll();
-        await this.snapshot();
+        await this.snapshot(null);
         return;
       }
       this.apply(page.notes, page.tombstones.filter((t) => t.entity === 'note').map((t) => t.id), page.notebooks, page.tombstones.filter((t) => t.entity === 'notebook').map((t) => t.id), page.tags, page.tombstones.filter((t) => t.entity === 'tag').map((t) => t.id), page.attachments, page.tombstones.filter((t) => t.entity === 'attachment').map((t) => t.id));
@@ -159,14 +176,16 @@ export class FeedEngine {
     }
   }
 
-  private async snapshot(): Promise<void> {
+  /** The whole library, page by page: from the start, or from where an earlier walk stopped. */
+  private async snapshot(from: Position | null): Promise<void> {
     this.state.phase = 'hydrating';
-    this.state.applied = 0;
-    this.state.total = null;
+    // Resuming: what the earlier walk applied is in the collection already.
+    this.state.applied = from ? count(this.all()?.note.values()) : 0;
+    this.state.total = from?.total ?? null;
     this.changed();
     const limit = this.options.pageSize ?? 200;
-    let cursor: string | null = null;
-    let seeded: Cursor | null = null;
+    let cursor: string | null = from?.resume ?? null;
+    let seeded: Cursor | null = from ? { seq: from.seq, epoch: from.epoch } : null;
     do {
       if (this.stopped) return;
       const page: SnapshotPage = await this.options.fetchJson(
@@ -178,8 +197,13 @@ export class FeedEngine {
       }
       this.apply(page.notes, [], page.notebooks ?? [], [], page.tags ?? [], [], [], []);
       this.state.applied += page.notes.length;
-      this.changed();
       cursor = page.next;
+      // The position after this page's rows have committed, so a walk cut short here
+      // continues from the next page; the cursor itself only once the walk is whole.
+      if (cursor) {
+        await this.options.writeCursor({ ...seeded, resume: cursor, total: this.state.total });
+        this.changed();
+      }
     } while (cursor);
     await this.moveCursor(seeded);
   }
@@ -242,6 +266,12 @@ export class FeedEngine {
     for (const id of noteTombstones) for (const held of heldByNote.get(id) ?? []) gone.add(held);
     upsertAll(attachment, files, (f) => f.id, [...gone]);
   }
+}
+
+function count(rows: Iterable<unknown> | undefined): number {
+  let n = 0;
+  for (const _ of rows ?? []) n += 1;
+  return n;
 }
 
 function upsertAll<T extends object>(c: Controls<T>, rows: T[], keyOf: (row: T) => string, deletes: string[]): void {

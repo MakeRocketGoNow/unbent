@@ -1,7 +1,7 @@
 import { createCollection, type Collection } from '@tanstack/db';
 import { persistedCollectionOptions } from '@tanstack/browser-db-sqlite-persistence';
 import type { FeedAttachment, FeedEntity, FeedNote, FeedNotebook, FeedTag } from '@unbent/shared';
-import { FeedEngine, type Controls, type Cursor, type FeedOptions } from './feed.js';
+import { FeedEngine, type Controls, type FeedOptions, type Position } from './feed.js';
 import type { LocalStore } from './db.js';
 
 /**
@@ -11,9 +11,10 @@ import type { LocalStore } from './db.js';
  * list rows, counts and names the components read are derived from them in `queries.ts`.
  *
  * `syncState` is a fifth, local-only collection with one row: the feed's cursor and the
- * epoch it belongs to. In the same file as the rows, written after a page's rows have
- * been committed, so a page cut short by a closed tab is applied again rather than
- * skipped; every apply is an upsert.
+ * epoch it belongs to, and while the first copy is under way, the snapshot page to resume
+ * from. In the same file as the rows, written after a page's rows have been committed, so
+ * a page cut short by a closed tab is applied again rather than skipped; every apply is
+ * an upsert.
  */
 /**
  * A note as the collection holds it: the feed's row, plus two things a write made here
@@ -36,7 +37,7 @@ export interface Collections {
   syncState: Collection<SyncState, string>;
 }
 
-interface SyncState extends Cursor {
+interface SyncState extends Position {
   id: 'cursor';
 }
 
@@ -95,16 +96,18 @@ export function cursorStore(syncState: Collection<SyncState, string>): Pick<Feed
     readCursor: async () => {
       await syncState.preload();
       const row = syncState.get('cursor');
-      return row ? { seq: row.seq, epoch: row.epoch } : null;
+      return row ? { seq: row.seq, epoch: row.epoch, resume: row.resume ?? null, total: row.total ?? null } : null;
     },
-    writeCursor: async (cursor) => {
-      const tx = cursor
+    writeCursor: async (position) => {
+      const tx = position
         ? syncState.has('cursor')
           ? syncState.update('cursor', (draft) => {
-              draft.seq = cursor.seq;
-              draft.epoch = cursor.epoch;
+              draft.seq = position.seq;
+              draft.epoch = position.epoch;
+              draft.resume = position.resume ?? null;
+              draft.total = position.total ?? null;
             })
-          : syncState.insert({ id: 'cursor', ...cursor })
+          : syncState.insert({ id: 'cursor', seq: position.seq, epoch: position.epoch, resume: position.resume ?? null, total: position.total ?? null })
         : syncState.has('cursor')
           ? syncState.delete('cursor')
           : null;

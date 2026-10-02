@@ -1059,7 +1059,8 @@ The installed app — and the Android app, which is the site in a WebView — op
 signal and works. A service worker keeps the app itself on the device, and your library
 lives there too: the notes, notebooks and tags of the signed-in account, in a SQLite file in
 the browser's private storage, copied from the server the first time you sign in on a device
-(a line across the top counts the notes as they arrive) and kept current by the change feed
+(a line across the top counts the notes as they arrive, and a copy interrupted by closing the
+app picks up where it stopped) and kept current by the change feed
 after — on open, when you come back to the tab, and the moment another device saves,
 through a socket that says only that something changed. A warm open draws the list with no
 request at all.
