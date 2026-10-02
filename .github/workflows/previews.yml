@@ -409,9 +409,13 @@ jobs:
                   '',
                 ]
               : [];
+            // The link goes to /login rather than the root, which is the public front page
+            // and only a click away from it. Someone already signed in is sent straight on
+            // to their notes by the route's own check. The text stays the bare origin, so
+            // the comment still says which Worker this is.
             const body = [
               marker,
-              `### Preview: ${process.env.PREVIEW_URL}`,
+              `### Preview: [${process.env.PREVIEW_URL}](${process.env.PREVIEW_URL}/login)`,
               '',
               ...storeNote,
               ...signIn,
