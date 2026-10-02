@@ -49,7 +49,8 @@ export interface Outbox {
   onAcknowledged: (listener: (noteId: string, note: Note) => void) => () => void;
   /** Forgets a conflict once a choice has been made. */
   resolveConflict: (noteId: string) => void;
-  dispose: () => void;
+  /** Stops the executor and closes its store, so the outbox's database can be removed. */
+  dispose: () => Promise<void>;
 }
 
 /** What the actions need of a library. */
@@ -87,9 +88,10 @@ export function createOutbox(userId: string, lib: Omit<WritableLibrary, 'outbox'
     throw err;
   };
 
+  const storage = new IndexedDBAdapter(outboxName(userId));
   const executor = startOfflineExecutor({
     collections: { notes: lib.notes },
-    storage: new IndexedDBAdapter(outboxName(userId)),
+    storage,
     onlineDetector: connectivityDetector(),
     mutationFns: {
       saveNote: async ({ transaction }) => {
@@ -200,9 +202,18 @@ export function createOutbox(userId: string, lib: Omit<WritableLibrary, 'outbox'
     resolveConflict: (noteId) => {
       if (conflicts.delete(noteId)) touch();
     },
-    dispose: () => {
+    dispose: async () => {
       unsubscribeConnectivity();
       executor.dispose();
+      /*
+       * The adapter opens its database once and never closes it, and a `deleteDatabase`
+       * on a database something holds open waits for ever: the wipe on sign-out would
+       * remove the store's file and leave the outbox, named with the account's id, behind
+       * (seen on 2026-10-02). The connection is the adapter's private field; closed here,
+       * once, after the executor has stopped. A pinned version; the fallback is a database
+       * left behind, which holds no rows after `dispose` and is removed on the next wipe.
+       */
+      (storage as unknown as { db?: IDBDatabase | null }).db?.close?.();
     },
   };
 }

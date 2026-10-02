@@ -51,7 +51,10 @@ async function wipeOutboxes(): Promise<void> {
           (name) =>
             new Promise<void>((resolve) => {
               const req = indexedDB.deleteDatabase(name);
-              req.onsuccess = req.onerror = req.onblocked = () => resolve();
+              req.onsuccess = req.onerror = () => resolve();
+              // Blocked means a connection is still open; the delete completes when it
+              // closes, which `closeLibrary` above has arranged. Waited for, bounded.
+              req.onblocked = () => setTimeout(resolve, 2000);
             }),
         ),
     );

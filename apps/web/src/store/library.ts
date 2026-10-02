@@ -215,7 +215,7 @@ async function open(userId: string): Promise<Library> {
       unsubscribeConnectivity();
       if (reconnect) clearTimeout(reconnect);
       socket?.close();
-      outbox.dispose();
+      await outbox.dispose();
       await engine.settled();
       for (const s of subscriptions) s.unsubscribe();
       if (collections) {
