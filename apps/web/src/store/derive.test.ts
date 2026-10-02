@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { FeedAttachment, FeedNote, FeedNotebook, FeedTag } from '@unbent/shared';
-import { count, list, lookups, notebookFields, notebookList, tagSummaries, toNote, type Snapshot } from './derive.js';
+import { count, list, lookups, notebookFields, notebookList, summaries, tagSummaries, toNote, toSummary, type Snapshot } from './derive.js';
 
 const nb = (id: string, name: string, fieldDefs: FeedNotebook['fieldDefs'] = []): FeedNotebook => ({ id, name, purpose: null, emoji: null, fieldDefs });
 const tag = (id: string, name: string): FeedTag => ({ id, name });
@@ -32,12 +32,21 @@ describe('derive', () => {
     expect(n).not.toHaveProperty('files');
   });
 
-  it('lists live notes by created desc by default, with excerpt, names and files', () => {
+  it('lists live notes by created desc by default, and a page of them with excerpt, names and files', () => {
     const rows = list(s, {}, {});
     expect(rows.map((r) => r.id)).toEqual(['e', 'c', 'b', 'a']);
-    expect(rows[3]).toMatchObject({ excerpt: 'Hello world', tags: ['acme', 'home'], notebook: 'receipts', attachments: [{ filename: 'f1.pdf', contentType: 'application/pdf' }, { filename: 'f2.pdf', contentType: 'application/pdf' }] });
-    expect(rows[3]).not.toHaveProperty('body');
-    expect(rows[0]).not.toHaveProperty('attachments');
+    const page = summaries(rows, 2, 2, lookups(s));
+    expect(page.map((r) => r.id)).toEqual(['b', 'a']);
+    expect(page[1]).toMatchObject({ excerpt: 'Hello world', tags: ['acme', 'home'], notebook: 'receipts', attachments: [{ filename: 'f1.pdf', contentType: 'application/pdf' }, { filename: 'f2.pdf', contentType: 'application/pdf' }] });
+    expect(page[1]).not.toHaveProperty('body');
+    expect(page[0]).not.toHaveProperty('attachments');
+  });
+
+  it('computes a row’s excerpt once, for as long as the row is the same object', () => {
+    const row = [...s.notes][0]!;
+    const l = lookups(s);
+    expect(toSummary(row, l).excerpt).toBe(toSummary(row, l).excerpt);
+    expect(toSummary({ ...row, body: 'Changed' }, l).excerpt).toBe('Changed');
   });
 
   it('sorts by title case-insensitively, by updated, and ascending when asked', () => {

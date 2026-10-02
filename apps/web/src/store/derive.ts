@@ -121,14 +121,31 @@ export function toNote(note: LocalNote, l: Lookups): Note {
   };
 }
 
+const excerpts = new WeakMap<object, string>();
+
+/**
+ * A row's excerpt, computed once per row object. Parsing the markdown is the one costly
+ * step of a list row — about a millisecond a note, so a 13K-note library summarised whole
+ * was twelve seconds (measured, review of #232) — and a row the feed has not replaced is
+ * the same object, so the excerpt of an unchanged note is never computed twice.
+ */
+export function excerptOf(note: LocalNote): string {
+  let excerpt = excerpts.get(note);
+  if (excerpt === undefined) {
+    excerpt = excerptMarkdown(note.body);
+    excerpts.set(note, excerpt);
+  }
+  return excerpt;
+}
+
 /** The list row, as `GET /notes` returns it. */
 export function toSummary(note: LocalNote, l: Lookups): NoteSummary {
-  const { body, ...whole } = toNote(note, l);
+  const { body: _body, ...whole } = toNote(note, l);
   const attachments = (l.filesByNote.get(note.id) ?? []).map((f) => ({ filename: f.filename, contentType: f.contentType }));
   return {
     ...whole,
     ...(attachments.length > 0 ? { attachments } : {}),
-    excerpt: excerptMarkdown(body),
+    excerpt: excerptOf(note),
   };
 }
 
@@ -255,13 +272,22 @@ export function comparator(ordering: ListOrdering, trashed: boolean, sortField: 
   };
 }
 
-/** A list, filtered and ordered, as summaries; the whole list, which the caller pages. */
-export function list(s: Snapshot, filter: ListFilter, ordering: ListOrdering, l = lookups(s)): NoteSummary[] {
+/**
+ * A list, filtered and ordered: the rows, whole, which the caller pages and then
+ * summarises (`summaries`). The rows, not the summaries, because summarising is the
+ * costly step and a page is fifty of thousands.
+ */
+export function list(s: Snapshot, filter: ListFilter, ordering: ListOrdering, l = lookups(s)): LocalNote[] {
   const sortField = ordering.sortField && !filter.trashed ? (l.fieldDefs.get(ordering.sortField) ?? null) : null;
   const rows: LocalNote[] = [];
   for (const n of s.notes) if (matches(n, filter, ordering, l)) rows.push(n);
   rows.sort(comparator(ordering, !!filter.trashed, sortField, l));
-  return rows.map((n) => toSummary(n, l));
+  return rows;
+}
+
+/** One page of a list as `GET /notes` returns it: the rows from `from`, `n` of them, summarised. */
+export function summaries(rows: LocalNote[], from: number, n: number, l: Lookups): NoteSummary[] {
+  return rows.slice(from, from + n).map((row) => toSummary(row, l));
 }
 
 /** How many notes match; the exact count, always. */

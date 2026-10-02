@@ -7,8 +7,9 @@ import {
 import type { AttachmentInfo, FieldDef, Note, NoteSort, NoteSummary, NotebookSummary } from '@unbent/shared';
 import * as api from './notes-api.js';
 import { ApiError, OfflineError } from './notes-api.js';
-import { count, list, lookups, notebookFields, notebookList, tagSummaries, toAttachmentInfo, toNote, type Snapshot } from './store/derive.js';
-import { currentLibrary, onLibraryChange, type ReadableLibrary as Library } from './store/library.js';
+import { count, list, lookups, notebookFields, notebookList, summaries, tagSummaries, toAttachmentInfo, toNote, type Lookups, type Snapshot } from './store/derive.js';
+import type { LocalNote } from './store/collections.js';
+import { LIBRARY_ROOTS, currentLibrary, onLibraryChange, type ReadableLibrary as Library } from './store/library.js';
 import { onDirectWrite } from './store/actions.js';
 
 /**
@@ -52,8 +53,49 @@ async function library(): Promise<Library | null> {
   return lib;
 }
 
-function snapshot(lib: Library): Snapshot {
-  return { notes: lib.notes.values(), notebooks: lib.notebooks.values(), tags: lib.tags.values(), attachments: lib.attachments.values() };
+/**
+ * What every query derives from, computed once per version of the library: the rows as
+ * arrays, the lookups over them, and each list that has been asked for, filtered and
+ * sorted. The library's version changes with every change to any collection, so a read
+ * between two changes finds all of this ready, and three pages of one list sort it once.
+ * Summaries are not here: they are made for the page read, and `excerptOf` keeps each
+ * row's excerpt for as long as the row is the same object.
+ */
+interface View {
+  version: number;
+  snapshot: Snapshot;
+  lookups: Lookups;
+  lists: Map<string, LocalNote[]>;
+}
+
+const views = new WeakMap<Library, View>();
+
+function view(lib: Library): View {
+  const version = lib.version();
+  let v = views.get(lib);
+  if (!v || v.version !== version) {
+    const snapshot: Snapshot = {
+      notes: [...lib.notes.values()],
+      notebooks: [...lib.notebooks.values()],
+      tags: [...lib.tags.values()],
+      attachments: [...lib.attachments.values()],
+    };
+    v = { version, snapshot, lookups: lookups(snapshot), lists: new Map() };
+    views.set(lib, v);
+  }
+  return v;
+}
+
+/** A list's rows, filtered and sorted, computed once per version of the library and per spelling of the filter. */
+function rowsOf(lib: Library, filter: NoteFilter & { trashed?: boolean }, ordering: NoteOrdering): LocalNote[] {
+  const v = view(lib);
+  const key = JSON.stringify([filter, ordering]);
+  let rows = v.lists.get(key);
+  if (!rows) {
+    rows = list(v.snapshot, filter, ordering, v.lookups);
+    v.lists.set(key, rows);
+  }
+  return rows;
 }
 
 /** The rows a page of the list carries, the server's default. */
@@ -70,12 +112,11 @@ const PAGE = 50;
  * and nothing else would tell them a note was trashed or a title changed.
  */
 export function installLibraryQueries(queryClient: QueryClient): () => void {
-  const roots = new Set(['notes', 'note', 'trash', 'tags', 'notebooks', 'notebook-fields', 'attachments']);
-  const refetch = () => {
+  const refetch = (roots: ReadonlySet<string>) => {
     void queryClient.invalidateQueries({ predicate: ({ queryKey }) => roots.has(String(queryKey[0])) });
   };
   const stopLibrary = onLibraryChange(refetch);
-  const stopDirect = onDirectWrite(refetch);
+  const stopDirect = onDirectWrite(() => refetch(LIBRARY_ROOTS));
   return () => {
     stopLibrary();
     stopDirect();
@@ -175,14 +216,15 @@ export const notesQuery = (filter: NoteFilter, ordering: NoteOrdering = {}) =>
   });
 
 /**
- * One page of a list from the library: the whole list derived, then the page cut from
- * it. The cursor is the offset of the next page, which is enough for rows that are all
- * here; the server's keyset cursor existed for pages it had to read from disk.
+ * One page of a list from the library: the whole list's rows, then the page cut from
+ * them and only that page summarised. The cursor is the offset of the next page, which
+ * is enough for rows that are all here; the server's keyset cursor existed for pages it
+ * had to read from disk.
  */
 function pageOf(lib: Library, filter: NoteFilter & { trashed?: boolean }, ordering: NoteOrdering, pageParam: string): api.NotePage {
-  const rows = list(snapshot(lib), filter, ordering);
+  const rows = rowsOf(lib, filter, ordering);
   const from = pageParam ? Number(pageParam) : 0;
-  const items = rows.slice(from, from + PAGE);
+  const items = summaries(rows, from, PAGE, view(lib).lookups);
   const end = from + items.length;
   return { items, cursor: end < rows.length ? String(end) : null, total: from === 0 ? rows.length : null };
 }
@@ -213,7 +255,7 @@ export const trashCountQuery = () =>
     queryKey: keys.trashCount(),
     queryFn: async () => {
       const lib = await library();
-      return lib ? count(snapshot(lib), { trashed: true }) : ((await api.listNotes({ trashed: true, limit: 1 })).total ?? 0);
+      return lib ? count(view(lib).snapshot, { trashed: true }, view(lib).lookups) : ((await api.listNotes({ trashed: true, limit: 1 })).total ?? 0);
     },
   });
 
@@ -226,7 +268,7 @@ export const noteCountQuery = () =>
     queryKey: keys.noteCount(),
     queryFn: async () => {
       const lib = await library();
-      return lib ? count(snapshot(lib), {}) : ((await api.listNotes({ limit: 1 })).total ?? 0);
+      return lib ? count(view(lib).snapshot, {}, view(lib).lookups) : ((await api.listNotes({ limit: 1 })).total ?? 0);
     },
   });
 
@@ -250,7 +292,7 @@ export const noteQuery = (id: string) =>
       // copy does not hold gets the answer the route gave for an id that is not a note.
       if (!row && lib.state().cursor === null) throw new OfflineError();
       if (!row) throw new ApiError(404, 'Not found');
-      return toNote(row, lookups(snapshot(lib)));
+      return toNote(row, view(lib).lookups);
     },
     retry: false,
   });
@@ -266,7 +308,7 @@ export const attachmentsQuery = (noteId: string) =>
       const lib = await library();
       if (!lib) return api.listAttachments(noteId);
       if (!lib.notes.has(noteId)) throw new ApiError(404, 'Not found');
-      return (lookups(snapshot(lib)).filesByNote.get(noteId) ?? []).map(toAttachmentInfo);
+      return (view(lib).lookups.filesByNote.get(noteId) ?? []).map(toAttachmentInfo);
     },
   });
 
@@ -275,7 +317,7 @@ export const tagsQuery = () =>
     queryKey: keys.tags(),
     queryFn: async (): Promise<api.TagSummary[]> => {
       const lib = await library();
-      return lib ? tagSummaries(snapshot(lib)) : api.listTags();
+      return lib ? tagSummaries(view(lib).snapshot) : api.listTags();
     },
   });
 
@@ -347,7 +389,7 @@ export const notebooksQuery = () =>
     queryKey: keys.notebooks(),
     queryFn: async (): Promise<{ notebooks: NotebookSummary[]; unfiled: number }> => {
       const lib = await library();
-      return lib ? notebookList(snapshot(lib)) : api.listNotebooks();
+      return lib ? notebookList(view(lib).snapshot) : api.listNotebooks();
     },
   });
 
@@ -355,7 +397,7 @@ export const notebooksQuery = () =>
 async function fieldsOf(notebookId: string, counts: boolean): Promise<FieldDef[]> {
   const lib = await library();
   if (!lib) return api.listNotebookFields(notebookId, counts ? { counts } : undefined);
-  const fields = notebookFields(snapshot(lib), notebookId, counts);
+  const fields = notebookFields(view(lib).snapshot, notebookId, counts);
   if (!fields) throw new ApiError(404, 'Not found');
   return fields;
 }
@@ -461,6 +503,6 @@ export const exactCountQuery = (filter: ExactCountFilter = {}) =>
         ...(filter.trashed ? { trashed: true } : {}),
       };
       const lib = await library();
-      return lib ? count(snapshot(lib), scope) : ((await api.listNotes({ ...scope, limit: 1, exact: true })).total ?? 0);
+      return lib ? count(view(lib).snapshot, scope, view(lib).lookups) : ((await api.listNotes({ ...scope, limit: 1, exact: true })).total ?? 0);
     },
   });

@@ -1,7 +1,7 @@
 import { ApiError, request } from '../notes-api.js';
 import { offlineNow, recheck, subscribeConnectivity } from '../connectivity.js';
 import { openLocalStore, closeLocalStore } from './db.js';
-import { createCollections, cursorStore, type Collections } from './collections.js';
+import { createCollections, cursorStore, type Collections, type LocalNote } from './collections.js';
 import { createOutbox, provideLibrary, type Outbox } from './actions.js';
 import { FeedEngine, type FeedState } from './feed.js';
 
@@ -20,6 +20,12 @@ import { FeedEngine, type FeedState } from './feed.js';
 export interface Library extends Collections {
   userId: string;
   engine: FeedEngine;
+  /**
+   * A number that changes with every change to any collection: what the queries key their
+   * derived lookups and sorted lists on, so a read between two changes computes nothing
+   * twice. See `view` in `queries.ts`.
+   */
+  version: () => number;
   /** The writes made here the server has not taken yet, and the conflicts waiting on a choice. */
   outbox: Outbox;
   /** The engine's state, for the hydration line and the offline banner. */
@@ -29,8 +35,11 @@ export interface Library extends Collections {
   close: () => Promise<void>;
 }
 
-/** What a reader of the library needs of it: the collections and the feed's state. */
-export type ReadableLibrary = Pick<Library, 'notes' | 'notebooks' | 'tags' | 'attachments' | 'state'>;
+/** What a reader of the library needs of it: the collections, the feed's state and the version. */
+export type ReadableLibrary = Pick<Library, 'notes' | 'notebooks' | 'tags' | 'attachments' | 'state' | 'version'>;
+
+/** The query roots a change to the library can reach; see `installLibraryQueries`. */
+export const LIBRARY_ROOTS: ReadonlySet<string> = new Set(['notes', 'note', 'trash', 'tags', 'notebooks', 'notebook-fields', 'attachments']);
 
 let current: { userId: string; library: Promise<Library> } | null = null;
 let forTests: ReadableLibrary | null = null;
@@ -107,16 +116,51 @@ export function setLibraryForTests(library: ReadableLibrary | null): void {
   libraryChanged();
 }
 
-const changeListeners = new Set<() => void>();
+const changeListeners = new Set<(roots: ReadonlySet<string>) => void>();
 
 /**
  * Hears every change to any collection of the open library — a feed page applied, an
- * optimistic write, a replay settling — coalesced to one call per task. What the query
- * bridge in `queries.ts` listens to, so a view reads the library again when it moves.
+ * optimistic write, a replay settling — coalesced to one call per task, with the query
+ * roots the changes can reach. What the query bridge in `queries.ts` listens to, so a
+ * view reads the library again when it moves — and only the views the change reaches: a
+ * save that changed a body changes the list and the note, not the tags, the notebooks or
+ * any count, and re-deriving those on every autosave was most of the cost of a keystroke
+ * at archive scale (review of #232). Anything but an update of a note's text, or one the
+ * change messages cannot describe, reaches everything.
  */
-export function onLibraryChange(listener: () => void): () => void {
+export function onLibraryChange(listener: (roots: ReadonlySet<string>) => void): () => void {
   changeListeners.add(listener);
   return () => void changeListeners.delete(listener);
+}
+
+/** For a test library: every listener told that everything may have changed. */
+export function notifyLibraryChange(roots: ReadonlySet<string> = LIBRARY_ROOTS): void {
+  changeListeners.forEach((l) => l(roots));
+}
+
+/** A change message as the collection reports it; the rows are read as notes. */
+type NoteChange = { type: string; value?: object | undefined; previousValue?: object | undefined };
+type LocalNoteLike = Pick<LocalNote, 'deletedAt' | 'notebookId' | 'notebookName' | 'tagIds' | 'tagNames' | 'fields'>;
+
+/** The roots a batch of note changes reaches: the text's alone when that is all that changed. */
+export function rootsOfNoteChanges(changes: ReadonlyArray<NoteChange>): ReadonlySet<string> {
+  const roots = new Set<string>(['notes', 'note']);
+  for (const c of changes) {
+    const v = c.value as LocalNoteLike | undefined;
+    const p = c.previousValue as LocalNoteLike | undefined;
+    if (c.type !== 'update' || !v || !p) return LIBRARY_ROOTS;
+    if (v.deletedAt !== undefined || p.deletedAt !== undefined) roots.add('trash');
+    const same =
+      v.deletedAt === p.deletedAt &&
+      v.notebookId === p.notebookId &&
+      v.notebookName === p.notebookName &&
+      v.tagIds.length === p.tagIds.length &&
+      v.tagIds.every((t, i) => t === p.tagIds[i]) &&
+      JSON.stringify(v.tagNames) === JSON.stringify(p.tagNames) &&
+      JSON.stringify(v.fields) === JSON.stringify(p.fields);
+    if (!same) return LIBRARY_ROOTS;
+  }
+  return roots;
 }
 
 export function acquireLibrary(userId: string): Promise<Library> {
@@ -171,20 +215,27 @@ async function open(userId: string): Promise<Library> {
   });
   collections = createCollections(store, engine);
 
+  let version = 0;
   let scheduled = false;
-  const changed = () => {
+  let touched = new Set<string>();
+  const changed = (roots: ReadonlySet<string>) => {
+    version += 1;
+    for (const r of roots) touched.add(r);
     if (scheduled) return;
     scheduled = true;
     queueMicrotask(() => {
       scheduled = false;
-      changeListeners.forEach((l) => l());
+      const reached = touched;
+      touched = new Set();
+      changeListeners.forEach((l) => l(reached));
     });
   };
+  const everything = () => changed(LIBRARY_ROOTS);
   const subscriptions = [
-    collections.notes.subscribeChanges(changed),
-    collections.notebooks.subscribeChanges(changed),
-    collections.tags.subscribeChanges(changed),
-    collections.attachments.subscribeChanges(changed),
+    collections.notes.subscribeChanges((changes) => changed(rootsOfNoteChanges(changes))),
+    collections.notebooks.subscribeChanges(everything),
+    collections.tags.subscribeChanges(everything),
+    collections.attachments.subscribeChanges(everything),
   ];
 
   // What makes the engine pull. None of these is a timer: a device that is open and
@@ -258,6 +309,7 @@ async function open(userId: string): Promise<Library> {
     userId,
     engine,
     outbox,
+    version: () => version,
     subscribe: (listener) => {
       listeners.add(listener);
       if (latest) listener(latest);

@@ -59,20 +59,24 @@ export function installTestLibrary(rows: Rows = {}): TestLibrary {
   const cursor = rows.cursor === undefined ? { seq: 1, epoch: 'test' } : rows.cursor;
   const state: FeedState = { phase: cursor ? 'current' : 'starting', cursor, lastError: null, total: null, applied: 0, pulls: 1 };
   const of = (entity: FeedEntity) => ({ note: lib.notes, notebook: lib.notebooks, tag: lib.tags, attachment: lib.attachments })[entity] as Collection<object, string>;
+  let version = 0;
   const test: TestLibrary = {
     ...lib,
     state: () => state,
+    version: () => version,
     upsert: (entity, row) => {
       const c = controls.get(entity)!;
       c.begin();
       c.write({ type: of(entity).has((row as { id: string }).id) ? 'update' : 'insert', value: row });
       c.commit();
+      version += 1;
     },
     remove: (entity, id) => {
       const c = controls.get(entity)!;
       c.begin();
       c.write({ type: 'delete', key: id });
       c.commit();
+      version += 1;
     },
     uninstall: () => setLibraryForTests(null),
   };
