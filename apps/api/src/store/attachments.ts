@@ -166,18 +166,26 @@ export class AttachmentsStore {
     size: number;
     r2Key: string;
   }): AttachmentInfo {
-    this.sql.exec(
-      `INSERT INTO attachments (id, note_id, filename, content_type, size, r2_key, created_at)
-       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)`,
-      input.id,
-      input.noteId,
-      input.filename,
-      input.contentType,
-      input.size,
-      input.r2Key,
-      Date.now(),
-    );
-    return { filename: input.filename, contentType: input.contentType, size: input.size };
+    return this.sql.tx(() => {
+      this.sql.exec(
+        `INSERT INTO attachments (id, note_id, filename, content_type, size, r2_key, created_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)`,
+        input.id,
+        input.noteId,
+        input.filename,
+        input.contentType,
+        input.size,
+        input.r2Key,
+        Date.now(),
+      );
+      // The file, and the note it changes the shape of: a client keeps a note's files
+      // with the note, and a row on its own would leave the note's list stale.
+      this.feed.record([
+        { entity: 'attachment', id: input.id },
+        { entity: 'note', id: input.noteId },
+      ]);
+      return { filename: input.filename, contentType: input.contentType, size: input.size };
+    });
   }
 
   /** Returns the R2 key to delete, or null when there is no such file on a live note. */
@@ -186,6 +194,10 @@ export class AttachmentsStore {
       const row = this.resolve(noteId, filename);
       if (!row) return null;
       this.sql.exec(`DELETE FROM attachments WHERE id = ?1`, row.id);
+      this.feed.record([
+        { entity: 'attachment', id: row.id, deleted: true },
+        { entity: 'note', id: noteId },
+      ]);
       return row.r2_key;
     });
   }
@@ -208,17 +220,21 @@ export class AttachmentsStore {
      */
     readBy?: 'vision' | null | undefined;
   }): void {
-    this.sql.exec(
-      `INSERT INTO attachment_text (attachment_id, note_id, filename, text, read_by, created_at)
-       VALUES (?1, ?2, ?3, ?4, ?5, ?6)
-       ON CONFLICT(attachment_id) DO UPDATE SET text = excluded.text, read_by = excluded.read_by`,
-      input.attachmentId,
-      input.noteId,
-      input.filename,
-      input.text,
-      input.readBy ?? null,
-      Date.now(),
-    );
+    this.sql.tx(() => {
+      this.sql.exec(
+        `INSERT INTO attachment_text (attachment_id, note_id, filename, text, read_by, created_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+         ON CONFLICT(attachment_id) DO UPDATE SET text = excluded.text, read_by = excluded.read_by`,
+        input.attachmentId,
+        input.noteId,
+        input.filename,
+        input.text,
+        input.readBy ?? null,
+        Date.now(),
+      );
+      // Text arriving is a change to the file's row (`hasText`), not to the note.
+      this.feed.record([{ entity: 'attachment', id: input.attachmentId }]);
+    });
   }
 
   /**
@@ -230,17 +246,21 @@ export class AttachmentsStore {
    * with no text yet leaves the copy without one too, and the backfill finds it there.
    */
   copyText(fromAttachmentId: string, to: { attachmentId: string; noteId: string; filename: string }): void {
-    this.sql.exec(
-      `INSERT INTO attachment_text (attachment_id, note_id, filename, text, read_by, created_at)
-       SELECT ?1, ?2, ?3, text, read_by, ?4
-         FROM attachment_text
-        WHERE attachment_id = ?5`,
-      to.attachmentId,
-      to.noteId,
-      to.filename,
-      Date.now(),
-      fromAttachmentId,
-    );
+    this.sql.tx(() => {
+      const copied = this.sql.exec<{ attachment_id: string }>(
+        `INSERT INTO attachment_text (attachment_id, note_id, filename, text, read_by, created_at)
+         SELECT ?1, ?2, ?3, text, read_by, ?4
+           FROM attachment_text
+          WHERE attachment_id = ?5
+         RETURNING attachment_id`,
+        to.attachmentId,
+        to.noteId,
+        to.filename,
+        Date.now(),
+        fromAttachmentId,
+      );
+      this.feed.record(copied.map((r) => ({ entity: 'attachment', id: r.attachment_id })));
+    });
   }
 
   /**

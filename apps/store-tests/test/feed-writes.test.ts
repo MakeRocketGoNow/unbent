@@ -257,3 +257,37 @@ describe('the feed records tag, notebook and field writes', () => {
 async function listAllTags(stub: ReturnType<typeof freshStore>['stub']) {
   return runInDurableObject(stub, (_i, state) => state.storage.sql.exec<{ id: string; name: string }>(`SELECT id, name FROM tags`).toArray());
 }
+
+describe('the feed records file writes', () => {
+  it('a file added or removed names the file and its note; text arriving names the file alone', async () => {
+    const { stub } = freshStore('feed-files');
+    const n = await stub.create(note());
+    const seq = await feedSeq(stub);
+    await stub.recordAttachment({ id: 'a1', noteId: n.id, filename: 'scan.pdf', contentType: 'application/pdf', size: 3, r2Key: 'k/a1' });
+    expect(await feedRows(stub, seq)).toEqual([{ entity: 'attachment', id: 'a1' }, { entity: 'note', id: n.id }]);
+    const seq2 = await feedSeq(stub);
+    await stub.recordText({ attachmentId: 'a1', noteId: n.id, filename: 'scan.pdf', text: 'acme invoice' });
+    expect(await feedRows(stub, seq2)).toEqual([{ entity: 'attachment', id: 'a1' }]);
+    const seq3 = await feedSeq(stub);
+    // A copy with text: the copy's row, and its text row.
+    await stub.recordAttachment({ id: 'a2', noteId: n.id, filename: 'scan-2.pdf', contentType: 'application/pdf', size: 3, r2Key: 'k/a2' });
+    await stub.copyText('a1', { attachmentId: 'a2', noteId: n.id, filename: 'scan-2.pdf' });
+    expect(await feedRows(stub, seq3)).toEqual([
+      { entity: 'attachment', id: 'a2' },
+      { entity: 'note', id: n.id },
+      { entity: 'attachment', id: 'a2' },
+    ]);
+    // A copy from a file with no text copies nothing and records nothing.
+    const seq4 = await feedSeq(stub);
+    await stub.recordAttachment({ id: 'a3', noteId: n.id, filename: 'bare.pdf', contentType: 'application/pdf', size: 3, r2Key: 'k/a3' });
+    await stub.recordAttachment({ id: 'a4', noteId: n.id, filename: 'bare-2.pdf', contentType: 'application/pdf', size: 3, r2Key: 'k/a4' });
+    const seq5 = await feedSeq(stub);
+    await stub.copyText('a3', { attachmentId: 'a4', noteId: n.id, filename: 'bare-2.pdf' });
+    expect(await feedRows(stub, seq5)).toEqual([]);
+    expect(seq5).toBeGreaterThan(seq4);
+    expect(await stub.removeAttachment(n.id, 'scan.pdf')).toBe('k/a1');
+    expect(await feedRows(stub, seq5)).toEqual([{ entity: 'attachment', id: 'a1', deleted: true }, { entity: 'note', id: n.id }]);
+    expect(await stub.removeAttachment(n.id, 'scan.pdf')).toBeNull();
+    expect(await feedRows(stub, seq5)).toHaveLength(2);
+  });
+});
