@@ -21,13 +21,19 @@ import { outboxName } from './names.js';
  * need a connection; the feed delivers what they did to every device.
  *
  * The outbox (`@tanstack/offline-transactions`) is one queue, replayed in order, one
- * entry at a time, with a growing wait between attempts; only the tab that holds the
- * lock replays, and a second tab's writes made offline are not durable. Two rules keep
- * the queue from sticking: every answer the server will give again gets
- * `NonRetriableError` — a 4xx, a refused precondition — so the entries behind it move,
- * and a `saveNote` whose note has a later entry in the queue does nothing when its turn
- * comes, since each save carries the whole draft and the one after subsumes it. A lost
- * connection and a 5xx are retried.
+ * entry at a time, with a growing wait between attempts. Two rules keep the queue from
+ * sticking: every answer the server will give again gets `NonRetriableError` — a 4xx, a
+ * refused precondition — so the entries behind it move, and a `saveNote` whose note has a
+ * later entry in the queue does nothing when its turn comes, since each save carries the
+ * whole draft and the one after subsumes it. A lost connection and a 5xx are retried.
+ *
+ * Only the tab holding the outbox's lock queues. In any other tab the library hands back
+ * a plain transaction that runs the write at once and rolls the change back if it fails,
+ * and offline it fails — so such a tab's writes are not "queued", they are never made,
+ * and saying otherwise would show "Saved" over text that was gone (review of #232). Every
+ * function here therefore asks `durable` first, and in a tab that is not it does what
+ * it does with no library at all: one request, the answer the server's, the refusal the
+ * caller's to show, and the local copy brought up to date by a pull.
  *
  * Every function here looks the open library up and works on it; with none — a browser
  * without the file system the local copy lives in — it does what the app did before,
@@ -302,6 +308,31 @@ export function provideLibrary(fn: () => Promise<WritableLibrary | null>): void 
   resolve = fn;
 }
 
+/** Whether a write made here goes to the outbox and outlives the tab; see the module comment. */
+const durable = (lib: WritableLibrary) => lib.outbox.executor.isOfflineEnabled;
+
+/**
+ * The library a write may be queued on: the open one, if this tab holds the outbox's
+ * lock; else null, and the write is a request. Every action starts here.
+ */
+async function queueable(): Promise<WritableLibrary | null> {
+  const lib = await resolve();
+  return lib && durable(lib) ? lib : null;
+}
+
+/**
+ * After a write made as a request in a tab that has a library but does not queue: the
+ * server's copy, brought to the local copy now rather than on the next nudge, so the row
+ * on screen agrees with the answer. Nothing to wait for; the library is already right
+ * about every row this did not touch.
+ */
+async function pulled<T>(write: Promise<T>): Promise<T> {
+  const out = await write;
+  const lib = await resolve();
+  if (lib) void lib.engine.pull();
+  return out;
+}
+
 /**
  * Queues one write: the optimistic change on the row, then the entry in the outbox. The
  * commit is not awaited — it settles when the server has answered, which offline is
@@ -309,6 +340,7 @@ export function provideLibrary(fn: () => Promise<WritableLibrary | null>): void 
  * could not store is a change that will be lost on reload.
  */
 function queue(lib: WritableLibrary, mutationFnName: string, metadata: Record<string, unknown>, mutate: () => void): void {
+  if (!durable(lib)) throw new Error('queue() in a tab that does not hold the outbox'); // callers go through queueable()
   const tx = lib.outbox.executor.createOfflineTransaction({ mutationFnName, autoCommit: false, metadata });
   tx.mutate(mutate);
   void tx.commit().catch((err: unknown) => {
@@ -338,18 +370,23 @@ function valuesOf(value: NoteDraft, lib: WritableLibrary): NoteFieldValue[] {
  * `conflicts` when it refused one and the person has to choose.
  */
 export async function saveNote(input: Save): Promise<'queued' | 'unchanged' | Note> {
-  const lib = await resolve();
+  const lib = await queueable();
   if (!lib) {
-    // No local copy on this device: the save is the request, and its answer is the
-    // server's copy — or the refusal, which the caller puts to the person.
+    // No local copy on this device, or a tab that does not queue: the save is the
+    // request, and its answer is the server's copy — or the refusal, which the caller
+    // puts to the person.
     const patch = buildNotePatch(input.value, input.base, undefined);
     if (!patch) return 'unchanged';
-    try {
-      return await api.updateNote(input.noteId, { ...patch, ifUpdatedAt: input.against ?? input.base.updatedAt });
-    } catch (err) {
-      if (!isNoteChanged(err) || input.against !== undefined || !holdsTheirChanges(input.value, input.base, err.current)) throw err;
-      return api.updateNote(input.noteId, { ...patch, ifUpdatedAt: err.current.updatedAt });
-    }
+    return pulled(
+      (async () => {
+        try {
+          return await api.updateNote(input.noteId, { ...patch, ifUpdatedAt: input.against ?? input.base.updatedAt });
+        } catch (err) {
+          if (!isNoteChanged(err) || input.against !== undefined || !holdsTheirChanges(input.value, input.base, err.current)) throw err;
+          return api.updateNote(input.noteId, { ...patch, ifUpdatedAt: err.current.updatedAt });
+        }
+      })(),
+    );
   }
   const patch = buildNotePatch(input.value, input.base, [...lookups(snapshot(lib)).fieldDefs.values()]);
   if (!patch) return 'unchanged';
@@ -368,8 +405,8 @@ export async function saveNote(input: Save): Promise<'queued' | 'unchanged' | No
 
 /** Makes a note, with an id minted here, and answers with it at once. */
 export async function createNote(input: { title: string; body: string; tags: string[]; notebook: string | null }): Promise<Note> {
-  const lib = await resolve();
-  if (!lib) return api.createNote(input);
+  const lib = await queueable();
+  if (!lib) return pulled(api.createNote(input));
   const id = crypto.randomUUID();
   const now = Date.now();
   const row: LocalNote = { id, title: input.title, body: input.body, createdAt: now, updatedAt: now, tagIds: [], tagNames: input.tags, notebookId: null, notebookName: input.notebook, files: [] };
@@ -381,10 +418,10 @@ export async function createNote(input: { title: string; body: string; tags: str
 
 /** A copy of a note, under an id minted here; the server copies its files. */
 export async function duplicateNote(sourceId: string): Promise<{ id: string }> {
-  const lib = await resolve();
-  if (!lib) return api.duplicateNote(sourceId);
+  const lib = await queueable();
+  if (!lib) return pulled(api.duplicateNote(sourceId));
   const source = lib.notes.get(sourceId);
-  if (!source) return api.duplicateNote(sourceId);
+  if (!source) return pulled(api.duplicateNote(sourceId));
   const copyId = crypto.randomUUID();
   const now = Date.now();
   queue(lib, 'duplicateNote', { sourceId, copyId }, () => {
@@ -394,8 +431,8 @@ export async function duplicateNote(sourceId: string): Promise<{ id: string }> {
 }
 
 export async function trashNote(noteId: string): Promise<void> {
-  const lib = await resolve();
-  if (!lib) return api.deleteNote(noteId);
+  const lib = await queueable();
+  if (!lib) return pulled(api.deleteNote(noteId));
   queue(lib, 'trashNote', { noteId }, () => {
     lib.notes.update(noteId, (row) => {
       row.deletedAt = Date.now();
@@ -404,8 +441,8 @@ export async function trashNote(noteId: string): Promise<void> {
 }
 
 export async function restoreNote(noteId: string): Promise<void> {
-  const lib = await resolve();
-  if (!lib) return api.restoreNote(noteId).then(() => undefined);
+  const lib = await queueable();
+  if (!lib) return pulled(api.restoreNote(noteId).then(() => undefined));
   queue(lib, 'restoreNote', { noteId }, () => {
     lib.notes.update(noteId, (row) => {
       delete row.deletedAt;
@@ -414,8 +451,8 @@ export async function restoreNote(noteId: string): Promise<void> {
 }
 
 export async function purgeNote(noteId: string): Promise<void> {
-  const lib = await resolve();
-  if (!lib) return api.deleteNotePermanently(noteId);
+  const lib = await queueable();
+  if (!lib) return pulled(api.deleteNotePermanently(noteId));
   queue(lib, 'purgeNote', { noteId }, () => {
     lib.notes.delete(noteId);
   });
@@ -424,8 +461,8 @@ export async function purgeNote(noteId: string): Promise<void> {
 const held = (lib: WritableLibrary, ids: string[]) => ids.filter((id) => lib.notes.has(id));
 
 export async function trashNotes(ids: string[]): Promise<void> {
-  const lib = await resolve();
-  if (!lib) return api.deleteNotes(ids).then(() => undefined);
+  const lib = await queueable();
+  if (!lib) return pulled(api.deleteNotes(ids).then(() => undefined));
   const which = held(lib, ids);
   if (which.length === 0) return;
   queue(lib, 'trashNotes', { ids: which }, () => {
@@ -435,8 +472,8 @@ export async function trashNotes(ids: string[]): Promise<void> {
 }
 
 export async function restoreNotes(ids: string[]): Promise<void> {
-  const lib = await resolve();
-  if (!lib) return api.restoreNotes(ids).then(() => undefined);
+  const lib = await queueable();
+  if (!lib) return pulled(api.restoreNotes(ids).then(() => undefined));
   const which = held(lib, ids);
   if (which.length === 0) return;
   queue(lib, 'restoreNotes', { ids: which }, () => {
@@ -445,8 +482,8 @@ export async function restoreNotes(ids: string[]): Promise<void> {
 }
 
 export async function purgeNotes(ids: string[]): Promise<void> {
-  const lib = await resolve();
-  if (!lib) return api.deleteNotesPermanently(ids).then(() => undefined);
+  const lib = await queueable();
+  if (!lib) return pulled(api.deleteNotesPermanently(ids).then(() => undefined));
   const which = held(lib, ids);
   if (which.length === 0) return;
   queue(lib, 'purgeNotes', { ids: which }, () => {
@@ -455,8 +492,8 @@ export async function purgeNotes(ids: string[]): Promise<void> {
 }
 
 export async function moveNotes(ids: string[], notebook: string | null): Promise<void> {
-  const lib = await resolve();
-  if (!lib) return api.updateNotes(ids, { notebook }).then(() => undefined);
+  const lib = await queueable();
+  if (!lib) return pulled(api.updateNotes(ids, { notebook }).then(() => undefined));
   const which = held(lib, ids);
   if (which.length === 0) return;
   queue(lib, 'moveNotes', { ids: which, notebook }, () => {
@@ -465,8 +502,8 @@ export async function moveNotes(ids: string[], notebook: string | null): Promise
 }
 
 export async function tagNotes(ids: string[], change: { add?: string[]; remove?: string[] }): Promise<void> {
-  const lib = await resolve();
-  if (!lib) return api.updateNotes(ids, { addTags: change.add, removeTags: change.remove }).then(() => undefined);
+  const lib = await queueable();
+  if (!lib) return pulled(api.updateNotes(ids, { addTags: change.add, removeTags: change.remove }).then(() => undefined));
   const which = held(lib, ids);
   if (which.length === 0) return;
   const l = lookups(snapshot(lib));
@@ -499,9 +536,9 @@ function syncedRow(lib: WritableLibrary, noteId: string): LocalNote | undefined 
  * that value changed, queued like any other, answering with the note as it now shows.
  */
 export async function setNoteField(noteId: string, def: FieldDef, value: FieldValue | null): Promise<Note> {
-  const lib = await resolve();
+  const lib = await queueable();
   const row = lib ? syncedRow(lib, noteId) : undefined;
-  if (!lib || !row) return api.updateNote(noteId, { fields: { [def.id]: value } });
+  if (!lib || !row) return pulled(api.updateNote(noteId, { fields: { [def.id]: value } }));
   const l = lookups(snapshot(lib));
   const base = toNote(row, l);
   const shown = toNote(lib.notes.get(noteId) ?? row, l);

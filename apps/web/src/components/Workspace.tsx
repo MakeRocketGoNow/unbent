@@ -95,6 +95,11 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
      library and a save goes to the outbox, which replays when the connection returns.
      What offline does stop is what needs the server now — Auto-fill, the ⋯ menu's
      actions, a file upload — and those fade in place rather than the whole note locking.
+
+     Except in a tab that does not hold the outbox: only one tab of an account queues
+     writes, and in any other a save is a request made now, which offline fails and rolls
+     back. Typing there would be lost on the next keystroke's save, so that tab locks the
+     note while offline and the banner says which tab to use (`stranded`, below).
   */
   const offline = useOffline();
   const notebooks = useQuery(notebooksQuery());
@@ -298,10 +303,11 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
    * on during one would only be refused again, and the choice is between two versions
    * the person can see — a third, still moving, would make it a guess.
    */
-  const frozen = conflicted;
-
   const outbox = useOutbox();
   const sync = useSyncStatus();
+  /** Offline in a tab whose writes would be requests: nothing typed here could be saved. */
+  const stranded = offline && outbox !== null && !sync.durable;
+  const frozen = conflicted || stranded;
 
   /*
      Leaving a note with the question unanswered drops what was typed there, as Reload

@@ -1,4 +1,5 @@
 import { useOffline } from '../connectivity.js';
+import { useOutbox, useSyncStatus } from '../store/use-outbox.js';
 import { OfflineIcon } from './icons.js';
 
 /**
@@ -19,15 +20,29 @@ import { OfflineIcon } from './icons.js';
  * The live region stays mounted and only its contents come and go, which is what makes a
  * screen reader announce the change; a region inserted already holding its text is often
  * read out by none of them.
+ *
+ * The second sentence is a promise only the tab holding the outbox can keep: in any other
+ * tab of the same account a write is a request, and offline it fails. That tab says so
+ * instead, and names the way out — the first tab, which is where the outbox is. A device
+ * with no library at all (a browser without the file system it lives in) keeps nothing
+ * and queues nothing, and is told what the old shell told it.
  */
 export function OfflineBanner() {
   const offline = useOffline();
+  const outbox = useOutbox();
+  const { durable } = useSyncStatus();
+  const line =
+    outbox === null
+      ? "You're offline. Changes can't be saved until you're back."
+      : durable
+        ? "You're offline. Your notes are here, and what you change will sync when you're back."
+        : "You're offline. Your notes are here, but changes can't be saved from this tab until you're back — use your first tab.";
   return (
     <div className="offline-status" role="status">
       {offline && (
         <p className="offline-banner">
           <OfflineIcon />
-          <span>{"You're offline. Your notes are here, and what you change will sync when you're back."}</span>
+          <span>{line}</span>
         </p>
       )}
     </div>

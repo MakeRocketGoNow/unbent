@@ -345,6 +345,25 @@ describe('what waits for the server', () => {
   });
 });
 
+describe('a tab that does not hold the outbox', () => {
+  it('makes the write as a request, and offline fails it rather than pretending it was saved', async () => {
+    const { lib, fake, engine, note } = library([row('n1', { title: 'old' })]);
+    fake.lead(false);
+    const base = note('n1');
+    vi.mocked(api.updateNote).mockResolvedValueOnce({ ...base, title: 'new', updatedAt: 101 });
+    const out = await actions.saveNote({ noteId: 'n1', value: { ...seedFrom(base), title: 'new' }, base });
+    expect(out).toMatchObject({ title: 'new', updatedAt: 101 });
+    expect(fake.queue).toHaveLength(0);
+    // The library is brought current with the answer rather than left to the next nudge.
+    expect(engine.pull).toHaveBeenCalled();
+
+    vi.mocked(api.updateNote).mockRejectedValueOnce(new OfflineError());
+    await expect(actions.saveNote({ noteId: 'n1', value: { ...seedFrom(base), title: 'newer' }, base })).rejects.toBeInstanceOf(OfflineError);
+    expect(lib.notes.get('n1')?.title).toBe('old');
+    expect(lib.outbox.status()).toMatchObject({ pending: 0, durable: false });
+  });
+});
+
 describe('the no-library path', () => {
   it('does the request and answers with the server’s copy', async () => {
     provideLibrary(async () => null);
