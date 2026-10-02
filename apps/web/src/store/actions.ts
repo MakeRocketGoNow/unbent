@@ -237,8 +237,18 @@ export function createOutbox(userId: string, lib: Omit<WritableLibrary, 'outbox'
    * lands. Left to run on its own (seen in review, 2026-10-02) that window flashed the old
    * title in the list, and the workspace took the old copy for a change of theirs and
    * reseeded the editor with it. `pull` never rejects and waits out a queued second run.
+   *
+   * Not during the first copy. A pull then is the whole snapshot walk — minutes on a
+   * phone — and an entry that waited for it held the queue behind it, kept "syncing" up
+   * and timed a sign-out's drain out (review of #232). The walk ends by following the
+   * feed from the `seq` it began at, which carries this write too; the pull is asked for
+   * so a walk already over picks it up, and not waited for.
    */
-  const settled = () => lib.engine.pull();
+  const settled = () => {
+    if (lib.engine.state.phase !== 'hydrating') return lib.engine.pull();
+    void lib.engine.pull();
+    return Promise.resolve();
+  };
 
   const unsubscribeConnectivity = subscribeConnectivity(touch);
   // The saves a reload restored, so a new save of one of their notes retires them too.

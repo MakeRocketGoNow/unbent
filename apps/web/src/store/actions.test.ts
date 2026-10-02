@@ -207,8 +207,9 @@ function library(notes: LocalNote[]) {
   const collections = { notes: n.c, notebooks: nb.c, tags: t.c, attachments: a.c, syncState: s.c } as unknown as Collections;
   let release: (() => void) | null = null;
   const engine = {
+    state: { phase: 'current' },
     pull: vi.fn(() => new Promise<void>((r) => (release = r))),
-  } as unknown as FeedEngine & { pull: ReturnType<typeof vi.fn> };
+  } as unknown as FeedEngine & { pull: ReturnType<typeof vi.fn>; state: { phase: string } };
   const outbox = createOutbox('u1', { ...collections, userId: 'u1', engine });
   const lib: WritableLibrary = { ...collections, userId: 'u1', engine, outbox };
   provideLibrary(async () => lib);
@@ -261,6 +262,17 @@ describe('a replayed write', () => {
     // the feed delivered, not the one from before the save.
     await tick();
     expect(lib.notes.get('n1')).toMatchObject({ title: 'new', updatedAt: 101 });
+  });
+
+  it('does not wait for the first copy to finish before its entry ends', async () => {
+    const { fake, engine } = library([row('n1')]);
+    engine.state.phase = 'hydrating';
+    vi.mocked(api.deleteNote).mockResolvedValueOnce(undefined);
+    await actions.trashNote('n1');
+    await tick();
+    // The pull is in flight for the whole walk and never released here.
+    expect(await fake.replayOne()).toBe('done');
+    expect(engine.pull).toHaveBeenCalled();
   });
 
   it('ends for good on any 4xx and is kept for a lost connection', async () => {
