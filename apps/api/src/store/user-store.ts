@@ -473,7 +473,11 @@ export class UserStore extends DurableObject<StoreEnv> {
 
   private announce(): void {
     const seq = this.feed.takeAnnouncement();
-    if (seq === null) return;
+    if (seq !== null) this.tell(seq);
+  }
+
+  /** `{"seq": N}` to every socket: the one message the push ever sends. */
+  private tell(seq: number): void {
     const message = JSON.stringify({ seq });
     for (const ws of this.ctx.getWebSockets()) {
       try {
@@ -898,12 +902,16 @@ export class UserStore extends DurableObject<StoreEnv> {
    * read what is written again on top of it as if it had seen it. The restore route
    * calls this once the store is back; every client then sees an epoch it does not hold
    * and starts over. The one write on the object the feed does not record, since it is
-   * the feed starting again.
+   * the feed starting again — so the sockets are told by hand: most dropped on the
+   * restore's restart, but one that reconnected first, and every one after the
+   * hand-run `POST /admin/store/feed-epoch`, would otherwise keep the old history until
+   * its next focus.
    */
   feedRestored(): { epoch: string } {
     this.ready();
     const epoch = crypto.randomUUID().replace(/-/g, '');
     this.sql.exec(`INSERT INTO _meta (key, value) VALUES (?1, ?2) ON CONFLICT(key) DO UPDATE SET value = excluded.value`, META.epoch, epoch);
+    this.tell(this.feed.seq());
     return { epoch };
   }
 }

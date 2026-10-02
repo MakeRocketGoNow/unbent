@@ -54,6 +54,20 @@ describe('the feed push', () => {
     ws.close(1000, 'done');
   });
 
+  it('tells the sockets when the feed is given a new epoch, so they pull and start over', async () => {
+    const { stub } = freshStore('push-epoch');
+    const { ws, got } = await open(stub);
+    await stub.create({ id: crypto.randomUUID(), title: 'T', body: '', tags: [] });
+    await sleep(100);
+    expect(got).toEqual(['{"seq":1}']);
+    const { epoch } = await stub.feedRestored();
+    await sleep(100);
+    // The counter is unchanged; the pull it prompts answers with the new epoch.
+    expect(got).toEqual(['{"seq":1}', '{"seq":1}']);
+    expect(await stub.changesSince(0, 10)).toMatchObject({ epoch });
+    ws.close(1000, 'done');
+  });
+
   it('reaches every socket, survives the object being evicted, and forgets a closed one', async () => {
     const { stub } = freshStore('push-many');
     const a = await open(stub);
