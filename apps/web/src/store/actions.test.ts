@@ -322,6 +322,29 @@ describe('a replayed write', () => {
   });
 });
 
+describe('what waits for the server', () => {
+  it('counts a write the moment it is stored, so a write made offline is "syncing" at once', async () => {
+    const { lib, fake } = library([row('n1')]);
+    const seen: number[] = [];
+    lib.outbox.subscribe((s) => seen.push(s.pending));
+    expect(lib.outbox.status()).toMatchObject({ pending: 0, durable: true });
+    await actions.trashNote('n1');
+    await tick();
+    expect(lib.outbox.status().pending).toBe(1);
+    expect(seen).toContain(1);
+    expect(fake.queue).toHaveLength(1);
+  });
+
+  it('says when a write queued here would not outlive the tab', async () => {
+    const { lib, fake } = library([]);
+    const seen: boolean[] = [];
+    lib.outbox.subscribe((s) => seen.push(s.durable));
+    fake.lead(false);
+    expect(lib.outbox.status().durable).toBe(false);
+    expect(seen).toEqual([true, false]);
+  });
+});
+
 describe('the no-library path', () => {
   it('does the request and answers with the server’s copy', async () => {
     provideLibrary(async () => null);

@@ -1,4 +1,4 @@
-import { IndexedDBAdapter, NonRetriableError, startOfflineExecutor, type OfflineExecutor, type OnlineDetector } from '@tanstack/offline-transactions';
+import { IndexedDBAdapter, NonRetriableError, startOfflineExecutor, type OfflineExecutor, type OnlineDetector, type StorageAdapter } from '@tanstack/offline-transactions';
 import type { Transaction } from '@tanstack/db';
 import type { FieldDef, FieldValue, Note, NoteFieldValue } from '@unbent/shared';
 import * as api from '../notes-api.js';
@@ -38,6 +38,12 @@ import { outboxName } from './names.js';
 export interface SyncStatus {
   /** Writes made here the server has not yet accepted. */
   pending: number;
+  /**
+   * Whether a write queued in this tab outlives it. Only the tab holding the outbox's lock
+   * stores entries; in any other tab a write is a request made at once, and offline it
+   * fails as one (see `durable` below).
+   */
+  durable: boolean;
   conflicts: ReadonlyMap<string, Note>;
 }
 
@@ -71,10 +77,8 @@ export function createOutbox(userId: string, lib: Omit<WritableLibrary, 'outbox'
   const conflicts = new Map<string, Note>();
   const listeners = new Set<(s: SyncStatus) => void>();
   const acks = new Set<(id: string, note: Note) => void>();
-  let pending = 0;
-  const status = (): SyncStatus => ({ pending, conflicts });
+  const status = (): SyncStatus => ({ pending: storage.held(), durable: executor.isOfflineEnabled, conflicts });
   const touch = () => {
-    pending = executor.getPendingCount();
     const s = status();
     listeners.forEach((l) => l(s));
   };
@@ -88,11 +92,13 @@ export function createOutbox(userId: string, lib: Omit<WritableLibrary, 'outbox'
     throw err;
   };
 
-  const storage = new IndexedDBAdapter(outboxName(userId));
+  const adapter = new IndexedDBAdapter(outboxName(userId));
+  const storage = watched(adapter, () => touch());
   const executor = startOfflineExecutor({
     collections: { notes: lib.notes },
     storage,
     onlineDetector: connectivityDetector(),
+    onLeadershipChange: () => touch(),
     mutationFns: {
       saveNote: async ({ transaction }) => {
         const { noteId, value, base, against } = transaction.metadata as unknown as Save;
@@ -222,8 +228,51 @@ export function createOutbox(userId: string, lib: Omit<WritableLibrary, 'outbox'
        * once, after the executor has stopped. A pinned version; the fallback is a database
        * left behind, which holds no rows after `dispose` and is removed on the next wipe.
        */
-      (storage as unknown as { db?: IDBDatabase | null }).db?.close?.();
+      (adapter as unknown as { db?: IDBDatabase | null }).db?.close?.();
     },
+  };
+}
+
+/**
+ * The outbox's storage, watched. Every entry passes through the adapter — stored when
+ * queued, restored after a reload, removed when a replay settles — so counting the keys it
+ * holds is what waits for the server, at every moment. The executor's own count is its
+ * scheduler's, which learns of an entry only after it is stored and settles it only by
+ * replaying it: a write made offline was stored and then waited, counted as nothing, and
+ * the head said "Saved" for a write the server had not heard of (review of #232). The
+ * entries are the `tx:` keys; the one marker the executor writes beside a settling entry
+ * is an update of the same key.
+ */
+function watched(inner: StorageAdapter, onChange: () => void): StorageAdapter & { held: () => number } {
+  const keys = new Set<string>();
+  const entry = (key: string) => key.startsWith('tx:');
+  const changed = () => onChange();
+  return {
+    get: (key) => inner.get(key),
+    set: async (key, value) => {
+      await inner.set(key, value);
+      if (entry(key)) {
+        keys.add(key);
+        changed();
+      }
+    },
+    delete: async (key) => {
+      await inner.delete(key);
+      if (keys.delete(key)) changed();
+    },
+    keys: async () => {
+      const all = await inner.keys();
+      keys.clear();
+      for (const k of all) if (entry(k)) keys.add(k);
+      changed();
+      return all;
+    },
+    clear: async () => {
+      await inner.clear();
+      keys.clear();
+      changed();
+    },
+    held: () => keys.size,
   };
 }
 
