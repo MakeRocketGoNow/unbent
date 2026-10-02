@@ -109,20 +109,20 @@ export function TrashLayout({ children }: { children: React.ReactNode }) {
   const restoreSelected = () => {
     const ids = selection.ids;
     return empty.run(async () => {
-      await actions.restoreNotes(ids);
+      const n = await actions.restoreNotes(ids);
       selection.clear();
       if (open && ids.includes(open)) void navigate({ to: '/trash' });
-      return `Restored ${ids.length} note${ids.length === 1 ? '' : 's'}.`;
+      return `Restored ${n} note${n === 1 ? '' : 's'}.`;
     });
   };
   const destroySelected = () => {
     const ids = selection.ids;
     return empty.run(async () => {
-      await actions.purgeNotes(ids);
+      const n = await actions.purgeNotes(ids);
       setPending(null);
       selection.clear();
       if (open && ids.includes(open)) void navigate({ to: '/trash' });
-      return `Deleted ${ids.length} note${ids.length === 1 ? '' : 's'}.`;
+      return `Deleted ${n} note${n === 1 ? '' : 's'}.`;
     });
   };
 

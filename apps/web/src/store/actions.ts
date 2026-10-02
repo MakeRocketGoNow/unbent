@@ -544,35 +544,44 @@ export async function purgeNote(noteId: string): Promise<void> {
 
 const held = (lib: WritableLibrary, ids: string[]) => ids.filter((id) => lib.notes.has(id));
 
-export async function trashNotes(ids: string[]): Promise<void> {
+/*
+ * The bulk verbs answer with how many notes they acted on: the notes held here, since
+ * the server's count comes later from the queue, or the server's count when the write
+ * was a request. What the message after the action names.
+ */
+
+export async function trashNotes(ids: string[]): Promise<number> {
   const lib = await queueable();
-  if (!lib) return pulled(api.deleteNotes(ids).then(() => undefined));
+  if (!lib) return pulled(api.deleteNotes(ids).then((r) => r.trashed));
   const which = held(lib, ids);
-  if (which.length === 0) return;
+  if (which.length === 0) return 0;
   queue(lib, 'trashNotes', { ids: which }, () => {
     const now = Date.now();
     for (const id of which) lib.notes.update(id, (row) => void (row.deletedAt = now));
   });
+  return which.length;
 }
 
-export async function restoreNotes(ids: string[]): Promise<void> {
+export async function restoreNotes(ids: string[]): Promise<number> {
   const lib = await queueable();
-  if (!lib) return pulled(api.restoreNotes(ids).then(() => undefined));
+  if (!lib) return pulled(api.restoreNotes(ids).then((r) => r.restored));
   const which = held(lib, ids);
-  if (which.length === 0) return;
+  if (which.length === 0) return 0;
   queue(lib, 'restoreNotes', { ids: which }, () => {
     for (const id of which) lib.notes.update(id, (row) => void delete row.deletedAt);
   });
+  return which.length;
 }
 
-export async function purgeNotes(ids: string[]): Promise<void> {
+export async function purgeNotes(ids: string[]): Promise<number> {
   const lib = await queueable();
-  if (!lib) return pulled(api.deleteNotesPermanently(ids).then(() => undefined));
+  if (!lib) return pulled(api.deleteNotesPermanently(ids).then((r) => r.deleted));
   const which = held(lib, ids);
-  if (which.length === 0) return;
+  if (which.length === 0) return 0;
   queue(lib, 'purgeNotes', { ids: which }, () => {
     for (const id of which) lib.notes.delete(id);
   });
+  return which.length;
 }
 
 export async function moveNotes(ids: string[], notebook: string | null): Promise<void> {
