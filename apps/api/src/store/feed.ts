@@ -19,6 +19,17 @@ import type { Sql } from './sql.js';
 /** What the feed names. A note covers its tags, fields and files; a notebook its field definitions. */
 export type FeedEntity = 'note' | 'notebook' | 'tag' | 'attachment';
 
+/**
+ * The `_meta` keys the feed owns, written by 0002-changes and read here. `UserStore`'s
+ * `META` lists them with its own, so every key the object writes is in one place there.
+ */
+export const FEED_META = {
+  /** The counter: the seq of the newest row, as text (the column is TEXT). */
+  seq: 'seq',
+  /** The name of this history; a restore changes it so every device starts over. */
+  epoch: 'feed_epoch',
+} as const;
+
 export interface Change {
   entity: FeedEntity;
   id: string;
@@ -108,7 +119,8 @@ export class Feed {
       );
     }
     this.sql.exec(
-      `INSERT INTO _meta (key, value) VALUES ('seq', ?1) ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
+      `INSERT INTO _meta (key, value) VALUES (?1, ?2) ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
+      FEED_META.seq,
       String(seq),
     );
     this.prune(seq, now);
@@ -149,12 +161,12 @@ export class Feed {
 
   /** The counter now: the seq of the newest row, or 0 when nothing has ever been recorded. */
   seq(): number {
-    return Number(this.sql.first<{ value: string }>(`SELECT value FROM _meta WHERE key = 'seq'`)?.value ?? 0);
+    return Number(this.sql.first<{ value: string }>(`SELECT value FROM _meta WHERE key = ?1`, FEED_META.seq)?.value ?? 0);
   }
 
   /** The name of this history; see 0002-changes. */
   epoch(): string {
-    return this.sql.first<{ value: string }>(`SELECT value FROM _meta WHERE key = 'feed_epoch'`)?.value ?? '';
+    return this.sql.first<{ value: string }>(`SELECT value FROM _meta WHERE key = ?1`, FEED_META.epoch)?.value ?? '';
   }
 
   /**

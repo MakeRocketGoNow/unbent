@@ -14,7 +14,7 @@ import {
   type SnapshotPage,
 } from '@unbent/shared';
 import { AttachmentsStore } from './attachments.js';
-import { cutByBytes, Feed, FEED_PAGE_BYTES, lastWordPerEntity, type FeedRow } from './feed.js';
+import { cutByBytes, Feed, FEED_META, FEED_PAGE_BYTES, lastWordPerEntity, type FeedRow } from './feed.js';
 import { appliedMigrations, migrate } from './migrate.js';
 import { NotesStore, type CountOptions, type ListOptions, type SearchFilters } from './notes.js';
 import { cursorAfter, nextCursor } from './notes-shared.js';
@@ -44,6 +44,8 @@ export type StoreEnv = Record<never, never>;
 const META = {
   /** The user this object belongs to: `ctx.id.name`, written on first wake, refused on a mismatch after. */
   userId: 'user_id',
+  /** The change feed's counter and epoch; see `FEED_META`, which the feed reads them by. */
+  ...FEED_META,
 } as const;
 
 /**
@@ -901,7 +903,7 @@ export class UserStore extends DurableObject<StoreEnv> {
   feedRestored(): { epoch: string } {
     this.ready();
     const epoch = crypto.randomUUID().replace(/-/g, '');
-    this.sql.exec(`INSERT INTO _meta (key, value) VALUES ('feed_epoch', ?1) ON CONFLICT(key) DO UPDATE SET value = excluded.value`, epoch);
+    this.sql.exec(`INSERT INTO _meta (key, value) VALUES (?1, ?2) ON CONFLICT(key) DO UPDATE SET value = excluded.value`, META.epoch, epoch);
     return { epoch };
   }
 }
