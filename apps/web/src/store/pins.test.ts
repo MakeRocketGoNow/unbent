@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { createCollection } from '@tanstack/db';
-import { IndexedDBAdapter } from '@tanstack/offline-transactions';
+import { IndexedDBAdapter, OfflineExecutor } from '@tanstack/offline-transactions';
 import pkg from '../../package.json';
 
 /**
@@ -36,5 +36,9 @@ describe('the pinned library internals', () => {
 
   it('the IndexedDB adapter keeps its connection under db', () => {
     expect('db' in new IndexedDBAdapter('pins')).toBe(true);
+  });
+
+  it('the executor can roll a restored entry’s change back through cleanupRestorationTransaction', () => {
+    expect(typeof (OfflineExecutor.prototype as unknown as Record<string, unknown>).cleanupRestorationTransaction).toBe('function');
   });
 });

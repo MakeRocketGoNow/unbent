@@ -296,9 +296,16 @@ export function createOutbox(userId: string, lib: Omit<WritableLibrary, 'outbox'
       for (const t of entries) {
         if (t.mutationFnName !== 'saveNote') continue;
         const m = t.metadata as Save | undefined;
-        // A restored entry's change is the executor's own restoration transaction; it
-        // goes when the entry ends, which a superseded entry does at once on its turn.
-        if (m && !waitingSaves.has(m.noteId)) waitingSaves.set(m.noteId, { id: t.id, base: m.base, against: m.against, retire: () => {} });
+        /*
+         * A restored entry's change on the row is the executor's own restoration
+         * transaction, which it rolls back itself only when the entry ends. Retired
+         * offline, that is whenever the connection returns, and the row would show the
+         * retired text the whole while (review of #232) — so the restoration is rolled
+         * back here, through the executor's private cleanup. The version is pinned
+         * (`pins.test.ts`); without the method the change stays until the entry's turn.
+         */
+        const cleanup = (executor as unknown as { cleanupRestorationTransaction?: (id: string, rollback: boolean) => void }).cleanupRestorationTransaction;
+        if (m && !waitingSaves.has(m.noteId)) waitingSaves.set(m.noteId, { id: t.id, base: m.base, against: m.against, retire: () => cleanup?.call(executor, t.id, true) });
       }
       for (const key of keys) {
         if (!key.startsWith('conflict:')) continue;
