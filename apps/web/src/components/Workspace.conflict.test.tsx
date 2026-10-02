@@ -13,6 +13,7 @@ import type { Note } from '@unbent/shared';
 import * as api from '../notes-api.js';
 import { NoteChangedError } from '../notes-api.js';
 import { keys } from '../queries.js';
+import { installTestLibrary } from '../store/test-library.js';
 import { Workspace } from './Workspace.js';
 
 vi.mock('../notes-api.js', async (importOriginal) => ({
@@ -314,7 +315,9 @@ describe('coming back to the tab', () => {
 
   it('takes the server’s copy when nothing has been typed', async () => {
     serverHolding(phone);
-    vi.mocked(api.getNote).mockResolvedValue({ ...phone, title: 'Trip notes, from the phone' });
+    // The phone's copy is in the library — the feed put it there — and a refetch reads it.
+    const { tags: _t, notebook: _n, ...row } = { ...phone, title: 'Trip notes, from the phone' };
+    const lib = installTestLibrary({ notes: [{ ...row, tagIds: [], files: [] }] });
     mount();
     expect((await title()).value).toBe('Trip notes');
 
@@ -329,6 +332,7 @@ describe('coming back to the tab', () => {
     await typeTitle('Trip notes, from the phone, and here');
     await waitFor(() => expect(screen.getByText('Saved')).toBeTruthy(), { timeout: 3000 });
     expect(vi.mocked(api.updateNote).mock.calls[0]?.[1]).toMatchObject({ ifUpdatedAt: 200 });
+    lib.uninstall();
   });
 
   it('leaves typing that has not been saved alone', async () => {

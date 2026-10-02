@@ -1,4 +1,5 @@
 import { closeLocalStore } from './db.js';
+import { closeLibrary } from './library.js';
 import { isOutbox, isStoreFile } from './names.js';
 
 /**
@@ -18,6 +19,7 @@ import { isOutbox, isStoreFile } from './names.js';
  */
 export async function wipeLocalStores(): Promise<void> {
   try {
+    await closeLibrary();
     await closeLocalStore();
   } catch {
     // Closing can fail if the worker is already gone; the removal below still applies.

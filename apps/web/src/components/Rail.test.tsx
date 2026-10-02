@@ -90,8 +90,7 @@ function harness(initial: string, wide = true) {
     notebooks: [{ id: '1', name: 'Coupons', count: 5 }],
     unfiled: 0,
   });
-  // The query selects `total` out of a page, so the cache holds the page shape.
-  client.setQueryData(keys.trashCount(), { items: [], cursor: null, total: 2 });
+  client.setQueryData(keys.trashCount(), 2);
   // The account menu reads the instance config for legal links; seeded, jsdom has no server.
   client.setQueryData(keys.config(), { providers: ['password'] });
   return {

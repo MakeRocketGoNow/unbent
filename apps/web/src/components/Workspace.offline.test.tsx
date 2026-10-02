@@ -10,7 +10,8 @@ import {
 } from '@tanstack/react-router';
 import type { Note } from '@unbent/shared';
 import * as api from '../notes-api.js';
-import { OfflineError, markServedFromCache } from '../notes-api.js';
+import { markServedFromCache } from '../notes-api.js';
+import { installTestLibrary } from '../store/test-library.js';
 import { keys } from '../queries.js';
 import { setReachableForTests } from '../connectivity.js';
 import { Workspace } from './Workspace.js';
@@ -164,17 +165,17 @@ describe('a note while offline', () => {
     expect(api.updateNote).not.toHaveBeenCalled();
   });
 
-  it('says a note never opened here is not available, without calling it a failure', async () => {
+  it('says a note the copy does not hold yet is not available, without calling it a failure', async () => {
+    // A library that has never taken its snapshot: the copy, not the note, is what is missing.
+    const lib = installTestLibrary({ cursor: null });
     mount((client) => {
       client.removeQueries({ queryKey: keys.note(note.id) });
-      client.setQueryDefaults(keys.note(note.id), {
-        queryFn: () => Promise.reject(new OfflineError()),
-      });
     });
     const line = await screen.findByText(
       "This note hasn't been opened on this device, so it isn't available offline.",
     );
     expect(line.className).toContain('muted');
     expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
+    lib.uninstall();
   });
 });
