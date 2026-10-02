@@ -117,6 +117,47 @@ describe('ensureSession', () => {
     });
   });
 
+  describe('a check in flight', () => {
+    it('is not an answer: the previous user is neither re-remembered nor wiped for', async () => {
+      vi.stubGlobal('caches', { delete: vi.fn(async () => true) });
+      vi.stubGlobal('fetch', vi.fn(async () => json(200, SESSION)));
+      const { recordSession } = await import('./auth-client.js');
+      // After a sign-out, before the server answers: Better Auth still reports the user.
+      await recordSession({ data: SESSION as never, error: null, isPending: false, isRefetching: true });
+      expect(rememberedSession()).toBeNull();
+      const { wipeLocalStores, closeLocalStores } = await import('./store/wipe.js');
+      expect(wipeLocalStores).not.toHaveBeenCalled();
+      expect(closeLocalStores).not.toHaveBeenCalled();
+    });
+
+    it('holds the guard until the answer lands', async () => {
+      // The first answer: signed in. Then a refetch that takes a while and comes back empty.
+      let answer: (r: Response) => void = () => {};
+      vi.stubGlobal(
+        'fetch',
+        vi
+          .fn()
+          .mockResolvedValueOnce(json(200, SESSION))
+          .mockImplementationOnce(() => new Promise<Response>((r) => (answer = r))),
+      );
+      vi.resetModules();
+      const mod = await import('./auth-client.js');
+      expect(await mod.ensureSession()).toMatchObject({ user: { id: 'u1' } });
+      const refetching = mod.refreshSession();
+      // The request has to have started: Better Auth marks the store refetching from its
+      // request hook, a tick after `refetch()` is called.
+      await new Promise((r) => setTimeout(r, 0));
+      const second = mod.ensureSession();
+      let decided = false;
+      void second.then(() => (decided = true));
+      await new Promise((r) => setTimeout(r, 50));
+      expect(decided).toBe(false);
+      answer(json(200, null));
+      await refetching;
+      expect(await second).toBeNull();
+    });
+  });
+
   /*
      The local copy of the library and its outbox go by a different rule than the worker's
      caches: the outbox may hold edits made offline that the server has not heard of, so a

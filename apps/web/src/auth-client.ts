@@ -119,8 +119,24 @@ export interface SessionState {
    */
   error: { status?: number } | null;
   isPending: boolean;
+  /**
+   * A check in flight while an earlier answer is still held. Better Auth keeps `data` and
+   * says `isPending: false` for the whole of it, so a state that is refetching is the
+   * previous answer, not a new one; see `isAnswer`.
+   */
+  isRefetching: boolean;
   refetch: () => Promise<void>;
 }
+
+/**
+ * Whether a state is an answer. Not while the first check is pending, and not while a
+ * later check is in flight either: after a sign-out the store refetches and, until the
+ * server answers, reports the signed-out user with `isPending: false`. Taken for an answer
+ * that re-remembered them, sent the login page back to `/notes`, and reopened the library
+ * on a store the sign-out had just wiped (found by the sign-out check, 2026-10-02; the
+ * refused-session wipe used to cover it up).
+ */
+const isAnswer = (state: Pick<SessionState, 'isPending'> & { isRefetching?: boolean }) => !state.isPending && !state.isRefetching;
 
 interface SessionStore {
   get(): SessionState;
@@ -192,7 +208,9 @@ export const sessionCheckAbandoned = () => checkAbandoned;
  * offline that the server has not heard of, and whoever signs in next keeps their own
  * while every other account's goes. See `clearOfflineCaches`.
  */
-export function recordSession(state: Pick<SessionState, 'data' | 'error' | 'isPending'>): Promise<void> {
+export function recordSession(state: Pick<SessionState, 'data' | 'error' | 'isPending'> & { isRefetching?: boolean }): Promise<void> {
+  // A check in flight carries the previous answer; what it says is said again when it lands.
+  if (state.isRefetching) return Promise.resolve();
   if (state.data) {
     const previous = rememberedSession();
     rememberSession(state.data.user);
@@ -241,7 +259,7 @@ export function ensureSession(): Promise<Session | null> {
        connection now, and treating it as news put the app back offline on every
        navigation once the connection had returned.
     */
-    const settledBefore = !sessionStore.get().isPending;
+    const settledBefore = isAnswer(sessionStore.get());
     const finish = (state: SessionState, timedOut: boolean) => {
       if (settled) return;
       settled = true;
@@ -258,7 +276,7 @@ export function ensureSession(): Promise<Session | null> {
     };
     const timer = setTimeout(() => finish(sessionStore.get(), true), SESSION_CHECK_TIMEOUT);
     stop = sessionStore.subscribe((state) => {
-      if (!state.isPending) finish(state, false);
+      if (isAnswer(state)) finish(state, false);
     });
     // `subscribe` calls back synchronously with the value it already has, before it has
     // returned the unsubscribe — so a store that had already settled is torn down on this
