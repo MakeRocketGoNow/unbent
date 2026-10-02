@@ -20,6 +20,7 @@ import { ExportSnackbar } from '../components/ExportSnackbar.js';
 import { ImportSnackbar } from '../components/ImportSnackbar.js';
 import { SignOutSnackbar } from '../components/SignOutSnackbar.js';
 import { SignOutConfirm } from '../components/SignOutConfirm.js';
+import { SyncingLine } from '../components/SyncingLine.js';
 import { UpdateSnackbar } from '../components/UpdateSnackbar.js';
 import { claimImportFor, getImportRun, subscribeImport } from '../import-run.js';
 import { takeUpdate } from '../sw-register.js';
@@ -266,6 +267,7 @@ function AppShell() {
         <Topbar email={session.user.email} onSignOut={signOutAndLeave} />
         <OfflineBanner />
         <LibraryStatus />
+        <SyncingLine />
         <Outlet />
       </main>
       <ExportSnackbar />
