@@ -1,4 +1,5 @@
 import { type AttachmentInfo, splitExt } from '@unbent/shared';
+import type { Feed } from './feed.js';
 import type { Sql } from './sql.js';
 
 export interface AttachmentRow {
@@ -93,7 +94,10 @@ const toPending = (r: PendingRow): PendingFile => ({
  * Worker builds it from the session (`buildKey` on the facade). Bytes never come this way.
  */
 export class AttachmentsStore {
-  constructor(private readonly sql: Sql) {}
+  constructor(
+    private readonly sql: Sql,
+    private readonly feed: Feed,
+  ) {}
 
   /**
    * Resolves `files/<filename>` within a live note. Null when there is no such file.

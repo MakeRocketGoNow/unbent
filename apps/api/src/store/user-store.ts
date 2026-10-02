@@ -10,6 +10,7 @@ import {
   type NotebookDefinition,
 } from '@unbent/shared';
 import { AttachmentsStore } from './attachments.js';
+import { Feed } from './feed.js';
 import { appliedMigrations, migrate } from './migrate.js';
 import { NotesStore, type CountOptions, type ListOptions, type SearchFilters } from './notes.js';
 import { cursorAfter, nextCursor } from './notes-shared.js';
@@ -127,6 +128,7 @@ export const DUMP_PAGE_BYTES = 8 * 1024 * 1024;
 export class UserStore extends DurableObject<StoreEnv> {
   readonly userId: string;
   private sql: Sql;
+  private feed: Feed;
   private notes: NotesStore;
   private attachments: AttachmentsStore;
   private wiped = false;
@@ -140,8 +142,9 @@ export class UserStore extends DurableObject<StoreEnv> {
     if (!name) throw new Error('UserStore must be created with idFromName(userId)');
     this.userId = name;
     this.sql = instrumentedSql(ctx.storage, name);
-    this.notes = new NotesStore(this.sql);
-    this.attachments = new AttachmentsStore(this.sql);
+    this.feed = new Feed(this.sql);
+    this.notes = new NotesStore(this.sql, this.feed);
+    this.attachments = new AttachmentsStore(this.sql, this.feed);
     ctx.blockConcurrencyWhile(async () => {
       // A wiped object wakes as it was left: empty, with no schema, and with the copy
       // from D1 never to run again. `ready()` rebuilds the schema if anything asks.

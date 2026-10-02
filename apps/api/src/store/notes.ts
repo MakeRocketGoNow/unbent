@@ -27,6 +27,7 @@ import {
   type StaleNote,
   DEFAULT_NOTE_SORT,
 } from '@unbent/shared';
+import type { Feed } from './feed.js';
 import type { Bind, Sql } from './sql.js';
 import {
   ATTACHMENTS_SUBQUERY,
@@ -143,7 +144,10 @@ type Statement = [sql: string, binds: Bind[]];
  * and returns bodies on purpose; its caller pages by bytes.
  */
 export class NotesStore {
-  constructor(private readonly sql: Sql) {}
+  constructor(
+    private readonly sql: Sql,
+    private readonly feed: Feed,
+  ) {}
 
   /**
    * A page of notes, ordered by the requested sort. Keyset pagination keeps deep pages
