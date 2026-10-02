@@ -165,5 +165,9 @@ describe('GET /api/changes/socket', () => {
     expect(await handshake('https://elsewhere.example')).toBe('refused');
     expect(await handshake()).toBe('open');
     expect(await handshake(ORIGIN)).toBe('open');
+    // Locally the app is reached on more than APP_URL names — the emulator's alias for
+    // the host, another worktree's port — and sign-in trusts those, so the socket does too.
+    expect(await handshake(`http://127.0.0.1:${new URL(ORIGIN).port}`)).toBe('open');
+    expect(await handshake('http://10.0.2.2:5173')).toBe('open');
   });
 });

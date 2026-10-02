@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import { zValidator } from '@hono/zod-validator';
 import { feedQuerySchema, snapshotQuerySchema } from '@unbent/shared';
+import { isTrustedOrigin } from '../auth.js';
 import { requireAuth } from '../lib/session.js';
 import { withRepos } from '../lib/repos-middleware.js';
 import { storeFor } from '../lib/store-client.js';
@@ -47,10 +48,12 @@ export const changes = new Hono<AppEnv>()
     // A handshake skips CORS and Better Auth's origin check covers only its own routes,
     // so the one thing keeping another site's page off this socket would be the session
     // cookie's SameSite default. The socket carries only "something changed", but the
-    // check costs a line and does not depend on a cookie setting staying as it is. A
-    // client with no `Origin` — a native app, the test suite — is not a browser and is
-    // let through.
+    // check costs a line and does not depend on a cookie setting staying as it is. The
+    // set is sign-in's own (`isTrustedOrigin`): locally that is every host the app is
+    // reached on — the emulator's alias, Tailscale, another worktree's port — not the
+    // one `APP_URL` names. A client with no `Origin` — a native app, the test suite — is
+    // not a browser and is let through.
     const origin = c.req.header('Origin');
-    if (origin !== undefined && origin !== c.env.APP_URL) return c.json({ error: 'Forbidden' }, 403);
+    if (origin !== undefined && !isTrustedOrigin(c.env, origin)) return c.json({ error: 'Forbidden' }, 403);
     return storeFor(c.env, c.get('userId')!).fetch(c.req.raw);
   });

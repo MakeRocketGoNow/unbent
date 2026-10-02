@@ -203,10 +203,42 @@ function relyingParty(env: Env): { rpID: string; origin: string } {
 function baseURLFor(env: Env) {
   if (!env.APP_URL.startsWith('http://localhost')) return env.APP_URL;
   return {
-    allowedHosts: ['localhost:*', '127.0.0.1:*', '10.0.2.2:*', '*.ts.net:*', '100.*.*.*:*'],
+    allowedHosts: LOCAL_ALLOWED_HOSTS,
     fallback: env.APP_URL,
     protocol: 'http' as const,
   };
+}
+
+/** The hosts a local instance is reached on; see `baseURLFor` for why each is here. */
+const LOCAL_ALLOWED_HOSTS = ['localhost:*', '127.0.0.1:*', '10.0.2.2:*', '*.ts.net:*', '100.*.*.*:*'];
+
+/**
+ * Whether a browser `Origin` is one this instance serves the app on: the same set
+ * Better Auth trusts, so a route that checks an origin itself — the change feed's
+ * WebSocket, whose handshake skips CORS — cannot drift from sign-in. Deployed, exactly
+ * `APP_URL`'s origin (compared as origins, so a trailing slash on the setting does not
+ * refuse every browser); locally, the hosts above on any port, as `baseURLFor` has them.
+ */
+export function isTrustedOrigin(env: Pick<Env, 'APP_URL'>, origin: string): boolean {
+  let url: URL;
+  let app: URL;
+  try {
+    url = new URL(origin);
+    app = new URL(env.APP_URL);
+  } catch {
+    return false;
+  }
+  if (url.origin === app.origin) return true;
+  if (!env.APP_URL.startsWith('http://localhost')) return false;
+  return LOCAL_ALLOWED_HOSTS.some((pattern) => {
+    // `host:*` is any port. A leading `*.` is any run of labels, as a MagicDNS name has
+    // (`laptop.tail1234.ts.net`); a `*` inside a host is one label, so `100.*.*.*` is an
+    // address and not a prefix of some other site's name.
+    const host = pattern.replace(/:\*$/, '');
+    const parts = host.split('*').map((part) => part.replace(/[.]/g, '\\.'));
+    const re = new RegExp(`^${parts.map((part, i) => (i === 0 ? part : `${i === 1 && parts[0] === '' ? '.+' : '[^.]+'}${part}`)).join('')}$`);
+    return re.test(url.hostname);
+  });
 }
 
 /**
