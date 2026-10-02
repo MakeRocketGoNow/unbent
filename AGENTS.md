@@ -582,9 +582,11 @@ Rules that hold it together, each with a test:
   once: a method that writes a data row without advancing the counter fails by name, and
   a new method lands in one of its three lists or fails there too.
 - **A row for every entity whose rendered shape changed, from the method that knows.**
-  A feed note carries its tags by id as well as by name (`tagIds`), so a tag rename is one
-  row and a delete one tombstone, and the client looks the name up as it does a
-  notebook's; a merge names the notes whose ids moved. A field conversion, deletion or
+  A feed note carries its tags and notebook by id only (`tagIds`, `notebookId`), never by
+  name, so a tag or notebook rename is one row and a delete one tombstone, and a client
+  renders the names from the tags and notebooks it holds; a merge names the notes whose
+  ids moved. Field values keep their carried names for the one definition a client
+  cannot hold, a deleted notebook's tombstone; see `FeedNote`. A field conversion, deletion or
   cleared option records the notes whose values it rewrote. A notebook is one row except
   a delete, which names the notes it unfiled. A file added or removed records the file
   and its note; text arriving records the file alone. `feed-writes.test.ts` pins each

@@ -16,14 +16,21 @@ import type { AttachmentInfo, Note, NotebookSummary } from './schemas.js';
 export type FeedEntity = 'note' | 'notebook' | 'tag' | 'attachment';
 
 /**
- * A note as the feed carries it: the note, trashed or not, with its files and the ids of
- * its tags. `tags` holds names, as every reader of `Note` expects; `tagIds` is the same
- * list by id, in the same order, so a tag's rename or deletion can be one row for the
- * tag — the client looks the name up, as it does a notebook's — rather than a row per
- * note carrying it. A tag on thirteen thousand notes renamed would otherwise be
- * thirteen thousand notes downloaded whole by every device.
+ * A note as the feed carries it: the note, trashed or not, with its files and its tags by
+ * id — and without the names `Note` carries for its tags and notebook. A tag or notebook
+ * rename is one row for the tag or notebook, so a name copied onto every note would be
+ * stale from the next rename on; the client renders `tagIds` and `notebookId` against the
+ * tags and notebooks it holds, and the names are not here to be rendered by mistake. A
+ * tag on thirteen thousand notes renamed would otherwise be thirteen thousand notes
+ * downloaded whole by every device.
+ *
+ * `fields` keeps the full value shape, names included, for one reason: a value can key a
+ * definition whose notebook was deleted, which the store keeps as a tombstone so the
+ * value stays readable with its label, and which the client no longer holds. Render a
+ * value from the definition you hold by `fieldId`; the carried name, type and notebook
+ * are for the definition you do not, which is the one case they are current.
  */
-export interface FeedNote extends Note {
+export interface FeedNote extends Omit<Note, 'tags' | 'notebook'> {
   tagIds: string[];
   /**
    * The note's files with their ids and `hasText`, the same rows the feed's `attachments`

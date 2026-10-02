@@ -79,9 +79,11 @@ describe('GET /api/changes', () => {
     const p = page(await feed(since));
     expect(p.more).toBe(false);
     expect(p.next).toBe(p.seq);
-    expect(p.notes).toEqual([expect.objectContaining({ id: a.id, body: 'Second', tags: ['home'], notebook: 'Receipts', files: [] })]);
     expect(p.notebooks).toEqual([expect.objectContaining({ name: 'Receipts', fieldDefs: [] })]);
     expect(p.tags).toEqual([{ id: expect.any(String), name: 'home' }]);
+    // The note names its tag and notebook by id; the names are theirs to carry.
+    expect(p.notes).toEqual([expect.objectContaining({ id: a.id, body: 'Second', tagIds: [p.tags[0]!.id], notebookId: p.notebooks[0]!.id, files: [] })]);
+    expect(p.notes[0]).not.toHaveProperty('tags');
     expect(p.tombstones).toEqual([{ entity: 'note', id: b.id }]);
 
     // From there on: nothing until the next write; a trash is an update with `deletedAt`.

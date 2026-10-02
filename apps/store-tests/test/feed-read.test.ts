@@ -45,7 +45,12 @@ describe('changesSince', () => {
     // Note a three times and b thrice (create, file, text) collapse to one each, as they are now.
     expect(p.notes.map((n) => n.id).sort()).toEqual([a.id, b.id].sort());
     const home = (await stub.listTags()).find((t) => t.name === 'home')!;
-    expect(p.notes.find((n) => n.id === a.id)).toMatchObject({ title: 'Edited thrice', notebook: 'Receipts', tags: ['home'], tagIds: [home.id], files: [] });
+    const receipts = (await stub.listNotebooks())[0]!;
+    const noteA = p.notes.find((n) => n.id === a.id)!;
+    expect(noteA).toMatchObject({ title: 'Edited thrice', notebookId: receipts.id, tagIds: [home.id], files: [] });
+    // Names are the tag's and the notebook's rows to carry, not the note's.
+    expect(noteA).not.toHaveProperty('tags');
+    expect(noteA).not.toHaveProperty('notebook');
     expect(p.notes.find((n) => n.id === b.id)).toMatchObject({ files: [{ id: 'f1', noteId: b.id, filename: 'scan.pdf', contentType: 'application/pdf', size: 3, hasText: true, createdAt: expect.any(Number) }] });
     expect(p.notebooks).toEqual([{ id: expect.any(String), name: 'Receipts', purpose: null, emoji: null, fieldDefs: [] }]);
     // The tag c took to the trash keeps its row with no live note; `purgeOne` leaves the
@@ -174,7 +179,7 @@ describe('snapshotPage', () => {
     const all = [...first.notes, ...second.notes, ...third.notes];
     expect(all.map((n) => n.id).sort()).toEqual([...made].sort());
     expect(all.map((n) => n.id)).toEqual([...all.map((n) => n.id)].sort());
-    expect(all.find((n) => n.id === made[4])).toMatchObject({ deletedAt: expect.any(Number), tags: ['t'] });
+    expect(all.find((n) => n.id === made[4])).toMatchObject({ deletedAt: expect.any(Number), tagIds: [first.tags![0]!.id] });
     // An exact fit: the last page is full and says so with a cursor; the one after is empty.
     const fit = await stub.snapshotPage(second.next, 1);
     expect(fit.next).toBe(made.sort()[4]);

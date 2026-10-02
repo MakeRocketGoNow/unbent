@@ -17,6 +17,7 @@ import {
   type FieldScale,
   type FieldType,
   type FieldValue,
+  type FeedNote,
   type FeedNotebook,
   type FeedTag,
   type Note,
@@ -145,6 +146,9 @@ type Statement = [sql: string, binds: Bind[]];
  * here, so a page of fifty notes is fifty excerpts on the wire. `listFull` is the export's
  * and returns bodies on purpose; its caller pages by bytes.
  */
+/** A note as `wholeNotes` reads it: a `FeedNote` without its files, which the object adds. */
+export type WholeNote = Omit<FeedNote, 'files'>;
+
 export class NotesStore {
   constructor(
     private readonly sql: Sql,
@@ -190,39 +194,32 @@ export class NotesStore {
    * files (measured 2026-10-02). An id that is not a note is left out; a trashed one
    * carries `deletedAt`, since the trash is part of the copy a client keeps.
    */
-  wholeNotes(ids: string[]): Array<Note & { tagIds: string[] }> {
-    const notes: Array<Note & { tagIds: string[] }> = [];
+  wholeNotes(ids: string[]): WholeNote[] {
+    const notes: WholeNote[] = [];
     for (const run of runs([...new Set(ids)])) {
       const page = `SELECT n.id, n.title, n.body, n.created_at, n.updated_at, n.deleted_at, n.notebook_id,
                            NULL AS sort_key
                       FROM notes n
                      WHERE n.id IN (${placeholders(1, run.length)})`;
-      // Tags by id as well as by name, in one order, for the feed's `tagIds`; the page
-      // query is asked to leave its names out, so the join rows are read once.
-      const tagsOf = new Map<string, { ids: string[]; names: string[] }>();
-      for (const t of this.sql.exec<{ note_id: string; id: string; name: string }>(
-        `SELECT nt.note_id, t.id, t.name FROM note_tags nt CROSS JOIN tags t ON t.id = nt.tag_id
-          WHERE nt.note_id IN (${placeholders(1, run.length)})
-          ORDER BY nt.note_id, t.name`,
+      // Tags by id, for the feed's `tagIds`: the join rows alone, no names (see
+      // `FeedNote` for why none are carried); the page query is asked to leave its name
+      // subquery out too.
+      const tagsOf = new Map<string, string[]>();
+      for (const t of this.sql.exec<{ note_id: string; tag_id: string }>(
+        `SELECT note_id, tag_id FROM note_tags WHERE note_id IN (${placeholders(1, run.length)}) ORDER BY note_id, tag_id`,
         ...run,
       )) {
-        const entry = tagsOf.get(t.note_id) ?? { ids: [], names: [] };
-        entry.ids.push(t.id);
-        entry.names.push(t.name);
-        tagsOf.set(t.note_id, entry);
+        tagsOf.get(t.note_id)?.push(t.tag_id) ?? tagsOf.set(t.note_id, [t.tag_id]);
       }
       for (const r of this.summaryRows(page, run, 'n.id', { tags: false })) {
         const fields = decodeFieldsJson(r.fields, r.notebook_id);
-        const tags = tagsOf.get(r.id) ?? { ids: [], names: [] };
         notes.push({
           id: r.id,
           title: r.title,
           body: r.body,
           createdAt: r.created_at,
           updatedAt: r.updated_at,
-          tags: tags.names,
-          tagIds: tags.ids,
-          notebook: r.notebook,
+          tagIds: tagsOf.get(r.id) ?? [],
           notebookId: r.notebook_id,
           ...(fields.length > 0 ? { fields } : {}),
           ...(r.deleted_at !== null ? { deletedAt: r.deleted_at } : {}),
