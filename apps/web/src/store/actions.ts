@@ -51,7 +51,10 @@ import { outboxName } from './names.js';
  * server's copy, so a conflict on a note that was not open lost the typing — reopening
  * seeded from the row, and "Keep mine" had nothing to keep (review of #232). With offline
  * editing that is the ordinary conflict: ten notes edited on a plane, one of them touched
- * on the phone meanwhile. The workspace seeds from this when it opens the note.
+ * on the phone meanwhile. The workspace seeds from this when it opens the note. Kept in
+ * the outbox's own database until the choice is made: most of these come back during a
+ * background replay, with the note closed, and a tab closed before it is opened again
+ * would otherwise lose the typing one reload later (review of #232).
  */
 export interface Conflict {
   current: Note;
@@ -109,8 +112,15 @@ export interface WritableLibrary extends Collections {
  */
 type Save = { noteId: string; value: NoteDraft; base: Note; against?: number };
 
+/** The key a conflict is kept under in the outbox's storage; its entries are the `tx:` keys. */
+const conflictKey = (noteId: string) => `conflict:${noteId}`;
+
 export function createOutbox(userId: string, lib: Omit<WritableLibrary, 'outbox'>): Outbox {
   const conflicts = new Map<string, Conflict>();
+  const keep = (noteId: string, conflict: Conflict) => {
+    conflicts.set(noteId, conflict);
+    void storage.set(conflictKey(noteId), JSON.stringify(conflict)).catch((err: unknown) => console.error('[outbox] conflict not kept:', err));
+  };
   const listeners = new Set<(s: SyncStatus) => void>();
   const acks = new Set<(id: string, note: Note) => void>();
   const status = (): SyncStatus => ({ pending: storage.held(), durable: executor.isOfflineEnabled, conflicts });
@@ -159,7 +169,7 @@ export function createOutbox(userId: string, lib: Omit<WritableLibrary, 'outbox'
             // choice to put to the person (MAK-113), and this entry is done. A "Keep
             // mine" refused in turn is that choice again, with the newer copy.
             if (against !== undefined || !holdsTheirChanges(value, base, err.current)) {
-              conflicts.set(noteId, { current: err.current, draft: value, base });
+              keep(noteId, { current: err.current, draft: value, base });
               await lib.engine.pull();
               throw new NonRetriableError(`Note ${noteId} changed on another device`);
             }
@@ -167,7 +177,7 @@ export function createOutbox(userId: string, lib: Omit<WritableLibrary, 'outbox'
               updated = await api.updateNote(noteId, { ...patch, ifUpdatedAt: err.current.updatedAt });
             } catch (again) {
               if (!isNoteChanged(again)) return refusal(again);
-              conflicts.set(noteId, { current: again.current, draft: value, base });
+              keep(noteId, { current: again.current, draft: value, base });
               await lib.engine.pull();
               throw new NonRetriableError(`Note ${noteId} changed on another device`);
             }
@@ -251,11 +261,12 @@ export function createOutbox(userId: string, lib: Omit<WritableLibrary, 'outbox'
   };
 
   const unsubscribeConnectivity = subscribeConnectivity(touch);
-  // The saves a reload restored, so a new save of one of their notes retires them too.
+  // The saves a reload restored, so a new save of one of their notes retires them too;
+  // and the conflicts still waiting on a choice.
   const ready = executor
     .waitForInit()
-    .then(() => executor.peekOutbox())
-    .then((entries) => {
+    .then(() => Promise.all([executor.peekOutbox(), storage.keys()]))
+    .then(async ([entries, keys]) => {
       for (const t of entries) {
         if (t.mutationFnName !== 'saveNote') continue;
         const m = t.metadata as Save | undefined;
@@ -263,6 +274,12 @@ export function createOutbox(userId: string, lib: Omit<WritableLibrary, 'outbox'
         // goes when the entry ends, which a superseded entry does at once on its turn.
         if (m && !waitingSaves.has(m.noteId)) waitingSaves.set(m.noteId, { id: t.id, base: m.base, against: m.against, retire: () => {} });
       }
+      for (const key of keys) {
+        if (!key.startsWith('conflict:')) continue;
+        const raw = await storage.get(key);
+        if (raw) conflicts.set(key.slice('conflict:'.length), JSON.parse(raw) as Conflict);
+      }
+      if (conflicts.size > 0) touch();
     })
     .catch(() => {});
   return {
@@ -279,7 +296,9 @@ export function createOutbox(userId: string, lib: Omit<WritableLibrary, 'outbox'
       return () => void acks.delete(l);
     },
     resolveConflict: (noteId) => {
-      if (conflicts.delete(noteId)) touch();
+      if (!conflicts.delete(noteId)) return;
+      void storage.delete(conflictKey(noteId)).catch(() => {});
+      touch();
     },
     supersedeSave: (noteId) => {
       const waiting = waitingSaves.get(noteId);

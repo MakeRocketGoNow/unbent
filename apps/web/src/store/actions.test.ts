@@ -25,10 +25,16 @@ import type { FeedEngine } from './feed.js';
 const h = vi.hoisted(async () => {
   const { createTransaction } = await import('@tanstack/db');
 
+  /** IndexedDB as the executor uses it: a database per name that outlives the adapter object. */
+  const databases = new Map<string, Map<string, string>>();
   class MemoryAdapter {
+    static databases = databases;
     db: null = null;
-    rows = new Map<string, string>();
-    constructor(readonly name: string) {}
+    rows: Map<string, string>;
+    constructor(readonly name: string) {
+      this.rows = databases.get(name) ?? new Map();
+      databases.set(name, this.rows);
+    }
     async get(key: string) {
       return this.rows.get(key) ?? null;
     }
@@ -161,7 +167,7 @@ vi.mock('../notes-api.js', async (importOriginal) => ({
   updateNotes: vi.fn(),
 }));
 
-const { fakes } = await h;
+const { fakes, MemoryAdapter } = await h;
 
 interface Controls<T extends object> {
   begin: () => void;
@@ -234,6 +240,7 @@ beforeEach(() => {
 afterEach(() => {
   provideLibrary(async () => null);
   fakes.length = 0;
+  MemoryAdapter.databases.clear();
   vi.clearAllMocks();
 });
 
@@ -318,6 +325,31 @@ describe('a replayed write', () => {
     // The refusal keeps what the save carried: the typing, and the copy it was made from.
     expect(lib.outbox.status().conflicts.get('n1')).toMatchObject({ current: { updatedAt: 200 }, draft: { title: 'mine' }, base: { updatedAt: 100 } });
     expect(await fake.replayOne()).toBe('empty');
+  });
+
+  it('keeps a conflict across a reload until the choice is made', async () => {
+    const { lib, fake, landPull, note } = library([row('n1', { title: 'old', body: 'ours' })]);
+    const base = note('n1');
+    const theirs: Note = { ...base, body: 'theirs', updatedAt: 200 };
+    vi.mocked(api.updateNote).mockRejectedValueOnce(new NoteChangedError(theirs));
+    await actions.saveNote({ noteId: 'n1', value: { ...seedFrom(base), title: 'mine' }, base });
+    await tick();
+    const replay = fake.replayOne();
+    await tick();
+    landPull();
+    expect(await replay).toBe('refused');
+    await tick();
+
+    // The tab closed and opened again: a new outbox on the same database.
+    const reopened = createOutbox('u1', lib);
+    await reopened.ready;
+    expect(reopened.status().conflicts.get('n1')).toMatchObject({ current: { updatedAt: 200 }, draft: { title: 'mine' }, base: { updatedAt: 100 } });
+
+    reopened.resolveConflict('n1');
+    await tick();
+    const again = createOutbox('u1', lib);
+    await again.ready;
+    expect(again.status().conflicts.size).toBe(0);
   });
 
   it('goes again against the newer copy when the draft already holds every change in it', async () => {
