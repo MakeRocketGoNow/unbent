@@ -146,23 +146,23 @@ describe('the feed records note writes', () => {
 });
 
 describe('the feed records tag, notebook and field writes', () => {
-  it('a tag rename or delete names the tag and every note that carried it; a merge tombstones the one that went', async () => {
+  it('a tag rename is one row and a delete one tombstone; a merge names the notes that moved', async () => {
     const { stub } = freshStore('feed-tags');
     const a = await stub.create(note({ tags: ['receipts'] }));
     const b = await stub.create(note({ tags: ['receipts', 'receipt'] }));
-    await stub.remove(b.id); // trashed notes carry their tags too, and change with them
+    await stub.remove(b.id); // trashed notes carry their tags too, and move with them
     const tags = await stub.listTags();
     const receipts = tags.find((t) => t.name === 'receipts')!;
     const seq = await feedSeq(stub);
     expect(await stub.renameTag(receipts.id, 'Receipts')).toEqual({ id: receipts.id, name: 'Receipts', merged: false });
-    const renamed = await feedRows(stub, seq);
-    expect(renamed[0]).toEqual({ entity: 'tag', id: receipts.id });
-    expect(renamed.slice(1).map((r) => r.id).sort()).toEqual([a.id, b.id].sort());
+    // The notes carry the tag by id, so nothing about them is in the feed for a rename.
+    expect(await feedRows(stub, seq)).toEqual([{ entity: 'tag', id: receipts.id }]);
     // The same name again: nothing changed, nothing recorded.
     const seq2 = await feedSeq(stub);
     await stub.renameTag(receipts.id, 'Receipts');
     expect(await feedRows(stub, seq2)).toEqual([]);
-    // A merge: the tag that went is a tombstone, the one that stays is a row, the notes follow.
+    // A merge: the tag that went is a tombstone, the one that stays is a row, and the
+    // notes whose ids changed follow.
     const receipt = (await stub.listTags()).find((t) => t.name === 'receipt') ?? (await listAllTags(stub)).find((t) => t.name === 'receipt')!;
     expect(await stub.renameTag(receipts.id, 'receipt', { merge: true })).toEqual({ id: receipt.id, name: 'receipt', merged: true });
     const merged = await feedRows(stub, seq2);
@@ -170,9 +170,7 @@ describe('the feed records tag, notebook and field writes', () => {
     expect(merged.slice(2).map((r) => r.id).sort()).toEqual([a.id, b.id].sort());
     const seq3 = await feedSeq(stub);
     expect(await stub.deleteTag(receipt.id)).toBe(true);
-    const deleted = await feedRows(stub, seq3);
-    expect(deleted[0]).toEqual({ entity: 'tag', id: receipt.id, deleted: true });
-    expect(deleted.slice(1).map((r) => r.id).sort()).toEqual([a.id, b.id].sort());
+    expect(await feedRows(stub, seq3)).toEqual([{ entity: 'tag', id: receipt.id, deleted: true }]);
   });
 
   it('a notebook: created, renamed, and deleted with the notes it unfiled', async () => {

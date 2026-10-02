@@ -15,8 +15,16 @@ import type { AttachmentInfo, Note, NotebookSummary } from './schemas.js';
 /** What the feed names. A note covers its tags, fields and files; a notebook its field definitions. */
 export type FeedEntity = 'note' | 'notebook' | 'tag' | 'attachment';
 
-/** A note as the feed carries it: the note, trashed or not, with its files. */
+/**
+ * A note as the feed carries it: the note, trashed or not, with its files and the ids of
+ * its tags. `tags` holds names, as every reader of `Note` expects; `tagIds` is the same
+ * list by id, in the same order, so a tag's rename or deletion can be one row for the
+ * tag — the client looks the name up, as it does a notebook's — rather than a row per
+ * note carrying it. A tag on thirteen thousand notes renamed would otherwise be
+ * thirteen thousand notes downloaded whole by every device.
+ */
 export interface FeedNote extends Note {
+  tagIds: string[];
   files: AttachmentInfo[];
 }
 

@@ -190,22 +190,38 @@ export class NotesStore {
    * files (measured 2026-10-02). An id that is not a note is left out; a trashed one
    * carries `deletedAt`, since the trash is part of the copy a client keeps.
    */
-  wholeNotes(ids: string[]): Note[] {
-    const notes: Note[] = [];
+  wholeNotes(ids: string[]): Array<Note & { tagIds: string[] }> {
+    const notes: Array<Note & { tagIds: string[] }> = [];
     for (const run of runs([...new Set(ids)])) {
       const page = `SELECT n.id, n.title, n.body, n.created_at, n.updated_at, n.deleted_at, n.notebook_id,
                            NULL AS sort_key
                       FROM notes n
                      WHERE n.id IN (${placeholders(1, run.length)})`;
-      for (const r of this.summaryRows(page, run, 'n.id')) {
+      // Tags by id as well as by name, in one order, for the feed's `tagIds`; the page
+      // query is asked to leave its names out, so the join rows are read once.
+      const tagsOf = new Map<string, { ids: string[]; names: string[] }>();
+      for (const t of this.sql.exec<{ note_id: string; id: string; name: string }>(
+        `SELECT nt.note_id, t.id, t.name FROM note_tags nt CROSS JOIN tags t ON t.id = nt.tag_id
+          WHERE nt.note_id IN (${placeholders(1, run.length)})
+          ORDER BY nt.note_id, t.name`,
+        ...run,
+      )) {
+        const entry = tagsOf.get(t.note_id) ?? { ids: [], names: [] };
+        entry.ids.push(t.id);
+        entry.names.push(t.name);
+        tagsOf.set(t.note_id, entry);
+      }
+      for (const r of this.summaryRows(page, run, 'n.id', { tags: false })) {
         const fields = decodeFieldsJson(r.fields, r.notebook_id);
+        const tags = tagsOf.get(r.id) ?? { ids: [], names: [] };
         notes.push({
           id: r.id,
           title: r.title,
           body: r.body,
           createdAt: r.created_at,
           updatedAt: r.updated_at,
-          tags: splitTags(r.tags),
+          tags: tags.names,
+          tagIds: tags.ids,
           notebook: r.notebook,
           notebookId: r.notebook_id,
           ...(fields.length > 0 ? { fields } : {}),
@@ -415,14 +431,22 @@ export class NotesStore {
     );
   }
 
-  /** The rows `page` chose, with their notebook, tags, fields and files; see `pageRows`. */
-  private summaryRows(page: string, binds: Bind[], orderBy: string): SummaryRow[] {
+  /**
+   * The rows `page` chose, with their notebook, tags, fields and files; see `pageRows`.
+   * `tags: false` leaves the tag names out, for a caller that reads the join rows itself
+   * (`wholeNotes` wants ids too) and would otherwise pay for them twice.
+   */
+  private summaryRows(page: string, binds: Bind[], orderBy: string, opts: { tags?: boolean } = {}): SummaryRow[] {
+    const tags =
+      opts.tags === false
+        ? 'NULL AS tags'
+        : `(SELECT group_concat(t.name, char(31)) FROM note_tags nt
+                 JOIN tags t ON t.id = nt.tag_id
+                WHERE nt.note_id = n.id) AS tags`;
     return this.sql.exec<SummaryRow>(
       `SELECT n.id, n.title, n.body, n.created_at, n.updated_at, n.deleted_at,
               nb.name AS notebook, n.notebook_id,
-              (SELECT group_concat(t.name, char(31)) FROM note_tags nt
-                 JOIN tags t ON t.id = nt.tag_id
-                WHERE nt.note_id = n.id) AS tags,
+              ${tags},
               ${FIELDS_SUBQUERY},
               ${ATTACHMENTS_SUBQUERY}
          FROM (${page}) n
@@ -1768,20 +1792,22 @@ export class NotesStore {
 
       const other = this.sql.first<{ id: string }>(`SELECT id FROM tags WHERE name = ?1 AND id <> ?2`, trimmed, id);
 
-      /*
-         Every note under the tag changes what it shows — its tags are names — without a
-         write of its own, so the feed names each of them, with the tag. Bounded by the
-         tag's note count, and the rename already walks that many join rows for a merge.
-      */
-      const carrying = this.notesCarrying(id);
-
       if (!other) {
         this.sql.exec(`UPDATE tags SET name = ?1 WHERE id = ?2`, trimmed, id);
-        this.feed.record([{ entity: 'tag', id }, ...carrying]);
+        // One row: a feed note carries its tags by id too, and the client looks the new
+        // name up, as it does a notebook's. Naming every note under the tag instead was
+        // the first shape, and a tag on an imported archive renamed would have sent every
+        // device the archive again.
+        this.feed.record([{ entity: 'tag', id }]);
         return { id, name: trimmed, merged: false };
       }
 
       if (!opts?.merge) return 'conflict';
+
+      // A merge changes each note's tag ids — the old one goes, the other arrives — so
+      // the notes are named here; bounded by the tag's note count, which the merge walks
+      // anyway. Read before the join rows move.
+      const carrying = this.notesCarrying(id);
 
       // One transaction, so a note can never be left with neither tag. The join rows are
       // moved by hand before the row goes, so the count triggers see each link leave and
@@ -1808,15 +1834,16 @@ export class NotesStore {
     return this.sql.tx(() => {
       const owned = this.sql.first(`SELECT 1 AS hit FROM tags WHERE id = ?1`, id);
       if (!owned) return false;
-      const carrying = this.notesCarrying(id);
       this.sql.exec(`DELETE FROM note_tags WHERE tag_id = ?1`, id);
       this.sql.exec(`DELETE FROM tags WHERE id = ?1`, id);
-      this.feed.record([{ entity: 'tag', id, deleted: true }, ...carrying]);
+      // The tombstone alone: a client drops the id from every note it holds, the way it
+      // would drop a notebook's. See `renameTag` for why not a row per note.
+      this.feed.record([{ entity: 'tag', id, deleted: true }]);
       return true;
     });
   }
 
-  /** The feed rows for every note carrying a tag, trashed ones included: what a change to the tag changes. */
+  /** The feed rows for every note carrying a tag, trashed ones included: what a merge changes. */
   private notesCarrying(tagId: string): Change[] {
     return this.sql
       .exec<{ note_id: string }>(`SELECT note_id FROM note_tags WHERE tag_id = ?1`, tagId)
