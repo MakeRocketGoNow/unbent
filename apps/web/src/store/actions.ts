@@ -1,6 +1,6 @@
 import { IndexedDBAdapter, NonRetriableError, startOfflineExecutor, type OfflineExecutor, type OnlineDetector, type StorageAdapter } from '@tanstack/offline-transactions';
 import type { Transaction } from '@tanstack/db';
-import type { FieldDef, FieldValue, Note, NoteFieldValue } from '@unbent/shared';
+import type { FeedNote, FieldDef, FieldValue, Note, NoteFieldValue } from '@unbent/shared';
 import * as api from '../notes-api.js';
 import { ApiError, isNoteChanged, isOfflineError } from '../notes-api.js';
 import { offlineNow, recheck, subscribeConnectivity } from '../connectivity.js';
@@ -183,7 +183,7 @@ export function createOutbox(userId: string, lib: Omit<WritableLibrary, 'outbox'
             }
           }
           acks.forEach((l) => l(noteId, updated));
-          await settled();
+          if (!took(updated)) await settled();
         } finally {
           superseded.delete(transaction.id);
           if (waitingSaves.get(noteId)?.id === transaction.id) waitingSaves.delete(noteId);
@@ -193,8 +193,8 @@ export function createOutbox(userId: string, lib: Omit<WritableLibrary, 'outbox'
       createNote: async ({ transaction }) => {
         const input = transaction.metadata as unknown as Parameters<typeof api.createNote>[0];
         try {
-          await api.createNote(input).catch(refusal);
-          await settled();
+          const created = await api.createNote(input).catch(refusal);
+          if (!took(created)) await settled();
         } finally {
           touch();
         }
@@ -202,7 +202,10 @@ export function createOutbox(userId: string, lib: Omit<WritableLibrary, 'outbox'
       duplicateNote: async ({ transaction }) => {
         const { sourceId, copyId } = transaction.metadata as unknown as { sourceId: string; copyId: string };
         try {
-          await api.duplicateNote(sourceId, copyId).catch(refusal);
+          const copy = await api.duplicateNote(sourceId, copyId).catch(refusal);
+          // The copy's row goes in now; its files are the server's to make, and the
+          // pull brings their rows.
+          took(copy);
           await settled();
         } finally {
           touch();
@@ -241,12 +244,35 @@ export function createOutbox(userId: string, lib: Omit<WritableLibrary, 'outbox'
     }
   }
   /**
-   * After the server took a write: its copy, brought here before the entry ends. Ending
-   * an entry drops the optimistic change from the row, and what the row shows then is
-   * the last copy the feed delivered — the one from before the write — until the pull
-   * lands. Left to run on its own (seen in review, 2026-10-02) that window flashed the old
-   * title in the list, and the workspace took the old copy for a change of theirs and
-   * reseeded the editor with it. `pull` never rejects and waits out a queued second run.
+   * The server's copy, written into the row before the entry ends. Ending an entry drops
+   * the optimistic change, and what the row showed then was the last copy the feed had
+   * delivered — the one from before the write — until a pull landed: a flash of the old
+   * title in the list, and once the workspace taking the old copy for a change of
+   * theirs (review of #232). The answer to a write is that copy, so it goes straight in,
+   * as a feed row — tags and notebook by id, looked up by the names the answer carries,
+   * and the files the note holds — and no request follows. False when a name has no id
+   * here yet (a tag made by this very write), and the pull brings the ids instead.
+   */
+  const took = (note: Note): boolean => {
+    const l = lookups(snapshot(lib));
+    const tagIdByName = new Map([...l.tags.values()].map((t) => [t.name, t.id]));
+    const notebookIdByName = new Map([...l.notebooks.values()].map((n) => [n.name, n.id]));
+    const tagIds: string[] = [];
+    for (const name of note.tags) {
+      const id = tagIdByName.get(name);
+      if (!id) return false;
+      tagIds.push(id);
+    }
+    const notebookId = note.notebook == null ? null : (notebookIdByName.get(note.notebook) ?? false);
+    if (notebookId === false) return false;
+    const { tags: _tags, notebook: _notebook, ...rest } = note;
+    const row: FeedNote = { ...rest, tagIds, notebookId, files: l.filesByNote.get(note.id) ?? [] };
+    return lib.engine.applyNotes([row]);
+  };
+
+  /**
+   * When the answer could not be written in: the copy, brought here by a pull before the
+   * entry ends. `pull` never rejects and waits out a queued second run.
    *
    * Not during the first copy. A pull then is the whole snapshot walk — minutes on a
    * phone — and an entry that waited for it held the queue behind it, kept "syncing" up

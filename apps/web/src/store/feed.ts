@@ -111,6 +111,19 @@ export class FeedEngine {
     return this.running ?? Promise.resolve();
   }
 
+  /**
+   * Writes rows the server has just answered a write with, as a page of the feed would:
+   * the copy is current for those notes the moment the write is acknowledged, with no
+   * request, and the feed's own delivery of the same rows later is an upsert of the same
+   * thing. Each row carries the files the note holds, as a feed row does, since a note
+   * row replaces its files. False when the collections are not registered yet.
+   */
+  applyNotes(notes: FeedNote[]): boolean {
+    if (!this.all()) return false;
+    this.apply(notes, [], [], [], [], [], [], []);
+    return true;
+  }
+
   /** The four collections' controls once every one has registered, else null. */
   private all(): FeedControls | null {
     const c = this.controls;

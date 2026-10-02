@@ -215,7 +215,12 @@ function library(notes: LocalNote[]) {
   const engine = {
     state: { phase: 'current' },
     pull: vi.fn(() => new Promise<void>((r) => (release = r))),
-  } as unknown as FeedEngine & { pull: ReturnType<typeof vi.fn>; state: { phase: string } };
+    // The server's answer, written in as a feed row would be.
+    applyNotes: vi.fn((rows: LocalNote[]) => {
+      for (const r of rows) delivered({ notes: n.c } as never, n.feed, r);
+      return true;
+    }),
+  } as unknown as FeedEngine & { pull: ReturnType<typeof vi.fn>; applyNotes: ReturnType<typeof vi.fn>; state: { phase: string } };
   const outbox = createOutbox('u1', { ...collections, userId: 'u1', engine });
   const lib: WritableLibrary = { ...collections, userId: 'u1', engine, outbox };
   provideLibrary(async () => lib);
@@ -245,8 +250,8 @@ afterEach(() => {
 });
 
 describe('a replayed write', () => {
-  it('keeps the row on what was written until the server’s copy has arrived', async () => {
-    const { lib, fake, feed, engine, landPull, note } = library([row('n1', { title: 'old' })]);
+  it('writes the server’s copy into the row before its entry ends, with no pull', async () => {
+    const { lib, fake, engine, note } = library([row('n1', { title: 'old' })]);
     const base = note('n1');
     vi.mocked(api.updateNote).mockResolvedValue({ ...base, title: 'new', updatedAt: 101 });
 
@@ -255,6 +260,24 @@ describe('a replayed write', () => {
     expect(lib.notes.get('n1')?.title).toBe('new');
     expect(fake.queue).toHaveLength(1);
 
+    expect(await fake.replayOne()).toBe('done');
+    await tick();
+    // The entry has ended and its optimistic change is dropped: what shows is the copy
+    // the server answered with, written in as a feed row, not the one from before the
+    // save — and nothing was asked of the server for it.
+    expect(lib.notes.get('n1')).toMatchObject({ title: 'new', updatedAt: 101 });
+    expect(engine.applyNotes).toHaveBeenCalledWith([expect.objectContaining({ id: 'n1', title: 'new', updatedAt: 101, tagIds: [], notebookId: null })]);
+    expect(engine.pull).not.toHaveBeenCalled();
+  });
+
+  it('keeps the row on what was written until a pull has brought the copy, when the answer names what this device has no id for', async () => {
+    const { lib, fake, feed, engine, landPull, note } = library([row('n1', { title: 'old' })]);
+    const base = note('n1');
+    // A tag made by this very save: the answer names it, the device holds no id for it.
+    vi.mocked(api.updateNote).mockResolvedValue({ ...base, title: 'new', tags: ['brand new'], updatedAt: 101 });
+    await actions.saveNote({ noteId: 'n1', value: { ...seedFrom(base), title: 'new', tags: ['brand new'] }, base });
+    await tick();
+
     const replay = fake.replayOne();
     await vi.waitFor(() => expect(engine.pull).toHaveBeenCalled());
     // The server has answered, the pull is in flight: the entry is still open, so the
@@ -262,11 +285,21 @@ describe('a replayed write', () => {
     expect(fake.queue).toHaveLength(1);
     expect(lib.notes.get('n1')?.title).toBe('new');
 
-    delivered(lib, feed, row('n1', { title: 'new', updatedAt: 101 }));
+    delivered(lib, feed, row('n1', { title: 'new', tagIds: ['t-new'], updatedAt: 101 }));
     landPull();
     expect(await replay).toBe('done');
-    // The entry has ended and its optimistic change is dropped: what shows is the copy
-    // the feed delivered, not the one from before the save.
+    await tick();
+    expect(lib.notes.get('n1')).toMatchObject({ title: 'new', updatedAt: 101, tagIds: ['t-new'] });
+  });
+
+  it('during the first copy, the row shows the server’s copy as soon as the entry ends', async () => {
+    const { lib, fake, engine, note } = library([row('n1', { title: 'old' })]);
+    engine.state.phase = 'hydrating';
+    const base = note('n1');
+    vi.mocked(api.updateNote).mockResolvedValue({ ...base, title: 'new', updatedAt: 101 });
+    await actions.saveNote({ noteId: 'n1', value: { ...seedFrom(base), title: 'new' }, base });
+    await tick();
+    expect(await fake.replayOne()).toBe('done');
     await tick();
     expect(lib.notes.get('n1')).toMatchObject({ title: 'new', updatedAt: 101 });
   });
