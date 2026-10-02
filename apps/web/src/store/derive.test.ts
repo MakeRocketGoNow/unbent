@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { FeedAttachment, FeedNote, FeedNotebook, FeedTag } from '@unbent/shared';
-import { count, list, lookups, notebookFields, notebookList, summaries, tagSummaries, toNote, toSummary, type Snapshot } from './derive.js';
+import { count, list, lookups, notebookFields, notebookList, sameNotebookName, summaries, tagSummaries, toNote, toSummary, type Snapshot } from './derive.js';
 
 const nb = (id: string, name: string, fieldDefs: FeedNotebook['fieldDefs'] = []): FeedNotebook => ({ id, name, purpose: null, emoji: null, fieldDefs });
 const tag = (id: string, name: string): FeedTag => ({ id, name });
@@ -98,5 +98,20 @@ describe('derive', () => {
     expect(notebookFields(s, 'nb1', false)).toEqual([amount, kind]);
     expect(notebookFields(s, 'nb1', true)).toEqual([{ ...amount, valueCount: 2 }, { ...kind, valueCount: 1 }]);
     expect(notebookFields(s, 'nope', false)).toBeNull();
+  });
+
+  it('finds a notebook by name as COLLATE NOCASE does: ASCII case folded, nothing else', () => {
+    expect(sameNotebookName('Receipts', 'RECEIPTS')).toBe(true);
+    expect(sameNotebookName('Café', 'CAFÉ')).toBe(false);
+    expect(sameNotebookName('Straße', 'STRASSE')).toBe(false);
+    // The filter and the sidebar's count agree, whichever way a name is spelt.
+    const mixed: Snapshot = { ...s, notes: [...s.notes].map((n) => (n.id === 'b' ? { ...n, notebookName: 'RECEIPTS' } : n)) };
+    expect(list(mixed, { notebook: 'receipts' }, {}).map((r) => r.id)).toEqual(['b', 'a']);
+    expect(notebookList(mixed).notebooks.find((nb) => nb.id === 'nb1')?.count).toBe(2);
+  });
+
+  it('counts a field’s values on trashed notes too, as the server does', () => {
+    const withTrashed: Snapshot = { ...s, notes: [...s.notes, { ...[...s.notes][3]!, id: 'f', notebookId: 'nb1', fields: [{ fieldId: 'amount', name: 'Amount', type: 'number', value: 1, notebookId: 'nb1', notebook: 'receipts' }] }] };
+    expect(notebookFields(withTrashed, 'nb1', true)?.find((f) => f.id === 'amount')?.valueCount).toBe(3);
   });
 });

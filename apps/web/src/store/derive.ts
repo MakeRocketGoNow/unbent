@@ -75,6 +75,17 @@ export function lookups(s: Snapshot): Lookups {
 
 const byNameNoCase = (a: string, b: string) => a.localeCompare(b, undefined, { sensitivity: 'base' }) || (a < b ? -1 : a > b ? 1 : 0);
 
+/**
+ * A name as `COLLATE NOCASE` compares it: ASCII letters folded, nothing else. SQLite's
+ * NOCASE folds only A–Z, so a filter that folded Unicode case as well, or compared with
+ * `localeCompare`, matched notebooks the server's own filter did not, and the filter and
+ * the sidebar's count — which used a third spelling — could disagree (review of #232).
+ * One fold, used wherever a notebook is found by name. It is also about fifty times
+ * cheaper than `localeCompare` over an archive's rows.
+ */
+export const foldNoCase = (name: string) => name.replace(/[A-Z]/g, (c) => c.toLowerCase());
+export const sameNotebookName = (a: string, b: string) => foldNoCase(a) === foldNoCase(b);
+
 /** A note's tags as names, sorted as `get` returns them; a write made here names them itself. */
 export function tagNames(note: LocalNote, l: Lookups): string[] {
   const names = note.tagNames ?? note.tagIds.map((id) => l.tags.get(id)?.name).filter((n): n is string => n !== undefined);
@@ -191,7 +202,7 @@ export function matches(note: LocalNote, filter: ListFilter, ordering: ListOrder
   if (filter.notebook === UNFILED) {
     if (name) return false;
   } else if (filter.notebook) {
-    if (!name || name.localeCompare(filter.notebook, undefined, { sensitivity: 'accent' }) !== 0) return false;
+    if (!name || !sameNotebookName(name, filter.notebook)) return false;
   }
   if (filter.tag && filter.tag.length > 0) {
     const names = new Set(tagNames(note, l));
@@ -320,10 +331,10 @@ export function notebookList(s: Snapshot): { notebooks: NotebookSummary[]; unfil
   const counts = new Map<string, number>();
   let unfiled = 0;
   const byName = new Map<string, string>();
-  for (const nb of s.notebooks) byName.set(nb.name.toLowerCase(), nb.id);
+  for (const nb of s.notebooks) byName.set(foldNoCase(nb.name), nb.id);
   for (const n of s.notes) {
     if (n.deletedAt !== undefined) continue;
-    const id = n.notebookName !== undefined ? (n.notebookName ? byName.get(n.notebookName.toLowerCase()) : undefined) : n.notebookId;
+    const id = n.notebookName !== undefined ? (n.notebookName ? byName.get(foldNoCase(n.notebookName)) : undefined) : n.notebookId;
     if (id) counts.set(id, (counts.get(id) ?? 0) + 1);
     else unfiled += 1;
   }
@@ -334,7 +345,13 @@ export function notebookList(s: Snapshot): { notebooks: NotebookSummary[]; unfil
   return { notebooks: notebooks.sort((a, b) => byNameNoCase(a.name, b.name)), unfiled };
 }
 
-/** A notebook's definitions, with how many notes hold a value for each when asked. */
+/**
+ * A notebook's definitions, with how many notes hold a value for each when asked. The
+ * count includes trashed notes, as the server's does (`listFields` counts every
+ * `note_fields` row of the definition; a trashed note keeps its values until purged): the
+ * number names what a deletion of the definition would discard, and the trash's values
+ * go with it.
+ */
 export function notebookFields(s: Snapshot, notebookId: string, counts: boolean): FieldDef[] | null {
   let found: FeedNotebook | null = null;
   for (const nb of s.notebooks) if (nb.id === notebookId) found = nb;
