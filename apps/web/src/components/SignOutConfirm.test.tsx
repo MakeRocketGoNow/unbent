@@ -61,6 +61,14 @@ describe('signing out with unsynced changes', () => {
     expect(clearOfflineCaches).toHaveBeenCalled();
   });
 
+  it('puts focus on Cancel, the safe choice', async () => {
+    vi.mocked(settleWrites).mockResolvedValue(2);
+    render(<Host />);
+    fireEvent.click(screen.getByRole('button', { name: 'Sign out' }));
+    await flush();
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Cancel' }));
+  });
+
   it('asks nothing when the outbox drained', async () => {
     vi.mocked(settleWrites).mockResolvedValue(0);
     render(<Host />);

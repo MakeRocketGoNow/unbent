@@ -11,7 +11,9 @@ import { useUnsyncedQuestion } from '../useSignOut.js';
  * modal, and this is the inline place the whole app has in common: the strip across the
  * bottom where the one-shot answers land. One action, the destructive one, beside the
  * confirm's own Cancel, which is the safe way out: staying signed in is what not leaving
- * means, and a second button saying so would be Cancel under another name.
+ * means, and a second button saying so would be Cancel under another name. Focus goes to
+ * Cancel: the menu that was pressed has closed and focus has gone back to the page, so
+ * without that a keyboard would never reach the question.
  */
 export function SignOutConfirm() {
   const question = useUnsyncedQuestion();
@@ -25,6 +27,7 @@ export function SignOutConfirm() {
         question={`${changes} ${count === 1 ? "hasn't" : "haven't"} synced yet. Sign out anyway?`}
         detail="Signing out removes them from this device. Staying signed in lets them finish syncing."
         onCancel={stay}
+        focusCancel
         actions={[{ label: 'Sign out anyway', tone: 'danger', onConfirm: leave }]}
       />
     </div>

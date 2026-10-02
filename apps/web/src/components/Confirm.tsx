@@ -38,6 +38,14 @@ export interface ConfirmProps {
   requireTyped?: string;
   busy?: boolean;
   onCancel: () => void;
+  /**
+   * Put focus on Cancel when the confirm mounts. For a confirm that appears away from
+   * what was pressed — the sign-out question, after the account menu has closed and
+   * focus has gone back to the page — so keyboard and screen-reader users reach it, on
+   * the safe choice. A confirm that opens in place of the control that was pressed
+   * leaves focus where it is.
+   */
+  focusCancel?: boolean;
 }
 
 /**
@@ -90,6 +98,7 @@ export function Confirm({
   requireTyped,
   busy = false,
   onCancel,
+  focusCancel = false,
 }: ConfirmProps) {
   const [typed, setTyped] = useState('');
   const ref = useRef<HTMLDivElement>(null);
@@ -155,7 +164,7 @@ export function Confirm({
             button
           );
         })}
-        <Button variant="secondary" disabled={busy} onClick={onCancel}>
+        <Button variant="secondary" disabled={busy} autoFocus={focusCancel} onClick={onCancel}>
           Cancel
         </Button>
       </div>
