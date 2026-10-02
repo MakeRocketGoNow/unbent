@@ -188,9 +188,25 @@ export class FeedEngine {
     let seeded: Cursor | null = from ? { seq: from.seq, epoch: from.epoch } : null;
     do {
       if (this.stopped) return;
-      const page: SnapshotPage = await this.options.fetchJson(
-        `/api/changes/snapshot?limit=${limit}${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''}`,
-      );
+      let page: SnapshotPage;
+      try {
+        page = await this.options.fetchJson(
+          `/api/changes/snapshot?limit=${limit}${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''}`,
+        );
+      } catch (err) {
+        /*
+         * A stored position the server refuses — a page cursor from before its shape
+         * changed, say — would fail the same way on every pull, and a walk with a
+         * position never reaches the feed's `reset`. Refused for good, the position is
+         * dropped and the walk starts over; refused for now, it is kept and tried again.
+         */
+        if (from && cursor && refusedForGood(err)) {
+          await this.options.writeCursor(null);
+          await this.snapshot(null);
+          return;
+        }
+        throw err;
+      }
       if (!seeded) {
         seeded = { seq: page.seq, epoch: page.epoch };
         this.state.total = page.total ?? null;
@@ -266,6 +282,12 @@ export class FeedEngine {
     for (const id of noteTombstones) for (const held of heldByNote.get(id) ?? []) gone.add(held);
     upsertAll(attachment, files, (f) => f.id, [...gone]);
   }
+}
+
+/** A 4xx: the server will answer the same request the same way again. */
+function refusedForGood(err: unknown): boolean {
+  const status = (err as { status?: unknown } | null)?.status;
+  return typeof status === 'number' && status >= 400 && status < 500;
 }
 
 function count(rows: Iterable<unknown> | undefined): number {

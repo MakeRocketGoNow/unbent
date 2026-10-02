@@ -141,6 +141,35 @@ describe('FeedEngine', () => {
     stop.forEach((s) => s());
   });
 
+  it('drops a stored position the server refuses for good and walks again from the start', async () => {
+    const refused = Object.assign(new Error('Bad cursor'), { status: 400 });
+    const h = harness({
+      '/api/changes/snapshot?limit=2&cursor=stale': [refused],
+      '/api/changes/snapshot?limit=2': snapshotFirst([note('a'), note('b')], null, 20),
+    });
+    h.setCursor({ seq: 10, epoch: 'e1', resume: 'stale', total: 3 });
+    const stop = Object.entries(h.c).map(([k, c]) => h.engine.register(k as 'note', c as never));
+    await h.engine.settled();
+    expect(h.requests).toEqual(['/api/changes/snapshot?limit=2&cursor=stale', '/api/changes/snapshot?limit=2']);
+    expect(h.cursorWrites).toEqual([null, { seq: 20, epoch: 'e1' }]);
+    expect(h.engine.state).toMatchObject({ phase: 'current', cursor: { seq: 20, epoch: 'e1' } });
+    stop.forEach((s) => s());
+  });
+
+  it('keeps a stored position the server could not answer for now', async () => {
+    const h = harness({
+      '/api/changes/snapshot?limit=2&cursor=b': [new Error("You're offline."), { seq: 12, epoch: 'e1', notes: [note('c')], next: null } satisfies SnapshotPage],
+    });
+    h.setCursor({ seq: 10, epoch: 'e1', resume: 'b', total: 3 });
+    const stop = Object.entries(h.c).map(([k, c]) => h.engine.register(k as 'note', c as never));
+    await h.engine.settled();
+    expect(h.engine.state.phase).toBe('failed');
+    expect(h.cursor()).toEqual({ seq: 10, epoch: 'e1', resume: 'b', total: 3 });
+    await h.engine.pull();
+    expect(h.engine.state).toMatchObject({ phase: 'current', cursor: { seq: 10, epoch: 'e1' } });
+    stop.forEach((s) => s());
+  });
+
   it('on a fresh start, picks a stored position up and reads only the pages left', async () => {
     const h = harness({
       '/api/changes/snapshot?limit=2&cursor=b': { seq: 12, epoch: 'e1', notes: [note('c')], next: null } satisfies SnapshotPage,
