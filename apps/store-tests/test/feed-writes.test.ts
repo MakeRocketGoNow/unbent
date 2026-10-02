@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { runInDurableObject } from 'cloudflare:test';
 import { feedRows, feedSeq, freshStore } from './helpers.js';
 
 /**
@@ -143,3 +144,116 @@ describe('the feed records note writes', () => {
     expect(after[1]).toEqual({ entity: 'note', id: first.id });
   });
 });
+
+describe('the feed records tag, notebook and field writes', () => {
+  it('a tag rename or delete names the tag and every note that carried it; a merge tombstones the one that went', async () => {
+    const { stub } = freshStore('feed-tags');
+    const a = await stub.create(note({ tags: ['receipts'] }));
+    const b = await stub.create(note({ tags: ['receipts', 'receipt'] }));
+    await stub.remove(b.id); // trashed notes carry their tags too, and change with them
+    const tags = await stub.listTags();
+    const receipts = tags.find((t) => t.name === 'receipts')!;
+    const seq = await feedSeq(stub);
+    expect(await stub.renameTag(receipts.id, 'Receipts')).toEqual({ id: receipts.id, name: 'Receipts', merged: false });
+    const renamed = await feedRows(stub, seq);
+    expect(renamed[0]).toEqual({ entity: 'tag', id: receipts.id });
+    expect(renamed.slice(1).map((r) => r.id).sort()).toEqual([a.id, b.id].sort());
+    // The same name again: nothing changed, nothing recorded.
+    const seq2 = await feedSeq(stub);
+    await stub.renameTag(receipts.id, 'Receipts');
+    expect(await feedRows(stub, seq2)).toEqual([]);
+    // A merge: the tag that went is a tombstone, the one that stays is a row, the notes follow.
+    const receipt = (await stub.listTags()).find((t) => t.name === 'receipt') ?? (await listAllTags(stub)).find((t) => t.name === 'receipt')!;
+    expect(await stub.renameTag(receipts.id, 'receipt', { merge: true })).toEqual({ id: receipt.id, name: 'receipt', merged: true });
+    const merged = await feedRows(stub, seq2);
+    expect(merged.slice(0, 2)).toEqual([{ entity: 'tag', id: receipts.id, deleted: true }, { entity: 'tag', id: receipt.id }]);
+    expect(merged.slice(2).map((r) => r.id).sort()).toEqual([a.id, b.id].sort());
+    const seq3 = await feedSeq(stub);
+    expect(await stub.deleteTag(receipt.id)).toBe(true);
+    const deleted = await feedRows(stub, seq3);
+    expect(deleted[0]).toEqual({ entity: 'tag', id: receipt.id, deleted: true });
+    expect(deleted.slice(1).map((r) => r.id).sort()).toEqual([a.id, b.id].sort());
+  });
+
+  it('a notebook: created, renamed, and deleted with the notes it unfiled', async () => {
+    const { stub } = freshStore('feed-notebooks');
+    const nb = (await stub.createNotebook('Taxes'))!;
+    expect(await feedRows(stub)).toEqual([{ entity: 'notebook', id: nb.id }]);
+    expect(await stub.createNotebook('taxes')).toBeNull();
+    expect(await feedRows(stub)).toHaveLength(1);
+    const a = await stub.create(note({ notebook: 'Taxes' }));
+    const b = await stub.create(note({ notebook: 'Taxes' }));
+    const seq = await feedSeq(stub);
+    expect(await stub.updateNotebook(nb.id, { name: 'Tax', emoji: '🧾' })).toBe('ok');
+    // A rename is one row: notes refer to the notebook by id and a client joins the name.
+    expect(await feedRows(stub, seq)).toEqual([{ entity: 'notebook', id: nb.id }]);
+    const seq2 = await feedSeq(stub);
+    expect(await stub.updateNotebook(nb.id, {})).toBe('ok');
+    expect(await feedRows(stub, seq2)).toEqual([]);
+    expect(await stub.deleteNotebook(nb.id, { trashNotes: true })).toBe(true);
+    const gone = await feedRows(stub, seq2);
+    expect(gone[0]).toEqual({ entity: 'notebook', id: nb.id, deleted: true });
+    expect(gone.slice(1).map((r) => r.id).sort()).toEqual([a.id, b.id].sort());
+  });
+
+  it('a field: its notebook on every change, and the notes whose values a conversion, deletion or cleared option touched', async () => {
+    const { stub } = freshStore('feed-fields');
+    const nb = (await stub.createNotebook('Coupons'))!;
+    const amount = await stub.createField(nb.id, { name: 'Amount', type: 'text', options: [] });
+    const amountId = (amount as { id: string }).id;
+    const kind = await stub.createField(nb.id, { name: 'Kind', type: 'select', options: ['food', 'fuel'] });
+    const kindId = (kind as { id: string }).id;
+    const a = await stub.create(note({ notebook: 'Coupons', fields: { [amountId]: '12', [kindId]: 'food' } }));
+    const b = await stub.create(note({ notebook: 'Coupons', fields: { [amountId]: 'twelve', [kindId]: 'fuel' } }));
+    const c = await stub.create(note({ notebook: 'Coupons' }));
+    let seq = await feedSeq(stub);
+    expect(await feedRows(stub, 1)).toEqual(expect.arrayContaining([{ entity: 'notebook', id: nb.id }]));
+
+    // A rename of the field: the notebook, nothing else.
+    expect(await stub.updateField(nb.id, amountId, { name: 'Total' })).toMatchObject({ cleared: 0 });
+    expect(await feedRows(stub, seq)).toEqual([{ entity: 'notebook', id: nb.id }]);
+    seq = await feedSeq(stub);
+    // Reordering: the notebook.
+    expect(await stub.reorderFields(nb.id, [kindId, amountId])).toBe(true);
+    expect(await feedRows(stub, seq)).toEqual([{ entity: 'notebook', id: nb.id }]);
+    seq = await feedSeq(stub);
+    // A conversion rewrites a's value and clears b's: both notes, and the notebook.
+    expect(await stub.updateField(nb.id, amountId, { type: 'number' })).toMatchObject({ cleared: 1 });
+    const converted = await feedRows(stub, seq);
+    expect(converted[0]).toEqual({ entity: 'notebook', id: nb.id });
+    expect(converted.slice(1).map((r) => r.id).sort()).toEqual([a.id, b.id].sort());
+    seq = await feedSeq(stub);
+    // Removing an option without clearing: the notebook only (through updateField).
+    expect(await stub.removeFieldOption(nb.id, kindId, 'fuel', false)).toMatchObject({ cleared: 0 });
+    expect(await feedRows(stub, seq)).toEqual([{ entity: 'notebook', id: nb.id }]);
+    seq = await feedSeq(stub);
+    // Clearing it: the note that held it, then the notebook.
+    const kindNow = await stub.updateField(nb.id, kindId, { options: ['food', 'fuel'] });
+    expect(kindNow).toMatchObject({ cleared: 0 });
+    seq = await feedSeq(stub);
+    expect(await stub.removeFieldOption(nb.id, kindId, 'fuel', true)).toMatchObject({ cleared: 1 });
+    expect(await feedRows(stub, seq)).toEqual([{ entity: 'note', id: b.id }, { entity: 'notebook', id: nb.id }]);
+    seq = await feedSeq(stub);
+    // Deleting the field: the notebook and the one note still holding a value under it.
+    expect(await stub.deleteField(nb.id, kindId)).toBe(true);
+    expect(await feedRows(stub, seq)).toEqual([{ entity: 'notebook', id: nb.id }, { entity: 'note', id: a.id }]);
+    expect(c.id).toBeTruthy();
+  });
+
+  it('importing a notebook definition records the notebook once per change it makes', async () => {
+    const { stub } = freshStore('feed-import-notebook');
+    const first = await stub.importNotebook({ name: 'Podcast Bookmarks', emoji: '🎙️', fields: [{ name: 'Show', type: 'text' }] });
+    const rows = await feedRows(stub);
+    // resolveNotebook created it, updateNotebook set the emoji, createField added the field.
+    expect(rows.every((r) => r.entity === 'notebook' && r.id === first.id)).toBe(true);
+    expect(rows.length).toBe(3);
+    const seq = await feedSeq(stub);
+    await stub.importNotebook({ name: 'Podcast Bookmarks', emoji: '🎙️', fields: [{ name: 'Show', type: 'text' }] });
+    expect(await feedRows(stub, seq)).toEqual([]);
+  });
+});
+
+/** Every tag row, counted or not: `listTags` leaves out tags with no live note. */
+async function listAllTags(stub: ReturnType<typeof freshStore>['stub']) {
+  return runInDurableObject(stub, (_i, state) => state.storage.sql.exec<{ id: string; name: string }>(`SELECT id, name FROM tags`).toArray());
+}
