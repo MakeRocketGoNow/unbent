@@ -33,16 +33,20 @@ export interface FeedNote extends Note {
   files: FeedAttachment[];
 }
 
-/** A notebook with its field definitions, in display order. */
-export interface FeedNotebook extends NotebookSummary {
+/**
+ * A notebook with its field definitions, in display order. No counts: tagging, filing
+ * and trashing a note move a notebook's and a tag's counts without recording either, so
+ * a count carried here would be the value as of some unrelated row and wrong by the next
+ * write. A client derives its counts from the notes it holds, which it has whole.
+ */
+export interface FeedNotebook extends Pick<NotebookSummary, 'id' | 'name' | 'purpose' | 'emoji'> {
   fieldDefs: FieldDef[];
 }
 
+/** A tag, by id and name. No count, for the reason `FeedNotebook` gives. */
 export interface FeedTag {
   id: string;
   name: string;
-  /** Live notes carrying it, as `GET /tags` reports; a client may derive its own. */
-  count: number;
 }
 
 /** A file's row: what changes when its text arrives (`hasText`) or it is copied. */

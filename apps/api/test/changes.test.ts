@@ -81,7 +81,7 @@ describe('GET /api/changes', () => {
     expect(p.next).toBe(p.seq);
     expect(p.notes).toEqual([expect.objectContaining({ id: a.id, body: 'Second', tags: ['home'], notebook: 'Receipts', files: [] })]);
     expect(p.notebooks).toEqual([expect.objectContaining({ name: 'Receipts', fieldDefs: [] })]);
-    expect(p.tags).toEqual([expect.objectContaining({ name: 'home', count: 1 })]);
+    expect(p.tags).toEqual([{ id: expect.any(String), name: 'home' }]);
     expect(p.tombstones).toEqual([{ entity: 'note', id: b.id }]);
 
     // From there on: nothing until the next write; a trash is an update with `deletedAt`.

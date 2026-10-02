@@ -1885,17 +1885,15 @@ export class NotesStore {
    * Notebooks by id with their live field definitions, for the feed. Every notebook when
    * `ids` is null — the snapshot's first page — since a library has a handful. The
    * definitions come in one query over the ids rather than one per notebook, in display
-   * order, and are dealt out after.
+   * order, and are dealt out after. No counts; see `FeedNotebook`.
    */
   notebooksWhole(ids: string[] | null): FeedNotebook[] {
     const runsOf = ids === null ? [null] : runs([...new Set(ids)]);
     const out: FeedNotebook[] = [];
     for (const run of runsOf) {
       const where = run ? `WHERE nb.id IN (${placeholders(1, run.length)})` : '';
-      const notebooks = this.sql.exec<NotebookSummary>(
-        `SELECT nb.id, nb.name, nb.purpose, nb.emoji, nb.note_count AS count,
-                (SELECT COUNT(*) FROM notebook_fields f
-                  WHERE f.notebook_id = nb.id AND f.deleted_at IS NULL) AS fields
+      const notebooks = this.sql.exec<Omit<FeedNotebook, 'fieldDefs'>>(
+        `SELECT nb.id, nb.name, nb.purpose, nb.emoji
            FROM notebooks nb ${where}
           ORDER BY nb.name COLLATE NOCASE`,
         ...(run ?? []),
@@ -1916,14 +1914,14 @@ export class NotesStore {
     return out;
   }
 
-  /** Tags by id, or every tag when `ids` is null, with the count `listTags` reports. */
+  /** Tags by id, or every tag when `ids` is null. No count; see `FeedTag`. */
   tagsWhole(ids: string[] | null): FeedTag[] {
     const runsOf = ids === null ? [null] : runs([...new Set(ids)]);
     const out: FeedTag[] = [];
     for (const run of runsOf) {
       out.push(
         ...this.sql.exec<FeedTag>(
-          `SELECT id, name, note_count AS count FROM tags ${run ? `WHERE id IN (${placeholders(1, run.length)})` : ''} ORDER BY name`,
+          `SELECT id, name FROM tags ${run ? `WHERE id IN (${placeholders(1, run.length)})` : ''} ORDER BY name`,
           ...(run ?? []),
         ),
       );

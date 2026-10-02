@@ -47,12 +47,13 @@ describe('changesSince', () => {
     const home = (await stub.listTags()).find((t) => t.name === 'home')!;
     expect(p.notes.find((n) => n.id === a.id)).toMatchObject({ title: 'Edited thrice', notebook: 'Receipts', tags: ['home'], tagIds: [home.id], files: [] });
     expect(p.notes.find((n) => n.id === b.id)).toMatchObject({ files: [{ id: 'f1', noteId: b.id, filename: 'scan.pdf', contentType: 'application/pdf', size: 3, hasText: true, createdAt: expect.any(Number) }] });
-    expect(p.notebooks).toEqual([expect.objectContaining({ name: 'Receipts', count: 1, fields: 0, fieldDefs: [] })]);
+    expect(p.notebooks).toEqual([{ id: expect.any(String), name: 'Receipts', purpose: null, emoji: null, fieldDefs: [] }]);
     // The tag c took to the trash keeps its row with no live note; `purgeOne` leaves the
-    // sweep to the bulk purges, so it is a tag row here, not a tombstone.
+    // sweep to the bulk purges, so it is a tag row here, not a tombstone. No counts: a
+    // client derives them from the notes it holds.
     expect(p.tags).toEqual([
-      { id: expect.any(String), name: 'gone', count: 0 },
-      { id: expect.any(String), name: 'home', count: 1 },
+      { id: expect.any(String), name: 'gone' },
+      { id: expect.any(String), name: 'home' },
     ]);
     expect(p.attachments).toEqual([expect.objectContaining({ id: 'f1', noteId: b.id, hasText: true })]);
     // c was created, tagged, trashed and purged within the page: one tombstone, no note.
@@ -152,8 +153,8 @@ describe('snapshotPage', () => {
 
     const first = await stub.snapshotPage(null, 2);
     expect(first.seq).toBe(seq);
-    expect(first.notebooks).toEqual([expect.objectContaining({ id: nb.id, name: 'Coupons', count: 4, fields: 1, fieldDefs: [expect.objectContaining({ name: 'Amount' })] })]);
-    expect(first.tags).toEqual([{ id: expect.any(String), name: 't', count: 4 }]);
+    expect(first.notebooks).toEqual([{ id: nb.id, name: 'Coupons', purpose: null, emoji: null, fieldDefs: [expect.objectContaining({ name: 'Amount' })] }]);
+    expect(first.tags).toEqual([{ id: expect.any(String), name: 't' }]);
     expect(first.total).toBe(5);
     expect(first.notes).toHaveLength(2);
     expect(first.next).toBe(first.notes[1]!.id);

@@ -588,6 +588,9 @@ Rules that hold it together, each with a test:
   and its note; text arriving records the file alone. `feed-writes.test.ts` pins each
   method. A tag on an imported archive renamed must never be the archive sent again.
 - **The trash is an update; only a purge is a tombstone.** A client keeps its trash.
+- **No counts in the feed.** Tagging, filing and trashing a note move a notebook's and a
+  tag's counts without recording either, so a count carried on a tag or notebook row
+  would be wrong by the next write. A client derives counts from the notes it holds.
 - **One row written per change and one per transaction**, measured and bounded in
   `feed.test.ts`. No other index on `changes`: each would be a row written per change.
   Pruning (50,000 rows, 90 days) reads nothing until it has something to delete, and
