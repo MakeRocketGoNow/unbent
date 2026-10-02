@@ -217,6 +217,25 @@ export class NotesStore {
   }
 
   /**
+   * How many bytes each note's body holds, by id, trashed included: what the feed cuts a
+   * page on before it loads anything. Bytes, not characters: `octet_length` counts the
+   * UTF-8 the body is stored as, where `length` would count characters and undercount
+   * non-Latin text by up to three times against the RPC ceiling the cut protects.
+   */
+  bodyBytes(ids: string[]): Map<string, number> {
+    const out = new Map<string, number>();
+    for (const run of runs([...new Set(ids)])) {
+      for (const r of this.sql.exec<{ id: string; bytes: number }>(
+        `SELECT id, octet_length(body) AS bytes FROM notes WHERE id IN (${placeholders(1, run.length)})`,
+        ...run,
+      )) {
+        out.set(r.id, r.bytes);
+      }
+    }
+    return out;
+  }
+
+  /**
    * The next `limit` note ids after `cursor` in id order, trashed included: the
    * snapshot's walk. Ids are UUIDs, so the order means nothing and costs nothing — the
    * primary key is the index, and a page deep into the walk seeks straight to it.

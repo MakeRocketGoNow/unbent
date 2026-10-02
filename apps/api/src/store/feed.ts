@@ -176,7 +176,9 @@ export function lastWordPerEntity(rows: FeedRow[]): Change[] {
  * Where to cut a page so its bodies stay under `budget`: the index of the first row that
  * overflows, charging each note once, or `rows.length` when nothing does. Never zero, so
  * a single oversized note still goes, alone. The rows kept are `rows.slice(0, cut)`,
- * and their last seq is the page's `next`.
+ * and their last seq is the page's `next`. `bodyBytes` answers from sizes read ahead of
+ * the bodies (`NotesStore.bodyBytes`), in bytes; the bodies themselves are loaded only
+ * for the rows kept.
  */
 export function cutByBytes(rows: FeedRow[], bodyBytes: (noteId: string) => number, budget = FEED_PAGE_BYTES): number {
   let bytes = 0;

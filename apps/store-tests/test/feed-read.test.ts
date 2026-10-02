@@ -92,6 +92,29 @@ describe('changesSince', () => {
     expect(second.more).toBe(false);
   });
 
+  it('decides the cut on sizes, in bytes, before it loads a body', async () => {
+    const { stub } = freshStore('read-cut-sizes');
+    // Eight notes of 1.5 MB: a page of them loaded whole would be 12 MB in the object.
+    for (let i = 0; i < 8; i++) await stub.create(note({ title: `Big ${i}`, body: 'x'.repeat(1_500_000) }));
+    await stub.resetCounters();
+    const first = page(await stub.changesSince(0, 100));
+    expect(first.notes.map((n) => n.title)).toEqual(['Big 0', 'Big 1']);
+    const { rowsRead } = await stub.counters();
+    // The eight feed rows, eight sizes, and two notes whole: the six dropped notes were
+    // never read. Loading all eight first read about sixty rows here (measured 36).
+    expect(rowsRead).toBeLessThan(45);
+    const snap = await stub.snapshotPage(null, 100);
+    expect(snap.notes).toHaveLength(2);
+    expect(snap.next).toBe(snap.notes[1]!.id);
+    // Bytes, not characters: three-byte characters count three times over.
+    const { stub: wide } = freshStore('read-cut-utf8');
+    await wide.create(note({ title: 'Wide 0', body: '語'.repeat(1_000_000) })); // 3 MB in UTF-8
+    await wide.create(note({ title: 'Wide 1', body: '語'.repeat(1_000_000) }));
+    const w = page(await wide.changesSince(0, 100));
+    expect(w.notes.map((n) => n.title)).toEqual(['Wide 0']);
+    expect(w.more).toBe(true);
+  });
+
   it('answers reset for a cursor past the counter or before the oldest row kept', async () => {
     const { stub } = freshStore('read-reset');
     const a = await stub.create(note());

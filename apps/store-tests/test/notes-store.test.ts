@@ -850,14 +850,15 @@ describe('rows read on an archive-sized store', () => {
       'trash one': 20,
       'trash many': 50,
       'get trashed': 10,
-      // About eight and a half rows per note whole — the note, its tags, values and
-      // files, each probed by id — plus the hundred feed rows (measured 2026-10-02).
-      'feed page': 1000,
-      'feed page dense': 1000,
+      // About eleven rows per note: its size, read ahead of the cut, then the note
+      // whole — the row, its tags, values and files, each probed by id — plus the
+      // hundred feed rows (measured 2026-10-02 at 1,185; 860 before sizes went first).
+      'feed page': 1300,
+      'feed page dense': 1300,
       'feed nothing new': 8,
       'feed reset': 4,
-      'snapshot page': 1000,
-      'snapshot page deep': 1000,
+      'snapshot page': 1300,
+      'snapshot page deep': 1300,
     };
     for (const r of results) {
       expect(r.rowsRead, r.label).toBeLessThanOrEqual(bounds[r.label]!);

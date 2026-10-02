@@ -795,6 +795,10 @@ export class UserStore extends DurableObject<StoreEnv> {
    * counter, which a point-in-time restore makes of every cursor it winds back under; or
    * one before the oldest row kept, which pruning makes of a device away too long. The
    * epoch travels with every answer and is the third reason, on the client's side.
+   *
+   * The byte cut is decided before a body is read. Sizes are one small row per candidate
+   * (`bodyBytes`), so a page of hundreds of large notes costs the object a few hundred
+   * integers, never hundreds of bodies at once.
    */
   changesSince(since: number, limit: number): FeedPage | FeedReset {
     this.ready();
@@ -812,19 +816,22 @@ export class UserStore extends DurableObject<StoreEnv> {
       );
       const full = rows.length === limit;
 
-      // Bodies are needed to cut, and the cut decides which rows stay, so the notes are
-      // loaded for every row first and the cut drops what it drops. A dropped note is a
-      // few kilobytes read for nothing, on the rare page that is cut at all.
+      // The cut decides which rows stay, and it is made on the bodies' sizes alone —
+      // one small row per candidate — before any body is loaded. Loading every
+      // candidate whole and cutting afterwards would have held up to five hundred
+      // bodies of up to 1.8 MB each in the object at once, past its memory, on a page
+      // that one large import is enough to produce; and a page that fails never
+      // advances the cursor, so the account's feed would stay stuck on it.
       const wanted = lastWordPerEntity(rows);
-      const noteIds = wanted.filter((c) => c.entity === 'note' && !c.deleted).map((c) => c.id);
-      const notes = new Map(this.notes.wholeNotes(noteIds).map((n) => [n.id, n]));
-      const cut = cutByBytes(rows, (id) => notes.get(id)?.body.length ?? 0);
+      const sizes = this.notes.bodyBytes(wanted.filter((c) => c.entity === 'note' && !c.deleted).map((c) => c.id));
+      const cut = cutByBytes(rows, (id) => sizes.get(id) ?? 0);
       const kept = rows.slice(0, cut);
       const changes = lastWordPerEntity(kept);
 
       const ids = (entity: FeedRow['entity'], deleted: boolean) =>
         changes.filter((c) => c.entity === entity && !!c.deleted === deleted).map((c) => c.id);
       const keptNoteIds = ids('note', false);
+      const notes = new Map(this.notes.wholeNotes(keptNoteIds).map((n) => [n.id, n]));
       const files = this.attachments.filesForNotes(keptNoteIds);
       const feedNotes: FeedNote[] = keptNoteIds.flatMap((id) => {
         const note = notes.get(id);
@@ -860,10 +867,12 @@ export class UserStore extends DurableObject<StoreEnv> {
       const seq = this.feed.seq();
       const epoch = this.feed.epoch();
       const ids = this.notes.idsAfter(cursor, limit);
-      const notes = new Map(this.notes.wholeNotes(ids).map((n) => [n.id, n]));
+      // Sizes first, bodies after the cut, as `changesSince` does and for the same reason.
+      const sizes = this.notes.bodyBytes(ids);
       const rows: FeedRow[] = ids.map((id, i) => ({ seq: i, entity: 'note', id, deleted: 0 }));
-      const cut = cutByBytes(rows, (id) => notes.get(id)?.body.length ?? 0, FEED_PAGE_BYTES);
+      const cut = cutByBytes(rows, (id) => sizes.get(id) ?? 0, FEED_PAGE_BYTES);
       const kept = ids.slice(0, cut);
+      const notes = new Map(this.notes.wholeNotes(kept).map((n) => [n.id, n]));
       const files = this.attachments.filesForNotes(kept);
       const page: SnapshotPage = {
         seq,
