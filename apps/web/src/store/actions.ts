@@ -83,13 +83,14 @@ export interface Outbox {
   resolveConflict: (noteId: string) => void;
   /**
    * Retires the save of this note still waiting in the queue, if there is one, ahead of a
-   * new one: it is removed from storage and will do nothing when its turn comes. Answers
-   * with what the new save carries forward — the copy the retired draft was made from,
-   * which is the older base, and the date it was to be preconditioned on.
+   * new one: it is removed from storage, its change is taken off the row, and it will do
+   * nothing when its turn comes. Answers with what the new save carries forward — the copy
+   * the retired draft was made from, which is the older base, and the date it was to be
+   * preconditioned on.
    */
   supersedeSave: (noteId: string) => { base: Note; against?: number | undefined } | null;
-  /** Records the save of this note now waiting, by its entry's id. */
-  trackSave: (noteId: string, id: string, carried: { base: Note; against?: number | undefined }) => void;
+  /** Records the save of this note now waiting: its entry's id, what it carries, and how to take its change off the row. */
+  trackSave: (noteId: string, entry: { id: string; base: Note; against?: number | undefined; retire: () => void }) => void;
   /** Stops the executor and closes its store, so the outbox's database can be removed. */
   dispose: () => Promise<void>;
 }
@@ -121,7 +122,7 @@ export function createOutbox(userId: string, lib: Omit<WritableLibrary, 'outbox'
   const defs = (): FieldDef[] => [...lookups(snapshot(lib)).fieldDefs.values()];
 
   /** The save of each note still waiting, by entry id, and the entries a later save retired. */
-  const waitingSaves = new Map<string, { id: string; base: Note; against?: number | undefined }>();
+  const waitingSaves = new Map<string, { id: string; base: Note; against?: number | undefined; retire: () => void }>();
   const superseded = new Set<string>();
 
   /** The server refused the request for good, or for now: which, is the queue's whole question. */
@@ -248,7 +249,9 @@ export function createOutbox(userId: string, lib: Omit<WritableLibrary, 'outbox'
       for (const t of entries) {
         if (t.mutationFnName !== 'saveNote') continue;
         const m = t.metadata as Save | undefined;
-        if (m && !waitingSaves.has(m.noteId)) waitingSaves.set(m.noteId, { id: t.id, base: m.base, against: m.against });
+        // A restored entry's change is the executor's own restoration transaction; it
+        // goes when the entry ends, which a superseded entry does at once on its turn.
+        if (m && !waitingSaves.has(m.noteId)) waitingSaves.set(m.noteId, { id: t.id, base: m.base, against: m.against, retire: () => {} });
       }
     })
     .catch(() => {});
@@ -274,12 +277,15 @@ export function createOutbox(userId: string, lib: Omit<WritableLibrary, 'outbox'
       waitingSaves.delete(noteId);
       superseded.add(waiting.id);
       // Out of storage now, so a reload restores only the save that counts; the
-      // scheduler still holds it, and it ends quietly when its turn comes.
+      // scheduler still holds it, and it ends quietly when its turn comes. Its change
+      // comes off the row now rather than then: offline, "then" is whenever the
+      // connection returns, and the row would show the retired text the whole while.
       void executor.removeFromOutbox(waiting.id).catch(() => {});
+      waiting.retire();
       return { base: waiting.base, against: waiting.against };
     },
-    trackSave: (noteId, id, carried) => {
-      waitingSaves.set(noteId, { id, ...carried });
+    trackSave: (noteId, entry) => {
+      waitingSaves.set(noteId, entry);
     },
     dispose: async () => {
       unsubscribeConnectivity();
@@ -412,15 +418,30 @@ async function pulled<T>(write: Promise<T>): Promise<T> {
  * whenever the connection returns — but its failure is heard, since an entry the outbox
  * could not store is a change that will be lost on reload.
  */
-function queue(lib: WritableLibrary, mutationFnName: string, metadata: Record<string, unknown>, mutate: () => void): string {
+function queue(lib: WritableLibrary, mutationFnName: string, metadata: Record<string, unknown>, mutate: () => void): { id: string; retire: () => void } {
   if (!durable(lib)) throw new Error('queue() in a tab that does not hold the outbox'); // callers go through queueable()
   const tx = lib.outbox.executor.createOfflineTransaction({ mutationFnName, autoCommit: false, metadata });
-  tx.mutate(mutate);
+  const inner = tx.mutate(mutate);
   void tx.commit().catch((err: unknown) => {
     if (err instanceof NonRetriableError) return; // reported where it was raised
     console.error(`[outbox] ${mutationFnName} could not be queued:`, err);
   });
-  return tx.id;
+  return {
+    id: tx.id,
+    /*
+     * Takes the change off the row while the entry still waits. A secondary rollback, so
+     * TanStack DB does not also roll back every later transaction on the same row — a
+     * trash or a move queued after this save are their own entries and stand. A
+     * transaction that has already ended has nothing to take off.
+     */
+    retire: () => {
+      try {
+        inner.rollback({ isSecondaryRollback: true });
+      } catch {
+        // Already completed.
+      }
+    },
+  };
 }
 
 /** A draft's values as the row holds them: named from the definitions held, and only the storeable ones. */
@@ -462,19 +483,23 @@ export async function saveNote(input: Save): Promise<'queued' | 'unchanged' | No
       })(),
     );
   }
-  const patch = buildNotePatch(input.value, input.base, [...lookups(snapshot(lib)).fieldDefs.values()]);
-  if (!patch) return 'unchanged';
-  const { value } = input;
   /*
-   * One save per note in the queue. The one still waiting is retired, and this one takes
-   * over what it carried: its base when older — the copy the typing started from, so the
-   * patch and the precondition are made against the server's copy, not a later local one
-   * — and its "Keep mine" date, so a keystroke after the choice does not undo it.
+   * One save per note in the queue. The one still waiting is retired first, and this one
+   * takes over what it carried: its base when older — the copy the typing started from,
+   * so the patch and the precondition are made against the server's copy, not a later
+   * local one — and its "Keep mine" date, so a keystroke after the choice does not undo
+   * it. The patch is made against that base, and only then: a draft typed back to what
+   * the server holds has nothing to send, and retiring the waiting save is the revert.
+   * Deciding "nothing to send" first, against the newer base, left the retired save in
+   * the queue to write the undone text (review of #232).
    */
   const carried = lib.outbox.supersedeSave(input.noteId);
   const base = carried && carried.base.updatedAt < input.base.updatedAt ? carried.base : input.base;
+  const patch = buildNotePatch(input.value, base, [...lookups(snapshot(lib)).fieldDefs.values()]);
+  if (!patch) return 'unchanged';
+  const { value } = input;
   const entry: Save = { noteId: input.noteId, value, base, against: input.against ?? carried?.against };
-  const id = queue(lib, 'saveNote', entry as unknown as Record<string, unknown>, () => {
+  const queued = queue(lib, 'saveNote', entry as unknown as Record<string, unknown>, () => {
     lib.notes.update(input.noteId, (row) => {
       if (patch.title !== undefined) row.title = value.title;
       if (patch.body !== undefined) row.body = value.body;
@@ -483,7 +508,7 @@ export async function saveNote(input: Save): Promise<'queued' | 'unchanged' | No
       if (patch.fields !== undefined) row.fields = valuesOf(value, lib);
     });
   });
-  lib.outbox.trackSave(input.noteId, id, { base, against: entry.against });
+  lib.outbox.trackSave(input.noteId, { ...queued, base, against: entry.against });
   return 'queued';
 }
 

@@ -357,6 +357,40 @@ describe('saves of one note', () => {
     expect(lib.outbox.status().pending).toBe(0);
   });
 
+  it('typed back to what the server holds, retires the waiting save and sends nothing', async () => {
+    const { lib, fake, landPull, note } = library([row('n1', { title: 'old' })]);
+    await lib.outbox.ready;
+    const base = note('n1');
+    await actions.saveNote({ noteId: 'n1', value: { ...seedFrom(base), title: 'oldx' }, base });
+    await tick();
+    expect(lib.notes.get('n1')?.title).toBe('oldx');
+    // The x deleted again: the draft is the base, and the save of the x must not go.
+    expect(await actions.saveNote({ noteId: 'n1', value: seedFrom(base), base })).toBe('unchanged');
+    await tick();
+    expect(lib.notes.get('n1')?.title).toBe('old');
+    expect(await fake.config.storage.keys()).toHaveLength(0);
+    expect(lib.outbox.status().pending).toBe(0);
+    // The retired entry, still in the scheduler, ends without a request.
+    const replay = fake.replayOne();
+    await tick();
+    landPull();
+    expect(await replay).toBe('done');
+    expect(api.updateNote).not.toHaveBeenCalled();
+  });
+
+  it('retiring a save leaves a later write of the same note standing', async () => {
+    const { lib, note } = library([row('n1', { title: 'old' })]);
+    await lib.outbox.ready;
+    const base = note('n1');
+    await actions.saveNote({ noteId: 'n1', value: { ...seedFrom(base), title: 'a' }, base });
+    await actions.trashNote('n1');
+    await tick();
+    await actions.saveNote({ noteId: 'n1', value: { ...seedFrom(base), title: 'ab' }, base });
+    await tick();
+    expect(lib.notes.get('n1')).toMatchObject({ title: 'ab' });
+    expect(lib.notes.get('n1')?.deletedAt).toBeDefined();
+  });
+
   it('carries a "Keep mine" precondition forward onto the autosave that follows it', async () => {
     const { lib, fake, landPull, note } = library([row('n1', { title: 'old' })]);
     await lib.outbox.ready;
