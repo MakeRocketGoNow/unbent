@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useNavigate } from '@tanstack/react-router';
 import { Sheet } from './Sheet.js';
 import { Button } from './Button';
@@ -65,6 +65,7 @@ interface NotesSortProps {
 export function NotesSort({ notebook, sort, order, sortField, fields = [], disabledReason }: NotesSortProps) {
   const navigate = useNavigate();
   const [picking, setPicking] = useState(false);
+  const toggle = useRef<HTMLButtonElement>(null);
   /*
    * A field sort is none of the named orders, so none of them is marked while it holds;
    * its own row below is. Picking a named order is how it is left again.
@@ -92,6 +93,7 @@ export function NotesSort({ notebook, sort, order, sortField, fields = [], disab
   return (
     <>
       <button
+        ref={toggle}
         type="button"
         className="icon-btn sort-toggle"
         aria-label={disabledReason ? `Sort notes, ${disabledReason}` : `Sort notes, currently ${label}`}
@@ -113,6 +115,7 @@ export function NotesSort({ notebook, sort, order, sortField, fields = [], disab
         open={picking}
         onClose={() => setPicking(false)}
         title="Sort notes"
+        anchor={toggle}
         className={fields.length > 0 ? 'sort-sheet-fields' : undefined}
       >
         <div className="sort-options">

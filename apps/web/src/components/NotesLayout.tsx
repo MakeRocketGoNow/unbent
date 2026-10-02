@@ -98,6 +98,7 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
   const searchRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLUListElement>(null);
   const tableRef = useRef<HTMLDivElement>(null);
+  const filterRef = useRef<HTMLButtonElement>(null);
   const onListKeys = useListKeys({ onLeaveTop: () => searchRef.current?.focus() });
   // Cmd/Ctrl+F focuses search from anywhere in the view; a second press falls through to
   // the browser's find. See the hook.
@@ -732,6 +733,7 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
           }}
           toolbar={toolbarHead}
           onOpenFilters={() => setSheetOpen(true)}
+          filterRef={filterRef}
           onOpenMenu={isMobile ? () => setDrawerOpen(true) : undefined}
           filtered={sheetFiltered}
           /* Not offered while searching — results come back ranked by relevance, and
@@ -874,6 +876,7 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
         <Sheet
           open={sheetOpen}
           onClose={closeSheet}
+          anchor={filterRef}
           title={
             sheetPage === 'tags'
               ? 'Tags'

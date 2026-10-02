@@ -38,6 +38,8 @@ interface NoteListHeadProps {
   /** Closes the field *and* clears the query — see the comment on the back arrow. */
   onCloseSearch: () => void;
   onOpenFilters: () => void;
+  /** The filter icon's element, which the filter panel opens over on a desktop — see `Sheet`'s `anchor`. */
+  filterRef?: RefObject<HTMLButtonElement | null>;
   /** Opens the drawer of notebooks. Absent where there is no drawer. */
   onOpenMenu?: () => void;
   /** Lights the dot on the filter icon: a narrowed list should never look like the whole archive. */
@@ -122,6 +124,7 @@ export function NoteListHead({
   onOpenSearch,
   onCloseSearch,
   onOpenFilters,
+  filterRef,
   onOpenMenu,
   filtered,
   sort,
@@ -249,6 +252,7 @@ export function NoteListHead({
             </button>
           )}
           <button
+            ref={filterRef}
             type="button"
             className="icon-btn"
             /*
