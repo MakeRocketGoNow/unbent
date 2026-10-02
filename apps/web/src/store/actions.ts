@@ -40,7 +40,21 @@ import { outboxName } from './names.js';
  * one request, and the answer is the server's.
  */
 
-/** A conflict waiting on a choice: the note as the server now holds it. */
+/**
+ * A save the server refused because the note changed on another device, waiting on a
+ * choice: the note as the server now holds it, and the draft and base the refused save
+ * carried. The draft lived in the entry, and ending the entry rolled the row back to the
+ * server's copy, so a conflict on a note that was not open lost the typing — reopening
+ * seeded from the row, and "Keep mine" had nothing to keep (review of #232). With offline
+ * editing that is the ordinary conflict: ten notes edited on a plane, one of them touched
+ * on the phone meanwhile. The workspace seeds from this when it opens the note.
+ */
+export interface Conflict {
+  current: Note;
+  draft: NoteDraft;
+  base: Note;
+}
+
 export interface SyncStatus {
   /** Writes made here the server has not yet accepted. */
   pending: number;
@@ -50,7 +64,7 @@ export interface SyncStatus {
    * fails as one (see `durable` below).
    */
   durable: boolean;
-  conflicts: ReadonlyMap<string, Note>;
+  conflicts: ReadonlyMap<string, Conflict>;
 }
 
 export interface Outbox {
@@ -80,7 +94,7 @@ export interface WritableLibrary extends Collections {
 type Save = { noteId: string; value: NoteDraft; base: Note; against?: number };
 
 export function createOutbox(userId: string, lib: Omit<WritableLibrary, 'outbox'>): Outbox {
-  const conflicts = new Map<string, Note>();
+  const conflicts = new Map<string, Conflict>();
   const listeners = new Set<(s: SyncStatus) => void>();
   const acks = new Set<(id: string, note: Note) => void>();
   const status = (): SyncStatus => ({ pending: storage.held(), durable: executor.isOfflineEnabled, conflicts });
@@ -128,7 +142,7 @@ export function createOutbox(userId: string, lib: Omit<WritableLibrary, 'outbox'
             // choice to put to the person (MAK-113), and this entry is done. A "Keep
             // mine" refused in turn is that choice again, with the newer copy.
             if (against !== undefined || !holdsTheirChanges(value, base, err.current)) {
-              conflicts.set(noteId, err.current);
+              conflicts.set(noteId, { current: err.current, draft: value, base });
               await lib.engine.pull();
               throw new NonRetriableError(`Note ${noteId} changed on another device`);
             }
@@ -136,7 +150,7 @@ export function createOutbox(userId: string, lib: Omit<WritableLibrary, 'outbox'
               updated = await api.updateNote(noteId, { ...patch, ifUpdatedAt: err.current.updatedAt });
             } catch (again) {
               if (!isNoteChanged(again)) return refusal(again);
-              conflicts.set(noteId, again.current);
+              conflicts.set(noteId, { current: again.current, draft: value, base });
               await lib.engine.pull();
               throw new NonRetriableError(`Note ${noteId} changed on another device`);
             }

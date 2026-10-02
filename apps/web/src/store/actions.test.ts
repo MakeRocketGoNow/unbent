@@ -301,7 +301,8 @@ describe('a replayed write', () => {
     await tick();
     landPull();
     expect(await replay).toBe('refused');
-    expect(lib.outbox.status().conflicts.get('n1')).toMatchObject({ updatedAt: 200 });
+    // The refusal keeps what the save carried: the typing, and the copy it was made from.
+    expect(lib.outbox.status().conflicts.get('n1')).toMatchObject({ current: { updatedAt: 200 }, draft: { title: 'mine' }, base: { updatedAt: 100 } });
     expect(await fake.replayOne()).toBe('empty');
   });
 

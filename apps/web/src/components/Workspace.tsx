@@ -15,6 +15,7 @@ import {
   rememberFieldDefs,
   seedFrom,
   unstoreableFieldIds,
+  type NoteDraft,
 } from '../note-patch.js';
 import { useAutosave, SAVE_LABEL } from '../useAutosave.js';
 import { usePersistentState, clamp } from '../usePersistentState.js';
@@ -330,13 +331,26 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
      A conflict can arrive long after the save that caused it: the save was taken by the
      local copy at once and went to the server later, from the outbox, and the refusal
      comes back from there. By id, so one for another note waits for that note.
+
+     The refusal brings the draft the save carried and the copy it was made from. When
+     the note is open and that draft is what is on screen, nothing moves. When it is not
+     — the note was closed when the refusal came, and reopened from the row, which the
+     ended entry had rolled back to the server's copy — the draft is put back on screen
+     and its base taken, so the choice is between the two versions that exist and "Keep
+     mine" has something to keep. Typing since the refused save is left alone: the draft
+     on screen already holds everything the refused one did.
   */
   useEffect(() => {
     if (!outbox) return;
     return outbox.subscribe((status) => {
-      const current = status.conflicts.get(noteId);
-      if (current) setConflict({ id: noteId, current });
+      const c = status.conflicts.get(noteId);
+      if (!c) return;
+      const clean = saveStateRef.current === 'idle' || saveStateRef.current === 'saved';
+      if (clean && JSON.stringify(c.draft) !== JSON.stringify(draftRef.current)) showDraft(c.draft);
+      bases.current.set(noteId, c.base);
+      setConflict((prev) => (prev?.id === noteId && prev.current === c.current ? prev : { id: noteId, current: c.current }));
     });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [outbox, noteId]);
 
   /*
@@ -350,7 +364,7 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
       bases.current.set(id, updated);
       if (id !== noteId) return;
       const clean = saveStateRef.current === 'idle' || saveStateRef.current === 'saved';
-      if (clean && JSON.stringify(seedFrom(updated)) !== JSON.stringify(draftRef.current)) reseed(updated, draftRef.current.body);
+      if (clean && JSON.stringify(seedFrom(updated)) !== JSON.stringify(draftRef.current)) reseed(updated);
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [outbox, noteId]);
@@ -361,21 +375,31 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
    * throw away the caret and the undo history. The bump to `seedGeneration` makes the
    * autosave take the new copy as its baseline rather than as an edit to save.
    */
-  function reseed(from: Note, showing: string) {
+  function reseed(from: Note) {
     bases.current.set(from.id, from);
     queryClient.setQueryData(keys.note(from.id), from);
-    setDraft(seedFrom(from));
+    showDraft(seedFrom(from));
+  }
+
+  /** Puts a draft on screen as the autosave's baseline, rebuilding the editor only if the body differs from what it shows. */
+  function showDraft(next: NoteDraft) {
+    const showing = draftRef.current.body;
+    setDraft(next);
     setEditorOverride(null);
-    if (from.body !== showing) setEditorRevision((n) => n + 1);
+    if (next.body !== showing) setEditorRevision((n) => n + 1);
     setSeedGeneration((n) => n + 1);
   }
 
   // Seed the draft when a different note loads. Keyed on id, not on the note object,
-  // so a background refetch never discards what is being typed.
+  // so a background refetch never discards what is being typed. A note with a conflict
+  // waiting on it is seeded from the refused draft and its base, not from the row, which
+  // is the server's copy (see the conflict subscription above); the outbox may also
+  // arrive after the note, and then that subscription does the same.
   useEffect(() => {
     if (!note) return;
-    bases.current.set(note.id, note);
-    setDraft(seedFrom(note));
+    const waiting = outbox?.status().conflicts.get(note.id);
+    bases.current.set(note.id, waiting?.base ?? note);
+    setDraft(waiting?.draft ?? seedFrom(note));
     setDraftFor(note.id);
     setEditorOverride(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -493,7 +517,7 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
     outbox?.resolveConflict(conflict.id);
     bases.current.set(conflict.id, conflict.current);
     setConflict(null);
-    reseed(conflict.current, draftRef.current.body);
+    reseed(conflict.current);
   }
 
   /**
@@ -516,7 +540,7 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
         if (typeof outcome !== 'object') return;
         bases.current.set(id, outcome);
         queryClient.setQueryData(keys.note(id), outcome);
-        if (noteIdRef.current === id) reseed(outcome, draftRef.current.body);
+        if (noteIdRef.current === id) reseed(outcome);
       },
       (err: unknown) => {
         if (api.isNoteChanged(err) && noteIdRef.current === id) setConflict({ id, current: err.current });
@@ -572,7 +596,7 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
     */
     if (!clean) return;
     bases.current.set(noteId, note);
-    if (JSON.stringify(seedFrom(note)) !== JSON.stringify(draftRef.current)) reseed(note, draftRef.current.body);
+    if (JSON.stringify(seedFrom(note)) !== JSON.stringify(draftRef.current)) reseed(note);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editing, noteId, note?.updatedAt, conflicted]);
 
