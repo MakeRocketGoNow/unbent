@@ -71,6 +71,12 @@ export interface SyncStatus {
    * fails as one (see `durable` below).
    */
   durable: boolean;
+  /**
+   * The notes with an entry waiting: what the note head marks with a glyph, so a note
+   * that is only on this device can be told from one the server has. Online that is the
+   * half second a replay takes; offline it is the whole stretch.
+   */
+  waiting: ReadonlySet<string>;
   conflicts: ReadonlyMap<string, Conflict>;
 }
 
@@ -94,6 +100,8 @@ export interface Outbox {
   supersedeSave: (noteId: string) => { base: Note; against?: number | undefined } | null;
   /** Records the save of this note now waiting: its entry's id, what it carries, and how to take its change off the row. */
   trackSave: (noteId: string, entry: { id: string; base: Note; against?: number | undefined; retire: () => void }) => void;
+  /** Records which notes an entry just queued is about, for `waiting`. */
+  trackEntry: (id: string, noteIds: string[]) => void;
   /** Stops the executor and closes its store, so the outbox's database can be removed. */
   dispose: () => Promise<void>;
 }
@@ -117,13 +125,23 @@ const conflictKey = (noteId: string) => `conflict:${noteId}`;
 
 export function createOutbox(userId: string, lib: Omit<WritableLibrary, 'outbox'>): Outbox {
   const conflicts = new Map<string, Conflict>();
+  /** The notes each waiting entry is about, by entry id. */
+  const entryNotes = new Map<string, string[]>();
+  const waiting = (): ReadonlySet<string> => new Set([...entryNotes.values()].flat());
+  /**
+   * Whether an attempt ended the entry: it went through, or the server refused it for
+   * good. A lost connection or a 5xx keeps the entry, and its notes keep waiting.
+   */
+  const ended = (entryId: string, err?: unknown) => {
+    if (err === undefined || err instanceof NonRetriableError) entryNotes.delete(entryId);
+  };
   const keep = (noteId: string, conflict: Conflict) => {
     conflicts.set(noteId, conflict);
     void storage.set(conflictKey(noteId), JSON.stringify(conflict)).catch((err: unknown) => console.error('[outbox] conflict not kept:', err));
   };
   const listeners = new Set<(s: SyncStatus) => void>();
   const acks = new Set<(id: string, note: Note) => void>();
-  const status = (): SyncStatus => ({ pending: storage.held(), durable: executor.isOfflineEnabled, conflicts });
+  const status = (): SyncStatus => ({ pending: storage.held(), durable: executor.isOfflineEnabled, waiting: waiting(), conflicts });
   const touch = () => {
     const s = status();
     listeners.forEach((l) => l(s));
@@ -154,9 +172,15 @@ export function createOutbox(userId: string, lib: Omit<WritableLibrary, 'outbox'
         const { noteId, value, base, against } = transaction.metadata as unknown as Save;
         try {
           // A later save of this note carries the whole draft, this one included.
-          if (superseded.has(transaction.id)) return;
+          if (superseded.has(transaction.id)) {
+            ended(transaction.id);
+            return;
+          }
           const patch = buildNotePatch(value, base, defs());
-          if (!patch) return;
+          if (!patch) {
+            ended(transaction.id);
+            return;
+          }
           let updated: Note;
           try {
             updated = await api.updateNote(noteId, { ...patch, ifUpdatedAt: against ?? base.updatedAt });
@@ -184,6 +208,10 @@ export function createOutbox(userId: string, lib: Omit<WritableLibrary, 'outbox'
           }
           acks.forEach((l) => l(noteId, updated));
           if (!took(updated)) await settled();
+          ended(transaction.id);
+        } catch (err) {
+          ended(transaction.id, err);
+          throw err;
         } finally {
           superseded.delete(transaction.id);
           if (waitingSaves.get(noteId)?.id === transaction.id) waitingSaves.delete(noteId);
@@ -195,6 +223,10 @@ export function createOutbox(userId: string, lib: Omit<WritableLibrary, 'outbox'
         try {
           const created = await api.createNote(input).catch(refusal);
           if (!took(created)) await settled();
+          ended(transaction.id);
+        } catch (err) {
+          ended(transaction.id, err);
+          throw err;
         } finally {
           touch();
         }
@@ -207,24 +239,28 @@ export function createOutbox(userId: string, lib: Omit<WritableLibrary, 'outbox'
           // pull brings their rows.
           took(copy);
           await settled();
+          ended(transaction.id);
+        } catch (err) {
+          ended(transaction.id, err);
+          throw err;
         } finally {
           touch();
         }
       },
       // Trash, restore and purge: an id the server no longer has is done, not an error.
-      trashNote: async ({ transaction }) => run(() => api.deleteNote(id(transaction)).catch(gone)),
-      restoreNote: async ({ transaction }) => run(() => api.restoreNote(id(transaction)).then(() => undefined, gone)),
-      purgeNote: async ({ transaction }) => run(() => api.deleteNotePermanently(id(transaction)).catch(gone)),
-      trashNotes: async ({ transaction }) => run(() => api.deleteNotes(ids(transaction)).then(() => undefined, refusal)),
-      restoreNotes: async ({ transaction }) => run(() => api.restoreNotes(ids(transaction)).then(() => undefined, refusal)),
-      purgeNotes: async ({ transaction }) => run(() => api.deleteNotesPermanently(ids(transaction)).then(() => undefined, refusal)),
+      trashNote: async ({ transaction }) => run(transaction.id, () => api.deleteNote(id(transaction)).catch(gone)),
+      restoreNote: async ({ transaction }) => run(transaction.id, () => api.restoreNote(id(transaction)).then(() => undefined, gone)),
+      purgeNote: async ({ transaction }) => run(transaction.id, () => api.deleteNotePermanently(id(transaction)).catch(gone)),
+      trashNotes: async ({ transaction }) => run(transaction.id, () => api.deleteNotes(ids(transaction)).then(() => undefined, refusal)),
+      restoreNotes: async ({ transaction }) => run(transaction.id, () => api.restoreNotes(ids(transaction)).then(() => undefined, refusal)),
+      purgeNotes: async ({ transaction }) => run(transaction.id, () => api.deleteNotesPermanently(ids(transaction)).then(() => undefined, refusal)),
       moveNotes: async ({ transaction }) => {
         const { ids: which, notebook } = transaction.metadata as unknown as { ids: string[]; notebook: string | null };
-        return run(() => api.updateNotes(which, { notebook }).then(() => undefined, refusal));
+        return run(transaction.id, () => api.updateNotes(which, { notebook }).then(() => undefined, refusal));
       },
       tagNotes: async ({ transaction }) => {
         const { ids: which, add, remove } = transaction.metadata as unknown as { ids: string[]; add?: string[]; remove?: string[] };
-        return run(() => api.updateNotes(which, { addTags: add, removeTags: remove }).then(() => undefined, refusal));
+        return run(transaction.id, () => api.updateNotes(which, { addTags: add, removeTags: remove }).then(() => undefined, refusal));
       },
     },
   });
@@ -235,10 +271,14 @@ export function createOutbox(userId: string, lib: Omit<WritableLibrary, 'outbox'
     if (err instanceof ApiError && err.status === 404) return;
     refusal(err);
   };
-  async function run(fn: () => Promise<void>): Promise<void> {
+  async function run(entryId: string, fn: () => Promise<void>): Promise<void> {
     try {
       await fn();
       await settled();
+      ended(entryId);
+    } catch (err) {
+      ended(entryId, err);
+      throw err;
     } finally {
       touch();
     }
@@ -294,6 +334,7 @@ export function createOutbox(userId: string, lib: Omit<WritableLibrary, 'outbox'
     .then(() => Promise.all([executor.peekOutbox(), storage.keys()]))
     .then(async ([entries, keys]) => {
       for (const t of entries) {
+        entryNotes.set(t.id, notesOf(t.metadata as Record<string, unknown> | undefined));
         if (t.mutationFnName !== 'saveNote') continue;
         const m = t.metadata as Save | undefined;
         /*
@@ -312,7 +353,7 @@ export function createOutbox(userId: string, lib: Omit<WritableLibrary, 'outbox'
         const raw = await storage.get(key);
         if (raw) conflicts.set(key.slice('conflict:'.length), JSON.parse(raw) as Conflict);
       }
-      if (conflicts.size > 0) touch();
+      if (conflicts.size > 0 || entryNotes.size > 0) touch();
     })
     .catch(() => {});
   return {
@@ -348,6 +389,10 @@ export function createOutbox(userId: string, lib: Omit<WritableLibrary, 'outbox'
     },
     trackSave: (noteId, entry) => {
       waitingSaves.set(noteId, entry);
+    },
+    trackEntry: (id, noteIds) => {
+      entryNotes.set(id, noteIds);
+      touch();
     },
     dispose: async () => {
       unsubscribeConnectivity();
@@ -406,6 +451,14 @@ function watched(inner: StorageAdapter, onChange: () => void): StorageAdapter & 
     },
     held: () => keys.size,
   };
+}
+
+/** The notes an entry is about, from what it carries: one note, several, or the one it makes. */
+function notesOf(metadata: Record<string, unknown> | undefined): string[] {
+  if (!metadata) return [];
+  if (Array.isArray(metadata.ids)) return metadata.ids as string[];
+  for (const key of ['noteId', 'copyId', 'id']) if (typeof metadata[key] === 'string') return [metadata[key] as string];
+  return [];
 }
 
 /** `connectivity.ts` is the one thing that decides whether the app is offline; the executor follows it. */
@@ -488,6 +541,7 @@ function queue(lib: WritableLibrary, mutationFnName: string, metadata: Record<st
     if (err instanceof NonRetriableError) return; // reported where it was raised
     console.error(`[outbox] ${mutationFnName} could not be queued:`, err);
   });
+  lib.outbox.trackEntry(tx.id, notesOf(metadata));
   return {
     id: tx.id,
     /*

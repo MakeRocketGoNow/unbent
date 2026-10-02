@@ -495,10 +495,15 @@ what waited. Sign-out first waits a few seconds for the outbox to drain. The nam
 has to call it too, and say which of the three it is.
 
 **Offline is not `readOnly`, and it no longer locks.** The trash's `readOnly` turns the
-autosave off and drops the draft. Offline, the note is as editable as ever and the head says
-"Saved here — syncs when online"; what fades is what needs the server now — Auto-fill, the
-⋯ menu, file uploads, search — and a new control that needs the server should follow
-`offline`, not lock the note.
+autosave off and drops the draft. Offline, the note is as editable as ever and the head
+still says "Saved" — one word, because beside a title on a phone the head has room for
+about that, and a sentence there shrank the title twice. What the server has not heard of
+is said elsewhere: a cloud glyph beside the word while *this* note has an entry waiting in
+the outbox (`NotSyncedMark`, "Not synced yet" on hover or tap), the banner for the device
+being offline, and a line in the strip when writes have waited online for a few seconds
+(`SyncingLine`). What fades is what needs the server now — Auto-fill, the ⋯ menu, file
+uploads, search — and a new control that needs the server should follow `offline`, not
+lock the note.
 
 **Deploys wait for a change of section.** A new worker installs and waits; the next time
 someone goes to another section (notes to settings, not list to note), or comes back to the

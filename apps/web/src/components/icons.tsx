@@ -11,6 +11,7 @@ import {
   ChevronLeft,
   ChevronRight,
   CloudOff,
+  CloudUpload,
   Code,
   Coins,
   Copy,
@@ -178,6 +179,17 @@ export function SettingsRowIcon() {
  */
 export function OfflineIcon() {
   return <RowIcon icon={CloudOff} />;
+}
+
+/**
+ * The note head's mark for a note the server has not heard of yet: an entry of its own
+ * waiting in the outbox. A `RowIcon` beside the word "Saved", since the word is still
+ * the label and this only qualifies it; a cloud with an arrow up, which is the picture
+ * Photos and Drive draw for the same state. Drawn only while the note waits — nothing
+ * is the picture for synced, as it is there.
+ */
+export function NotSyncedIcon() {
+  return <RowIcon icon={CloudUpload} />;
 }
 
 /*

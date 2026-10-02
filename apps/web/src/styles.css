@@ -1847,9 +1847,50 @@ a.overflow-item { text-decoration: none; }
    and carried whole in the span's tooltip.
 */
 .workspace-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3em;
   max-width: 24rem;
+  min-width: 0;
+}
+
+.workspace-status-text {
   overflow: hidden;
   text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/*
+   The not-synced mark beside "Saved": the glyph is the whole control, drawn in the
+   status's own muted ink with no box, since it qualifies the word rather than offering
+   an action. Its words appear under it on a tap, in the dark bubble a tooltip would be,
+   and go on their own.
+*/
+.sync-mark {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  cursor: default;
+  line-height: 1;
+}
+
+.sync-mark-tip {
+  position: absolute;
+  top: calc(100% + 0.4rem);
+  right: 0;
+  z-index: 30;
+  padding: 0.35rem 0.6rem;
+  border-radius: 0.4rem;
+  background: var(--fg);
+  color: var(--bg);
+  font-size: 0.8rem;
+  white-space: nowrap;
+  box-shadow: 0 4px 12px color-mix(in srgb, var(--fg) 25%, transparent);
 }
 
 /* Auto-fill, between the save state and the ⋯: a sparkle and a word, drawn as one more

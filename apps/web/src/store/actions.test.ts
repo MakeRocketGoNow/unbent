@@ -506,6 +506,30 @@ describe('saves of one note', () => {
 });
 
 describe('what waits for the server', () => {
+  it('names the notes with an entry waiting, until each entry ends', async () => {
+    const { lib, fake, landPull, note } = library([row('n1', { title: 'old' }), row('n2')]);
+    await lib.outbox.ready;
+    const base = note('n1');
+    await actions.saveNote({ noteId: 'n1', value: { ...seedFrom(base), title: 'new' }, base });
+    await actions.trashNotes(['n2']);
+    await tick();
+    expect([...lib.outbox.status().waiting].sort()).toEqual(['n1', 'n2']);
+    // A replay the server could not take keeps the entry, and the note keeps waiting.
+    vi.mocked(api.updateNote).mockRejectedValueOnce(new OfflineError());
+    expect(await fake.replayOne()).toBe('kept');
+    expect([...lib.outbox.status().waiting].sort()).toEqual(['n1', 'n2']);
+    vi.mocked(api.updateNote).mockResolvedValueOnce({ ...base, title: 'new', updatedAt: 101 });
+    expect(await fake.replayOne()).toBe('done');
+    expect([...lib.outbox.status().waiting]).toEqual(['n2']);
+    vi.mocked(api.deleteNotes).mockResolvedValueOnce({ trashed: 1 });
+    const replay = fake.replayOne();
+    await tick();
+    landPull();
+    await replay;
+    expect(lib.outbox.status().waiting.size).toBe(0);
+  });
+
+
   it('counts a write the moment it is stored, so a write made offline is "syncing" at once', async () => {
     const { lib, fake } = library([row('n1')]);
     const seen: number[] = [];

@@ -14,7 +14,7 @@ import { useLibraryPresence, useSyncStatus } from '../store/use-outbox.js';
  * holding the outbox queues writes, a device with no library queues nothing, and a
  * library still opening is about to.
  */
-const status = (durable: boolean) => ({ pending: 0, durable, conflicts: new Map() });
+const status = (durable: boolean) => ({ pending: 0, durable, waiting: new Set<string>(), conflicts: new Map() });
 const promise = /what you change will sync when you're back/;
 
 afterEach(() => {

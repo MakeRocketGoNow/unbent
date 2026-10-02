@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { currentLibrary, subscribeLibrary } from './library.js';
 import type { Outbox, SyncStatus } from './actions.js';
 
-const nothing: SyncStatus = { pending: 0, durable: false, conflicts: new Map() };
+const nothing: SyncStatus = { pending: 0, durable: false, waiting: new Set(), conflicts: new Map() };
 
 /**
  * The open library's outbox, for a component that shows what the server has not taken

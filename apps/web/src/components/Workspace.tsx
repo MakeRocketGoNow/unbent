@@ -8,6 +8,7 @@ import * as api from '../notes-api.js';
 import { isOfflineError, isStatus } from '../notes-api.js';
 import * as actions from '../store/actions.js';
 import { useOutbox, useSyncStatus } from '../store/use-outbox.js';
+import { NotSyncedMark } from './NotSyncedMark.js';
 import { useOffline } from '../connectivity.js';
 import {
   buildNotePatch,
@@ -660,19 +661,20 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
   */
   const unsavedOffline = saveState === 'error' && offline;
   /*
-     "Saved" is the local copy's word now; the server's comes after, from the outbox.
-     While a save of any note waits there the head says so, and offline it says what
-     will happen, so nobody closes the tab on a word that meant less than it seemed.
+     "Saved" is the local copy's word now, and it stays one word: the head has room for
+     about that beside a title on a phone, and a sentence here shrank the title (a lesson
+     learned twice). What the server has not heard of yet is said by a glyph beside the
+     word while this note has an entry waiting in the outbox — the blink of a replay
+     online, the whole stretch offline — with "Not synced yet" on hover or tap. The
+     device's state is the banner's to say, and a sync that is stuck is the strip's
+     (`SyncingLine`).
   */
   const saveLabel = unsavedOffline
     ? 'Not saved — offline'
     : holdingField && saveState === 'saved'
       ? SAVE_LABEL.dirty
-      : saveState === 'saved' && sync.pending > 0
-        ? offline
-          ? 'Saved here — syncs when online'
-          : 'Saved · syncing…'
-        : SAVE_LABEL[saveState];
+      : SAVE_LABEL[saveState];
+  const notSynced = !readOnly && sync.waiting.has(noteId);
 
   /**
    * Adds a definition to the note's notebook from the note itself. The definitions
@@ -1128,7 +1130,8 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
             className={`workspace-status ${(saveState === 'error' && !unsavedOffline) || saveState === 'conflict' ? 'bad' : 'muted'} small`}
             title={webImagesStatus ?? saveLabel}
           >
-            {readOnly ? 'In trash' : (webImagesStatus ?? saveLabel)}
+            <span className="workspace-status-text">{readOnly ? 'In trash' : (webImagesStatus ?? saveLabel)}</span>
+            {notSynced && <NotSyncedMark />}
           </span>
 
           {/*

@@ -1066,8 +1066,9 @@ through a socket that says only that something changed. A warm open draws the li
 request at all.
 
 Edits land on the device first. A note you write, make, file, tag, trash or restore with
-no connection is saved here at once — the note head says "Saved here — syncs when online"
-— and goes to the server, in order, when the connection returns. A save that would overwrite
+no connection is saved here at once — the note head says "Saved", with a small cloud
+beside it until the server has the note too — and goes to the server, in order, when the
+connection returns. A save that would overwrite
 an edit made on another device meanwhile is refused there and put to you as before: reload
 theirs, or keep yours on top of it. What needs the server now says so and waits: search,
 files and the images in them, Auto-fill, and the settings pages that manage notebooks,
