@@ -1365,6 +1365,18 @@ the sweep until it is done, and fails the deploy if any account's
 store did not wake. Without the secret the step skips and the cron gets there within the
 day.
 
+**The change feed.** Every write records what it touched, numbered by the store's own
+counter, and `GET /api/changes?since=N` answers "what changed since N?" with the changed
+notes whole — body, tags, values, files — the changed notebooks and tags, and a tombstone
+for anything purged. A device with no copy yet walks the whole library through
+`GET /api/changes/snapshot`, then follows the feed from the counter the first page
+reported. `GET /api/changes/socket` is the push: a WebSocket the store tells the counter
+on after every write, held through the platform's hibernation so an idle device costs
+nothing; the feed is complete without it. The feed keeps ninety days or fifty thousand
+rows; a cursor older than that, or from before a restore, is answered with `reset` and
+the device starts over from a snapshot. This is what the local copy of the library in the
+browser syncs from.
+
 **What the operator can see.** An object has no console, so the Worker has one, under
 `/api/admin/store` for a session in `OPERATOR_EMAILS`:
 
@@ -1376,6 +1388,8 @@ day.
   `d1 export` was, and how a migration is rehearsed against a real account before it
   ships — dump, load, run the new schema file's SQL against the copy.
 - `POST …/restore` — winds one store back to a moment in the last thirty days; see below.
+- `POST …/feed-epoch` — makes every device of an account resync its local copy, by
+  naming a new history for its change feed. The restore does this itself.
 - `POST …/sweep` — one batch of the walk, now; `?restart=1` on the first call starts from
   the top of the directory, then call without it until it says `done`. Also open to the
   deploy, with the deployment's `SWEEP_TOKEN` in an `X-Unbent-Sweep-Token` header instead of
