@@ -491,6 +491,18 @@ describe('inline PDF', () => {
   });
 
   /**
+   * The link keeps text on the line, so the break after the pages is never collapsed by a
+   * zero line height the way an image-only line's is; left alone it hangs a blank line
+   * under every PDF. See the `.cm-md-pdf + br` theme rule.
+   */
+  it('hides the trailing break under the pages', () => {
+    const v = mountWithAttachments('[report](files/report.pdf)\n\nplain');
+    const br = v.dom.querySelector('.cm-md-pdf + br') as HTMLElement | null;
+    expect(br).not.toBeNull();
+    expect(getComputedStyle(br!).display).toBe('none');
+  });
+
+  /**
    * The way to read a scan large. The control arrives with the first page rather than
    * with the widget, so it never sits on a page that has not drawn.
    */
