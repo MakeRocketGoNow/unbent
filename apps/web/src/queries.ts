@@ -4,8 +4,14 @@ import {
   keepPreviousData,
   type QueryClient,
 } from '@tanstack/react-query';
-import type { NoteSort } from '@unbent/shared';
+import type { AttachmentInfo, FieldDef, Note, NoteSort, NoteSummary, NotebookSummary } from '@unbent/shared';
 import * as api from './notes-api.js';
+import { ApiError, OfflineError } from './notes-api.js';
+import { offlineNow } from './connectivity.js';
+import { count, list, lookups, notebookFields, notebookList, summaries, tagSummaries, toAttachmentInfo, toNote, type Lookups, type Snapshot } from './store/derive.js';
+import type { LocalNote } from './store/collections.js';
+import { LIBRARY_ROOTS, currentLibrary, onLibraryChange, type ReadableLibrary as Library } from './store/library.js';
+import { onDirectWrite } from './store/actions.js';
 
 /**
  * Query definitions, colocated with their keys.
@@ -17,7 +23,106 @@ import * as api from './notes-api.js';
  * Every key that varies by filter takes the filter as a structured object. React Query
  * hashes keys deterministically regardless of property order, so `{ notebook, tag }` and
  * `{ tag, notebook }` are the same entry.
+ *
+ * The notes, the trash, the counts, the tags, the notebooks, a notebook's fields and a
+ * note's files are read from the local copy of the library (`store/`), not from the
+ * API: each query function derives its answer from the collections, in the shape the
+ * route used to answer with (`store/derive.ts`), so every component reads what it always
+ * read and a warm open draws the list with no request. The change feed keeps the copy
+ * current, and `installLibraryQueries` below re-runs these queries when it moves. What
+ * still goes to the server is what the copy cannot answer: search, the instance's
+ * config, the vision backlog, and every write (`store/actions.ts`).
  */
+
+/**
+ * The open library, once its collections have restored what they persisted — or null
+ * when this device has none: a browser without the origin-private file system, or one
+ * refusing it in a private window, or a test. Every query below then asks the server
+ * for what it would have derived, as the app did before the copy existed; nothing is
+ * kept on the device, and nothing works offline, which is what such a browser had.
+ */
+async function library(): Promise<Library | null> {
+  const open = currentLibrary();
+  if (!open) return null;
+  let lib: Library;
+  try {
+    lib = await open;
+  } catch {
+    return null;
+  }
+  await Promise.all([lib.notes.preload(), lib.notebooks.preload(), lib.tags.preload(), lib.attachments.preload()]);
+  return lib;
+}
+
+/**
+ * What every query derives from, computed once per version of the library: the rows as
+ * arrays, the lookups over them, and each list that has been asked for, filtered and
+ * sorted. The library's version changes with every change to any collection, so a read
+ * between two changes finds all of this ready, and three pages of one list sort it once.
+ * Summaries are not here: they are made for the page read, and `excerptOf` keeps each
+ * row's excerpt for as long as the row is the same object.
+ */
+interface View {
+  version: number;
+  snapshot: Snapshot;
+  lookups: Lookups;
+  lists: Map<string, LocalNote[]>;
+}
+
+const views = new WeakMap<Library, View>();
+
+function view(lib: Library): View {
+  const version = lib.version();
+  let v = views.get(lib);
+  if (!v || v.version !== version) {
+    const snapshot: Snapshot = {
+      notes: [...lib.notes.values()],
+      notebooks: [...lib.notebooks.values()],
+      tags: [...lib.tags.values()],
+      attachments: [...lib.attachments.values()],
+    };
+    v = { version, snapshot, lookups: lookups(snapshot), lists: new Map() };
+    views.set(lib, v);
+  }
+  return v;
+}
+
+/** A list's rows, filtered and sorted, computed once per version of the library and per spelling of the filter. */
+function rowsOf(lib: Library, filter: NoteFilter & { trashed?: boolean }, ordering: NoteOrdering): LocalNote[] {
+  const v = view(lib);
+  const key = JSON.stringify([filter, ordering]);
+  let rows = v.lists.get(key);
+  if (!rows) {
+    rows = list(v.snapshot, filter, ordering, v.lookups);
+    v.lists.set(key, rows);
+  }
+  return rows;
+}
+
+/** The rows a page of the list carries, the server's default. */
+const PAGE = 50;
+
+/**
+ * Re-runs the library's queries whenever one of its collections changes: a feed page
+ * applied, a write landing locally, a replay settling. One invalidation per change,
+ * coalesced by the library, and the query functions read in-memory rows, so a change
+ * is on screen on the next frame. Installed once, beside the client.
+ *
+ * And whenever a write was made as a request instead — on a device with no library, or
+ * in a tab that does not hold the outbox — since there the same queries ask the server,
+ * and nothing else would tell them a note was trashed or a title changed.
+ */
+export function installLibraryQueries(queryClient: QueryClient): () => void {
+  const refetch = (roots: ReadonlySet<string>) => {
+    void queryClient.invalidateQueries({ predicate: ({ queryKey }) => roots.has(String(queryKey[0])) });
+  };
+  const stopLibrary = onLibraryChange(refetch);
+  const stopDirect = onDirectWrite(() => refetch(LIBRARY_ROOTS));
+  return () => {
+    stopLibrary();
+    stopDirect();
+  };
+}
 
 export interface NoteFilter {
   notebook?: string;
@@ -100,19 +205,41 @@ export const keys = {
 export const notesQuery = (filter: NoteFilter, ordering: NoteOrdering = {}) =>
   infiniteQueryOptions({
     queryKey: keys.notes(filter, ordering),
-    queryFn: ({ pageParam }) =>
-      api.listNotes({ ...filter, ...ordering, ...(pageParam ? { cursor: pageParam } : {}) }),
+    queryFn: async ({ pageParam }) => {
+      const lib = await library();
+      return lib
+        ? pageOf(lib, filter, ordering, pageParam)
+        : api.listNotes({ ...filter, ...ordering, ...(pageParam ? { cursor: pageParam } : {}) });
+    },
     initialPageParam: '' as string,
     getNextPageParam: (last) => last.cursor ?? undefined,
     placeholderData: keepPreviousData,
   });
 
+/**
+ * One page of a list from the library: the whole list's rows, then the page cut from
+ * them and only that page summarised. The cursor is the offset of the next page, which
+ * is enough for rows that are all here; the server's keyset cursor existed for pages it
+ * had to read from disk.
+ */
+function pageOf(lib: Library, filter: NoteFilter & { trashed?: boolean }, ordering: NoteOrdering, pageParam: string): api.NotePage {
+  const rows = rowsOf(lib, filter, ordering);
+  const from = pageParam ? Number(pageParam) : 0;
+  const items = summaries(rows, from, PAGE, view(lib).lookups);
+  const end = from + items.length;
+  return { items, cursor: end < rows.length ? String(end) : null, total: from === 0 ? rows.length : null };
+}
+
 /** Trashed notes. Deliberately unfiltered: see the trash view in Notes. */
 export const trashQuery = () =>
   infiniteQueryOptions({
     queryKey: keys.trash(),
-    queryFn: ({ pageParam }) =>
-      api.listNotes({ trashed: true, ...(pageParam ? { cursor: pageParam } : {}) }),
+    queryFn: async ({ pageParam }) => {
+      const lib = await library();
+      return lib
+        ? pageOf(lib, { trashed: true }, {}, pageParam)
+        : api.listNotes({ trashed: true, ...(pageParam ? { cursor: pageParam } : {}) });
+    },
     initialPageParam: '' as string,
     getNextPageParam: (last) => last.cursor ?? undefined,
   });
@@ -127,8 +254,10 @@ export const trashQuery = () =>
 export const trashCountQuery = () =>
   queryOptions({
     queryKey: keys.trashCount(),
-    queryFn: () => api.listNotes({ trashed: true, limit: 1 }),
-    select: (page) => page.total ?? 0,
+    queryFn: async () => {
+      const lib = await library();
+      return lib ? count(view(lib).snapshot, { trashed: true }, view(lib).lookups) : ((await api.listNotes({ trashed: true, limit: 1 })).total ?? 0);
+    },
   });
 
 /**
@@ -138,8 +267,10 @@ export const trashCountQuery = () =>
 export const noteCountQuery = () =>
   queryOptions({
     queryKey: keys.noteCount(),
-    queryFn: () => api.listNotes({ limit: 1 }),
-    select: (page) => page.total ?? 0,
+    queryFn: async () => {
+      const lib = await library();
+      return lib ? count(view(lib).snapshot, {}, view(lib).lookups) : ((await api.listNotes({ limit: 1 })).total ?? 0);
+    },
   });
 
 /**
@@ -152,15 +283,25 @@ export const noteCountQuery = () =>
 export const noteQuery = (id: string) =>
   queryOptions({
     queryKey: keys.note(id),
-    queryFn: () => api.getNote(id),
+    queryFn: async (): Promise<Note> => {
+      const lib = await library();
+      if (!lib) return api.getNote(id);
+      const row = lib.notes.get(id);
+      // A library that has never taken its snapshot holds nothing yet, and a note not in
+      // it is not missing — the copy is. With a connection the server answers for it, as
+      // it did before the copy existed: a link followed during the first copy opens, and
+      // on a phone that copy can take minutes. Without one, say so (the workspace's
+      // offline line) rather than that the note does not exist. Once a snapshot has been
+      // taken, an id the copy does not hold gets the answer the route gave for an id that
+      // is not a note.
+      if (!row && lib.state().cursor === null) {
+        if (!offlineNow()) return api.getNote(id);
+        throw new OfflineError();
+      }
+      if (!row) throw new ApiError(404, 'Not found');
+      return toNote(row, view(lib).lookups);
+    },
     retry: false,
-    /*
-     * Every fetch keeps its own object, even when it matches the last one. Whether a copy
-     * came from the offline cache is recorded on the object (`servedFromCache`), and
-     * structural sharing would hand back the previous, cached object for a server answer
-     * that happens to be equal — leaving the note locked with nothing left to unlock it.
-     */
-    structuralSharing: false,
   });
 
 /**
@@ -170,11 +311,22 @@ export const noteQuery = (id: string) =>
 export const attachmentsQuery = (noteId: string) =>
   queryOptions({
     queryKey: keys.attachments(noteId),
-    queryFn: () => api.listAttachments(noteId),
+    queryFn: async (): Promise<AttachmentInfo[]> => {
+      const lib = await library();
+      if (!lib) return api.listAttachments(noteId);
+      if (!lib.notes.has(noteId)) throw new ApiError(404, 'Not found');
+      return (view(lib).lookups.filesByNote.get(noteId) ?? []).map(toAttachmentInfo);
+    },
   });
 
 export const tagsQuery = () =>
-  queryOptions({ queryKey: keys.tags(), queryFn: () => api.listTags() });
+  queryOptions({
+    queryKey: keys.tags(),
+    queryFn: async (): Promise<api.TagSummary[]> => {
+      const lib = await library();
+      return lib ? tagSummaries(view(lib).snapshot) : api.listTags();
+    },
+  });
 
 /**
  * The instance's sign-in methods. Never stale: they change only with a redeploy, and a
@@ -240,13 +392,28 @@ export function claimCacheFor(queryClient: QueryClient, userId: string | undefin
 }
 
 export const notebooksQuery = () =>
-  queryOptions({ queryKey: keys.notebooks(), queryFn: () => api.listNotebooks() });
+  queryOptions({
+    queryKey: keys.notebooks(),
+    queryFn: async (): Promise<{ notebooks: NotebookSummary[]; unfiled: number }> => {
+      const lib = await library();
+      return lib ? notebookList(view(lib).snapshot) : api.listNotebooks();
+    },
+  });
+
+/** A notebook's definitions from the library, or the route's 404 for an id that is not a notebook. */
+async function fieldsOf(notebookId: string, counts: boolean): Promise<FieldDef[]> {
+  const lib = await library();
+  if (!lib) return api.listNotebookFields(notebookId, counts ? { counts } : undefined);
+  const fields = notebookFields(view(lib).snapshot, notebookId, counts);
+  if (!fields) throw new ApiError(404, 'Not found');
+  return fields;
+}
 
 /** A notebook's custom field definitions. Disabled, not errored, for an unfiled note. */
 export const notebookFieldsQuery = (notebookId: string | undefined) =>
   queryOptions({
     queryKey: keys.notebookFields(notebookId ?? ''),
-    queryFn: () => api.listNotebookFields(notebookId!),
+    queryFn: () => fieldsOf(notebookId!, false),
     enabled: notebookId !== undefined && notebookId !== '',
   });
 
@@ -258,7 +425,7 @@ export const notebookFieldsQuery = (notebookId: string | undefined) =>
 export const notebookFieldCountsQuery = (notebookId: string) =>
   queryOptions({
     queryKey: keys.notebookFieldCounts(notebookId),
-    queryFn: () => api.listNotebookFields(notebookId, { counts: true }),
+    queryFn: () => fieldsOf(notebookId, true),
   });
 
 /**
@@ -336,13 +503,13 @@ export interface ExactCountFilter {
 export const exactCountQuery = (filter: ExactCountFilter = {}) =>
   queryOptions({
     queryKey: keys.exactCount(filter),
-    queryFn: () =>
-      api.listNotes({
+    queryFn: async () => {
+      const scope = {
         ...(filter.notebook ? { notebook: filter.notebook } : {}),
         ...(filter.tag ? { tag: [filter.tag] } : {}),
         ...(filter.trashed ? { trashed: true } : {}),
-        limit: 1,
-        exact: true,
-      }),
-    select: (page) => page.total ?? 0,
+      };
+      const lib = await library();
+      return lib ? count(view(lib).snapshot, scope, view(lib).lookups) : ((await api.listNotes({ ...scope, limit: 1, exact: true })).total ?? 0);
+    },
   });

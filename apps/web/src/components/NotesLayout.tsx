@@ -3,6 +3,7 @@ import { Link, useNavigate } from '@tanstack/react-router';
 import { useQuery, useInfiniteQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import { DEFAULT_NOTE_SORT, UNFILED, type FieldDef, type FieldValue } from '@unbent/shared';
 import * as api from '../notes-api.js';
+import * as actions from '../store/actions.js';
 import { isOfflineError, type SearchHit } from '../notes-api.js';
 import { Route } from '../routes/notes.js';
 import {
@@ -68,6 +69,7 @@ import { TagsSheet } from './TagsSheet.js';
 import { editOpenNoteFiling } from '../open-note-fields.js';
 import { useAppSession } from '../useAppSession.js';
 import { useOffline } from '../connectivity.js';
+import { useLibraryArriving } from '../store/use-feed-state.js';
 import { useSignOut } from '../useSignOut.js';
 
 /** Sidebar plus the routed workspace. Filters come from the URL; nothing here is mirrored into state. */
@@ -395,7 +397,7 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
   };
   const editField = useMutation({
     mutationFn: ({ noteId, def, value }: { noteId: string; def: FieldDef; value: FieldValue | null }) =>
-      api.updateNote(noteId, { fields: { [def.id]: value } }),
+      actions.setNoteField(noteId, def, value),
     onMutate: async ({ noteId, def, value }) => {
       await queryClient.cancelQueries({ queryKey: listKey });
       await queryClient.cancelQueries({ queryKey: searchKey });
@@ -532,7 +534,7 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
   const trashSelected = () =>
     runBulk(async () => {
       const ids = selection.ids;
-      await api.deleteNotes(ids);
+      await actions.trashNotes(ids);
       setPendingTrash(false);
       selection.clear();
       // The open note went with them: leave it before its query learns it is gone.
@@ -545,7 +547,7 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
   const moveSelected = (target: string | null) =>
     runBulk(async () => {
       const ids = selection.ids;
-      await api.updateNotes(ids, { notebook: target });
+      await actions.moveNotes(ids, target);
       setBulkSheet(null);
       if (layout.open && ids.includes(layout.open)) {
         editOpenNoteFiling(layout.open, { notebook: target });
@@ -556,7 +558,7 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
   const tagSelected = (change: { add?: string[]; remove?: string[] }) =>
     runBulk(async () => {
       const ids = selection.ids;
-      await api.updateNotes(ids, { addTags: change.add, removeTags: change.remove });
+      await actions.tagNotes(ids, { add: change.add, remove: change.remove });
       if (layout.open && ids.includes(layout.open)) {
         const add = change.add ?? [];
         const remove = new Set(change.remove ?? []);
@@ -613,9 +615,20 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
       search: (prev) => ({ ...prev, ...nextColumnSort(target, prev) }),
     });
   };
+  /**
+   * While the library is still arriving on this device, an empty list is not an empty
+   * account: the rows are on their way. Said in the list's own words, and the offer of
+   * sample notes withheld, since filling an account whose notes are a page away would be
+   * the wrong answer to the wrong question.
+   */
+  const arriving = useLibraryArriving();
   /** The list's empty state, in words; both renderings say the same thing. */
   const emptyMessage =
-    notes.length === 0 && !error && !list.isPending
+    notes.length === 0 && !error && !list.isPending && arriving
+      ? arriving.stage === 'opening'
+        ? 'Opening your notes…'
+        : 'Copying your notes to this device…'
+      : notes.length === 0 && !error && !list.isPending
       ? tag
         ? `No notes tagged ${tag}.`
         : fieldFilters.length > 0
@@ -671,7 +684,7 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
       ? awaiting
         ? 'Searching…'
         : `${results.length} matches`
-      : loading
+      : loading || (arriving && notes.length === 0)
         ? 'Loading…'
         : `${total ?? notes.length} notes`;
 
@@ -679,7 +692,7 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
     try {
       // Carry the active filter onto the new note, otherwise it is created and then
       // immediately filtered out of the list the user is looking at.
-      const created = await api.createNote({
+      const created = await actions.createNote({
         // No name, rather than the literal string "Untitled". The title field's
         // placeholder already says that word, and a placeholder is not data: a stored
         // "Untitled" is written into the frontmatter of the exported markdown, sorted
@@ -775,10 +788,6 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
               <Button
                 variant="primary"
                 onClick={() => void newNote()}
-                // Disabled, not withdrawn, while offline: a new note is a write, and the
-                // row keeps its shape. The same for the phone's floating button below.
-                disabled={offline}
-                title={offline ? 'New notes need a connection' : undefined}
               >
                 New
               </Button>
@@ -1042,8 +1051,6 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
             type="button"
             className="fab"
             aria-label="New note"
-            disabled={offline}
-            title={offline ? 'New notes need a connection' : undefined}
             onClick={() => void newNote()}
           >
             <PlusIcon />
@@ -1067,9 +1074,7 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
             onKeyDown={onListKeysWithSelection}
             tableRef={tableRef}
             empty={searching ? searchEmpty : emptyMessage}
-            // Offline the cells show their values and take no edits, as the open note does:
-            // nothing can change until the connection is back.
-            onEdit={offline ? undefined : onEditCell}
+            onEdit={onEditCell}
             selection={{
               has: selection.has,
               active: selection.active,
@@ -1151,6 +1156,7 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
               empty account, and filling it from there would read as filling that notebook. */}
           {results === null &&
             emptyMessage &&
+            !arriving &&
             config.data?.ownStores &&
             !notebook &&
             !tag &&
@@ -1179,8 +1185,8 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
               type="button"
               className="icon-btn"
               aria-label="Move to notebook"
-              title={offline ? 'Not available offline' : 'Move to notebook'}
-              disabled={bulkBusy || offline}
+              title="Move to notebook"
+              disabled={bulkBusy}
               onClick={() => setBulkSheet('move')}
             >
               <NotebookActionIcon />
@@ -1189,8 +1195,8 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
               type="button"
               className="icon-btn"
               aria-label="Tags"
-              title={offline ? 'Not available offline' : 'Tags'}
-              disabled={bulkBusy || offline}
+              title="Tags"
+              disabled={bulkBusy}
               onClick={() => setBulkSheet('tags')}
             >
               <TagActionIcon />
@@ -1199,8 +1205,8 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
               type="button"
               className="icon-btn danger"
               aria-label="Delete"
-              title={offline ? 'Not available offline' : 'Delete'}
-              disabled={bulkBusy || offline}
+              title="Delete"
+              disabled={bulkBusy}
               onClick={() => setPendingTrash(true)}
             >
               <TrashIcon />

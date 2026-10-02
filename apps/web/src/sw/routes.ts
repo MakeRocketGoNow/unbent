@@ -43,7 +43,9 @@ export function servesShell(url: URL): boolean {
  * The two runtime caches, named here because the page empties them too — on sign-out, on
  * a session the server refuses, and when a different account signs in on this device
  * (`offline-cache.ts`). The version is in the name so a later change of shape can drop a
- * cache outright; the local store MAK-140 builds replaces `api-v1` that way.
+ * cache outright. `api-v1` once held the note reads the views were drawn from; the local
+ * copy of the library (`src/store/`) answers those now, and what is left in it is the
+ * instance's config.
  */
 export const API_CACHE = 'api-v1';
 export const FILES_CACHE = 'files-v1';
@@ -63,36 +65,18 @@ export const VIEW_HEADER = 'X-Unbent-View';
 export const SERVED_HEADER = 'X-Unbent-Served';
 
 /**
- * The header on a read made in bulk rather than by someone looking — today the import's
- * per-note file list (`listFiles` in `import-worker.ts`). Its reads match the note views'
- * allowlist, and a re-import of an archive makes thousands of them, which would push out
- * of the 500-entry cache every note someone actually opened. Marked, they pass straight
- * through, the same rule `VIEW_HEADER` applies to file bytes.
- */
-export const BULK_HEADER = 'X-Unbent-Bulk';
-
-/**
- * The reads the note list and an open note are drawn from, which the worker keeps the
- * last copy of: the list pages and their counts, a note, its files' metadata, the tags,
- * the notebooks and a notebook's fields, and the instance's config. Nothing else — search,
- * export, admin, a file's extracted text, the auth endpoints — has any use offline, and
- * every write goes straight through.
+ * The reads the worker keeps the last copy of: the instance's config, which the sign-in
+ * screen and the shell read before anything else, and nothing else. The notes, the tags,
+ * the notebooks and a note's files are read from the local copy of the library
+ * (`src/store/`), which the change feed keeps current; a worker copy of those reads would
+ * only ever be older than the library, and the feed itself (`/api/changes`) must never be
+ * answered from a cache, since a cached page replayed over a cursor is rows applied twice
+ * or never. Search, export, admin, a file's extracted text and the auth endpoints have
+ * no use offline, and every write goes straight through.
  *
- * Matched by the whole shape of the path, never by prefix, because GETs that must not be
- * cached live under these same prefixes: `/api/notes/<id>/export` is a download,
- * `/api/notebooks/<id>/fields/<field>/conversion` is a question about a change about to
- * be made. One path segment per `[^/]+`; an id or a file name is always one segment,
- * encoded.
+ * Matched by the whole shape of the path, never by prefix.
  */
-const CACHED_READS = [
-  /^\/api\/notes$/,
-  /^\/api\/notes\/[^/]+$/,
-  /^\/api\/notes\/[^/]+\/files$/,
-  /^\/api\/tags$/,
-  /^\/api\/notebooks$/,
-  /^\/api\/notebooks\/[^/]+\/fields$/,
-  /^\/api\/config$/,
-];
+const CACHED_READS = [/^\/api\/config$/];
 
 /** A file's bytes: `/api/notes/<id>/files/<name>`, and not its `/text`. */
 const FILE_BYTES = /^\/api\/notes\/[^/]+\/files\/[^/]+$/;
@@ -104,8 +88,6 @@ export interface RequestFacts {
   destination: string;
   /** Whether the page marked the request as someone looking at the file (`VIEW_HEADER`). */
   viewed: boolean;
-  /** Whether the request was marked as a bulk read nobody is looking at (`BULK_HEADER`). */
-  bulk: boolean;
   /** The worker's own origin. */
   origin: string;
 }
@@ -127,7 +109,7 @@ export interface RequestFacts {
  */
 export function classify(request: RequestFacts): 'api' | 'file' | undefined {
   const { url } = request;
-  if (request.method !== 'GET' || url.origin !== request.origin || request.bulk) return undefined;
+  if (request.method !== 'GET' || url.origin !== request.origin) return undefined;
   if (CACHED_READS.some((shape) => shape.test(url.pathname))) return 'api';
   if (
     FILE_BYTES.test(url.pathname) &&

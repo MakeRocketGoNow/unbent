@@ -6,7 +6,7 @@ import { routeTree } from './routeTree.gen.js';
 import { installErrorReporting } from './report-error.js';
 import { installPosthog } from './posthog.js';
 import { installLaunchFiles } from './launch-files.js';
-import { configQuery } from './queries.js';
+import { configQuery, installLibraryQueries } from './queries.js';
 import { applyInstanceMarker } from './instance-marker.js';
 import { registerServiceWorker } from './sw-register.js';
 import { installConnectivity } from './connectivity.js';
@@ -58,6 +58,12 @@ const queryClient = new QueryClient({
  * heard.
  */
 installConnectivity(queryClient);
+
+/*
+ * The local copy of the library drives the note queries; when it changes, they run
+ * again. See `queries.ts`.
+ */
+installLibraryQueries(queryClient);
 installSessionRecheck();
 
 /*

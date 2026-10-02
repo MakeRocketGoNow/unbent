@@ -1,6 +1,7 @@
 import type { QueryClient } from '@tanstack/react-query';
 import { claimCacheFor } from './queries.js';
 import { claimImportFor } from './import-run.js';
+import { acquireLibrary } from './store/library.js';
 
 /**
  * Hands what the tab holds for one person to whoever the route guard found signed in.
@@ -25,5 +26,13 @@ import { claimImportFor } from './import-run.js';
  */
 export function handOver(queryClient: QueryClient, userId: string | undefined): void {
   claimCacheFor(queryClient, userId);
-  if (userId) claimImportFor(userId);
+  if (userId) {
+    claimImportFor(userId);
+    // The local copy of the library, opened here so a route's loader finds it: every
+    // note query reads it (`queries.ts`), and the guard is the last moment before the
+    // loaders run. Not awaited — opening takes a few milliseconds on a warm device and
+    // the queries await it themselves — and a different account opening theirs closes
+    // the previous one; see `acquireLibrary`.
+    void acquireLibrary(userId).catch(() => {});
+  }
 }

@@ -43,13 +43,17 @@ const facts = (path: string, over: Partial<RequestFacts> = {}): RequestFacts => 
   method: 'GET',
   destination: '',
   viewed: false,
-  bulk: false,
   origin: ORIGIN,
   ...over,
 });
 
 describe('classify', () => {
+  it('keeps the last copy of the instance\'s config, and of nothing else the views read', () => {
+    expect(classify(facts('/api/config'))).toBe('api');
+  });
+
   it.each([
+    // What the views are drawn from comes from the local copy of the library, not a cache.
     '/api/notes',
     '/api/notes?notebook=Coupons&tag=a&sort=title&cursor=abc',
     '/api/notes?trashed=1&limit=1',
@@ -59,13 +63,7 @@ describe('classify', () => {
     '/api/notebooks',
     '/api/notebooks/nb1/fields',
     '/api/notebooks/nb1/fields?counts=1',
-    '/api/config',
-  ])('keeps the last copy of %s', (path) => {
-    expect(classify(facts(path))).toBe('api');
-  });
-
-  it.each([
-    // Under an allowlisted prefix, but not a read the views are drawn from.
+    // Not a read the views are drawn from.
     '/api/notes/8f0c2d1e/export',
     '/api/notebooks/nb1/fields/f1/conversion?to=number',
     '/api/notebooks/nb1/fields/f1/option-usage?option=a',
@@ -83,10 +81,6 @@ describe('classify', () => {
     '/api/changes/snapshot?cursor=8f0c2d1e&limit=200',
   ])('passes %s straight through', (path) => {
     expect(classify(facts(path))).toBeUndefined();
-  });
-
-  it('leaves a bulk read alone, like the import’s per-note file list', () => {
-    expect(classify(facts('/api/notes/8f0c2d1e/files', { bulk: true }))).toBeUndefined();
   });
 
   it('never caches a write', () => {

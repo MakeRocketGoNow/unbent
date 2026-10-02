@@ -12,12 +12,15 @@ import { handOver } from '../hand-over.js';
 import { startIndexing, subscribeIndexing } from '../index-files.js';
 import { Topbar } from '../components/Topbar.js';
 import { OfflineBanner } from '../components/OfflineBanner.js';
+import { LibraryStatus } from '../components/LibraryStatus.js';
 import { useOffline } from '../connectivity.js';
 import { useHostApp } from '../useHostApp.js';
 import { postToApp } from '../app-bridge.js';
 import { ExportSnackbar } from '../components/ExportSnackbar.js';
 import { ImportSnackbar } from '../components/ImportSnackbar.js';
 import { SignOutSnackbar } from '../components/SignOutSnackbar.js';
+import { SignOutConfirm } from '../components/SignOutConfirm.js';
+import { SyncingLine } from '../components/SyncingLine.js';
 import { UpdateSnackbar } from '../components/UpdateSnackbar.js';
 import { claimImportFor, getImportRun, subscribeImport } from '../import-run.js';
 import { takeUpdate } from '../sw-register.js';
@@ -263,11 +266,14 @@ function AppShell() {
             stylesheet hides it above the breakpoint, where the rail is the chrome. */}
         <Topbar email={session.user.email} onSignOut={signOutAndLeave} />
         <OfflineBanner />
+        <LibraryStatus />
+        <SyncingLine />
         <Outlet />
       </main>
       <ExportSnackbar />
       <ImportSnackbar />
       <SignOutSnackbar />
+      <SignOutConfirm />
       <UpdateSnackbar />
     </div>
   );

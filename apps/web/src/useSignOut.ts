@@ -5,6 +5,68 @@ import { isHosted, postToApp } from './app-bridge.js';
 import { forgetSession } from './session-memory.js';
 import { clearOfflineCaches } from './offline-cache.js';
 import { claimImportFor } from './import-run.js';
+import { settleWrites, subscribeWrites } from './store/library.js';
+
+/**
+ * Changes the server has not taken, when Sign out was pressed and the outbox did not
+ * drain in time — put to the person before the wipe takes them. In a store beside the
+ * failure below, for the same reason: the menu that was pressed has closed, so the
+ * question is asked by `SignOutConfirm` in the shell, with the count, and the answer
+ * comes back here.
+ */
+export interface UnsyncedQuestion {
+  count: number;
+  /** Leave anyway, and lose them. */
+  leave: () => void;
+  /** Stay signed in; the outbox keeps trying. */
+  stay: () => void;
+}
+let unsynced: UnsyncedQuestion | null = null;
+const unsyncedListeners = new Set<() => void>();
+
+function setUnsynced(next: UnsyncedQuestion | null): void {
+  unsynced = next;
+  for (const listener of unsyncedListeners) listener();
+}
+
+export function useUnsyncedQuestion(): UnsyncedQuestion | null {
+  return useSyncExternalStore(
+    (listener) => {
+      unsyncedListeners.add(listener);
+      return () => {
+        unsyncedListeners.delete(listener);
+      };
+    },
+    () => unsynced,
+    () => null,
+  );
+}
+
+/**
+ * Asks whether to leave with `count` changes unsynced; resolves with the answer. The
+ * question follows the outbox while it is up: when the count reaches nothing the warning
+ * is no longer true, so the question comes down and the sign-out goes on — and the count
+ * it shows is the current one until then. A second press of Sign out while a question is
+ * up answers the first one with "stay" rather than leaving its chain hanging.
+ */
+function askToLeave(count: number): Promise<boolean> {
+  unsynced?.stay();
+  return new Promise((resolve) => {
+    let stop = () => {};
+    const answer = (leave: boolean) => {
+      stop();
+      setUnsynced(null);
+      resolve(leave);
+    };
+    const ask = (n: number) => setUnsynced({ count: n, leave: () => answer(true), stay: () => answer(false) });
+    ask(count);
+    stop = subscribeWrites((pending) => {
+      if (!unsynced) return;
+      if (pending === 0) answer(true);
+      else if (pending !== unsynced.count) ask(pending);
+    });
+  });
+}
 
 /**
  * Sign out, and land somewhere that makes sense afterwards.
@@ -61,9 +123,22 @@ export function useSignOut(): () => void {
   const navigate = useNavigate();
   return () => {
     setFailed(false);
-    void signOut()
-      .then((res) => !res?.error, () => false)
+    /*
+       Writes still waiting in the outbox go first, for a few seconds at most: the wipe
+       below removes the outbox with them, and the menu offers Sign out only with a
+       connection, so what waits is mid-replay and usually gone in a moment. What is still
+       waiting after that — the server having a bad minute — is put to the person with the
+       count, since the wipe would take it (`SignOutConfirm`); staying is the safe answer
+       and the outbox keeps trying.
+    */
+    void settleWrites(5000)
+      .then(async (left) => {
+        if (left > 0 && !(await askToLeave(left))) return 'stayed';
+        return signOut();
+      })
+      .then((res) => (res === 'stayed' ? 'stayed' : !res?.error), () => false)
       .then(async (ended) => {
+        if (ended === 'stayed') return;
         /*
          * In a browser, a sign-out the server did not hear has not happened: the session
          * cookie is HttpOnly and only the server can end it, so clearing this page would

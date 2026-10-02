@@ -2,6 +2,7 @@ import { useEffect, useState, type KeyboardEvent } from 'react';
 import { Link, useNavigate } from '@tanstack/react-router';
 import { useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
 import * as api from '../notes-api.js';
+import * as actions from '../store/actions.js';
 import { trashQuery, invalidateNoteMembership } from '../queries.js';
 import { useNotesLayout, SIDEBAR_DEFAULT, SIDEBAR_MIN, SIDEBAR_MAX } from '../useNotesLayout.js';
 import { ResizeHandle } from './ResizeHandle.js';
@@ -84,7 +85,7 @@ export function TrashLayout({ children }: { children: React.ReactNode }) {
   }
 
   async function restore(id: string) {
-    await api.restoreNote(id);
+    await actions.restoreNote(id);
     await afterRemoval(id);
   }
 
@@ -95,7 +96,7 @@ export function TrashLayout({ children }: { children: React.ReactNode }) {
    * the ordinary Delete is a move to trash, which this view exists to undo.
    */
   async function destroy(id: string) {
-    await api.deleteNotePermanently(id);
+    await actions.purgeNote(id);
     setPending(null);
     await afterRemoval(id);
   }
@@ -108,20 +109,20 @@ export function TrashLayout({ children }: { children: React.ReactNode }) {
   const restoreSelected = () => {
     const ids = selection.ids;
     return empty.run(async () => {
-      const r = await api.restoreNotes(ids);
+      const n = await actions.restoreNotes(ids);
       selection.clear();
       if (open && ids.includes(open)) void navigate({ to: '/trash' });
-      return `Restored ${r.restored} note${r.restored === 1 ? '' : 's'}.`;
+      return `Restored ${n} note${n === 1 ? '' : 's'}.`;
     });
   };
   const destroySelected = () => {
     const ids = selection.ids;
     return empty.run(async () => {
-      const r = await api.deleteNotesPermanently(ids);
+      const n = await actions.purgeNotes(ids);
       setPending(null);
       selection.clear();
       if (open && ids.includes(open)) void navigate({ to: '/trash' });
-      return `Deleted ${r.deleted} note${r.deleted === 1 ? '' : 's'}.`;
+      return `Deleted ${n} note${n === 1 ? '' : 's'}.`;
     });
   };
 

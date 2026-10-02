@@ -29,15 +29,14 @@ interface AttachmentsProps {
    */
   onBodyRewrite: (nextBody: string) => void;
   /**
-   * The note takes no changes right now — offline, a copy read from the offline cache
-   * that the server has not yet answered for, or a save refused as stale and waiting on a
-   * choice (`frozen` in `Workspace`). Every control here
-   * that changes the note or its files is faded in place, as Auto-fill and ⋯ are, so
+   * The note takes no changes right now — offline, where a file cannot be uploaded,
+   * copied or removed because the files live on the server (their turn is MAK-141), or a
+   * save refused as stale and waiting on a choice (`frozen` in `Workspace`). Every control
+   * here that changes the note or its files is faded in place, as Auto-fill and ⋯ are, so
    * nothing moves when the connection drops; Copy and the download link still work.
    *
    * Insert link most of all: it dispatches into the editor directly, which CodeMirror's
-   * read-only does not stop, and a draft made dirty on a cached copy would be refused as
-   * stale when the connection returned, raising a conflict nobody chose to make.
+   * read-only does not stop.
    */
   readOnly?: boolean;
 }
