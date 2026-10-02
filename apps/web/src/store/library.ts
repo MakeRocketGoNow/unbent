@@ -192,7 +192,7 @@ async function open(userId: string): Promise<Library> {
   window.addEventListener('pageshow', onPageShow);
 
   const outbox = createOutbox(userId, { ...collections, userId, engine });
-  await outbox.executor.waitForInit();
+  await outbox.ready;
 
   return {
     ...collections,

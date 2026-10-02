@@ -323,6 +323,75 @@ describe('a replayed write', () => {
   });
 });
 
+describe('saves of one note', () => {
+  it('keep one entry in the outbox, the latest draft on the oldest base, and the retired one does nothing', async () => {
+    const { lib, fake, landPull, note } = library([row('n1', { title: 'old' })]);
+    await lib.outbox.ready;
+    const base = note('n1');
+    await actions.saveNote({ noteId: 'n1', value: { ...seedFrom(base), title: 'a' }, base });
+    await tick();
+    // The second autosave comes with a base the workspace moved on — it does not, in the
+    // library path, but a later copy must never become the precondition.
+    await actions.saveNote({ noteId: 'n1', value: { ...seedFrom(base), title: 'ab' }, base: { ...base, updatedAt: 100 } });
+    await tick();
+    expect(lib.outbox.status().pending).toBe(1);
+    expect(await fake.config.storage.keys()).toHaveLength(1);
+    expect(lib.notes.get('n1')?.title).toBe('ab');
+
+    // The scheduler still holds both; the first ends without a request.
+    expect(fake.queue).toHaveLength(2);
+    const first = fake.replayOne();
+    await tick();
+    landPull();
+    expect(await first).toBe('done');
+    expect(api.updateNote).not.toHaveBeenCalled();
+
+    vi.mocked(api.updateNote).mockResolvedValueOnce({ ...base, title: 'ab', updatedAt: 101 });
+    const second = fake.replayOne();
+    await tick();
+    landPull();
+    expect(await second).toBe('done');
+    expect(vi.mocked(api.updateNote).mock.calls).toEqual([['n1', { title: 'ab', ifUpdatedAt: 100 }]]);
+    expect(lib.outbox.status().pending).toBe(0);
+  });
+
+  it('carries a "Keep mine" precondition forward onto the autosave that follows it', async () => {
+    const { lib, fake, landPull, note } = library([row('n1', { title: 'old' })]);
+    await lib.outbox.ready;
+    const base = note('n1');
+    await actions.saveNote({ noteId: 'n1', value: { ...seedFrom(base), title: 'mine' }, base, against: 200 });
+    await actions.saveNote({ noteId: 'n1', value: { ...seedFrom(base), title: 'mine, and more' }, base });
+    await tick();
+    await fake.replayOne();
+    vi.mocked(api.updateNote).mockResolvedValueOnce({ ...base, title: 'mine, and more', updatedAt: 201 });
+    const replay = fake.replayOne();
+    await tick();
+    landPull();
+    await replay;
+    expect(vi.mocked(api.updateNote).mock.calls).toEqual([['n1', { title: 'mine, and more', ifUpdatedAt: 200 }]]);
+  });
+
+  it('retires a save a reload restored when a new save of its note is queued', async () => {
+    // An entry from before the reload: in storage and in the executor's queue before the
+    // outbox learns what was restored.
+    const { lib, note } = library([row('n1', { title: 'old' })]);
+    const base = note('n1');
+    const restored = { id: 'restored', mutationFnName: 'saveNote', metadata: { noteId: 'n1', value: { ...seedFrom(base), title: 'before' }, base }, createdAt: new Date(0) };
+    const fresh = createOutbox('u1', lib);
+    const fake2 = fakes[fakes.length - 1]!;
+    fake2.queue.push(restored);
+    await fake2.config.storage.set('tx:restored', JSON.stringify(restored));
+    await fresh.ready;
+    provideLibrary(async () => ({ ...lib, outbox: fresh }));
+
+    await actions.saveNote({ noteId: 'n1', value: { ...seedFrom(base), title: 'after' }, base });
+    await tick();
+    expect(await fake2.config.storage.keys()).not.toContain('tx:restored');
+    expect(await fake2.replayOne()).toBe('done');
+    expect(api.updateNote).not.toHaveBeenCalled();
+  });
+});
+
 describe('what waits for the server', () => {
   it('counts a write the moment it is stored, so a write made offline is "syncing" at once', async () => {
     const { lib, fake } = library([row('n1')]);
