@@ -10,10 +10,12 @@ import { FeedEngine, type FeedState } from './feed.js';
  * engine that keeps them current, and the things that make the engine pull — the tab
  * being shown again, the connection returning, and the socket saying the feed moved.
  *
- * Opened once per account and shared by every component through `LibraryProvider`
- * (`library-context.tsx`); a different account signing in closes it first. Closing is
- * what the wipe on sign-out does before it removes the file, since the engine's worker
- * holds the file open.
+ * Opened once per account, as a module singleton the queries and actions look up and
+ * the hooks in `use-outbox.ts` and `use-feed-state.ts` follow through `subscribeLibrary`;
+ * a different account signing in closes it first. (A React provider was written for this
+ * and never mounted; the lookup is what every reader in fact needs, since the queries
+ * run outside the tree.) Closing is what the wipe on sign-out does before it removes the
+ * file, since the engine's worker holds the file open.
  */
 export interface Library extends Collections {
   userId: string;
@@ -33,6 +35,22 @@ export type ReadableLibrary = Pick<Library, 'notes' | 'notebooks' | 'tags' | 'at
 let current: { userId: string; library: Promise<Library> } | null = null;
 let forTests: ReadableLibrary | null = null;
 
+const libraryListeners = new Set<() => void>();
+
+/**
+ * Hears every change of which library is open: one acquired, one closed, one that failed
+ * to open, the one installed for a test. A hook that read `currentLibrary()` once on mount
+ * kept a disposed outbox after the page came back from the back/forward cache (`pageshow`
+ * below closes and reopens the library) or after an account change, and stayed null for
+ * good if the library was not open yet when it mounted (review of #232).
+ */
+export function subscribeLibrary(listener: () => void): () => void {
+  libraryListeners.add(listener);
+  return () => void libraryListeners.delete(listener);
+}
+
+const libraryChanged = () => libraryListeners.forEach((l) => l());
+
 provideLibrary(async () => {
   if (forTests || !current) return null;
   try {
@@ -51,6 +69,7 @@ export function currentLibrary(): Promise<ReadableLibrary> | null {
 /** Installs an in-memory library for a test to read; see `test-library.ts`. */
 export function setLibraryForTests(library: ReadableLibrary | null): void {
   forTests = library;
+  libraryChanged();
 }
 
 const changeListeners = new Set<() => void>();
@@ -73,12 +92,16 @@ export function acquireLibrary(userId: string): Promise<Library> {
     return open(userId);
   })();
   current = { userId, library };
+  libraryChanged();
   library.catch((err) => {
     // A browser without the origin-private file system, or one refusing it in a private
     // window: there is no local copy here, and the queries read the server instead (see
     // `queries.ts`). Said once in the console; the next sign-in tries again.
     console.warn('[library] not available on this device; reading from the server instead:', err);
-    if (current?.library === library) current = null;
+    if (current?.library === library) {
+      current = null;
+      libraryChanged();
+    }
   });
   return library;
 }
@@ -87,6 +110,7 @@ export function acquireLibrary(userId: string): Promise<Library> {
 export async function closeLibrary(): Promise<void> {
   const open = current;
   current = null;
+  if (open) libraryChanged();
   if (open) await open.library.then((l) => l.close()).catch(() => {});
 }
 
