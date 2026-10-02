@@ -186,17 +186,22 @@ export const sessionCheckAbandoned = () => checkAbandoned;
  * after a sign-out. Clearing at sign-out is not enough on its own: a read the worker had
  * in flight when the page deleted the caches still writes its answer when it lands, which
  * puts the previous account's rows back. It costs a delete of nothing on most sign-ins.
+ *
+ * The local copy of the library and its outbox are keyed by account and go by a different
+ * rule: a refused session closes them and keeps them, since the outbox may hold edits made
+ * offline that the server has not heard of, and whoever signs in next keeps their own
+ * while every other account's goes. See `clearOfflineCaches`.
  */
 export function recordSession(state: Pick<SessionState, 'data' | 'error' | 'isPending'>): Promise<void> {
   if (state.data) {
     const previous = rememberedSession();
     rememberSession(state.data.user);
-    if (previous?.user.id !== state.data.user.id) return clearOfflineCaches();
+    if (previous?.user.id !== state.data.user.id) return clearOfflineCaches({ except: state.data.user.id });
     return Promise.resolve();
   }
   if (!state.isPending && (state.error == null || state.error.status === 401)) {
     forgetSession();
-    return clearOfflineCaches();
+    return clearOfflineCaches('none');
   }
   return Promise.resolve();
 }

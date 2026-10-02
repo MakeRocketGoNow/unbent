@@ -1073,7 +1073,9 @@ files and the images in them, Auto-fill, and the settings pages that manage note
 tags and fields. A lost connection is never taken for signing out.
 
 Signing out removes the library from the device, as does deleting the account or another
-person signing in. The rules the code is held to are in `apps/web/src/store/` and AGENTS.md.
+person signing in. A sign-in that has expired does not: your copy stays, closed, and signing
+in again reopens it and sends whatever you changed while it waited. The rules the code is
+held to are in `apps/web/src/store/` and AGENTS.md.
 
 ## Local database
 

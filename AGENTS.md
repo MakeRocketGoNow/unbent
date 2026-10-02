@@ -478,12 +478,18 @@ one (`transient` in `export-archive.ts`): it is an `ApiError` with status 0, not
 - `device-api.ts` — Better Auth's device and one-time-token endpoints under `/api/auth/`,
   which the service worker never touches and whose screens report their own failures.
 
-**What this device keeps of an account goes when the account changes hands.**
-`clearOfflineCaches()` runs on sign-out, on a refused session, on account deletion and when
-a different person signs in: it empties the worker's caches and removes the local store and
-the outbox (`store/wipe.ts`), every file with the prefix, because the id of the person leaving
-is not always known. The names are in `store/names.ts` and nowhere else. A new way for the
-account on a device to change hands has to call it too.
+**What this device keeps of an account goes when the account changes hands — and the
+outbox goes only then.** `clearOfflineCaches()` runs on sign-out, on a refused session, on
+account deletion and when a different person signs in. The worker's caches go every time;
+they are keyed by address and cheap to refill. The local store and the outbox
+(`store/wipe.ts`) are keyed by account, and the outbox holds writes the server has not
+heard of, so they go only when the account has changed hands for good: sign-out and account
+deletion remove every account's, a different person signing in removes every account's
+but their own, and a refused session — someone who edited offline for longer than their
+sign-in lasted — closes them and keeps them, so their sign-in reopens the store and replays
+what waited. Sign-out first waits a few seconds for the outbox to drain. The names are in
+`store/names.ts` and nowhere else. A new way for the account on a device to change hands
+has to call it too, and say which of the three it is.
 
 **Offline is not `readOnly`, and it no longer locks.** The trash's `readOnly` turns the
 autosave off and drops the draft. Offline, the note is as editable as ever and the head says

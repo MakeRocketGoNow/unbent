@@ -66,6 +66,41 @@ export function currentLibrary(): Promise<ReadableLibrary> | null {
   return current?.library ?? null;
 }
 
+/** Whose library is open now, if anyone's; for the wipe that keeps one account's files. */
+export function currentLibraryUser(): string | null {
+  return current?.userId ?? null;
+}
+
+/**
+ * Waits, for at most `ms`, for the writes the open library's outbox holds to reach the
+ * server, and answers with how many are still waiting. What a sign-out does first: the
+ * wipe that follows removes the outbox, and the menu offers Sign out only with a
+ * connection, so what waits is usually mid-replay and gone in a moment.
+ */
+export async function settleWrites(ms: number): Promise<number> {
+  const open = current?.library;
+  if (!open) return 0;
+  let lib: Library;
+  try {
+    lib = await open;
+  } catch {
+    return 0;
+  }
+  if (lib.outbox.status().pending === 0) return 0;
+  await new Promise<void>((resolve) => {
+    const timer = setTimeout(done, ms);
+    const stop = lib.outbox.subscribe((s) => {
+      if (s.pending === 0) done();
+    });
+    function done() {
+      clearTimeout(timer);
+      stop();
+      resolve();
+    }
+  });
+  return lib.outbox.status().pending;
+}
+
 /** Installs an in-memory library for a test to read; see `test-library.ts`. */
 export function setLibraryForTests(library: ReadableLibrary | null): void {
   forTests = library;

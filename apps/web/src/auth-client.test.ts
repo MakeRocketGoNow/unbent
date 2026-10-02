@@ -1,6 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { rememberSession, rememberedSession } from './session-memory.js';
 
+vi.mock('./store/wipe.js', () => ({ wipeLocalStores: vi.fn(async () => {}), closeLocalStores: vi.fn(async () => {}) }));
+
 /**
  * Who `ensureSession` says is signed in, against Better Auth's real session store with
  * only `fetch` stood in for. The store is a module singleton that fetches once when it is
@@ -112,6 +114,43 @@ describe('ensureSession', () => {
       vi.stubGlobal('fetch', vi.fn(async () => Promise.reject(new TypeError('Failed to fetch'))));
       await (await freshEnsureSession())();
       expect(deleted).not.toHaveBeenCalled();
+    });
+  });
+
+  /*
+     The local copy of the library and its outbox go by a different rule than the worker's
+     caches: the outbox may hold edits made offline that the server has not heard of, so a
+     refused session closes it and keeps it, and the person arriving keeps their own.
+  */
+  describe('the local copy of the library and its outbox', () => {
+    const wipe = async () => import('./store/wipe.js');
+    beforeEach(() => {
+      vi.stubGlobal('caches', { delete: vi.fn(async () => true) });
+    });
+
+    it('are kept, closed, when the server refuses the session', async () => {
+      rememberSession(USER);
+      vi.stubGlobal('fetch', vi.fn(async () => json(401, { message: 'Unauthorized' })));
+      await (await freshEnsureSession())();
+      const { closeLocalStores, wipeLocalStores } = await wipe();
+      expect(closeLocalStores).toHaveBeenCalled();
+      expect(wipeLocalStores).not.toHaveBeenCalled();
+    });
+
+    it('are removed for every account but the one signing in', async () => {
+      vi.stubGlobal('fetch', vi.fn(async () => json(200, SESSION)));
+      await (await freshEnsureSession())();
+      const { wipeLocalStores } = await wipe();
+      expect(wipeLocalStores).toHaveBeenCalledWith('u1');
+    });
+
+    it('are left alone when the same person comes back', async () => {
+      rememberSession(USER);
+      vi.stubGlobal('fetch', vi.fn(async () => json(200, SESSION)));
+      await (await freshEnsureSession())();
+      const { closeLocalStores, wipeLocalStores } = await wipe();
+      expect(closeLocalStores).not.toHaveBeenCalled();
+      expect(wipeLocalStores).not.toHaveBeenCalled();
     });
   });
 

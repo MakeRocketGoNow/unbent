@@ -5,6 +5,7 @@ import { isHosted, postToApp } from './app-bridge.js';
 import { forgetSession } from './session-memory.js';
 import { clearOfflineCaches } from './offline-cache.js';
 import { claimImportFor } from './import-run.js';
+import { settleWrites } from './store/library.js';
 
 /**
  * Sign out, and land somewhere that makes sense afterwards.
@@ -61,7 +62,17 @@ export function useSignOut(): () => void {
   const navigate = useNavigate();
   return () => {
     setFailed(false);
-    void signOut()
+    /*
+       Writes still waiting in the outbox go first, for a few seconds at most: the wipe
+       below removes the outbox with them, and the menu offers Sign out only with a
+       connection, so what waits is mid-replay and usually gone in a moment. What is still
+       waiting after that is said in the console; the person asked to leave.
+    */
+    void settleWrites(5000)
+      .then((left) => {
+        if (left > 0) console.warn(`[outbox] signing out with ${left} change${left === 1 ? '' : 's'} not yet synced`);
+        return signOut();
+      })
       .then((res) => !res?.error, () => false)
       .then(async (ended) => {
         /*
