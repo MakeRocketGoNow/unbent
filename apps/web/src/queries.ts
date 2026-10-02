@@ -31,11 +31,22 @@ import { currentLibrary, onLibraryChange, type ReadableLibrary as Library } from
  * config, the vision backlog, and every write (`store/actions.ts`).
  */
 
-/** The open library, once its collections have restored what they persisted. */
-async function library(): Promise<Library> {
+/**
+ * The open library, once its collections have restored what they persisted — or null
+ * when this device has none: a browser without the origin-private file system, or one
+ * refusing it in a private window, or a test. Every query below then asks the server
+ * for what it would have derived, as the app did before the copy existed; nothing is
+ * kept on the device, and nothing works offline, which is what such a browser had.
+ */
+async function library(): Promise<Library | null> {
   const open = currentLibrary();
-  if (!open) throw new Error('No library is open on this tab');
-  const lib = await open;
+  if (!open) return null;
+  let lib: Library;
+  try {
+    lib = await open;
+  } catch {
+    return null;
+  }
   await Promise.all([lib.notes.preload(), lib.notebooks.preload(), lib.tags.preload(), lib.attachments.preload()]);
   return lib;
 }
@@ -141,7 +152,12 @@ export const keys = {
 export const notesQuery = (filter: NoteFilter, ordering: NoteOrdering = {}) =>
   infiniteQueryOptions({
     queryKey: keys.notes(filter, ordering),
-    queryFn: async ({ pageParam }) => pageOf(await library(), filter, ordering, pageParam),
+    queryFn: async ({ pageParam }) => {
+      const lib = await library();
+      return lib
+        ? pageOf(lib, filter, ordering, pageParam)
+        : api.listNotes({ ...filter, ...ordering, ...(pageParam ? { cursor: pageParam } : {}) });
+    },
     initialPageParam: '' as string,
     getNextPageParam: (last) => last.cursor ?? undefined,
     placeholderData: keepPreviousData,
@@ -164,7 +180,12 @@ function pageOf(lib: Library, filter: NoteFilter & { trashed?: boolean }, orderi
 export const trashQuery = () =>
   infiniteQueryOptions({
     queryKey: keys.trash(),
-    queryFn: async ({ pageParam }) => pageOf(await library(), { trashed: true }, {}, pageParam),
+    queryFn: async ({ pageParam }) => {
+      const lib = await library();
+      return lib
+        ? pageOf(lib, { trashed: true }, {}, pageParam)
+        : api.listNotes({ trashed: true, ...(pageParam ? { cursor: pageParam } : {}) });
+    },
     initialPageParam: '' as string,
     getNextPageParam: (last) => last.cursor ?? undefined,
   });
@@ -179,7 +200,10 @@ export const trashQuery = () =>
 export const trashCountQuery = () =>
   queryOptions({
     queryKey: keys.trashCount(),
-    queryFn: async () => count(snapshot(await library()), { trashed: true }),
+    queryFn: async () => {
+      const lib = await library();
+      return lib ? count(snapshot(lib), { trashed: true }) : ((await api.listNotes({ trashed: true, limit: 1 })).total ?? 0);
+    },
   });
 
 /**
@@ -189,7 +213,10 @@ export const trashCountQuery = () =>
 export const noteCountQuery = () =>
   queryOptions({
     queryKey: keys.noteCount(),
-    queryFn: async () => count(snapshot(await library()), {}),
+    queryFn: async () => {
+      const lib = await library();
+      return lib ? count(snapshot(lib), {}) : ((await api.listNotes({ limit: 1 })).total ?? 0);
+    },
   });
 
 /**
@@ -204,6 +231,7 @@ export const noteQuery = (id: string) =>
     queryKey: keys.note(id),
     queryFn: async (): Promise<Note> => {
       const lib = await library();
+      if (!lib) return api.getNote(id);
       const row = lib.notes.get(id);
       // A library that has never taken its snapshot holds nothing yet, and a note not in
       // it is not missing — the copy is: say that (the workspace's offline line) rather
@@ -225,13 +253,20 @@ export const attachmentsQuery = (noteId: string) =>
     queryKey: keys.attachments(noteId),
     queryFn: async (): Promise<AttachmentInfo[]> => {
       const lib = await library();
+      if (!lib) return api.listAttachments(noteId);
       if (!lib.notes.has(noteId)) throw new ApiError(404, 'Not found');
       return (lookups(snapshot(lib)).filesByNote.get(noteId) ?? []).map(toAttachmentInfo);
     },
   });
 
 export const tagsQuery = () =>
-  queryOptions({ queryKey: keys.tags(), queryFn: async (): Promise<api.TagSummary[]> => tagSummaries(snapshot(await library())) });
+  queryOptions({
+    queryKey: keys.tags(),
+    queryFn: async (): Promise<api.TagSummary[]> => {
+      const lib = await library();
+      return lib ? tagSummaries(snapshot(lib)) : api.listTags();
+    },
+  });
 
 /**
  * The instance's sign-in methods. Never stale: they change only with a redeploy, and a
@@ -299,12 +334,17 @@ export function claimCacheFor(queryClient: QueryClient, userId: string | undefin
 export const notebooksQuery = () =>
   queryOptions({
     queryKey: keys.notebooks(),
-    queryFn: async (): Promise<{ notebooks: NotebookSummary[]; unfiled: number }> => notebookList(snapshot(await library())),
+    queryFn: async (): Promise<{ notebooks: NotebookSummary[]; unfiled: number }> => {
+      const lib = await library();
+      return lib ? notebookList(snapshot(lib)) : api.listNotebooks();
+    },
   });
 
 /** A notebook's definitions from the library, or the route's 404 for an id that is not a notebook. */
 async function fieldsOf(notebookId: string, counts: boolean): Promise<FieldDef[]> {
-  const fields = notebookFields(snapshot(await library()), notebookId, counts);
+  const lib = await library();
+  if (!lib) return api.listNotebookFields(notebookId, counts ? { counts } : undefined);
+  const fields = notebookFields(snapshot(lib), notebookId, counts);
   if (!fields) throw new ApiError(404, 'Not found');
   return fields;
 }
@@ -403,10 +443,13 @@ export interface ExactCountFilter {
 export const exactCountQuery = (filter: ExactCountFilter = {}) =>
   queryOptions({
     queryKey: keys.exactCount(filter),
-    queryFn: async () =>
-      count(snapshot(await library()), {
+    queryFn: async () => {
+      const scope = {
         ...(filter.notebook ? { notebook: filter.notebook } : {}),
         ...(filter.tag ? { tag: [filter.tag] } : {}),
         ...(filter.trashed ? { trashed: true } : {}),
-      }),
+      };
+      const lib = await library();
+      return lib ? count(snapshot(lib), scope) : ((await api.listNotes({ ...scope, limit: 1, exact: true })).total ?? 0);
+    },
   });

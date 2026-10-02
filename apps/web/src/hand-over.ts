@@ -33,6 +33,6 @@ export function handOver(queryClient: QueryClient, userId: string | undefined): 
     // loaders run. Not awaited — opening takes a few milliseconds on a warm device and
     // the queries await it themselves — and a different account opening theirs closes
     // the previous one; see `acquireLibrary`.
-    void acquireLibrary(userId);
+    void acquireLibrary(userId).catch(() => {});
   }
 }
