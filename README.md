@@ -1053,19 +1053,27 @@ are left alone: a document has no opinion to read.
 `POST /api/notes/:id/autofill` answers with the suggestions and applies nothing; the client
 does. The Android app is the site in a WebView, so it has the same control.
 
-## Reading without a connection
+## Your library on the device
 
 The installed app — and the Android app, which is the site in a WebView — opens with no
-signal. A service worker keeps the app itself on the device, and the last copy of what was
-read: the note list, each note that was opened, and the images and PDFs that were looked at.
-A line across the top says you are offline; the note reads exactly as it did, and nothing
-about it can change until the connection is back. Search needs the server and says so. A
-lost connection is never taken for signing out.
+signal and works. A service worker keeps the app itself on the device, and your library
+lives there too: the notes, notebooks and tags of the signed-in account, in a SQLite file in
+the browser's private storage, copied from the server the first time you sign in on a device
+(a line across the top counts the notes as they arrive) and kept current by the change feed
+after — on open, when you come back to the tab, and the moment another device saves,
+through a socket that says only that something changed. A warm open draws the list with no
+request at all.
 
-This is the floor, not offline editing. Changes are made online, as before; keeping the
-whole library on the device and writing to it first is the sync work that follows (a change
-feed from each account's store, then a local copy in the browser). What the worker keeps,
-and why it is network-first rather than cache-first, is in `apps/web/src/sw/`.
+Edits land on the device first. A note you write, make, file, tag, trash or restore with
+no connection is saved here at once — the note head says "Saved here — syncs when online"
+— and goes to the server, in order, when the connection returns. A save that would overwrite
+an edit made on another device meanwhile is refused there and put to you as before: reload
+theirs, or keep yours on top of it. What needs the server now says so and waits: search,
+files and the images in them, Auto-fill, and the settings pages that manage notebooks,
+tags and fields. A lost connection is never taken for signing out.
+
+Signing out removes the library from the device, as does deleting the account or another
+person signing in. The rules the code is held to are in `apps/web/src/store/` and AGENTS.md.
 
 ## Local database
 
@@ -1375,7 +1383,7 @@ on after every write, held through the platform's hibernation so an idle device 
 nothing; the feed is complete without it. The feed keeps ninety days or fifty thousand
 rows; a cursor older than that, or from before a restore, is answered with `reset` and
 the device starts over from a snapshot. This is what the local copy of the library in the
-browser syncs from.
+browser syncs from; see [Your library on the device](#your-library-on-the-device).
 
 **What the operator can see.** An object has no console, so the Worker has one, under
 `/api/admin/store` for a session in `OPERATOR_EMAILS`:
