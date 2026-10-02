@@ -92,7 +92,7 @@ export const notes = new Hono<AppEnv>()
   .post('/notes', zValidator('json', createNoteSchema), async (c) => {
     const { id, ...input } = c.req.valid('json');
     try {
-      const { existing, ...note } = await c.get('notes').create({ id: id ?? crypto.randomUUID(), ...input });
+      const { note, existing } = await c.get('notes').createOrFind({ id: id ?? crypto.randomUUID(), ...input });
       return c.json(note, existing ? 200 : 201);
     } catch (err) {
       if (err instanceof InvalidFieldValue) return c.json({ error: fieldError(err) }, 400);
@@ -156,9 +156,9 @@ export const notes = new Hono<AppEnv>()
     // `createNoteSchema.id` gives — so it is read by hand rather than required.
     const body = duplicateNoteSchema.safeParse(await c.req.json().catch(() => ({})));
     if (!body.success) return c.json({ error: 'The copy\'s id must be a UUID' }, 400);
-    const copy = await notes.duplicate(id, body.data.id ?? crypto.randomUUID());
+    const copy = await notes.duplicateOrFind(id, body.data.id ?? crypto.randomUUID());
     if (!copy) return c.json({ error: 'Not found' }, 404);
-    const { existing, ...note } = copy;
+    const { note, existing } = copy;
 
     // On a replay, copy only what the first attempt did not reach. A lost answer is often
     // a Worker that died partway through the copy, after the note itself was committed,

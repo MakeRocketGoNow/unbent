@@ -616,7 +616,8 @@ Rules that hold it together, each with a test:
   per note.
 - **Ids may come from the client.** `POST /notes` and a duplicate take an optional UUID
   and answer 200 with the holder of a taken id, so a replayed request makes no second
-  note. Nothing else needs a client id yet.
+  note (`createOrFind` / `duplicateOrFind`, which say `existing` beside a plain `Note`;
+  `create` itself still refuses a taken id). Nothing else needs a client id yet.
 
 ## Rows read are still the budget
 

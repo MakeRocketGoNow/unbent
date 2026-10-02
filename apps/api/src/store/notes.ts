@@ -647,12 +647,8 @@ export class NotesStore {
    * One transaction for the note, its tags and its values: a bad field value throws
    * before anything is written (it is validated first, as it always was), and a failure
    * after the insert now takes the insert with it rather than leaving a half-made note.
-   *
-   * An id already held answers with the note that holds it, marked `existing`, trashed
-   * or not, and writes nothing. Ids come from the client now as well as the server — a
-   * note made offline has its address before the server hears of it — and a request the
-   * client replays after a dropped answer must find its note rather than make a second.
-   * The marker is the caller's to strip; nothing stores it.
+   * An id already held is the insert's own error; `createOrFind` is the way in for a
+   * caller whose id may be a replay's.
    */
   create(input: {
     id: string;
@@ -661,9 +657,8 @@ export class NotesStore {
     tags: string[];
     notebook?: string | null | undefined;
     fields?: NoteFieldsPatch | undefined;
-  }): Note & { existing?: true } {
+  }): Note {
     return this.sql.tx(() => {
-      if (this.idTaken(input.id)) return { ...this.get(input.id, { includeTrashed: true })!, existing: true };
       const now = Date.now();
       // Validated before the insert, so a bad value leaves no half-made note behind.
       const fieldWrites = input.fields ? this.prepareFieldWrites(input.id, input.fields) : [];
@@ -712,7 +707,7 @@ export class NotesStore {
    * "(copy)": the duplicate is opened at once, so which is which is never in doubt, and
    * a name the user did not choose is one they would only have to remove.
    */
-  duplicate(id: string, newId: string): (Note & { existing?: true }) | null {
+  duplicate(id: string, newId: string): Note | null {
     return this.sql.tx(() => {
       const source = this.get(id);
       if (!source) return null;
@@ -726,6 +721,30 @@ export class NotesStore {
         notebook: source.notebook,
         ...(Object.keys(fields).length > 0 ? { fields } : {}),
       });
+    });
+  }
+
+  /**
+   * `create` for an id the client chose, which may be a replay's. Ids come from the
+   * client now as well as the server — a note made offline has its address before the
+   * server hears of it — and a request replayed after a dropped answer must find its
+   * note rather than make a second one. An id already held answers with the note that
+   * holds it, trashed or not, as `existing`, and writes nothing; the routes answer 200
+   * for that and 201 for a note made here. The note itself stays a plain `Note`.
+   */
+  createOrFind(input: Parameters<NotesStore['create']>[0]): { note: Note; existing: boolean } {
+    return this.sql.tx(() => {
+      if (this.idTaken(input.id)) return { note: this.get(input.id, { includeTrashed: true })!, existing: true };
+      return { note: this.create(input), existing: false };
+    });
+  }
+
+  /** `duplicate` with the same replay rule as `createOrFind` for the copy's id. */
+  duplicateOrFind(id: string, newId: string): { note: Note; existing: boolean } | null {
+    return this.sql.tx(() => {
+      if (this.idTaken(newId)) return { note: this.get(newId, { includeTrashed: true })!, existing: true };
+      const note = this.duplicate(id, newId);
+      return note ? { note, existing: false } : null;
     });
   }
 

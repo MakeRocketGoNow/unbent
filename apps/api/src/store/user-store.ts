@@ -503,6 +503,8 @@ export class UserStore extends DurableObject<StoreEnv> {
   get(id: string, opts?: { includeTrashed?: boolean | undefined }) { this.ready(); return this.notes.get(id, opts); }
   create(input: Parameters<NotesStore['create']>[0]) { return this.writing(() => this.notes.create(input)); }
   duplicate(id: string, newId: string) { return this.writing(() => this.notes.duplicate(id, newId)); }
+  createOrFind(input: Parameters<NotesStore['createOrFind']>[0]) { return this.writing(() => this.notes.createOrFind(input)); }
+  duplicateOrFind(id: string, newId: string) { return this.writing(() => this.notes.duplicateOrFind(id, newId)); }
   update(id: string, patch: Parameters<NotesStore['update']>[1]) { return this.writing(() => this.notes.update(id, patch)); }
   appendToBody(id: string, markdown: string) { return this.writing(() => this.notes.appendToBody(id, markdown)); }
   remove(id: string) { return this.writing(() => this.notes.remove(id)); }

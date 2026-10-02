@@ -88,12 +88,22 @@ export class NotesRepo extends StoreRepo {
     tags: string[];
     notebook?: string | null | undefined;
     fields?: NoteFieldsPatch | undefined;
-  }): Promise<Note & { existing?: true }> {
+  }): Promise<Note> {
     return this.call((s) => s.create(input));
   }
 
-  duplicate(id: string, newId: string): Promise<(Note & { existing?: true }) | null> {
+  duplicate(id: string, newId: string): Promise<Note | null> {
     return this.call((s) => s.duplicate(id, newId));
+  }
+
+  /** `create` for an id the client chose, which may be a replay's; see `NotesStore.createOrFind`. */
+  createOrFind(input: Parameters<NotesRepo['create']>[0]): Promise<{ note: Note; existing: boolean }> {
+    return this.call((s) => s.createOrFind(input));
+  }
+
+  /** `duplicate` with the same replay rule for the copy's id. */
+  duplicateOrFind(id: string, newId: string): Promise<{ note: Note; existing: boolean } | null> {
+    return this.call((s) => s.duplicateOrFind(id, newId));
   }
 
   update(

@@ -869,20 +869,23 @@ describe('rows read on an archive-sized store', () => {
 describe('notes: an id the client chose', () => {
   it('answers a taken id with the note that holds it, trashed or not, and writes nothing', async () => {
     const { stub } = freshStore('client-id');
-    const first = await stub.create(note({ id: 'client-chosen', title: 'Mine' }));
-    expect(first).not.toHaveProperty('existing');
-    const again = await stub.create(note({ id: 'client-chosen', title: 'Replayed' }));
-    expect(again).toMatchObject({ id: 'client-chosen', title: 'Mine', existing: true });
+    const first = await stub.createOrFind(note({ id: 'client-chosen', title: 'Mine' }));
+    expect(first).toEqual({ note: expect.objectContaining({ id: 'client-chosen', title: 'Mine' }), existing: false });
+    expect(first.note).not.toHaveProperty('existing');
+    const again = await stub.createOrFind(note({ id: 'client-chosen', title: 'Replayed' }));
+    expect(again).toEqual({ note: expect.objectContaining({ id: 'client-chosen', title: 'Mine' }), existing: true });
     expect(await stub.count()).toBe(1);
     await stub.remove('client-chosen');
-    const trashed = await stub.create(note({ id: 'client-chosen', title: 'Replayed again' }));
-    expect(trashed).toMatchObject({ id: 'client-chosen', title: 'Mine', existing: true, deletedAt: expect.any(Number) });
+    const trashed = await stub.createOrFind(note({ id: 'client-chosen', title: 'Replayed again' }));
+    expect(trashed).toEqual({ note: expect.objectContaining({ id: 'client-chosen', title: 'Mine', deletedAt: expect.any(Number) }), existing: true });
+    // The plain create keeps the insert's own refusal of a taken id.
+    await expect(stub.create(note({ id: 'client-chosen', title: 'Again' }))).rejects.toThrow();
     // A duplicate replayed with the copy's id finds the copy.
     const source = await stub.create(note({ title: 'Source' }));
-    const copy = await stub.duplicate(source.id, 'copy-chosen');
-    expect(copy).toMatchObject({ id: 'copy-chosen', title: 'Source' });
-    expect(copy).not.toHaveProperty('existing');
-    expect(await stub.duplicate(source.id, 'copy-chosen')).toMatchObject({ id: 'copy-chosen', existing: true });
+    const copy = await stub.duplicateOrFind(source.id, 'copy-chosen');
+    expect(copy).toEqual({ note: expect.objectContaining({ id: 'copy-chosen', title: 'Source' }), existing: false });
+    expect(await stub.duplicateOrFind(source.id, 'copy-chosen')).toEqual({ note: expect.objectContaining({ id: 'copy-chosen' }), existing: true });
+    expect(await stub.duplicateOrFind('ghost', 'another')).toBeNull();
     expect(await stub.count()).toBe(2);
   });
 });
