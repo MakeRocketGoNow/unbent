@@ -2,7 +2,7 @@ import { cleanupOutdatedCaches, createHandlerBoundToURL, precacheAndRoute } from
 import { registerRoute } from 'workbox-routing';
 import { CacheFirst, NetworkFirst, type StrategyOptions } from 'workbox-strategies';
 import { ExpirationPlugin } from 'workbox-expiration';
-import { API_CACHE, BULK_HEADER, FILES_CACHE, SERVED_HEADER, VIEW_HEADER, classify, servesShell } from './routes.js';
+import { API_CACHE, FILES_CACHE, SERVED_HEADER, VIEW_HEADER, classify, servesShell } from './routes.js';
 
 /**
  * The service worker: what lets the installed app open with no connection.
@@ -119,7 +119,6 @@ registerRoute(
       method: request.method,
       destination: request.destination,
       viewed: false,
-      bulk: request.headers.get(BULK_HEADER) === '1',
       origin: self.location.origin,
     }) === 'api',
   new NetworkFirst({
@@ -171,7 +170,6 @@ registerRoute(
       method: request.method,
       destination: request.destination,
       viewed: request.headers.get(VIEW_HEADER) === '1',
-      bulk: request.headers.get(BULK_HEADER) === '1',
       origin: self.location.origin,
     }) === 'file',
   new CacheFirst({

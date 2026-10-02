@@ -173,6 +173,24 @@ async function open(userId: string): Promise<Library> {
   };
   connect();
 
+  /*
+   * Asked to keep the store rather than evict it under storage pressure, once; the
+   * answer is the browser's and a refusal changes nothing — an evicted copy is taken
+   * again from a snapshot. Not awaited: some browsers answer only after a prompt.
+   */
+  void navigator.storage?.persist?.().catch(() => false);
+  /*
+   * A page restored from the back/forward cache comes back with the adapter's worker
+   * and handles in whatever state they were left; the adapter wants fresh instances
+   * after it, so the library is closed and opened again for the same account.
+   */
+  const onPageShow = (event: PageTransitionEvent) => {
+    if (!event.persisted) return;
+    window.removeEventListener('pageshow', onPageShow);
+    void closeLibrary().then(() => acquireLibrary(userId)).catch(() => {});
+  };
+  window.addEventListener('pageshow', onPageShow);
+
   const outbox = createOutbox(userId, { ...collections, userId, engine });
   await outbox.executor.waitForInit();
 
@@ -191,6 +209,7 @@ async function open(userId: string): Promise<Library> {
     close: async () => {
       closed = true;
       engine.stop();
+      window.removeEventListener('pageshow', onPageShow);
       document.removeEventListener('visibilitychange', onVisible);
       window.removeEventListener('online', pull);
       unsubscribeConnectivity();

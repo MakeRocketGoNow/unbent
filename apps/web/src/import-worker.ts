@@ -19,7 +19,6 @@ import {
   indexPendingFiles,
   type IndexProgress,
 } from './attachment-text.js';
-import { BULK_HEADER } from './sw/routes.js';
 
 /**
  * Runs an import off the main thread.
@@ -130,9 +129,7 @@ const client: ImportClient = {
   },
 
   listFiles: async (noteId) => {
-    // Marked as bulk: a re-import reads thousands of these, and they must not fill the
-    // offline cache the note views read from (`BULK_HEADER`).
-    const res = await api(`/api/notes/${noteId}/files`, { method: 'GET', headers: { [BULK_HEADER]: '1' } });
+    const res = await api(`/api/notes/${noteId}/files`, { method: 'GET' });
     const { files } = (await res.json()) as { files: Array<{ filename: string }> };
     return files.map((f) => f.filename);
   },

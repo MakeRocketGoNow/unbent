@@ -12,8 +12,9 @@ import { OfflineIcon } from './icons.js';
  *
  * Quiet on purpose — muted ink on a faint wash, not the danger colour and not the dark
  * snackbar. Nothing has gone wrong that anyone can fix, and the sentence already says what
- * still works. It says it once and stays until the connection is back; there is nothing to
- * dismiss, because the state it describes is still true.
+ * still works: the library is on the device and note writes go to the outbox, so what
+ * offline stops is search and files. It says it once and stays until the connection is
+ * back; there is nothing to dismiss, because the state it describes is still true.
  *
  * The live region stays mounted and only its contents come and go, which is what makes a
  * screen reader announce the change; a region inserted already holding its text is often
@@ -26,7 +27,7 @@ export function OfflineBanner() {
       {offline && (
         <p className="offline-banner">
           <OfflineIcon />
-          <span>{"You're offline. Notes you've opened are still readable; changes can't be saved yet."}</span>
+          <span>{"You're offline. Your notes are here, and what you change will sync when you're back."}</span>
         </p>
       )}
     </div>

@@ -776,10 +776,6 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
               <Button
                 variant="primary"
                 onClick={() => void newNote()}
-                // Disabled, not withdrawn, while offline: a new note is a write, and the
-                // row keeps its shape. The same for the phone's floating button below.
-                disabled={offline}
-                title={offline ? 'New notes need a connection' : undefined}
               >
                 New
               </Button>
@@ -1043,8 +1039,6 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
             type="button"
             className="fab"
             aria-label="New note"
-            disabled={offline}
-            title={offline ? 'New notes need a connection' : undefined}
             onClick={() => void newNote()}
           >
             <PlusIcon />
@@ -1068,9 +1062,7 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
             onKeyDown={onListKeysWithSelection}
             tableRef={tableRef}
             empty={searching ? searchEmpty : emptyMessage}
-            // Offline the cells show their values and take no edits, as the open note does:
-            // nothing can change until the connection is back.
-            onEdit={offline ? undefined : onEditCell}
+            onEdit={onEditCell}
             selection={{
               has: selection.has,
               active: selection.active,
@@ -1180,8 +1172,8 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
               type="button"
               className="icon-btn"
               aria-label="Move to notebook"
-              title={offline ? 'Not available offline' : 'Move to notebook'}
-              disabled={bulkBusy || offline}
+              title="Move to notebook"
+              disabled={bulkBusy}
               onClick={() => setBulkSheet('move')}
             >
               <NotebookActionIcon />
@@ -1190,8 +1182,8 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
               type="button"
               className="icon-btn"
               aria-label="Tags"
-              title={offline ? 'Not available offline' : 'Tags'}
-              disabled={bulkBusy || offline}
+              title="Tags"
+              disabled={bulkBusy}
               onClick={() => setBulkSheet('tags')}
             >
               <TagActionIcon />
@@ -1200,8 +1192,8 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
               type="button"
               className="icon-btn danger"
               aria-label="Delete"
-              title={offline ? 'Not available offline' : 'Delete'}
-              disabled={bulkBusy || offline}
+              title="Delete"
+              disabled={bulkBusy}
               onClick={() => setPendingTrash(true)}
             >
               <TrashIcon />

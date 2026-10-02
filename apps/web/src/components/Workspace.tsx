@@ -5,7 +5,7 @@ import type { EditorView } from '@codemirror/view';
 import type { FieldDef, FieldType, FieldValue, Note } from '@unbent/shared';
 import { localizeImageLinks, remoteImageUrls } from '@unbent/shared';
 import * as api from '../notes-api.js';
-import { isOfflineError, isStatus, servedFromCache } from '../notes-api.js';
+import { isOfflineError, isStatus } from '../notes-api.js';
 import * as actions from '../store/actions.js';
 import { useOutbox, useSyncStatus } from '../store/use-outbox.js';
 import { useOffline } from '../connectivity.js';
@@ -91,24 +91,12 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
   */
   const readOnly = inTrashView || note?.deletedAt !== undefined;
   /*
-     Offline, or showing a copy that came from the service worker's cache: the note reads
-     as usual and nothing about it can change. A copy from the cache stays locked after
-     the connection returns, until the server has answered for this note — see
-     `servedFromCache` for why unlocking the old text would be a lost edit.
-
-     Kept apart from `readOnly`, which is the trash's and turns the autosave off. This
-     leaves the autosave running, so typing the lock arrived a second too late for is
-     held and saved when the connection comes back rather than dropped.
+     Offline, the note is as editable as ever: it is read from the local copy of the
+     library and a save goes to the outbox, which replays when the connection returns.
+     What offline does stop is what needs the server now — Auto-fill, the ⋯ menu's
+     actions, a file upload — and those fade in place rather than the whole note locking.
   */
   const offline = useOffline();
-  const readFromCache = servedFromCache(note);
-  /*
-     The cached copy the draft was seeded from, until the server's copy replaces it. State,
-     not a ref, so the note stays locked through the render in which the server's copy
-     arrives and the effect below has not yet re-seeded the draft from it.
-  */
-  const [seededFromCache, setSeededFromCache] = useState<typeof note>(undefined);
-  const locked = offline || readFromCache || seededFromCache !== undefined;
   const notebooks = useQuery(notebooksQuery());
   const tags = useQuery(tagsQuery());
   const config = useQuery(configQuery());
@@ -306,11 +294,11 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
     if (conflicted) conflictNotice.current?.scrollIntoView?.({ block: 'nearest', behavior: 'smooth' });
   }, [conflicted]);
   /**
-   * Whether the note's inputs take edits: not offline, and not while a conflict waits on a
-   * choice. Typing on during one would only be refused again, and the choice is between
-   * two versions the person can see — a third, still moving, would make it a guess.
+   * Whether the note's inputs take edits: not while a conflict waits on a choice. Typing
+   * on during one would only be refused again, and the choice is between two versions
+   * the person can see — a third, still moving, would make it a guess.
    */
-  const frozen = locked || conflicted;
+  const frozen = conflicted;
 
   const outbox = useOutbox();
   const sync = useSyncStatus();
@@ -384,33 +372,8 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
     setDraft(seedFrom(note));
     setDraftFor(note.id);
     setEditorOverride(null);
-    setSeededFromCache(readFromCache ? note : undefined);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [noteId, note !== undefined]);
-
-  /*
-     The one refetch that does replace the draft: the server's copy arriving for a note
-     that was seeded from the cache. Nothing typed is lost — the note was locked the whole
-     time — and the old text must not survive into the unlocked editor, where the first
-     keystroke would save it over whatever another device saved meanwhile. The editor is
-     rebuilt on the new text for the same reason; with nothing typed, there is no history
-     worth keeping.
-
-     The first copy on screen that did not come from the cache is the server's answer.
-     Another copy from the cache — the first refetch after the connection returns can be
-     answered from it, on a radio not yet carrying anything — is not, and keeps waiting.
-     A copy from the server that says the same as the cached one leaves the draft alone.
-  */
-  useEffect(() => {
-    if (!seededFromCache || !note || servedFromCache(note)) return;
-    setSeededFromCache(undefined);
-    bases.current.set(note.id, note);
-    if (JSON.stringify(seedFrom(note)) === JSON.stringify(seedFrom(seededFromCache))) return;
-    setDraft(seedFrom(note));
-    setEditorOverride(null);
-    setEditorRevision((n) => n + 1);
-    setSeedGeneration((n) => n + 1);
-  }, [note, seededFromCache]);
 
   /*
      A new note opens with the caret in its title.
@@ -1129,10 +1092,10 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
               className={`autofill-btn${autofilling ? ' busy' : ''}`}
               // Disabled rather than withdrawn offline, so the title beside it does not
               // widen when the connection drops and narrow when it returns.
-              disabled={autofilling || frozen}
+              disabled={autofilling || frozen || offline}
               aria-label={autofilling ? 'Reading…' : 'Auto-fill'}
               title={
-                locked
+                offline
                   ? 'Auto-fill needs a connection'
                   : 'Fill in the title, notebook, tags and fields from what the note and its files say'
               }
@@ -1169,8 +1132,8 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
                 label="More actions"
                 // Every item here needs the server. Faded, not withdrawn, for the reason
                 // Auto-fill is.
-                disabled={locked}
-                title={locked ? 'Not available offline' : undefined}
+                disabled={offline}
+                title={offline ? 'Not available offline' : undefined}
                 items={[
                   // Only when there is something to save; the count says how much.
                   ...(remoteImages.length > 0

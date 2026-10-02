@@ -201,40 +201,8 @@ export async function listNotes(
   return json<NotePage>(await request(`/api/notes${qs ? `?${qs}` : ''}`));
 }
 
-/**
- * The copies of notes the service worker answered from its cache, rather than the server.
- *
- * Such a copy is shown but never edited: it may be older than a version saved from another
- * device, and the editor seeds its draft once per note. Its saves name the copy they were
- * made from, so the server would refuse the old text rather than take it, but unlocking it
- * would make the first keystroke a conflict to settle for no reason. `Workspace` locks
- * while the note on screen is one of these, and seeds its draft again from the first copy
- * that is not.
- *
- * Kept on the object, not beside it by id. A flag by id changed when the server's answer
- * was parsed, a moment before React Query stored it, and a cached answer to one refetch
- * could land after the server's answer to the next — either way the editor unlocked on
- * the cached text. The object is exactly the copy on screen, so neither ordering exists.
- * `noteQuery` turns structural sharing off for this to hold: with it on, a server copy
- * equal to a cached one would come back as the cached object, still marked.
- */
-const cachedCopies = new WeakSet<Note>();
-
-export function servedFromCache(note: Note | undefined): boolean {
-  return note !== undefined && cachedCopies.has(note);
-}
-
-/** Marks a copy as answered from the cache. `getNote`'s; exported for tests. */
-export function markServedFromCache(note: Note): Note {
-  cachedCopies.add(note);
-  return note;
-}
-
 export async function getNote(id: string): Promise<Note> {
-  const res = await request(`/api/notes/${id}`);
-  const note = await json<Note>(res);
-  // Where this copy came from decides whether it may be edited; see `servedFromCache`.
-  return res.headers.get(SERVED_HEADER) === 'cache' ? markServedFromCache(note) : note;
+  return json<Note>(await request(`/api/notes/${id}`));
 }
 
 export async function createNote(input: {
