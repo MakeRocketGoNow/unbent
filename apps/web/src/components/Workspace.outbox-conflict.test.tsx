@@ -37,7 +37,7 @@ const server: Note = {
   fields: [],
 };
 const theirs: Note = { ...server, body: 'as edited on the phone', updatedAt: 200 };
-const typed = { title: 'Trip notes, typed on the plane', body: server.body, tags: [], notebook: null, fields: {} };
+const typed = { title: 'Trip notes, typed on the plane', body: `${server.body}\n\nand a line typed on the plane`, tags: [], notebook: null, fields: {} };
 
 /** A stand-in outbox: what the workspace subscribes to, with a conflict to hand it. */
 function outbox(conflicts: Map<string, { current: Note; draft: typeof typed; base: Note }>) {
@@ -104,10 +104,12 @@ describe('a conflict that comes back from the outbox', () => {
     vi.mocked(api.updateNote).mockResolvedValue({ ...theirs, title: typed.title, updatedAt: 201 });
     mount();
 
-    // The typing, not the row, with the notice and the editor locked.
+    // The typing, not the row, with the notice and the editor locked — the body too:
+    // the editor seeds from the row unless told otherwise, and the row is the server's.
     await waitFor(async () => expect((await title()).value).toBe(typed.title));
     expect(screen.getByRole('alert').textContent).toContain('This note changed on another device.');
     expect((await title()).readOnly).toBe(true);
+    await waitFor(() => expect(document.querySelector('.cm-content')?.textContent).toContain('and a line typed on the plane'));
 
     await act(async () => {
       fireEvent.click(screen.getByRole('button', { name: 'Keep mine' }));
@@ -115,7 +117,7 @@ describe('a conflict that comes back from the outbox', () => {
     // Only what was typed, on top of theirs: the diff is against the copy the draft came
     // from, and the precondition is the other device's date.
     await waitFor(() => expect(api.updateNote).toHaveBeenCalled());
-    expect(vi.mocked(api.updateNote).mock.calls[0]).toEqual([server.id, { title: typed.title, ifUpdatedAt: 200 }]);
+    expect(vi.mocked(api.updateNote).mock.calls[0]).toEqual([server.id, { title: typed.title, body: typed.body, ifUpdatedAt: 200 }]);
     expect(o.resolveConflict).toHaveBeenCalledWith(server.id);
     lib.uninstall();
   });

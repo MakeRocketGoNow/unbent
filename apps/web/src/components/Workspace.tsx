@@ -138,11 +138,18 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
   /** Which note `draft` was seeded from; guards autosave against a not-yet-seeded draft. */
   const [draftFor, setDraftFor] = useState<string | null>(null);
   /**
-   * Editor is uncontrolled. After deleting a still-linked attachment we rewrite the
-   * draft and remount with that text; otherwise the open note's saved body is the seed.
+   * Editor is uncontrolled: the open note's saved body is its seed, and a remount (the
+   * revision) is how it is given another text. The override is that other text when it
+   * is not the saved body — a draft put back on screen after a refused save (see
+   * `showDraft`) — and it names its note, since the editor mounts for a new note in the
+   * render before the effects that seed the draft run: an override left over from the
+   * previous note would otherwise seed this one. Showing a conflict's draft once cleared
+   * the override instead, so the editor showed the server's body under a draft that held
+   * the typing, and the next keystroke would have saved the body without it (found on
+   * the preview, 2026-10-02).
    */
   const [editorRevision, setEditorRevision] = useState(0);
-  const [editorOverride, setEditorOverride] = useState<string | null>(null);
+  const [editorOverride, setEditorOverride] = useState<{ noteId: string; body: string } | null>(null);
 
   /**
    * Which of the three views the note is showing.
@@ -381,12 +388,18 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
     showDraft(seedFrom(from));
   }
 
-  /** Puts a draft on screen as the autosave's baseline, rebuilding the editor only if the body differs from what it shows. */
+  /**
+   * Puts a draft on screen as the autosave's baseline, rebuilding the editor only if
+   * the body differs from what it shows — with that body as the seed, since the saved
+   * body in the row is not it.
+   */
   function showDraft(next: NoteDraft) {
     const showing = draftRef.current.body;
     setDraft(next);
-    setEditorOverride(null);
-    if (next.body !== showing) setEditorRevision((n) => n + 1);
+    if (next.body !== showing) {
+      setEditorOverride({ noteId, body: next.body });
+      setEditorRevision((n) => n + 1);
+    }
     setSeedGeneration((n) => n + 1);
   }
 
@@ -401,7 +414,14 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
     bases.current.set(note.id, waiting?.base ?? note);
     setDraft(waiting?.draft ?? seedFrom(note));
     setDraftFor(note.id);
-    setEditorOverride(null);
+    // The editor mounted with the saved body in the render before this; a waiting
+    // draft's body is seeded by a remount with it.
+    if (waiting && waiting.draft.body !== note.body) {
+      setEditorOverride({ noteId: note.id, body: waiting.draft.body });
+      setEditorRevision((n) => n + 1);
+    } else {
+      setEditorOverride(null);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [noteId, note !== undefined]);
 
@@ -806,7 +826,7 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
 
   function rewriteBody(nextBody: string) {
     setDraft((d) => ({ ...d, body: nextBody }));
-    setEditorOverride(nextBody);
+    setEditorOverride({ noteId, body: nextBody });
     setEditorRevision((n) => n + 1);
   }
 
@@ -1390,7 +1410,7 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
           <Editor
             key={`${note.id}-${editorRevision}`}
             noteId={note.id}
-            initialValue={editorOverride ?? note.body}
+            initialValue={editorOverride?.noteId === note.id ? editorOverride.body : note.body}
             readOnly={readOnly || frozen}
             // So rich mode draws a viewer for an imported PDF whose name lacks the
             // extension, the same as the preview pane does.
