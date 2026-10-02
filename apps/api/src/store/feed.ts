@@ -127,12 +127,9 @@ export class Feed {
 
   /**
    * The seq to announce on the object's sockets, once, after the write's transaction has
-   * returned — or null when nothing was recorded since the last announcement. Taken
-   * after the transaction rather than sent inside it, so a write that rolled back
-   * announces nothing… almost: `record` ran before the throw, so this is set and one
-   * spurious nudge goes out. The client pulls, finds nothing new, and that is the whole
-   * cost; the alternative, threading the outcome of every transaction back here, is not
-   * worth a nudge a year.
+   * returned — or null when nothing was recorded since the last announcement. Taken after
+   * the transaction rather than sent inside it, so a write that rolled back announces
+   * nothing: the object takes and drops it on the way out of a throw (`UserStore.writing`).
    */
   takeAnnouncement(): number | null {
     const seq = this.unannounced;

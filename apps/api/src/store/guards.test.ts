@@ -52,7 +52,18 @@ describe('the per-account store', () => {
    */
   it('makes no outbound call and sees no binding but its own storage', () => {
     for (const file of walk(join(SRC, 'store'))) {
-      const text = code(file);
+      let text = code(file);
+      /*
+       * The one `fetch(` the store may contain is a handler, not a call: the object's
+       * `fetch(request)`, which the Worker forwards a WebSocket upgrade to, since a socket
+       * cannot cross RPC. Exactly that declaration, in the class module, is taken out of
+       * the text before the check; a `fetch(` anywhere else, or a second one here, fails.
+       */
+      if (rel(file) === 'store/user-store.ts') {
+        const handler = /^  override async fetch\(request: Request\): Promise<Response> \{$/gm;
+        expect(text.match(handler)?.length, 'the socket handler, declared once').toBe(1);
+        text = text.replace(handler, '');
+      }
       for (const forbidden of [/\bfetch\s*\(/, /\bBLOBS\b/, /\benv\.AI\b/, /\bAnthropic\b/, /TYPESAFE/, /RESEND/]) {
         expect(text, `${rel(file)} matches ${forbidden}`).not.toMatch(forbidden);
       }

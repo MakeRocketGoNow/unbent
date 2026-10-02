@@ -19,10 +19,12 @@ import { cloudflareTest } from '@cloudflare/vitest-plugin';
  * a local D1 and R2, and no Workers AI, so the tests need no Cloudflare login. The assets
  * directory it names may not exist in CI, which the plugin tolerates.
  *
- * `isolatedStorage` is left at its default and deliberately not relied on: measured on
- * 2026-09-29, it does not undo a SQLite-backed object's writes between tests, even after
- * the instance is evicted. Every test mints its own object name instead — see
- * test/helpers.ts.
+ * Nothing isolates storage between tests, and nothing relies on it: the older pool's
+ * `isolatedStorage` did not undo a SQLite-backed object's writes anyway (measured
+ * 2026-09-29), and this plugin has no such option at all. Every test mints its own object
+ * name instead — see test/helpers.ts. The feed's push tests open WebSockets on the
+ * object, which the older pool refused under per-file isolation; here they just work
+ * (measured 2026-10-02).
  */
 export default defineConfig({
   plugins: [

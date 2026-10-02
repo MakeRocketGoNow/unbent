@@ -449,68 +449,101 @@ export class UserStore extends DurableObject<StoreEnv> {
     this.sql.resetCounters();
   }
 
+  /**
+   * Every write passes through here: the store's method, then the push.
+   *
+   * The push is the feed's last seq, sent on every socket attached to this object, after
+   * the method — and so its transaction — has returned. A method that threw rolled its
+   * transaction back, feed row included, so what `record` noted is dropped unsent. The
+   * sockets are told nothing but the number; they pull the page themselves, which keeps
+   * the push an optimisation the feed is complete without.
+   */
+  private writing<T>(fn: () => T): T {
+    this.ready();
+    let result: T;
+    try {
+      result = fn();
+    } catch (err) {
+      this.feed.takeAnnouncement();
+      throw err;
+    }
+    this.announce();
+    return result;
+  }
+
+  private announce(): void {
+    const seq = this.feed.takeAnnouncement();
+    if (seq === null) return;
+    const message = JSON.stringify({ seq });
+    for (const ws of this.ctx.getWebSockets()) {
+      try {
+        ws.send(message);
+      } catch {
+        // Closing under us; its close event is on its way.
+      }
+    }
+  }
+
   // --- Notes: the repository, one for one -----------------------------------------------
   //
-  // Each of these is `NotesStore`'s method of the same name, behind `ready()`. They are
-  // spelled out rather than proxied so the RPC surface is a list a reader can grep, the
-  // types cross the boundary as written, and a method the object should not expose cannot
-  // leak through a wildcard.
+  // Each of these is `NotesStore`'s method of the same name, behind `ready()` — or, for a
+  // write, behind `writing()`, which announces afterwards. They are spelled out rather
+  // than proxied so the RPC surface is a list a reader can grep, the types cross the
+  // boundary as written, and a method the object should not expose cannot leak through a
+  // wildcard.
 
   list(opts: ListOptions) { this.ready(); return this.notes.list(opts); }
   listFull(opts: ListOptions) { this.ready(); return this.notes.listFull(opts); }
   count(opts: CountOptions = {}) { this.ready(); return this.notes.count(opts); }
-  recountNotes() { this.ready(); return this.notes.recountNotes(); }
+  recountNotes() { return this.writing(() => this.notes.recountNotes()); }
   get(id: string, opts?: { includeTrashed?: boolean | undefined }) { this.ready(); return this.notes.get(id, opts); }
-  create(input: Parameters<NotesStore['create']>[0]) { this.ready(); return this.notes.create(input); }
-  duplicate(id: string, newId: string) { this.ready(); return this.notes.duplicate(id, newId); }
-  update(id: string, patch: Parameters<NotesStore['update']>[1]) { this.ready(); return this.notes.update(id, patch); }
-  appendToBody(id: string, markdown: string) { this.ready(); return this.notes.appendToBody(id, markdown); }
-  remove(id: string) { this.ready(); return this.notes.remove(id); }
-  restore(id: string) { this.ready(); return this.notes.restore(id); }
-  purgeOne(id: string) { this.ready(); return this.notes.purgeOne(id); }
-  removeMany(ids: string[]) { this.ready(); return this.notes.removeMany(ids); }
-  restoreMany(ids: string[]) { this.ready(); return this.notes.restoreMany(ids); }
-  purgeMany(ids: string[]) { this.ready(); return this.notes.purgeMany(ids); }
-  updateMany(ids: string[], patch: Parameters<NotesStore['updateMany']>[1]) { this.ready(); return this.notes.updateMany(ids, patch); }
-  importNote(input: Parameters<NotesStore['importNote']>[0]) { this.ready(); return this.notes.importNote(input); }
-  setBody(id: string, body: string) { this.ready(); return this.notes.setBody(id, body); }
+  create(input: Parameters<NotesStore['create']>[0]) { return this.writing(() => this.notes.create(input)); }
+  duplicate(id: string, newId: string) { return this.writing(() => this.notes.duplicate(id, newId)); }
+  update(id: string, patch: Parameters<NotesStore['update']>[1]) { return this.writing(() => this.notes.update(id, patch)); }
+  appendToBody(id: string, markdown: string) { return this.writing(() => this.notes.appendToBody(id, markdown)); }
+  remove(id: string) { return this.writing(() => this.notes.remove(id)); }
+  restore(id: string) { return this.writing(() => this.notes.restore(id)); }
+  purgeOne(id: string) { return this.writing(() => this.notes.purgeOne(id)); }
+  removeMany(ids: string[]) { return this.writing(() => this.notes.removeMany(ids)); }
+  restoreMany(ids: string[]) { return this.writing(() => this.notes.restoreMany(ids)); }
+  purgeMany(ids: string[]) { return this.writing(() => this.notes.purgeMany(ids)); }
+  updateMany(ids: string[], patch: Parameters<NotesStore['updateMany']>[1]) { return this.writing(() => this.notes.updateMany(ids, patch)); }
+  importNote(input: Parameters<NotesStore['importNote']>[0]) { return this.writing(() => this.notes.importNote(input)); }
+  setBody(id: string, body: string) { return this.writing(() => this.notes.setBody(id, body)); }
   search(rawQuery: string, limit: number, filters: SearchFilters = {}, scopeDrivenSearchMax?: number) {
     this.ready();
     return this.notes.search(rawQuery, limit, filters, scopeDrivenSearchMax);
   }
-  purge(scope: 'trashed' | 'all', limit?: number) { this.ready(); return this.notes.purge(scope, limit); }
+  purge(scope: 'trashed' | 'all', limit?: number) { return this.writing(() => this.notes.purge(scope, limit)); }
   listTags() { this.ready(); return this.notes.listTags(); }
   sampleTitles(exclude: string, perGroup: number, tagLimit: number) { this.ready(); return this.notes.sampleTitles(exclude, perGroup, tagLimit); }
-  renameTag(id: string, name: string, opts?: { merge?: boolean | undefined }) { this.ready(); return this.notes.renameTag(id, name, opts); }
-  deleteTag(id: string) { this.ready(); return this.notes.deleteTag(id); }
+  renameTag(id: string, name: string, opts?: { merge?: boolean | undefined }) { return this.writing(() => this.notes.renameTag(id, name, opts)); }
+  deleteTag(id: string) { return this.writing(() => this.notes.deleteTag(id)); }
   countUnfiledNotes() { this.ready(); return this.notes.countUnfiledNotes(); }
   listNotebooks() { this.ready(); return this.notes.listNotebooks(); }
-  createNotebook(name: string) { this.ready(); return this.notes.createNotebook(name); }
-  updateNotebook(id: string, patch: Parameters<NotesStore['updateNotebook']>[1]) { this.ready(); return this.notes.updateNotebook(id, patch); }
-  deleteNotebook(id: string, opts?: { trashNotes?: boolean | undefined }) { this.ready(); return this.notes.deleteNotebook(id, opts); }
+  createNotebook(name: string) { return this.writing(() => this.notes.createNotebook(name)); }
+  updateNotebook(id: string, patch: Parameters<NotesStore['updateNotebook']>[1]) { return this.writing(() => this.notes.updateNotebook(id, patch)); }
+  deleteNotebook(id: string, opts?: { trashNotes?: boolean | undefined }) { return this.writing(() => this.notes.deleteNotebook(id, opts)); }
   listFields(notebookId: string, opts?: { counts?: boolean | undefined }) { this.ready(); return this.notes.listFields(notebookId, opts); }
   fieldById(id: string) { this.ready(); return this.notes.fieldById(id); }
   listAllFields() { this.ready(); return this.notes.listAllFields(); }
   createField(notebookId: string, input: { name: string; type: FieldType; options: string[]; scale?: FieldScale | null | undefined; currency?: string | null | undefined }) {
-    this.ready();
-    return this.notes.createField(notebookId, input);
+    return this.writing(() => this.notes.createField(notebookId, input));
   }
   updateField(notebookId: string, fieldId: string, patch: Parameters<NotesStore['updateField']>[2]) {
-    this.ready();
-    return this.notes.updateField(notebookId, fieldId, patch);
+    return this.writing(() => this.notes.updateField(notebookId, fieldId, patch));
   }
   previewConversion(notebookId: string, fieldId: string, to: FieldType, toScale?: FieldScale | null | undefined) {
     this.ready();
     return this.notes.previewConversion(notebookId, fieldId, to, toScale);
   }
-  reorderFields(notebookId: string, ids: string[]) { this.ready(); return this.notes.reorderFields(notebookId, ids); }
-  deleteField(notebookId: string, fieldId: string) { this.ready(); return this.notes.deleteField(notebookId, fieldId); }
+  reorderFields(notebookId: string, ids: string[]) { return this.writing(() => this.notes.reorderFields(notebookId, ids)); }
+  deleteField(notebookId: string, fieldId: string) { return this.writing(() => this.notes.deleteField(notebookId, fieldId)); }
   countOptionUsage(notebookId: string, fieldId: string, option: string) { this.ready(); return this.notes.countOptionUsage(notebookId, fieldId, option); }
   removeFieldOption(notebookId: string, fieldId: string, option: string, clear: boolean) {
-    this.ready();
-    return this.notes.removeFieldOption(notebookId, fieldId, option, clear);
+    return this.writing(() => this.notes.removeFieldOption(notebookId, fieldId, option, clear));
   }
-  importNotebook(definition: NotebookDefinition) { this.ready(); return this.notes.importNotebook(definition); }
+  importNotebook(definition: NotebookDefinition) { return this.writing(() => this.notes.importNotebook(definition)); }
 
   // --- Attachments: the repository, one for one -----------------------------------------
   //
@@ -522,12 +555,11 @@ export class UserStore extends DurableObject<StoreEnv> {
   listAttachments(noteId: string) { this.ready(); return this.attachments.listForNote(noteId); }
   ownsNote(noteId: string) { this.ready(); return this.attachments.noteIsLive(noteId); }
   availableFilename(noteId: string, desired: string) { this.ready(); return this.attachments.availableFilename(noteId, desired); }
-  recordAttachment(input: Parameters<AttachmentsStore['record']>[0]) { this.ready(); return this.attachments.record(input); }
-  removeAttachment(noteId: string, filename: string) { this.ready(); return this.attachments.remove(noteId, filename); }
-  recordText(input: Parameters<AttachmentsStore['recordText']>[0]) { this.ready(); return this.attachments.recordText(input); }
+  recordAttachment(input: Parameters<AttachmentsStore['record']>[0]) { return this.writing(() => this.attachments.record(input)); }
+  removeAttachment(noteId: string, filename: string) { return this.writing(() => this.attachments.remove(noteId, filename)); }
+  recordText(input: Parameters<AttachmentsStore['recordText']>[0]) { return this.writing(() => this.attachments.recordText(input)); }
   copyText(fromAttachmentId: string, to: { attachmentId: string; noteId: string; filename: string }) {
-    this.ready();
-    return this.attachments.copyText(fromAttachmentId, to);
+    return this.writing(() => this.attachments.copyText(fromAttachmentId, to));
   }
   needingText(limit: number, noteId?: string) { this.ready(); return this.attachments.needingText(limit, noteId); }
   needingVision(limit: number, noteId?: string) { this.ready(); return this.attachments.needingVision(limit, noteId); }
@@ -698,6 +730,53 @@ export class UserStore extends DurableObject<StoreEnv> {
         forVision: this.attachments.needingVision(filesPerNote, noteId),
       };
     });
+  }
+
+  // --- Push ------------------------------------------------------------------------------
+
+  /**
+   * `GET /changes/socket`: the Worker checks the session and forwards the upgrade here
+   * with `stub.fetch`, the one way a socket reaches an object (a WebSocket cannot cross
+   * RPC; measured 2026-10-02). Accepted through the hibernation API, so a device that is
+   * connected and idle costs the object nothing: it is evicted between events, the
+   * socket stays open at the edge, and `getWebSockets()` on the next wake still lists it.
+   * Pings are answered at the edge too (`setWebSocketAutoResponse`), without a wake.
+   *
+   * The only thing ever sent is `{"seq": N}` after a write, from `announce`. Nothing is
+   * read: the handler below ignores every message, so a client cannot ask the object
+   * for anything over the socket — the feed is a GET, session-checked in the Worker. A
+   * leaked socket therefore leaks that something changed, and nothing else.
+   *
+   * This is the one `fetch(` in `src/store/`: a handler, not a call. guards.test.ts
+   * allows exactly this declaration and no other.
+   */
+  override async fetch(request: Request): Promise<Response> {
+    if (request.headers.get('Upgrade')?.toLowerCase() !== 'websocket') {
+      return new Response('Expected a WebSocket upgrade', { status: 426 });
+    }
+    const pair = new WebSocketPair();
+    this.ctx.acceptWebSocket(pair[1]);
+    this.ctx.setWebSocketAutoResponse(new WebSocketRequestResponsePair('ping', 'pong'));
+    return new Response(null, { status: 101, webSocket: pair[0] });
+  }
+
+  /** Incoming messages are not a protocol; see `fetch`. */
+  override async webSocketMessage(): Promise<void> {}
+
+  override async webSocketClose(ws: WebSocket, code: number, reason: string): Promise<void> {
+    try {
+      ws.close(code, reason);
+    } catch {
+      // Already closed from the other side.
+    }
+  }
+
+  override async webSocketError(ws: WebSocket): Promise<void> {
+    try {
+      ws.close(1011, 'error');
+    } catch {
+      // Already closed.
+    }
   }
 
   // --- The change feed ------------------------------------------------------------------
