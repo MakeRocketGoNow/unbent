@@ -8,6 +8,58 @@ import { claimImportFor } from './import-run.js';
 import { settleWrites } from './store/library.js';
 
 /**
+ * Changes the server has not taken, when Sign out was pressed and the outbox did not
+ * drain in time — put to the person before the wipe takes them. In a store beside the
+ * failure below, for the same reason: the menu that was pressed has closed, so the
+ * question is asked by `SignOutConfirm` in the shell, with the count, and the answer
+ * comes back here.
+ */
+export interface UnsyncedQuestion {
+  count: number;
+  /** Leave anyway, and lose them. */
+  leave: () => void;
+  /** Stay signed in; the outbox keeps trying. */
+  stay: () => void;
+}
+let unsynced: UnsyncedQuestion | null = null;
+const unsyncedListeners = new Set<() => void>();
+
+function setUnsynced(next: UnsyncedQuestion | null): void {
+  unsynced = next;
+  for (const listener of unsyncedListeners) listener();
+}
+
+export function useUnsyncedQuestion(): UnsyncedQuestion | null {
+  return useSyncExternalStore(
+    (listener) => {
+      unsyncedListeners.add(listener);
+      return () => {
+        unsyncedListeners.delete(listener);
+      };
+    },
+    () => unsynced,
+    () => null,
+  );
+}
+
+/** Asks whether to leave with `count` changes unsynced; resolves with the answer. */
+function askToLeave(count: number): Promise<boolean> {
+  return new Promise((resolve) => {
+    setUnsynced({
+      count,
+      leave: () => {
+        setUnsynced(null);
+        resolve(true);
+      },
+      stay: () => {
+        setUnsynced(null);
+        resolve(false);
+      },
+    });
+  });
+}
+
+/**
  * Sign out, and land somewhere that makes sense afterwards.
  *
  * Extracted from the root layout because more than one place offers the action: the rail's
@@ -66,15 +118,18 @@ export function useSignOut(): () => void {
        Writes still waiting in the outbox go first, for a few seconds at most: the wipe
        below removes the outbox with them, and the menu offers Sign out only with a
        connection, so what waits is mid-replay and usually gone in a moment. What is still
-       waiting after that is said in the console; the person asked to leave.
+       waiting after that — the server having a bad minute — is put to the person with the
+       count, since the wipe would take it (`SignOutConfirm`); staying is the safe answer
+       and the outbox keeps trying.
     */
     void settleWrites(5000)
-      .then((left) => {
-        if (left > 0) console.warn(`[outbox] signing out with ${left} change${left === 1 ? '' : 's'} not yet synced`);
+      .then(async (left) => {
+        if (left > 0 && !(await askToLeave(left))) return 'stayed';
         return signOut();
       })
-      .then((res) => !res?.error, () => false)
+      .then((res) => (res === 'stayed' ? 'stayed' : !res?.error), () => false)
       .then(async (ended) => {
+        if (ended === 'stayed') return;
         /*
          * In a browser, a sign-out the server did not hear has not happened: the session
          * cookie is HttpOnly and only the server can end it, so clearing this page would

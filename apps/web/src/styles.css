@@ -5354,6 +5354,28 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
    left edge rather than its whole fill, so the ground stays legible and the meaning still
    shows at a glance.
 */
+/*
+   The sign-out question, in the snackbars' place: the account menu has closed by the time
+   it is asked, and this strip is the one inline spot every view shares. The confirm keeps
+   its own card; this only puts it there, on the page's own colours rather than reversed
+   out like a snackbar, since it is a question to read, not a result to glance at.
+*/
+.sign-out-confirm {
+  position: fixed;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: calc(4.5rem + env(safe-area-inset-bottom));
+  z-index: 41;
+  width: min(30rem, calc(100vw - 2rem));
+  background: var(--bg);
+  border-radius: 0.5rem;
+  box-shadow: 0 6px 20px color-mix(in srgb, var(--fg) 30%, transparent);
+}
+
+.sign-out-confirm .confirm {
+  margin: 0;
+}
+
 .snackbar {
   position: fixed;
   left: 50%;
