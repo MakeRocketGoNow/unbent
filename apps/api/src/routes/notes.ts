@@ -158,21 +158,19 @@ export const notes = new Hono<AppEnv>()
     if (!body.success) return c.json({ error: 'The copy\'s id must be a UUID' }, 400);
     const copy = await notes.duplicate(id, body.data.id ?? crypto.randomUUID());
     if (!copy) return c.json({ error: 'Not found' }, 404);
-    // The id was already a note's: a replay. Its files were copied the first time.
-    if (copy.existing) {
-      const { existing: _, ...note } = copy;
-      return c.json(note, 200);
-    }
+    const { existing, ...note } = copy;
 
+    // On a replay, copy only what the first attempt did not reach. A lost answer is often
+    // a Worker that died partway through the copy, after the note itself was committed,
+    // and a replay that returned the note as it stood would leave it short of files for
+    // good. Comparing by filename: a copy keeps its source's names.
     const files = await attachments.listForNote(id);
-    if (files.length > 0) {
-      await copyAttachments(
-        c.env.BLOBS,
-        { attachments, notes },
-        { from: id, to: copy.id, filenames: files.map((f) => f.filename) },
-      );
+    const have = existing ? new Set((await attachments.listForNote(note.id)).map((f) => f.filename)) : new Set<string>();
+    const missing = files.map((f) => f.filename).filter((f) => !have.has(f));
+    if (missing.length > 0) {
+      await copyAttachments(c.env.BLOBS, { attachments, notes }, { from: id, to: note.id, filenames: missing });
     }
-    return c.json(copy, 201);
+    return c.json(note, existing ? 200 : 201);
   })
 
   /**

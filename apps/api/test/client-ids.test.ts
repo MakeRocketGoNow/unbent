@@ -58,3 +58,24 @@ describe('POST /notes/:id/duplicate with an id', () => {
     expect(((await plain.json()) as { id: string }).id).not.toBe(copyId);
   });
 });
+
+describe('a replayed duplicate', () => {
+  it('copies the files the first attempt did not reach', async () => {
+    const source = (await (await fetch(`${BASE}/api/notes`, { method: 'POST', headers: headers(), body: JSON.stringify({ title: 'Source', body: 'b' }) })).json()) as { id: string };
+    for (const name of ['one.txt', 'two.txt']) {
+      const up = await fetch(`${BASE}/api/notes/${source.id}/files`, { method: 'PUT', headers: { Cookie: cookie, Origin: ORIGIN, 'Content-Type': 'text/plain', 'X-Filename': name }, body: `contents of ${name}` });
+      expect(up.status).toBe(201);
+    }
+    const copyId = crypto.randomUUID();
+    const made = await fetch(`${BASE}/api/notes/${source.id}/duplicate`, { method: 'POST', headers: headers(), body: JSON.stringify({ id: copyId }) });
+    expect(made.status).toBe(201);
+    const names = async () => ((await (await fetch(`${BASE}/api/notes/${copyId}/files`, { headers: headers() })).json()) as { files: Array<{ filename: string }> }).files.map((f) => f.filename).sort();
+    expect(await names()).toEqual(['one.txt', 'two.txt']);
+    // As if the first attempt died after one file: take one away, replay, and it is back.
+    expect((await fetch(`${BASE}/api/notes/${copyId}/files/two.txt`, { method: 'DELETE', headers: headers() })).status).toBe(204);
+    expect(await names()).toEqual(['one.txt']);
+    const again = await fetch(`${BASE}/api/notes/${source.id}/duplicate`, { method: 'POST', headers: headers(), body: JSON.stringify({ id: copyId }) });
+    expect(again.status).toBe(200);
+    expect(await names()).toEqual(['one.txt', 'two.txt']);
+  });
+});
