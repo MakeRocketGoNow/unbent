@@ -88,11 +88,11 @@ export class NotesRepo extends StoreRepo {
     tags: string[];
     notebook?: string | null | undefined;
     fields?: NoteFieldsPatch | undefined;
-  }): Promise<Note> {
+  }): Promise<Note & { existing?: true }> {
     return this.call((s) => s.create(input));
   }
 
-  duplicate(id: string, newId: string): Promise<Note | null> {
+  duplicate(id: string, newId: string): Promise<(Note & { existing?: true }) | null> {
     return this.call((s) => s.duplicate(id, newId));
   }
 

@@ -406,12 +406,24 @@ export const copyAttachmentsSchema = z.object({
 });
 
 export const createNoteSchema = z.object({
+  /**
+   * The id the note should have, chosen by the client. A note made offline needs its
+   * address before the server has heard of it, and a replayed request must not make a
+   * second note: an id already held answers with the note that holds it, whatever its
+   * state, rather than creating. Absent, the server mints one, as it always did.
+   */
+  id: z.string().uuid().optional(),
   title: z.string().max(MAX_TITLE_LENGTH).default(''),
   body: z.string().max(MAX_BODY_BYTES).default(''),
   tags: z.array(tagNameSchema).max(100).default([]),
   notebook: notebookNameSchema.nullable().optional(),
   /** Custom field values by field id. See `noteFieldsPatchSchema`. */
   fields: noteFieldsPatchSchema.optional(),
+});
+
+/** `POST /notes/:id/duplicate`'s body, which may be absent: the copy's id, for the same reason as `createNoteSchema.id`. */
+export const duplicateNoteSchema = z.object({
+  id: z.string().uuid().optional(),
 });
 
 export const updateNoteSchema = z.object({

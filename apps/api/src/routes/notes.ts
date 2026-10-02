@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import { zValidator } from '@hono/zod-validator';
 import {
   createNoteSchema,
+  duplicateNoteSchema,
   InvalidFieldValue,
   listNotesQuerySchema,
   noteBatchSchema,
@@ -84,11 +85,15 @@ export const notes = new Hono<AppEnv>()
     });
   })
 
+  /**
+   * 201 with the note, or 200 with the note that already holds the id the client chose
+   * — a replay of a request whose answer was lost, which must not make a second note.
+   */
   .post('/notes', zValidator('json', createNoteSchema), async (c) => {
-    const input = c.req.valid('json');
+    const { id, ...input } = c.req.valid('json');
     try {
-      const note = await c.get('notes').create({ id: crypto.randomUUID(), ...input });
-      return c.json(note, 201);
+      const { existing, ...note } = await c.get('notes').create({ id: id ?? crypto.randomUUID(), ...input });
+      return c.json(note, existing ? 200 : 201);
     } catch (err) {
       if (err instanceof InvalidFieldValue) return c.json({ error: fieldError(err) }, 400);
       throw err;
@@ -147,8 +152,17 @@ export const notes = new Hono<AppEnv>()
     const id = c.req.param('id');
     const notes = c.get('notes');
     const attachments = c.get('attachments');
-    const copy = await notes.duplicate(id, crypto.randomUUID());
+    // The body is optional — the copy's id, chosen by the client for the reason
+    // `createNoteSchema.id` gives — so it is read by hand rather than required.
+    const body = duplicateNoteSchema.safeParse(await c.req.json().catch(() => ({})));
+    if (!body.success) return c.json({ error: 'The copy\'s id must be a UUID' }, 400);
+    const copy = await notes.duplicate(id, body.data.id ?? crypto.randomUUID());
     if (!copy) return c.json({ error: 'Not found' }, 404);
+    // The id was already a note's: a replay. Its files were copied the first time.
+    if (copy.existing) {
+      const { existing: _, ...note } = copy;
+      return c.json(note, 200);
+    }
 
     const files = await attachments.listForNote(id);
     if (files.length > 0) {

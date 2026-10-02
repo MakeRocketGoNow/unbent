@@ -604,6 +604,12 @@ export class NotesStore {
    * One transaction for the note, its tags and its values: a bad field value throws
    * before anything is written (it is validated first, as it always was), and a failure
    * after the insert now takes the insert with it rather than leaving a half-made note.
+   *
+   * An id already held answers with the note that holds it, marked `existing`, trashed
+   * or not, and writes nothing. Ids come from the client now as well as the server — a
+   * note made offline has its address before the server hears of it — and a request the
+   * client replays after a dropped answer must find its note rather than make a second.
+   * The marker is the caller's to strip; nothing stores it.
    */
   create(input: {
     id: string;
@@ -612,8 +618,9 @@ export class NotesStore {
     tags: string[];
     notebook?: string | null | undefined;
     fields?: NoteFieldsPatch | undefined;
-  }): Note {
+  }): Note & { existing?: true } {
     return this.sql.tx(() => {
+      if (this.idTaken(input.id)) return { ...this.get(input.id, { includeTrashed: true })!, existing: true };
       const now = Date.now();
       // Validated before the insert, so a bad value leaves no half-made note behind.
       const fieldWrites = input.fields ? this.prepareFieldWrites(input.id, input.fields) : [];
@@ -662,7 +669,7 @@ export class NotesStore {
    * "(copy)": the duplicate is opened at once, so which is which is never in doubt, and
    * a name the user did not choose is one they would only have to remove.
    */
-  duplicate(id: string, newId: string): Note | null {
+  duplicate(id: string, newId: string): (Note & { existing?: true }) | null {
     return this.sql.tx(() => {
       const source = this.get(id);
       if (!source) return null;
