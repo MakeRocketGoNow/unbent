@@ -1,10 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createCollection, type Collection } from '@tanstack/db';
+import { QueryClient } from '@tanstack/react-query';
 import type { FeedNote, Note } from '@unbent/shared';
 import * as api from '../notes-api.js';
 import { ApiError, NoteChangedError, OfflineError } from '../notes-api.js';
 import { resetConnectivity } from '../connectivity.js';
 import { seedFrom } from '../note-patch.js';
+import { installLibraryQueries, keys } from '../queries.js';
 import * as actions from './actions.js';
 import { createOutbox, provideLibrary, type WritableLibrary } from './actions.js';
 import { lookups, toNote } from './derive.js';
@@ -435,6 +437,22 @@ describe('a tab that does not hold the outbox', () => {
 });
 
 describe('the no-library path', () => {
+  it('tells the queries about a write, since nothing else would', async () => {
+    provideLibrary(async () => null);
+    const client = new QueryClient();
+    const invalidate = vi.spyOn(client, 'invalidateQueries');
+    const stop = installLibraryQueries(client);
+    vi.mocked(api.deleteNote).mockResolvedValueOnce(undefined);
+    await actions.trashNote('n1');
+    expect(invalidate).toHaveBeenCalledTimes(1);
+    const { predicate } = invalidate.mock.calls[0]![0] as { predicate: (q: { queryKey: readonly unknown[] }) => boolean };
+    expect(predicate({ queryKey: keys.notes({}) })).toBe(true);
+    expect(predicate({ queryKey: keys.trash() })).toBe(true);
+    expect(predicate({ queryKey: keys.notebooks() })).toBe(true);
+    expect(predicate({ queryKey: keys.search('x') })).toBe(false);
+    stop();
+  });
+
   it('does the request and answers with the server’s copy', async () => {
     provideLibrary(async () => null);
     const base: Note = { id: 'n1', title: 'old', body: '', tags: [], notebook: null, createdAt: 1, updatedAt: 100, fields: [] };

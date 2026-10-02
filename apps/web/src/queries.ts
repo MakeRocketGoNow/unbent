@@ -9,6 +9,7 @@ import * as api from './notes-api.js';
 import { ApiError, OfflineError } from './notes-api.js';
 import { count, list, lookups, notebookFields, notebookList, tagSummaries, toAttachmentInfo, toNote, type Snapshot } from './store/derive.js';
 import { currentLibrary, onLibraryChange, type ReadableLibrary as Library } from './store/library.js';
+import { onDirectWrite } from './store/actions.js';
 
 /**
  * Query definitions, colocated with their keys.
@@ -63,12 +64,22 @@ const PAGE = 50;
  * applied, a write landing locally, a replay settling. One invalidation per change,
  * coalesced by the library, and the query functions read in-memory rows, so a change
  * is on screen on the next frame. Installed once, beside the client.
+ *
+ * And whenever a write was made as a request instead — on a device with no library, or
+ * in a tab that does not hold the outbox — since there the same queries ask the server,
+ * and nothing else would tell them a note was trashed or a title changed.
  */
 export function installLibraryQueries(queryClient: QueryClient): () => void {
   const roots = new Set(['notes', 'note', 'trash', 'tags', 'notebooks', 'notebook-fields', 'attachments']);
-  return onLibraryChange(() => {
+  const refetch = () => {
     void queryClient.invalidateQueries({ predicate: ({ queryKey }) => roots.has(String(queryKey[0])) });
-  });
+  };
+  const stopLibrary = onLibraryChange(refetch);
+  const stopDirect = onDirectWrite(refetch);
+  return () => {
+    stopLibrary();
+    stopDirect();
+  };
 }
 
 export interface NoteFilter {

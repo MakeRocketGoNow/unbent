@@ -378,14 +378,29 @@ async function queueable(): Promise<WritableLibrary | null> {
   return lib && durable(lib) ? lib : null;
 }
 
+const directListeners = new Set<() => void>();
+
 /**
- * After a write made as a request in a tab that has a library but does not queue: the
- * server's copy, brought to the local copy now rather than on the next nudge, so the row
- * on screen agrees with the answer. Nothing to wait for; the library is already right
- * about every row this did not touch.
+ * Hears every write made as a request rather than queued: on a device with no library,
+ * and in a tab that does not hold the outbox. The queries follow the library when there
+ * is one; with none, nothing else tells the list that a note was trashed or a title
+ * changed, so the query bridge listens here as well and refetches what a write reaches
+ * (review of #232, where the list kept a trashed note on such a device).
+ */
+export function onDirectWrite(listener: () => void): () => void {
+  directListeners.add(listener);
+  return () => void directListeners.delete(listener);
+}
+
+/**
+ * After a write made as a request: whoever follows direct writes hears of it, and in a
+ * tab that has a library but does not queue, the server's copy is brought to the local
+ * copy now rather than on the next nudge, so the row on screen agrees with the answer.
+ * Nothing to wait for; the library is already right about every row this did not touch.
  */
 async function pulled<T>(write: Promise<T>): Promise<T> {
   const out = await write;
+  directListeners.forEach((l) => l());
   const lib = await resolve();
   if (lib) void lib.engine.pull();
   return out;
