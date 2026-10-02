@@ -826,8 +826,10 @@ describe('rows read on an archive-sized store', () => {
       'search one letter': 2500,
       'search in a small tag': 80,
       'search rows in a notebook': 1500,
-      'trash one': 12,
-      'trash many': 40,
+      // A write reads its feed row back in (the insert counts one), the counter, and the
+      // oldest row for the age prune: three more for one note, five for three (2026-10-02).
+      'trash one': 20,
+      'trash many': 50,
       'get trashed': 10,
     };
     for (const r of results) {
