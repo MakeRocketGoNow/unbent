@@ -183,6 +183,11 @@ export default defineConfig({
       '/api': {
         target: `http://127.0.0.1:${API_PORT}`,
         changeOrigin: false,
+        // The change feed's push is a WebSocket at /api/changes/socket, and the proxy
+        // forwards an upgrade only when told to; without this the socket never opens in
+        // development, while in production the Worker serves the page itself and there
+        // is no proxy to cross.
+        ws: true,
       },
       // The analytics beacon takes the same path through the Worker in development as it
       // does in production; without this the SPA fallback answers with index.html and the
