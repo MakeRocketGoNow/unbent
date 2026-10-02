@@ -4,22 +4,39 @@ import { useLibraryPresence } from './use-outbox.js';
 import type { FeedState } from './feed.js';
 
 /**
+ * How long the store may take to open before the line says it is opening. A warm open on
+ * a fast device takes under a hundred milliseconds, and a line that blinked on every one
+ * of those would be the jank; a first open, or a phone, takes long enough to be told.
+ */
+const OPENING_GRACE_MS = 250;
+
+/**
  * Whether the library is still arriving on this device, and how: `'opening'` while the
  * store opens — on a first open that is the persistence worker, a 1.7 MB chunk, fetched
  * and booted, several seconds on a phone — then `'copying'` while the first snapshot
  * walk runs, with its count. Null once the copy is on the device, and on a device that
  * keeps none. What the status line and the list's empty state read: an empty app with
  * no word about it was what the first open looked like (seen on a phone, 2026-10-02).
+ * The opening stage is reported only once it has lasted the grace period; the copy, real
+ * work with a count, at once.
  */
 export function useLibraryArriving(): { stage: 'opening' | 'copying'; applied: number; total: number | null } | null {
   const presence = useLibraryPresence();
   const state = useFeedState();
-  if (presence === 'opening') return { stage: 'opening', applied: 0, total: null };
-  if (presence === 'open' && state?.phase === 'hydrating') return { stage: 'copying', applied: state.applied, total: state.total };
   // Open, but the engine has not read its cursor yet: between the store opening and the
-  // first page, a gap the line would otherwise blink out of. A warm open passes through
-  // this for the one read of the cursor and no longer.
-  if (presence === 'open' && state?.phase === 'starting' && state.cursor === null && state.pulls === 0) return { stage: 'opening', applied: 0, total: null };
+  // first page, a gap the line would otherwise blink out of.
+  const opening = presence === 'opening' || (presence === 'open' && state?.phase === 'starting' && state.cursor === null && state.pulls === 0);
+  const [openingLong, setOpeningLong] = useState(false);
+  useEffect(() => {
+    if (!opening) {
+      setOpeningLong(false);
+      return;
+    }
+    const timer = setTimeout(() => setOpeningLong(true), OPENING_GRACE_MS);
+    return () => clearTimeout(timer);
+  }, [opening]);
+  if (presence === 'open' && state?.phase === 'hydrating') return { stage: 'copying', applied: state.applied, total: state.total };
+  if (opening && openingLong) return { stage: 'opening', applied: 0, total: null };
   return null;
 }
 
