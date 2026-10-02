@@ -6,6 +6,8 @@ import type { FieldDef, FieldType, FieldValue, Note } from '@unbent/shared';
 import { localizeImageLinks, remoteImageUrls } from '@unbent/shared';
 import * as api from '../notes-api.js';
 import { isOfflineError, isStatus, servedFromCache } from '../notes-api.js';
+import * as actions from '../store/actions.js';
+import { useOutbox, useSyncStatus } from '../store/use-outbox.js';
 import { useOffline } from '../connectivity.js';
 import {
   buildNotePatch,
@@ -310,8 +312,8 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
    */
   const frozen = locked || conflicted;
 
-  /** Set by "Keep mine": the next save of this note goes against this copy instead. */
-  const keepMine = useRef<{ id: string; updatedAt: number } | null>(null);
+  const outbox = useOutbox();
+  const sync = useSyncStatus();
 
   /*
      Leaving a note with the question unanswered drops what was typed there, as Reload
@@ -325,10 +327,39 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
   useEffect(() => {
     if (!conflict || conflict.id === noteId) return;
     discard();
-    keepMine.current = null;
+    outbox?.resolveConflict(conflict.id);
     setConflict(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [noteId]);
+
+  /*
+     A conflict can arrive long after the save that caused it: the save was taken by the
+     local copy at once and went to the server later, from the outbox, and the refusal
+     comes back from there. By id, so one for another note waits for that note.
+  */
+  useEffect(() => {
+    if (!outbox) return;
+    return outbox.subscribe((status) => {
+      const current = status.conflicts.get(noteId);
+      if (current) setConflict({ id: noteId, current });
+    });
+  }, [outbox, noteId]);
+
+  /*
+     The server's copy after a save of this note went through: the base the next save is
+     made against. Reseeded only when nothing has been typed since and the copy differs
+     from the draft — the server normalised something — so typing is never disturbed.
+  */
+  useEffect(() => {
+    if (!outbox) return;
+    return outbox.onAcknowledged((id, updated) => {
+      bases.current.set(id, updated);
+      if (id !== noteId) return;
+      const clean = saveStateRef.current === 'idle' || saveStateRef.current === 'saved';
+      if (clean && JSON.stringify(seedFrom(updated)) !== JSON.stringify(draftRef.current)) reseed(updated, draftRef.current.body);
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [outbox, noteId]);
 
   /**
    * Re-seeds the open note from a copy of it the server just gave, rebuilding the editor
@@ -411,91 +442,34 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
     const base = bases.current.get(noteId);
     if (!note || !base) return 'unchanged';
     /*
-       Only the keys that actually changed, and only field values the type can store.
-       Sending the whole draft used to 400 a body save on a half-typed number, and to
-       write the stale title back over a rename the phone had already saved — see
-       `buildNotePatch`. Nothing storeable is a successful no-op: the debounce fired
-       because the draft moved, but the movement was not yet a value the server can hold.
-
-       Reported as 'unchanged' rather than returning bare, so the head does not flash
-       "Saved" for a save that never left the browser — a space typed and deleted is the
-       ordinary way to get here.
+       The draft against the copy it came from: the save lands on the local copy at once
+       and goes to the server from the outbox, with the base's date as its precondition,
+       so a save made after another device saved this note is refused rather than
+       written over it (MAK-113). The refusal, when there is one, comes back through the
+       outbox's conflicts and the effect above; "Keep mine" sends the draft again against
+       the copy the refusal brought. 'unchanged' when nothing the server can hold differs
+       from the base — a space typed and deleted — so the head does not flash "Saved".
     */
-    const patch = buildNotePatch(value, base, knownFieldDefs);
-    if (!patch) return 'unchanged';
-
-    /*
-       Against the copy the draft came from, so a save made after another device saved
-       this note is refused rather than written over it (MAK-113). "Keep mine" sends it
-       again against the copy the refusal brought back, which is still a precondition:
-       a third save landing while the choice was on screen is refused in turn.
-    */
-    const choosing = keepMine.current?.id === noteId ? keepMine.current : null;
-    let updated: Note;
+    let outcome: Awaited<ReturnType<typeof actions.saveNote>>;
     try {
-      updated = await api.updateNote(noteId, { ...patch, ifUpdatedAt: choosing?.updatedAt ?? base.updatedAt });
+      outcome = await actions.saveNote({ noteId, value, base });
     } catch (err) {
+      // No local copy on this device, so the server answered the save itself, and refused
+      // it: the same choice, put the same way, now.
       if (!api.isNoteChanged(err)) throw err;
-      /*
-         Refused after the note was left: the last edit queued behind a slow save, and
-         another device saved the note meanwhile. There is no one on that note to ask, so
-         the edit goes, as leaving a note with the question open drops it — raising the
-         conflict anyway put a red "Not saved" on the note now open and a notice on this
-         one for whenever it was next opened. The newer copy goes into the cache instead,
-         so that is what reopening it shows. 'unchanged' because nothing was written.
-      */
-      const left = (current: Note) => {
-        queryClient.setQueryData(keys.note(noteId), current);
-        return 'unchanged' as const;
-      };
-      // Nothing of theirs would be lost — see `holdsTheirChanges` — so this is a date that
-      // moved, not a choice to put to anyone.
-      if (!choosing && holdsTheirChanges(value, base, err.current)) {
-        try {
-          updated = await api.updateNote(noteId, { ...patch, ifUpdatedAt: err.current.updatedAt });
-        } catch (again) {
-          // A third save landed between the two. That one is a choice, put the same way as
-          // a first refusal: let through bare, it left a red "Not saved" with no notice and
-          // the inputs still open.
-          if (!api.isNoteChanged(again)) throw again;
-          if (noteIdRef.current !== noteId) return left(again.current);
-          setConflict({ id: noteId, current: again.current });
-          throw again;
-        }
-      } else {
-        // A "Keep mine" refused in turn asks again, against the newer copy it brought back.
-        keepMine.current = null;
-        if (noteIdRef.current !== noteId) return left(err.current);
-        setConflict({ id: noteId, current: err.current });
-        throw err;
+      if (noteIdRef.current !== noteId) {
+        queryClient.setQueryData(keys.note(noteId), err.current);
+        return 'unchanged';
       }
+      setConflict({ id: noteId, current: err.current });
+      throw err;
     }
-    bases.current.set(noteId, updated);
-    queryClient.setQueryData(keys.note(noteId), updated);
-    if (choosing) {
-      // Kept: the note is now this draft plus whatever of theirs the draft never touched —
-      // a title renamed elsewhere survives a body kept here — so the editor shows that.
-      keepMine.current = null;
-      setConflict(null);
-      reseed(updated, value.body);
+    if (outcome === 'unchanged') return 'unchanged';
+    if (typeof outcome === 'object') {
+      bases.current.set(noteId, outcome);
+      queryClient.setQueryData(keys.note(noteId), outcome);
     }
-    // The lists get the saved row rather than a refetch of every page they hold — see
-    // `applySaveToLists`, which refetches only a list the save may have moved it in or out of.
-    applySaveToLists(queryClient, updated, {
-      title: patch.title !== undefined,
-      notebook: patch.notebook !== undefined,
-      tags: patch.tags !== undefined,
-      fields: patch.fields !== undefined,
-    });
-    /*
-     * The sidebar's counts only when this save could have moved them — the same rule the
-     * phone's editor already keeps. Both lists count across the whole archive, and this
-     * runs on every pause in typing: refetching them for a body edit cost tens of
-     * thousands of rows read per save on a large archive, for numbers that could not
-     * have changed.
-     */
-    if (patch.notebook !== undefined) void queryClient.invalidateQueries({ queryKey: keys.notebooks() });
-    if (patch.tags) void queryClient.invalidateQueries({ queryKey: keys.tags() });
+    return undefined;
   }
 
   const editing = note !== undefined && !readOnly && draftFor === noteId;
@@ -547,17 +521,38 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
   function takeTheirs() {
     if (!conflict) return;
     discard();
-    keepMine.current = null;
+    outbox?.resolveConflict(conflict.id);
+    bases.current.set(conflict.id, conflict.current);
     setConflict(null);
     reseed(conflict.current, draftRef.current.body);
-    applySaveToLists(queryClient, conflict.current, { title: true, notebook: true, tags: true, fields: true });
   }
 
-  /** Keep mine: this draft saved over the version the refusal brought back. */
+  /**
+   * Keep mine: this draft saved over the version the refusal brought back — against that
+   * version, which is still a precondition: a third save landing meanwhile is refused in
+   * turn, and the notice comes back. The draft keeps whatever of theirs it never touched.
+   */
   function keepOurs() {
     if (!conflict) return;
-    keepMine.current = { id: conflict.id, updatedAt: conflict.current.updatedAt };
-    void flush();
+    const theirs = conflict.current;
+    const id = conflict.id;
+    const base = bases.current.get(id);
+    if (!base) return;
+    outbox?.resolveConflict(id);
+    setConflict(null);
+    // Diffed against the copy the draft came from — only what was typed here — and
+    // preconditioned on theirs, so it lands on top of their version rather than over it.
+    void actions.saveNote({ noteId: id, value: draftRef.current, base, against: theirs.updatedAt }).then(
+      (outcome) => {
+        if (typeof outcome !== 'object') return;
+        bases.current.set(id, outcome);
+        queryClient.setQueryData(keys.note(id), outcome);
+        if (noteIdRef.current === id) reseed(outcome, draftRef.current.body);
+      },
+      (err: unknown) => {
+        if (api.isNoteChanged(err) && noteIdRef.current === id) setConflict({ id, current: err.current });
+      },
+    );
   }
 
   /*
@@ -573,22 +568,39 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
   */
   const saveStateRef = useRef(saveState);
   saveStateRef.current = saveState;
+  /*
+     Coming back to the tab is the usual moment another device has saved this note: the
+     phone was in use while the tab sat in the background. The library pulls the feed on
+     the same event, and the queries follow the library, but a read of the copy is cheap
+     and this is the one moment it should not wait for anything.
+  */
   useEffect(() => {
     if (!editing) return;
-    const clean = () => saveStateRef.current === 'idle' || saveStateRef.current === 'saved';
-    const onShow = async () => {
-      if (document.visibilityState !== 'visible' || !clean()) return;
-      const before = draftRef.current;
-      const { data: fresh } = await refetch();
-      const base = bases.current.get(noteId);
-      if (!fresh || !base || servedFromCache(fresh) || fresh.updatedAt === base.updatedAt) return;
-      if (draftRef.current !== before || !clean()) return;
-      reseed(fresh, before.body);
+    const onShow = () => {
+      const clean = saveStateRef.current === 'idle' || saveStateRef.current === 'saved';
+      if (document.visibilityState === 'visible' && clean) void refetch();
     };
     document.addEventListener('visibilitychange', onShow);
     return () => document.removeEventListener('visibilitychange', onShow);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editing, noteId]);
+  useEffect(() => {
+    if (!editing || !note || conflicted) return;
+    const clean = saveStateRef.current === 'idle' || saveStateRef.current === 'saved';
+    const base = bases.current.get(noteId);
+    if (!base || note.updatedAt === base.updatedAt) return;
+    /*
+       Another device saved this note and the feed has brought its copy. With nothing
+       typed here since the last save the copy simply replaces the draft, and the first
+       keystroke is made on top of it rather than refused for having been made against
+       the old one. Typing in progress is left alone: the precondition settles it at its
+       save, and the notice if need be.
+    */
+    if (!clean) return;
+    bases.current.set(noteId, note);
+    if (JSON.stringify(seedFrom(note)) !== JSON.stringify(draftRef.current)) reseed(note, draftRef.current.body);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editing, noteId, note?.updatedAt, conflicted]);
 
   /*
      The connection back: a save that failed for want of one — typing that landed in the
@@ -629,11 +641,20 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
      banner has said why; this says what it means for this note.
   */
   const unsavedOffline = saveState === 'error' && offline;
+  /*
+     "Saved" is the local copy's word now; the server's comes after, from the outbox.
+     While a save of any note waits there the head says so, and offline it says what
+     will happen, so nobody closes the tab on a word that meant less than it seemed.
+  */
   const saveLabel = unsavedOffline
     ? 'Not saved — offline'
     : holdingField && saveState === 'saved'
       ? SAVE_LABEL.dirty
-      : SAVE_LABEL[saveState];
+      : saveState === 'saved' && sync.pending > 0
+        ? offline
+          ? 'Saved here — syncs when online'
+          : 'Saved · syncing…'
+        : SAVE_LABEL[saveState];
 
   /**
    * Adds a definition to the note's notebook from the note itself. The definitions
@@ -706,12 +727,10 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
   );
 
   async function removeNote() {
-    await api.deleteNote(noteId);
-    await queryClient.invalidateQueries({ queryKey: ['notes'] });
-    void queryClient.invalidateQueries({ queryKey: ['trash'] });
-    // Invalidate search results so a deleted note disappears from any active search.
+    await actions.trashNote(noteId);
+    // The lists and counts follow the local copy; a search is the server's, so it is
+    // asked again for a note that is no longer in it.
     void queryClient.invalidateQueries({ queryKey: ['search'] });
-    invalidateNoteMembership(queryClient);
     void navigate({ to: '/notes', search: (p) => p });
   }
 
@@ -721,10 +740,8 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
    */
   async function duplicateNote() {
     await flush();
-    const copy = await api.duplicateNote(noteId);
-    void queryClient.invalidateQueries({ queryKey: ['notes'] });
+    const copy = await actions.duplicateNote(noteId);
     void queryClient.invalidateQueries({ queryKey: ['search'] });
-    invalidateNoteMembership(queryClient);
     void navigate({ to: '/notes/$noteId', params: { noteId: copy.id }, search: (p) => p });
   }
 

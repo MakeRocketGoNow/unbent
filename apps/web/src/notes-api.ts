@@ -238,6 +238,8 @@ export async function getNote(id: string): Promise<Note> {
 }
 
 export async function createNote(input: {
+  /** An id chosen here, so a note made offline has its address; see `createNoteSchema.id`. */
+  id?: string;
   title?: string;
   body?: string;
   tags?: string[];
@@ -318,10 +320,13 @@ export async function autofillNote(id: string): Promise<AutofillSuggestion> {
   );
 }
 
-/** A new note with this one's title, body, filing and files. */
-export async function duplicateNote(id: string): Promise<Note> {
+/** A new note with this one's title, body, filing and files, under `copyId` when given. */
+export async function duplicateNote(id: string, copyId?: string): Promise<Note> {
   return json<Note>(
-    await request(`/api/notes/${encodeURIComponent(id)}/duplicate`, { method: 'POST' }),
+    await request(`/api/notes/${encodeURIComponent(id)}/duplicate`, {
+      method: 'POST',
+      ...(copyId ? { headers: jsonHeaders, body: JSON.stringify({ id: copyId }) } : {}),
+    }),
   );
 }
 

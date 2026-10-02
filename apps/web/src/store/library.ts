@@ -2,6 +2,7 @@ import { ApiError, request } from '../notes-api.js';
 import { offlineNow, recheck, subscribeConnectivity } from '../connectivity.js';
 import { openLocalStore, closeLocalStore } from './db.js';
 import { createCollections, cursorStore, type Collections } from './collections.js';
+import { createOutbox, provideLibrary, type Outbox } from './actions.js';
 import { FeedEngine, type FeedState } from './feed.js';
 
 /**
@@ -17,6 +18,8 @@ import { FeedEngine, type FeedState } from './feed.js';
 export interface Library extends Collections {
   userId: string;
   engine: FeedEngine;
+  /** The writes made here the server has not taken yet, and the conflicts waiting on a choice. */
+  outbox: Outbox;
   /** The engine's state, for the hydration line and the offline banner. */
   subscribe: (listener: (state: FeedState) => void) => () => void;
   state: () => FeedState;
@@ -29,6 +32,15 @@ export type ReadableLibrary = Pick<Library, 'notes' | 'notebooks' | 'tags' | 'at
 
 let current: { userId: string; library: Promise<Library> } | null = null;
 let forTests: ReadableLibrary | null = null;
+
+provideLibrary(async () => {
+  if (forTests || !current) return null;
+  try {
+    return await current.library;
+  } catch {
+    return null;
+  }
+});
 
 /** The library open now, or null before anyone has signed in on this tab. */
 export function currentLibrary(): Promise<ReadableLibrary> | null {
@@ -61,6 +73,13 @@ export function acquireLibrary(userId: string): Promise<Library> {
     return open(userId);
   })();
   current = { userId, library };
+  library.catch((err) => {
+    // A browser without the origin-private file system, or one refusing it in a private
+    // window: there is no local copy here, and the queries read the server instead (see
+    // `queries.ts`). Said once in the console; the next sign-in tries again.
+    console.warn('[library] not available on this device; reading from the server instead:', err);
+    if (current?.library === library) current = null;
+  });
   return library;
 }
 
@@ -154,10 +173,14 @@ async function open(userId: string): Promise<Library> {
   };
   connect();
 
+  const outbox = createOutbox(userId, { ...collections, userId, engine });
+  await outbox.executor.waitForInit();
+
   return {
     ...collections,
     userId,
     engine,
+    outbox,
     subscribe: (listener) => {
       listeners.add(listener);
       if (latest) listener(latest);
@@ -173,6 +196,7 @@ async function open(userId: string): Promise<Library> {
       unsubscribeConnectivity();
       if (reconnect) clearTimeout(reconnect);
       socket?.close();
+      outbox.dispose();
       await engine.settled();
       for (const s of subscriptions) s.unsubscribe();
       if (collections) {

@@ -34,8 +34,11 @@ import {
  * so a test can hold each rule without a database.
  */
 
+/** The feed's note, with what an optimistic write may add; see `LocalNote` in collections.ts. */
+export type LocalNote = FeedNote & { notebookName?: string | null; tagNames?: string[] };
+
 export interface Snapshot {
-  notes: Iterable<FeedNote>;
+  notes: Iterable<LocalNote>;
   notebooks: Iterable<FeedNotebook>;
   tags: Iterable<FeedTag>;
   attachments: Iterable<FeedAttachment>;
@@ -72,12 +75,16 @@ export function lookups(s: Snapshot): Lookups {
 
 const byNameNoCase = (a: string, b: string) => a.localeCompare(b, undefined, { sensitivity: 'base' }) || (a < b ? -1 : a > b ? 1 : 0);
 
-/** A note's tags as names, sorted as `get` returns them. */
-export function tagNames(note: FeedNote, l: Lookups): string[] {
-  return note.tagIds
-    .map((id) => l.tags.get(id)?.name)
-    .filter((n): n is string => n !== undefined)
-    .sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
+/** A note's tags as names, sorted as `get` returns them; a write made here names them itself. */
+export function tagNames(note: LocalNote, l: Lookups): string[] {
+  const names = note.tagNames ?? note.tagIds.map((id) => l.tags.get(id)?.name).filter((n): n is string => n !== undefined);
+  return [...names].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
+}
+
+/** A note's notebook's name: what a write made here said, else the notebook the id names. */
+export function notebookName(note: LocalNote, l: Lookups): string | null {
+  if (note.notebookName !== undefined) return note.notebookName;
+  return note.notebookId ? (l.notebooks.get(note.notebookId)?.name ?? null) : null;
 }
 
 /**
@@ -103,19 +110,19 @@ export function fieldValues(note: FeedNote, l: Lookups): NoteFieldValue[] {
 }
 
 /** The whole note, as `GET /notes/:id` returns it. */
-export function toNote(note: FeedNote, l: Lookups): Note {
-  const { tagIds: _tagIds, files: _files, fields: _fields, ...rest } = note;
+export function toNote(note: LocalNote, l: Lookups): Note {
+  const { tagIds: _tagIds, files: _files, fields: _fields, tagNames: _tagNames, notebookName: _notebookName, ...rest } = note;
   const fields = fieldValues(note, l);
   return {
     ...rest,
     tags: tagNames(note, l),
-    notebook: note.notebookId ? (l.notebooks.get(note.notebookId)?.name ?? null) : null,
+    notebook: notebookName(note, l),
     ...(fields.length > 0 ? { fields } : {}),
   };
 }
 
 /** The list row, as `GET /notes` returns it. */
-export function toSummary(note: FeedNote, l: Lookups): NoteSummary {
+export function toSummary(note: LocalNote, l: Lookups): NoteSummary {
   const { body, ...whole } = toNote(note, l);
   const attachments = (l.filesByNote.get(note.id) ?? []).map((f) => ({ filename: f.filename, contentType: f.contentType }));
   return {
@@ -145,7 +152,7 @@ export interface ListOrdering {
 }
 
 /** The date a row shows under a sort, which is the date a range filters; see `SORTS` on the server. */
-function dateOf(note: FeedNote, sort: NoteSort, byField: boolean, trashed: boolean): number {
+function dateOf(note: LocalNote, sort: NoteSort, byField: boolean, trashed: boolean): number {
   if (trashed) return note.deletedAt ?? note.updatedAt;
   if (byField || sort === 'title' || sort === 'updated') return note.updatedAt;
   return note.createdAt;
@@ -156,17 +163,17 @@ function dateOf(note: FeedNote, sort: NoteSort, byField: boolean, trashed: boole
  * one predicate. The notebook by name case-insensitively, tags ANDed by name, each
  * field filter against the value held, the date range inclusive on the sort's date.
  */
-export function matches(note: FeedNote, filter: ListFilter, ordering: ListOrdering, l: Lookups): boolean {
+export function matches(note: LocalNote, filter: ListFilter, ordering: ListOrdering, l: Lookups): boolean {
   const trashed = !!filter.trashed;
   if (trashed ? note.deletedAt === undefined : note.deletedAt !== undefined) return false;
   const sort = ordering.sort ?? DEFAULT_NOTE_SORT;
   const date = dateOf(note, sort, !!ordering.sortField, trashed);
   if (filter.from && date < startOfDay(filter.from)) return false;
   if (filter.to && date > endOfDay(filter.to)) return false;
+  const name = notebookName(note, l);
   if (filter.notebook === UNFILED) {
-    if (note.notebookId) return false;
+    if (name) return false;
   } else if (filter.notebook) {
-    const name = note.notebookId ? l.notebooks.get(note.notebookId)?.name : undefined;
     if (!name || name.localeCompare(filter.notebook, undefined, { sensitivity: 'accent' }) !== 0) return false;
   }
   if (filter.tag && filter.tag.length > 0) {
@@ -222,7 +229,7 @@ export function comparator(ordering: ListOrdering, trashed: boolean, sortField: 
   const sort = ordering.sort ?? DEFAULT_NOTE_SORT;
   const descending = trashed || (ordering.order ?? 'desc') === 'desc';
   const dir = descending ? -1 : 1;
-  return (a: FeedNote, b: FeedNote): number => {
+  return (a: LocalNote, b: LocalNote): number => {
     let c: number;
     if (trashed) {
       c = (a.deletedAt ?? 0) - (b.deletedAt ?? 0);
@@ -251,7 +258,7 @@ export function comparator(ordering: ListOrdering, trashed: boolean, sortField: 
 /** A list, filtered and ordered, as summaries; the whole list, which the caller pages. */
 export function list(s: Snapshot, filter: ListFilter, ordering: ListOrdering, l = lookups(s)): NoteSummary[] {
   const sortField = ordering.sortField && !filter.trashed ? (l.fieldDefs.get(ordering.sortField) ?? null) : null;
-  const rows: FeedNote[] = [];
+  const rows: LocalNote[] = [];
   for (const n of s.notes) if (matches(n, filter, ordering, l)) rows.push(n);
   rows.sort(comparator(ordering, !!filter.trashed, sortField, l));
   return rows.map((n) => toSummary(n, l));
@@ -267,9 +274,12 @@ export function count(s: Snapshot, filter: ListFilter, l = lookups(s)): number {
 /** `GET /tags`: tags with a live note, most-used first then by name. */
 export function tagSummaries(s: Snapshot): Array<{ id: string; name: string; count: number }> {
   const counts = new Map<string, number>();
+  const byName = new Map<string, string>();
+  for (const t of s.tags) byName.set(t.name, t.id);
   for (const n of s.notes) {
     if (n.deletedAt !== undefined) continue;
-    for (const id of n.tagIds) counts.set(id, (counts.get(id) ?? 0) + 1);
+    const ids = n.tagNames ? n.tagNames.map((name) => byName.get(name)).filter((id): id is string => !!id) : n.tagIds;
+    for (const id of ids) counts.set(id, (counts.get(id) ?? 0) + 1);
   }
   const out: Array<{ id: string; name: string; count: number }> = [];
   for (const t of s.tags) {
@@ -283,9 +293,12 @@ export function tagSummaries(s: Snapshot): Array<{ id: string; name: string; cou
 export function notebookList(s: Snapshot): { notebooks: NotebookSummary[]; unfiled: number } {
   const counts = new Map<string, number>();
   let unfiled = 0;
+  const byName = new Map<string, string>();
+  for (const nb of s.notebooks) byName.set(nb.name.toLowerCase(), nb.id);
   for (const n of s.notes) {
     if (n.deletedAt !== undefined) continue;
-    if (n.notebookId) counts.set(n.notebookId, (counts.get(n.notebookId) ?? 0) + 1);
+    const id = n.notebookName !== undefined ? (n.notebookName ? byName.get(n.notebookName.toLowerCase()) : undefined) : n.notebookId;
+    if (id) counts.set(id, (counts.get(id) ?? 0) + 1);
     else unfiled += 1;
   }
   const notebooks: NotebookSummary[] = [];

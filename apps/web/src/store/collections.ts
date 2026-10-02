@@ -15,8 +15,21 @@ import type { LocalStore } from './db.js';
  * been committed, so a page cut short by a closed tab is applied again rather than
  * skipped; every apply is an upsert.
  */
+/**
+ * A note as the collection holds it: the feed's row, plus two things a write made here
+ * carries until the server has heard of it. A note filed into a notebook that does not
+ * exist yet, or tagged with a tag nobody has used, has no id for either — the server
+ * mints both — so the optimistic row names them (`notebookName`, `tagNames`), the
+ * derivations read those first, and the row the feed delivers after the replay, with
+ * ids, replaces it.
+ */
+export interface LocalNote extends FeedNote {
+  notebookName?: string | null;
+  tagNames?: string[];
+}
+
 export interface Collections {
-  notes: Collection<FeedNote, string>;
+  notes: Collection<LocalNote, string>;
   notebooks: Collection<FeedNotebook, string>;
   tags: Collection<FeedTag, string>;
   attachments: Collection<FeedAttachment, string>;
@@ -68,7 +81,7 @@ export function createCollections(store: LocalStore, engine: FeedEngine): Collec
   );
 
   return {
-    notes: fed<FeedNote>('notes', 'note', (n) => n.id),
+    notes: fed<LocalNote>('notes', 'note', (n) => n.id),
     notebooks: fed<FeedNotebook>('notebooks', 'notebook', (n) => n.id),
     tags: fed<FeedTag>('tags', 'tag', (t) => t.id),
     attachments: fed<FeedAttachment>('attachments', 'attachment', (a) => a.id),

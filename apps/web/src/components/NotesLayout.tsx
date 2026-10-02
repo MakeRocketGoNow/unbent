@@ -3,6 +3,7 @@ import { Link, useNavigate } from '@tanstack/react-router';
 import { useQuery, useInfiniteQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import { DEFAULT_NOTE_SORT, UNFILED, type FieldDef, type FieldValue } from '@unbent/shared';
 import * as api from '../notes-api.js';
+import * as actions from '../store/actions.js';
 import { isOfflineError, type SearchHit } from '../notes-api.js';
 import { Route } from '../routes/notes.js';
 import {
@@ -395,7 +396,7 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
   };
   const editField = useMutation({
     mutationFn: ({ noteId, def, value }: { noteId: string; def: FieldDef; value: FieldValue | null }) =>
-      api.updateNote(noteId, { fields: { [def.id]: value } }),
+      actions.setNoteField(noteId, def, value),
     onMutate: async ({ noteId, def, value }) => {
       await queryClient.cancelQueries({ queryKey: listKey });
       await queryClient.cancelQueries({ queryKey: searchKey });
@@ -532,7 +533,7 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
   const trashSelected = () =>
     runBulk(async () => {
       const ids = selection.ids;
-      await api.deleteNotes(ids);
+      await actions.trashNotes(ids);
       setPendingTrash(false);
       selection.clear();
       // The open note went with them: leave it before its query learns it is gone.
@@ -545,7 +546,7 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
   const moveSelected = (target: string | null) =>
     runBulk(async () => {
       const ids = selection.ids;
-      await api.updateNotes(ids, { notebook: target });
+      await actions.moveNotes(ids, target);
       setBulkSheet(null);
       if (layout.open && ids.includes(layout.open)) {
         editOpenNoteFiling(layout.open, { notebook: target });
@@ -556,7 +557,7 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
   const tagSelected = (change: { add?: string[]; remove?: string[] }) =>
     runBulk(async () => {
       const ids = selection.ids;
-      await api.updateNotes(ids, { addTags: change.add, removeTags: change.remove });
+      await actions.tagNotes(ids, { add: change.add, remove: change.remove });
       if (layout.open && ids.includes(layout.open)) {
         const add = change.add ?? [];
         const remove = new Set(change.remove ?? []);
@@ -679,7 +680,7 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
     try {
       // Carry the active filter onto the new note, otherwise it is created and then
       // immediately filtered out of the list the user is looking at.
-      const created = await api.createNote({
+      const created = await actions.createNote({
         // No name, rather than the literal string "Untitled". The title field's
         // placeholder already says that word, and a placeholder is not data: a stored
         // "Untitled" is written into the frontmatter of the exported markdown, sorted
