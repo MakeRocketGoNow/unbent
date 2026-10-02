@@ -1,4 +1,4 @@
-import { useEffect, useRef, type ReactNode } from 'react';
+import { useEffect, useRef, type ReactNode, type RefObject } from 'react';
 import { BackArrow } from './BackArrow.js';
 import { CloseIcon } from './icons.js';
 import { useMediaQuery, MOBILE_QUERY } from '../useMediaQuery.js';
@@ -41,6 +41,20 @@ export interface SheetProps {
    * put while the rows scroll: the drawer's instance ribbon. Positions itself.
    */
   corner?: ReactNode;
+  /**
+   * The control that opens it, which the desktop panel lines its ✕ up over.
+   *
+   * The panel used to be pinned to the sidebar's left edge whatever opened it, because
+   * every control that opened one lived in the sidebar's head. The table's one-row toolbar
+   * spans the window, and its filter and sort icons sit near the right edge — so the panel
+   * opened a window's width away from the click. Measured rather than assumed, so the head
+   * can rearrange without this following it. The phone's sheet ignores it: it comes from
+   * the floor at every width.
+   *
+   * A ref rather than the element, since the trigger is usually rendered by the same parent
+   * in the same pass and has no element yet when this is first drawn.
+   */
+  anchor?: RefObject<HTMLElement | null> | undefined;
   children: ReactNode;
 }
 
@@ -103,6 +117,17 @@ export interface SheetProps {
 const DISMISS_DISTANCE = 72;
 /** Or how fast, in px/ms: a short flick should close it as surely as a long pull. */
 const DISMISS_VELOCITY = 0.6;
+
+/**
+ * Hands the desktop panel its trigger's right edge, as `--anchor-end`; the stylesheet does
+ * the rest — see the `width > 860px` block on `.sheet`. A sheet with no trigger to follow
+ * has the property removed, and falls back to the sidebar's edge.
+ */
+function placeAt(sheet: HTMLDialogElement | null, trigger: HTMLElement | null | undefined) {
+  if (!sheet) return;
+  if (trigger) sheet.style.setProperty('--anchor-end', `${trigger.getBoundingClientRect().right}px`);
+  else sheet.style.removeProperty('--anchor-end');
+}
 
 /**
  * The grip's drag.
@@ -172,6 +197,7 @@ export function Sheet({
   side = 'bottom',
   className,
   corner,
+  anchor,
   children,
 }: SheetProps) {
   const ref = useRef<HTMLDialogElement>(null);
@@ -193,9 +219,25 @@ export function Sheet({
      * dialog with no backdrop and no inertness, which looks like a styling bug rather than
      * the missing modality it is.
      */
-    if (open && !el.open) el.showModal();
+    if (open && !el.open) {
+      // Before `showModal`, so the panel's first frame is already in place rather than
+      // drawn by the sidebar and then moved.
+      placeAt(el, anchor?.current);
+      el.showModal();
+    }
     if (!open && el.open) el.close();
-  }, [open]);
+  }, [open, anchor]);
+
+  /*
+   * Again when the window changes width while it is open: the toolbar's icons ride the
+   * right edge, so a panel measured once would be left behind by a resize.
+   */
+  useEffect(() => {
+    if (!open || !anchor) return;
+    const follow = () => placeAt(ref.current, anchor.current);
+    window.addEventListener('resize', follow);
+    return () => window.removeEventListener('resize', follow);
+  }, [open, anchor]);
 
   return (
     <dialog

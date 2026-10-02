@@ -407,4 +407,42 @@ describe('Sheet', () => {
     expect(getByText('Filter notes').tagName).toBe('H2');
     expect(getByText('Clear all')).toBeTruthy();
   });
+  /*
+     The panel's place.
+
+     jsdom has no layout, so the trigger's box is stubbed and what is checked is the hand-off:
+     its right edge is on the dialog before `showModal` draws the first frame, so the panel
+     never appears at the sidebar's edge and then jumps. The arithmetic that turns it into a
+     position is the stylesheet's.
+  */
+  describe('following the control that opened it', () => {
+    afterEach(() => vi.restoreAllMocks());
+
+    it("hands the panel the trigger's right edge before it opens", () => {
+      const trigger = document.createElement('button');
+      vi.spyOn(trigger, 'getBoundingClientRect').mockReturnValue({ right: 1275 } as DOMRect);
+      let seen = '';
+      const { showModal } = stubDialog();
+      showModal.mockImplementation(function (this: HTMLDialogElement) {
+        seen = this.style.getPropertyValue('--anchor-end');
+        this.open = true;
+      });
+      render(
+        <Sheet open onClose={() => {}} title="Filter notes" anchor={{ current: trigger }}>
+          body
+        </Sheet>,
+      );
+      expect(seen).toBe('1275px');
+    });
+
+    it('stays at the sidebar edge with no trigger to follow', () => {
+      stubDialog();
+      const { container } = render(
+        <Sheet open onClose={() => {}} title="Move 2 notes to">
+          body
+        </Sheet>,
+      );
+      expect(dialogOf(container).style.getPropertyValue('--anchor-end')).toBe('');
+    });
+  });
 });

@@ -7222,20 +7222,37 @@ button.settings-nav-item {
    which is the dialog's DOM ancestor, and inheritance follows the DOM rather than the top
    layer — so the panel tracks a dragged sidebar. The floor of 20rem is for the narrowest
    drag (`SIDEBAR_MIN` is 200px), where the sidebar is too narrow for a page of controls.
+
+   Horizontally it follows the control that opened it, when `Sheet` is told which one:
+   `--anchor-end` is that control's right edge, and the panel's ✕ is put exactly over it,
+   so the click that opened the panel is where the click that closes it goes. The sidebar's
+   edge stays the floor, which is why the list's head looks as it always did — its filter
+   icon is too near the sidebar's left for a panel ending there to fit, so `max()` leaves
+   it where it was. The table's one-row toolbar is what this is for: its icons sit at the
+   window's far end, and the panel opened at the sidebar's edge, a window's width from the
+   click. `0.6rem + 1px` is the ✕'s distance from the panel's edge — the body's 1rem
+   padding less the ✕'s 0.4rem pull, inside the border. The ceiling is the shell's right
+   padding, so a trigger near the edge never pushes the panel off the window. Vertically
+   nothing changes: the toolbar row starts where the sidebar's head does.
    --------------------------------------------------------------------------------- */
 @media (width > 860px) {
   .sheet:not(.sheet-side) {
     --panel-top: var(--shell-pad-top, 1.25rem);
+    --panel-width: min(
+      max(var(--sidebar-width, 19rem), 20rem),
+      calc(100vw - var(--rail-width, 0px) - 3rem)
+    );
+    --panel-end: min(calc(var(--anchor-end, 0px) + 0.6rem + 1px), calc(100vw - 1.5rem));
     margin: 0;
     inset: auto;
     top: var(--panel-top);
     /* The rail, then the content column's inline padding: flush with the sidebar's box,
        not its text edge. `--rail-width` is the shell's, inherited like `--sidebar-width`. */
-    left: calc(var(--rail-width, 0px) + var(--shell-pad-left, 1.5rem));
-    width: min(
-      max(var(--sidebar-width, 19rem), 20rem),
-      calc(100vw - var(--rail-width, 0px) - 3rem)
+    left: max(
+      calc(var(--rail-width, 0px) + var(--shell-pad-left, 1.5rem)),
+      calc(var(--panel-end) - var(--panel-width))
     );
+    width: var(--panel-width);
     max-height: calc(100dvh - var(--panel-top) - 1rem);
     border: 1px solid var(--border);
     border-radius: 0.75rem;
@@ -7286,10 +7303,11 @@ button.settings-nav-item {
      the same sheet on a phone. 26rem is a large phone's width, so a row reads the same on
      both. Only with fields — the five named orders fit the sidebar's width, and a panel
      wider than what it holds is a panel with an empty right half. Still capped by the
-     window, like the rule it overrides.
+     window, like the rule it overrides. The width is overridden through its property so
+     the panel's left edge, which is reckoned from it, moves with it.
   */
   .sheet.sort-sheet-fields:not(.sheet-side) {
-    width: min(
+    --panel-width: min(
       max(var(--sidebar-width, 19rem), 26rem),
       calc(100vw - var(--rail-width, 0px) - 3rem)
     );
