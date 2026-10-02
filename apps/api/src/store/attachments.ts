@@ -1,5 +1,6 @@
-import { type AttachmentInfo, splitExt } from '@unbent/shared';
+import { type AttachmentInfo, type FeedAttachment, splitExt } from '@unbent/shared';
 import type { Feed } from './feed.js';
+import { placeholders, runs } from './notes-shared.js';
 import type { Sql } from './sql.js';
 
 export interface AttachmentRow {
@@ -124,6 +125,42 @@ export class AttachmentsStore {
         noteId,
       )
       .map((r) => ({ filename: r.filename, contentType: r.content_type, size: r.size }));
+  }
+
+  /**
+   * The files of several notes at once, oldest first within a note, for the feed's whole
+   * notes. In runs under the bind cap; `idx_attachments_note` serves each run.
+   */
+  filesForNotes(noteIds: string[]): Map<string, AttachmentInfo[]> {
+    const out = new Map<string, AttachmentInfo[]>();
+    for (const run of runs([...new Set(noteIds)])) {
+      for (const r of this.sql.exec<{ note_id: string; filename: string; content_type: string; size: number }>(
+        `SELECT note_id, filename, content_type, size FROM attachments
+          WHERE note_id IN (${placeholders(1, run.length)})
+          ORDER BY note_id, created_at, filename`,
+        ...run,
+      )) {
+        const files = out.get(r.note_id) ?? [];
+        files.push({ filename: r.filename, contentType: r.content_type, size: r.size });
+        out.set(r.note_id, files);
+      }
+    }
+    return out;
+  }
+
+  /** Files by their own id, as the feed carries a file whose text arrived. */
+  attachmentsWhole(ids: string[]): FeedAttachment[] {
+    const out: FeedAttachment[] = [];
+    for (const run of runs([...new Set(ids)])) {
+      for (const r of this.sql.exec<{ id: string; note_id: string; filename: string; content_type: string; size: number; has_text: number; created_at: number }>(
+        `SELECT id, note_id, filename, content_type, size, has_text, created_at FROM attachments
+          WHERE id IN (${placeholders(1, run.length)})`,
+        ...run,
+      )) {
+        out.push({ id: r.id, noteId: r.note_id, filename: r.filename, contentType: r.content_type, size: r.size, hasText: r.has_text === 1, createdAt: r.created_at });
+      }
+    }
+    return out;
   }
 
   /** True when the note exists and is not deleted. What `ownsNote` asked on the shared database. */

@@ -17,6 +17,8 @@ import {
   type FieldScale,
   type FieldType,
   type FieldValue,
+  type FeedNotebook,
+  type FeedTag,
   type Note,
   type NoteFieldsPatch,
   type NoteSort,
@@ -178,6 +180,57 @@ export class NotesStore {
       for (const r of this.summaryRows(page, run, 'n.id')) byId.set(r.id, toSummary(r));
     }
     return ids.flatMap((id) => byId.get(id) ?? []);
+  }
+
+  /**
+   * Whole notes by id, trashed ones included, in no particular order: what the change feed
+   * and the snapshot carry. The body, the tags, the values and the notebook's name, as
+   * `get` returns them, read in runs under the bind cap with the same correlated
+   * subqueries a list page uses — about eight rows per note with its tags, values and
+   * files (measured 2026-10-02). An id that is not a note is left out; a trashed one
+   * carries `deletedAt`, since the trash is part of the copy a client keeps.
+   */
+  wholeNotes(ids: string[]): Note[] {
+    const notes: Note[] = [];
+    for (const run of runs([...new Set(ids)])) {
+      const page = `SELECT n.id, n.title, n.body, n.created_at, n.updated_at, n.deleted_at, n.notebook_id,
+                           NULL AS sort_key
+                      FROM notes n
+                     WHERE n.id IN (${placeholders(1, run.length)})`;
+      for (const r of this.summaryRows(page, run, 'n.id')) {
+        const fields = decodeFieldsJson(r.fields, r.notebook_id);
+        notes.push({
+          id: r.id,
+          title: r.title,
+          body: r.body,
+          createdAt: r.created_at,
+          updatedAt: r.updated_at,
+          tags: splitTags(r.tags),
+          notebook: r.notebook,
+          notebookId: r.notebook_id,
+          ...(fields.length > 0 ? { fields } : {}),
+          ...(r.deleted_at !== null ? { deletedAt: r.deleted_at } : {}),
+        });
+      }
+    }
+    return notes;
+  }
+
+  /**
+   * The next `limit` note ids after `cursor` in id order, trashed included: the
+   * snapshot's walk. Ids are UUIDs, so the order means nothing and costs nothing — the
+   * primary key is the index, and a page deep into the walk seeks straight to it.
+   */
+  idsAfter(cursor: string | null, limit: number): string[] {
+    return this.sql
+      .exec<{ id: string }>(`SELECT id FROM notes WHERE id > ?1 ORDER BY id LIMIT ?2`, cursor ?? '', limit)
+      .map((r) => r.id);
+  }
+
+  /** Every note the snapshot's walk will visit: live and trashed, from the stored counts. */
+  totalNotes(): number {
+    const t = this.totals();
+    return t.live + t.trashed;
   }
 
   /**
@@ -1773,6 +1826,56 @@ export class NotesStore {
          FROM notebooks nb
         ORDER BY nb.name COLLATE NOCASE`,
     );
+  }
+
+  /**
+   * Notebooks by id with their live field definitions, for the feed. Every notebook when
+   * `ids` is null — the snapshot's first page — since a library has a handful. The
+   * definitions come in one query over the ids rather than one per notebook, in display
+   * order, and are dealt out after.
+   */
+  notebooksWhole(ids: string[] | null): FeedNotebook[] {
+    const runsOf = ids === null ? [null] : runs([...new Set(ids)]);
+    const out: FeedNotebook[] = [];
+    for (const run of runsOf) {
+      const where = run ? `WHERE nb.id IN (${placeholders(1, run.length)})` : '';
+      const notebooks = this.sql.exec<NotebookSummary>(
+        `SELECT nb.id, nb.name, nb.purpose, nb.emoji, nb.note_count AS count,
+                (SELECT COUNT(*) FROM notebook_fields f
+                  WHERE f.notebook_id = nb.id AND f.deleted_at IS NULL) AS fields
+           FROM notebooks nb ${where}
+          ORDER BY nb.name COLLATE NOCASE`,
+        ...(run ?? []),
+      );
+      const byId = new Map(notebooks.map((nb) => [nb.id, { ...nb, fieldDefs: [] as FieldDef[] }]));
+      const fieldWhere = run ? `AND f.notebook_id IN (${placeholders(1, run.length)})` : '';
+      for (const row of this.sql.exec<FieldRow>(
+        `SELECT f.id, f.notebook_id, f.name, f.type, f.options, f.scale_max, f.scale_step, f.currency, f.position
+           FROM notebook_fields f
+          WHERE f.deleted_at IS NULL ${fieldWhere}
+          ORDER BY f.notebook_id, f.position`,
+        ...(run ?? []),
+      )) {
+        byId.get(row.notebook_id)?.fieldDefs.push(rowToField(row));
+      }
+      out.push(...byId.values());
+    }
+    return out;
+  }
+
+  /** Tags by id, or every tag when `ids` is null, with the count `listTags` reports. */
+  tagsWhole(ids: string[] | null): FeedTag[] {
+    const runsOf = ids === null ? [null] : runs([...new Set(ids)]);
+    const out: FeedTag[] = [];
+    for (const run of runsOf) {
+      out.push(
+        ...this.sql.exec<FeedTag>(
+          `SELECT id, name, note_count AS count FROM tags ${run ? `WHERE id IN (${placeholders(1, run.length)})` : ''} ORDER BY name`,
+          ...(run ?? []),
+        ),
+      );
+    }
+    return out;
   }
 
   /**

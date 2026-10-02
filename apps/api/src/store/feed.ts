@@ -140,3 +140,56 @@ export class Feed {
     return seq;
   }
 }
+
+// --- The reader's pure half ----------------------------------------------------------
+
+/**
+ * How many bytes of note bodies one feed or snapshot page carries before it is cut
+ * short. The RPC ceiling is 32 MiB and bodies are capped at 1.8 MB each, so a hundred
+ * notes of the biggest kind would pass it several times over; four leaves room for the
+ * rest of the page around the bodies, and a page that is cut carries `more`, so the
+ * client walks on. Measured: eight crosses in a few milliseconds, forty is refused.
+ */
+export const FEED_PAGE_BYTES = 4 * 1024 * 1024;
+
+/** One row of the `changes` table, as the reader takes it. */
+export interface FeedRow {
+  seq: number;
+  entity: FeedEntity;
+  id: string;
+  deleted: number;
+}
+
+/**
+ * The last word per entity in a run of rows, in first-seen order. A note edited five
+ * times in a page is carried once, as it now is; a purge after an edit is one tombstone.
+ * (An edit after a purge cannot happen: the row is gone.)
+ */
+export function lastWordPerEntity(rows: FeedRow[]): Change[] {
+  const last = new Map<string, Change>();
+  for (const r of rows) {
+    const key = `${r.entity}:${r.id}`;
+    last.delete(key);
+    last.set(key, { entity: r.entity, id: r.id, deleted: r.deleted === 1 });
+  }
+  return [...last.values()];
+}
+
+/**
+ * Where to cut a page so its bodies stay under `budget`: the index of the first row that
+ * overflows, charging each note once, or `rows.length` when nothing does. Never zero, so
+ * a single oversized note still goes, alone. The rows kept are `rows.slice(0, cut)`,
+ * and their last seq is the page's `next`.
+ */
+export function cutByBytes(rows: FeedRow[], bodyBytes: (noteId: string) => number, budget = FEED_PAGE_BYTES): number {
+  let bytes = 0;
+  const charged = new Set<string>();
+  for (let i = 0; i < rows.length; i++) {
+    const r = rows[i]!;
+    if (r.entity !== 'note' || r.deleted === 1 || charged.has(r.id)) continue;
+    charged.add(r.id);
+    bytes += bodyBytes(r.id);
+    if (bytes > budget && i > 0) return i;
+  }
+  return rows.length;
+}

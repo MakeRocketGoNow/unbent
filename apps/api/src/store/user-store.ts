@@ -4,13 +4,17 @@ import {
   type FieldDef,
   type FieldScale,
   type FieldType,
+  type FeedNote,
+  type FeedPage,
+  type FeedReset,
   type FieldValue,
   type Note,
   type NoteFieldsPatch,
   type NotebookDefinition,
+  type SnapshotPage,
 } from '@unbent/shared';
 import { AttachmentsStore } from './attachments.js';
-import { Feed } from './feed.js';
+import { cutByBytes, Feed, FEED_PAGE_BYTES, lastWordPerEntity, type FeedRow } from './feed.js';
 import { appliedMigrations, migrate } from './migrate.js';
 import { NotesStore, type CountOptions, type ListOptions, type SearchFilters } from './notes.js';
 import { cursorAfter, nextCursor } from './notes-shared.js';
@@ -694,6 +698,125 @@ export class UserStore extends DurableObject<StoreEnv> {
         forVision: this.attachments.needingVision(filesPerNote, noteId),
       };
     });
+  }
+
+  // --- The change feed ------------------------------------------------------------------
+
+  /**
+   * `GET /changes`: everything that changed after `since`, whole, in one call.
+   *
+   * The rows after the cursor are read off the primary key — only what the page returns
+   * — then collapsed to the last word per entity and loaded whole: notes with their
+   * tags, values and files, notebooks with their definitions, tags, files. Cut short
+   * when the bodies pass `FEED_PAGE_BYTES`, with `next` at the last row kept, so a page
+   * never nears the RPC ceiling; a page of a hundred changed notes reads about 860 rows
+   * (measured 2026-10-02, bounded in the rows-read test).
+   *
+   * `reset` rather than a partial answer for a cursor the feed cannot serve: one past the
+   * counter, which a point-in-time restore makes of every cursor it winds back under; or
+   * one before the oldest row kept, which pruning makes of a device away too long. The
+   * epoch travels with every answer and is the third reason, on the client's side.
+   */
+  changesSince(since: number, limit: number): FeedPage | FeedReset {
+    this.ready();
+    return this.sql.tx(() => {
+      const seq = this.feed.seq();
+      const epoch = this.feed.epoch();
+      if (since > seq) return { reset: true, seq, epoch };
+      const oldest = this.sql.first<{ seq: number }>(`SELECT seq FROM changes ORDER BY seq LIMIT 1`);
+      if (oldest && since < oldest.seq - 1) return { reset: true, seq, epoch };
+
+      const rows = this.sql.exec<FeedRow>(
+        `SELECT seq, entity, id, deleted FROM changes WHERE seq > ?1 ORDER BY seq LIMIT ?2`,
+        since,
+        limit,
+      );
+      const full = rows.length === limit;
+
+      // Bodies are needed to cut, and the cut decides which rows stay, so the notes are
+      // loaded for every row first and the cut drops what it drops. A dropped note is a
+      // few kilobytes read for nothing, on the rare page that is cut at all.
+      const wanted = lastWordPerEntity(rows);
+      const noteIds = wanted.filter((c) => c.entity === 'note' && !c.deleted).map((c) => c.id);
+      const notes = new Map(this.notes.wholeNotes(noteIds).map((n) => [n.id, n]));
+      const cut = cutByBytes(rows, (id) => notes.get(id)?.body.length ?? 0);
+      const kept = rows.slice(0, cut);
+      const changes = lastWordPerEntity(kept);
+
+      const ids = (entity: FeedRow['entity'], deleted: boolean) =>
+        changes.filter((c) => c.entity === entity && !!c.deleted === deleted).map((c) => c.id);
+      const keptNoteIds = ids('note', false);
+      const files = this.attachments.filesForNotes(keptNoteIds);
+      const feedNotes: FeedNote[] = keptNoteIds.flatMap((id) => {
+        const note = notes.get(id);
+        // Named by a row but not a note any more: purged by a later write than this page
+        // reaches, whose tombstone the next page carries.
+        return note ? [{ ...note, files: files.get(id) ?? [] }] : [];
+      });
+
+      return {
+        reset: false,
+        seq,
+        epoch,
+        next: kept.length > 0 ? kept[kept.length - 1]!.seq : since,
+        more: cut < rows.length || full,
+        notes: feedNotes,
+        notebooks: this.notes.notebooksWhole(ids('notebook', false)),
+        tags: this.notes.tagsWhole(ids('tag', false)),
+        attachments: this.attachments.attachmentsWhole(ids('attachment', false)),
+        tombstones: changes.filter((c) => c.deleted).map((c) => ({ entity: c.entity, id: c.id })),
+      };
+    });
+  }
+
+  /**
+   * `GET /changes/snapshot`: a page of the whole library by note id, for a client with
+   * no copy yet; see `SnapshotPage` for the contract. The first page carries the
+   * notebooks, the tags and the total as well, and the `seq` every page reports is the
+   * counter at the time, which the client stores before applying the first page.
+   */
+  snapshotPage(cursor: string | null, limit: number): SnapshotPage {
+    this.ready();
+    return this.sql.tx(() => {
+      const seq = this.feed.seq();
+      const epoch = this.feed.epoch();
+      const ids = this.notes.idsAfter(cursor, limit);
+      const notes = new Map(this.notes.wholeNotes(ids).map((n) => [n.id, n]));
+      const rows: FeedRow[] = ids.map((id, i) => ({ seq: i, entity: 'note', id, deleted: 0 }));
+      const cut = cutByBytes(rows, (id) => notes.get(id)?.body.length ?? 0, FEED_PAGE_BYTES);
+      const kept = ids.slice(0, cut);
+      const files = this.attachments.filesForNotes(kept);
+      const page: SnapshotPage = {
+        seq,
+        epoch,
+        notes: kept.flatMap((id) => {
+          const note = notes.get(id);
+          return note ? [{ ...note, files: files.get(id) ?? [] }] : [];
+        }),
+        next: cut < ids.length || ids.length === limit ? (kept[kept.length - 1] ?? null) : null,
+      };
+      if (cursor === null) {
+        page.notebooks = this.notes.notebooksWhole(null);
+        page.tags = this.notes.tagsWhole(null);
+        page.total = this.notes.totalNotes();
+      }
+      return page;
+    });
+  }
+
+  /**
+   * Names a new history, after a point-in-time restore. The restore winds `_meta.seq`
+   * back with everything else, and a client whose cursor sits in the rewound range would
+   * read what is written again on top of it as if it had seen it. The restore route
+   * calls this once the store is back; every client then sees an epoch it does not hold
+   * and starts over. The one write on the object the feed does not record, since it is
+   * the feed starting again.
+   */
+  feedRestored(): { epoch: string } {
+    this.ready();
+    const epoch = crypto.randomUUID().replace(/-/g, '');
+    this.sql.exec(`INSERT INTO _meta (key, value) VALUES ('feed_epoch', ?1) ON CONFLICT(key) DO UPDATE SET value = excluded.value`, epoch);
+    return { epoch };
   }
 }
 
