@@ -64,6 +64,27 @@ function visionPendingHalves(noteParam: string | null): { pictures: string; pdfs
   };
 }
 
+/** An `attachments` row as the feed reads it. */
+interface FeedAttachmentRow {
+  id: string;
+  note_id: string;
+  filename: string;
+  content_type: string;
+  size: number;
+  has_text: number;
+  created_at: number;
+}
+
+const toFeedAttachment = (r: FeedAttachmentRow): FeedAttachment => ({
+  id: r.id,
+  noteId: r.note_id,
+  filename: r.filename,
+  contentType: r.content_type,
+  size: r.size,
+  hasText: r.has_text === 1,
+  createdAt: r.created_at,
+});
+
 interface PendingRow {
   id: string;
   note_id: string;
@@ -128,20 +149,22 @@ export class AttachmentsStore {
   }
 
   /**
-   * The files of several notes at once, oldest first within a note, for the feed's whole
-   * notes. In runs under the bind cap; `idx_attachments_note` serves each run.
+   * The files of several notes at once, oldest first within a note, as the feed carries
+   * a file (id and `hasText` included, so a snapshot seeds the client's files and a
+   * tombstone by id matches one it holds). In runs under the bind cap;
+   * `idx_attachments_note` serves each run.
    */
-  filesForNotes(noteIds: string[]): Map<string, AttachmentInfo[]> {
-    const out = new Map<string, AttachmentInfo[]>();
+  filesForNotes(noteIds: string[]): Map<string, FeedAttachment[]> {
+    const out = new Map<string, FeedAttachment[]>();
     for (const run of runs([...new Set(noteIds)])) {
-      for (const r of this.sql.exec<{ note_id: string; filename: string; content_type: string; size: number }>(
-        `SELECT note_id, filename, content_type, size FROM attachments
+      for (const r of this.sql.exec<FeedAttachmentRow>(
+        `SELECT id, note_id, filename, content_type, size, has_text, created_at FROM attachments
           WHERE note_id IN (${placeholders(1, run.length)})
           ORDER BY note_id, created_at, filename`,
         ...run,
       )) {
         const files = out.get(r.note_id) ?? [];
-        files.push({ filename: r.filename, contentType: r.content_type, size: r.size });
+        files.push(toFeedAttachment(r));
         out.set(r.note_id, files);
       }
     }
@@ -152,12 +175,12 @@ export class AttachmentsStore {
   attachmentsWhole(ids: string[]): FeedAttachment[] {
     const out: FeedAttachment[] = [];
     for (const run of runs([...new Set(ids)])) {
-      for (const r of this.sql.exec<{ id: string; note_id: string; filename: string; content_type: string; size: number; has_text: number; created_at: number }>(
+      for (const r of this.sql.exec<FeedAttachmentRow>(
         `SELECT id, note_id, filename, content_type, size, has_text, created_at FROM attachments
           WHERE id IN (${placeholders(1, run.length)})`,
         ...run,
       )) {
-        out.push({ id: r.id, noteId: r.note_id, filename: r.filename, contentType: r.content_type, size: r.size, hasText: r.has_text === 1, createdAt: r.created_at });
+        out.push(toFeedAttachment(r));
       }
     }
     return out;

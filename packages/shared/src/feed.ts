@@ -25,7 +25,12 @@ export type FeedEntity = 'note' | 'notebook' | 'tag' | 'attachment';
  */
 export interface FeedNote extends Note {
   tagIds: string[];
-  files: AttachmentInfo[];
+  /**
+   * The note's files with their ids and `hasText`, the same rows the feed's `attachments`
+   * carry, so a snapshot seeds the files collection and an attachment tombstone, keyed by
+   * id, matches a file the client holds.
+   */
+  files: FeedAttachment[];
 }
 
 /** A notebook with its field definitions, in display order. */

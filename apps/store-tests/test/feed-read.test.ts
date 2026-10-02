@@ -46,7 +46,7 @@ describe('changesSince', () => {
     expect(p.notes.map((n) => n.id).sort()).toEqual([a.id, b.id].sort());
     const home = (await stub.listTags()).find((t) => t.name === 'home')!;
     expect(p.notes.find((n) => n.id === a.id)).toMatchObject({ title: 'Edited thrice', notebook: 'Receipts', tags: ['home'], tagIds: [home.id], files: [] });
-    expect(p.notes.find((n) => n.id === b.id)).toMatchObject({ files: [{ filename: 'scan.pdf', contentType: 'application/pdf', size: 3 }] });
+    expect(p.notes.find((n) => n.id === b.id)).toMatchObject({ files: [{ id: 'f1', noteId: b.id, filename: 'scan.pdf', contentType: 'application/pdf', size: 3, hasText: true, createdAt: expect.any(Number) }] });
     expect(p.notebooks).toEqual([expect.objectContaining({ name: 'Receipts', count: 1, fields: 0, fieldDefs: [] })]);
     // The tag c took to the trash keeps its row with no live note; `purgeOne` leaves the
     // sweep to the bulk purges, so it is a tag row here, not a tombstone.
