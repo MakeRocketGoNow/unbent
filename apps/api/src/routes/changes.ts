@@ -24,8 +24,8 @@ export const changes = new Hono<AppEnv>()
   .use('/changes/snapshot', requireAuth, withRepos)
 
   .get('/changes', zValidator('query', feedQuerySchema), async (c) => {
-    const { since, limit } = c.req.valid('query');
-    return c.json(await c.get('notes').changesSince(since, limit));
+    const { since, limit, epoch } = c.req.valid('query');
+    return c.json(await c.get('notes').changesSince(since, limit, epoch));
   })
 
   .get('/changes/snapshot', zValidator('query', snapshotQuerySchema), async (c) => {

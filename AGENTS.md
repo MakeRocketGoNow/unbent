@@ -597,9 +597,10 @@ Rules that hold it together, each with a test:
   commit), measured and bounded in `feed.test.ts`. No other index on `changes`: each would be a row written per change.
   Pruning (50,000 rows, 90 days) reads nothing until it has something to delete, and
   deletes old rows 500 a write by key range, never by a subquery that scans.
-- **A cursor the feed cannot serve gets `reset`, never a partial page.** Past the counter
-  (a point-in-time restore winds it back), before the oldest row kept, or from another
-  epoch. The restore route changes the epoch (`feedRestored`) once a restore is applied;
+- **A cursor the feed cannot serve gets `reset`, never a partial page.** From another
+  epoch than the one the client sends with its cursor (`?epoch=`; a client that follows
+  the feed always sends it), past the counter, or before the oldest row kept. The restore
+  route changes the epoch (`feedRestored`) once a restore is applied and tells the sockets;
   `POST /api/admin/store/feed-epoch` does it by hand.
 - **The push is an optimisation and carries only a number.** `GET /api/changes/socket` is
   forwarded to the object's `fetch`, the one `fetch(` the guard test allows in `store/`

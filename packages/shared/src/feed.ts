@@ -87,8 +87,8 @@ export interface FeedPage {
 
 /**
  * The cursor cannot be served: it is past the counter (the store was wound back), before
- * the oldest row kept (pruned), or from another epoch. The client drops its copy and
- * takes a snapshot. Never a partial feed over a stale cursor.
+ * the oldest row kept (pruned), or from another epoch than the one the client sent. The
+ * client drops its copy and takes a snapshot. Never a partial feed over a stale cursor.
  */
 export interface FeedReset {
   reset: true;
@@ -122,6 +122,13 @@ export const feedQuerySchema = z.object({
   /** The last seq applied; 0 for a client that has applied nothing since its snapshot. */
   since: z.coerce.number().int().nonnegative().default(0),
   limit: z.coerce.number().int().min(1).max(FEED_PAGE_LIMIT).default(200),
+  /**
+   * The epoch the cursor belongs to, as the client stored it with the cursor. Given, the
+   * server answers `reset` when it differs from the store's, so a cursor from before a
+   * restore is refused there rather than depending on every client remembering to
+   * compare; a client that follows the feed should always send it.
+   */
+  epoch: z.string().min(1).optional(),
 });
 
 export const snapshotQuerySchema = z.object({

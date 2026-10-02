@@ -323,10 +323,10 @@ export class NotesRepo extends StoreRepo {
   }
 
   /** `GET /changes`: what changed after `since`, whole, or `reset`; see `UserStore.changesSince`. */
-  changesSince(since: number, limit: number): Promise<FeedPage | FeedReset> {
+  changesSince(since: number, limit: number, epoch?: string): Promise<FeedPage | FeedReset> {
     // Awaited and named: the stub types a union return as an intersection of promise
     // shapes that does not assign to the plain union, although the value is one.
-    return this.call(async (s) => (await s.changesSince(since, limit)) as FeedPage | FeedReset);
+    return this.call(async (s) => (await s.changesSince(since, limit, epoch)) as FeedPage | FeedReset);
   }
 
   /** `GET /changes/snapshot`: a page of the whole library by note id; see `UserStore.snapshotPage`. */

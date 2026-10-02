@@ -90,9 +90,14 @@ describe('GET /api/changes', () => {
     expect(page(await feed(p.next)).notes).toEqual([expect.objectContaining({ id: a.id, deletedAt: expect.any(Number) })]);
   });
 
-  it('answers reset for a cursor from before the retention window or past the counter', async () => {
-    const now = page(await feed(0)).seq;
-    expect(await feed(now + 1_000_000)).toEqual({ reset: true, seq: expect.any(Number), epoch: expect.any(String) });
+  it('answers reset for a cursor past the counter or from another epoch', async () => {
+    const current = page(await feed(0));
+    expect(await feed(current.seq + 1_000_000)).toEqual({ reset: true, seq: expect.any(Number), epoch: expect.any(String) });
+    const stale = await fetch(`${BASE}/api/changes?since=${current.seq}&epoch=not-this-history`, { headers: headers() });
+    expect(stale.status).toBe(200);
+    expect(await stale.json()).toEqual({ reset: true, seq: expect.any(Number), epoch: current.epoch });
+    const same = await fetch(`${BASE}/api/changes?since=${current.seq}&epoch=${current.epoch}`, { headers: headers() });
+    expect(((await same.json()) as FeedPage).reset).toBe(false);
   });
 
   it('pages a snapshot of the whole library by note id, the library itself on the first page', async () => {

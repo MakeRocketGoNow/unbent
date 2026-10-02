@@ -131,13 +131,19 @@ describe('changesSince', () => {
     expect(await stub.changesSince(4, 100)).toMatchObject({ reset: false, next: 4, notes: [] });
   });
 
-  it('feedRestored names a new epoch, and the old one is not served again', async () => {
+  it('feedRestored names a new epoch, and a cursor from the old one is reset by the server', async () => {
     const { stub } = freshStore('read-epoch');
-    const before = page(await stub.changesSince(0, 10)).epoch;
+    const a = await stub.create(note());
+    const before = page(await stub.changesSince(0, 10, undefined)).epoch;
+    expect(await stub.changesSince(1, 10, before)).toMatchObject({ reset: false, next: 1 });
     const { epoch } = await stub.feedRestored();
     expect(epoch).toMatch(/^[0-9a-f]{32}$/);
     expect(epoch).not.toBe(before);
-    expect(page(await stub.changesSince(0, 10)).epoch).toBe(epoch);
+    // The same cursor with the old epoch: refused, whatever the counter says. With the
+    // new one, or with none, served.
+    expect(await stub.changesSince(1, 10, before)).toEqual({ reset: true, seq: 1, epoch });
+    expect(await stub.changesSince(1, 10, epoch)).toMatchObject({ reset: false, epoch });
+    expect(page(await stub.changesSince(0, 10)).notes.map((n) => n.id)).toEqual([a.id]);
   });
 });
 

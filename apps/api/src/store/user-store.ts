@@ -795,20 +795,23 @@ export class UserStore extends DurableObject<StoreEnv> {
    * never nears the RPC ceiling; a page of a hundred changed notes reads about 860 rows
    * (measured 2026-10-02, bounded in the rows-read test).
    *
-   * `reset` rather than a partial answer for a cursor the feed cannot serve: one past the
-   * counter, which a point-in-time restore makes of every cursor it winds back under; or
-   * one before the oldest row kept, which pruning makes of a device away too long. The
-   * epoch travels with every answer and is the third reason, on the client's side.
+   * `reset` rather than a partial answer for a cursor the feed cannot serve: one from
+   * another epoch than the store's, which a point-in-time restore makes of every cursor
+   * (checked here when the client sends its epoch, so the rarest path does not depend on
+   * every client comparing); one past the counter, the same restore seen by a client
+   * that sent no epoch; or one before the oldest row kept, which pruning makes of a
+   * device away too long.
    *
    * The byte cut is decided before a body is read. Sizes are one small row per candidate
    * (`bodyBytes`), so a page of hundreds of large notes costs the object a few hundred
    * integers, never hundreds of bodies at once.
    */
-  changesSince(since: number, limit: number): FeedPage | FeedReset {
+  changesSince(since: number, limit: number, clientEpoch?: string): FeedPage | FeedReset {
     this.ready();
     return this.sql.tx(() => {
       const seq = this.feed.seq();
       const epoch = this.feed.epoch();
+      if (clientEpoch !== undefined && clientEpoch !== epoch) return { reset: true, seq, epoch };
       if (since > seq) return { reset: true, seq, epoch };
       const oldest = this.sql.first<{ seq: number }>(`SELECT seq FROM changes ORDER BY seq LIMIT 1`);
       if (oldest && since < oldest.seq - 1) return { reset: true, seq, epoch };
