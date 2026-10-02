@@ -22,6 +22,7 @@ import { connectedApps } from './routes/connected-apps.js';
 import { previewRelay } from './routes/preview-relay.js';
 import { mcpRoutes } from './routes/mcp.js';
 import { clientErrors } from './routes/client-errors.js';
+import { changes } from './routes/changes.js';
 
 /**
  * The per-account note store, exported so the runtime can construct it. This is one of
@@ -84,7 +85,8 @@ const routes = app
   .route('/api', mcpRoutes)
   .route('/api', connectedApps)
   .route('/api', previewRelay)
-  .route('/api', clientErrors);
+  .route('/api', clientErrors)
+  .route('/api', changes);
 
 /** Consumed by the SPA through `hc<AppType>()` for end-to-end types with no codegen. */
 export type AppType = typeof routes;

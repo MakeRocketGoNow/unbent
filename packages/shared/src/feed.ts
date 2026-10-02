@@ -1,3 +1,4 @@
+import { z } from 'zod';
 import type { FieldDef } from './fields.js';
 import type { AttachmentInfo, Note, NotebookSummary } from './schemas.js';
 
@@ -96,3 +97,18 @@ export interface SnapshotPage {
   tags?: FeedTag[];
   total?: number;
 }
+
+/** A page is at most this many feed rows; the byte cut usually comes first for notes. */
+export const FEED_PAGE_LIMIT = 500;
+
+export const feedQuerySchema = z.object({
+  /** The last seq applied; 0 for a client that has applied nothing since its snapshot. */
+  since: z.coerce.number().int().nonnegative().default(0),
+  limit: z.coerce.number().int().min(1).max(FEED_PAGE_LIMIT).default(200),
+});
+
+export const snapshotQuerySchema = z.object({
+  /** The `next` of the previous page; absent for the first. */
+  cursor: z.string().min(1).optional(),
+  limit: z.coerce.number().int().min(1).max(FEED_PAGE_LIMIT).default(200),
+});

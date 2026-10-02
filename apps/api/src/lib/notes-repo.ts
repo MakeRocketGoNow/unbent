@@ -1,4 +1,6 @@
 import type {
+  FeedPage,
+  FeedReset,
   FieldDef,
   FieldScale,
   FieldType,
@@ -10,6 +12,7 @@ import type {
   NotebookSummary,
   SearchResult,
   SearchResultRow,
+  SnapshotPage,
   StaleNote,
 } from '@unbent/shared';
 import { StoreRepo } from './store-client.js';
@@ -317,6 +320,18 @@ export class NotesRepo extends StoreRepo {
   /** A note with its files, for MCP's `get_note`. Null when there is no such live note. */
   getWithFiles(id: string): Promise<{ note: Note; files: AttachmentInfo[] } | null> {
     return this.call((s) => s.getWithFiles(id));
+  }
+
+  /** `GET /changes`: what changed after `since`, whole, or `reset`; see `UserStore.changesSince`. */
+  changesSince(since: number, limit: number): Promise<FeedPage | FeedReset> {
+    // Awaited and named: the stub types a union return as an intersection of promise
+    // shapes that does not assign to the plain union, although the value is one.
+    return this.call(async (s) => (await s.changesSince(since, limit)) as FeedPage | FeedReset);
+  }
+
+  /** `GET /changes/snapshot`: a page of the whole library by note id; see `UserStore.snapshotPage`. */
+  snapshotPage(cursor: string | null, limit: number): Promise<SnapshotPage> {
+    return this.call((s) => s.snapshotPage(cursor, limit));
   }
 
   /** The notebooks, the unfiled count, and every field when asked, in one call. */
