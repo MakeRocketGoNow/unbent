@@ -111,10 +111,13 @@ describe('PUT /notes/:id/files with an id', () => {
     const id = crypto.randomUUID();
     const made = await put(note.id, id, 'receipt.txt', 'first');
     expect(made.status).toBe(201);
-    expect(await made.json()).toMatchObject({ filename: 'receipt.txt', path: 'files/receipt.txt' });
+    const first = (await made.json()) as { indexing: string };
+    expect(first).toMatchObject({ filename: 'receipt.txt', path: 'files/receipt.txt' });
     const again = await put(note.id, id, 'receipt.txt', 'first');
     expect(again.status).toBe(200);
-    expect(await again.json()).toMatchObject({ filename: 'receipt.txt', path: 'files/receipt.txt', size: 5 });
+    // Who reads the file's text is said again as it was said the first time: that answer
+    // may be the one that was lost.
+    expect(await again.json()).toMatchObject({ filename: 'receipt.txt', path: 'files/receipt.txt', size: 5, indexing: first.indexing });
     const { files } = (await (await fetch(`${BASE}/api/notes/${note.id}/files`, { headers: headers() })).json()) as { files: { filename: string }[] };
     expect(files.map((f) => f.filename)).toEqual(['receipt.txt']);
   });

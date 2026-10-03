@@ -10,7 +10,7 @@ import {
 } from '@unbent/shared';
 import { z } from 'zod';
 import { copyAttachments } from '../lib/copy-attachments.js';
-import { readPendingFiles, readWithLlm, readersFrom } from '../lib/read-attachment.js';
+import { readPendingFiles, readWithLlm, readersFrom, serverCanRead } from '../lib/read-attachment.js';
 import { canUseLlm, readableByLlm } from '../lib/llm.js';
 import { fetchWebImage } from '../lib/web-image.js';
 import { requireAuth } from '../lib/session.js';
@@ -53,6 +53,13 @@ export const attachments = new Hono<AppEnv>()
     const repo = c.get('attachments');
 
     /**
+     * `?text=supplied`: the client has this file's text already and will put it next, so
+     * the read that would otherwise start here is skipped. What the importer sends for a
+     * file that arrived with a `text/` or `described/` sidecar — see `storeAttachment`.
+     */
+    const textSupplied = c.req.query('text') === 'supplied';
+
+    /**
      * `X-Attachment-Id`: the id the file should have, chosen by the client, as a note's
      * can be (`POST /notes`). A file added with no connection is uploaded later from an
      * outbox, and an outbox replays: a request whose answer was lost is sent again. With
@@ -69,9 +76,12 @@ export const attachments = new Hono<AppEnv>()
         await c.req.raw.body?.cancel().catch(() => {});
         if (existing.noteId !== noteId) return c.json({ error: 'That id belongs to another file' }, 409);
         const { filename, contentType, size } = existing;
-        // Whoever read the first request's bytes is reading them still; `client` would
-        // start a second reader on the same file.
-        return c.json({ filename, contentType, size, path: `files/${filename}`, indexing: 'server' }, 200);
+        // The answer the first request gave, worked out again: it was lost, so the client
+        // never heard it. A flat `server` here left a file the server cannot read with
+        // nobody reading it — the client that holds the bytes was told not to (review of
+        // #236). Where the server can, its reader is already on the first request's bytes.
+        const indexing = !textSupplied && serverCanRead(c.env, contentType, size) ? 'server' : 'client';
+        return c.json({ filename, contentType, size, path: `files/${filename}`, indexing }, 200);
       }
     } else if (!(await repo.ownsNote(noteId))) {
       return c.json({ error: 'Not found' }, 404);
@@ -103,13 +113,6 @@ export const attachments = new Hono<AppEnv>()
      * on its behalf.
      */
     const link = c.req.query('link') !== undefined;
-
-    /**
-     * `?text=supplied`: the client has this file's text already and will put it next, so
-     * the read that would otherwise start here is skipped. What the importer sends for a
-     * file that arrived with a `text/` or `described/` sidecar — see `storeAttachment`.
-     */
-    const textSupplied = c.req.query('text') === 'supplied';
 
     const { filename, contentType, size, path, indexing } = await storeAttachment(
       c.env,
