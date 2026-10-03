@@ -8,7 +8,7 @@ import type { AttachmentInfo, FieldDef, Note, NoteSort, NoteSummary, NotebookSum
 import * as api from './notes-api.js';
 import { ApiError, OfflineError } from './notes-api.js';
 import { offlineNow } from './connectivity.js';
-import { count, list, lookups, notebookFields, notebookList, summaries, tagSummaries, toAttachmentInfo, toNote, type Lookups, type Snapshot } from './store/derive.js';
+import { count, list, lookups, notebookFields, notebookList, summaries, tagSummaries, toAttachmentInfo, toNote, type LocalAttachmentInfo, type Lookups, type Snapshot } from './store/derive.js';
 import type { LocalNote } from './store/collections.js';
 import { LIBRARY_ROOTS, currentLibrary, onLibraryChange, type ReadableLibrary as Library } from './store/library.js';
 import { onDirectWrite } from './store/actions.js';
@@ -311,7 +311,7 @@ export const noteQuery = (id: string) =>
 export const attachmentsQuery = (noteId: string) =>
   queryOptions({
     queryKey: keys.attachments(noteId),
-    queryFn: async (): Promise<AttachmentInfo[]> => {
+    queryFn: async (): Promise<LocalAttachmentInfo[]> => {
       const lib = await library();
       if (!lib) return api.listAttachments(noteId);
       if (!lib.notes.has(noteId)) throw new ApiError(404, 'Not found');

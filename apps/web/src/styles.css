@@ -3139,6 +3139,13 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
   font-weight: 600;
 }
 
+/*
+   A file added with no connection, still on this device only. A state, not a warning:
+   "Not linked" beside it is red because something may need deleting, and this needs
+   nothing but a connection, so it takes the muted colour and keeps the weight.
+*/
+.attachments-status.waiting { color: var(--muted); }
+
 .attachments-actions {
   display: flex;
   align-items: center;
@@ -3185,6 +3192,21 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
 
 /* Where the last copy-to or move-to put a file: a sentence under the list, not a toast. */
 .attachments-sent { margin: 0 0 0.5rem; }
+
+/*
+   What became of an upload that did not simply go through, with its Dismiss on the
+   sentence's own line end — the same shape as the cleanup line above the list, so the
+   panel has one way of saying a thing and offering a button for it.
+*/
+.attachments-notices {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.35rem 0.75rem;
+  margin: 0.45rem 0 0.5rem;
+}
+.attachments-notices > p { margin: 0; flex: 1 1 16rem; overflow-wrap: anywhere; }
 
 /*
    The one-confirmation cleanup of every file the note no longer links: a sentence with

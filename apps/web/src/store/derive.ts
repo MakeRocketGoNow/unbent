@@ -19,6 +19,7 @@ import {
   type NoteSort,
   type NoteSummary,
   type NotebookSummary,
+  splitExt,
 } from '@unbent/shared';
 
 /**
@@ -160,8 +161,29 @@ export function toSummary(note: LocalNote, l: Lookups): NoteSummary {
   };
 }
 
-export function toAttachmentInfo(f: FeedAttachment): AttachmentInfo {
-  return { filename: f.filename, contentType: f.contentType, size: f.size };
+/** A file as the attachments panel lists it: the server's shape, and whether it is still waiting to upload from this device. */
+export type LocalAttachmentInfo = AttachmentInfo & { pending?: true };
+
+export function toAttachmentInfo(f: FeedAttachment & { pending?: true }): LocalAttachmentInfo {
+  return { filename: f.filename, contentType: f.contentType, size: f.size, ...(f.pending ? { pending: true as const } : {}) };
+}
+
+/**
+ * The name a file added here will have: its own, or suffixed `-2`, `-3`, … when the note
+ * already holds one by that name — the server's rule (`availableFilename` in the store),
+ * applied to the files this device knows of, so the link written into the note now is the
+ * one the upload will make true. The server still decides; see `uploadFile` in
+ * `actions.ts` for the case where it decides otherwise.
+ */
+export function availableFilename(taken: Iterable<string>, desired: string): string {
+  const names = new Set(taken);
+  if (!names.has(desired)) return desired;
+  const [stem, ext] = splitExt(desired);
+  for (let n = 2; n < 1000; n += 1) {
+    const candidate = `${stem}-${n}${ext}`;
+    if (!names.has(candidate)) return candidate;
+  }
+  return `${stem}-${crypto.randomUUID().slice(0, 8)}${ext}`;
 }
 
 export interface ListFilter {

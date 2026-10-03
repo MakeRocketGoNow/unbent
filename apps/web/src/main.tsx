@@ -12,6 +12,8 @@ import { registerServiceWorker } from './sw-register.js';
 import { installConnectivity } from './connectivity.js';
 import { installSessionRecheck } from './auth-client.js';
 import { isOfflineError } from './notes-api.js';
+import { onUploaded } from './store/actions.js';
+import { indexUploadedFile } from './index-files.js';
 import './styles.css';
 
 /*
@@ -65,6 +67,14 @@ installConnectivity(queryClient);
  */
 installLibraryQueries(queryClient);
 installSessionRecheck();
+
+/*
+ * A file added with no connection is uploaded from the outbox when there is one, by which
+ * time the editor that took it may be long gone. Its text is read for search then, from
+ * the bytes the queue still holds, exactly as an upload made online has its text read
+ * where it was dropped (`indexUploadedFile` decides whether the server is doing it).
+ */
+onUploaded(indexUploadedFile);
 
 /*
  * Error tracking, on the instances that have it — see `posthog.ts`.

@@ -29,11 +29,21 @@ export interface LocalNote extends FeedNote {
   tagNames?: string[];
 }
 
+/**
+ * A file as the collection holds it: the feed's row, or one made here for a file added
+ * with no connection, which says so (`pending`) until its upload has gone through and the
+ * feed delivers the row under the same id. Its bytes are on the account's `pending` shelf
+ * (`store/files.ts`) meanwhile, where the service worker finds them by the file's address.
+ */
+export interface LocalAttachment extends FeedAttachment {
+  pending?: true;
+}
+
 export interface Collections {
   notes: Collection<LocalNote, string>;
   notebooks: Collection<FeedNotebook, string>;
   tags: Collection<FeedTag, string>;
-  attachments: Collection<FeedAttachment, string>;
+  attachments: Collection<LocalAttachment, string>;
   syncState: Collection<SyncState, string>;
 }
 
@@ -85,7 +95,7 @@ export function createCollections(store: LocalStore, engine: FeedEngine): Collec
     notes: fed<LocalNote>('notes', 'note', (n) => n.id),
     notebooks: fed<FeedNotebook>('notebooks', 'notebook', (n) => n.id),
     tags: fed<FeedTag>('tags', 'tag', (t) => t.id),
-    attachments: fed<FeedAttachment>('attachments', 'attachment', (a) => a.id),
+    attachments: fed<LocalAttachment>('attachments', 'attachment', (a) => a.id),
     syncState,
   };
 }

@@ -215,4 +215,25 @@ describe('Attachments on a locked note', () => {
     fireEvent.click(button('Insert link'));
     expect(onBodyRewrite).not.toHaveBeenCalled();
   });
+
+  it('lists a file still waiting to upload as waiting, and holds back what would ask the server about it', async () => {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } });
+    client.setQueryData(keys.attachments('n1'), [scan, { filename: 'photo.jpg', contentType: 'image/jpeg', size: 2_000, pending: true }]);
+    render(
+      <QueryClientProvider client={client}>
+        <Attachments noteId="n1" body={'[scan](files/scan.pdf)\n\n![photo](files/photo.jpg)'} editorView={null} onBodyRewrite={() => {}} />
+      </QueryClientProvider>,
+    );
+    fireEvent.click(screen.getByText(/Attachments \(2\)/));
+    expect(screen.getByText('Waiting to upload')).toBeTruthy();
+    // The uploaded file downloads; the waiting one is a name, since only the server answers a download.
+    expect(screen.getByText('scan.pdf').closest('a')).not.toBeNull();
+    expect(screen.getByText('photo.jpg').closest('a')).toBeNull();
+    const [, waitingRow] = screen.getAllByRole('listitem');
+    for (const name of ['Copy', 'Delete']) {
+      const button = [...waitingRow!.querySelectorAll('button')].find((b) => b.textContent === name) as HTMLButtonElement;
+      expect(button.disabled, name).toBe(true);
+      expect(button.title).toBe('Waiting to upload');
+    }
+  });
 });

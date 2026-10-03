@@ -11,7 +11,7 @@ import { useSyncStatus } from '../store/use-outbox.js';
  * connection there: not for the half second a replay takes, and not offline, where the
  * banner speaks.
  */
-const status = (pending: number) => ({ pending, durable: true, waiting: new Set<string>(), conflicts: new Map() });
+const status = (pending: number) => ({ pending, durable: true, waiting: new Set<string>(), conflicts: new Map(), uploadNotices: new Map() });
 const wait = (ms: number) => act(() => new Promise((r) => setTimeout(r, ms)));
 
 afterEach(() => {
