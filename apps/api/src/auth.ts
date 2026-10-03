@@ -142,6 +142,31 @@ export function configuredSocials(env: Env): string[] {
   });
 }
 
+/**
+ * Origins outside this instance that may POST to the auth routes, one per provider that
+ * needs it.
+ *
+ * Apple is the only one. Its web sign-in ends with `response_mode=form_post`: Apple's own
+ * page submits the result to `/api/auth/callback/apple`, so the request arrives with
+ * `Origin: https://appleid.apple.com`. A deployed instance trusts only `APP_URL`
+ * (`baseURLFor`), so the callback answered `INVALID_ORIGIN` after the person had already
+ * approved the sign-in at Apple. Google and the rest come back as a redirect, a GET,
+ * which the check never sees.
+ *
+ * Better Auth checks a POST's origin only when it carries a cookie, which is why a test
+ * request without one sails through and the bug shows only in a real browser. A
+ * cross-site POST drops this app's own `SameSite=Lax` cookies but still sends any
+ * `SameSite=None` one for the host — Cloudflare's bot-management `__cf_bm`, on a zone
+ * with Bot Fight Mode, is one — and that is enough to turn the check on.
+ *
+ * Only while Apple is configured, so an instance without it trusts no one extra. This is
+ * Better Auth's `trustedOrigins`, which governs auth requests only: `isTrustedOrigin`,
+ * which guards the change feed's socket, stays exactly `APP_URL` and must not take this.
+ */
+export function providerOrigins(env: Env): string[] {
+  return configuredSocials(env).includes('apple') ? ['https://appleid.apple.com'] : [];
+}
+
 export function offeredProviders(env: Env): AuthProvider[] {
   const providers: AuthProvider[] = [...configuredSocials(env)];
   if (passwordEnabled(env)) providers.push('password');
@@ -432,6 +457,8 @@ function createAuth(env: Env): AuthInstance {
     // D1 has no interactive transactions; Better Auth falls back to batch() for atomicity.
     database: env.DB,
     baseURL: baseURLFor(env),
+    // Apple's callback is a cross-origin POST; see providerOrigins.
+    trustedOrigins: providerOrigins(env),
     secret: env.BETTER_AUTH_SECRET,
     // Off unless the instance asks for it; see passwordEnabled. The sign-up allowlist
     // below applies to password accounts exactly as it does to OAuth ones.
