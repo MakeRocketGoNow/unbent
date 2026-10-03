@@ -965,13 +965,18 @@ export async function tagNotes(ids: string[], change: { add?: string[]; remove?:
 export async function uploadFile(noteId: string, file: File, opts: { signal?: AbortSignal } = {}): Promise<api.UploadedFile> {
   /*
    * Before the first `await`, while the drop or the click that brought the file is still
-   * what the browser sees this as part of: a browser that asks the person asks only
-   * then, and by the time a file is known to be queued — the library looked up, a direct
-   * attempt failed, the room measured — that moment has passed (review of #236). Asked
-   * for every upload, then, queued or not; it costs nothing where it is already granted.
-   * If this one is queued, its bytes will exist nowhere else.
+   * what the browser sees this as part of: a browser that asks the person asks only then,
+   * and by the time a file is known to be queued — the library looked up, the room
+   * measured — that moment has passed (review of #236).
+   *
+   * Only when the app already knows it is offline, which is known without waiting and is
+   * when a file is queued. Asked for every upload, a browser that prompts put "store data
+   * on this device?" in front of someone attaching a file with a perfectly good
+   * connection, about nothing they had done. The rarer ways into the queue — a note with
+   * a write still waiting, a connection lost mid-upload — ask below, where the prompt may
+   * not come; the next file added offline asks properly.
    */
-  askToPersist();
+  if (offlineNow()) askToPersist();
   const lib = await queueable();
   /*
    * One id for the file, whichever way it goes. A request made directly can lose its
@@ -1002,6 +1007,8 @@ export async function uploadFile(noteId: string, file: File, opts: { signal?: Ab
   const taken = [...lib.attachments.values()].filter((a) => a.noteId === noteId).map((a) => a.filename);
   const filename = availableFilename(taken, named.data);
   const contentType = file.type || 'application/octet-stream';
+  // Again for the ways here that were not known at the start; a second ask is free.
+  askToPersist();
   await writeFile(lib.userId, 'pending', noteId, filename, file);
   const upload: Upload = { noteId, attachmentId, filename, contentType, size: file.size };
   const queued = queue(lib, 'uploadFile', upload as unknown as Record<string, unknown>, () => {

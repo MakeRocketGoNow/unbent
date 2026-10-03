@@ -626,6 +626,9 @@ describe('a file added to a note', () => {
     expect(fake.queue).toHaveLength(0);
     expect(root.paths()).toEqual([]);
     expect(files(lib)).toEqual([]);
+    // Nothing is being kept on the device, so the browser is not asked to keep anything:
+    // one that prompts would prompt here about nothing the person did.
+    expect(navigator.storage.persist).not.toHaveBeenCalled();
   });
 
   it('with no connection, is kept on the device, listed as waiting, and queued; then uploaded under the id its row has', async () => {
