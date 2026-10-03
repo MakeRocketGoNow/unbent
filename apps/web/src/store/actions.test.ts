@@ -661,6 +661,7 @@ describe('a note the copy does not hold yet', () => {
     const { fake, engine, lib } = copying([row('n1')]);
     vi.mocked(api.deleteNotes).mockResolvedValueOnce({ trashed: 1 });
     expect(await actions.trashNotes(['n1', missing.id])).toBe(2);
+    await tick();
     expect(api.deleteNotes).toHaveBeenCalledWith([missing.id]);
     expect(fake.queue.map((e) => e.metadata)).toEqual([{ ids: ['n1'] }]);
     expect(lib.notes.get('n1')?.deletedAt).toBeDefined();
@@ -672,9 +673,21 @@ describe('a note the copy does not hold yet', () => {
     vi.mocked(api.updateNotes).mockResolvedValue({ updated: 1 } as never);
     await actions.moveNotes(['n1', missing.id], 'Coupons');
     await actions.tagNotes(['n1', missing.id], { add: ['saved'] });
+    await tick();
     expect(api.updateNotes).toHaveBeenNthCalledWith(1, [missing.id], { notebook: 'Coupons' });
     expect(api.updateNotes).toHaveBeenNthCalledWith(2, [missing.id], { addTags: ['saved'], removeTags: undefined });
     expect(fake.queue.map((e) => e.metadata)).toEqual([{ ids: ['n1'], notebook: 'Coupons' }, { ids: ['n1'], add: ['saved'] }]);
+  });
+
+  it('queues nothing when the request for the rest of a bulk action fails', async () => {
+    // Half an action applied while the list says it failed would skip telling the open
+    // note's draft, whose next save put the old filing back. The request goes first.
+    const { fake, lib } = copying([row('n1')]);
+    vi.mocked(api.updateNotes).mockRejectedValueOnce(new OfflineError());
+    await expect(actions.moveNotes(['n1', missing.id], 'Coupons')).rejects.toBeInstanceOf(OfflineError);
+    await tick();
+    expect(fake.queue).toHaveLength(0);
+    expect(lib.notes.get('n1')?.notebookName).toBeUndefined();
   });
 
   it('leaves out of a bulk action a note gone once a snapshot has been taken', async () => {

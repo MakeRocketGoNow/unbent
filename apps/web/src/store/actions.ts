@@ -779,7 +779,11 @@ function valuesOf(value: NoteDraft, lib: WritableLibrary): NoteFieldValue[] {
  * the row. A bulk action is split: the notes held here are queued and only the rest are
  * the request. Sending the whole selection as a request was tried and undone — a note
  * held here may have an earlier write still waiting in the outbox, which then replayed
- * over the later choice, and the selection failed whole offline. `duplicateNote` already
+ * over the later choice, and the selection failed whole offline. The request goes before
+ * the queue: its notes have no rows here, so nothing of theirs waits in the outbox to be
+ * ordered behind, and a refusal then leaves nothing applied. Queued first, a failed
+ * request left half the action done while the list said it failed, and skipped telling
+ * the open note's draft, whose next save put the old filing back. `duplicateNote` already
  * asks the server for a source it does not hold.
  *
  * Once a snapshot has been taken, an id the copy does not hold is not a note, as in
@@ -931,55 +935,59 @@ export async function trashNotes(ids: string[]): Promise<number> {
   const lib = await queueable();
   if (!lib) return pulled(api.deleteNotes(ids).then((r) => r.trashed));
   const { here, there } = split(lib, ids);
+  const remote = there.length > 0 ? await pulled(api.deleteNotes(there).then((r) => r.trashed)) : 0;
   if (here.length > 0) {
     queue(lib, 'trashNotes', { ids: here }, () => {
       const now = Date.now();
       for (const id of here) lib.notes.update(id, (row) => void (row.deletedAt = now));
     });
   }
-  return here.length + (there.length > 0 ? await pulled(api.deleteNotes(there).then((r) => r.trashed)) : 0);
+  return here.length + remote;
 }
 
 export async function restoreNotes(ids: string[]): Promise<number> {
   const lib = await queueable();
   if (!lib) return pulled(api.restoreNotes(ids).then((r) => r.restored));
   const { here, there } = split(lib, ids);
+  const remote = there.length > 0 ? await pulled(api.restoreNotes(there).then((r) => r.restored)) : 0;
   if (here.length > 0) {
     queue(lib, 'restoreNotes', { ids: here }, () => {
       for (const id of here) lib.notes.update(id, (row) => void delete row.deletedAt);
     });
   }
-  return here.length + (there.length > 0 ? await pulled(api.restoreNotes(there).then((r) => r.restored)) : 0);
+  return here.length + remote;
 }
 
 export async function purgeNotes(ids: string[]): Promise<number> {
   const lib = await queueable();
   if (!lib) return pulled(api.deleteNotesPermanently(ids).then((r) => r.deleted));
   const { here, there } = split(lib, ids);
+  const remote = there.length > 0 ? await pulled(api.deleteNotesPermanently(there).then((r) => r.deleted)) : 0;
   if (here.length > 0) {
     queue(lib, 'purgeNotes', { ids: here }, () => {
       for (const id of here) lib.notes.delete(id);
     });
   }
-  return here.length + (there.length > 0 ? await pulled(api.deleteNotesPermanently(there).then((r) => r.deleted)) : 0);
+  return here.length + remote;
 }
 
 export async function moveNotes(ids: string[], notebook: string | null): Promise<void> {
   const lib = await queueable();
   if (!lib) return pulled(api.updateNotes(ids, { notebook }).then(() => undefined));
   const { here, there } = split(lib, ids);
+  if (there.length > 0) await pulled(api.updateNotes(there, { notebook }));
   if (here.length > 0) {
     queue(lib, 'moveNotes', { ids: here, notebook }, () => {
       for (const id of here) lib.notes.update(id, (row) => void (row.notebookName = notebook));
     });
   }
-  if (there.length > 0) await pulled(api.updateNotes(there, { notebook }));
 }
 
 export async function tagNotes(ids: string[], change: { add?: string[]; remove?: string[] }): Promise<void> {
   const lib = await queueable();
   if (!lib) return pulled(api.updateNotes(ids, { addTags: change.add, removeTags: change.remove }).then(() => undefined));
   const { here, there } = split(lib, ids);
+  if (there.length > 0) await pulled(api.updateNotes(there, { addTags: change.add, removeTags: change.remove }));
   if (here.length > 0) {
     const l = lookups(snapshot(lib));
     const add = change.add ?? [];
@@ -993,7 +1001,6 @@ export async function tagNotes(ids: string[], change: { add?: string[]; remove?:
       }
     });
   }
-  if (there.length > 0) await pulled(api.updateNotes(there, { addTags: change.add, removeTags: change.remove }));
 }
 
 /**
