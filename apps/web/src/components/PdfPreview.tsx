@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type SyntheticEvent } from 'react';
 import { type LoadedPdf, loadPdf } from '../pdf/render.js';
 import { downloadUrl, openAttachmentViewer } from '../attachment-viewer.js';
-import { NOT_AVAILABLE_OFFLINE, unavailableOffline, whenBackOnline } from '../offline-file.js';
 import { Button } from './Button';
 import { ExpandIcon } from './icons.js';
 import { collectPreviewTargets } from './preview-targets.js';
@@ -16,8 +15,7 @@ interface PdfPreviewProps {
 /** Width the page is rasterized at; the canvas is scaled down by CSS on narrow panes. */
 const RENDER_WIDTH = 520;
 
-/** `unavailable`: offline, and the file is not on this device. Not an error: see `offline-file.ts`. */
-type Status = 'idle' | 'loading' | 'ready' | 'error' | 'unavailable';
+type Status = 'idle' | 'loading' | 'ready' | 'error';
 
 /**
  * First page of a PDF, rendered inline, with the rest available on request.
@@ -33,9 +31,6 @@ export function PdfPreview({ src, label }: PdfPreviewProps) {
   /** How many pages have been drawn so far. Starts at one; "Show all" raises it. */
   const [shown, setShown] = useState(1);
 
-  /** Bumped to open the document again, once a connection that was missing is back. */
-  const [attempt, setAttempt] = useState(0);
-
   const host = useRef<HTMLDivElement>(null);
   const pdf = useRef<LoadedPdf | null>(null);
   /** Pages already drawn, so a re-render never repaints work that is done. */
@@ -44,7 +39,6 @@ export function PdfPreview({ src, label }: PdfPreviewProps) {
   // Open the document once per src, and release the worker's copy on unmount.
   useEffect(() => {
     let cancelled = false;
-    let stopWaiting: (() => void) | undefined;
     const controller = new AbortController();
 
     setStatus('loading');
@@ -64,24 +58,17 @@ export function PdfPreview({ src, label }: PdfPreviewProps) {
       })
       .catch((err: Error) => {
         if (cancelled || err.name === 'AbortError') return;
-        if (unavailableOffline(err)) {
-          setStatus('unavailable');
-          // Asked for again when the connection returns, by opening the document anew.
-          stopWaiting = whenBackOnline(() => setAttempt((n) => n + 1));
-          return;
-        }
         setError(err.message);
         setStatus('error');
       });
 
     return () => {
       cancelled = true;
-      stopWaiting?.();
       controller.abort();
       pdf.current?.destroy();
       pdf.current = null;
     };
-  }, [src, attempt]);
+  }, [src]);
 
   /**
    * Draws any page that is due but not yet painted.
@@ -170,7 +157,6 @@ export function PdfPreview({ src, label }: PdfPreviewProps) {
 
       {status === 'loading' && <p className="muted small">Rendering…</p>}
       {status === 'error' && <p className="bad small">Couldn't render this PDF. {error}</p>}
-      {status === 'unavailable' && <p className="file-unavailable">{NOT_AVAILABLE_OFFLINE}</p>}
 
       <div className="pdf-preview-pages" ref={host}>
         {status === 'ready' &&

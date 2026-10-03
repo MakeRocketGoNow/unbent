@@ -25,10 +25,6 @@ describe('attachments', () => {
     expect(await stub.resolveAttachment(n.id, 'scan.pdf')).toMatchObject({ id: 'a1', r2_key: expect.stringContaining('a1-scan.pdf') });
     expect(await stub.attachmentIdFor(n.id, 'scan-2.pdf')).toBe('a2');
     expect(await stub.attachmentIdFor(n.id, 'nope.pdf')).toBeNull();
-    // What an upload naming its own id asks first: the note, and who holds the id.
-    expect(await stub.uploadPrelude(n.id, 'a2')).toEqual({ live: true, existing: { noteId: n.id, filename: 'scan-2.pdf', contentType: 'application/pdf', size: 3 } });
-    expect(await stub.uploadPrelude(n.id, 'a9')).toEqual({ live: true, existing: null });
-    expect(await stub.uploadPrelude('ghost', 'a1')).toMatchObject({ live: false, existing: { noteId: n.id } });
     expect((await stub.listAttachments(n.id)).map((f) => f.filename)).toEqual(['scan.pdf', 'scan-2.pdf']);
     expect((await stub.keysForNote(n.id)).length).toBe(2);
     expect(await stub.ownsNote(n.id)).toBe(true);

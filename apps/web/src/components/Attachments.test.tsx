@@ -7,13 +7,6 @@ import * as api from '../notes-api.js';
 import { keys } from '../queries.js';
 import { Attachments } from './Attachments.js';
 
-vi.mock('../store/actions.js', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('../store/actions.js')>()),
-  // True for the file the test marks as waiting; every other delete is the server's.
-  cancelUpload: vi.fn(async (_noteId: string, filename: string) => filename === 'photo.jpg'),
-}));
-import { cancelUpload } from '../store/actions.js';
-
 vi.mock('../notes-api.js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../notes-api.js')>()),
   deleteAttachment: vi.fn(),
@@ -221,33 +214,5 @@ describe('Attachments on a locked note', () => {
 
     fireEvent.click(button('Insert link'));
     expect(onBodyRewrite).not.toHaveBeenCalled();
-  });
-
-  it('lists a file still waiting to upload as waiting, and holds back what would ask the server about it', async () => {
-    const client = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } });
-    client.setQueryData(keys.attachments('n1'), [scan, { filename: 'photo.jpg', contentType: 'image/jpeg', size: 2_000, pending: true }]);
-    render(
-      <QueryClientProvider client={client}>
-        <Attachments noteId="n1" body={'[scan](files/scan.pdf)\n\n![photo](files/photo.jpg)'} editorView={null} onBodyRewrite={() => {}} />
-      </QueryClientProvider>,
-    );
-    fireEvent.click(screen.getByText(/Attachments \(2\)/));
-    expect(screen.getByText('Waiting to upload')).toBeTruthy();
-    // The uploaded file downloads; the waiting one is a name, since only the server answers a download.
-    expect(screen.getByText('scan.pdf').closest('a')).not.toBeNull();
-    expect(screen.getByText('photo.jpg').closest('a')).toBeNull();
-    const [, waitingRow] = screen.getAllByRole('listitem');
-    const button = (name: string) => [...waitingRow!.querySelectorAll('button')].find((b) => b.textContent === name) as HTMLButtonElement;
-    expect(button('Copy').disabled).toBe(true);
-    expect(button('Copy').title).toBe('Waiting to upload');
-
-    // Delete is live: for a file that has not uploaded it takes the file back, on this
-    // device, and asks the server nothing.
-    expect(button('Delete').disabled).toBe(false);
-    fireEvent.click(button('Delete'));
-    expect(screen.getByText(/before it uploads\?/)).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: 'Remove file' }));
-    await waitFor(() => expect(cancelUpload).toHaveBeenCalledWith('n1', 'photo.jpg'));
-    expect(api.deleteAttachment).not.toHaveBeenCalled();
   });
 });

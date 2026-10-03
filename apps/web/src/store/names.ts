@@ -13,15 +13,6 @@
 export const STORE_PREFIX = 'unbent-';
 /** The IndexedDB database the outbox keeps an account's pending writes in. */
 export const OUTBOX_PREFIX = 'unbent-outbox-';
-/**
- * The OPFS directory an account's file bytes live in (`store/files.ts`): the files of the
- * notebooks it chose to keep on this device, and the files added here that the server has
- * not taken yet. Beside the database rather than in the service worker's cache because
- * both are the account's and deliberate — a kept notebook is gigabytes someone confirmed,
- * a waiting upload exists nowhere else — and the cache goes on every account change, a
- * refused session included.
- */
-export const FILES_PREFIX = 'unbent-files-';
 
 /**
  * A user id as a file name. Better Auth's ids are short and alphanumeric, but OPFS names
@@ -31,7 +22,6 @@ const safe = (userId: string) => userId.replace(/[^A-Za-z0-9_-]/g, '_');
 
 export const storeFileName = (userId: string) => `${STORE_PREFIX}${safe(userId)}.sqlite`;
 export const outboxName = (userId: string) => `${OUTBOX_PREFIX}${safe(userId)}`;
-export const filesDirName = (userId: string) => `${FILES_PREFIX}${safe(userId)}`;
 
 /**
  * Whether an OPFS entry is one of ours: the database and the journal and WAL files SQLite
@@ -40,4 +30,3 @@ export const filesDirName = (userId: string) => `${FILES_PREFIX}${safe(userId)}`
  */
 export const isStoreFile = (name: string) => name.startsWith(STORE_PREFIX) && name.includes('.sqlite');
 export const isOutbox = (name: string) => name.startsWith(OUTBOX_PREFIX);
-export const isFilesDir = (name: string) => name.startsWith(FILES_PREFIX);

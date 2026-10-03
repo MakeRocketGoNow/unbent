@@ -1,5 +1,4 @@
 import { acquirePdf, releasePdf } from './pdf/render.js';
-import { NOT_AVAILABLE_OFFLINE, unavailableOffline } from './offline-file.js';
 import {
   chevronLeftMarkup,
   chevronRightMarkup,
@@ -427,7 +426,7 @@ function mountImage(
     if (zoomable()) img.classList.add('viewer-zoomable');
   });
   img.addEventListener('error', () => {
-    status.textContent = unavailableOffline() ? NOT_AVAILABLE_OFFLINE : "Couldn't load this image.";
+    status.textContent = "Couldn't load this image.";
   });
 
   img.addEventListener('click', (event) => {
@@ -537,7 +536,7 @@ function mountPdf(
     })
     .catch((err: Error) => {
       if (released) return;
-      status.textContent = unavailableOffline(err) ? NOT_AVAILABLE_OFFLINE : `Couldn't render this PDF. ${err.message}`;
+      status.textContent = `Couldn't render this PDF. ${err.message}`;
     });
 
   return () => {

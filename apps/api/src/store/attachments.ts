@@ -533,19 +533,6 @@ export class AttachmentsStore {
   }
 
   /**
-   * A file by its own id, with the note that holds it: what an upload that names its id
-   * asks first, so a request replayed after a lost answer finds the file it already made
-   * rather than storing `scan-2.pdf` beside it. By primary key; one row read.
-   */
-  byId(id: string): (AttachmentInfo & { noteId: string }) | null {
-    const r = this.sql.first<{ note_id: string; filename: string; content_type: string; size: number }>(
-      `SELECT note_id, filename, content_type, size FROM attachments WHERE id = ?1`,
-      id,
-    );
-    return r ? { noteId: r.note_id, filename: r.filename, contentType: r.content_type, size: r.size } : null;
-  }
-
-  /**
    * Every key under a note, for cleanup.
    *
    * Not called on note deletion: that is a soft delete and the note is restorable, so its

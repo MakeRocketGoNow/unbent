@@ -38,11 +38,6 @@ export class AttachmentsRepo extends StoreRepo {
     return this.call((s) => s.ownsNote(noteId));
   }
 
-  /** For an upload that names its own id: whether the note is live, and the file already under that id. */
-  uploadPrelude(noteId: string, attachmentId: string): Promise<{ live: boolean; existing: (AttachmentInfo & { noteId: string }) | null }> {
-    return this.call((s) => s.uploadPrelude(noteId, attachmentId));
-  }
-
   availableFilename(noteId: string, desired: string): Promise<string> {
     return this.call((s) => s.availableFilename(noteId, desired));
   }

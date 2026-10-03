@@ -26,13 +26,6 @@ export interface StoredAttachment extends AttachmentInfo {
 
 export interface StoreAttachmentInput {
   noteId: string;
-  /**
-   * The id the file should have, when the client chose one: a file added offline is a row
-   * on that device before the server has heard of it, and the row the feed later delivers
-   * has to be the same one. The route has checked that nothing holds it. Minted here
-   * otherwise.
-   */
-  id?: string | undefined;
   /** The name asked for. Suffixed when the note already has a file by that name. */
   filename: string;
   /** As declared by whoever supplied the bytes; normalized here, never verified. */
@@ -82,7 +75,7 @@ export async function storeAttachment(
   const { noteId } = input;
 
   const filename = await attachments.availableFilename(noteId, input.filename);
-  const id = input.id ?? crypto.randomUUID();
+  const id = crypto.randomUUID();
   const key = attachments.buildKey(noteId, id, filename);
 
   /**

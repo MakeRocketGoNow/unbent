@@ -1425,12 +1425,9 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
               readOnly
                 ? undefined
                 : async (file, signal) => {
-                    // Through the actions: with no connection the file is kept on the
-                    // device and uploaded from the outbox, and the path is good at once.
-                    const uploaded = await actions.uploadFile(note.id, file, { signal });
+                    const uploaded = await api.uploadFile(note.id, file, { signal });
                     void queryClient.invalidateQueries({ queryKey: keys.attachments(note.id) });
-                    // Searchable now, from the bytes in hand, not on some later pass. A
-                    // file that was queued says `server` and is read when it uploads.
+                    // Searchable now, from the bytes in hand, not on some later pass.
                     indexUploadedFile(note.id, uploaded, file);
                     return uploaded.path;
                   }
