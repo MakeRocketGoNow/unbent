@@ -195,6 +195,14 @@ export interface Env {
    */
   ANDROID_ASSET_LINKS?: string;
   /**
+   * The Apple App Site Association document this origin serves at
+   * /.well-known/apple-app-site-association: which iOS apps, by team and bundle id, it
+   * vouches for, for universal links and passkeys. Verbatim JSON, an object. Per
+   * deployment and unset by default, like `ANDROID_ASSET_LINKS`; see the README's iOS
+   * section.
+   */
+  APPLE_APP_SITE_ASSOCIATION?: string;
+  /**
    * PostHog, for grouping the browser errors that `/api/client-errors` only ever logs.
    *
    * Setting the key is what turns it on: the SPA loads the SDK only when the config says
