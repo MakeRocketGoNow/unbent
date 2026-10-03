@@ -35,7 +35,11 @@ describe('app bridge', () => {
     adoptHostLayout();
 
     expect(document.documentElement.classList.contains('host-ios')).toBe(true);
-    expect(meta.content).toBe('width=device-width, initial-scale=1.0, viewport-fit=cover');
+    // The whole screen, and a fixed scale: a web view otherwise zooms toward whatever it
+    // focuses, which the file picker showed with the page magnified behind its menu.
+    expect(meta.content).toBe(
+      'width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0, user-scalable=no',
+    );
     expect(postMessage).toHaveBeenCalledWith('{"type":"edge-to-edge"}');
   });
 
