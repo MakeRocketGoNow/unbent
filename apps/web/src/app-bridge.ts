@@ -80,6 +80,13 @@ export interface AppHandlers {
  * must not answer `saveChunk` before the piece is written, or that wait means nothing.
  */
 export interface HostApp {
+  /**
+   * Which app this is, for the few places where the page's words depend on it. Absent on
+   * Android: `addJavascriptInterface` exposes methods and nothing else, and versions of
+   * that app in the store predate the question. So only an iOS host has to say, and a
+   * host that says nothing is Android.
+   */
+  platform?: 'android' | 'ios';
   postMessage(json: string): void;
   saveBegin?(name: string, type: string): string | Promise<string>;
   saveChunk?(id: string, base64: string): boolean | Promise<boolean>;
@@ -102,6 +109,15 @@ export function hostApp(): HostApp | undefined {
 /** Whether this page is running inside the app, on either platform. */
 export function isHosted(): boolean {
   return hostApp() !== undefined;
+}
+
+/**
+ * Where the app puts a file it saves, as the phone names the place: an export lands in
+ * Android's Downloads, and on iOS in the Files app. For copy only — the page hands over
+ * the same bytes either way.
+ */
+export function savesTo(): 'Downloads' | 'Files' {
+  return hostApp()?.platform === 'ios' ? 'Files' : 'Downloads';
 }
 
 /** Sends one message to the host app. Returns false when there is no app to hear it. */

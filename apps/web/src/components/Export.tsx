@@ -1,7 +1,7 @@
 import { Link } from '@tanstack/react-router';
 import { Button } from './Button.js';
 import { savedAs, startExport, stopExport, useExporting, type ExportState } from '../export-archive.js';
-import { isHosted } from '../app-bridge.js';
+import { isHosted, savesTo } from '../app-bridge.js';
 
 /**
  * The export page.
@@ -108,9 +108,9 @@ export function Export() {
       {/* Which of these is true depends on where the bytes go; see `export-archive.ts`. */}
       {isHosted() ? (
         <p className="muted small">
-          The archive is built in the app, a few notes at a time, and written to your
-          phone&apos;s Downloads as it goes, so a library of any size exports. Keep the app
-          open until it finishes.
+          The archive is built in the app, a few notes at a time, and written to{' '}
+          {savesTo() === 'Files' ? 'Files' : "your phone's Downloads"} as it goes, so a
+          library of any size exports. Keep the app open until it finishes.
         </p>
       ) : (
         <p className="muted small">
@@ -199,7 +199,7 @@ export function ExportStatus({ state }: { state: ExportState }) {
       return (
         <span className="muted small">
           {state.destination === 'download' ? 'Downloaded' : 'Saved'} <code>{state.filename}</code>
-          {state.destination === 'app' && ' to Downloads'}:{' '}
+          {state.destination === 'app' && ` to ${savesTo()}`}:{' '}
           {plural(state.done, 'note')} and {plural(state.files, 'file')}.
           {state.skipped > 0 &&
             ` ${plural(state.skipped, 'file')} ${state.skipped === 1 ? 'was' : 'were'} gone by the time the export reached ${state.skipped === 1 ? 'it' : 'them'}, so ${state.skipped === 1 ? 'it is' : 'they are'} not in it.`}
