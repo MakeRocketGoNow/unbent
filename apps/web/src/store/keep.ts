@@ -222,12 +222,13 @@ export function createKeeper(opts: KeeperOptions): Keeper {
   /**
    * How the tabs of one account tell each other: `list` when the kept list was changed,
    * so the tab that fetches starts on it now rather than at its next pass; `shelf` when
-   * the fetching tab has put files on the shelf or taken them off, so a tab that is only
-   * showing progress counts again. A convenience on top of reading the list every pass —
+   * the fetching tab has put files on the shelf or taken them off, with its totals, so a
+   * tab that is only showing progress shows them. A convenience on top of reading the list every pass —
    * a browser without it is still right, a pass later.
    */
   const channel = typeof BroadcastChannel === 'undefined' ? null : new BroadcastChannel(`unbent-keep-${opts.userId}`);
-  const tell = (what: 'list' | 'shelf') => {
+  type Totals = Pick<KeepStatus, 'wanted' | 'have' | 'fetching'>;
+  const tell = (what: 'list' | { shelf: Totals }) => {
     try {
       channel?.postMessage(what);
     } catch {
@@ -237,8 +238,18 @@ export function createKeeper(opts: KeeperOptions): Keeper {
   if (channel) {
     channel.onmessage = (event: MessageEvent) => {
       if (stopped) return;
-      if (event.data === 'list') void read().then(run, run);
-      else if (!opts.leading()) run();
+      if (event.data === 'list') {
+        void read().then(run, run);
+        return;
+      }
+      /*
+       * The fetching tab's own totals, taken as they are. A watching tab used to answer
+       * this by counting for itself, which is a listing of the shelf — a `getFile()` per
+       * file — every few seconds for as long as an archive-sized notebook was arriving
+       * (review of #236). The numbers it would have reached are the ones in the message.
+       */
+      const totals = (event.data as { shelf?: Totals } | null)?.shelf;
+      if (totals && !opts.leading()) set({ counted: true, wanted: totals.wanted, have: totals.have, fetching: totals.fetching });
     };
   }
   /** When the other tabs were last told the shelf moved; a long pass says so every few seconds, not per file. */
@@ -284,7 +295,7 @@ export function createKeeper(opts: KeeperOptions): Keeper {
         },
       );
     }
-    if (fresh && todo.remove.length > 0) tell('shelf');
+    if (fresh && todo.remove.length > 0) tell({ shelf: { wanted: todo.wanted, have: todo.have, fetching: false } });
     if (todo.fetch.length === 0 || offlineNow()) {
       set({ fetching: false, problem: null });
       return;
@@ -317,10 +328,10 @@ export function createKeeper(opts: KeeperOptions): Keeper {
         set({ have: { ...have } });
         if (Date.now() - told > 5000) {
           told = Date.now();
-          tell('shelf');
+          tell({ shelf: { wanted: todo.wanted, have: { ...have }, fetching: true } });
         }
       }
-      tell('shelf');
+      tell({ shelf: { wanted: todo.wanted, have: { ...have }, fetching: false } });
     } catch (err) {
       // Whatever went wrong, memory may no longer be what the disk holds.
       shelf = null;

@@ -238,8 +238,18 @@ describe('the keeper', () => {
       await other.keep('receipts');
       await vi.waitFor(() => expect(lead.status().have).toEqual({ files: 3, bytes: 600 }), { timeout: 4000 });
       expect(lead.status().kept.has('receipts')).toBe(true);
-      // And the tab that asked sees them arrive.
+      // And the tab that asked sees them arrive — from the fetching tab's own totals, not
+      // by listing the shelf again for each report.
+      const shelfDir = await (await root.getDirectoryHandle('unbent-files-u1')).getDirectoryHandle('kept');
+      const entries = shelfDir.entries.bind(shelfDir);
+      let listings = 0;
+      shelfDir.entries = () => {
+        listings += 1;
+        return entries();
+      };
       await vi.waitFor(() => expect(other.status().have).toEqual({ files: 3, bytes: 600 }), { timeout: 4000 });
+      expect(listings).toBe(0);
+      shelfDir.entries = entries;
 
       await other.releaseAll();
       await vi.waitFor(() => expect(lead.status().kept.size).toBe(0), { timeout: 4000 });
