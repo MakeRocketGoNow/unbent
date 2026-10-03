@@ -317,6 +317,29 @@ describe('appDestination', () => {
     expect(app.saveEnd).not.toHaveBeenCalled();
   });
 
+  /*
+   * A WKWebView reply reports a native error by rejecting, where Android's bridge answers
+   * false. Either way the export says what the page says, not what the host threw.
+   */
+  it('says the same of a host that rejects as of one that answers false', async () => {
+    const native = () => Promise.reject(new Error('NSCocoaErrorDomain 640'));
+    const { app } = promisingApp();
+    app.saveChunk.mockImplementationOnce(native);
+    const destination = await appDestination(app, 'unbent-export.zip');
+    const writer = destination.writable.getWriter();
+    await expect(writer.write(new Uint8Array(600_000))).rejects.toThrow(/^The app could not write the archive/);
+    writer.releaseLock();
+
+    const ending = promisingApp();
+    ending.app.saveEnd.mockImplementationOnce(native);
+    const closing = (await appDestination(ending.app, 'unbent-export.zip')).writable.getWriter();
+    await expect(closing.close()).rejects.toThrow(/^The app could not finish/);
+
+    const beginning = promisingApp();
+    beginning.app.saveBegin.mockImplementationOnce(native);
+    await expect(appDestination(beginning.app, 'unbent-export.zip')).rejects.toThrow(/^The app could not create/);
+  });
+
   it('runs a whole export through a host that answers later', async () => {
     const { app, most } = promisingApp();
     const exporting = createExporting(

@@ -219,6 +219,18 @@ function toBase64(bytes: Uint8Array): string {
 }
 
 /**
+ * A host call's answer, or `failed` when the call threw or its promise rejected. The call
+ * is made inside, so a bridge that throws before it answers is caught with the rest.
+ */
+async function answered<T>(call: () => T | Promise<T>, failed: T): Promise<T> {
+  try {
+    return await call();
+  } catch {
+    return failed;
+  }
+}
+
+/**
  * The archive streamed to the app hosting this page, which writes it into the phone's
  * Downloads, or into Files on iOS.
  *
@@ -228,7 +240,10 @@ function toBase64(bytes: Uint8Array): string {
  * saved and nothing said. So the app takes the bytes directly. Each call is waited for,
  * which is the point — a page writing faster than the phone's storage waits on each piece
  * rather than queueing the library in memory — and a call that answers false is a write
- * that failed, which fails the export like any other error.
+ * that failed, which fails the export like any other error. So is a call that throws or
+ * whose promise rejects, which is how a WKWebView reply reports a native error
+ * (`answered`): the export says the same thing however the host failed, in the page's
+ * words rather than whatever text the native side put in its error.
  *
  * Android answers each call synchronously and an iOS host with a promise (`HostApp`), and
  * `await` serves both: on a plain value it is a no-op, and on a promise it is what makes
@@ -240,7 +255,7 @@ function toBase64(bytes: Uint8Array): string {
  * has to go either way.
  */
 export async function appDestination(app: HostApp, filename: string): Promise<Destination> {
-  const id = await app.saveBegin!(filename, 'application/zip');
+  const id = await answered(() => app.saveBegin!(filename, 'application/zip'), '');
   if (!id) throw new Error(`The app could not create a file in ${savesTo()}.`);
   let ended = false;
   /*
@@ -254,7 +269,7 @@ export async function appDestination(app: HostApp, filename: string): Promise<De
   const pending = new Uint8Array(APP_PIECE);
   let filled = 0;
   const send = async (piece: Uint8Array) => {
-    if (!(await app.saveChunk!(id, toBase64(piece)))) {
+    if (!(await answered(() => app.saveChunk!(id, toBase64(piece)), false))) {
       throw new Error(`The app could not write the archive to ${savesTo()}.`);
     }
   };
@@ -274,7 +289,7 @@ export async function appDestination(app: HostApp, filename: string): Promise<De
     },
     async close() {
       if (filled > 0) await send(pending.subarray(0, filled));
-      if (!(await app.saveEnd!(id))) throw new Error('The app could not finish writing the archive.');
+      if (!(await answered(() => app.saveEnd!(id), false))) throw new Error('The app could not finish writing the archive.');
       ended = true;
     },
   });
