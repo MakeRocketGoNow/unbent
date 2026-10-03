@@ -83,6 +83,9 @@ describe('the files an account keeps on a device', () => {
     expect(shelfName(long).length).toBeLessThan(100);
     expect(shelfName(long)).not.toBe(shelfName(other));
     expect(shelfName(long)).toBe(shelfName(long));
+    // The extension survives the cut: the file system guesses a file's type from it.
+    expect(shelfName(long).endsWith('.pdf')).toBe(true);
+    expect(shelfName(`${'a'.repeat(200)}.not an extension at all`)).not.toContain('.');
   });
 });
 

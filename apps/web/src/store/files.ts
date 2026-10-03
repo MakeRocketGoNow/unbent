@@ -77,7 +77,7 @@ export async function storagePersisted(): Promise<boolean | null> {
  * A file's name on the shelf. Its own, which the upload route has already held to what a
  * file system takes — no separators, not `.` or `..` — except when it is long: the route
  * allows 768 characters and a file system's limit is usually 255 bytes, so a long name is
- * cut and given a hash of the whole of it. Synchronous on purpose; the worker computes
+ * cut and given a hash of the whole of it, keeping its extension. Synchronous on purpose; the worker computes
  * this on every request for a file.
  */
 export function shelfName(filename: string): string {
@@ -92,7 +92,13 @@ export function shelfName(filename: string): string {
   h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909);
   h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909);
   const hash = (4294967296 * (2097151 & h2) + (h1 >>> 0)).toString(36);
-  return `${filename.slice(0, 60)}~${hash}`;
+  // With its extension, which is what the file system guesses a type from: without it the
+  // worker served a long-named picture as `application/octet-stream`. Found by hand rather
+  // than with the shared `splitExt`, so the worker's bundle does not take in that package
+  // for one line; an "extension" longer than a few characters is part of the name.
+  const dot = filename.lastIndexOf('.');
+  const ext = dot > 0 && filename.length - dot <= 12 ? filename.slice(dot) : '';
+  return `${filename.slice(0, 60)}~${hash}${ext}`;
 }
 
 const missing = (err: unknown) => (err as { name?: string } | null)?.name === 'NotFoundError';
