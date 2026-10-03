@@ -340,6 +340,42 @@ describe('appDestination', () => {
     await expect(appDestination(beginning.app, 'unbent-export.zip')).rejects.toThrow(/^The app could not create/);
   });
 
+  /*
+   * The overlap a synchronous host could never see. The writer keeps its lock, as the zip
+   * writer may when the export is stopped under it, and the chunk is three pieces long, so
+   * the write has more to send once the piece in flight is answered.
+   */
+  it('tells the host to remove the file only once the piece in flight is answered', async () => {
+    const calls: string[] = [];
+    let answer: (ok: boolean) => void = () => {};
+    const app = {
+      postMessage: vi.fn(),
+      saveBegin: vi.fn(async () => 'job-1'),
+      saveChunk: vi.fn(() => {
+        calls.push('chunk');
+        return new Promise<boolean>((resolve) => {
+          answer = (ok) => {
+            calls.push('answered');
+            resolve(ok);
+          };
+        });
+      }),
+      saveEnd: vi.fn(async () => true),
+      saveAbort: vi.fn(async () => void calls.push('abort')),
+    } satisfies HostApp;
+    const destination = await appDestination(app, 'unbent-export.zip');
+    const writer = destination.writable.getWriter();
+    const write = writer.write(new Uint8Array(1_600_000)).catch((err: Error) => err.message);
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    const aborting = destination.abort();
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    expect(calls).toEqual(['chunk']);
+    answer(true);
+    await aborting;
+    expect(calls).toEqual(['chunk', 'answered', 'abort']);
+    expect(await write).toMatch(/abandoned/);
+  });
+
   it('gives up quietly when the host cannot remove the file either', async () => {
     const { app } = promisingApp({ failAt: 0 });
     app.saveAbort.mockImplementation(() => Promise.reject(new Error('NSCocoaErrorDomain 4')));

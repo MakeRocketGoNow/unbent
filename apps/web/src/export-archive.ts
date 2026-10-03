@@ -250,14 +250,24 @@ async function answered<T>(call: () => T | Promise<T>, failed: T): Promise<T> {
  * `write` below return one, which a `WritableStream` holds the next chunk behind. The zip
  * writer waits on the stream in turn, so a slow native write slows the reads that feed it.
  *
- * `saveAbort` is called directly as well as through the stream: once a write has thrown,
+ * `saveAbort` is called directly rather than through the stream: once a write has thrown,
  * the stream is errored and would never pass an abort on, and the app's half-written file
  * has to go either way.
+ *
+ * It is sent only once the piece in flight has been answered, and no piece is sent after
+ * it. A synchronous host could never see the two overlap; one that answers later can be
+ * stopped, or lose a fetch, while a `saveChunk` is still being written, and would be
+ * told to remove a file it is in the middle of writing to. Waiting on the stream's own
+ * `abort` is not enough for that: the zip writer may still hold the stream's lock, and a
+ * locked stream refuses the abort at once rather than waiting for its write. So the call
+ * in flight is remembered here and waited for by name.
  */
 export async function appDestination(app: HostApp, filename: string): Promise<Destination> {
   const id = await answered(() => app.saveBegin!(filename, 'application/zip'), '');
   if (!id) throw new Error(`The app could not create a file in ${savesTo()}.`);
   let ended = false;
+  let abandoned = false;
+  let inFlight: Promise<unknown> = Promise.resolve();
   /*
      The zip writer hands over many small chunks — a header here, a few bytes of a name
      there — and each call to the app has a fixed cost, so they are gathered into full
@@ -269,7 +279,12 @@ export async function appDestination(app: HostApp, filename: string): Promise<De
   const pending = new Uint8Array(APP_PIECE);
   let filled = 0;
   const send = async (piece: Uint8Array) => {
-    if (!(await answered(() => app.saveChunk!(id, toBase64(piece)), false))) {
+    // A write that was waiting when the export was abandoned resumes here for its next
+    // piece; the app has been told the file is gone, or is about to be.
+    if (abandoned) throw new Error('The export was abandoned.');
+    const answer = answered(() => app.saveChunk!(id, toBase64(piece)), false);
+    inFlight = answer;
+    if (!(await answer)) {
       throw new Error(`The app could not write the archive to ${savesTo()}.`);
     }
   };
@@ -299,6 +314,8 @@ export async function appDestination(app: HostApp, filename: string): Promise<De
     finish: async () => null,
     abort: async () => {
       if (ended) return;
+      abandoned = true;
+      await inFlight;
       // Nothing to do if the host cannot remove the file either; the export has already
       // failed or been stopped, and says so.
       await answered(() => app.saveAbort?.(id), undefined);
