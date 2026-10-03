@@ -14,35 +14,35 @@ vi.mock('./notes-api.js', async (importOriginal) => ({
 const file = { filename: 'scan.pdf', contentType: 'application/pdf', size: 12 };
 
 describe('attachmentsQuery', () => {
+  let lib: { uninstall: () => void } | null = null;
   afterEach(() => {
+    lib?.uninstall();
+    lib = null;
     vi.clearAllMocks();
   });
 
   it('asks the server for files of a note the copy does not hold yet', async () => {
     // A link followed during the first copy: the note body comes from the server, and
     // its files used to 404 because the collection had no row.
-    const lib = installTestLibrary({ cursor: null });
+    lib = installTestLibrary({ cursor: null });
     vi.mocked(api.listAttachments).mockResolvedValue([file]);
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     await expect(client.fetchQuery(attachmentsQuery('n-missing'))).resolves.toEqual([file]);
     expect(api.listAttachments).toHaveBeenCalledWith('n-missing');
-    lib.uninstall();
   });
 
   it('says the note is not on this device yet when offline during the first copy', async () => {
-    const lib = installTestLibrary({ cursor: null });
+    lib = installTestLibrary({ cursor: null });
     setReachableForTests(false);
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     await expect(client.fetchQuery(attachmentsQuery('n-missing'))).rejects.toBeInstanceOf(OfflineError);
     expect(api.listAttachments).not.toHaveBeenCalled();
-    lib.uninstall();
   });
 
   it('treats a missing note as gone once a snapshot has been taken', async () => {
-    const lib = installTestLibrary({ cursor: { seq: 1, epoch: 'test' } });
+    lib = installTestLibrary({ cursor: { seq: 1, epoch: 'test' } });
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     await expect(client.fetchQuery(attachmentsQuery('n-missing'))).rejects.toMatchObject({ status: 404 });
     expect(api.listAttachments).not.toHaveBeenCalled();
-    lib.uninstall();
   });
 });
