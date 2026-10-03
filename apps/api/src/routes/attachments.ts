@@ -10,7 +10,7 @@ import {
 } from '@unbent/shared';
 import { z } from 'zod';
 import { copyAttachments } from '../lib/copy-attachments.js';
-import { readPendingFiles, readWithLlm, readersFrom } from '../lib/read-attachment.js';
+import { readPendingFiles, readWithLlm, readersFrom, serverCanRead } from '../lib/read-attachment.js';
 import { canUseLlm, readableByLlm } from '../lib/llm.js';
 import { fetchWebImage } from '../lib/web-image.js';
 import { requireAuth } from '../lib/session.js';
@@ -52,7 +52,40 @@ export const attachments = new Hono<AppEnv>()
     const noteId = c.req.param('id');
     const repo = c.get('attachments');
 
-    if (!(await repo.ownsNote(noteId))) return c.json({ error: 'Not found' }, 404);
+    /**
+     * `?text=supplied`: the client has this file's text already and will put it next, so
+     * the read that would otherwise start here is skipped. What the importer sends for a
+     * file that arrived with a `text/` or `described/` sidecar — see `storeAttachment`.
+     */
+    const textSupplied = c.req.query('text') === 'supplied';
+
+    /**
+     * `X-Attachment-Id`: the id the file should have, chosen by the client, as a note's
+     * can be (`POST /notes`). A file added with no connection is uploaded later from an
+     * outbox, and an outbox replays: a request whose answer was lost is sent again. With
+     * an id, the second one finds the file the first one made and is answered 200 with
+     * it, its body unread — without, it stored the same bytes again as `scan-2.pdf`. An
+     * id held by a file of another note is a conflict, not a find.
+     */
+    const claimed = c.req.header('X-Attachment-Id');
+    if (claimed !== undefined) {
+      if (!z.string().uuid().safeParse(claimed).success) return c.json({ error: 'X-Attachment-Id must be a UUID' }, 400);
+      const { live, existing } = await repo.uploadPrelude(noteId, claimed);
+      if (!live) return c.json({ error: 'Not found' }, 404);
+      if (existing) {
+        await c.req.raw.body?.cancel().catch(() => {});
+        if (existing.noteId !== noteId) return c.json({ error: 'That id belongs to another file' }, 409);
+        const { filename, contentType, size } = existing;
+        // The answer the first request gave, worked out again: it was lost, so the client
+        // never heard it. A flat `server` here left a file the server cannot read with
+        // nobody reading it — the client that holds the bytes was told not to (review of
+        // #236). Where the server can, its reader is already on the first request's bytes.
+        const indexing = !textSupplied && serverCanRead(c.env, contentType, size) ? 'server' : 'client';
+        return c.json({ filename, contentType, size, path: `files/${filename}`, indexing }, 200);
+      }
+    } else if (!(await repo.ownsNote(noteId))) {
+      return c.json({ error: 'Not found' }, 404);
+    }
 
     const rawName = c.req.header('X-Filename');
     if (!rawName) return c.json({ error: 'X-Filename header required' }, 400);
@@ -81,19 +114,13 @@ export const attachments = new Hono<AppEnv>()
      */
     const link = c.req.query('link') !== undefined;
 
-    /**
-     * `?text=supplied`: the client has this file's text already and will put it next, so
-     * the read that would otherwise start here is skipped. What the importer sends for a
-     * file that arrived with a `text/` or `described/` sidecar — see `storeAttachment`.
-     */
-    const textSupplied = c.req.query('text') === 'supplied';
-
     const { filename, contentType, size, path, indexing } = await storeAttachment(
       c.env,
       c.executionCtx,
       { attachments: repo, notes: c.get('notes') },
       {
         noteId,
+        id: claimed,
         filename: parsed.data,
         contentType: c.req.header('Content-Type'),
         body: c.req.raw.body,

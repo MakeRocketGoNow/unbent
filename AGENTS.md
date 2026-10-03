@@ -29,6 +29,9 @@ Some things that have been asked for repeatedly, so start from them:
   than once.
 - **Dark mode is a real target too.** Both themes are defined in `styles.css`. `--bad` is a
   light salmon in dark mode, so anything filled with it needs dark text, not white.
+- **Red and green do not share a box.** A red border around a green button reads as
+  Christmas, and as a warning about something safe. See
+  [Destructive actions](#destructive-actions).
 - **Density belongs to the content.** Controls that repeat on every row of a list should be
   quieter than controls that appear once per view.
 
@@ -104,6 +107,14 @@ Name the blast radius before the user commits: how many notes, which notebook, w
 to attachments. `Confirm` weights its actions by position, so a destructive action passed
 after a safe one demotes itself automatically — pass them in the right order and don't
 override the classes.
+
+Red and green never share a box. A confirm's border takes the tone of the action it
+offers — the first one: red when that action destroys something, green when it is the
+primary, plain when it is neutral. So "Keep 9 KB on this device?" is bordered green, and
+"Delete this notebook?" red. `Confirm` works this out itself (`borderTone`), which is why
+nothing is passed for it: don't override its classes, and don't hand-roll a confirm-shaped
+box with a border of your own. The border used to be red for every question, and a warning
+colour around a safe action was the bug.
 
 ## Comments
 
@@ -423,7 +434,14 @@ growing wait. Two rules keep the queue from sticking, each with a test: every an
 server would give again — a 4xx, a refused precondition — is a `NonRetriableError` that ends
 its entry, and a `saveNote` whose note has a later entry in the queue does nothing, since
 each save carries the whole draft. Only the tab holding the Web Lock replays; a second tab's
-writes made offline are not durable. Notebook, tag and field management stay direct calls
+writes made offline are not durable. A file added to a note goes the same way (`uploadFile`): with a
+connection and nothing of the note's waiting it is the request it always was, and otherwise
+its bytes go to the account's `pending` shelf, its row is made at once and marked `pending`,
+and its upload is an entry in the same outbox, behind the note's own. The upload names its
+file's id (`X-Attachment-Id`), so a replay finds the file rather than storing `scan-2.pdf`;
+a direct upload carries the same id its queued retry will, since its answer can be lost
+too; a refused session keeps the entry, because the bytes exist nowhere else; any other 4xx ends
+it and leaves a notice the attachments panel shows. Notebook, tag and field management stay direct calls
 that need a connection: they are settings-page actions with rules the server decides, and
 the feed delivers what they did to every device.
 
@@ -461,7 +479,28 @@ names it, matched by the whole shape of the path, never by prefix; `/api/changes
 be answered from a cache, since a cached page replayed over a cursor is rows applied twice or
 never. File bytes are kept only when someone looks at them: an `<img>`, or a fetch carrying
 `X-Unbent-View: 1`, which the PDF viewer sends. The indexer and export read every file through
-the same addresses and must not send that header; a new viewer must. Files are MAK-141.
+the same addresses and must not send that header; a new viewer must. That cache has a budget
+(`sw/budget.ts`: 500 MB, 500 files, a month, oldest-opened first), kept by an index that is
+one more entry in the cache, so emptying the cache takes it too.
+
+**File bytes someone chose, or that exist nowhere else, live under the account, not in the
+cache.** `store/files.ts` is an OPFS directory named for the account with two shelves:
+`kept`, the files of the notebooks this device keeps offline (`store/keep.ts`), and
+`pending`, files added here that have not uploaded. A directory per note and the file under
+its own name, so the worker answers a file's address from the shelf with no index — and it
+does, before the cache or the network, for every read but a page load (`shelved` in
+`sw/routes.ts`): the worker cannot know the stored type the server picks a safe one from,
+so a navigation is never answered from a shelf. What the `kept` shelf should hold is a pure
+function of the library and the kept list (`plan`); the keeper stands down while the library
+is not whole — a walk has not finished, which is not the same as the last pull failing —
+since a pass during the first copy would drop what it would fetch again, and
+runs only in the tab that holds the outbox. It fetches through `request()` and unmarked, so
+a kept notebook never fills the cache of opened files. A list of kept notebooks that cannot
+be read is unknown, never empty: a pass over an empty list removes the whole shelf. The list
+is read from the device at the start of every pass, because the tab that fetches is rarely
+the one Keep offline was pressed in; a `BroadcastChannel` only makes that prompt. A file that is on neither shelf nor
+in the cache says "Not available offline" where its preview would be (`offline-file.ts`):
+one phrase, in the note's body, never a spinner and never in the head.
 
 **Only two things say the app is offline:** the browser's `navigator.onLine`, and a check
 of `/api/health` with a timeout (`connectivity.ts`). Nothing else decides — not the outbox,
@@ -484,9 +523,9 @@ one (`transient` in `export-archive.ts`): it is an `ApiError` with status 0, not
 **What this device keeps of an account goes when the account changes hands — and the
 outbox goes only then.** `clearOfflineCaches()` runs on sign-out, on a refused session, on
 account deletion and when a different person signs in. The worker's caches go every time;
-they are keyed by address and cheap to refill. The local store and the outbox
-(`store/wipe.ts`) are keyed by account, and the outbox holds writes the server has not
-heard of, so they go only when the account has changed hands for good: sign-out and account
+they are keyed by address and cheap to refill. The local store, the outbox and the
+account's files directory (`store/wipe.ts`) are keyed by account, and the outbox holds
+writes the server has not heard of — the files directory holds the bytes of its uploads — so they go only when the account has changed hands for good: sign-out and account
 deletion remove every account's, a different person signing in removes every account's
 but their own, and a refused session — someone who edited offline for longer than their
 sign-in lasted — closes them and keeps them, so their sign-in reopens the store and replays
@@ -501,9 +540,11 @@ about that, and a sentence there shrank the title twice. What the server has not
 is said elsewhere: a cloud glyph beside the word while *this* note has an entry waiting in
 the outbox (`NotSyncedMark`, "Not synced yet" on hover or tap), the banner for the device
 being offline, and a line in the strip when writes have waited online for a few seconds
-(`SyncingLine`). What fades is what needs the server now — Auto-fill, the ⋯ menu, file
-uploads, search — and a new control that needs the server should follow `offline`, not
-lock the note.
+(`SyncingLine`). What fades is what needs the server now — Auto-fill, the ⋯ menu, search,
+and copying, moving or deleting a file — and a new control that needs the server should
+follow `offline`, not lock the note. Adding a file does not fade: it is queued, and its row
+in the attachments panel says "Waiting to upload" until it has gone, and Delete on that row
+takes the file back without the server ever hearing of it (`cancelUpload`).
 
 **Deploys wait for a change of section.** A new worker installs and waits; the next time
 someone goes to another section (notes to settings, not list to note), or comes back to the
@@ -524,7 +565,14 @@ not Vite's. The Browser pane cannot register a service worker at all, so drive a
 Chrome over the DevTools protocol instead (the gate scripts from MAK-140's spike are the
 shape). Take a connection away with `Network.emulateNetworkConditions` on the page *and* on
 every service-worker target, attaching one session per target and reusing it: emulation is
-per session, and a second attach leaves the first one's conditions in force. The real check
+per session, and a second attach leaves the first one's conditions in force. `pnpm gate:offline`
+(`scripts/offline-gate.mjs`) is that, kept: with `pnpm dev` up, the demo account seeded and
+the web app built, it installs the worker, cuts the network on the page and the worker, and
+checks that a file not on the device says so, that the worker, its caches and the library
+survive, that an opened file draws again, and that a file added offline uploads on
+reconnect. Run it before asking anyone to test offline behaviour by hand. On a phone,
+**never clear site data between attempts**: that removes the worker, and the app cannot
+open offline again until Settings → Offline says it is on the device. The real check
 is still airplane mode on the phone, with `adb reverse --remove-all` as well when the app
 points at a local instance — airplane mode alone does not cut the adb tunnel. The persistence
 worker applied rows at about 25 a second on the emulator (1,500 notes in 70 s) against well

@@ -35,6 +35,7 @@ import { Route as SettingsExportRouteImport } from './routes/settings.export'
 import { Route as SettingsImportRouteImport } from './routes/settings.import'
 import { Route as SettingsMaintenanceRouteImport } from './routes/settings.maintenance'
 import { Route as SettingsNotebooksRouteImport } from './routes/settings.notebooks'
+import { Route as SettingsOfflineRouteImport } from './routes/settings.offline'
 import { Route as SettingsSecurityRouteImport } from './routes/settings.security'
 import { Route as SettingsTagsRouteImport } from './routes/settings.tags'
 import { Route as TrashIndexRouteImport } from './routes/trash.index'
@@ -172,6 +173,11 @@ const SettingsNotebooksRoute = SettingsNotebooksRouteImport.update({
   path: '/notebooks',
   getParentRoute: () => SettingsRoute,
 } as any)
+const SettingsOfflineRoute = SettingsOfflineRouteImport.update({
+  id: '/offline',
+  path: '/offline',
+  getParentRoute: () => SettingsRoute,
+} as any)
 const SettingsSecurityRoute = SettingsSecurityRouteImport.update({
   id: '/security',
   path: '/security',
@@ -229,6 +235,7 @@ export interface FileRoutesByFullPath {
   '/settings/import': typeof SettingsImportRoute
   '/settings/maintenance': typeof SettingsMaintenanceRoute
   '/settings/notebooks': typeof SettingsNotebooksRoute
+  '/settings/offline': typeof SettingsOfflineRoute
   '/settings/security': typeof SettingsSecurityRoute
   '/settings/tags': typeof SettingsTagsRoute
   '/trash/$noteId': typeof TrashNoteIdRoute
@@ -260,6 +267,7 @@ export interface FileRoutesByTo {
   '/settings/import': typeof SettingsImportRoute
   '/settings/maintenance': typeof SettingsMaintenanceRoute
   '/settings/notebooks': typeof SettingsNotebooksRoute
+  '/settings/offline': typeof SettingsOfflineRoute
   '/settings/security': typeof SettingsSecurityRoute
   '/settings/tags': typeof SettingsTagsRoute
   '/trash/$noteId': typeof TrashNoteIdRoute
@@ -295,6 +303,7 @@ export interface FileRoutesById {
   '/settings/import': typeof SettingsImportRoute
   '/settings/maintenance': typeof SettingsMaintenanceRoute
   '/settings/notebooks': typeof SettingsNotebooksRoute
+  '/settings/offline': typeof SettingsOfflineRoute
   '/settings/security': typeof SettingsSecurityRoute
   '/settings/tags': typeof SettingsTagsRoute
   '/trash/$noteId': typeof TrashNoteIdRoute
@@ -331,6 +340,7 @@ export interface FileRouteTypes {
     | '/settings/import'
     | '/settings/maintenance'
     | '/settings/notebooks'
+    | '/settings/offline'
     | '/settings/security'
     | '/settings/tags'
     | '/trash/$noteId'
@@ -362,6 +372,7 @@ export interface FileRouteTypes {
     | '/settings/import'
     | '/settings/maintenance'
     | '/settings/notebooks'
+    | '/settings/offline'
     | '/settings/security'
     | '/settings/tags'
     | '/trash/$noteId'
@@ -396,6 +407,7 @@ export interface FileRouteTypes {
     | '/settings/import'
     | '/settings/maintenance'
     | '/settings/notebooks'
+    | '/settings/offline'
     | '/settings/security'
     | '/settings/tags'
     | '/trash/$noteId'
@@ -612,6 +624,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SettingsNotebooksRouteImport
       parentRoute: typeof SettingsRoute
     }
+    '/settings/offline': {
+      id: '/settings/offline'
+      path: '/offline'
+      fullPath: '/settings/offline'
+      preLoaderRoute: typeof SettingsOfflineRouteImport
+      parentRoute: typeof SettingsRoute
+    }
     '/settings/security': {
       id: '/settings/security'
       path: '/security'
@@ -675,6 +694,7 @@ interface SettingsRouteChildren {
   SettingsImportRoute: typeof SettingsImportRoute
   SettingsMaintenanceRoute: typeof SettingsMaintenanceRoute
   SettingsNotebooksRoute: typeof SettingsNotebooksRoute
+  SettingsOfflineRoute: typeof SettingsOfflineRoute
   SettingsSecurityRoute: typeof SettingsSecurityRoute
   SettingsTagsRoute: typeof SettingsTagsRoute
   SettingsIndexRoute: typeof SettingsIndexRoute
@@ -687,6 +707,7 @@ const SettingsRouteChildren: SettingsRouteChildren = {
   SettingsImportRoute: SettingsImportRoute,
   SettingsMaintenanceRoute: SettingsMaintenanceRoute,
   SettingsNotebooksRoute: SettingsNotebooksRoute,
+  SettingsOfflineRoute: SettingsOfflineRoute,
   SettingsSecurityRoute: SettingsSecurityRoute,
   SettingsTagsRoute: SettingsTagsRoute,
   SettingsIndexRoute: SettingsIndexRoute,

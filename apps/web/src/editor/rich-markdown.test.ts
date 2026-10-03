@@ -3,6 +3,7 @@ import { EditorView } from '@codemirror/view';
 import { markdown } from '@codemirror/lang-markdown';
 import { GFM } from '@lezer/markdown';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { resetConnectivity, setReachableForTests } from '../connectivity.js';
 import {
   bulletGlyph,
   collectAttachmentTargets,
@@ -1083,6 +1084,35 @@ describe('inline images', () => {
     expect(visibleText(v, 1)).toBe('![scan](files/missing.jpg)');
     expect(lineClasses(v, 1)).not.toContain('cm-md-image-line');
     expect(image(v)).toBeNull();
+  });
+
+  /**
+   * Offline, nothing is missing: the file is in the account and not on this device. The
+   * picture's place says so, the source stays hidden, and nothing is remembered as failed
+   * — so the picture is simply asked for again when the connection returns.
+   */
+  it('says the picture is not available offline rather than bringing the source back', () => {
+    const doc = '![scan](files/elsewhere.jpg)\n\nplain';
+    const v = mountWithAttachments(doc, doc.length);
+    setReachableForTests(false);
+    try {
+      image(v)!.dispatchEvent(new Event('error'));
+
+      expect(v.dom.querySelector('.file-unavailable')?.textContent).toBe('Not available offline');
+      expect(image(v)!.hidden).toBe(true);
+      expect(visibleText(v, 1)).not.toContain('![scan]');
+      // Nothing in the toolbar could work, and it would draw over the line.
+      const tools = v.dom.querySelector<HTMLElement>('.cm-md-image .attachment-tools')!;
+      expect(tools.style.display).toBe('none');
+
+      setReachableForTests(true);
+      expect(v.dom.querySelector('.file-unavailable')).toBeNull();
+      expect(image(v)!.hidden).toBe(false);
+      image(v)!.dispatchEvent(new Event('load'));
+      expect(tools.style.display).toBe('');
+    } finally {
+      resetConnectivity();
+    }
   });
 
   /** The failure outlives the widget, which is rebuilt on every scroll. */

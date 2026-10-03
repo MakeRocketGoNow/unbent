@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { shouldApplyOnLoad, shouldApplyOnReturn, shouldApplyUpdate } from './sw-register.js';
+import { offlineReadyState, shouldApplyOnLoad, shouldApplyOnReturn, shouldApplyUpdate } from './sw-register.js';
 import { holdPage, pageBusy } from './busy.js';
 
 const ready = { ready: true, busy: false, preload: false, from: '/notes', to: '/settings' };
@@ -94,5 +94,26 @@ describe('holdPage', () => {
     expect(pageBusy()).toBe(true);
     second();
     expect(pageBusy()).toBe(false);
+  });
+});
+
+describe('offlineReadyState', () => {
+  const controlled = { controller: {} as ServiceWorker };
+  const uncontrolled = { controller: null };
+
+  it('is ready once the page is under a worker', () => {
+    expect(offlineReadyState({ prod: true, serviceWorker: controlled })).toBe('ready');
+  });
+
+  it('is installing in a production build whose page has no worker yet', () => {
+    expect(offlineReadyState({ prod: true, serviceWorker: uncontrolled })).toBe('installing');
+  });
+
+  it('is unavailable in a development build, where no worker is registered', () => {
+    expect(offlineReadyState({ prod: false, serviceWorker: uncontrolled })).toBe('unavailable');
+  });
+
+  it('is unavailable without service workers', () => {
+    expect(offlineReadyState({ prod: true, serviceWorker: undefined })).toBe('unavailable');
   });
 });

@@ -113,6 +113,53 @@ function reloadAllowed(): boolean {
   }
 }
 
+export type OfflineReady = 'ready' | 'installing' | 'unavailable';
+
+/**
+ * Whether the app itself can open with no connection yet, for Settings → Offline.
+ *
+ * The worker downloads the shell in the background after the first visit, and a person
+ * who goes offline before it has finished gets no app at all, with nothing on screen to
+ * have told them. "Ready" is this page being under a worker (`controller`): the worker
+ * claims its clients when it activates, which is after the precache is whole, so the
+ * moment the page is controlled is the moment the shell is on the device. Waiting on
+ * `serviceWorker.ready` alone would say so too early for a page opened before the worker
+ * existed, which is only controlled once `controllerchange` fires.
+ *
+ * `prod` is a parameter because a development build never registers a worker, and
+ * "installing" there would be a promise nothing keeps.
+ */
+export function offlineReadyState(env: {
+  prod: boolean;
+  serviceWorker: Pick<ServiceWorkerContainer, 'controller'> | undefined;
+}): OfflineReady {
+  if (env.serviceWorker?.controller) return 'ready';
+  if (!env.prod || !env.serviceWorker) return 'unavailable';
+  return 'installing';
+}
+
+const currentOfflineReady = (): OfflineReady =>
+  offlineReadyState({
+    prod: import.meta.env.PROD,
+    serviceWorker: typeof navigator === 'undefined' ? undefined : navigator.serviceWorker,
+  });
+
+export function useOfflineReady(): OfflineReady {
+  return useSyncExternalStore((listener) => {
+    const container = typeof navigator === 'undefined' ? undefined : navigator.serviceWorker;
+    if (!container) return () => {};
+    container.addEventListener('controllerchange', listener);
+    // `ready` resolves when a worker is active, which can precede the claim; ask again
+    // then in case the claim came first and its event was missed.
+    let live = true;
+    void container.ready.then(() => live && listener()).catch(() => {});
+    return () => {
+      live = false;
+      container.removeEventListener('controllerchange', listener);
+    };
+  }, currentOfflineReady, () => 'unavailable');
+}
+
 /**
  * Whether to show that a deploy is waiting, for `UpdateSnackbar`, and the two answers to
  * it.
