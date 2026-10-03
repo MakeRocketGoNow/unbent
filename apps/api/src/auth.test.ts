@@ -4,10 +4,13 @@ import {
   configuredSocials,
   offeredProviders,
   providerOrigins,
+  socialConfig,
   confirmDeletionUrl,
   warnIfOpenToAnyone,
 } from './auth.js';
 import type { Env } from './types.js';
+import { verifyProviderIdToken } from 'better-auth/oauth2';
+import { apple } from 'better-auth/social-providers';
 
 /** Only the fields these functions read; the bindings are irrelevant here. */
 function env(vars: Record<string, string | undefined>): Env {
@@ -155,6 +158,91 @@ describe('providerOrigins', () => {
     ]);
   });
 });
+
+/**
+ * The iOS app's identity tokens name its bundle id as their audience, the web flow's the
+ * Services ID. Each case goes through Better Auth's own Apple provider, because what
+ * matters is the audience *it* verifies against — its `appBundleIdentifier` option looks
+ * like the answer and replaces the Services ID instead of adding to it.
+ */
+describe('socialConfig for Apple', () => {
+  const web = { APPLE_CLIENT_ID: 'com.example.notes.web', APPLE_CLIENT_SECRET: 'jwt' };
+  const provider = (vars: Record<string, string>) =>
+    apple(socialConfig(env(vars)).apple as Parameters<typeof apple>[0]);
+
+  it('accepts the Services ID alone when no bundle id is set', () => {
+    expect(socialConfig(env(web)).apple).not.toHaveProperty('audience');
+    expect(provider(web).idToken.audience).toBe('com.example.notes.web');
+  });
+
+  it('accepts every listed bundle id beside the Services ID', () => {
+    expect(
+      provider({ ...web, APPLE_BUNDLE_ID: 'com.example.notes, com.example.notes.debug' }).idToken
+        .audience,
+    ).toEqual(['com.example.notes.web', 'com.example.notes', 'com.example.notes.debug']);
+  });
+
+  it('configures nothing for a bundle id without Apple', () => {
+    expect(socialConfig(env({ APPLE_BUNDLE_ID: 'com.example.notes' }))).toEqual({});
+  });
+
+  /**
+   * The whole path `sign-in/social` takes with an `idToken`, short of fetching Apple's
+   * keys: a token signed here stands in for one from Apple. The app puts the SHA-256 of
+   * its nonce in the authorization request and posts the raw nonce, which is what Apple's
+   * `exact-or-sha256` comparison exists for.
+   */
+  it('verifies a native token for the bundle id, with its hashed nonce', async () => {
+    const keys = (await crypto.subtle.generateKey({ name: 'ECDSA', namedCurve: 'P-256' }, true, [
+      'sign',
+      'verify',
+    ])) as CryptoKeyPair;
+    const nonce = 'raw-nonce';
+    const sign = (claims: Record<string, unknown>) => es256(keys.privateKey, claims);
+    const now = Math.floor(Date.now() / 1000);
+    const claims = {
+      iss: 'https://appleid.apple.com',
+      sub: '000000.abc.0000',
+      iat: now,
+      exp: now + 600,
+      nonce: await sha256Hex(nonce),
+    };
+    const verify = async (vars: Record<string, string>, token: string, sent = nonce) => {
+      const p = provider(vars);
+      const local = { ...p, idToken: { ...p.idToken, jwks: async () => keys.publicKey } };
+      return verifyProviderIdToken(local, token, sent, {} as never);
+    };
+    const withApp = { ...web, APPLE_BUNDLE_ID: 'com.example.notes' };
+    const appToken = await sign({ ...claims, aud: 'com.example.notes' });
+
+    expect(await verify(withApp, appToken)).toBe(true);
+    // The web Services ID still verifies with the bundle id configured.
+    expect(await verify(withApp, await sign({ ...claims, aud: 'com.example.notes.web' }))).toBe(
+      true,
+    );
+    // Without APPLE_BUNDLE_ID the same app token is refused, which is the bug this fixes.
+    expect(await verify(web, appToken)).toBe(false);
+    expect(await verify(withApp, appToken, 'another-nonce')).toBe(false);
+    expect(await verify(withApp, await sign({ ...claims, aud: 'com.example.other' }))).toBe(false);
+  });
+});
+
+async function sha256Hex(value: string): Promise<string> {
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(value));
+  return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join('');
+}
+
+/** A compact ES256 JWT, signed with Web Crypto rather than a JOSE library. */
+async function es256(key: CryptoKey, claims: Record<string, unknown>): Promise<string> {
+  const part = (value: unknown) => Buffer.from(JSON.stringify(value)).toString('base64url');
+  const input = `${part({ alg: 'ES256', kid: 'test' })}.${part(claims)}`;
+  const signature = await crypto.subtle.sign(
+    { name: 'ECDSA', hash: 'SHA-256' },
+    key,
+    new TextEncoder().encode(input),
+  );
+  return `${input}.${Buffer.from(signature).toString('base64url')}`;
+}
 
 describe('warnIfOpenToAnyone', () => {
   const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
