@@ -21,6 +21,7 @@ import {
   type NotebookSummary,
   splitExt,
 } from '@unbent/shared';
+import { filesOf } from './keep.js';
 
 /**
  * The shapes the components read, derived from the rows the local library holds.
@@ -159,6 +160,16 @@ export function toSummary(note: LocalNote, l: Lookups): NoteSummary {
     ...(attachments.length > 0 ? { attachments } : {}),
     excerpt: excerptOf(note),
   };
+}
+
+/**
+ * How many files a notebook's live notes hold, and their size together: what keeping the
+ * notebook on this device would cost, said before it is confirmed. The same rule the
+ * keeper fetches by (`filesOf` in `keep.ts`), so the number stated is the number fetched.
+ */
+export function notebookFiles(s: Pick<Snapshot, 'notes' | 'attachments'>, notebookId: string): { files: number; bytes: number } {
+  const files = filesOf(s, new Set([notebookId]));
+  return { files: files.length, bytes: files.reduce((sum, f) => sum + f.size, 0) };
 }
 
 /** A file as the attachments panel lists it: the server's shape, and whether it is still waiting to upload from this device. */

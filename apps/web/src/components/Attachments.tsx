@@ -11,6 +11,7 @@ import {
 import * as api from '../notes-api.js';
 import { copyAttachmentToClipboard } from '../attachment-clipboard.js';
 import { attachmentsQuery, keys } from '../queries.js';
+import { formatBytes } from '../format-bytes.js';
 import { useOutbox, useSyncStatus } from '../store/use-outbox.js';
 import { Confirm } from './Confirm.js';
 import { Button } from './Button';
@@ -40,13 +41,6 @@ interface AttachmentsProps {
    * read-only does not stop.
    */
   readOnly?: boolean;
-}
-
-function formatBytes(n: number): string {
-  if (n < 1024) return `${n} B`;
-  if (n < 1024 ** 2) return `${(n / 1024).toFixed(0)} KB`;
-  if (n < 1024 ** 3) return `${(n / 1024 ** 2).toFixed(1)} MB`;
-  return `${(n / 1024 ** 3).toFixed(2)} GB`;
 }
 
 function fileUrl(noteId: string, filename: string): string {

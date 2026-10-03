@@ -4,6 +4,7 @@ import { openLocalStore, closeLocalStore } from './db.js';
 import { createCollections, cursorStore, type Collections, type LocalNote } from './collections.js';
 import { createOutbox, provideLibrary, type Outbox } from './actions.js';
 import { FeedEngine, type FeedState } from './feed.js';
+import { createKeeper, type Keeper } from './keep.js';
 
 /**
  * One account's library on this device: its local store, the collections in it, the
@@ -28,6 +29,8 @@ export interface Library extends Collections {
   version: () => number;
   /** The writes made here the server has not taken yet, and the conflicts waiting on a choice. */
   outbox: Outbox;
+  /** The notebooks whose files this device keeps, and the fetching that keeps them (`keep.ts`). */
+  keeper: Keeper;
   /** The engine's state, for the hydration line and the offline banner. */
   subscribe: (listener: (state: FeedState) => void) => () => void;
   state: () => FeedState;
@@ -326,11 +329,31 @@ async function open(userId: string): Promise<Library> {
   const outbox = createOutbox(userId, { ...collections, userId, engine });
   await outbox.ready;
 
+  /*
+   * The kept notebooks' files follow the library: a file the feed delivers into one is
+   * fetched, one that leaves is dropped. Nudged by any change that can move a file or a
+   * note between notebooks — not by a change to a note's text alone, which is most
+   * changes and every keystroke.
+   */
+  const rows = collections;
+  const keeper = createKeeper({
+    userId,
+    snapshot: () => ({ notes: rows.notes.values(), attachments: rows.attachments.values() }),
+    settled: () => (latest ?? engine.state).phase === 'current',
+    leading: () => outbox.executor.isOfflineEnabled,
+  });
+  const stopKeeping = onLibraryChange((roots) => {
+    if (roots.has('attachments')) keeper.nudge();
+  });
+  // And by the first copy finishing, before which the keeper stands down.
+  listeners.add(() => keeper.nudge());
+
   return {
     ...collections,
     userId,
     engine,
     outbox,
+    keeper,
     version: () => version,
     subscribe: (listener) => {
       listeners.add(listener);
@@ -348,6 +371,8 @@ async function open(userId: string): Promise<Library> {
       unsubscribeConnectivity();
       if (reconnect) clearTimeout(reconnect);
       socket?.close();
+      stopKeeping();
+      keeper.stop();
       await outbox.dispose();
       await engine.settled();
       for (const s of subscriptions) s.unsubscribe();
