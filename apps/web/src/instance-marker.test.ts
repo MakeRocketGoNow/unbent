@@ -32,6 +32,18 @@ describe('instanceLine', () => {
       instanceLine({ instanceLabel: 'PR 9', ownStores: true, previewRelay: { origin: 'https://dev.example.com' } }),
     ).toBe('PR 9 · notes are its own');
   });
+
+  /* Before the notes clause, so an ellipsis takes the clause rather than the commit. */
+  it('puts the build right after the label', () => {
+    expect(instanceLine({ instanceLabel: 'Dev' }, '00619da')).toBe('Dev · 00619da');
+    expect(instanceLine({ instanceLabel: 'PR 9', ownStores: true }, '00619da')).toBe(
+      'PR 9 · 00619da · notes are its own',
+    );
+  });
+
+  it('still draws nothing on production, commit or not', () => {
+    expect(instanceLine({}, '00619da')).toBeNull();
+  });
 });
 
 describe('ribbonOf', () => {

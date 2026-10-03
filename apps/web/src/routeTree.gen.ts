@@ -30,6 +30,7 @@ import { Route as EmbedIndexFilesRouteImport } from './routes/embed.index-files'
 import { Route as NotesIndexRouteImport } from './routes/notes.index'
 import { Route as NotesNoteIdRouteImport } from './routes/notes.$noteId'
 import { Route as SettingsIndexRouteImport } from './routes/settings.index'
+import { Route as SettingsAboutRouteImport } from './routes/settings.about'
 import { Route as SettingsConnectedAppsRouteImport } from './routes/settings.connected-apps'
 import { Route as SettingsExportRouteImport } from './routes/settings.export'
 import { Route as SettingsImportRouteImport } from './routes/settings.import'
@@ -148,6 +149,11 @@ const SettingsIndexRoute = SettingsIndexRouteImport.update({
   path: '/',
   getParentRoute: () => SettingsRoute,
 } as any)
+const SettingsAboutRoute = SettingsAboutRouteImport.update({
+  id: '/about',
+  path: '/about',
+  getParentRoute: () => SettingsRoute,
+} as any)
 const SettingsConnectedAppsRoute = SettingsConnectedAppsRouteImport.update({
   id: '/connected-apps',
   path: '/connected-apps',
@@ -230,6 +236,7 @@ export interface FileRoutesByFullPath {
   '/trash': typeof TrashRouteWithChildren
   '/embed/index-files': typeof EmbedIndexFilesRoute
   '/notes/$noteId': typeof NotesNoteIdRoute
+  '/settings/about': typeof SettingsAboutRoute
   '/settings/connected-apps': typeof SettingsConnectedAppsRoute
   '/settings/export': typeof SettingsExportRoute
   '/settings/import': typeof SettingsImportRoute
@@ -262,6 +269,7 @@ export interface FileRoutesByTo {
   '/terms': typeof TermsRoute
   '/embed/index-files': typeof EmbedIndexFilesRoute
   '/notes/$noteId': typeof NotesNoteIdRoute
+  '/settings/about': typeof SettingsAboutRoute
   '/settings/connected-apps': typeof SettingsConnectedAppsRoute
   '/settings/export': typeof SettingsExportRoute
   '/settings/import': typeof SettingsImportRoute
@@ -298,6 +306,7 @@ export interface FileRoutesById {
   '/trash': typeof TrashRouteWithChildren
   '/embed/index-files': typeof EmbedIndexFilesRoute
   '/notes/$noteId': typeof NotesNoteIdRoute
+  '/settings/about': typeof SettingsAboutRoute
   '/settings/connected-apps': typeof SettingsConnectedAppsRoute
   '/settings/export': typeof SettingsExportRoute
   '/settings/import': typeof SettingsImportRoute
@@ -335,6 +344,7 @@ export interface FileRouteTypes {
     | '/trash'
     | '/embed/index-files'
     | '/notes/$noteId'
+    | '/settings/about'
     | '/settings/connected-apps'
     | '/settings/export'
     | '/settings/import'
@@ -367,6 +377,7 @@ export interface FileRouteTypes {
     | '/terms'
     | '/embed/index-files'
     | '/notes/$noteId'
+    | '/settings/about'
     | '/settings/connected-apps'
     | '/settings/export'
     | '/settings/import'
@@ -402,6 +413,7 @@ export interface FileRouteTypes {
     | '/trash'
     | '/embed/index-files'
     | '/notes/$noteId'
+    | '/settings/about'
     | '/settings/connected-apps'
     | '/settings/export'
     | '/settings/import'
@@ -589,6 +601,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SettingsIndexRouteImport
       parentRoute: typeof SettingsRoute
     }
+    '/settings/about': {
+      id: '/settings/about'
+      path: '/about'
+      fullPath: '/settings/about'
+      preLoaderRoute: typeof SettingsAboutRouteImport
+      parentRoute: typeof SettingsRoute
+    }
     '/settings/connected-apps': {
       id: '/settings/connected-apps'
       path: '/connected-apps'
@@ -689,6 +708,7 @@ const NotesRouteChildren: NotesRouteChildren = {
 const NotesRouteWithChildren = NotesRoute._addFileChildren(NotesRouteChildren)
 
 interface SettingsRouteChildren {
+  SettingsAboutRoute: typeof SettingsAboutRoute
   SettingsConnectedAppsRoute: typeof SettingsConnectedAppsRoute
   SettingsExportRoute: typeof SettingsExportRoute
   SettingsImportRoute: typeof SettingsImportRoute
@@ -702,6 +722,7 @@ interface SettingsRouteChildren {
 }
 
 const SettingsRouteChildren: SettingsRouteChildren = {
+  SettingsAboutRoute: SettingsAboutRoute,
   SettingsConnectedAppsRoute: SettingsConnectedAppsRoute,
   SettingsExportRoute: SettingsExportRoute,
   SettingsImportRoute: SettingsImportRoute,

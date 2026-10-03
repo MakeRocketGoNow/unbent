@@ -239,7 +239,7 @@ export function NotebookNav({
               className={on ? 'drawer-item drawer-place-notebook current' : 'drawer-item drawer-place-notebook'}
               aria-current={on ? 'true' : undefined}
               // A name can be longer than the column; the row ellipsises it and the
-              // tooltip carries the rest, the way `.overflow-email` does for an address.
+              // tooltip carries the rest, the way `.overflow-label` does for an address.
               title={nb.name}
               onClick={picked}
             >

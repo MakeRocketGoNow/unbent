@@ -3,6 +3,7 @@ import { configQuery } from '../queries.js';
 import { instanceLine } from '../instance-marker.js';
 import { useOffline } from '../connectivity.js';
 import { isHosted } from '../app-bridge.js';
+import { buildInfo, shortCommit } from '../build-info.js';
 import { OverflowMenu, type OverflowItem } from './OverflowMenu.js';
 
 interface AccountMenuProps {
@@ -50,7 +51,9 @@ function initialOf(email: string): string {
 export function AccountMenu({ email, onSignOut, withAddress = false }: AccountMenuProps) {
   const config = useQuery(configQuery());
   const legal = config.data?.legal;
-  const instance = config.data ? instanceLine(config.data) : null;
+  const instance = config.data
+    ? instanceLine(config.data, buildInfo ? shortCommit(buildInfo) : null)
+    : null;
   const signOutNeedsConnection = useOffline() && !isHosted();
 
   return (
@@ -76,20 +79,22 @@ export function AccountMenu({ email, onSignOut, withAddress = false }: AccountMe
         // The address itself, so the menu says which account it belongs to. Static
         // rather than selectable: it names the account, it does not act on it. It
         // truncates to one line, so it carries the full address as a tooltip.
-        { label: email, className: 'overflow-email', static: true, title: email },
-        // Which instance this is, when it is not production — "PR 222 · notes are its
-        // own" — and on a preview, whose notes an edit here changes. Under the address
-        // because it is the same kind of line: it says where you are, it does nothing.
+        { label: email, className: 'overflow-label overflow-email', static: true, title: email },
+        // Which instance this is, when it is not production — "PR 222 · 00619da · notes
+        // are its own" — with the build it is running, and on a preview, whose notes an
+        // edit here changes. Under the address because it is the same kind of line: it
+        // says where you are, it does nothing. Production's build is in Settings › About.
         ...(instance
           ? [
               {
                 label: instance,
-                className: `overflow-email overflow-instance instance-${config.data?.instanceKind ?? 'mark'}`,
+                className: `overflow-label overflow-instance instance-${config.data?.instanceKind ?? 'mark'}`,
                 static: true,
                 title: instance,
               },
             ]
           : []),
+        { label: null, separator: true },
         // Findable once signed in, which is the half the sign-in screen's own links cannot
         // cover. They are reference, not something to act on, and they sit above Sign out
         // so the destructive item stays last.

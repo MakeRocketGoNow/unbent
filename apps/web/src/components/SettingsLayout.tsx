@@ -13,6 +13,8 @@ const TABS = [
   { to: '/settings/maintenance', label: 'Maintenance' },
   { to: '/settings/security', label: 'Security' },
   { to: '/settings/connected-apps', label: 'Connected apps' },
+  // Last: what the app is, read rarely, after everything that configures it.
+  { to: '/settings/about', label: 'About' },
 ] as const;
 
 /**
