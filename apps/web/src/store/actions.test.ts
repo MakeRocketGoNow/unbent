@@ -223,14 +223,15 @@ function library(notes: LocalNote[]) {
   const collections = { notes: n.c, notebooks: nb.c, tags: t.c, attachments: a.c, syncState: s.c } as unknown as Collections;
   let release: (() => void) | null = null;
   const engine = {
-    state: { phase: 'current' },
+    // A whole copy unless a test says the first one is still walking.
+    state: { phase: 'current', cursor: { seq: 1, epoch: 'test' } as { seq: number; epoch: string } | null },
     pull: vi.fn(() => new Promise<void>((r) => (release = r))),
     // The server's answer, written in as a feed row would be.
     applyNotes: vi.fn((rows: LocalNote[]) => {
       for (const r of rows) delivered({ notes: n.c } as never, n.feed, r);
       return true;
     }),
-  } as unknown as FeedEngine & { pull: ReturnType<typeof vi.fn>; applyNotes: ReturnType<typeof vi.fn>; state: { phase: string } };
+  } as unknown as FeedEngine & { pull: ReturnType<typeof vi.fn>; applyNotes: ReturnType<typeof vi.fn>; state: { phase: string; cursor: { seq: number; epoch: string } | null } };
   const outbox = createOutbox('u1', { ...collections, userId: 'u1', engine });
   const lib: WritableLibrary = { ...collections, userId: 'u1', engine, outbox };
   provideLibrary(async () => lib);
@@ -612,11 +613,18 @@ describe('the no-library path', () => {
 describe('a note the copy does not hold yet', () => {
   const missing: Note = { id: 'n-missing', title: 'old', body: '', tags: [], notebook: null, createdAt: 1, updatedAt: 100, fields: [] };
 
+  /** A library whose first copy is still walking: no snapshot has been taken. */
+  function copying(notes: LocalNote[]) {
+    const out = library(notes);
+    out.engine.state.cursor = null;
+    return out;
+  }
+
   it('saves it as a request rather than throwing on the missing row', async () => {
     // A link followed during the first copy: the editor has the server's note, the
     // collection does not. `update` used to throw UpdateKeyNotFoundError and the
     // typing was gone on the next open.
-    const { fake, engine } = library([]);
+    const { fake, engine } = copying([]);
     vi.mocked(api.updateNote).mockResolvedValue({ ...missing, title: 'new', updatedAt: 101 });
     const out = await actions.saveNote({
       noteId: missing.id,
@@ -630,7 +638,7 @@ describe('a note the copy does not hold yet', () => {
   });
 
   it('trashes, restores and purges it as a request', async () => {
-    const { fake, engine } = library([]);
+    const { fake, engine } = copying([]);
     vi.mocked(api.deleteNote).mockResolvedValueOnce(undefined);
     await actions.trashNote(missing.id);
     expect(api.deleteNote).toHaveBeenCalledWith(missing.id);
@@ -646,17 +654,44 @@ describe('a note the copy does not hold yet', () => {
     expect(api.deleteNotePermanently).toHaveBeenCalledWith(missing.id);
   });
 
-  it('sends a bulk action that names one as a request for the whole selection', async () => {
+  it('queues the notes held here and sends only the rest of a bulk action', async () => {
     // Search still hits the server, so a result can be a note the walk has not reached.
-    // Acting only on the ones held here used to report success and leave the rest.
-    const { fake, engine, lib } = library([row('n1')]);
-    vi.mocked(api.deleteNotes).mockResolvedValueOnce({ trashed: 2 });
+    // The held one stays in the outbox, behind whatever of its own is already waiting
+    // there; only the one the copy lacks goes as a request.
+    const { fake, engine, lib } = copying([row('n1')]);
+    vi.mocked(api.deleteNotes).mockResolvedValueOnce({ trashed: 1 });
     expect(await actions.trashNotes(['n1', missing.id])).toBe(2);
-    expect(api.deleteNotes).toHaveBeenCalledWith(['n1', missing.id]);
-    expect(fake.queue).toHaveLength(0);
+    expect(api.deleteNotes).toHaveBeenCalledWith([missing.id]);
+    expect(fake.queue.map((e) => e.metadata)).toEqual([{ ids: ['n1'] }]);
+    expect(lib.notes.get('n1')?.deletedAt).toBeDefined();
     expect(engine.pull).toHaveBeenCalled();
-    // The local row is unchanged until the pull lands; we asked the server for both.
-    expect(lib.notes.get('n1')?.deletedAt).toBeUndefined();
+  });
+
+  it('moves and tags a mixed selection the same way', async () => {
+    const { fake } = copying([row('n1')]);
+    vi.mocked(api.updateNotes).mockResolvedValue({ updated: 1 } as never);
+    await actions.moveNotes(['n1', missing.id], 'Coupons');
+    await actions.tagNotes(['n1', missing.id], { add: ['saved'] });
+    expect(api.updateNotes).toHaveBeenNthCalledWith(1, [missing.id], { notebook: 'Coupons' });
+    expect(api.updateNotes).toHaveBeenNthCalledWith(2, [missing.id], { addTags: ['saved'], removeTags: undefined });
+    expect(fake.queue.map((e) => e.metadata)).toEqual([{ ids: ['n1'], notebook: 'Coupons' }, { ids: ['n1'], add: ['saved'] }]);
+  });
+
+  it('leaves out of a bulk action a note gone once a snapshot has been taken', async () => {
+    // A selection outlives a purge the feed delivered. With the copy whole, the id is
+    // not a note: the rest is queued and nothing goes to the server, offline or not.
+    const { fake } = library([row('n1')]);
+    setReachableForTests(false);
+    expect(await actions.trashNotes(['n1', missing.id])).toBe(1);
+    await tick();
+    expect(api.deleteNotes).not.toHaveBeenCalled();
+    expect(fake.queue.map((e) => e.metadata)).toEqual([{ ids: ['n1'] }]);
+  });
+
+  it('refuses a single write to a note gone once a snapshot has been taken', async () => {
+    library([]);
+    await expect(actions.trashNote(missing.id)).rejects.toMatchObject({ status: 404 });
+    expect(api.deleteNote).not.toHaveBeenCalled();
   });
 });
 

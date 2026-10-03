@@ -765,21 +765,45 @@ function valuesOf(value: NoteDraft, lib: WritableLibrary): NoteFieldValue[] {
   return out;
 }
 
-/**
- * Whether these notes have rows the local copy can change. `noteQuery` asks the server
- * for a note the copy does not hold yet — a link followed during the first walk, which
- * on a phone is minutes of pages — and the editor then saves that note. TanStack DB's
- * `update` throws rather than inserting, so the save used to fail (`UpdateKeyNotFoundError`)
- * and the typing was gone on the next open. Search still hits the server too, so a bulk
- * action can name ids the walk has not reached; acting only on the ones held here then
- * reported success and left the rest where they were.
+/*
+ * A write to a note the local copy does not hold yet. `noteQuery` asks the server for
+ * such a note while no snapshot has been taken — a link followed during the first walk,
+ * which on a phone is minutes of pages — and the editor then saves it. TanStack DB's
+ * `update` throws rather than inserting, so the save used to fail
+ * (`UpdateKeyNotFoundError`) and the typing was gone on the next open. Search still hits
+ * the server too, so a bulk action can name ids the walk has not reached; acting only on
+ * the ones held here reported success and left the rest where they were.
  *
- * Those writes go as a request, the same way a device with no library does; the walk's
- * later apply of the same note, and the feed from the walk's starting seq, bring the
- * row. `duplicateNote` already did this for a source it does not hold.
+ * Those writes go as a request, the same way a device with no library sends them; the
+ * walk's later apply of the same note, and the feed from the walk's starting seq, bring
+ * the row. A bulk action is split: the notes held here are queued and only the rest are
+ * the request. Sending the whole selection as a request was tried and undone — a note
+ * held here may have an earlier write still waiting in the outbox, which then replayed
+ * over the later choice, and the selection failed whole offline. `duplicateNote` already
+ * asks the server for a source it does not hold.
+ *
+ * Once a snapshot has been taken, an id the copy does not hold is not a note, as in
+ * `noteQuery`: a single write is refused as the route would refuse it, and a bulk action
+ * leaves it out, since a selection outlives a purge the feed delivered.
  */
-function heldLocally(lib: WritableLibrary | null, ids: string[]): lib is WritableLibrary {
-  return lib !== null && ids.every((id) => lib.notes.has(id));
+
+/** Whether a write to this note goes as a request because the first copy has not reached it. */
+function notCopiedYet(lib: WritableLibrary, noteId: string): boolean {
+  if (lib.notes.has(noteId)) return false;
+  if (lib.engine.state.cursor === null) return true;
+  throw new ApiError(404, 'Not found');
+}
+
+/** A bulk action's ids: the ones queued here, and the ones the first copy has not reached. */
+function split(lib: WritableLibrary, ids: string[]): { here: string[]; there: string[] } {
+  const here: string[] = [];
+  const there: string[] = [];
+  const copying = lib.engine.state.cursor === null;
+  for (const id of ids) {
+    if (lib.notes.has(id)) here.push(id);
+    else if (copying) there.push(id);
+  }
+  return { here, there };
 }
 
 /** The save as a request: no local row to change, or a tab that does not queue. */
@@ -807,7 +831,7 @@ async function saveViaRequest(input: Save): Promise<'unchanged' | Note> {
  */
 export async function saveNote(input: Save): Promise<'queued' | 'unchanged' | Note> {
   const lib = await queueable();
-  if (!heldLocally(lib, [input.noteId])) {
+  if (!lib || notCopiedYet(lib, input.noteId)) {
     // No local copy on this device, a tab that does not queue, or a note the copy
     // does not hold yet: the save is the request, and its answer is the server's
     // copy — or the refusal, which the caller puts to the person.
@@ -871,7 +895,7 @@ export async function duplicateNote(sourceId: string): Promise<{ id: string }> {
 
 export async function trashNote(noteId: string): Promise<void> {
   const lib = await queueable();
-  if (!heldLocally(lib, [noteId])) return pulled(api.deleteNote(noteId));
+  if (!lib || notCopiedYet(lib, noteId)) return pulled(api.deleteNote(noteId));
   queue(lib, 'trashNote', { noteId }, () => {
     lib.notes.update(noteId, (row) => {
       row.deletedAt = Date.now();
@@ -881,7 +905,7 @@ export async function trashNote(noteId: string): Promise<void> {
 
 export async function restoreNote(noteId: string): Promise<void> {
   const lib = await queueable();
-  if (!heldLocally(lib, [noteId])) return pulled(api.restoreNote(noteId).then(() => undefined));
+  if (!lib || notCopiedYet(lib, noteId)) return pulled(api.restoreNote(noteId).then(() => undefined));
   queue(lib, 'restoreNote', { noteId }, () => {
     lib.notes.update(noteId, (row) => {
       delete row.deletedAt;
@@ -891,73 +915,85 @@ export async function restoreNote(noteId: string): Promise<void> {
 
 export async function purgeNote(noteId: string): Promise<void> {
   const lib = await queueable();
-  if (!heldLocally(lib, [noteId])) return pulled(api.deleteNotePermanently(noteId));
+  if (!lib || notCopiedYet(lib, noteId)) return pulled(api.deleteNotePermanently(noteId));
   queue(lib, 'purgeNote', { noteId }, () => {
     lib.notes.delete(noteId);
   });
 }
 
 /*
- * The bulk verbs answer with how many notes they acted on: the notes held here, since
- * the server's count comes later from the queue, or the server's count when the write
- * was a request. What the message after the action names.
+ * The bulk verbs answer with how many notes they acted on: the notes queued here, since
+ * the server's count for those comes later from the queue, plus the server's count for
+ * whatever went as a request. What the message after the action names.
  */
 
 export async function trashNotes(ids: string[]): Promise<number> {
   const lib = await queueable();
-  if (!heldLocally(lib, ids)) return pulled(api.deleteNotes(ids).then((r) => r.trashed));
-  if (ids.length === 0) return 0;
-  queue(lib, 'trashNotes', { ids }, () => {
-    const now = Date.now();
-    for (const id of ids) lib.notes.update(id, (row) => void (row.deletedAt = now));
-  });
-  return ids.length;
+  if (!lib) return pulled(api.deleteNotes(ids).then((r) => r.trashed));
+  const { here, there } = split(lib, ids);
+  if (here.length > 0) {
+    queue(lib, 'trashNotes', { ids: here }, () => {
+      const now = Date.now();
+      for (const id of here) lib.notes.update(id, (row) => void (row.deletedAt = now));
+    });
+  }
+  return here.length + (there.length > 0 ? await pulled(api.deleteNotes(there).then((r) => r.trashed)) : 0);
 }
 
 export async function restoreNotes(ids: string[]): Promise<number> {
   const lib = await queueable();
-  if (!heldLocally(lib, ids)) return pulled(api.restoreNotes(ids).then((r) => r.restored));
-  if (ids.length === 0) return 0;
-  queue(lib, 'restoreNotes', { ids }, () => {
-    for (const id of ids) lib.notes.update(id, (row) => void delete row.deletedAt);
-  });
-  return ids.length;
+  if (!lib) return pulled(api.restoreNotes(ids).then((r) => r.restored));
+  const { here, there } = split(lib, ids);
+  if (here.length > 0) {
+    queue(lib, 'restoreNotes', { ids: here }, () => {
+      for (const id of here) lib.notes.update(id, (row) => void delete row.deletedAt);
+    });
+  }
+  return here.length + (there.length > 0 ? await pulled(api.restoreNotes(there).then((r) => r.restored)) : 0);
 }
 
 export async function purgeNotes(ids: string[]): Promise<number> {
   const lib = await queueable();
-  if (!heldLocally(lib, ids)) return pulled(api.deleteNotesPermanently(ids).then((r) => r.deleted));
-  if (ids.length === 0) return 0;
-  queue(lib, 'purgeNotes', { ids }, () => {
-    for (const id of ids) lib.notes.delete(id);
-  });
-  return ids.length;
+  if (!lib) return pulled(api.deleteNotesPermanently(ids).then((r) => r.deleted));
+  const { here, there } = split(lib, ids);
+  if (here.length > 0) {
+    queue(lib, 'purgeNotes', { ids: here }, () => {
+      for (const id of here) lib.notes.delete(id);
+    });
+  }
+  return here.length + (there.length > 0 ? await pulled(api.deleteNotesPermanently(there).then((r) => r.deleted)) : 0);
 }
 
 export async function moveNotes(ids: string[], notebook: string | null): Promise<void> {
   const lib = await queueable();
-  if (!heldLocally(lib, ids)) return pulled(api.updateNotes(ids, { notebook }).then(() => undefined));
-  if (ids.length === 0) return;
-  queue(lib, 'moveNotes', { ids, notebook }, () => {
-    for (const id of ids) lib.notes.update(id, (row) => void (row.notebookName = notebook));
-  });
+  if (!lib) return pulled(api.updateNotes(ids, { notebook }).then(() => undefined));
+  const { here, there } = split(lib, ids);
+  if (here.length > 0) {
+    queue(lib, 'moveNotes', { ids: here, notebook }, () => {
+      for (const id of here) lib.notes.update(id, (row) => void (row.notebookName = notebook));
+    });
+  }
+  if (there.length > 0) await pulled(api.updateNotes(there, { notebook }));
 }
 
 export async function tagNotes(ids: string[], change: { add?: string[]; remove?: string[] }): Promise<void> {
   const lib = await queueable();
-  if (!heldLocally(lib, ids)) return pulled(api.updateNotes(ids, { addTags: change.add, removeTags: change.remove }).then(() => undefined));
-  if (ids.length === 0) return;
-  const l = lookups(snapshot(lib));
-  const add = change.add ?? [];
-  const remove = new Set(change.remove ?? []);
-  queue(lib, 'tagNotes', { ids, ...change }, () => {
-    for (const id of ids) {
-      lib.notes.update(id, (row) => {
-        const current = row.tagNames ?? row.tagIds.map((t) => l.tags.get(t)?.name).filter((n): n is string => !!n);
-        row.tagNames = [...current.filter((t) => !remove.has(t)), ...add.filter((t) => !current.includes(t))];
-      });
-    }
-  });
+  if (!lib) return pulled(api.updateNotes(ids, { addTags: change.add, removeTags: change.remove }).then(() => undefined));
+  const { here, there } = split(lib, ids);
+  if (here.length > 0) {
+    const l = lookups(snapshot(lib));
+    const add = change.add ?? [];
+    const remove = new Set(change.remove ?? []);
+    queue(lib, 'tagNotes', { ids: here, ...change }, () => {
+      for (const id of here) {
+        lib.notes.update(id, (row) => {
+          const current = row.tagNames ?? row.tagIds.map((t) => l.tags.get(t)?.name).filter((n): n is string => !!n);
+          row.tagNames = [...current.filter((t) => !remove.has(t)), ...add.filter((t) => !current.includes(t))];
+        });
+      }
+    });
+  }
+  if (there.length > 0) await pulled(api.updateNotes(there, { addTags: change.add, removeTags: change.remove }));
 }
 
 /**
