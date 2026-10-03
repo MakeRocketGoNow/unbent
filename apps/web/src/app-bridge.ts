@@ -174,4 +174,18 @@ export function adoptHostLayout(): void {
     viewport.setAttribute('content', `${content}, viewport-fit=cover`);
   }
   postToApp({ type: 'edge-to-edge' });
+  // The same function each time, so calling this twice still listens once.
+  window.addEventListener('pageshow', askAgainOnRestore);
+}
+
+/**
+ * A page WebKit brings back from its back/forward cache — an edge swipe back across a
+ * full load — is a new document to the app, which puts every new document inside the
+ * safe area until it asks. But a restored page does not run its scripts again: it still
+ * has `host-ios` and its own insets, and without this it would sit inside the app's strips
+ * as well, with two gaps at the top. So it asks again, as `store/library.ts` reopens its
+ * database on the same event.
+ */
+function askAgainOnRestore(event: PageTransitionEvent): void {
+  if (event.persisted) postToApp({ type: 'edge-to-edge' });
 }

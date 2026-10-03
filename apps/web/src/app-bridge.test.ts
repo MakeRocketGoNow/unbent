@@ -39,6 +39,24 @@ describe('app bridge', () => {
     expect(postMessage).toHaveBeenCalledWith('{"type":"edge-to-edge"}');
   });
 
+  /** A restored page runs no script again, and the app has put it back in the safe area. */
+  it('asks for the screen again when the page comes back from the back/forward cache', () => {
+    viewport('width=device-width, initial-scale=1.0');
+    const postMessage = vi.fn();
+    window.UnbentApp = { platform: 'ios', postMessage };
+    adoptHostLayout();
+    adoptHostLayout();
+    postMessage.mockClear();
+
+    // An ordinary first showing is not a restore; the page has only just asked.
+    window.dispatchEvent(new PageTransitionEvent('pageshow', { persisted: false }));
+    expect(postMessage).not.toHaveBeenCalled();
+
+    window.dispatchEvent(new PageTransitionEvent('pageshow', { persisted: true }));
+    expect(postMessage).toHaveBeenCalledTimes(1);
+    expect(postMessage).toHaveBeenCalledWith('{"type":"edge-to-edge"}');
+  });
+
   it('leaves the layout alone in a browser and in the Android app', () => {
     const meta = viewport('width=device-width, initial-scale=1.0');
     adoptHostLayout();
