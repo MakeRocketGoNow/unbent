@@ -29,3 +29,10 @@ apps/android/.kotlin/
 *.jks
 *.keystore
 .cxx/
+
+# iOS (apps/ios) — Xcode and SwiftPM build output, per-user Xcode state, machine-local config
+apps/ios/build/
+apps/ios/Packages/*/.build/
+apps/ios/Packages/*/.swiftpm/
+apps/ios/Config/Local.xcconfig
+xcuserdata/
