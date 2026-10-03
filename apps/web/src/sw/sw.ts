@@ -3,7 +3,7 @@ import { registerRoute } from 'workbox-routing';
 import { CacheFirst, NetworkFirst, type StrategyOptions } from 'workbox-strategies';
 import { ExpirationPlugin } from 'workbox-expiration';
 import { API_CACHE, FILES_CACHE, SERVED_HEADER, VIEW_HEADER, classify, servesShell, shelved } from './routes.js';
-import { FILES_BUDGET, createFilesLedger } from './budget.js';
+import { createFilesLedger } from './budget.js';
 import { findFile } from '../store/files.js';
 
 /**
@@ -186,11 +186,16 @@ self.addEventListener('activate', (event) => {
  *
  * The expiration plugin is here for that alone: `purgeOnQuotaError` is the only way to
  * that callback without `workbox-core` as a dependency of our own. It must be given an
- * age or a count to be constructed, so it is given the budget's own month, counted from
- * last use as the ledger counts it; the two agree, and the ledger's next pass forgets
- * whatever this removed.
+ * age or a count to be constructed, and it is given a count it will never reach — not an
+ * age. With an age the plugin also refuses a cached response whose `Date` header is older
+ * than it, and that header is when the file was fetched, not when it was last opened: a
+ * manual read every week would have gone missing a month after its first download, which
+ * is the one thing the budget's oldest-opened rule exists to prevent (review of #236).
+ * What is kept and for how long is the ledger's alone. The plugin's own record of
+ * addresses outlives what the ledger evicts; it is a few bytes each and is dropped with
+ * the cache on a purge.
  */
-const emptiedWhenFull = new ExpirationPlugin({ maxAgeSeconds: FILES_BUDGET.maxAgeMs / 1000, purgeOnQuotaError: true });
+const emptiedWhenFull = new ExpirationPlugin({ maxEntries: Number.MAX_SAFE_INTEGER, purgeOnQuotaError: true });
 
 /**
  * The bytes of a file someone looked at — an image drawn in a note, a PDF opened in the
