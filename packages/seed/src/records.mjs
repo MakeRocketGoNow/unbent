@@ -113,7 +113,7 @@ const COUPON_FILES = {
   ],
   'SPRING-DEMO-20': [
     {
-      name: 'Fabrikam Hardware Spring Coupon (print at home) - 20% off one item, one per customer, not valid with other offers v3.pdf',
+      name: 'Fabrikam Hardware Spring Coupon (print at home) - 20 percent off one item, one per customer, not valid with other offers v3.pdf',
       lines: ['Fabrikam Hardware', 'Spring sale: 20% off one item', 'Code SPRING-DEMO-20', 'One per customer.', 'Not valid with other offers.'],
     },
   ],
