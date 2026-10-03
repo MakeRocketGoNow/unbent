@@ -1,8 +1,8 @@
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { describe, expect, it } from 'vitest';
-import { WORKER_PREFIXES, classify, fileAddress, servesShell, shelved, type RequestFacts } from './routes.js';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { WORKER_PREFIXES, classify, fileAddress, servesShell, shelved, within, type RequestFacts } from './routes.js';
 
 const at = (path: string) => new URL(path, 'https://unbent.example');
 
@@ -152,5 +152,30 @@ describe('shelved', () => {
 
   it('declines an address that does not decode', () => {
     expect(fileAddress(at('/api/notes/8f0c/files/%E0%A4%A'))).toBeNull();
+  });
+});
+
+describe('within', () => {
+  afterEach(() => vi.useRealTimers());
+
+  it('gives the value when it arrives in time', async () => {
+    vi.useFakeTimers();
+    const result = within(Promise.resolve('file'), 1500, null);
+    await vi.advanceTimersByTimeAsync(10);
+    await expect(result).resolves.toBe('file');
+  });
+
+  it('gives the fallback when it does not', async () => {
+    vi.useFakeTimers();
+    const result = within(new Promise<string>(() => {}), 1500, null);
+    await vi.advanceTimersByTimeAsync(1500);
+    await expect(result).resolves.toBeNull();
+  });
+
+  it('gives the fallback when the promise rejects', async () => {
+    vi.useFakeTimers();
+    const result = within(Promise.reject(new Error('locked')), 1500, null);
+    await vi.advanceTimersByTimeAsync(10);
+    await expect(result).resolves.toBeNull();
   });
 });

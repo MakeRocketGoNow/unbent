@@ -2,7 +2,7 @@ import { cleanupOutdatedCaches, createHandlerBoundToURL, precacheAndRoute } from
 import { registerRoute } from 'workbox-routing';
 import { CacheFirst, NetworkFirst, type StrategyOptions } from 'workbox-strategies';
 import { ExpirationPlugin } from 'workbox-expiration';
-import { API_CACHE, FILES_CACHE, FILES_CHANGED, MAX_KEPT_FILE, SERVED_HEADER, VIEW_HEADER, classify, servesShell, shelved } from './routes.js';
+import { API_CACHE, FILES_CACHE, FILES_CHANGED, MAX_KEPT_FILE, SERVED_HEADER, VIEW_HEADER, classify, servesShell, shelved, within } from './routes.js';
 import { createFilesLedger } from './budget.js';
 import { findFile } from '../store/files.js';
 
@@ -217,12 +217,15 @@ const openedFiles = new CacheFirst({ cacheName: FILES_CACHE, plugins: [keepableF
  * matches and has no "not mine after all", and whether the shelf has the file is only
  * known by looking.
  */
+/** How long the device lookup may take before the request goes on without it (see `within`). */
+const LOOKUP_MS = 1500;
+
 registerRoute(
   ({ request, url }) => shelved({ url, method: request.method, mode: request.mode, origin: self.location.origin }) !== null,
   async (options) => {
     const { request, url } = options;
     const address = shelved({ url, method: request.method, mode: request.mode, origin: self.location.origin });
-    const file = address && (await findFile(address.noteId, address.filename));
+    const file = address && (await within(findFile(address.noteId, address.filename), LOOKUP_MS, null));
     if (file) {
       return new Response(file, {
         headers: {

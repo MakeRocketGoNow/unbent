@@ -176,3 +176,27 @@ export function classify(request: RequestFacts): 'api' | 'file' | undefined {
   }
   return undefined;
 }
+
+/**
+ * `promise`'s value, or `fallback` if it has not arrived in `ms` or it rejects.
+ *
+ * For the lookup in front of every file request: a stalled read of the device's file
+ * system would otherwise hold every picture and PDF in the app, online too. A miss, a
+ * stall and a failure all have to look the same to the page, which is to go on to the
+ * cache and the network.
+ */
+export function within<T>(promise: Promise<T>, ms: number, fallback: T): Promise<T> {
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => resolve(fallback), ms);
+    promise.then(
+      (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      () => {
+        clearTimeout(timer);
+        resolve(fallback);
+      },
+    );
+  });
+}
