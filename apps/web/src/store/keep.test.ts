@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { resetConnectivity, setReachableForTests } from '../connectivity.js';
 import { createKeeper, filesOf, plan, type KeepSnapshot } from './keep.js';
-import { listShelf, writeFile } from './files.js';
+import { listShelf, writeFile, writeKeptNotebooks } from './files.js';
 import { installMemoryOpfs, type MemoryDirectory } from './test-opfs.js';
 
 const note = (id: string, notebookId: string | null, deletedAt?: number) => ({ id, notebookId, ...(deletedAt === undefined ? {} : { deletedAt }) });
@@ -178,6 +178,30 @@ describe('the keeper', () => {
     await vi.waitFor(() => expect(follower.status().wanted.files).toBe(3));
     expect(served).toEqual([]);
     expect(root.paths()).toContain('unbent-files-u1/kept/n3/manual.pdf');
+  });
+
+  it('touches nothing while the list of kept notebooks cannot be read, and refuses to write over it', async () => {
+    // A notebook kept earlier, its files on the shelf, and a list the file system will not hand over.
+    await writeKeptNotebooks('u1', ['receipts']);
+    await writeFile('u1', 'kept', 'n1', 'receipt.pdf', new Blob(['x'.repeat(300)]));
+    const account = await root.getDirectoryHandle('unbent-files-u1');
+    const real = account.getFileHandle.bind(account);
+    let busy = true;
+    account.getFileHandle = async (name, o) => {
+      if (busy && name === 'kept.json') throw Object.assign(new Error('busy'), { name: 'InvalidStateError' });
+      return real(name, o);
+    };
+
+    const k = start();
+    await vi.waitFor(() => expect(k.status().problem).toContain('could not be read'));
+    expect(root.paths()).toContain('unbent-files-u1/kept/n1/receipt.pdf');
+    await expect(k.keep('manuals')).rejects.toThrow('busy');
+
+    // Readable again: the list is the one that was there, with the new notebook added to it.
+    busy = false;
+    await k.keep('manuals');
+    expect([...k.status().kept].sort()).toEqual(['manuals', 'receipts']);
+    expect(root.paths()).toContain('unbent-files-u1/kept/n1/receipt.pdf');
   });
 
   it('empties the shelf and the list on releaseAll', async () => {

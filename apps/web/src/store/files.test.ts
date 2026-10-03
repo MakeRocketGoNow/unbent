@@ -111,4 +111,19 @@ describe('the notebooks a device keeps', () => {
     expect(await readKeptNotebooks('u2')).toEqual([]);
     expect(root.paths()).toEqual(['unbent-files-u1/kept.json']);
   });
+
+  it('is an error, not an empty list, when the list is there and cannot be read', async () => {
+    await writeKeptNotebooks('u1', ['nb1']);
+    const account = await root.getDirectoryHandle('unbent-files-u1');
+    const real = account.getFileHandle.bind(account);
+    account.getFileHandle = async () => {
+      throw Object.assign(new Error('busy'), { name: 'InvalidStateError' });
+    };
+    await expect(readKeptNotebooks('u1')).rejects.toThrow('busy');
+    account.getFileHandle = real;
+    const writable = await (await account.getFileHandle('kept.json')).createWritable();
+    await writable.write('{not json');
+    await writable.close();
+    await expect(readKeptNotebooks('u1')).rejects.toThrow();
+  });
 });

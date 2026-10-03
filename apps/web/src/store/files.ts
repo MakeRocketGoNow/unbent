@@ -247,17 +247,26 @@ const KEPT_LIST = 'kept.json';
  * row in the database or a key in `localStorage`: it is this device's choice, not the
  * account's, so it must not sync; and it has to go when the files do, which being in
  * their directory makes true by construction.
+ *
+ * Throws when the list is there and cannot be read. The caller must not take that for an
+ * empty list: the keeper removes whatever no kept notebook holds.
  */
 export async function readKeptNotebooks(userId: string): Promise<string[]> {
+  let text: string;
   try {
     const account = await accountDir(userId, false);
     if (!account) return [];
-    const text = await (await (await account.getFileHandle(KEPT_LIST)).getFile()).text();
-    const ids: unknown = JSON.parse(text);
-    return Array.isArray(ids) ? ids.filter((id): id is string => typeof id === 'string') : [];
-  } catch {
-    return [];
+    text = await (await (await account.getFileHandle(KEPT_LIST)).getFile()).text();
+  } catch (err) {
+    // No list is no notebooks kept. Any other failure is not: answering "none" to a file
+    // system that was only busy made the keeper drop every kept file (review of #236).
+    if (missing(err)) return [];
+    throw err;
   }
+  // A list that does not parse is a failure too, for the same reason.
+  const ids: unknown = JSON.parse(text);
+  if (!Array.isArray(ids)) throw new Error('The list of kept notebooks is not a list');
+  return ids.filter((id): id is string => typeof id === 'string');
 }
 
 export async function writeKeptNotebooks(userId: string, ids: string[]): Promise<void> {
