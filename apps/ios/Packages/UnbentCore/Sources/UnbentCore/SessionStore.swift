@@ -5,10 +5,10 @@ import Security
 /// that holds nothing but memory.
 public protocol SessionStoring: AnyObject {
     func session(for origin: String) -> SessionCookie?
-    /// False when the session could not be kept. A sign-in that cannot be kept is not one
-    /// the app can act on, and has to be said rather than shown as a screen that resets.
-    @discardableResult
-    func save(_ session: SessionCookie, for origin: String) -> Bool
+    /// Throws when the session could not be kept. A sign-in that cannot be kept is not one
+    /// the app can act on, and has to be said rather than shown as a screen that resets;
+    /// the error is whatever the store has to say about why.
+    func save(_ session: SessionCookie, for origin: String) throws
     func clear(for origin: String)
 }
 
@@ -50,22 +50,18 @@ public final class SessionStore: SessionStoring {
 
     /// The likeliest failure is a build signed without the App Group: the access group is
     /// then one the app has no entitlement for, and the Keychain refuses the item
-    /// (`errSecMissingEntitlement`). `lastError` keeps the status for the log.
-    @discardableResult
-    public func save(_ session: SessionCookie, for origin: String) -> Bool {
-        guard let data = Self.encode(session) else { return false }
+    /// (`errSecMissingEntitlement`). The error carries the Keychain's own status.
+    public func save(_ session: SessionCookie, for origin: String) throws {
+        guard let data = Self.encode(session) else { throw KeychainError(status: errSecParam) }
         // Delete and add rather than update: an update cannot change an item's
         // accessibility, and an item written by an older build keeps whatever it had.
         SecItemDelete(base(origin) as CFDictionary)
         var item = base(origin)
         item[kSecValueData as String] = data
         item[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
-        lastError = SecItemAdd(item as CFDictionary, nil)
-        return lastError == errSecSuccess
+        let status = SecItemAdd(item as CFDictionary, nil)
+        guard status == errSecSuccess else { throw KeychainError(status: status) }
     }
-
-    /// What the Keychain answered to the last `save`.
-    public private(set) var lastError: OSStatus = errSecSuccess
 
     public func clear(for origin: String) {
         SecItemDelete(base(origin) as CFDictionary)
@@ -95,6 +91,22 @@ public final class SessionStore: SessionStoring {
     }
 }
 
+/// The Keychain refusing something, with the status it gave. The number is what gets
+/// looked up — `-34018` is a missing entitlement — so it is in the description as well as
+/// the system's sentence for it, which is often no more than "the operation failed".
+public struct KeychainError: Error, Equatable, CustomStringConvertible {
+    public let status: OSStatus
+
+    public init(status: OSStatus) {
+        self.status = status
+    }
+
+    public var description: String {
+        let message = SecCopyErrorMessageString(status, nil) as String? ?? "Keychain error"
+        return "\(message) (\(status))"
+    }
+}
+
 /// A session kept only as long as the object: previews, and tests of the screens.
 public final class MemorySessionStore: SessionStoring {
     private var sessions: [String: SessionCookie] = [:]
@@ -102,10 +114,6 @@ public final class MemorySessionStore: SessionStoring {
     public init() {}
 
     public func session(for origin: String) -> SessionCookie? { sessions[normalizeOrigin(origin)] }
-    @discardableResult
-    public func save(_ session: SessionCookie, for origin: String) -> Bool {
-        sessions[normalizeOrigin(origin)] = session
-        return true
-    }
+    public func save(_ session: SessionCookie, for origin: String) { sessions[normalizeOrigin(origin)] = session }
     public func clear(for origin: String) { sessions[normalizeOrigin(origin)] = nil }
 }

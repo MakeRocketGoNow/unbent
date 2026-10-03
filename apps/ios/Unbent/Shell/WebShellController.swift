@@ -268,7 +268,14 @@ final class WebShellController: UIViewController {
                 $0.name == stored.name && !$0.value.isEmpty && $0.domain.caseInsensitiveCompare(host ?? "") == .orderedSame
             }
             if let live, live.value != stored.value {
-                self.sessions.save(SessionCookie(name: live.name, value: live.value), for: origin)
+                do {
+                    try self.sessions.save(SessionCookie(name: live.name, value: live.value), for: origin)
+                } catch {
+                    // The page carries on with its own cookie either way. Logged because
+                    // of what follows if this is lost: the Keychain keeps a bearer the
+                    // server has revoked, and the next session check signs the person out.
+                    self.log.error("Could not keep the page's newer session: \(String(describing: error), privacy: .public)")
+                }
                 return then()
             }
             guard let cookie = stored.httpCookie(origin: origin) else { return then() }

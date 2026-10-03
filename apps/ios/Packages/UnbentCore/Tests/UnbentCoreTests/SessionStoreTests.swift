@@ -22,13 +22,18 @@ final class SessionStoreTests: XCTestCase {
         XCTAssertNil(SessionStore.decode(Data(#"{"name":"n"}"#.utf8)))
     }
 
+    /// What reaches the log when the Keychain refuses: the number is what gets looked up.
+    func testAKeychainRefusalSaysItsStatus() {
+        XCTAssertTrue(KeychainError(status: errSecMissingEntitlement).description.contains("-34018"))
+    }
+
     /// Pointing the app at another instance must not send the old one's credential there,
     /// and pointing it back finds the old session where it was left.
-    func testASessionIsKeptPerInstance() {
+    func testASessionIsKeptPerInstance() throws {
         let store: SessionStoring = MemorySessionStore()
         let session = SessionCookie(name: "better-auth.session_token", value: "abc.sig")
 
-        XCTAssertTrue(store.save(session, for: "https://unbent.example/"))
+        try store.save(session, for: "https://unbent.example/")
         XCTAssertEqual(session, store.session(for: "https://unbent.example"))
         XCTAssertNil(store.session(for: "http://localhost:5204"))
 

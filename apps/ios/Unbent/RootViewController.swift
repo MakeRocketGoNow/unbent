@@ -84,9 +84,10 @@ final class RootViewController: UIViewController {
             // If it cannot be kept the sign-in screen stays and says so; starting over
             // would find no session and show the same screen again, emptied, as though
             // nothing had been typed.
-            guard self.sessions.save(session, for: origin) else {
-                let status = (self.sessions as? SessionStore)?.lastError ?? errSecSuccess
-                self.log.error("Could not keep the session in the Keychain: \(status)")
+            do {
+                try self.sessions.save(session, for: origin)
+            } catch {
+                self.log.error("Could not keep the session: \(String(describing: error), privacy: .public)")
                 return false
             }
             // The shell takes a session cookie it finds in the web view for newer than
