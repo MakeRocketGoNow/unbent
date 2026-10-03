@@ -1,0 +1,19 @@
+// What the Share Extension's build differs in. Included after Debug.xcconfig or
+// Release.xcconfig (Share-Debug.xcconfig, Share-Release.xcconfig), so everything else —
+// the instance, the App Group, the version — is the app's, from the same lines.
+
+PRODUCT_BUNDLE_IDENTIFIER = $(UNBENT_APP_ID).share
+PRODUCT_NAME = UnbentShare
+INFOPLIST_FILE = Config/Share-Info.plist
+CODE_SIGN_ENTITLEMENTS = Config/UnbentShare.entitlements
+
+// The share sheet shows the app's icon for it; an extension has none of its own, and the
+// asset compiler fails on a name it cannot find in a target with no catalog.
+ASSETCATALOG_COMPILER_APPICON_NAME =
+ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME =
+
+// Refuses, at compile time, the calls an extension may not make — UIApplication.shared
+// among them. The packages it links are built the same way.
+APPLICATION_EXTENSION_API_ONLY = YES
+LD_RUNPATH_SEARCH_PATHS = $(inherited) @executable_path/Frameworks @executable_path/../../Frameworks
+SKIP_INSTALL = YES

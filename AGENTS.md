@@ -398,6 +398,18 @@ Things that cost time once:
 - **The page's errors go to the unified log** in debug builds:
   `xcrun simctl spawn booted log stream --predicate 'process == "Unbent"'`. The web view is
   also inspectable from Safari's Develop menu.
+- **A share is three processes, and only one of them is yours to watch.** The extension
+  stages and sends one request; the system's uploader sends it; the app is launched in
+  the background with the answer and sends the files. The Worker's log shows the `POST`
+  then each `PUT`, and the capture's directory —
+  `xcrun simctl get_app_container booted <bundle id> groups`, then `shares/` — is empty
+  once it has finished. `xcrun simctl addmedia booted <file>` puts a photo in Photos to
+  share. A tap injected by a tool does not open a notification in Notification Center;
+  say so rather than reporting the tap checked.
+- **The instance pref is in the App Group's defaults, not the app's.** `simctl spawn …
+  defaults write` makes a domain nothing reads. Use App settings, or edit
+  `Library/Preferences/<group>.plist` in the group's container with the app terminated,
+  then `xcrun simctl spawn booted killall cfprefsd`.
 - **`Config/Info.plist` is preprocessed.** A `//` in it is a comment and an apostrophe is
   an unfinished character; either breaks the build with an error about neither.
 - **Anything `deinit` touches must already exist.** A lazy property first read there is
@@ -459,7 +471,7 @@ verifies it. It is checked with `cd apps/android && ./gradlew test`, which needs
 `apps/ios` is outside it too: `swift test --package-path apps/ios/Packages/UnbentCore` runs
 its unit tests on the Mac with no simulator, and `xcodebuild -project
 apps/ios/Unbent.xcodeproj -scheme Unbent -destination 'generic/platform=iOS Simulator'
-build` proves the app compiles without booting one.
+build` proves the app and its Share Extension compile without booting one.
 The app is the site in a WebView, so almost every UI change belongs in `apps/web` and
 reaches the phone on deploy. Check it at phone width and inside the app — Back, the system
 bars and the keyboard are the app's, not the browser's. What stays native is the sign-in

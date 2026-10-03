@@ -2,6 +2,9 @@ import Foundation
 
 /// What this build was configured with, read out of Info.plist — which is where the
 /// values in `Config/*.xcconfig` end up. Swift has no `BuildConfig`; this is it.
+///
+/// In `Shared/`, which is compiled into the app and into the Share Extension: each reads
+/// its own Info.plist, and the two are written from the same settings.
 enum BuildInfo {
     /// The instance the app opens until told otherwise: `UNBENT_INSTANCE_SCHEME` and
     /// `UNBENT_INSTANCE_HOST`, put back together.
@@ -12,6 +15,10 @@ enum BuildInfo {
 
     /// The App Group, shared with the Share Extension. Also the Keychain access group.
     static let appGroup = string("UnbentAppGroup")
+
+    /// The app's bundle id, which the extension's own is not: what the two name their
+    /// upload sessions for (`CaptureQueue`).
+    static let appId = string("UnbentAppId") ?? Bundle.main.bundleIdentifier ?? "unbent"
 
     static let version = string("CFBundleShortVersionString") ?? "0"
     static let build = string("CFBundleVersion") ?? "0"

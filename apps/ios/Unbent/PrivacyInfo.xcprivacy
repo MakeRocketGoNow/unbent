@@ -12,8 +12,12 @@
   Nothing is collected and nothing is tracked. What the site inside the web view does is
   the site's to declare, in its privacy policy; this file is about the native code.
 
-  Add to it when native code starts using another listed API: file timestamps, disk
-  space, system boot time or the active keyboard list.
+  The other is file timestamps (C617.1, files inside the app's own and its group's
+  containers): the sweep of captures nobody finished reads when each was last touched
+  (CaptureStore.sweepAbandoned).
+
+  Add to it when native code starts using another listed API: disk space, system boot
+  time or the active keyboard list.
 -->
 <plist version="1.0">
 <dict>
@@ -25,6 +29,14 @@
 	<array/>
 	<key>NSPrivacyAccessedAPITypes</key>
 	<array>
+		<dict>
+			<key>NSPrivacyAccessedAPIType</key>
+			<string>NSPrivacyAccessedAPICategoryFileTimestamp</string>
+			<key>NSPrivacyAccessedAPITypeReasons</key>
+			<array>
+				<string>C617.1</string>
+			</array>
+		</dict>
 		<dict>
 			<key>NSPrivacyAccessedAPIType</key>
 			<string>NSPrivacyAccessedAPICategoryUserDefaults</string>
