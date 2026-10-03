@@ -285,6 +285,24 @@ export const noteCountQuery = () =>
  * ids arrive from shared links and reloads long after the note was deleted. Retrying
  * would delay the explanation the workspace shows.
  */
+/**
+ * A read of a note the local copy does not hold. A library that has never taken its
+ * snapshot holds nothing yet, and a note not in it is not missing — the copy is. With a
+ * connection the server answers for it, as it did before the copy existed: a link
+ * followed during the first copy opens, and on a phone that copy can take minutes.
+ * Without one, say so (the workspace's offline line) rather than that the note does not
+ * exist. Once a snapshot has been taken, an id the copy does not hold gets the answer the
+ * route gave for an id that is not a note. The writes in `store/actions.ts` draw the same
+ * line (`firstCopy`), and the two must agree.
+ */
+function notHeld<T>(lib: Library, ask: () => Promise<T>): Promise<T> {
+  if (lib.state().cursor === null) {
+    if (!offlineNow()) return ask();
+    throw new OfflineError();
+  }
+  throw new ApiError(404, 'Not found');
+}
+
 export const noteQuery = (id: string) =>
   queryOptions({
     queryKey: keys.note(id),
@@ -292,18 +310,7 @@ export const noteQuery = (id: string) =>
       const lib = await library();
       if (!lib) return api.getNote(id);
       const row = lib.notes.get(id);
-      // A library that has never taken its snapshot holds nothing yet, and a note not in
-      // it is not missing — the copy is. With a connection the server answers for it, as
-      // it did before the copy existed: a link followed during the first copy opens, and
-      // on a phone that copy can take minutes. Without one, say so (the workspace's
-      // offline line) rather than that the note does not exist. Once a snapshot has been
-      // taken, an id the copy does not hold gets the answer the route gave for an id that
-      // is not a note.
-      if (!row && lib.state().cursor === null) {
-        if (!offlineNow()) return api.getNote(id);
-        throw new OfflineError();
-      }
-      if (!row) throw new ApiError(404, 'Not found');
+      if (!row) return notHeld(lib, () => api.getNote(id));
       return toNote(row, view(lib).lookups);
     },
     retry: false,
@@ -319,7 +326,9 @@ export const attachmentsQuery = (noteId: string) =>
     queryFn: async (): Promise<LocalAttachmentInfo[]> => {
       const lib = await library();
       if (!lib) return api.listAttachments(noteId);
-      if (!lib.notes.has(noteId)) throw new ApiError(404, 'Not found');
+      // A note opened from the server during the first copy has files too; a 404 here
+      // hid every one of them — the PDF the note is — until the walk reached it.
+      if (!lib.notes.has(noteId)) return notHeld(lib, () => api.listAttachments(noteId));
       return (view(lib).lookups.filesByNote.get(noteId) ?? []).map(toAttachmentInfo);
     },
   });
