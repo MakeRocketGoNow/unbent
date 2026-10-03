@@ -70,6 +70,16 @@ export function useHostApp(): void {
    * the gesture or by its ✕, which pops it — is the viewer closing, not the page under it
    * going away, and a sheet the viewer was opened from stays.
    *
+   * A known difference from Android, and not this handler's to fix. The filter sheet's
+   * pickers — tags, dates, fields — add a history entry for each change while the sheet
+   * stays open, so that a browser's Back undoes a filter. A swipe back with that sheet
+   * open therefore undoes the last change and closes the sheet in one gesture, where
+   * Android's Back only closes the sheet. The gesture cannot be refused, and the address
+   * did change, so closing is right as far as this handler can tell. If the difference
+   * is ever worth removing, the place is those pickers, navigating with `replace` while
+   * a sheet is open — which also changes what Back does in every browser, and is why it
+   * was not done alongside this.
+   *
    * Heard from the router's history rather than from `popstate`. The event says where
    * the history arrived and nothing about where it left, so telling a move from the
    * viewer's entry means remembering the last address, and a listener on the window
