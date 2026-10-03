@@ -1727,7 +1727,11 @@ th[aria-sort] .note-th-sort { color: var(--fg); }
   white-space: nowrap;
 }
 
-.overflow-item:hover:not(:disabled) { background: color-mix(in srgb, var(--fg) 8%, transparent); }
+/* Commands only: a label or a footnote in the list is not something to press, and a fill
+   under the pointer would say it was. */
+.overflow-item:not(.overflow-label, .overflow-footnote):hover:not(:disabled) {
+  background: color-mix(in srgb, var(--fg) 8%, transparent);
+}
 
 /* An item that cannot be used right now keeps its place; see `OverflowItem.disabled`. */
 .overflow-item:disabled {
@@ -2335,17 +2339,19 @@ a.sidebar-status:hover {
   border-radius: 999px;
 }
 
-/* The address is a label, not a command: it sits at the top of the menu, unclickable. */
-.overflow-email {
-  /* The same as the item padding above it, so the block sits centred between the menu's
-     top edge and the divider under it. */
-  padding-bottom: 0.6rem;
-  margin-bottom: 0.25rem;
+/*
+   The menu's head: the address, and on dev and previews the instance under it. Labels, not
+   commands, so they take none of the item's box — no hover fill, no rounded corners, no
+   0.6rem of padding sized for a press target — and sit as tight lines of text with the
+   head's air above and below the pair rather than around each. They wore the item's box
+   once, under overrides, and hovering one painted a lopsided grey pill on a line that does
+   nothing.
+*/
+.overflow-label {
+  padding: 0.1rem 0.7rem;
   font-size: 0.78rem;
+  line-height: 1.45;
   color: var(--muted);
-  border-bottom: 1px solid var(--border);
-  /* Square, so the divider under the block runs straight to its ends; the items' rounded
-     corners, meant for a hover fill these lines never take, bent it up at both. */
   border-radius: 0;
   cursor: default;
   /*
@@ -2365,35 +2371,39 @@ a.sidebar-status:hover {
   white-space: nowrap;
   text-overflow: ellipsis;
 }
+.overflow-label:first-child { padding-top: 0.5rem; }
+.overflow-label:has(+ .overflow-separator) { padding-bottom: 0.5rem; }
 
-/* The instance line under the address on a scratch instance ("PR 222 · notes are its own").
-   The same kind of line as the address, so the two read as one block: the divider moves
-   below the second, and the dot is the favicon's badge, so the two marks read as one. */
-/* The same goes for the build line (`buildItem`), which closes the block on every instance,
-   production included, so the divider always sits under whichever line is last. */
-.overflow-email:has(+ .overflow-instance, + .overflow-build) {
-  padding-bottom: 0.15rem;
-  margin-bottom: 0;
-  border-bottom: 0;
+/* Between the menu's groups. Out to the list's own edge, through its 0.25rem padding, so
+   it is a rule across the menu rather than a line inside one of its items. */
+.overflow-separator {
+  height: 0;
+  margin: 0.25rem -0.25rem;
+  border: 0;
+  border-top: 1px solid var(--border);
 }
-.overflow-email.overflow-instance,
-.overflow-email.overflow-build { padding-top: 0; }
-/* Under the address, a step smaller: the address says whose menu this is, and these two
-   say where and which build — context for it, read second. */
-.overflow-email.overflow-instance,
-.overflow-email.overflow-build { font-size: 0.72rem; }
-/* Commit hashes compare digit by digit, so they should not shift between builds. */
-.overflow-build { font-variant-numeric: tabular-nums; }
-/* On CI builds it links to the commit. Muted like its neighbours until hovered, and then
-   plainly a link, not a menu command: it underlines rather than taking the item's fill.
-   Qualified to outweigh `.overflow-item:hover:not(:disabled)`. */
-a.overflow-item.overflow-build { cursor: pointer; }
-a.overflow-item.overflow-build:hover,
-a.overflow-item.overflow-build:focus-visible {
+
+/* The build, under everything (`buildItem`): smaller than the head, and like a page's
+   footer it is read rarely. On CI builds it links to the commit, and hover says so the way
+   a link does — an underline, not the item's fill. Hash digits keep their width, so two
+   builds compare by eye. */
+.overflow-footnote {
+  padding: 0.3rem 0.7rem 0.35rem;
+  font-size: 0.72rem;
+  line-height: 1.45;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  border-radius: 0;
+  cursor: default;
+}
+a.overflow-footnote { cursor: pointer; }
+a.overflow-footnote:hover,
+a.overflow-footnote:focus-visible {
   color: var(--fg);
-  background: none;
   text-decoration: underline;
 }
+
+/* The instance line's dot is the favicon's badge, so the two marks read as one. */
 .overflow-instance::before {
   content: '';
   display: inline-block;

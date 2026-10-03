@@ -24,14 +24,15 @@ function legalItem(label: string, url: string): OverflowItem {
 }
 
 /**
- * Which commit this page is, as the last line of the menu's head, or nothing where the
- * build could not say.
+ * Which commit this page is, as a footnote under the menu, or nothing where the build
+ * could not say.
  *
- * Here rather than on a settings page because it is the same kind of line as the two
- * above it — it says where you are and does nothing to it — and because this menu is one
- * tap from every screen, on production as much as on a scratch instance. It is the
- * question asked right after a merge ("has it shipped, and is this tab running it?"), and
- * a page to find first would make it a hunt.
+ * In this menu because it is one tap from every screen, on production as much as on a
+ * scratch instance, and "has it shipped, and is this tab running it?" is asked right after
+ * a merge; a page to find first would make it a hunt. Under the actions rather than in the
+ * head: it was a third grey line under the address for a day, and it is not about the
+ * account — the head says who and where, and a build number crowding into it read as one
+ * block of grey nobody could scan. Below Sign out, which stays the last thing to press.
  *
  * A link to the commit when the build knows where it lives, since going to the commit is
  * navigation; static text for a local build, whose commit may not be pushed anywhere.
@@ -40,7 +41,7 @@ export function buildItem(info: BuildInfo | null): OverflowItem | null {
   if (!info) return null;
   const label = buildLabel(info);
   const title = buildTitle(info);
-  const className = 'overflow-email overflow-build';
+  const className = 'overflow-footnote';
   return info.url
     ? { label, className, external: info.url, title }
     : { label, className, static: true, title };
@@ -101,7 +102,7 @@ export function AccountMenu({ email, onSignOut, withAddress = false }: AccountMe
         // The address itself, so the menu says which account it belongs to. Static
         // rather than selectable: it names the account, it does not act on it. It
         // truncates to one line, so it carries the full address as a tooltip.
-        { label: email, className: 'overflow-email', static: true, title: email },
+        { label: email, className: 'overflow-label overflow-email', static: true, title: email },
         // Which instance this is, when it is not production — "PR 222 · notes are its
         // own" — and on a preview, whose notes an edit here changes. Under the address
         // because it is the same kind of line: it says where you are, it does nothing.
@@ -109,13 +110,13 @@ export function AccountMenu({ email, onSignOut, withAddress = false }: AccountMe
           ? [
               {
                 label: instance,
-                className: `overflow-email overflow-instance instance-${config.data?.instanceKind ?? 'mark'}`,
+                className: `overflow-label overflow-instance instance-${config.data?.instanceKind ?? 'mark'}`,
                 static: true,
                 title: instance,
               },
             ]
           : []),
-        ...(build ? [build] : []),
+        { label: null, separator: true },
         // Findable once signed in, which is the half the sign-in screen's own links cannot
         // cover. They are reference, not something to act on, and they sit above Sign out
         // so the destructive item stays last.
@@ -135,6 +136,7 @@ export function AccountMenu({ email, onSignOut, withAddress = false }: AccountMe
         signOutNeedsConnection
           ? { label: 'Sign out', tone: 'danger', disabled: true, title: 'Signing out needs a connection' }
           : { label: 'Sign out', onSelect: onSignOut, tone: 'danger' },
+        ...(build ? [{ label: null, separator: true }, build] : []),
       ]}
     />
   );
