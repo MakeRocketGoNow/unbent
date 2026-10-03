@@ -28,7 +28,7 @@ final class SessionStoreTests: XCTestCase {
         let store: SessionStoring = MemorySessionStore()
         let session = SessionCookie(name: "better-auth.session_token", value: "abc.sig")
 
-        store.save(session, for: "https://unbent.example/")
+        XCTAssertTrue(store.save(session, for: "https://unbent.example/"))
         XCTAssertEqual(session, store.session(for: "https://unbent.example"))
         XCTAssertNil(store.session(for: "http://localhost:5204"))
 

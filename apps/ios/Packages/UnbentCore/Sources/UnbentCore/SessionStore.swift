@@ -5,7 +5,10 @@ import Security
 /// that holds nothing but memory.
 public protocol SessionStoring: AnyObject {
     func session(for origin: String) -> SessionCookie?
-    func save(_ session: SessionCookie, for origin: String)
+    /// False when the session could not be kept. A sign-in that cannot be kept is not one
+    /// the app can act on, and has to be said rather than shown as a screen that resets.
+    @discardableResult
+    func save(_ session: SessionCookie, for origin: String) -> Bool
     func clear(for origin: String)
 }
 
@@ -45,16 +48,24 @@ public final class SessionStore: SessionStoring {
         return Self.decode(data)
     }
 
-    public func save(_ session: SessionCookie, for origin: String) {
-        guard let data = Self.encode(session) else { return }
+    /// The likeliest failure is a build signed without the App Group: the access group is
+    /// then one the app has no entitlement for, and the Keychain refuses the item
+    /// (`errSecMissingEntitlement`). `lastError` keeps the status for the log.
+    @discardableResult
+    public func save(_ session: SessionCookie, for origin: String) -> Bool {
+        guard let data = Self.encode(session) else { return false }
         // Delete and add rather than update: an update cannot change an item's
         // accessibility, and an item written by an older build keeps whatever it had.
         SecItemDelete(base(origin) as CFDictionary)
         var item = base(origin)
         item[kSecValueData as String] = data
         item[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
-        SecItemAdd(item as CFDictionary, nil)
+        lastError = SecItemAdd(item as CFDictionary, nil)
+        return lastError == errSecSuccess
     }
+
+    /// What the Keychain answered to the last `save`.
+    public private(set) var lastError: OSStatus = errSecSuccess
 
     public func clear(for origin: String) {
         SecItemDelete(base(origin) as CFDictionary)
@@ -91,6 +102,10 @@ public final class MemorySessionStore: SessionStoring {
     public init() {}
 
     public func session(for origin: String) -> SessionCookie? { sessions[normalizeOrigin(origin)] }
-    public func save(_ session: SessionCookie, for origin: String) { sessions[normalizeOrigin(origin)] = session }
+    @discardableResult
+    public func save(_ session: SessionCookie, for origin: String) -> Bool {
+        sessions[normalizeOrigin(origin)] = session
+        return true
+    }
     public func clear(for origin: String) { sessions[normalizeOrigin(origin)] = nil }
 }

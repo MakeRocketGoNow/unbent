@@ -27,10 +27,12 @@ final class SignInModel {
     /// above the reason it was not sent.
     private(set) var codeSentTo: String?
 
-    private let onSignedIn: (SessionCookie) -> Void
+    private let onSignedIn: (SessionCookie) -> Bool
     private let log = Logger(subsystem: Bundle.main.bundleIdentifier ?? "unbent", category: "sign-in")
 
-    init(origin: String, onSignedIn: @escaping (SessionCookie) -> Void) {
+    /// - Parameter onSignedIn: keeps the session and moves on; false when it could not be
+    ///   kept, which leaves this screen up to say so.
+    init(origin: String, onSignedIn: @escaping (SessionCookie) -> Bool) {
         self.origin = origin
         self.onSignedIn = onSignedIn
     }
@@ -94,8 +96,9 @@ final class SignInModel {
             defer { busy = false }
             do {
                 if let session = try await step() {
-                    status = "Signed in."
-                    onSignedIn(session)
+                    // The server signed them in and the phone could not hold on to it.
+                    // Said plainly, since the alternative is a form that silently empties.
+                    status = onSignedIn(session) ? "Signed in." : "Couldn’t keep the session on this device."
                 } else {
                     status = nil
                 }

@@ -1,3 +1,4 @@
+import os
 import SwiftUI
 import UIKit
 import UnbentCore
@@ -18,12 +19,16 @@ final class RootViewController: UIViewController {
     private let prefs: AppPrefs
     private let sessions: SessionStoring
 
+    private let log = Logger(subsystem: Bundle.main.bundleIdentifier ?? "unbent", category: "app")
+
     private var shell: WebShellController?
     private var current: UIViewController?
 
     init() {
-        // The App Group's defaults, so the Share Extension reads the same instance. A build
-        // whose group is not provisioned gets nil here, and the app's own defaults do.
+        // The App Group's defaults, so the Share Extension reads the same instance. The
+        // fallback is only for a build with no group named at all: one whose group is
+        // named but not provisioned still gets a suite here, private to the app, and it
+        // is the Keychain that then refuses — see `signIn`.
         let defaults = BuildInfo.appGroup.flatMap(UserDefaults.init(suiteName:)) ?? .standard
         prefs = AppPrefs(defaults: defaults, defaultInstance: BuildInfo.defaultInstance)
         sessions = SessionStore(accessGroup: BuildInfo.appGroup)
@@ -74,13 +79,21 @@ final class RootViewController: UIViewController {
 
     private func signIn(origin: String) -> UIViewController {
         let model = SignInModel(origin: origin) { [weak self] session in
-            guard let self else { return }
+            guard let self else { return false }
             // Every way in ends here: the cookie the response set, kept for this instance.
-            self.sessions.save(session, for: origin)
+            // If it cannot be kept the sign-in screen stays and says so; starting over
+            // would find no session and show the same screen again, emptied, as though
+            // nothing had been typed.
+            guard self.sessions.save(session, for: origin) else {
+                let status = (self.sessions as? SessionStore)?.lastError ?? errSecSuccess
+                self.log.error("Could not keep the session in the Keychain: \(status)")
+                return false
+            }
             // The shell takes a session cookie it finds in the web view for newer than
             // the Keychain's. Straight after a sign-in the opposite is true, so anything
             // left there from before goes first.
             self.clearCookies { [weak self] in self?.start() }
+            return true
         }
         let screen = SignInHost(
             model: model,
