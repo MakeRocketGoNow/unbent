@@ -7,6 +7,13 @@ import * as api from '../notes-api.js';
 import { keys } from '../queries.js';
 import { Attachments } from './Attachments.js';
 
+vi.mock('../store/actions.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../store/actions.js')>()),
+  // True for the file the test marks as waiting; every other delete is the server's.
+  cancelUpload: vi.fn(async (_noteId: string, filename: string) => filename === 'photo.jpg'),
+}));
+import { cancelUpload } from '../store/actions.js';
+
 vi.mock('../notes-api.js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../notes-api.js')>()),
   deleteAttachment: vi.fn(),
@@ -230,10 +237,17 @@ describe('Attachments on a locked note', () => {
     expect(screen.getByText('scan.pdf').closest('a')).not.toBeNull();
     expect(screen.getByText('photo.jpg').closest('a')).toBeNull();
     const [, waitingRow] = screen.getAllByRole('listitem');
-    for (const name of ['Copy', 'Delete']) {
-      const button = [...waitingRow!.querySelectorAll('button')].find((b) => b.textContent === name) as HTMLButtonElement;
-      expect(button.disabled, name).toBe(true);
-      expect(button.title).toBe('Waiting to upload');
-    }
+    const button = (name: string) => [...waitingRow!.querySelectorAll('button')].find((b) => b.textContent === name) as HTMLButtonElement;
+    expect(button('Copy').disabled).toBe(true);
+    expect(button('Copy').title).toBe('Waiting to upload');
+
+    // Delete is live: for a file that has not uploaded it takes the file back, on this
+    // device, and asks the server nothing.
+    expect(button('Delete').disabled).toBe(false);
+    fireEvent.click(button('Delete'));
+    expect(screen.getByText(/before it uploads\?/)).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Remove file' }));
+    await waitFor(() => expect(cancelUpload).toHaveBeenCalledWith('n1', 'photo.jpg'));
+    expect(api.deleteAttachment).not.toHaveBeenCalled();
   });
 });

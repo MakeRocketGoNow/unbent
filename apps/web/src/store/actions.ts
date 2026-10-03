@@ -123,6 +123,14 @@ export interface Outbox {
   supersedeSave: (noteId: string) => { base: Note; against?: number | undefined } | null;
   /** Records the save of this note now waiting: its entry's id, what it carries, and how to take its change off the row. */
   trackSave: (noteId: string, entry: { id: string; base: Note; against?: number | undefined; retire: () => void }) => void;
+  /** Records an upload now waiting: its entry's id, what it carries, and how to take its row off. */
+  trackUpload: (attachmentId: string, entry: { id: string; upload: { noteId: string; filename: string }; retire: () => void }) => void;
+  /**
+   * Takes back a file that has not uploaded yet: its entry leaves the queue, its row
+   * comes off, its bytes leave the shelf. `sending` when the upload is on its way this
+   * moment and cannot be recalled; `gone` when there is no such upload waiting.
+   */
+  cancelUpload: (attachmentId: string) => Promise<'cancelled' | 'sending' | 'gone'>;
   /** Records which notes an entry just queued is about, for `waiting`. */
   trackEntry: (id: string, noteIds: string[]) => void;
   /** Stops the executor and closes its store, so the outbox's database can be removed. */
@@ -187,6 +195,14 @@ export function createOutbox(userId: string, lib: Omit<WritableLibrary, 'outbox'
   /** The save of each note still waiting, by entry id, and the entries a later save retired. */
   const waitingSaves = new Map<string, { id: string; base: Note; against?: number | undefined; retire: () => void }>();
   const superseded = new Set<string>();
+
+  /**
+   * The uploads still waiting, by the id their file will have; the entries taken back
+   * before their turn; and the one being sent now, which is past taking back.
+   */
+  const waitingUploads = new Map<string, { id: string; upload: { noteId: string; filename: string }; retire: () => void }>();
+  const cancelled = new Set<string>();
+  let sending: string | null = null;
 
   /** The server refused the request for good, or for now: which, is the queue's whole question. */
   const refusal = (err: unknown): never => {
@@ -305,6 +321,12 @@ export function createOutbox(userId: string, lib: Omit<WritableLibrary, 'outbox'
         const upload = transaction.metadata as unknown as Upload;
         const { noteId, attachmentId, filename, contentType } = upload;
         try {
+          // Taken back while it waited: out of storage already, and nothing to send.
+          if (cancelled.has(transaction.id)) {
+            ended(transaction.id);
+            return;
+          }
+          sending = attachmentId;
           const bytes = await readFile(userId, 'pending', noteId, filename);
           if (!bytes) throw new NonRetriableError(`The file was no longer on this device`);
           const file = new File([bytes], filename, { type: contentType });
@@ -333,6 +355,10 @@ export function createOutbox(userId: string, lib: Omit<WritableLibrary, 'outbox'
           ended(transaction.id, err);
           throw err;
         } finally {
+          sending = null;
+          cancelled.delete(transaction.id);
+          // Kept through an attempt that will be made again; it can still be taken back.
+          if (!entryNotes.has(transaction.id)) waitingUploads.delete(attachmentId);
           touch();
         }
       },
@@ -424,6 +450,13 @@ export function createOutbox(userId: string, lib: Omit<WritableLibrary, 'outbox'
     .then(async ([entries, keys]) => {
       for (const t of entries) {
         entryNotes.set(t.id, notesOf(t.metadata as Record<string, unknown> | undefined));
+        // The executor's private cleanup, for the reason given below; an upload a reload
+        // restored can be taken back as one queued a moment ago can.
+        const restored = (executor as unknown as { cleanupRestorationTransaction?: (id: string, rollback: boolean) => void }).cleanupRestorationTransaction;
+        if (t.mutationFnName === 'uploadFile') {
+          const u = t.metadata as Upload | undefined;
+          if (u) waitingUploads.set(u.attachmentId, { id: t.id, upload: u, retire: () => restored?.call(executor, t.id, true) });
+        }
         if (t.mutationFnName !== 'saveNote') continue;
         const m = t.metadata as Save | undefined;
         /*
@@ -492,6 +525,24 @@ export function createOutbox(userId: string, lib: Omit<WritableLibrary, 'outbox'
     },
     trackSave: (noteId, entry) => {
       waitingSaves.set(noteId, entry);
+    },
+    trackUpload: (attachmentId, entry) => {
+      waitingUploads.set(attachmentId, entry);
+    },
+    cancelUpload: async (attachmentId) => {
+      const waiting = waitingUploads.get(attachmentId);
+      if (!waiting) return 'gone';
+      if (sending === attachmentId) return 'sending';
+      waitingUploads.delete(attachmentId);
+      cancelled.add(waiting.id);
+      // As a superseded save goes: out of storage now, so a reload does not bring it back,
+      // and off the row now rather than when its turn would have come.
+      await executor.removeFromOutbox(waiting.id).catch(() => {});
+      waiting.retire();
+      entryNotes.delete(waiting.id);
+      await removeFile(userId, 'pending', waiting.upload.noteId, waiting.upload.filename).catch(() => {});
+      touch();
+      return 'cancelled';
     },
     trackEntry: (id, noteIds) => {
       entryNotes.set(id, noteIds);
@@ -939,12 +990,33 @@ export async function uploadFile(noteId: string, file: File, opts: { signal?: Ab
   askToPersist();
   await writeFile(lib.userId, 'pending', noteId, filename, file);
   const upload: Upload = { noteId, attachmentId, filename, contentType, size: file.size };
-  queue(lib, 'uploadFile', upload as unknown as Record<string, unknown>, () => {
+  const queued = queue(lib, 'uploadFile', upload as unknown as Record<string, unknown>, () => {
     lib.attachments.insert({ id: attachmentId, noteId, filename, contentType, size: file.size, hasText: false, createdAt: Date.now(), pending: true });
   });
+  lib.outbox.trackUpload(attachmentId, { ...queued, upload });
   // `server`: whoever reads this file's text does so when the upload goes through
   // (`onUploaded`), not now, when there is no server to give the text to.
   return { filename, contentType, size: file.size, path: `files/${filename}`, indexing: 'server' };
+}
+
+/**
+ * Takes back a file added here that has not uploaded yet — the wrong photo, attached with
+ * no connection. Purely local: its entry leaves the queue, its row comes off, its bytes
+ * leave the device, and the server never hears of it. Without this the only way to be rid
+ * of it was to wait for a connection, let it upload, and delete it then.
+ *
+ * False when the note has no such file waiting, and the caller's delete is the server's.
+ * Throws when the file is being sent this very moment: that request cannot be recalled,
+ * and in a moment the file is an ordinary one that can be deleted.
+ */
+export async function cancelUpload(noteId: string, filename: string): Promise<boolean> {
+  const lib = await resolve();
+  if (!lib) return false;
+  const row = [...lib.attachments.values()].find((a) => a.pending && a.noteId === noteId && a.filename === filename);
+  if (!row) return false;
+  const outcome = await lib.outbox.cancelUpload(row.id);
+  if (outcome === 'sending') throw new Error(`“${filename}” is uploading right now. Delete it once it has.`);
+  return outcome === 'cancelled';
 }
 
 /**

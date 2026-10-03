@@ -13,6 +13,7 @@ import { copyAttachmentToClipboard } from '../attachment-clipboard.js';
 import { attachmentsQuery, keys } from '../queries.js';
 import { formatBytes } from '../format-bytes.js';
 import { useOutbox, useSyncStatus } from '../store/use-outbox.js';
+import { cancelUpload } from '../store/actions.js';
 import { Confirm } from './Confirm.js';
 import { Button } from './Button';
 import { Disclosure } from './Disclosure.js';
@@ -278,7 +279,9 @@ export function Attachments({
     setBusy(filename);
     setDeleteError(null);
     try {
-      await api.deleteAttachment(startedFor, filename);
+      // A file still waiting to upload is taken back on this device, and the server never
+      // hears of it; anything else is the server's to delete.
+      if (!(await cancelUpload(startedFor, filename))) await api.deleteAttachment(startedFor, filename);
       if (stillLinked && noteIdRef.current === startedFor) {
         onBodyRewrite(removeAttachmentLinks(bodyRef.current, filename));
       }
@@ -374,9 +377,11 @@ export function Attachments({
           const isLinked = linked.has(file.filename);
           /*
              Added here and not uploaded yet. The row is real — the file draws in the note
-             from this device's copy — but the server has no file to copy, move or delete,
-             so what would ask it to waits with the upload. Insert link still works: it
-             only writes into the note.
+             from this device's copy — but the server has no file to copy or move, so what
+             would ask it to waits with the upload. Insert link still works: it only
+             writes into the note. And so does Delete, which for this file is taking it
+             back: the wrong photo attached with no connection should not have to upload
+             before it can be removed (review of #236).
           */
           const waiting = file.pending === true;
           const held = waiting ? 'Waiting to upload' : undefined;
@@ -459,8 +464,8 @@ export function Attachments({
                   variant="quiet"
                   tone="danger"
                   size="small"
-                  disabled={busy !== null || readOnly || waiting}
-                  title={held ?? (readOnly ? 'Not available offline' : undefined)}
+                  disabled={busy !== null || readOnly}
+                  title={readOnly ? 'Not available offline' : undefined}
                   onClick={() => {
                     setSending(null);
                     setPending(file.filename);
@@ -483,18 +488,20 @@ export function Attachments({
               {pending === file.filename && (
                 <Confirm
                   label="Confirm delete attachment"
-                  question={<>Permanently delete “{file.filename}”?</>}
+                  question={waiting ? <>Remove “{file.filename}” before it uploads?</> : <>Permanently delete “{file.filename}”?</>}
                   detail={
-                    isLinked
-                      ? 'It is still linked in this note; the link will be removed too.'
-                      : 'This cannot be undone.'
+                    waiting
+                      ? `It has not uploaded, so this device holds the only copy.${isLinked ? ' Its link in this note will be removed too.' : ''}`
+                      : isLinked
+                        ? 'It is still linked in this note; the link will be removed too.'
+                        : 'This cannot be undone.'
                   }
                   busy={busy === file.filename}
                   onCancel={() => setPending(null)}
                   actions={[
                     {
-                      label: 'Delete file',
-                      busyLabel: 'Deleting…',
+                      label: waiting ? 'Remove file' : 'Delete file',
+                      busyLabel: waiting ? 'Removing…' : 'Deleting…',
                       tone: 'danger',
                       onConfirm: () => void remove(file.filename),
                     },

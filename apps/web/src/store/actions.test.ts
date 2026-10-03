@@ -756,6 +756,42 @@ describe('a file added to a note', () => {
     expect(lib.outbox.status().uploadNotices.get('n1')?.[0]?.message).toContain('Stored as “photo-2.jpg”');
   });
 
+  it('can be taken back before it uploads: no request, no row, no bytes, and the note no longer waits', async () => {
+    const { lib, fake } = library([row('n1')]);
+    setReachableForTests(false);
+    await actions.uploadFile('n1', photo('wrong photo.jpg'));
+    await tick();
+    expect(await actions.cancelUpload('n1', 'wrong photo.jpg')).toBe(true);
+    await tick();
+    expect(files(lib)).toEqual([]);
+    expect(root.paths()).toEqual([]);
+    expect(lib.outbox.status()).toMatchObject({ pending: 0 });
+    expect(lib.outbox.status().waiting.has('n1')).toBe(false);
+
+    // Its turn comes and nothing is sent.
+    setReachableForTests(true);
+    expect(await fake.replayOne()).toBe('done');
+    expect(api.uploadFile).not.toHaveBeenCalled();
+    expect(lib.outbox.status().uploadNotices.size).toBe(0);
+    // A file that is not waiting is not this function's to remove.
+    expect(await actions.cancelUpload('n1', 'wrong photo.jpg')).toBe(false);
+  });
+
+  it('cannot be taken back while it is being sent', async () => {
+    const { fake } = library([row('n1')]);
+    setReachableForTests(false);
+    await actions.uploadFile('n1', photo());
+    await tick();
+    setReachableForTests(true);
+    let land: (v: ReturnType<typeof answer>) => void = () => {};
+    vi.mocked(api.uploadFile).mockReturnValueOnce(new Promise((r) => (land = r)));
+    const replay = fake.replayOne();
+    await vi.waitFor(() => expect(api.uploadFile).toHaveBeenCalled());
+    await expect(actions.cancelUpload('n1', 'photo.jpg')).rejects.toThrow('uploading right now');
+    land(answer('photo.jpg'));
+    void replay;
+  });
+
   it('is a request, failing as one, in a tab that does not hold the outbox', async () => {
     const { fake } = library([row('n1')]);
     fake.lead(false);
