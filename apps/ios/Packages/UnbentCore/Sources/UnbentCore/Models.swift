@@ -74,41 +74,6 @@ public struct MeUser: Decodable, Equatable, Sendable {
     private enum CodingKeys: String, CodingKey { case id, email, name, image }
 }
 
-public struct Note: Decodable, Equatable, Sendable {
-    public var id: String
-    public var title: String
-    public var body: String
-    public var updatedAt: Int64
-    public var createdAt: Int64
-    public var tags: [String]
-    public var notebook: String?
-
-    public init(from decoder: Decoder) throws {
-        let c = try decoder.container(keyedBy: CodingKeys.self)
-        id = try c.decode(String.self, forKey: .id)
-        title = try c.decode(String.self, forKey: .title)
-        body = try c.decode(String.self, forKey: .body)
-        updatedAt = try c.decode(Int64.self, forKey: .updatedAt)
-        createdAt = try c.decode(Int64.self, forKey: .createdAt)
-        tags = try c.decodeIfPresent([String].self, forKey: .tags) ?? []
-        notebook = try c.decodeIfPresent(String.self, forKey: .notebook)
-    }
-
-    private enum CodingKeys: String, CodingKey { case id, title, body, updatedAt, createdAt, tags, notebook }
-}
-
-/// What `PUT /api/notes/:id/files` says about a file it stored.
-///
-/// `indexing` is who extracts the file's text for search: `server`, in the background, or
-/// `client`, meaning nobody has yet. A server older than the field leaves it out, which
-/// means the same as `client`.
-public struct UploadedFile: Decodable, Equatable, Sendable {
-    public var filename: String
-    public var indexing: String?
-
-    public var indexedByServer: Bool { indexing == "server" }
-}
-
 public struct Notebook: Decodable, Equatable, Sendable {
     public var id: String
     public var name: String
@@ -153,15 +118,4 @@ public struct Tag: Decodable, Equatable, Sendable {
 
 struct TagList: Decodable {
     var tags: [Tag]?
-}
-
-public struct AttachmentInfo: Decodable, Equatable, Sendable {
-    public var filename: String
-    public var contentType: String
-    public var size: Int64
-}
-
-/// `GET /api/notes/:id/files`.
-struct AttachmentList: Decodable {
-    var files: [AttachmentInfo]?
 }
