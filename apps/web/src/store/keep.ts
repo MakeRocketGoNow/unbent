@@ -151,8 +151,8 @@ export interface KeeperOptions {
 
 const url = (f: WantedFile) => `/api/notes/${encodeURIComponent(f.noteId)}/files/${encodeURIComponent(f.filename)}`;
 
-/** A share of what the browser says is free that a pass will not go below, so the note database always has room to write. */
-const HEADROOM = 50 * 1024 * 1024;
+/** A share of what the browser says is free that a pass will not go below, so the note database always has room to write. Also what the keep confirmation leaves out of "room", so it never confirms what a pass would then refuse. */
+export const HEADROOM = 50 * 1024 * 1024;
 
 export function createKeeper(opts: KeeperOptions): Keeper {
   const supported = filesSupported();

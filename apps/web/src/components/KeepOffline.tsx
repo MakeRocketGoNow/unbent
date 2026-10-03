@@ -1,29 +1,45 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { notebookFilesQuery } from '../queries.js';
 import { useKeeper } from '../store/use-outbox.js';
 import { useOffline } from '../connectivity.js';
 import { formatBytes } from '../format-bytes.js';
 import { askToPersist } from '../store/files.js';
+import { HEADROOM } from '../store/keep.js';
 import { Button } from './Button';
 import { Confirm } from './Confirm.js';
 
-/** What the browser will let this site store, less what it already has. Null where it will not say. */
-export function useDeviceRoom(): { usage: number; quota: number; free: number } | null {
-  const [room, setRoom] = useState<{ usage: number; quota: number; free: number } | null>(null);
-  useEffect(() => {
-    let alive = true;
+export interface DeviceRoom {
+  usage: number;
+  quota: number;
+  /** What a kept notebook may take: what is free, less the room the keeper will not go below. */
+  free: number;
+}
+
+/**
+ * What the browser will let this site store, less what it already has. Null where it will
+ * not say. `refresh` asks again: the figure moves the moment a notebook is kept or
+ * released, and one read on mount went on quoting the room there was before.
+ */
+export function useDeviceRoom(): { room: DeviceRoom | null; refresh: () => void } {
+  const [room, setRoom] = useState<DeviceRoom | null>(null);
+  const alive = useRef(true);
+  const refresh = useCallback(() => {
     void navigator.storage
       ?.estimate?.()
       .then((e) => {
-        if (alive && e.quota !== undefined && e.usage !== undefined) setRoom({ usage: e.usage, quota: e.quota, free: Math.max(0, e.quota - e.usage) });
+        if (alive.current && e.quota !== undefined && e.usage !== undefined) setRoom({ usage: e.usage, quota: e.quota, free: Math.max(0, e.quota - e.usage - HEADROOM) });
       })
       .catch(() => {});
-    return () => {
-      alive = false;
-    };
   }, []);
-  return room;
+  useEffect(() => {
+    alive.current = true;
+    refresh();
+    return () => {
+      alive.current = false;
+    };
+  }, [refresh]);
+  return { room, refresh };
 }
 
 const count = (n: number) => `${n.toLocaleString()} file${n === 1 ? '' : 's'}`;
@@ -53,7 +69,7 @@ export function KeepOffline({ notebookId, name }: { notebookId: string; name: st
   const { keeper, status } = useKeeper();
   const offline = useOffline();
   const size = useQuery(notebookFilesQuery(notebookId)).data ?? { files: 0, bytes: 0 };
-  const room = useDeviceRoom();
+  const { room, refresh: remeasure } = useDeviceRoom();
   const [asking, setAsking] = useState<'keep' | 'release' | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -73,6 +89,7 @@ export function KeepOffline({ notebookId, name }: { notebookId: string; name: st
     try {
       await action();
       setAsking(null);
+      remeasure();
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -117,7 +134,15 @@ export function KeepOffline({ notebookId, name }: { notebookId: string; name: st
             Keep the files in <strong>{name}</strong> on this device, so they open with no connection.{' '}
             {size.files === 0 ? 'It has no files yet.' : `${count(size.files)}, ${formatBytes(size.bytes)}.`}
           </p>
-          <Button variant="secondary" disabled={busy} onClick={() => setAsking('keep')}>
+          <Button
+            variant="secondary"
+            disabled={busy}
+            onClick={() => {
+              // The room as it is now, not as it was when the page opened.
+              remeasure();
+              setAsking('keep');
+            }}
+          >
             Keep offline
           </Button>
         </>

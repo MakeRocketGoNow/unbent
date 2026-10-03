@@ -30,7 +30,7 @@ const count = (n: number) => `${n.toLocaleString()} file${n === 1 ? '' : 's'}`;
 export function OfflineStorage() {
   const { keeper, status } = useKeeper();
   const sync = useSyncStatus();
-  const room = useDeviceRoom();
+  const { room, refresh: remeasure } = useDeviceRoom();
   const notebooks = useQuery(notebooksQuery()).data?.notebooks ?? [];
   const kept = notebooks.filter((nb) => status.kept.has(nb.id));
 
@@ -58,6 +58,7 @@ export function OfflineStorage() {
       await action();
       setAsking(null);
       await refresh();
+      remeasure();
     } finally {
       setBusy(false);
     }
