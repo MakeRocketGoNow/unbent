@@ -906,7 +906,14 @@ export async function tagNotes(ids: string[], change: { add?: string[]; remove?:
  */
 export async function uploadFile(noteId: string, file: File, opts: { signal?: AbortSignal } = {}): Promise<api.UploadedFile> {
   const lib = await queueable();
-  const direct = () => pulled(api.uploadFile(noteId, file, opts));
+  /*
+   * One id for the file, whichever way it goes. A request made directly can lose its
+   * answer after the server has stored the file — a phone on one bar does this — and the
+   * file is then queued: under the same id, the replay finds what the first request made;
+   * under a new one it stored `scan-2.pdf` beside it and said so (review of #236).
+   */
+  const attachmentId = crypto.randomUUID();
+  const direct = () => pulled(api.uploadFile(noteId, file, { ...opts, id: attachmentId }));
   if (!lib || !filesSupported() || !lib.notes.has(noteId)) return direct();
   if (!offlineNow() && !lib.outbox.status().waiting.has(noteId)) {
     try {
@@ -928,7 +935,6 @@ export async function uploadFile(noteId: string, file: File, opts: { signal?: Ab
   const taken = [...lib.attachments.values()].filter((a) => a.noteId === noteId).map((a) => a.filename);
   const filename = availableFilename(taken, named.data);
   const contentType = file.type || 'application/octet-stream';
-  const attachmentId = crypto.randomUUID();
   await writeFile(lib.userId, 'pending', noteId, filename, file);
   const upload: Upload = { noteId, attachmentId, filename, contentType, size: file.size };
   queue(lib, 'uploadFile', upload as unknown as Record<string, unknown>, () => {

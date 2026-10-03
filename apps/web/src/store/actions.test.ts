@@ -615,7 +615,7 @@ describe('a file added to a note', () => {
     vi.mocked(api.uploadFile).mockResolvedValueOnce(answer('photo.jpg'));
     const file = photo();
     expect(await actions.uploadFile('n1', file)).toEqual(answer('photo.jpg'));
-    expect(api.uploadFile).toHaveBeenCalledWith('n1', file, {});
+    expect(api.uploadFile).toHaveBeenCalledWith('n1', file, { id: expect.stringMatching(/^[0-9a-f-]{36}$/) });
     expect(fake.queue).toHaveLength(0);
     expect(root.paths()).toEqual([]);
     expect(files(lib)).toEqual([]);
@@ -654,6 +654,23 @@ describe('a file added to a note', () => {
     expect(root.paths()).toEqual([]);
     expect(lib.outbox.status().waiting.has('n1')).toBe(false);
     expect(lib.outbox.status().uploadNotices.size).toBe(0);
+  });
+
+  it('is queued under the id the request carried when the connection went mid-upload, so the replay finds what the server may have stored', async () => {
+    const { lib, fake, engine, landPull } = library([row('n1')]);
+    // The bytes may have arrived; the answer did not.
+    vi.mocked(api.uploadFile).mockRejectedValueOnce(new OfflineError());
+    await actions.uploadFile('n1', photo());
+    await tick();
+    const first = vi.mocked(api.uploadFile).mock.calls[0]![2] as { id: string };
+    expect([...lib.attachments.values()][0]).toMatchObject({ id: first.id, pending: true });
+
+    vi.mocked(api.uploadFile).mockResolvedValueOnce(answer('photo.jpg'));
+    const replay = fake.replayOne();
+    await vi.waitFor(() => expect(engine.pull).toHaveBeenCalled());
+    landPull();
+    expect(await replay).toBe('done');
+    expect(vi.mocked(api.uploadFile).mock.calls[1]![2]).toEqual({ id: first.id });
   });
 
   it('goes behind the note’s own entry when the note has one waiting, even with a connection', async () => {
