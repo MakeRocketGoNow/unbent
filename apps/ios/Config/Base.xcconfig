@@ -39,6 +39,11 @@ IPHONEOS_DEPLOYMENT_TARGET = 17.0
 // up for iPad review, screenshots and Stage Manager layouts, and once a build that
 // supports iPad is released, support for it cannot be withdrawn.
 TARGETED_DEVICE_FAMILY = 1
+// Upright only, for the same reason: nobody has looked at the phone on its side. The page
+// has the whole screen there, and its fixed controls — the New button, the snackbars,
+// the selection bar, the docked toolbar — do not yet allow for a notch at one end, so the
+// New button would sit under it. The orientations are in Info.plist; landscape comes back
+// with those controls taught the side insets and a rotated phone to check them on.
 SUPPORTED_PLATFORMS = iphoneos iphonesimulator
 SUPPORTS_MACCATALYST = NO
 SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO

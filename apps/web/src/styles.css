@@ -8575,7 +8575,9 @@ button.settings-nav-item {
    zero everywhere. What lives in the top layer covers the screen and is padded inside:
    the drawer and the file viewer.
 
-   The side insets are for a phone on its side, where the notch is at one end.
+   The side insets are for a phone on its side, where the notch is at one end. They are
+   on the body only: the fixed controls do not allow for them yet, which is why the app
+   is upright-only for now (apps/ios/Config/Base.xcconfig).
    --------------------------------------------------------------------------------- */
 html.host-ios body {
   padding: env(safe-area-inset-top) env(safe-area-inset-right) 0 env(safe-area-inset-left);

@@ -113,11 +113,10 @@
 		<key>UIColorName</key>
 		<string>PageGround</string>
 	</dict>
+	<!-- Upright only, for now; Base.xcconfig says why, beside the note on iPad. -->
 	<key>UISupportedInterfaceOrientations</key>
 	<array>
 		<string>UIInterfaceOrientationPortrait</string>
-		<string>UIInterfaceOrientationLandscapeLeft</string>
-		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
 </dict>
 </plist>
