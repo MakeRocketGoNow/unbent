@@ -131,6 +131,28 @@ describe('the keeper', () => {
     await vi.waitFor(() => expect(k.status().have.files).toBe(3), { timeout: 4000 });
   });
 
+  it('takes a download cut off part-way for a lost connection, not a fault, and leaves no partial file', async () => {
+    vi.mocked(fetch).mockImplementationOnce(
+      async () =>
+        new Response(
+          new ReadableStream<Uint8Array>({
+            pull(controller) {
+              controller.enqueue(new TextEncoder().encode('half'));
+              controller.error(new TypeError('network error'));
+            },
+          }),
+        ),
+    );
+    const k = start({ snapshot: () => ({ notes: [note('n1', 'receipts')], attachments: [file('n1', 'photo.jpg', 100)] }) });
+    await k.keep('receipts');
+    // Nothing is said about it, and once the connectivity check has answered the file is
+    // fetched again, whole.
+    await vi.waitFor(() => expect(k.status().have).toEqual({ files: 1, bytes: 100 }), { timeout: 4000 });
+    expect(k.status().problem).toBeNull();
+    expect(served.filter((u) => u.endsWith('photo.jpg'))).toHaveLength(2);
+    expect((await listShelf('u1', 'kept'))[0]).toMatchObject({ name: 'photo.jpg', size: 100 });
+  });
+
   it('stops before the device is full and says so', async () => {
     vi.stubGlobal('navigator', { ...navigator, storage: { ...navigator.storage, estimate: async () => ({ usage: 0, quota: 50 * 1024 * 1024 + 150 }) } });
     const k = start();

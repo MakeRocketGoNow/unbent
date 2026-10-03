@@ -34,6 +34,22 @@ describe('the files an account keeps on a device', () => {
     expect(await (await readFile('u1', 'kept', 'n1', 'scan.pdf'))!.text()).toBe('streamed');
   });
 
+  it('leaves nothing behind when the bytes stop arriving part-way', async () => {
+    const body = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        controller.enqueue(new TextEncoder().encode('half'));
+        controller.error(new TypeError('network error'));
+      },
+    });
+    await expect(writeFile('u1', 'kept', 'n1', 'scan.pdf', body)).rejects.toThrow('network error');
+    expect(await readFile('u1', 'kept', 'n1', 'scan.pdf')).toBeNull();
+    // And a file that was whole before a failed rewrite is still whole.
+    await writeFile('u1', 'kept', 'n1', 'whole.pdf', pdf('whole'));
+    const again = new ReadableStream<Uint8Array>({ pull: (c) => c.error(new TypeError('network error')) });
+    await expect(writeFile('u1', 'kept', 'n1', 'whole.pdf', again)).rejects.toThrow();
+    expect(await (await readFile('u1', 'kept', 'n1', 'whole.pdf'))!.text()).toBe('whole');
+  });
+
   it('removes a file, and its note’s directory once that is empty', async () => {
     await writeFile('u1', 'kept', 'n1', 'a.pdf', pdf('a'));
     await writeFile('u1', 'kept', 'n1', 'b.pdf', pdf('b'));

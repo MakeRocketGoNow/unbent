@@ -1,5 +1,5 @@
 import { ApiError, isOfflineError, request } from '../notes-api.js';
-import { offlineNow, subscribeConnectivity } from '../connectivity.js';
+import { offlineNow, recheck, subscribeConnectivity } from '../connectivity.js';
 import type { LocalAttachment, LocalNote } from './collections.js';
 import { clearShelf, filesSupported, listShelf, readKeptNotebooks, removeFile, shelfName, writeFile, writeKeptNotebooks, type ShelvedFile } from './files.js';
 
@@ -167,6 +167,8 @@ export function createKeeper(opts: KeeperOptions): Keeper {
   let running: Promise<void> | null = null;
   let again = false;
   let timer: ReturnType<typeof setTimeout> | null = null;
+  /** Downloads in a row that died part-way; see the catch in `pass`. */
+  let cutOff = 0;
 
   const loaded = supported
     ? readKeptNotebooks(opts.userId).then((ids) => {
@@ -217,11 +219,28 @@ export function createKeeper(opts: KeeperOptions): Keeper {
         if (res.status === 404) continue;
         if (!res.ok || !res.body) throw new ApiError(res.status, `${f.filename} answered ${res.status}`);
         await writeFile(opts.userId, 'kept', f.noteId, f.filename, res.body);
+        cutOff = 0;
         have.files += 1;
         have.bytes += f.size;
         set({ have: { ...have } });
       }
     } catch (err) {
+      /*
+       * The connection went while a file was on its way: `request` only hears a fetch
+       * that never answered, and a body that dies part-way is a `TypeError` out of the
+       * stream instead. That is the takeoff, not a fault — the connectivity store is
+       * asked to check, and the file is asked for again shortly: by then the app knows it
+       * is offline and the pass stands down, or the connection was only flaky and the
+       * file arrives. A few times, not for ever — a stream that fails every time on a
+       * connection that is up is a fault after all, and is said.
+       * (The half-written file was never swapped in; see `writeFile`.)
+       */
+      if (err instanceof TypeError && cutOff < 3) {
+        cutOff += 1;
+        recheck();
+        nudge();
+        return;
+      }
       set({ problem: `Some files could not be kept: ${(err as Error).message}` });
     } finally {
       set({ fetching: false });

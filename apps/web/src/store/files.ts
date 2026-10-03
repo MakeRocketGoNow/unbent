@@ -123,7 +123,14 @@ export async function writeFile(userId: string, shelf: Shelf, noteId: string, fi
   const account = await accountDir(userId, true);
   const dir = account && (await noteDir(account, shelf, noteId, true));
   if (!dir) throw new Error('No file system to keep the file in');
-  const handle = await dir.getFileHandle(shelfName(filename), { create: true });
+  const name = shelfName(filename);
+  // Making the handle makes an empty file. If the write then fails, that empty file must
+  // not stay: the worker would serve it as the real one.
+  const existed = await dir.getFileHandle(name).then(
+    () => true,
+    () => false,
+  );
+  const handle = await dir.getFileHandle(name, { create: true });
   const writable = await handle.createWritable();
   try {
     if (data instanceof Blob) await writable.write(data);
@@ -131,6 +138,7 @@ export async function writeFile(userId: string, shelf: Shelf, noteId: string, fi
     await writable.close();
   } catch (err) {
     await writable.abort().catch(() => {});
+    if (!existed) await dir.removeEntry(name).catch(() => {});
     throw err;
   }
 }
