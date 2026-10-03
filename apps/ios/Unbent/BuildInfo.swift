@@ -7,7 +7,7 @@ enum BuildInfo {
     /// `UNBENT_INSTANCE_HOST`, put back together.
     static let defaultInstance = "\(string("UnbentInstanceScheme") ?? "https")://\(string("UnbentInstanceHost") ?? "unbent.app")"
 
-    /// The scheme a browser sign-in comes back on. Registered now; used by MAK-155.
+    /// The scheme a browser sign-in comes back on (`unbent://connect`).
     static let connectScheme = string("UnbentConnectScheme") ?? "unbent"
 
     /// The App Group, shared with the Share Extension. Also the Keychain access group.
@@ -26,8 +26,7 @@ enum BuildInfo {
         return hosts.map { $0.lowercased() }.filter { !$0.isEmpty && seen.insert($0).inserted }
     }()
 
-    /// Whether this is the debug build: the one that may be pointed at another instance,
-    /// and that shows the sign-in methods it cannot use yet.
+    /// Whether this is the debug build: the one that may be pointed at another instance.
     static var isDebug: Bool {
         #if DEBUG
         true

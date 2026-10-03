@@ -1365,9 +1365,8 @@ and previews, so passkeys made there work from the app too.
 The site, whole, in one web view, the way the Android app is, with native code only for
 what a page cannot do on an iPhone: sign-in, saving files where the phone keeps them, links
 that leave, and the app's own address and version. It is a port of the Android app's shell
-rather than a second design, and where the two differ it is because the platforms do. This
-is the first part of it: the share extension, sign-in through Apple, Google, a browser and
-passkeys, links that open in the app, and TestFlight are still to come.
+rather than a second design, and where the two differ it is because the platforms do. The
+share extension, links that open in the app, and TestFlight are still to come.
 
 ```
 swift test --package-path apps/ios/Packages/UnbentCore   # unit tests, on the Mac, no simulator
@@ -1393,10 +1392,22 @@ preprocessor takes `//` for a comment and a lone `'` for an unfinished character
 The debug build is a second app, as on Android: bundle id `.debug`, the name "Unbent
 (debug)", an amber icon, and its own session and web data, so the two sit side by side.
 
-**How it signs in.** By what the instance offers, read from `GET /api/config`. This part
-has the two methods that are only requests: a code by email and a password, against Better
-Auth directly. The rest are drawn disabled in a debug build, so what the instance offers
-can be seen, and left out of a release build. Every path ends the same way as on Android:
+**How it signs in.** By what the instance offers, read from `GET /api/config`. Two methods
+are only requests: a code by email and a password, against Better Auth directly. Three put
+one of the system's sheets first. Apple's, which returns an identity token bound to a
+nonce: Apple is given the nonce's SHA-256 and the server the nonce itself, and the name
+Apple sends on a first authorization is set on the account afterwards. The passkey sheet,
+which signs the challenge from `/api/auth/passkey/generate-authenticate-options`; the
+cookie that response sets names the challenge and is sent back with the answer by hand,
+since the app's client keeps no cookie jar. And a browser at `/connect`
+(`ASWebAuthenticationSession`, sharing Safari's cookies) for Google and for any other
+provider the instance has, which comes back on `unbent://connect` with a one-time token —
+the Android app's flow, and the same two redirect schemes, since a scheme belongs to one
+platform's install. Google has no sheet of its own here: Google's SDK would be a
+dependency that ends in a web sheet anyway. Passkeys need the app to claim the instance's
+host (`webcredentials:` in `Config/Unbent.entitlements`) and the instance to vouch for the
+app, below; the debug build claims `dev.unbent.app` too, in developer mode, and a dev
+server on localhost cannot be claimed at all. Every path ends the same way as on Android:
 the session cookie the response set is kept per origin, here in the Keychain under the App
 Group so the share extension can read it, and is `AfterFirstUnlockThisDeviceOnly` — usable
 while the phone is locked in a pocket, and never restored onto another phone. Its value

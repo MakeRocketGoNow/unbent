@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>com.apple.security.application-groups</key>
+	<array>
+		<string>$(UNBENT_APP_GROUP)</string>
+	</array>
+	<key>com.apple.developer.applesignin</key>
+	<array>
+		<string>Default</string>
+	</array>
+	<!--
+	  The hosts whose passkeys the system may offer this app. A claim, and only half of
+	  one: the instance has to list the app under webcredentials in its
+	  apple-app-site-association before a passkey for it appears in the sheet.
+
+	  The debug build's, which differs in two ways and is a file of its own because an
+	  entitlements file has no conditionals. It claims the dev instance too, since App
+	  settings can point it there. And it asks in developer mode, which has the phone
+	  fetch the association document from the host itself instead of from Apple's CDN,
+	  which holds a copy for days; the phone honours that only with Associated Domains
+	  Development turned on in Settings, Developer. localhost cannot be claimed at all,
+	  so a passkey is not tried against a dev server on this Mac.
+	-->
+	<key>com.apple.developer.associated-domains</key>
+	<array>
+		<string>webcredentials:$(UNBENT_INSTANCE_HOST)?mode=developer</string>
+		<string>webcredentials:dev.unbent.app?mode=developer</string>
+	</array>
+</dict>
+</plist>

@@ -78,7 +78,9 @@ final class RootViewController: UIViewController {
     }
 
     private func signIn(origin: String) -> UIViewController {
-        let model = SignInModel(origin: origin) { [weak self] session in
+        // The system's sheets stand on this controller's window, whichever screen is up.
+        let sheets = SignInSheets { [weak self] in self?.view.window }
+        let model = SignInModel(origin: origin, connectScheme: BuildInfo.connectScheme, sheets: sheets) { [weak self] session in
             guard let self else { return false }
             // Every way in ends here: the cookie the response set, kept for this instance.
             // If it cannot be kept the sign-in screen stays and says so; starting over
