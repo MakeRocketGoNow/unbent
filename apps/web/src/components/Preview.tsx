@@ -103,23 +103,33 @@ export function Preview({ markdown, noteId }: PreviewProps) {
    * images are in HTML the pane renders as a string — the same reason the click is
    * delegated. A picture that failed for any other reason is left as the browser draws it.
    *
-   * Each stand-in is waiting on the connection, holding its picture. The pictures go when
-   * the markdown changes or the pane unmounts, and the waits must go with them, or every
-   * re-render offline leaves a listener and a detached image behind until the connection
-   * returns (review of #236).
+   * Each stand-in is waiting on the connection, holding its picture, and the wait has to
+   * end when the picture goes or it outlives the pane (review of #236). When the picture
+   * goes, not whenever the markdown changes: React leaves a segment's HTML alone when its
+   * string is the same, so typing in another paragraph offline keeps the picture and its
+   * stand-in on screen — and stopping its wait then left it saying "Not available
+   * offline" after the connection was back. So each wait is kept with its picture, and
+   * stopped once that picture has left the document, or the pane has.
    */
-  const waits = useRef<Array<() => void>>([]);
+  const waits = useRef<Array<{ img: HTMLImageElement; stop: () => void }>>([]);
+  useEffect(() => {
+    waits.current = waits.current.filter((w) => {
+      if (w.img.isConnected) return true;
+      w.stop();
+      return false;
+    });
+  }, [segments]);
   useEffect(
     () => () => {
-      for (const stop of waits.current) stop();
+      for (const w of waits.current) w.stop();
       waits.current = [];
     },
-    [segments],
+    [],
   );
   const onPreviewImageError = (event: SyntheticEvent<HTMLDivElement>) => {
     const img = event.target;
     if (!(img instanceof HTMLImageElement) || img.hidden) return;
-    standInForImage(img, img.alt, (stop) => waits.current.push(stop));
+    standInForImage(img, img.alt, (stop) => waits.current.push({ img, stop }));
   };
 
   return (
