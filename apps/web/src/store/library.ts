@@ -339,13 +339,21 @@ async function open(userId: string): Promise<Library> {
   const keeper = createKeeper({
     userId,
     snapshot: () => ({ notes: rows.notes.values(), attachments: rows.attachments.values() }),
-    settled: () => (latest ?? engine.state).phase === 'current',
+    /*
+     * Whole once a walk has finished, which is what a cursor in the engine's state means:
+     * it is set from a stored position with no page left to resume, or at the end of a
+     * walk. Not "the last pull succeeded" — a device opened on a plane never has one, and
+     * that is exactly where someone looks to see their files are here (review of #236).
+     * Not during a walk either: a `reset` empties the collections before it starts one.
+     */
+    settled: () => engine.state.cursor !== null && engine.state.phase !== 'hydrating' && engine.state.phase !== 'reset',
     leading: () => outbox.executor.isOfflineEnabled,
   });
   const stopKeeping = onLibraryChange((roots) => {
     if (roots.has('attachments')) keeper.nudge();
   });
-  // And by the first copy finishing, before which the keeper stands down.
+  // And by every pull settling — the first copy finishing, or a pull failing offline with
+  // the copy already whole — before which the keeper stands down.
   listeners.add(() => keeper.nudge());
 
   return {

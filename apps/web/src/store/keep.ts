@@ -135,9 +135,10 @@ export interface KeeperOptions {
   userId: string;
   snapshot: () => KeepSnapshot;
   /**
-   * Whether the library holds the whole account. A pass during the first copy, or after a
-   * `reset` has emptied the collections, would see no notes in a kept notebook and drop a
-   * gigabyte it would then fetch again.
+   * Whether the library holds the whole account: a walk of it has finished, whether or
+   * not the latest pull did. A pass during the first copy, or after a `reset` has emptied
+   * the collections, would see no notes in a kept notebook and drop a gigabyte it would
+   * then fetch again — and would count "0 of 0", so nothing is counted then either.
    */
   settled: () => boolean;
   /**
