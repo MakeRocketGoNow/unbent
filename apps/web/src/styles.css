@@ -2337,11 +2337,16 @@ a.sidebar-status:hover {
 
 /* The address is a label, not a command: it sits at the top of the menu, unclickable. */
 .overflow-email {
-  padding-bottom: 0.5rem;
+  /* The same as the item padding above it, so the block sits centred between the menu's
+     top edge and the divider under it. */
+  padding-bottom: 0.6rem;
   margin-bottom: 0.25rem;
   font-size: 0.78rem;
   color: var(--muted);
   border-bottom: 1px solid var(--border);
+  /* Square, so the divider under the block runs straight to its ends; the items' rounded
+     corners, meant for a hover fill these lines never take, bent it up at both. */
+  border-radius: 0;
   cursor: default;
   /*
      One line, truncated from the end.
@@ -2373,6 +2378,10 @@ a.sidebar-status:hover {
 }
 .overflow-email.overflow-instance,
 .overflow-email.overflow-build { padding-top: 0; }
+/* Under the address, a step smaller: the address says whose menu this is, and these two
+   say where and which build — context for it, read second. */
+.overflow-email.overflow-instance,
+.overflow-email.overflow-build { font-size: 0.72rem; }
 /* Commit hashes compare digit by digit, so they should not shift between builds. */
 .overflow-build { font-variant-numeric: tabular-nums; }
 /* On CI builds it links to the commit. Muted like its neighbours until hovered, and then
@@ -6048,6 +6057,14 @@ button.settings-nav-item {
     z-index: 25;
     background: color-mix(in srgb, var(--fg) 3%, transparent);
   }
+  /*
+     While a menu is open, above the handle on its edge too. The handle has to outrank the
+     rail or the rail paints over its line (see `.shell.wide > .resize-handle`), but a menu
+     wider than the rail — the account menu on a preview, whose instance line is long —
+     then has the divider drawn straight through it. Lifted only while one is open, so the
+     line is the handle's again the moment it closes.
+  */
+  .rail:has(.overflow-list) { z-index: 27; }
 
   /*
      The rail's edge is the handle that sizes it, as the list's edge is the handle that
