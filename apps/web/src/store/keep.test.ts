@@ -227,6 +227,47 @@ describe('the keeper', () => {
     expect(served.filter((u) => u.includes('/files/'))).toHaveLength(3);
   });
 
+  it('fetches in the leading tab what was kept from another tab, and forgets what another tab released', async () => {
+    const options = { userId: 'u1', snapshot: () => library, settled: () => true };
+    const lead = createKeeper({ ...options, leading: () => true });
+    const other = createKeeper({ ...options, leading: () => false });
+    try {
+      await vi.waitFor(() => expect(lead.status().counted).toBe(true));
+      // Kept from the tab that does not fetch: the list on the device changes, and the
+      // tab that does fetch has to hear of it.
+      await other.keep('receipts');
+      await vi.waitFor(() => expect(lead.status().have).toEqual({ files: 3, bytes: 600 }), { timeout: 4000 });
+      expect(lead.status().kept.has('receipts')).toBe(true);
+      // And the tab that asked sees them arrive.
+      await vi.waitFor(() => expect(other.status().have).toEqual({ files: 3, bytes: 600 }), { timeout: 4000 });
+
+      await other.releaseAll();
+      await vi.waitFor(() => expect(lead.status().kept.size).toBe(0), { timeout: 4000 });
+      await vi.waitFor(() => expect(lead.status().have).toEqual({ files: 0, bytes: 0 }), { timeout: 4000 });
+      expect(await listShelf('u1', 'kept')).toEqual([]);
+    } finally {
+      lead.stop();
+      other.stop();
+    }
+  });
+
+  it('hears of another tab’s change at its next pass even with no channel between them', async () => {
+    vi.stubGlobal('BroadcastChannel', undefined);
+    const options = { userId: 'u1', snapshot: () => library, settled: () => true };
+    const lead = createKeeper({ ...options, leading: () => true });
+    const other = createKeeper({ ...options, leading: () => false });
+    try {
+      await vi.waitFor(() => expect(lead.status().counted).toBe(true));
+      await other.keep('receipts');
+      expect(served).toEqual([]);
+      lead.nudge();
+      await vi.waitFor(() => expect(lead.status().have).toEqual({ files: 3, bytes: 600 }), { timeout: 4000 });
+    } finally {
+      lead.stop();
+      other.stop();
+    }
+  });
+
   it('empties the shelf and the list on releaseAll', async () => {
     const k = start();
     await k.keep('receipts');

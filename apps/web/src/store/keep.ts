@@ -190,27 +190,59 @@ export function createKeeper(opts: KeeperOptions): Keeper {
   let halt = false;
 
   /**
-   * Reads the list of kept notebooks, once, and again on the next ask if that failed.
-   * Until a read has succeeded the keeper knows nothing — not "nothing is kept" — and does
-   * nothing: a pass over an empty list removes the whole shelf, and a `keep` would write
-   * a list of one over the real one. One transient file-system error was otherwise
-   * gigabytes fetched again (review of #236).
+   * Reads the list of kept notebooks from the device, at the start of every pass and
+   * before every change to it. Throws when it cannot be read.
+   *
+   * Every time, not once: the list is the device's, and another tab of the same account
+   * can change it. Only one tab fetches, and it is rarely the one someone pressed Keep
+   * offline in; a keeper that read the list when it started never fetched a notebook kept
+   * from the other tab, and went on believing in files another tab's release had removed
+   * (review of #236). It is one small file. When it has changed, what this keeper
+   * remembers of the shelf is dropped with it, and a pass in hand is stopped if a
+   * notebook was released, as it is for a release made here.
+   *
+   * Until a read has succeeded the keeper knows nothing — not "nothing is kept" — and
+   * does nothing: a pass over an empty list removes the whole shelf, and a `keep` would
+   * write a list of one over the real one. After one has, a failed read leaves the last
+   * list standing, and the pass that follows removes nothing on its word.
    */
   let known = !supported;
-  let loading: Promise<void> | null = null;
-  const load = (): Promise<void> => {
-    if (known) return Promise.resolve();
-    loading ??= readKeptNotebooks(opts.userId)
-      .then((ids) => {
-        kept = new Set(ids);
-        known = true;
-        set({ kept, problem: null });
-      })
-      .finally(() => {
-        loading = null;
-      });
-    return loading;
+  async function read(): Promise<void> {
+    if (!supported) return;
+    const ids = await readKeptNotebooks(opts.userId);
+    const same = known && ids.length === kept.size && ids.every((id) => kept.has(id));
+    known = true;
+    if (same) return;
+    if ([...kept].some((id) => !ids.includes(id))) halt = true;
+    kept = new Set(ids);
+    shelf = null;
+    set({ kept });
+  }
+
+  /**
+   * How the tabs of one account tell each other: `list` when the kept list was changed,
+   * so the tab that fetches starts on it now rather than at its next pass; `shelf` when
+   * the fetching tab has put files on the shelf or taken them off, so a tab that is only
+   * showing progress counts again. A convenience on top of reading the list every pass —
+   * a browser without it is still right, a pass later.
+   */
+  const channel = typeof BroadcastChannel === 'undefined' ? null : new BroadcastChannel(`unbent-keep-${opts.userId}`);
+  const tell = (what: 'list' | 'shelf') => {
+    try {
+      channel?.postMessage(what);
+    } catch {
+      // Closed under us; the next pass reads the disk anyway.
+    }
   };
+  if (channel) {
+    channel.onmessage = (event: MessageEvent) => {
+      if (stopped) return;
+      if (event.data === 'list') void read().then(run, run);
+      else if (!opts.leading()) run();
+    };
+  }
+  /** When the other tabs were last told the shelf moved; a long pass says so every few seconds, not per file. */
+  let told = 0;
 
   /**
    * One pass: bring the shelf to what `plan` says, removals first so their room is free
@@ -222,11 +254,17 @@ export function createKeeper(opts: KeeperOptions): Keeper {
    * the cache of opened files as well, and push out what someone actually opened.
    */
   async function pass(): Promise<void> {
+    // Whether the list is the one on the device this moment. A pass may fetch on the word
+    // of the last list read; it removes nothing unless this read succeeded.
+    let fresh = true;
     try {
-      await load();
+      await read();
     } catch {
-      set({ problem: 'The list of kept notebooks could not be read. Nothing was changed.' });
-      return;
+      if (!known) {
+        set({ problem: 'The list of kept notebooks could not be read. Nothing was changed.' });
+        return;
+      }
+      fresh = false;
     }
     if (stopped || !supported || !opts.settled()) return;
     halt = false;
@@ -238,7 +276,7 @@ export function createKeeper(opts: KeeperOptions): Keeper {
     const todo = plan(opts.snapshot(), kept, [...held.values()]);
     set({ counted: true, wanted: todo.wanted, have: todo.have });
     if (!leading) return;
-    for (const f of todo.remove) {
+    for (const f of fresh ? todo.remove : []) {
       await removeFile(opts.userId, 'kept', f.noteId, f.name).then(
         () => held.delete(at(f.noteId, f.name)),
         () => {
@@ -246,6 +284,7 @@ export function createKeeper(opts: KeeperOptions): Keeper {
         },
       );
     }
+    if (fresh && todo.remove.length > 0) tell('shelf');
     if (todo.fetch.length === 0 || offlineNow()) {
       set({ fetching: false, problem: null });
       return;
@@ -276,7 +315,12 @@ export function createKeeper(opts: KeeperOptions): Keeper {
         have.files += 1;
         have.bytes += f.size;
         set({ have: { ...have } });
+        if (Date.now() - told > 5000) {
+          told = Date.now();
+          tell('shelf');
+        }
       }
+      tell('shelf');
     } catch (err) {
       // Whatever went wrong, memory may no longer be what the disk holds.
       shelf = null;
@@ -340,12 +384,13 @@ export function createKeeper(opts: KeeperOptions): Keeper {
 
   /** Changes the list, from the list as it is on the device: never from one that could not be read. */
   const save = async (change: (current: Set<string>) => Set<string>) => {
-    await load();
+    await read();
     const next = change(kept);
     await writeKeptNotebooks(opts.userId, [...next]);
     if ([...kept].some((id) => !next.has(id))) halt = true;
     kept = next;
     set({ kept });
+    tell('list');
     run();
   };
 
@@ -359,20 +404,22 @@ export function createKeeper(opts: KeeperOptions): Keeper {
     keep: (id) => save((current) => new Set([...current, id])),
     release: (id) => save((current) => new Set([...current].filter((k) => k !== id))),
     releaseAll: async () => {
-      await load().catch(() => {});
       await writeKeptNotebooks(opts.userId, []);
+      known = true;
       kept = new Set();
       halt = true;
       // The whole shelf at once, rather than a pass removing it a file at a time.
       await clearShelf(opts.userId, 'kept');
       shelf = null;
       set({ kept, wanted: { files: 0, bytes: 0 }, have: { files: 0, bytes: 0 }, problem: null });
+      tell('list');
     },
     nudge,
     stop: () => {
       stopped = true;
       if (timer) clearTimeout(timer);
       unsubscribe();
+      channel?.close();
     },
   };
 }

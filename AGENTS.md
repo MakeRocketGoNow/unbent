@@ -485,7 +485,9 @@ is not whole — a walk has not finished, which is not the same as the last pull
 since a pass during the first copy would drop what it would fetch again, and
 runs only in the tab that holds the outbox. It fetches through `request()` and unmarked, so
 a kept notebook never fills the cache of opened files. A list of kept notebooks that cannot
-be read is unknown, never empty: a pass over an empty list removes the whole shelf. A file that is on neither shelf nor
+be read is unknown, never empty: a pass over an empty list removes the whole shelf. The list
+is read from the device at the start of every pass, because the tab that fetches is rarely
+the one Keep offline was pressed in; a `BroadcastChannel` only makes that prompt. A file that is on neither shelf nor
 in the cache says "Not available offline" where its preview would be (`offline-file.ts`):
 one phrase, in the note's body, never a spinner and never in the head.
 
