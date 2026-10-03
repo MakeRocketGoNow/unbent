@@ -78,6 +78,8 @@ export interface AppHandlers {
  * a page writing faster than the phone's storage waits for it rather than queueing
  * gigabytes — so a caller must wait for each answer before making the next call. A host
  * must not answer `saveChunk` before the piece is written, or that wait means nothing.
+ * `saveAbort` has nothing to answer, but an iOS host's call still comes back as a promise,
+ * which may reject; a caller waits for it and has nothing to do about a failure.
  */
 export interface HostApp {
   /**
@@ -91,7 +93,7 @@ export interface HostApp {
   saveBegin?(name: string, type: string): string | Promise<string>;
   saveChunk?(id: string, base64: string): boolean | Promise<boolean>;
   saveEnd?(id: string): boolean | Promise<boolean>;
-  saveAbort?(id: string): void;
+  saveAbort?(id: string): void | Promise<void>;
 }
 
 declare global {

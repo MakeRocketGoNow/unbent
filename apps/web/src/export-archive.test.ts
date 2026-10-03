@@ -340,6 +340,17 @@ describe('appDestination', () => {
     await expect(appDestination(beginning.app, 'unbent-export.zip')).rejects.toThrow(/^The app could not create/);
   });
 
+  it('gives up quietly when the host cannot remove the file either', async () => {
+    const { app } = promisingApp({ failAt: 0 });
+    app.saveAbort.mockImplementation(() => Promise.reject(new Error('NSCocoaErrorDomain 4')));
+    const destination = await appDestination(app, 'unbent-export.zip');
+    const writer = destination.writable.getWriter();
+    await expect(writer.write(new Uint8Array(600_000))).rejects.toThrow(/could not write/);
+    writer.releaseLock();
+    await expect(destination.abort()).resolves.toBeUndefined();
+    expect(app.saveAbort).toHaveBeenCalledWith('job-1');
+  });
+
   it('runs a whole export through a host that answers later', async () => {
     const { app, most } = promisingApp();
     const exporting = createExporting(

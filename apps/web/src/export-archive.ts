@@ -299,7 +299,9 @@ export async function appDestination(app: HostApp, filename: string): Promise<De
     finish: async () => null,
     abort: async () => {
       if (ended) return;
-      app.saveAbort?.(id);
+      // Nothing to do if the host cannot remove the file either; the export has already
+      // failed or been stopped, and says so.
+      await answered(() => app.saveAbort?.(id), undefined);
       await writable.abort().catch(() => undefined);
     },
   };
