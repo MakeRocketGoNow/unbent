@@ -5365,6 +5365,12 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
  * near-identical rule sets for the same idea. Inline rather than a dialog on purpose:
  * every confirmation here is about a specific thing on screen — a named notebook, a
  * counted trash — and covering that thing forces its details into the prompt text.
+ *
+ * The border follows the tone of the first action offered (see `borderTone` in Confirm.tsx),
+ * set by the modifier classes below. It used to be red for every confirm, including "keep
+ * this on the device?", which put a warning colour around a safe green action. Red is for a
+ * box whose offered action destroys something; green for one offering the primary; plain
+ * otherwise. Red and green never share a box.
  */
 .confirm {
   max-width: 40rem;
@@ -5380,9 +5386,12 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
   width: 100%;
   margin: 0.75rem 0 0.25rem;
   padding: 0.9rem;
-  border: 1px solid var(--bad);
+  border: 1px solid var(--border);
   border-radius: 0.45rem;
 }
+.confirm-danger { border-color: var(--bad); }
+.confirm-primary { border-color: var(--accent); }
+.confirm-neutral { border-color: var(--border); }
 
 /*
    The operator-only notice that the title model rejected its key. Sits where a confirm
