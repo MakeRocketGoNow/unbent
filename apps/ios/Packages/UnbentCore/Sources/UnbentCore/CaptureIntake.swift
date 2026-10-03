@@ -19,7 +19,11 @@ public struct CaptureIntake: Equatable, Sendable {
     }
 
     public var summary: String {
-        CaptureNaming.summary(contentTypes: files.map(\.contentType), hasText: !text.isEmpty)
+        CaptureNaming.summary(
+            contentTypes: files.map(\.contentType),
+            hasText: !text.isEmpty,
+            link: text.range(of: #"^https?://\S+$"#, options: .regularExpression) != nil
+        )
     }
 }
 

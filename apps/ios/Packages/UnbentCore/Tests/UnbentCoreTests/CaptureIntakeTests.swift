@@ -153,7 +153,7 @@ final class CaptureIntakeTests: XCTestCase {
 
         XCTAssertEqual("https://www.example.com/a-slug", intake.text)
         XCTAssertEqual("An Example Page", intake.title)
-        XCTAssertEqual("Text", intake.summary)
+        XCTAssertEqual("Link", intake.summary)
     }
 
     func testALinkSharedWithNothingBesideItIsTitledByItsHost() async throws {
@@ -172,6 +172,7 @@ final class CaptureIntakeTests: XCTestCase {
 
         XCTAssertEqual("Pick up prescription\nand call the vet", intake.text)
         XCTAssertEqual("Pick up prescription", intake.title)
+        XCTAssertEqual("Text", intake.summary)
         XCTAssertFalse(intake.isEmpty)
     }
 

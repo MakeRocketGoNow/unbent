@@ -128,8 +128,11 @@ public enum CaptureNaming {
         return host.isEmpty ? nil : host
     }
 
-    /// "2 photos · 1 PDF", or "Text": what the sheet says was shared.
-    public static func summary(contentTypes: [String], hasText: Bool) -> String {
+    /// "2 photos · 1 PDF", "Link" or "Text": what the sheet says was shared.
+    ///
+    /// - Parameter link: the text is a link and nothing else. A page shared from a
+    ///   browser was reading "Text", which is not what anyone thinks they shared.
+    public static func summary(contentTypes: [String], hasText: Bool, link: Bool = false) -> String {
         let photos = contentTypes.filter { $0.hasPrefix("image/") }.count
         let pdfs = contentTypes.filter { $0 == "application/pdf" }.count
         let others = contentTypes.count - photos - pdfs
@@ -137,7 +140,7 @@ public enum CaptureNaming {
         if photos > 0 { parts.append(photos == 1 ? "1 photo" : "\(photos) photos") }
         if pdfs > 0 { parts.append(pdfs == 1 ? "1 PDF" : "\(pdfs) PDFs") }
         if others > 0 { parts.append(others == 1 ? "1 file" : "\(others) files") }
-        if hasText && contentTypes.isEmpty { parts.append("Text") }
+        if hasText && contentTypes.isEmpty { parts.append(link ? "Link" : "Text") }
         return parts.joined(separator: " · ")
     }
 }
