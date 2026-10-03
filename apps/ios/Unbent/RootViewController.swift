@@ -24,6 +24,9 @@ final class RootViewController: UIViewController {
     private var shell: WebShellController?
     private var current: UIViewController?
 
+    /// The capture sheet, while one is up. See `dismissForSignOut`.
+    private weak var captureSheet: UIViewController?
+
     /// Files opened in the app before its first screen was up, held until it is.
     private var filesToCapture: [URL] = []
     private var appeared = false
@@ -207,6 +210,7 @@ final class RootViewController: UIViewController {
         var presenter: UIViewController = self
         while let presented = presenter.presentedViewController { presenter = presented }
         presenter.present(sheet, animated: true)
+        captureSheet = sheet
 
         guard let store, let directory = try? store.create(jobId) else {
             model.problem = CaptureModel.noRoom
@@ -225,8 +229,20 @@ final class RootViewController: UIViewController {
     /// forgotten it. The same ending as the page saying so.
     @objc private func captureSignedOut(_ note: Notification) {
         guard let origin = note.object as? String, normalizeOrigin(origin) == instance, shell != nil else { return }
-        dismiss(animated: false)
+        dismissForSignOut()
         clearCookies { [weak self] in self?.start() }
+    }
+
+    /// Takes down whatever is over the site as the site goes — Safari, App settings, a
+    /// preview — unless a capture sheet is among it.
+    ///
+    /// That sheet is someone partway through filing a file, and it works signed out: its
+    /// Save queues the capture for the next sign-in. Dismissing it from here skipped its
+    /// Cancel, so the form vanished mid-word and the copied file was left behind for
+    /// the sweep. So it stays, over the sign-in screen, until Save or Cancel.
+    private func dismissForSignOut() {
+        if captureSheet?.presentingViewController != nil { return }
+        dismiss(animated: false)
     }
 
     // MARK: - App settings
@@ -286,7 +302,7 @@ extension RootViewController: WebShellDelegate {
     func shellDidSignOut(_ shell: WebShellController) {
         guard shell === self.shell else { return }
         sessions.clear(for: instance)
-        dismiss(animated: false)
+        dismissForSignOut()
         clearCookies { [weak self] in self?.start() }
     }
 
