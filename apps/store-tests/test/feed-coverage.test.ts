@@ -103,7 +103,7 @@ const READS = new Set([
   'visionPending', 'pendingTextCount', 'textFor', 'textsForNote', 'textsForNotes', 'attachmentIdFor',
   'keysForNote', 'allBlobKeys',
   'listPage', 'searchRows', 'exportPage', 'getWithFiles', 'filesForNote', 'notebooksOverview', 'pendingText',
-  'autofillPrelude', 'autofillContext', 'attachmentReadPrelude',
+  'autofillPrelude', 'autofillContext', 'attachmentReadPrelude', 'uploadPrelude',
   'changesSince', 'snapshotPage',
 ]);
 

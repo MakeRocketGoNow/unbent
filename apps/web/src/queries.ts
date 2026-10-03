@@ -8,7 +8,7 @@ import type { AttachmentInfo, FieldDef, Note, NoteSort, NoteSummary, NotebookSum
 import * as api from './notes-api.js';
 import { ApiError, OfflineError } from './notes-api.js';
 import { offlineNow } from './connectivity.js';
-import { count, list, lookups, notebookFields, notebookList, summaries, tagSummaries, toAttachmentInfo, toNote, type Lookups, type Snapshot } from './store/derive.js';
+import { count, list, lookups, notebookFields, notebookFiles, notebookList, summaries, tagSummaries, toAttachmentInfo, toNote, type LocalAttachmentInfo, type Lookups, type Snapshot } from './store/derive.js';
 import type { LocalNote } from './store/collections.js';
 import { LIBRARY_ROOTS, currentLibrary, onLibraryChange, type ReadableLibrary as Library } from './store/library.js';
 import { onDirectWrite } from './store/actions.js';
@@ -169,6 +169,11 @@ export const keys = {
    * Under its own root rather than `['notebooks', id]`: invalidating the notebook list
    * (which happens on every save) must not refetch every open notebook's definitions.
    */
+  /**
+   * What a notebook's files come to. Under `attachments`, the root a file arriving or
+   * leaving reaches, and not under `notebooks`, which every save invalidates.
+   */
+  notebookFiles: (notebookId: string) => ['attachments', 'notebook', notebookId] as const,
   notebookFields: (notebookId: string) => ['notebook-fields', notebookId] as const,
   /**
    * The same definitions with each field's value count. Its own key under the one above,
@@ -311,7 +316,7 @@ export const noteQuery = (id: string) =>
 export const attachmentsQuery = (noteId: string) =>
   queryOptions({
     queryKey: keys.attachments(noteId),
-    queryFn: async (): Promise<AttachmentInfo[]> => {
+    queryFn: async (): Promise<LocalAttachmentInfo[]> => {
       const lib = await library();
       if (!lib) return api.listAttachments(noteId);
       if (!lib.notes.has(noteId)) throw new ApiError(404, 'Not found');
@@ -397,6 +402,19 @@ export const notebooksQuery = () =>
     queryFn: async (): Promise<{ notebooks: NotebookSummary[]; unfiled: number }> => {
       const lib = await library();
       return lib ? notebookList(view(lib).snapshot) : api.listNotebooks();
+    },
+  });
+
+/**
+ * How many files a notebook holds and their size: what keeping it on this device costs.
+ * Only from the library — a device without one cannot keep files, and never asks.
+ */
+export const notebookFilesQuery = (notebookId: string) =>
+  queryOptions({
+    queryKey: keys.notebookFiles(notebookId),
+    queryFn: async (): Promise<{ files: number; bytes: number }> => {
+      const lib = await library();
+      return lib ? notebookFiles(view(lib).snapshot, notebookId) : { files: 0, bytes: 0 };
     },
   });
 

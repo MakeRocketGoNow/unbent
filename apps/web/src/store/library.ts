@@ -4,6 +4,8 @@ import { openLocalStore, closeLocalStore } from './db.js';
 import { createCollections, cursorStore, type Collections, type LocalNote } from './collections.js';
 import { createOutbox, provideLibrary, type Outbox } from './actions.js';
 import { FeedEngine, type FeedState } from './feed.js';
+import { createKeeper, type Keeper } from './keep.js';
+import { askToPersist } from './files.js';
 
 /**
  * One account's library on this device: its local store, the collections in it, the
@@ -28,6 +30,8 @@ export interface Library extends Collections {
   version: () => number;
   /** The writes made here the server has not taken yet, and the conflicts waiting on a choice. */
   outbox: Outbox;
+  /** The notebooks whose files this device keeps, and the fetching that keeps them (`keep.ts`). */
+  keeper: Keeper;
   /** The engine's state, for the hydration line and the offline banner. */
   subscribe: (listener: (state: FeedState) => void) => () => void;
   state: () => FeedState;
@@ -310,7 +314,7 @@ async function open(userId: string): Promise<Library> {
    * answer is the browser's and a refusal changes nothing — an evicted copy is taken
    * again from a snapshot. Not awaited: some browsers answer only after a prompt.
    */
-  void navigator.storage?.persist?.().catch(() => false);
+  askToPersist();
   /*
    * A page restored from the back/forward cache comes back with the adapter's worker
    * and handles in whatever state they were left; the adapter wants fresh instances
@@ -326,11 +330,39 @@ async function open(userId: string): Promise<Library> {
   const outbox = createOutbox(userId, { ...collections, userId, engine });
   await outbox.ready;
 
+  /*
+   * The kept notebooks' files follow the library: a file the feed delivers into one is
+   * fetched, one that leaves is dropped. Nudged by any change that can move a file or a
+   * note between notebooks — not by a change to a note's text alone, which is most
+   * changes and every keystroke.
+   */
+  const rows = collections;
+  const keeper = createKeeper({
+    userId,
+    snapshot: () => ({ notes: rows.notes.values(), attachments: rows.attachments.values() }),
+    /*
+     * Whole once a walk has finished, which is what a cursor in the engine's state means:
+     * it is set from a stored position with no page left to resume, or at the end of a
+     * walk. Not "the last pull succeeded" — a device opened on a plane never has one, and
+     * that is exactly where someone looks to see their files are here (review of #236).
+     * Not during a walk either: a `reset` empties the collections before it starts one.
+     */
+    settled: () => engine.state.cursor !== null && engine.state.phase !== 'hydrating' && engine.state.phase !== 'reset',
+    leading: () => outbox.executor.isOfflineEnabled,
+  });
+  const stopKeeping = onLibraryChange((roots) => {
+    if (roots.has('attachments')) keeper.nudge();
+  });
+  // And by every pull settling — the first copy finishing, or a pull failing offline with
+  // the copy already whole — before which the keeper stands down.
+  listeners.add(() => keeper.nudge());
+
   return {
     ...collections,
     userId,
     engine,
     outbox,
+    keeper,
     version: () => version,
     subscribe: (listener) => {
       listeners.add(listener);
@@ -348,6 +380,8 @@ async function open(userId: string): Promise<Library> {
       unsubscribeConnectivity();
       if (reconnect) clearTimeout(reconnect);
       socket?.close();
+      stopKeeping();
+      keeper.stop();
       await outbox.dispose();
       await engine.settled();
       for (const s of subscriptions) s.unsubscribe();

@@ -3139,6 +3139,13 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
   font-weight: 600;
 }
 
+/*
+   A file added with no connection, still on this device only. A state, not a warning:
+   "Not linked" beside it is red because something may need deleting, and this needs
+   nothing but a connection, so it takes the muted colour and keeps the weight.
+*/
+.attachments-status.waiting { color: var(--muted); }
+
 .attachments-actions {
   display: flex;
   align-items: center;
@@ -3185,6 +3192,21 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
 
 /* Where the last copy-to or move-to put a file: a sentence under the list, not a toast. */
 .attachments-sent { margin: 0 0 0.5rem; }
+
+/*
+   What became of an upload that did not simply go through, with its Dismiss on the
+   sentence's own line end — the same shape as the cleanup line above the list, so the
+   panel has one way of saying a thing and offering a button for it.
+*/
+.attachments-notices {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.35rem 0.75rem;
+  margin: 0.45rem 0 0.5rem;
+}
+.attachments-notices > p { margin: 0; flex: 1 1 16rem; overflow-wrap: anywhere; }
 
 /*
    The one-confirmation cleanup of every file the note no longer links: a sentence with
@@ -4546,6 +4568,22 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
   outline: none;
 }
 
+/*
+   "Not available offline", where a file's picture or page would be (`offline-file.ts`).
+
+   A plain line in the note's own muted ink: nothing is wrong, so it is not the red of an
+   error, and nothing is loading, so it does not move. A block of its own in the editor,
+   the preview pane and under a PDF's name alike, so the same words look the same in all
+   three; the name before it can be a filename of any length, so it wraps.
+*/
+.file-unavailable {
+  display: block;
+  margin: 0.25rem 0;
+  color: var(--muted);
+  font-size: 0.85rem;
+  overflow-wrap: anywhere;
+}
+
 .viewer-status {
   margin: auto;
   font-size: 0.9rem;
@@ -5035,6 +5073,39 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
 
 /* The confirms bring their own margins for pages without a rhythm; this one has one. */
 .notebook-section > .confirm { margin: 0; }
+
+/*
+   The kept notebooks under Settings → Offline: a name that yields, a size under it, and
+   one quiet action at the row's end — the attachments list's shape, for the same reason.
+   A notebook's name is unbounded, so it truncates before the button wraps.
+*/
+.offline-storage { gap: 1.25rem; }
+.offline-kept {
+  align-self: stretch;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.offline-kept-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem 0.75rem;
+  padding: 0.5rem 0;
+  border-bottom: 1px solid var(--border);
+}
+.offline-kept-info {
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.offline-kept-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.offline-kept-row > .confirm { flex: 1 0 100%; margin: 0.25rem 0 0.5rem; }
 
 /* Section heading within the edit page — "Fields", "Delete notebook". Quieter than the
    panel's h2, since the page title already names the notebook. */

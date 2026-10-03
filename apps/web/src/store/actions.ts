@@ -1,12 +1,14 @@
 import { IndexedDBAdapter, NonRetriableError, startOfflineExecutor, type OfflineExecutor, type OnlineDetector, type StorageAdapter } from '@tanstack/offline-transactions';
 import type { Transaction } from '@tanstack/db';
-import type { FeedNote, FieldDef, FieldValue, Note, NoteFieldValue } from '@unbent/shared';
+import { MAX_ATTACHMENT_BYTES, filenameSchema, type FeedNote, type FieldDef, type FieldValue, type Note, type NoteFieldValue } from '@unbent/shared';
 import * as api from '../notes-api.js';
 import { ApiError, isNoteChanged, isOfflineError } from '../notes-api.js';
 import { offlineNow, recheck, subscribeConnectivity } from '../connectivity.js';
 import { buildNotePatch, seedFrom, holdsTheirChanges, type NoteDraft } from '../note-patch.js';
-import { lookups, toNote, type Snapshot } from './derive.js';
+import { availableFilename, lookups, toNote, type Snapshot } from './derive.js';
 import type { Collections, LocalNote } from './collections.js';
+import { askToPersist, filesSupported, readFile, removeFile, writeFile } from './files.js';
+import { FILES_CACHE, FILES_CHANGED, MAX_KEPT_FILE } from '../sw/routes.js';
 import type { FeedEngine } from './feed.js';
 import { outboxName } from './names.js';
 
@@ -15,7 +17,11 @@ import { outboxName } from './names.js';
  * durable outbox, so a note can be edited, made, trashed or restored with no connection
  * and the server hears of it when there is one.
  *
- * Only note writes go this way. Notebook, tag and field management — renames, merges,
+ * A file added to a note with no connection goes this way too (`uploadFile`): its bytes
+ * to the account's `pending` shelf, a row for it at once, and its upload an entry here,
+ * behind whatever its note already has waiting.
+ *
+ * Otherwise only note writes go this way. Notebook, tag and field management — renames, merges,
  * deletes, field definitions, option removal, conversions — are settings-page actions
  * with uniqueness and conversion rules the server decides, and stay direct calls that
  * need a connection; the feed delivers what they did to every device.
@@ -78,6 +84,21 @@ export interface SyncStatus {
    */
   waiting: ReadonlySet<string>;
   conflicts: ReadonlyMap<string, Conflict>;
+  /**
+   * What became of uploads that did not simply go through, by note, until dismissed: a
+   * file the server refused for good, or one it stored under another name. An upload made
+   * with a connection fails where it was dropped, in the editor; one made without fails
+   * hours later with the note closed, and a row that quietly vanished from the panel
+   * would be a photo lost without a word.
+   */
+  uploadNotices: ReadonlyMap<string, UploadNotice[]>;
+}
+
+export interface UploadNotice {
+  /** The upload's file id: what a dismissal names. */
+  id: string;
+  filename: string;
+  message: string;
 }
 
 export interface Outbox {
@@ -90,6 +111,8 @@ export interface Outbox {
   onAcknowledged: (listener: (noteId: string, note: Note) => void) => () => void;
   /** Forgets a conflict once a choice has been made. */
   resolveConflict: (noteId: string) => void;
+  /** Forgets what was said about a note's uploads, once it has been read. */
+  dismissUploadNotices: (noteId: string) => void;
   /**
    * Retires the save of this note still waiting in the queue, if there is one, ahead of a
    * new one: it is removed from storage, its change is taken off the row, and it will do
@@ -100,6 +123,14 @@ export interface Outbox {
   supersedeSave: (noteId: string) => { base: Note; against?: number | undefined } | null;
   /** Records the save of this note now waiting: its entry's id, what it carries, and how to take its change off the row. */
   trackSave: (noteId: string, entry: { id: string; base: Note; against?: number | undefined; retire: () => void }) => void;
+  /** Records an upload now waiting: its entry's id, what it carries, and how to take its row off. */
+  trackUpload: (attachmentId: string, entry: { id: string; upload: { noteId: string; filename: string }; retire: () => void }) => void;
+  /**
+   * Takes back a file that has not uploaded yet: its entry leaves the queue, its row
+   * comes off, its bytes leave the shelf. `sending` when the upload is on its way this
+   * moment and cannot be recalled; `gone` when there is no such upload waiting.
+   */
+  cancelUpload: (attachmentId: string) => Promise<'cancelled' | 'sending' | 'gone'>;
   /** Records which notes an entry just queued is about, for `waiting`. */
   trackEntry: (id: string, noteIds: string[]) => void;
   /** Stops the executor and closes its store, so the outbox's database can be removed. */
@@ -123,6 +154,12 @@ type Save = { noteId: string; value: NoteDraft; base: Note; against?: number };
 /** The key a conflict is kept under in the outbox's storage; its entries are the `tx:` keys. */
 const conflictKey = (noteId: string) => `conflict:${noteId}`;
 
+/** An upload waiting in the queue: the note, the id and name its file will have, and what the row shows meanwhile. */
+type Upload = { noteId: string; attachmentId: string; filename: string; contentType: string; size: number };
+
+/** The key an upload's notice is kept under, beside the conflicts, for the same reason they are kept. */
+const noticeKey = (attachmentId: string) => `upload-notice:${attachmentId}`;
+
 export function createOutbox(userId: string, lib: Omit<WritableLibrary, 'outbox'>): Outbox {
   const conflicts = new Map<string, Conflict>();
   /** The notes each waiting entry is about, by entry id. */
@@ -139,9 +176,15 @@ export function createOutbox(userId: string, lib: Omit<WritableLibrary, 'outbox'
     conflicts.set(noteId, conflict);
     void storage.set(conflictKey(noteId), JSON.stringify(conflict)).catch((err: unknown) => console.error('[outbox] conflict not kept:', err));
   };
+  const notices = new Map<string, UploadNotice[]>();
+  const notice = (upload: Upload, message: string) => {
+    const said = { id: upload.attachmentId, filename: upload.filename, message };
+    notices.set(upload.noteId, [...(notices.get(upload.noteId) ?? []).filter((n) => n.id !== said.id), said]);
+    void storage.set(noticeKey(upload.attachmentId), JSON.stringify({ noteId: upload.noteId, ...said })).catch((err: unknown) => console.error('[outbox] upload notice not kept:', err));
+  };
   const listeners = new Set<(s: SyncStatus) => void>();
   const acks = new Set<(id: string, note: Note) => void>();
-  const status = (): SyncStatus => ({ pending: storage.held(), durable: executor.isOfflineEnabled, waiting: waiting(), conflicts });
+  const status = (): SyncStatus => ({ pending: storage.held(), durable: executor.isOfflineEnabled, waiting: waiting(), conflicts, uploadNotices: notices });
   const touch = () => {
     const s = status();
     listeners.forEach((l) => l(s));
@@ -153,6 +196,14 @@ export function createOutbox(userId: string, lib: Omit<WritableLibrary, 'outbox'
   const waitingSaves = new Map<string, { id: string; base: Note; against?: number | undefined; retire: () => void }>();
   const superseded = new Set<string>();
 
+  /**
+   * The uploads still waiting, by the id their file will have; the entries taken back
+   * before their turn; and the one being sent now, which is past taking back.
+   */
+  const waitingUploads = new Map<string, { id: string; upload: { noteId: string; filename: string }; retire: () => void }>();
+  const cancelled = new Set<string>();
+  let sending: string | null = null;
+
   /** The server refused the request for good, or for now: which, is the queue's whole question. */
   const refusal = (err: unknown): never => {
     if (isOfflineError(err)) throw err;
@@ -163,7 +214,8 @@ export function createOutbox(userId: string, lib: Omit<WritableLibrary, 'outbox'
   const adapter = new IndexedDBAdapter(outboxName(userId));
   const storage = watched(adapter, () => touch());
   const executor = startOfflineExecutor({
-    collections: { notes: lib.notes },
+    // Both, so a reload restores an upload's row as it restores a save's text.
+    collections: { notes: lib.notes, attachments: lib.attachments },
     storage,
     onlineDetector: connectivityDetector(),
     onLeadershipChange: () => touch(),
@@ -244,6 +296,69 @@ export function createOutbox(userId: string, lib: Omit<WritableLibrary, 'outbox'
           ended(transaction.id, err);
           throw err;
         } finally {
+          touch();
+        }
+      },
+      /*
+       * A file added with no connection: its bytes are on the `pending` shelf, and this
+       * sends them through the route every upload goes through, so the quota, the text
+       * extraction and the vision read are the server's as they always are.
+       *
+       * Under the id the row was made with: a request whose answer was lost is sent
+       * again, and the server answers the second with the file the first one made.
+       *
+       * The bytes leave the shelf when the entry ends, either way. Gone through, they go
+       * into the cache of opened files first — the photo just taken should still draw on
+       * the next flight, and it is as good as opened. Refused for good, there is nothing
+       * to keep them for, and the notice says what happened.
+       *
+       * A refused session is the one 4xx that is not a refusal of the upload: the entry
+       * stays, the library is closed and kept (`offline-cache.ts`), and the sign-in that
+       * follows replays it. An upload exists nowhere but here; ending it on a 401 would
+       * delete the only copy.
+       */
+      uploadFile: async ({ transaction }) => {
+        const upload = transaction.metadata as unknown as Upload;
+        const { noteId, attachmentId, filename, contentType } = upload;
+        try {
+          // Taken back while it waited: out of storage already, and nothing to send.
+          if (cancelled.has(transaction.id)) {
+            ended(transaction.id);
+            return;
+          }
+          sending = attachmentId;
+          const bytes = await readFile(userId, 'pending', noteId, filename);
+          if (!bytes) throw new NonRetriableError(`The file was no longer on this device`);
+          const file = new File([bytes], filename, { type: contentType });
+          let answer: api.UploadedFile;
+          try {
+            answer = await api.uploadFile(noteId, file, { id: attachmentId });
+          } catch (err) {
+            if (err instanceof ApiError && err.status === 401) throw err;
+            return refusal(err);
+          }
+          if (answer.filename !== filename) {
+            // Another device added a file of this name to this note meanwhile, and the
+            // server suffixed ours. The link written into the note names the other one.
+            notice(upload, `Stored as “${answer.filename}”, since the note already had a “${filename}”. Check the link in the note.`);
+          }
+          uploadListeners.forEach((l) => l(noteId, answer, file));
+          await remember(noteId, answer.filename, file);
+          await removeFile(userId, 'pending', noteId, filename).catch(() => {});
+          await settled();
+          ended(transaction.id);
+        } catch (err) {
+          if (err instanceof NonRetriableError) {
+            notice(upload, `Couldn’t upload. ${err.message}`);
+            await removeFile(userId, 'pending', noteId, filename).catch(() => {});
+          }
+          ended(transaction.id, err);
+          throw err;
+        } finally {
+          sending = null;
+          cancelled.delete(transaction.id);
+          // Kept through an attempt that will be made again; it can still be taken back.
+          if (!entryNotes.has(transaction.id)) waitingUploads.delete(attachmentId);
           touch();
         }
       },
@@ -335,6 +450,13 @@ export function createOutbox(userId: string, lib: Omit<WritableLibrary, 'outbox'
     .then(async ([entries, keys]) => {
       for (const t of entries) {
         entryNotes.set(t.id, notesOf(t.metadata as Record<string, unknown> | undefined));
+        // The executor's private cleanup, for the reason given below; an upload a reload
+        // restored can be taken back as one queued a moment ago can.
+        const restored = (executor as unknown as { cleanupRestorationTransaction?: (id: string, rollback: boolean) => void }).cleanupRestorationTransaction;
+        if (t.mutationFnName === 'uploadFile') {
+          const u = t.metadata as Upload | undefined;
+          if (u) waitingUploads.set(u.attachmentId, { id: t.id, upload: u, retire: () => restored?.call(executor, t.id, true) });
+        }
         if (t.mutationFnName !== 'saveNote') continue;
         const m = t.metadata as Save | undefined;
         /*
@@ -349,11 +471,18 @@ export function createOutbox(userId: string, lib: Omit<WritableLibrary, 'outbox'
         if (m && !waitingSaves.has(m.noteId)) waitingSaves.set(m.noteId, { id: t.id, base: m.base, against: m.against, retire: () => cleanup?.call(executor, t.id, true) });
       }
       for (const key of keys) {
+        if (key.startsWith('upload-notice:')) {
+          const raw = await storage.get(key);
+          if (!raw) continue;
+          const { noteId, ...said } = JSON.parse(raw) as UploadNotice & { noteId: string };
+          notices.set(noteId, [...(notices.get(noteId) ?? []), said]);
+          continue;
+        }
         if (!key.startsWith('conflict:')) continue;
         const raw = await storage.get(key);
         if (raw) conflicts.set(key.slice('conflict:'.length), JSON.parse(raw) as Conflict);
       }
-      if (conflicts.size > 0 || entryNotes.size > 0) touch();
+      if (conflicts.size > 0 || entryNotes.size > 0 || notices.size > 0) touch();
     })
     .catch(() => {});
   return {
@@ -374,6 +503,13 @@ export function createOutbox(userId: string, lib: Omit<WritableLibrary, 'outbox'
       void storage.delete(conflictKey(noteId)).catch(() => {});
       touch();
     },
+    dismissUploadNotices: (noteId) => {
+      const said = notices.get(noteId);
+      if (!said) return;
+      notices.delete(noteId);
+      for (const n of said) void storage.delete(noticeKey(n.id)).catch(() => {});
+      touch();
+    },
     supersedeSave: (noteId) => {
       const waiting = waitingSaves.get(noteId);
       if (!waiting) return null;
@@ -389,6 +525,24 @@ export function createOutbox(userId: string, lib: Omit<WritableLibrary, 'outbox'
     },
     trackSave: (noteId, entry) => {
       waitingSaves.set(noteId, entry);
+    },
+    trackUpload: (attachmentId, entry) => {
+      waitingUploads.set(attachmentId, entry);
+    },
+    cancelUpload: async (attachmentId) => {
+      const waiting = waitingUploads.get(attachmentId);
+      if (!waiting) return 'gone';
+      if (sending === attachmentId) return 'sending';
+      waitingUploads.delete(attachmentId);
+      cancelled.add(waiting.id);
+      // As a superseded save goes: out of storage now, so a reload does not bring it back,
+      // and off the row now rather than when its turn would have come.
+      await executor.removeFromOutbox(waiting.id).catch(() => {});
+      waiting.retire();
+      entryNotes.delete(waiting.id);
+      await removeFile(userId, 'pending', waiting.upload.noteId, waiting.upload.filename).catch(() => {});
+      touch();
+      return 'cancelled';
     },
     trackEntry: (id, noteIds) => {
       entryNotes.set(id, noteIds);
@@ -408,6 +562,30 @@ export function createOutbox(userId: string, lib: Omit<WritableLibrary, 'outbox'
       (adapter as unknown as { db?: IDBDatabase | null }).db?.close?.();
     },
   };
+}
+
+/**
+ * Puts a file that just uploaded into the cache of opened files, under its address, so it
+ * still draws with no connection once it has left the `pending` shelf. The worker is told,
+ * and its ledger takes the file in (`sw/budget.ts`); it is evicted like any other.
+ * Best-effort: without Cache Storage the file is simply fetched when next looked at.
+ *
+ * Not a file over the cache's own cap, which the worker would not have kept had it been
+ * opened online: it is in the account now, and draws again with a connection, or with
+ * its notebook kept.
+ */
+async function remember(noteId: string, filename: string, file: File): Promise<void> {
+  if (typeof caches === 'undefined' || file.size > MAX_KEPT_FILE) return;
+  try {
+    const url = `/api/notes/${encodeURIComponent(noteId)}/files/${encodeURIComponent(filename)}`;
+    const headers = { 'Content-Type': file.type || 'application/octet-stream', 'Content-Length': String(file.size) };
+    await (await caches.open(FILES_CACHE)).put(url, new Response(file, { headers }));
+    // Told now, so the index counts the file at once rather than at the worker's next
+    // store: Settings said "nothing kept" with this file sitting in the cache.
+    navigator.serviceWorker?.controller?.postMessage({ type: FILES_CHANGED });
+  } catch {
+    // No room, or no cache in this context.
+  }
 }
 
 /**
@@ -497,6 +675,20 @@ const durable = (lib: WritableLibrary) => lib.outbox.executor.isOfflineEnabled;
 async function queueable(): Promise<WritableLibrary | null> {
   const lib = await resolve();
   return lib && durable(lib) ? lib : null;
+}
+
+const uploadListeners = new Set<(noteId: string, uploaded: api.UploadedFile, file: File) => void>();
+
+/**
+ * Hears each upload the queue got through, with the server's answer and the bytes. An
+ * upload made as a request hands both to the indexer where it was made, so the file is
+ * searchable from the bytes in hand; one made from the queue finishes with nobody
+ * waiting on it, often after a reload, and this is where the indexer hears of it
+ * (`main.tsx`). Module-wide rather than on an outbox: the listener outlives any library.
+ */
+export function onUploaded(listener: (noteId: string, uploaded: api.UploadedFile, file: File) => void): () => void {
+  uploadListeners.add(listener);
+  return () => void uploadListeners.delete(listener);
 }
 
 const directListeners = new Set<() => void>();
@@ -751,6 +943,101 @@ export async function tagNotes(ids: string[], change: { add?: string[]; remove?:
       });
     }
   });
+}
+
+/**
+ * Adds a file to a note, and answers with where the note should link it.
+ *
+ * With a connection and nothing of the note's waiting, this is the request it always
+ * was: the answer is the server's, a refusal — too big, over quota — is the caller's to
+ * show where the file was dropped, and the caller's abort stops it.
+ *
+ * Without one, or behind a write of the note's that has not gone through (a note made a
+ * moment ago does not exist on the server yet), the file is kept and queued: its bytes
+ * on the `pending` shelf, a row for it now, marked as waiting, and an entry in the outbox
+ * after the note's own. The address in the answer works at once, because the service
+ * worker serves the shelf.
+ *
+ * What the server would refuse later is refused here first, where someone can still do
+ * something about it: a file over the upload cap, a name the route does not take, and a
+ * file the device has no room to hold.
+ */
+export async function uploadFile(noteId: string, file: File, opts: { signal?: AbortSignal } = {}): Promise<api.UploadedFile> {
+  /*
+   * Before the first `await`, while the drop or the click that brought the file is still
+   * what the browser sees this as part of: a browser that asks the person asks only then,
+   * and by the time a file is known to be queued — the library looked up, the room
+   * measured — that moment has passed (review of #236).
+   *
+   * Only when the app already knows it is offline, which is known without waiting and is
+   * when a file is queued. Asked for every upload, a browser that prompts put "store data
+   * on this device?" in front of someone attaching a file with a perfectly good
+   * connection, about nothing they had done. The rarer ways into the queue — a note with
+   * a write still waiting, a connection lost mid-upload — ask below, where the prompt may
+   * not come; the next file added offline asks properly.
+   */
+  if (offlineNow()) askToPersist();
+  const lib = await queueable();
+  /*
+   * One id for the file, whichever way it goes. A request made directly can lose its
+   * answer after the server has stored the file — a phone on one bar does this — and the
+   * file is then queued: under the same id, the replay finds what the first request made;
+   * under a new one it stored `scan-2.pdf` beside it and said so (review of #236).
+   */
+  const attachmentId = crypto.randomUUID();
+  const direct = () => pulled(api.uploadFile(noteId, file, { ...opts, id: attachmentId }));
+  if (!lib || !filesSupported() || !lib.notes.has(noteId)) return direct();
+  if (!offlineNow() && !lib.outbox.status().waiting.has(noteId)) {
+    try {
+      return await direct();
+    } catch (err) {
+      // The connection went while the bytes were on their way: keep the file after all.
+      if (!isOfflineError(err) || opts.signal?.aborted) throw err;
+    }
+  }
+
+  if (file.size > MAX_ATTACHMENT_BYTES) throw new Error(`Attachment exceeds ${Math.floor(MAX_ATTACHMENT_BYTES / 1024 / 1024)}MB limit`);
+  const named = filenameSchema.safeParse(file.name);
+  if (!named.success) throw new Error(named.error.issues[0]?.message ?? 'Invalid filename');
+  const room = await navigator.storage.estimate?.().catch(() => null);
+  if (room?.quota !== undefined && room.usage !== undefined && file.size > room.quota - room.usage) {
+    throw new Error('Not enough room on this device to keep the file until it can upload');
+  }
+
+  const taken = [...lib.attachments.values()].filter((a) => a.noteId === noteId).map((a) => a.filename);
+  const filename = availableFilename(taken, named.data);
+  const contentType = file.type || 'application/octet-stream';
+  // Again for the ways here that were not known at the start; a second ask is free.
+  askToPersist();
+  await writeFile(lib.userId, 'pending', noteId, filename, file);
+  const upload: Upload = { noteId, attachmentId, filename, contentType, size: file.size };
+  const queued = queue(lib, 'uploadFile', upload as unknown as Record<string, unknown>, () => {
+    lib.attachments.insert({ id: attachmentId, noteId, filename, contentType, size: file.size, hasText: false, createdAt: Date.now(), pending: true });
+  });
+  lib.outbox.trackUpload(attachmentId, { ...queued, upload });
+  // `server`: whoever reads this file's text does so when the upload goes through
+  // (`onUploaded`), not now, when there is no server to give the text to.
+  return { filename, contentType, size: file.size, path: `files/${filename}`, indexing: 'server' };
+}
+
+/**
+ * Takes back a file added here that has not uploaded yet — the wrong photo, attached with
+ * no connection. Purely local: its entry leaves the queue, its row comes off, its bytes
+ * leave the device, and the server never hears of it. Without this the only way to be rid
+ * of it was to wait for a connection, let it upload, and delete it then.
+ *
+ * False when the note has no such file waiting, and the caller's delete is the server's.
+ * Throws when the file is being sent this very moment: that request cannot be recalled,
+ * and in a moment the file is an ordinary one that can be deleted.
+ */
+export async function cancelUpload(noteId: string, filename: string): Promise<boolean> {
+  const lib = await resolve();
+  if (!lib) return false;
+  const row = [...lib.attachments.values()].find((a) => a.pending && a.noteId === noteId && a.filename === filename);
+  if (!row) return false;
+  const outcome = await lib.outbox.cancelUpload(row.id);
+  if (outcome === 'sending') throw new Error(`“${filename}” is uploading right now. Delete it once it has.`);
+  return outcome === 'cancelled';
 }
 
 /**

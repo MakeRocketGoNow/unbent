@@ -24,6 +24,7 @@ import { Button } from './Button';
 import { Confirm } from './Confirm.js';
 import { DeleteNotebookConfirm } from './DeleteNotebookConfirm.js';
 import { EmojiField } from './EmojiField.js';
+import { KeepOffline } from './KeepOffline.js';
 import { TagInput } from './TagInput.js';
 import { formatCurrency } from './format-field.js';
 import { FieldTypeIcon, MoveDownIcon, MoveUpIcon } from './icons.js';
@@ -876,6 +877,12 @@ export function NotebookEditor({ notebookId, onChanged, onDeleted }: NotebookEdi
           be read that way. A note moved to another notebook keeps the values it has.
         </p>
       </section>
+
+      {/* Between the fields and the deletion: it is about this notebook on this device, not
+          about what the notebook is, so it comes after everything that is — and before the
+          one section nobody should pass on the way to another. Draws nothing where files
+          cannot be kept. */}
+      {notebook && <KeepOffline notebookId={notebookId} name={notebook.name} />}
 
       {/* Delete sits last and apart, the way a destructive action should: past the fields,
           under its own heading, not a button a stray click on the way down the page can find.
