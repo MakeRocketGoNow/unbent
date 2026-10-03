@@ -291,6 +291,7 @@ function readSecrets(names) {
     halfProviders,
     appUrl: has('APP_URL'),
     assetLinks: has('ANDROID_ASSET_LINKS'),
+    appleAssociation: has('APPLE_APP_SITE_ASSOCIATION'),
     posthog: has('POSTHOG_KEY'),
   };
 }
@@ -360,6 +361,7 @@ function report(state) {
     line(secrets.halfProviders.length ? BAD : INFO, 'OAuth providers', secrets.providers.length ? secrets.providers.map((p) => p.toLowerCase()).join(', ') + (secrets.halfProviders.length ? c.bad(`  half-configured: ${secrets.halfProviders.join(', ')}`) : '') : secrets.halfProviders.length ? c.bad(`half-configured: ${secrets.halfProviders.join(', ')}`) : c.dim('none'));
     line(INFO, 'APP_URL', secrets.appUrl ? 'pinned to one origin' : c.dim('derived from each request; pin it if the Worker answers on two hostnames'));
     line(INFO, 'Android app-links', secrets.assetLinks ? 'published' : c.dim('none; only needed for an Android build of your own'));
+    line(INFO, 'iOS app association', secrets.appleAssociation ? 'published' : c.dim('none; only needed for an iOS build of your own'));
     line(INFO, 'Error tracking', secrets.posthog ? 'PostHog' : c.dim('off'));
   }
 

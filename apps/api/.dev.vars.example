@@ -190,6 +190,12 @@ ALLOWED_EMAILS=
 # a JSON array of statements — see the README's Android section for the fingerprints.
 # ANDROID_ASSET_LINKS=[{"relation":["delegate_permission/common.handle_all_urls"],"target":{"namespace":"android_app","package_name":"com.example.notes","sha256_cert_fingerprints":["AA:BB:..."]}}]
 
+# The iOS counterpart, served at /.well-known/apple-app-site-association: which apps, by
+# team id and bundle id, this origin vouches for, for universal links and passkeys. Set it
+# only if you build the iOS app for this instance. The value is the document itself, a JSON
+# object — see the README's iOS section for the full shape.
+# APPLE_APP_SITE_ASSOCIATION={"applinks":{"details":[{"appIDs":["TEAMID.com.example.notes"],"components":[{"/":"/notes/*"}]}]},"webcredentials":{"apps":["TEAMID.com.example.notes"]}}
+
 # Auto-fill: a TypeSafe API key for Jev, which turns on the control on a note that fills
 # in its title, notebook, tags and fields from what it and its scans say. Unset — the
 # default — means the control is not drawn and nothing is sent anywhere.

@@ -239,6 +239,7 @@ says otherwise; `pnpm exec wrangler secret put NAME` from `apps/api`, or the das
 | `TYPESAFE_API_KEY` | filing a note from what it says | see [Filing a note from what it says](#filing-a-note-from-what-it-says); `DEV_TYPESAFE_API_KEY` as a GitHub secret carries a separate key to the dev instance and previews |
 | `ANTHROPIC_API_KEY`, `ANTHROPIC_MODEL` | reading images and text-less scans, and writing titles | see [Reading images](#reading-images); `DEV_ANTHROPIC_API_KEY` as a GitHub secret carries a separate key to the dev instance and previews |
 | `ANDROID_ASSET_LINKS` | an Android build of your own | see [Android app](#android-app) |
+| `APPLE_APP_SITE_ASSOCIATION` | an iOS build of your own | see [iOS app](#ios-app) |
 | `SWEEP_TOKEN` | sweeping the note stores at the end of each deploy | a GitHub secret the deploy carries to the Worker, `openssl rand -hex 32`; see [Where your notes live](#where-your-notes-live). `DEV_SWEEP_TOKEN` does the same for the dev instance |
 | Custom domain | serving from your own name | dashboard, not config |
 | `ANDROID_APPLICATION_ID`, `ANDROID_DEFAULT_INSTANCE` | the Android build in CI | GitHub repository **variables**; `unbent.applicationId` and `unbent.defaultInstance` in `local.properties` locally |
@@ -1314,6 +1315,57 @@ pnpm exec wrangler secret put ANDROID_ASSET_LINKS < assetlinks.json
 
 The `ANDROID_ASSET_LINKS` repository secret carries the same document to the dev instance
 and previews, so passkeys made there work from the app too.
+
+## iOS app
+
+An iOS app is under way: the same site in a web view, the way the Android app is. Nothing
+of it is in this repository yet; what the instance needs for it is.
+
+**Vouching for the app.** iOS opens this site's links in the app (universal links), and
+offers the site's passkeys to it, only if the site says which app that is: an Apple App
+Site Association document at `/.well-known/apple-app-site-association`, naming each app by
+its team id and bundle id. The instance serves it from its `APPLE_APP_SITE_ASSOCIATION`
+secret — the JSON verbatim, an object rather than Android's array — and an instance that
+has not set one vouches for no app. The team id is on the Apple Developer portal's
+Membership page; the debug build is a different bundle id (`.debug`) and is listed beside
+the release one.
+
+```json
+{
+  "applinks": {
+    "details": [
+      {
+        "appIDs": ["TEAMID.com.example.notes", "TEAMID.com.example.notes.debug"],
+        "components": [
+          { "/": "/connect", "exclude": true },
+          { "/": "/api/*", "exclude": true },
+          { "/": "/notes" }, { "/": "/notes/*" },
+          { "/": "/trash" }, { "/": "/trash/*" },
+          { "/": "/settings" }, { "/": "/settings/*" }
+        ]
+      }
+    ]
+  },
+  "webcredentials": {
+    "apps": ["TEAMID.com.example.notes", "TEAMID.com.example.notes.debug"]
+  }
+}
+```
+
+The paths are the Android app's: the pages, never the sign-in flow or files. The first
+component that matches wins, so the exclusions come first, and `/notes/*` rather than
+`/notes*` keeps a path that merely starts with the word from being claimed.
+
+```bash
+cd apps/api
+pnpm exec wrangler secret put APPLE_APP_SITE_ASSOCIATION < apple-app-site-association.json
+```
+
+Apple's CDN fetches the document, not the phone, so it has to reach the Worker from a
+datacenter: a zone with Bot Fight Mode on needs a WAF skip for `/.well-known/` paths, or
+the CDN is served a challenge. `https://app-site-association.cdn-apple.com/a/v1/<your
+host>` shows what Apple has. The `APPLE_APP_SITE_ASSOCIATION` repository secret carries the
+same document to the dev instance and previews.
 
 ## Known gaps
 
