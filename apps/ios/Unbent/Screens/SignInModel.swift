@@ -60,7 +60,12 @@ final class SignInModel {
     /// Sending reports nothing on success beyond moving the screen to the code field; a
     /// confirmation nobody asked for would only be one more thing to read.
     func emailCode(email: String, code: String?) {
-        run(failure: code == nil ? "Sign-in did not work." : "That code did not work. Ask for a new one.") {
+        run(
+            // Asking for a code signs nobody in, and the line under the form should not
+            // say it does.
+            progress: code == nil ? "Sending a code…" : "Signing in…",
+            failure: code == nil ? "Couldn’t send a code." : "That code did not work. Ask for a new one."
+        ) {
             let auth = EmailOtpAuth(origin: self.origin)
             guard let code else {
                 try await auth.sendCode(email: email)
@@ -78,7 +83,7 @@ final class SignInModel {
     }
 
     func password(email: String, password: String, name: String?) {
-        run(failure: "Sign-in did not work.") {
+        run(progress: "Signing in…", failure: "Sign-in did not work.") {
             let auth = PasswordAuth(origin: self.origin)
             guard let name else { return try await auth.signIn(email: email, password: password) }
             // Better Auth requires a name; an account made without one is named for its
@@ -88,10 +93,10 @@ final class SignInModel {
     }
 
     /// Runs one step. A session ends the sign-in; nil means the step was only a step.
-    private func run(failure: String, _ step: @escaping () async throws -> SessionCookie?) {
+    private func run(progress: String, failure: String, _ step: @escaping () async throws -> SessionCookie?) {
         guard !busy else { return }
         busy = true
-        status = "Signing in…"
+        status = progress
         Task {
             defer { busy = false }
             do {
