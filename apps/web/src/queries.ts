@@ -314,7 +314,16 @@ export const attachmentsQuery = (noteId: string) =>
     queryFn: async (): Promise<AttachmentInfo[]> => {
       const lib = await library();
       if (!lib) return api.listAttachments(noteId);
-      if (!lib.notes.has(noteId)) throw new ApiError(404, 'Not found');
+      // Same gap `noteQuery` names: a note opened from the server during the first
+      // copy has no row here yet, and treating that as 404 hid every file — the PDF
+      // the note is — until the walk reached it.
+      if (!lib.notes.has(noteId)) {
+        if (lib.state().cursor === null) {
+          if (!offlineNow()) return api.listAttachments(noteId);
+          throw new OfflineError();
+        }
+        throw new ApiError(404, 'Not found');
+      }
       return (view(lib).lookups.filesByNote.get(noteId) ?? []).map(toAttachmentInfo);
     },
   });

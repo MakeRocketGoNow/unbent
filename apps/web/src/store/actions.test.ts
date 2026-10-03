@@ -597,3 +597,54 @@ describe('the no-library path', () => {
     expect(api.updateNote).toHaveBeenCalledWith('n1', { title: 'new', ifUpdatedAt: 100 });
   });
 });
+
+describe('a note the copy does not hold yet', () => {
+  const missing: Note = { id: 'n-missing', title: 'old', body: '', tags: [], notebook: null, createdAt: 1, updatedAt: 100, fields: [] };
+
+  it('saves it as a request rather than throwing on the missing row', async () => {
+    // A link followed during the first copy: the editor has the server's note, the
+    // collection does not. `update` used to throw UpdateKeyNotFoundError and the
+    // typing was gone on the next open.
+    const { fake, engine } = library([]);
+    vi.mocked(api.updateNote).mockResolvedValue({ ...missing, title: 'new', updatedAt: 101 });
+    const out = await actions.saveNote({
+      noteId: missing.id,
+      value: { ...seedFrom(missing), title: 'new' },
+      base: missing,
+    });
+    expect(out).toMatchObject({ title: 'new', updatedAt: 101 });
+    expect(api.updateNote).toHaveBeenCalledWith(missing.id, { title: 'new', ifUpdatedAt: 100 });
+    expect(fake.queue).toHaveLength(0);
+    expect(engine.pull).toHaveBeenCalled();
+  });
+
+  it('trashes, restores and purges it as a request', async () => {
+    const { fake, engine } = library([]);
+    vi.mocked(api.deleteNote).mockResolvedValueOnce(undefined);
+    await actions.trashNote(missing.id);
+    expect(api.deleteNote).toHaveBeenCalledWith(missing.id);
+    expect(fake.queue).toHaveLength(0);
+    expect(engine.pull).toHaveBeenCalled();
+
+    vi.mocked(api.restoreNote).mockResolvedValueOnce(missing);
+    await actions.restoreNote(missing.id);
+    expect(api.restoreNote).toHaveBeenCalledWith(missing.id);
+
+    vi.mocked(api.deleteNotePermanently).mockResolvedValueOnce(undefined);
+    await actions.purgeNote(missing.id);
+    expect(api.deleteNotePermanently).toHaveBeenCalledWith(missing.id);
+  });
+
+  it('sends a bulk action that names one as a request for the whole selection', async () => {
+    // Search still hits the server, so a result can be a note the walk has not reached.
+    // Acting only on the ones held here used to report success and leave the rest.
+    const { fake, engine, lib } = library([row('n1')]);
+    vi.mocked(api.deleteNotes).mockResolvedValueOnce({ trashed: 2 });
+    expect(await actions.trashNotes(['n1', missing.id])).toBe(2);
+    expect(api.deleteNotes).toHaveBeenCalledWith(['n1', missing.id]);
+    expect(fake.queue).toHaveLength(0);
+    expect(engine.pull).toHaveBeenCalled();
+    // The local row is unchanged until the pull lands; we asked the server for both.
+    expect(lib.notes.get('n1')?.deletedAt).toBeUndefined();
+  });
+});
