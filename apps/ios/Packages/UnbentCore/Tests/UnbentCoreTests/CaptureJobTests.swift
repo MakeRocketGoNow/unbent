@@ -121,7 +121,46 @@ final class CaptureJobTests: XCTestCase {
         let broken = CaptureOutcome(status: 500)
         for _ in 0..<3 { _ = job.handle(.file("file-0"), broken) }
         XCTAssertEqual(.retry(.file("file-1"), after: 30, unavailable: false), job.handle(.file("file-1"), broken))
-        XCTAssertEqual(.failed, job.handle(.file("file-0"), broken))
+    }
+
+    /// The note exists by then, so the capture is saved without the file, and says so.
+    func testAFileOutOfTriesIsLeftOutAndTheRestOfTheCaptureGoesOn() {
+        var job = job()
+        _ = job.handle(.create, ok)
+        let broken = CaptureOutcome(status: 500)
+        for _ in 0..<3 { _ = job.handle(.file("file-0"), broken) }
+
+        XCTAssertEqual(.wait, job.handle(.file("file-0"), broken))
+        XCTAssertEqual([.file("file-1")], job.pending(live: []))
+        XCTAssertEqual(.saved, job.handle(.file("file-1"), ok))
+        XCTAssertEqual(1, job.filesNotAdded)
+    }
+
+    func testARefusalThatWillNotChangeIsNotTriedAgain() {
+        for status in [400, 404, 413, 415] {
+            var job = job()
+            XCTAssertEqual(.failed, job.handle(.create, CaptureOutcome(status: status)), "\(status)")
+            XCTAssertEqual(1, job.progress.attempts)
+        }
+        // A file the server will not take is left out on the first answer.
+        var job = job(files: ["a.pdf"])
+        _ = job.handle(.create, ok)
+        XCTAssertEqual(.saved, job.handle(.file("file-0"), CaptureOutcome(status: 413)))
+        XCTAssertEqual(1, job.filesNotAdded)
+    }
+
+    func testATimeoutAndATooManyAreStillTriedAgain() {
+        for status in [408, 429] {
+            var job = job()
+            XCTAssertEqual(.retry(.create, after: 30, unavailable: false), job.handle(.create, CaptureOutcome(status: status)), "\(status)")
+        }
+    }
+
+    func testARecordWrittenBeforeFilesCouldBeLeftOutStillReads() throws {
+        let old = #"{"id":"j","origin":"https://notes.example.com","noteId":"n","title":"t","body":"","tags":[],"created":true,"progress":{"attempts":0,"unavailable":0},"files":[{"id":"f","name":"a.pdf","contentType":"application/pdf","done":false,"progress":{"attempts":0,"unavailable":0}}]}"#
+        let job = try JSONDecoder().decode(CaptureJob.self, from: Data(old.utf8))
+        XCTAssertEqual(0, job.filesNotAdded)
+        XCTAssertEqual([.file("f")], job.pending(live: []))
     }
 
     func testAServerAskingForTimeDoesNotSpendAnAttempt() {

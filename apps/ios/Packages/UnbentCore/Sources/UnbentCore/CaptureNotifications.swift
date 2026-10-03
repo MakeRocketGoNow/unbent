@@ -30,7 +30,15 @@ public struct CaptureNotifications: CaptureNotifying {
     /// be hours.
     public func waiting(_ job: CaptureJob) { post(job, "Waiting for Unbent to come back") }
 
-    public func saved(_ job: CaptureJob) { post(job, "Saved", noteId: job.noteId) }
+    public func saved(_ job: CaptureJob) {
+        let missing = job.filesNotAdded
+        let title = switch missing {
+        case 0: "Saved"
+        case 1: "Saved, but 1 file could not be added"
+        default: "Saved, but \(missing) files could not be added"
+        }
+        post(job, title, noteId: job.noteId)
+    }
 
     public func failed(_ job: CaptureJob) { post(job, "Could not save") }
 

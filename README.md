@@ -1485,7 +1485,8 @@ result (`CaptureQueue`). A background session promises no order, so the requests
 at a time: Save sends `POST /api/notes` and closes the sheet, and the files follow once
 the note is known to exist. Each result is applied to the capture's record, `.job.json`
 beside its files, by a pure function with the rules in it (`CaptureJob.handle`): four
-tries with a backoff; a 503 with `Retry-After` waited out, up to fourteen times, without
+tries with a backoff, and none for a 4xx that will be the same next time; a file given up
+on is left out of a capture that is otherwise saved; a 503 with `Retry-After` waited out, up to fourteen times, without
 spending a try; a 401 for the session the phone still holds forgets the session and keeps the
 capture, which then waits for a sign-in like one made signed out. A retry is a request created at once with `earliestBeginDate`, so the wait is the
 system's to keep. The note's id is chosen on the phone, and each file's is sent as

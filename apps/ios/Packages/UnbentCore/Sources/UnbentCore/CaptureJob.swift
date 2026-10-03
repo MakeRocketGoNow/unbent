@@ -39,7 +39,7 @@ public enum CaptureAction: Equatable, Sendable {
     /// The session is gone. Forget it and say so. The capture is kept as it is, like one
     /// made while signed out, and goes again after the next sign-in.
     case signInNeeded
-    /// Out of attempts. Delete the files and say so.
+    /// The note could not be made. Delete the files and say so.
     case failed
 }
 
@@ -77,6 +77,11 @@ public struct CaptureJob: Codable, Equatable, Sendable {
         public var name: String
         public var contentType: String
         public var done = false
+        /// True for a file that was given up on: refused for good, or out of tries. It is
+        /// `done` as well, so the rest of the capture goes on without it, and "Saved"
+        /// says how many could not be added. Optional so a record written before the
+        /// field existed still reads.
+        public var failed: Bool?
         public var progress = Progress()
 
         public init(id: String = CaptureJob.newId(), name: String, contentType: String) {
@@ -177,6 +182,18 @@ public struct CaptureJob: Codable, Equatable, Sendable {
         return min(max(seconds, shortestWait), longestWait)
     }
 
+    /// Whether an answer will be the same however often it is asked for: a 4xx, which is
+    /// the server refusing the request as it stands — a name it will not take, a file
+    /// too large, a note that is gone. Three are not that: 401 is about the session and
+    /// is handled before this, 408 is a timeout, and 429 is "later".
+    ///
+    /// The web app's outbox has the same rule (`NonRetriableError`), for the same reason:
+    /// trying again is four uploads of a file to hear one answer.
+    static func isPermanent(_ outcome: CaptureOutcome) -> Bool {
+        guard let status = outcome.status, (400..<500).contains(status) else { return false }
+        return ![401, 408, 429].contains(status)
+    }
+
     /// Thirty seconds, doubling: WorkManager's backoff, which Android's worker runs on.
     static func backoff(attempts: Int) -> TimeInterval {
         30 * pow(2, Double(max(attempts, 1) - 1))
@@ -219,7 +236,21 @@ public struct CaptureJob: Codable, Equatable, Sendable {
         }
 
         progress.attempts += 1
-        guard progress.attempts < Self.maxAttempts else { return .failed }
+        guard progress.attempts < Self.maxAttempts, !Self.isPermanent(outcome) else {
+            switch step {
+            case .create:
+                return .failed
+            case .file(let id):
+                // The note exists and the other files are fine. Giving the whole capture
+                // up here deleted them and said "Could not save" about a note that was
+                // on the server; this file alone is left out, and "Saved" says so.
+                mark(id) {
+                    $0.done = true
+                    $0.failed = true
+                }
+                return remaining.isEmpty ? .saved : .wait
+            }
+        }
         // A 401 for a session that has since been replaced goes again at once, with the
         // new one; everything else backs off.
         let delay = outcome.status == 401 ? 0 : Self.backoff(attempts: progress.attempts)
@@ -240,8 +271,11 @@ public struct CaptureJob: Codable, Equatable, Sendable {
         return remaining.map { CaptureStep.file($0.id) }.filter { !live.contains($0.key(job: id)) }
     }
 
-    /// True once the note exists and every file is on it.
+    /// True once the note exists and every file is on it or has been given up on.
     public var isSaved: Bool { created && remaining.isEmpty }
+
+    /// How many files were given up on.
+    public var filesNotAdded: Int { files.filter { $0.failed == true }.count }
 
     public func file(_ id: String) -> File? { files.first { $0.id == id } }
 
