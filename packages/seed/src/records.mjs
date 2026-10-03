@@ -90,6 +90,42 @@ const COUPONS = [
   ['Adventure Works', 'GEAR-EXAMPLE-25', '25% off one item', 99, null, false, 'No expiration printed.'],
 ];
 
+/**
+ * Files on a few coupons, keyed by code. Receipts are the only other notebook with files,
+ * and offline testing needs two to compare: keep one notebook on the device and leave the
+ * other off it, and the one that is not kept shows "Not available offline" where a
+ * thumbnail would be. A mix of PDFs and images, a note with two files, and one name long
+ * enough to wrap and full of spaces and parentheses, as the receipts have.
+ */
+const COUPON_FILES = {
+  'SAVE15-EXAMPLE': [
+    {
+      name: 'acme-save15-coupon.pdf',
+      lines: ['Acme Outfitters', 'Take 15% off your order', 'Code SAVE15-EXAMPLE', 'Excludes sale items.', 'Expires in 24 days'],
+    },
+  ],
+  'FREESHIP-SAMPLE': [
+    {
+      name: 'northwind-freeship-coupon.png',
+      image: true,
+      lines: ['NORTHWIND COFFEE', 'Free shipping', 'Code FREESHIP-SAMPLE', 'Orders over $30', 'Valid 60 days'],
+    },
+  ],
+  'SPRING-DEMO-20': [
+    {
+      name: 'Fabrikam Hardware Spring Coupon (print at home) - 20% off one item, one per customer, not valid with other offers v3.pdf',
+      lines: ['Fabrikam Hardware', 'Spring sale: 20% off one item', 'Code SPRING-DEMO-20', 'One per customer.', 'Not valid with other offers.'],
+    },
+  ],
+  'TUNEUP-EXAMPLE': [
+    {
+      name: 'tailspin-tuneup-voucher.pdf',
+      lines: ['Tailspin Bikes', '$20 off a tune-up', 'Code TUNEUP-EXAMPLE', 'Book two weeks ahead.', 'Expires in 120 days'],
+    },
+    { name: 'tailspin-tuneup-qr.png', image: true, lines: ['TAILSPIN BIKES', 'Show at the counter', 'TUNEUP-EXAMPLE'] },
+  ],
+};
+
 const CONTACTS = [
   // [name, company, role, email, phone, website, categories, met (days ago)]
   ['Casey Mason', 'Mason & Daughters Plumbing', 'Owner', 'casey@example.com', '555-0101', 'https://plumbing.example.com', ['Home', 'Trades'], 40],
@@ -383,6 +419,7 @@ export const RECORDS = [
       Used: used,
       ...(notes ? { Notes: notes } : {}),
     },
+    ...(COUPON_FILES[code] ? { files: COUPON_FILES[code] } : {}),
     age: added,
   })),
   ...CONTACTS.map(([name, company, role, email, phone, website, categories, met]) => ({
