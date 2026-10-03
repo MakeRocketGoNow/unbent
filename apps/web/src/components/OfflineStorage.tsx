@@ -52,13 +52,19 @@ export function OfflineStorage() {
 
   const [asking, setAsking] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   async function run(action: () => Promise<unknown>) {
     setBusy(true);
+    setError(null);
     try {
       await action();
       setAsking(null);
       await refresh();
       remeasure();
+    } catch (err) {
+      // Said, as the notebook's own page says it: a removal that failed in silence looks
+      // like one that worked until the storage figure does not move.
+      setError((err as Error).message);
     } finally {
       setBusy(false);
     }
@@ -135,6 +141,8 @@ export function OfflineStorage() {
           />
         )}
       </section>
+
+      {error && <p className="bad small">{error}</p>}
 
       {waiting.files > 0 && (
         <section className="notebook-section">
