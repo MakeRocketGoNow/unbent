@@ -53,6 +53,20 @@ BETTER_AUTH_SECRET=
 # whichever client id it asked for. Set this only if a build asks for its own Android
 # audience rather than reusing the web client id above; auth.ts then accepts both.
 # GOOGLE_ANDROID_CLIENT_ID=
+#
+# Apple:  https://developer.apple.com/account/resources/identifiers/list/serviceId
+#   A Services ID with Sign in with Apple, return URL https://<host>/api/auth/callback/apple.
+#   Apple refuses http and localhost, so the web button only works on a deployed origin.
+#   APPLE_CLIENT_ID is the Services ID; APPLE_CLIENT_SECRET is the JWT from
+#   scripts/apple-client-secret.mjs, which expires in at most six months.
+# APPLE_CLIENT_ID=
+# APPLE_CLIENT_SECRET=
+#
+# The iOS app signs in natively, and its identity token names the app's bundle id as its
+# audience rather than the Services ID. List every bundle id that may sign in here,
+# comma-separated — the debug build is its own id; auth.ts then accepts them beside the
+# Services ID.
+# APPLE_BUNDLE_ID=com.example.notes,com.example.notes.debug
 
 # Passkeys are offered unless this is '0'. They need nothing registered anywhere — the other
 # half of WebAuthn is the browser and the user's own device — so this exists for an operator

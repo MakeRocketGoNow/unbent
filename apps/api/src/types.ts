@@ -86,6 +86,12 @@ export interface Env {
   GITHUB_CLIENT_ID?: string;
   GITHUB_CLIENT_SECRET?: string;
   /**
+   * Bundle ids whose Sign in with Apple identity tokens are accepted, comma-separated: the
+   * iOS app's native tokens name the bundle id as their audience, not the web Services ID
+   * in `APPLE_CLIENT_ID`. Per deployment, and only meaningful while Apple is configured.
+   */
+  APPLE_BUNDLE_ID?: string;
+  /**
    * '1' offers email-and-password sign-in, '0' refuses it.
    *
    * Neither is usually needed. Password is offered by default when nothing else on the
