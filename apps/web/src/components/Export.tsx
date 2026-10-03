@@ -109,7 +109,7 @@ export function Export() {
       {isHosted() ? (
         <p className="muted small">
           The archive is built in the app, a few notes at a time, and written to{' '}
-          {savesTo() === 'Files' ? 'Files' : "your phone's Downloads"} as it goes, so a
+          {savesTo() === 'Files' ? 'the Files app' : "your phone's Downloads"} as it goes, so a
           library of any size exports. Keep the app open until it finishes.
         </p>
       ) : (
