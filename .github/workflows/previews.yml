@@ -283,8 +283,13 @@ jobs:
           cache: pnpm
       - if: steps.configured.outputs.ready == 'true'
         run: pnpm install --frozen-lockfile
+      # The checkout is GitHub's merge commit, which is on no branch; the account menu names
+      # the PR's head instead, the commit the comment below says was deployed. See
+      # `readBuildInfo` in apps/web/vite.config.ts.
       - if: steps.configured.outputs.ready == 'true'
         run: pnpm build
+        env:
+          UNBENT_COMMIT: ${{ github.event.pull_request.head.sha }}
 
       # Migrations run before the deploy that would otherwise provision the database, so
       # on a repository whose account has none yet this creates it; elsewhere it is a no-op.

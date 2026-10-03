@@ -3,6 +3,7 @@ import { configQuery } from '../queries.js';
 import { instanceLine } from '../instance-marker.js';
 import { useOffline } from '../connectivity.js';
 import { isHosted } from '../app-bridge.js';
+import { buildInfo, buildLabel, buildTitle, type BuildInfo } from '../build-info.js';
 import { OverflowMenu, type OverflowItem } from './OverflowMenu.js';
 
 interface AccountMenuProps {
@@ -20,6 +21,29 @@ interface AccountMenuProps {
 /** A legal document as a menu item: a route for the built-in ones, an anchor for the rest. */
 function legalItem(label: string, url: string): OverflowItem {
   return url.startsWith('/') ? { label, to: url } : { label, external: url };
+}
+
+/**
+ * Which commit this page is, as the last line of the menu's head, or nothing where the
+ * build could not say.
+ *
+ * Here rather than on a settings page because it is the same kind of line as the two
+ * above it — it says where you are and does nothing to it — and because this menu is one
+ * tap from every screen, on production as much as on a scratch instance. It is the
+ * question asked right after a merge ("has it shipped, and is this tab running it?"), and
+ * a page to find first would make it a hunt.
+ *
+ * A link to the commit when the build knows where it lives, since going to the commit is
+ * navigation; static text for a local build, whose commit may not be pushed anywhere.
+ */
+export function buildItem(info: BuildInfo | null): OverflowItem | null {
+  if (!info) return null;
+  const label = buildLabel(info);
+  const title = buildTitle(info);
+  const className = 'overflow-email overflow-build';
+  return info.url
+    ? { label, className, external: info.url, title }
+    : { label, className, static: true, title };
 }
 
 /** First letter of the address, which is as much as a 1.75rem circle can carry. */
@@ -51,6 +75,7 @@ export function AccountMenu({ email, onSignOut, withAddress = false }: AccountMe
   const config = useQuery(configQuery());
   const legal = config.data?.legal;
   const instance = config.data ? instanceLine(config.data) : null;
+  const build = buildItem(buildInfo);
   const signOutNeedsConnection = useOffline() && !isHosted();
 
   return (
@@ -90,6 +115,7 @@ export function AccountMenu({ email, onSignOut, withAddress = false }: AccountMe
               },
             ]
           : []),
+        ...(build ? [build] : []),
         // Findable once signed in, which is the half the sign-in screen's own links cannot
         // cover. They are reference, not something to act on, and they sit above Sign out
         // so the destructive item stays last.

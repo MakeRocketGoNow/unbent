@@ -186,6 +186,7 @@ export function OverflowMenu({
                   className={className}
                   href={item.external}
                   rel="noopener noreferrer"
+                  title={item.title}
                   onClick={() => {
                     setOpen(false);
                     item.onSelect?.();

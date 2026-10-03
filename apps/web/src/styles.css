@@ -2364,12 +2364,27 @@ a.sidebar-status:hover {
 /* The instance line under the address on a scratch instance ("PR 222 · notes are its own").
    The same kind of line as the address, so the two read as one block: the divider moves
    below the second, and the dot is the favicon's badge, so the two marks read as one. */
-.overflow-email:has(+ .overflow-instance) {
+/* The same goes for the build line (`buildItem`), which closes the block on every instance,
+   production included, so the divider always sits under whichever line is last. */
+.overflow-email:has(+ .overflow-instance, + .overflow-build) {
   padding-bottom: 0.15rem;
   margin-bottom: 0;
   border-bottom: 0;
 }
-.overflow-email.overflow-instance { padding-top: 0; }
+.overflow-email.overflow-instance,
+.overflow-email.overflow-build { padding-top: 0; }
+/* Commit hashes compare digit by digit, so they should not shift between builds. */
+.overflow-build { font-variant-numeric: tabular-nums; }
+/* On CI builds it links to the commit. Muted like its neighbours until hovered, and then
+   plainly a link, not a menu command: it underlines rather than taking the item's fill.
+   Qualified to outweigh `.overflow-item:hover:not(:disabled)`. */
+a.overflow-item.overflow-build { cursor: pointer; }
+a.overflow-item.overflow-build:hover,
+a.overflow-item.overflow-build:focus-visible {
+  color: var(--fg);
+  background: none;
+  text-decoration: underline;
+}
 .overflow-instance::before {
   content: '';
   display: inline-block;

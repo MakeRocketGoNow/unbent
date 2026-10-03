@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process';
 import { readFileSync, readdirSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { dirname, join } from 'node:path';
@@ -61,6 +62,63 @@ function pdfjsWasm(): Plugin {
 }
 
 /**
+ * The commit this build is made from, for the account menu and `index.html` — see
+ * `src/build-info.ts` for why it is the page's commit and not the server's.
+ *
+ * Read from git rather than from `GITHUB_SHA`, so a local build and a self-hoster's
+ * `pnpm release` say the same thing CI does. `UNBENT_COMMIT` overrides it for a preview:
+ * a pull request is checked out at GitHub's merge commit, which is on no branch and in no
+ * one's log, and the PR comment names the head instead, so the preview names the head too.
+ *
+ * The link is to whichever repository CI ran in, so a fork's instance points at the fork.
+ * Outside CI there is none: the commit may never have been pushed.
+ *
+ * Null when there is no git to ask, which the menu answers by drawing no line.
+ */
+function readBuildInfo() {
+  const git = (...args: string[]) =>
+    execFileSync('git', args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+  let commit: string;
+  try {
+    commit = process.env.UNBENT_COMMIT || git('rev-parse', 'HEAD');
+  } catch {
+    return null;
+  }
+  let date: string | null = null;
+  try {
+    date = git('log', '-1', '--format=%cI', commit) || null;
+  } catch {
+    // A preview's head is not in its shallow checkout; the line goes without a date.
+  }
+  let dirty = false;
+  if (!process.env.CI) {
+    try {
+      dirty = git('status', '--porcelain', '--untracked-files=no') !== '';
+    } catch {
+      // Not knowing is not the same as having changes.
+    }
+  }
+  const { GITHUB_SERVER_URL: server, GITHUB_REPOSITORY: repo } = process.env;
+  const url = server && repo ? `${server}/${repo}/commit/${commit}` : null;
+  return { commit, date, url, dirty };
+}
+
+const BUILD_INFO = readBuildInfo();
+
+/** `<meta name="unbent-commit">`, so a deploy's commit can be read without signing in. */
+function buildMeta(): Plugin {
+  return {
+    name: 'unbent:build-meta',
+    transformIndexHtml() {
+      if (!BUILD_INFO) return [];
+      return [
+        { tag: 'meta', attrs: { name: 'unbent-commit', content: BUILD_INFO.commit }, injectTo: 'head' },
+      ];
+    },
+  };
+}
+
+/**
  * Ports come from the environment so that a second checkout can run its own pair.
  * `scripts/dev.mjs` derives them from the worktree; started by hand, the defaults are the
  * main checkout's.
@@ -69,12 +127,16 @@ const WEB_PORT = Number(process.env.WEB_PORT ?? 5173);
 const API_PORT = Number(process.env.API_PORT ?? 8787);
 
 export default defineConfig({
+  define: {
+    __UNBENT_BUILD__: JSON.stringify(BUILD_INFO),
+  },
   plugins: [
     // Must precede react(): the plugin generates routeTree.gen.ts from src/routes, and
     // the React plugin has to see the generated file rather than race it.
     tanstackRouter({ target: 'react', autoCodeSplitting: true }),
     react(),
     pdfjsWasm(),
+    buildMeta(),
     /*
      * The service worker that lets the installed app open with no connection — see
      * `src/sw/sw.ts`.
