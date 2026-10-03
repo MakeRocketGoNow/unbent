@@ -3,7 +3,7 @@ import { registerRoute } from 'workbox-routing';
 import { CacheFirst, NetworkFirst, type StrategyOptions } from 'workbox-strategies';
 import { ExpirationPlugin } from 'workbox-expiration';
 import { API_CACHE, FILES_CACHE, SERVED_HEADER, VIEW_HEADER, classify, servesShell, shelved } from './routes.js';
-import { createFilesLedger } from './budget.js';
+import { FILES_BUDGET, createFilesLedger } from './budget.js';
 import { findFile } from '../store/files.js';
 
 /**
@@ -176,6 +176,23 @@ self.addEventListener('activate', (event) => {
 });
 
 /**
+ * What empties this cache when the browser refuses a write for want of room.
+ *
+ * The budget above keeps the cache under 500 MB; it cannot know the device has less than
+ * that to give. When a store fails with a quota error, Workbox runs the callbacks its
+ * plugins registered, and this plugin's is "delete this cache" — the cheapest storage the
+ * app holds, refilled by opening things. Without it the cache went on failing to store
+ * while sitting on whatever it had (review of #236).
+ *
+ * The expiration plugin is here for that alone: `purgeOnQuotaError` is the only way to
+ * that callback without `workbox-core` as a dependency of our own. It must be given an
+ * age or a count to be constructed, so it is given the budget's own month, counted from
+ * last use as the ledger counts it; the two agree, and the ledger's next pass forgets
+ * whatever this removed.
+ */
+const emptiedWhenFull = new ExpirationPlugin({ maxAgeSeconds: FILES_BUDGET.maxAgeMs / 1000, purgeOnQuotaError: true });
+
+/**
  * The bytes of a file someone looked at — an image drawn in a note, a PDF opened in the
  * viewer — so the same note reads the same with no connection.
  *
@@ -183,7 +200,7 @@ self.addEventListener('activate', (event) => {
  * the attachment. Only what was looked at, never what the indexer or an export read in
  * bulk — see `classify` for why that distinction is the whole rule.
  */
-const openedFiles = new CacheFirst({ cacheName: FILES_CACHE, plugins: [keepableFile, budgeted] });
+const openedFiles = new CacheFirst({ cacheName: FILES_CACHE, plugins: [keepableFile, budgeted, emptiedWhenFull] });
 
 /**
  * A file's bytes, from the nearest place that has them: the account's own shelves, then
