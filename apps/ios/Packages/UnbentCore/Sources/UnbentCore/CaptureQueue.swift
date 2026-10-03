@@ -115,6 +115,9 @@ public final class CaptureQueue: NSObject, @unchecked Sendable {
                 self.notifier.failed(job)
                 return done()
             }
+            // Only when there is a session to send it with: signed out, nothing is being
+            // saved yet, and the sheet has said what happens instead.
+            if self.sessions.session(for: job.origin) != nil { self.notifier.saving(job) }
             self.send(.create, of: job)
             // A round trip to the system's uploader, behind the request just handed over.
             self.session(self.home).getAllTasks { _ in done() }
@@ -136,7 +139,12 @@ public final class CaptureQueue: NSObject, @unchecked Sendable {
                 // Read again: results may have been applied while the lists were fetched.
                 for job in self.jobsOnDisk() {
                     if job.isSaved { self.apply(.saved, to: job); continue }
-                    for step in job.pending(live: live) { self.send(step, of: job) }
+                    for step in job.pending(live: live) {
+                        // A note going out for the first time from here is one that
+                        // waited for a sign-in, and now there is something to say.
+                        if step == .create, self.sessions.session(for: job.origin) != nil { self.notifier.saving(job) }
+                        self.send(step, of: job)
+                    }
                 }
                 for identifier in idle where identifier != self.home { self.retire(identifier) }
             }
@@ -187,6 +195,10 @@ public final class CaptureQueue: NSObject, @unchecked Sendable {
 
     /// Hands one request to the system. A capture with no session to send it with stays
     /// as it is, on disk, for `resumeAll` after a sign-in.
+    ///
+    /// It posts no notification, and has to stay that way: this is also how a request is
+    /// sent again after the server asked for time, and "Saving…" posted from here
+    /// replaced "Waiting for Unbent to come back" the moment it went up.
     private func send(_ step: CaptureStep, of job: CaptureJob, after delay: TimeInterval = 0) {
         guard let bearer = sessions.session(for: job.origin)?.bearer else { return }
         let directory = store.directory(job.id)
@@ -201,7 +213,6 @@ public final class CaptureQueue: NSObject, @unchecked Sendable {
                 body = directory.appendingPathComponent(CaptureJob.createBodyName)
                 try made.body.write(to: body, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
                 request = made.request
-                notifier.saving(job)
             case .file(let id):
                 guard let file = job.file(id) else { return }
                 body = directory.appendingPathComponent(file.name)
