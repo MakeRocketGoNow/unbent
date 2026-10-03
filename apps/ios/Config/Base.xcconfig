@@ -1,0 +1,63 @@
+// Everything about a build of the iOS app that is a setting rather than code. The project
+// file holds none of its own: a value set in two places is a value that disagrees with
+// itself sooner or later, and an .xcconfig is the one of the two that reads in a diff.
+//
+// Debug.xcconfig and Release.xcconfig include this, add what differs, and end by including
+// Local.xcconfig — untracked, this app's `local.properties` — so anything here can be
+// overridden on one machine without touching a tracked file. A fork that publishes sets
+// UNBENT_BUNDLE_ID_BASE, UNBENT_INSTANCE_HOST and DEVELOPMENT_TEAM there, or in CI.
+
+// The identity the App Store, the App Group and the instance's apple-app-site-association
+// all key on. A reverse-domain id has to be one you control.
+UNBENT_BUNDLE_ID_BASE = com.makerocketgonow.unbent
+UNBENT_BUNDLE_ID_SUFFIX =
+PRODUCT_BUNDLE_IDENTIFIER = $(UNBENT_BUNDLE_ID_BASE)$(UNBENT_BUNDLE_ID_SUFFIX)
+
+// The Unbent the app opens. Host and scheme are apart because `//` starts a comment in
+// this file, so an address cannot be written here whole. The host is also the web view's
+// App-Bound Domain: a release build can open this instance and no other.
+UNBENT_INSTANCE_HOST = unbent.app
+UNBENT_INSTANCE_SCHEME = https
+
+// The scheme a browser sign-in comes back on (`unbent://connect`). The debug build has
+// its own, so the two installs never answer each other's redirect.
+UNBENT_CONNECT_SCHEME = unbent
+
+// Shared with the Share Extension: the instance, and the Keychain item holding the session.
+UNBENT_APP_GROUP = group.$(PRODUCT_BUNDLE_IDENTIFIER)
+
+UNBENT_DISPLAY_NAME = Unbent
+
+MARKETING_VERSION = 0.2.0
+// 1 on a laptop. CI passes its run number, which is unique and always rising; a build
+// uploaded with a number the store has seen is refused.
+CURRENT_PROJECT_VERSION = 1
+
+PRODUCT_NAME = Unbent
+IPHONEOS_DEPLOYMENT_TARGET = 17.0
+TARGETED_DEVICE_FAMILY = 1,2
+SUPPORTED_PLATFORMS = iphoneos iphonesimulator
+SUPPORTS_MACCATALYST = NO
+SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO
+SDKROOT = iphoneos
+SWIFT_VERSION = 5.0
+
+INFOPLIST_FILE = Config/Info.plist
+GENERATE_INFOPLIST_FILE = NO
+// The Info.plist is run through the C preprocessor, for the two blocks only a debug build
+// has (see the file). That is why it has no DOCTYPE line and no apostrophes: the
+// preprocessor reads `//` as a comment and a lone `'` as an unfinished character.
+INFOPLIST_PREPROCESS = YES
+CODE_SIGN_ENTITLEMENTS = Config/Unbent.entitlements
+CODE_SIGN_STYLE = Automatic
+
+ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon
+ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor
+
+ENABLE_USER_SCRIPT_SANDBOXING = YES
+LD_RUNPATH_SEARCH_PATHS = $(inherited) @executable_path/Frameworks
+ALWAYS_SEARCH_USER_PATHS = NO
+CLANG_ENABLE_MODULES = YES
+ENABLE_STRICT_OBJC_MSGSEND = YES
+GCC_NO_COMMON_BLOCKS = YES
+LOCALIZATION_PREFERS_STRING_CATALOGS = YES

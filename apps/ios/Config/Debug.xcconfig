@@ -1,0 +1,24 @@
+#include "Base.xcconfig"
+
+// A second app beside the release one, as on Android: its own bundle id, so its own
+// session, web data and App Group; its own name and an amber icon, because a label is
+// truncated under an icon and in the share sheet, which is exactly where telling the two
+// apart matters — picking the wrong one sends what was shared to a different account.
+UNBENT_BUNDLE_ID_SUFFIX = .debug
+UNBENT_DISPLAY_NAME = Unbent (debug)
+UNBENT_CONNECT_SCHEME = unbent-debug
+ASSETCATALOG_COMPILER_APPICON_NAME = AppIconDebug
+
+// Turns on the debug-only blocks of Info.plist: plain http to a dev server on this Mac,
+// and the extra hosts the web view may open.
+INFOPLIST_PREPROCESSOR_DEFINITIONS = UNBENT_DEBUG=1
+
+SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG
+SWIFT_OPTIMIZATION_LEVEL = -Onone
+GCC_OPTIMIZATION_LEVEL = 0
+GCC_PREPROCESSOR_DEFINITIONS = DEBUG=1 $(inherited)
+DEBUG_INFORMATION_FORMAT = dwarf
+ENABLE_TESTABILITY = YES
+ONLY_ACTIVE_ARCH = YES
+
+#include? "Local.xcconfig"

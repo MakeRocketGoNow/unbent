@@ -13,6 +13,8 @@
     "dev:web": "pnpm --filter @unbent/web dev",
     "android": "apps/android/scripts/run.sh",
     "android:build": "apps/android/scripts/build-and-run.sh",
+    "ios": "apps/ios/scripts/run.sh",
+    "ios:build": "apps/ios/scripts/build-and-run.sh",
     "build": "pnpm --filter @unbent/web build",
     "typecheck": "pnpm -r typecheck",
     "test": "pnpm -r test",
