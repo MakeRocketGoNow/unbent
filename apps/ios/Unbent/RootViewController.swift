@@ -77,7 +77,10 @@ final class RootViewController: UIViewController {
             guard let self else { return }
             // Every way in ends here: the cookie the response set, kept for this instance.
             self.sessions.save(session, for: origin)
-            self.start()
+            // The shell takes a session cookie it finds in the web view for newer than
+            // the Keychain's. Straight after a sign-in the opposite is true, so anything
+            // left there from before goes first.
+            self.clearCookies { [weak self] in self?.start() }
         }
         let screen = SignInHost(
             model: model,

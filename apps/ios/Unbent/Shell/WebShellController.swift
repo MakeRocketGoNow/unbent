@@ -241,11 +241,36 @@ final class WebShellController: UIViewController {
     /// Puts the session in the web view's cookie store, then runs `then`.
     ///
     /// Before every load rather than once: the store can be emptied behind the app's back,
-    /// and a fresh sign-in replaces the session. Setting the same cookie again is a no-op,
-    /// so the cost of being safe is nothing.
+    /// and a fresh sign-in replaces the session.
+    ///
+    /// The store is read first, because the page can come to hold a newer session than the
+    /// Keychain does — someone signs in on the site's own `/login` inside the web view, or
+    /// changes their password, which Better Auth answers by issuing a new session and
+    /// revoking the rest. Writing the Keychain's copy over that would put a dead cookie
+    /// back; the page would get a 401, `checkSession` would test the same dead bearer, and
+    /// the person would be signed out for having changed their password. So a session
+    /// cookie already there under the same name, for this host, with a different value, is
+    /// the newer one, and it is the Keychain that is brought up to date.
+    ///
+    /// The cookie written here carries no expiry, so it lasts as long as the web view's
+    /// process and no longer, in place of the long-lived one the server set. That is only
+    /// sound because every load, and every return to the app, comes through here.
     private func installSession(then: @escaping () -> Void = {}) {
-        guard let cookie = sessions.session(for: origin)?.httpCookie(origin: origin) else { return then() }
-        webView.configuration.websiteDataStore.httpCookieStore.setCookie(cookie, completionHandler: then)
+        guard let stored = sessions.session(for: origin) else { return then() }
+        let host = URLComponents(string: origin)?.host
+        let store = webView.configuration.websiteDataStore.httpCookieStore
+        store.getAllCookies { [weak self, origin] cookies in
+            guard let self else { return }
+            let live = cookies.first {
+                $0.name == stored.name && !$0.value.isEmpty && $0.domain.caseInsensitiveCompare(host ?? "") == .orderedSame
+            }
+            if let live, live.value != stored.value {
+                self.sessions.save(SessionCookie(name: live.name, value: live.value), for: origin)
+                return then()
+            }
+            guard let cookie = stored.httpCookie(origin: origin) else { return then() }
+            store.setCookie(cookie, completionHandler: then)
+        }
     }
 
     private func load(path: String) {
