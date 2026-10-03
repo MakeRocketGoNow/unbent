@@ -5,7 +5,9 @@ import Foundation
 /// From the site the app hosts: `theme` with the page's ground colour as `background`, for
 /// the strips behind the status bar and the home indicator; `unauthorized` when the page
 /// believes the session is gone, which the app checks before believing; `signed-out` when
-/// the person signed out on the page; and `app-settings` to open the app's own settings.
+/// the person signed out on the page; `app-settings` to open the app's own settings; and
+/// `edge-to-edge` when the page keeps itself clear of the safe area and may have the whole
+/// screen.
 ///
 /// From the indexing page a capture hosts: `ready`, then the counts with `index-done` or
 /// `message` with `index-error`.
@@ -28,6 +30,7 @@ public struct BridgeMessage: Decodable, Equatable, Sendable {
     public var isIndexError: Bool { type == "index-error" }
     public var isSignedOut: Bool { type == "signed-out" }
     public var isAppSettings: Bool { type == "app-settings" }
+    public var isEdgeToEdge: Bool { type == "edge-to-edge" }
     public var themeBackground: String? { type == "theme" ? background : nil }
 
     /// The message in `json`, or nil for anything that is not one.

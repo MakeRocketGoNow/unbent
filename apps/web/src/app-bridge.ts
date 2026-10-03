@@ -27,6 +27,8 @@ import type { SaveState } from './useAutosave.js';
  *   session too and goes to its own sign-in screen.
  * - `app-settings` asks for the app's own settings, which hold what only the app has: the
  *   address of the instance it talks to, and its version.
+ * - `edge-to-edge` says this page lays itself out around the screen's safe area, so the
+ *   app may run it under the status bar and the home indicator. See `adoptHostLayout`.
  *
  * App to page is `window.__unbent`, installed by the signed-in shell (`useHostApp`):
  *
@@ -53,6 +55,7 @@ export type AppMessage =
   | { type: 'missing' }
   | { type: 'signed-out' }
   | { type: 'app-settings' }
+  | { type: 'edge-to-edge' }
   | { type: 'theme'; background: string }
   | { type: 'index-progress'; done: number; total: number }
   | { type: 'index-done'; indexed: number; unusable: number; failed: number }
@@ -140,4 +143,35 @@ export function exposeToApp(handlers: AppHandlers): () => void {
   return () => {
     if (window.__unbent === handlers) delete window.__unbent;
   };
+}
+
+/**
+ * Lays the page out for the app hosting it. Called once, before anything renders.
+ *
+ * Only the iOS app asks anything of the layout. It first kept the page inside the safe
+ * area and painted the strips above and below in the page's colour, as the Android app
+ * does — and on a phone with a Dynamic Island those strips are tall enough to show:
+ * the drawer and the scrim behind it stopped short of the top and bottom of the screen,
+ * and the drawer read as a card floating between two bands. No native iOS app's side
+ * panel does that. So inside that app the page takes the whole screen and keeps its own
+ * content clear of the clock and the home indicator, which is what `viewport-fit=cover`
+ * and the `env(safe-area-inset-*)` rules under `html.host-ios` in styles.css are.
+ *
+ * The page says so (`edge-to-edge`) rather than the app assuming it: an instance running
+ * a deploy from before this would otherwise be laid out under the status bar with nothing
+ * in its stylesheet to move it down. The app gives a page the whole screen only once that
+ * page has asked.
+ *
+ * Android keeps its strips. They are a status bar and a gesture bar high, the WebView
+ * tells a page nothing about them, and its drawer's rounded corners are Material's own.
+ */
+export function adoptHostLayout(): void {
+  if (hostApp()?.platform !== 'ios') return;
+  document.documentElement.classList.add('host-ios');
+  const viewport = document.querySelector('meta[name="viewport"]');
+  const content = viewport?.getAttribute('content') ?? '';
+  if (viewport && !content.includes('viewport-fit')) {
+    viewport.setAttribute('content', `${content}, viewport-fit=cover`);
+  }
+  postToApp({ type: 'edge-to-edge' });
 }

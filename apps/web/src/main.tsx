@@ -8,6 +8,7 @@ import { installPosthog } from './posthog.js';
 import { installLaunchFiles } from './launch-files.js';
 import { configQuery, installLibraryQueries } from './queries.js';
 import { applyInstanceMarker } from './instance-marker.js';
+import { adoptHostLayout } from './app-bridge.js';
 import { registerServiceWorker } from './sw-register.js';
 import { installConnectivity } from './connectivity.js';
 import { installSessionRecheck } from './auth-client.js';
@@ -20,6 +21,12 @@ import './styles.css';
  * is invisible to Play's crash reporting — see `report-error.ts`.
  */
 installErrorReporting();
+
+/*
+ * Before the first render, so the page is never drawn once inside the safe area and
+ * again across the whole screen. Does nothing outside the iOS app; see `app-bridge.ts`.
+ */
+adoptHostLayout();
 
 const queryClient = new QueryClient({
   defaultOptions: {

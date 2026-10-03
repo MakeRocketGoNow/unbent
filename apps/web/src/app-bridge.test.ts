@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { exposeToApp, isHosted, postToApp, savesTo } from './app-bridge.js';
+import { adoptHostLayout, exposeToApp, isHosted, postToApp, savesTo } from './app-bridge.js';
 
 /**
  * The bridge's two promises to the rest of the site: in a browser it is silent, and inside
@@ -10,6 +10,45 @@ describe('app bridge', () => {
   afterEach(() => {
     delete window.UnbentApp;
     delete window.__unbent;
+    document.documentElement.className = '';
+    document.head.querySelector('meta[name="viewport"]')?.remove();
+  });
+
+  function viewport(content: string): HTMLMetaElement {
+    const meta = document.createElement('meta');
+    meta.name = 'viewport';
+    meta.content = content;
+    document.head.appendChild(meta);
+    return meta;
+  }
+
+  /**
+   * The iOS app gives a page the whole screen only when the page asks, and the page asks
+   * only there: in a browser and in the Android app the layout is left exactly as it was.
+   */
+  it('takes the whole screen inside the iOS app, and says so', () => {
+    const meta = viewport('width=device-width, initial-scale=1.0');
+    const postMessage = vi.fn();
+    window.UnbentApp = { platform: 'ios', postMessage };
+
+    adoptHostLayout();
+    adoptHostLayout();
+
+    expect(document.documentElement.classList.contains('host-ios')).toBe(true);
+    expect(meta.content).toBe('width=device-width, initial-scale=1.0, viewport-fit=cover');
+    expect(postMessage).toHaveBeenCalledWith('{"type":"edge-to-edge"}');
+  });
+
+  it('leaves the layout alone in a browser and in the Android app', () => {
+    const meta = viewport('width=device-width, initial-scale=1.0');
+    adoptHostLayout();
+    const postMessage = vi.fn();
+    window.UnbentApp = { postMessage };
+    adoptHostLayout();
+
+    expect(document.documentElement.classList.contains('host-ios')).toBe(false);
+    expect(meta.content).toBe('width=device-width, initial-scale=1.0');
+    expect(postMessage).not.toHaveBeenCalled();
   });
 
   it('is silent in a browser', () => {

@@ -48,6 +48,12 @@ final class BridgeMessageTests: XCTestCase {
         XCTAssertEqual(true, BridgeMessage.parse(#"{"type":"unauthorized"}"#)?.isUnauthorized)
     }
 
+    /// The page asks for the whole screen; a page that says anything else has not.
+    func testAPageAsksForTheWholeScreenInSoManyWords() {
+        XCTAssertEqual(true, BridgeMessage.parse(#"{"type":"edge-to-edge"}"#)?.isEdgeToEdge)
+        XCTAssertEqual(false, BridgeMessage.parse(##"{"type":"theme","background":"#fbfaf8"}"##)?.isEdgeToEdge)
+    }
+
     func testWhatIsNotAMessageIsIgnored() {
         XCTAssertNil(BridgeMessage.parse("not json"))
         XCTAssertNil(BridgeMessage.parse(##"{"background":"#000000"}"##))

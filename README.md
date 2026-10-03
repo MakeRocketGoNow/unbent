@@ -1400,11 +1400,18 @@ page that believes the session has ended says so too, and the app asks `/api/me`
 believing it; a phone with no signal gets a native "Couldn't reach Unbent" panel and keeps
 the session.
 
-**How the site is hosted.** `WebShellController` is one `WKWebView` of the instance. The
-page sits inside the safe area, and the strips behind the status bar and the home
-indicator are painted in the page's own colour, which the page reports; the status bar's
-text follows that colour's lightness. The keyboard shrinks the web view rather than
-covering it, so the editor's toolbar sits on the keys. The bridge is a script the app
+**How the site is hosted.** `WebShellController` is one `WKWebView` of the instance, and
+the page has the whole screen. It did not at first: the page was held inside the safe
+area with the strips above and below painted in its colour, as on Android, and on a phone
+with a Dynamic Island those strips are tall enough that the drawer and its scrim stopped
+short of both ends of the screen and read as a card between two bands. So inside the iOS
+app the page asks for `viewport-fit=cover`, keeps its own content clear of the clock and
+the home indicator with `env(safe-area-inset-*)` (the rules under `html.host-ios` in
+`styles.css`), and tells the app it has done so; a page that has not said so, from an
+older deploy, still gets the safe area and the strips. The drawer is square-cornered
+there as well, since the rounded one is Material's shape and iOS side panels are not. The
+status bar's text follows the lightness of the colour the page reports. The keyboard
+shrinks the web view rather than covering it, so the editor's toolbar sits on the keys. The bridge is a script the app
 injects before the page's own, which builds `window.UnbentApp` over WebKit's message
 handlers — the object Android installs with `addJavascriptInterface` — so the page calls
 either host the same way (`apps/web/src/app-bridge.ts`, `Bridge.swift`). There is no Back to

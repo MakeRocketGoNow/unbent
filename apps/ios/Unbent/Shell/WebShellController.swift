@@ -72,6 +72,12 @@ final class WebShellController: UIViewController {
     private var failed = false
 
     private var checkingSession = false
+
+    /// Whether the page has the whole screen, and the two sets of constraints that say so.
+    /// See `setEdgeToEdge`.
+    private var edgeToEdge = false
+    private var insetConstraints: [NSLayoutConstraint] = []
+    private var edgeConstraints: [NSLayoutConstraint] = []
     private var banner: UIViewController?
     private var bannerTimer: Task<Void, Never>?
 
@@ -129,26 +135,41 @@ final class WebShellController: UIViewController {
         #endif
 
         /*
-         * The page is kept out from under the status bar and the home indicator, and the
-         * strips behind them are this view's background, painted in the page's own colour.
-         * A page told nothing about the safe area cannot lay itself out around it, and the
-         * site is not asked to learn (`index.html` has no `viewport-fit=cover`) — in the
-         * page's colour the strips read as the page running to the edge.
+         * Two layouts, and the page chooses.
          *
-         * The keyboard shrinks the web view instead of covering it, so the editor's docked
-         * toolbar sits on the keys: `keyboardLayoutGuide` is the safe area's bottom when
-         * there is no keyboard and the keyboard's top when there is. Because the view no
-         * longer overlaps the keyboard, WebKit has nothing to inset and the page's own
-         * `useKeyboardInset` reads zero, so the toolbar is lifted once, not twice.
+         * Until it says otherwise the page is kept out from under the status bar and the
+         * home indicator, and the strips behind them are this view's background, painted
+         * in the page's own colour: a page told nothing about the safe area cannot lay
+         * itself out around it. That is Android's model, and it is what a page from an
+         * older deploy, or one still loading, gets.
+         *
+         * A page that says `edge-to-edge` gets the whole screen. On a phone with a Dynamic
+         * Island the strips are tall enough to be seen: a drawer and its scrim stopped
+         * short of both ends of the screen and read as a card between two bands, which no
+         * iOS app's side panel does. The page then keeps its own content clear with
+         * `env(safe-area-inset-*)`; see `adoptHostLayout` in apps/web/src/app-bridge.ts.
+         *
+         * Either way the keyboard shrinks the web view instead of covering it, so the
+         * editor's docked toolbar sits on the keys. Because the view no longer overlaps
+         * the keyboard, WebKit has nothing to inset and the page's own `useKeyboardInset`
+         * reads zero, so the toolbar is lifted once, not twice.
          */
         webView.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(webView)
-        NSLayoutConstraint.activate([
+        insetConstraints = [
             webView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
             webView.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor),
             webView.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor),
-            webView.bottomAnchor.constraint(equalTo: view.keyboardLayoutGuide.topAnchor),
-        ])
+        ]
+        edgeConstraints = [
+            webView.topAnchor.constraint(equalTo: view.topAnchor),
+            webView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            webView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+        ]
+        // One bottom for both: the guide's top is the keyboard's when there is one, and
+        // otherwise the safe area's bottom or the screen's, as `setEdgeToEdge` tells it.
+        webView.bottomAnchor.constraint(equalTo: view.keyboardLayoutGuide.topAnchor).isActive = true
+        NSLayoutConstraint.activate(insetConstraints)
 
         let path = startPath ?? Self.home
         startPath = nil
@@ -189,6 +210,20 @@ final class WebShellController: UIViewController {
         // The panel stands on the theme's own ground, which the system's style already suits.
         guard unreachable == nil, let groundIsDark else { return .default }
         return groundIsDark ? .lightContent : .darkContent
+    }
+
+    /// Gives the page the whole screen, or takes it back to the safe area.
+    private func setEdgeToEdge(_ on: Bool) {
+        guard on != edgeToEdge else { return }
+        edgeToEdge = on
+        NSLayoutConstraint.deactivate(on ? insetConstraints : edgeConstraints)
+        NSLayoutConstraint.activate(on ? edgeConstraints : insetConstraints)
+        // With no keyboard the guide's top is the safe area's bottom unless told not to
+        // be, and a page that has the screen should reach the glass under the indicator.
+        view.keyboardLayoutGuide.usesBottomSafeArea = !on
+        // No animation: the page asks before its first render, on its own ground colour,
+        // so the change is from one empty screen to another.
+        view.layoutIfNeeded()
     }
 
     private func setGround(_ colour: PageColour) {
@@ -382,18 +417,24 @@ final class WebShellController: UIViewController {
             self?.hideBanner()
         })
         host.view.backgroundColor = .clear
-        // The banner sits inside the web view's frame, which is already clear of the home
-        // indicator; a second allowance for it would float the banner a strip too high.
+        // The constraints below keep the banner clear of the home indicator; a second
+        // allowance for it inside the hosting view would float the banner a strip too high.
         host.safeAreaRegions = []
         host.sizingOptions = [.intrinsicContentSize]
         host.view.translatesAutoresizingMaskIntoConstraints = false
         addChild(host)
         // Under the unreachable panel if that is up: the panel is the whole screen.
         if let panel = unreachable { view.insertSubview(host.view, belowSubview: panel.view) } else { view.addSubview(host.view) }
+        // On the web view's bottom edge, which is the keyboard's top when one is up — but
+        // never lower than the safe area, since a page with the whole screen takes the
+        // web view down under the home indicator.
+        let onTheEdge = host.view.bottomAnchor.constraint(equalTo: webView.bottomAnchor)
+        onTheEdge.priority = .defaultHigh
         NSLayoutConstraint.activate([
-            host.view.leadingAnchor.constraint(equalTo: webView.leadingAnchor),
-            host.view.trailingAnchor.constraint(equalTo: webView.trailingAnchor),
-            host.view.bottomAnchor.constraint(equalTo: webView.bottomAnchor),
+            host.view.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor),
+            host.view.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor),
+            host.view.bottomAnchor.constraint(lessThanOrEqualTo: view.safeAreaLayoutGuide.bottomAnchor),
+            onTheEdge,
         ])
         host.didMove(toParent: self)
         banner = host
@@ -464,6 +505,8 @@ extension WebShellController: WKScriptMessageHandler, WKScriptMessageHandlerWith
             checkSession()
         } else if message.isAppSettings {
             delegate?.shellWantsSettings(self)
+        } else if message.isEdgeToEdge {
+            setEdgeToEdge(true)
         } else if let colour = message.themeBackground.flatMap(PageColour.init(hex:)) {
             setGround(colour)
         }
@@ -570,6 +613,10 @@ extension WebShellController: WKNavigationDelegate {
 
     func webView(_ webView: WKWebView, didCommit navigation: WKNavigation!) {
         if !failed { setUnreachable(false) }
+        // A new document has not asked for the screen yet, and one from an older deploy
+        // never will; it starts inside the safe area like any other. The site asks again
+        // before it renders, on its ground colour, so this is not seen.
+        setEdgeToEdge(false)
     }
 
     /*

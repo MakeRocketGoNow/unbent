@@ -8557,3 +8557,71 @@ button.settings-nav-item {
 
   .front-plan { padding: 1.25rem; }
 }
+
+/* ---------------------------------------------------------------------------------
+   Inside the iOS app: the page takes the whole screen.
+
+   `adoptHostLayout` in app-bridge.ts puts `host-ios` on the root and asks for
+   `viewport-fit=cover`, and only then do the `env(safe-area-inset-*)` values below stop
+   being zero. Everything here is the page keeping its own content clear of the clock and
+   the home indicator, now that the app no longer does it by holding the page between
+   two strips — see that function for why it stopped.
+
+   What flows is moved down once, on the body, rather than each view learning the inset:
+   the topbar, a settings page and the sign-in page all start under the status bar, and
+   the body's own ground is what shows behind the clock. What sits on the bottom edge
+   already clears the home indicator — the docked bar, the New button, the snackbars and
+   the sheets each add `env(safe-area-inset-bottom)` themselves, written when that was
+   zero everywhere. What lives in the top layer covers the screen and is padded inside:
+   the drawer and the file viewer.
+
+   The side insets are for a phone on its side, where the notch is at one end.
+   --------------------------------------------------------------------------------- */
+html.host-ios body {
+  padding: env(safe-area-inset-top) env(safe-area-inset-right) 0 env(safe-area-inset-left);
+}
+
+/*
+   A page that scrolls as a document — Settings, the sign-in page — would carry its text
+   up behind the clock. This is the strip it passes under instead, in the page's ground.
+   Below the top layer, so a sheet's scrim still dims it with the rest of the screen.
+*/
+html.host-ios body::before {
+  content: '';
+  position: fixed;
+  inset: 0 0 auto;
+  height: env(safe-area-inset-top);
+  z-index: 39;
+  background: var(--bg);
+  pointer-events: none;
+}
+
+/* The notes view fills the viewport exactly; the body's inset comes out of that. */
+html.host-ios .shell.wide {
+  height: calc(100dvh - env(safe-area-inset-top));
+}
+
+/*
+   The drawer runs the full height of the screen, edge to edge, with square corners.
+
+   The rounded trailing corners are Material's navigation drawer, which is the right
+   shape on Android and in a browser that is copying it. iOS has no drawer of its own,
+   and the side panels its apps do have are square and full height; a rounded one that
+   reaches both ends of the screen is neither platform's. Its contents keep clear of the
+   clock from the inside; the home indicator is already allowed for by `.sheet-body`, as
+   it is in every sheet. `border-box`, because a dialog is content-box by default and the
+   padding would otherwise make it taller than the screen.
+*/
+html.host-ios .sheet-side {
+  box-sizing: border-box;
+  border-radius: 0;
+  padding-top: env(safe-area-inset-top);
+  padding-left: env(safe-area-inset-left);
+}
+
+/* The file viewer is the whole screen; its bar and its last page stay inside the glass. */
+html.host-ios .viewer {
+  box-sizing: border-box;
+  padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom)
+    env(safe-area-inset-left);
+}
