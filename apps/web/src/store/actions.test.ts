@@ -687,6 +687,8 @@ describe('a file added to a note', () => {
     vi.stubGlobal('caches', { open: async () => ({ put }) });
     // jsdom's File is not one the test runtime's Response takes; what is put is not the point here.
     vi.stubGlobal('Response', class {});
+    const postMessage = vi.fn();
+    vi.stubGlobal('navigator', { ...navigator, storage: navigator.storage, serviceWorker: { controller: { postMessage } } });
     const { fake, engine, landPull } = library([row('n1')]);
     setReachableForTests(false);
     await actions.uploadFile('n1', photo('small.jpg', 'ten bytes!'));
@@ -702,6 +704,8 @@ describe('a file added to a note', () => {
       engine.pull.mockClear();
     }
     expect(put.mock.calls.map((c) => (c as unknown as [string])[0])).toEqual(['/api/notes/n1/files/small.jpg']);
+    // And the worker is told, once, for the one that went in: its index is what Settings counts.
+    expect(postMessage.mock.calls).toEqual([[{ type: 'FILES_CHANGED' }]]);
   });
 
   it('goes behind the note’s own entry when the note has one waiting, even with a connection', async () => {

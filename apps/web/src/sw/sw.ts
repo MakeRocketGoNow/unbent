@@ -2,7 +2,7 @@ import { cleanupOutdatedCaches, createHandlerBoundToURL, precacheAndRoute } from
 import { registerRoute } from 'workbox-routing';
 import { CacheFirst, NetworkFirst, type StrategyOptions } from 'workbox-strategies';
 import { ExpirationPlugin } from 'workbox-expiration';
-import { API_CACHE, FILES_CACHE, MAX_KEPT_FILE, SERVED_HEADER, VIEW_HEADER, classify, servesShell, shelved } from './routes.js';
+import { API_CACHE, FILES_CACHE, FILES_CHANGED, MAX_KEPT_FILE, SERVED_HEADER, VIEW_HEADER, classify, servesShell, shelved } from './routes.js';
 import { createFilesLedger } from './budget.js';
 import { findFile } from '../store/files.js';
 
@@ -253,5 +253,8 @@ registerRoute(
  * see `takeUpdate` in `sw-register.ts`, whose `messageSkipWaiting` sends this.
  */
 self.addEventListener('message', (event) => {
-  if ((event.data as { type?: unknown } | null)?.type === 'SKIP_WAITING') void self.skipWaiting();
+  const type = (event.data as { type?: unknown } | null)?.type;
+  if (type === 'SKIP_WAITING') void self.skipWaiting();
+  // The page put a file in the files cache itself; see `FILES_CHANGED`.
+  if (type === FILES_CHANGED) event.waitUntil(ledger.sweep());
 });

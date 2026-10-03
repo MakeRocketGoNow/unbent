@@ -8,7 +8,7 @@ import { buildNotePatch, seedFrom, holdsTheirChanges, type NoteDraft } from '../
 import { availableFilename, lookups, toNote, type Snapshot } from './derive.js';
 import type { Collections, LocalNote } from './collections.js';
 import { askToPersist, filesSupported, readFile, removeFile, writeFile } from './files.js';
-import { FILES_CACHE, MAX_KEPT_FILE } from '../sw/routes.js';
+import { FILES_CACHE, FILES_CHANGED, MAX_KEPT_FILE } from '../sw/routes.js';
 import type { FeedEngine } from './feed.js';
 import { outboxName } from './names.js';
 
@@ -566,8 +566,8 @@ export function createOutbox(userId: string, lib: Omit<WritableLibrary, 'outbox'
 
 /**
  * Puts a file that just uploaded into the cache of opened files, under its address, so it
- * still draws with no connection once it has left the `pending` shelf. The worker's ledger
- * takes it in on its next pass (`sw/budget.ts`), and it is evicted like any other.
+ * still draws with no connection once it has left the `pending` shelf. The worker is told,
+ * and its ledger takes the file in (`sw/budget.ts`); it is evicted like any other.
  * Best-effort: without Cache Storage the file is simply fetched when next looked at.
  *
  * Not a file over the cache's own cap, which the worker would not have kept had it been
@@ -580,6 +580,9 @@ async function remember(noteId: string, filename: string, file: File): Promise<v
     const url = `/api/notes/${encodeURIComponent(noteId)}/files/${encodeURIComponent(filename)}`;
     const headers = { 'Content-Type': file.type || 'application/octet-stream', 'Content-Length': String(file.size) };
     await (await caches.open(FILES_CACHE)).put(url, new Response(file, { headers }));
+    // Told now, so the index counts the file at once rather than at the worker's next
+    // store: Settings said "nothing kept" with this file sitting in the cache.
+    navigator.serviceWorker?.controller?.postMessage({ type: FILES_CHANGED });
   } catch {
     // No room, or no cache in this context.
   }

@@ -64,6 +64,15 @@ export const FILES_CACHE = 'files-v1';
 export const MAX_KEPT_FILE = 20 * 1024 * 1024;
 
 /**
+ * What the page says to the worker when it has put a file into the cache of opened files
+ * itself (`remember` in `store/actions.ts`): the worker's index learns of a file only when
+ * the worker stores one or starts, so until then Settings counted one file too few, and
+ * the budget did not count it at all. The worker answers by bringing the index in line
+ * (`sweep` in `budget.ts`). A message type, beside `SKIP_WAITING`.
+ */
+export const FILES_CHANGED = 'FILES_CHANGED';
+
+/**
  * The header the page puts on a fetch of a file's bytes that someone is looking at —
  * today only the PDF viewer's (`loadPdf`). An image needs none: the browser marks an
  * `<img>` load itself, as `destination: 'image'`.
