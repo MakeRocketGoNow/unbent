@@ -9,10 +9,13 @@ import { Attachments } from './Attachments.js';
 
 vi.mock('../store/actions.js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../store/actions.js')>()),
-  // True for the file the test marks as waiting; every other delete is the server's.
-  cancelUpload: vi.fn(async (_noteId: string, filename: string) => filename === 'photo.jpg'),
+  // The file the test marks as waiting is taken back here; every other delete is the
+  // server's. (The rule itself is tested in store/actions.test.ts.)
+  deleteOrCancelAttachment: vi.fn(async (noteId: string, filename: string) => {
+    if (filename !== 'photo.jpg') await (await import('../notes-api.js')).deleteAttachment(noteId, filename);
+  }),
 }));
-import { cancelUpload } from '../store/actions.js';
+import { deleteOrCancelAttachment } from '../store/actions.js';
 
 vi.mock('../notes-api.js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../notes-api.js')>()),
@@ -247,7 +250,7 @@ describe('Attachments on a locked note', () => {
     fireEvent.click(button('Delete'));
     expect(screen.getByText(/before it uploads\?/)).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Remove file' }));
-    await waitFor(() => expect(cancelUpload).toHaveBeenCalledWith('n1', 'photo.jpg'));
+    await waitFor(() => expect(deleteOrCancelAttachment).toHaveBeenCalledWith('n1', 'photo.jpg'));
     expect(api.deleteAttachment).not.toHaveBeenCalled();
   });
 });

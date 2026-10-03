@@ -13,7 +13,7 @@ import { copyAttachmentToClipboard } from '../attachment-clipboard.js';
 import { attachmentsQuery, keys } from '../queries.js';
 import { formatBytes } from '../format-bytes.js';
 import { useOutbox, useSyncStatus } from '../store/use-outbox.js';
-import { cancelUpload } from '../store/actions.js';
+import { deleteOrCancelAttachment } from '../store/actions.js';
 import { Confirm } from './Confirm.js';
 import { Button } from './Button';
 import { Disclosure } from './Disclosure.js';
@@ -279,9 +279,9 @@ export function Attachments({
     setBusy(filename);
     setDeleteError(null);
     try {
-      // A file still waiting to upload is taken back on this device, and the server never
-      // hears of it; anything else is the server's to delete.
-      if (!(await cancelUpload(startedFor, filename))) await api.deleteAttachment(startedFor, filename);
+      // A file still waiting to upload is taken back on this device; anything else is the
+      // server's to delete.
+      await deleteOrCancelAttachment(startedFor, filename);
       if (stillLinked && noteIdRef.current === startedFor) {
         onBodyRewrite(removeAttachmentLinks(bodyRef.current, filename));
       }

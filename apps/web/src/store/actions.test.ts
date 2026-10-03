@@ -174,6 +174,7 @@ vi.mock('../notes-api.js', async (importOriginal) => ({
   deleteNotesPermanently: vi.fn(),
   updateNotes: vi.fn(),
   uploadFile: vi.fn(),
+  deleteAttachment: vi.fn(),
 }));
 
 const { fakes, MemoryAdapter } = await h;
@@ -811,6 +812,19 @@ describe('a file added to a note', () => {
     expect(lib.outbox.status().uploadNotices.size).toBe(0);
     // A file that is not waiting is not this function's to remove.
     expect(await actions.cancelUpload('n1', 'wrong photo.jpg')).toBe(false);
+  });
+
+  it('deletes a waiting file locally and an uploaded one on the server', async () => {
+    library([row('n1')]);
+    setReachableForTests(false);
+    await actions.uploadFile('n1', photo('wrong photo.jpg'));
+    await tick();
+    await actions.deleteOrCancelAttachment('n1', 'wrong photo.jpg');
+    expect(api.deleteAttachment).not.toHaveBeenCalled();
+
+    vi.mocked(api.deleteAttachment).mockResolvedValueOnce(undefined);
+    await actions.deleteOrCancelAttachment('n1', 'uploaded.jpg');
+    expect(api.deleteAttachment).toHaveBeenCalledWith('n1', 'uploaded.jpg');
   });
 
   it('cannot be taken back while it is being sent', async () => {

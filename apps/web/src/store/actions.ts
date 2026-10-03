@@ -1041,6 +1041,19 @@ export async function cancelUpload(noteId: string, filename: string): Promise<bo
 }
 
 /**
+ * Deletes a file from a note, wherever it currently lives: a file still waiting to upload
+ * is taken back on this device (the server has never heard of it, and a request for it
+ * would fail with no connection), and anything else is the server's to delete.
+ *
+ * One function for the Attachments panel and the editor's inline bin, because they were
+ * two copies of this rule once and the editor's had only the server half — so a picture
+ * added offline could be deleted from the panel and not from the picture.
+ */
+export async function deleteOrCancelAttachment(noteId: string, filename: string): Promise<void> {
+  if (!(await cancelUpload(noteId, filename))) await api.deleteAttachment(noteId, filename);
+}
+
+/**
  * The row as the server last had it, under whatever writes are pending here. A save's
  * base must be that copy, not the optimistic one: the precondition names the server's
  * date, and `holdsTheirChanges` compares against the server's text. The collection

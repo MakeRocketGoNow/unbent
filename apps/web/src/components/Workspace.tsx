@@ -1452,7 +1452,9 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
               readOnly
                 ? undefined
                 : async (filename) => {
-                    await api.deleteAttachment(note.id, filename);
+                    // The same rule as the panel's Delete: a picture added offline has not
+                    // reached the server, so deleting it there would fail.
+                    await actions.deleteOrCancelAttachment(note.id, filename);
                     void queryClient.invalidateQueries({ queryKey: keys.attachments(note.id) });
                   }
             }
