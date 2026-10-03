@@ -1,10 +1,10 @@
 import { closeLocalStore } from './db.js';
 import { closeLibrary, currentLibraryUser } from './library.js';
-import { filesDirName, isFilesDir, isOutbox, isStoreFile, outboxName, storeFileName } from './names.js';
+import { isOutbox, isStoreFile, outboxName, storeFileName } from './names.js';
 
 /**
- * Removes every account's local copy, outbox and files from this device — or every
- * account's but one, who is signing in and keeps their own.
+ * Removes every account's local copy and outbox from this device — or every account's
+ * but one, who is signing in and keeps their own.
  *
  * Called from `clearOfflineCaches`, which the sign-out, the deleted account and the
  * hand-over to a different person call: the local store is the same kind of thing as the
@@ -13,18 +13,16 @@ import { filesDirName, isFilesDir, isOutbox, isStoreFile, outboxName, storeFileN
  * account's, because the id of the person leaving is not always known, and a stale copy of
  * someone else's is exactly what this exists to prevent. The exception is named by id: the
  * person arriving keeps the copy and the outbox under their own name, so edits they made
- * offline before a refused session are still there to replay (see `offline-cache.ts`) —
- * and their files directory (`store/files.ts`), which holds the bytes of the uploads in
- * that outbox and of the notebooks they chose to keep.
+ * offline before a refused session are still there to replay (see `offline-cache.ts`).
  *
  * The store is closed first: the engine holds the file through sync access handles, and
  * OPFS refuses to remove a file something holds. Not when the open one is the kept one.
  * Never throws — a browser without OPFS or IndexedDB has nothing to remove.
  */
 export async function wipeLocalStores(except?: string): Promise<void> {
-  const keep = except === undefined ? null : { file: storeFileName(except), outbox: outboxName(except), files: filesDirName(except) };
+  const keep = except === undefined ? null : { file: storeFileName(except), outbox: outboxName(except) };
   if (!keep || currentLibraryUser() !== except) await closeLocalStores();
-  await Promise.all([wipeStoreFiles(keep?.file, keep?.files), wipeOutboxes(keep?.outbox)]);
+  await Promise.all([wipeStoreFiles(keep?.file), wipeOutboxes(keep?.outbox)]);
 }
 
 /** Closes the open library and its store, keeping every file: what a refused session does. */
@@ -37,19 +35,14 @@ export async function closeLocalStores(): Promise<void> {
   }
 }
 
-async function wipeStoreFiles(keep?: string, keepFiles?: string): Promise<void> {
+async function wipeStoreFiles(keep?: string): Promise<void> {
   if (typeof navigator === 'undefined' || !navigator.storage?.getDirectory) return;
   try {
     const root = await navigator.storage.getDirectory();
     const names: string[] = [];
     // The kept account's database and the journal and WAL files SQLite writes beside it.
     for await (const [name] of root.entries()) if (isStoreFile(name) && !(keep && name.startsWith(keep))) names.push(name);
-    const dirs: string[] = [];
-    for await (const [name] of root.entries()) if (isFilesDir(name) && name !== keepFiles) dirs.push(name);
-    await Promise.all([
-      ...names.map((name) => root.removeEntry(name).catch(() => {})),
-      ...dirs.map((name) => root.removeEntry(name, { recursive: true }).catch(() => {})),
-    ]);
+    await Promise.all(names.map((name) => root.removeEntry(name).catch(() => {})));
   } catch {
     // No OPFS, or it is unavailable in this context (a private window, say).
   }

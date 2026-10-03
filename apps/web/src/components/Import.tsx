@@ -13,12 +13,18 @@ import { Button } from './Button.js';
 import { EnexHelp, NotionHelp } from './ImportHelp.js';
 import { describeImportFile } from './import-file.js';
 import { importPercent } from './import-progress.js';
-import { formatBytes } from '../format-bytes.js';
 import { ImportSkips } from './ImportSkips.js';
 
 /** `1 note`, `3,325 notes`. */
 function count(n: number, noun: string): string {
   return `${n.toLocaleString()} ${noun}${n === 1 ? '' : 's'}`;
+}
+
+function formatBytes(n: number): string {
+  if (n < 1024) return `${n} B`;
+  if (n < 1024 ** 2) return `${(n / 1024).toFixed(0)} KB`;
+  if (n < 1024 ** 3) return `${(n / 1024 ** 2).toFixed(1)} MB`;
+  return `${(n / 1024 ** 3).toFixed(2)} GB`;
 }
 
 /**

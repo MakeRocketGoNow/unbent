@@ -723,16 +723,6 @@ export class UserStore extends DurableObject<StoreEnv> {
   }
 
   /**
-   * `PUT /notes/:id/files` with an id of the client's: whether the note is live, and the
-   * file already holding that id, if any. One call where `ownsNote` and a lookup would be
-   * two; a replayed upload is answered from this alone.
-   */
-  uploadPrelude(noteId: string, attachmentId: string) {
-    this.ready();
-    return { live: this.attachments.noteIsLive(noteId), existing: this.attachments.byId(attachmentId) };
-  }
-
-  /**
    * What MCP's `read_attachment` asks before it reads: whether the note is live, the text
    * the file already has, and the note's files still waiting for either reader.
    */

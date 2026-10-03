@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { FeedAttachment, FeedNote, FeedNotebook, FeedTag } from '@unbent/shared';
-import { count, list, lookups, notebookFields, notebookFiles, notebookList, sameNotebookName, summaries, tagSummaries, toNote, toSummary, type Snapshot } from './derive.js';
+import { count, list, lookups, notebookFields, notebookList, sameNotebookName, summaries, tagSummaries, toNote, toSummary, type Snapshot } from './derive.js';
 
 const nb = (id: string, name: string, fieldDefs: FeedNotebook['fieldDefs'] = []): FeedNotebook => ({ id, name, purpose: null, emoji: null, fieldDefs });
 const tag = (id: string, name: string): FeedTag => ({ id, name });
@@ -113,14 +113,5 @@ describe('derive', () => {
   it('counts a field’s values on trashed notes too, as the server does', () => {
     const withTrashed: Snapshot = { ...s, notes: [...s.notes, { ...[...s.notes][3]!, id: 'f', notebookId: 'nb1', fields: [{ fieldId: 'amount', name: 'Amount', type: 'number', value: 1, notebookId: 'nb1', notebook: 'receipts' }] }] };
     expect(notebookFields(withTrashed, 'nb1', true)?.find((f) => f.id === 'amount')?.valueCount).toBe(3);
-  });
-
-  it('sizes a notebook by the files of its live notes', () => {
-    // Note `a` holds f1 and f2 and is in nb1; `c` holds f3 and is in nb2.
-    expect(notebookFiles(s, 'nb1')).toEqual({ files: 2, bytes: 2 });
-    expect(notebookFiles(s, 'nb2')).toEqual({ files: 1, bytes: 1 });
-    expect(notebookFiles(s, 'nowhere')).toEqual({ files: 0, bytes: 0 });
-    const trashed: Snapshot = { ...s, notes: [...s.notes].map((n) => (n.id === 'c' ? { ...n, deletedAt: 5 } : n)) };
-    expect(notebookFiles(trashed, 'nb2')).toEqual({ files: 0, bytes: 0 });
   });
 });

@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { WORKER_PREFIXES, classify, fileAddress, servesShell, shelved, type RequestFacts } from './routes.js';
+import { WORKER_PREFIXES, classify, servesShell, type RequestFacts } from './routes.js';
 
 const at = (path: string) => new URL(path, 'https://unbent.example');
 
@@ -127,30 +127,5 @@ describe('WORKER_PREFIXES', () => {
       const entries = [...body!.matchAll(/^\s*"([^"]+)"/gm)].map(([, path]) => path!.replace(/\*$/, ''));
       expect(new Set(entries)).toEqual(new Set(WORKER_PREFIXES));
     }
-  });
-});
-
-describe('shelved', () => {
-  const ask = (path: string, over: Partial<{ method: string; mode: string; origin: string }> = {}) =>
-    shelved({ url: at(path), method: 'GET', mode: 'cors', origin: ORIGIN, ...over });
-
-  it('names the note and the file for any read of a file’s bytes by the page', () => {
-    expect(ask('/api/notes/8f0c/files/Report%20(final)%20v2.pdf')).toEqual({ noteId: '8f0c', filename: 'Report (final) v2.pdf' });
-    // An export or the indexer reads the same address unmarked; the shelf answers those too.
-    expect(ask('/api/notes/8f0c/files/scan.pdf?download=1')).toEqual({ noteId: '8f0c', filename: 'scan.pdf' });
-    expect(ask('/api/notes/8f0c/files/photo.jpg', { mode: 'no-cors' })).toEqual({ noteId: '8f0c', filename: 'photo.jpg' });
-  });
-
-  it('never answers a page load, a write, another origin, or anything that is not the bytes', () => {
-    expect(ask('/api/notes/8f0c/files/page.html', { mode: 'navigate' })).toBeNull();
-    expect(ask('/api/notes/8f0c/files/scan.pdf', { method: 'DELETE' })).toBeNull();
-    expect(ask('/api/notes/8f0c/files/scan.pdf', { origin: 'https://elsewhere.example' })).toBeNull();
-    expect(ask('/api/notes/8f0c/files/scan.pdf/text')).toBeNull();
-    expect(ask('/api/notes/8f0c/files')).toBeNull();
-    expect(ask('/api/notes/8f0c')).toBeNull();
-  });
-
-  it('declines an address that does not decode', () => {
-    expect(fileAddress(at('/api/notes/8f0c/files/%E0%A4%A'))).toBeNull();
   });
 });

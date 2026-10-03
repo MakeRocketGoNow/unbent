@@ -1,8 +1,7 @@
-import { Fragment, useEffect, useMemo, useRef, type MouseEvent, type SyntheticEvent } from 'react';
+import { Fragment, useMemo, type MouseEvent } from 'react';
 import { IMAGE_ZOOM_CLASS, PDF_EMBED_CLASS, renderMarkdown } from '@unbent/shared';
 import { usePdfAttachments } from '../usePdfAttachments.js';
 import { openAttachmentViewer } from '../attachment-viewer.js';
-import { standInForImage } from '../offline-file.js';
 import { PdfPreview } from './PdfPreview.js';
 import { collectPreviewTargets } from './preview-targets.js';
 
@@ -96,44 +95,8 @@ export function Preview({ markdown, noteId }: PreviewProps) {
     [markdown, noteId, pdfFilenames],
   );
 
-  /*
-   * A picture in the pane that failed to load with no connection says so in a line, where
-   * a broken-image icon would be, and is asked for again when the connection returns
-   * (`offline-file.ts`). On the capture phase, because `error` does not bubble and the
-   * images are in HTML the pane renders as a string — the same reason the click is
-   * delegated. A picture that failed for any other reason is left as the browser draws it.
-   *
-   * Each stand-in is waiting on the connection, holding its picture, and the wait has to
-   * end when the picture goes or it outlives the pane (review of #236). When the picture
-   * goes, not whenever the markdown changes: React leaves a segment's HTML alone when its
-   * string is the same, so typing in another paragraph offline keeps the picture and its
-   * stand-in on screen — and stopping its wait then left it saying "Not available
-   * offline" after the connection was back. So each wait is kept with its picture, and
-   * stopped once that picture has left the document, or the pane has.
-   */
-  const waits = useRef<Array<{ img: HTMLImageElement; stop: () => void }>>([]);
-  useEffect(() => {
-    waits.current = waits.current.filter((w) => {
-      if (w.img.isConnected) return true;
-      w.stop();
-      return false;
-    });
-  }, [segments]);
-  useEffect(
-    () => () => {
-      for (const w of waits.current) w.stop();
-      waits.current = [];
-    },
-    [],
-  );
-  const onPreviewImageError = (event: SyntheticEvent<HTMLDivElement>) => {
-    const img = event.target;
-    if (!(img instanceof HTMLImageElement) || img.hidden) return;
-    standInForImage(img, img.alt, (stop) => waits.current.push({ img, stop }));
-  };
-
   return (
-    <div className="preview" onClick={onPreviewClick} onErrorCapture={onPreviewImageError}>
+    <div className="preview" onClick={onPreviewClick}>
       {segments.map((seg, i) => (
         <Fragment key={i}>
           {seg.html && <div dangerouslySetInnerHTML={{ __html: seg.html }} />}
