@@ -240,6 +240,7 @@ says otherwise; `pnpm exec wrangler secret put NAME` from `apps/api`, or the das
 | `ANTHROPIC_API_KEY`, `ANTHROPIC_MODEL` | reading images and text-less scans, and writing titles | see [Reading images](#reading-images); `DEV_ANTHROPIC_API_KEY` as a GitHub secret carries a separate key to the dev instance and previews |
 | `ANDROID_ASSET_LINKS` | an Android build of your own | see [Android app](#android-app) |
 | `APPLE_APP_SITE_ASSOCIATION` | an iOS build of your own | see [iOS app](#ios-app) |
+| `APPLE_BUNDLE_ID` | Sign in with Apple from an iOS build of your own | comma-separated bundle ids, beside `APPLE_CLIENT_ID`; see [iOS app](#ios-app) |
 | `SWEEP_TOKEN` | sweeping the note stores at the end of each deploy | a GitHub secret the deploy carries to the Worker, `openssl rand -hex 32`; see [Where your notes live](#where-your-notes-live). `DEV_SWEEP_TOKEN` does the same for the dev instance |
 | Custom domain | serving from your own name | dashboard, not config |
 | `ANDROID_APPLICATION_ID`, `ANDROID_DEFAULT_INSTANCE` | the Android build in CI | GitHub repository **variables**; `unbent.applicationId` and `unbent.defaultInstance` in `local.properties` locally |
@@ -711,6 +712,7 @@ including you:
 
 - Google: `https://unbent.app/api/auth/callback/google`
 - GitHub: `https://unbent.app/api/auth/callback/github`
+- Apple: `https://unbent.app/api/auth/callback/apple`, on the Services ID — see below
 
 Then deploy again so the Worker picks up the secrets. `custom_domain = true` means
 Cloudflare creates and manages the DNS record and certificate, so there is nothing to add
@@ -719,6 +721,35 @@ by hand:
 ```bash
 pnpm release
 ```
+
+#### Sign in with Apple
+
+Apple is the one provider whose secret is not a value it hands you. `APPLE_CLIENT_ID` is a
+**Services ID** — an identifier you create on the developer portal, with Sign in with Apple
+enabled and the callback above as its return URL — and `APPLE_CLIENT_SECRET` is a JWT you
+sign with a Sign in with Apple key, which Apple refuses once it is more than six months
+old. `scripts/apple-client-secret.mjs` makes one from the team id, the key id and the
+`.p8`, and pipes it into wrangler without printing it:
+
+```bash
+node scripts/apple-client-secret.mjs --team TEAMID --key-id KEYID \
+  --client-id com.example.notes.web --key AuthKey_KEYID.p8 \
+  | pnpm --dir apps/api exec wrangler secret put APPLE_CLIENT_SECRET
+```
+
+It prints the expiry date; put a reminder a week before it. A lapsed secret breaks only the
+web Apple button, at the code exchange, while every other way in keeps working — which is
+why it goes unnoticed. Generating the token in the Worker from the key itself would retire
+the reminder, and is left for later.
+
+Apple returns from its web sign-in by having its own page post the result to the callback
+(`response_mode=form_post`), so that request arrives from `https://appleid.apple.com`.
+The Worker trusts that origin only while Apple is configured. Apple accepts no `http` or
+`localhost` return URL, so the button is tried on a deployed instance, not in development.
+
+Apple sends a person's name only on their first authorization, and never inside the
+token. The web flow keeps it; the iOS app, signing in natively, sends it to
+`/api/auth/update-user` itself when it has one.
 
 ## Auth
 
@@ -1366,6 +1397,21 @@ datacenter: a zone with Bot Fight Mode on needs a WAF skip for `/.well-known/` p
 the CDN is served a challenge. `https://app-site-association.cdn-apple.com/a/v1/<your
 host>` shows what Apple has. The `APPLE_APP_SITE_ASSOCIATION` repository secret carries the
 same document to the dev instance and previews.
+
+**Sign in with Apple from the app.** The app signs in natively and posts Apple's identity
+token to `/api/auth/sign-in/social`, as the Android app does with Google's. That token's
+audience is the app's bundle id, not the Services ID the web button uses, so an instance
+accepts it only for the bundle ids in `APPLE_BUNDLE_ID` — comma-separated, the release and
+the debug build both, since either may be pointed at any instance:
+
+```bash
+echo "com.example.notes,com.example.notes.debug" | pnpm exec wrangler secret put APPLE_BUNDLE_ID
+```
+
+It is read only while Apple is configured for the web too (see [Sign in with
+Apple](#sign-in-with-apple)): the Services ID is still accepted beside it, and an instance
+without `APPLE_CLIENT_ID` offers Apple to nobody. Both App IDs need the Sign in with Apple
+capability on the portal.
 
 ## Known gaps
 
