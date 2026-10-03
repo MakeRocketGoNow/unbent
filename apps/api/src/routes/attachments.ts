@@ -90,7 +90,15 @@ export const attachments = new Hono<AppEnv>()
     const rawName = c.req.header('X-Filename');
     if (!rawName) return c.json({ error: 'X-Filename header required' }, 400);
 
-    const parsed = filenameSchema.safeParse(decodeURIComponent(rawName));
+    // The header is the client's `encodeURIComponent`, since a header cannot carry the
+    // name raw. One that will not decode is a bad request, not a crash.
+    let name: string;
+    try {
+      name = decodeURIComponent(rawName);
+    } catch {
+      return c.json({ error: 'X-Filename is not valid percent-encoding' }, 400);
+    }
+    const parsed = filenameSchema.safeParse(name);
     if (!parsed.success) {
       return c.json({ error: parsed.error.issues[0]?.message ?? 'Invalid filename' }, 400);
     }
@@ -201,9 +209,19 @@ export const attachments = new Hono<AppEnv>()
     return c.json({ ...info, path: `files/${filename}`, url }, 201);
   })
 
+  /**
+   * The name in the path is used as the router hands it over, here and in the two routes
+   * below that take one.
+   *
+   * `c.req.param()` has already percent-decoded it, once, which is all the client encoded.
+   * Each of these handlers used to decode it again, and a second pass is wrong for any name
+   * holding a percent sign: `20% off.pdf` threw a URIError and answered 500, and a name
+   * shaped like an escape — `100%41.txt` — silently addressed `100A.txt` instead. The
+   * upload is different: its name arrives in a header, which nothing decodes for us.
+   */
   .get('/notes/:id/files/:filename', async (c) => {
     const noteId = c.req.param('id');
-    const filename = decodeURIComponent(c.req.param('filename'));
+    const filename = c.req.param('filename');
 
     const row = await c.get('attachments').resolve(noteId, filename, { includeTrashed: true });
     if (!row) return c.json({ error: 'Not found' }, 404);
@@ -267,7 +285,7 @@ export const attachments = new Hono<AppEnv>()
    */
   .put('/notes/:id/files/:filename/text', async (c) => {
     const noteId = c.req.param('id');
-    const filename = decodeURIComponent(c.req.param('filename'));
+    const filename = c.req.param('filename');
 
     const attachmentId = await c.get('attachments').idFor(noteId, filename);
     if (!attachmentId) return c.json({ error: 'Not found' }, 404);
@@ -424,7 +442,7 @@ export const attachments = new Hono<AppEnv>()
   )
 
   .delete('/notes/:id/files/:filename', async (c) => {
-    const filename = decodeURIComponent(c.req.param('filename'));
+    const filename = c.req.param('filename');
     const key = await c.get('attachments').remove(c.req.param('id'), filename);
     if (!key) return c.json({ error: 'Not found' }, 404);
 
