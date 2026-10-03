@@ -3,6 +3,7 @@ import {
   accountDeletionOffered,
   configuredSocials,
   offeredProviders,
+  providerOrigins,
   confirmDeletionUrl,
   warnIfOpenToAnyone,
 } from './auth.js';
@@ -143,6 +144,18 @@ describe('offeredProviders', () => {
  * makes it a visible one. Both halves of the condition are pinned: too eager and every
  * local run is noise nobody reads, too shy and a public instance says nothing at all.
  */
+describe('providerOrigins', () => {
+  it("trusts Apple's origin only while Apple is configured", () => {
+    expect(providerOrigins(env({}))).toEqual([]);
+    expect(providerOrigins(env({ GOOGLE_CLIENT_ID: 'id', GOOGLE_CLIENT_SECRET: 'secret' }))).toEqual([]);
+    // Half a pair is not a configured provider, so it opens nothing either.
+    expect(providerOrigins(env({ APPLE_CLIENT_ID: 'id' }))).toEqual([]);
+    expect(providerOrigins(env({ APPLE_CLIENT_ID: 'id', APPLE_CLIENT_SECRET: 'jwt' }))).toEqual([
+      'https://appleid.apple.com',
+    ]);
+  });
+});
+
 describe('warnIfOpenToAnyone', () => {
   const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
   afterEach(() => warn.mockClear());
