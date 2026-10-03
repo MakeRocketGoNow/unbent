@@ -13,8 +13,9 @@ import Foundation
 /// synchronous call from a page, so each call here is answered with a promise instead
 /// (MAK-150), and the rule that keeps it safe is the caller's: answer `chunk` only once this
 /// has returned, which is once the bytes are written. The app runs every call on one
-/// serial queue; the lock is for `abortAll`, which arrives from the main thread when the
-/// page dies.
+/// serial queue, `abortAll` included: a file must not be closed from another thread while
+/// a write to it is under way. The lock guards the table of open saves and nothing more;
+/// it does not make the files themselves safe to share.
 ///
 /// A save that ends without `end` — the export stopped or failed, or the page went away —
 /// is removed, never left half-written where it would look like a backup.

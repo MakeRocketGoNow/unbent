@@ -102,8 +102,11 @@ final class WebShellController: UIViewController {
     required init?(coder: NSCoder) { fatalError("not in a storyboard") }
 
     deinit {
-        // An export still streaming has lost the page that was writing it.
-        saves.abortAll()
+        // An export still streaming has lost the page that was writing it. On the save
+        // queue, like every other call: closing a file here while that queue is part-way
+        // through a write to it is a race, and the descriptor, once closed, can be handed
+        // to the next file the app opens — the rest of the chunk would land in that.
+        saveQueue.async { [saves] in saves.abortAll() }
         bannerTimer?.cancel()
     }
 
@@ -684,8 +687,9 @@ extension WebShellController: WKNavigationDelegate {
     /// to be loaded again, on the address it was showing.
     func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
         log.warning("The page's process ended; reloading.")
-        // An export the page was streaming has lost the page that was writing it.
-        saves.abortAll()
+        // An export the page was streaming has lost the page that was writing it. Dropped
+        // on the save queue, behind whatever write is in progress; see `deinit`.
+        saveQueue.async { [saves] in saves.abortAll() }
         if webView.url != nil {
             installSession { webView.reload() }
         } else {
