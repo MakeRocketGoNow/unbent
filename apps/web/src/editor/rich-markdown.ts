@@ -337,6 +337,13 @@ class TaskWidget extends WidgetType {
 }
 
 /**
+ * Widgets showing "Not available offline" in place of a file, each with the way to stop
+ * waiting for the connection it will retry on; see `offline-file.ts`. By the widget's
+ * element, so a widget scrolled out of the viewport and destroyed stops listening.
+ */
+const waiting = new WeakMap<HTMLElement, () => void>();
+
+/**
  * Attachment images that failed to load, by resolved URL.
  *
  * The markdown behind a rendered image hides while the cursor is elsewhere, the way a
@@ -350,13 +357,6 @@ class TaskWidget extends WidgetType {
  * Module-level for the same reason `expandedPdfs` is: the widget is destroyed whenever its
  * line scrolls out of the viewport, and the failure has to survive that.
  */
-/**
- * Widgets showing "Not available offline" in place of a file, each with the way to stop
- * waiting for the connection it will retry on; see `offline-file.ts`. By the widget's
- * element, so a widget scrolled out of the viewport and destroyed stops listening.
- */
-const waiting = new WeakMap<HTMLElement, () => void>();
-
 const failedImages = new Set<string>();
 
 /** Forgets every failure. Exists for tests, like `resetExpandedPdfs`. */
