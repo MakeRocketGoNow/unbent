@@ -11,6 +11,7 @@ import { formatBytes } from '../format-bytes.js';
 import { Button } from './Button';
 import { Confirm } from './Confirm.js';
 import { useDeviceRoom } from './KeepOffline.js';
+import { useOfflineReady } from '../sw-register.js';
 
 const count = (n: number) => `${n.toLocaleString()} file${n === 1 ? '' : 's'}`;
 
@@ -31,6 +32,7 @@ export function OfflineStorage() {
   const { keeper, status } = useKeeper();
   const sync = useSyncStatus();
   const { room, refresh: remeasure } = useDeviceRoom();
+  const appReady = useOfflineReady();
   const notebooks = useQuery(notebooksQuery()).data?.notebooks ?? [];
   const kept = notebooks.filter((nb) => status.kept.has(nb.id));
 
@@ -82,6 +84,14 @@ export function OfflineStorage() {
             someone relying on it for a flight should know before the flight. */}
         {persisted === false && ' This browser has not agreed to keep it if the device runs low on space; installing the app usually settles that.'}
       </p>
+      {/* Before anything else: if the app itself is not on the device yet, nothing below it
+          matters offline, and going offline too soon leaves no app to open at all. */}
+      {appReady === 'ready' && <p className="muted small">The app itself is on this device and opens with no connection.</p>}
+      {appReady === 'installing' && (
+        <p className="muted small" aria-live="polite">
+          Still downloading the app for offline use. Keep a connection until this line changes.
+        </p>
+      )}
 
       <section className="notebook-section">
         <h3 className="notebook-section-head">Kept notebooks</h3>
