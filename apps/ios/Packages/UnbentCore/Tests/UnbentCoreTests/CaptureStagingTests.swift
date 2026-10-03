@@ -156,18 +156,40 @@ final class CaptureStagingTests: XCTestCase {
         try touch(stale, now - 4 * day)
         try touch(abandoned, now - 4 * day)
 
-        // Staged four days ago too, but a record rewritten an hour ago says it is live.
+        // Staged four days ago too, but a file written an hour ago says it is live.
         let waiting = try store.create("waiting")
         let file = waiting.appendingPathComponent("scan.pdf")
         try Data("x".utf8).write(to: file)
         try touch(file, now - 4 * day)
-        let record = waiting.appendingPathComponent(".job.json")
+        let record = waiting.appendingPathComponent(".note")
         try Data("{}".utf8).write(to: record)
         try touch(record, now - 60 * 60)
         try touch(waiting, now - 4 * day)
 
-        store.sweepAbandoned(now: now)
+        XCTAssertEqual([], store.sweepAbandoned(now: now))
 
         XCTAssertEqual(["waiting"], store.jobIds())
+    }
+
+    /// Saved while signed out: the sheet said it would be saved, so it is kept far longer
+    /// than a sheet nobody finished, and is not let go of without a word.
+    func testASavedCaptureWaitsAMonthForASignInAndIsReportedWhenItGoes() throws {
+        let store = CaptureStore(container: container)
+        let day: TimeInterval = 24 * 60 * 60
+        let now = Date()
+        func stage(_ id: String, daysAgo: Double) throws {
+            let directory = try store.create(id)
+            try CaptureJob(id: id, origin: "https://notes.example.com", title: "Receipts").save(to: directory)
+            for url in [directory.appendingPathComponent(".job.json"), directory] {
+                try FileManager.default.setAttributes([.modificationDate: now - daysAgo * day], ofItemAtPath: url.path)
+            }
+        }
+        try stage("last-week", daysAgo: 7)
+        try stage("long-ago", daysAgo: 31)
+
+        let givenUp = store.sweepAbandoned(now: now)
+
+        XCTAssertEqual(["long-ago"], givenUp.map(\.id))
+        XCTAssertEqual(["last-week"], store.jobIds())
     }
 }

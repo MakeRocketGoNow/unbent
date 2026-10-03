@@ -1499,7 +1499,9 @@ capture's record, which the app joins to collect what the extension started. Onl
 process may use a background session at a time, and a single shared name has a second
 share contending with the app woken for the first.
 
-Shared while signed out, a capture is staged all the same and sent after the next sign-in.
+Shared while signed out, a capture is staged all the same and sent after the next sign-in;
+it waits thirty days for one, and the notification says so if it is given up on. A sheet
+closed without Save or Cancel leaves no record, and its files go after three.
 Its one notification goes from "Saving…" to "Saved" in place and opens the note; delivery
 is asked for provisionally, so there is no prompt and the first one arrives quietly with
 the system's own Keep or Turn Off. A PDF or an image can also be opened in the app from

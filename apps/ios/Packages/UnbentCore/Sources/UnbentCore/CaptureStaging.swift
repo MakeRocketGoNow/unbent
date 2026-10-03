@@ -191,25 +191,44 @@ public struct CaptureStore: Sendable {
             .sorted()
     }
 
-    /// Deletes captures nothing has touched in three days.
+    /// Deletes captures nothing has touched for a long time, and returns the ones that
+    /// were someone's to be told about.
     ///
-    /// `clear` is the cleanup, and every way a capture ends calls it. This is for one
-    /// that never got there: a sheet whose extension was killed before Save or Cancel, or
-    /// a capture staged while signed out by someone who never signed in. Touched means
-    /// any file in it — a capture waiting on the server rewrites its record on every
-    /// attempt, so a live one never looks abandoned. Three days is well past the longest
-    /// a capture waits (see `CaptureJob.maxUnavailable`).
-    public func sweepAbandoned(now: Date = Date()) {
+    /// `clear` is the cleanup, and every way a capture ends calls it. This is for the two
+    /// that never get there, and they are told apart by whether Save was tapped, which
+    /// is whether there is a record:
+    ///
+    /// - No record: a sheet whose extension was killed before Save or Cancel. Nobody is
+    ///   waiting for it. Gone after three days, silently.
+    /// - A record: a capture someone saved, which is waiting for a sign-in — made signed
+    ///   out, or refused for a lapsed session — and was told it would be saved. Kept for
+    ///   thirty days, and returned when it goes so the caller can say it was not. It was
+    ///   three days and silent for these too, which broke the sheet's own promise.
+    ///
+    /// Touched means any file in it. A capture that is being retried is never swept by
+    /// either limit: its record is rewritten on every attempt, so the longest it goes
+    /// untouched is one wait (`CaptureJob.longestWait`, six hours).
+    @discardableResult
+    public func sweepAbandoned(now: Date = Date()) -> [CaptureJob] {
         let fm = FileManager.default
+        var givenUp: [CaptureJob] = []
         for jobId in jobIds() {
             let directory = directory(jobId)
             let inside = (try? fm.contentsOfDirectory(at: directory, includingPropertiesForKeys: [.contentModificationDateKey], options: [])) ?? []
             let touched = (inside + [directory])
                 .compactMap { try? $0.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate }
                 .max() ?? .distantPast
-            if now.timeIntervalSince(touched) > Self.abandoned { try? fm.removeItem(at: directory) }
+            let record = CaptureJob.load(from: directory)
+            guard now.timeIntervalSince(touched) > (record == nil ? Self.abandoned : Self.unclaimed) else { continue }
+            try? fm.removeItem(at: directory)
+            if let record { givenUp.append(record) }
         }
+        return givenUp
     }
 
+    /// How long a sheet nobody finished is kept.
     static let abandoned: TimeInterval = 3 * 24 * 60 * 60
+
+    /// How long a saved capture waits for a sign-in.
+    static let unclaimed: TimeInterval = 30 * 24 * 60 * 60
 }

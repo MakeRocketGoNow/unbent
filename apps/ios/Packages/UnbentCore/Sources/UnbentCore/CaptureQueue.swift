@@ -202,9 +202,12 @@ public final class CaptureQueue: NSObject, @unchecked Sendable {
         return true
     }
 
-    /// Removes captures nobody finished or cancelled. See `CaptureStore.sweepAbandoned`.
+    /// Removes captures nobody finished or cancelled, and says so for the ones someone
+    /// had saved. See `CaptureStore.sweepAbandoned`.
     public func sweep() {
-        work.async { self.store.sweepAbandoned() }
+        work.async {
+            for job in self.store.sweepAbandoned() { self.notifier.failed(job) }
+        }
     }
 
     // MARK: - Sending
