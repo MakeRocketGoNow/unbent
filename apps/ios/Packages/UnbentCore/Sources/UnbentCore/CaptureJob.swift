@@ -328,12 +328,21 @@ public enum CaptureRequests {
         request.setValue(file.contentType, forHTTPHeaderField: "Content-Type")
         request.setValue(file.id, forHTTPHeaderField: "X-Attachment-Id")
         // Percent-encoded because a header may not carry non-ASCII, and filenames do.
+        // The set is `encodeURIComponent`'s, since the server undoes it with
+        // `decodeURIComponent`. `.alphanumerics` was here first and is every Unicode
+        // letter, which left é, CJK and the ’ that iOS types for an apostrophe raw in
+        // the header: garbled on arrival, or refused, and a refusal ended the capture.
         request.setValue(
-            file.name.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? file.name,
+            file.name.addingPercentEncoding(withAllowedCharacters: unreserved) ?? file.name,
             forHTTPHeaderField: "X-Filename"
         )
         return request
     }
+
+    /// What JavaScript's `encodeURIComponent` leaves alone. ASCII only.
+    private static let unreserved = CharacterSet(
+        charactersIn: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_.!~*'()"
+    )
 
     private static func authorized(_ url: URL, origin: String, bearer: String) -> URLRequest {
         var request = URLRequest(url: url)

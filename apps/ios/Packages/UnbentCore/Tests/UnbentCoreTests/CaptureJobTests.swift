@@ -244,6 +244,18 @@ final class CaptureJobTests: XCTestCase {
         let name = try XCTUnwrap(request.value(forHTTPHeaderField: "X-Filename"))
         XCTAssertEqual("Reçu (final) v2.pdf", name.removingPercentEncoding)
         XCTAssertTrue(name.allSatisfy(\.isASCII))
+        XCTAssertEqual("Re%C3%A7u%20(final)%20v2.pdf", name)
         XCTAssertEqual("Bearer sess.sig", request.value(forHTTPHeaderField: "Authorization"))
+    }
+
+    /// Letters are letters in every script, and none of them may reach a header raw: the
+    /// curly apostrophe is what an iPhone's keyboard types.
+    func testAFilenameInAnyScriptIsAsciiInTheHeaderAndDecodesToItself() throws {
+        for original in ["Café ’receipt’.pdf", "領収書 2026.pdf", "Счёт №5.pdf"] {
+            let file = CaptureJob.File(name: original, contentType: "application/pdf")
+            let name = try XCTUnwrap(CaptureRequests.upload(file, of: job(), bearer: "b").value(forHTTPHeaderField: "X-Filename"))
+            XCTAssertTrue(name.allSatisfy(\.isASCII), name)
+            XCTAssertEqual(original, name.removingPercentEncoding)
+        }
     }
 }
