@@ -1,4 +1,4 @@
-import { Fragment, useMemo, type MouseEvent, type SyntheticEvent } from 'react';
+import { Fragment, useEffect, useMemo, useRef, type MouseEvent, type SyntheticEvent } from 'react';
 import { IMAGE_ZOOM_CLASS, PDF_EMBED_CLASS, renderMarkdown } from '@unbent/shared';
 import { usePdfAttachments } from '../usePdfAttachments.js';
 import { openAttachmentViewer } from '../attachment-viewer.js';
@@ -79,20 +79,6 @@ function onPreviewClick(event: MouseEvent<HTMLDivElement>) {
 }
 
 /**
- * A picture in the pane that failed to load with no connection says so in a line, where a
- * broken-image icon would be, and is asked for again when the connection returns.
- *
- * On the capture phase, because `error` does not bubble and the images are in HTML the
- * pane renders as a string — the same reason the click above is delegated. A picture that
- * failed for any other reason is left as the browser draws it, as before.
- */
-function onPreviewImageError(event: SyntheticEvent<HTMLDivElement>) {
-  const img = event.target;
-  if (!(img instanceof HTMLImageElement) || img.hidden) return;
-  standInForImage(img, img.alt);
-}
-
-/**
  * Rendered markdown. The HTML is produced by the shared pipeline, which runs
  * rehype-sanitize — dangerouslySetInnerHTML is safe here only because of that, so the two
  * must never be separated.
@@ -109,6 +95,32 @@ export function Preview({ markdown, noteId }: PreviewProps) {
     () => splitOnPdfLinks(renderMarkdown(markdown, { noteId, pdfFilenames })),
     [markdown, noteId, pdfFilenames],
   );
+
+  /*
+   * A picture in the pane that failed to load with no connection says so in a line, where
+   * a broken-image icon would be, and is asked for again when the connection returns
+   * (`offline-file.ts`). On the capture phase, because `error` does not bubble and the
+   * images are in HTML the pane renders as a string — the same reason the click is
+   * delegated. A picture that failed for any other reason is left as the browser draws it.
+   *
+   * Each stand-in is waiting on the connection, holding its picture. The pictures go when
+   * the markdown changes or the pane unmounts, and the waits must go with them, or every
+   * re-render offline leaves a listener and a detached image behind until the connection
+   * returns (review of #236).
+   */
+  const waits = useRef<Array<() => void>>([]);
+  useEffect(
+    () => () => {
+      for (const stop of waits.current) stop();
+      waits.current = [];
+    },
+    [segments],
+  );
+  const onPreviewImageError = (event: SyntheticEvent<HTMLDivElement>) => {
+    const img = event.target;
+    if (!(img instanceof HTMLImageElement) || img.hidden) return;
+    standInForImage(img, img.alt, (stop) => waits.current.push(stop));
+  };
 
   return (
     <div className="preview" onClick={onPreviewClick} onErrorCapture={onPreviewImageError}>
