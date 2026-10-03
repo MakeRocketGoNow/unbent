@@ -956,6 +956,15 @@ export async function tagNotes(ids: string[], change: { add?: string[]; remove?:
  * file the device has no room to hold.
  */
 export async function uploadFile(noteId: string, file: File, opts: { signal?: AbortSignal } = {}): Promise<api.UploadedFile> {
+  /*
+   * Before the first `await`, while the drop or the click that brought the file is still
+   * what the browser sees this as part of: a browser that asks the person asks only
+   * then, and by the time a file is known to be queued — the library looked up, a direct
+   * attempt failed, the room measured — that moment has passed (review of #236). Asked
+   * for every upload, then, queued or not; it costs nothing where it is already granted.
+   * If this one is queued, its bytes will exist nowhere else.
+   */
+  askToPersist();
   const lib = await queueable();
   /*
    * One id for the file, whichever way it goes. A request made directly can lose its
@@ -986,8 +995,6 @@ export async function uploadFile(noteId: string, file: File, opts: { signal?: Ab
   const taken = [...lib.attachments.values()].filter((a) => a.noteId === noteId).map((a) => a.filename);
   const filename = availableFilename(taken, named.data);
   const contentType = file.type || 'application/octet-stream';
-  // These bytes are about to exist nowhere else; see `askToPersist`.
-  askToPersist();
   await writeFile(lib.userId, 'pending', noteId, filename, file);
   const upload: Upload = { noteId, attachmentId, filename, contentType, size: file.size };
   const queued = queue(lib, 'uploadFile', upload as unknown as Record<string, unknown>, () => {
