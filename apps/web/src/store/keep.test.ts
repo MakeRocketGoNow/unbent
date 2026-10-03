@@ -149,7 +149,8 @@ describe('the keeper', () => {
     // fetched again, whole.
     await vi.waitFor(() => expect(k.status().have).toEqual({ files: 1, bytes: 100 }), { timeout: 4000 });
     expect(k.status().problem).toBeNull();
-    expect(served.filter((u) => u.endsWith('photo.jpg'))).toHaveLength(2);
+    // Asked for once more after the one that was cut off (which this stand-in did not record).
+    expect(served.filter((u) => u.endsWith('photo.jpg'))).toHaveLength(1);
     expect((await listShelf('u1', 'kept'))[0]).toMatchObject({ name: 'photo.jpg', size: 100 });
   });
 
