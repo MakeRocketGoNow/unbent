@@ -64,6 +64,10 @@ public final class CaptureQueue: NSObject, @unchecked Sendable {
     private let work = DispatchQueue(label: "app.unbent.capture")
     private var urlSessions: [String: URLSession] = [:]
     private var eventHandlers: [String: () -> Void] = [:]
+    /// Whether a pass of `resumeAll` is under way, and whether another was asked for
+    /// meanwhile. Read and written on `work`.
+    private var resuming = false
+    private var resumeAgain = false
     private let log = Logger(subsystem: Bundle.main.bundleIdentifier ?? "unbent", category: "capture")
 
     /// The app's session, named for the app.
@@ -130,10 +134,22 @@ public final class CaptureQueue: NSObject, @unchecked Sendable {
     /// The system wakes the app for a result, but not an app the person force-quit, and
     /// not for a capture that was never sent because nobody was signed in. This is the
     /// other way a capture moves, and it is safe to call at any time.
+    ///
+    /// One pass at a time. A cold launch asks three times within a moment — at launch,
+    /// when the site starts, when the scene becomes active — and a pass reads what the
+    /// system holds before it sends. Three at once each read the list before any had
+    /// sent, and each sent everything: correct, because of the ids, and a 100 MB video
+    /// uploaded three times over a phone connection. A call during a pass asks for one
+    /// more after it, however many calls there were, since something may have changed.
     public func resumeAll() {
         work.async {
+            guard !self.resuming else {
+                self.resumeAgain = true
+                return
+            }
+            self.resuming = true
             let jobs = self.jobsOnDisk()
-            guard !jobs.isEmpty else { return }
+            guard !jobs.isEmpty else { return self.finishedResuming() }
             let identifiers = Set([self.home] + jobs.compactMap(\.shareSession))
             self.liveRequests(in: identifiers) { live, idle in
                 // Read again: results may have been applied while the lists were fetched.
@@ -147,8 +163,16 @@ public final class CaptureQueue: NSObject, @unchecked Sendable {
                     }
                 }
                 for identifier in idle where identifier != self.home { self.retire(identifier) }
+                self.finishedResuming()
             }
         }
+    }
+
+    private func finishedResuming() {
+        resuming = false
+        guard resumeAgain else { return }
+        resumeAgain = false
+        resumeAll()
     }
 
     /// The app was launched, or resumed in the background, because requests in
