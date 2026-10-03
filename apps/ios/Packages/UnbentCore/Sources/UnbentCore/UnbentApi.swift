@@ -42,6 +42,12 @@ public struct ApiError: Error, Equatable, LocalizedError {
 
 /// The API, as the native screens and the share extension use it.
 ///
+/// Only `config` and `me` have a caller in the app so far. The note, notebook, tag and
+/// file calls are the Share Extension's (MAK-156), which files a capture without the web
+/// view; they are here already, with their tests, because they are one port of one Kotlin
+/// class and were checked against it together. The same goes for `AppPrefs.lastNotebook`
+/// and for the indexing fields of `BridgeMessage`. Not dead code — code ahead of its caller.
+///
 /// The Android app's half is `UnbentApi.kt`. Calls are `async` on a `URLSession` with no
 /// cookie jar: the session is sent as a bearer by hand, and a jar would let a cookie from
 /// one sign-in ride along on the next person's request.
