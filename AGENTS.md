@@ -554,7 +554,14 @@ not Vite's. The Browser pane cannot register a service worker at all, so drive a
 Chrome over the DevTools protocol instead (the gate scripts from MAK-140's spike are the
 shape). Take a connection away with `Network.emulateNetworkConditions` on the page *and* on
 every service-worker target, attaching one session per target and reusing it: emulation is
-per session, and a second attach leaves the first one's conditions in force. The real check
+per session, and a second attach leaves the first one's conditions in force. `pnpm gate:offline`
+(`scripts/offline-gate.mjs`) is that, kept: with `pnpm dev` up, the demo account seeded and
+the web app built, it installs the worker, cuts the network on the page and the worker, and
+checks that a file not on the device says so, that the worker, its caches and the library
+survive, that an opened file draws again, and that a file added offline uploads on
+reconnect. Run it before asking anyone to test offline behaviour by hand. On a phone,
+**never clear site data between attempts**: that removes the worker, and the app cannot
+open offline again until Settings → Offline says it is on the device. The real check
 is still airplane mode on the phone, with `adb reverse --remove-all` as well when the app
 points at a local instance — airplane mode alone does not cut the adb tunnel. The persistence
 worker applied rows at about 25 a second on the emulator (1,500 notes in 70 s) against well
