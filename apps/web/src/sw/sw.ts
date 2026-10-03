@@ -2,7 +2,7 @@ import { cleanupOutdatedCaches, createHandlerBoundToURL, precacheAndRoute } from
 import { registerRoute } from 'workbox-routing';
 import { CacheFirst, NetworkFirst, type StrategyOptions } from 'workbox-strategies';
 import { ExpirationPlugin } from 'workbox-expiration';
-import { API_CACHE, FILES_CACHE, SERVED_HEADER, VIEW_HEADER, classify, servesShell, shelved } from './routes.js';
+import { API_CACHE, FILES_CACHE, MAX_KEPT_FILE, SERVED_HEADER, VIEW_HEADER, classify, servesShell, shelved } from './routes.js';
 import { createFilesLedger } from './budget.js';
 import { findFile } from '../store/files.js';
 
@@ -132,14 +132,6 @@ registerRoute(
     ],
   }),
 );
-
-/**
- * Twenty megabytes. A file over it is still shown online and simply not kept: a scanned
- * archive has the odd enormous PDF, and a phone's storage is better spent on the many
- * ordinary files someone opened than on one of those. A notebook kept whole
- * (`store/keep.ts`) has no such cap; that is a choice, with its size stated first.
- */
-const MAX_KEPT_FILE = 20 * 1024 * 1024;
 
 /**
  * Keeps only a complete, ordinary answer of a size worth keeping. A plugin that decides

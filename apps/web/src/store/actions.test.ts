@@ -154,6 +154,13 @@ vi.mock('@tanstack/offline-transactions', async (importOriginal) => {
   };
 });
 
+// The cache of opened files keeps nothing over twenty megabytes; twelve bytes here, so a
+// test can be on either side of it without making a file that size.
+vi.mock('../sw/routes.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../sw/routes.js')>()),
+  MAX_KEPT_FILE: 12,
+}));
+
 vi.mock('../notes-api.js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../notes-api.js')>()),
   updateNote: vi.fn(),
@@ -673,6 +680,28 @@ describe('a file added to a note', () => {
     landPull();
     expect(await replay).toBe('done');
     expect(vi.mocked(api.uploadFile).mock.calls[1]![2]).toEqual({ id: first.id });
+  });
+
+  it('goes into the cache of opened files once it has uploaded, unless it is over that cache’s cap', async () => {
+    const put = vi.fn(async () => {});
+    vi.stubGlobal('caches', { open: async () => ({ put }) });
+    // jsdom's File is not one the test runtime's Response takes; what is put is not the point here.
+    vi.stubGlobal('Response', class {});
+    const { fake, engine, landPull } = library([row('n1')]);
+    setReachableForTests(false);
+    await actions.uploadFile('n1', photo('small.jpg', 'ten bytes!'));
+    await actions.uploadFile('n1', photo('big.jpg', 'more than the twelve bytes this file’s cap is set to'));
+    await tick();
+    vi.mocked(api.uploadFile).mockImplementation(async (_n, f) => answer(f.name));
+    setReachableForTests(true);
+    for (let i = 0; i < 2; i += 1) {
+      const replay = fake.replayOne();
+      await vi.waitFor(() => expect(engine.pull).toHaveBeenCalled());
+      landPull();
+      expect(await replay).toBe('done');
+      engine.pull.mockClear();
+    }
+    expect(put.mock.calls.map((c) => (c as unknown as [string])[0])).toEqual(['/api/notes/n1/files/small.jpg']);
   });
 
   it('goes behind the note’s own entry when the note has one waiting, even with a connection', async () => {

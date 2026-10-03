@@ -51,6 +51,19 @@ export const API_CACHE = 'api-v1';
 export const FILES_CACHE = 'files-v1';
 
 /**
+ * Twenty megabytes: the largest file the cache of opened files keeps. A file over it is
+ * still shown online and simply not kept: a scanned archive has the odd enormous PDF, and
+ * a phone's storage is better spent on the many ordinary files someone opened than on one
+ * of those. A notebook kept whole (`store/keep.ts`) has no such cap; that is a choice,
+ * with its size stated first.
+ *
+ * Here rather than in the worker because the page holds to it too: a file added offline
+ * goes into this cache once it has uploaded (`remember` in `store/actions.ts`), and a
+ * 90 MB one put there whole would push out hundreds of the files the cap exists for.
+ */
+export const MAX_KEPT_FILE = 20 * 1024 * 1024;
+
+/**
  * The header the page puts on a fetch of a file's bytes that someone is looking at —
  * today only the PDF viewer's (`loadPdf`). An image needs none: the browser marks an
  * `<img>` load itself, as `destination: 'image'`.

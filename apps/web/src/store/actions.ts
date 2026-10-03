@@ -8,7 +8,7 @@ import { buildNotePatch, seedFrom, holdsTheirChanges, type NoteDraft } from '../
 import { availableFilename, lookups, toNote, type Snapshot } from './derive.js';
 import type { Collections, LocalNote } from './collections.js';
 import { askToPersist, filesSupported, readFile, removeFile, writeFile } from './files.js';
-import { FILES_CACHE } from '../sw/routes.js';
+import { FILES_CACHE, MAX_KEPT_FILE } from '../sw/routes.js';
 import type { FeedEngine } from './feed.js';
 import { outboxName } from './names.js';
 
@@ -569,9 +569,13 @@ export function createOutbox(userId: string, lib: Omit<WritableLibrary, 'outbox'
  * still draws with no connection once it has left the `pending` shelf. The worker's ledger
  * takes it in on its next pass (`sw/budget.ts`), and it is evicted like any other.
  * Best-effort: without Cache Storage the file is simply fetched when next looked at.
+ *
+ * Not a file over the cache's own cap, which the worker would not have kept had it been
+ * opened online: it is in the account now, and draws again with a connection, or with
+ * its notebook kept.
  */
 async function remember(noteId: string, filename: string, file: File): Promise<void> {
-  if (typeof caches === 'undefined') return;
+  if (typeof caches === 'undefined' || file.size > MAX_KEPT_FILE) return;
   try {
     const url = `/api/notes/${encodeURIComponent(noteId)}/files/${encodeURIComponent(filename)}`;
     const headers = { 'Content-Type': file.type || 'application/octet-stream', 'Content-Length': String(file.size) };
