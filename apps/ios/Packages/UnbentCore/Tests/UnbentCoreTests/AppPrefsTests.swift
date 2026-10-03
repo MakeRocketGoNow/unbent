@@ -32,6 +32,15 @@ final class AppPrefsTests: XCTestCase {
         XCTAssertEqual("", normalizeOrigin("   "))
     }
 
+    /// One shape for every instance: the scheme never shows, the port does when there is one.
+    func testAnInstanceIsShownAsItsHostAndPort() {
+        XCTAssertEqual("unbent.app", displayHost("https://unbent.app"))
+        XCTAssertEqual("localhost:5204", displayHost("http://localhost:5204"))
+        XCTAssertEqual("notes.example.com:8443", displayHost("https://notes.example.com:8443/"))
+        XCTAssertEqual("unbent.app", displayHost("unbent.app"))
+        XCTAssertEqual("", displayHost(""))
+    }
+
     private func prefs() -> AppPrefs {
         let suite = "unbent.tests.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suite)!

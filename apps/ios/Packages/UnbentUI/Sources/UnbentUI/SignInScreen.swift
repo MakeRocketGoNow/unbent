@@ -373,7 +373,7 @@ private struct InstanceLine: View {
         HStack(spacing: Space.small) {
             // An address is as long as someone's domain. It wraps rather than pushing
             // Change off the screen.
-            Text("Signing in to \(instance.replacingOccurrences(of: "https://", with: ""))")
+            Text("Signing in to \(displayHost(instance))")
                 .font(.footnote)
                 .foregroundStyle(.secondary)
                 .frame(maxWidth: .infinity, alignment: .leading)

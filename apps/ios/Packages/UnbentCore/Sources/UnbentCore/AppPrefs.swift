@@ -18,6 +18,19 @@ public func normalizeOrigin(_ raw: String) -> String {
     return "\(scheme)://\(host)\(port)"
 }
 
+/// An instance as a person would name it: the host, and the port when it has one.
+///
+/// The scheme is left out for every instance, not only https ones. Three screens each
+/// stripped `https://` by hand, so production read `unbent.app` while a dev server beside
+/// it read `http://localhost:5204` — the same line in two shapes, for no reason anyone
+/// chose. An address that will not parse is shown as it was given.
+public func displayHost(_ origin: String) -> String {
+    guard let url = URLComponents(string: normalizeOrigin(origin)), let host = url.host, !host.isEmpty else {
+        return origin
+    }
+    return url.port.map { "\(host):\($0)" } ?? host
+}
+
 /// What the app remembers that is not a secret: which Unbent it talks to, and where the
 /// last capture was filed.
 ///

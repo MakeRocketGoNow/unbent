@@ -37,8 +37,6 @@ final class SignInModel {
         self.onSignedIn = onSignedIn
     }
 
-    private var host: String { origin.replacingOccurrences(of: "https://", with: "") }
-
     /// Asks the instance which methods to draw. Nothing else can show until it answers.
     func loadConfig() {
         config = nil
@@ -48,7 +46,7 @@ final class SignInModel {
                 config = try await UnbentApi(origin: origin, bearer: nil).config()
             } catch {
                 log.warning("Could not load /api/config from \(self.origin, privacy: .public): \(error.localizedDescription, privacy: .public)")
-                configError = "Couldn’t get the sign-in options from \(host)."
+                configError = "Couldn’t get the sign-in options from \(displayHost(origin))."
             }
         }
     }

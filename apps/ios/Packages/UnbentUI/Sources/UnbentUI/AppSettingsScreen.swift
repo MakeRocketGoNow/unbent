@@ -83,7 +83,7 @@ public struct AppSettingsScreen: View {
                     }
                 } else {
                     Section {
-                        Text(instance.replacingOccurrences(of: "https://", with: ""))
+                        Text(displayHost(instance))
                             .textSelection(.enabled)
                     } header: {
                         Text("Unbent address")
