@@ -90,10 +90,17 @@ export function useHostApp(): void {
   }, [router]);
 }
 
+/**
+ * What is open over the page, in document order, so the last is the one on top. One place
+ * for what counts, since Back and a swipe back must agree on it.
+ */
+function openDialogs(): HTMLDialogElement[] {
+  return [...document.querySelectorAll<HTMLDialogElement>('dialog[open]')];
+}
+
 /** Closes every open dialog, the one on top first, as leaving them one at a time would. */
 function closeDialogs(): void {
-  const open = [...document.querySelectorAll<HTMLDialogElement>('dialog[open]')];
-  for (const dialog of open.reverse()) dialog.close();
+  for (const dialog of openDialogs().reverse()) dialog.close();
 }
 
 /*
@@ -132,8 +139,7 @@ function servedByWorker(path: string): boolean {
  * 3. Otherwise false, and the app walks the history or goes to the background.
  */
 export function back(canGoBack: boolean, pathname: string, goHome: (to: string) => void): boolean {
-  const open = [...document.querySelectorAll<HTMLDialogElement>('dialog[open]')];
-  const top = open.at(-1);
+  const top = openDialogs().at(-1);
   if (top) {
     const closable = top as HTMLDialogElement & { requestClose?: () => void };
     if (typeof closable.requestClose === 'function') closable.requestClose();
