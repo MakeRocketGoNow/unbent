@@ -5,6 +5,7 @@ import { createCollections, cursorStore, type Collections, type LocalNote } from
 import { createOutbox, provideLibrary, type Outbox } from './actions.js';
 import { FeedEngine, type FeedState } from './feed.js';
 import { createKeeper, type Keeper } from './keep.js';
+import { askToPersist } from './files.js';
 
 /**
  * One account's library on this device: its local store, the collections in it, the
@@ -313,7 +314,7 @@ async function open(userId: string): Promise<Library> {
    * answer is the browser's and a refusal changes nothing — an evicted copy is taken
    * again from a snapshot. Not awaited: some browsers answer only after a prompt.
    */
-  void navigator.storage?.persist?.().catch(() => false);
+  askToPersist();
   /*
    * A page restored from the back/forward cache comes back with the adapter's worker
    * and handles in whatever state they were left; the adapter wants fresh instances
