@@ -5058,6 +5058,39 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
 /* The confirms bring their own margins for pages without a rhythm; this one has one. */
 .notebook-section > .confirm { margin: 0; }
 
+/*
+   The kept notebooks under Settings → Offline: a name that yields, a size under it, and
+   one quiet action at the row's end — the attachments list's shape, for the same reason.
+   A notebook's name is unbounded, so it truncates before the button wraps.
+*/
+.offline-storage { gap: 1.25rem; }
+.offline-kept {
+  align-self: stretch;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.offline-kept-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem 0.75rem;
+  padding: 0.5rem 0;
+  border-bottom: 1px solid var(--border);
+}
+.offline-kept-info {
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.offline-kept-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.offline-kept-row > .confirm { flex: 1 0 100%; margin: 0.25rem 0 0.5rem; }
+
 /* Section heading within the edit page — "Fields", "Delete notebook". Quieter than the
    panel's h2, since the page title already names the notebook. */
 .notebook-section-head {
