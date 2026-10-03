@@ -36,7 +36,8 @@ public enum CaptureAction: Equatable, Sendable {
     case retry(CaptureStep, after: TimeInterval, unavailable: Bool)
     /// Everything landed. Clear the files and say "Saved".
     case saved
-    /// The session is gone. Forget it, delete the files, and say so.
+    /// The session is gone. Forget it and say so. The capture is kept as it is, like one
+    /// made while signed out, and goes again after the next sign-in.
     case signInNeeded
     /// Out of attempts. Delete the files and say so.
     case failed
@@ -198,7 +199,13 @@ public struct CaptureJob: Codable, Equatable, Sendable {
         }
 
         if outcome.status == 401, outcome.currentSession {
-            // The session is gone, not merely unreachable. Retrying cannot fix it.
+            // The session is gone, not merely unreachable. Retrying cannot fix it, and
+            // nothing is counted against the capture: it is not the capture's failure.
+            //
+            // Android deletes the capture here and says "share again", and this did too.
+            // But a session carries no expiry this app can read, so someone who shares
+            // often and opens the app rarely finds out it lapsed only by sharing — and
+            // for a scan opened from a scanner's app, the staged copy may be the only one.
             return .signInNeeded
         }
 

@@ -160,6 +160,24 @@ final class CaptureJobTests: XCTestCase {
         XCTAssertEqual(.signInNeeded, job.handle(.create, CaptureOutcome(status: 401)))
     }
 
+    /// A lapsed session is not the capture's failure. It is left exactly as it was, so
+    /// that after a sign-in it is sent like one made while signed out.
+    func testACaptureRefusedForItsSessionIsKeptWholeForTheNextSignIn() {
+        var fresh = job()
+        let before = fresh
+        XCTAssertEqual(.signInNeeded, fresh.handle(.create, CaptureOutcome(status: 401)))
+        XCTAssertEqual(before, fresh)
+        XCTAssertEqual([.create], fresh.pending(live: []))
+
+        // Refused partway: the note and the file that landed stay landed.
+        var partway = job()
+        _ = partway.handle(.create, ok)
+        _ = partway.handle(.file("file-0"), ok)
+        XCTAssertEqual(.signInNeeded, partway.handle(.file("file-1"), CaptureOutcome(status: 401)))
+        XCTAssertEqual(0, partway.file("file-1")?.progress.attempts)
+        XCTAssertEqual([.file("file-1")], partway.pending(live: []))
+    }
+
     /// The page replaced the session while the request waited: go again with the new one.
     func testA401ForASessionSinceReplacedGoesAgainAtOnce() {
         var job = job()

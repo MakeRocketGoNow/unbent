@@ -253,7 +253,11 @@ public final class CaptureQueue: NSObject, @unchecked Sendable {
         case .signInNeeded:
             // The stale session would fail every later share the same way, silently.
             sessions.clear(for: job.origin)
-            end(job)
+            // The files stay. With no session `send` does nothing, so the capture is now
+            // exactly one made while signed out, and `resumeAll` after the next sign-in
+            // sends what is left of it. Its other requests carry the same dead session
+            // and are recalled rather than left to be refused one by one.
+            cancelRequests(of: job)
             notifier.signInNeeded(job)
             onSignedOut(job.origin)
         case .failed:
@@ -266,6 +270,10 @@ public final class CaptureQueue: NSObject, @unchecked Sendable {
     /// still out for it, which would otherwise fail one by one against a missing file.
     private func end(_ job: CaptureJob) {
         store.clear(job.id)
+        cancelRequests(of: job)
+    }
+
+    private func cancelRequests(of job: CaptureJob) {
         for session in urlSessions.values {
             session.getAllTasks { tasks in
                 for task in tasks where CaptureStep.parse(task.taskDescription)?.job == job.id { task.cancel() }
@@ -306,7 +314,7 @@ public final class CaptureQueue: NSObject, @unchecked Sendable {
 extension CaptureQueue: URLSessionTaskDelegate {
     public func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
         guard let (jobId, step) = CaptureStep.parse(task.taskDescription) else { return }
-        // One this queue cancelled itself, for a capture that has ended.
+        // One this queue cancelled itself: its capture ended, or is waiting for a sign-in.
         if (error as? URLError)?.code == .cancelled { return }
 
         let response = task.response as? HTTPURLResponse

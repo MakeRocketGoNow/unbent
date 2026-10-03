@@ -34,7 +34,8 @@ public struct CaptureNotifications: CaptureNotifying {
 
     public func failed(_ job: CaptureJob) { post(job, "Could not save") }
 
-    public func signInNeeded(_ job: CaptureJob) { post(job, "Sign in to Unbent, then share again") }
+    /// The capture is kept, so there is nothing to share again: signing in finishes it.
+    public func signInNeeded(_ job: CaptureJob) { post(job, "Sign in to Unbent to finish saving") }
 
     /// The note a tapped notification is for, when it is one that names a note.
     public static func noteId(in userInfo: [AnyHashable: Any]) -> String? {
