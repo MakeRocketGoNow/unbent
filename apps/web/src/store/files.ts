@@ -58,7 +58,10 @@ export function filesSupported(): boolean {
  */
 export function askToPersist(): void {
   if (typeof navigator === 'undefined') return;
-  void navigator.storage?.persist?.().catch(() => false);
+  // Typed by hand: this module is also compiled for the service worker, whose library
+  // declares a `StorageManager` with no `persist`, there being nobody there to ask.
+  const storage = navigator.storage as (StorageManager & { persist?: () => Promise<boolean> }) | undefined;
+  void storage?.persist?.().catch(() => false);
 }
 
 /** Whether the browser has agreed to keep this site's storage; null where it will not say. */
