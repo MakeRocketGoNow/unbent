@@ -66,6 +66,9 @@ public final class CaptureQueue: NSObject, @unchecked Sendable {
     private var eventHandlers: [String: () -> Void] = [:]
     /// Whether a pass of `resumeAll` is under way, and whether another was asked for
     /// meanwhile. Read and written on `work`.
+    /// Sessions whose results were all applied before the system's handler for them had
+    /// arrived. See `handleEvents`.
+    private var finishedEarly = Set<String>()
     private var resuming = false
     private var resumeAgain = false
     private let log = Logger(subsystem: Bundle.main.bundleIdentifier ?? "unbent", category: "capture")
@@ -183,6 +186,16 @@ public final class CaptureQueue: NSObject, @unchecked Sendable {
     public func handleEvents(identifier: String, completion: @escaping () -> Void) -> Bool {
         guard identifier == home || identifier.hasPrefix(home + ".share.") else { return false }
         work.async {
+            // The handler can arrive after the results it is for. Launch looks at the
+            // queue (`resumeAll`), which joins the sessions, and UIKit calls this later
+            // in the same launch; a session that has delivered everything by then will
+            // not finish again, and a handler stored for it would never be called. The
+            // system counts that as background work never finished, and is slower to
+            // launch the app for the next upload.
+            if self.finishedEarly.remove(identifier) != nil {
+                DispatchQueue.main.async(execute: completion)
+                return
+            }
             self.eventHandlers[identifier] = completion
             _ = self.session(identifier)
         }
@@ -377,6 +390,9 @@ extension CaptureQueue: URLSessionDelegate {
         if let handler = eventHandlers.removeValue(forKey: identifier) {
             // The system's handler is UIKit's, and is called where UIKit expects it.
             DispatchQueue.main.async(execute: handler)
+        } else {
+            // Nobody to tell yet; `handleEvents` is told when it asks.
+            finishedEarly.insert(identifier)
         }
         guard identifier != home else { return }
         session.getAllTasks { tasks in
