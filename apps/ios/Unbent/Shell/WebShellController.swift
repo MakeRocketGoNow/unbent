@@ -663,13 +663,20 @@ extension WebShellController: WKNavigationDelegate {
         setUnreachable(true)
     }
 
+    /// Every way the phone has of saying it could not get to the server. The last two are
+    /// the phone's own settings rather than its signal — cellular data turned off for this
+    /// app, and roaming — and without them a cold load there was the blank web view the
+    /// panel exists to replace.
     private static let unreachableCodes: Set<Int> = [
         NSURLErrorNotConnectedToInternet,
         NSURLErrorCannotFindHost,
         NSURLErrorCannotConnectToHost,
+        NSURLErrorDNSLookupFailed,
         NSURLErrorTimedOut,
         NSURLErrorSecureConnectionFailed,
         NSURLErrorNetworkConnectionLost,
+        NSURLErrorDataNotAllowed,
+        NSURLErrorInternationalRoamingOff,
     ]
 
     /// The page's process died — out of memory on a huge PDF, or iOS reclaiming it while
