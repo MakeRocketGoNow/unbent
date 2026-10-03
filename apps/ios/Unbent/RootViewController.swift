@@ -24,6 +24,10 @@ final class RootViewController: UIViewController {
     private var shell: WebShellController?
     private var current: UIViewController?
 
+    /// Files opened in the app before its first screen was up, held until it is.
+    private var filesToCapture: [URL] = []
+    private var appeared = false
+
     /// Where to go once there is a site to go anywhere on: a note whose notification was
     /// tapped before the view loaded, or while signed out.
     private var pendingPath: String?
@@ -52,6 +56,15 @@ final class RootViewController: UIViewController {
         // A file half-saved when the app was last killed is not a file.
         SavedFiles.downloads().sweep()
         start()
+    }
+
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        appeared = true
+        guard !filesToCapture.isEmpty else { return }
+        let files = filesToCapture
+        filesToCapture = []
+        capture(files)
     }
 
     func becameActive() {
@@ -155,6 +168,14 @@ final class RootViewController: UIViewController {
     func capture(_ urls: [URL]) {
         let files = urls.filter(\.isFileURL)
         guard !files.isEmpty else { return }
+        // A file that launched the app arrives while the scene is still connecting,
+        // before this controller is on screen, and UIKit refuses a sheet presented from
+        // a view that is not in a window: nothing showed, and the directory made below
+        // was left for the sweep. Held until there is a screen to present on.
+        guard appeared else {
+            filesToCapture += files
+            return
+        }
         let jobId = CaptureJob.newId()
         let origin = instance
         let session = sessions.session(for: origin)
