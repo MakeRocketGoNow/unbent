@@ -204,6 +204,29 @@ describe('the keeper', () => {
     expect(root.paths()).toContain('unbent-files-u1/kept/n1/receipt.pdf');
   });
 
+  it('finishes the fetch in hand when the library changes under it, and lists the shelf from disk only once', async () => {
+    const account = () => root.getDirectoryHandle('unbent-files-u1').then((a) => a.getDirectoryHandle('kept'));
+    let listings = 0;
+    const k = start();
+    await k.keep('receipts');
+    // Counted from the first file landing: every listing of the shelf walks its notes.
+    await vi.waitFor(() => expect(k.status().have.files).toBeGreaterThan(0));
+    const shelfDir = await account();
+    const entries = shelfDir.entries.bind(shelfDir);
+    shelfDir.entries = () => {
+      listings += 1;
+      return entries();
+    };
+    // A burst of changes while files are still arriving.
+    for (let i = 0; i < 5; i += 1) k.nudge();
+    await vi.waitFor(() => expect(k.status().have).toEqual({ files: 3, bytes: 600 }), { timeout: 4000 });
+    await new Promise((r) => setTimeout(r, 1700));
+    await settle();
+    expect(listings).toBe(0);
+    // Each file asked for once: no pass was abandoned and started over.
+    expect(served.filter((u) => u.includes('/files/'))).toHaveLength(3);
+  });
+
   it('empties the shelf and the list on releaseAll', async () => {
     const k = start();
     await k.keep('receipts');

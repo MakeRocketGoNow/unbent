@@ -170,6 +170,24 @@ export function createKeeper(opts: KeeperOptions): Keeper {
   let timer: ReturnType<typeof setTimeout> | null = null;
   /** Downloads in a row that died part-way; see the catch in `pass`. */
   let cutOff = 0;
+  /**
+   * What is on the `kept` shelf, by note and name, as this keeper last knew it: read from
+   * the disk on the first pass and after anything failed, and kept in step by the writes
+   * and removals made here. Listing the shelf is a `getFile()` per file, and the library
+   * changes in bursts — a feed page, an import, a rename — each of which asks for a pass;
+   * on an archive-sized notebook that was thousands of file-system calls per burst to
+   * learn what the keeper had written itself (review of #236).
+   */
+  let shelf: Map<string, ShelvedFile> | null = null;
+  const at = (noteId: string, name: string) => `${noteId}/${name}`;
+  /**
+   * Set when a notebook is released, to stop the pass in hand: it is fetching files that
+   * are no longer wanted. Nothing else stops one. A change to the library asks for
+   * another pass after this one (`again`), and that pass fetches only what is still
+   * missing — abandoning the fetch in hand on every nudge meant a busy feed could keep a
+   * large file from ever finishing.
+   */
+  let halt = false;
 
   /**
    * Reads the list of kept notebooks, once, and again on the next ask if that failed.
@@ -211,11 +229,23 @@ export function createKeeper(opts: KeeperOptions): Keeper {
       return;
     }
     if (stopped || !supported || !opts.settled()) return;
-    const shelf = await listShelf(opts.userId, 'kept');
-    const todo = plan(opts.snapshot(), kept, shelf);
+    halt = false;
+    const leading = opts.leading();
+    // From memory when this tab is the one changing the shelf; a tab that only watches
+    // reads the disk, since the changes are another tab's.
+    if (!shelf || !leading) shelf = new Map((await listShelf(opts.userId, 'kept')).map((f) => [at(f.noteId, f.name), f]));
+    const held = shelf;
+    const todo = plan(opts.snapshot(), kept, [...held.values()]);
     set({ counted: true, wanted: todo.wanted, have: todo.have });
-    if (!opts.leading()) return;
-    for (const f of todo.remove) await removeFile(opts.userId, 'kept', f.noteId, f.name).catch(() => {});
+    if (!leading) return;
+    for (const f of todo.remove) {
+      await removeFile(opts.userId, 'kept', f.noteId, f.name).then(
+        () => held.delete(at(f.noteId, f.name)),
+        () => {
+          shelf = null;
+        },
+      );
+    }
     if (todo.fetch.length === 0 || offlineNow()) {
       set({ fetching: false, problem: null });
       return;
@@ -224,7 +254,7 @@ export function createKeeper(opts: KeeperOptions): Keeper {
     const have = { ...todo.have };
     try {
       for (const f of todo.fetch) {
-        if (stopped || again) return;
+        if (stopped || halt) return;
         const room = await navigator.storage.estimate?.().catch(() => null);
         if (room?.quota !== undefined && room.usage !== undefined && f.size > room.quota - room.usage - HEADROOM) {
           set({ problem: 'This device is out of room, so some files are not kept yet.' });
@@ -241,12 +271,15 @@ export function createKeeper(opts: KeeperOptions): Keeper {
         if (res.status === 404) continue;
         if (!res.ok || !res.body) throw new ApiError(res.status, `${f.filename} answered ${res.status}`);
         await writeFile(opts.userId, 'kept', f.noteId, f.filename, res.body);
+        held.set(at(f.noteId, shelfName(f.filename)), { noteId: f.noteId, name: shelfName(f.filename), size: f.size });
         cutOff = 0;
         have.files += 1;
         have.bytes += f.size;
         set({ have: { ...have } });
       }
     } catch (err) {
+      // Whatever went wrong, memory may no longer be what the disk holds.
+      shelf = null;
       /*
        * The connection went while a file was on its way: `request` only hears a fetch
        * that never answered, and a body that dies part-way is a `TypeError` out of the
@@ -310,6 +343,7 @@ export function createKeeper(opts: KeeperOptions): Keeper {
     await load();
     const next = change(kept);
     await writeKeptNotebooks(opts.userId, [...next]);
+    if ([...kept].some((id) => !next.has(id))) halt = true;
     kept = next;
     set({ kept });
     run();
@@ -328,8 +362,10 @@ export function createKeeper(opts: KeeperOptions): Keeper {
       await load().catch(() => {});
       await writeKeptNotebooks(opts.userId, []);
       kept = new Set();
+      halt = true;
       // The whole shelf at once, rather than a pass removing it a file at a time.
       await clearShelf(opts.userId, 'kept');
+      shelf = null;
       set({ kept, wanted: { files: 0, bytes: 0 }, have: { files: 0, bytes: 0 }, problem: null });
     },
     nudge,
