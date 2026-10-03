@@ -186,9 +186,9 @@ PR are not. Don't push unprompted.
 The exception is work started from a Linear issue: asking for an issue to be fixed is asking
 for the PR, so push and open one once the change is verified, then move the issue to In
 Review. Stop at the commit only when the change is one the user will want to try locally
-before review — in practice, Android changes, which only prove themselves on a device. Web,
-API and docs changes are verified in the browser and the test suites, and go straight to a
-PR. The `fix-linear-issue-cloud` skill carries the full loop.
+before review — in practice, Android and iOS changes, which only prove themselves on a
+device. Web, API and docs changes are verified in the browser and the test suites, and go
+straight to a PR. The `fix-linear-issue-cloud` skill carries the full loop.
 
 ## Running things
 
@@ -352,6 +352,58 @@ empty**. Existing assets and the full recipe are in `apps/android/store/`.
 `uiautomator dump` returns empty while the app is mid-animation or busy — let it settle
 rather than treating the empty file as a missing element.
 
+### The iOS simulator: ask before booting, and know which instance it is on
+
+`apps/ios` is the site in a `WKWebView`, the Android app's shape; the README's iOS section
+says how it is built. `pnpm ios:build` builds, installs and launches the debug build and
+`pnpm ios` launches what is installed. Both boot a simulator only when none is running, and
+that fallback is for a person. If `xcrun simctl list devices booted` is empty, **ask
+before booting one**, and say which you would boot. A simulator is less fragile than the
+Android emulator — one booted from a shell works — but it is still the user's machine and
+their screen.
+
+The two builds sit side by side here too. The **amber** icon is the debug build,
+`com.makerocketgonow.unbent.debug`; the **green** one is the release build. Drive the debug
+one, and **check which instance it is on before creating anything**: it opens
+`https://unbent.app` until told otherwise, which is the user's real notes. The sign-in
+screen's footer and App settings both show the address. A simulator shares the Mac's
+loopback, so a local instance is plain `http://localhost:<port>` with nothing to forward.
+
+**Read the port again every time a server is started.** A worktree's pair moves when
+something else is on it, and while this checkout's server is stopped another session's can
+take the pair it had. An app left pointed at the old port is then talking to someone else's
+instance — it happened while the first version of this app was being tested, with the app
+signing itself out because that server did not know its session. `node scripts/ports.mjs`,
+then App settings.
+
+The service worker only runs from the built site: `pnpm build`, then point the app at the
+Worker's port (`API_PORT`), not Vite's. Stopping the dev server is how to take the
+connection away from an app on localhost; the app should relaunch into the note list.
+
+Things that cost time once:
+
+- **Sign in with the seed's password, not a code, if you want the password to keep
+  working.** `seed:demo` makes its account with a password and an unverified address.
+  Signing in to it with an emailed code verifies the address, and the password set before
+  that stops working: the account's credential row and its earlier sessions are gone
+  afterwards. From then on the account only signs in by code, and `seed:demo` cannot sign
+  in to it at all.
+- **Typing through a simulator tool counts as a hardware keyboard**, so iOS keeps the
+  on-screen one down and shows only the bar above it. What the keyboard does to the layout
+  — whether the editor's toolbar sits on the keys — has to be looked at in the Simulator
+  window with I/O ▸ Keyboard ▸ Connect Hardware Keyboard off, or on a phone. Say so rather
+  than reporting it checked.
+- **A screenshot taken straight after a tap can be the frame before it.** Wait a moment,
+  and prefer `xcrun simctl io booted screenshot <file>`.
+- **The page's errors go to the unified log** in debug builds:
+  `xcrun simctl spawn booted log stream --predicate 'process == "Unbent"'`. The web view is
+  also inspectable from Safari's Develop menu.
+- **`Config/Info.plist` is preprocessed.** A `//` in it is a comment and an apostrophe is
+  an unfinished character; either breaks the build with an error about neither.
+- **Anything `deinit` touches must already exist.** A lazy property first read there is
+  built by an object that is being freed, and one holding a weak reference to it ends the
+  app. Signing out crashed this way until the export streams were made in `init`.
+
 ### Three keys sign this app, and Google has to know all of them
 
 Debug builds use the local debug keystore, uploads are signed with the release key in
@@ -404,11 +456,16 @@ user's real data to test a control; if you do it by accident, put it back and sa
 
 `apps/android` is outside the pnpm workspace — `pnpm -r` silently skips it, so nothing above
 verifies it. It is checked with `cd apps/android && ./gradlew test`, which needs no device.
+`apps/ios` is outside it too: `swift test --package-path apps/ios/Packages/UnbentCore` runs
+its unit tests on the Mac with no simulator, and `xcodebuild -project
+apps/ios/Unbent.xcodeproj -scheme Unbent -destination 'generic/platform=iOS Simulator'
+build` proves the app compiles without booting one.
 The app is the site in a WebView, so almost every UI change belongs in `apps/web` and
 reaches the phone on deploy. Check it at phone width and inside the app — Back, the system
 bars and the keyboard are the app's, not the browser's. What stays native is the sign-in
 screen, the share sheet and App settings, and the UI rules in this file apply to those
-Compose screens as much as to the site.
+Compose screens, and to the iOS app's SwiftUI ones in `apps/ios/Packages/UnbentUI`, as much
+as to the site.
 
 ## The offline shell, and the local copy of the library
 

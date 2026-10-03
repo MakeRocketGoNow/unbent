@@ -61,12 +61,14 @@ than on Workers, and the export zip is assembled in the browser from pages of no
 apps/web       Vite + React SPA
 apps/api       Hono API on Workers, and the MCP server under src/mcp
 apps/android   Kotlin app: the site in a WebView, with native sign-in, share sheet and files
+apps/ios       Swift app: the site in a web view, with native sign-in and files
 packages/shared  zod schemas, frontmatter codec, remark plugins
 packages/enex    ENEX -> Markdown, runtime-agnostic
 ```
 
 `apps/android` is a Gradle project, not a pnpm workspace package: `pnpm -r` skips it, and it
-is built with its own wrapper. See [Android app](#android-app).
+is built with its own wrapper. See [Android app](#android-app). `apps/ios` is an Xcode
+project with two Swift packages beside it, skipped the same way. See [iOS app](#ios-app).
 
 ## Development
 
@@ -243,6 +245,7 @@ says otherwise; `pnpm exec wrangler secret put NAME` from `apps/api`, or the das
 | `APPLE_BUNDLE_ID` | Sign in with Apple from an iOS build of your own | comma-separated bundle ids, beside `APPLE_CLIENT_ID`; see [iOS app](#ios-app) |
 | `SWEEP_TOKEN` | sweeping the note stores at the end of each deploy | a GitHub secret the deploy carries to the Worker, `openssl rand -hex 32`; see [Where your notes live](#where-your-notes-live). `DEV_SWEEP_TOKEN` does the same for the dev instance |
 | Custom domain | serving from your own name | dashboard, not config |
+| `UNBENT_BUNDLE_ID_BASE`, `UNBENT_INSTANCE_HOST`, `DEVELOPMENT_TEAM` | an iOS build of your own | `apps/ios/Config/Local.xcconfig`, untracked; see [iOS app](#ios-app) |
 | `ANDROID_APPLICATION_ID`, `ANDROID_DEFAULT_INSTANCE` | the Android build in CI | GitHub repository **variables**; `unbent.applicationId` and `unbent.defaultInstance` in `local.properties` locally |
 | `CLOUDFLARE_WORKERS_SUBDOMAIN`, `DEV_BETTER_AUTH_SECRET`, `DEV_ALLOWED_EMAILS` | a dev instance and PR previews of your own | GitHub; see [The dev instance](#the-dev-instance) — every job skips itself without them |
 
@@ -1359,8 +1362,130 @@ and previews, so passkeys made there work from the app too.
 
 ## iOS app
 
-An iOS app is under way: the same site in a web view, the way the Android app is. Nothing
-of it is in this repository yet; what the instance needs for it is.
+The site, whole, in one web view, the way the Android app is, with native code only for
+what a page cannot do on an iPhone: sign-in, saving files where the phone keeps them, links
+that leave, and the app's own address and version. It is a port of the Android app's shell
+rather than a second design, and where the two differ it is because the platforms do. This
+is the first part of it: the share extension, sign-in through Apple, Google, a browser and
+passkeys, links that open in the app, and TestFlight are still to come.
+
+```
+swift test --package-path apps/ios/Packages/UnbentCore   # unit tests, on the Mac, no simulator
+pnpm ios:build      # build, install and launch the debug build on a simulator
+pnpm ios            # launch what is already installed
+```
+
+**How it is laid out.** `apps/ios/Unbent.xcodeproj` is one app target whose sources are the
+`Unbent/` folder as it is on disk, so a file added there needs no change to the project.
+Two local Swift packages hold everything that is not the shell. `UnbentCore` is Foundation
+only and builds for the Mac, which is what lets its tests run without a simulator: the
+session cookie, where an address opens, the API, the Keychain store, the page's messages
+and the files the app saves, each a port of the Kotlin one with its tests. `UnbentUI` is
+the native screens as SwiftUI views that take values and closures, apart from the app so
+the share extension can draw the same ones.
+
+Every build setting is in `apps/ios/Config/` — `Base.xcconfig`, with `Debug.xcconfig` and
+`Release.xcconfig` over it — and the project file holds none. `Info.plist` reads them, and
+`BuildInfo.swift` reads `Info.plist`. The plist is run through the C preprocessor for the
+two blocks only the debug build has, which is why it has no DOCTYPE and no apostrophes: the
+preprocessor takes `//` for a comment and a lone `'` for an unfinished character.
+
+The debug build is a second app, as on Android: bundle id `.debug`, the name "Unbent
+(debug)", an amber icon, and its own session and web data, so the two sit side by side.
+
+**How it signs in.** By what the instance offers, read from `GET /api/config`. This part
+has the two methods that are only requests: a code by email and a password, against Better
+Auth directly. The rest are drawn disabled in a debug build, so what the instance offers
+can be seen, and left out of a release build. Every path ends the same way as on Android:
+the session cookie the response set is kept per origin, here in the Keychain under the App
+Group so the share extension can read it, and is `AfterFirstUnlockThisDeviceOnly` — usable
+while the phone is locked in a pocket, and never restored onto another phone. Its value
+goes out as `Authorization: Bearer` from the app's own client, and the same cookie is put
+into the web view's store before every load. `URLSession` hands a response's `Set-Cookie`
+headers over joined into one, so they are split apart again before the session is looked
+for; `SessionCookie.splitSetCookie` says why `HTTPCookie` is not used for that.
+
+Signing out on the page tells the app, which forgets its copy and shows its own sign-in. A
+page that believes the session has ended says so too, and the app asks `/api/me` before
+believing it; a phone with no signal gets a native "Couldn't reach Unbent" panel and keeps
+the session.
+
+**How the site is hosted.** `WebShellController` is one `WKWebView` of the instance, and
+the page has the whole screen. It did not at first: the page was held inside the safe
+area with the strips above and below painted in its colour, as on Android, and on a phone
+with a Dynamic Island those strips are tall enough that the drawer and its scrim stopped
+short of both ends of the screen and read as a card between two bands. So inside the iOS
+app the page asks for `viewport-fit=cover`, keeps its own content clear of the clock and
+the home indicator with `env(safe-area-inset-*)` (the rules under `html.host-ios` in
+`styles.css`), and tells the app it has done so; a page that has not said so, from an
+older deploy, still gets the safe area and the strips. The drawer is square-cornered
+there as well, since the rounded one is Material's shape and iOS side panels are not. The
+status bar's text follows the lightness of the colour the page reports. The keyboard
+shrinks the web view rather than covering it, so the editor's toolbar sits on the keys. The bridge is a script the app
+injects before the page's own, which builds `window.UnbentApp` over WebKit's message
+handlers — the object Android installs with `addJavascriptInterface` — so the page calls
+either host the same way (`apps/web/src/app-bridge.ts`, `Bridge.swift`). There is no Back to
+handle: the edge swipe walks the web view's history, and the page closes a sheet when the
+history moves under it.
+
+Links off the site, `target=_blank` included, open in a Safari sheet over the app; a new
+window to the site itself opens in place, without reloading the page. Downloads run in the
+web view's own session and are saved into the app's folder, which the Files app shows under
+On My iPhone; an export is built in the page and streamed through the bridge's save calls,
+each answered only once its bytes are written, which is what keeps a library larger than
+memory from queueing there. Both are written to a hidden file and named once whole, and a
+banner offers to open or share what was saved. `alert`, `confirm` and `prompt` are shown by
+the app, because a web view left to itself answers `confirm()` with false and asks nobody.
+The file picker and the camera need no code: WebKit presents its own for a file input, and
+a photo chosen from the library arrives as a JPEG even when the phone took it as HEIC, so
+the transcoding the Android app does by hand is not needed for those. A HEIC picked through
+Choose Files is handed over as it is.
+
+**Why a build opens one instance.** WebKit gives an app's web view a service worker — and
+so the offline shell, see [Your library on the device](#your-library-on-the-device) — only
+for the domains the app binds itself to, in `WKAppBoundDomains`, and a web view bound that
+way can open nothing else. So a release build opens the instance it was built for and App
+settings shows the address without a field; a self-hoster builds the app for their own
+host, below. The debug build is
+also bound to `dev.unbent.app` and `localhost`, and its App settings can switch among them.
+With the instance stopped, the app relaunches into the note list from the service worker
+and the local copy, with the page's own offline banner.
+
+What the page stores survives relaunching the app and restarting the phone: the cookie,
+the outbox in IndexedDB, and the library in the origin-private file system.
+`navigator.storage.persist()` answers false in the web view, so that storage is the
+system's to reclaim under pressure, like any app's caches; nothing the server has not heard
+of is kept only there for long, since the outbox drains whenever there is a connection.
+
+**What iOS does that Android does not.** It suspends an app seconds after it leaves the
+screen, so the shell asks for a few seconds of background time for the page's save on
+`visibilitychange` to reach the server. It ends the page's process under memory pressure
+while the app lives on, which leaves a blank web view that says nothing; the shell is told,
+drops any export that page was writing, and reloads the address it was on. And it can
+empty the cookie store between two looks at the app, so the session is put back each time
+the app comes forward as well as before each load.
+
+**Pointing it at a dev server.** In the debug build, App settings takes
+`http://localhost:<port>`; a simulator shares the Mac's loopback, so nothing like `adb
+reverse` is needed. Plain http is allowed for local addresses in debug builds only
+(`NSAllowsLocalNetworking`). Vite's port serves the site without its service worker; the
+Worker's own port serves the built site with it, after `pnpm build`.
+
+**Building it for your own instance.** Put the three things that are yours in
+`apps/ios/Config/Local.xcconfig`, which is untracked and read last:
+
+```
+UNBENT_BUNDLE_ID_BASE = com.example.notes
+UNBENT_INSTANCE_HOST = notes.example.com
+DEVELOPMENT_TEAM = ABCDE12345
+```
+
+The first is the identity the App Store, the App Group and the site association document
+all key on, and has to be a reverse-domain name you control. The second is the instance the
+app opens and the one domain its web view is bound to; `UNBENT_INSTANCE_SCHEME` beside it
+is `https` unless you say otherwise, and the two are apart because `//` begins a comment in
+that file. The third signs a build for a phone; a simulator needs none. `MARKETING_VERSION`
+and `CURRENT_PROJECT_VERSION` are the version and build number App settings shows.
 
 **Vouching for the app.** iOS opens this site's links in the app (universal links), and
 offers the site's passkeys to it, only if the site says which app that is: an Apple App

@@ -1,0 +1,122 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<plist version="1.0">
+<dict>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>$(DEVELOPMENT_LANGUAGE)</string>
+	<key>CFBundleDisplayName</key>
+	<string>$(UNBENT_DISPLAY_NAME)</string>
+	<key>CFBundleExecutable</key>
+	<string>$(EXECUTABLE_NAME)</string>
+	<key>CFBundleIdentifier</key>
+	<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>CFBundleName</key>
+	<string>$(PRODUCT_NAME)</string>
+	<key>CFBundlePackageType</key>
+	<string>$(PRODUCT_BUNDLE_PACKAGE_TYPE)</string>
+	<key>CFBundleShortVersionString</key>
+	<string>$(MARKETING_VERSION)</string>
+	<key>CFBundleVersion</key>
+	<string>$(CURRENT_PROJECT_VERSION)</string>
+	<key>LSRequiresIPhoneOS</key>
+	<true/>
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
+
+	<!-- What the build was configured with, for BuildInfo.swift to read. -->
+	<key>UnbentInstanceHost</key>
+	<string>$(UNBENT_INSTANCE_HOST)</string>
+	<key>UnbentInstanceScheme</key>
+	<string>$(UNBENT_INSTANCE_SCHEME)</string>
+	<key>UnbentConnectScheme</key>
+	<string>$(UNBENT_CONNECT_SCHEME)</string>
+	<key>UnbentAppGroup</key>
+	<string>$(UNBENT_APP_GROUP)</string>
+
+	<!--
+	  The hosts the web view may open, and the reason it has a service worker at all:
+	  WebKit gives an app one only for domains it has bound itself to. The price is that
+	  the web view opens nothing else, which is why a release build cannot be pointed at
+	  another instance from App settings. The debug build adds the dev instance, and this
+	  Mac for a dev server run from a checkout.
+	-->
+	<key>WKAppBoundDomains</key>
+	<array>
+		<string>$(UNBENT_INSTANCE_HOST)</string>
+#if UNBENT_DEBUG
+		<string>dev.unbent.app</string>
+		<string>localhost</string>
+#endif
+	</array>
+
+#if UNBENT_DEBUG
+	<!-- Plain http, to a dev server on this Mac and nowhere else. -->
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsLocalNetworking</key>
+		<true/>
+	</dict>
+#endif
+
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>$(PRODUCT_BUNDLE_IDENTIFIER).connect</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>$(UNBENT_CONNECT_SCHEME)</string>
+			</array>
+		</dict>
+	</array>
+
+	<!--
+	  The page asks for these, through a file input or the editor; the app itself never
+	  does. Each sentence is shown in the system prompt, so each says what it is for.
+	-->
+	<key>NSCameraUsageDescription</key>
+	<string>Take a photo or scan a document to add to a note.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Record sound when you take a video to add to a note.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Choose photos and videos to add to a note.</string>
+
+	<!--
+	  Both, so the folder the app saves into shows in the Files app under On My iPhone:
+	  exports and downloaded attachments are found where files are looked for.
+	-->
+	<key>UIFileSharingEnabled</key>
+	<true/>
+	<key>LSSupportsOpeningDocumentsInPlace</key>
+	<true/>
+
+	<key>UIApplicationSceneManifest</key>
+	<dict>
+		<key>UIApplicationSupportsMultipleScenes</key>
+		<false/>
+		<key>UISceneConfigurations</key>
+		<dict>
+			<key>UIWindowSceneSessionRoleApplication</key>
+			<array>
+				<dict>
+					<key>UISceneConfigurationName</key>
+					<string>Default</string>
+					<key>UISceneDelegateClassName</key>
+					<string>$(PRODUCT_MODULE_NAME).SceneDelegate</string>
+				</dict>
+			</array>
+		</dict>
+	</dict>
+	<key>UILaunchScreen</key>
+	<dict>
+		<key>UIColorName</key>
+		<string>PageGround</string>
+	</dict>
+	<!-- Upright only, for now; Base.xcconfig says why, beside the note on iPad. -->
+	<key>UISupportedInterfaceOrientations</key>
+	<array>
+		<string>UIInterfaceOrientationPortrait</string>
+	</array>
+</dict>
+</plist>
