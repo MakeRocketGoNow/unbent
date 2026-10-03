@@ -1,19 +1,23 @@
 import type { SaveState } from './useAutosave.js';
 
 /**
- * The seam between this site and the Android app that hosts it.
+ * The seam between this site and the app hosting this page (Android or iOS).
  *
- * The app shows the whole site in one WebView and keeps native code only for what a page
+ * The app shows the whole site in one web view and keeps native code only for what a page
  * cannot do on a phone: the share sheet, sign-in through the phone's own account sheet,
- * the file picker and camera, and saving files into Downloads. It also loads
+ * the file picker and camera, and saving files where the phone keeps them. It also loads
  * `/embed/index-files` off screen after a capture, to extract a PDF's text with the
  * extractor this site has. Everything a page can tell the app and everything the app can
  * ask a page is this module's vocabulary, so a change to the protocol is visible from one
- * place on the web side. The app's half is `NoteBridge.kt`.
+ * place on the web side. The Android app's half is `NoteBridge.kt`.
  *
- * Page to app goes through `window.UnbentApp.postMessage`, which Android installs with
- * `addJavascriptInterface` before the page loads. Absent that object — the site in any
- * browser — every post is a no-op, so the page works unhosted rather than throwing.
+ * Page to app goes through `window.UnbentApp`, which the app puts there before the page
+ * loads: Android with `addJavascriptInterface`, whose methods answer synchronously, and
+ * an iOS host from a script of its own over WKWebView's message handlers, which can only
+ * answer with a promise. This module is written to the weaker of the two, so the page
+ * never asks which it is talking to: a call that returns something may return it or a
+ * promise of it (see `HostApp`). Absent that object — the site in any browser — every
+ * post is a no-op, so the page works unhosted rather than throwing.
  *
  * - `theme` carries the page's ground colour, so the strips the app draws around the page
  *   (behind the status bar and the navigation bar) are the same colour as the page.
@@ -27,8 +31,9 @@ import type { SaveState } from './useAutosave.js';
  * App to page is `window.__unbent`, installed by the signed-in shell (`useHostApp`):
  *
  * - `back(canGoBack)` is Android's Back. The page closes what is on top of it, if
- *   anything, and says whether it did; otherwise the app walks the WebView's history. See
- *   `useHostApp` for why the page decides this rather than the app.
+ *   anything, and says whether it did; otherwise the app walks the web view's history. See
+ *   `useHostApp` for why the page decides this rather than the app, and for what stands
+ *   in for it where the host walks the history without asking.
  * - `open(path)` navigates in place, for a notification or a link that names a note while
  *   the app is already open. Reloading the site instead would throw away an upload in
  *   flight on the note that was open.
@@ -64,15 +69,21 @@ export interface AppHandlers {
 
 /**
  * The app's side, as the page sees it. `saveBegin` and the calls after it are how an export
- * reaches Downloads (`export-archive.ts`); they are synchronous on purpose, so a page
- * writing faster than the phone's storage waits for it rather than queueing gigabytes.
- * Optional, because only a version of the app that hosts the whole site has them.
+ * reaches the phone's storage (`export-archive.ts`). Optional, because only a version of
+ * the app that hosts the whole site has them.
+ *
+ * Each answers with a value or a promise of one, because the two hosts cannot agree:
+ * Android's `@JavascriptInterface` methods return when the write is done, and WKWebView
+ * has no synchronous call from a page at all. Either way the answer is the backpressure —
+ * a page writing faster than the phone's storage waits for it rather than queueing
+ * gigabytes — so a caller must wait for each answer before making the next call. A host
+ * must not answer `saveChunk` before the piece is written, or that wait means nothing.
  */
 export interface HostApp {
   postMessage(json: string): void;
-  saveBegin?(name: string, type: string): string;
-  saveChunk?(id: string, base64: string): boolean;
-  saveEnd?(id: string): boolean;
+  saveBegin?(name: string, type: string): string | Promise<string>;
+  saveChunk?(id: string, base64: string): boolean | Promise<boolean>;
+  saveEnd?(id: string): boolean | Promise<boolean>;
   saveAbort?(id: string): void;
 }
 
@@ -88,7 +99,7 @@ export function hostApp(): HostApp | undefined {
   return typeof window === 'undefined' ? undefined : window.UnbentApp;
 }
 
-/** Whether this page is running inside the Android app. */
+/** Whether this page is running inside the app, on either platform. */
 export function isHosted(): boolean {
   return hostApp() !== undefined;
 }

@@ -219,38 +219,47 @@ function toBase64(bytes: Uint8Array): string {
 }
 
 /**
- * The archive streamed to the Android app, which writes it into the phone's Downloads.
+ * The archive streamed to the app hosting this page, which writes it into the phone's
+ * Downloads.
  *
  * A WebView offers no save picker, and the in-memory path ends by clicking a `blob:` link,
  * which the WebView hands to the app as a download of an address only this page can read:
  * the phone's download manager cannot fetch it, and the export would end with nothing
- * saved and nothing said. So the app takes the bytes directly. Its calls are synchronous,
- * which is the point — a page writing faster than the phone's storage waits on each call
+ * saved and nothing said. So the app takes the bytes directly. Each call is waited for,
+ * which is the point — a page writing faster than the phone's storage waits on each piece
  * rather than queueing the library in memory — and a call that answers false is a write
  * that failed, which fails the export like any other error.
+ *
+ * Android answers each call synchronously and an iOS host with a promise (`HostApp`), and
+ * `await` serves both: on a plain value it is a no-op, and on a promise it is what makes
+ * `write` below return one, which a `WritableStream` holds the next chunk behind. The zip
+ * writer waits on the stream in turn, so a slow native write slows the reads that feed it.
  *
  * `saveAbort` is called directly as well as through the stream: once a write has thrown,
  * the stream is errored and would never pass an abort on, and the app's half-written file
  * has to go either way.
  */
-export function appDestination(app: HostApp, filename: string): Destination {
-  const id = app.saveBegin!(filename, 'application/zip');
+export async function appDestination(app: HostApp, filename: string): Promise<Destination> {
+  const id = await app.saveBegin!(filename, 'application/zip');
   if (!id) throw new Error('The app could not create a file in Downloads.');
   let ended = false;
   /*
      The zip writer hands over many small chunks — a header here, a few bytes of a name
      there — and each call to the app has a fixed cost, so they are gathered into full
      pieces first. Copied as they are gathered, since the writer owns the buffers it passes.
+     One buffer serves every piece even though `send` waits: the piece is base64 before
+     the call is made, and the stream does not hand `write` another chunk until this one
+     has returned.
   */
   const pending = new Uint8Array(APP_PIECE);
   let filled = 0;
-  const send = (piece: Uint8Array) => {
-    if (!app.saveChunk!(id, toBase64(piece))) {
+  const send = async (piece: Uint8Array) => {
+    if (!(await app.saveChunk!(id, toBase64(piece)))) {
       throw new Error('The phone could not write the archive to Downloads.');
     }
   };
   const writable = new WritableStream<Uint8Array>({
-    write(chunk) {
+    async write(chunk) {
       let at = 0;
       while (at < chunk.length) {
         const take = Math.min(APP_PIECE - filled, chunk.length - at);
@@ -258,14 +267,14 @@ export function appDestination(app: HostApp, filename: string): Destination {
         filled += take;
         at += take;
         if (filled === APP_PIECE) {
-          send(pending);
+          await send(pending);
           filled = 0;
         }
       }
     },
-    close() {
-      if (filled > 0) send(pending.subarray(0, filled));
-      if (!app.saveEnd!(id)) throw new Error('The phone could not finish writing the archive.');
+    async close() {
+      if (filled > 0) await send(pending.subarray(0, filled));
+      if (!(await app.saveEnd!(id))) throw new Error('The phone could not finish writing the archive.');
       ended = true;
     },
   });
