@@ -1101,10 +1101,15 @@ describe('inline images', () => {
       expect(v.dom.querySelector('.file-unavailable')?.textContent).toBe('Not available offline');
       expect(image(v)!.hidden).toBe(true);
       expect(visibleText(v, 1)).not.toContain('![scan]');
+      // Nothing in the toolbar could work, and it would draw over the line.
+      const tools = v.dom.querySelector<HTMLElement>('.cm-md-image .attachment-tools')!;
+      expect(tools.style.display).toBe('none');
 
       setReachableForTests(true);
       expect(v.dom.querySelector('.file-unavailable')).toBeNull();
       expect(image(v)!.hidden).toBe(false);
+      image(v)!.dispatchEvent(new Event('load'));
+      expect(tools.style.display).toBe('');
     } finally {
       resetConnectivity();
     }

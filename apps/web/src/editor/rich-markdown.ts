@@ -836,18 +836,30 @@ class ImageWidget extends WidgetType {
       openAttachmentViewer(target, this.siblings());
     });
 
+    const tools = attachmentToolbar(view, wrap, {
+      target,
+      siblings: this.siblings,
+      stored: this.filename === null ? null : { filename: this.filename, kind: 'image' },
+      copy: this.copy,
+      save: this.save,
+      remove: this.remove,
+      source: 'Image',
+    });
     frame.appendChild(img);
-    frame.appendChild(
-      attachmentToolbar(view, wrap, {
-        target,
-        siblings: this.siblings,
-        stored: this.filename === null ? null : { filename: this.filename, kind: 'image' },
-        copy: this.copy,
-        save: this.save,
-        remove: this.remove,
-        source: 'Image',
-      }),
-    );
+    frame.appendChild(tools);
+
+    // While "Not available offline" stands in for the picture, nothing in the toolbar can
+    // work (download and copy need the bytes, delete needs the server) and it would draw
+    // over the line. Hidden by style, not the attribute, since the editor theme sets its
+    // `display`. It comes back when the picture is asked for again and loads.
+    const onerror = img.onerror;
+    img.onerror = (event) => {
+      void onerror?.call(img, event);
+      if (img.hidden) tools.style.display = 'none';
+    };
+    img.addEventListener('load', () => {
+      tools.style.display = '';
+    });
     return wrap;
   }
 
