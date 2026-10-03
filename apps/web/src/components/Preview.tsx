@@ -1,7 +1,8 @@
-import { Fragment, useMemo, type MouseEvent } from 'react';
+import { Fragment, useMemo, type MouseEvent, type SyntheticEvent } from 'react';
 import { IMAGE_ZOOM_CLASS, PDF_EMBED_CLASS, renderMarkdown } from '@unbent/shared';
 import { usePdfAttachments } from '../usePdfAttachments.js';
 import { openAttachmentViewer } from '../attachment-viewer.js';
+import { standInForImage } from '../offline-file.js';
 import { PdfPreview } from './PdfPreview.js';
 import { collectPreviewTargets } from './preview-targets.js';
 
@@ -78,6 +79,20 @@ function onPreviewClick(event: MouseEvent<HTMLDivElement>) {
 }
 
 /**
+ * A picture in the pane that failed to load with no connection says so in a line, where a
+ * broken-image icon would be, and is asked for again when the connection returns.
+ *
+ * On the capture phase, because `error` does not bubble and the images are in HTML the
+ * pane renders as a string — the same reason the click above is delegated. A picture that
+ * failed for any other reason is left as the browser draws it, as before.
+ */
+function onPreviewImageError(event: SyntheticEvent<HTMLDivElement>) {
+  const img = event.target;
+  if (!(img instanceof HTMLImageElement) || img.hidden) return;
+  standInForImage(img, img.alt);
+}
+
+/**
  * Rendered markdown. The HTML is produced by the shared pipeline, which runs
  * rehype-sanitize — dangerouslySetInnerHTML is safe here only because of that, so the two
  * must never be separated.
@@ -96,7 +111,7 @@ export function Preview({ markdown, noteId }: PreviewProps) {
   );
 
   return (
-    <div className="preview" onClick={onPreviewClick}>
+    <div className="preview" onClick={onPreviewClick} onErrorCapture={onPreviewImageError}>
       {segments.map((seg, i) => (
         <Fragment key={i}>
           {seg.html && <div dangerouslySetInnerHTML={{ __html: seg.html }} />}

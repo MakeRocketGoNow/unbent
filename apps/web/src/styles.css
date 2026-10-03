@@ -4568,6 +4568,22 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
   outline: none;
 }
 
+/*
+   "Not available offline", where a file's picture or page would be (`offline-file.ts`).
+
+   A plain line in the note's own muted ink: nothing is wrong, so it is not the red of an
+   error, and nothing is loading, so it does not move. A block of its own in the editor,
+   the preview pane and under a PDF's name alike, so the same words look the same in all
+   three; the name before it can be a filename of any length, so it wraps.
+*/
+.file-unavailable {
+  display: block;
+  margin: 0.25rem 0;
+  color: var(--muted);
+  font-size: 0.85rem;
+  overflow-wrap: anywhere;
+}
+
 .viewer-status {
   margin: auto;
   font-size: 0.9rem;
