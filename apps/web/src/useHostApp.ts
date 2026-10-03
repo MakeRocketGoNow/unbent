@@ -5,11 +5,12 @@ import { HOME } from './auth-gate.js';
 import { WORKER_PREFIXES } from './sw/routes.js';
 
 /**
- * The signed-in site's half of being hosted by the Android app. Does nothing in a browser.
+ * The signed-in site's half of being hosted by the app, on Android or iOS. Does nothing
+ * in a browser.
  *
  * Mounted once, in the signed-in shell, because everything here is about the site as a
- * whole rather than one page: the colour around it, and what Back and a notification tap
- * mean wherever the person happens to be.
+ * whole rather than one page: the colour around it, and what Back, a swipe back and a
+ * notification tap mean wherever the person happens to be.
  */
 export function useHostApp(): void {
   const router = useRouter();
@@ -51,6 +52,48 @@ export function useHostApp(): void {
       },
     });
   }, [router]);
+
+  /*
+   * A sheet must not outlive the page it was opened over.
+   *
+   * `back` above is how Android keeps that true: the app asks before it moves, and the
+   * page closes what is on top instead. iOS's swipe from the edge asks nobody — WKWebView
+   * walks its own history and the page hears of it only as `popstate` — so the same
+   * promise is kept after the fact: the history has moved, and whatever was open over
+   * the page that was left closes. All of it, and with `close` rather than
+   * `requestClose`: a sheet may decline a request, and there is no longer a page under
+   * it to stay on. On Android this finds nothing to do, since the app walks the history
+   * only once `back` has said nothing is open.
+   *
+   * Only when the address changed. The attachment viewer pushes an entry of its own at
+   * the address it was opened on and answers `popstate` itself; leaving that entry — by
+   * the gesture or by its ✕, which pops it — is the viewer closing, not the page under it
+   * going away, and a sheet the viewer was opened from stays.
+   *
+   * Heard from the router's history rather than from `popstate`. The event says where
+   * the history arrived and nothing about where it left, so telling a move from the
+   * viewer's entry means remembering the last address, and a listener on the window
+   * cannot keep that memory straight: the router answers the same event, and by the time
+   * a second listener ran it had already settled on the new page — tried, and in the
+   * running app no sheet ever closed. The history reports every change in one place, a
+   * navigation as a push or a replace and a walk as back, forward or go, so the address
+   * is followed through the first kind and acted on for the second.
+   */
+  useEffect(() => {
+    if (!isHosted()) return;
+    let here = router.history.location.href;
+    return router.history.subscribe(({ location, action }) => {
+      const moved = location.href !== here;
+      here = location.href;
+      if (moved && action.type !== 'PUSH' && action.type !== 'REPLACE') closeDialogs();
+    });
+  }, [router]);
+}
+
+/** Closes every open dialog, the one on top first, as leaving them one at a time would. */
+function closeDialogs(): void {
+  const open = [...document.querySelectorAll<HTMLDialogElement>('dialog[open]')];
+  for (const dialog of open.reverse()) dialog.close();
 }
 
 /*
