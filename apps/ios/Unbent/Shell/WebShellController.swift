@@ -133,6 +133,7 @@ final class WebShellController: UIViewController {
         // The view is already inside the safe area; a second inset from the scroll view
         // would push the page down by a status bar it is not under.
         webView.scrollView.contentInsetAdjustmentBehavior = .never
+        webView.removeInputAccessoryBar()
         #if DEBUG
         webView.isInspectable = true
         #endif
