@@ -791,10 +791,18 @@ function valuesOf(value: NoteDraft, lib: WritableLibrary): NoteFieldValue[] {
  * leaves it out, since a selection outlives a purge the feed delivered.
  */
 
+/**
+ * Whether no snapshot has been taken yet: the line every read and write here draws. The
+ * reads draw it in `notHeld` (`queries.ts`) from the library's `state()`, which is the
+ * copy of this same engine state taken on its last change; a change to one must be a
+ * change to both, or a note opens from the server and its save is refused as missing.
+ */
+const firstCopy = (lib: WritableLibrary) => lib.engine.state.cursor === null;
+
 /** Whether a write to this note goes as a request because the first copy has not reached it. */
 function notCopiedYet(lib: WritableLibrary, noteId: string): boolean {
   if (lib.notes.has(noteId)) return false;
-  if (lib.engine.state.cursor === null) return true;
+  if (firstCopy(lib)) return true;
   throw new ApiError(404, 'Not found');
 }
 
@@ -802,7 +810,7 @@ function notCopiedYet(lib: WritableLibrary, noteId: string): boolean {
 function split(lib: WritableLibrary, ids: string[]): { here: string[]; there: string[] } {
   const here: string[] = [];
   const there: string[] = [];
-  const copying = lib.engine.state.cursor === null;
+  const copying = firstCopy(lib);
   for (const id of ids) {
     if (lib.notes.has(id)) here.push(id);
     else if (copying) there.push(id);

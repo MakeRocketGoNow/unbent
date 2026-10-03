@@ -293,7 +293,7 @@ export const noteCountQuery = () =>
  * Without one, say so (the workspace's offline line) rather than that the note does not
  * exist. Once a snapshot has been taken, an id the copy does not hold gets the answer the
  * route gave for an id that is not a note. The writes in `store/actions.ts` draw the same
- * line (`notCopiedYet`).
+ * line (`firstCopy`), and the two must agree.
  */
 function notHeld<T>(lib: Library, ask: () => Promise<T>): Promise<T> {
   if (lib.state().cursor === null) {
