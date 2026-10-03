@@ -47,7 +47,7 @@
 	<array>
 		<string>$(UNBENT_INSTANCE_HOST)</string>
 #if UNBENT_DEBUG
-		<string>dev.unbent.app</string>
+		<string>$(UNBENT_DEV_INSTANCE_HOST)</string>
 		<string>localhost</string>
 #endif
 	</array>

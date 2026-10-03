@@ -26,7 +26,7 @@
 	<key>com.apple.developer.associated-domains</key>
 	<array>
 		<string>webcredentials:$(UNBENT_INSTANCE_HOST)?mode=developer</string>
-		<string>webcredentials:dev.unbent.app?mode=developer</string>
+		<string>webcredentials:$(UNBENT_DEV_INSTANCE_HOST)?mode=developer</string>
 	</array>
 </dict>
 </plist>
