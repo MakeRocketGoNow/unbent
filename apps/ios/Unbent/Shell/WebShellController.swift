@@ -553,7 +553,7 @@ extension WebShellController: WKScriptMessageHandler, WKScriptMessageHandlerWith
         saveQueue.async {
             // Answered only once the work is done — for `chunk`, once the bytes are
             // written. That answer is the page's signal to send the next piece.
-            let answer: Any?
+            let answer: Any
             switch op {
             case "begin":
                 answer = saves.begin(name: call["name"] as? String ?? "", type: call["type"] as? String ?? "")
@@ -565,11 +565,11 @@ extension WebShellController: WKScriptMessageHandler, WKScriptMessageHandlerWith
                 saves.abort(id: id)
                 answer = true
             default:
-                answer = nil
+                // Said here, as an error of its own, so that a call which one day answers
+                // with nothing is not mistaken for one the app has never heard of.
+                return DispatchQueue.main.async { replyHandler(nil, "Unknown save call.") }
             }
-            DispatchQueue.main.async {
-                if let answer { replyHandler(answer, nil) } else { replyHandler(nil, "Unknown save call.") }
-            }
+            DispatchQueue.main.async { replyHandler(answer, nil) }
         }
     }
 }
