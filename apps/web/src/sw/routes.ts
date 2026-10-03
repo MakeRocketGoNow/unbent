@@ -81,6 +81,40 @@ const CACHED_READS = [/^\/api\/config$/];
 /** A file's bytes: `/api/notes/<id>/files/<name>`, and not its `/text`. */
 const FILE_BYTES = /^\/api\/notes\/[^/]+\/files\/[^/]+$/;
 
+/**
+ * The note and the name in a file's address, or null for any other address. What the
+ * worker looks up on the account's own shelves (`store/files.ts`) before it asks the
+ * cache or the network.
+ */
+export function fileAddress(url: URL): { noteId: string; filename: string } | null {
+  if (!FILE_BYTES.test(url.pathname)) return null;
+  const [, , , noteId, , filename] = url.pathname.split('/');
+  try {
+    return { noteId: decodeURIComponent(noteId!), filename: decodeURIComponent(filename!) };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Whether a request for a file's bytes may be answered from the account's shelves: the
+ * files of a kept notebook, and a file added here that is still waiting to upload.
+ *
+ * Any read of the bytes by the page — a picture, the PDF viewer, the indexer, an export.
+ * Unlike the cache, there is nothing to protect here: the bytes are already on the device
+ * by choice, and reading them costs no budget.
+ *
+ * Never a page load. The server sends a file with a type it decided was safe to serve, a
+ * disposition and a sandbox (`GET /notes/:id/files/:filename`), from the stored type the
+ * worker has no way to read; a shelf's copy answered to a navigation would be an HTML
+ * attachment opening as a page of this origin. A download link is a navigation too, and
+ * goes to the network as before.
+ */
+export function shelved(request: Pick<RequestFacts, 'url' | 'method' | 'origin'> & { mode: string }): { noteId: string; filename: string } | null {
+  if (request.method !== 'GET' || request.url.origin !== request.origin || request.mode === 'navigate') return null;
+  return fileAddress(request.url);
+}
+
 export interface RequestFacts {
   url: URL;
   method: string;

@@ -2,7 +2,9 @@ import { cleanupOutdatedCaches, createHandlerBoundToURL, precacheAndRoute } from
 import { registerRoute } from 'workbox-routing';
 import { CacheFirst, NetworkFirst, type StrategyOptions } from 'workbox-strategies';
 import { ExpirationPlugin } from 'workbox-expiration';
-import { API_CACHE, FILES_CACHE, SERVED_HEADER, VIEW_HEADER, classify, servesShell } from './routes.js';
+import { API_CACHE, FILES_CACHE, SERVED_HEADER, VIEW_HEADER, classify, servesShell, shelved } from './routes.js';
+import { createFilesLedger } from './budget.js';
+import { findFile } from '../store/files.js';
 
 /**
  * The service worker: what lets the installed app open with no connection.
@@ -134,8 +136,8 @@ registerRoute(
 /**
  * Twenty megabytes. A file over it is still shown online and simply not kept: a scanned
  * archive has the odd enormous PDF, and a phone's storage is better spent on the many
- * ordinary files someone opened than on one of those. Choosing notebooks to keep whole is
- * MAK-141's, with a budget in bytes.
+ * ordinary files someone opened than on one of those. A notebook kept whole
+ * (`store/keep.ts`) has no such cap; that is a choice, with its size stated first.
  */
 const MAX_KEPT_FILE = 20 * 1024 * 1024;
 
@@ -153,32 +155,81 @@ const keepableFile: Plugin = {
 };
 
 /**
+ * The cache's budget — bytes, count and age, oldest-opened out first — in place of
+ * Workbox's expiration plugin, which counts entries and cannot order them by use. The
+ * rule and the reasons are in `budget.ts`; this is where the cache tells it what happened.
+ */
+const ledger = createFilesLedger();
+const budgeted: Plugin = {
+  cacheDidUpdate: async ({ request, newResponse }) => {
+    await ledger.stored(request.url, Number(newResponse.headers.get('Content-Length') ?? 0));
+  },
+  cachedResponseWillBeUsed: async ({ request, cachedResponse }) => {
+    // Not awaited: the picture should not wait on the bookkeeping.
+    if (cachedResponse) void ledger.touch(request.url);
+    return cachedResponse;
+  },
+};
+// What a month away, or the page putting a file in, left to tidy.
+self.addEventListener('activate', (event) => {
+  event.waitUntil(ledger.sweep());
+});
+
+/**
  * The bytes of a file someone looked at — an image drawn in a note, a PDF opened in the
  * viewer — so the same note reads the same with no connection.
  *
  * Cache first, because these never change: the Worker serves them `immutable`, keyed by
  * the attachment. Only what was looked at, never what the indexer or an export read in
  * bulk — see `classify` for why that distinction is the whole rule.
+ */
+const openedFiles = new CacheFirst({ cacheName: FILES_CACHE, plugins: [keepableFile, budgeted] });
+
+/**
+ * A file's bytes, from the nearest place that has them: the account's own shelves, then
+ * the cache of what was opened, then the network.
  *
- * A hundred and fifty files for a month, oldest-opened out first. A count rather than a
- * byte budget for now; MAK-141 gives this cache a budget and lets whole notebooks be kept.
+ * The shelves (`store/files.ts`) hold a kept notebook's files and a file added here that
+ * has not uploaded yet — the second is why this comes first and for every read: a photo
+ * taken with no connection has an address in the note the moment it is added, and this
+ * is the only thing that can answer it. Which requests may be answered so is `shelved`.
+ *
+ * Answered with the headers the server would send that still mean something here: the
+ * sandbox, in case anything ever does render one of these as a document, and no sniffing.
+ * The type is the file system's guess from the name, which is enough for a picture and
+ * irrelevant to pdf.js, which is handed bytes.
+ *
+ * One route rather than two in a row: Workbox gives a request to the first route that
+ * matches and has no "not mine after all", and whether the shelf has the file is only
+ * known by looking.
  */
 registerRoute(
-  ({ request, url }) =>
-    classify({
-      url,
-      method: request.method,
-      destination: request.destination,
-      viewed: request.headers.get(VIEW_HEADER) === '1',
-      origin: self.location.origin,
-    }) === 'file',
-  new CacheFirst({
-    cacheName: FILES_CACHE,
-    plugins: [
-      keepableFile,
-      new ExpirationPlugin({ maxEntries: 150, maxAgeSeconds: 30 * DAY, purgeOnQuotaError: true }),
-    ],
-  }),
+  ({ request, url }) => shelved({ url, method: request.method, mode: request.mode, origin: self.location.origin }) !== null,
+  async (options) => {
+    const { request, url } = options;
+    const address = shelved({ url, method: request.method, mode: request.mode, origin: self.location.origin });
+    const file = address && (await findFile(address.noteId, address.filename));
+    if (file) {
+      return new Response(file, {
+        headers: {
+          'Content-Type': file.type || 'application/octet-stream',
+          'Content-Length': String(file.size),
+          'X-Content-Type-Options': 'nosniff',
+          'Content-Security-Policy': "sandbox; default-src 'none'",
+          [SERVED_HEADER]: 'device',
+        },
+      });
+    }
+    const viewed =
+      classify({
+        url,
+        method: request.method,
+        destination: request.destination,
+        viewed: request.headers.get(VIEW_HEADER) === '1',
+        origin: self.location.origin,
+      }) === 'file';
+    return viewed ? openedFiles.handle(options) : fetch(request);
+  },
 );
 
 /**
