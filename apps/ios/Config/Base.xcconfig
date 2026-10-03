@@ -35,7 +35,10 @@ CURRENT_PROJECT_VERSION = 1
 
 PRODUCT_NAME = Unbent
 IPHONEOS_DEPLOYMENT_TARGET = 17.0
-TARGETED_DEVICE_FAMILY = 1,2
+// iPhone only until the shell has been tried on an iPad. Naming iPad here signs the app
+// up for iPad review, screenshots and Stage Manager layouts, and once a build that
+// supports iPad is released, support for it cannot be withdrawn.
+TARGETED_DEVICE_FAMILY = 1
 SUPPORTED_PLATFORMS = iphoneos iphonesimulator
 SUPPORTS_MACCATALYST = NO
 SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO
