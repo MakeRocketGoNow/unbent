@@ -9,9 +9,12 @@ const TABS = [
   { to: '/settings/tags', label: 'Tags' },
   { to: '/settings/import', label: 'Import' },
   { to: '/settings/export', label: 'Export' },
+  { to: '/settings/offline', label: 'Offline' },
   { to: '/settings/maintenance', label: 'Maintenance' },
   { to: '/settings/security', label: 'Security' },
   { to: '/settings/connected-apps', label: 'Connected apps' },
+  // Last: what the app is, read rarely, after everything that configures it.
+  { to: '/settings/about', label: 'About' },
 ] as const;
 
 /**

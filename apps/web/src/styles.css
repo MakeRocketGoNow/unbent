@@ -1727,7 +1727,11 @@ th[aria-sort] .note-th-sort { color: var(--fg); }
   white-space: nowrap;
 }
 
-.overflow-item:hover:not(:disabled) { background: color-mix(in srgb, var(--fg) 8%, transparent); }
+/* Commands only: a label in the list is not something to press, and a fill under the
+   pointer would say it was. */
+.overflow-item:not(.overflow-label):hover:not(:disabled) {
+  background: color-mix(in srgb, var(--fg) 8%, transparent);
+}
 
 /* An item that cannot be used right now keeps its place; see `OverflowItem.disabled`. */
 .overflow-item:disabled {
@@ -2335,13 +2339,20 @@ a.sidebar-status:hover {
   border-radius: 999px;
 }
 
-/* The address is a label, not a command: it sits at the top of the menu, unclickable. */
-.overflow-email {
-  padding-bottom: 0.5rem;
-  margin-bottom: 0.25rem;
+/*
+   The menu's head: the address, and on dev and previews the instance under it. Labels, not
+   commands, so they take none of the item's box — no hover fill, no rounded corners, no
+   0.6rem of padding sized for a press target — and sit as tight lines of text with the
+   head's air above and below the pair rather than around each. They wore the item's box
+   once, under overrides, and hovering one painted a lopsided grey pill on a line that does
+   nothing.
+*/
+.overflow-label {
+  padding: 0.1rem 0.7rem;
   font-size: 0.78rem;
+  line-height: 1.45;
   color: var(--muted);
-  border-bottom: 1px solid var(--border);
+  border-radius: 0;
   cursor: default;
   /*
      One line, truncated from the end.
@@ -2360,16 +2371,19 @@ a.sidebar-status:hover {
   white-space: nowrap;
   text-overflow: ellipsis;
 }
+.overflow-label:first-child { padding-top: 0.5rem; }
+.overflow-label:has(+ .overflow-separator) { padding-bottom: 0.5rem; }
 
-/* The instance line under the address on a scratch instance ("PR 222 · notes are its own").
-   The same kind of line as the address, so the two read as one block: the divider moves
-   below the second, and the dot is the favicon's badge, so the two marks read as one. */
-.overflow-email:has(+ .overflow-instance) {
-  padding-bottom: 0.15rem;
-  margin-bottom: 0;
-  border-bottom: 0;
+/* Between the menu's groups. Out to the list's own edge, through its 0.25rem padding, so
+   it is a rule across the menu rather than a line inside one of its items. */
+.overflow-separator {
+  height: 0;
+  margin: 0.25rem -0.25rem;
+  border: 0;
+  border-top: 1px solid var(--border);
 }
-.overflow-email.overflow-instance { padding-top: 0; }
+
+/* The instance line's dot is the favicon's badge, so the two marks read as one. */
 .overflow-instance::before {
   content: '';
   display: inline-block;
@@ -3139,6 +3153,13 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
   font-weight: 600;
 }
 
+/*
+   A file added with no connection, still on this device only. A state, not a warning:
+   "Not linked" beside it is red because something may need deleting, and this needs
+   nothing but a connection, so it takes the muted colour and keeps the weight.
+*/
+.attachments-status.waiting { color: var(--muted); }
+
 .attachments-actions {
   display: flex;
   align-items: center;
@@ -3185,6 +3206,21 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
 
 /* Where the last copy-to or move-to put a file: a sentence under the list, not a toast. */
 .attachments-sent { margin: 0 0 0.5rem; }
+
+/*
+   What became of an upload that did not simply go through, with its Dismiss on the
+   sentence's own line end — the same shape as the cleanup line above the list, so the
+   panel has one way of saying a thing and offering a button for it.
+*/
+.attachments-notices {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.35rem 0.75rem;
+  margin: 0.45rem 0 0.5rem;
+}
+.attachments-notices > p { margin: 0; flex: 1 1 16rem; overflow-wrap: anywhere; }
 
 /*
    The one-confirmation cleanup of every file the note no longer links: a sentence with
@@ -3789,6 +3825,43 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
    app name or filename wrap rather than pushing the button off the row. */
 .owned-list li > :first-child { flex: 1; min-width: 0; overflow-wrap: anywhere; }
 .owned-list li > :last-child { flex: none; margin-left: auto; }
+
+/*
+   Settings › About: a label down the side and its value beside it, ruled like the passkey
+   and connected-app lists above so the settings pages share one row. On a phone the label
+   goes above its value, since a side column of labels would leave the value a third of
+   the width, and an address or a repository path is the longest thing on the row.
+*/
+.about-list { width: 100%; max-width: 46rem; margin: 0; }
+.about-list > div {
+  display: grid;
+  grid-template-columns: 9rem minmax(0, 1fr);
+  gap: 0.15rem 1rem;
+  padding: 0.65rem 0;
+  border-top: 1px solid var(--border);
+}
+.about-list > div:last-child { border-bottom: 1px solid var(--border); }
+.about-list dt { color: var(--muted); }
+/* The value and the muted line under it, one above the other, each free to wrap anywhere:
+   a host or a repository path has no spaces to wrap at. */
+.about-list dd {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.about-list dd a { color: var(--accent); text-underline-offset: 0.15em; }
+.about-list dd a:hover { color: var(--fg); }
+.about-list dd > a, .about-list dd > .about-value { align-self: flex-start; }
+/* Hash digits keep their width, so two builds compare by eye. */
+.about-commit { font-variant-numeric: tabular-nums; }
+@media (width <= 860px) {
+  .about-list > div { grid-template-columns: minmax(0, 1fr); }
+  /* Above its value now, a label the value's size read as a second value. */
+  .about-list dt { font-size: 0.8rem; }
+}
 
 /* The files the picker takes, before one is chosen. A list rather than a sentence each:
    the reader is matching the file they have against a shape, and a list scans. Same
@@ -4546,6 +4619,22 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
   outline: none;
 }
 
+/*
+   "Not available offline", where a file's picture or page would be (`offline-file.ts`).
+
+   A plain line in the note's own muted ink: nothing is wrong, so it is not the red of an
+   error, and nothing is loading, so it does not move. A block of its own in the editor,
+   the preview pane and under a PDF's name alike, so the same words look the same in all
+   three; the name before it can be a filename of any length, so it wraps.
+*/
+.file-unavailable {
+  display: block;
+  margin: 0.25rem 0;
+  color: var(--muted);
+  font-size: 0.85rem;
+  overflow-wrap: anywhere;
+}
+
 .viewer-status {
   margin: auto;
   font-size: 0.9rem;
@@ -5036,6 +5125,39 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
 /* The confirms bring their own margins for pages without a rhythm; this one has one. */
 .notebook-section > .confirm { margin: 0; }
 
+/*
+   The kept notebooks under Settings → Offline: a name that yields, a size under it, and
+   one quiet action at the row's end — the attachments list's shape, for the same reason.
+   A notebook's name is unbounded, so it truncates before the button wraps.
+*/
+.offline-storage { gap: 1.25rem; }
+.offline-kept {
+  align-self: stretch;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.offline-kept-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem 0.75rem;
+  padding: 0.5rem 0;
+  border-bottom: 1px solid var(--border);
+}
+.offline-kept-info {
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.offline-kept-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.offline-kept-row > .confirm { flex: 1 0 100%; margin: 0.25rem 0 0.5rem; }
+
 /* Section heading within the edit page — "Fields", "Delete notebook". Quieter than the
    panel's h2, since the page title already names the notebook. */
 .notebook-section-head {
@@ -5294,6 +5416,12 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
  * near-identical rule sets for the same idea. Inline rather than a dialog on purpose:
  * every confirmation here is about a specific thing on screen — a named notebook, a
  * counted trash — and covering that thing forces its details into the prompt text.
+ *
+ * The border follows the tone of the first action offered (see `borderTone` in Confirm.tsx),
+ * set by the modifier classes below. It used to be red for every confirm, including "keep
+ * this on the device?", which put a warning colour around a safe green action. Red is for a
+ * box whose offered action destroys something; green for one offering the primary; plain
+ * otherwise. Red and green never share a box.
  */
 .confirm {
   max-width: 40rem;
@@ -5309,9 +5437,12 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
   width: 100%;
   margin: 0.75rem 0 0.25rem;
   padding: 0.9rem;
-  border: 1px solid var(--bad);
+  border: 1px solid var(--border);
   border-radius: 0.45rem;
 }
+.confirm-danger { border-color: var(--bad); }
+.confirm-primary { border-color: var(--accent); }
+.confirm-neutral { border-color: var(--border); }
 
 /*
    The operator-only notice that the title model rejected its key. Sits where a confirm
@@ -6033,6 +6164,14 @@ button.settings-nav-item {
     z-index: 25;
     background: color-mix(in srgb, var(--fg) 3%, transparent);
   }
+  /*
+     While a menu is open, above the handle on its edge too. The handle has to outrank the
+     rail or the rail paints over its line (see `.shell.wide > .resize-handle`), but a menu
+     wider than the rail — the account menu on a preview, whose instance line is long —
+     then has the divider drawn straight through it. Lifted only while one is open, so the
+     line is the handle's again the moment it closes.
+  */
+  .rail:has(.overflow-list) { z-index: 27; }
 
   /*
      The rail's edge is the handle that sizes it, as the list's edge is the handle that
@@ -8556,4 +8695,74 @@ button.settings-nav-item {
   .front-pricing { grid-template-columns: minmax(0, 1fr); gap: 2rem; }
 
   .front-plan { padding: 1.25rem; }
+}
+
+/* ---------------------------------------------------------------------------------
+   Inside the iOS app: the page takes the whole screen.
+
+   `adoptHostLayout` in app-bridge.ts puts `host-ios` on the root and asks for
+   `viewport-fit=cover`, and only then do the `env(safe-area-inset-*)` values below stop
+   being zero. Everything here is the page keeping its own content clear of the clock and
+   the home indicator, now that the app no longer does it by holding the page between
+   two strips — see that function for why it stopped.
+
+   What flows is moved down once, on the body, rather than each view learning the inset:
+   the topbar, a settings page and the sign-in page all start under the status bar, and
+   the body's own ground is what shows behind the clock. What sits on the bottom edge
+   already clears the home indicator — the docked bar, the New button, the snackbars and
+   the sheets each add `env(safe-area-inset-bottom)` themselves, written when that was
+   zero everywhere. What lives in the top layer covers the screen and is padded inside:
+   the drawer and the file viewer.
+
+   The side insets are for a phone on its side, where the notch is at one end. They are
+   on the body only: the fixed controls do not allow for them yet, which is why the app
+   is upright-only for now (apps/ios/Config/Base.xcconfig).
+   --------------------------------------------------------------------------------- */
+html.host-ios body {
+  padding: env(safe-area-inset-top) env(safe-area-inset-right) 0 env(safe-area-inset-left);
+}
+
+/*
+   A page that scrolls as a document — Settings, the sign-in page — would carry its text
+   up behind the clock. This is the strip it passes under instead, in the page's ground.
+   Below the top layer, so a sheet's scrim still dims it with the rest of the screen.
+*/
+html.host-ios body::before {
+  content: '';
+  position: fixed;
+  inset: 0 0 auto;
+  height: env(safe-area-inset-top);
+  z-index: 39;
+  background: var(--bg);
+  pointer-events: none;
+}
+
+/* The notes view fills the viewport exactly; the body's inset comes out of that. */
+html.host-ios .shell.wide {
+  height: calc(100dvh - env(safe-area-inset-top));
+}
+
+/*
+   The drawer runs the full height of the screen, edge to edge, with square corners.
+
+   The rounded trailing corners are Material's navigation drawer, which is the right
+   shape on Android and in a browser that is copying it. iOS has no drawer of its own,
+   and the side panels its apps do have are square and full height; a rounded one that
+   reaches both ends of the screen is neither platform's. Its contents keep clear of the
+   clock from the inside; the home indicator is already allowed for by `.sheet-body`, as
+   it is in every sheet. `border-box`, because a dialog is content-box by default and the
+   padding would otherwise make it taller than the screen.
+*/
+html.host-ios .sheet-side {
+  box-sizing: border-box;
+  border-radius: 0;
+  padding-top: env(safe-area-inset-top);
+  padding-left: env(safe-area-inset-left);
+}
+
+/* The file viewer is the whole screen; its bar and its last page stay inside the glass. */
+html.host-ios .viewer {
+  box-sizing: border-box;
+  padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom)
+    env(safe-area-inset-left);
 }

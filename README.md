@@ -61,12 +61,14 @@ than on Workers, and the export zip is assembled in the browser from pages of no
 apps/web       Vite + React SPA
 apps/api       Hono API on Workers, and the MCP server under src/mcp
 apps/android   Kotlin app: the site in a WebView, with native sign-in, share sheet and files
+apps/ios       Swift app: the site in a web view, with native sign-in and files
 packages/shared  zod schemas, frontmatter codec, remark plugins
 packages/enex    ENEX -> Markdown, runtime-agnostic
 ```
 
 `apps/android` is a Gradle project, not a pnpm workspace package: `pnpm -r` skips it, and it
-is built with its own wrapper. See [Android app](#android-app).
+is built with its own wrapper. See [Android app](#android-app). `apps/ios` is an Xcode
+project with two Swift packages beside it, skipped the same way. See [iOS app](#ios-app).
 
 ## Development
 
@@ -239,8 +241,11 @@ says otherwise; `pnpm exec wrangler secret put NAME` from `apps/api`, or the das
 | `TYPESAFE_API_KEY` | filing a note from what it says | see [Filing a note from what it says](#filing-a-note-from-what-it-says); `DEV_TYPESAFE_API_KEY` as a GitHub secret carries a separate key to the dev instance and previews |
 | `ANTHROPIC_API_KEY`, `ANTHROPIC_MODEL` | reading images and text-less scans, and writing titles | see [Reading images](#reading-images); `DEV_ANTHROPIC_API_KEY` as a GitHub secret carries a separate key to the dev instance and previews |
 | `ANDROID_ASSET_LINKS` | an Android build of your own | see [Android app](#android-app) |
+| `APPLE_APP_SITE_ASSOCIATION` | an iOS build of your own | see [iOS app](#ios-app) |
+| `APPLE_BUNDLE_ID` | Sign in with Apple from an iOS build of your own | comma-separated bundle ids, beside `APPLE_CLIENT_ID`; see [iOS app](#ios-app) |
 | `SWEEP_TOKEN` | sweeping the note stores at the end of each deploy | a GitHub secret the deploy carries to the Worker, `openssl rand -hex 32`; see [Where your notes live](#where-your-notes-live). `DEV_SWEEP_TOKEN` does the same for the dev instance |
 | Custom domain | serving from your own name | dashboard, not config |
+| `UNBENT_BUNDLE_ID_BASE`, `UNBENT_INSTANCE_HOST`, `DEVELOPMENT_TEAM` | an iOS build of your own | `apps/ios/Config/Local.xcconfig`, untracked; see [iOS app](#ios-app) |
 | `ANDROID_APPLICATION_ID`, `ANDROID_DEFAULT_INSTANCE` | the Android build in CI | GitHub repository **variables**; `unbent.applicationId` and `unbent.defaultInstance` in `local.properties` locally |
 | `CLOUDFLARE_WORKERS_SUBDOMAIN`, `DEV_BETTER_AUTH_SECRET`, `DEV_ALLOWED_EMAILS` | a dev instance and PR previews of your own | GitHub; see [The dev instance](#the-dev-instance) — every job skips itself without them |
 
@@ -710,6 +715,7 @@ including you:
 
 - Google: `https://unbent.app/api/auth/callback/google`
 - GitHub: `https://unbent.app/api/auth/callback/github`
+- Apple: `https://unbent.app/api/auth/callback/apple`, on the Services ID — see below
 
 Then deploy again so the Worker picks up the secrets. `custom_domain = true` means
 Cloudflare creates and manages the DNS record and certificate, so there is nothing to add
@@ -718,6 +724,35 @@ by hand:
 ```bash
 pnpm release
 ```
+
+#### Sign in with Apple
+
+Apple is the one provider whose secret is not a value it hands you. `APPLE_CLIENT_ID` is a
+**Services ID** — an identifier you create on the developer portal, with Sign in with Apple
+enabled and the callback above as its return URL — and `APPLE_CLIENT_SECRET` is a JWT you
+sign with a Sign in with Apple key, which Apple refuses once it is more than six months
+old. `scripts/apple-client-secret.mjs` makes one from the team id, the key id and the
+`.p8`, and pipes it into wrangler without printing it:
+
+```bash
+node scripts/apple-client-secret.mjs --team TEAMID --key-id KEYID \
+  --client-id com.example.notes.web --key AuthKey_KEYID.p8 \
+  | pnpm --dir apps/api exec wrangler secret put APPLE_CLIENT_SECRET
+```
+
+It prints the expiry date; put a reminder a week before it. A lapsed secret breaks only the
+web Apple button, at the code exchange, while every other way in keeps working — which is
+why it goes unnoticed. Generating the token in the Worker from the key itself would retire
+the reminder, and is left for later.
+
+Apple returns from its web sign-in by having its own page post the result to the callback
+(`response_mode=form_post`), so that request arrives from `https://appleid.apple.com`.
+The Worker trusts that origin only while Apple is configured. Apple accepts no `http` or
+`localhost` return URL, so the button is tried on a deployed instance, not in development.
+
+Apple sends a person's name only on their first authorization, and never inside the
+token. The web flow keeps it; the iOS app, signing in natively, sends it to
+`/api/auth/update-user` itself when it has one.
 
 ## Auth
 
@@ -1071,11 +1106,21 @@ beside it until the server has the note too — and goes to the server, in order
 connection returns. A save that would overwrite
 an edit made on another device meanwhile is refused there and put to you as before: reload
 theirs, or keep yours on top of it. What needs the server now says so and waits: search,
-files and the images in them, Auto-fill, and the settings pages that manage notebooks,
-tags and fields. A lost connection is never taken for signing out.
+Auto-fill, and the settings pages that manage notebooks, tags and fields. A lost connection
+is never taken for signing out.
 
-Signing out removes the library from the device, as does deleting the account or another
-person signing in. A sign-in that has expired does not: your copy stays, closed, and signing
+Files are the bulk of an archive, so they are on the device by choice rather than by
+default. A file you open is kept, within a budget — 500 MB, the ones opened longest ago
+going first. A notebook can be kept whole: its page offers **Keep offline**, says how big
+that is and how much room the device has before it starts, and from then on fetches the
+notebook's files, including ones added later from another device. A file added to a note
+with no connection is held on the device, shown in the note at once, listed as waiting, and
+uploaded when the connection returns. A file that is not on the device says "Not available
+offline" where it would be drawn. Settings → Offline shows what the device is holding and
+gives the room back.
+
+Signing out removes the library and its files from the device, as does deleting the account
+or another person signing in. A sign-in that has expired does not: your copy stays, closed, and signing
 in again reopens it and sends whatever you changed while it waited. The rules the code is
 held to are in `apps/web/src/store/` and AGENTS.md.
 
@@ -1314,6 +1359,194 @@ pnpm exec wrangler secret put ANDROID_ASSET_LINKS < assetlinks.json
 
 The `ANDROID_ASSET_LINKS` repository secret carries the same document to the dev instance
 and previews, so passkeys made there work from the app too.
+
+## iOS app
+
+The site, whole, in one web view, the way the Android app is, with native code only for
+what a page cannot do on an iPhone: sign-in, saving files where the phone keeps them, links
+that leave, and the app's own address and version. It is a port of the Android app's shell
+rather than a second design, and where the two differ it is because the platforms do. This
+is the first part of it: the share extension, sign-in through Apple, Google, a browser and
+passkeys, links that open in the app, and TestFlight are still to come.
+
+```
+swift test --package-path apps/ios/Packages/UnbentCore   # unit tests, on the Mac, no simulator
+pnpm ios:build      # build, install and launch the debug build on a simulator
+pnpm ios            # launch what is already installed
+```
+
+**How it is laid out.** `apps/ios/Unbent.xcodeproj` is one app target whose sources are the
+`Unbent/` folder as it is on disk, so a file added there needs no change to the project.
+Two local Swift packages hold everything that is not the shell. `UnbentCore` is Foundation
+only and builds for the Mac, which is what lets its tests run without a simulator: the
+session cookie, where an address opens, the API, the Keychain store, the page's messages
+and the files the app saves, each a port of the Kotlin one with its tests. `UnbentUI` is
+the native screens as SwiftUI views that take values and closures, apart from the app so
+the share extension can draw the same ones.
+
+Every build setting is in `apps/ios/Config/` — `Base.xcconfig`, with `Debug.xcconfig` and
+`Release.xcconfig` over it — and the project file holds none. `Info.plist` reads them, and
+`BuildInfo.swift` reads `Info.plist`. The plist is run through the C preprocessor for the
+two blocks only the debug build has, which is why it has no DOCTYPE and no apostrophes: the
+preprocessor takes `//` for a comment and a lone `'` for an unfinished character.
+
+The debug build is a second app, as on Android: bundle id `.debug`, the name "Unbent
+(debug)", an amber icon, and its own session and web data, so the two sit side by side.
+
+**How it signs in.** By what the instance offers, read from `GET /api/config`. This part
+has the two methods that are only requests: a code by email and a password, against Better
+Auth directly. The rest are drawn disabled in a debug build, so what the instance offers
+can be seen, and left out of a release build. Every path ends the same way as on Android:
+the session cookie the response set is kept per origin, here in the Keychain under the App
+Group so the share extension can read it, and is `AfterFirstUnlockThisDeviceOnly` — usable
+while the phone is locked in a pocket, and never restored onto another phone. Its value
+goes out as `Authorization: Bearer` from the app's own client, and the same cookie is put
+into the web view's store before every load. `URLSession` hands a response's `Set-Cookie`
+headers over joined into one, so they are split apart again before the session is looked
+for; `SessionCookie.splitSetCookie` says why `HTTPCookie` is not used for that.
+
+Signing out on the page tells the app, which forgets its copy and shows its own sign-in. A
+page that believes the session has ended says so too, and the app asks `/api/me` before
+believing it; a phone with no signal gets a native "Couldn't reach Unbent" panel and keeps
+the session.
+
+**How the site is hosted.** `WebShellController` is one `WKWebView` of the instance, and
+the page has the whole screen. It did not at first: the page was held inside the safe
+area with the strips above and below painted in its colour, as on Android, and on a phone
+with a Dynamic Island those strips are tall enough that the drawer and its scrim stopped
+short of both ends of the screen and read as a card between two bands. So inside the iOS
+app the page asks for `viewport-fit=cover`, keeps its own content clear of the clock and
+the home indicator with `env(safe-area-inset-*)` (the rules under `html.host-ios` in
+`styles.css`), and tells the app it has done so; a page that has not said so, from an
+older deploy, still gets the safe area and the strips. The drawer is square-cornered
+there as well, since the rounded one is Material's shape and iOS side panels are not. The
+status bar's text follows the lightness of the colour the page reports. The keyboard
+shrinks the web view rather than covering it, so the editor's toolbar sits on the keys. The bridge is a script the app
+injects before the page's own, which builds `window.UnbentApp` over WebKit's message
+handlers — the object Android installs with `addJavascriptInterface` — so the page calls
+either host the same way (`apps/web/src/app-bridge.ts`, `Bridge.swift`). There is no Back to
+handle: the edge swipe walks the web view's history, and the page closes a sheet when the
+history moves under it.
+
+Links off the site, `target=_blank` included, open in a Safari sheet over the app; a new
+window to the site itself opens in place, without reloading the page. Downloads run in the
+web view's own session and are saved into the app's folder, which the Files app shows under
+On My iPhone; an export is built in the page and streamed through the bridge's save calls,
+each answered only once its bytes are written, which is what keeps a library larger than
+memory from queueing there. Both are written to a hidden file and named once whole, and a
+banner offers to open or share what was saved. `alert`, `confirm` and `prompt` are shown by
+the app, because a web view left to itself answers `confirm()` with false and asks nobody.
+The file picker and the camera need no code: WebKit presents its own for a file input, and
+a photo chosen from the library arrives as a JPEG even when the phone took it as HEIC, so
+the transcoding the Android app does by hand is not needed for those. A HEIC picked through
+Choose Files is handed over as it is.
+
+**Why a build opens one instance.** WebKit gives an app's web view a service worker — and
+so the offline shell, see [Your library on the device](#your-library-on-the-device) — only
+for the domains the app binds itself to, in `WKAppBoundDomains`, and a web view bound that
+way can open nothing else. So a release build opens the instance it was built for and App
+settings shows the address without a field; a self-hoster builds the app for their own
+host, below. The debug build is
+also bound to `dev.unbent.app` and `localhost`, and its App settings can switch among them.
+With the instance stopped, the app relaunches into the note list from the service worker
+and the local copy, with the page's own offline banner.
+
+What the page stores survives relaunching the app and restarting the phone: the cookie,
+the outbox in IndexedDB, and the library in the origin-private file system.
+`navigator.storage.persist()` answers false in the web view, so that storage is the
+system's to reclaim under pressure, like any app's caches; nothing the server has not heard
+of is kept only there for long, since the outbox drains whenever there is a connection.
+
+**What iOS does that Android does not.** It suspends an app seconds after it leaves the
+screen, so the shell asks for a few seconds of background time for the page's save on
+`visibilitychange` to reach the server. It ends the page's process under memory pressure
+while the app lives on, which leaves a blank web view that says nothing; the shell is told,
+drops any export that page was writing, and reloads the address it was on. And it can
+empty the cookie store between two looks at the app, so the session is put back each time
+the app comes forward as well as before each load.
+
+**Pointing it at a dev server.** In the debug build, App settings takes
+`http://localhost:<port>`; a simulator shares the Mac's loopback, so nothing like `adb
+reverse` is needed. Plain http is allowed for local addresses in debug builds only
+(`NSAllowsLocalNetworking`). Vite's port serves the site without its service worker; the
+Worker's own port serves the built site with it, after `pnpm build`.
+
+**Building it for your own instance.** Put the three things that are yours in
+`apps/ios/Config/Local.xcconfig`, which is untracked and read last:
+
+```
+UNBENT_BUNDLE_ID_BASE = com.example.notes
+UNBENT_INSTANCE_HOST = notes.example.com
+DEVELOPMENT_TEAM = ABCDE12345
+```
+
+The first is the identity the App Store, the App Group and the site association document
+all key on, and has to be a reverse-domain name you control. The second is the instance the
+app opens and the one domain its web view is bound to; `UNBENT_INSTANCE_SCHEME` beside it
+is `https` unless you say otherwise, and the two are apart because `//` begins a comment in
+that file. The third signs a build for a phone; a simulator needs none. `MARKETING_VERSION`
+and `CURRENT_PROJECT_VERSION` are the version and build number App settings shows.
+
+**Vouching for the app.** iOS opens this site's links in the app (universal links), and
+offers the site's passkeys to it, only if the site says which app that is: an Apple App
+Site Association document at `/.well-known/apple-app-site-association`, naming each app by
+its team id and bundle id. The instance serves it from its `APPLE_APP_SITE_ASSOCIATION`
+secret — the JSON verbatim, an object rather than Android's array — and an instance that
+has not set one vouches for no app. The team id is on the Apple Developer portal's
+Membership page; the debug build is a different bundle id (`.debug`) and is listed beside
+the release one.
+
+```json
+{
+  "applinks": {
+    "details": [
+      {
+        "appIDs": ["TEAMID.com.example.notes", "TEAMID.com.example.notes.debug"],
+        "components": [
+          { "/": "/connect", "exclude": true },
+          { "/": "/api/*", "exclude": true },
+          { "/": "/notes" }, { "/": "/notes/*" },
+          { "/": "/trash" }, { "/": "/trash/*" },
+          { "/": "/settings" }, { "/": "/settings/*" }
+        ]
+      }
+    ]
+  },
+  "webcredentials": {
+    "apps": ["TEAMID.com.example.notes", "TEAMID.com.example.notes.debug"]
+  }
+}
+```
+
+The paths are the Android app's: the pages, never the sign-in flow or files. The first
+component that matches wins, so the exclusions come first, and `/notes/*` rather than
+`/notes*` keeps a path that merely starts with the word from being claimed.
+
+```bash
+cd apps/api
+pnpm exec wrangler secret put APPLE_APP_SITE_ASSOCIATION < apple-app-site-association.json
+```
+
+Apple's CDN fetches the document, not the phone, so it has to reach the Worker from a
+datacenter: a zone with Bot Fight Mode on needs a WAF skip for `/.well-known/` paths, or
+the CDN is served a challenge. `https://app-site-association.cdn-apple.com/a/v1/<your
+host>` shows what Apple has. The `APPLE_APP_SITE_ASSOCIATION` repository secret carries the
+same document to the dev instance and previews.
+
+**Sign in with Apple from the app.** The app signs in natively and posts Apple's identity
+token to `/api/auth/sign-in/social`, as the Android app does with Google's. That token's
+audience is the app's bundle id, not the Services ID the web button uses, so an instance
+accepts it only for the bundle ids in `APPLE_BUNDLE_ID` — comma-separated, the release and
+the debug build both, since either may be pointed at any instance:
+
+```bash
+echo "com.example.notes,com.example.notes.debug" | pnpm exec wrangler secret put APPLE_BUNDLE_ID
+```
+
+It is read only while Apple is configured for the web too (see [Sign in with
+Apple](#sign-in-with-apple)): the Services ID is still accepted beside it, and an instance
+without `APPLE_CLIENT_ID` offers Apple to nobody. Both App IDs need the Sign in with Apple
+capability on the portal.
 
 ## Known gaps
 

@@ -11,8 +11,8 @@ Act as a very senior engineer reviewing this pull request. Be direct and critica
 constructive. Assume production standards, and assume this code will be maintained for
 years.
 
-If `$ARGUMENTS` names a PR number, review that one. Otherwise find the PR for the current
-branch:
+If `$ARGUMENTS` names a PR number or URL, review that one. Otherwise find the PR for the
+current branch:
 
 ```bash
 git branch --show-current
@@ -27,6 +27,21 @@ mcp__github__list_pull_requests({ owner, repo, head: "<owner>:<branch>", state: 
 — `get` for details, `get_diff` for the change, `get_files` for scope, `get_commits` for
 history, `get_reviews` for what has already been said. This skill only reports; it posts
 nothing.
+
+If the current branch has no PR, fall back to the PR this conversation has already been
+reviewing, and say which one you picked; ask only if there is none.
+
+**Judge the PR's own code, not whatever is checked out.** The checkout may be another
+branch, or behind the PR's head. Line numbers in findings are those of the head commit —
+take them from `get_diff`, or read whole files at the head with
+`mcp__github__get_file_contents({ owner, repo, path, ref: <head sha> })`, or fetch the head
+locally (`git fetch origin pull/<n>/head:pr<n>`, then `git show pr<n>:<path>`) when git can
+reach the remote. A large diff is better read in parts, or as its core files whole, than in
+one dump.
+
+**A re-review** — the PR has changed since an earlier review in this conversation — is a
+review of what changed since the commit last reviewed. Check which earlier findings were
+addressed, say so in the overview, and don't raise them again.
 
 ## Read the repo before judging it
 
@@ -64,8 +79,8 @@ then nits). Each item carries:
   replacement so it can become a GitHub suggested change later.
 
 ```
-1. **[Blocker]** Note list query drops the user scope -- `apps/api/src/routes/notes.ts:48-57`
-   The handler builds its statement from `env.DB` rather than the per-user repo...
+1. **[Blocker]** Note list reads past the user's own store -- `apps/api/src/routes/notes.ts:48-57`
+   The handler queries `env.DB` for notes rather than going through `reposFor`...
 
 2. **[Suggestion]** Use the shared Button component -- `apps/web/src/components/Foo.tsx:47-55`
    This styles a `<button>` as a link, which AGENTS.md calls out specifically...
@@ -82,10 +97,13 @@ list.
 - **Architecture** — follows AGENTS.md? reuses existing patterns, or invents one where a
   sibling already solves it? duplicated functionality? logic in the right layer (route vs
   repo vs shared package vs component)?
-- **Tenant isolation** — the sharpest rule in this codebase. Every query touching user data
-  goes through a repo constructed with a user id; a handler reaching `env.DB` or `env.BLOBS`
-  directly is a blocker, not a nit. `apps/api/test/isolation.test.ts` is the standing
-  assertion and should grow with any route that touches user data.
+- **Tenant isolation** — the sharpest rule in this codebase. A user's notes live in their
+  own Durable Object (`UserStore`), reached through `reposFor` in `lib/repos.ts`; D1 holds
+  only the control plane. A route that reads or writes note data any other way — `env.DB`
+  for notes, or R2 bytes by a key the user's store did not hand it — is a blocker, not a
+  nit. AGENTS.md's "The per-account note store" has the rules the store keeps, and
+  `apps/api/test/isolation.test.ts` is the standing assertion and should grow with any
+  route that touches user data.
 - **React** — component sizing, state colocation, prop drilling, memoization, re-renders,
   effects, derived state, closures.
 - **UX and a11y** — ARIA, labels, keyboard nav, focus management, loading/error/empty states,
@@ -96,7 +114,9 @@ list.
   that touch existing rows.
 - **Performance** — the real corpus is ~13K notes and ~3GB, mostly PDFs. Assumptions that
   hold at 90 notes and fail at 13,000 are findings. Watch for anything buffering a whole
-  result set in a Worker's 128MB.
+  result set in a Worker's 128MB. Rows read are a metered budget (AGENTS.md, "Rows read are
+  still the budget"): a new store query belongs in the rows-read test, and each RPC to the
+  store is a billable request.
 - **Security** — unsafe rendering, input validation, auth, data exposure.
 - **Code quality** — naming, readability, DRY, dead code, unnecessary abstraction. Comments
   that record *why*, per AGENTS.md.

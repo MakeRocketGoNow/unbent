@@ -84,6 +84,34 @@ export const wellKnown = new Hono<AppEnv>()
       // value from waiting a day while costing nothing on a document this small.
       'Cache-Control': 'public, max-age=3600',
     });
+  })
+  /**
+   * The Apple App Site Association document: the iOS counterpart of the one above, for the
+   * same two things — universal links, and passkeys offered to the app through
+   * `webcredentials` — and per deployment from `APPLE_APP_SITE_ASSOCIATION` for the same
+   * reason, since its app ids carry a team id that is one developer's.
+   *
+   * Apple's document is a JSON *object* where Android's is an array, so that is what is
+   * checked. The path has no extension and Apple requires `application/json` regardless,
+   * which `c.json` sets. Apple's CDN fetches it, not the phone, and caches it on its side;
+   * see the README's iOS section for the shape.
+   */
+  .get('/.well-known/apple-app-site-association', (c) => {
+    const raw = c.env.APPLE_APP_SITE_ASSOCIATION?.trim();
+    if (!raw) return c.json({ error: 'Not found' }, 404);
+    let doc: unknown;
+    try {
+      doc = JSON.parse(raw);
+    } catch {
+      doc = undefined;
+    }
+    if (typeof doc !== 'object' || doc === null || Array.isArray(doc)) {
+      // Loud for the same reason as Android's: the symptom is a link opening in Safari or
+      // a passkey not offered, nowhere near the secret.
+      console.error('[well-known] APPLE_APP_SITE_ASSOCIATION is not a JSON object');
+      return c.json({ error: 'APPLE_APP_SITE_ASSOCIATION is not valid JSON' }, 500);
+    }
+    return c.json(doc, 200, { 'Cache-Control': 'public, max-age=3600' });
   });
 
 function resourceMetadata(env: AppEnv['Bindings']): Response {

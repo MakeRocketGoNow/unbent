@@ -88,6 +88,8 @@ jobs:
       # Optional; the same document production serves, so the Android app's passkeys work
       # against the dev instance and previews too.
       ANDROID_ASSET_LINKS: ${{ secrets.ANDROID_ASSET_LINKS }}
+      # Optional; the iOS counterpart, for the iOS app's passkeys and links.
+      APPLE_APP_SITE_ASSOCIATION: ${{ secrets.APPLE_APP_SITE_ASSOCIATION }}
       # The dev instance's own sweep token, for the sweep at the end of this job; see
       # SWEEP_TOKEN in web.yml. Not production's, so a leak of one is not the other. Unset,
       # that step skips. The previews get none: they have no accounts of their own worth
@@ -162,6 +164,9 @@ jobs:
           fi
           if [ -n "$ANDROID_ASSET_LINKS" ]; then
             printf 'ANDROID_ASSET_LINKS=%s\n' "$(printf '%s' "$ANDROID_ASSET_LINKS" | jq -c .)" >> "$RUNNER_TEMP/dev-secrets.env"
+          fi
+          if [ -n "$APPLE_APP_SITE_ASSOCIATION" ]; then
+            printf 'APPLE_APP_SITE_ASSOCIATION=%s\n' "$(printf '%s' "$APPLE_APP_SITE_ASSOCIATION" | jq -c .)" >> "$RUNNER_TEMP/dev-secrets.env"
           fi
           # Google, both halves or neither — a lone id with no secret is not a working
           # provider, and `configuredSocials` ignores it, so sending only one would advertise
@@ -243,6 +248,8 @@ jobs:
       # Optional; the same document production serves, so the Android app's passkeys work
       # against the dev instance and previews too.
       ANDROID_ASSET_LINKS: ${{ secrets.ANDROID_ASSET_LINKS }}
+      # Optional; the iOS counterpart, for the iOS app's passkeys and links.
+      APPLE_APP_SITE_ASSOCIATION: ${{ secrets.APPLE_APP_SITE_ASSOCIATION }}
       # The same development key the dev job carries, so a PR that touches Auto-fill can be
       # tried on its preview. Optional; unset, the preview draws no control.
       DEV_TYPESAFE_API_KEY: ${{ secrets.DEV_TYPESAFE_API_KEY }}
@@ -276,8 +283,13 @@ jobs:
           cache: pnpm
       - if: steps.configured.outputs.ready == 'true'
         run: pnpm install --frozen-lockfile
+      # The checkout is GitHub's merge commit, which is on no branch; the account menu names
+      # the PR's head instead, the commit the comment below says was deployed. See
+      # `readBuildInfo` in apps/web/vite.config.ts.
       - if: steps.configured.outputs.ready == 'true'
         run: pnpm build
+        env:
+          UNBENT_COMMIT: ${{ github.event.pull_request.head.sha }}
 
       # Migrations run before the deploy that would otherwise provision the database, so
       # on a repository whose account has none yet this creates it; elsewhere it is a no-op.
@@ -341,6 +353,9 @@ jobs:
           fi
           if [ -n "$ANDROID_ASSET_LINKS" ]; then
             printf 'ANDROID_ASSET_LINKS=%s\n' "$(printf '%s' "$ANDROID_ASSET_LINKS" | jq -c .)" >> "$RUNNER_TEMP/preview-secrets.env"
+          fi
+          if [ -n "$APPLE_APP_SITE_ASSOCIATION" ]; then
+            printf 'APPLE_APP_SITE_ASSOCIATION=%s\n' "$(printf '%s' "$APPLE_APP_SITE_ASSOCIATION" | jq -c .)" >> "$RUNNER_TEMP/preview-secrets.env"
           fi
           if [ -n "$DEV_TYPESAFE_API_KEY" ]; then
             printf 'TYPESAFE_API_KEY=%s\n' "$DEV_TYPESAFE_API_KEY" >> "$RUNNER_TEMP/preview-secrets.env"

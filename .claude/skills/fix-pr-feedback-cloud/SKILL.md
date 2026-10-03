@@ -82,13 +82,12 @@ PR number: `$ARGUMENTS` if given, else
 6. **Re-run the checks over the whole batch, then push.** A pile of review patches routinely
    breaks formatting, types, or an adjacent test that no single change touched:
 
-   ```bash
-   pnpm --filter @unbent/web test
-   npx tsc --noEmit
-   ```
-
-   If you touched `apps/android`, also `cd apps/android && ./gradlew test` — it is outside
-   the pnpm workspace and `pnpm -r` skips it silently.
+   Run what AGENTS.md's "Verifying" section names, for every part of the repo the fixes
+   touched — not a list copied here, which would go stale as the repo grows. Apps outside
+   the pnpm workspace (`apps/android`, and any other native app) are skipped silently by
+   `pnpm -r` and have checks of their own; AGENTS.md says how. A check this session cannot
+   run — a toolchain the cloud machine does not have — is not a pass: say in the reply
+   which checks ran and which did not.
 
    Fix anything red, commit the breakage as its own commit (never amend a review-fix
    commit), and re-run until green. **Do not push red.** Then:
@@ -113,6 +112,10 @@ PR number: `$ARGUMENTS` if given, else
    Reply on the inline comment, not only as a top-level PR comment. Prefix the body with
    `🤖️`, and end it with the Claude Code attribution footer this environment requires on
    every GitHub post.
+
+   Feedback that lives only in a review summary, with no inline comment to reply to, gets a
+   PR comment instead:
+   `mcp__github__add_issue_comment({ owner, repo, issue_number: pullNumber, body })`.
 
 8. **Resolve the threads you fixed** — including ones already addressed by an earlier
    commit:

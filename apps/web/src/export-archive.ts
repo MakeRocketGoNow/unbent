@@ -3,7 +3,7 @@ import { BlobWriter } from '@zip.js/zip.js';
 import { writeArchive, type ExportSource } from '@unbent/enex';
 import { exportFilename, type ExportFilter } from '@unbent/shared';
 import * as api from './notes-api.js';
-import { hostApp, type HostApp } from './app-bridge.js';
+import { hostApp, savesTo, type HostApp } from './app-bridge.js';
 
 /**
  * The library export, built here in the browser.
@@ -21,12 +21,12 @@ import { hostApp, type HostApp } from './app-bridge.js';
  * Edge offer `showSaveFilePicker`, which hands over a stream to a file the person chose,
  * so the archive goes to disk as it is built and its size does not matter. Elsewhere the
  * zip is assembled in memory and handed over as a download when it is done, which caps
- * the export at what the tab can hold; the page says so. Inside the Android app, the
- * app is the file system: the zip streams to it a piece at a time and it writes the
- * pieces into the phone's Downloads as they come, so there too size does not matter. The
- * picker has to be asked
- * inside the click that started the export — it is a user gesture — so `start` opens it
- * before it awaits anything.
+ * the export at what the tab can hold; the page says so. Inside the app, on Android or
+ * iOS, the app is the file system: the zip streams to it a piece at a time and it writes
+ * the pieces where the phone keeps saved files as they come — Downloads on Android, Files
+ * on iOS — so there too size does not matter. The picker has to be asked inside the click
+ * that started the export — it is a user gesture — so `start` opens it before it awaits
+ * anything.
  *
  * A module-level store rather than component state, the way indexing is (`index-files.ts`):
  * a run outlives the page it was started from, and the button on the note list, the one
@@ -53,7 +53,7 @@ export interface ExportState {
   filename: string | null;
   /**
    * Where the archive went: a file the person chose, the browser's downloads, or the
-   * phone's Downloads by way of the Android app.
+   * phone's own place for saved files by way of the app (`savesTo`).
    */
   destination: DestinationKind | null;
   /** A stop has been asked for and the request in flight has not landed yet. */
@@ -219,38 +219,77 @@ function toBase64(bytes: Uint8Array): string {
 }
 
 /**
- * The archive streamed to the Android app, which writes it into the phone's Downloads.
+ * A host call's answer, or `failed` when the call threw or its promise rejected. The call
+ * is made inside, so a bridge that throws before it answers is caught with the rest.
+ */
+async function answered<T>(call: () => T | Promise<T>, failed: T): Promise<T> {
+  try {
+    return await call();
+  } catch {
+    return failed;
+  }
+}
+
+/**
+ * The archive streamed to the app hosting this page, which writes it into the phone's
+ * Downloads, or into Files on iOS.
  *
  * A WebView offers no save picker, and the in-memory path ends by clicking a `blob:` link,
  * which the WebView hands to the app as a download of an address only this page can read:
  * the phone's download manager cannot fetch it, and the export would end with nothing
- * saved and nothing said. So the app takes the bytes directly. Its calls are synchronous,
- * which is the point — a page writing faster than the phone's storage waits on each call
+ * saved and nothing said. So the app takes the bytes directly. Each call is waited for,
+ * which is the point — a page writing faster than the phone's storage waits on each piece
  * rather than queueing the library in memory — and a call that answers false is a write
- * that failed, which fails the export like any other error.
+ * that failed, which fails the export like any other error. So is a call that throws or
+ * whose promise rejects, which is how a WKWebView reply reports a native error
+ * (`answered`): the export says the same thing however the host failed, in the page's
+ * words rather than whatever text the native side put in its error.
  *
- * `saveAbort` is called directly as well as through the stream: once a write has thrown,
+ * Android answers each call synchronously and an iOS host with a promise (`HostApp`), and
+ * `await` serves both: on a plain value it is a no-op, and on a promise it is what makes
+ * `write` below return one, which a `WritableStream` holds the next chunk behind. The zip
+ * writer waits on the stream in turn, so a slow native write slows the reads that feed it.
+ *
+ * `saveAbort` is called directly rather than through the stream: once a write has thrown,
  * the stream is errored and would never pass an abort on, and the app's half-written file
  * has to go either way.
+ *
+ * It is sent only once the piece in flight has been answered, and no piece is sent after
+ * it. A synchronous host could never see the two overlap; one that answers later can be
+ * stopped, or lose a fetch, while a `saveChunk` is still being written, and would be
+ * told to remove a file it is in the middle of writing to. Waiting on the stream's own
+ * `abort` is not enough for that: the zip writer may still hold the stream's lock, and a
+ * locked stream refuses the abort at once rather than waiting for its write. So the call
+ * in flight is remembered here and waited for by name.
  */
-export function appDestination(app: HostApp, filename: string): Destination {
-  const id = app.saveBegin!(filename, 'application/zip');
-  if (!id) throw new Error('The app could not create a file in Downloads.');
+export async function appDestination(app: HostApp, filename: string): Promise<Destination> {
+  const id = await answered(() => app.saveBegin!(filename, 'application/zip'), '');
+  if (!id) throw new Error(`The app could not create a file in ${savesTo()}.`);
   let ended = false;
+  let abandoned = false;
+  let inFlight: Promise<unknown> = Promise.resolve();
   /*
      The zip writer hands over many small chunks — a header here, a few bytes of a name
      there — and each call to the app has a fixed cost, so they are gathered into full
      pieces first. Copied as they are gathered, since the writer owns the buffers it passes.
+     One buffer serves every piece even though `send` waits: the piece is base64 before
+     the call is made, and the stream does not hand `write` another chunk until this one
+     has returned.
   */
   const pending = new Uint8Array(APP_PIECE);
   let filled = 0;
-  const send = (piece: Uint8Array) => {
-    if (!app.saveChunk!(id, toBase64(piece))) {
-      throw new Error('The phone could not write the archive to Downloads.');
+  const send = async (piece: Uint8Array) => {
+    // A write that was waiting when the export was abandoned resumes here for its next
+    // piece; the app has been told the file is gone, or is about to be.
+    if (abandoned) throw new Error('The export was abandoned.');
+    const answer = answered(() => app.saveChunk!(id, toBase64(piece)), false);
+    inFlight = answer;
+    if (!(await answer)) {
+      throw new Error(`The app could not write the archive to ${savesTo()}.`);
     }
   };
   const writable = new WritableStream<Uint8Array>({
-    write(chunk) {
+    async write(chunk) {
       let at = 0;
       while (at < chunk.length) {
         const take = Math.min(APP_PIECE - filled, chunk.length - at);
@@ -258,14 +297,14 @@ export function appDestination(app: HostApp, filename: string): Destination {
         filled += take;
         at += take;
         if (filled === APP_PIECE) {
-          send(pending);
+          await send(pending);
           filled = 0;
         }
       }
     },
-    close() {
-      if (filled > 0) send(pending.subarray(0, filled));
-      if (!app.saveEnd!(id)) throw new Error('The phone could not finish writing the archive.');
+    async close() {
+      if (filled > 0) await send(pending.subarray(0, filled));
+      if (!(await answered(() => app.saveEnd!(id), false))) throw new Error('The app could not finish writing the archive.');
       ended = true;
     },
   });
@@ -275,7 +314,11 @@ export function appDestination(app: HostApp, filename: string): Destination {
     finish: async () => null,
     abort: async () => {
       if (ended) return;
-      app.saveAbort?.(id);
+      abandoned = true;
+      await inFlight;
+      // Nothing to do if the host cannot remove the file either; the export has already
+      // failed or been stopped, and says so.
+      await answered(() => app.saveAbort?.(id), undefined);
       await writable.abort().catch(() => undefined);
     },
   };
@@ -283,11 +326,11 @@ export function appDestination(app: HostApp, filename: string): Destination {
 
 /**
  * What a finished export says it did, in the words of where it went: a chosen file and the
- * phone's Downloads were written as they went, a browser download was handed over at the
- * end.
+ * phone's Downloads (Files, on iOS) were written as they went, a browser download was
+ * handed over at the end.
  */
 export function savedAs(state: Pick<ExportState, 'destination' | 'filename'>): string {
-  if (state.destination === 'app') return `Saved ${state.filename} to Downloads`;
+  if (state.destination === 'app') return `Saved ${state.filename} to ${savesTo()}`;
   return `${state.destination === 'file' ? 'Saved' : 'Downloaded'} ${state.filename}`;
 }
 

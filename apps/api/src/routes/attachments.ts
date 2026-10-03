@@ -10,7 +10,7 @@ import {
 } from '@unbent/shared';
 import { z } from 'zod';
 import { copyAttachments } from '../lib/copy-attachments.js';
-import { readPendingFiles, readWithLlm, readersFrom } from '../lib/read-attachment.js';
+import { readPendingFiles, readWithLlm, readersFrom, serverCanRead } from '../lib/read-attachment.js';
 import { canUseLlm, readableByLlm } from '../lib/llm.js';
 import { fetchWebImage } from '../lib/web-image.js';
 import { requireAuth } from '../lib/session.js';
@@ -52,12 +52,53 @@ export const attachments = new Hono<AppEnv>()
     const noteId = c.req.param('id');
     const repo = c.get('attachments');
 
-    if (!(await repo.ownsNote(noteId))) return c.json({ error: 'Not found' }, 404);
+    /**
+     * `?text=supplied`: the client has this file's text already and will put it next, so
+     * the read that would otherwise start here is skipped. What the importer sends for a
+     * file that arrived with a `text/` or `described/` sidecar — see `storeAttachment`.
+     */
+    const textSupplied = c.req.query('text') === 'supplied';
+
+    /**
+     * `X-Attachment-Id`: the id the file should have, chosen by the client, as a note's
+     * can be (`POST /notes`). A file added with no connection is uploaded later from an
+     * outbox, and an outbox replays: a request whose answer was lost is sent again. With
+     * an id, the second one finds the file the first one made and is answered 200 with
+     * it, its body unread — without, it stored the same bytes again as `scan-2.pdf`. An
+     * id held by a file of another note is a conflict, not a find.
+     */
+    const claimed = c.req.header('X-Attachment-Id');
+    if (claimed !== undefined) {
+      if (!z.string().uuid().safeParse(claimed).success) return c.json({ error: 'X-Attachment-Id must be a UUID' }, 400);
+      const { live, existing } = await repo.uploadPrelude(noteId, claimed);
+      if (!live) return c.json({ error: 'Not found' }, 404);
+      if (existing) {
+        await c.req.raw.body?.cancel().catch(() => {});
+        if (existing.noteId !== noteId) return c.json({ error: 'That id belongs to another file' }, 409);
+        const { filename, contentType, size } = existing;
+        // The answer the first request gave, worked out again: it was lost, so the client
+        // never heard it. A flat `server` here left a file the server cannot read with
+        // nobody reading it — the client that holds the bytes was told not to (review of
+        // #236). Where the server can, its reader is already on the first request's bytes.
+        const indexing = !textSupplied && serverCanRead(c.env, contentType, size) ? 'server' : 'client';
+        return c.json({ filename, contentType, size, path: `files/${filename}`, indexing }, 200);
+      }
+    } else if (!(await repo.ownsNote(noteId))) {
+      return c.json({ error: 'Not found' }, 404);
+    }
 
     const rawName = c.req.header('X-Filename');
     if (!rawName) return c.json({ error: 'X-Filename header required' }, 400);
 
-    const parsed = filenameSchema.safeParse(decodeURIComponent(rawName));
+    // The header is the client's `encodeURIComponent`, since a header cannot carry the
+    // name raw. One that will not decode is a bad request, not a crash.
+    let name: string;
+    try {
+      name = decodeURIComponent(rawName);
+    } catch {
+      return c.json({ error: 'X-Filename is not valid percent-encoding' }, 400);
+    }
+    const parsed = filenameSchema.safeParse(name);
     if (!parsed.success) {
       return c.json({ error: parsed.error.issues[0]?.message ?? 'Invalid filename' }, 400);
     }
@@ -81,19 +122,13 @@ export const attachments = new Hono<AppEnv>()
      */
     const link = c.req.query('link') !== undefined;
 
-    /**
-     * `?text=supplied`: the client has this file's text already and will put it next, so
-     * the read that would otherwise start here is skipped. What the importer sends for a
-     * file that arrived with a `text/` or `described/` sidecar — see `storeAttachment`.
-     */
-    const textSupplied = c.req.query('text') === 'supplied';
-
     const { filename, contentType, size, path, indexing } = await storeAttachment(
       c.env,
       c.executionCtx,
       { attachments: repo, notes: c.get('notes') },
       {
         noteId,
+        id: claimed,
         filename: parsed.data,
         contentType: c.req.header('Content-Type'),
         body: c.req.raw.body,
@@ -174,9 +209,19 @@ export const attachments = new Hono<AppEnv>()
     return c.json({ ...info, path: `files/${filename}`, url }, 201);
   })
 
+  /**
+   * The name in the path is used as the router hands it over, here and in the two routes
+   * below that take one.
+   *
+   * `c.req.param()` has already percent-decoded it, once, which is all the client encoded.
+   * Each of these handlers used to decode it again, and a second pass is wrong for any name
+   * holding a percent sign: `20% off.pdf` threw a URIError and answered 500, and a name
+   * shaped like an escape — `100%41.txt` — silently addressed `100A.txt` instead. The
+   * upload is different: its name arrives in a header, which nothing decodes for us.
+   */
   .get('/notes/:id/files/:filename', async (c) => {
     const noteId = c.req.param('id');
-    const filename = decodeURIComponent(c.req.param('filename'));
+    const filename = c.req.param('filename');
 
     const row = await c.get('attachments').resolve(noteId, filename, { includeTrashed: true });
     if (!row) return c.json({ error: 'Not found' }, 404);
@@ -240,7 +285,7 @@ export const attachments = new Hono<AppEnv>()
    */
   .put('/notes/:id/files/:filename/text', async (c) => {
     const noteId = c.req.param('id');
-    const filename = decodeURIComponent(c.req.param('filename'));
+    const filename = c.req.param('filename');
 
     const attachmentId = await c.get('attachments').idFor(noteId, filename);
     if (!attachmentId) return c.json({ error: 'Not found' }, 404);
@@ -397,7 +442,7 @@ export const attachments = new Hono<AppEnv>()
   )
 
   .delete('/notes/:id/files/:filename', async (c) => {
-    const filename = decodeURIComponent(c.req.param('filename'));
+    const filename = c.req.param('filename');
     const key = await c.get('attachments').remove(c.req.param('id'), filename);
     if (!key) return c.json({ error: 'Not found' }, 404);
 

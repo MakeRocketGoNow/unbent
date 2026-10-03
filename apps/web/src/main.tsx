@@ -8,10 +8,13 @@ import { installPosthog } from './posthog.js';
 import { installLaunchFiles } from './launch-files.js';
 import { configQuery, installLibraryQueries } from './queries.js';
 import { applyInstanceMarker } from './instance-marker.js';
+import { adoptHostLayout } from './app-bridge.js';
 import { registerServiceWorker } from './sw-register.js';
 import { installConnectivity } from './connectivity.js';
 import { installSessionRecheck } from './auth-client.js';
 import { isOfflineError } from './notes-api.js';
+import { onUploaded } from './store/actions.js';
+import { indexUploadedFile } from './index-files.js';
 import './styles.css';
 
 /*
@@ -20,6 +23,12 @@ import './styles.css';
  * is invisible to Play's crash reporting — see `report-error.ts`.
  */
 installErrorReporting();
+
+/*
+ * Before the first render, so the page is never drawn once inside the safe area and
+ * again across the whole screen. Does nothing outside the iOS app; see `app-bridge.ts`.
+ */
+adoptHostLayout();
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -65,6 +74,14 @@ installConnectivity(queryClient);
  */
 installLibraryQueries(queryClient);
 installSessionRecheck();
+
+/*
+ * A file added with no connection is uploaded from the outbox when there is one, by which
+ * time the editor that took it may be long gone. Its text is read for search then, from
+ * the bytes the queue still holds, exactly as an upload made online has its text read
+ * where it was dropped (`indexUploadedFile` decides whether the server is doing it).
+ */
+onUploaded(indexUploadedFile);
 
 /*
  * Error tracking, on the instances that have it — see `posthog.ts`.

@@ -66,15 +66,32 @@ export function instanceTitle(label: string, title: string): string {
  * also says whose notes these are, which is the thing that decides whether an edit here
  * reaches the dev instance: one of a store-changing PR keeps its own, every other preview
  * reads and writes the dev instance's.
+ *
+ * `commit`, the build's short SHA, goes straight after the label — "PR 242 · 00619da ·
+ * notes are its own" — because on a scratch instance it is checked right after every push,
+ * and this line is one tap from every screen. Before the notes clause, so a narrow menu's
+ * ellipsis eats the clause, which the tooltip and Settings › About both carry, and keeps
+ * the commit. Production has no line, so its commit lives in About alone.
  */
 export function instanceLine(
   config: Pick<AppConfig, 'instanceLabel' | 'ownStores' | 'previewRelay'>,
+  commit?: string | null,
 ): string | null {
   const label = config.instanceLabel;
   if (!label) return null;
-  if (config.ownStores) return `${label} · notes are its own`;
-  if (config.previewRelay) return `${label} · notes are ${new URL(config.previewRelay.origin).host}'s`;
-  return label;
+  const head = commit ? `${label} · ${commit}` : label;
+  const notes = instanceNotes(config);
+  return notes ? `${head} · ${notes}` : head;
+}
+
+/**
+ * Whose notes a preview reads and writes, or nothing for an instance that has its own as
+ * a matter of course. Shared by the menu's line and Settings › About.
+ */
+export function instanceNotes(config: Pick<AppConfig, 'ownStores' | 'previewRelay'>): string | null {
+  if (config.ownStores) return 'notes are its own';
+  if (config.previewRelay) return `notes are ${new URL(config.previewRelay.origin).host}'s`;
+  return null;
 }
 
 /**

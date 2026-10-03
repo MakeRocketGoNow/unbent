@@ -356,26 +356,57 @@ interface AuthInstance {
  * if a build asks for its own Android audience. Accepting both means neither choice breaks
  * sign-in.
  *
+ * Apple is the same idea with a different key. The iOS app signs in natively and posts the
+ * identity token to `sign-in/social`, and a native token's audience is the app's bundle id,
+ * not the Services ID the web flow uses as `APPLE_CLIENT_ID`. `APPLE_BUNDLE_ID` names the
+ * bundle ids to accept as well. It goes in `audience`, not the provider's own
+ * `appBundleIdentifier`: Better Auth takes `audience`, then `appBundleIdentifier`, then the
+ * client id, the first one set *replacing* the others, so `appBundleIdentifier` alone would
+ * accept the app's tokens and stop accepting the Services ID's. `audience` is read only on
+ * the ID-token path; the web code flow never consults it.
+ *
  * Providers needing more than a pair — Apple wants a team id, a key id and a signing key,
  * from which its "secret" is a JWT the operator generates — are configured by putting that
  * generated value in `APPLE_CLIENT_SECRET`. That keeps the shape here uniform at the cost
  * of some setup elsewhere, which is the right trade for something done once per instance.
  */
-function socialConfig(env: Env): Record<string, { clientId: string | string[]; clientSecret: string }> {
+export function socialConfig(env: Env): Record<string, SocialProviderConfig> {
   const vars = envMap(env);
-  const config: Record<string, { clientId: string | string[]; clientSecret: string }> = {};
+  const config: Record<string, SocialProviderConfig> = {};
 
   for (const id of configuredSocials(env)) {
     const key = id.toUpperCase();
     const clientId = vars[`${key}_CLIENT_ID`] as string;
     const clientSecret = vars[`${key}_CLIENT_SECRET`] as string;
-    config[id] =
-      id === 'google' && env.GOOGLE_ANDROID_CLIENT_ID
-        ? { clientId: [clientId, env.GOOGLE_ANDROID_CLIENT_ID], clientSecret }
-        : { clientId, clientSecret };
+    if (id === 'google' && env.GOOGLE_ANDROID_CLIENT_ID) {
+      config[id] = { clientId: [clientId, env.GOOGLE_ANDROID_CLIENT_ID], clientSecret };
+    } else if (id === 'apple' && appleBundleIds(env).length > 0) {
+      config[id] = { clientId, clientSecret, audience: [clientId, ...appleBundleIds(env)] };
+    } else {
+      config[id] = { clientId, clientSecret };
+    }
   }
 
   return config;
+}
+
+type SocialProviderConfig = {
+  clientId: string | string[];
+  clientSecret: string;
+  audience?: string[];
+};
+
+/**
+ * `APPLE_BUNDLE_ID` as a list. One deployment can be asked for by more than one build: the
+ * debug app is a separate bundle id (`….debug`), and it is pointed at production as often
+ * as at a local instance, so an instance that accepted one id only would refuse whichever
+ * build it was not set up for with nothing in the error to say why.
+ */
+function appleBundleIds(env: Env): string[] {
+  return (env.APPLE_BUNDLE_ID ?? '')
+    .split(',')
+    .map((id) => id.trim())
+    .filter(Boolean);
 }
 
 /**

@@ -109,6 +109,18 @@ describe('the seed’s files', () => {
     expect([view.getUint32(16), view.getUint32(20)]).toEqual([40, 60]);
   });
 
+  it('gives files to more than one notebook, so a kept notebook can be compared with one that is not', () => {
+    const withFiles = new Set(seedNotes().filter((n) => n.files?.length).map((n) => n.notebook));
+    expect(withFiles.size).toBeGreaterThanOrEqual(2);
+    expect(withFiles).toContain('Receipts');
+    expect(withFiles).toContain('Coupons');
+  });
+
+  it('names every seeded file once', () => {
+    const names = seedNotes().flatMap((n) => (n.files ?? []).map((f) => f.name));
+    expect(new Set(names).size).toBe(names.length);
+  });
+
   it('keeps every seeded file to text a PDF can hold', () => {
     for (const note of seedNotes()) {
       for (const file of note.files ?? []) {

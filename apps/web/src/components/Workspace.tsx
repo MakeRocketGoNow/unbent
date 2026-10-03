@@ -1425,9 +1425,12 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
               readOnly
                 ? undefined
                 : async (file, signal) => {
-                    const uploaded = await api.uploadFile(note.id, file, { signal });
+                    // Through the actions: with no connection the file is kept on the
+                    // device and uploaded from the outbox, and the path is good at once.
+                    const uploaded = await actions.uploadFile(note.id, file, { signal });
                     void queryClient.invalidateQueries({ queryKey: keys.attachments(note.id) });
-                    // Searchable now, from the bytes in hand, not on some later pass.
+                    // Searchable now, from the bytes in hand, not on some later pass. A
+                    // file that was queued says `server` and is read when it uploads.
                     indexUploadedFile(note.id, uploaded, file);
                     return uploaded.path;
                   }
@@ -1449,7 +1452,9 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
               readOnly
                 ? undefined
                 : async (filename) => {
-                    await api.deleteAttachment(note.id, filename);
+                    // The same rule as the panel's Delete: a picture added offline has not
+                    // reached the server, so deleting it there would fail.
+                    await actions.deleteOrCancelAttachment(note.id, filename);
                     void queryClient.invalidateQueries({ queryKey: keys.attachments(note.id) });
                   }
             }

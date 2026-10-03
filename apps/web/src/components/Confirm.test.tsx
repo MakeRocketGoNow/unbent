@@ -121,4 +121,28 @@ describe('Confirm', () => {
     expect((screen.getByRole('button', { name: 'Deleting…' }) as HTMLButtonElement).disabled).toBe(true);
     expect((screen.getByRole('button', { name: 'Cancel' }) as HTMLButtonElement).disabled).toBe(true);
   });
+
+  describe('border tone', () => {
+    const root = (actions: Parameters<typeof Confirm>[0]['actions']) => {
+      render(<Confirm label="Confirm it" question="Sure?" actions={actions} onCancel={cancel} />);
+      return screen.getByRole('group', { name: 'Confirm it' });
+    };
+    const act = (tone: 'primary' | 'neutral' | 'danger') => ({ label: tone, tone, onConfirm: () => {} });
+
+    it('is red when the action offered is destructive', () => {
+      expect(root([act('danger')]).className).toContain('confirm-danger');
+    });
+
+    it('is green when the action offered is the primary', () => {
+      const el = root([act('primary')]);
+      expect(el.className).toContain('confirm-primary');
+      expect(el.className).not.toContain('confirm-danger');
+    });
+
+    it('is plain for a neutral action, or none at all', () => {
+      expect(root([act('neutral'), { ...act('danger'), label: 'also' }]).className).toContain('confirm-neutral');
+      cleanup();
+      expect(root([]).className).toContain('confirm-neutral');
+    });
+  });
 });

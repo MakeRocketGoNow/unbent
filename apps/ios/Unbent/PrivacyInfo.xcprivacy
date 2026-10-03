@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  What the app tells Apple about itself. App Store Connect refuses, or warns about, an
+  upload that uses one of the "required reason" APIs without saying why here.
+
+  The one such API the app's own code calls is UserDefaults: the instance address and the
+  last notebook (AppPrefs). Two reasons, because there are two places it may read from:
+  1C8F.1 is the App Group suite the Share Extension shares, and CA92.1 the app's own
+  defaults, which a build with no group named falls back to.
+
+  Nothing is collected and nothing is tracked. What the site inside the web view does is
+  the site's to declare, in its privacy policy; this file is about the native code.
+
+  Add to it when native code starts using another listed API: file timestamps, disk
+  space, system boot time or the active keyboard list.
+-->
+<plist version="1.0">
+<dict>
+	<key>NSPrivacyTracking</key>
+	<false/>
+	<key>NSPrivacyTrackingDomains</key>
+	<array/>
+	<key>NSPrivacyCollectedDataTypes</key>
+	<array/>
+	<key>NSPrivacyAccessedAPITypes</key>
+	<array>
+		<dict>
+			<key>NSPrivacyAccessedAPIType</key>
+			<string>NSPrivacyAccessedAPICategoryUserDefaults</string>
+			<key>NSPrivacyAccessedAPITypeReasons</key>
+			<array>
+				<string>1C8F.1</string>
+				<string>CA92.1</string>
+			</array>
+		</dict>
+	</array>
+</dict>
+</plist>

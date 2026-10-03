@@ -86,6 +86,12 @@ export interface Env {
   GITHUB_CLIENT_ID?: string;
   GITHUB_CLIENT_SECRET?: string;
   /**
+   * Bundle ids whose Sign in with Apple identity tokens are accepted, comma-separated: the
+   * iOS app's native tokens name the bundle id as their audience, not the web Services ID
+   * in `APPLE_CLIENT_ID`. Per deployment, and only meaningful while Apple is configured.
+   */
+  APPLE_BUNDLE_ID?: string;
+  /**
    * '1' offers email-and-password sign-in, '0' refuses it.
    *
    * Neither is usually needed. Password is offered by default when nothing else on the
@@ -194,6 +200,14 @@ export interface Env {
    * routes/well-known.ts and the README's Android section.
    */
   ANDROID_ASSET_LINKS?: string;
+  /**
+   * The Apple App Site Association document this origin serves at
+   * /.well-known/apple-app-site-association: which iOS apps, by team and bundle id, it
+   * vouches for, for universal links and passkeys. Verbatim JSON, an object. Per
+   * deployment and unset by default, like `ANDROID_ASSET_LINKS`; see the README's iOS
+   * section.
+   */
+  APPLE_APP_SITE_ASSOCIATION?: string;
   /**
    * PostHog, for grouping the browser errors that `/api/client-errors` only ever logs.
    *

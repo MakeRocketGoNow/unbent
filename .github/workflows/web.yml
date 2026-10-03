@@ -88,6 +88,9 @@ jobs:
       # Sent the same way, and for the same reason it is not in a file — it names one
       # deployment's app.
       ANDROID_ASSET_LINKS: ${{ secrets.ANDROID_ASSET_LINKS }}
+      # Optional: its iOS counterpart, the Apple App Site Association document, for the
+      # same reason.
+      APPLE_APP_SITE_ASSOCIATION: ${{ secrets.APPLE_APP_SITE_ASSOCIATION }}
       # Optional: the one origin this instance answers sign-in on, for a deployment with a
       # custom domain that wants its workers.dev name closed. Sent with the deploy rather
       # than put afterwards because a deploy replaces plain vars — and, once, because a var
@@ -166,6 +169,9 @@ jobs:
           fi
           if [ -n "$ANDROID_ASSET_LINKS" ]; then
             printf 'ANDROID_ASSET_LINKS=%s\n' "$(printf '%s' "$ANDROID_ASSET_LINKS" | jq -c .)" >> "$RUNNER_TEMP/secrets.env"
+          fi
+          if [ -n "$APPLE_APP_SITE_ASSOCIATION" ]; then
+            printf 'APPLE_APP_SITE_ASSOCIATION=%s\n' "$(printf '%s' "$APPLE_APP_SITE_ASSOCIATION" | jq -c .)" >> "$RUNNER_TEMP/secrets.env"
           fi
           if [ -n "$APP_URL" ]; then
             printf 'APP_URL=%s\n' "$APP_URL" >> "$RUNNER_TEMP/secrets.env"

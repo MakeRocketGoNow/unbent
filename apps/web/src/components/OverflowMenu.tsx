@@ -43,6 +43,16 @@ export interface OverflowItem {
    * says the same thing to the pointer, the keyboard and a screen reader at once.
    */
   static?: boolean;
+  /**
+   * Renders a rule between groups instead of an item; `label` is ignored.
+   *
+   * A real element rather than a border on whichever item happens to end a group: the
+   * account menu's groups change with the instance (an instance line on dev and previews,
+   * legal links only where they are published), and a border had to be moved about with
+   * `:has()` chains to follow them, landing on items whose padding and rounded corners
+   * were never meant to carry one.
+   */
+  separator?: boolean;
   /** Native tooltip, for a label whose text may be truncated. */
   title?: string;
   /**
@@ -168,6 +178,10 @@ export function OverflowMenu({
               .filter(Boolean)
               .join(' ');
 
+            if (item.separator === true) {
+              return <hr key={i} className="overflow-separator" />;
+            }
+
             // A label, not a command: nothing to activate, so it is not in the tab order.
             if (item.static === true) {
               return (
@@ -186,6 +200,7 @@ export function OverflowMenu({
                   className={className}
                   href={item.external}
                   rel="noopener noreferrer"
+                  title={item.title}
                   onClick={() => {
                     setOpen(false);
                     item.onSelect?.();

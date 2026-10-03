@@ -684,6 +684,68 @@ describe('filename validation', () => {
     );
     expect(get.status).toBe(200);
   });
+
+  /**
+   * A percent sign is the one character that tells a single decode from a double one.
+   *
+   * The router decodes a path parameter before a handler sees it, so `50%25%20off` arrives
+   * as `50% off`. Decoding that again throws on the bare `%` — a 500 — and for a name like
+   * `100%41.txt` it would be worse, quietly addressing `100A.txt` instead. Every route that
+   * takes the name in the path is walked here, because each decoded for itself.
+   */
+  it('serves, indexes and deletes a file whose name contains a percent sign', async () => {
+    const note = await createNote(alice, 'Percent files');
+    const name = '50% off (final).pdf';
+    const headers = { Cookie: alice.cookie, Origin: ORIGIN };
+    const url = `${BASE}/api/notes/${note.id}/files/${encodeURIComponent(name)}`;
+
+    const put = await upload(alice, note.id, name, 'coupon', 'application/pdf');
+    expect(put.status).toBe(201);
+    expect((await put.json()).path).toBe(`files/${name}`);
+
+    const get = await fetch(url, { headers });
+    expect(get.status).toBe(200);
+    expect(await get.text()).toBe('coupon');
+
+    const text = await fetch(`${url}/text`, {
+      method: 'PUT',
+      headers: { ...headers, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text: 'Half off one item.' }),
+    });
+    expect(text.status).toBe(204);
+
+    const del = await fetch(url, { method: 'DELETE', headers });
+    expect(del.status).toBe(204);
+    expect((await fetch(url, { headers })).status).toBe(404);
+  });
+
+  it('does not decode a name twice, so an escape inside a name stays literal', async () => {
+    const note = await createNote(alice, 'Escape-shaped names');
+    const headers = { Cookie: alice.cookie, Origin: ORIGIN };
+    await upload(alice, note.id, '100A.txt', 'decoded twice');
+    await upload(alice, note.id, '100%41.txt', 'decoded once');
+
+    const get = await fetch(
+      `${BASE}/api/notes/${note.id}/files/${encodeURIComponent('100%41.txt')}`,
+      { headers },
+    );
+    expect(get.status).toBe(200);
+    expect(await get.text()).toBe('decoded once');
+  });
+
+  it('refuses an X-Filename that is not valid percent-encoding', async () => {
+    const res = await fetch(`${BASE}/api/notes/${aliceNote.id}/files`, {
+      method: 'PUT',
+      headers: {
+        Cookie: alice.cookie,
+        Origin: ORIGIN,
+        'X-Filename': '50% off.pdf',
+        'Content-Type': 'text/plain',
+      },
+      body: 'x',
+    });
+    expect(res.status).toBe(400);
+  });
 });
 
 describe('cross-tenant access', () => {

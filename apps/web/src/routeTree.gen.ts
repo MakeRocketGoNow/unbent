@@ -30,11 +30,13 @@ import { Route as EmbedIndexFilesRouteImport } from './routes/embed.index-files'
 import { Route as NotesIndexRouteImport } from './routes/notes.index'
 import { Route as NotesNoteIdRouteImport } from './routes/notes.$noteId'
 import { Route as SettingsIndexRouteImport } from './routes/settings.index'
+import { Route as SettingsAboutRouteImport } from './routes/settings.about'
 import { Route as SettingsConnectedAppsRouteImport } from './routes/settings.connected-apps'
 import { Route as SettingsExportRouteImport } from './routes/settings.export'
 import { Route as SettingsImportRouteImport } from './routes/settings.import'
 import { Route as SettingsMaintenanceRouteImport } from './routes/settings.maintenance'
 import { Route as SettingsNotebooksRouteImport } from './routes/settings.notebooks'
+import { Route as SettingsOfflineRouteImport } from './routes/settings.offline'
 import { Route as SettingsSecurityRouteImport } from './routes/settings.security'
 import { Route as SettingsTagsRouteImport } from './routes/settings.tags'
 import { Route as TrashIndexRouteImport } from './routes/trash.index'
@@ -147,6 +149,11 @@ const SettingsIndexRoute = SettingsIndexRouteImport.update({
   path: '/',
   getParentRoute: () => SettingsRoute,
 } as any)
+const SettingsAboutRoute = SettingsAboutRouteImport.update({
+  id: '/about',
+  path: '/about',
+  getParentRoute: () => SettingsRoute,
+} as any)
 const SettingsConnectedAppsRoute = SettingsConnectedAppsRouteImport.update({
   id: '/connected-apps',
   path: '/connected-apps',
@@ -170,6 +177,11 @@ const SettingsMaintenanceRoute = SettingsMaintenanceRouteImport.update({
 const SettingsNotebooksRoute = SettingsNotebooksRouteImport.update({
   id: '/notebooks',
   path: '/notebooks',
+  getParentRoute: () => SettingsRoute,
+} as any)
+const SettingsOfflineRoute = SettingsOfflineRouteImport.update({
+  id: '/offline',
+  path: '/offline',
   getParentRoute: () => SettingsRoute,
 } as any)
 const SettingsSecurityRoute = SettingsSecurityRouteImport.update({
@@ -224,11 +236,13 @@ export interface FileRoutesByFullPath {
   '/trash': typeof TrashRouteWithChildren
   '/embed/index-files': typeof EmbedIndexFilesRoute
   '/notes/$noteId': typeof NotesNoteIdRoute
+  '/settings/about': typeof SettingsAboutRoute
   '/settings/connected-apps': typeof SettingsConnectedAppsRoute
   '/settings/export': typeof SettingsExportRoute
   '/settings/import': typeof SettingsImportRoute
   '/settings/maintenance': typeof SettingsMaintenanceRoute
   '/settings/notebooks': typeof SettingsNotebooksRoute
+  '/settings/offline': typeof SettingsOfflineRoute
   '/settings/security': typeof SettingsSecurityRoute
   '/settings/tags': typeof SettingsTagsRoute
   '/trash/$noteId': typeof TrashNoteIdRoute
@@ -255,11 +269,13 @@ export interface FileRoutesByTo {
   '/terms': typeof TermsRoute
   '/embed/index-files': typeof EmbedIndexFilesRoute
   '/notes/$noteId': typeof NotesNoteIdRoute
+  '/settings/about': typeof SettingsAboutRoute
   '/settings/connected-apps': typeof SettingsConnectedAppsRoute
   '/settings/export': typeof SettingsExportRoute
   '/settings/import': typeof SettingsImportRoute
   '/settings/maintenance': typeof SettingsMaintenanceRoute
   '/settings/notebooks': typeof SettingsNotebooksRoute
+  '/settings/offline': typeof SettingsOfflineRoute
   '/settings/security': typeof SettingsSecurityRoute
   '/settings/tags': typeof SettingsTagsRoute
   '/trash/$noteId': typeof TrashNoteIdRoute
@@ -290,11 +306,13 @@ export interface FileRoutesById {
   '/trash': typeof TrashRouteWithChildren
   '/embed/index-files': typeof EmbedIndexFilesRoute
   '/notes/$noteId': typeof NotesNoteIdRoute
+  '/settings/about': typeof SettingsAboutRoute
   '/settings/connected-apps': typeof SettingsConnectedAppsRoute
   '/settings/export': typeof SettingsExportRoute
   '/settings/import': typeof SettingsImportRoute
   '/settings/maintenance': typeof SettingsMaintenanceRoute
   '/settings/notebooks': typeof SettingsNotebooksRoute
+  '/settings/offline': typeof SettingsOfflineRoute
   '/settings/security': typeof SettingsSecurityRoute
   '/settings/tags': typeof SettingsTagsRoute
   '/trash/$noteId': typeof TrashNoteIdRoute
@@ -326,11 +344,13 @@ export interface FileRouteTypes {
     | '/trash'
     | '/embed/index-files'
     | '/notes/$noteId'
+    | '/settings/about'
     | '/settings/connected-apps'
     | '/settings/export'
     | '/settings/import'
     | '/settings/maintenance'
     | '/settings/notebooks'
+    | '/settings/offline'
     | '/settings/security'
     | '/settings/tags'
     | '/trash/$noteId'
@@ -357,11 +377,13 @@ export interface FileRouteTypes {
     | '/terms'
     | '/embed/index-files'
     | '/notes/$noteId'
+    | '/settings/about'
     | '/settings/connected-apps'
     | '/settings/export'
     | '/settings/import'
     | '/settings/maintenance'
     | '/settings/notebooks'
+    | '/settings/offline'
     | '/settings/security'
     | '/settings/tags'
     | '/trash/$noteId'
@@ -391,11 +413,13 @@ export interface FileRouteTypes {
     | '/trash'
     | '/embed/index-files'
     | '/notes/$noteId'
+    | '/settings/about'
     | '/settings/connected-apps'
     | '/settings/export'
     | '/settings/import'
     | '/settings/maintenance'
     | '/settings/notebooks'
+    | '/settings/offline'
     | '/settings/security'
     | '/settings/tags'
     | '/trash/$noteId'
@@ -577,6 +601,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SettingsIndexRouteImport
       parentRoute: typeof SettingsRoute
     }
+    '/settings/about': {
+      id: '/settings/about'
+      path: '/about'
+      fullPath: '/settings/about'
+      preLoaderRoute: typeof SettingsAboutRouteImport
+      parentRoute: typeof SettingsRoute
+    }
     '/settings/connected-apps': {
       id: '/settings/connected-apps'
       path: '/connected-apps'
@@ -610,6 +641,13 @@ declare module '@tanstack/react-router' {
       path: '/notebooks'
       fullPath: '/settings/notebooks'
       preLoaderRoute: typeof SettingsNotebooksRouteImport
+      parentRoute: typeof SettingsRoute
+    }
+    '/settings/offline': {
+      id: '/settings/offline'
+      path: '/offline'
+      fullPath: '/settings/offline'
+      preLoaderRoute: typeof SettingsOfflineRouteImport
       parentRoute: typeof SettingsRoute
     }
     '/settings/security': {
@@ -670,11 +708,13 @@ const NotesRouteChildren: NotesRouteChildren = {
 const NotesRouteWithChildren = NotesRoute._addFileChildren(NotesRouteChildren)
 
 interface SettingsRouteChildren {
+  SettingsAboutRoute: typeof SettingsAboutRoute
   SettingsConnectedAppsRoute: typeof SettingsConnectedAppsRoute
   SettingsExportRoute: typeof SettingsExportRoute
   SettingsImportRoute: typeof SettingsImportRoute
   SettingsMaintenanceRoute: typeof SettingsMaintenanceRoute
   SettingsNotebooksRoute: typeof SettingsNotebooksRoute
+  SettingsOfflineRoute: typeof SettingsOfflineRoute
   SettingsSecurityRoute: typeof SettingsSecurityRoute
   SettingsTagsRoute: typeof SettingsTagsRoute
   SettingsIndexRoute: typeof SettingsIndexRoute
@@ -682,11 +722,13 @@ interface SettingsRouteChildren {
 }
 
 const SettingsRouteChildren: SettingsRouteChildren = {
+  SettingsAboutRoute: SettingsAboutRoute,
   SettingsConnectedAppsRoute: SettingsConnectedAppsRoute,
   SettingsExportRoute: SettingsExportRoute,
   SettingsImportRoute: SettingsImportRoute,
   SettingsMaintenanceRoute: SettingsMaintenanceRoute,
   SettingsNotebooksRoute: SettingsNotebooksRoute,
+  SettingsOfflineRoute: SettingsOfflineRoute,
   SettingsSecurityRoute: SettingsSecurityRoute,
   SettingsTagsRoute: SettingsTagsRoute,
   SettingsIndexRoute: SettingsIndexRoute,

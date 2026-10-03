@@ -80,6 +80,21 @@ function actionWeight(
 }
 
 /**
+ * The border takes the tone of the action being offered — the first one — so a box never
+ * wears a colour its own button contradicts.
+ *
+ * It used to be red for every question, including "keep this notebook on the device?",
+ * which put a warning colour around a safe green action: a red box with a green button in
+ * it, and the owner's verdict that it read as Christmas. Deriving it here rather than
+ * taking a prop is the point — a caller cannot get it wrong. Only the first action counts:
+ * a demoted danger after a safe first choice is the quiet option, not what the box is about.
+ */
+function borderTone(actions: ConfirmAction[]): 'danger' | 'primary' | 'neutral' {
+  const first = actions[0]?.tone;
+  return first === 'danger' || first === 'primary' ? first : 'neutral';
+}
+
+/**
  * Inline confirmation for an action that cannot be undone.
  *
  * A region rather than a dialog, and deliberately so: every confirmation in this app is
@@ -115,7 +130,7 @@ export function Confirm({
   return (
     <div
       ref={ref}
-      className="confirm"
+      className={`confirm confirm-${borderTone(actions)}`}
       role="group"
       aria-label={label}
       // Focusable so Escape lands here rather than on whatever was clicked to open it.

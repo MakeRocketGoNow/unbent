@@ -24,8 +24,7 @@ notification instead of a flood.
 The user may specify:
 
 - **Which findings** — "submit issues 1, 3, 5", "all", or nothing. Given numbers, submit
-  only those. Given "all", submit every one. Given nothing, use judgment: blockers and
-  meaningful suggestions, skipping minor nits unless they form a pattern.
+  only those. Given "all", or nothing, submit every one, nits included.
 - **The verdict** — `approve`, `comment`, or `request_changes`. If unspecified, infer from
   severity: any **[Blocker]** → `REQUEST_CHANGES`; only suggestions and nits → `COMMENT`.
 
@@ -60,7 +59,7 @@ with `method: "get_diff"` gives the diff without needing the branch checked out;
 `git diff <base>...HEAD` does the same. **Line numbers must be in the NEW file — the right
 side of the diff.** A comment anchored to a line that isn't in the diff is rejected.
 
-## Step 2 — Draft the summary and confirm
+## Step 2 — Draft the summary
 
 Draft a summary in a human, collegial tone, one to five sentences:
 
@@ -75,11 +74,9 @@ Draft a summary in a human, collegial tone, one to five sentences:
 - Write like a teammate, not a linter. Acknowledge the effort, be direct about what has to
   change, and give the reasoning.
 
-Present it to the user with the list of findings that will be posted (number and title) and
-the verdict — and if the verdict is locked to `COMMENT` because they authored the PR, say
-so plainly rather than presenting it as chosen from severity.
-
-**Wait for confirmation or edits before submitting.** This is the outward-facing step.
+**Don't stop to confirm** — asking for the findings to be filed is the go-ahead, so go
+straight to step 3. Pause first only when something is genuinely ambiguous, such as a
+finding that can't be mapped to a line in the diff.
 
 ## Step 3 — Submit
 
@@ -142,7 +139,7 @@ so plainly rather than presenting it as chosen from severity.
    mcp__github__pull_request_review_write({
      method: "submit_pending", owner, repo, pullNumber,
      event: "REQUEST_CHANGES" | "COMMENT" | "APPROVE",
-     body: <the confirmed summary>,
+     body: <the summary from step 2>,
    })
    ```
 
@@ -153,4 +150,7 @@ so plainly rather than presenting it as chosen from severity.
   comments.
 - AGENTS.md's "real notes stay out of the repo" applies to review comments too. Describe the
   case; don't quote a real note, filename, or notebook name.
-- Report the review URL back as a markdown link so it is clickable.
+- Report the review URL back as a markdown link so it is clickable, with the findings that
+  were posted (number and title) and the verdict — saying plainly if it was locked to
+  `COMMENT` because the user authored the PR. Nothing was shown before posting, so this is
+  where the user sees it.
