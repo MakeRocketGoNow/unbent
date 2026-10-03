@@ -1071,11 +1071,21 @@ beside it until the server has the note too — and goes to the server, in order
 connection returns. A save that would overwrite
 an edit made on another device meanwhile is refused there and put to you as before: reload
 theirs, or keep yours on top of it. What needs the server now says so and waits: search,
-files and the images in them, Auto-fill, and the settings pages that manage notebooks,
-tags and fields. A lost connection is never taken for signing out.
+Auto-fill, and the settings pages that manage notebooks, tags and fields. A lost connection
+is never taken for signing out.
 
-Signing out removes the library from the device, as does deleting the account or another
-person signing in. A sign-in that has expired does not: your copy stays, closed, and signing
+Files are the bulk of an archive, so they are on the device by choice rather than by
+default. A file you open is kept, within a budget — 500 MB, the ones opened longest ago
+going first. A notebook can be kept whole: its page offers **Keep offline**, says how big
+that is and how much room the device has before it starts, and from then on fetches the
+notebook's files, including ones added later from another device. A file added to a note
+with no connection is held on the device, shown in the note at once, listed as waiting, and
+uploaded when the connection returns. A file that is not on the device says "Not available
+offline" where it would be drawn. Settings → Offline shows what the device is holding and
+gives the room back.
+
+Signing out removes the library and its files from the device, as does deleting the account
+or another person signing in. A sign-in that has expired does not: your copy stays, closed, and signing
 in again reopens it and sends whatever you changed while it waited. The rules the code is
 held to are in `apps/web/src/store/` and AGENTS.md.
 

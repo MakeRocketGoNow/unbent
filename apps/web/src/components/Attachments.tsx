@@ -31,9 +31,8 @@ interface AttachmentsProps {
    */
   onBodyRewrite: (nextBody: string) => void;
   /**
-   * The note takes no changes right now — offline, where a file cannot be uploaded,
-   * copied or removed because the files live on the server (their turn is MAK-141), or a
-   * save refused as stale and waiting on a choice (`frozen` in `Workspace`). Every control
+   * The note takes no changes right now: a save refused as stale and waiting on a choice,
+   * or a tab that cannot queue writes while offline (`frozen` in `Workspace`). Every control
    * here that changes the note or its files is faded in place, as Auto-fill and ⋯ are, so
    * nothing moves when the connection drops; Copy and the download link still work.
    *
