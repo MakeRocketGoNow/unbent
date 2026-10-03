@@ -52,7 +52,30 @@ export const attachments = new Hono<AppEnv>()
     const noteId = c.req.param('id');
     const repo = c.get('attachments');
 
-    if (!(await repo.ownsNote(noteId))) return c.json({ error: 'Not found' }, 404);
+    /**
+     * `X-Attachment-Id`: the id the file should have, chosen by the client, as a note's
+     * can be (`POST /notes`). A file added with no connection is uploaded later from an
+     * outbox, and an outbox replays: a request whose answer was lost is sent again. With
+     * an id, the second one finds the file the first one made and is answered 200 with
+     * it, its body unread — without, it stored the same bytes again as `scan-2.pdf`. An
+     * id held by a file of another note is a conflict, not a find.
+     */
+    const claimed = c.req.header('X-Attachment-Id');
+    if (claimed !== undefined) {
+      if (!z.string().uuid().safeParse(claimed).success) return c.json({ error: 'X-Attachment-Id must be a UUID' }, 400);
+      const { live, existing } = await repo.uploadPrelude(noteId, claimed);
+      if (!live) return c.json({ error: 'Not found' }, 404);
+      if (existing) {
+        await c.req.raw.body?.cancel().catch(() => {});
+        if (existing.noteId !== noteId) return c.json({ error: 'That id belongs to another file' }, 409);
+        const { filename, contentType, size } = existing;
+        // Whoever read the first request's bytes is reading them still; `client` would
+        // start a second reader on the same file.
+        return c.json({ filename, contentType, size, path: `files/${filename}`, indexing: 'server' }, 200);
+      }
+    } else if (!(await repo.ownsNote(noteId))) {
+      return c.json({ error: 'Not found' }, 404);
+    }
 
     const rawName = c.req.header('X-Filename');
     if (!rawName) return c.json({ error: 'X-Filename header required' }, 400);
@@ -94,6 +117,7 @@ export const attachments = new Hono<AppEnv>()
       { attachments: repo, notes: c.get('notes') },
       {
         noteId,
+        id: claimed,
         filename: parsed.data,
         contentType: c.req.header('Content-Type'),
         body: c.req.raw.body,

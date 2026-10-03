@@ -3,7 +3,9 @@
  * server has heard of it, and a request replayed after a lost answer must find its note
  * rather than make a second one: `POST /notes` and `POST /notes/:id/duplicate` take an
  * optional id, answer 201 when they made the note and 200 with the note that already
- * holds the id when they did not. Live, because the status codes are the route's.
+ * holds the id when they did not. A file's id can be the client's too, for the same
+ * reason: `PUT /notes/:id/files` with `X-Attachment-Id` stores the file once, however
+ * many times the request is sent. Live, because the status codes are the route's.
  */
 import { beforeAll, describe, expect, it } from 'vitest';
 
@@ -91,5 +93,37 @@ describe('a replayed duplicate', () => {
     const again = await fetch(`${BASE}/api/notes/${source.id}/duplicate`, { method: 'POST', headers: headers(), body: JSON.stringify({ id: copyId }) });
     expect(again.status).toBe(200);
     expect(await names()).toEqual(['one.txt', 'two.txt']);
+  });
+});
+
+describe('PUT /notes/:id/files with an id', () => {
+  const put = (noteId: string, id: string, filename: string, body: string) =>
+    fetch(`${BASE}/api/notes/${noteId}/files`, {
+      method: 'PUT',
+      headers: { Cookie: cookie, Origin: ORIGIN, 'Content-Type': 'text/plain', 'X-Filename': encodeURIComponent(filename), 'X-Attachment-Id': id },
+      body,
+    });
+  const makeNote = async (title: string) =>
+    (await (await fetch(`${BASE}/api/notes`, { method: 'POST', headers: headers(), body: JSON.stringify({ title, body: '' }) })).json()) as { id: string };
+
+  it('stores the file once, and a replay finds it rather than storing a second', async () => {
+    const note = await makeNote('Receipts');
+    const id = crypto.randomUUID();
+    const made = await put(note.id, id, 'receipt.txt', 'first');
+    expect(made.status).toBe(201);
+    expect(await made.json()).toMatchObject({ filename: 'receipt.txt', path: 'files/receipt.txt' });
+    const again = await put(note.id, id, 'receipt.txt', 'first');
+    expect(again.status).toBe(200);
+    expect(await again.json()).toMatchObject({ filename: 'receipt.txt', path: 'files/receipt.txt', size: 5 });
+    const { files } = (await (await fetch(`${BASE}/api/notes/${note.id}/files`, { headers: headers() })).json()) as { files: { filename: string }[] };
+    expect(files.map((f) => f.filename)).toEqual(['receipt.txt']);
+  });
+
+  it('refuses an id that is not a UUID, and one a file of another note holds', async () => {
+    const [one, other] = [await makeNote('One'), await makeNote('Other')];
+    expect((await put(one.id, 'not-a-uuid', 'a.txt', 'x')).status).toBe(400);
+    const id = crypto.randomUUID();
+    expect((await put(one.id, id, 'a.txt', 'x')).status).toBe(201);
+    expect((await put(other.id, id, 'a.txt', 'x')).status).toBe(409);
   });
 });
