@@ -88,10 +88,11 @@ export function plan(snapshot: KeepSnapshot, kept: ReadonlySet<string>, shelf: S
     }
   }
   fetch.sort((a, b) => a.size - b.size);
+  // A file of the right name and the wrong size is replaced by the fetch; it is not removed first.
+  const replaced = new Set(fetch.map((w) => key(w.noteId, shelfName(w.filename))));
   return {
     fetch,
-    // A file of the right name and the wrong size is replaced by the fetch; it is not removed first.
-    remove: shelf.filter((f) => !claimed.has(key(f.noteId, f.name)) && !fetch.some((w) => key(w.noteId, shelfName(w.filename)) === key(f.noteId, f.name))),
+    remove: shelf.filter((f) => !claimed.has(key(f.noteId, f.name)) && !replaced.has(key(f.noteId, f.name))),
     wanted: { files: wanted.length, bytes: wanted.reduce((sum, w) => sum + w.size, 0) },
     have,
   };
