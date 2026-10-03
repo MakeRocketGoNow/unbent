@@ -4,7 +4,7 @@ import { QueryClient } from '@tanstack/react-query';
 import type { FeedNote, Note } from '@unbent/shared';
 import * as api from '../notes-api.js';
 import { ApiError, NoteChangedError, OfflineError } from '../notes-api.js';
-import { resetConnectivity } from '../connectivity.js';
+import { resetConnectivity, setReachableForTests } from '../connectivity.js';
 import { seedFrom } from '../note-patch.js';
 import { installLibraryQueries, keys } from '../queries.js';
 import * as actions from './actions.js';
@@ -12,6 +12,7 @@ import { createOutbox, provideLibrary, type WritableLibrary } from './actions.js
 import { lookups, toNote } from './derive.js';
 import type { Collections, LocalNote } from './collections.js';
 import type { FeedEngine } from './feed.js';
+import { installMemoryOpfs, type MemoryDirectory } from './test-opfs.js';
 
 /**
  * The rules the outbox holds, against a stand-in for the executor that keeps the real
@@ -153,6 +154,13 @@ vi.mock('@tanstack/offline-transactions', async (importOriginal) => {
   };
 });
 
+// The cache of opened files keeps nothing over twenty megabytes; twelve bytes here, so a
+// test can be on either side of it without making a file that size.
+vi.mock('../sw/routes.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../sw/routes.js')>()),
+  MAX_KEPT_FILE: 12,
+}));
+
 vi.mock('../notes-api.js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../notes-api.js')>()),
   updateNote: vi.fn(),
@@ -165,6 +173,7 @@ vi.mock('../notes-api.js', async (importOriginal) => ({
   restoreNotes: vi.fn(),
   deleteNotesPermanently: vi.fn(),
   updateNotes: vi.fn(),
+  uploadFile: vi.fn(),
 }));
 
 const { fakes, MemoryAdapter } = await h;
@@ -247,6 +256,7 @@ afterEach(() => {
   fakes.length = 0;
   MemoryAdapter.databases.clear();
   vi.clearAllMocks();
+  vi.unstubAllGlobals();
 });
 
 describe('a replayed write', () => {
@@ -595,5 +605,235 @@ describe('the no-library path', () => {
     const out = await actions.saveNote({ noteId: 'n1', value: { ...seedFrom(base), title: 'new' }, base });
     expect(out).toMatchObject({ title: 'new' });
     expect(api.updateNote).toHaveBeenCalledWith('n1', { title: 'new', ifUpdatedAt: 100 });
+  });
+});
+
+describe('a file added to a note', () => {
+  let root: MemoryDirectory;
+  const photo = (name = 'photo.jpg', text = 'jpeg bytes') => new File([text], name, { type: 'image/jpeg' });
+  const answer = (filename: string) => ({ filename, contentType: 'image/jpeg', size: 10, path: `files/${filename}`, indexing: 'server' as const });
+  const files = (lib: WritableLibrary) => [...lib.attachments.values()].map((a) => ({ ...a }));
+  beforeEach(() => {
+    root = installMemoryOpfs();
+  });
+
+  it('is an ordinary request with a connection and nothing of the note’s waiting', async () => {
+    const { lib, fake } = library([row('n1')]);
+    vi.mocked(api.uploadFile).mockResolvedValueOnce(answer('photo.jpg'));
+    const file = photo();
+    expect(await actions.uploadFile('n1', file)).toEqual(answer('photo.jpg'));
+    expect(api.uploadFile).toHaveBeenCalledWith('n1', file, { id: expect.stringMatching(/^[0-9a-f-]{36}$/) });
+    expect(fake.queue).toHaveLength(0);
+    expect(root.paths()).toEqual([]);
+    expect(files(lib)).toEqual([]);
+    // Nothing is being kept on the device, so the browser is not asked to keep anything:
+    // one that prompts would prompt here about nothing the person did.
+    expect(navigator.storage.persist).not.toHaveBeenCalled();
+  });
+
+  it('with no connection, is kept on the device, listed as waiting, and queued; then uploaded under the id its row has', async () => {
+    const { lib, fake, engine, landPull } = library([row('n1')]);
+    setReachableForTests(false);
+    const uploaded = vi.fn();
+    const stop = actions.onUploaded(uploaded);
+
+    const out = await actions.uploadFile('n1', photo());
+    expect(out).toEqual({ filename: 'photo.jpg', contentType: 'image/jpeg', size: 10, path: 'files/photo.jpg', indexing: 'server' });
+    expect(api.uploadFile).not.toHaveBeenCalled();
+    await tick();
+    expect(root.paths()).toEqual(['unbent-files-u1/pending/n1/photo.jpg']);
+    // The only copy of the file is now on this device: the browser is asked not to clear it.
+    expect(navigator.storage.persist).toHaveBeenCalled();
+    const [waiting] = files(lib);
+    expect(waiting).toMatchObject({ noteId: 'n1', filename: 'photo.jpg', size: 10, pending: true });
+    expect(fake.queue.map((e) => e.mutationFnName)).toEqual(['uploadFile']);
+    // The note is one the server has not heard all of: the head marks it.
+    expect(lib.outbox.status().waiting.has('n1')).toBe(true);
+
+    setReachableForTests(true);
+    vi.mocked(api.uploadFile).mockResolvedValueOnce(answer('photo.jpg'));
+    const replay = fake.replayOne();
+    await vi.waitFor(() => expect(engine.pull).toHaveBeenCalled());
+    landPull();
+    expect(await replay).toBe('done');
+    const [, sent, opts] = vi.mocked(api.uploadFile).mock.calls[0]!;
+    expect(opts).toEqual({ id: waiting!.id });
+    expect((sent as File).name).toBe('photo.jpg');
+    expect(await (sent as File).text()).toBe('jpeg bytes');
+    expect(uploaded).toHaveBeenCalledWith('n1', answer('photo.jpg'), expect.any(File));
+    stop();
+    // Off the shelf once the server has it, and the note no longer waits.
+    expect(root.paths()).toEqual([]);
+    expect(lib.outbox.status().waiting.has('n1')).toBe(false);
+    expect(lib.outbox.status().uploadNotices.size).toBe(0);
+  });
+
+  it('is queued under the id the request carried when the connection went mid-upload, so the replay finds what the server may have stored', async () => {
+    const { lib, fake, engine, landPull } = library([row('n1')]);
+    // The bytes may have arrived; the answer did not.
+    vi.mocked(api.uploadFile).mockRejectedValueOnce(new OfflineError());
+    await actions.uploadFile('n1', photo());
+    await tick();
+    const first = vi.mocked(api.uploadFile).mock.calls[0]![2] as { id: string };
+    expect([...lib.attachments.values()][0]).toMatchObject({ id: first.id, pending: true });
+
+    vi.mocked(api.uploadFile).mockResolvedValueOnce(answer('photo.jpg'));
+    const replay = fake.replayOne();
+    await vi.waitFor(() => expect(engine.pull).toHaveBeenCalled());
+    landPull();
+    expect(await replay).toBe('done');
+    expect(vi.mocked(api.uploadFile).mock.calls[1]![2]).toEqual({ id: first.id });
+  });
+
+  it('goes into the cache of opened files once it has uploaded, unless it is over that cache’s cap', async () => {
+    const put = vi.fn(async () => {});
+    vi.stubGlobal('caches', { open: async () => ({ put }) });
+    // jsdom's File is not one the test runtime's Response takes; what is put is not the point here.
+    vi.stubGlobal('Response', class {});
+    const postMessage = vi.fn();
+    vi.stubGlobal('navigator', { ...navigator, storage: navigator.storage, serviceWorker: { controller: { postMessage } } });
+    const { fake, engine, landPull } = library([row('n1')]);
+    setReachableForTests(false);
+    await actions.uploadFile('n1', photo('small.jpg', 'ten bytes!'));
+    await actions.uploadFile('n1', photo('big.jpg', 'more than the twelve bytes this file’s cap is set to'));
+    await tick();
+    vi.mocked(api.uploadFile).mockImplementation(async (_n, f) => answer(f.name));
+    setReachableForTests(true);
+    for (let i = 0; i < 2; i += 1) {
+      const replay = fake.replayOne();
+      await vi.waitFor(() => expect(engine.pull).toHaveBeenCalled());
+      landPull();
+      expect(await replay).toBe('done');
+      engine.pull.mockClear();
+    }
+    expect(put.mock.calls.map((c) => (c as unknown as [string])[0])).toEqual(['/api/notes/n1/files/small.jpg']);
+    // And the worker is told, once, for the one that went in: its index is what Settings counts.
+    expect(postMessage.mock.calls).toEqual([[{ type: 'FILES_CHANGED' }]]);
+  });
+
+  it('goes behind the note’s own entry when the note has one waiting, even with a connection', async () => {
+    const { fake } = library([]);
+    const made = await actions.createNote({ title: 'Made offline', body: '', tags: [], notebook: null });
+    await tick();
+    await actions.uploadFile(made.id, photo());
+    await tick();
+    expect(api.uploadFile).not.toHaveBeenCalled();
+    expect(fake.queue.map((e) => e.mutationFnName)).toEqual(['createNote', 'uploadFile']);
+  });
+
+  it('takes the name the server would give it when the note already has one by that name', async () => {
+    const { lib } = library([row('n1')]);
+    setReachableForTests(false);
+    expect((await actions.uploadFile('n1', photo())).path).toBe('files/photo.jpg');
+    expect((await actions.uploadFile('n1', photo())).path).toBe('files/photo-2.jpg');
+    await tick();
+    expect(files(lib).map((f) => f.filename).sort()).toEqual(['photo-2.jpg', 'photo.jpg']);
+    expect(root.paths()).toEqual(['unbent-files-u1/pending/n1/photo-2.jpg', 'unbent-files-u1/pending/n1/photo.jpg']);
+  });
+
+  it('refuses up front what the server would refuse later: a file over the cap, a name it does not take', async () => {
+    const { fake } = library([row('n1')]);
+    setReachableForTests(false);
+    const huge = photo();
+    Object.defineProperty(huge, 'size', { value: 96 * 1024 * 1024 });
+    await expect(actions.uploadFile('n1', huge)).rejects.toThrow('Attachment exceeds 95MB limit');
+    await expect(actions.uploadFile('n1', photo('.hidden'))).rejects.toThrow('may not start with a dot');
+    expect(fake.queue).toHaveLength(0);
+    expect(root.paths()).toEqual([]);
+  });
+
+  it('refuses a file the device has no room to hold', async () => {
+    library([row('n1')]);
+    setReachableForTests(false);
+    vi.stubGlobal('navigator', { ...navigator, storage: { ...navigator.storage, estimate: async () => ({ usage: 995, quota: 1000 }) } });
+    await expect(actions.uploadFile('n1', photo())).rejects.toThrow('Not enough room on this device');
+  });
+
+  it('keeps the file through a lost connection and a server that is down, and through a refused session', async () => {
+    const { fake } = library([row('n1')]);
+    setReachableForTests(false);
+    await actions.uploadFile('n1', photo());
+    await tick();
+    for (const err of [new OfflineError(), new ApiError(503, 'Unavailable'), new ApiError(401, 'Unauthorized')]) {
+      vi.mocked(api.uploadFile).mockRejectedValueOnce(err);
+      expect(await fake.replayOne()).toBe('kept');
+      expect(root.paths()).toEqual(['unbent-files-u1/pending/n1/photo.jpg']);
+    }
+    expect(fake.queue).toHaveLength(1);
+  });
+
+  it('says so when the server refuses the upload for good, and lets the next entry through', async () => {
+    const { lib, fake } = library([row('n1')]);
+    setReachableForTests(false);
+    await actions.uploadFile('n1', photo());
+    await actions.trashNote('n1');
+    await tick();
+    vi.mocked(api.uploadFile).mockRejectedValueOnce(new ApiError(413, 'Attachment exceeds 95MB limit'));
+    expect(await fake.replayOne()).toBe('refused');
+    await tick();
+    expect(root.paths()).toEqual([]);
+    expect(files(lib)).toEqual([]);
+    expect(lib.outbox.status().uploadNotices.get('n1')).toEqual([expect.objectContaining({ filename: 'photo.jpg', message: 'Couldn’t upload. Attachment exceeds 95MB limit' })]);
+    expect(fake.queue.map((e) => e.mutationFnName)).toEqual(['trashNote']);
+    lib.outbox.dismissUploadNotices('n1');
+    expect(lib.outbox.status().uploadNotices.size).toBe(0);
+  });
+
+  it('says so when the server stored it under another name', async () => {
+    const { lib, fake, engine, landPull } = library([row('n1')]);
+    setReachableForTests(false);
+    await actions.uploadFile('n1', photo());
+    await tick();
+    vi.mocked(api.uploadFile).mockResolvedValueOnce(answer('photo-2.jpg'));
+    const replay = fake.replayOne();
+    await vi.waitFor(() => expect(engine.pull).toHaveBeenCalled());
+    landPull();
+    expect(await replay).toBe('done');
+    expect(lib.outbox.status().uploadNotices.get('n1')?.[0]?.message).toContain('Stored as “photo-2.jpg”');
+  });
+
+  it('can be taken back before it uploads: no request, no row, no bytes, and the note no longer waits', async () => {
+    const { lib, fake } = library([row('n1')]);
+    setReachableForTests(false);
+    await actions.uploadFile('n1', photo('wrong photo.jpg'));
+    await tick();
+    expect(await actions.cancelUpload('n1', 'wrong photo.jpg')).toBe(true);
+    await tick();
+    expect(files(lib)).toEqual([]);
+    expect(root.paths()).toEqual([]);
+    expect(lib.outbox.status()).toMatchObject({ pending: 0 });
+    expect(lib.outbox.status().waiting.has('n1')).toBe(false);
+
+    // Its turn comes and nothing is sent.
+    setReachableForTests(true);
+    expect(await fake.replayOne()).toBe('done');
+    expect(api.uploadFile).not.toHaveBeenCalled();
+    expect(lib.outbox.status().uploadNotices.size).toBe(0);
+    // A file that is not waiting is not this function's to remove.
+    expect(await actions.cancelUpload('n1', 'wrong photo.jpg')).toBe(false);
+  });
+
+  it('cannot be taken back while it is being sent', async () => {
+    const { fake } = library([row('n1')]);
+    setReachableForTests(false);
+    await actions.uploadFile('n1', photo());
+    await tick();
+    setReachableForTests(true);
+    let land: (v: ReturnType<typeof answer>) => void = () => {};
+    vi.mocked(api.uploadFile).mockReturnValueOnce(new Promise((r) => (land = r)));
+    const replay = fake.replayOne();
+    await vi.waitFor(() => expect(api.uploadFile).toHaveBeenCalled());
+    await expect(actions.cancelUpload('n1', 'photo.jpg')).rejects.toThrow('uploading right now');
+    land(answer('photo.jpg'));
+    void replay;
+  });
+
+  it('is a request, failing as one, in a tab that does not hold the outbox', async () => {
+    const { fake } = library([row('n1')]);
+    fake.lead(false);
+    setReachableForTests(false);
+    vi.mocked(api.uploadFile).mockRejectedValueOnce(new OfflineError());
+    await expect(actions.uploadFile('n1', photo())).rejects.toBeInstanceOf(OfflineError);
+    expect(root.paths()).toEqual([]);
   });
 });

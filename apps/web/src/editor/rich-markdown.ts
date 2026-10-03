@@ -17,6 +17,7 @@ import {
 import { ATTACHMENT_PREFIX, formatAttachmentMarkdown } from '@unbent/shared';
 import { acquirePdf, type LoadedPdf, releasePdf } from '../pdf/render.js';
 import { downloadUrl, openAttachmentViewer, type ViewerTarget } from '../attachment-viewer.js';
+import { NOT_AVAILABLE_OFFLINE, standInForImage, unavailableOffline, whenBackOnline } from '../offline-file.js';
 import {
   checkIconMarkup,
   copyIconMarkup,
@@ -334,6 +335,13 @@ class TaskWidget extends WidgetType {
     return false;
   }
 }
+
+/**
+ * Widgets showing "Not available offline" in place of a file, each with the way to stop
+ * waiting for the connection it will retry on; see `offline-file.ts`. By the widget's
+ * element, so a widget scrolled out of the viewport and destroyed stops listening.
+ */
+const waiting = new WeakMap<HTMLElement, () => void>();
 
 /**
  * Attachment images that failed to load, by resolved URL.
@@ -769,6 +777,12 @@ class ImageWidget extends WidgetType {
     return other.url === this.url && other.alt === this.alt;
   }
 
+  /** Stops waiting for a connection on behalf of a picture that is no longer drawn. */
+  override destroy(dom: HTMLElement): void {
+    waiting.get(dom)?.();
+    waiting.delete(dom);
+  }
+
   toDOM(view: EditorView): HTMLElement {
     const wrap = document.createElement('span');
     wrap.className = 'cm-md-image';
@@ -786,7 +800,15 @@ class ImageWidget extends WidgetType {
     // A missing attachment should not leave a broken-image icon mid-document — and its
     // source must come back into view, since the image was what stood in for it. The
     // effect is what gets the decorations rebuilt; nothing else about the view changed.
+    //
+    // Unless it failed for want of a connection. Then nothing is missing: the file is in
+    // the account and not on this device, so a line says that where the picture would be,
+    // and the picture is asked for again when the connection returns. Falling back to the
+    // source there would turn every picture in an offline note into a line of markdown,
+    // and remember each as failed for the rest of the session.
     img.onerror = () => {
+      // No name in the line: the caption above the picture already says which file.
+      if (standInForImage(img, '', (stop) => waiting.set(wrap, stop))) return;
       wrap.remove();
       failedImages.add(this.url);
       view.dispatch({ effects: imageFailed.of(null) });
@@ -953,33 +975,56 @@ class PdfWidget extends WidgetType {
     status.textContent = 'Rendering…';
     wrap.appendChild(status);
 
-    acquirePdf(this.url)
-      .then(async (doc) => {
-        // `destroy` ran while the open was in flight: the release is already booked, so
-        // stop before drawing into a canvas no longer in the document.
-        if (!wrap.isConnected) return;
-        await doc.renderPage(1, canvas, EDITOR_PDF_WIDTH);
-        if (!wrap.isConnected) return;
-        status.remove();
-        // On the first page's corner, after it has drawn: a control on a blank page
-        // would promise a view of nothing. The same viewer the preview pane opens.
-        pages.appendChild(
-          attachmentToolbar(view, wrap, {
-            target: this.viewerTarget(),
-            siblings: this.siblings,
-            stored: { filename: this.filename, kind: 'pdf' },
-            copy: this.copy,
-            remove: this.remove,
-            source: 'Link',
-          }),
-        );
-        if (doc.pageCount > 1) this.addMore(wrap, pages, doc);
-      })
-      .catch(() => {
-        // A PDF that will not open should leave the link readable, not an error banner
-        // wedged into the middle of the text.
-        wrap.remove();
-      });
+    const open = (): void =>
+      void acquirePdf(this.url)
+        .then(async (doc) => {
+          // `destroy` ran while the open was in flight: the release is already booked, so
+          // stop before drawing into a canvas no longer in the document.
+          if (!wrap.isConnected) return;
+          await doc.renderPage(1, canvas, EDITOR_PDF_WIDTH);
+          if (!wrap.isConnected) return;
+          status.remove();
+          // On the first page's corner, after it has drawn: a control on a blank page
+          // would promise a view of nothing. The same viewer the preview pane opens.
+          pages.appendChild(
+            attachmentToolbar(view, wrap, {
+              target: this.viewerTarget(),
+              siblings: this.siblings,
+              stored: { filename: this.filename, kind: 'pdf' },
+              copy: this.copy,
+              remove: this.remove,
+              source: 'Link',
+            }),
+          );
+          if (doc.pageCount > 1) this.addMore(wrap, pages, doc);
+        })
+        .catch((err: unknown) => {
+          // Not on this device, and no connection to fetch it over: say so where the page
+          // would be, and try again when there is one. The link above still names the file.
+          if (unavailableOffline(err)) {
+            // The page's frame with it, or an empty box stands where a page would be.
+            // By style: the theme gives the frame a `display`, which outranks `hidden`.
+            pages.style.display = 'none';
+            status.textContent = NOT_AVAILABLE_OFFLINE;
+            // In place of the status's own class, whose faded ink is for a moment's "Rendering…".
+            status.className = 'file-unavailable';
+            waiting.set(
+              wrap,
+              whenBackOnline(() => {
+                if (!wrap.isConnected) return;
+                pages.style.display = '';
+                status.textContent = 'Rendering…';
+                status.className = 'cm-md-pdf-status';
+                open();
+              }),
+            );
+            return;
+          }
+          // A PDF that will not open should leave the link readable, not an error banner
+          // wedged into the middle of the text.
+          wrap.remove();
+        });
+    open();
 
     return wrap;
   }
@@ -1066,7 +1111,9 @@ class PdfWidget extends WidgetType {
    * viewport, or its line deleted — which is exactly when the shared document should lose
    * a holder.
    */
-  override destroy(): void {
+  override destroy(dom: HTMLElement): void {
+    waiting.get(dom)?.();
+    waiting.delete(dom);
     releasePdf(this.url);
   }
 

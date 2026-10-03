@@ -628,13 +628,18 @@ export interface UploadedFile {
 export async function uploadFile(
   noteId: string,
   file: File,
-  opts: { signal?: AbortSignal } = {},
+  /**
+   * `id`: the id the file should have, for an upload made from the outbox, which may be
+   * sent twice — the server answers a second one with the file the first one made.
+   */
+  opts: { signal?: AbortSignal; id?: string } = {},
 ): Promise<UploadedFile> {
   const res = await request(`/api/notes/${noteId}/files`, {
     method: 'PUT',
     headers: {
       'X-Filename': encodeURIComponent(file.name),
       'Content-Type': file.type || 'application/octet-stream',
+      ...(opts.id ? { 'X-Attachment-Id': opts.id } : {}),
     },
     body: file,
     // The editor aborts an upload the user walked away from; see editor/attach.ts.
@@ -642,7 +647,14 @@ export async function uploadFile(
   });
   if (!res.ok) {
     const detail = await res.text().catch(() => '');
-    throw new Error(detail ? JSON.parse(detail).error ?? detail : `${res.status}`);
+    let message = detail || `${res.status}`;
+    try {
+      message = (JSON.parse(detail) as { error?: string }).error ?? message;
+    } catch {
+      // Not JSON: the edge's own error page, say. The text is the message.
+    }
+    // With the status, so the outbox can tell a refusal from a server that is down.
+    throw new ApiError(res.status, message);
   }
   return res.json() as Promise<UploadedFile>;
 }

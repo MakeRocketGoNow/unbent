@@ -11,6 +11,9 @@ import {
 import * as api from '../notes-api.js';
 import { copyAttachmentToClipboard } from '../attachment-clipboard.js';
 import { attachmentsQuery, keys } from '../queries.js';
+import { formatBytes } from '../format-bytes.js';
+import { useOutbox, useSyncStatus } from '../store/use-outbox.js';
+import { cancelUpload } from '../store/actions.js';
 import { Confirm } from './Confirm.js';
 import { Button } from './Button';
 import { Disclosure } from './Disclosure.js';
@@ -29,9 +32,8 @@ interface AttachmentsProps {
    */
   onBodyRewrite: (nextBody: string) => void;
   /**
-   * The note takes no changes right now — offline, where a file cannot be uploaded,
-   * copied or removed because the files live on the server (their turn is MAK-141), or a
-   * save refused as stale and waiting on a choice (`frozen` in `Workspace`). Every control
+   * The note takes no changes right now: a save refused as stale and waiting on a choice,
+   * or a tab that cannot queue writes while offline (`frozen` in `Workspace`). Every control
    * here that changes the note or its files is faded in place, as Auto-fill and ⋯ are, so
    * nothing moves when the connection drops; Copy and the download link still work.
    *
@@ -39,13 +41,6 @@ interface AttachmentsProps {
    * read-only does not stop.
    */
   readOnly?: boolean;
-}
-
-function formatBytes(n: number): string {
-  if (n < 1024) return `${n} B`;
-  if (n < 1024 ** 2) return `${(n / 1024).toFixed(0)} KB`;
-  if (n < 1024 ** 3) return `${(n / 1024 ** 2).toFixed(1)} MB`;
-  return `${(n / 1024 ** 3).toFixed(2)} GB`;
 }
 
 function fileUrl(noteId: string, filename: string): string {
@@ -68,6 +63,14 @@ export function Attachments({
 }: AttachmentsProps) {
   const queryClient = useQueryClient();
   const { data: files = [], isLoading, error } = useQuery(attachmentsQuery(noteId));
+  /*
+     What became of files added here with no connection that did not simply upload: one
+     the server refused, one it stored under another name. Said in this panel because it
+     is where the file was listed while it waited — and it is the row vanishing from here
+     that would otherwise be the only sign.
+  */
+  const outbox = useOutbox();
+  const notices = useSyncStatus().uploadNotices.get(noteId) ?? [];
   const [busy, setBusy] = useState<string | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
   /** Filename awaiting an explicit delete. */
@@ -98,7 +101,8 @@ export function Attachments({
   const [sent, setSent] = useState<ReactNode>(null);
 
   const linked = useMemo(() => attachmentFilenamesInMarkdown(body), [body]);
-  const unlinked = files.filter((f) => !linked.has(f.filename));
+  // Not a file still waiting to upload: the cleanup deletes on the server, which has no such file yet.
+  const unlinked = files.filter((f) => !linked.has(f.filename) && !f.pending);
   const unlinkedCount = unlinked.length;
   const unlinkedBytes = unlinked.reduce((sum, f) => sum + f.size, 0);
   /**
@@ -275,7 +279,9 @@ export function Attachments({
     setBusy(filename);
     setDeleteError(null);
     try {
-      await api.deleteAttachment(startedFor, filename);
+      // A file still waiting to upload is taken back on this device, and the server never
+      // hears of it; anything else is the server's to delete.
+      if (!(await cancelUpload(startedFor, filename))) await api.deleteAttachment(startedFor, filename);
       if (stillLinked && noteIdRef.current === startedFor) {
         onBodyRewrite(removeAttachmentLinks(bodyRef.current, filename));
       }
@@ -295,7 +301,19 @@ export function Attachments({
       </p>
     );
   }
-  if (files.length === 0) return null;
+  const said = notices.length > 0 && (
+    <div className="attachments-notices" role="status">
+      {notices.map((n) => (
+        <p key={n.id} className="bad small">
+          “{n.filename}”: {n.message}
+        </p>
+      ))}
+      <Button variant="quiet" size="small" onClick={() => outbox?.dismissUploadNotices(noteId)}>
+        Dismiss
+      </Button>
+    </div>
+  );
+  if (files.length === 0) return said || null;
 
   return (
     /* Closed at every width, unlike the filing row above it: this list is as long as the
@@ -357,22 +375,39 @@ export function Attachments({
       <ul className="attachments-list">
         {files.map((file) => {
           const isLinked = linked.has(file.filename);
+          /*
+             Added here and not uploaded yet. The row is real — the file draws in the note
+             from this device's copy — but the server has no file to copy or move, so what
+             would ask it to waits with the upload. Insert link still works: it only
+             writes into the note. And so does Delete, which for this file is taking it
+             back: the wrong photo attached with no connection should not have to upload
+             before it can be removed (review of #236).
+          */
+          const waiting = file.pending === true;
+          const held = waiting ? 'Waiting to upload' : undefined;
           return (
             <li
               key={file.filename}
               className={isLinked ? 'attachments-row' : 'attachments-row unlinked'}
             >
               <div className="attachments-info">
-                <a
-                  className="attachments-name link"
-                  href={fileUrl(noteId, file.filename)}
-                  download={file.filename}
-                  title={`Download ${file.filename}`}
-                >
-                  {file.filename}
-                </a>
+                {waiting ? (
+                  // Not a link while it waits: a download is a page load, which only the
+                  // server answers (`shelved` in sw/routes.ts), and it has no such file yet.
+                  <span className="attachments-name">{file.filename}</span>
+                ) : (
+                  <a
+                    className="attachments-name link"
+                    href={fileUrl(noteId, file.filename)}
+                    download={file.filename}
+                    title={`Download ${file.filename}`}
+                  >
+                    {file.filename}
+                  </a>
+                )}
                 <span className="attachments-meta small">
                   <span className="muted">{formatBytes(file.size)}</span>
+                  {waiting && <span className="attachments-status waiting">Waiting to upload</span>}
                   {!isLinked && <span className="attachments-status">Not linked</span>}
                 </span>
               </div>
@@ -380,8 +415,8 @@ export function Attachments({
                 <Button
                   variant="quiet"
                   size="small"
-                  disabled={busy !== null}
-                  title="Copy a link to paste into another note"
+                  disabled={busy !== null || waiting}
+                  title={held ?? 'Copy a link to paste into another note'}
                   onClick={() => void copy(file)}
                 >
                   {copied === file.filename ? 'Copied' : 'Copy'}
@@ -395,8 +430,8 @@ export function Attachments({
                 <OverflowMenu
                   label={`More actions for ${file.filename}`}
                   className="attachments-more"
-                  disabled={readOnly}
-                  title={readOnly ? 'Not available offline' : undefined}
+                  disabled={readOnly || waiting}
+                  title={held ?? (readOnly ? 'Not available offline' : undefined)}
                   items={[
                     {
                       label: 'Copy to note…',
@@ -453,18 +488,20 @@ export function Attachments({
               {pending === file.filename && (
                 <Confirm
                   label="Confirm delete attachment"
-                  question={<>Permanently delete “{file.filename}”?</>}
+                  question={waiting ? <>Remove “{file.filename}” before it uploads?</> : <>Permanently delete “{file.filename}”?</>}
                   detail={
-                    isLinked
-                      ? 'It is still linked in this note; the link will be removed too.'
-                      : 'This cannot be undone.'
+                    waiting
+                      ? `It has not uploaded, so this device holds the only copy.${isLinked ? ' Its link in this note will be removed too.' : ''}`
+                      : isLinked
+                        ? 'It is still linked in this note; the link will be removed too.'
+                        : 'This cannot be undone.'
                   }
                   busy={busy === file.filename}
                   onCancel={() => setPending(null)}
                   actions={[
                     {
-                      label: 'Delete file',
-                      busyLabel: 'Deleting…',
+                      label: waiting ? 'Remove file' : 'Delete file',
+                      busyLabel: waiting ? 'Removing…' : 'Deleting…',
                       tone: 'danger',
                       onConfirm: () => void remove(file.filename),
                     },
@@ -476,6 +513,7 @@ export function Attachments({
         })}
       </ul>
 
+      {said}
       {sent && <p className="muted small attachments-sent">{sent}</p>}
       {deleteError && <p className="bad small">{deleteError}</p>}
     </Disclosure>
