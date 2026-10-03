@@ -62,8 +62,9 @@ function pdfjsWasm(): Plugin {
 }
 
 /**
- * The commit this build is made from, for the account menu and `index.html` — see
- * `src/build-info.ts` for why it is the page's commit and not the server's.
+ * The commit this build is made from, for Settings › About, the account menu's instance
+ * line and `index.html` — see `src/build-info.ts` for why it is the page's commit and not
+ * the server's.
  *
  * Read from git rather than from `GITHUB_SHA`, so a local build and a self-hoster's
  * `pnpm release` say the same thing CI does. `UNBENT_COMMIT` overrides it for a preview:
@@ -99,8 +100,9 @@ function readBuildInfo() {
     }
   }
   const { GITHUB_SERVER_URL: server, GITHUB_REPOSITORY: repo } = process.env;
-  const url = server && repo ? `${server}/${repo}/commit/${commit}` : null;
-  return { commit, date, url, dirty };
+  const repoUrl = server && repo ? `${server}/${repo}` : null;
+  const url = repoUrl ? `${repoUrl}/commit/${commit}` : null;
+  return { commit, date, url, repo: repoUrl, dirty };
 }
 
 const BUILD_INFO = readBuildInfo();

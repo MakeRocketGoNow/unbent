@@ -3,7 +3,7 @@ import { configQuery } from '../queries.js';
 import { instanceLine } from '../instance-marker.js';
 import { useOffline } from '../connectivity.js';
 import { isHosted } from '../app-bridge.js';
-import { buildInfo, buildLabel, buildTitle, type BuildInfo } from '../build-info.js';
+import { buildInfo, shortCommit } from '../build-info.js';
 import { OverflowMenu, type OverflowItem } from './OverflowMenu.js';
 
 interface AccountMenuProps {
@@ -21,30 +21,6 @@ interface AccountMenuProps {
 /** A legal document as a menu item: a route for the built-in ones, an anchor for the rest. */
 function legalItem(label: string, url: string): OverflowItem {
   return url.startsWith('/') ? { label, to: url } : { label, external: url };
-}
-
-/**
- * Which commit this page is, as a footnote under the menu, or nothing where the build
- * could not say.
- *
- * In this menu because it is one tap from every screen, on production as much as on a
- * scratch instance, and "has it shipped, and is this tab running it?" is asked right after
- * a merge; a page to find first would make it a hunt. Under the actions rather than in the
- * head: it was a third grey line under the address for a day, and it is not about the
- * account — the head says who and where, and a build number crowding into it read as one
- * block of grey nobody could scan. Below Sign out, which stays the last thing to press.
- *
- * A link to the commit when the build knows where it lives, since going to the commit is
- * navigation; static text for a local build, whose commit may not be pushed anywhere.
- */
-export function buildItem(info: BuildInfo | null): OverflowItem | null {
-  if (!info) return null;
-  const label = buildLabel(info);
-  const title = buildTitle(info);
-  const className = 'overflow-footnote';
-  return info.url
-    ? { label, className, external: info.url, title }
-    : { label, className, static: true, title };
 }
 
 /** First letter of the address, which is as much as a 1.75rem circle can carry. */
@@ -75,8 +51,9 @@ function initialOf(email: string): string {
 export function AccountMenu({ email, onSignOut, withAddress = false }: AccountMenuProps) {
   const config = useQuery(configQuery());
   const legal = config.data?.legal;
-  const instance = config.data ? instanceLine(config.data) : null;
-  const build = buildItem(buildInfo);
+  const instance = config.data
+    ? instanceLine(config.data, buildInfo ? shortCommit(buildInfo) : null)
+    : null;
   const signOutNeedsConnection = useOffline() && !isHosted();
 
   return (
@@ -103,9 +80,10 @@ export function AccountMenu({ email, onSignOut, withAddress = false }: AccountMe
         // rather than selectable: it names the account, it does not act on it. It
         // truncates to one line, so it carries the full address as a tooltip.
         { label: email, className: 'overflow-label overflow-email', static: true, title: email },
-        // Which instance this is, when it is not production — "PR 222 · notes are its
-        // own" — and on a preview, whose notes an edit here changes. Under the address
-        // because it is the same kind of line: it says where you are, it does nothing.
+        // Which instance this is, when it is not production — "PR 222 · 00619da · notes
+        // are its own" — with the build it is running, and on a preview, whose notes an
+        // edit here changes. Under the address because it is the same kind of line: it
+        // says where you are, it does nothing. Production's build is in Settings › About.
         ...(instance
           ? [
               {
@@ -136,7 +114,6 @@ export function AccountMenu({ email, onSignOut, withAddress = false }: AccountMe
         signOutNeedsConnection
           ? { label: 'Sign out', tone: 'danger', disabled: true, title: 'Signing out needs a connection' }
           : { label: 'Sign out', onSelect: onSignOut, tone: 'danger' },
-        ...(build ? [{ label: null, separator: true }, build] : []),
       ]}
     />
   );

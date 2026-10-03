@@ -8,8 +8,11 @@
  * the bundle can answer it. The Worker and the page ship from one build, so once the page
  * has caught up the two are the same commit.
  *
- * `index.html` carries the same commit in `<meta name="unbent-commit">`, so what a deploy
- * is serving can be read without signing in — `curl -s https://unbent.app | grep commit`.
+ * Shown in two places. Settings › About is its home on every instance. On dev and
+ * previews the account menu's instance line carries the short form as well, since that is
+ * where a commit gets checked many times a day, right after a push. `index.html` carries
+ * the full SHA in `<meta name="unbent-commit">`, so what a deploy is serving can be read
+ * without signing in — `curl -s https://unbent.app | grep unbent-commit`.
  */
 export interface BuildInfo {
   /** The full SHA. */
@@ -22,6 +25,8 @@ export interface BuildInfo {
   date: string | null;
   /** The commit on GitHub, or null for a build made outside CI, whose commit may not be pushed. */
   url: string | null;
+  /** The repository CI built from, for the source link; null outside CI, as `url` is. */
+  repo: string | null;
   /** Built from a working tree with changes not yet committed: only ever a local build. */
   dirty: boolean;
 }
@@ -36,32 +41,29 @@ export const buildInfo: BuildInfo | null =
   typeof __UNBENT_BUILD__ === 'undefined' ? null : __UNBENT_BUILD__;
 
 /**
- * "Version 3d544d9 · 3 Oct", for the account menu.
- *
- * Seven characters because that is what GitHub and `git log --oneline` show, so the line
- * can be matched against either by eye. The date because a short SHA alone says nothing
- * about how old a build is, and "is this the deploy from this morning" is most of what
- * people look here to answer; the year only when it is not this one.
+ * Seven characters, because that is what GitHub and `git log --oneline` show, so the two
+ * can be matched by eye.
  */
-export function buildLabel(info: BuildInfo, now: Date = new Date()): string {
-  const parts = [`Version ${info.commit.slice(0, 7)}${info.dirty ? ' + changes' : ''}`];
-  if (info.date) {
-    const date = new Date(info.date);
-    parts.push(
-      date.toLocaleDateString(undefined, {
-        day: 'numeric',
-        month: 'short',
-        ...(date.getFullYear() === now.getFullYear() ? {} : { year: 'numeric' }),
-      }),
-    );
-  }
-  return parts.join(' · ');
+export function shortCommit(info: BuildInfo): string {
+  return info.commit.slice(0, 7);
 }
 
-/** The tooltip: the whole SHA, which is what a search or `git show` wants, and the time. */
-export function buildTitle(info: BuildInfo): string {
-  const lines = [`Commit ${info.commit}`];
-  if (info.date) lines.push(new Date(info.date).toLocaleString());
-  if (info.dirty) lines.push('Built with uncommitted changes');
-  return lines.join('\n');
+/**
+ * "3 Oct 2026", or null when the build could not read the date.
+ *
+ * A short SHA alone says nothing about how old a build is, and "is this the deploy from
+ * this morning" is most of what people look it up to answer.
+ */
+export function commitDate(info: BuildInfo): string | null {
+  if (!info.date) return null;
+  return new Date(info.date).toLocaleDateString(undefined, {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+  });
+}
+
+/** "github.com/owner/repo", for the source link's text: the address without its scheme. */
+export function repoName(info: BuildInfo): string | null {
+  return info.repo ? info.repo.replace(/^https?:\/\//, '') : null;
 }
