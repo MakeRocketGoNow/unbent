@@ -4,6 +4,7 @@ import { notebookFilesQuery } from '../queries.js';
 import { useKeeper } from '../store/use-outbox.js';
 import { useOffline } from '../connectivity.js';
 import { formatBytes } from '../format-bytes.js';
+import { askToPersist } from '../store/files.js';
 import { Button } from './Button';
 import { Confirm } from './Confirm.js';
 
@@ -136,7 +137,18 @@ export function KeepOffline({ notebookId, name }: { notebookId: string; name: st
             }
             busy={busy}
             onCancel={() => setAsking(null)}
-            actions={[{ label: 'Keep offline', busyLabel: 'Keeping…', tone: 'primary', onConfirm: () => run(() => keeper.keep(notebookId)) }]}
+            actions={[
+              {
+                label: 'Keep offline',
+                busyLabel: 'Keeping…',
+                tone: 'primary',
+                onConfirm: () => {
+                  // From the press itself, which is when a browser that asks will ask.
+                  askToPersist();
+                  return run(() => keeper.keep(notebookId));
+                },
+              },
+            ]}
           />
         ) : (
           // The same box with no action in it: the answer to "keep this?" is that it does

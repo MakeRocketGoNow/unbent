@@ -4,7 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { notebookFilesQuery, notebooksQuery } from '../queries.js';
 import { useKeeper, useSyncStatus } from '../store/use-outbox.js';
 import { currentLibraryUser } from '../store/library.js';
-import { listShelf } from '../store/files.js';
+import { listShelf, storagePersisted } from '../store/files.js';
 import { FILES_BUDGET, openedFilesUsage } from '../sw/budget.js';
 import { FILES_CACHE } from '../sw/routes.js';
 import { formatBytes } from '../format-bytes.js';
@@ -36,8 +36,11 @@ export function OfflineStorage() {
 
   const [opened, setOpened] = useState<{ files: number; bytes: number } | null>(null);
   const [waiting, setWaiting] = useState<{ files: number; bytes: number }>({ files: 0, bytes: 0 });
+  /** Whether the browser has agreed not to clear this storage under pressure; null until it says, or where it will not. */
+  const [persisted, setPersisted] = useState<boolean | null>(null);
   const refresh = useCallback(async () => {
     setOpened(await openedFilesUsage());
+    setPersisted(await storagePersisted());
     const user = currentLibraryUser();
     const shelf = user ? await listShelf(user, 'pending').catch(() => []) : [];
     setWaiting({ files: shelf.length, bytes: shelf.reduce((sum, f) => sum + f.size, 0) });
@@ -68,6 +71,9 @@ export function OfflineStorage() {
       <p className="muted small">
         Your notes are always on this device. Their files are kept when you open one, and for whole notebooks you choose.
         {room ? ` Unbent is using ${formatBytes(room.usage)} of the ${formatBytes(room.quota)} this device allows it.` : ''}
+        {/* Said only when it is not so: what is kept here can then go without a word, and
+            someone relying on it for a flight should know before the flight. */}
+        {persisted === false && ' This browser has not agreed to keep it if the device runs low on space; installing the app usually settles that.'}
       </p>
 
       <section className="notebook-section">

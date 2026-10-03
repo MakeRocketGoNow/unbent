@@ -7,7 +7,7 @@ import { offlineNow, recheck, subscribeConnectivity } from '../connectivity.js';
 import { buildNotePatch, seedFrom, holdsTheirChanges, type NoteDraft } from '../note-patch.js';
 import { availableFilename, lookups, toNote, type Snapshot } from './derive.js';
 import type { Collections, LocalNote } from './collections.js';
-import { filesSupported, readFile, removeFile, writeFile } from './files.js';
+import { askToPersist, filesSupported, readFile, removeFile, writeFile } from './files.js';
 import { FILES_CACHE } from '../sw/routes.js';
 import type { FeedEngine } from './feed.js';
 import { outboxName } from './names.js';
@@ -935,6 +935,8 @@ export async function uploadFile(noteId: string, file: File, opts: { signal?: Ab
   const taken = [...lib.attachments.values()].filter((a) => a.noteId === noteId).map((a) => a.filename);
   const filename = availableFilename(taken, named.data);
   const contentType = file.type || 'application/octet-stream';
+  // These bytes are about to exist nowhere else; see `askToPersist`.
+  askToPersist();
   await writeFile(lib.userId, 'pending', noteId, filename, file);
   const upload: Upload = { noteId, attachmentId, filename, contentType, size: file.size };
   queue(lib, 'uploadFile', upload as unknown as Record<string, unknown>, () => {

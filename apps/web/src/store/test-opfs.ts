@@ -87,7 +87,7 @@ export class MemoryDirectory {
 /** Installs the file system as `navigator.storage` and makes `filesSupported()` true; undo with `vi.unstubAllGlobals()`. */
 export function installMemoryOpfs(): MemoryDirectory {
   const root = new MemoryDirectory();
-  vi.stubGlobal('navigator', { ...globalThis.navigator, onLine: true, storage: { getDirectory: async () => root, estimate: async () => ({ usage: 0, quota: 10 * 1024 ** 3 }) } });
+  vi.stubGlobal('navigator', { ...globalThis.navigator, onLine: true, storage: { getDirectory: async () => root, estimate: async () => ({ usage: 0, quota: 10 * 1024 ** 3 }), persist: vi.fn(async () => true), persisted: async () => true } });
   vi.stubGlobal('FileSystemFileHandle', class { createWritable() {} });
   return root;
 }

@@ -632,6 +632,8 @@ describe('a file added to a note', () => {
     expect(api.uploadFile).not.toHaveBeenCalled();
     await tick();
     expect(root.paths()).toEqual(['unbent-files-u1/pending/n1/photo.jpg']);
+    // The only copy of the file is now on this device: the browser is asked not to clear it.
+    expect(navigator.storage.persist).toHaveBeenCalled();
     const [waiting] = files(lib);
     expect(waiting).toMatchObject({ noteId: 'n1', filename: 'photo.jpg', size: 10, pending: true });
     expect(fake.queue.map((e) => e.mutationFnName)).toEqual(['uploadFile']);

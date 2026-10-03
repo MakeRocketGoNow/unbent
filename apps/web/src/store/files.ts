@@ -46,6 +46,31 @@ export function filesSupported(): boolean {
 }
 
 /**
+ * Asks the browser not to clear this site's storage when the device runs low: best-effort
+ * storage is evicted an origin at a time, and what is on these shelves is either gigabytes
+ * someone confirmed or the only copy of a file they added.
+ *
+ * The library asks once when it opens (`library.ts`), which is enough for a browser that
+ * decides by itself. Firefox asks the person, and only from something they did, so this
+ * is called again at the two moments bytes are committed to the device: a file queued to
+ * upload, and a notebook kept. Never awaited by its callers, and never an error: a
+ * refusal changes nothing they do, and Settings → Offline says which it was.
+ */
+export function askToPersist(): void {
+  if (typeof navigator === 'undefined') return;
+  void navigator.storage?.persist?.().catch(() => false);
+}
+
+/** Whether the browser has agreed to keep this site's storage; null where it will not say. */
+export async function storagePersisted(): Promise<boolean | null> {
+  try {
+    return (await navigator.storage?.persisted?.()) ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * A file's name on the shelf. Its own, which the upload route has already held to what a
  * file system takes — no separators, not `.` or `..` — except when it is long: the route
  * allows 768 characters and a file system's limit is usually 255 bytes, so a long name is
