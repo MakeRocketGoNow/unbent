@@ -43,12 +43,13 @@ self.addEventListener('activate', shell.activate);
  *
  * Workbox's own install fetches them strictly one after another (its issue 2528: a first
  * install is over two hundred files, and firing them all at once is what that guards
- * against). But a new deploy's worker is not waiting until every file is in, and the page
- * cannot be moved onto it before then — so the whole queue is the time between a reload
- * and the new version. Vite's hashes cascade, so a one-line change re-fetches forty-odd chunks: with
- * 150 ms added to every request, about what unbent.app answers in, that queue took seven
- * seconds one at a time and under two and a half six at a time — and longer on a phone,
- * or behind the app's own startup traffic. Six is still only a handful in flight.
+ * against). But a new deploy's worker does not reach `waiting` until every file is in,
+ * and the page cannot be moved onto it before then — so the whole queue is the time
+ * between a reload and the new version. Vite's hashes cascade, so a one-line change
+ * re-fetches forty-odd chunks: with 150 ms added to every request, about what unbent.app
+ * answers in, that queue took seven seconds one at a time and under two and a half six at
+ * a time — and longer on a phone, or behind the app's own startup traffic. Six is still
+ * only a handful in flight.
  *
  * The same work as Workbox's loop otherwise: a file already cached under its key costs
  * nothing (`PrecacheStrategy` answers it from the cache), and a revisioned file — one
