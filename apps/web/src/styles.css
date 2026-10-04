@@ -7698,6 +7698,9 @@ button.settings-nav-item {
   background: var(--diff-removed-mark);
 }
 
+/* A mark that starts where another ended; see `Part` in HistoryChanges. */
+.history-diff-abuts { margin-left: 0.3em; }
+
 .history-diff-row.is-added ins,
 .history-diff-row.is-removed del { background: none; }
 

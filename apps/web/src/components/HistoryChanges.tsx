@@ -51,10 +51,14 @@ export function HistoryChanges({ current, version }: HistoryChangesProps) {
 
   return (
     <div className="history-diff">
-      <p className="history-diff-legend muted small">
-        Restoring this version would add what is <ins>underlined</ins> and remove what is{' '}
-        <del>struck through</del>.
-      </p>
+      {/* Only over marks it explains: above "too different to compare" alone it described
+          an underline and a strike that were nowhere on the page. */}
+      {(diff.titleChanged || Array.isArray(diff.body)) && (
+        <p className="history-diff-legend muted small">
+          Restoring this version would add what is <ins>underlined</ins> and remove what is{' '}
+          <del>struck through</del>.
+        </p>
+      )}
       {diff.titleChanged && (
         <p className="history-diff-title">
           <span className="muted small">Title</span>{' '}
@@ -100,7 +104,7 @@ function Row({ row }: { row: DiffRow }) {
       <span className="history-diff-text">
         <span className="visually-hidden">{SPOKEN[row.kind]}</span>
         {row.parts.map((part, i) => (
-          <Part key={i} part={part} />
+          <Part key={i} part={part} abuts={i > 0 && row.parts[i - 1]!.kind !== 'same'} />
         ))}
       </span>
     </div>
@@ -116,9 +120,18 @@ function Same({ text }: { text: string }) {
   );
 }
 
-function Part({ part }: { part: DiffPart }) {
-  if (part.kind === 'added') return <ins>{part.text}</ins>;
-  if (part.kind === 'removed') return <del>{part.text}</del>;
+/*
+   `abuts`: this mark starts where another ended, which is what a replaced word is — its
+   old text and its new, back to back. Two numbers so set read as one: 45 for 40 was
+   "4540", with only the tints to say where one stopped. The class puts a sliver between
+   them, as a margin so nothing is added to the text someone might copy. Said from here
+   and not with `del + ins` in the stylesheet, which matches across the unchanged text
+   between two marks as well: a sibling selector does not see text.
+*/
+function Part({ part, abuts }: { part: DiffPart; abuts: boolean }) {
+  const className = abuts ? 'history-diff-abuts' : undefined;
+  if (part.kind === 'added') return <ins className={className}>{part.text}</ins>;
+  if (part.kind === 'removed') return <del className={className}>{part.text}</del>;
   return <>{part.text}</>;
 }
 
