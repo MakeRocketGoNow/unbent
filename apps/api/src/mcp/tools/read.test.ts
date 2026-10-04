@@ -188,3 +188,39 @@ describe('list_notes with untagged', () => {
     expect(pages[0]?.list['untagged']).toBeFalsy();
   });
 });
+
+describe('list_notes pages', () => {
+  const row = {
+    id: 'n-1',
+    title: 'Acme 10% off',
+    createdAt: 1,
+    updatedAt: 2,
+    tags: ['Deals'],
+    notebook: 'Coupons',
+    notebookId: 'nb-1',
+    excerpt: 'Ten percent off at example.com',
+  };
+
+  function pageRepo() {
+    const pages: Array<{ list: Record<string, unknown>; count: Record<string, unknown> | null }> = [];
+    const repo = {
+      listPage: async (list: Record<string, unknown>, count: Record<string, unknown> | null) => {
+        pages.push({ list, count });
+        return { items: [row], total: count ? 1 : null };
+      },
+    } as unknown as NotesRepo;
+    return { pages, list: collect(repo).get('list_notes')! };
+  }
+
+  it('counts on the first page and not on one asked for with a cursor', async () => {
+    const { pages, list } = pageRepo();
+
+    expect(answer(await list({ limit: 25, untagged: true })).total).toBe(1);
+    expect(pages[0]?.count).not.toBeNull();
+
+    const next = answer(await list({ limit: 25, untagged: true, cursor: 'abc' }));
+    expect(pages[1]?.count).toBeNull();
+    // Absent rather than null or 0: a walk that read `total: 0` would stop.
+    expect('total' in next).toBe(false);
+  });
+});

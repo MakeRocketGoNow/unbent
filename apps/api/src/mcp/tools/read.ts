@@ -178,7 +178,8 @@ export function registerReadTools(
         'through a notebook or tag, to narrow a notebook by its custom field values, or — with ' +
         'sort "updated" and a from date — to find what changed recently. Returns an excerpt ' +
         'per note rather than the body; call get_note for that. When the response carries a ' +
-        'cursor there are more notes, and passing it back returns the next page.',
+        'cursor there are more notes, and passing it back returns the next page. The total ' +
+        'comes with the first page only: a page asked for with a cursor does not repeat it.',
       inputSchema: z.object({
         limit: z.number().int().min(1).max(100).default(25),
         cursor: z.string().optional().describe('The cursor from a previous page.'),
@@ -219,13 +220,18 @@ export function registerReadTools(
       }
       const { items, total } = await notes.listPage(
         { limit, cursor, tags: tag, notebook, fields: fieldFilters, untagged, sort, order, from, to, trashed },
-        { tags: tag, notebook, fields: fieldFilters, untagged, trashed, from, to, sort },
+        // Counted once, on the first page. A count that no stored number answers — a field
+        // filter, a date range, `untagged` — reads every note in scope, and repeating it on
+        // each page of a long walk cost more than the pages did: ten pages of the untagged
+        // notes of a three-thousand-note account read 48,000 rows, 45,000 of them counting.
+        // The answer cannot have changed in a way the caller could use mid-walk anyway.
+        cursor ? null : { tags: tag, notebook, fields: fieldFilters, untagged, trashed, from, to, sort },
       );
       // The same helper the HTTP route uses, so a cursor means the same thing on both and
       // cannot disagree with the sort that produced the page.
       const cursorForNext = nextCursor(items, { limit, sort, trashed });
       return jsonResult({
-        total,
+        ...(total === null ? {} : { total }),
         returned: items.length,
         ...(cursorForNext ? { cursor: cursorForNext } : {}),
         notes: items.map(noteRef),

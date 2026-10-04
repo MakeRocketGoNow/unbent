@@ -1045,6 +1045,13 @@ describe('reorganising notebooks and tags through MCP', () => {
     const untagged = await call('list_notes', { notebook, untagged: true });
     expect(untagged.notes.map((n: { id: string }) => n.id)).toEqual([c.id]);
 
+    // The total comes with the first page; the page after it does not count again.
+    const first = await call('list_notes', { notebook, limit: 2 });
+    expect(first.total).toBe(3);
+    const second = await call('list_notes', { notebook, limit: 2, cursor: first.cursor });
+    expect(second.returned).toBe(1);
+    expect('total' in second).toBe(false);
+
     // The second call re-sends what is there, and says so rather than re-dating the notes.
     const set = await call('update_note_fields', { noteIds: [a.id, b.id], fields: { Year: 2025 } });
     expect(set).toEqual({ noteIds: expect.arrayContaining([a.id, b.id]), changed: 2, missing: [] });
