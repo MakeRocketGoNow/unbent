@@ -171,7 +171,8 @@ export function createOutbox(userId: string, lib: Omit<WritableLibrary, 'outbox'
   const waiting = (): ReadonlySet<string> => new Set([...entryNotes.values()].flat());
   /**
    * Whether an attempt ended the entry: it went through, or the server refused it for
-   * good. A lost connection or a 5xx keeps the entry, and its notes keep waiting.
+   * good. A lost connection, a 5xx, a lapsed session, a timeout or a rate limit keeps
+   * the entry (`refusal`), and its notes keep waiting.
    */
   const ended = (entryId: string, err?: unknown) => {
     if (err === undefined || err instanceof NonRetriableError) entryNotes.delete(entryId);
