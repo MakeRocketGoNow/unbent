@@ -7,6 +7,12 @@ export interface Env {
   DB: D1Database;
   BLOBS: R2Bucket;
   /**
+   * The built web app (`[assets]` in wrangler.toml). Most of it is served without the
+   * Worker; the manifest is read through this so it can be renamed per instance
+   * (lib/manifest.ts).
+   */
+  ASSETS: Fetcher;
+  /**
    * One SQLite-backed Durable Object per account, holding that account's notes. Reached
    * by user id: `USER_STORE.get(USER_STORE.idFromName(userId))`. A type-only import of the
    * class, so nothing outside src/store/ and the entry point pulls `cloudflare:workers`

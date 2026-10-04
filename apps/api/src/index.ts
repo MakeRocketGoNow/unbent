@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import { logger } from 'hono/logger';
 import type { AppEnv, RawEnv } from './types.js';
 import { withAppUrl } from './lib/app-url.js';
+import { MANIFEST_PATH, serveManifest } from './lib/manifest.js';
 import { StoreUnavailable } from './lib/store-client.js';
 import { sweepStores } from './lib/sweep.js';
 import { sessionMiddleware } from './lib/session.js';
@@ -98,6 +99,9 @@ export type AppType = typeof routes;
  */
 export default {
   fetch(request: Request, env: RawEnv, ctx: ExecutionContext): Response | Promise<Response> {
+    // Ahead of Hono, so the manifest costs an asset read and not a session lookup; see
+    // lib/manifest.ts.
+    if (new URL(request.url).pathname === MANIFEST_PATH) return serveManifest(request, env);
     return app.fetch(request, withAppUrl(env, request), ctx);
   },
   /**
