@@ -43,8 +43,11 @@ describe('list_notes with field filters', () => {
   function listRepo() {
     const pages: Array<{ list: Record<string, unknown>; count: Record<string, unknown> | null }> = [];
     const repo = {
-      listNotebooks: async () => [{ id: 'nb-1', name: 'Coupons', count: 3, fields: 2 }],
-      listFields: async (id: string) => (id === 'nb-1' ? fields : null),
+      notebooksOverview: async () => ({
+        notebooks: [{ id: 'nb-1', name: 'Coupons', count: 3, fields: 2 }],
+        unfiled: 0,
+        fields,
+      }),
       listPage: async (list: Record<string, unknown>, count: Record<string, unknown> | null) => {
         pages.push({ list, count });
         return { items: [], total: 0 };

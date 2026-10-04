@@ -12,7 +12,6 @@ import {
 import type { McpServer } from '@modelcontextprotocol/server';
 import type { AttachmentsRepo } from '../../lib/attachments-repo.js';
 import { nextCursor, type NotesRepo } from '../../lib/notes-repo.js';
-import { notebookIdByName } from './lookup.js';
 import { jsonResult, noteRef, notFound, toolError } from './result.js';
 
 /**
@@ -111,9 +110,13 @@ async function resolveFieldFilters(
         'name of the notebook whose fields you mean.',
     };
   }
-  const notebookId = await notebookIdByName(notes, notebook);
-  if (!notebookId) return { error: `No such notebook: ${notebook}` };
-  const defs = (await notes.listFields(notebookId)) ?? [];
+  // The notebooks and every definition in one call, the one list_notebooks makes: this
+  // runs on each page of a walk, and looking the notebook up and then its fields was two
+  // requests to the store before the page itself.
+  const { notebooks, fields: all = [] } = await notes.notebooksOverview({ fields: true });
+  const found = notebooks.find((nb) => nb.name.toLowerCase() === notebook.trim().toLowerCase());
+  if (!found) return { error: `No such notebook: ${notebook}` };
+  const defs = all.filter((f) => f.notebookId === found.id);
 
   const out: FieldFilter[] = [];
   for (const f of filters) {
