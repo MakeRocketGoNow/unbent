@@ -845,8 +845,7 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
     if (JSON.stringify(draftRef.current) === JSON.stringify(flushed)) reseed(restored);
     setHistoryOpen(false);
     setSnackbar({
-      // "from today, 4:12 PM": the label is capitalised to head a row, not to sit in a sentence.
-      message: `Restored the version from ${formatRevisionWhen(revision.createdAt).replace(/^(Today|Yesterday)/, (w) => w.toLowerCase())}`,
+      message: `Restored the version from ${formatRevisionWhen(revision.createdAt, Date.now(), { inSentence: true })}`,
       tone: 'info',
       duration: 8000,
       action: { label: 'Undo', onClick: () => void undoRestore(id, kept, restored.updatedAt) },

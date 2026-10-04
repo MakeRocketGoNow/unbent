@@ -14,8 +14,11 @@ export function formatWhen(ms: number): string {
  * then the date. Always with the time, unlike `formatWhen`: two copies from one
  * afternoon are told apart by nothing else, and "3h ago" for both would make the list a
  * guess. The year only when it is not this one.
+ *
+ * Capitalised to head a row or a sheet; `inSentence` gives "today, 4:12 PM" for the
+ * middle of one, decided here because only this knows which words it starts with.
  */
-export function formatRevisionWhen(ms: number, now = Date.now()): string {
+export function formatRevisionWhen(ms: number, now = Date.now(), { inSentence = false } = {}): string {
   const at = new Date(ms);
   const today = new Date(now);
   const time = at.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
@@ -26,8 +29,8 @@ export function formatRevisionWhen(ms: number, now = Date.now()): string {
       new Date(at.getFullYear(), at.getMonth(), at.getDate()).getTime()) /
       86_400_000,
   );
-  if (days === 0) return `Today, ${time}`;
-  if (days === 1) return `Yesterday, ${time}`;
+  if (days === 0) return `${inSentence ? 'today' : 'Today'}, ${time}`;
+  if (days === 1) return `${inSentence ? 'yesterday' : 'Yesterday'}, ${time}`;
   const date = at.toLocaleDateString(undefined, {
     month: 'short',
     day: 'numeric',

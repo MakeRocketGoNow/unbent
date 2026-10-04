@@ -63,6 +63,15 @@ describe('formatRevisionWhen', () => {
     expect(formatRevisionWhen(lateLastNight.getTime(), now)).toBe(`Yesterday, ${time(lateLastNight)}`);
   });
 
+  it('lowercases Today and Yesterday in a sentence, and leaves a date alone', () => {
+    const earlier = new Date(2026, 9, 3, 0, 5);
+    expect(formatRevisionWhen(earlier.getTime(), now, { inSentence: true })).toBe(`today, ${time(earlier)}`);
+    const lateLastNight = new Date(2026, 9, 2, 23, 0);
+    expect(formatRevisionWhen(lateLastNight.getTime(), now, { inSentence: true })).toBe(`yesterday, ${time(lateLastNight)}`);
+    const lastWeek = new Date(2026, 8, 26, 16, 12).getTime();
+    expect(formatRevisionWhen(lastWeek, now, { inSentence: true })).toBe(formatRevisionWhen(lastWeek, now));
+  });
+
   it('gives the date after that, with the year only when it is another one', () => {
     const lastWeek = new Date(2026, 8, 26, 16, 12);
     const label = formatRevisionWhen(lastWeek.getTime(), now);
