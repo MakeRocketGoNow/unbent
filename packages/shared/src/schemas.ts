@@ -380,6 +380,26 @@ export interface AutofillSuggestion {
 export const noteIdSchema = z.string().uuid();
 
 /**
+ * The files a device asks the text of, by id, for the index it searches with no
+ * connection. Fifty at a time: the answer is cut on bytes anyway (`AttachmentTexts`),
+ * and an id is a file of the account's own or it finds nothing. Not UUIDs for the reason
+ * `copyAttachmentsSchema` gives for a note's id.
+ */
+export const attachmentTextsSchema = z.object({
+  ids: z.array(z.string().min(1).max(128)).min(1).max(50),
+});
+
+/**
+ * What `POST /attachments/texts` answers: the text of each file asked for that has any,
+ * and in `left` the ids the answer had no room for, to ask for again. An id in neither
+ * has no text to index.
+ */
+export interface AttachmentTexts {
+  texts: Array<{ id: string; text: string }>;
+  left: string[];
+}
+
+/**
  * Files to copy into a note from another note of the same user's.
  *
  * `from` is not `noteIdSchema`: imported notes keep the ids their export carried, which

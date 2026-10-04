@@ -103,6 +103,9 @@ const toPending = (r: PendingRow): PendingFile => ({
   r2Key: r.r2_key,
 });
 
+/** What one answer of `textsById` carries at most; a quarter of a feed page, since it is asked for in the background. */
+export const TEXT_PAGE_BYTES = 1024 * 1024;
+
 /**
  * Attachment metadata for one account, inside that account's own SQLite.
  *
@@ -525,6 +528,59 @@ export class AttachmentsStore {
         text: r.text,
         readBy: r.read_by === 'vision' ? 'vision' : null,
       }));
+  }
+
+  /**
+   * The text held for files named by their own ids, for a device building the index it
+   * searches with no connection (MAK-142). A device asks for the files of the notebooks
+   * it keeps offline and of the notes opened on it lately, a few dozen ids at a time.
+   *
+   * Cut on bytes, like a feed page: a text can be half a million characters, and fifty of
+   * those would be past what one answer should carry. The sizes are read first and the
+   * texts only for the ids that fit, always at least one; the rest come back in `left`
+   * for the next call. An id with no text row — a file never read, or gone — is in
+   * neither list, which is the answer: there is nothing to index for it.
+   *
+   * The sizes are `octet_length`, which answers from the row's header: measuring with
+   * `length(CAST(text AS BLOB))` loaded every text whole, overflow pages and all, to
+   * decide which ones to then load. By primary key, so a call reads six rows per file as
+   * the meter counts them (measured, on the archive-sized store) and nothing that grows
+   * with the account. The ids go in as
+   * one JSON array for the reason `textsForNotes` gives.
+   */
+  textsById(ids: string[], budget = TEXT_PAGE_BYTES): { texts: Array<{ id: string; text: string }>; left: string[] } {
+    if (ids.length === 0) return { texts: [], left: [] };
+    const sizes = new Map(
+      this.sql
+        .exec<{ id: string; bytes: number }>(
+          `SELECT attachment_id AS id, octet_length(text) AS bytes
+             FROM attachment_text
+            WHERE attachment_id IN (SELECT value FROM json_each(?1))`,
+          JSON.stringify(ids),
+        )
+        .map((r) => [r.id, r.bytes]),
+    );
+    const take: string[] = [];
+    const left: string[] = [];
+    let used = 0;
+    for (const id of ids) {
+      const bytes = sizes.get(id);
+      if (bytes === undefined) continue;
+      if (take.length > 0 && used + bytes > budget) {
+        left.push(id);
+        continue;
+      }
+      take.push(id);
+      used += bytes;
+    }
+    if (take.length === 0) return { texts: [], left };
+    const texts = this.sql.exec<{ id: string; text: string }>(
+      `SELECT attachment_id AS id, text
+         FROM attachment_text
+        WHERE attachment_id IN (SELECT value FROM json_each(?1))`,
+      JSON.stringify(take),
+    );
+    return { texts, left };
   }
 
   /** Attachment id for a filename within a live note. */

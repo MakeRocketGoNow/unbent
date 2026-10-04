@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import { zValidator } from '@hono/zod-validator';
 import {
   MAX_ATTACHMENT_BYTES,
+  attachmentTextsSchema,
   copyAttachmentsSchema,
   fetchWebImageSchema,
   filenameSchema,
@@ -380,6 +381,19 @@ export const attachments = new Hono<AppEnv>()
       pending: files.map((p) => ({ noteId: p.noteId, filename: p.filename })),
       ...(remaining !== undefined ? { remaining } : {}),
     });
+  })
+
+  /**
+   * The text of the files a device names, for its offline search index (MAK-142).
+   *
+   * Extracted text is the largest thing an account holds after the files themselves, so
+   * it is not in the change feed; a device asks for the text of the notebooks it keeps
+   * offline and the notes opened on it lately, by file id, and the feed's `hasText` on a
+   * file's row is what tells it there is something to ask for. A POST because fifty ids
+   * do not belong in an address. One store call, cut on bytes: see `textsById`.
+   */
+  .post('/attachments/texts', requireAuth, withRepos, zValidator('json', attachmentTextsSchema), async (c) => {
+    return c.json(await c.get('attachments').textsById(c.req.valid('json').ids));
   })
 
   /**

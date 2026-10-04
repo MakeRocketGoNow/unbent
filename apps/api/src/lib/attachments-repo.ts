@@ -113,6 +113,11 @@ export class AttachmentsRepo extends StoreRepo {
     return this.call((s) => s.textsForNote(noteId));
   }
 
+  /** The text of files by id, cut on bytes; see `AttachmentsStore.textsById`. One call. */
+  textsById(ids: string[]): Promise<{ texts: Array<{ id: string; text: string }>; left: string[] }> {
+    return this.call((s) => s.textsById(ids));
+  }
+
   /**
    * The texts for a page of notes, ten notes per call: each text can be half a million
    * characters and an RPC result is capped at 32 MiB, so a page of a hundred notes with

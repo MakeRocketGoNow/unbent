@@ -490,8 +490,9 @@ hold it together, and most are easy to break from code that never mentions it.
 **Every read a view makes comes from the local copy.** `queries.ts` keeps its keys and
 shapes; each query function derives its answer from the four collections (`store/derive.ts`,
 which mirrors the server's filters and sorts, test for test), and `installLibraryQueries`
-re-runs the queries when a collection changes. Search, the instance's config and the vision
-backlog are the reads that still go to the server; a new read of notes, notebooks, tags or
+re-runs the queries when a collection changes. The instance's config and the vision
+backlog are the reads that still go to the server, and search while there is a connection
+(see the search index, below); a new read of notes, notebooks, tags or
 files belongs in `derive.ts` with a case in its test, never in a request. A device whose
 browser has no file system to keep the copy in (`PersistenceUnavailableError`) falls back to
 the requests, which is the app as it was: nothing offline, nothing kept.
@@ -592,7 +593,7 @@ one (`transient` in `export-archive.ts`): it is an `ApiError` with status 0, not
 **What this device keeps of an account goes when the account changes hands — and the
 outbox goes only then.** `clearOfflineCaches()` runs on sign-out, on a refused session, on
 account deletion and when a different person signs in. The worker's caches go every time;
-they are keyed by address and cheap to refill. The local store, the outbox and the
+they are keyed by address and cheap to refill. The local store, its search index, the outbox and the
 account's files directory (`store/wipe.ts`) are keyed by account, and the outbox holds
 writes the server has not heard of — the files directory holds the bytes of its uploads — so they go only when the account has changed hands for good: sign-out and account
 deletion remove every account's, a different person signing in removes every account's
@@ -609,11 +610,38 @@ about that, and a sentence there shrank the title twice. What the server has not
 is said elsewhere: a cloud glyph beside the word while *this* note has an entry waiting in
 the outbox (`NotSyncedMark`, "Not synced yet" on hover or tap), the banner for the device
 being offline, and a line in the strip when writes have waited online for a few seconds
-(`SyncingLine`). What fades is what needs the server now — Auto-fill, the ⋯ menu, search,
+(`SyncingLine`). What fades is what needs the server now — Auto-fill, the ⋯ menu,
 and copying, moving or deleting a file — and a new control that needs the server should
 follow `offline`, not lock the note. Adding a file does not fade: it is queued, and its row
 in the attachments panel says "Waiting to upload" until it has gone, and Delete on that row
 takes the file back without the server ever hearing of it (`cancelUpload`).
+
+**Search has two engines and one key.** With a connection the server answers, because it
+holds every file's text. Without one, `searchQuery` asks the device's index
+(`store/search-index.ts`): four FTS5 tables in a SQLite file of its own beside the
+library's (`unbent-<account>.search.sqlite`), declared as the server declares its own, with
+`toFtsQuery`, the tokenizer and the title weighting shared from `@unbent/shared` so the two
+cannot drift. The index holds ids and text; `store/search-local.ts` answers the joins and
+the filters from the library's rows with `derive.ts`'s own predicate, so nothing about a
+note's notebook or tags is copied into the index to go stale. It is a file of its own
+because the library's connection belongs to the persistence layer's transaction queue, and
+a search on it would sit in front of every save. Everything in it is derived, so there are
+no migrations: bump `SEARCH_INDEX_VERSION` and it is built again.
+
+`SearchSync` keeps it in step, in passes, in the tab that holds the outbox and only once
+the library is whole — the keeper's rules, for the keeper's reasons. The first pass
+compares every note by stamp; after that the library names the notes that changed, and a
+new way for a note to change that does not go through the collections will not be indexed.
+Files' text is never synced wholesale: `textPlan` wants it for notebooks kept offline and
+the last `RECENT_NOTES` notes opened here — newest first, up to `RECENT_TEXT_LIMIT`
+characters between them, a file let go for room keeping an entry that remembers its length
+so the plan does not fetch it again — and fetches it by file id from
+`POST /api/attachments/texts`, which cuts its answer on bytes. An answer from the device
+carries what it covered (`LocalCoverage`), and the line under the results
+(`SearchCoverage`) says so; a new place that shows search results offline must show it
+too. The index tests run on the same `wa-sqlite.wasm` the browser loads
+(`store/test-search-db.ts`), and `pnpm gate:offline` checks the whole path with the
+network cut.
 
 **Deploys wait for a change of section.** A new worker installs and waits; the next time
 someone goes to another section (notes to settings, not list to note), or comes back to the
@@ -638,8 +666,9 @@ per session, and a second attach leaves the first one's conditions in force. `pn
 (`scripts/offline-gate.mjs`) is that, kept: with `pnpm dev` up, the demo account seeded and
 the web app built, it installs the worker, cuts the network on the page and the worker, and
 checks that a file not on the device says so, that the worker, its caches and the library
-survive, that an opened file draws again, and that a file added offline uploads on
-reconnect. Run it before asking anyone to test offline behaviour by hand. On a phone,
+survive, that an opened file draws again, that a file added offline uploads on
+reconnect, and that search answers from the device: a note by its body, a PDF's text only
+once its notebook is kept, and the server's answer in place on reconnect. Run it before asking anyone to test offline behaviour by hand. On a phone,
 **never clear site data between attempts**: that removes the worker, and the app cannot
 open offline again until Settings → Offline says it is on the device. The real check
 is still airplane mode on the phone, with `adb reverse --remove-all` as well when the app

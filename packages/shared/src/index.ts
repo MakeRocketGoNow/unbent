@@ -7,3 +7,4 @@ export * from './filenames.js';
 export * from './notebook-file.js';
 export * from './export-format.js';
 export * from './feed.js';
+export * from './search.js';

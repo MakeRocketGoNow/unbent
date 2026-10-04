@@ -135,18 +135,24 @@ describe('applySaveToLists', () => {
   it("rebuilds a search's row for the saved note in place, leaving its rank and rowless searches alone", () => {
     const qc = new QueryClient();
     const hit = (id: string) => ({ id, title: id, updatedAt: 1, snippet: '' });
-    qc.setQueryData(['search', 'trip', {}, { rows: true }], [
-      { ...hit('a'), note: row('a', 30) },
-      { ...hit('b'), note: row('b', 20) },
-    ]);
-    const rowless = [hit('a'), hit('b')];
+    // Answered on the device, to see that what it covered stays with the answer.
+    const local = { built: true, files: { searched: 1, total: 2 } };
+    qc.setQueryData(['search', 'trip', {}, { rows: true }], {
+      local,
+      results: [
+        { ...hit('a'), note: row('a', 30) },
+        { ...hit('b'), note: row('b', 20) },
+      ],
+    });
+    const rowless = { results: [hit('a'), hit('b')] };
     qc.setQueryData(['search', 'trip', {}, { rows: false }], rowless);
 
     applySaveToLists(qc, saved('b', 40, { title: 'Zed', tags: ['new'] }), { title: true, tags: true });
 
-    const rows = qc.getQueryData<Array<{ id: string; title: string; note: NoteSummary }>>(['search', 'trip', {}, { rows: true }])!;
-    expect(rows.map((r) => r.id)).toEqual(['a', 'b']);
-    expect(rows[1]).toMatchObject({ title: 'Zed', note: { title: 'Zed', tags: ['new'], updatedAt: 40 } });
+    const answer = qc.getQueryData<{ local: unknown; results: Array<{ id: string; title: string; note: NoteSummary }> }>(['search', 'trip', {}, { rows: true }])!;
+    expect(answer.local).toBe(local);
+    expect(answer.results.map((r) => r.id)).toEqual(['a', 'b']);
+    expect(answer.results[1]).toMatchObject({ title: 'Zed', note: { title: 'Zed', tags: ['new'], updatedAt: 40 } });
     expect(qc.getQueryData(['search', 'trip', {}, { rows: false }])).toBe(rowless);
   });
 

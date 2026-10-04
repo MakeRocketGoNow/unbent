@@ -574,6 +574,7 @@ export class UserStore extends DurableObject<StoreEnv> {
   textFor(noteId: string, filename: string) { this.ready(); return this.attachments.textFor(noteId, filename); }
   textsForNote(noteId: string) { this.ready(); return this.attachments.textsForNote(noteId); }
   textsForNotes(noteIds: string[]) { this.ready(); return this.attachments.textsForNotes(noteIds); }
+  textsById(ids: string[]) { this.ready(); return this.attachments.textsById(ids); }
   attachmentIdFor(noteId: string, filename: string) { this.ready(); return this.attachments.idFor(noteId, filename); }
   keysForNote(noteId: string) { this.ready(); return this.attachments.keysForNote(noteId); }
   allBlobKeys(afterRowid?: number, limit?: number) { this.ready(); return this.attachments.blobKeys(afterRowid, limit); }

@@ -1,6 +1,6 @@
 import { closeLocalStore } from './db.js';
 import { closeLibrary, currentLibraryUser } from './library.js';
-import { filesDirName, isFilesDir, isOutbox, isStoreFile, outboxName, storeFileName } from './names.js';
+import { filesDirName, isFilesDir, isOutbox, isStoreFile, outboxName, searchFileName, storeFileName } from './names.js';
 
 /**
  * Removes every account's local copy, outbox and files from this device — or every
@@ -15,16 +15,18 @@ import { filesDirName, isFilesDir, isOutbox, isStoreFile, outboxName, storeFileN
  * person arriving keeps the copy and the outbox under their own name, so edits they made
  * offline before a refused session are still there to replay (see `offline-cache.ts`) —
  * and their files directory (`store/files.ts`), which holds the bytes of the uploads in
- * that outbox and of the notebooks they chose to keep.
+ * that outbox and of the notebooks they chose to keep. Their search index stays with the
+ * copy it indexes.
  *
  * The store is closed first: the engine holds the file through sync access handles, and
- * OPFS refuses to remove a file something holds. Not when the open one is the kept one.
+ * OPFS refuses to remove a file something holds. Closing the library closes its search
+ * index with it. Not when the open one is the kept one.
  * Never throws — a browser without OPFS or IndexedDB has nothing to remove.
  */
 export async function wipeLocalStores(except?: string): Promise<void> {
-  const keep = except === undefined ? null : { file: storeFileName(except), outbox: outboxName(except), files: filesDirName(except) };
+  const keep = except === undefined ? null : { stores: [storeFileName(except), searchFileName(except)], outbox: outboxName(except), files: filesDirName(except) };
   if (!keep || currentLibraryUser() !== except) await closeLocalStores();
-  await Promise.all([wipeStoreFiles(keep?.file, keep?.files), wipeOutboxes(keep?.outbox)]);
+  await Promise.all([wipeStoreFiles(keep?.stores, keep?.files), wipeOutboxes(keep?.outbox)]);
 }
 
 /** Closes the open library and its store, keeping every file: what a refused session does. */
@@ -37,13 +39,14 @@ export async function closeLocalStores(): Promise<void> {
   }
 }
 
-async function wipeStoreFiles(keep?: string, keepFiles?: string): Promise<void> {
+async function wipeStoreFiles(keep: string[] = [], keepFiles?: string): Promise<void> {
   if (typeof navigator === 'undefined' || !navigator.storage?.getDirectory) return;
   try {
     const root = await navigator.storage.getDirectory();
     const names: string[] = [];
-    // The kept account's database and the journal and WAL files SQLite writes beside it.
-    for await (const [name] of root.entries()) if (isStoreFile(name) && !(keep && name.startsWith(keep))) names.push(name);
+    // The kept account's databases — its library and its search index, which holds the text
+    // of the files it keeps offline — and the journal and WAL files SQLite writes beside each.
+    for await (const [name] of root.entries()) if (isStoreFile(name) && !keep.some((k) => name.startsWith(k))) names.push(name);
     const dirs: string[] = [];
     for await (const [name] of root.entries()) if (isFilesDir(name) && name !== keepFiles) dirs.push(name);
     await Promise.all([

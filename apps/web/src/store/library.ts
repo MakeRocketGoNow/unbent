@@ -1,11 +1,14 @@
-import { ApiError, request } from '../notes-api.js';
+import type { AttachmentTexts } from '@unbent/shared';
+import { ApiError, isOfflineError, request } from '../notes-api.js';
 import { offlineNow, recheck, subscribeConnectivity } from '../connectivity.js';
-import { openLocalStore, closeLocalStore } from './db.js';
+import { openLocalStore, openSearchDatabase, closeLocalStore } from './db.js';
 import { createCollections, cursorStore, type Collections, type LocalNote } from './collections.js';
 import { createOutbox, provideLibrary, type Outbox } from './actions.js';
 import { FeedEngine, type FeedState } from './feed.js';
 import { createKeeper, type Keeper } from './keep.js';
-import { askToPersist } from './files.js';
+import { askToPersist, readKeptNotebooks } from './files.js';
+import { SearchIndex } from './search-index.js';
+import { createSearchSync, type SearchSync } from './search-sync.js';
 
 /**
  * One account's library on this device: its local store, the collections in it, the
@@ -32,6 +35,16 @@ export interface Library extends Collections {
   outbox: Outbox;
   /** The notebooks whose files this device keeps, and the fetching that keeps them (`keep.ts`). */
   keeper: Keeper;
+  /**
+   * The index a search reads with no connection, and what keeps it in step with the rows
+   * (`search-index.ts`, `search-sync.ts`). Null when its file could not be opened: the
+   * library is whole without it, and a search offline then says it needs a connection,
+   * as it did before there was an index. Null too until it has opened, which is after
+   * the library has: see `searchReady`.
+   */
+  readonly search: Searching | null;
+  /** Settles once the search index has opened or failed to; never rejects. */
+  searchReady: Promise<void>;
   /** The engine's state, for the hydration line and the offline banner. */
   subscribe: (listener: (state: FeedState) => void) => () => void;
   state: () => FeedState;
@@ -39,8 +52,13 @@ export interface Library extends Collections {
   close: () => Promise<void>;
 }
 
-/** What a reader of the library needs of it: the collections, the feed's state and the version. */
-export type ReadableLibrary = Pick<Library, 'notes' | 'notebooks' | 'tags' | 'attachments' | 'state' | 'version'>;
+export interface Searching {
+  index: SearchIndex;
+  sync: SearchSync;
+}
+
+/** What a reader of the library needs of it: the collections, the feed's state and the version — and the search index, where there is one. */
+export type ReadableLibrary = Pick<Library, 'notes' | 'notebooks' | 'tags' | 'attachments' | 'state' | 'version'> & Partial<Pick<Library, 'search' | 'searchReady'>>;
 
 /** The query roots a change to the library can reach; see `installLibraryQueries`. */
 export const LIBRARY_ROOTS: ReadonlySet<string> = new Set(['notes', 'note', 'trash', 'tags', 'notebooks', 'notebook-fields', 'attachments']);
@@ -136,10 +154,43 @@ export async function settleWrites(ms: number): Promise<number> {
   return lib.outbox.status().pending;
 }
 
+/**
+ * Says a note was opened on this device, to the open library's search index: the text of
+ * its files is then fetched and kept, so what someone has looked at here can be found
+ * here with no connection (`SearchSync.opened`). Nothing on a device with no index.
+ */
+export function noteOpened(noteId: string): void {
+  void current?.library
+    .then(async (lib) => {
+      // A note is often open before the index is: the first one after a cold start.
+      await lib.searchReady;
+      await lib.search?.sync.opened(noteId);
+    })
+    .catch(() => {});
+}
+
 /** Installs an in-memory library for a test to read; see `test-library.ts`. */
 export function setLibraryForTests(library: ReadableLibrary | null): void {
   forTests = library;
   libraryChanged();
+}
+
+const indexedListeners = new Set<() => void>();
+
+/**
+ * Hears the open library's search index gain something: its first pass finishing, a
+ * note indexed, the text of a kept notebook's files arriving. What the query bridge
+ * listens to so that a search answered on the device is asked again when the index it
+ * was answered from has moved on (`installLibraryQueries`).
+ */
+export function onSearchIndexed(listener: () => void): () => void {
+  indexedListeners.add(listener);
+  return () => void indexedListeners.delete(listener);
+}
+
+/** For a test library: every listener told the index moved. */
+export function notifySearchIndexed(): void {
+  indexedListeners.forEach((l) => l());
 }
 
 const changeListeners = new Set<(roots: ReadonlySet<string>) => void>();
@@ -257,11 +308,29 @@ async function open(userId: string): Promise<Library> {
     });
   };
   const everything = () => changed(LIBRARY_ROOTS);
+  /*
+   * The search index hears the same changes, by name: the notes that changed, and
+   * whether more than their text did. Opened further down, once the outbox says whether
+   * this tab leads; what changes before then is found by its first pass, which compares
+   * everything.
+   */
+  let search: Searching | null = null;
   const subscriptions = [
-    collections.notes.subscribeChanges((changes) => changed(rootsOfNoteChanges(changes))),
+    collections.notes.subscribeChanges((changes) => {
+      const roots = rootsOfNoteChanges(changes);
+      changed(roots);
+      search?.sync.touch(changes.map((c) => String(c.key)), { textOnly: !roots.has('tags') });
+    }),
+    // A renamed field is read from its definition when a match is drawn; nothing indexed changes.
     collections.notebooks.subscribeChanges(everything),
-    collections.tags.subscribeChanges(everything),
-    collections.attachments.subscribeChanges(everything),
+    collections.tags.subscribeChanges(() => {
+      everything();
+      search?.sync.touch([]);
+    }),
+    collections.attachments.subscribeChanges(() => {
+      everything();
+      search?.sync.touchFiles();
+    }),
   ];
 
   // What makes the engine pull. None of these is a timer: a device that is open and
@@ -273,7 +342,10 @@ async function open(userId: string): Promise<Library> {
   document.addEventListener('visibilitychange', onVisible);
   window.addEventListener('online', pull);
   const unsubscribeConnectivity = subscribeConnectivity(() => {
-    if (!offlineNow()) pull();
+    if (offlineNow()) return;
+    pull();
+    // The text of files still wanted is fetched with a connection, so one returning is a reason to look.
+    search?.sync.touchFiles();
   });
 
   /*
@@ -337,18 +409,24 @@ async function open(userId: string): Promise<Library> {
    * changes and every keystroke.
    */
   const rows = collections;
+  /*
+   * Whole once a walk has finished, which is what a cursor in the engine's state means:
+   * it is set from a stored position with no page left to resume, or at the end of a
+   * walk. Not "the last pull succeeded" — a device opened on a plane never has one, and
+   * that is exactly where someone looks to see their files are here (review of #236).
+   * Not during a walk either: a `reset` empties the collections before it starts one.
+   *
+   * One answer for everything that works over the library in the background — the
+   * keeper of files and the search index — as is which tab does that work: the one that
+   * holds the outbox.
+   */
+  const settled = () => engine.state.cursor !== null && engine.state.phase !== 'hydrating' && engine.state.phase !== 'reset';
+  const leading = () => outbox.executor.isOfflineEnabled;
   const keeper = createKeeper({
     userId,
     snapshot: () => ({ notes: rows.notes.values(), attachments: rows.attachments.values() }),
-    /*
-     * Whole once a walk has finished, which is what a cursor in the engine's state means:
-     * it is set from a stored position with no page left to resume, or at the end of a
-     * walk. Not "the last pull succeeded" — a device opened on a plane never has one, and
-     * that is exactly where someone looks to see their files are here (review of #236).
-     * Not during a walk either: a `reset` empties the collections before it starts one.
-     */
-    settled: () => engine.state.cursor !== null && engine.state.phase !== 'hydrating' && engine.state.phase !== 'reset',
-    leading: () => outbox.executor.isOfflineEnabled,
+    settled,
+    leading,
   });
   const stopKeeping = onLibraryChange((roots) => {
     if (roots.has('attachments')) keeper.nudge();
@@ -357,12 +435,82 @@ async function open(userId: string): Promise<Library> {
   // the copy already whole — before which the keeper stands down.
   listeners.add(() => keeper.nudge());
 
+  /*
+   * The search index, in a file of its own, opened behind the library rather than
+   * before it. It is a second worker and a second copy of the engine to start, and in a
+   * second tab its file can be busy with the leading tab's write; none of that is
+   * something the note list should wait for, and it did, on every cold start. So the
+   * library is returned without it and `search` is filled in when it is ready; what
+   * needs the index meanwhile waits on `searchReady`. Opening it can also fail where
+   * opening the library did not — storage that filled between the two — and the library
+   * is not failed by it. Its passes run in the tab the keeper's do, and wait for the
+   * same thing: a library that is whole.
+   *
+   * `giveUp` ends an open still in hand when the library closes: a close is what a
+   * sign-out waits on, and it has to wait for this, since a file being opened cannot be
+   * removed.
+   */
+  const giveUp = new AbortController();
+  /** The feed said reset before there was an index to tell; it is told when it opens. */
+  let resetUnheard = false;
+  const searchReady = (async () => {
+    try {
+      const index = new SearchIndex(await openSearchDatabase(userId, giveUp.signal));
+      await index.ready();
+      if (giveUp.signal.aborted) {
+        await index.close().catch(() => {});
+        return;
+      }
+      search = {
+        index,
+        sync: createSearchSync({
+          index,
+          snapshot: () => ({ notes: rows.notes.values(), notebooks: rows.notebooks.values(), tags: rows.tags.values(), attachments: rows.attachments.values() }),
+          settled,
+          leading,
+          kept: () => readKeptNotebooks(userId),
+          offline: offlineNow,
+          fetchTexts: async (ids, signal) => {
+            // A timeout as well as the signal: a request that never answers would otherwise hold the pass, and every pass after it.
+            const res = await request('/api/attachments/texts', { method: 'POST', signal, timeout: 30_000, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ids }) });
+            if (!res.ok) throw new ApiError(res.status, `/api/attachments/texts answered ${res.status}`);
+            return (await res.json()) as AttachmentTexts;
+          },
+          isOffline: isOfflineError,
+          channel: `unbent-search-${userId}`,
+          onIndexed: notifySearchIndexed,
+        }),
+      };
+      if (resetUnheard) search.sync.startOver();
+    } catch (err) {
+      if (!giveUp.signal.aborted) console.warn('[library] no search index on this device; searching needs a connection:', err);
+    }
+  })();
+  // The walk finishing is what makes a library whole, and a notebook kept or released
+  // changes which files' text is wanted; the index looks again at both.
+  // A library that starts over takes its index with it: see `SearchSync.startOver`.
+  listeners.add((state) => {
+    if (state.phase !== 'reset') return search?.sync.wake();
+    if (search) search.sync.startOver();
+    else resetUnheard = true;
+  });
+  let keptNow = keeper.status().kept;
+  const stopKeptWatch = keeper.subscribe((status) => {
+    if (status.kept === keptNow) return;
+    keptNow = status.kept;
+    search?.sync.touchFiles();
+  });
+
   return {
     ...collections,
     userId,
     engine,
     outbox,
     keeper,
+    get search() {
+      return search;
+    },
+    searchReady,
     version: () => version,
     subscribe: (listener) => {
       listeners.add(listener);
@@ -381,13 +529,19 @@ async function open(userId: string): Promise<Library> {
       if (reconnect) clearTimeout(reconnect);
       socket?.close();
       stopKeeping();
+      stopKeptWatch();
       keeper.stop();
+      giveUp.abort();
+      await searchReady;
+      await search?.sync.stop();
       await outbox.dispose();
       await engine.settled();
       for (const s of subscriptions) s.unsubscribe();
       if (collections) {
         await Promise.all(Object.values(collections).map((c) => c.cleanup()));
       }
+      // After its sync has stopped: a pass in hand finishes its write, and the file is free for a wipe.
+      await search?.index.close().catch(() => {});
       await closeLocalStore();
     },
   };

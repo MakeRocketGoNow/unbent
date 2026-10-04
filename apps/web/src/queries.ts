@@ -10,8 +10,9 @@ import { ApiError, OfflineError } from './notes-api.js';
 import { offlineNow } from './connectivity.js';
 import { count, list, lookups, notebookFields, notebookFiles, notebookList, summaries, tagSummaries, toAttachmentInfo, toNote, type LocalAttachmentInfo, type Lookups, type Snapshot } from './store/derive.js';
 import type { LocalNote } from './store/collections.js';
-import { LIBRARY_ROOTS, currentLibrary, onLibraryChange, type ReadableLibrary as Library } from './store/library.js';
+import { LIBRARY_ROOTS, currentLibrary, onLibraryChange, onSearchIndexed, type ReadableLibrary as Library } from './store/library.js';
 import { onDirectWrite } from './store/actions.js';
+import { searchLocal, type LocalCoverage } from './store/search-local.js';
 
 /**
  * Query definitions, colocated with their keys.
@@ -30,8 +31,9 @@ import { onDirectWrite } from './store/actions.js';
  * route used to answer with (`store/derive.ts`), so every component reads what it always
  * read and a warm open draws the list with no request. The change feed keeps the copy
  * current, and `installLibraryQueries` below re-runs these queries when it moves. What
- * still goes to the server is what the copy cannot answer: search, the instance's
- * config, the vision backlog, and every write (`store/actions.ts`).
+ * still goes to the server is what the copy cannot answer: the instance's config, the
+ * vision backlog, every write (`store/actions.ts`) — and search while there is a
+ * connection, since the server holds every file's text and a device only some.
  */
 
 /**
@@ -118,9 +120,24 @@ export function installLibraryQueries(queryClient: QueryClient): () => void {
   };
   const stopLibrary = onLibraryChange(refetch);
   const stopDirect = onDirectWrite(() => refetch(LIBRARY_ROOTS));
+  /*
+   * A search answered on the device was answered from the index as it stood, and says
+   * so: "still indexing", or without the text of some files. When the index gains
+   * something, those answers — and only those; the server's are not the index's to
+   * correct — are asked for again, so the line under the results stops being true of
+   * a moment ago. Search is not a library root: a change to a note does not re-rank a
+   * search, and the index is what a local answer reads, not the collections.
+   */
+  const stopIndexed = onSearchIndexed(() => {
+    void queryClient.invalidateQueries({
+      queryKey: ['search'],
+      predicate: ({ state }) => (state.data as SearchAnswer | undefined)?.local !== undefined,
+    });
+  });
   return () => {
     stopLibrary();
     stopDirect();
+    stopIndexed();
   };
 }
 
@@ -501,14 +518,70 @@ export function invalidateNoteMembership(queryClient: QueryClient) {
  * `isPlaceholderData` so the list can dim them.
  *
  * `rows` asks for each match's list row as well, for the table — see `searchNotes`.
+ *
+ * One key with and without a connection, so the answer from the device and the server's
+ * are the same entry: when the connection returns, `installConnectivity` refetches what
+ * was read while it was away, and the server's matches replace the device's in the rows
+ * already on screen rather than in a list drawn again.
  */
 export const searchQuery = (q: string, filter: NoteFilter = {}, rows = false) =>
   queryOptions({
     queryKey: keys.search(q, filter, rows),
-    queryFn: () => api.searchNotes(q, filter, rows),
+    queryFn: ({ signal }) => search(q, filter, rows, signal),
     enabled: q.trim() !== '',
     placeholderData: keepPreviousData,
   });
+
+/**
+ * The notes changed most recently, newest first, for a picker that opens on them. From
+ * the library like every list, so it opens with no connection; asked of the server only
+ * on a device with no library.
+ */
+export async function recentNotes(limit: number): Promise<NoteSummary[]> {
+  const ordering: NoteOrdering = { sort: 'updated', order: 'desc' };
+  const lib = await library();
+  if (!lib) return (await api.listNotes({ limit, ...ordering })).items;
+  return summaries(rowsOf(lib, {}, ordering), 0, limit, view(lib).lookups);
+}
+
+/** A search's matches, and when the device answered rather than the server, what it could see. */
+export interface SearchAnswer {
+  results: api.SearchHit[];
+  local?: LocalCoverage;
+}
+
+/**
+ * One search box, two engines. With a connection the server answers, as it always has:
+ * it holds every file's text and its index is never behind. Without one — the app knows
+ * it is offline, or the request got no answer — the device's own index answers
+ * (`store/search-local.ts`): the same queries on the same FTS5, over the library's rows,
+ * and over the text of the files this device holds text for. The answer says which it
+ * was (`local`), since a search that could not see every file must not read as "no
+ * matches".
+ *
+ * A device with no index — no library, or its file would not open — has nothing to
+ * answer with, and the search fails as offline, which the list says in its own words.
+ */
+export async function search(q: string, filter: NoteFilter = {}, rows = false, signal?: AbortSignal): Promise<SearchAnswer> {
+  if (!offlineNow()) {
+    try {
+      return { results: await api.searchNotes(q, filter, rows) };
+    } catch (err) {
+      if (!api.isOfflineError(err)) throw err;
+    }
+  }
+  const lib = await library();
+  /*
+   * The index opens behind the library (`searchReady`), so a search made in the first
+   * moments of a cold start waits for it rather than being told search needs a
+   * connection — an answer nothing would ever come back to correct.
+   */
+  await lib?.searchReady;
+  if (!lib?.search) throw new OfflineError();
+  const v = view(lib);
+  const answer = await searchLocal({ index: lib.search.index, snapshot: v.snapshot, lookups: v.lookups, query: q, filter, rows, signal });
+  return { results: answer.results, local: answer.coverage };
+}
 
 /** One of the scopes a destructive action names a count for; empty means every live note. */
 export interface ExactCountFilter {

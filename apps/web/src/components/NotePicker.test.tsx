@@ -8,12 +8,14 @@ import { NotePicker } from './NotePicker.js';
  * current one left out, typing switches to the app's search, and a row hands back the
  * note it names.
  */
-vi.mock('../notes-api.js', () => ({
+vi.mock('../notes-api.js', async (original) => ({
+  ...(await original<typeof import('../notes-api.js')>()),
   listNotes: vi.fn(),
   searchNotes: vi.fn(),
 }));
 
 import * as api from '../notes-api.js';
+import { installTestLibrary } from '../store/test-library.js';
 
 const HERE = 'note-here';
 const recent = [
@@ -58,7 +60,7 @@ describe('NotePicker', () => {
     const { container, getByLabelText, onPick } = harness();
     fireEvent.change(getByLabelText('Find a note'), { target: { value: 'pod' } });
     await waitFor(() => expect(titles(container)).toEqual(['Podcast Bookmarks']));
-    expect(api.searchNotes).toHaveBeenCalledWith('pod');
+    expect(api.searchNotes).toHaveBeenCalledWith('pod', {}, false);
 
     fireEvent.click(container.querySelector('.note-picker-item')!);
     expect(onPick).toHaveBeenCalledWith({ id: 'n9', title: 'Podcast Bookmarks', updatedAt: 9 });
@@ -70,7 +72,20 @@ describe('NotePicker', () => {
     const { container, getByLabelText } = harness();
     fireEvent.change(getByLabelText('Find a note'), { target: { value: 'p' } });
     await waitFor(() => expect(titles(container)).toEqual(['Podcast Bookmarks']));
-    expect(api.searchNotes).toHaveBeenCalledWith('p');
+    expect(api.searchNotes).toHaveBeenCalledWith('p', {}, false);
+  });
+
+  it('opens on the library’s recent notes with no request, where there is a library', async () => {
+    const note = (id: string, title: string, updatedAt: number) =>
+      ({ id, title, body: '', tagIds: [], files: [], fields: [], notebookId: null, createdAt: 1, updatedAt }) as never;
+    const lib = installTestLibrary({ notes: [note(HERE, 'This one', 9), note('old', 'Older', 2), note('new', 'Newer', 5)] });
+    try {
+      const { container } = harness();
+      await waitFor(() => expect(titles(container)).toEqual(['Newer', 'Older']));
+      expect(api.listNotes).not.toHaveBeenCalled();
+    } finally {
+      lib.uninstall();
+    }
   });
 
   it('cancels on Escape and on the button', async () => {

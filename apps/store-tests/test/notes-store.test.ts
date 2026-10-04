@@ -768,6 +768,8 @@ describe('rows read on an archive-sized store', () => {
           if (i % 1000 === 0) sql.exec(`INSERT INTO note_tags VALUES (?1, 'rare')`, `n${String(i).padStart(5, '0')}`);
           if (i % 5 === 0) sql.exec(`INSERT INTO note_fields (note_id, field_id, value_text, value_num) VALUES (?1, 'amount', ?2, ?2)`, `n${String(i).padStart(5, '0')}`, i);
           if (i % 3 === 0) sql.exec(`INSERT INTO attachments (id, note_id, filename, content_type, size, r2_key, created_at) VALUES (?1, ?2, 'scan.pdf', 'application/pdf', 10, ?1, 1)`, `att-n${String(i).padStart(5, '0')}`, `n${String(i).padStart(5, '0')}`);
+          // Text for every file, so a read of files' text by id that walked the table would show.
+          if (i % 3 === 0) sql.exec(`INSERT INTO attachment_text (attachment_id, note_id, filename, text, created_at) VALUES (?1, ?2, 'scan.pdf', 'scanned page', 1)`, `att-n${String(i).padStart(5, '0')}`, `n${String(i).padStart(5, '0')}`);
         }
         // The feed as an import leaves it — one row per note — and then a thousand edits
         // over the first hundred notes, so a page can be dense with repeats.
@@ -827,6 +829,7 @@ describe('rows read on an archive-sized store', () => {
       await measure('feed reset', () => stub.changesSince(99_999, 100)),
       await measure('snapshot page', () => stub.snapshotPage(null, 100)),
       await measure('snapshot page deep', () => stub.snapshotPage('n02000', 100)),
+      await measure('texts by id', () => stub.textsById(Array.from({ length: 25 }, (_, k) => `att-n${String(k * 3).padStart(5, '0')}`))),
     ];
     console.log(results.map((r) => `${r.label}: ${r.rowsRead}`).join('\n'));
     const bounds: Record<string, number> = {
@@ -859,6 +862,8 @@ describe('rows read on an archive-sized store', () => {
       'feed reset': 4,
       'snapshot page': 1500,
       'snapshot page deep': 1500,
+      // Twenty-five files of a thousand with text, by primary key: a walk of the table would be in the thousands.
+      'texts by id': 160,
     };
     for (const r of results) {
       expect(r.rowsRead, r.label).toBeLessThanOrEqual(bounds[r.label]!);

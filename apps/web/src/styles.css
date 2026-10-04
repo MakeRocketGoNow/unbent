@@ -2309,6 +2309,28 @@ a.overflow-item { text-decoration: none; }
   text-overflow: ellipsis;
 }
 
+/*
+   What an offline search covered (`SearchCoverage`): the status line's place and voice,
+   but a sentence that has to be read whole, so it wraps where the status clips. Balanced,
+   so a second line is not one orphaned word on a phone.
+*/
+.search-coverage {
+  margin: 0.15rem 0 0;
+  white-space: normal;
+  overflow: visible;
+  text-wrap: balance;
+}
+
+/*
+   On a phone the New button floats over this corner, and a sentence under it is a
+   sentence with its last words missing. Kept clear of it by the button's own width and
+   inset (`.fab`), and only where there is one: the desktop's New is in the header.
+*/
+.sidebar:has(> .fab) .search-coverage {
+  padding-right: 5.25rem;
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
 a.sidebar-status:hover {
   color: var(--fg);
   text-decoration: underline;

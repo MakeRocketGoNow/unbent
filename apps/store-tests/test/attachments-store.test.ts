@@ -48,6 +48,22 @@ describe('attachments', () => {
     expect((await stub.listAttachments(n.id)).map((f) => f.filename)).toEqual(['scan-2.pdf']);
   });
 
+  it('cuts an answer of texts on bytes, and names what it had no room for', async () => {
+    // The budget is the store's own and not a caller's to choose, so it is met with real
+    // sizes: three scans' text of four hundred thousand characters against a megabyte.
+    const { stub } = freshStore('budget');
+    await stub.create({ id: 'n1', title: 'T', body: '', tags: [] });
+    const long = (letter: string) => `${letter} `.repeat(200_000);
+    for (const [id, letter] of [['b1', 'x'], ['b2', 'y'], ['b3', 'z']] as const) {
+      await stub.recordAttachment(file('n1', { id, filename: `${id}.pdf` }));
+      await stub.recordText({ attachmentId: id, noteId: 'n1', filename: `${id}.pdf`, text: long(letter) });
+    }
+    const answer = await stub.textsById(['b1', 'b2', 'b3']);
+    expect(answer.texts.map((t) => t.id)).toEqual(['b1', 'b2']);
+    expect(answer.left).toEqual(['b3']);
+    expect((await stub.textsById(answer.left)).texts.map((t) => t.id)).toEqual(['b3']);
+  });
+
   it('keeps has_text and the FTS index in step with the text rows, and copies text', async () => {
     const { stub } = freshStore('text');
     await stub.create({ id: 'n1', title: 'T', body: '', tags: [] });
@@ -74,6 +90,18 @@ describe('attachments', () => {
       { noteId: 'n1', filename: 'copy.pdf', text: 'globex receipt', readBy: 'vision' },
     ]);
     expect(await stub.textsForNotes([])).toEqual([]);
+
+    // By id, for a device's offline index: only files with text, and nothing for an id
+    // that has none.
+    await stub.recordAttachment(file('n1', { id: 'a3', filename: 'unread.pdf' }));
+    expect(await stub.textsById(['a1', 'a3', 'ghost'])).toEqual({ texts: [{ id: 'a1', text: 'globex receipt' }], left: [] });
+    expect(await stub.textsById([])).toEqual({ texts: [], left: [] });
+    const before = (await stub.counters()).rowsRead;
+    await stub.textsById(['a1', 'a2']);
+    // Six rows a file as the meter counts them, by primary key; the archive-sized test
+    // in notes-store.test.ts is what shows it does not grow with the account.
+    expect((await stub.counters()).rowsRead - before).toBeLessThanOrEqual(12);
+    await stub.removeAttachment('n1', 'unread.pdf');
 
     // Removing the attachment cascades its text and the flag no longer matters; the
     // FTS entry goes with the row.

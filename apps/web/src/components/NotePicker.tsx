@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import * as api from '../notes-api.js';
+import { recentNotes, search } from '../queries.js';
 import { Button } from './Button';
 import { formatWhen } from './format-when.js';
 
@@ -40,7 +40,7 @@ export function NotePicker({ label, excludeId, busy = false, onPick, onCancel }:
   const [query, setQuery] = useState('');
   const [needle, setNeedle] = useState('');
 
-  // A short debounce: search hits the server, and a title is typed faster than it answers.
+  // A short debounce: search usually hits the server, and a title is typed faster than it answers.
   // Any letter searches, one included — see `searchQuery` for why that is no longer held back.
   useEffect(() => {
     const t = setTimeout(() => setNeedle(query.trim()), 200);
@@ -49,11 +49,16 @@ export function NotePicker({ label, excludeId, busy = false, onPick, onCancel }:
 
   const { data: notes = [], isLoading, error } = useQuery({
     queryKey: ['note-picker', needle],
-    queryFn: async (): Promise<PickedNote[]> => {
-      const rows =
-        needle === ''
-          ? (await api.listNotes({ limit: LIMIT + 1, sort: 'updated', order: 'desc' })).items
-          : await api.searchNotes(needle);
+    /*
+     * Both through the same doors the note list uses, so the picker works where the list
+     * does: the recent notes from the local library, and the search from the server or,
+     * with no connection, the device's index. It called the API for both, and so failed
+     * offline with an error where the sidebar beside it went on working. No line about
+     * what an offline search covered: the picker shows titles to choose from, not a
+     * claim that nothing else matches.
+     */
+    queryFn: async ({ signal }): Promise<PickedNote[]> => {
+      const rows = needle === '' ? await recentNotes(LIMIT + 1) : (await search(needle, {}, false, signal)).results;
       return rows.map((n) => ({ id: n.id, title: n.title, updatedAt: n.updatedAt }));
     },
   });

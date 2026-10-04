@@ -36,7 +36,7 @@ function device(files: string[], dbs: string[]) {
   return { removed, deleted };
 }
 
-const files = ['unbent-a.sqlite', 'unbent-a.sqlite-wal', 'unbent-a.sqlite-journal', 'unbent-b.sqlite', 'unbent-files-a', 'unbent-files-b', '.ahp-pigei0c7inp'];
+const files = ['unbent-a.sqlite', 'unbent-a.sqlite-wal', 'unbent-a.sqlite-journal', 'unbent-a.search.sqlite', 'unbent-b.sqlite', 'unbent-b.search.sqlite', 'unbent-files-a', 'unbent-files-b', '.ahp-pigei0c7inp'];
 const dbs = ['unbent-outbox-a', 'unbent-outbox-b', 'offline-transactions'];
 
 afterEach(() => {
@@ -48,7 +48,7 @@ describe('wipeLocalStores', () => {
   it('removes every account’s copy and outbox, after closing the open library', async () => {
     const { removed, deleted } = device(files, dbs);
     await wipeLocalStores();
-    expect(removed.sort()).toEqual(['unbent-a.sqlite', 'unbent-a.sqlite-journal', 'unbent-a.sqlite-wal', 'unbent-b.sqlite', 'unbent-files-a', 'unbent-files-b']);
+    expect(removed.sort()).toEqual(['unbent-a.search.sqlite', 'unbent-a.sqlite', 'unbent-a.sqlite-journal', 'unbent-a.sqlite-wal', 'unbent-b.search.sqlite', 'unbent-b.sqlite', 'unbent-files-a', 'unbent-files-b']);
     expect(deleted.sort()).toEqual(['unbent-outbox-a', 'unbent-outbox-b']);
     expect(closeLibrary).toHaveBeenCalled();
   });
@@ -57,7 +57,8 @@ describe('wipeLocalStores', () => {
     const { removed, deleted } = device(files, dbs);
     vi.mocked(currentLibraryUser).mockReturnValue('a');
     await wipeLocalStores('a');
-    expect(removed.sort()).toEqual(['unbent-b.sqlite', 'unbent-files-b']);
+    // Their search index stays with the copy it indexes.
+    expect(removed.sort()).toEqual(['unbent-b.search.sqlite', 'unbent-b.sqlite', 'unbent-files-b']);
     expect(deleted).toEqual(['unbent-outbox-b']);
     expect(closeLibrary).not.toHaveBeenCalled();
   });

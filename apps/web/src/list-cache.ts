@@ -1,6 +1,7 @@
 import type { InfiniteData, QueryClient, QueryKey } from '@tanstack/react-query';
 import { DEFAULT_NOTE_SORT, excerptMarkdown, UNFILED, type Note, type NoteSummary } from '@unbent/shared';
 import type { NotePage, SearchHit } from './notes-api.js';
+import type { SearchAnswer } from './queries.js';
 import type { NoteFilter, NoteOrdering } from './queries.js';
 
 /** Which parts of a note a save changed, as far as a list's membership and order care. */
@@ -47,9 +48,9 @@ export function applySaveToLists(queryClient: QueryClient, saved: Note, change: 
      them, and the sidebar's results — titles and snippets — have never followed a save
      either. A search that carries no rows has nothing here to change.
   */
-  for (const [key, data] of queryClient.getQueriesData<SearchHit[]>({ queryKey: ['search'] })) {
-    if (!data?.some((r) => 'note' in r && r.id === saved.id)) continue;
-    queryClient.setQueryData<SearchHit[]>(key, searchAfterSave(data, saved));
+  for (const [key, data] of queryClient.getQueriesData<SearchAnswer>({ queryKey: ['search'] })) {
+    if (!data?.results.some((r) => 'note' in r && r.id === saved.id)) continue;
+    queryClient.setQueryData<SearchAnswer>(key, { ...data, results: searchAfterSave(data.results, saved) });
   }
 }
 
