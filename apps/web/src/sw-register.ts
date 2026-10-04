@@ -102,7 +102,7 @@ export function shouldApplyOnLoad(state: { untouched: boolean; busy: boolean; pa
 }
 
 function watchFirstTouch(): void {
-  if (untouched && watchingTouch) return;
+  if (watchingTouch) return;
   untouched = true;
   watchingTouch = true;
   const touched = () => {
