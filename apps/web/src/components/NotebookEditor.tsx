@@ -941,14 +941,6 @@ export function NotebookEditor({ notebookId, onChanged, onDeleted }: NotebookEdi
 }
 
 /**
- * Whether `pending` is a scale tighten on a field that is already a rating, rather than
- * a type change (including a number becoming a rating, which is a scale arriving).
- *
- * The confirm copy hangs on this: "Change to Rating" is the wrong question for dropping
- * a 10-point scale to 5, and "out of 5" is the wrong question for turning a number into
- * stars.
- */
-/**
  * What a type or scale change keeps and clears, in a sentence.
  *
  * A fitted rating says what it keeps as well as what it clears, because the scale was
@@ -988,6 +980,14 @@ function conversionDetail(pending: PendingType): string {
   );
 }
 
+/**
+ * Whether `pending` is a scale tighten on a field that is already a rating, rather than
+ * a type change (including a number becoming a rating, which is a scale arriving).
+ *
+ * The confirm copy hangs on this: "Change to Rating" is the wrong question for dropping
+ * a 10-point scale to 5, and "out of 5" is the wrong question for turning a number into
+ * stars.
+ */
 function scaleOnlyConfirm(
   pending: PendingType,
 ): pending is PendingType & { scale: FieldScale; field: FieldDef & { scale: FieldScale } } {
