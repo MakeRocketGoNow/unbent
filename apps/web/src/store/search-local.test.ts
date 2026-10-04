@@ -117,6 +117,33 @@ describe('searchLocal', () => {
     expect(page.results.map((r) => r.id)).not.toContain('wanted');
   });
 
+  it('asks for the best matches first, and for all of them only when a page needs them', async () => {
+    const crowd = Array.from({ length: 400 }, (_, i) => note(`n${String(i).padStart(3, '0')}`, { title: 'Receipt', notebookId: i % 2 ? 'nb-receipts' : 'nb-manuals' }));
+    const snapshot = library(crowd);
+    const index = await indexed(snapshot);
+    const asked: number[] = [];
+    const candidates = index.candidates.bind(index);
+    index.candidates = (kind, fts, cap) => {
+      if (kind === 'note') asked.push(cap);
+      return candidates(kind, fts, cap);
+    };
+    // Half the archive is in the notebook: the first few pages of matches hold a page of it.
+    expect((await searchLocal({ index, snapshot, query: 'receipt', filter: { notebook: 'Receipts' }, limit: 10 })).results).toHaveLength(10);
+    expect(asked).toEqual([40]);
+    // Nothing in scope matches, so every match has to be looked at to know it.
+    asked.length = 0;
+    expect((await searchLocal({ index, snapshot, query: 'receipt', filter: { tag: ['garden'] }, limit: 10 })).results).toEqual([]);
+    expect(asked).toEqual([40, 400, -1]);
+  });
+
+  it('stops for a search nobody is waiting for', async () => {
+    const snapshot = library([note('a', { title: 'Kettle' })]);
+    const index = await indexed(snapshot);
+    const gone = new AbortController();
+    gone.abort();
+    await expect(searchLocal({ index, snapshot, query: 'kettle', signal: gone.signal })).rejects.toMatchObject({ name: 'AbortError' });
+  });
+
   it('skips an entry whose note has gone since it was indexed, and still fills the page', async () => {
     const all = Array.from({ length: 30 }, (_, i) => note(`n${String(i).padStart(2, '0')}`, { title: `Ledger ${i}` }));
     const index = await indexed(library(all));

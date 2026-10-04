@@ -527,7 +527,7 @@ export function invalidateNoteMembership(queryClient: QueryClient) {
 export const searchQuery = (q: string, filter: NoteFilter = {}, rows = false) =>
   queryOptions({
     queryKey: keys.search(q, filter, rows),
-    queryFn: () => search(q, filter, rows),
+    queryFn: ({ signal }) => search(q, filter, rows, signal),
     enabled: q.trim() !== '',
     placeholderData: keepPreviousData,
   });
@@ -550,7 +550,7 @@ export interface SearchAnswer {
  * A device with no index — no library, or its file would not open — has nothing to
  * answer with, and the search fails as offline, which the list says in its own words.
  */
-async function search(q: string, filter: NoteFilter, rows: boolean): Promise<SearchAnswer> {
+async function search(q: string, filter: NoteFilter, rows: boolean, signal?: AbortSignal): Promise<SearchAnswer> {
   if (!offlineNow()) {
     try {
       return { results: await api.searchNotes(q, filter, rows) };
@@ -567,7 +567,7 @@ async function search(q: string, filter: NoteFilter, rows: boolean): Promise<Sea
   await lib?.searchReady;
   if (!lib?.search) throw new OfflineError();
   const v = view(lib);
-  const answer = await searchLocal({ index: lib.search.index, snapshot: v.snapshot, lookups: v.lookups, query: q, filter, rows });
+  const answer = await searchLocal({ index: lib.search.index, snapshot: v.snapshot, lookups: v.lookups, query: q, filter, rows, signal });
   return { results: answer.results, local: answer.coverage };
 }
 

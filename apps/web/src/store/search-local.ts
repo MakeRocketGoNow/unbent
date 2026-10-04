@@ -111,6 +111,12 @@ export interface LocalSearchOptions {
   limit?: number;
   /** Each match's list row as well, for a table; see `rows` on the server's search. */
   rows?: boolean;
+  /**
+   * Aborted when nobody is waiting for the answer any more: the term changed. The
+   * engine's worker runs statements in the order they arrive, so an abandoned search
+   * that carried on would be work queued in front of the one that replaced it.
+   */
+  signal?: AbortSignal | undefined;
 }
 
 /** `meta` key set once the index has been built from a whole library. */
@@ -121,7 +127,6 @@ export async function searchLocal(opts: LocalSearchOptions): Promise<LocalSearch
   const limit = opts.limit ?? 50;
   const l = opts.lookups ?? buildLookups(snapshot);
   const filter: ListFilter = { ...opts.filter, trashed: false };
-  const filtered = !!(filter.notebook || filter.tag?.length || filter.field?.length || filter.from || filter.to);
   /*
    * The server's search reads a date range against the day a note was created, whatever
    * the list is sorted by: "filed in 2023" is the question an archive is asked.
@@ -130,10 +135,9 @@ export async function searchLocal(opts: LocalSearchOptions): Promise<LocalSearch
 
   const notes = new Map<string, LocalNote>();
   for (const n of snapshot.notes) notes.set(n.id, n);
-  const coverage = await coverageOf(index, snapshot, notes, inScope);
 
   const fts = toFtsQuery(opts.query);
-  if (!fts) return { results: [], coverage };
+  if (!fts) return { results: [], coverage: await coverageOf(index, snapshot, notes, inScope) };
 
   const chosen = new Map<string, Hit>();
   const offer = (hit: Hit) => {
@@ -147,24 +151,25 @@ export async function searchLocal(opts: LocalSearchOptions): Promise<LocalSearch
    */
   const tier = async (kind: Kind, n: number, resolve: (entryId: string) => Array<Omit<Hit, 'tier' | 'rank' | 'kind' | 'entry'>>) => {
     if (chosen.size >= limit) return;
+    opts.signal?.throwIfAborted();
     /*
-     * Unfiltered, the first matches are nearly all results, so a few pages are asked for;
-     * a filter can be satisfied by the thousandth match, so then every match is. Asked
-     * again in full if the short list ran out before the page filled (entries of notes
-     * since trashed, or many matches inside one note).
+     * The best matches first, a few pages of them, and wider only if that did not fill
+     * the page: forty pages, then every match. Unfiltered, the first ask is nearly
+     * always enough. A filter can be satisfied by the thousandth match, so it may need
+     * them all — but asking for them all at once, as this did, sent every match in an
+     * archive across the worker on each keystroke of a one-letter search in a notebook,
+     * when the first few hundred usually hold a page of that notebook's. Each ask starts
+     * from the top again; a note already taken is skipped. Tags are asked whole: there
+     * are a few hundred, and one tag can stand for any number of notes.
      */
-    const short = filtered || kind === 'tag' ? -1 : limit * 4;
-    for (const cap of short === -1 ? [-1] : [short, -1]) {
+    const caps = kind === 'tag' ? [-1] : [limit * 4, limit * 40, -1];
+    const before = chosen.size;
+    for (const cap of caps) {
+      opts.signal?.throwIfAborted();
       const candidates = await index.candidates(kind, fts, cap);
-      const before = chosen.size;
-      let offered = 0;
       for (const c of candidates) {
-        for (const h of resolve(c.id)) {
-          const size = chosen.size;
-          offer({ ...h, tier: n, rank: c.rank, kind, entry: c.id });
-          if (chosen.size > size) offered += 1;
-        }
-        if (offered >= limit) break;
+        for (const h of resolve(c.id)) offer({ ...h, tier: n, rank: c.rank, kind, entry: c.id });
+        if (chosen.size - before >= limit) break;
       }
       if (cap === -1 || candidates.length < cap || chosen.size - before >= limit) break;
     }
@@ -215,11 +220,19 @@ export async function searchLocal(opts: LocalSearchOptions): Promise<LocalSearch
     .sort((a, b) => a.tier - b.tier || a.rank - b.rank || (a.note.id < b.note.id ? -1 : a.note.id > b.note.id ? 1 : 0))
     .slice(0, limit);
 
+  opts.signal?.throwIfAborted();
   const snippets = new Map<Kind, Map<string, string>>();
   for (const kind of new Set(page.map((h) => h.kind))) {
     snippets.set(kind, await index.snippets(kind, fts, [...new Set(page.filter((h) => h.kind === kind).map((h) => h.entry))]));
   }
 
+  /*
+   * Last, and not at all for a search nobody is waiting for: it sends the id of every
+   * file with text in scope to the index to be counted, which on an archive is the
+   * largest thing a search does.
+   */
+  opts.signal?.throwIfAborted();
+  const coverage = await coverageOf(index, snapshot, notes, inScope);
   return {
     coverage,
     results: page.map((h) => ({
