@@ -2363,7 +2363,7 @@ export class NotesStore {
     // previewing a rename or a pure type change does not silently unbound the field.
     const scale =
       toScale === 'fit'
-        ? fitRatingScale(rows.map((r) => r.text))
+        ? fitRatingScale(field.type, rows)
         : toScale === undefined
           ? field.scale
           : toScale;

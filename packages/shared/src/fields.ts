@@ -224,17 +224,19 @@ export const DEFAULT_RATING_SCALE: FieldScale = { max: 5, step: 0.5 };
  *
  * Only values a rating could ever hold count — 1 to `MAX_RATING_MAX`, on half steps — so a
  * stray 250 or 0 is cleared rather than dragging the scale past what it can be. With none
- * of those, it is the default.
+ * of those, it is the default. Which values those are is asked of `planConversion` on the
+ * widest scale there is, rather than read here a second way: the conversion decodes each
+ * row for the type it is leaving (a multi-select's `["9"]` is a 9) and holds it to the
+ * same number syntax, so the scale chosen and the values kept cannot disagree.
  */
-export function fitRatingScale(texts: string[]): FieldScale {
+export function fitRatingScale<R extends { text: string }>(from: FieldType, rows: R[]): FieldScale {
+  const widest: FieldScale = { max: MAX_RATING_MAX, step: 0.5 };
   let top = 0;
   let halves = false;
-  for (const text of texts) {
-    const n = Number(text.trim());
-    if (text.trim() === '' || !Number.isFinite(n)) continue;
-    if (n < 1 || n > MAX_RATING_MAX || !Number.isInteger(n * 2)) continue;
-    top = Math.max(top, n);
-    if (!Number.isInteger(n)) halves = true;
+  for (const { num } of planConversion(from, 'number', rows, widest).keep) {
+    if (num === null) continue;
+    top = Math.max(top, num);
+    if (!Number.isInteger(num)) halves = true;
   }
   const max = Math.max(DEFAULT_RATING_SCALE.max, Math.ceil(top));
   return { max, step: halves || max <= DEFAULT_RATING_SCALE.max ? 0.5 : 1 };
