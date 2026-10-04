@@ -7,6 +7,7 @@ import {
   MAX_TAG_LENGTH,
   UNFILED,
   formatAttachmentMarkdown,
+  formatFieldFilter,
   parseFieldFilter,
   type FieldFilter,
 } from '@unbent/shared';
@@ -136,7 +137,9 @@ async function resolveFieldFilters(
     const valueless = f.op === 'set' || f.op === 'empty';
     if (valueless && f.value !== undefined) return { error: `Op "${f.op}" takes no value.` };
     if (!valueless && !f.value) return { error: `Op "${f.op}" needs a value.` };
-    const parsed = parseFieldFilter(valueless ? `${def.id}:${f.op}` : `${def.id}:${f.op}:${f.value}`);
+    const parsed = parseFieldFilter(
+      formatFieldFilter({ fieldId: def.id, op: f.op, ...(valueless ? {} : { value: f.value! }) }),
+    );
     if (!parsed) {
       return {
         error: `"${f.value}" is not a usable ${f.op} value for ${def.name}: a range needs a number or a YYYY-MM-DD date.`,
