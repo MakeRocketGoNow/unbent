@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { noteOpened } from '../store/library.js';
 import { Link, useNavigate } from '@tanstack/react-router';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { EditorView } from '@codemirror/view';
@@ -92,6 +93,15 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
      followed the route alone.
   */
   const readOnly = inTrashView || note?.deletedAt !== undefined;
+  /*
+     Opening a note is how its files become searchable offline without keeping its whole
+     notebook: the device holds the text of the files of the last few hundred notes opened
+     on it (`noteOpened`). Not a trashed note's — it is on its way out.
+  */
+  const openedId = note && !readOnly ? note.id : undefined;
+  useEffect(() => {
+    if (openedId) noteOpened(openedId);
+  }, [openedId]);
   /*
      Offline, the note is as editable as ever: it is read from the local copy of the
      library and a save goes to the outbox, which replays when the connection returns.

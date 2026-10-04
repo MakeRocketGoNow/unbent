@@ -30,6 +30,13 @@ export const FILES_PREFIX = 'unbent-files-';
 const safe = (userId: string) => userId.replace(/[^A-Za-z0-9_-]/g, '_');
 
 export const storeFileName = (userId: string) => `${STORE_PREFIX}${safe(userId)}.sqlite`;
+/**
+ * The OPFS file an account's search index lives in (`store/search-index.ts`), beside its
+ * library. A store file by `isStoreFile`, so every wipe that removes the library removes
+ * it, and named so it cannot be mistaken for another account's library: `safe` leaves no
+ * dot in an id.
+ */
+export const searchFileName = (userId: string) => `${STORE_PREFIX}${safe(userId)}.search.sqlite`;
 export const outboxName = (userId: string) => `${OUTBOX_PREFIX}${safe(userId)}`;
 export const filesDirName = (userId: string) => `${FILES_PREFIX}${safe(userId)}`;
 

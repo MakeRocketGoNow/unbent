@@ -4,7 +4,7 @@ import {
   openBrowserWASQLiteOPFSDatabase,
   type BrowserWASQLiteDatabase,
 } from '@tanstack/browser-db-sqlite-persistence';
-import { storeFileName } from './names.js';
+import { searchFileName, storeFileName } from './names.js';
 
 /**
  * One account's local copy of its library: a SQLite file in the browser's origin-private
@@ -66,4 +66,13 @@ export async function closeLocalStore(): Promise<void> {
   const open = current;
   current = null;
   if (open) await closeStore(open.store);
+}
+
+/**
+ * Opens the account's search index file: a second database beside the library's, on a
+ * worker of its own (see `search-index.ts` for why it is not the library's connection).
+ * Not held here — the library that opens it closes it.
+ */
+export function openSearchDatabase(userId: string): Promise<BrowserWASQLiteDatabase> {
+  return openBrowserWASQLiteOPFSDatabase({ databaseName: searchFileName(userId) });
 }

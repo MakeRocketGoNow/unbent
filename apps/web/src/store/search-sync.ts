@@ -57,11 +57,14 @@ export interface SearchSync {
   touch: (noteIds: Iterable<string> | null, opts?: { textOnly?: boolean }) => void;
   /** Something moved that decides which files' text is wanted: a file, the kept list, the connection. */
   touchFiles: () => void;
+  /** Asks for a pass with nothing new to look at: the library may have become whole, or this tab the leader. */
+  wake: () => void;
   /** A note was opened here: its files' text is wanted for as long as it is among the last few hundred. */
   opened: (noteId: string) => Promise<void>;
   /** Resolves when no pass is running or waiting to; for tests and the offline gate. */
   idle: () => Promise<void>;
-  stop: () => void;
+  /** Stops, and resolves once the pass in hand has let go of the index, so the index can be closed. */
+  stop: () => Promise<void>;
 }
 
 /** Ids a request for text carries; the server takes fifty and cuts its answer on bytes. */
@@ -273,6 +276,7 @@ export function createSearchSync(opts: SearchSyncOptions): SearchSync {
       filesDirty = true;
       nudge();
     },
+    wake: nudge,
     opened: async (noteId) => {
       await index.markOpened(noteId);
       filesDirty = true;
@@ -293,10 +297,12 @@ export function createSearchSync(opts: SearchSyncOptions): SearchSync {
         await running;
       }
     },
-    stop: () => {
+    stop: async () => {
       stopped = true;
       if (timer) clearTimeout(timer);
+      timer = null;
       channel?.close();
+      await running;
     },
   };
 }
