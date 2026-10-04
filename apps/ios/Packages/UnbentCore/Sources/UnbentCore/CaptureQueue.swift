@@ -64,11 +64,11 @@ public final class CaptureQueue: NSObject, @unchecked Sendable {
     private let work = DispatchQueue(label: "app.unbent.capture")
     private var urlSessions: [String: URLSession] = [:]
     private var eventHandlers: [String: () -> Void] = [:]
-    /// Whether a pass of `resumeAll` is under way, and whether another was asked for
-    /// meanwhile. Read and written on `work`.
     /// Sessions whose results were all applied before the system's handler for them had
     /// arrived. See `handleEvents`.
     private var finishedEarly = Set<String>()
+    /// Whether a pass of `resumeAll` is under way, and whether another was asked for
+    /// meanwhile. Read and written on `work`.
     private var resuming = false
     private var resumeAgain = false
     private let log = Logger(subsystem: Bundle.main.bundleIdentifier ?? "unbent", category: "capture")
