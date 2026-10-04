@@ -678,9 +678,11 @@ export function registerWriteTools(server: McpServer, notes: NotesRepo): void {
 
   /**
    * Field definitions can be made and changed here but not deleted or reordered. Deleting
-   * one takes every value with it, and delete_note's promise — that nothing here is
-   * unrecoverable — is worth more than the symmetry. Order is a display concern for the
-   * person, not the model.
+   * one takes every value with it, and that is the line these tools hold: no note, and
+   * nothing a note holds, is destroyed here. A label or a container can be — delete_tag,
+   * a tag merge and delete_notebook cannot be undone — but the notes and their values
+   * come through each of those, where a deleted field's values would not. That is worth
+   * more than the symmetry. Order is a display concern for the person, not the model.
    */
   server.registerTool(
     'create_notebook_field',
