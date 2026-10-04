@@ -327,7 +327,7 @@ describe('a replayed write', () => {
     expect(engine.pull).toHaveBeenCalled();
   });
 
-  it('ends for good on a 4xx the server would give again, and is kept for a lost connection, a lapsed session, a timeout and a rate limit', async () => {
+  it('ends for good on a 4xx the server would give again, and is kept for one that may change', async () => {
     const { fake } = library([row('n1'), row('n2')]);
     await actions.trashNotes(['n1']);
     await actions.trashNotes(['n2']);
