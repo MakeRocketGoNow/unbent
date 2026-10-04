@@ -943,8 +943,12 @@ export class NotesStore {
     if (!current) return null;
     const revision = this.revisions.get(id, revisionId, Date.now());
     if (!revision) return null;
-    const { skipped } = this.planRestore(current, revision);
-    return skipped.length > 0 ? { ...revision, unfit: skipped } : revision;
+    const { skipped, renamedTags } = this.planRestore(current, revision);
+    return {
+      ...revision,
+      ...(skipped.length > 0 ? { unfit: skipped } : {}),
+      ...(renamedTags.length > 0 ? { renamedTags } : {}),
+    };
   }
 
   /**
@@ -1103,10 +1107,18 @@ export class NotesStore {
   private planRestore(
     current: Note,
     revision: NoteRevision,
-  ): { notebookId?: string | null; tags?: string[]; fields: NoteFieldsPatch; skipped: RevisionSkip[] } {
+  ): {
+    notebookId?: string | null;
+    tags?: string[];
+    fields: NoteFieldsPatch;
+    skipped: RevisionSkip[];
+    /** The copy's tags that go by another name today, for the sheet; see `NoteRevision`. */
+    renamedTags: Array<{ id: string; name: string }>;
+  } {
     const props = revision.props;
-    if (!props) return { fields: {}, skipped: [] };
+    if (!props) return { fields: {}, skipped: [], renamedTags: [] };
     const skipped: RevisionSkip[] = [];
+    const renamedTags: Array<{ id: string; name: string }> = [];
     const plan: { notebookId?: string | null; tags?: string[] } = {};
 
     let notebookStays = false;
@@ -1134,8 +1146,10 @@ export class NotesStore {
       const tags: string[] = [];
       for (const tag of props.tags) {
         const name = live.get(tag.id);
-        if (name !== undefined) tags.push(name);
-        else skipped.push({ what: 'tag', id: tag.id, name: tag.name, why: 'deleted' });
+        if (name !== undefined) {
+          tags.push(name);
+          if (name !== tag.name) renamedTags.push({ id: tag.id, name });
+        } else skipped.push({ what: 'tag', id: tag.id, name: tag.name, why: 'deleted' });
       }
       if (!sameTagSet(tags, current.tags)) plan.tags = tags;
     }
@@ -1191,7 +1205,7 @@ export class NotesStore {
       fields[fieldId] = null;
     }
 
-    return { ...plan, fields, skipped };
+    return { ...plan, fields, skipped, renamedTags };
   }
 
   /**

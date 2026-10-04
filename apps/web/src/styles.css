@@ -7672,9 +7672,11 @@ button.settings-nav-item {
 
 .history-prop dt { overflow-wrap: anywhere; }
 
+/* Its own wrapping, not the diff's: a value is prose, and a long address must break. */
 .history-prop dd {
+  min-width: 0;
   margin: 0;
-  white-space: normal;
+  overflow-wrap: anywhere;
 }
 
 /* Pulled out to the box's edges, so a line's wash reads as the line and not as a chip. */

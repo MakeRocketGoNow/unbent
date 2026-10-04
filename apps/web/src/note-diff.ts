@@ -221,10 +221,9 @@ function changeRows(removed: string[], added: string[]): DiffRow[] {
  * A field value with enough of its definition to draw it: what a version holds for each
  * field, and what the workspace can say of each value on screen.
  */
-export type PropValue = Pick<NoteFieldValue, 'fieldId' | 'name' | 'type' | 'value' | 'scale' | 'currency'> & {
-  /** The notebook the field belongs to, when known; see the last rule of `diffProps`. */
-  notebookId?: string;
-};
+export type PropValue = Pick<NoteFieldValue, 'fieldId' | 'name' | 'type' | 'value' | 'scale' | 'currency'> &
+  // The notebook the field belongs to, when known; see the last rule of `diffProps`.
+  Partial<Pick<NoteFieldValue, 'notebookId'>>;
 
 /**
  * The note on screen, beyond its text: where it is filed, its tags and its field values
@@ -241,13 +240,15 @@ export interface CurrentProps {
  * One line of what Restore would do to the note's notebook, tags and fields. `from` is
  * the note now and `to` the version, as everywhere in this file; null is "none" — no
  * notebook, no value. `unfit` is something the version holds that Restore would leave as
- * the note has it, with the server's reason: `held` is the value the version has and
+ * the note has it, with the server's reason (`tags-gone` is that for the version's
+ * deleted tags, all on one line): `held` is the value the version has and
  * Restore cannot put back, `stays` a value the note has and Restore will not take away.
  */
 export type PropChange =
   | { kind: 'notebook'; from: string | null; to: string | null }
   | { kind: 'tags'; same: string[]; removed: string[]; added: string[] }
   | { kind: 'field'; name: string; from: PropValue | null; to: PropValue | null }
+  | { kind: 'tags-gone'; names: string[] }
   | { kind: 'unfit'; skip: RevisionSkip; held?: PropValue; stays?: PropValue };
 
 /** As the store compares two values: a list as a list, anything else as its text. */
@@ -266,12 +267,17 @@ function sameValue(a: FieldValue, b: FieldValue): boolean {
  * stays where it is, that notebook's values stay with it, and a value under a deleted
  * field is never cleared.
  *
- * The one place the two can differ is a tag renamed since the version: the version
- * knows the old name and this device compares names, so it shows the old name going in
- * and the new one coming out where the restore, which goes by id, leaves the tag alone.
- * Asking the server for today's names would fix it for a case that is rare and harmless.
+ * A tag renamed since the version is compared under today's name (`renamed`, from the
+ * server, which goes by id): the note carries it under that name, so the version's old
+ * name would read as one tag going on and another coming off where the restore leaves
+ * the tag alone.
  */
-export function diffProps(current: CurrentProps, props: NoteRevisionProps, unfit: readonly RevisionSkip[] = []): PropChange[] {
+export function diffProps(
+  current: CurrentProps,
+  props: NoteRevisionProps,
+  unfit: readonly RevisionSkip[] = [],
+  renamed: ReadonlyArray<{ id: string; name: string }> = [],
+): PropChange[] {
   const changes: PropChange[] = [];
   const skip = (what: RevisionSkip['what'], id: string) => unfit.find((u) => u.what === what && u.id === id);
 
@@ -290,16 +296,16 @@ export function diffProps(current: CurrentProps, props: NoteRevisionProps, unfit
     if (!same) changes.push({ kind: 'notebook', from: now?.name ?? null, to: then?.name ?? null });
   }
 
-  const target = props.tags.filter((t) => !skip('tag', t.id)).map((t) => t.name);
+  const target = props.tags.filter((t) => !skip('tag', t.id)).map((t) => renamed.find((r) => r.id === t.id)?.name ?? t.name);
   const removed = current.tags.filter((t) => !target.includes(t));
   const added = target.filter((t) => !current.tags.includes(t));
   if (removed.length > 0 || added.length > 0) {
     changes.push({ kind: 'tags', same: current.tags.filter((t) => target.includes(t)), removed, added });
   }
-  for (const tag of props.tags) {
-    const skipped = skip('tag', tag.id);
-    if (skipped) changes.push({ kind: 'unfit', skip: skipped });
-  }
+  // One line for every tag that is gone, however many: a line each was a column of
+  // rows all labelled "Tags".
+  const gone = props.tags.flatMap((t) => skip('tag', t.id) ?? []);
+  if (gone.length > 0) changes.push({ kind: 'tags-gone', names: gone.map((g) => g.name) });
 
   const held = new Map(current.fields.map((v) => [v.fieldId, v]));
   for (const was of props.fields) {

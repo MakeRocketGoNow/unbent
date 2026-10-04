@@ -196,6 +196,11 @@ describe('diffProps', () => {
     ]);
   });
 
+  it('reads a tag renamed since under today\'s name, as the restore does', () => {
+    const current = now({ tags: ['Drama'], fields: version.fields });
+    expect(diffProps(current, version, [], [{ id: 't-drama', name: 'Drama' }])).toEqual([]);
+  });
+
   it('brings back a value the note has lost, and clears one it has gained', () => {
     const gained = value('f-place', 'Place', 'Hall', 'nb-shelf');
     expect(diffProps(now({ fields: [value('f-status', 'Status', 'Queued'), gained] }), version)).toEqual([
@@ -210,7 +215,7 @@ describe('diffProps', () => {
       { what: 'field' as const, id: 'f-status', name: 'Status', why: 'option' as const },
     ];
     expect(diffProps(now({ tags: [] }), version, unfit)).toEqual([
-      { kind: 'unfit', skip: unfit[0] },
+      { kind: 'tags-gone', names: ['drama'] },
       { kind: 'unfit', skip: unfit[1], held: expect.objectContaining({ value: 'Queued' }) },
     ]);
   });

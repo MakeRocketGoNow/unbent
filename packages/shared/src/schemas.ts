@@ -882,6 +882,13 @@ export interface NoteRevision extends NoteRevisionSummary {
    * everything fits.
    */
   unfit?: RevisionSkip[];
+  /**
+   * The version's tags that have been renamed since, under today's names. `props` keeps
+   * the name of the time, which is what the version is shown with; Restore goes by id
+   * and leaves a renamed tag alone, and this is how the Changes view knows to as well.
+   * Absent when none has been renamed.
+   */
+  renamedTags?: Array<{ id: string; name: string }>;
 }
 
 /** A notebook as the list reports it. */

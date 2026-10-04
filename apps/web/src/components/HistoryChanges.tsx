@@ -1,6 +1,7 @@
 import { useMemo, useState, type ReactNode } from 'react';
 import type { NoteRevision, RevisionSkip } from '@unbent/shared';
 import { diffNote, diffProps, type CurrentProps, type DiffPart, type DiffRow, type PropChange, type PropValue } from '../note-diff.js';
+import { andList } from '../and-list.js';
 import { formatFieldValue } from './format-field.js';
 import { RowChevronIcon } from './icons.js';
 
@@ -11,7 +12,7 @@ interface HistoryChangesProps {
   /** The workspace's draft, which the sheet's opening flushed. */
   current: HistoryCurrent;
   /** The version Restore would put back, with what the server says Restore would skip. */
-  version: Pick<NoteRevision, 'title' | 'body' | 'props' | 'unfit'>;
+  version: Pick<NoteRevision, 'title' | 'body' | 'props' | 'unfit' | 'renamedTags'>;
 }
 
 /**
@@ -68,9 +69,9 @@ export function HistoryChanges({ current, version }: HistoryChangesProps) {
     () => {
       if (!version.props) return [];
       const [notebook, tags, fields] = JSON.parse(filed) as [CurrentProps['notebook'], string[], PropValue[]];
-      return diffProps({ notebook, tags, fields }, version.props, version.unfit);
+      return diffProps({ notebook, tags, fields }, version.props, version.unfit, version.renamedTags);
     },
-    [filed, version.props, version.unfit],
+    [filed, version.props, version.unfit, version.renamedTags],
   );
   const unrecorded = version.props === undefined && (
     <p className="history-diff-note small">
@@ -88,7 +89,7 @@ export function HistoryChanges({ current, version }: HistoryChangesProps) {
     );
   }
 
-  const marked = diff.titleChanged || Array.isArray(diff.body) || props.some((p) => p.kind !== 'unfit');
+  const marked = diff.titleChanged || Array.isArray(diff.body) || props.some((p) => p.kind !== 'unfit' && p.kind !== 'tags-gone');
   return (
     <div className="history-diff">
       {/* Only over marks it explains: above "too different to compare" alone it described
@@ -133,7 +134,7 @@ export function PropLine({ label, className, children }: { label: string; classN
   return (
     <div className={className ? `history-prop ${className}` : 'history-prop'}>
       <dt className="muted small">{label}</dt>
-      <dd className="history-diff-text">{children}</dd>
+      <dd>{children}</dd>
     </div>
   );
 }
@@ -179,7 +180,6 @@ export const shown = (v: PropValue) => formatFieldValue(v.type, v.value, v.scale
  */
 export function skipReason(skip: RevisionSkip, held?: string): string {
   if (skip.what === 'notebook') return `“${skip.name}” has been deleted, so the note stays where it is.`;
-  if (skip.what === 'tag') return `“${skip.name}” has been deleted, and is not put back.`;
   const value = held === undefined ? 'its value' : `“${held}”`;
   if (skip.why === 'deleted') return `This field has been deleted, so ${value} is not put back.`;
   if (skip.why === 'option') return `This field no longer offers ${value}, so it stays as it is.`;
@@ -223,8 +223,20 @@ function PropChangeLine({ change }: { change: PropChange }) {
       </PropLine>
     );
   }
+  if (change.kind === 'tags-gone') {
+    const names = andList(change.names.map((n) => `“${n}”`));
+    return (
+      <PropLine label="Tags">
+        <span className="muted">
+          {change.names.length === 1
+            ? `${names} has been deleted, and is not put back.`
+            : `${names} have been deleted, and are not put back.`}
+        </span>
+      </PropLine>
+    );
+  }
   const { skip, held, stays } = change;
-  const label = skip.what === 'notebook' ? 'Notebook' : skip.what === 'tag' ? 'Tags' : skip.name;
+  const label = skip.what === 'notebook' ? 'Notebook' : skip.name;
   return (
     <PropLine label={label}>
       <span className="muted">

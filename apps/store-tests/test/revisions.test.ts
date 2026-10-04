@@ -231,7 +231,11 @@ describe('history: putting fields, tags and the notebook back', () => {
     await stub.renameTag(await tagId(stub, 'drama'), 'Drama');
     await stub.updateField(nb.id, status.id, { name: 'State' });
 
-    expect((await stub.getRevision(id, copy!.id))!).not.toHaveProperty('unfit');
+    const whole = (await stub.getRevision(id, copy!.id))!;
+    expect(whole).not.toHaveProperty('unfit');
+    // The name of the time in what it holds, and today's beside it for the sheet.
+    expect(whole.props!.tags).toEqual([expect.objectContaining({ name: 'drama' })]);
+    expect(whole.renamedTags).toEqual([expect.objectContaining({ name: 'Drama' })]);
     const restored = (await stub.restoreRevision(id, copy!.id)) as RestoredNote;
     expect(restored.note).toMatchObject({ notebook: 'Films', tags: ['Drama'] });
     expect(valuesOf(restored.note)).toEqual({ State: 'Queued', Year: 1999 });
