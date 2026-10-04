@@ -2,6 +2,7 @@ import { z } from 'zod';
 import {
   FIELD_FILTER_OPS,
   MAX_BATCH_NOTES,
+  MAX_FIELD_FILTERS,
   MAX_FIELD_VALUE_LENGTH,
   MAX_TAG_LENGTH,
   UNFILED,
@@ -80,7 +81,7 @@ const fieldFiltersSchema = z
       value: z.string().max(MAX_FIELD_VALUE_LENGTH).optional(),
     }),
   )
-  .max(10)
+  .max(MAX_FIELD_FILTERS)
   .optional()
   .describe(
     'Narrow by custom field values; every filter must hold. Needs notebook, since fields ' +
