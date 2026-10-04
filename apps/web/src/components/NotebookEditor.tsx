@@ -3,6 +3,7 @@ import { Link } from '@tanstack/react-router';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   CURRENCY_CODES,
+  DEFAULT_RATING_SCALE,
   FIELD_TYPES,
   FIELD_TYPE_LABELS,
   MAX_NOTEBOOK_PURPOSE_LENGTH,
@@ -129,7 +130,7 @@ export function NotebookEditor({ notebookId, onChanged, onDeleted }: NotebookEdi
      turned back into a type and a scale at the moment the field is created.
   */
   const [newIsRating, setNewIsRating] = useState(false);
-  const [newScale, setNewScale] = useState<FieldScale>({ max: 5, step: 0.5 });
+  const [newScale, setNewScale] = useState<FieldScale>(DEFAULT_RATING_SCALE);
   // "Currency" is the same kind of picker entry as "Rating": a `number` with something
   // beside it, held here and turned back into a type and a currency on create.
   const [newIsCurrency, setNewIsCurrency] = useState(false);
@@ -267,7 +268,7 @@ export function NotebookEditor({ notebookId, onChanged, onDeleted }: NotebookEdi
       setNewType('text');
       setNewOptions([]);
       setNewIsRating(false);
-      setNewScale({ max: 5, step: 0.5 });
+      setNewScale(DEFAULT_RATING_SCALE);
       setNewIsCurrency(false);
       setNewCurrency(DEFAULT_CURRENCY);
     });
