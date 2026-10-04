@@ -112,9 +112,11 @@ function SecurityPage() {
   }
 
   return (
-    <section className="settings-panel">
-      <h2>Passkeys</h2>
-      <p className="muted">
+    <section className="panel">
+      <div className="panel-head">
+        <h2>Passkeys</h2>
+      </div>
+      <p className="muted small">
         Sign in with your fingerprint, face, or screen lock instead of a password. A passkey
         stays on the device that made it, so add one on each device you use.
       </p>
@@ -127,12 +129,12 @@ function SecurityPage() {
         </Button>
       )}
 
-      {error && <p className="bad">{error}</p>}
+      {error && <p className="bad small">{error}</p>}
 
       {keys === null ? (
-        <p className="muted">Loading…</p>
+        <p className="muted small">Loading…</p>
       ) : keys.length === 0 ? (
-        <p className="muted">No passkeys yet.</p>
+        <p className="muted small">No passkeys yet.</p>
       ) : (
         <ul className="owned-list">
           {keys.map((k) => (
@@ -273,7 +275,7 @@ function Reverify({ onVerified, onCancel }: ReverifyProps) {
       return (
         <form className="login-form reverify-form" onSubmit={(e) => void verifyCode(e)}>
           {intro}
-          <p className="muted">We sent a code to {email}. It expires in five minutes.</p>
+          <p className="muted small">We sent a code to {email}. It expires in five minutes.</p>
           <label>
             Code
             <input

@@ -3673,9 +3673,14 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
  * The panel every settings page sits in.
  *
  * Named for the import when that was the only one; it now holds notebooks, export and
- * maintenance too. `.settings-panel` is the same card for Security and Connected apps,
- * which needed their own name because they already had a `.settings-section` inside them
- * and a class cannot describe both a page's outer card and an element nested in it.
+ * maintenance, security and connected apps too — every settings page, with its heading in
+ * a `.panel-head` and its prose `.muted.small`. Security and Connected apps once used
+ * `.settings-panel` with a bare `<h2>` and unsized copy, which drew the same card around a
+ * 24px heading and 16px text while every sibling page was set at a third less; one class
+ * and one heading rule is what keeps them from drifting apart again.
+ *
+ * `.settings-panel` remains for the OAuth consent screen, which is not a settings page: it
+ * stands alone, one decision with nothing beside it, and its larger heading is the point.
  *
  * `align-items: flex-start` is the part that matters most here: without it, a flex column
  * stretches every child to the container's full width, which is what sent a plain `<Button>`
@@ -5825,6 +5830,21 @@ button.settings-nav-item {
 }
 
 .settings-section p { margin: 0 0 0.7rem; max-width: 46rem; }
+
+/*
+   Settings prose: one size, and not below 13px.
+
+   Every settings page explains itself in `.muted.small` paragraphs, and at the app-wide
+   0.78rem (12.5px) that explanation was smaller than the buttons it describes, which are
+   0.85rem. These pages are read rather than scanned — what a pass deletes, where a
+   passkey lives — so the copy is set at the buttons' size instead.
+
+   Scoped to the settings body rather than changed on `.small` itself, because `.small` is
+   also a note row's date and a chip's count, where 12.5px is the density the list needs.
+   Status lines and dates inside settings rise with the prose on purpose: beside a 13.6px
+   sentence, a 12.5px "Done." reads as a footnote rather than the outcome.
+*/
+.settings-body .small { font-size: 0.85rem; }
 
 /*
  * The MCP server URL and its copy button, inline in a paragraph.
