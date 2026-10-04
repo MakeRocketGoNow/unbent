@@ -129,12 +129,35 @@ function servedByWorker(path: string): boolean {
  * One rule for every caller that is handed a path from outside the router: the app's
  * `open` above, and a link in a note written from the root (`[Import](/settings/import)`,
  * which the welcome note uses — see `SITE_PATH` in the rich editor). Only a path from the
- * root, never `//host`, and never one the Worker answers, which the router has no page
- * for; each caller falls back to what it did before when this refuses.
+ * root, never `//host`, never one the Worker answers, and only one the router has a page
+ * for; each caller falls back to what it did before when this refuses — the editor and
+ * the preview to a new tab, the app to loading the address.
+ *
+ * "Has a page for" is the router's own matching, `getMatchedRoutes`, which names the route
+ * a path lands on. Its match is fuzzy: a path no route matches whole comes back as the
+ * deepest route it partly matched, with what was left over under the `**` param —
+ * `/settings/nowhere` is `/settings` plus `**: 'nowhere'` — and that is a not-found page
+ * as surely as no route at all. This app defines no catch-all route, so either one means
+ * the not-found page. Without the check a note imported from another tool, with a link
+ * like `/Folder/Note.md` in it, swapped the open note for that page on a plain click.
  */
-export function openSitePath(router: { navigate: (opts: { href: string }) => unknown }, path: string): boolean {
+export function openSitePath(
+  router: {
+    navigate: (opts: { href: string }) => unknown;
+    getMatchedRoutes: (pathname: string) => readonly [unknown, Record<string, string>, unknown];
+  },
+  path: string,
+): boolean {
   if (!path.startsWith('/') || path.startsWith('//')) return false;
   if (servedByWorker(path)) return false;
+  let pathname: string;
+  try {
+    pathname = new URL(path, 'http://site.invalid').pathname;
+  } catch {
+    return false;
+  }
+  const [, leftover, found] = router.getMatchedRoutes(pathname);
+  if (found === undefined || '**' in leftover) return false;
   void router.navigate({ href: path });
   return true;
 }
