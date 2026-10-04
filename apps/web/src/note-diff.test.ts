@@ -187,6 +187,13 @@ describe('diffProps', () => {
     expect(diffProps(now({ fields: [value('f-status', 'Status', 'Queued'), value('f-year', 'Year', '1999')] }), version)).toEqual([]);
   });
 
+  it('reads a multi-select picked in another order as the same value', () => {
+    // The draft holds options in the order they were picked, the version in the option
+    // list's; Restore writes nothing for that, so Changes must not draw a line for it.
+    const picked = { ...version, fields: [...version.fields, value('f-genre', 'Genre', ['Comedy', 'Drama'])] };
+    expect(diffProps(now({ fields: [...version.fields, value('f-genre', 'Genre', ['Drama', 'Comedy'])] }), picked)).toEqual([]);
+  });
+
   it('says a tag going on and one coming off, and a notebook by its id', () => {
     const changes = diffProps(now({ notebook: { id: 'nb-list', name: 'Films' }, tags: ['seen'], fields: version.fields }), version);
     // Renamed since, and still the notebook the version means.

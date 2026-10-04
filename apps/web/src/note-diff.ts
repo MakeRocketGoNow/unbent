@@ -1,5 +1,6 @@
 import type { FieldValue, NoteFieldValue, NoteRevisionProps, RevisionSkip } from '@unbent/shared';
 import { diffArrays, diffWordsWithSpace } from 'diff';
+import { sameFieldValue } from './note-patch.js';
 
 /**
  * What restoring a version would do to a note, line by line (MAK-167).
@@ -251,11 +252,6 @@ export type PropChange =
   | { kind: 'tags-gone'; names: string[] }
   | { kind: 'unfit'; skip: RevisionSkip; held?: PropValue; stays?: PropValue };
 
-/** As the store compares two values: a list as a list, anything else as its text. */
-function sameValue(a: FieldValue, b: FieldValue): boolean {
-  return Array.isArray(a) || Array.isArray(b) ? JSON.stringify(a) === JSON.stringify(b) : String(a) === String(b);
-}
-
 /**
  * What restoring a version would do to the note's notebook, tags and field values, in
  * the order the note's own head has them. Empty when it would do nothing.
@@ -310,7 +306,7 @@ export function diffProps(
   const held = new Map(current.fields.map((v) => [v.fieldId, v]));
   for (const was of props.fields) {
     const stands = held.get(was.fieldId);
-    if (stands && sameValue(stands.value, was.value)) continue;
+    if (stands && sameFieldValue(stands.value, was.value)) continue;
     const skipped = skip('field', was.fieldId);
     if (skipped) changes.push({ kind: 'unfit', skip: skipped, held: was });
     else changes.push({ kind: 'field', name: stands?.name ?? was.name, from: stands ?? null, to: was });
