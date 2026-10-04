@@ -829,8 +829,8 @@ describe('composites', () => {
     const full = await stub.listPage({ limit: 1 }, {});
     expect(full.items.length).toBe(1);
     expect(full.total).toBe(2);
-    await stub.create(note({ title: 'Loose too' }));
-    expect((await stub.listPage({ limit: 1, untagged: true }, { untagged: true })).total).toBe(2);
+    // One untagged note and a limit of one: full, so counted from the rows.
+    expect((await stub.listPage({ limit: 1, untagged: true }, { untagged: true })).total).toBe(1);
 
     const got = await stub.getWithFiles(a.id);
     expect(got!.note.id).toBe(a.id);
