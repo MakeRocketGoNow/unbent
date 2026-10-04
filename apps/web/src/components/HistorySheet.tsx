@@ -1,6 +1,7 @@
-import { useEffect, useState, type RefObject } from 'react';
+import { useEffect, useRef, useState, type RefObject } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { NoteRevisionSummary } from '@unbent/shared';
+import { useOffline } from '../connectivity.js';
 import * as api from '../notes-api.js';
 import { keys, revisionQuery, revisionsQuery } from '../queries.js';
 import * as actions from '../store/actions.js';
@@ -73,6 +74,13 @@ export function describeRevision(revision: Pick<NoteRevisionSummary, 'cause' | '
  */
 export function HistorySheet({ open, onClose, noteId, anchor, saved, onRestore }: HistorySheetProps) {
   const queryClient = useQueryClient();
+  /*
+     The connection can go while the sheet is open, though the menu it opened from fades
+     without one. What needs the server then fades in place, as that menu does: opening
+     a version not yet read, and Restore.
+  */
+  const offline = useOffline();
+  const offlineTitle = offline ? 'Not available offline' : undefined;
   const [picked, setPicked] = useState<NoteRevisionSummary | null>(null);
   const [restoring, setRestoring] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
@@ -131,6 +139,27 @@ export function HistorySheet({ open, onClose, noteId, anchor, saved, onRestore }
     setFailure(null);
   };
 
+  /*
+     Focus follows the page. Choosing a row removes the row, and Back removes the page it
+     was on, so focus fell to the dialog and a keyboard or a screen reader was left
+     nowhere, on a page it had not been told had changed. Into a version, focus goes to
+     Back — the first control of the new page, and its name says there is a way out; out
+     of one, to the row that was opened, so the list is where it was left.
+  */
+  const page = useRef<HTMLDivElement>(null);
+  const rows = useRef(new Map<number, HTMLButtonElement>());
+  const cameFrom = useRef<number | null>(null);
+  useEffect(() => {
+    if (!open) return;
+    if (picked) {
+      cameFrom.current = picked.id;
+      page.current?.closest('dialog')?.querySelector<HTMLElement>('.sheet-back')?.focus();
+    } else if (cameFrom.current !== null) {
+      rows.current.get(cameFrom.current)?.focus();
+      cameFrom.current = null;
+    }
+  }, [picked, open]);
+
   return (
     <Sheet
       open={open}
@@ -141,7 +170,7 @@ export function HistorySheet({ open, onClose, noteId, anchor, saved, onRestore }
       {...(picked ? { onBack: back } : {})}
     >
       {picked ? (
-        <div className="history-page">
+        <div className="history-page" ref={page}>
           <p className="history-what muted small">{describeRevision(picked)}</p>
           <div className="history-copy">
             {copy.isPending ? (
@@ -168,7 +197,12 @@ export function HistorySheet({ open, onClose, noteId, anchor, saved, onRestore }
           )}
           <div className="history-foot">
             <p className="muted small">The note as it is now is kept in History, so this can be undone.</p>
-            <Button variant="primary" disabled={restoring || !copy.isSuccess} onClick={() => void restore()}>
+            <Button
+              variant="primary"
+              disabled={restoring || !copy.isSuccess || offline}
+              title={offlineTitle}
+              onClick={() => void restore()}
+            >
               {restoring ? 'Restoring…' : 'Restore this version'}
             </Button>
           </div>
@@ -192,7 +226,17 @@ export function HistorySheet({ open, onClose, noteId, anchor, saved, onRestore }
             <ul className="history-list">
               {list.data.map((revision) => (
                 <li key={revision.id}>
-                  <button type="button" className="history-row" onClick={() => setPicked(revision)}>
+                  <button
+                    type="button"
+                    className="history-row"
+                    ref={(el) => {
+                      if (el) rows.current.set(revision.id, el);
+                      else rows.current.delete(revision.id);
+                    }}
+                    disabled={offline}
+                    title={offlineTitle}
+                    onClick={() => setPicked(revision)}
+                  >
                     <span className="history-row-text">
                       <span className="history-when">{formatRevisionWhen(revision.createdAt)}</span>
                       <span className="history-what muted small">{describeRevision(revision)}</span>

@@ -1,8 +1,9 @@
 import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest';
-import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, cleanup, fireEvent, waitFor, act } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { NoteRevision, NoteRevisionSummary } from '@unbent/shared';
 import * as api from '../notes-api.js';
+import { resetConnectivity, setReachableForTests } from '../connectivity.js';
 import { describeRevision, HistorySheet } from './HistorySheet.js';
 import { formatRevisionWhen } from './format-when.js';
 
@@ -53,6 +54,7 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
+  resetConnectivity();
   vi.clearAllMocks();
   vi.unstubAllGlobals();
 });
@@ -143,6 +145,30 @@ describe('HistorySheet', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Back' }));
     expect(screen.getByRole('heading', { level: 2 }).textContent).toBe('History');
+  });
+
+  it('moves focus with the page: to Back on a version, and to its row on the way back', async () => {
+    vi.mocked(api.listRevisions).mockResolvedValue([gutted, typed]);
+    vi.mocked(api.getRevision).mockResolvedValue(whole);
+    mount();
+    fireEvent.click((await screen.findAllByRole('button', { name: /characters?$/ }))[1]!);
+    const back = screen.getByRole('button', { name: 'Back' });
+    await waitFor(() => expect(document.activeElement).toBe(back));
+    fireEvent.click(back);
+    await waitFor(() => expect(document.activeElement?.textContent).toContain('1 character'));
+  });
+
+  it('fades what needs the server when the connection goes while it is open', async () => {
+    vi.mocked(api.listRevisions).mockResolvedValue([gutted]);
+    vi.mocked(api.getRevision).mockResolvedValue(whole);
+    mount();
+    fireEvent.click(await screen.findByRole('button', { name: /characters$/ }));
+    await screen.findByTestId('preview');
+    const restore = screen.getByRole<HTMLButtonElement>('button', { name: 'Restore this version' });
+    expect(restore.disabled).toBe(false);
+    act(() => setReachableForTests(false));
+    await waitFor(() => expect(restore.disabled).toBe(true));
+    expect(restore.title).toBe('Not available offline');
   });
 
   it('does not offer Restore until the version has loaded', async () => {
