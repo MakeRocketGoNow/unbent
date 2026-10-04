@@ -4,7 +4,7 @@ import { useQuery, useInfiniteQuery, useQueryClient, useMutation } from '@tansta
 import { DEFAULT_NOTE_SORT, UNFILED, type FieldDef, type FieldValue } from '@unbent/shared';
 import * as api from '../notes-api.js';
 import * as actions from '../store/actions.js';
-import { isOfflineError, type SearchHit } from '../notes-api.js';
+import { isOfflineError } from '../notes-api.js';
 import { Route } from '../routes/notes.js';
 import {
   notesQuery,
@@ -69,7 +69,6 @@ import { MoveSheet } from './MoveSheet.js';
 import { TagsSheet } from './TagsSheet.js';
 import { editOpenNoteFiling } from '../open-note-fields.js';
 import { useAppSession } from '../useAppSession.js';
-import { useOffline } from '../connectivity.js';
 import { useLibraryArriving } from '../store/use-feed-state.js';
 import { useSignOut } from '../useSignOut.js';
 
@@ -234,7 +233,6 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
     const timer = setTimeout(() => setDebounced(q), 300);
     return () => clearTimeout(timer);
   }, [q]);
-  const offline = useOffline();
 
   /*
    * One sidebar at every width, with the breakpoint deciding a handful of props rather

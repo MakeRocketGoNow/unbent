@@ -292,7 +292,7 @@ async function open(userId: string): Promise<Library> {
     collections.notes.subscribeChanges((changes) => {
       const roots = rootsOfNoteChanges(changes);
       changed(roots);
-      search?.sync.touch(changes.map((c) => String(c.key)), { textOnly: roots !== LIBRARY_ROOTS });
+      search?.sync.touch(changes.map((c) => String(c.key)), { textOnly: !roots.has('tags') });
     }),
     // A renamed field is read from its definition when a match is drawn; nothing indexed changes.
     collections.notebooks.subscribeChanges(everything),

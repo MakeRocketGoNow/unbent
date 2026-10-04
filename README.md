@@ -1110,7 +1110,8 @@ Auto-fill, and the settings pages that manage notebooks, tags and fields. A lost
 is never taken for signing out.
 
 Search works without a connection too. The device keeps an index of its own beside the
-library — the same FTS5, stemmer and ranking the server uses, in the same WASM SQLite — over
+library — the same FTS5, stemmer and ranking the server uses, in the SQLite the library
+already runs in the browser — over
 every note's title, body, tags and field values, and with no connection the search box asks
 it instead: the same results, the same filters. The text inside files is the exception. It
 is the largest thing an account stores after the files themselves, so a device holds it
