@@ -849,6 +849,8 @@ describe('rows read on an archive-sized store', () => {
       await measure('history list', () => stub.listRevisions('n00021')),
       await measure('history copy', async () => stub.getRevision('n00021', (await stub.listRevisions('n00021'))![5]!.id)),
       await measure('history restore', async () => stub.restoreRevision('n00021', (await stub.listRevisions('n00021'))![5]!.id)),
+      // A note with a full history, untouched above.
+      await measure('history clear', () => stub.clearRevisions('n00022')),
     ];
     console.log(results.map((r) => `${r.label}: ${r.rowsRead}`).join('\n'));
     const bounds: Record<string, number> = {
@@ -892,6 +894,9 @@ describe('rows read on an archive-sized store', () => {
       'history list': 30,
       'history copy': 35,
       'history restore': 100,
+      // The note's live row, then its twenty copies and their index entries, of six
+      // thousand (measured 2026-10-03 at 62).
+      'history clear': 80,
     };
     for (const r of results) {
       expect(r.rowsRead, r.label).toBeLessThanOrEqual(bounds[r.label]!);
