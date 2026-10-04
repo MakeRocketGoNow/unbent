@@ -21,11 +21,12 @@ import { ResizeHandle } from './ResizeHandle.js';
 import { NoteListItem } from './NoteListItem.js';
 import { useListKeys, enterList } from '../useListKeys.js';
 import { useFocusSearch } from '../useFocusSearch.js';
-import { markNewNote } from '../useNewNote.js';
+import { useCreateNote } from '../useCreateNote.js';
 import { useNewNoteRequest } from '../useNewNoteRequest.js';
 import { SearchResults } from './SearchResults.js';
 import { IndexingStatus } from './IndexingStatus.js';
 import { SampleNotes } from './SampleNotes.js';
+import { EmptyLibrary } from './EmptyLibrary.js';
 import { Button } from './Button';
 import { NotebookMissing } from './NotebookMissing.js';
 import { ExportLink } from './ExportLink.js';
@@ -71,6 +72,7 @@ import { TagsSheet } from './TagsSheet.js';
 import { editOpenNoteFiling } from '../open-note-fields.js';
 import { useAppSession } from '../useAppSession.js';
 import { useLibraryArriving } from '../store/use-feed-state.js';
+import { showsWholeAccount, useLibraryTotal } from '../useLibraryTotal.js';
 import { useSignOut } from '../useSignOut.js';
 
 /** Sidebar plus the routed workspace. Filters come from the URL; nothing here is mirrored into state. */
@@ -633,6 +635,22 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
    * the wrong answer to the wrong question.
    */
   const arriving = useLibraryArriving();
+  /**
+   * How many notes the whole account holds, once that is known (`useLibraryTotal`), and
+   * whether the list on screen is the whole account. Together they are what tells an
+   * empty account from an empty notebook or a search with no matches.
+   */
+  const libraryTotal = useLibraryTotal();
+  const wholeAccount = showsWholeAccount({ notebook, tag, field, from, to, q });
+  /**
+   * The account holds no notes at all, and the list is the whole of it. On a phone the
+   * list's empty line gives way to `EmptyLibrary`; on a desktop the workspace pane draws
+   * it (`routes/notes.index.tsx`) and the line stays, so the two panes do not say the
+   * same thing twice with two sets of buttons. Never in the table, which needs a
+   * notebook, and so never in a scope this can be true of.
+   */
+  const libraryEmpty = libraryTotal === 0 && wholeAccount && results === null && !error;
+  const emptyLibraryInList = libraryEmpty && isMobile;
   /** The list's empty state, in words; both renderings say the same thing. */
   const emptyMessage =
     notes.length === 0 && !error && !list.isPending && arriving
@@ -648,8 +666,28 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
             ? 'Nothing in your inbox.'
             : notebook
               ? `No notes in ${notebook}.`
-              : 'No notes yet.'
+              : // On All notes, not until the account is known to be empty: the list's
+                // rows can be empty for a moment while the account's are not, and "No
+                // notes yet" said then is the flash the empty state takes care not to make.
+                // A date range keeps the line it always had.
+                !wholeAccount || libraryTotal === 0
+                ? 'No notes yet.'
+                : null
       : null;
+
+  /*
+   * The preview-only offer of sample notes (`SampleNotes`), on a preview whose stores are
+   * its own. Only on All notes with nothing applied: an empty notebook or filter is not an
+   * empty account, and filling it from there would read as filling that notebook.
+   *
+   * "At most one note" rather than "none", because a new account is made holding the
+   * welcome note (apps/api/src/lib/welcome-note.ts): a fresh preview account has one, and
+   * an account signed in through the dev instance's relay, whose store here started empty,
+   * has none. Both are the empty account this offer is for. Not while the total is
+   * unknown, which is also while the library is still arriving.
+   */
+  const offerSampleNotes =
+    Boolean(config.data?.ownStores) && wholeAccount && results === null && libraryTotal !== null && libraryTotal <= 1;
 
   /**
    * The same for a search drawn as a table, in the sidebar's words for each case. Nothing
@@ -699,37 +737,21 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
         ? 'Loading…'
         : `${total ?? notes.length} notes`;
 
-  async function newNote() {
-    try {
-      // Carry the active filter onto the new note, otherwise it is created and then
-      // immediately filtered out of the list the user is looking at.
-      const created = await actions.createNote({
-        // No name, rather than the literal string "Untitled". The title field's
-        // placeholder already says that word, and a placeholder is not data: a stored
-        // "Untitled" is written into the frontmatter of the exported markdown, sorted
-        // under U by the title sort, and — titles being in the FTS index — returned by a
-        // search for "untitled", all to say the note has no name yet. Android has always
-        // created notes with an empty title; this is the web agreeing with it.
-        title: '',
-        body: '',
-        // Every active tag, not just one: with two tags filtered, a note carrying only
-        // the first is still filtered out of the list it was created in.
-        tags: tag ?? [],
-        // UNFILED is a filter sentinel, not a notebook name — a note created while
-        // viewing it belongs in no notebook.
-        notebook: notebook === UNFILED ? null : (notebook ?? null),
-      });
-      await queryClient.invalidateQueries({ queryKey: ['notes'] });
-      invalidateNoteMembership(queryClient);
-      // A new note starts with its name, so the title takes the caret rather than the
-      // body. Recorded here, before navigating, because it is a fact about this note's
-      // creation and the workspace it opens has no other way to know it.
-      markNewNote(created.id);
-      void navigate({ to: '/notes/$noteId', params: { noteId: created.id }, search: (p) => p });
-    } catch (err) {
-      console.error(err);
-    }
-  }
+  const createNote = useCreateNote();
+  /**
+   * The New button and the phone's +. Carries the active filter onto the new note,
+   * otherwise it is created and then immediately filtered out of the list the user is
+   * looking at.
+   */
+  const newNote = () =>
+    createNote({
+      // Every active tag, not just one: with two tags filtered, a note carrying only
+      // the first is still filtered out of the list it was created in.
+      tags: tag ?? [],
+      // UNFILED is a filter sentinel, not a notebook name — a note created while
+      // viewing it belongs in no notebook.
+      notebook: notebook === UNFILED ? null : (notebook ?? null),
+    });
 
   return (
     <div className={layout.className} style={layout.style} ref={layout.containerRef}>
@@ -1068,7 +1090,15 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
           </button>
         )}
 
-        {tableMode ? (
+        {emptyLibraryInList ? (
+          /* In place of the list, which has nothing to list: centred in the room under the
+             header, with the floating + where it always is. `.note-list` is the column's
+             scroller and claims its height; this claims the same. */
+          <div className="empty-library-slot">
+            <EmptyLibrary heading="h3" />
+            {offerSampleNotes && <SampleNotes layout="empty" />}
+          </div>
+        ) : tableMode ? (
           <NoteTable
             notes={tableRows ?? notes}
             columns={columns}
@@ -1163,19 +1193,11 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
           {results === null && emptyMessage && (
             <li className="muted small empty">{emptyMessage}</li>
           )}
-          {/* Only on All notes with nothing applied: an empty notebook or filter is not an
-              empty account, and filling it from there would read as filling that notebook. */}
-          {results === null &&
-            emptyMessage &&
-            !arriving &&
-            config.data?.ownStores &&
-            !notebook &&
-            !tag &&
-            fieldFilters.length === 0 && (
-              <li>
-                <SampleNotes layout="empty" />
-              </li>
-            )}
+          {offerSampleNotes && (
+            <li>
+              <SampleNotes layout="empty" />
+            </li>
+          )}
         </ul>
         )}
 

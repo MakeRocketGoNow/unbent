@@ -27,3 +27,27 @@ export function useLibraryTotal(): number | null {
   const total = useQuery(libraryTotalQuery(feed ? isWhole(feed) : null));
   return total.isSuccess ? total.data : null;
 }
+
+/**
+ * Whether the notes view's address shows the whole account: All notes, with no notebook,
+ * tag, field filter, date range or search applied. The scope the empty state and the
+ * first-run opening are allowed in, because only there does "no notes here" mean "no
+ * notes at all". The sort and the view are not scope and do not count.
+ */
+export function showsWholeAccount(search: {
+  notebook?: string | undefined;
+  tag?: readonly string[] | undefined;
+  field?: readonly unknown[] | undefined;
+  from?: string | undefined;
+  to?: string | undefined;
+  q?: string | undefined;
+}): boolean {
+  return (
+    !search.notebook &&
+    (search.tag?.length ?? 0) === 0 &&
+    (search.field?.length ?? 0) === 0 &&
+    !search.from &&
+    !search.to &&
+    !search.q?.trim()
+  );
+}

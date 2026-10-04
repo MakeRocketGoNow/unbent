@@ -6,7 +6,7 @@ import type { FeedNote } from '@unbent/shared';
 import * as api from './notes-api.js';
 import { libraryTotalQuery } from './queries.js';
 import { installTestLibrary, type TestLibrary } from './store/test-library.js';
-import { useLibraryTotal } from './useLibraryTotal.js';
+import { showsWholeAccount, useLibraryTotal } from './useLibraryTotal.js';
 
 vi.mock('./notes-api.js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('./notes-api.js')>()),
@@ -84,5 +84,23 @@ describe('useLibraryTotal', () => {
     const { result } = renderHook(() => useLibraryTotal(), { wrapper });
     await new Promise((r) => setTimeout(r, 20));
     expect(result.current).toBeNull();
+  });
+});
+
+describe('showsWholeAccount', () => {
+  it('is All notes with nothing applied, whatever the order', () => {
+    expect(showsWholeAccount({})).toBe(true);
+    expect(showsWholeAccount({ q: '  ' })).toBe(true);
+    expect(showsWholeAccount({ tag: [], field: [] })).toBe(true);
+  });
+
+  it('is not a notebook, the inbox, a tag, a field, a date range or a search', () => {
+    expect(showsWholeAccount({ notebook: 'Coupons' })).toBe(false);
+    expect(showsWholeAccount({ notebook: '[unfiled]' })).toBe(false);
+    expect(showsWholeAccount({ tag: ['red'] })).toBe(false);
+    expect(showsWholeAccount({ field: ['f:set'] })).toBe(false);
+    expect(showsWholeAccount({ from: '2026-01-01' })).toBe(false);
+    expect(showsWholeAccount({ to: '2026-01-01' })).toBe(false);
+    expect(showsWholeAccount({ q: 'receipt' })).toBe(false);
   });
 });
