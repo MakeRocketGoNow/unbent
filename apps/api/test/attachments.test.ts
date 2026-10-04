@@ -798,6 +798,55 @@ describe('cross-tenant access', () => {
 });
 
 /**
+ * The text of files by id, which a device asks for to search with no connection. An id
+ * is all the request carries, so the store being the caller's own is the whole of the
+ * isolation: another account's id finds nothing, and says nothing about whether it exists.
+ */
+describe('texts by file id', () => {
+  const texts = (actor: Actor | null, body: unknown) =>
+    fetch(`${BASE}/api/attachments/texts`, {
+      method: 'POST',
+      headers: { ...(actor ? { Cookie: actor.cookie } : {}), Origin: ORIGIN, 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+
+  it('answers the text of the caller’s own files, and nothing for anyone else’s', async () => {
+    const note = await createNote(alice, 'Scanned');
+    expect((await upload(alice, note.id, 'letter.pdf', 'PDFBYTES', 'application/pdf')).status).toBe(201);
+    await upload(alice, note.id, 'unread.pdf', 'PDFBYTES2', 'application/pdf');
+    const put = await fetch(`${BASE}/api/notes/${note.id}/files/letter.pdf/text`, {
+      method: 'PUT',
+      headers: { Cookie: alice.cookie, Origin: ORIGIN, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text: 'a letter about the allotment' }),
+    });
+    expect(put.ok).toBe(true);
+
+    // The ids a device holds are the feed's.
+    const snapshot = (await (await fetch(`${BASE}/api/changes/snapshot`, { headers: { Cookie: alice.cookie, Origin: ORIGIN } })).json()) as {
+      notes: Array<{ id: string; files: Array<{ id: string; filename: string; hasText: boolean }> }>;
+    };
+    const files = snapshot.notes.find((n) => n.id === note.id)!.files;
+    const letter = files.find((f) => f.filename === 'letter.pdf')!;
+    const unread = files.find((f) => f.filename === 'unread.pdf')!;
+    expect(letter.hasText).toBe(true);
+
+    const mine = await texts(alice, { ids: [letter.id, unread.id, 'no-such-file'] });
+    expect(mine.status).toBe(200);
+    expect(await mine.json()).toEqual({ texts: [{ id: letter.id, text: 'a letter about the allotment' }], left: [] });
+
+    const theirs = await texts(bob, { ids: [letter.id] });
+    expect(theirs.status).toBe(200);
+    expect(await theirs.json()).toEqual({ texts: [], left: [] });
+  });
+
+  it('requires a session, and a list of ids no longer than fifty', async () => {
+    expect((await texts(null, { ids: ['x'] })).status).toBe(401);
+    expect((await texts(alice, { ids: [] })).status).toBe(400);
+    expect((await texts(alice, { ids: Array.from({ length: 51 }, (_, i) => `id-${i}`) })).status).toBe(400);
+  });
+});
+
+/**
  * Blob GC. R2 has no foreign keys, so metadata deletion can leave objects behind; the
  * sweep is what reclaims them. It is scoped to the caller's own prefix by design.
  */
