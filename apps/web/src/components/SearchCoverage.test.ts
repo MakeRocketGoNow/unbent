@@ -7,11 +7,11 @@ describe('coverageText', () => {
     expect(coverageText({ built: true, files: { searched: 12, total: 12 } })).toBe('Searched on this device.');
   });
 
-  it('counts the files it could not see, and says how to change that', () => {
+  it('counts the files it could not see, and says which files a device does see', () => {
     expect(coverageText({ built: true, files: { searched: 4, total: 5 } })).toBe(
-      'Searched on this device. The text of 1 file elsewhere was not searched: keep a notebook offline to search its files.',
+      'Searched on this device, without the text inside 1 file. Offline, files are searched in notebooks kept offline and in notes opened lately.',
     );
-    expect(coverageText({ built: true, files: { searched: 0, total: 1204 } })).toContain(`${(1204).toLocaleString()} files elsewhere`);
+    expect(coverageText({ built: true, files: { searched: 0, total: 1204 } })).toContain(`the text inside ${(1204).toLocaleString()} files.`);
   });
 
   it('says the index is not whole yet rather than counting files it has not reached', () => {

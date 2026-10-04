@@ -25,5 +25,11 @@ export function coverageText({ built, files }: LocalCoverage): string {
   const missed = files.total - files.searched;
   if (missed <= 0) return 'Searched on this device.';
   const what = missed === 1 ? '1 file' : `${missed.toLocaleString()} files`;
-  return `Searched on this device. The text of ${what} elsewhere was not searched: keep a notebook offline to search its files.`;
+  /*
+   * What is so, not what to do about it. "Keep a notebook offline to search its files"
+   * was advice this line cannot check: the notebook being searched may be kept already,
+   * with its text not yet fetched when the connection went, and opening a note is the
+   * other way in.
+   */
+  return `Searched on this device, without the text inside ${what}. Offline, files are searched in notebooks kept offline and in notes opened lately.`;
 }

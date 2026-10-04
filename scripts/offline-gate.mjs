@@ -354,7 +354,7 @@ async function run(BASE, chrome, keepSocket) {
       await offlineAt(searchUrl(PDF_QUERY));
       const ok = await until(async () => {
         const v = await searched();
-        return v && typeof v === 'object' && v.hits.length === 0 && /No matches/.test(v.empty) && /was not searched/.test(v.covered ?? '') ? v : null;
+        return v && typeof v === 'object' && v.hits.length === 0 && /No matches/.test(v.empty) && /without the text inside/.test(v.covered ?? '') ? v : null;
       }, 15000);
       report('offline, a phrase from a PDF in a notebook that is not kept finds nothing, and says files went unsearched', !!ok, `saw ${JSON.stringify(await searched())}`);
     }
