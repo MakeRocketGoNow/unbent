@@ -841,7 +841,7 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
       message: `Restored the version from ${formatRevisionWhen(revision.createdAt).replace(/^(Today|Yesterday)/, (w) => w.toLowerCase())}`,
       tone: 'info',
       duration: 8000,
-      action: { label: 'Undo', onClick: () => void undoRestore(id, restored.updatedAt) },
+      action: { label: 'Undo', onClick: () => void undoRestore(id, kept, restored.updatedAt) },
     });
   }
 
@@ -849,15 +849,17 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
    * Undo, on the snackbar a restore leaves: the copy the restore itself kept, put back,
    * and only if the note is still exactly as the restore left it.
    *
-   * That copy was taken at the moment the restore gave the note its date, so it is the
-   * one whose `createdAt` is `restoredAt`. And the server is asked to put it back only
-   * over a note still carrying that date (`ifUpdatedAt`): the editor is live while the
-   * snackbar is up, typing saved since leaves no copy of its own inside the window, and
-   * an Undo that replaced it would be taking away text the person had just written.
-   * Typing not yet saved is flushed first, which moves the date, so it is refused the
-   * same way rather than overwritten by the reseed.
+   * `keptId` is that copy, named by the server in the restore's own answer. It was
+   * found before by reading the list back and matching a date, which cost a request and
+   * rested on the copy's date equalling the note's — true, but nothing here should have
+   * to know it. The server is asked to put it back only over a note still carrying the
+   * date the restore gave it (`ifUpdatedAt`): the editor is live while the snackbar is
+   * up, typing saved since leaves no copy of its own inside the window, and an Undo that
+   * replaced it would be taking away text the person had just written. Typing not yet
+   * saved is flushed first, which moves the date, so it is refused the same way rather
+   * than overwritten by the reseed.
    *
-   * And typing that starts after the flush, while the requests below are out, is left
+   * And typing that starts after the flush, while the request below is out, is left
    * on screen: the draft is noted once flushed, and the note that comes back replaces it
    * only if it is still that draft. The undo has happened on the server by then, so the
    * typing's own save is made against the copy from before it and is refused, and the
@@ -865,20 +867,23 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
    * second this takes was the alternative, and a note that stops taking keys with no
    * reason on screen is what the offline work moved away from.
    */
-  async function undoRestore(id: string, restoredAt: number) {
+  async function undoRestore(id: string, keptId: number, restoredAt: number) {
     const changed = 'The note has changed since; open History to choose a version.';
     try {
       if (!(await savedFirst(id))) throw new Error('This note has changes that could not be saved, so nothing was undone.');
       const flushed = draftRef.current;
-      const kept = (await api.listRevisions(id)).find((r) => r.cause === 'restore' && r.createdAt === restoredAt);
-      if (!kept) throw new Error(changed);
-      const { note: back } = await actions.restoreRevision(id, kept.id, { ifUpdatedAt: restoredAt });
+      const { note: back } = await actions.restoreRevision(id, keptId, { ifUpdatedAt: restoredAt });
       void queryClient.invalidateQueries({ queryKey: ['search'] });
       // By content, as the other reseeds compare: a letter typed and taken back is not typing.
       if (noteIdRef.current === id && JSON.stringify(draftRef.current) === JSON.stringify(flushed)) reseed(back);
     } catch (err) {
       if (noteIdRef.current !== id) return;
-      const message = api.isNoteChanged(err) ? changed : api.errorText(err);
+      // A 404 is the copy itself gone: the history was cleared while the snackbar was up.
+      const message = api.isNoteChanged(err)
+        ? changed
+        : api.isStatus(err, 404)
+          ? 'That version is no longer in the note’s history.'
+          : api.errorText(err);
       setSnackbar({ message, tone: 'error' });
     }
   }

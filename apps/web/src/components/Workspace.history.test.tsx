@@ -10,7 +10,7 @@ import {
 } from '@tanstack/react-router';
 import type { Note, NoteRevision } from '@unbent/shared';
 import * as api from '../notes-api.js';
-import { NoteChangedError } from '../notes-api.js';
+import { ApiError, NoteChangedError } from '../notes-api.js';
 import { keys } from '../queries.js';
 import { Workspace } from './Workspace.js';
 
@@ -142,36 +142,31 @@ describe('restoring a version from History', () => {
     expect((await title()).value).toBe('Typed, and unsaveable');
   });
 
-  it('undoes a restore with the copy the restore kept, if the note is as the restore left it', async () => {
+  it('undoes a restore with the copy the restore named, if the note is as the restore left it', async () => {
     vi.mocked(api.restoreRevision).mockResolvedValueOnce({ note: { ...note, body: earlier.body, updatedAt: 200 }, kept: 5 });
     mount();
     fireEvent.click(await openVersion());
     const undo = await screen.findByRole('button', { name: 'Undo' });
+    vi.mocked(api.listRevisions).mockClear();
 
-    // The server's list now leads with what the restore replaced, taken at the note's new date.
-    vi.mocked(api.listRevisions).mockResolvedValueOnce([{ id: 5, title: 'Minutes', size: 4, createdAt: 200, cause: 'restore' }, earlier]);
-    vi.mocked(api.restoreRevision).mockResolvedValueOnce({ note: { ...note, title: 'Minutes, as it was', updatedAt: 300 }, kept: 5 });
+    vi.mocked(api.restoreRevision).mockResolvedValueOnce({ note: { ...note, title: 'Minutes, as it was', updatedAt: 300 }, kept: 6 });
     fireEvent.click(undo);
 
+    // The id the restore answered with, and the date it left: no list is read to find it.
     await waitFor(() => expect(api.restoreRevision).toHaveBeenLastCalledWith('n1', 5, { ifUpdatedAt: 200 }));
     await waitFor(async () => expect((await title()).value).toBe('Minutes, as it was'));
+    expect(api.listRevisions).not.toHaveBeenCalled();
   });
 
-  it('does not undo into a version the restore did not make', async () => {
+  it('says so when the copy it would put back has been cleared from the history', async () => {
     vi.mocked(api.restoreRevision).mockResolvedValueOnce({ note: { ...note, body: earlier.body, updatedAt: 200 }, kept: 5 });
     mount();
     fireEvent.click(await openVersion());
     const undo = await screen.findByRole('button', { name: 'Undo' });
 
-    // An earlier restore's copy, and an assistant's: neither was taken at this restore's date.
-    vi.mocked(api.listRevisions).mockResolvedValueOnce([
-      { id: 6, title: 'Minutes', size: 9, createdAt: 250, cause: 'assistant' },
-      { id: 3, title: 'Minutes', size: 9, createdAt: 90, cause: 'restore' },
-    ]);
+    vi.mocked(api.restoreRevision).mockRejectedValueOnce(new ApiError(404, '404: Not found'));
     fireEvent.click(undo);
-
-    await waitFor(() => expect(screen.getByRole('status').textContent).toMatch(/open History to choose a version/));
-    expect(api.restoreRevision).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(screen.getByRole('status').textContent).toMatch(/no longer in the note’s history/));
   });
 
   it('saves what was typed after the restore before undoing, and leaves it when the server refuses the undo', async () => {
@@ -183,7 +178,6 @@ describe('restoring a version from History', () => {
     // Typed while the snackbar is up. The save moves the note's date past the restore's.
     vi.mocked(api.updateNote).mockImplementation(async (_id, patch) => ({ ...note, body: earlier.body, ...patch, updatedAt: 250 }) as Note);
     fireEvent.change(await title(), { target: { value: 'Minutes, typed since the restore' } });
-    vi.mocked(api.listRevisions).mockResolvedValueOnce([{ id: 5, title: 'Minutes', size: 4, createdAt: 200, cause: 'restore' }]);
     vi.mocked(api.restoreRevision).mockRejectedValueOnce(new NoteChangedError({ ...note, title: 'Minutes, typed since the restore', updatedAt: 250 }));
     fireEvent.click(undo);
 
@@ -201,7 +195,6 @@ describe('restoring a version from History', () => {
     fireEvent.click(await openVersion());
     const undo = await screen.findByRole('button', { name: 'Undo' });
 
-    vi.mocked(api.listRevisions).mockResolvedValueOnce([{ id: 5, title: 'Minutes', size: 4, createdAt: 200, cause: 'restore' }]);
     let land: (r: { note: Note; kept: number | null }) => void = () => {};
     vi.mocked(api.restoreRevision).mockReturnValueOnce(new Promise((r) => (land = r)));
     // The save of what is typed below is made against the restore's copy, and refused.
