@@ -45,8 +45,13 @@ export type DataTable = (typeof DATA_TABLES)[number];
  * every page is a store call against the fifty an invocation is allowed. And it holds
  * text its owner removed from a note, which has no business in a file on an operator's
  * disk.
+ *
+ * Named in `NOT_DUMPED` rather than merely absent, because absent is what a forgotten
+ * table looks like. The store tests hold the two lists together to the schema: every
+ * table is either dumped or named here on purpose, and a new one that is in neither
+ * fails by name.
  */
-const NOT_DUMPED = ['note_revisions'] as const;
+export const NOT_DUMPED = ['note_revisions'] as const;
 type DumpedDataTable = Exclude<DataTable, (typeof NOT_DUMPED)[number]>;
 export const DUMP_TABLES = [
   '_migrations',
