@@ -792,8 +792,9 @@ export class NotesStore {
    * does. `by` is who is writing — an assistant's write is not typing, and is kept
    * differently; see `Revisions.keep`. It is not part of the HTTP patch: the route's
    * schema has no such key, so only the MCP tools, which call the repo, can say it.
-   * This is the one write that leaves copies. The bulk verbs never touch a body, an
-   * import writes a note that has no earlier text, and `appendToBody` only adds.
+   * With `restoreRevision`, the only writes that leave copies. The bulk verbs never
+   * touch a body, an import writes a note that has no earlier text, `appendToBody` only
+   * adds, and `setBody` is the import's second step on a note it has just made.
    */
   update(
     id: string,

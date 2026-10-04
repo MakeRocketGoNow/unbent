@@ -785,7 +785,7 @@ describe('rows read on an archive-sized store', () => {
         for (let i = 0; i < 300; i++) {
           for (let k = 0; k < 20; k++) {
             sql.exec(
-              `INSERT INTO note_revisions (note_id, title, body, created_at, through) VALUES (?1, 'Earlier title', 'an earlier body', ?2, ?2)`,
+              `INSERT INTO note_revisions (note_id, title, body, size, created_at, through) VALUES (?1, 'Earlier title', 'an earlier body', 15, ?2, ?2)`,
               `n${String(i).padStart(5, '0')}`,
               now - 3_600_000 - k * 3_600_000,
             );

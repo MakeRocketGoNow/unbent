@@ -17,6 +17,10 @@
  * is the output of the edit that left this copy" from "someone has typed since", without
  * a column on the note saying who wrote it last.
  *
+ * `size` is the body's length in characters, stored because the list shows it for every
+ * copy and must not read twenty bodies to count them: `length(body)` in a query decodes
+ * the whole value, and the meter that bounds this table's reads counts rows, not bytes.
+ *
  * An integer key, unlike every other table here. Rule 2 in AGENTS.md keeps ids globally
  * unique for what an export or a share could name; a revision is neither exported nor in
  * the change feed, it is only ever addressed under its note, and a text key would be one
@@ -33,6 +37,7 @@ CREATE TABLE note_revisions (
   note_id    TEXT NOT NULL REFERENCES notes(id) ON DELETE CASCADE,
   title      TEXT NOT NULL,
   body       TEXT NOT NULL,
+  size       INTEGER NOT NULL,
   created_at INTEGER NOT NULL,
   through    INTEGER NOT NULL,
   cause      TEXT

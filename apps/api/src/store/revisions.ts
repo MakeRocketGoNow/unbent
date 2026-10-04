@@ -78,8 +78,8 @@ export class Revisions {
       }
     }
     this.sql.exec(
-      `INSERT INTO note_revisions (note_id, title, body, created_at, through, cause)
-       VALUES (?1, ?2, ?3, ?4, ?4, ?5)`,
+      `INSERT INTO note_revisions (note_id, title, body, size, created_at, through, cause)
+       VALUES (?1, ?2, ?3, length(?3), ?4, ?4, ?5)`,
       noteId,
       was.title,
       was.body,
@@ -115,12 +115,13 @@ export class Revisions {
    * A note's copies, newest first, without their bodies: twenty bodies is a megabyte on
    * a long note, and the sheet shows one at a time. `size` is the body's length in
    * characters, which is what lets a row say a copy was much longer than the note is now
-   * — the gutted note is the case this whole table is for.
+   * — the gutted note is the case this whole table is for. A column, so the bodies are
+   * not read to count them; see 0003.
    */
   list(noteId: string, now: number): NoteRevisionSummary[] {
     return this.sql
       .exec<{ id: number; title: string; size: number; created_at: number; cause: string | null }>(
-        `SELECT id, title, length(body) AS size, created_at, cause FROM note_revisions
+        `SELECT id, title, size, created_at, cause FROM note_revisions
           WHERE note_id = ?1 AND created_at >= ?2
           ORDER BY created_at DESC, id DESC LIMIT ?3`,
         noteId,
@@ -133,7 +134,7 @@ export class Revisions {
   /** One copy, whole. Addressed under its note, so an id from another note reads as missing. */
   get(noteId: string, id: number, now: number): NoteRevision | null {
     const r = this.sql.first<{ id: number; title: string; body: string; size: number; created_at: number; cause: string | null }>(
-      `SELECT id, title, body, length(body) AS size, created_at, cause FROM note_revisions
+      `SELECT id, title, body, size, created_at, cause FROM note_revisions
         WHERE id = ?1 AND note_id = ?2 AND created_at >= ?3`,
       id,
       noteId,
