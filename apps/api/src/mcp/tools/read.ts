@@ -29,8 +29,12 @@ const tagFilter = z
   .optional()
   .describe('Only notes carrying every one of these tags, by exact name, case included.');
 
+// Trimmed, as the lookups that resolve a notebook by name already trim: the store matches
+// the filter as given, so a name with a stray space resolved its fields and then listed
+// nothing, with no error to say why.
 const notebookFilter = z
   .string()
+  .trim()
   .optional()
   .describe(`Only notes in this notebook, by name. "${UNFILED}" means notes in no notebook.`);
 
