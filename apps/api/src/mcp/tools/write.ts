@@ -674,7 +674,8 @@ export function registerWriteTools(server: McpServer, notes: NotesRepo): void {
         'notebook and how many notes it holds; the values the notes hold in those fields ' +
         'stay on the notes and still show on get_note, labelled with the notebook they came ' +
         'from. Prefer move_notes to another notebook first when the notes belong somewhere. ' +
-        'Answers with the notebook and how many notes were unfiled or trashed.',
+        'Answers with the notebook and how many live notes were unfiled or trashed; notes of ' +
+        'it already in the trash are not in that number, and lose the notebook too.',
       inputSchema: z.object({
         notebookId: z.string().min(1),
         trashNotes: z
