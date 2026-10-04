@@ -153,3 +153,38 @@ describe('list_tags with a notebook or tags', () => {
     ]);
   });
 });
+
+describe('list_notes with untagged', () => {
+  function pageRepo() {
+    const pages: Array<{ list: Record<string, unknown>; count: Record<string, unknown> | null }> = [];
+    const repo = {
+      listPage: async (list: Record<string, unknown>, count: Record<string, unknown> | null) => {
+        pages.push({ list, count });
+        return { items: [], total: 0 };
+      },
+    } as unknown as NotesRepo;
+    return { pages, list: collect(repo).get('list_notes')! };
+  }
+
+  it('narrows the page and the total alike', async () => {
+    const { pages, list } = pageRepo();
+    const result = await list({ limit: 25, untagged: true, notebook: 'Coupons' });
+    expect(result.isError).toBeFalsy();
+    expect(pages[0]?.list['untagged']).toBe(true);
+    expect(pages[0]?.count?.['untagged']).toBe(true);
+  });
+
+  it('refuses the pair with tag, which could only ever match nothing', async () => {
+    const { pages, list } = pageRepo();
+    const result = await list({ limit: 25, untagged: true, tag: ['Acme'] });
+    expect(result.isError).toBe(true);
+    expect(result.content[0]!.text).toContain('cannot be combined with tag');
+    expect(pages).toHaveLength(0);
+  });
+
+  it('asks for nothing extra when it is off', async () => {
+    const { pages, list } = pageRepo();
+    await list({ limit: 25, untagged: false, tag: ['Acme'] });
+    expect(pages[0]?.list['untagged']).toBeFalsy();
+  });
+});

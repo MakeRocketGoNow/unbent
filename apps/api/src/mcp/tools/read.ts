@@ -185,6 +185,14 @@ export function registerReadTools(
         tag: tagFilter,
         notebook: notebookFilter,
         fields: fieldFiltersSchema,
+        untagged: z
+          .boolean()
+          .default(false)
+          .describe(
+            'Only notes with no tags at all, for finding what is left to tag. Cannot be ' +
+              'combined with tag. Counting them reads every note in scope, so with a large ' +
+              'archive give a notebook.',
+          ),
         sort: z.enum(['updated', 'created', 'title']).default('updated'),
         order: z.enum(['asc', 'desc']).default('desc'),
         from: dateOnly.describe(LIST_DATE_RANGE),
@@ -199,7 +207,10 @@ export function registerReadTools(
       }),
       annotations: { readOnlyHint: true, openWorldHint: false },
     },
-    async ({ limit, cursor, tag, notebook, fields, sort, order, from, to, trashed }) => {
+    async ({ limit, cursor, tag, notebook, fields, untagged, sort, order, from, to, trashed }) => {
+      if (untagged && tag?.length) {
+        return toolError('untagged means notes with no tags, so it cannot be combined with tag.');
+      }
       let fieldFilters: FieldFilter[] | undefined;
       if (fields?.length) {
         const resolved = await resolveFieldFilters(notes, notebook, fields);
@@ -207,8 +218,8 @@ export function registerReadTools(
         fieldFilters = resolved.filters;
       }
       const { items, total } = await notes.listPage(
-        { limit, cursor, tags: tag, notebook, fields: fieldFilters, sort, order, from, to, trashed },
-        { tags: tag, notebook, fields: fieldFilters, trashed, from, to, sort },
+        { limit, cursor, tags: tag, notebook, fields: fieldFilters, untagged, sort, order, from, to, trashed },
+        { tags: tag, notebook, fields: fieldFilters, untagged, trashed, from, to, sort },
       );
       // The same helper the HTTP route uses, so a cursor means the same thing on both and
       // cannot disagree with the sort that produced the page.

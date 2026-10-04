@@ -470,8 +470,8 @@ export function liveCondition(trashed: boolean | undefined, tags: string[] | und
 }
 
 /**
- * SQL conditions for the `notebook`, `tags`, `fields` and date filters, shared by `list`,
- * `count` and `search`.
+ * SQL conditions for the `notebook`, `tags`, `fields`, `untagged` and date filters, shared
+ * by `list`, `count` and `search`.
  *
  * All three call sites need identical semantics — a filter has to mean the same thing
  * whether or not a query is also typed — so the clauses live here rather than being
@@ -486,6 +486,8 @@ export function filterConditions(
     tags?: string[] | undefined;
     notebook?: string | undefined;
     fields?: FieldFilter[] | undefined;
+    /** Only notes carrying no tag at all. */
+    untagged?: boolean | undefined;
     from?: string | undefined;
     to?: string | undefined;
     /** Column the date range applies to. */
@@ -553,6 +555,20 @@ export function filterConditions(
       `n.id IN (SELECT nt2.note_id FROM tags t2 JOIN note_tags nt2 ON nt2.tag_id = t2.id
                  WHERE t2.name = ?${binds.length})`,
     );
+  }
+
+  /*
+   * Notes with no tag, the question "what is left to file".
+   *
+   * A NOT EXISTS, unlike the tags' IN above, because there is nothing to start from: the
+   * notes are the way in — the notebook's index, or the `deleted_at` ones — and each is
+   * asked once by the primary key of `note_tags`, one read a note. It is why this is never
+   * a stored count and why it is not hidden behind `+`: the indexes on the notes' side
+   * are what let a page stop early. Beside a tag filter the two contradict and match
+   * nothing, which is the right answer; the MCP refuses the pair before it gets here.
+   */
+  if (opts.untagged) {
+    conditions.push(`NOT EXISTS (SELECT 1 FROM note_tags nt4 WHERE nt4.note_id = n.id)`);
   }
 
   /*

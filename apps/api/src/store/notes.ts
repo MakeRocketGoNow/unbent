@@ -78,6 +78,8 @@ export interface ListOptions {
   tags?: string[] | undefined;
   notebook?: string | undefined;
   fields?: FieldFilter[] | undefined;
+  /** Only notes with no tag at all; see `filterConditions`. */
+  untagged?: boolean | undefined;
   sort?: NoteSort | undefined;
   order?: 'asc' | 'desc' | undefined;
   from?: string | undefined;
@@ -96,6 +98,8 @@ export interface CountOptions {
   tags?: string[] | undefined;
   notebook?: string | undefined;
   fields?: FieldFilter[] | undefined;
+  /** Only notes with no tag at all; see `filterConditions`. */
+  untagged?: boolean | undefined;
   trashed?: boolean | undefined;
   from?: string | undefined;
   to?: string | undefined;
@@ -290,7 +294,7 @@ export class NotesStore {
   }
 
   private pageRows(opts: ListOptions): SummaryRow[] {
-    const { limit, cursor, tags, notebook, fields, trashed, from, to } = opts;
+    const { limit, cursor, tags, notebook, fields, untagged, trashed, from, to } = opts;
     const sort = opts.sort ?? DEFAULT_NOTE_SORT;
     // Trash has one meaningful order — most recently deleted first — so it ignores both.
     const byField = !trashed && opts.sortField ? opts.sortField : undefined;
@@ -349,7 +353,7 @@ export class NotesStore {
     }
     conditions.push(
       // The range applies to the column being sorted, so the filter and the order agree.
-      ...filterConditions({ tags, notebook, fields, from, to, dateColumn: spec.dateColumn }, binds),
+      ...filterConditions({ tags, notebook, fields, untagged, from, to, dateColumn: spec.dateColumn }, binds),
     );
     binds.push(limit);
     const limitBind = `?${binds.length}`;
@@ -478,6 +482,7 @@ export class NotesStore {
           tags: opts.tags,
           notebook: opts.notebook,
           fields: opts.fields,
+          untagged: opts.untagged,
           from: opts.from,
           to: opts.to,
           dateColumn: opts.trashed
@@ -510,8 +515,9 @@ export class NotesStore {
    * case-insensitively, a tag exactly. A name that matches nothing is 0 either way.
    */
   private storedCount(opts: CountOptions): number | undefined {
-    const { tags = [], notebook, fields = [], trashed, from, to } = opts;
-    if (from || to || fields.length > 0 || tags.length > 1) return undefined;
+    const { tags = [], notebook, fields = [], untagged, trashed, from, to } = opts;
+    // No stored count is of notes without tags, so it is counted like a field filter is.
+    if (from || to || untagged || fields.length > 0 || tags.length > 1) return undefined;
     if (tags.length === 1 && notebook) return undefined;
 
     if (trashed) return notebook || tags.length > 0 ? undefined : this.totals().trashed;

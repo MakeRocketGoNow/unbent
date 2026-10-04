@@ -257,6 +257,36 @@ describe('notes: listing and counting', () => {
     expect(await stub.count({ exact: true })).toBe(12);
   });
 
+  it('lists and counts the notes with no tag, live only, alone or within a notebook', async () => {
+    const { stub } = freshStore('untagged');
+    const bare = await stub.create(note({ title: 'Bare', notebook: 'Coupons' }));
+    const bareElsewhere = await stub.create(note({ title: 'Bare elsewhere' }));
+    await stub.create(note({ title: 'Tagged', notebook: 'Coupons', tags: ['Acme'] }));
+    const trashed = await stub.create(note({ title: 'Trashed bare', notebook: 'Coupons' }));
+    await stub.remove(trashed.id);
+    // A note that had a tag and lost it is untagged again, though the tag's row stays.
+    const stripped = await stub.create(note({ title: 'Stripped', notebook: 'Coupons', tags: ['Acme'] }));
+    await stub.update(stripped.id, { tags: [] });
+
+    const ids = async (opts: Parameters<typeof stub.list>[0]) => (await stub.list(opts)).map((n) => n.id).sort();
+    expect(await ids({ limit: 50, untagged: true })).toEqual([bare.id, bareElsewhere.id, stripped.id].sort());
+    expect(await ids({ limit: 50, untagged: true, notebook: 'Coupons' })).toEqual([bare.id, stripped.id].sort());
+    expect(await ids({ limit: 50, untagged: true, notebook: UNFILED })).toEqual([bareElsewhere.id]);
+    // The count is not the stored one, which knows nothing of tags; and it agrees with the list.
+    expect(await stub.count({ untagged: true })).toBe(3);
+    expect(await stub.count({ untagged: true, notebook: 'Coupons' })).toBe(2);
+    // Together with a tag the two contradict, and nothing matches.
+    expect(await stub.list({ limit: 50, untagged: true, tags: ['Acme'] })).toEqual([]);
+    expect(await stub.count({ untagged: true, tags: ['Acme'] })).toBe(0);
+    // Off, it narrows nothing.
+    expect(await stub.count({ untagged: false })).toBe(4);
+    // And it pages: a cursor over the narrowed list skips and repeats nothing.
+    const first = await stub.list({ limit: 2, untagged: true, sort: 'created', order: 'asc' });
+    const last = first[first.length - 1]!;
+    const next = await stub.list({ limit: 2, untagged: true, sort: 'created', order: 'asc', cursor: `${last.createdAt}\u001F${last.id}` });
+    expect([...first, ...next].map((n) => n.id).sort()).toEqual([bare.id, bareElsewhere.id, stripped.id].sort());
+  });
+
   it('sorts by a field: valued notes first in value order, then the rest by id, paged across the seam', async () => {
     const { stub } = freshStore('fieldsort');
     const { amount, ids } = await seed(stub);
@@ -884,6 +914,13 @@ describe('rows read on an archive-sized store', () => {
       await measure('tag counts in a small notebook', () => stub.tagCounts({ notebook: 'Notebook 5' })),
       await measure('tag counts under a rare tag', () => stub.tagCounts({ tags: ['rare'] })),
       await measure('tag counts under a rare tag in a notebook', () => stub.tagCounts({ tags: ['rare'], notebook: 'Notebook 0' })),
+      // Notes without a tag: a page stops once it has fifty, a notebook's count reads each
+      // of its notes once, and the account's reads every note — the one that is dear.
+      await measure('untagged page', () => stub.list({ limit: 50, untagged: true })),
+      await measure('untagged page in a small notebook', () => stub.list({ limit: 50, untagged: true, notebook: 'Notebook 5' })),
+      await measure('untagged count in a big notebook', () => stub.count({ untagged: true, notebook: 'Notebook 3' })),
+      await measure('untagged count in a small notebook', () => stub.count({ untagged: true, notebook: 'Notebook 5' })),
+      await measure('untagged count', () => stub.count({ untagged: true })),
       await measure('get', () => stub.get('n01500')),
       await measure('stored counts', async () => {
         await stub.count();
@@ -933,6 +970,16 @@ describe('rows read on an archive-sized store', () => {
       'tag counts in a small notebook': 120,
       'tag counts under a rare tag': 60,
       'tag counts under a rare tag in a notebook': 60,
+      // A note is read once and asked once of its links, so a count is a row and a half a
+      // note in scope and a page stops after the first fifty that have no tag (measured
+      // 2026-10-04: 313 and 97 for the pages, 893 and 46 in a notebook, 4,500 for all
+      // 3,000 notes). The account-wide count is the dear one, and why the tool's
+      // description tells a caller with a large archive to name a notebook.
+      'untagged page': 450,
+      'untagged page in a small notebook': 150,
+      'untagged count in a big notebook': 1200,
+      'untagged count in a small notebook': 80,
+      'untagged count': 5200,
       get: 10,
       'stored counts': 10,
       usage: 4,
