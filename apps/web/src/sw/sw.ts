@@ -1,4 +1,4 @@
-import { cleanupOutdatedCaches, createHandlerBoundToURL, precacheAndRoute } from 'workbox-precaching';
+import { PrecacheController, PrecacheRoute, cleanupOutdatedCaches } from 'workbox-precaching';
 import { registerRoute } from 'workbox-routing';
 import { CacheFirst, NetworkFirst, type StrategyOptions } from 'workbox-strategies';
 import { ExpirationPlugin } from 'workbox-expiration';
@@ -29,8 +29,50 @@ declare const self: ServiceWorkerGlobalScope;
  * Fetched in the background when the worker installs, and again only for files whose
  * revision changed — the hashed chunks of an unchanged route cost nothing on the next
  * deploy.
+ *
+ * A controller of our own rather than `precacheAndRoute`, only so the install below can
+ * be ours; the route and the activate step are Workbox's, unchanged.
  */
-precacheAndRoute(self.__WB_MANIFEST);
+const shell = new PrecacheController();
+shell.addToCacheList(self.__WB_MANIFEST);
+registerRoute(new PrecacheRoute(shell));
+self.addEventListener('activate', shell.activate);
+
+/**
+ * Downloads the files a new deploy changed, a few at a time.
+ *
+ * Workbox's own install fetches them strictly one after another (its issue 2528: a first
+ * install is over two hundred files, and firing them all at once is what that guards
+ * against). But a new deploy's worker is not waiting until every file is in, and the page
+ * cannot be moved onto it before then — so the whole queue is the time between a reload
+ * and the new version. Vite's hashes cascade, so a one-line change re-fetches forty-odd chunks: with
+ * 150 ms added to every request, about what unbent.app answers in, that queue took seven
+ * seconds one at a time and under two and a half six at a time — and longer on a phone,
+ * or behind the app's own startup traffic. Six is still only a handful in flight.
+ *
+ * The same work as Workbox's loop otherwise: a file already cached under its key costs
+ * nothing (`PrecacheStrategy` answers it from the cache), and a revisioned file — one
+ * whose name has no hash, `index.html` above all — is fetched past the HTTP cache, which
+ * is what Workbox's `reload` mode is for. Its key carries `__WB_REVISION__` where a hashed
+ * file's key is its address, which is how that is told without its private map.
+ */
+const INSTALL_CONCURRENCY = 6;
+
+self.addEventListener('install', (event) => {
+  const queue = [...shell.getURLsToCacheKeys()];
+  const next = async (): Promise<void> => {
+    for (let entry = queue.shift(); entry; entry = queue.shift()) {
+      const [url, cacheKey] = entry;
+      const request = new Request(url, {
+        integrity: shell.getIntegrityForCacheKey(cacheKey),
+        cache: cacheKey === url ? 'default' : 'reload',
+        credentials: 'same-origin',
+      });
+      await Promise.all(shell.strategy.handleAll({ params: { cacheKey }, request, event }));
+    }
+  };
+  event.waitUntil(Promise.all(Array.from({ length: INSTALL_CONCURRENCY }, next)));
+});
 
 /**
  * The previous build's shell, once this one is in charge. Without it every deploy would
@@ -71,7 +113,7 @@ self.addEventListener('activate', (event) => {
  */
 registerRoute(
   ({ request, url }) => request.mode === 'navigate' && servesShell(url),
-  createHandlerBoundToURL('/index.html'),
+  shell.createHandlerBoundToURL('/index.html'),
 );
 
 const DAY = 24 * 60 * 60;
