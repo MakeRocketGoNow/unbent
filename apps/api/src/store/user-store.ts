@@ -539,7 +539,7 @@ export class UserStore extends DurableObject<StoreEnv> {
   updateField(notebookId: string, fieldId: string, patch: Parameters<NotesStore['updateField']>[2]) {
     return this.writing(() => this.notes.updateField(notebookId, fieldId, patch));
   }
-  previewConversion(notebookId: string, fieldId: string, to: FieldType, toScale?: FieldScale | null | undefined) {
+  previewConversion(notebookId: string, fieldId: string, to: FieldType, toScale?: FieldScale | null | 'fit' | undefined) {
     this.ready();
     return this.notes.previewConversion(notebookId, fieldId, to, toScale);
   }

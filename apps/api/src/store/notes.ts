@@ -11,6 +11,7 @@ import {
   MAX_FIELDS_PER_NOTEBOOK,
   MAX_SELECT_OPTIONS,
   planConversion,
+  fitRatingScale,
   UNFILED,
   type FieldDef,
   type FieldFilter,
@@ -2343,20 +2344,31 @@ export class NotesStore {
   /**
    * What a type change would do, without doing it. The same plan the write uses, so the
    * number the confirmation names is the number that will be cleared.
+   *
+   * `'fit'` asks for the rating scale the field's own values suggest (`fitRatingScale`),
+   * and the answer names the scale it chose so the write can send exactly that one. It is
+   * answered here rather than by the client because the values are here: the editor holds
+   * the field's definition, not every note's value for it.
    */
   previewConversion(
     notebookId: string,
     fieldId: string,
     to: FieldType,
-    toScale?: FieldScale | null | undefined,
-  ): { values: number; incompatible: number } | null {
+    toScale?: FieldScale | null | 'fit' | undefined,
+  ): { values: number; incompatible: number; scale: FieldScale | null } | null {
     const field = this.getField(notebookId, fieldId);
     if (!field) return null;
     const rows = this.fieldValueRows(fieldId);
     // Matches `updateField`: an absent scale in the patch means the current one stands, so
     // previewing a rename or a pure type change does not silently unbound the field.
-    const plan = planConversion(field.type, to, rows, toScale === undefined ? field.scale : toScale);
-    return { values: rows.length, incompatible: plan.drop.length };
+    const scale =
+      toScale === 'fit'
+        ? fitRatingScale(rows.map((r) => r.text))
+        : toScale === undefined
+          ? field.scale
+          : toScale;
+    const plan = planConversion(field.type, to, rows, scale);
+    return { values: rows.length, incompatible: plan.drop.length, scale };
   }
 
   /** Sets a notebook's field order. `ids` must be exactly its fields, each once. */

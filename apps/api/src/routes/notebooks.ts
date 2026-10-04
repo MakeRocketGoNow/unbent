@@ -152,7 +152,8 @@ export const notebooks = new Hono<AppEnv>()
   /**
    * What a type change — or a re-scale — would clear, so the client can say so first.
    *
-   * `scale` is `max:step`, or empty for a rating becoming a plain number. Omitting it
+   * `scale` is `max:step`, empty for a rating becoming a plain number, or `fit` for the
+   * scale the field's own values suggest — the answer names the scale either way. Omitting it
    * means the field keeps whatever scale it has, which is what a pure type change wants:
    * the repo reads an absent scale as "unchanged" rather than as "none".
    */
@@ -168,6 +169,8 @@ export const notebooks = new Hono<AppEnv>()
           .transform((raw, ctx) => {
             if (raw === undefined) return undefined;
             if (raw === '') return null;
+            // The scale the field's values suggest; the answer names the one chosen.
+            if (raw === 'fit') return 'fit' as const;
             const [max, step] = raw.split(':').map(Number);
             const parsed = fieldScaleSchema.safeParse({ max, step });
             if (!parsed.success) {
