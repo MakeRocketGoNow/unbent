@@ -345,13 +345,7 @@ export function createOutbox(userId: string, lib: Omit<WritableLibrary, 'outbox'
           const bytes = await readFile(userId, 'pending', noteId, filename);
           if (!bytes) throw new NonRetriableError(`The file was no longer on this device`);
           const file = new File([bytes], filename, { type: contentType });
-          let answer: api.UploadedFile;
-          try {
-            answer = await api.uploadFile(noteId, file, { id: attachmentId });
-          } catch (err) {
-            if (err instanceof ApiError && err.status === 401) throw err;
-            return refusal(err);
-          }
+          const answer = await api.uploadFile(noteId, file, { id: attachmentId }).catch(refusal);
           if (answer.filename !== filename) {
             // Another device added a file of this name to this note meanwhile, and the
             // server suffixed ours. The link written into the note names the other one.
