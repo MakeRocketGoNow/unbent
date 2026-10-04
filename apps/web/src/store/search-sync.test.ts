@@ -2,7 +2,7 @@
 import { describe, expect, it } from 'vitest';
 import type { AttachmentTexts, FeedAttachment } from '@unbent/shared';
 import { SearchIndex } from './search-index.js';
-import { BUILT, searchLocal } from './search-local.js';
+import { BUILT, RECENT_TEXT_LIMIT, searchLocal } from './search-local.js';
 import { createSearchSync, type SearchSyncOptions } from './search-sync.js';
 import { openTestSearchDb } from './test-search-db.js';
 import type { LocalNote, Snapshot } from './derive.js';
@@ -143,6 +143,32 @@ describe('SearchSync', () => {
     await sync.idle();
     expect(await found('dishwasher')).toEqual([]);
     expect([...(await index.stamps('file')).keys()]).toEqual(['f1']);
+    sync.stop();
+  });
+
+  it('lets go of an opened note’s text once newer ones have filled the limit, and says it was not searched', async () => {
+    const { index, lib, world, make, found } = await setup();
+    lib.notes = [note('old', { notebookId: 'nb-far' }), note('new', { notebookId: 'nb-far' })];
+    lib.attachments = [file('o1', 'old'), file('n1', 'new')];
+    world.texts = { o1: `lathe ${'x'.repeat(RECENT_TEXT_LIMIT - 10)}`, n1: `bandsaw ${'y'.repeat(100)}` };
+    const sync = make();
+    await sync.idle();
+    await index.markOpened('old', 1);
+    sync.touchFiles();
+    await sync.idle();
+    expect(await found('lathe')).toEqual(['old']);
+
+    await index.markOpened('new', 2);
+    sync.touchFiles();
+    await sync.idle();
+    expect(await found('bandsaw')).toEqual(['new']);
+    expect(await found('lathe')).toEqual([]);
+    expect(await index.held('file', ['o1', 'n1'])).toBe(1);
+    // Settled: another pass asks for nothing more.
+    const asked = world.asked.length;
+    sync.touchFiles();
+    await sync.idle();
+    expect(world.asked).toHaveLength(asked);
     sync.stop();
   });
 

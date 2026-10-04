@@ -2,7 +2,7 @@ import type { AttachmentTexts } from '@unbent/shared';
 import type { LocalAttachment } from './collections.js';
 import type { LocalNote, Snapshot } from './derive.js';
 import type { Entry, SearchIndex } from './search-index.js';
-import { BUILT, fieldEntryPrefix, noteEntries, tagEntries, textPlan } from './search-local.js';
+import { BUILT, fieldEntryPrefix, heldText, noteEntries, tagEntries, textPlan, textStamp } from './search-local.js';
 
 /**
  * Keeps the search index in step with the library: the part of offline search that
@@ -22,8 +22,8 @@ import { BUILT, fieldEntryPrefix, noteEntries, tagEntries, textPlan } from './se
  *  - **Tags.** All of them, whenever anything but a note's text changed. There are a few
  *    hundred at most.
  *  - **Files' text.** What `textPlan` says should be here and is not is fetched from the
- *    server, a batch at a time, while there is a connection; what it says should not be
- *    is dropped.
+ *    server, a request at a time, while there is a connection; what it says should not be
+ *    is dropped, and what the opened notes have no room for is let go.
  *
  * A file's text is fetched once. One read again on the server — a scan the vision model
  * took a second pass at — keeps its old text here until the file leaves and returns, or
@@ -160,20 +160,28 @@ export function createSearchSync(opts: SearchSyncOptions): SearchSync {
       // Unknown is not empty: a pass over an empty list would drop every kept notebook's text.
       return false;
     }
-    const snapshot = opts.snapshot();
-    const plan = textPlan(
-      { notes: snapshot.notes, attachments: snapshot.attachments as Iterable<LocalAttachment> },
-      kept,
-      new Set(await index.opened()),
-      new Set((await index.stamps('file')).keys()),
-    );
-    await index.drop('file', plan.remove);
+    /*
+     * One request for text a round, and the plan made again after it. A file's length is
+     * only known once its text is here, so each answer can take the opened notes past
+     * their limit; planning per request means at most one answer's worth is fetched
+     * beyond it before the plan lets go of what no longer fits. An id the answer had no
+     * room for (`left`) is simply still missing, and the next plan asks again.
+     */
+    for (;;) {
+      const snapshot = opts.snapshot();
+      const plan = textPlan(
+        { notes: snapshot.notes, attachments: snapshot.attachments as Iterable<LocalAttachment> },
+        kept,
+        await index.opened(),
+        new Map([...(await index.stamps('file'))].map(([id, stamp]) => [id, heldText(stamp)])),
+      );
+      await index.drop('file', plan.remove);
+      // Over the limit for opened notes: the text goes and the length is remembered; see `textPlan`.
+      await index.put('file', plan.shed.map((f) => ({ id: f.id, stamp: textStamp(f.chars, true), columns: [''] })));
 
-    let queue = plan.fetch;
-    while (queue.length > 0) {
-      if (stopped) return false;
-      if (opts.offline()) return false;
-      const asked = queue.slice(0, TEXT_BATCH);
+      if (plan.fetch.length === 0) return true;
+      if (stopped || opts.offline()) return false;
+      const asked = plan.fetch.slice(0, TEXT_BATCH);
       let answer: AttachmentTexts;
       try {
         answer = await opts.fetchTexts(asked, abort.signal);
@@ -186,18 +194,16 @@ export function createSearchSync(opts: SearchSyncOptions): SearchSync {
       /*
        * A file asked for and neither answered nor left over has no text on the server —
        * gone since the plan was made, or read and found empty. It is indexed as empty so
-       * the next pass does not ask again; if it has gone, the feed says so and the plan
+       * the next plan does not ask again; if it has gone, the feed says so and the plan
        * drops it.
        */
       await index.put(
         'file',
-        asked.filter((id) => !left.has(id)).map((id) => ({ id, stamp: '', columns: [got.get(id) ?? ''] })),
+        asked.filter((id) => !left.has(id)).map((id) => ({ id, stamp: textStamp((got.get(id) ?? '').length), columns: [got.get(id) ?? ''] })),
       );
       // An answer that carried nothing and left everything would loop for ever; the server always answers one.
       if (left.size === asked.length) throw new Error('The server answered no text for any file asked for.');
-      queue = [...answer.left, ...queue.slice(TEXT_BATCH)];
     }
-    return true;
   }
 
   async function pass(): Promise<void> {

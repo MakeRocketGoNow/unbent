@@ -1,7 +1,7 @@
 import { toFtsQuery, type SearchResult, type SearchResultRow } from '@unbent/shared';
 import { lookups as buildLookups, matches, tagNames, toSummary, type ListFilter, type LocalNote, type Lookups, type Snapshot } from './derive.js';
 import type { LocalAttachment } from './collections.js';
-import type { Entry, Kind, SearchIndex } from './search-index.js';
+import { SHED, type Entry, type Kind, type SearchIndex } from './search-index.js';
 
 /**
  * A search answered on the device: the server's `search`, with the library's rows doing
@@ -269,11 +269,37 @@ export interface TextSnapshot {
   attachments: Iterable<Pick<LocalAttachment, 'id' | 'noteId' | 'size' | 'hasText' | 'pending'>>;
 }
 
+/**
+ * How much text the notes opened here may hold between them, in characters — for a
+ * scan's text, about as many bytes. A count of notes does not bound this: one file's text
+ * can be half a million characters, so five hundred notes of long manuals would be a
+ * quarter of a gigabyte nobody chose. Kept notebooks are not counted: their size was
+ * stated and agreed to when they were kept.
+ */
+export const RECENT_TEXT_LIMIT = 20 * 1024 * 1024;
+
+/** A file's entry as the index holds it: how long its text is, and whether the text was let go for room. */
+export interface HeldText {
+  chars: number;
+  shed: boolean;
+}
+
+/** Reads a file entry's stamp: the text's length, behind `SHED` when only the length is kept. Anything else is a length of nothing. */
+export function heldText(stamp: string): HeldText {
+  const shed = stamp.startsWith(SHED);
+  const chars = Number(shed ? stamp.slice(SHED.length) : stamp);
+  return { chars: Number.isFinite(chars) ? chars : 0, shed };
+}
+
+export const textStamp = (chars: number, shed = false) => `${shed ? SHED : ''}${chars}`;
+
 export interface TextPlan {
-  /** Files whose text should be here and is not: opened notes' first, then the smallest. */
+  /** Files whose text should be here and is not: opened notes' first, newest first, then the smallest. */
   fetch: string[];
   /** Files indexed that no kept notebook or opened note has any more. */
   remove: string[];
+  /** Files whose text is here and is over the limit for opened notes: the text goes, its length stays. */
+  shed: Array<{ id: string; chars: number }>;
 }
 
 /**
@@ -286,20 +312,69 @@ export interface TextPlan {
  * files — tens of megabytes on an archive — and most of it is never searched from a
  * given phone; a kept notebook and an opened note are the two ways someone has already
  * said which documents they want with them.
+ *
+ * The opened notes share `limit` characters, newest first: the walk stops at the first
+ * note that would pass it, and that note's text and every older one's is let go. A
+ * file's length is only known once its text has been fetched, so a file let go keeps an
+ * entry that remembers the length (`SHED`). Without it the next plan would count the
+ * file as nothing, want it again, fetch it, and let it go again, for ever. The newest
+ * note is held whatever its size: someone who has just opened a manual should find it.
  */
-export function textPlan(snapshot: TextSnapshot, kept: ReadonlySet<string>, opened: ReadonlySet<string>, have: ReadonlySet<string>): TextPlan {
-  const wantedNotes = new Set<string>();
+export function textPlan(
+  snapshot: TextSnapshot,
+  kept: ReadonlySet<string>,
+  opened: readonly string[],
+  have: ReadonlyMap<string, HeldText>,
+  limit = RECENT_TEXT_LIMIT,
+): TextPlan {
+  const keptNotes = new Set<string>();
+  const live = new Set<string>();
   for (const n of snapshot.notes) {
     if (n.deletedAt !== undefined) continue;
-    if (opened.has(n.id) || (n.notebookId != null && kept.has(n.notebookId))) wantedNotes.add(n.id);
+    live.add(n.id);
+    if (n.notebookId != null && kept.has(n.notebookId)) keptNotes.add(n.id);
   }
-  const wanted = new Set<string>();
-  const fetch: Array<{ id: string; recent: boolean; size: number }> = [];
+  const byNote = new Map<string, Array<{ id: string; size: number }>>();
   for (const a of snapshot.attachments) {
-    if (!a.hasText || a.pending || !wantedNotes.has(a.noteId)) continue;
-    wanted.add(a.id);
-    if (!have.has(a.id)) fetch.push({ id: a.id, recent: opened.has(a.noteId), size: a.size });
+    if (!a.hasText || a.pending || !live.has(a.noteId)) continue;
+    const list = byNote.get(a.noteId) ?? [];
+    list.push({ id: a.id, size: a.size });
+    byNote.set(a.noteId, list);
   }
-  fetch.sort((a, b) => Number(b.recent) - Number(a.recent) || a.size - b.size);
-  return { fetch: fetch.map((f) => f.id), remove: [...have].filter((id) => !wanted.has(id)) };
+
+  const wanted = new Set<string>();
+  const plan: TextPlan = { fetch: [], remove: [], shed: [] };
+  const missing = (id: string) => !have.has(id) || have.get(id)!.shed;
+
+  // Opened notes first, newest first, while they fit.
+  let total = 0;
+  let full = false;
+  for (const noteId of opened) {
+    if (keptNotes.has(noteId)) continue;
+    const files = byNote.get(noteId) ?? [];
+    const chars = files.reduce((sum, f) => sum + (have.get(f.id)?.chars ?? 0), 0);
+    if (!full && total > 0 && total + chars > limit) full = true;
+    for (const f of files) {
+      wanted.add(f.id);
+      const held = have.get(f.id);
+      if (full) {
+        if (held && !held.shed) plan.shed.push({ id: f.id, chars: held.chars });
+      } else if (missing(f.id)) {
+        plan.fetch.push(f.id);
+      }
+    }
+    if (!full) total += chars;
+  }
+
+  const fromKept: Array<{ id: string; size: number }> = [];
+  for (const noteId of keptNotes) {
+    for (const f of byNote.get(noteId) ?? []) {
+      wanted.add(f.id);
+      if (missing(f.id)) fromKept.push(f);
+    }
+  }
+  fromKept.sort((a, b) => a.size - b.size);
+  plan.fetch.push(...fromKept.map((f) => f.id));
+  plan.remove = [...have.keys()].filter((id) => !wanted.has(id));
+  return plan;
 }

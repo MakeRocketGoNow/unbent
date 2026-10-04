@@ -633,7 +633,9 @@ the library is whole — the keeper's rules, for the keeper's reasons. The first
 compares every note by stamp; after that the library names the notes that changed, and a
 new way for a note to change that does not go through the collections will not be indexed.
 Files' text is never synced wholesale: `textPlan` wants it for notebooks kept offline and
-the last `RECENT_NOTES` notes opened here, and fetches it by file id from
+the last `RECENT_NOTES` notes opened here — newest first, up to `RECENT_TEXT_LIMIT`
+characters between them, a file let go for room keeping an entry that remembers its length
+so the plan does not fetch it again — and fetches it by file id from
 `POST /api/attachments/texts`, which cuts its answer on bytes. An answer from the device
 carries what it covered (`LocalCoverage`), and the line under the results
 (`SearchCoverage`) says so; a new place that shows search results offline must show it

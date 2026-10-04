@@ -1115,8 +1115,8 @@ already runs in the browser — over
 every note's title, body, tags and field values, and with no connection the search box asks
 it instead: the same results, the same filters. The text inside files is the exception. It
 is the largest thing an account stores after the files themselves, so a device holds it
-only for the notebooks it keeps offline and for the last couple of hundred notes opened on
-it, and a line under the results says when a search was answered on the device and how many
+only for the notebooks it keeps offline and for the last five hundred notes opened on
+it (up to about 20 MB of text between them, newest first), and a line under the results says when a search was answered on the device and how many
 files' text it could not see — "No matches" offline should never be read as "not in your
 notes". When the connection returns the same search is asked of the server, and its answer
 replaces the device's in place.

@@ -68,8 +68,20 @@ export interface Candidate {
   rank: number;
 }
 
-/** How many notes' files are kept searchable because the note was opened here; see `opened`. */
-export const RECENT_NOTES = 200;
+/**
+ * How many notes' files are kept searchable because the note was opened here; see
+ * `opened`. The number the cache of opened files keeps (`sw/budget.ts`), so the two say
+ * roughly one thing: what was opened here lately opens here, and is found here. On an
+ * archive whose scans average a couple of kilobytes of text each this is a megabyte or
+ * two; what bounds the unusual case is `RECENT_TEXT_LIMIT`, not this.
+ */
+export const RECENT_NOTES = 500;
+
+/**
+ * What the stamp of a file's entry opens with when its text was let go for room and only
+ * its size is remembered; see `textPlan` in `search-local.ts`.
+ */
+export const SHED = 'shed:';
 
 /** Rows a write carries at most, so one statement's JSON stays a few megabytes. */
 const WRITE_ROWS = 200;
@@ -176,11 +188,12 @@ export class SearchIndex {
     return new Map(rows.map((r) => [r.id, r.stamp]));
   }
 
-  /** How many of the given ids are indexed, for saying what a search covered. */
+  /** How many of the given ids are indexed with their text, for saying what a search covered. An entry shed for room is not. */
   async held(kind: Kind, ids: string[]): Promise<number> {
     await this.ready();
     const [row] = await this.db.execute<{ n: number }>(
-      `SELECT COUNT(*) AS n FROM entries WHERE kind = ?1 AND id IN (SELECT value FROM json_each(?2))`,
+      `SELECT COUNT(*) AS n FROM entries
+        WHERE kind = ?1 AND id IN (SELECT value FROM json_each(?2)) AND stamp NOT LIKE '${SHED}%'`,
       [kind, JSON.stringify(ids)],
     );
     return row?.n ?? 0;

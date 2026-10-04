@@ -1,7 +1,7 @@
 // @vitest-environment node
 import { describe, expect, it } from 'vitest';
 import type { FeedAttachment, FeedNote, FeedNotebook, FeedTag } from '@unbent/shared';
-import { SearchIndex } from './search-index.js';
+import { RECENT_NOTES, SearchIndex } from './search-index.js';
 import { BUILT, fieldEntryPrefix, noteEntries, searchLocal, stampOf, tagEntries, textPlan } from './search-local.js';
 import { openTestSearchDb } from './test-search-db.js';
 import type { LocalNote, Snapshot } from './derive.js';
@@ -182,16 +182,16 @@ describe('SearchIndex', () => {
   it('keeps the last notes opened, and a newer index version starts empty', async () => {
     const db = await openTestSearchDb();
     const index = new SearchIndex(db);
-    for (let i = 0; i < 205; i += 1) await index.markOpened(`n${i}`, i);
+    for (let i = 0; i < RECENT_NOTES + 5; i += 1) await index.markOpened(`n${i}`, i);
     await index.markOpened('n0', 1000);
     const opened = await index.opened();
-    expect(opened).toHaveLength(200);
+    expect(opened).toHaveLength(RECENT_NOTES);
     expect(opened[0]).toBe('n0');
     expect(opened).not.toContain('n1');
     await index.put('tag', [{ id: 'x', stamp: '', columns: ['x'] }]);
     await index.clear();
     expect(await index.stamps('tag')).toEqual(new Map());
-    expect(await index.opened()).toHaveLength(200);
+    expect(await index.opened()).toHaveLength(RECENT_NOTES);
     await db.execute(`UPDATE meta SET value = '0' WHERE key = 'version'`);
     expect(await new SearchIndex(db).opened()).toEqual([]);
   });
@@ -216,14 +216,55 @@ describe('textPlan', () => {
     ],
   };
 
+  const held = (entries: Record<string, number | { shed: number }>) =>
+    new Map(Object.entries(entries).map(([id, v]) => [id, typeof v === 'number' ? { chars: v, shed: false } : { chars: v.shed, shed: true }]));
+
   it('wants the text of kept notebooks and opened notes, opened first, then the smallest', () => {
-    expect(textPlan(snapshot, new Set(['nb-receipts']), new Set(['opened']), new Set())).toEqual({ fetch: ['o1', 'k-small', 'k-big'], remove: [] });
+    expect(textPlan(snapshot, new Set(['nb-receipts']), ['opened'], held({}))).toEqual({ fetch: ['o1', 'k-small', 'k-big'], remove: [], shed: [] });
   });
 
   it('fetches only what is missing and drops what nothing wants any more', () => {
-    expect(textPlan(snapshot, new Set(['nb-receipts']), new Set(), new Set(['k-small', 'o1', 'b1', 'deleted-file']))).toEqual({
+    expect(textPlan(snapshot, new Set(['nb-receipts']), [], held({ 'k-small': 40, o1: 9, b1: 9, 'deleted-file': 9 }))).toEqual({
       fetch: ['k-big'],
       remove: ['o1', 'b1', 'deleted-file'],
+      shed: [],
+    });
+  });
+
+  describe('the limit on opened notes', () => {
+    const notes = ['newest', 'middle', 'oldest'].map((id) => ({ id, notebookId: 'nb-manuals' }));
+    const files = [
+      { id: 'n1', noteId: 'newest', size: 1, hasText: true },
+      { id: 'm1', noteId: 'middle', size: 1, hasText: true },
+      { id: 'o1', noteId: 'oldest', size: 1, hasText: true },
+    ];
+    const opened = ['newest', 'middle', 'oldest'];
+    const plan = (have: Parameters<typeof held>[0], limit = 100, kept: string[] = []) => textPlan({ notes, attachments: files }, new Set(kept), opened, held(have), limit);
+
+    it('lets go of the text of the first note that would pass it, and of every older one', () => {
+      expect(plan({ n1: 60, m1: 50, o1: 10 })).toEqual({ fetch: [], remove: [], shed: [{ id: 'm1', chars: 50 }, { id: 'o1', chars: 10 }] });
+    });
+
+    it('remembers what it let go, so the next plan neither fetches it again nor lets it go twice', () => {
+      expect(plan({ n1: 60, m1: { shed: 50 }, o1: { shed: 10 } })).toEqual({ fetch: [], remove: [], shed: [] });
+    });
+
+    it('fetches again what was let go once there is room for it', () => {
+      expect(plan({ n1: 30, m1: { shed: 50 }, o1: { shed: 40 } })).toEqual({ fetch: ['m1'], remove: [], shed: [] });
+    });
+
+    it('does not fetch a file it has never held once the notes before it are over', () => {
+      expect(plan({ n1: 60, m1: 50 })).toEqual({ fetch: [], remove: [], shed: [{ id: 'm1', chars: 50 }] });
+    });
+
+    it('holds the newest note whatever its size', () => {
+      // It is kept, and it has used the room: nothing older is fetched to find out it does not fit.
+      expect(plan({ n1: 500 })).toEqual({ fetch: [], remove: [], shed: [] });
+      expect(plan({ n1: 500, m1: 5, o1: 5 })).toEqual({ fetch: [], remove: [], shed: [{ id: 'm1', chars: 5 }, { id: 'o1', chars: 5 }] });
+    });
+
+    it('does not count a kept notebook, whose size was agreed to when it was kept', () => {
+      expect(plan({ n1: 60, m1: 50, o1: 10 }, 100, ['nb-manuals'])).toEqual({ fetch: [], remove: [], shed: [] });
     });
   });
 });
