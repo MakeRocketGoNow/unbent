@@ -126,6 +126,30 @@
 	<key>LSSupportsOpeningDocumentsInPlace</key>
 	<true/>
 
+	<!--
+	  Held on the Home Screen icon: the two things worth reaching without the list first,
+	  as the Android app's launcher shortcuts. The types are what `QuickAction` reads.
+	-->
+	<key>UIApplicationShortcutItems</key>
+	<array>
+		<dict>
+			<key>UIApplicationShortcutItemType</key>
+			<string>new-note</string>
+			<key>UIApplicationShortcutItemTitle</key>
+			<string>New note</string>
+			<key>UIApplicationShortcutItemIconSymbolName</key>
+			<string>square.and.pencil</string>
+		</dict>
+		<dict>
+			<key>UIApplicationShortcutItemType</key>
+			<string>app-settings</string>
+			<key>UIApplicationShortcutItemTitle</key>
+			<string>App settings</string>
+			<key>UIApplicationShortcutItemIconSymbolName</key>
+			<string>gearshape</string>
+		</dict>
+	</array>
+
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

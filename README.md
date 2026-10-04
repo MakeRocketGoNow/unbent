@@ -1316,6 +1316,23 @@ files landed, the upload says so and the second job ends without opening a WebVi
 fails, the note is still saved and the file stays on the server's pending list, where the web
 app's pass on open picks it up.
 
+**Links and quick actions.** A link to the instance's notes, trash or settings, tapped in
+Mail, Messages or Safari, opens in the app (a universal link), at the same place on
+whichever instance the app is pointed at. The app claims the host (`applinks:` in the
+entitlements); which paths are the app's is the instance's to say, in the association
+document below, and a link to a host the app is not pointed at now opens in Safari's sheet
+over it. Held on the Home Screen, the icon offers New note and App settings. New note opens
+`/notes?new=1`, which the site answers as its New button: it makes the note and replaces
+the address, so Back and a reload do not make another. The debug build claims
+`dev.unbent.app` in developer mode, which a simulator always is, so
+`xcrun simctl openurl booted https://dev.unbent.app/notes/<id>` tries it; the first link
+after an install can still open in Safari, while the system is fetching the document.
+
+A store build cannot do either for an instance of your own: universal links and passkeys
+offered by the system both go to the host the build claims, and the store build claims
+unbent.app. Build your own, below, with `UNBENT_INSTANCE_HOST` set to your host, and serve
+an association document naming it.
+
 **Pointing it at a dev server.** On the sign-in screen, Change the address to
 `http://10.0.2.2:5173` from an emulator; once signed in the same field is in App settings.
 Cleartext is permitted for loopback addresses in debug builds only (see
@@ -1378,7 +1395,7 @@ The site, whole, in one web view, the way the Android app is, with native code o
 what a page cannot do on an iPhone: sign-in, saving files where the phone keeps them, links
 that leave, and the app's own address and version. It is a port of the Android app's shell
 rather than a second design, and where the two differ it is because the platforms do.
-Links that open in the app, and TestFlight, are still to come.
+TestFlight is still to come.
 
 ```
 swift test --package-path apps/ios/Packages/UnbentCore   # unit tests, on the Mac, no simulator

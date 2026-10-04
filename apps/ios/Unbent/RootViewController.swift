@@ -1,4 +1,5 @@
 import os
+import SafariServices
 import SwiftUI
 import UIKit
 import UnbentCore
@@ -28,8 +29,10 @@ final class RootViewController: UIViewController {
     private weak var captureSheet: UIViewController?
     private weak var captureModel: CaptureModel?
 
-    /// Files opened in the app before its first screen was up, held until it is.
-    private var filesToCapture: [URL] = []
+    /// What arrived before the first screen was up and has to present something — a
+    /// file to capture, a link for Safari, App settings — held until it is. UIKit
+    /// refuses to present from a view that is not in a window yet.
+    private var waitingForScreen: [() -> Void] = []
     private var appeared = false
 
     /// Where to go once there is a site to go anywhere on: a note whose notification was
@@ -65,10 +68,21 @@ final class RootViewController: UIViewController {
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
         appeared = true
-        guard !filesToCapture.isEmpty else { return }
-        let files = filesToCapture
-        filesToCapture = []
-        capture(files)
+        let waiting = waitingForScreen
+        waitingForScreen = []
+        waiting.forEach { $0() }
+    }
+
+    /// Runs `present` now if this controller is on screen, and when it first is otherwise.
+    private func onScreen(_ present: @escaping () -> Void) {
+        if appeared { present() } else { waitingForScreen.append(present) }
+    }
+
+    /// Whatever is showing on top, to present over rather than not at all.
+    private var topmost: UIViewController {
+        var top: UIViewController = self
+        while let presented = top.presentedViewController { top = presented }
+        return top
     }
 
     func becameActive() {
@@ -177,7 +191,7 @@ final class RootViewController: UIViewController {
         // a view that is not in a window: nothing showed, and the directory made below
         // was left for the sweep. Held until there is a screen to present on.
         guard appeared else {
-            filesToCapture += files
+            onScreen { [weak self] in self?.capture(files) }
             return
         }
         let jobId = CaptureJob.newId()
@@ -208,9 +222,7 @@ final class RootViewController: UIViewController {
         // nothing to say whether they were wanted.
         sheet.isModalInPresentation = true
         // Over whatever is up — App settings, a Safari sheet — rather than not at all.
-        var presenter: UIViewController = self
-        while let presented = presenter.presentedViewController { presenter = presented }
-        presenter.present(sheet, animated: true)
+        topmost.present(sheet, animated: true)
         captureSheet = sheet
         captureModel = model
 
@@ -249,6 +261,56 @@ final class RootViewController: UIViewController {
             return
         }
         dismiss(animated: false)
+    }
+
+    // MARK: - Links and quick actions
+
+    /// A link to the site tapped in another app — a universal link, which iOS hands over
+    /// only for the paths the instance's apple-app-site-association gives this app: notes,
+    /// the trash, settings.
+    ///
+    /// Opened at the same place on the instance the app is pointed at, which `linkPath`
+    /// finds by host alone, as Android's does. A link to a host the app is not pointed at
+    /// now — a debug build moved to a laptop, sent a link to unbent.app — opens in
+    /// Safari's sheet: that is a different account's note, and nothing here could show it.
+    func follow(_ activity: NSUserActivity) {
+        guard activity.activityType == NSUserActivityTypeBrowsingWeb, let url = activity.webpageURL else { return }
+        if let path = linkPath(instance: instance, link: url.absoluteString) {
+            open(path: path)
+            return
+        }
+        guard case .browser = classify(origin: instance, url: url.absoluteString) else { return }
+        onScreen { [weak self] in
+            self?.topmost.present(SFSafari.controller(for: url), animated: true)
+        }
+    }
+
+    /// A quick action from the Home Screen icon; false for one this build does not know.
+    func perform(_ item: UIApplicationShortcutItem) -> Bool {
+        switch QuickAction(rawValue: item.type) {
+        case .newNote:
+            // The site's own New button, by address (see `filters` in routes/notes.tsx).
+            // Signed out, it waits with any other path for the sign-in to finish.
+            open(path: QuickAction.newNotePath)
+        case .appSettings:
+            onScreen { [weak self] in self?.showSettings() }
+        case nil:
+            return false
+        }
+        return true
+    }
+
+    /// App settings, asked for from outside the page: over whatever else is up, except a
+    /// capture sheet, which is someone partway through filing a file (see
+    /// `dismissForSignOut`). A Safari sheet or a preview goes, so settings is what shows.
+    private func showSettings() {
+        if captureSheet?.presentingViewController != nil { return }
+        if presentedViewController is UIHostingController<AppSettingsScreen> { return }
+        if presentedViewController == nil {
+            openSettings()
+        } else {
+            dismiss(animated: false) { [weak self] in self?.openSettings() }
+        }
     }
 
     // MARK: - App settings
@@ -315,4 +377,13 @@ extension RootViewController: WebShellDelegate {
     func shellWantsSettings(_ shell: WebShellController) {
         openSettings()
     }
+}
+
+/// The Home Screen quick actions, by the type `Info.plist` gives each.
+enum QuickAction: String {
+    case newNote = "new-note"
+    case appSettings = "app-settings"
+
+    /// The address that makes a note, as the list's New button does.
+    static let newNotePath = "/notes?new=1"
 }
