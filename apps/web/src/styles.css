@@ -2309,6 +2309,18 @@ a.overflow-item { text-decoration: none; }
   text-overflow: ellipsis;
 }
 
+/*
+   What an offline search covered (`SearchCoverage`): the status line's place and voice,
+   but a sentence that has to be read whole, so it wraps where the status clips. Balanced,
+   so a second line is not one orphaned word on a phone.
+*/
+.search-coverage {
+  margin: 0.15rem 0 0;
+  white-space: normal;
+  overflow: visible;
+  text-wrap: balance;
+}
+
 a.sidebar-status:hover {
   color: var(--fg);
   text-decoration: underline;

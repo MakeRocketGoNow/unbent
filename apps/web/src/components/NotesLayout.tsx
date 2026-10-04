@@ -57,7 +57,8 @@ import { loadMoreLabel } from './load-more.js';
 import { scopeLabel, tagPlace } from './scope-label.js';
 import { useNotesView } from '../useNotesView.js';
 import { editOpenNoteField } from '../open-note-fields.js';
-import { keys } from '../queries.js';
+import { keys, type SearchAnswer } from '../queries.js';
+import { SearchCoverage } from './SearchCoverage.js';
 import { ActiveFilters } from './ActiveFilters.js';
 import { ScopeMatches, scopeMatches } from './ScopeMatches.js';
 import { useMediaQuery, MOBILE_QUERY } from '../useMediaQuery.js';
@@ -233,12 +234,6 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
     const timer = setTimeout(() => setDebounced(q), 300);
     return () => clearTimeout(timer);
   }, [q]);
-  /*
-     Offline, there is nothing to search: the server does it, and the worker keeps no copy
-     of results. So no request goes out, and the list says why instead of "No matches",
-     which would be a claim about the notes rather than about the connection. The tag and
-     notebook picks still show — they are matched against lists already on the device.
-  */
   const offline = useOffline();
 
   /*
@@ -281,10 +276,7 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
   const tableMode = view === 'table' && !isMobile && notebookId !== undefined;
 
   /* The table draws each match as a row of its columns, so it asks for the rows. */
-  const search = useQuery({
-    ...searchQuery(debounced, filter, tableMode),
-    enabled: !offline && debounced.trim() !== '',
-  });
+  const search = useQuery(searchQuery(debounced, filter, tableMode));
 
   const [sheetOpen, setSheetOpen] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -341,10 +333,24 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
    * requests keep the last answer on screen (`searchQuery`), so this is only the first.
    */
   const needle = debounced.trim();
-  const searchOffline = offline && needle !== '';
-  const answered = search.data !== undefined && (!tableMode || search.data.every((r) => 'note' in r));
+  /*
+   * Offline, the device's own index answers (`searchQuery`), so a search is a search
+   * either way. What is left of "offline" here is a device with no index to ask — no
+   * local library, or its file would not open — where the query fails for want of a
+   * connection. The list then says so instead of "No matches", which would be a claim
+   * about the notes rather than about the connection. The tag and notebook picks still
+   * show: they are matched against lists already on the device.
+   */
+  const searchOffline = needle !== '' && search.isError && isOfflineError(search.error);
+  const answered = search.data !== undefined && (!tableMode || search.data.results.every((r) => 'note' in r));
   const awaiting = needle !== '' && !searchOffline && !answered;
-  const results = needle === '' ? null : searchOffline || !answered ? [] : search.data;
+  const results = needle === '' ? null : searchOffline || !answered ? [] : search.data.results;
+  /*
+   * What a search answered on this device could see, for the line under the matches.
+   * Not while the matches on screen are the previous term's: the line is about the
+   * answer it sits under.
+   */
+  const covered = results !== null && answered && !searchOffline && !search.isPlaceholderData ? search.data.local : undefined;
   /*
    * The matches as the table's rows, in the search's order — which is relevance, so the
    * headers show no sort while a search is on and the table's own order comes back with
@@ -389,10 +395,13 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
     queryClient.setQueryData(listKey, (data: Parameters<typeof patchNotePages>[0]) =>
       patchNotePages(data, noteId, (n) => patchNoteFields(n, def, notebook ?? '', value)),
     );
-    queryClient.setQueryData(searchKey, (data: SearchHit[] | undefined) =>
-      data?.map((r) =>
-        'note' in r && r.id === noteId ? { ...r, note: patchNoteFields(r.note, def, notebook ?? '', value) } : r,
-      ),
+    queryClient.setQueryData(searchKey, (data: SearchAnswer | undefined) =>
+      data && {
+        ...data,
+        results: data.results.map((r) =>
+          'note' in r && r.id === noteId ? { ...r, note: patchNoteFields(r.note, def, notebook ?? '', value) } : r,
+        ),
+      },
     );
   };
   const editField = useMutation({
@@ -435,7 +444,7 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
      selection bar are locked offline anyway, so it can only be the edit that was in flight.
   */
   const error =
-    list.error ?? (offline ? null : search.error) ?? (isOfflineError(editField.error) ? null : editField.error);
+    list.error ?? (isOfflineError(search.error) ? null : search.error) ?? (isOfflineError(editField.error) ? null : editField.error);
 
   /*
    * Whether the rows on screen are the rows for the heading above them.
@@ -1167,6 +1176,8 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
             )}
         </ul>
         )}
+
+        {covered && <SearchCoverage coverage={covered} />}
 
         {/* Trash is a row of the rail and of the drawer; the column is the list alone.
             `.note-list` takes the leftover height, so the status lands on the floor. */}
