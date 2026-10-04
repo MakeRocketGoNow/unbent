@@ -33,6 +33,14 @@ export const MANIFEST_PATH = '/manifest.webmanifest';
  * ahead of Hono, so that pass is a single asset read and not the session lookup every
  * routed request makes.
  *
+ * The service worker precaches this path, and that is fine: it fills its precache by
+ * fetching each file from the network, so what it keeps is this instance's answer, not the
+ * build's file. It keys that copy on the file's revision, so a label changed with no change
+ * to the file would not reach a device that already has the worker; no instance changes its
+ * label, so none is affected. Under `pnpm dev` the renaming shows only on the built app at
+ * `API_PORT`: Vite serves `public/` itself, and its proxy cannot hand the path on, because
+ * the dev Worker's assets are a `dist` that is usually not built.
+ *
  * The recoloured icons are files in `apps/web/public/icons/<kind>/`, not drawn per request:
  * a Worker has no canvas, and the Android launcher wants PNGs. They were made from the
  * production icons with ImageMagick, using the red channel as the mask between the green
