@@ -26,10 +26,16 @@ import type { Env } from '../types.js';
  * Short on purpose: nobody reads a manual, and the note's last line tells them they may
  * delete it. No image, though one would be nice — it would need a stored file per
  * account, which is a blob in R2 for every sign-up to say hello.
+ *
+ * The table's rows are 31 characters, padded so the columns line up, and both are on
+ * purpose. The rich editor draws a table as its own source in a fixed-width face, and a
+ * row that does not fit wraps mid-cell; 31 is what a 320px phone holds. With full
+ * sentences in the cells, the first table a new person saw on a phone was a paragraph
+ * with pipes in it. A cell that needs more words belongs in the prose above it.
  */
 export const WELCOME_TITLE = 'Welcome to Unbent';
 
-export const WELCOME_BODY = `This is a note. Click anywhere and start typing; it saves as you go.
+export const WELCOME_BODY = `This is a note. Start typing anywhere; it saves as you go.
 
 ## What a note can hold
 
@@ -46,11 +52,11 @@ export const WELCOME_BODY = `This is a note. Click anywhere and start typing; it
 
 ## Keeping things in order
 
-| Use | For |
-| --- | --- |
-| Notebooks | One home for each note, like a folder |
-| Tags | Anything that cuts across notebooks |
-| Fields | Dates, ratings and amounts to sort and filter a notebook by |
+| Use       | For             |
+| --------- | --------------- |
+| Notebooks | A note's home   |
+| Tags      | What it's about |
+| Fields    | Dates, ratings  |
 
 ## Your notes stay yours
 
