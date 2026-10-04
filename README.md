@@ -1558,8 +1558,8 @@ whichever instance the app is pointed at. The app claims the host (`applinks:` i
 entitlements); which paths are the app's is the instance's to say, in the association
 document below, and a link to a host the app is not pointed at now opens in Safari's sheet
 over it. Held on the Home Screen, the icon offers New note and App settings. New note opens
-`/notes?new=1`, which the site answers as its New button: it makes the note and replaces
-the address, so Back and a reload do not make another. The debug build claims
+`/notes?new=1`, which the site answers as its New button: it makes an unfiled note and
+replaces the address, so Back and a reload do not make another. The debug build claims
 `dev.unbent.app` in developer mode, which a simulator always is, so
 `xcrun simctl openurl booted https://dev.unbent.app/notes/<id>` tries it; the first link
 after an install can still open in Safari, while the system is fetching the document.

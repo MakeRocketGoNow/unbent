@@ -136,7 +136,8 @@ export const filters = z.object({
    *
    * A request rather than a filter, so it is never kept: `NotesLayout` acts on it once
    * and replaces the entry with the note it made, and Back or a reload cannot make a
-   * second. The only accepted value is `1` — the router reads `?new=1` as the number —
+   * second. The note is filed nowhere, whatever filter is beside the request: anyone can
+   * write this address into a link, and filing would make the notebook and tags it names. The only accepted value is `1` — the router reads `?new=1` as the number —
    * so `?new=0` or a stray `?new` is dropped rather than read as yes.
    */
   new: z.literal(1).optional().catch(undefined),

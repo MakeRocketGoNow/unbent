@@ -699,26 +699,34 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
 
   /*
    * `?new=1` (see `filters`): the New button, pressed for whoever opened the address — an
-   * app's "New note" shortcut. Once per request: the ref holds while the note is being
-   * made, since the address still says `new` until the navigation below replaces it, and
-   * a render in between would otherwise make a second. Replaced rather than pushed, so
-   * Back from the note does not land on the request and make another.
+   * app's "New note" shortcut. Once per request: the effect follows `asked` alone, so it
+   * runs again only when a new request arrives, and the ref covers StrictMode's second
+   * run of the same one. Replaced rather than pushed, so Back from the note does not land
+   * on the request and make another.
    */
   const answering = useRef(false);
   useEffect(() => {
     if (asked !== 1 || answering.current) return;
     answering.current = true;
-    void newNote({ replace: true }).finally(() => {
+    void newNote({ fromAddress: true }).finally(() => {
       answering.current = false;
     });
     // `newNote` is a fresh closure every render; the request is what this follows.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [asked]);
 
-  async function newNote({ replace = false }: { replace?: boolean } = {}) {
+  /**
+   * Makes an empty note and opens it. `fromAddress` is the `?new=1` request: it files the
+   * note nowhere, and replaces the request in the history rather than adding to it.
+   */
+  async function newNote({ fromAddress = false }: { fromAddress?: boolean } = {}) {
     try {
       // Carry the active filter onto the new note, otherwise it is created and then
-      // immediately filtered out of the list the user is looking at.
+      // immediately filtered out of the list the user is looking at. Not for a request
+      // from the address: a filter beside `new=1` is whoever wrote the link's, not a list
+      // anyone is looking at, and a notebook or tag that does not exist would be made for
+      // it — a link in an email could fill an account with them.
+      const carry = !fromAddress;
       const created = await actions.createNote({
         // No name, rather than the literal string "Untitled". The title field's
         // placeholder already says that word, and a placeholder is not data: a stored
@@ -730,10 +738,10 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
         body: '',
         // Every active tag, not just one: with two tags filtered, a note carrying only
         // the first is still filtered out of the list it was created in.
-        tags: tag ?? [],
+        tags: carry ? (tag ?? []) : [],
         // UNFILED is a filter sentinel, not a notebook name — a note created while
         // viewing it belongs in no notebook.
-        notebook: notebook === UNFILED ? null : (notebook ?? null),
+        notebook: !carry || notebook === UNFILED ? null : (notebook ?? null),
       });
       await queryClient.invalidateQueries({ queryKey: ['notes'] });
       invalidateNoteMembership(queryClient);
@@ -745,13 +753,13 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
         to: '/notes/$noteId',
         params: { noteId: created.id },
         search: ({ new: _, ...p }) => p,
-        replace,
+        replace: fromAddress,
       });
     } catch (err) {
       console.error(err);
       // The request is answered either way: left in the address, the next render
       // would try again, and a create that failed once would fail in a loop.
-      if (replace) void navigate({ to: '/notes', search: ({ new: _, ...p }) => p, replace: true });
+      if (fromAddress) void navigate({ to: '/notes', search: ({ new: _, ...p }) => p, replace: true });
     }
   }
 
