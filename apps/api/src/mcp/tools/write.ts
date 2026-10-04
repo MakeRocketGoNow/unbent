@@ -363,12 +363,6 @@ export function registerWriteTools(server: McpServer, notes: NotesRepo): void {
     },
   );
 
-  /*
-     Tags are addressed by name here, as every other tool does, and resolved to the id the
-     repo wants from `listTags`. That list is live notes only, so a tag whose every note is
-     in the trash is "no such tag" to these two — the same answer list_tags gives, which is
-     what the assistant has just read.
-  */
   server.registerTool(
     'update_note_fields',
     {
@@ -418,6 +412,12 @@ export function registerWriteTools(server: McpServer, notes: NotesRepo): void {
     },
   );
 
+  /*
+     Tags are addressed by name here, as every other tool does, and resolved to the id the
+     repo wants from `listTags`. That list is live notes only, so a tag whose every note is
+     in the trash is "no such tag" to these two — the same answer list_tags gives, which is
+     what the assistant has just read.
+  */
   server.registerTool(
     'rename_tag',
     {
