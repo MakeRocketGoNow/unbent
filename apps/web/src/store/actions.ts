@@ -28,9 +28,13 @@ import { outboxName } from './names.js';
  *
  * The outbox (`@tanstack/offline-transactions`) is one queue, replayed in order, one
  * entry at a time, with a growing wait between attempts. Two rules keep the queue from
- * sticking: every answer the server will give again gets `NonRetriableError` — a 4xx, a
- * refused precondition — so the entries behind it move, and the outbox holds at most one
- * save per note. Each save carries the whole draft, so a new save of a note supersedes the
+ * sticking: every answer the server will give again gets `NonRetriableError` — a 4xx
+ * that will not change on retry (a name it will not take, a file too large, a note that
+ * is gone), a refused precondition — so the entries behind it move, and the outbox holds
+ * at most one save per note. A lapsed session, a timeout and a rate limit are not that:
+ * they become a different answer after sign-in or a wait, and ending the entry on them
+ * deletes the only copy of an offline upload, or a save typed while the session was
+ * still good. Each save carries the whole draft, so a new save of a note supersedes the
  * one still waiting: the waiting entry is removed from storage when the new one is queued
  * and does nothing when its turn comes, and the new one carries the older base forward.
  * An hour of autosaves offline is one entry and one PATCH, not thousands of copies of the
@@ -160,6 +164,9 @@ type Upload = { noteId: string; attachmentId: string; filename: string; contentT
 /** The key an upload's notice is kept under, beside the conflicts, for the same reason they are kept. */
 const noticeKey = (attachmentId: string) => `upload-notice:${attachmentId}`;
 
+/** What an outbox entry runs; the library does not export the name. */
+type MutationFn = Parameters<typeof startOfflineExecutor>[0]['mutationFns'][string];
+
 export function createOutbox(userId: string, lib: Omit<WritableLibrary, 'outbox'>): Outbox {
   const conflicts = new Map<string, Conflict>();
   /** The notes each waiting entry is about, by entry id. */
@@ -167,7 +174,8 @@ export function createOutbox(userId: string, lib: Omit<WritableLibrary, 'outbox'
   const waiting = (): ReadonlySet<string> => new Set([...entryNotes.values()].flat());
   /**
    * Whether an attempt ended the entry: it went through, or the server refused it for
-   * good. A lost connection or a 5xx keeps the entry, and its notes keep waiting.
+   * good. A lost connection, a 5xx, a lapsed session, a timeout or a rate limit keeps
+   * the entry (`refusal`), and its notes keep waiting.
    */
   const ended = (entryId: string, err?: unknown) => {
     if (err === undefined || err instanceof NonRetriableError) entryNotes.delete(entryId);
@@ -204,12 +212,53 @@ export function createOutbox(userId: string, lib: Omit<WritableLibrary, 'outbox'
   const cancelled = new Set<string>();
   let sending: string | null = null;
 
-  /** The server refused the request for good, or for now: which, is the queue's whole question. */
+  /**
+   * The server refused the request for good, or for now: which, is the queue's whole question.
+   *
+   * A 4xx is usually the same answer however often it is asked — a name the route will
+   * not take, a file over the cap, a note that is gone — and ending the entry lets the
+   * ones behind it move. Three are not that: 401 is the session (the sign-in that
+   * follows should replay), 408 is a timeout, 429 is "later". The iOS capture queue
+   * carves out the same three (`CaptureJob.isPermanent`); treating them as a refusal
+   * here used to delete the only copy of a file added offline.
+   */
   const refusal = (err: unknown): never => {
     if (isOfflineError(err)) throw err;
-    if (err instanceof ApiError && err.status >= 400 && err.status < 500) throw new NonRetriableError(err.message);
+    if (err instanceof ApiError && err.status >= 400 && err.status < 500 && ![401, 408, 429].includes(err.status)) {
+      throw new NonRetriableError(err.message);
+    }
     throw err;
   };
+
+  /**
+   * Every entry's attempt, with the keep-or-end decision left to this file alone.
+   *
+   * The library's own retry policy gives up on an error whose *message* contains "400",
+   * "401", "403" or "422" — wherever in the text, and whatever the status. Our messages
+   * start with the status (`httpErrorMessage`), so a queued save refused for a lapsed
+   * session read "401 …" and was ended there, before `refusal` had any say, and a 503
+   * whose page said "400 ms" was ended with it. The policy is fixed inside the executor
+   * and cannot be configured, so anything kept goes to it under a message with nothing in
+   * it to match, and the error it came from as its `cause`. `NonRetriableError` passes as
+   * it is: that is the one way an entry ends.
+   */
+  const decided = (fns: Record<string, MutationFn>): Record<string, MutationFn> =>
+    Object.fromEntries(
+      Object.entries(fns).map(([name, fn]) => [
+        name,
+        async (params) => {
+          try {
+            return await fn(params);
+          } catch (err) {
+            if (err instanceof NonRetriableError) throw err;
+            // The executor records the message and not the cause, so this is the one
+            // place a queue stuck on a 429 or a lapsed session says so outside a debugger.
+            console.debug('[outbox] kept:', err);
+            throw new Error('Not sent yet; it will be tried again', { cause: err });
+          }
+        },
+      ]),
+    );
 
   const adapter = new IndexedDBAdapter(outboxName(userId));
   const storage = watched(adapter, () => touch());
@@ -219,7 +268,7 @@ export function createOutbox(userId: string, lib: Omit<WritableLibrary, 'outbox'
     storage,
     onlineDetector: connectivityDetector(),
     onLeadershipChange: () => touch(),
-    mutationFns: {
+    mutationFns: decided({
       saveNote: async ({ transaction }) => {
         const { noteId, value, base, against } = transaction.metadata as unknown as Save;
         try {
@@ -312,10 +361,10 @@ export function createOutbox(userId: string, lib: Omit<WritableLibrary, 'outbox'
        * the next flight, and it is as good as opened. Refused for good, there is nothing
        * to keep them for, and the notice says what happened.
        *
-       * A refused session is the one 4xx that is not a refusal of the upload: the entry
-       * stays, the library is closed and kept (`offline-cache.ts`), and the sign-in that
-       * follows replays it. An upload exists nowhere but here; ending it on a 401 would
-       * delete the only copy.
+       * A refused session, a timeout and a rate limit are not refusals of the upload (see
+       * `refusal`): the entry stays, and on a 401 the library is closed and kept
+       * (`offline-cache.ts`) so the sign-in that follows replays it. An upload exists
+       * nowhere but here; ending it on any of them would delete the only copy.
        */
       uploadFile: async ({ transaction }) => {
         const upload = transaction.metadata as unknown as Upload;
@@ -330,13 +379,7 @@ export function createOutbox(userId: string, lib: Omit<WritableLibrary, 'outbox'
           const bytes = await readFile(userId, 'pending', noteId, filename);
           if (!bytes) throw new NonRetriableError(`The file was no longer on this device`);
           const file = new File([bytes], filename, { type: contentType });
-          let answer: api.UploadedFile;
-          try {
-            answer = await api.uploadFile(noteId, file, { id: attachmentId });
-          } catch (err) {
-            if (err instanceof ApiError && err.status === 401) throw err;
-            return refusal(err);
-          }
+          const answer = await api.uploadFile(noteId, file, { id: attachmentId }).catch(refusal);
           if (answer.filename !== filename) {
             // Another device added a file of this name to this note meanwhile, and the
             // server suffixed ours. The link written into the note names the other one.
@@ -377,7 +420,7 @@ export function createOutbox(userId: string, lib: Omit<WritableLibrary, 'outbox'
         const { ids: which, add, remove } = transaction.metadata as unknown as { ids: string[]; add?: string[]; remove?: string[] };
         return run(transaction.id, () => api.updateNotes(which, { addTags: add, removeTags: remove }).then(() => undefined, refusal));
       },
-    },
+    }),
   });
 
   const id = (t: Transaction) => (t.metadata as { noteId: string }).noteId;
