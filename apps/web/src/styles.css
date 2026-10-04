@@ -79,6 +79,17 @@
      once per theme.
   */
   --select-chevron: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%236b6560' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='m6 9 6 6 6-6'/></svg>");
+  /*
+     What restoring a version would change, in the History sheet (`HistoryChanges`): a
+     wash under a whole line added or removed, and a stronger one under the words marked
+     inside a line that changed. Mixed from --good and --bad so they follow the theme, and
+     only ever a ground under the page's own ink — the text stays --fg, so it reads at full
+     contrast on either, and the strike and the underline carry the meaning without them.
+  */
+  --diff-added-line: color-mix(in srgb, var(--good) 10%, transparent);
+  --diff-removed-line: color-mix(in srgb, var(--bad) 9%, transparent);
+  --diff-added-mark: color-mix(in srgb, var(--good) 20%, transparent);
+  --diff-removed-mark: color-mix(in srgb, var(--bad) 18%, transparent);
   color-scheme: light;
 }
 
@@ -108,6 +119,11 @@ input[type='radio'] {
     /* A deeper wash and a paler word: the same six hues, read against a dark ground. */
     --tint-wash: 26%;
     --tint-ink: 50%;
+    /* Deeper washes for a dark ground; --bad is a light salmon here, under pale ink. */
+    --diff-added-line: color-mix(in srgb, var(--good) 15%, transparent);
+    --diff-removed-line: color-mix(in srgb, var(--bad) 14%, transparent);
+    --diff-added-mark: color-mix(in srgb, var(--good) 30%, transparent);
+    --diff-removed-mark: color-mix(in srgb, var(--bad) 28%, transparent);
     --select-chevron: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%239a938c' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='m6 9 6 6 6-6'/></svg>");
     color-scheme: dark;
   }
@@ -4237,6 +4253,20 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
   background: color-mix(in srgb, var(--fg) 9%, transparent);
 }
 
+.tb-seg:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+/* The History sheet's switch waits for its version to load; faded in place, never hidden,
+   so the row it sits in keeps its height. */
+.tb-seg:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.tb-seg:disabled:hover { color: var(--muted); }
+
 .tb-bold { font-weight: 700; }
 .tb-italic { font-style: italic; font-family: Georgia, serif; }
 .tb-strike { text-decoration: line-through; }
@@ -7568,6 +7598,150 @@ button.settings-nav-item {
 .history-copy .preview {
   padding: 0;
   max-width: none;
+}
+
+/*
+   What a version is, and the Preview / Changes switch, on one row above the box. The
+   switch is the editor's own (`.tb-segmented`), so the two ways of looking at a note
+   look like one control wherever they appear. On one row so the box below starts at the
+   same height in both views and whether the version has loaded or not: the switch is
+   faded while it loads rather than left out. It wraps under the words on a phone too
+   narrow for both.
+*/
+.history-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.25rem 0.75rem;
+  min-height: 1.75rem;
+}
+
+.history-head .tb-segmented { margin-inline-start: auto; }
+
+/*
+   Changes: the Markdown source, one column, with what Restore would add underlined and
+   what it would take out struck through. See `HistoryChanges`.
+*/
+.history-diff {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.history-diff-legend { line-height: 1.45; }
+
+.history-diff-note { color: var(--muted); }
+
+/*
+   Source keeps its own spacing — a table's padding, an indented list — so whitespace is
+   kept, and wraps, since the sheet is narrow: a long address or table row breaks where it
+   must rather than widening the box. Monospace because this is source, where character
+   positions carry meaning, as in the editor's Source view.
+*/
+.history-diff-text {
+  flex: 1;
+  min-width: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.history-diff-title .history-diff-text { white-space: normal; }
+
+/* Pulled out to the box's edges, so a line's wash reads as the line and not as a chip. */
+.history-diff-rows {
+  margin-inline: -0.85rem;
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+  line-height: 1.5;
+}
+
+/* At least a line tall, so a blank line in the note is a blank line here. */
+.history-diff-row {
+  display: flex;
+  min-height: 1.5em;
+  padding-inline-end: 0.85rem;
+}
+
+/* The gutter: − or + for a whole line, ± for a line with words marked inside it. */
+.history-diff-mark {
+  flex: 0 0 auto;
+  width: 1.5rem;
+  text-align: center;
+  color: var(--muted);
+  user-select: none;
+}
+
+.history-diff-row.is-added { background: var(--diff-added-line); }
+.history-diff-row.is-removed { background: var(--diff-removed-line); }
+
+/*
+   A mark is a ground under the page's ink plus a line through it or under it — never a
+   colour of text alone. On a whole line the line's wash is already the ground, so the
+   words keep only their decoration.
+*/
+.history-diff ins,
+.history-diff del {
+  color: inherit;
+  border-radius: 0.15rem;
+  text-decoration-thickness: 1px;
+}
+
+.history-diff ins {
+  text-decoration-line: underline;
+  text-underline-offset: 0.18em;
+  background: var(--diff-added-mark);
+}
+
+.history-diff del {
+  text-decoration-line: line-through;
+  background: var(--diff-removed-mark);
+}
+
+/* A mark that starts where another ended; see `Part` in HistoryChanges. */
+.history-diff-abuts { margin-left: 0.3em; }
+
+.history-diff-row.is-added ins,
+.history-diff-row.is-removed del { background: none; }
+
+/*
+   A folded stretch of unchanged lines: a whole row wide and the 44px floor tall, on a
+   faint fill so it reads as something to press and not as a line of the note. In the
+   sheet's own type, not the source's — it is the sheet talking, not the note.
+*/
+.history-diff-fold {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  width: 100%;
+  min-height: 2.75rem;
+  margin-block: 0.15rem;
+  padding: 0 0.85rem 0 0.4rem;
+  font: inherit;
+  font-family: var(--font-ui);
+  font-size: 0.78rem;
+  text-align: left;
+  color: var(--muted);
+  background: color-mix(in srgb, var(--fg) 4%, transparent);
+  border: none;
+  cursor: pointer;
+}
+
+.history-diff-fold:hover {
+  color: var(--fg);
+  background: color-mix(in srgb, var(--fg) 8%, transparent);
+}
+
+.history-diff-fold:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.history-diff-fold .row-chevron { transition: transform 120ms ease; }
+.history-diff-fold[aria-expanded='true'] .row-chevron { transform: rotate(90deg); }
+
+@media (prefers-reduced-motion: reduce) {
+  .history-diff-fold .row-chevron { transition: none; }
 }
 
 /*
