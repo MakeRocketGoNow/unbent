@@ -14,8 +14,12 @@
  * then checks, in order: the worker is installed and in control; a file that is not on the
  * device says so at once; the worker, its caches and the library survive being offline; a
  * file opened online draws again offline; and a file added offline goes to the device
- * and uploads when the connection returns. Each check prints one PASS or FAIL line, and the
- * exit code is 0 only if every one passed.
+ * and uploads when the connection returns. Then search, offline: a phrase from a note's
+ * body finds the note; a phrase that is only in a PDF finds nothing while its notebook is
+ * not kept offline, and the line under the results says files went unsearched; once the
+ * notebook is kept it finds the note; and when the connection returns the server's answer
+ * replaces the device's in the row already on screen. Each check prints one PASS or FAIL
+ * line, and the exit code is 0 only if every one passed.
  *
  *   pnpm dev                              # in another terminal
  *   pnpm seed:demo                        # once
@@ -61,8 +65,20 @@ function baseUrl() {
   return `http://localhost:${portsFor(path.dirname(here)).api}`;
 }
 
+/*
+ * What the search checks look for, from `packages/seed`: a word in the body of a
+ * showcase note, and a line that is on a coupon's PDF and nowhere in its note.
+ */
+const BODY_QUERY = 'crumb';
+const BODY_TITLE = 'Sourdough';
+const PDF_QUERY = 'take 15% off your order';
+const PDF_TITLE = 'Acme Outfitters';
+const PDF_NOTEBOOK = 'Coupons';
+
 const results = [];
 const logs = [];
+/** Answers seen from the route that hands a device files' text, which is how the gate knows the index has been fed. */
+let textsAnswered = 0;
 
 function report(name, ok, why) {
   results.push(ok);
@@ -150,6 +166,7 @@ async function run(BASE, chrome, keepSocket) {
   ws.onmessage = (m) => {
     const d = JSON.parse(m.data);
     if (d.id && waiting.has(d.id)) { waiting.get(d.id)(d); waiting.delete(d.id); return; }
+    if (d.method === 'Network.responseReceived' && d.params.response.url.includes('/api/attachments/texts') && d.params.response.status === 200) textsAnswered += 1;
     if (d.method === 'ServiceWorker.workerErrorReported') logs.push(`worker error: ${d.params.errorMessage.errorMessage.slice(0, 300)}`);
     else if (d.method === 'Runtime.exceptionThrown') logs.push(`exception: ${(d.params.exceptionDetails.exception?.description ?? d.params.exceptionDetails.text).slice(0, 300)}`);
     else if (d.method === 'Runtime.consoleAPICalled' && ['error', 'warning'].includes(d.params.type)) logs.push(`console.${d.params.type}: ${d.params.args.map((a) => a.value ?? a.description ?? a.type).join(' ').slice(0, 300)}`);
@@ -312,6 +329,70 @@ async function run(BASE, chrome, keepSocket) {
         : false;
       if (onDevice && !uploaded) why = `after going online: listed ${String(await ev(`fetch('/api/notes/${note.id}/files').then(r=>r.text())`)).includes(FILE)}, still pending ${await pendingHas()}`;
       report('a file added offline uploads when the connection returns', !!uploaded, why);
+    }
+
+    // Search with no connection. What the list shows for a query, read from the page.
+    const searched = () => ev(`(()=>{const hits=[...document.querySelectorAll('.note-list a.note-item')].map(a=>a.textContent);return {hits,empty:[...document.querySelectorAll('.note-list .empty')].map(e=>e.textContent).join(' '),covered:document.querySelector('.search-coverage')?.textContent??null,count:document.querySelector('.note-list')?.getAttribute('aria-busy')??''}})()`);
+    const searchUrl = (q) => `${BASE}/notes?q=${encodeURIComponent(q)}`;
+
+    // 6
+    {
+      // Online first, so the index has had a pass over the library before the network goes.
+      await goto(`${BASE}/notes`);
+      await until(libraryReady, 10000);
+      await sleep(4000);
+      await offlineAt(searchUrl(BODY_QUERY));
+      const ok = await until(async () => {
+        const v = await searched();
+        return v && typeof v === 'object' && v.hits.some((t) => t.includes(BODY_TITLE)) && /^Searched on this device/.test(v.covered ?? '') ? v : null;
+      }, 15000);
+      report('offline, a phrase from a note body finds the note', !!ok, `saw ${JSON.stringify(await searched())}`);
+    }
+
+    // 7
+    {
+      await offlineAt(searchUrl(PDF_QUERY));
+      const ok = await until(async () => {
+        const v = await searched();
+        return v && typeof v === 'object' && v.hits.length === 0 && /No matches/.test(v.empty) && /was not searched/.test(v.covered ?? '') ? v : null;
+      }, 15000);
+      report('offline, a phrase from a PDF in a notebook that is not kept finds nothing, and says files went unsearched', !!ok, `saw ${JSON.stringify(await searched())}`);
+    }
+
+    // 8
+    {
+      await network(false);
+      const notebookId = await ev(`fetch('/api/notebooks').then(r=>r.json()).then(j=>(Array.isArray(j)?j:(j.notebooks??[])).find(n=>n.name===${JSON.stringify(PDF_NOTEBOOK)})?.id??null)`);
+      const before = textsAnswered;
+      await goto(`${BASE}/settings/notebooks/${notebookId}`);
+      // The button, then the confirmation it opens, which offers the same words.
+      const press = () => ev(`(()=>{const b=[...document.querySelectorAll('button')].filter(b=>b.textContent.trim()==='Keep offline'&&!b.disabled);b.at(-1)?.click();return b.length})()`);
+      const asked = await until(async () => ((await press()) > 0 ? true : null), 15000);
+      await sleep(500);
+      await press();
+      const kept = asked && (await until(() => ev(`/is kept on this device/.test(document.body.textContent)`), 10000));
+      // The files' text is asked for once the notebook is kept; a moment more for it to be indexed.
+      const fed = kept && (await until(async () => (textsAnswered > before ? true : null), 20000));
+      await sleep(2000);
+      let ok = false;
+      if (fed) {
+        await offlineAt(searchUrl(PDF_QUERY));
+        ok = await until(async () => {
+          const v = await searched();
+          return v && typeof v === 'object' && v.hits.some((t) => t.includes(PDF_TITLE) && /\.pdf/.test(t)) ? v : null;
+        }, 15000);
+      }
+      report('offline, the same phrase finds its note once the notebook is kept', !!ok, !asked ? `no Keep offline button on the notebook's page (notebook ${notebookId})` : !kept ? 'the notebook was never kept' : !fed ? 'the text of its files was never asked for' : `saw ${JSON.stringify(await searched())}`);
+    }
+
+    // 9
+    {
+      // The row on screen is remembered by identity: the server's answer has to land in it,
+      // not in a list drawn again under the pointer.
+      const marked = await ev(`(()=>{const a=[...document.querySelectorAll('.note-list a.note-item')].find(a=>a.textContent.includes(${JSON.stringify(PDF_TITLE)}));window.__gateHit=a;return !!a&&!!document.querySelector('.search-coverage')})()`);
+      await network(false);
+      const ok = marked === true && (await until(() => ev(`!document.querySelector('.search-coverage')&&document.contains(window.__gateHit)&&window.__gateHit.textContent.includes(${JSON.stringify(PDF_TITLE)})?'ok':'coverage '+!!document.querySelector('.search-coverage')+', row kept '+document.contains(window.__gateHit)`), 30000));
+      report('back online, the server answers the same search in the rows already on screen', !!ok, marked === true ? String(await ev(`'coverage line '+!!document.querySelector('.search-coverage')+', row kept '+document.contains(window.__gateHit)`)) : 'no offline result on screen to compare with');
     }
   } finally {
     // Back to how the demo account was found, whatever happened above.
