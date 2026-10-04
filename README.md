@@ -1174,12 +1174,16 @@ stays deleted. Tags, the notebook and field values are not versioned.
 
 It also means that text you delete from a note is not gone at once. A password pasted into
 a note and then removed is still in that note's History, for anyone signed in to the
-account, until the version ages out or the note itself is deleted and the trash emptied.
-There is no way yet to clear a note's history on its own. Emptying the trash
+account, until the version ages out. **Clear history**, at the foot of the sheet, deletes
+every version of that note for good and leaves the note as it is; it asks first, since it
+is the one thing in the sheet that cannot be undone. What it cannot reach is the thirty
+days of point-in-time recovery every store keeps (see [Where your notes
+live](#where-your-notes-live)): an operator winding the whole account back to before the
+clear would bring the versions back with everything else. Emptying the trash
 takes a note's history with it, and deleting the account takes all of it.
 
-The API is `GET /api/notes/:id/revisions`, `GET /api/notes/:id/revisions/:revision` and
-`POST /api/notes/:id/revisions/:revision/restore`. There is no MCP tool for it yet: an
+The API is `GET /api/notes/:id/revisions`, `GET /api/notes/:id/revisions/:revision`,
+`POST /api/notes/:id/revisions/:revision/restore` and `DELETE /api/notes/:id/revisions`. There is no MCP tool for it yet: an
 assistant can cause a version to be kept, but only a person can put one back.
 
 ## Deleting notes

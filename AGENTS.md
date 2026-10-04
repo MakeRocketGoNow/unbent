@@ -511,8 +511,8 @@ and its upload is an entry in the same outbox, behind the note's own. The upload
 file's id (`X-Attachment-Id`), so a replay finds the file rather than storing `scan-2.pdf`;
 a direct upload carries the same id its queued retry will, since its answer can be lost
 too; a refused session keeps the entry, because the bytes exist nowhere else; any other 4xx ends
-it and leaves a notice the attachments panel shows. Putting a version back from a note's history (`restoreRevision`) is a
-request too, and waits for the note's own queued writes first: history is the server's, and
+it and leaves a notice the attachments panel shows. Putting a version back from a note's history (`restoreRevision`), and clearing that history (`clearHistory`), are
+requests too, and wait for the note's own queued writes first: history is the server's, and
 the server keeps what a restore replaces only if it has it. Notebook, tag and field management stay direct calls
 that need a connection: they are settings-page actions with rules the server decides, and
 the feed delivers what they did to every device.
@@ -777,8 +777,13 @@ What to know before changing it:
   browser cannot claim it and a new MCP tool that writes a body must pass it.
 - **Not in the feed, the export or the local library.** Twenty bodies per note on every
   device is what that would cost. The History sheet reads the server each time it opens.
-- **Pruned on the write that adds a copy, for that note only**: twenty copies, ninety
-  days, no cron. Bounded in the rows-read test with the other hot queries.
+- **Pruned on the write that adds a copy, for that note only**, no cron. Bounded in the
+  rows-read test with the other hot queries. The three numbers (`REVISION_WINDOW_MS`,
+  `REVISIONS_KEPT`, `REVISION_MAX_AGE_MS`) live in `@unbent/shared`, because the History
+  sheet states them to the person; change them there and nowhere else.
+- **Clear history waits for the note's queued writes** (`clearHistory` in
+  `store/actions.ts`), like a restore. A save still in the outbox would land after the
+  clear and keep a copy of the very text the person was clearing.
 
 ### The change feed
 
