@@ -784,6 +784,10 @@ What to know before changing it:
 - **Clear history waits for the note's queued writes** (`clearHistory` in
   `store/actions.ts`), like a restore. A save still in the outbox would land after the
   clear and keep a copy of the very text the person was clearing.
+- **Revision ids are integers**, the one exception to rule 2. A revision is never exported,
+  shared or in the feed, and is only addressed under its note, so a UUID would buy nothing
+  and cost one more index row per copy. A new table whose rows can be exported or named
+  across accounts does not get the same exception.
 
 ### The change feed
 
