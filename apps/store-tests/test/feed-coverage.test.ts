@@ -100,7 +100,7 @@ const READS = new Set([
   'list', 'listFull', 'count', 'get', 'search', 'listTags', 'sampleTitles', 'countUnfiledNotes',
   'listNotebooks', 'listFields', 'fieldById', 'listAllFields', 'previewConversion', 'countOptionUsage',
   'resolveAttachment', 'listAttachments', 'ownsNote', 'availableFilename', 'needingText', 'needingVision',
-  'visionPending', 'pendingTextCount', 'textFor', 'textsForNote', 'textsForNotes', 'attachmentIdFor',
+  'visionPending', 'pendingTextCount', 'textFor', 'textsForNote', 'textsForNotes', 'textsById', 'attachmentIdFor',
   'keysForNote', 'allBlobKeys',
   'listPage', 'searchRows', 'exportPage', 'getWithFiles', 'filesForNote', 'notebooksOverview', 'pendingText',
   'autofillPrelude', 'autofillContext', 'attachmentReadPrelude', 'uploadPrelude',

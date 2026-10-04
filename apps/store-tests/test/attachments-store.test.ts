@@ -75,6 +75,19 @@ describe('attachments', () => {
     ]);
     expect(await stub.textsForNotes([])).toEqual([]);
 
+    // By id, for a device's offline index: only files with text, and nothing for an id
+    // that has none. A budget smaller than the texts still answers one and names the rest.
+    await stub.recordAttachment(file('n1', { id: 'a3', filename: 'unread.pdf' }));
+    expect(await stub.textsById(['a1', 'a3', 'ghost'])).toEqual({ texts: [{ id: 'a1', text: 'globex receipt' }], left: [] });
+    expect(await stub.textsById(['a1', 'a2'], 10)).toEqual({ texts: [{ id: 'a1', text: 'globex receipt' }], left: ['a2'] });
+    expect(await stub.textsById([])).toEqual({ texts: [], left: [] });
+    const before = (await stub.counters()).rowsRead;
+    await stub.textsById(['a1', 'a2']);
+    // Six rows a file: the id's JSON row and the text row by primary key, counted for
+    // the sizes and again for the texts. Nothing that grows with the account.
+    expect((await stub.counters()).rowsRead - before).toBeLessThanOrEqual(12);
+    await stub.removeAttachment('n1', 'unread.pdf');
+
     // Removing the attachment cascades its text and the flag no longer matters; the
     // FTS entry goes with the row.
     await stub.removeAttachment('n1', 'scan.pdf');
