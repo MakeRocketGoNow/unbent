@@ -175,6 +175,7 @@ vi.mock('../notes-api.js', async (importOriginal) => ({
   updateNotes: vi.fn(),
   uploadFile: vi.fn(),
   deleteAttachment: vi.fn(),
+  restoreRevision: vi.fn(),
 }));
 
 const { fakes, MemoryAdapter } = await h;
@@ -561,6 +562,74 @@ describe('what waits for the server', () => {
     fake.lead(false);
     expect(lib.outbox.status().durable).toBe(false);
     expect(seen).toEqual([true, false]);
+  });
+});
+
+describe('a copy put back from a note’s history', () => {
+  it('is a request, and its answer is in the local copy when it returns', async () => {
+    const { lib, fake, note } = library([row('n1', { title: 'gutted', body: '' })]);
+    await lib.outbox.ready;
+    const restored = { ...note('n1'), title: 'whole', body: 'the long text', updatedAt: 200 };
+    vi.mocked(api.restoreRevision).mockResolvedValueOnce(restored);
+    const heard = vi.fn();
+    const off = actions.onDirectWrite(heard);
+
+    expect(await actions.restoreRevision('n1', 7)).toEqual(restored);
+    off();
+    expect(api.restoreRevision).toHaveBeenCalledWith('n1', 7);
+    // Nothing queued: history is the server's, and so is keeping what the restore replaced.
+    expect(fake.queue).toHaveLength(0);
+    expect(lib.notes.get('n1')).toMatchObject({ title: 'whole', body: 'the long text', updatedAt: 200 });
+    expect(heard).toHaveBeenCalledTimes(1);
+  });
+
+  it('waits for the note’s own save to reach the server first', async () => {
+    const { lib, fake, note } = library([row('n1', { title: 'old' })]);
+    await lib.outbox.ready;
+    const base = note('n1');
+    await actions.saveNote({ noteId: 'n1', value: { ...seedFrom(base), title: 'typed' }, base });
+    await tick();
+    vi.mocked(api.restoreRevision).mockResolvedValueOnce({ ...base, title: 'restored', updatedAt: 300 });
+
+    const restoring = actions.restoreRevision('n1', 7);
+    await tick();
+    // The save is still in the outbox, so the server has not been asked.
+    expect(api.restoreRevision).not.toHaveBeenCalled();
+
+    vi.mocked(api.updateNote).mockResolvedValueOnce({ ...base, title: 'typed', updatedAt: 200 });
+    expect(await fake.replayOne()).toBe('done');
+    expect(await restoring).toMatchObject({ title: 'restored' });
+    expect(vi.mocked(api.updateNote).mock.invocationCallOrder[0]).toBeLessThan(
+      vi.mocked(api.restoreRevision).mock.invocationCallOrder[0]!,
+    );
+  });
+
+  it('refuses, and asks the server nothing, when the note’s save will not go', async () => {
+    vi.useFakeTimers();
+    try {
+      const { lib, note } = library([row('n1', { title: 'old' })]);
+      await lib.outbox.ready;
+      const base = note('n1');
+      await actions.saveNote({ noteId: 'n1', value: { ...seedFrom(base), title: 'typed' }, base });
+      await vi.advanceTimersByTimeAsync(0);
+
+      const restoring = actions.restoreRevision('n1', 7);
+      const refused = expect(restoring).rejects.toThrow(/not synced yet/);
+      await vi.advanceTimersByTimeAsync(5000);
+      await refused;
+      expect(api.restoreRevision).not.toHaveBeenCalled();
+      // The typing is where it was: on the row, and waiting.
+      expect(lib.notes.get('n1')!.title).toBe('typed');
+      expect(lib.outbox.status().waiting.has('n1')).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('with no library, is the request and nothing else', async () => {
+    const restored = { id: 'n1', title: 'whole', body: 'text', tags: [], createdAt: 1, updatedAt: 2 } as Note;
+    vi.mocked(api.restoreRevision).mockResolvedValueOnce(restored);
+    expect(await actions.restoreRevision('n1', 7)).toEqual(restored);
   });
 });
 

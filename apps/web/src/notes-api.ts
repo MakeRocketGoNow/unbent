@@ -10,6 +10,8 @@ import type {
   FieldType,
   Note,
   NoteFieldsPatch,
+  NoteRevision,
+  NoteRevisionSummary,
   NoteSort,
   NoteSummary,
   NotebookSummary,
@@ -295,6 +297,28 @@ export async function duplicateNote(id: string, copyId?: string): Promise<Note> 
       method: 'POST',
       ...(copyId ? { headers: jsonHeaders, body: JSON.stringify({ id: copyId }) } : {}),
     }),
+  );
+}
+
+/**
+ * A note's history: the copies the server kept of what a write replaced, newest first,
+ * without their bodies. Only ever from the server — history is not in the local copy of
+ * the library — so offline this is an `OfflineError` like any other request.
+ */
+export async function listRevisions(noteId: string): Promise<NoteRevisionSummary[]> {
+  const res = await request(`/api/notes/${encodeURIComponent(noteId)}/revisions`);
+  return (await json<{ revisions: NoteRevisionSummary[] }>(res)).revisions;
+}
+
+/** One copy from a note's history, with its body. */
+export async function getRevision(noteId: string, revisionId: number): Promise<NoteRevision> {
+  return json<NoteRevision>(await request(`/api/notes/${encodeURIComponent(noteId)}/revisions/${revisionId}`));
+}
+
+/** Puts a copy back as the note's title and body; the note as it then stands. */
+export async function restoreRevision(noteId: string, revisionId: number): Promise<Note> {
+  return json<Note>(
+    await request(`/api/notes/${encodeURIComponent(noteId)}/revisions/${revisionId}/restore`, { method: 'POST' }),
   );
 }
 

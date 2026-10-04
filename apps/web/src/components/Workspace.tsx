@@ -3,7 +3,7 @@ import { noteOpened } from '../store/library.js';
 import { Link, useNavigate } from '@tanstack/react-router';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { EditorView } from '@codemirror/view';
-import type { FieldDef, FieldType, FieldValue, Note } from '@unbent/shared';
+import type { FieldDef, FieldType, FieldValue, Note, NoteRevisionSummary } from '@unbent/shared';
 import { localizeImageLinks, remoteImageUrls } from '@unbent/shared';
 import * as api from '../notes-api.js';
 import { isOfflineError, isStatus } from '../notes-api.js';
@@ -50,6 +50,8 @@ import { EditorToolbar, type NoteView } from './EditorToolbar.js';
 import { Attachments } from './Attachments.js';
 import { ResizeHandle } from './ResizeHandle.js';
 import { OverflowMenu } from './OverflowMenu.js';
+import { HistorySheet } from './HistorySheet.js';
+import { formatRevisionWhen } from './format-when.js';
 import { Button } from './Button';
 import { BackArrow } from './BackArrow.js';
 import { FilingRows } from './FilingRows.js';
@@ -775,6 +777,68 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
     void navigate({ to: '/notes/$noteId', params: { noteId: copy.id }, search: (p) => p });
   }
 
+  /** The History sheet, and the ⋯ menu it opens from, which its desktop panel sits under. */
+  const [historyOpen, setHistoryOpen] = useState(false);
+  /*
+     The sheet is not in the page until History has been chosen once. It is opened on few
+     notes and its dialog would otherwise sit, closed, in every one; kept mounted after
+     that, so closing it is the sheet's own exit and not an unmount.
+  */
+  const [historyMounted, setHistoryMounted] = useState(false);
+  const overflowSlot = useRef<HTMLSpanElement>(null);
+  // Workspace is reused across notes; a sheet left open would be showing the last one's.
+  useEffect(() => setHistoryOpen(false), [noteId]);
+
+  /**
+   * Puts a copy from the note's history back (MAK-119), then says so with an Undo.
+   *
+   * What is on screen is saved first, and the save has to have worked: the server keeps
+   * what a restore replaces, and it can only keep what it has. Typing that never left
+   * this tab would be replaced by the reseed below and exist nowhere. `flush` reports
+   * through the save state, which is a render behind it, hence the turn of the event
+   * loop before it is read.
+   *
+   * Thrown errors are the sheet's to show: it stays open on them, with the copy still
+   * in front of the person.
+   */
+  async function restoreFromHistory(revision: NoteRevisionSummary) {
+    const id = noteId;
+    await flush();
+    await new Promise((r) => setTimeout(r, 0));
+    if (saveStateRef.current !== 'idle' && saveStateRef.current !== 'saved') {
+      throw new Error('This note has changes that could not be saved, so nothing was restored.');
+    }
+    const restored = await actions.restoreRevision(id, revision.id);
+    void queryClient.invalidateQueries({ queryKey: ['search'] });
+    if (noteIdRef.current !== id) return;
+    reseed(restored);
+    setHistoryOpen(false);
+    setSnackbar({
+      message: `Restored the version from ${formatRevisionWhen(revision.createdAt)}`,
+      tone: 'info',
+      duration: 8000,
+      action: { label: 'Undo', onClick: () => void undoRestore(id) },
+    });
+  }
+
+  /**
+   * Undo, on the snackbar a restore leaves: the copy the restore itself kept, put back.
+   * It is the newest in the list by construction — the restore made it a moment ago —
+   * and is only taken if it says so (`cause`), so a write from elsewhere in between
+   * cannot have this put back something the person never saw.
+   */
+  async function undoRestore(id: string) {
+    try {
+      const [newest] = await api.listRevisions(id);
+      if (!newest || newest.cause !== 'restore') throw new Error('The note has changed since; open History to choose a version.');
+      const back = await actions.restoreRevision(id, newest.id);
+      if (noteIdRef.current === id) reseed(back);
+    } catch (err) {
+      if (noteIdRef.current !== id) return;
+      setSnackbar({ message: (err as Error).message.replace(/^\d{3}[^:]*: /, ''), tone: 'error' });
+    }
+  }
+
   /** The addresses the draft's images are drawn from; what "Save web images" counts. */
   const remoteImages = useMemo(() => remoteImageUrls(draft.body), [draft.body]);
   const draftBodyRef = useRef(draft.body);
@@ -1195,7 +1259,7 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
           {/* A trashed note has neither action, and a ⋯ that opens an empty box is worse
               than no ⋯ — so the trigger goes with its contents. */}
           {!readOnly && (
-            <span className="overflow-slot">
+            <span className="overflow-slot" ref={overflowSlot}>
               <OverflowMenu
                 label="More actions"
                 // Every item here needs the server. Faded, not withdrawn, for the reason
@@ -1214,6 +1278,23 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
                     : []),
                   { label: 'Duplicate', onSelect: () => void duplicateNote() },
                   { label: 'Download', href: api.noteDownloadUrl(noteId) },
+                  /*
+                     Earlier versions of the note's text, and a way back to one. Beside
+                     Delete on purpose: the two are how a note is lost and how it is got
+                     back. Not while a conflict waits on a choice — a restore would be a
+                     third version arriving in the middle of choosing between two. The
+                     draft is flushed as the sheet opens, so by the time a version is
+                     picked the server already has what is on screen.
+                  */
+                  {
+                    label: 'History',
+                    disabled: frozen,
+                    onSelect: () => {
+                      void flush();
+                      setHistoryMounted(true);
+                      setHistoryOpen(true);
+                    },
+                  },
                   {
                     label: 'Delete',
                     tone: 'danger' as const,
@@ -1237,6 +1318,16 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
           depends on what was typed where, which only the person knows. The sentence names
           what each costs so the buttons can stay two words.
       */}
+      {!readOnly && historyMounted && (
+        <HistorySheet
+          open={historyOpen}
+          onClose={() => setHistoryOpen(false)}
+          noteId={noteId}
+          anchor={overflowSlot}
+          onRestore={restoreFromHistory}
+        />
+      )}
+
       {conflicted && (
         <div ref={conflictNotice} className="conflict-notice" role="alert">
           <p>

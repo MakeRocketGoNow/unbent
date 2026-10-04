@@ -10,6 +10,33 @@ export function formatWhen(ms: number): string {
 }
 
 /**
+ * When a copy in a note's history was taken: "Today, 4:12 PM", "Yesterday, 4:12 PM",
+ * then the date. Always with the time, unlike `formatWhen`: two copies from one
+ * afternoon are told apart by nothing else, and "3h ago" for both would make the list a
+ * guess. The year only when it is not this one.
+ */
+export function formatRevisionWhen(ms: number, now = Date.now()): string {
+  const at = new Date(ms);
+  const today = new Date(now);
+  const time = at.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+  // Whole local days between the two, by calendar date rather than by 24-hour spans:
+  // 11 PM yesterday is "Yesterday" at 1 AM.
+  const days = Math.round(
+    (new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime() -
+      new Date(at.getFullYear(), at.getMonth(), at.getDate()).getTime()) /
+      86_400_000,
+  );
+  if (days === 0) return `Today, ${time}`;
+  if (days === 1) return `Yesterday, ${time}`;
+  const date = at.toLocaleDateString(undefined, {
+    month: 'short',
+    day: 'numeric',
+    ...(at.getFullYear() === today.getFullYear() ? {} : { year: 'numeric' }),
+  });
+  return `${date}, ${time}`;
+}
+
+/**
  * A date range as a phrase, or null when there is none.
  *
  * One end alone is still a phrase: an archive question is usually open at one end
