@@ -77,7 +77,7 @@ export function HistorySheet({ open, onClose, noteId, anchor, saved, onRestore }
   /*
      The connection can go while the sheet is open, though the menu it opened from fades
      without one. What needs the server then fades in place, as that menu does: opening
-     a version not yet read, and Restore.
+     a version, and Restore.
   */
   const offline = useOffline();
   const offlineTitle = offline ? 'Not available offline' : undefined;

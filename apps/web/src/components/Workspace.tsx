@@ -844,16 +844,25 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
    * an Undo that replaced it would be taking away text the person had just written.
    * Typing not yet saved is flushed first, which moves the date, so it is refused the
    * same way rather than overwritten by the reseed.
+   *
+   * And typing that starts after the flush, while the requests below are out, is left
+   * on screen: the draft is noted once flushed, and the note that comes back replaces it
+   * only if it is still that draft. The undo has happened on the server by then, so the
+   * typing's own save is made against the copy from before it and is refused, and the
+   * conflict notice puts the two versions to the person. Locking the editor for the
+   * second this takes was the alternative, and a note that stops taking keys with no
+   * reason on screen is what the offline work moved away from.
    */
   async function undoRestore(id: string, restoredAt: number) {
     const changed = 'The note has changed since; open History to choose a version.';
     try {
       if (!(await savedFirst(id))) throw new Error('This note has changes that could not be saved, so nothing was undone.');
+      const flushed = draftRef.current;
       const kept = (await api.listRevisions(id)).find((r) => r.cause === 'restore' && r.createdAt === restoredAt);
       if (!kept) throw new Error(changed);
       const back = await actions.restoreRevision(id, kept.id, { ifUpdatedAt: restoredAt });
       void queryClient.invalidateQueries({ queryKey: ['search'] });
-      if (noteIdRef.current === id) reseed(back);
+      if (noteIdRef.current === id && draftRef.current === flushed) reseed(back);
     } catch (err) {
       if (noteIdRef.current !== id) return;
       const message = api.isNoteChanged(err) ? changed : (err as Error).message.replace(/^\d{3}[^:]*: /, '');

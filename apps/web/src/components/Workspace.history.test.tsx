@@ -194,4 +194,27 @@ describe('restoring a version from History', () => {
     );
     expect((await title()).value).toBe('Minutes, typed since the restore');
   });
+
+  it('leaves on screen what is typed while the undo is on its way', async () => {
+    vi.mocked(api.restoreRevision).mockResolvedValueOnce({ ...note, body: earlier.body, updatedAt: 200 });
+    mount();
+    fireEvent.click(await openVersion());
+    const undo = await screen.findByRole('button', { name: 'Undo' });
+
+    vi.mocked(api.listRevisions).mockResolvedValueOnce([{ id: 5, title: 'Minutes', size: 4, createdAt: 200, cause: 'restore' }]);
+    let land: (n: Note) => void = () => {};
+    vi.mocked(api.restoreRevision).mockReturnValueOnce(new Promise((r) => (land = r)));
+    // The save of what is typed below is made against the restore's copy, and refused.
+    vi.mocked(api.updateNote).mockRejectedValue(new NoteChangedError({ ...note, title: 'Minutes, as it was', updatedAt: 300 }));
+    fireEvent.click(undo);
+    await waitFor(() => expect(api.restoreRevision).toHaveBeenCalledTimes(2));
+
+    fireEvent.change(await title(), { target: { value: 'Minutes, typed mid-undo' } });
+    land({ ...note, title: 'Minutes, as it was', updatedAt: 300 });
+    await new Promise((r) => setTimeout(r, 50));
+    expect((await title()).value).toBe('Minutes, typed mid-undo');
+    // And it is put to the person rather than dropped: the save names the old copy.
+    await waitFor(() => expect(vi.mocked(api.updateNote).mock.calls.at(-1)?.[1]).toMatchObject({ title: 'Minutes, typed mid-undo', ifUpdatedAt: 200 }), { timeout: 3000 });
+    expect((await screen.findByRole('alert', {}, { timeout: 3000 })).textContent).toContain('changed on another device');
+  });
 });
