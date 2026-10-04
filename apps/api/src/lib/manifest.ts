@@ -23,6 +23,11 @@ export const MANIFEST_PATH = '/manifest.webmanifest';
  * gaining the favicon's corner dot, because a launcher masks the icon to a circle or a
  * squircle and a dot in the corner is the first thing it cuts.
  *
+ * The splash an installed app opens on is filled with `background_color`, so that is the
+ * kind's colour too: a violet icon that launched into production's green would undo it.
+ * `theme_color` is left alone, as is the page's own `theme-color` — those frame the page
+ * a preview exists to review, which is why the marks stay off it (`instance-marker.ts`).
+ *
  * Production has no label and is handed the static file untouched, byte for byte; the
  * only cost there is that the request now passes through the Worker. It is answered here,
  * ahead of Hono, so that pass is a single asset read and not the session lookup every
@@ -67,13 +72,25 @@ interface WebManifest {
  */
 export function instanceManifest(manifest: WebManifest, label: string, kind: InstanceKind | undefined): WebManifest {
   const name = `${label} · ${manifest.short_name ?? manifest.name ?? 'Unbent'}`;
+  if (!kind) return { ...manifest, name, short_name: name };
   return {
     ...manifest,
     name,
     short_name: name,
-    icons: kind ? manifest.icons?.map((icon) => ({ ...icon, src: instanceIcon(icon.src, kind) })) : manifest.icons,
+    background_color: INSTANCE_COLOURS[kind],
+    icons: manifest.icons?.map((icon) => ({ ...icon, src: instanceIcon(icon.src, kind) })),
   };
 }
+
+/**
+ * Each kind's `--instance-*` colour from `apps/web/src/styles.css`, which the Worker cannot
+ * read. `manifest.test.ts` holds the two together.
+ */
+export const INSTANCE_COLOURS: Record<InstanceKind, string> = {
+  dev: '#e8a33a',
+  preview: '#7b5cd6',
+  local: '#8c8781',
+};
 
 /** `/icons/icon-512.png` → `/icons/preview/icon-512.png`. */
 export function instanceIcon(src: string, kind: InstanceKind): string {

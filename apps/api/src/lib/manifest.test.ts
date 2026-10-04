@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { serveManifest } from './manifest.js';
+import { INSTANCE_COLOURS, serveManifest } from './manifest.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const publicDir = resolve(here, '../../../web/public');
@@ -22,6 +22,8 @@ interface Manifest {
   name: string;
   short_name: string;
   id: string;
+  background_color: string;
+  theme_color: string;
   icons: { src: string; purpose?: string }[];
   file_handlers: unknown;
 }
@@ -56,12 +58,23 @@ describe('serveManifest', () => {
     expect(manifest.file_handlers).toEqual(original.file_handlers);
     expect(manifest.id).toBe(original.id);
     expect(manifest.icons[2]?.purpose).toBe('maskable');
+    // The splash is the preview's; the bar above the page under review is not.
+    expect(manifest.background_color).toBe('#7b5cd6');
+    expect(manifest.theme_color).toBe(original.theme_color);
   });
 
   it('renames a label with no known kind and keeps its icons', async () => {
     const manifest = await read(await serveManifest(request(), { ASSETS: assets, INSTANCE_LABEL: 'Staging' }));
     expect(manifest.name).toBe('Staging · Unbent');
     expect(manifest.icons).toEqual(JSON.parse(source).icons);
+    expect(manifest.background_color).toBe(JSON.parse(source).background_color);
+  });
+
+  it('colours each kind as the page does', () => {
+    const styles = readFileSync(resolve(here, '../../../web/src/styles.css'), 'utf8');
+    for (const [kind, colour] of Object.entries(INSTANCE_COLOURS)) {
+      expect(styles).toMatch(new RegExp(`--instance-${kind}:\\s*${colour};`, 'i'));
+    }
   });
 
   it('points only at icons that exist, for every kind', async () => {
