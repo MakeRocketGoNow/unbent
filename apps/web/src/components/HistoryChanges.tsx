@@ -45,8 +45,21 @@ export function HistoryChanges({ current, version }: HistoryChangesProps) {
     [current.title, current.body, version.title, version.body],
   );
 
+  /*
+     "Same" is the comparison's word, and it reads CRLF as LF and ignores trailing blank
+     lines, since nobody can see those. Restore compares exactly: on such a version it
+     writes, and offers its Undo. So the page does not call that version the same, which
+     would promise that pressing Restore does nothing; it says what the difference is.
+  */
+  const unseen = diff.body === 'same' && current.body !== version.body;
+  const sameText = unseen
+    ? 'The text reads the same as the note now; only line endings or blank lines at the end differ.'
+    : 'The text is the same as the note now.';
+
   if (!diff.titleChanged && diff.body === 'same') {
-    return <p className="history-diff-note">This version is the same as the note now.</p>;
+    return (
+      <p className="history-diff-note">{unseen ? sameText : 'This version is the same as the note now.'}</p>
+    );
   }
 
   return (
@@ -69,7 +82,7 @@ export function HistoryChanges({ current, version }: HistoryChangesProps) {
         </p>
       )}
       {diff.body === 'same' ? (
-        <p className="history-diff-note">The text is the same as the note now.</p>
+        <p className="history-diff-note">{sameText}</p>
       ) : diff.body === 'too-different' ? (
         <p className="history-diff-note">This version is too different to compare; see Preview.</p>
       ) : (
@@ -129,8 +142,9 @@ function Same({ text }: { text: string }) {
    `abuts`: this mark starts where another ended, which is what a replaced word is — its
    old text and its new, back to back. Two numbers so set read as one: 45 for 40 was
    "4540", with only the tints to say where one stopped. The class puts a sliver between
-   them, as a margin so nothing is added to the text someone might copy. Said from here
-   and not with `del + ins` in the stylesheet, which matches across the unchanged text
+   them, as a margin and not a space, which would be a character the note never had
+   sitting among its own. (A copied line is still not the note's source: the words said
+   for a screen reader are selected with it.) Said from here and not with `del + ins` in the stylesheet, which matches across the unchanged text
    between two marks as well: a sibling selector does not see text.
 */
 function Part({ part, abuts, spoken }: { part: DiffPart; abuts: boolean; spoken: boolean }) {

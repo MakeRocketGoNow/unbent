@@ -96,4 +96,13 @@ describe('HistoryChanges', () => {
     );
     expect(screen.queryByRole('button', { name: /unchanged/ })).toBeNull();
   });
+
+  it('does not call a version the same when only its line endings differ, since Restore would write', () => {
+    const { container } = render(
+      <HistoryChanges current={{ title: 'Acme', body: 'one\ntwo\n' }} version={{ title: 'Acme', body: 'one\r\ntwo' }} />,
+    );
+    expect(container.textContent).toBe(
+      'The text reads the same as the note now; only line endings or blank lines at the end differ.',
+    );
+  });
 });
