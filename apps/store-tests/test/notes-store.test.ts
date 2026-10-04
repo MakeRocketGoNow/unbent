@@ -823,6 +823,15 @@ describe('composites', () => {
     expect(page.total).toBe(2);
     expect((await stub.listPage({ limit: 10 }, null)).total).toBeNull();
 
+    // A first page that came up short is its own total, and that page above was one, so
+    // on its own it never counts. A full first page cannot know what is past it: it has
+    // to count, from the stored number and from the rows alike, or a list of two says one.
+    const full = await stub.listPage({ limit: 1 }, {});
+    expect(full.items.length).toBe(1);
+    expect(full.total).toBe(2);
+    await stub.create(note({ title: 'Loose too' }));
+    expect((await stub.listPage({ limit: 1, untagged: true }, { untagged: true })).total).toBe(2);
+
     const got = await stub.getWithFiles(a.id);
     expect(got!.note.id).toBe(a.id);
     expect(got!.files).toEqual([{ filename: 'scan.pdf', contentType: 'application/pdf', size: 1 }]);
