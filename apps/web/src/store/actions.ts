@@ -927,7 +927,9 @@ function drained(lib: WritableLibrary, noteId: string, timeout: number): Promise
       done(ok);
     };
     const timer = setTimeout(() => finish(false), timeout);
-    const unsubscribe = lib.outbox.subscribe((status) => {
+    // `subscribe` calls its listener at once, before it has returned the way out.
+    let unsubscribe = () => {};
+    unsubscribe = lib.outbox.subscribe((status) => {
       if (!status.waiting.has(noteId)) finish(true);
     });
   });
@@ -953,13 +955,16 @@ function drained(lib: WritableLibrary, noteId: string, timeout: number): Promise
  * The answer is written into the local copy before this returns, the way a replayed
  * save's is, so the row agrees with the note handed back and the editor is not reseeded
  * from one while the list shows the other.
+ *
+ * `ifUpdatedAt` is the server's precondition, passed through for the Undo of a restore:
+ * a `NoteChangedError` when the note has been saved since the date given.
  */
-export async function restoreRevision(noteId: string, revisionId: number): Promise<Note> {
+export async function restoreRevision(noteId: string, revisionId: number, opts: { ifUpdatedAt?: number } = {}): Promise<Note> {
   const lib = await resolve();
   if (lib && !(await drained(lib, noteId, RESTORE_DRAIN_MS))) {
     throw new Error('This note has changes that have not synced yet. Try again in a moment.');
   }
-  const note = await api.restoreRevision(noteId, revisionId);
+  const note = await api.restoreRevision(noteId, revisionId, opts);
   directListeners.forEach((l) => l());
   if (lib) await lib.outbox.take(note);
   return note;

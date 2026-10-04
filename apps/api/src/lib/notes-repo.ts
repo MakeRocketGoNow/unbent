@@ -134,8 +134,8 @@ export class NotesRepo extends StoreRepo {
   }
 
   /** Puts a copy back, keeping what it replaces; see `NotesStore.restoreRevision`. */
-  restoreRevision(id: string, revisionId: number): Promise<Note | null> {
-    return this.call((s) => s.restoreRevision(id, revisionId));
+  restoreRevision(id: string, revisionId: number, ifUpdatedAt?: number): Promise<Note | StaleNote | null> {
+    return this.call(async (s) => s.restoreRevision(id, revisionId, ifUpdatedAt));
   }
 
   appendToBody(id: string, markdown: string): Promise<boolean> {

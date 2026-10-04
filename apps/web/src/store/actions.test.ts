@@ -576,7 +576,7 @@ describe('a copy put back from a note’s history', () => {
 
     expect(await actions.restoreRevision('n1', 7)).toEqual(restored);
     off();
-    expect(api.restoreRevision).toHaveBeenCalledWith('n1', 7);
+    expect(api.restoreRevision).toHaveBeenCalledWith('n1', 7, {});
     // Nothing queued: history is the server's, and so is keeping what the restore replaced.
     expect(fake.queue).toHaveLength(0);
     expect(lib.notes.get('n1')).toMatchObject({ title: 'whole', body: 'the long text', updatedAt: 200 });

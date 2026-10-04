@@ -468,6 +468,14 @@ export const updateNoteSchema = z.object({
 });
 
 /**
+ * The optional body of a restore from a note's history: `updateNoteSchema`'s
+ * precondition, with the same meaning. Sent by the Undo that follows a restore.
+ */
+export const restoreRevisionSchema = z.object({
+  ifUpdatedAt: z.number().int().nonnegative().optional(),
+});
+
+/**
  * A set of notes to act on at once: the list's selection.
  *
  * Ids rather than a filter, deliberately. "Every note matching the filter" would let a

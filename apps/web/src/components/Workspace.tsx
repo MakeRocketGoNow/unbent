@@ -790,22 +790,31 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
   useEffect(() => setHistoryOpen(false), [noteId]);
 
   /**
-   * Puts a copy from the note's history back (MAK-119), then says so with an Undo.
+   * Saves what is on screen and says whether the server can be asked to replace it.
    *
-   * What is on screen is saved first, and the save has to have worked: the server keeps
-   * what a restore replaces, and it can only keep what it has. Typing that never left
-   * this tab would be replaced by the reseed below and exist nowhere. `flush` reports
+   * The server keeps what a restore replaces, and it can only keep what it has: typing
+   * that never left this tab would be replaced by the reseed that follows and exist
+   * nowhere. So the draft is flushed, and the save has to have worked. `flush` reports
    * through the save state, which is a render behind it, hence the turn of the event
-   * loop before it is read.
-   *
+   * loop before it is read. A conflict waiting on a choice counts as unsaved even when
+   * the state reads clean — the refusal comes from the outbox, after the save was taken
+   * locally, and can arrive while the History sheet is already open.
+   */
+  async function savedFirst(id: string): Promise<boolean> {
+    await flush();
+    await new Promise((r) => setTimeout(r, 0));
+    if (outbox?.status().conflicts.has(id)) return false;
+    return saveStateRef.current === 'idle' || saveStateRef.current === 'saved';
+  }
+
+  /**
+   * Puts a copy from the note's history back (MAK-119), then says so with an Undo.
    * Thrown errors are the sheet's to show: it stays open on them, with the copy still
    * in front of the person.
    */
   async function restoreFromHistory(revision: NoteRevisionSummary) {
     const id = noteId;
-    await flush();
-    await new Promise((r) => setTimeout(r, 0));
-    if (saveStateRef.current !== 'idle' && saveStateRef.current !== 'saved') {
+    if (!(await savedFirst(id))) {
       throw new Error('This note has changes that could not be saved, so nothing was restored.');
     }
     const restored = await actions.restoreRevision(id, revision.id);
@@ -814,28 +823,39 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
     reseed(restored);
     setHistoryOpen(false);
     setSnackbar({
-      message: `Restored the version from ${formatRevisionWhen(revision.createdAt)}`,
+      // "from today, 4:12 PM": the label is capitalised to head a row, not to sit in a sentence.
+      message: `Restored the version from ${formatRevisionWhen(revision.createdAt).replace(/^(Today|Yesterday)/, (w) => w.toLowerCase())}`,
       tone: 'info',
       duration: 8000,
-      action: { label: 'Undo', onClick: () => void undoRestore(id) },
+      action: { label: 'Undo', onClick: () => void undoRestore(id, restored.updatedAt) },
     });
   }
 
   /**
-   * Undo, on the snackbar a restore leaves: the copy the restore itself kept, put back.
-   * It is the newest in the list by construction — the restore made it a moment ago —
-   * and is only taken if it says so (`cause`), so a write from elsewhere in between
-   * cannot have this put back something the person never saw.
+   * Undo, on the snackbar a restore leaves: the copy the restore itself kept, put back,
+   * and only if the note is still exactly as the restore left it.
+   *
+   * That copy was taken at the moment the restore gave the note its date, so it is the
+   * one whose `createdAt` is `restoredAt`. And the server is asked to put it back only
+   * over a note still carrying that date (`ifUpdatedAt`): the editor is live while the
+   * snackbar is up, typing saved since leaves no copy of its own inside the window, and
+   * an Undo that replaced it would be taking away text the person had just written.
+   * Typing not yet saved is flushed first, which moves the date, so it is refused the
+   * same way rather than overwritten by the reseed.
    */
-  async function undoRestore(id: string) {
+  async function undoRestore(id: string, restoredAt: number) {
+    const changed = 'The note has changed since; open History to choose a version.';
     try {
-      const [newest] = await api.listRevisions(id);
-      if (!newest || newest.cause !== 'restore') throw new Error('The note has changed since; open History to choose a version.');
-      const back = await actions.restoreRevision(id, newest.id);
+      if (!(await savedFirst(id))) throw new Error('This note has changes that could not be saved, so nothing was undone.');
+      const kept = (await api.listRevisions(id)).find((r) => r.cause === 'restore' && r.createdAt === restoredAt);
+      if (!kept) throw new Error(changed);
+      const back = await actions.restoreRevision(id, kept.id, { ifUpdatedAt: restoredAt });
+      void queryClient.invalidateQueries({ queryKey: ['search'] });
       if (noteIdRef.current === id) reseed(back);
     } catch (err) {
       if (noteIdRef.current !== id) return;
-      setSnackbar({ message: (err as Error).message.replace(/^\d{3}[^:]*: /, ''), tone: 'error' });
+      const message = api.isNoteChanged(err) ? changed : (err as Error).message.replace(/^\d{3}[^:]*: /, '');
+      setSnackbar({ message, tone: 'error' });
     }
   }
 

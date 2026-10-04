@@ -509,7 +509,7 @@ export class UserStore extends DurableObject<StoreEnv> {
   appendToBody(id: string, markdown: string) { return this.writing(() => this.notes.appendToBody(id, markdown)); }
   listRevisions(id: string) { this.ready(); return this.notes.listRevisions(id); }
   getRevision(id: string, revisionId: number) { this.ready(); return this.notes.getRevision(id, revisionId); }
-  restoreRevision(id: string, revisionId: number) { return this.writing(() => this.notes.restoreRevision(id, revisionId)); }
+  restoreRevision(id: string, revisionId: number, ifUpdatedAt?: number) { return this.writing(() => this.notes.restoreRevision(id, revisionId, ifUpdatedAt)); }
   remove(id: string) { return this.writing(() => this.notes.remove(id)); }
   restore(id: string) { return this.writing(() => this.notes.restore(id)); }
   purgeOne(id: string) { return this.writing(() => this.notes.purgeOne(id)); }

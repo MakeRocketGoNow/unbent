@@ -216,6 +216,32 @@ describe('history: putting a copy back', () => {
     expect(await stub.listRevisions(id)).toHaveLength(3);
   });
 
+  it('refuses, and keeps nothing, when the note has been saved since the date the caller names', async () => {
+    const { stub, id } = await seeded('precondition', 'whole');
+    await stub.update(id, { body: '', by: 'assistant' });
+    const [copy] = (await stub.listRevisions(id))!;
+    const restored = (await stub.restoreRevision(id, copy!.id)) as { updatedAt: number };
+    // Typed after the restore: inside the window, so no copy of its own.
+    await stub.update(id, { body: 'whole, and a line typed since' });
+    const [kept] = (await stub.listRevisions(id))!;
+    expect(kept).toMatchObject({ cause: 'restore', createdAt: restored.updatedAt });
+
+    // The Undo of that restore, which names the date the restore left.
+    const refused = await stub.restoreRevision(id, kept!.id, restored.updatedAt);
+    expect(refused).toMatchObject({ stale: { body: 'whole, and a line typed since' } });
+    expect((await stub.get(id))!.body).toBe('whole, and a line typed since');
+    expect(await stub.listRevisions(id)).toHaveLength(2);
+  });
+
+  it('goes ahead when the note still carries that date', async () => {
+    const { stub, id } = await seeded('precondition-ok', 'whole');
+    await stub.update(id, { body: '', by: 'assistant' });
+    const [copy] = (await stub.listRevisions(id))!;
+    const restored = (await stub.restoreRevision(id, copy!.id)) as { updatedAt: number };
+    const [kept] = (await stub.listRevisions(id))!;
+    expect(await stub.restoreRevision(id, kept!.id, restored.updatedAt)).toMatchObject({ body: '' });
+  });
+
   it('changes nothing when the copy is what the note already says', async () => {
     const { stub, id } = await seeded('same');
     await stub.update(id, { body: 'changed' });

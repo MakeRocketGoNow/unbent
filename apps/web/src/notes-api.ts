@@ -315,11 +315,21 @@ export async function getRevision(noteId: string, revisionId: number): Promise<N
   return json<NoteRevision>(await request(`/api/notes/${encodeURIComponent(noteId)}/revisions/${revisionId}`));
 }
 
-/** Puts a copy back as the note's title and body; the note as it then stands. */
-export async function restoreRevision(noteId: string, revisionId: number): Promise<Note> {
-  return json<Note>(
-    await request(`/api/notes/${encodeURIComponent(noteId)}/revisions/${revisionId}/restore`, { method: 'POST' }),
-  );
+/**
+ * Puts a copy back as the note's title and body; the note as it then stands. With
+ * `ifUpdatedAt`, only if the note still carries that date: a `NoteChangedError` otherwise,
+ * as a save's precondition gives.
+ */
+export async function restoreRevision(noteId: string, revisionId: number, opts: { ifUpdatedAt?: number } = {}): Promise<Note> {
+  const res = await request(`/api/notes/${encodeURIComponent(noteId)}/revisions/${revisionId}/restore`, {
+    method: 'POST',
+    ...(opts.ifUpdatedAt !== undefined ? { headers: jsonHeaders, body: JSON.stringify(opts) } : {}),
+  });
+  if (res.status === 409) {
+    const body = (await res.clone().json().catch(() => null)) as { stale?: Note } | null;
+    if (body?.stale) throw new NoteChangedError(body.stale);
+  }
+  return json<Note>(res);
 }
 
 export async function deleteNote(id: string): Promise<void> {

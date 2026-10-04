@@ -909,11 +909,18 @@ export class NotesStore {
    * A copy that matches the note as it stands changes nothing and re-dates nothing, the
    * way a no-op patch does. Tags, the notebook and field values are not history's and
    * stay as they are.
+   *
+   * `ifUpdatedAt` is `update`'s precondition, for the same reason and checked in the
+   * same place: the caller is putting a copy back over a note it believes it has seen.
+   * The Undo on a restore sends it — "undo, if the note is still as the restore left
+   * it" — because that is a fact only this row knows; typing saved since the restore
+   * leaves no copy inside the window, so nothing in the history says it happened.
    */
-  restoreRevision(id: string, revisionId: number): Note | null {
+  restoreRevision(id: string, revisionId: number, ifUpdatedAt?: number): Note | StaleNote | null {
     return this.sql.tx(() => {
       const current = this.get(id);
       if (!current) return null;
+      if (ifUpdatedAt !== undefined && ifUpdatedAt !== current.updatedAt) return { stale: current };
       const revision = this.revisions.get(id, revisionId, Date.now());
       if (!revision) return null;
       if (revision.title === current.title && revision.body === current.body) return current;
