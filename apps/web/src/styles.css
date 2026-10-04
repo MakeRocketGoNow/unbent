@@ -6656,7 +6656,8 @@ button.settings-nav-item {
    tightening them. The tag list is unbounded, and there density is the whole point.
 */
 .sort-option,
-.date-option {
+.date-option,
+.history-row {
   display: flex;
   align-items: center;
   gap: 0.5rem;
@@ -6676,11 +6677,19 @@ button.settings-nav-item {
   cursor: pointer;
 }
 
+/* The chevron at the end of a row that opens a page of its own; see `RowChevronIcon`. */
+.row-chevron {
+  flex: 0 0 auto;
+  color: var(--muted);
+}
+
 .sort-option:hover,
-.date-option:hover { background: color-mix(in srgb, var(--fg) 8%, transparent); }
+.date-option:hover,
+.history-row:hover:not(:disabled) { background: color-mix(in srgb, var(--fg) 8%, transparent); }
 
 .sort-option:focus-visible,
-.date-option:focus-visible {
+.date-option:focus-visible,
+.history-row:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: -2px;
 }
@@ -7460,33 +7469,21 @@ button.settings-nav-item {
 /*
    A version: two lines and a chevron, the whole row the target.
 
-   The shape of `.sort-option` — the same surface, the same hover, the same 44px floor —
-   with a second line, which is why it is not that class: a sort option is one word and a
-   tick. Pulled out by its own padding so the text lines up with the sheet's title above
-   it while the hover fill reaches a little past, as the drawer's rows do.
+   `.sort-option`'s row — it joins that rule's selectors, so the surface, the hover, the
+   focus ring and the 44px floor are one definition — with a second line. What is here is
+   only what differs: pulled out by its own padding so the text lines up with the sheet's
+   title above it while the hover fill reaches a little past, as the drawer's rows do.
 */
 .history-row {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
   width: calc(100% + 1rem);
-  min-height: 2.75rem;
   margin-inline: -0.5rem;
-  padding: 0.45rem 0.5rem;
-  font: inherit;
-  text-align: left;
-  color: var(--fg);
-  background: none;
-  border: none;
-  border-radius: 0.35rem;
-  cursor: pointer;
+  padding-block: 0.45rem;
 }
 
-.history-row:hover { background: color-mix(in srgb, var(--fg) 8%, transparent); }
-
-.history-row:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: -2px;
+/* Without a connection there is no version to open: faded in place, as the menu is. */
+.history-row:disabled {
+  opacity: 0.5;
+  cursor: default;
 }
 
 .history-row-text {
@@ -7495,11 +7492,6 @@ button.settings-nav-item {
   gap: 0.1rem;
   flex: 1;
   min-width: 0;
-}
-
-.row-chevron {
-  flex: 0 0 auto;
-  color: var(--muted);
 }
 
 /* The explanation under the list, set off by the rule the sheet already uses between
