@@ -2321,6 +2321,16 @@ a.overflow-item { text-decoration: none; }
   text-wrap: balance;
 }
 
+/*
+   On a phone the New button floats over this corner, and a sentence under it is a
+   sentence with its last words missing. Kept clear of it by the button's own width and
+   inset (`.fab`), and only where there is one: the desktop's New is in the header.
+*/
+.sidebar:has(> .fab) .search-coverage {
+  padding-right: 5.25rem;
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
 a.sidebar-status:hover {
   color: var(--fg);
   text-decoration: underline;
