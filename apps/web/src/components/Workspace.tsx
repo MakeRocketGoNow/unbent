@@ -862,7 +862,8 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
       if (!kept) throw new Error(changed);
       const back = await actions.restoreRevision(id, kept.id, { ifUpdatedAt: restoredAt });
       void queryClient.invalidateQueries({ queryKey: ['search'] });
-      if (noteIdRef.current === id && draftRef.current === flushed) reseed(back);
+      // By content, as the other reseeds compare: a letter typed and taken back is not typing.
+      if (noteIdRef.current === id && JSON.stringify(draftRef.current) === JSON.stringify(flushed)) reseed(back);
     } catch (err) {
       if (noteIdRef.current !== id) return;
       const message = api.isNoteChanged(err) ? changed : (err as Error).message.replace(/^\d{3}[^:]*: /, '');
