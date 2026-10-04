@@ -1,11 +1,12 @@
-import { QueryClient } from '@tanstack/react-query';
+import { QueryClient, QueryObserver } from '@tanstack/react-query';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { FeedAttachment, FeedNote } from '@unbent/shared';
 import * as api from './notes-api.js';
 import { resetConnectivity, setReachableForTests } from './connectivity.js';
-import { searchQuery } from './queries.js';
+import { installLibraryQueries, searchQuery } from './queries.js';
 import { SearchIndex } from './store/search-index.js';
 import { createSearchSync } from './store/search-sync.js';
+import { notifySearchIndexed } from './store/library.js';
 import { installTestLibrary, type TestLibrary } from './store/test-library.js';
 import { openTestSearchDb } from './store/test-search-db.js';
 
@@ -72,6 +73,28 @@ describe('searchQuery', () => {
     const answer = await new QueryClient().fetchQuery(searchQuery('passport'));
     expect(answer.results.map((r) => r.id)).toEqual(['a']);
     expect(answer.local?.built).toBe(true);
+  });
+
+  it('asks again for an answer from the device when the index gains something, and leaves the server’s alone', async () => {
+    await library([note('a', { title: 'Passport renewal' }), note('far', { title: 'Scan' })], [scan]);
+    const client = new QueryClient();
+    const stop = installLibraryQueries(client);
+    vi.mocked(api.searchNotes).mockResolvedValue([]);
+    await client.fetchQuery(searchQuery('scan'));
+    setReachableForTests(false);
+    const observer = new QueryObserver(client, searchQuery('passport'));
+    const unsubscribe = observer.subscribe(() => {});
+    await vi.waitFor(() => expect(observer.getCurrentResult().data?.local?.files).toEqual({ searched: 0, total: 1 }));
+
+    // The text of the file arrives, as a pass would put it, and the pass says so.
+    await lib.search!.index.put('file', [{ id: 'x1', stamp: '9', columns: ['a scanned passport page'] }]);
+    notifySearchIndexed();
+    await vi.waitFor(() => expect(observer.getCurrentResult().data?.local?.files).toEqual({ searched: 1, total: 1 }));
+    expect(observer.getCurrentResult().data?.results.map((r) => r.id).sort()).toEqual(['a', 'far']);
+    // The server's answer was not the index's to refresh.
+    expect(api.searchNotes).toHaveBeenCalledTimes(1);
+    unsubscribe();
+    stop();
   });
 
   it('fails as offline on a device with no index, and passes on any other failure', async () => {

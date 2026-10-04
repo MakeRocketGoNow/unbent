@@ -175,6 +175,24 @@ export function setLibraryForTests(library: ReadableLibrary | null): void {
   libraryChanged();
 }
 
+const indexedListeners = new Set<() => void>();
+
+/**
+ * Hears the open library's search index gain something: its first pass finishing, a
+ * note indexed, the text of a kept notebook's files arriving. What the query bridge
+ * listens to so that a search answered on the device is asked again when the index it
+ * was answered from has moved on (`installLibraryQueries`).
+ */
+export function onSearchIndexed(listener: () => void): () => void {
+  indexedListeners.add(listener);
+  return () => void indexedListeners.delete(listener);
+}
+
+/** For a test library: every listener told the index moved. */
+export function notifySearchIndexed(): void {
+  indexedListeners.forEach((l) => l());
+}
+
 const changeListeners = new Set<(roots: ReadonlySet<string>) => void>();
 
 /**
@@ -460,6 +478,7 @@ async function open(userId: string): Promise<Library> {
           },
           isOffline: isOfflineError,
           channel: `unbent-search-${userId}`,
+          onIndexed: notifySearchIndexed,
         }),
       };
       if (resetUnheard) search.sync.startOver();

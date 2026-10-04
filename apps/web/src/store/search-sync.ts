@@ -1,7 +1,7 @@
 import type { AttachmentTexts } from '@unbent/shared';
 import type { LocalAttachment } from './collections.js';
 import type { LocalNote, Snapshot } from './derive.js';
-import type { Entry, SearchIndex } from './search-index.js';
+import type { Entry, Kind, SearchIndex } from './search-index.js';
 import { BUILT, fieldEntryPrefix, heldText, noteEntries, tagEntries, textPlan, textStamp } from './search-local.js';
 
 /**
@@ -52,9 +52,17 @@ export interface SearchSyncOptions {
   isOffline: (err: unknown) => boolean;
   /**
    * A name for the channel the account's tabs tell each other on, when there is one. A
-   * note opened in a tab that does not lead is recorded there and fetched here.
+   * note opened in a tab that does not lead is recorded there and fetched here, and what
+   * the leading tab indexes is heard by the others.
    */
   channel?: string;
+  /**
+   * The index holds something it did not: a pass wrote to it, here or in the tab that
+   * leads. An answer already on screen was made from the index as it was — "still
+   * indexing", or without the text of files that have since arrived — and is asked for
+   * again on this.
+   */
+  onIndexed?: () => void;
 }
 
 export interface SearchSync {
@@ -87,6 +95,7 @@ const SLICE = 500;
 export function createSearchSync(opts: SearchSyncOptions): SearchSync {
   const { index } = opts;
   let stopped = false;
+  const channel = opts.channel && typeof BroadcastChannel !== 'undefined' ? new BroadcastChannel(opts.channel) : null;
   /*
    * Aborted by `stop`. A pass can be inside a request for text when the library closes,
    * and on a connection that has stalled that request is minutes from failing; closing
@@ -111,6 +120,29 @@ export function createSearchSync(opts: SearchSyncOptions): SearchSync {
   const yieldToPage = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
   /** Handed to every write to the index, which asks it between batches; see `SearchIndex.put`. */
   const halted = () => stopped;
+
+  /** Whether anything has been written since the readers were last told; see `onIndexed`. */
+  let wrote = false;
+  const put = async (kind: Kind, entries: Entry[]) => {
+    if (entries.length === 0) return;
+    await index.put(kind, entries, halted);
+    wrote = true;
+  };
+  const drop = async (kind: Kind, ids: string[]) => {
+    if (ids.length === 0) return;
+    await index.drop(kind, ids, halted);
+    wrote = true;
+  };
+  const tellReaders = () => {
+    if (!wrote || stopped) return;
+    wrote = false;
+    opts.onIndexed?.();
+    try {
+      channel?.postMessage('indexed');
+    } catch {
+      // Closed under us; the other tabs' answers refresh on their next search.
+    }
+  };
 
   /** Brings the notes' and their fields' entries to what the library holds: all of them, or the ones named. */
   async function notes(ids: Set<string> | null): Promise<void> {
@@ -139,18 +171,18 @@ export function createSearchSync(opts: SearchSyncOptions): SearchSync {
         if (stopped) return;
       }
     }
-    await index.drop('note', [...haveNotes.keys()].filter((id) => !live.has(id)), halted);
-    await index.drop('field', [...haveFields.keys()].filter((id) => !wantedFields.has(id)), halted);
-    await index.put('note', putNotes, halted);
-    await index.put('field', putFields, halted);
+    await drop('note', [...haveNotes.keys()].filter((id) => !live.has(id)));
+    await drop('field', [...haveFields.keys()].filter((id) => !wantedFields.has(id)));
+    await put('note', putNotes);
+    await put('field', putFields);
   }
 
   async function tags(): Promise<void> {
     const wanted = tagEntries(opts.snapshot());
     const have = await index.stamps('tag');
     const names = new Set(wanted.map((e) => e.id));
-    await index.drop('tag', [...have.keys()].filter((name) => !names.has(name)), halted);
-    await index.put('tag', wanted.filter((e) => !have.has(e.id)), halted);
+    await drop('tag', [...have.keys()].filter((name) => !names.has(name)));
+    await put('tag', wanted.filter((e) => !have.has(e.id)));
   }
 
   /** Answers whether the files' text is as the plan wants it, so the pass knows whether to come back. */
@@ -177,12 +209,14 @@ export function createSearchSync(opts: SearchSyncOptions): SearchSync {
         await index.opened(),
         new Map([...(await index.stamps('file'))].map(([id, stamp]) => [id, heldText(stamp)])),
       );
-      await index.drop('file', plan.remove, halted);
+      await drop('file', plan.remove);
       // Over the limit for opened notes: the text goes and the length is remembered; see `textPlan`.
-      await index.put('file', plan.shed.map((f) => ({ id: f.id, stamp: textStamp(f.chars, true), columns: [''] })), halted);
+      await put('file', plan.shed.map((f) => ({ id: f.id, stamp: textStamp(f.chars, true), columns: [''] })));
 
-      if (plan.fetch.length === 0) return true;
-      if (stopped || opts.offline()) return false;
+      if (plan.fetch.length === 0 || stopped || opts.offline()) {
+        tellReaders();
+        return plan.fetch.length === 0;
+      }
       const asked = plan.fetch.slice(0, TEXT_BATCH);
       let answer: AttachmentTexts;
       try {
@@ -199,11 +233,12 @@ export function createSearchSync(opts: SearchSyncOptions): SearchSync {
        * the next plan does not ask again; if it has gone, the feed says so and the plan
        * drops it.
        */
-      await index.put(
+      await put(
         'file',
         asked.filter((id) => !left.has(id)).map((id) => ({ id, stamp: textStamp((got.get(id) ?? '').length), columns: [got.get(id) ?? ''] })),
-        halted,
       );
+      // Each answer is text a search can now find, and the rest may be minutes away.
+      tellReaders();
       // An answer that carried nothing and left everything would loop for ever; the server always answers one.
       if (left.size === asked.length) throw new Error('The server answered no text for any file asked for.');
     }
@@ -231,6 +266,7 @@ export function createSearchSync(opts: SearchSyncOptions): SearchSync {
     if (emptyFirst) {
       // Cleared only once the emptying has committed, so one that fails is tried again.
       await index.clear();
+      wrote = true;
       emptyFirst = false;
       everything = true;
     }
@@ -252,7 +288,12 @@ export function createSearchSync(opts: SearchSyncOptions): SearchSync {
       if (doTags) await tags();
       // Until the first pass over a whole library has finished, a search says its results may be incomplete.
       if (stopped) return;
-      if (full) await index.setMeta(BUILT, '1');
+      if (full && (await index.meta(BUILT)) !== '1') {
+        await index.setMeta(BUILT, '1');
+        wrote = true;
+      }
+      // Before the files' text, which is a request at a time and can be a long while.
+      tellReaders();
       if (doFiles && !(await files())) filesDirty = true;
     } catch (err) {
       // Whatever was in hand is owed again; nothing has been lost, since every step is a comparison.
@@ -290,9 +331,10 @@ export function createSearchSync(opts: SearchSyncOptions): SearchSync {
     }, 1000);
   }
 
-  const channel = opts.channel && typeof BroadcastChannel !== 'undefined' ? new BroadcastChannel(opts.channel) : null;
   if (channel) {
-    channel.onmessage = () => {
+    channel.onmessage = (event: MessageEvent) => {
+      if (stopped) return;
+      if (event.data === 'indexed') return opts.onIndexed?.();
       filesDirty = true;
       nudge();
     };

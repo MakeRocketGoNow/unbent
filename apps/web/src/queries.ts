@@ -10,7 +10,7 @@ import { ApiError, OfflineError } from './notes-api.js';
 import { offlineNow } from './connectivity.js';
 import { count, list, lookups, notebookFields, notebookFiles, notebookList, summaries, tagSummaries, toAttachmentInfo, toNote, type LocalAttachmentInfo, type Lookups, type Snapshot } from './store/derive.js';
 import type { LocalNote } from './store/collections.js';
-import { LIBRARY_ROOTS, currentLibrary, onLibraryChange, type ReadableLibrary as Library } from './store/library.js';
+import { LIBRARY_ROOTS, currentLibrary, onLibraryChange, onSearchIndexed, type ReadableLibrary as Library } from './store/library.js';
 import { onDirectWrite } from './store/actions.js';
 import { searchLocal, type LocalCoverage } from './store/search-local.js';
 
@@ -120,9 +120,24 @@ export function installLibraryQueries(queryClient: QueryClient): () => void {
   };
   const stopLibrary = onLibraryChange(refetch);
   const stopDirect = onDirectWrite(() => refetch(LIBRARY_ROOTS));
+  /*
+   * A search answered on the device was answered from the index as it stood, and says
+   * so: "still indexing", or without the text of some files. When the index gains
+   * something, those answers — and only those; the server's are not the index's to
+   * correct — are asked for again, so the line under the results stops being true of
+   * a moment ago. Search is not a library root: a change to a note does not re-rank a
+   * search, and the index is what a local answer reads, not the collections.
+   */
+  const stopIndexed = onSearchIndexed(() => {
+    void queryClient.invalidateQueries({
+      queryKey: ['search'],
+      predicate: ({ state }) => (state.data as SearchAnswer | undefined)?.local !== undefined,
+    });
+  });
   return () => {
     stopLibrary();
     stopDirect();
+    stopIndexed();
   };
 }
 

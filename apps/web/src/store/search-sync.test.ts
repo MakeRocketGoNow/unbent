@@ -83,6 +83,22 @@ describe('SearchSync', () => {
     sync.stop();
   });
 
+  it('says when the index has gained something, and not when a pass wrote nothing', async () => {
+    const { lib, world, make } = await setup();
+    lib.notes = [note('kept', { notebookId: 'nb-kept', title: 'Policy' })];
+    lib.attachments = [file('k1', 'kept')];
+    world.texts = { k1: 'schedule of cover' };
+    let told = 0;
+    const sync = make({ onIndexed: () => (told += 1) });
+    await sync.idle();
+    // Once for the notes and the index being whole, once for the file's text.
+    expect(told).toBe(2);
+    sync.touch(null);
+    await sync.idle();
+    expect(told).toBe(2);
+    sync.stop();
+  });
+
   it('writes nothing for a note that is indexed as it stands', async () => {
     const { index, lib, make } = await setup();
     lib.notes = [note('a', { title: 'Same', body: 'text' })];
