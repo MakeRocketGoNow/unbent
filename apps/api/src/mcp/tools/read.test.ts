@@ -223,4 +223,18 @@ describe('list_notes pages', () => {
     // Absent rather than null or 0: a walk that read `total: 0` would stop.
     expect('total' in next).toBe(false);
   });
+
+  it('answers a compact page with what a batch write needs to be checked against, and no more', async () => {
+    const { pages, list } = pageRepo();
+    const result = answer(await list({ limit: 500, compact: true }));
+    expect(pages[0]?.list['limit']).toBe(500);
+    expect(result.notes).toEqual([{ id: 'n-1', title: 'Acme 10% off', notebook: 'Coupons', tags: ['Deals'] }]);
+  });
+
+  it('keeps a full page to a hundred', async () => {
+    const { pages, list } = pageRepo();
+    const result = await list({ limit: 101, compact: false });
+    expect(result.isError).toBe(true);
+    expect(pages).toHaveLength(0);
+  });
 });

@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import {
   FIELD_FILTER_OPS,
+  MAX_BATCH_NOTES,
   MAX_FIELD_VALUE_LENGTH,
   MAX_TAG_LENGTH,
   UNFILED,
@@ -42,6 +43,21 @@ const notebookFilter = z
 const LIST_DATE_RANGE =
   'Inclusive (UTC). Filters the created date when sort is "created", otherwise the updated ' +
   'date; with trashed, the date the note was trashed.';
+
+/**
+ * How many notes a page of `list_notes` may carry.
+ *
+ * A full row has dates, field values and an excerpt, and a hundred of them is already a
+ * long read. A compact row is an id, a title, a notebook and tags, there to be looked over
+ * and passed on, so its ceiling is the one the batch tools take in a single call: five
+ * hundred ids listed is five hundred ids moved, with no second page to stitch on.
+ *
+ * Compact keeps the notebook and tags rather than ids alone, deliberately. The point of
+ * listing before a batch write is seeing what the write would touch, and "this receipt is
+ * already filed somewhere else" is only visible with the notebook beside the title.
+ */
+const FULL_LIST_LIMIT = 100;
+const COMPACT_LIST_LIMIT = MAX_BATCH_NOTES;
 
 const dateOnly = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'expected YYYY-MM-DD').optional();
 
@@ -181,8 +197,23 @@ export function registerReadTools(
         'cursor there are more notes, and passing it back returns the next page. The total ' +
         'comes with the first page only: a page asked for with a cursor does not repeat it.',
       inputSchema: z.object({
-        limit: z.number().int().min(1).max(100).default(25),
+        limit: z
+          .number()
+          .int()
+          .min(1)
+          .max(COMPACT_LIST_LIMIT)
+          .default(25)
+          .describe(`At most ${FULL_LIST_LIMIT}, or ${COMPACT_LIST_LIMIT} with compact.`),
         cursor: z.string().optional().describe('The cursor from a previous page.'),
+        compact: z
+          .boolean()
+          .default(false)
+          .describe(
+            'Only the id, title, notebook and tags of each note, with no dates, field values ' +
+              `or excerpt, and up to ${COMPACT_LIST_LIMIT} a page. For collecting the ids of a ` +
+              'large set to pass to move_notes, update_note_tags or update_note_fields, while ' +
+              'still seeing what each note is and where it is filed.',
+          ),
         tag: tagFilter,
         notebook: notebookFilter,
         fields: fieldFiltersSchema,
@@ -208,7 +239,12 @@ export function registerReadTools(
       }),
       annotations: { readOnlyHint: true, openWorldHint: false },
     },
-    async ({ limit, cursor, tag, notebook, fields, untagged, sort, order, from, to, trashed }) => {
+    async ({ limit, cursor, compact, tag, notebook, fields, untagged, sort, order, from, to, trashed }) => {
+      if (limit > FULL_LIST_LIMIT && !compact) {
+        return toolError(
+          `limit is at most ${FULL_LIST_LIMIT} unless compact is true, which allows ${COMPACT_LIST_LIMIT}.`,
+        );
+      }
       if (untagged && tag?.length) {
         return toolError('untagged means notes with no tags, so it cannot be combined with tag.');
       }
@@ -234,7 +270,9 @@ export function registerReadTools(
         ...(total === null ? {} : { total }),
         returned: items.length,
         ...(cursorForNext ? { cursor: cursorForNext } : {}),
-        notes: items.map(noteRef),
+        notes: compact
+          ? items.map((n) => ({ id: n.id, title: n.title, notebook: n.notebook ?? null, tags: n.tags }))
+          : items.map(noteRef),
       });
     },
   );

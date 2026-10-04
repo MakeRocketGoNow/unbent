@@ -1045,6 +1045,21 @@ describe('reorganising notebooks and tags through MCP', () => {
     const untagged = await call('list_notes', { notebook, untagged: true });
     expect(untagged.notes.map((n: { id: string }) => n.id)).toEqual([c.id]);
 
+    // A compact page is wider than a full one and carries only what a batch write is
+    // checked against; a full page that wide is refused.
+    const compact = await call('list_notes', { notebook, compact: true, limit: 500, sort: 'title', order: 'asc' });
+    expect(compact.total).toBe(3);
+    expect(compact.notes).toEqual([
+      { id: a.id, title: 'Acme 10% off', notebook, tags: expect.arrayContaining([year, kept]) },
+      { id: b.id, title: 'Acme free shipping', notebook, tags: [year] },
+      { id: c.id, title: 'Report (final) v2', notebook, tags: [] },
+    ]);
+    const tooWide = await mcp(alice.token, 'tools/call', {
+      name: 'list_notes',
+      arguments: { notebook, limit: 500 },
+    });
+    expect(tooWide.body.result?.isError).toBe(true);
+
     // The total comes with the first page; the page after it does not count again.
     const first = await call('list_notes', { notebook, limit: 2 });
     expect(first.total).toBe(3);
