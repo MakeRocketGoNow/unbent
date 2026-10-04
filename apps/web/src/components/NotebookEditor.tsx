@@ -821,7 +821,9 @@ export function NotebookEditor({ notebookId, onChanged, onDeleted }: NotebookEdi
             busy={busy}
             onCancel={() => setPendingType(null)}
             actions={[
-              pendingType.incompatible === 0
+              // Only a fitted rating stops with nothing to clear; any other confirm that
+              // ever does must not borrow this label.
+              pendingType.fitted && pendingType.incompatible === 0
                 ? { label: 'Change to rating', busyLabel: 'Changing…', tone: 'primary', onConfirm: confirmType }
                 : {
                     label: `Change and clear ${plural(pendingType.incompatible, 'value')}`,
