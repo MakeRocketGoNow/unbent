@@ -85,7 +85,7 @@ interface WorkspaceProps {
   backTo?: '/notes' | '/trash';
 }
 
-/** What the History sheet is handed while it is closed and compares nothing. */
+/** What the History sheet is handed before it has ever been opened. */
 const CLOSED_HISTORY: HistoryCurrent = { title: '', body: '', notebook: null, tags: [], fields: [] };
 
 export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/notes' }: WorkspaceProps) {
@@ -834,6 +834,16 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
     };
   }
 
+  /*
+     What the sheet is handed: the note while it is open, and afterwards the last note it
+     was open on, not an empty one. The dialog fades out over a fifth of a second with
+     the version still on its page, and compared against nothing it drew every tag as
+     removed and the whole text as added for those frames.
+  */
+  const historyLast = useRef<HistoryCurrent>(CLOSED_HISTORY);
+  if (historyOpen) historyLast.current = historyCurrent();
+  const historyShown = historyLast.current;
+
   /**
    * Saves what is on screen and says whether the server can be asked to replace it.
    *
@@ -1428,7 +1438,7 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
           anchor={overflowSlot}
           saved={() => historyFlush.current}
           onRestore={restoreFromHistory}
-          current={historyOpen ? historyCurrent() : CLOSED_HISTORY}
+          current={historyShown}
         />
       )}
 
