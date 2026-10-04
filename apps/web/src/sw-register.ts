@@ -39,8 +39,12 @@ function setNotice(shown: boolean): void {
 /** Where the page currently is, for telling a change of page from a change of filter. */
 let currentPath: () => string = () => location.pathname;
 
-/** Nothing has been clicked, typed, scrolled or touched since the page loaded. */
+/**
+ * Nothing has been clicked, typed, scrolled or touched since the page loaded, or since it
+ * came back after a real absence (`checkForUpdatesOnReturn`).
+ */
 let untouched = true;
+let watchingTouch = false;
 
 export function registerServiceWorker(pathNow: () => string): void {
   recoverFromMissingChunks();
@@ -58,10 +62,21 @@ export function registerServiceWorker(pathNow: () => string): void {
     updateReady = true;
     setNotice(true);
   });
-  wb.register().catch(() => {
-    // An insecure origin, a private window that refuses storage, a WebView built without
-    // it: the app still works, it just cannot open offline.
-  });
+  /*
+     A page already under a worker registers at once and asks for a new one straight
+     away. Workbox otherwise waits for the window's `load`, so as not to compete with a
+     first visit's downloads — right for a first visit, but a page the worker served from
+     its cache has no such downloads, and waiting only costs it time. The browser's own
+     check after a load comes a second or two later still; asking at once starts the new
+     version's download that much sooner on the reload someone did to get it.
+  */
+  const updating = navigator.serviceWorker.controller !== null;
+  wb.register({ immediate: updating })
+    .then(() => (updating ? worker.update() : undefined))
+    .catch(() => {
+      // An insecure origin, a private window that refuses storage, a WebView built
+      // without it: the app still works, it just cannot open offline.
+    });
   checkForUpdatesOnReturn(wb);
 }
 
@@ -87,7 +102,11 @@ export function shouldApplyOnLoad(state: { untouched: boolean; busy: boolean; pa
 }
 
 function watchFirstTouch(): void {
+  if (watchingTouch) return;
+  untouched = true;
+  watchingTouch = true;
   const touched = () => {
+    watchingTouch = false;
     untouched = false;
     for (const type of TOUCHES) window.removeEventListener(type, touched, true);
   };
@@ -290,12 +309,19 @@ function handOver(worker: Workbox, href: string): void {
  * search box. A short absence keeps the page, and the deploy waits for the next change of
  * section or the next long absence.
  *
- * Asking for a new worker happens at most every half hour, whatever the absence. The
- * browser checks on its own only when a page of the site is loaded from the network —
- * never, for an app that is resumed rather than reopened. Half an hour because a deploy
- * is not urgent, and every check is a request for `sw.js`.
+ * Asking for a new worker happens on every return, at most once a minute. The browser
+ * checks on its own only when a page of the site is loaded — never, for an app that is
+ * resumed rather than reopened. It was at most every half hour, on the thought that a
+ * deploy is not urgent; but coming back to the tab is exactly when someone expects to find
+ * one, and half an hour of the old version after a deploy read as the check being broken.
+ * A check is one small request for `sw.js`, answered unchanged almost every time; the
+ * minute only keeps a run of quick switches from making one each.
+ *
+ * After a real absence the page also counts as untouched again, as it does just after a
+ * load (`shouldApplyOnLoad`): a deploy this return's check finds a few seconds later is
+ * taken in place, unless someone has started using the page by then.
  */
-const UPDATE_CHECK_INTERVAL = 30 * 60 * 1000;
+const UPDATE_CHECK_INTERVAL = 60 * 1000;
 const AWAY_FOR_UPDATE = 5 * 60 * 1000;
 
 export function shouldApplyOnReturn(state: {
@@ -308,6 +334,18 @@ export function shouldApplyOnReturn(state: {
   return state.awayFor >= AWAY_FOR_UPDATE;
 }
 
+/**
+ * What a return into view does when it has not taken a waiting deploy in place: whether
+ * the page counts as untouched again, and whether to ask for a new worker. Both reasons
+ * are in the comment above.
+ */
+export function onReturn(state: { awayFor: number; sinceLastCheck: number }): { untouched: boolean; check: boolean } {
+  return {
+    untouched: state.awayFor >= AWAY_FOR_UPDATE,
+    check: state.sinceLastCheck >= UPDATE_CHECK_INTERVAL,
+  };
+}
+
 function checkForUpdatesOnReturn(worker: Workbox): void {
   let last = Date.now();
   let hiddenAt = Date.now();
@@ -316,18 +354,21 @@ function checkForUpdatesOnReturn(worker: Workbox): void {
       hiddenAt = Date.now();
       return;
     }
+    const awayFor = Date.now() - hiddenAt;
     const apply = shouldApplyOnReturn({
       ready: updateReady,
       busy: pageBusy(),
       path: location.pathname,
-      awayFor: Date.now() - hiddenAt,
+      awayFor,
     });
     if (apply) {
       updateReady = false;
       handOver(worker, location.href);
       return;
     }
-    if (Date.now() - last < UPDATE_CHECK_INTERVAL) return;
+    const next = onReturn({ awayFor, sinceLastCheck: Date.now() - last });
+    if (next.untouched) watchFirstTouch();
+    if (!next.check) return;
     last = Date.now();
     void worker.update().catch(() => {});
   });

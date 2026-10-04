@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { offlineReadyState, shouldApplyOnLoad, shouldApplyOnReturn, shouldApplyUpdate } from './sw-register.js';
+import { offlineReadyState, onReturn, shouldApplyOnLoad, shouldApplyOnReturn, shouldApplyUpdate } from './sw-register.js';
 import { holdPage, pageBusy } from './busy.js';
 
 const ready = { ready: true, busy: false, preload: false, from: '/notes', to: '/settings' };
@@ -60,6 +60,24 @@ describe('shouldApplyOnReturn', () => {
 
   it('stays out of the Android app’s embed pages', () => {
     expect(shouldApplyOnReturn({ ...back, path: '/embed/notes/a' })).toBe(false);
+  });
+});
+
+describe('onReturn', () => {
+  const minute = 60 * 1000;
+
+  /* Coming back after a real absence is like a fresh load: a deploy the return's own check
+     finds a moment later is taken before anyone has started using the page. */
+  it('counts the page as untouched again only after a real absence', () => {
+    expect(onReturn({ awayFor: 4 * minute, sinceLastCheck: 10 * minute }).untouched).toBe(false);
+    expect(onReturn({ awayFor: 5 * minute, sinceLastCheck: 10 * minute }).untouched).toBe(true);
+  });
+
+  /* Coming back is when someone expects a deploy to show up; the minute only keeps a run
+     of quick switches from each asking for one. */
+  it('asks for a new worker on a return, at most once a minute', () => {
+    expect(onReturn({ awayFor: 2000, sinceLastCheck: minute }).check).toBe(true);
+    expect(onReturn({ awayFor: 2000, sinceLastCheck: 30 * 1000 }).check).toBe(false);
   });
 });
 
