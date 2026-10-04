@@ -1146,7 +1146,11 @@ describe('rows read on an archive-sized store', () => {
       // A save's worth for each note changed: about 126 a note when every one has a full
       // history to prune, which is the ceiling; a note with a copy or two is about
       // twenty (6,305 for the fifty, measured 2026-10-04). It grows with the notes
-      // written, never with the ids sent or the size of the archive.
+      // written, never with the ids sent or the size of the archive. The route takes
+      // five hundred ids (`MAX_BATCH_NOTES`), so the ceiling for one call is ten times
+      // this, about 63,000 rows, and only for five hundred notes that each have fifty
+      // copies and are all outside their window; a selection of ordinary notes is
+      // nearer 10,000.
       'bulk change that keeps fifty copies': 7000,
       // One note's fifty copies, of fifteen thousand (51 and 53).
       'history list': 65,
