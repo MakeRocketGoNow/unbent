@@ -66,6 +66,12 @@ the same `tone` vocabulary `Confirm` uses for its actions.
 Genuine navigation stays a `<Link>` or `<a>` and should look like one. `Button` deliberately
 does not render anchors.
 
+The one exception is a view's single call to action that navigates: it may be a `<Link>`
+wearing `btn btn-primary`. It is still a real link — it middle-clicks, opens in a new tab
+and copies — and only borrows the button's shape because it is the thing the view is for.
+`FrontPage`'s sign-up and `EmptyLibrary`'s import are the two cases. That is the stylesheet
+lending a link a shape, not a reason for `Button` to render anchors.
+
 Older filled buttons still use the bare `.primary` class. It is the same shape and radius as
 `.btn-primary` on purpose; convert callers to `Button` opportunistically when you are already
 editing them, not in a sweep.
