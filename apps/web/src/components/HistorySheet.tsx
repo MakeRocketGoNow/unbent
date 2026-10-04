@@ -54,13 +54,17 @@ export function describeRevision(revision: Pick<NoteRevisionSummary, 'cause' | '
  * How history is kept, as a sentence, from the numbers the store enforces — so the
  * sheet cannot explain a version's absence with a rule the server no longer follows.
  * "Half hour" and "a year" are said the way a person would; any other value is counted.
+ *
+ * "Before a connected assistant edits it", not "before any edit by" one: a run of an
+ * assistant's edits leaves one version, the text before the run, and a sentence promising
+ * one per edit would send someone looking for versions that were never kept.
  */
 export function retentionSentence(): string {
   const minutes = Math.round(REVISION_WINDOW_MS / 60_000);
   const each = minutes === 30 ? 'half hour' : minutes === 60 ? 'hour' : `${minutes} minutes`;
   const days = Math.round(REVISION_MAX_AGE_MS / 86_400_000);
   const age = days === 365 ? 'a year' : `${days} days`;
-  return `A version is kept when this note’s text is changed: about one for each ${each} of typing, and one before any edit by a connected assistant. The last ${REVISIONS_KEPT} are kept, for ${age}.`;
+  return `A version is kept when this note’s text is changed: about one for each ${each} of typing, and one before a connected assistant edits it. The last ${REVISIONS_KEPT} are kept, for ${age}.`;
 }
 
 /**
