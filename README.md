@@ -1729,7 +1729,8 @@ browser syncs from; see [Your library on the device](#your-library-on-the-device
 - `POST …/sql` — one `SELECT` (or `EXPLAIN`) against a store, always rolled back.
 - `GET …/dump` — the store as SQL text, `sqlite3 account.db < dump.sql` rebuilds it: what
   `d1 export` was, and how a migration is rehearsed against a real account before it
-  ships — dump, load, run the new schema file's SQL against the copy.
+  ships — dump, load, run the new schema file's SQL against the copy. Note history is
+  the one table it leaves empty (`DUMP_TABLES`).
 - `POST …/restore` — winds one store back to a moment in the last thirty days; see below.
 - `POST …/feed-epoch` — makes every device of an account resync its local copy, by
   naming a new history for its change feed. The restore does this itself.
