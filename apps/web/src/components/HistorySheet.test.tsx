@@ -5,7 +5,8 @@ import type { NoteRevision, NoteRevisionSummary } from '@unbent/shared';
 import * as api from '../notes-api.js';
 import { resetConnectivity, setReachableForTests } from '../connectivity.js';
 import { REVISIONS_KEPT } from '@unbent/shared';
-import { describeRevision, HistorySheet, retentionSentence } from './HistorySheet.js';
+import type { HistoryCurrent } from './HistoryChanges.js';
+import { describeRevision, HistorySheet, retentionSentence, skippedPhrase } from './HistorySheet.js';
 import { formatRevisionWhen } from './format-when.js';
 
 vi.mock('../notes-api.js', async (importOriginal) => ({
@@ -30,7 +31,7 @@ const typed: NoteRevisionSummary = { id: 2, title: 'Minutes (draft)', size: 1, c
 const whole: NoteRevision = { ...gutted, body: 'Agreed: ship on Friday.' };
 
 /** The note as it is on screen, which Changes compares a version against. */
-const onScreen = { title: 'Minutes', body: 'Agreed: ship on Monday.' };
+const onScreen: HistoryCurrent = { title: 'Minutes', body: 'Agreed: ship on Monday.', notebook: null, tags: [], fields: [] };
 
 function mount(onRestore = vi.fn(async () => {}), onClose = vi.fn(), current = onScreen) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -69,9 +70,31 @@ describe('describeRevision', () => {
   it('says how much text a version holds, and what replaced it when that was not typing', () => {
     expect(describeRevision({ size: 1204 })).toBe(`${(1204).toLocaleString()} characters`);
     expect(describeRevision({ size: 1 })).toBe('1 character');
-    expect(describeRevision({ size: 0 })).toBe('Empty');
+    expect(describeRevision({ size: 0 })).toBe('No text');
     expect(describeRevision({ size: 12, cause: 'assistant' })).toBe('Before an assistant’s edit · 12 characters');
-    expect(describeRevision({ size: 0, cause: 'restore' })).toBe('Before a restore · Empty');
+    expect(describeRevision({ size: 0, cause: 'restore' })).toBe('Before a restore · No text');
+  });
+
+  it('says which parts changed when it was more than the text, so field versions do not read alike', () => {
+    expect(describeRevision({ size: 0, changed: ['fields'] })).toBe('Fields changed · No text');
+    expect(describeRevision({ size: 12, changed: ['text', 'fields', 'tags'] })).toBe('Text, fields and tags changed · 12 characters');
+    expect(describeRevision({ size: 12, cause: 'assistant', changed: ['notebook'] })).toBe(
+      'Before an assistant’s edit · Notebook changed · 12 characters',
+    );
+    // The common case keeps its short row, and so does a version from before this was recorded.
+    expect(describeRevision({ size: 12, changed: ['text'] })).toBe('12 characters');
+  });
+});
+
+describe('skippedPhrase', () => {
+  const field = (name: string) => ({ what: 'field' as const, id: name, name, why: 'deleted' as const });
+  it('names what could not be put back, and counts past two', () => {
+    expect(skippedPhrase([])).toBe('');
+    expect(skippedPhrase([field('Status')])).toBe('Status');
+    expect(skippedPhrase([{ what: 'tag', id: 't', name: 'drama', why: 'deleted' }, field('Status')])).toBe('the tag “drama” and Status');
+    expect(
+      skippedPhrase([{ what: 'notebook', id: 'n', name: 'Watch list', why: 'deleted' }, field('Status'), field('Year'), field('Seen')]),
+    ).toBe('its notebook, Status and 2 more');
   });
 });
 
@@ -220,8 +243,27 @@ describe('HistorySheet', () => {
     vi.mocked(api.listRevisions).mockResolvedValue([{ ...typed, size: 0 }]);
     vi.mocked(api.getRevision).mockResolvedValue({ ...typed, size: 0, body: '' });
     mount();
-    fireEvent.click(await screen.findByRole('button', { name: /Empty$/ }));
+    fireEvent.click(await screen.findByRole('button', { name: /No text$/ }));
     expect(await screen.findByText('This version had no text.')).toBeTruthy();
+  });
+
+  it('lists what a version held besides its text above it, as the note’s head has it', async () => {
+    const card = { ...typed, size: 0, changed: ['fields' as const] };
+    vi.mocked(api.listRevisions).mockResolvedValue([card]);
+    vi.mocked(api.getRevision).mockResolvedValue({
+      ...card,
+      body: '',
+      props: {
+        notebook: { id: 'nb', name: 'Watch list' },
+        tags: [{ id: 't', name: 'drama' }],
+        fields: [{ fieldId: 'f', name: 'Seen', type: 'checkbox', value: true, notebookId: 'nb', notebook: 'Watch list' }],
+      },
+    });
+    const { container } = mount();
+    fireEvent.click(await screen.findByRole('button', { name: /Fields changed · No text$/ }));
+    await screen.findByText('This version had no text.');
+    const lines = [...container.ownerDocument.querySelectorAll('.history-prop')].map((el) => el.textContent);
+    expect(lines).toEqual(['NotebookWatch list', 'Tagsdrama', 'SeenYes']);
   });
 
   it('clears the history only after asking, naming how many versions go and that the note stays', async () => {
@@ -310,7 +352,7 @@ describe('HistorySheet', () => {
 
     it('says so on Changes when the version is the note as it is now', async () => {
       await openGutted();
-      mount(undefined, undefined, { title: whole.title, body: whole.body });
+      mount(undefined, undefined, { ...onScreen, title: whole.title, body: whole.body });
       fireEvent.click(await screen.findByRole('button', { name: /characters$/ }));
       await screen.findByTestId('preview');
       fireEvent.click(screen.getByRole('radio', { name: 'Changes' }));

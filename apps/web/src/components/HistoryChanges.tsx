@@ -1,17 +1,17 @@
-import { useMemo, useState } from 'react';
-import { diffNote, type DiffPart, type DiffRow } from '../note-diff.js';
+import { useMemo, useState, type ReactNode } from 'react';
+import type { NoteRevision, RevisionSkip } from '@unbent/shared';
+import { diffNote, diffProps, type CurrentProps, type DiffPart, type DiffRow, type PropChange, type PropValue } from '../note-diff.js';
+import { formatFieldValue } from './format-field.js';
 import { RowChevronIcon } from './icons.js';
 
-interface NoteText {
-  title: string;
-  body: string;
-}
+/** The note as it is on screen: its text, and where it is filed, its tags and its fields. */
+export type HistoryCurrent = { title: string; body: string } & CurrentProps;
 
 interface HistoryChangesProps {
-  /** The note as it is on screen: the workspace's draft, which the sheet's opening flushed. */
-  current: NoteText;
-  /** The version Restore would put back. */
-  version: NoteText;
+  /** The workspace's draft, which the sheet's opening flushed. */
+  current: HistoryCurrent;
+  /** The version Restore would put back, with what the server says Restore would skip. */
+  version: Pick<NoteRevision, 'title' | 'body' | 'props' | 'unfit'>;
 }
 
 /**
@@ -56,31 +56,60 @@ export function HistoryChanges({ current, version }: HistoryChangesProps) {
     ? 'The text reads the same as the note now; only line endings or blank lines at the end differ.'
     : 'The text is the same as the note now.';
 
-  if (!diff.titleChanged && diff.body === 'same') {
+  /*
+     The notebook, the tags and the fields (MAK-170), above the body where the note's own
+     head has them, each drawn as the title line is. Only what differs, like everything
+     on this page. A version from before these were kept has none to compare, and says
+     so: silence there would read as "the fields are the same", and they may not be.
+  */
+  const props = useMemo(
+    () =>
+      version.props
+        ? diffProps({ notebook: current.notebook, tags: current.tags, fields: current.fields }, version.props, version.unfit)
+        : [],
+    [current.notebook, current.tags, current.fields, version.props, version.unfit],
+  );
+  const unrecorded = version.props === undefined && (
+    <p className="history-diff-note small">
+      This version was kept before fields, tags and the notebook were part of one. Restoring it leaves them as they
+      are.
+    </p>
+  );
+
+  if (!diff.titleChanged && diff.body === 'same' && props.length === 0) {
     return (
-      <p className="history-diff-note">{unseen ? sameText : 'This version is the same as the note now.'}</p>
+      <div className="history-diff">
+        <p className="history-diff-note">{unseen ? sameText : 'This version is the same as the note now.'}</p>
+        {unrecorded}
+      </div>
     );
   }
 
+  const marked = diff.titleChanged || Array.isArray(diff.body) || props.some((p) => p.kind !== 'unfit');
   return (
     <div className="history-diff">
       {/* Only over marks it explains: above "too different to compare" alone it described
           an underline and a strike that were nowhere on the page. */}
-      {(diff.titleChanged || Array.isArray(diff.body)) && (
+      {marked && (
         <p className="history-diff-legend muted small">
           Restoring this version would add what is <ins>underlined</ins> and remove what is{' '}
           <del>struck through</del>.
         </p>
       )}
-      {diff.titleChanged && (
-        <p className="history-diff-title">
-          <span className="muted small">Title</span>{' '}
-          <span className="history-diff-text">
-            <del>{current.title || 'Untitled'}</del> <span aria-hidden="true">→</span>
-            <span className="visually-hidden">becomes</span> <ins>{version.title || 'Untitled'}</ins>
-          </span>
-        </p>
+      {(diff.titleChanged || props.length > 0) && (
+        /* One list, so the title and the fields share a rhythm and a label column. */
+        <dl className="history-props">
+          {diff.titleChanged && (
+            <PropLine label="Title" className="history-diff-title">
+              <Swap from={current.title || 'Untitled'} to={version.title || 'Untitled'} />
+            </PropLine>
+          )}
+          {props.map((change, i) => (
+            <PropChangeLine key={i} change={change} />
+          ))}
+        </dl>
       )}
+      {unrecorded}
       {diff.body === 'same' ? (
         <p className="history-diff-note">{sameText}</p>
       ) : diff.body === 'too-different' ? (
@@ -93,6 +122,110 @@ export function HistoryChanges({ current, version }: HistoryChangesProps) {
         </div>
       )}
     </div>
+  );
+}
+
+/** A label and its value: one line of the list the title, notebook, tags and fields share. */
+export function PropLine({ label, className, children }: { label: string; className?: string; children: ReactNode }) {
+  return (
+    <div className={className ? `history-prop ${className}` : 'history-prop'}>
+      <dt className="muted small">{label}</dt>
+      <dd className="history-diff-text">{children}</dd>
+    </div>
+  );
+}
+
+/**
+ * One value for another, as the title line has always drawn it. A side that is nothing
+ * is left out rather than written as a struck-through "None": a value set where there
+ * was none is an addition, and reads as one. The words between and before are for a
+ * screen reader, which rarely announces `ins` and `del`.
+ */
+function Swap({ from, to }: { from: string | null; to: string | null }) {
+  if (from !== null && to !== null) {
+    return (
+      <>
+        <del>{from}</del> <span aria-hidden="true">→</span>
+        <span className="visually-hidden">becomes</span> <ins>{to}</ins>
+      </>
+    );
+  }
+  if (to !== null) {
+    return (
+      <>
+        <span className="visually-hidden">added </span>
+        <ins>{to}</ins>
+      </>
+    );
+  }
+  return (
+    <>
+      <span className="visually-hidden">removed </span>
+      <del>{from}</del>
+    </>
+  );
+}
+
+/** A field's value as the note's own rows draw it: stars, money, Yes and No. */
+export const shown = (v: PropValue) => formatFieldValue(v.type, v.value, v.scale, v.currency);
+
+/**
+ * Why Restore would leave something as it is, in the words of what happened to it.
+ * These are the server's three reasons (`RevisionSkip`), said before the press: the
+ * snackbar after a restore says them again, but by then the person has pressed.
+ */
+export function skipReason(skip: RevisionSkip, held?: string): string {
+  if (skip.what === 'notebook') return `“${skip.name}” has been deleted, so the note stays where it is.`;
+  if (skip.what === 'tag') return `“${skip.name}” has been deleted, and is not put back.`;
+  const value = held === undefined ? 'its value' : `“${held}”`;
+  if (skip.why === 'deleted') return `This field has been deleted, so ${value} is not put back.`;
+  if (skip.why === 'option') return `This field no longer offers ${value}, so it stays as it is.`;
+  return `This field can no longer hold ${value}, so it stays as it is.`;
+}
+
+function PropChangeLine({ change }: { change: PropChange }) {
+  if (change.kind === 'notebook') {
+    // No notebook is "Inbox" everywhere a person reads it; see `FilingRows`.
+    return (
+      <PropLine label="Notebook">
+        <Swap from={change.from ?? 'Inbox'} to={change.to ?? 'Inbox'} />
+      </PropLine>
+    );
+  }
+  if (change.kind === 'tags') {
+    return (
+      <PropLine label="Tags">
+        {[
+          ...change.same.map((t) => <span key={`s-${t}`}>{t}</span>),
+          ...change.removed.map((t) => (
+            <del key={`r-${t}`}>
+              <span className="visually-hidden">removed </span>
+              {t}
+            </del>
+          )),
+          ...change.added.map((t) => (
+            <ins key={`a-${t}`}>
+              <span className="visually-hidden">added </span>
+              {t}
+            </ins>
+          )),
+        ].flatMap((el, i) => (i === 0 ? [el] : [', ', el]))}
+      </PropLine>
+    );
+  }
+  if (change.kind === 'field') {
+    return (
+      <PropLine label={change.name}>
+        <Swap from={change.from ? shown(change.from) : null} to={change.to ? shown(change.to) : null} />
+      </PropLine>
+    );
+  }
+  const { skip, held } = change;
+  const label = skip.what === 'notebook' ? 'Notebook' : skip.what === 'tag' ? 'Tags' : skip.name;
+  return (
+    <PropLine label={label}>
+      <span className="muted">{skipReason(skip, held ? shown(held) : undefined)}</span>
+    </PropLine>
   );
 }
 

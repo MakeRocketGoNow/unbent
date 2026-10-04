@@ -1,3 +1,4 @@
+import type { FieldValue, NoteFieldValue, NoteRevisionProps, RevisionSkip } from '@unbent/shared';
 import { diffArrays, diffWordsWithSpace } from 'diff';
 
 /**
@@ -214,4 +215,103 @@ function changeRows(removed: string[], added: string[]): DiffRow[] {
     if (kinds.size === 1) return { kind: kinds.has('added') ? 'added' : 'removed', parts };
     return { kind: 'changed', parts };
   });
+}
+
+/**
+ * A field value with enough of its definition to draw it: what a version holds for each
+ * field, and what the workspace can say of each value on screen.
+ */
+export type PropValue = Pick<NoteFieldValue, 'fieldId' | 'name' | 'type' | 'value' | 'scale' | 'currency'> & {
+  /** The notebook the field belongs to, when known; see the last rule of `diffProps`. */
+  notebookId?: string;
+};
+
+/**
+ * The note on screen, beyond its text: where it is filed, its tags and its field values
+ * (MAK-170). The notebook's id is absent when the draft names a notebook this device has
+ * not heard of yet, and the comparison then goes by name.
+ */
+export interface CurrentProps {
+  notebook: { id?: string | undefined; name: string } | null;
+  tags: string[];
+  fields: PropValue[];
+}
+
+/**
+ * One line of what Restore would do to the note's notebook, tags and fields. `from` is
+ * the note now and `to` the version, as everywhere in this file; null is "none" — no
+ * notebook, no value. `unfit` is something the version holds that Restore would leave as
+ * the note has it, with the server's reason.
+ */
+export type PropChange =
+  | { kind: 'notebook'; from: string | null; to: string | null }
+  | { kind: 'tags'; same: string[]; removed: string[]; added: string[] }
+  | { kind: 'field'; name: string; from: PropValue | null; to: PropValue | null }
+  | { kind: 'unfit'; skip: RevisionSkip; held?: PropValue };
+
+/** As the store compares two values: a list as a list, anything else as its text. */
+function sameValue(a: FieldValue, b: FieldValue): boolean {
+  return Array.isArray(a) || Array.isArray(b) ? JSON.stringify(a) === JSON.stringify(b) : String(a) === String(b);
+}
+
+/**
+ * What restoring a version would do to the note's notebook, tags and field values, in
+ * the order the note's own head has them. Empty when it would do nothing.
+ *
+ * This mirrors the store's `planRestore`, which is the code that decides: the version's
+ * state is the target, by id; what the server said it would skip (`unfit`) is drawn as
+ * skipped and never as a change; a value the note has gained since is cleared. The last
+ * rule has the store's exception too — when the version's notebook is gone and the note
+ * stays where it is, that notebook's values stay with it.
+ *
+ * The one place the two can differ is a tag renamed since the version: the version
+ * knows the old name and this device compares names, so it shows the old name going in
+ * and the new one coming out where the restore, which goes by id, leaves the tag alone.
+ * Asking the server for today's names would fix it for a case that is rare and harmless.
+ */
+export function diffProps(current: CurrentProps, props: NoteRevisionProps, unfit: readonly RevisionSkip[] = []): PropChange[] {
+  const changes: PropChange[] = [];
+  const skip = (what: RevisionSkip['what'], id: string) => unfit.find((u) => u.what === what && u.id === id);
+
+  const notebookSkip = props.notebook ? skip('notebook', props.notebook.id) : undefined;
+  if (notebookSkip) {
+    changes.push({ kind: 'unfit', skip: notebookSkip });
+  } else {
+    const now = current.notebook;
+    const then = props.notebook;
+    const same =
+      now === null || then === null
+        ? now === then
+        : now.id !== undefined
+          ? now.id === then.id
+          : now.name.toLowerCase() === then.name.toLowerCase();
+    if (!same) changes.push({ kind: 'notebook', from: now?.name ?? null, to: then?.name ?? null });
+  }
+
+  const target = props.tags.filter((t) => !skip('tag', t.id)).map((t) => t.name);
+  const removed = current.tags.filter((t) => !target.includes(t));
+  const added = target.filter((t) => !current.tags.includes(t));
+  if (removed.length > 0 || added.length > 0) {
+    changes.push({ kind: 'tags', same: current.tags.filter((t) => target.includes(t)), removed, added });
+  }
+  for (const tag of props.tags) {
+    const skipped = skip('tag', tag.id);
+    if (skipped) changes.push({ kind: 'unfit', skip: skipped });
+  }
+
+  const held = new Map(current.fields.map((v) => [v.fieldId, v]));
+  for (const was of props.fields) {
+    const stands = held.get(was.fieldId);
+    if (stands && sameValue(stands.value, was.value)) continue;
+    const skipped = skip('field', was.fieldId);
+    if (skipped) changes.push({ kind: 'unfit', skip: skipped, held: was });
+    else changes.push({ kind: 'field', name: stands?.name ?? was.name, from: stands ?? null, to: was });
+  }
+  const inVersion = new Set(props.fields.map((v) => v.fieldId));
+  for (const stands of current.fields) {
+    if (inVersion.has(stands.fieldId)) continue;
+    if (notebookSkip && stands.notebookId !== undefined && stands.notebookId === current.notebook?.id) continue;
+    changes.push({ kind: 'field', name: stands.name, from: stands, to: null });
+  }
+  return changes;
 }

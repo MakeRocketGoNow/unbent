@@ -118,6 +118,24 @@ describe('restoring a version from History', () => {
     expect(api.updateNote).not.toHaveBeenCalled();
   });
 
+  it('says plainly what the version held that could not be put back', async () => {
+    vi.mocked(api.restoreRevision).mockResolvedValue({
+      note: { ...note, body: earlier.body, updatedAt: 200 },
+      kept: 5,
+      skipped: [
+        { what: 'field', id: 'f1', name: 'Status', why: 'option' },
+        { what: 'tag', id: 't1', name: 'drama', why: 'deleted' },
+      ],
+    });
+    mount();
+    fireEvent.click(await openVersion());
+    await waitFor(() =>
+      expect(screen.getByRole('status').textContent).toMatch(
+        /Restored the version from today, .*, except Status and the tag “drama”, which could not be put back/,
+      ),
+    );
+  });
+
   it('saves what was typed before asking for the restore, so the server can keep it', async () => {
     vi.mocked(api.updateNote).mockImplementation(async (_id, patch) => ({ ...note, ...patch, updatedAt: 150 }) as Note);
     vi.mocked(api.restoreRevision).mockResolvedValue({ note: { ...note, body: earlier.body, updatedAt: 200 }, kept: 5 });

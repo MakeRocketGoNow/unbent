@@ -50,7 +50,9 @@ import { EditorToolbar, type NoteView } from './EditorToolbar.js';
 import { Attachments } from './Attachments.js';
 import { ResizeHandle } from './ResizeHandle.js';
 import { OverflowMenu } from './OverflowMenu.js';
-import { HistorySheet } from './HistorySheet.js';
+import { HistorySheet, skippedPhrase } from './HistorySheet.js';
+import type { HistoryCurrent } from './HistoryChanges.js';
+import type { PropValue } from '../note-diff.js';
 import { formatRevisionWhen } from './format-when.js';
 import { Button } from './Button';
 import { BackArrow } from './BackArrow.js';
@@ -801,6 +803,34 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
   useEffect(() => setHistoryFor(null), [noteId]);
 
   /**
+   * The note on screen as the History sheet compares a version against it: the draft,
+   * with each field value given the name and type that draw it. A definition this
+   * session has loaded says those; a value carried from a notebook the note has left
+   * says its own, as the property list draws it. An emptied value is no value, which is
+   * how the save reads it. A function, not a memo: it runs only while the sheet is
+   * mounted, and the comparison it feeds is memoised on what it holds.
+   */
+  function historyCurrent(): HistoryCurrent {
+    const defs = new Map(knownFieldDefs.map((def) => [def.id, def]));
+    const carried = new Map((note?.fields ?? []).map((v) => [v.fieldId, v]));
+    return {
+      title: draft.title,
+      body: draft.body,
+      notebook: draft.notebook === null ? null : { id: currentNotebook?.id, name: currentNotebook?.name ?? draft.notebook },
+      tags: draft.tags,
+      fields: Object.entries(draft.fields).flatMap(([fieldId, value]): PropValue[] => {
+        if (value === null || value === '' || (Array.isArray(value) && value.length === 0)) return [];
+        const def = defs.get(fieldId);
+        if (def) {
+          return [{ fieldId, name: def.name, type: def.type, value, scale: def.scale, currency: def.currency, notebookId: def.notebookId }];
+        }
+        const was = carried.get(fieldId);
+        return was ? [{ ...was, value }] : [];
+      }),
+    };
+  }
+
+  /**
    * Saves what is on screen and says whether the server can be asked to replace it.
    *
    * The server keeps what a restore replaces, and it can only keep what it has: typing
@@ -829,7 +859,9 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
       throw new Error('This note has changes that could not be saved, so nothing was restored.');
     }
     const flushed = draftRef.current;
-    const { note: restored, kept } = await actions.restoreRevision(id, revision.id);
+    const { note: restored, kept, skipped } = await actions.restoreRevision(id, revision.id);
+    // What the version held that no longer fits, said with the result either way.
+    const except = skippedPhrase(skipped ?? []);
     /*
        The version was already what the note says — the one just restored, picked again,
        or the "Before a restore" copy of the text now on screen. Nothing was written and
@@ -839,7 +871,13 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
     if (kept === null) {
       if (noteIdRef.current !== id) return;
       setHistoryFor(null);
-      setSnackbar({ message: 'That version is what the note already says.', tone: 'info', duration: 5000 });
+      setSnackbar({
+        message: except
+          ? `Nothing was restored: the rest of that version is what the note already says, and ${except} could not be put back.`
+          : 'That version is what the note already says.',
+        tone: 'info',
+        duration: except ? 10_000 : 5000,
+      });
       return;
     }
     void queryClient.invalidateQueries({ queryKey: ['search'] });
@@ -854,9 +892,12 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
     if (JSON.stringify(draftRef.current) === JSON.stringify(flushed)) reseed(restored);
     setHistoryFor(null);
     setSnackbar({
-      message: `Restored the version from ${formatRevisionWhen(revision.createdAt, Date.now(), { inSentence: true })}`,
+      message: `Restored the version from ${formatRevisionWhen(revision.createdAt, Date.now(), { inSentence: true })}${
+        except ? `, except ${except}, which could not be put back` : ''
+      }`,
       tone: 'info',
-      duration: 8000,
+      // Longer when there is an exception to read as well as an Undo to reach.
+      duration: except ? 12_000 : 8000,
       action: { label: 'Undo', onClick: () => void undoRestore(id, kept, restored.updatedAt) },
     });
   }
@@ -1380,7 +1421,7 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
           anchor={overflowSlot}
           saved={() => historyFlush.current}
           onRestore={restoreFromHistory}
-          current={draft}
+          current={historyCurrent()}
         />
       )}
 

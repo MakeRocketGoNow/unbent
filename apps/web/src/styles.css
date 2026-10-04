@@ -7646,7 +7646,36 @@ button.settings-nav-item {
   overflow-wrap: anywhere;
 }
 
-.history-diff-title .history-diff-text { white-space: normal; }
+/*
+   The title, and the notebook, tags and fields Restore would change: a label and what
+   becomes of it, one line each, above the body where the note's own head has them.
+   Preview draws what the version holds with the same list, without the marks. A
+   grid so the labels share a column whatever their lengths, and one row gap so the
+   lines read as a list (the rhythm is the list's, not each line's). The label column
+   takes what its longest name needs up to two fifths of the box: a field can be named
+   anything, and on a phone a long name must wrap rather than leave the value a sliver.
+*/
+.history-props {
+  display: grid;
+  grid-template-columns: fit-content(40%) minmax(0, 1fr);
+  gap: 0.35rem 0.75rem;
+  /* The label is smaller than the value; they sit on one baseline, not one top edge. */
+  align-items: baseline;
+  margin: 0;
+  line-height: 1.45;
+}
+
+/* In Preview the list is the version's own head, between its title and its text. */
+.history-copy > .history-props { margin-bottom: 0.75rem; }
+
+.history-prop { display: contents; }
+
+.history-prop dt { overflow-wrap: anywhere; }
+
+.history-prop dd {
+  margin: 0;
+  white-space: normal;
+}
 
 /* Pulled out to the box's edges, so a line's wash reads as the line and not as a chip. */
 .history-diff-rows {
