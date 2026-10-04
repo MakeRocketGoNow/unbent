@@ -490,9 +490,9 @@ hold it together, and most are easy to break from code that never mentions it.
 **Every read a view makes comes from the local copy.** `queries.ts` keeps its keys and
 shapes; each query function derives its answer from the four collections (`store/derive.ts`,
 which mirrors the server's filters and sorts, test for test), and `installLibraryQueries`
-re-runs the queries when a collection changes. The instance's config and the vision
-backlog are the reads that still go to the server, and search while there is a connection
-(see the search index, below); a new read of notes, notebooks, tags or
+re-runs the queries when a collection changes. The instance's config, the vision
+backlog and a note's history are the reads that still go to the server, and search while
+there is a connection (see the search index, below); a new read of notes, notebooks, tags or
 files belongs in `derive.ts` with a case in its test, never in a request. A device whose
 browser has no file system to keep the copy in (`PersistenceUnavailableError`) falls back to
 the requests, which is the app as it was: nothing offline, nothing kept.
@@ -511,7 +511,9 @@ and its upload is an entry in the same outbox, behind the note's own. The upload
 file's id (`X-Attachment-Id`), so a replay finds the file rather than storing `scan-2.pdf`;
 a direct upload carries the same id its queued retry will, since its answer can be lost
 too; a refused session keeps the entry, because the bytes exist nowhere else; any other 4xx ends
-it and leaves a notice the attachments panel shows. Notebook, tag and field management stay direct calls
+it and leaves a notice the attachments panel shows. Putting a version back from a note's history (`restoreRevision`) is a
+request too, and waits for the note's own queued writes first: history is the server's, and
+the server keeps what a restore replaces only if it has it. Notebook, tag and field management stay direct calls
 that need a connection: they are settings-page actions with rules the server decides, and
 the feed delivers what they did to every device.
 
@@ -757,6 +759,26 @@ Things about working on the store that are easy to get wrong:
   index, which only its own spelling can use.
 - **Local state is D1 *and* `do/`.** The reset scripts clear both; clearing one by hand
   leaves ghost objects. `worktree:setup` copies both.
+
+### Note history
+
+`note_revisions` (`0003-revisions`, `store/revisions.ts`) holds the title and body a note
+had before a write replaced them; the README's "Undoing an edit" is the user-facing account.
+What to know before changing it:
+
+- **`NotesStore.update` and `restoreRevision` are the only writes that keep a copy**, in
+  the transaction that replaces the text. A new method that replaces a body has to decide,
+  and say in its comment, why it does or does not. `appendToBody`, import and the bulk
+  verbs do not, each for a reason given on `update`.
+- **Who is writing decides how often.** Typing keeps one copy per `REVISION_WINDOW_MS`.
+  The MCP tools pass `by: 'assistant'`, which keeps a copy even inside the window unless
+  the text being replaced is the output of an assistant's write that already left one
+  (`through` on the row is how that is told). `by` is not in the HTTP schema, so a
+  browser cannot claim it and a new MCP tool that writes a body must pass it.
+- **Not in the feed, the export or the local library.** Twenty bodies per note on every
+  device is what that would cost. The History sheet reads the server each time it opens.
+- **Pruned on the write that adds a copy, for that note only**: twenty copies, ninety
+  days, no cron. Bounded in the rows-read test with the other hot queries.
 
 ### The change feed
 
