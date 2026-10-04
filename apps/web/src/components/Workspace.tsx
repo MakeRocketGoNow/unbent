@@ -839,6 +839,11 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
      was open on, not an empty one. The dialog fades out over a fifth of a second with
      the version still on its page, and compared against nothing it drew every tag as
      removed and the whole text as added for those frames.
+
+     The ref is written during render on purpose. Moving the write into an effect would
+     hand the sheet the previous render's note for one frame on every change, and the
+     closing frame would be the empty one again. The write only repeats what this render
+     computed, so a render React throws away leaves nothing wrong behind.
   */
   const historyLast = useRef<HistoryCurrent>(CLOSED_HISTORY);
   if (historyOpen) historyLast.current = historyCurrent();
