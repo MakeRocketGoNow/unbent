@@ -89,5 +89,8 @@ function useOpenFirstNote(where: {
       replace: true,
     });
   }, [noteId, userId, navigate]);
-  return wanted;
+  // Blank only while the list can still hand over the note. A list that failed, or came
+  // back without a row (the note went between the count and the list), has nothing to
+  // open, and the pane goes back to its line rather than staying blank for good.
+  return wanted && !list.isError && !(list.isSuccess && noteId === undefined);
 }
