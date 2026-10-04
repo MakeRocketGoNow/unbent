@@ -48,6 +48,12 @@ interface PendingType {
   scale?: FieldScale | null;
   /** Set when the change puts a currency on the field or takes one off; see `changeType`. */
   currency?: string | null;
+  /**
+   * Set when `scale` is the one the server read from the field's values rather than one
+   * the person picked: a field becoming a rating. The confirmation then names that scale
+   * and says what it keeps, not only what it clears.
+   */
+  fitted?: boolean;
   values: number;
   incompatible: number;
 }
@@ -308,6 +314,12 @@ export function NotebookEditor({ notebookId, onChanged, onDeleted }: NotebookEdi
    * values — a stored 0 or 250 is no longer a legal rating — and that is exactly the
    * confirmation a type change gets.
    *
+   * `'fit'` is how "Rating" asks for that scale: the server reads it from the values the
+   * field holds (`fitRatingScale`), so scores out of 10 become a rating out of 10 rather
+   * than five stars that clear every 6 and up (MAK-80). Because the scale was chosen for
+   * the person, a field with values always stops to say which one it is and what it
+   * keeps — even when nothing is cleared, where the confirmation is the green kind.
+   *
    * `currency` is the same for the "Currency" entry, with one difference: a currency is
    * display only, so a number gaining or losing one clears nothing, and when that is all
    * that changes there is nothing to preview and it writes at once.
@@ -315,10 +327,12 @@ export function NotebookEditor({ notebookId, onChanged, onDeleted }: NotebookEdi
   async function changeType(
     field: FieldDef,
     to: FieldType,
-    scale?: FieldScale | null,
+    scaleAsked?: FieldScale | null | 'fit',
     currency?: string | null,
   ) {
-    const scaleChanged = scale !== undefined && (scale === null) !== (field.scale === null);
+    const fitted = scaleAsked === 'fit';
+    let scale = fitted ? undefined : scaleAsked;
+    const scaleChanged = scaleAsked !== undefined && (scaleAsked === null) !== (field.scale === null);
     const currencyChanged = currency !== undefined && (currency ?? null) !== (field.currency ?? null);
     if (to === field.type && !scaleChanged && !currencyChanged) return;
     setError(null);
@@ -327,9 +341,10 @@ export function NotebookEditor({ notebookId, onChanged, onDeleted }: NotebookEdi
       return;
     }
     try {
-      const preview = await api.previewFieldConversion(notebookId, field.id, to, scale);
-      if (preview.incompatible > 0) {
-        setPendingType({ field, to, scale, currency, ...preview });
+      const preview = await api.previewFieldConversion(notebookId, field.id, to, scaleAsked);
+      if (fitted) scale = preview.scale;
+      if (preview.incompatible > 0 || (fitted && preview.values > 0)) {
+        setPendingType({ field, to, currency, ...preview, scale, fitted });
         return;
       }
     } catch (err) {
@@ -365,7 +380,7 @@ export function NotebookEditor({ notebookId, onChanged, onDeleted }: NotebookEdi
     try {
       const preview = await api.previewFieldConversion(notebookId, field.id, field.type, scale);
       if (preview.incompatible > 0) {
-        setPendingType({ field, to: field.type, scale, ...preview });
+        setPendingType({ field, to: field.type, ...preview, scale });
         return;
       }
     } catch (err) {
@@ -626,9 +641,9 @@ export function NotebookEditor({ notebookId, onChanged, onDeleted }: NotebookEdi
                     const dropScale = field.scale ? null : undefined;
                     const dropCurrency = field.currency ? null : undefined;
                     if (picked === 'rating') {
-                      // Turning a number into a rating: the scale it starts on is the one
-                      // the create form offers, which is the shape most ratings want.
-                      void changeType(field, 'number', { max: 5, step: 0.5 }, dropCurrency);
+                      // Turning a field into a rating: the scale it starts on is read from
+                      // the values it holds, and is the create form's when it holds none.
+                      void changeType(field, 'number', 'fit', dropCurrency);
                     } else if (picked === 'currency') {
                       void changeType(field, 'number', dropScale, DEFAULT_CURRENCY);
                     } else {
@@ -781,6 +796,12 @@ export function NotebookEditor({ notebookId, onChanged, onDeleted }: NotebookEdi
                 {scaleOnlyConfirm(pendingType) ? (
                   scaleConfirmQuestion(pendingType)
                 ) : (
+                  pendingType.fitted && pendingType.scale ? (
+                    <>
+                      Change <strong>{pendingType.field.name}</strong> to a rating out of{' '}
+                      {pendingType.scale.max}?
+                    </>
+                  ) : (
                   <>
                     Change <strong>{pendingType.field.name}</strong> to{' '}
                     {/* Named as the picker names it: "to Number" would be the wrong word for a
@@ -792,26 +813,22 @@ export function NotebookEditor({ notebookId, onChanged, onDeleted }: NotebookEdi
                         : FIELD_TYPE_LABELS[pendingType.to]}
                     ?
                   </>
+                  )
                 )}
               </>
             }
-            detail={
-              `${plural(pendingType.values, 'note')} ${pendingType.values === 1 ? 'has' : 'have'} a value. ` +
-              (pendingType.incompatible === pendingType.values
-                ? pendingType.incompatible === 1
-                  ? "It can't be read that way and will be cleared."
-                  : 'None of them can be read that way, so all will be cleared.'
-                : `${pendingType.incompatible} of them can't be read that way and will be cleared.`)
-            }
+            detail={conversionDetail(pendingType)}
             busy={busy}
             onCancel={() => setPendingType(null)}
             actions={[
-              {
-                label: `Change and clear ${plural(pendingType.incompatible, 'value')}`,
-                busyLabel: 'Changing…',
-                tone: 'danger',
-                onConfirm: confirmType,
-              },
+              pendingType.incompatible === 0
+                ? { label: 'Change to rating', busyLabel: 'Changing…', tone: 'primary', onConfirm: confirmType }
+                : {
+                    label: `Change and clear ${plural(pendingType.incompatible, 'value')}`,
+                    busyLabel: 'Changing…',
+                    tone: 'danger',
+                    onConfirm: confirmType,
+                  },
             ]}
           />
         )}
@@ -874,7 +891,8 @@ export function NotebookEditor({ notebookId, onChanged, onDeleted }: NotebookEdi
         <p className="muted small">
           Fields appear on every note in this notebook. Deleting a field deletes its values.
           Changing a field's type, or narrowing a rating's scale, clears any value that can't
-          be read that way. A note moved to another notebook keeps the values it has.
+          be read that way. A field becoming a rating is scaled to fit the numbers it already
+          holds, up to 10. A note moved to another notebook keeps the values it has.
         </p>
       </section>
 
@@ -930,6 +948,46 @@ export function NotebookEditor({ notebookId, onChanged, onDeleted }: NotebookEdi
  * a 10-point scale to 5, and "out of 5" is the wrong question for turning a number into
  * stars.
  */
+/**
+ * What a type or scale change keeps and clears, in a sentence.
+ *
+ * A fitted rating says what it keeps as well as what it clears, because the scale was
+ * chosen for the person: "every one fits" is the reason the change is safe, and a count of
+ * what survives is what makes a partial clear legible. The rest name only the casualties,
+ * as they always have.
+ */
+function conversionDetail(pending: PendingType): string {
+  const { values, incompatible } = pending;
+  const head = `${plural(values, 'note')} ${values === 1 ? 'has' : 'have'} a value. `;
+  if (pending.fitted && pending.scale) {
+    const max = pending.scale.max;
+    if (incompatible === 0) {
+      return head + (values === 1
+        ? `It fits a rating out of ${max}, so it keeps its number.`
+        : `Every one fits a rating out of ${max}, so each keeps its number.`);
+    }
+    if (incompatible < values) {
+      const kept = values - incompatible;
+      return (
+        head +
+        `${kept} ${kept === 1 ? 'fits' : 'fit'} a rating out of ${max} and ${kept === 1 ? 'keeps its' : 'keep their'} number; ` +
+        `${incompatible} can't be a rating from 1 to ${max} and will be cleared.`
+      );
+    }
+    return head + (values === 1
+      ? `It can't be a rating from 1 to ${MAX_RATING_MAX} and will be cleared.`
+      : `None of them can be a rating from 1 to ${MAX_RATING_MAX}, so all will be cleared.`);
+  }
+  return (
+    head +
+    (incompatible === values
+      ? incompatible === 1
+        ? "It can't be read that way and will be cleared."
+        : 'None of them can be read that way, so all will be cleared.'
+      : `${incompatible} of them can't be read that way and will be cleared.`)
+  );
+}
+
 function scaleOnlyConfirm(
   pending: PendingType,
 ): pending is PendingType & { scale: FieldScale; field: FieldDef & { scale: FieldScale } } {
