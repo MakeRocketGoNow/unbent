@@ -365,7 +365,7 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
     return outbox.subscribe((status) => {
       const c = status.conflicts.get(noteId);
       if (!c) return;
-      const clean = saveStateRef.current === 'idle' || saveStateRef.current === 'saved';
+      const clean = isClean();
       if (clean && JSON.stringify(c.draft) !== JSON.stringify(draftRef.current)) showDraft(c.draft);
       bases.current.set(noteId, c.base);
       setConflict((prev) => (prev?.id === noteId && prev.current === c.current ? prev : { id: noteId, current: c.current }));
@@ -383,7 +383,7 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
     return outbox.onAcknowledged((id, updated) => {
       bases.current.set(id, updated);
       if (id !== noteId) return;
-      const clean = saveStateRef.current === 'idle' || saveStateRef.current === 'saved';
+      const clean = isClean();
       if (clean && JSON.stringify(seedFrom(updated)) !== JSON.stringify(draftRef.current)) reseed(updated);
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -594,6 +594,8 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
   */
   const saveStateRef = useRef(saveState);
   saveStateRef.current = saveState;
+  /** Nothing typed is waiting or failed: what every "is it safe to replace the draft" asks. */
+  const isClean = () => saveStateRef.current === 'idle' || saveStateRef.current === 'saved';
   /*
      Coming back to the tab is the usual moment another device has saved this note: the
      phone was in use while the tab sat in the background. The library pulls the feed on
@@ -603,7 +605,7 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
   useEffect(() => {
     if (!editing) return;
     const onShow = () => {
-      const clean = saveStateRef.current === 'idle' || saveStateRef.current === 'saved';
+      const clean = isClean();
       if (document.visibilityState === 'visible' && clean) void refetch();
     };
     document.addEventListener('visibilitychange', onShow);
@@ -612,7 +614,7 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
   }, [editing, noteId]);
   useEffect(() => {
     if (!editing || !note || conflicted) return;
-    const clean = saveStateRef.current === 'idle' || saveStateRef.current === 'saved';
+    const clean = isClean();
     const base = bases.current.get(noteId);
     /*
        Only ever forward. A copy older than the base is not another device's save: it is
@@ -806,7 +808,7 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
     await flush();
     await new Promise((r) => setTimeout(r, 0));
     if (outbox?.status().conflicts.has(id)) return false;
-    return saveStateRef.current === 'idle' || saveStateRef.current === 'saved';
+    return isClean();
   }
 
   /**
