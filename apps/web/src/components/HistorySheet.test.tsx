@@ -287,8 +287,8 @@ describe('HistorySheet', () => {
       fireEvent.click(screen.getByRole('radio', { name: 'Changes' }));
       expect(screen.queryByTestId('preview')).toBeNull();
       // The note on screen says Monday; the version says Friday.
-      expect(container.querySelector('.history-diff-rows del')!.textContent).toBe('Monday');
-      expect(container.querySelector('.history-diff-rows ins')!.textContent).toBe('Friday');
+      expect(container.querySelector('.history-diff-rows del')!.textContent).toBe('removed Monday');
+      expect(container.querySelector('.history-diff-rows ins')!.textContent).toBe('added Friday');
       // Restore is the same button in either view.
       expect(screen.getByRole<HTMLButtonElement>('button', { name: 'Restore this version' }).disabled).toBe(false);
     });
