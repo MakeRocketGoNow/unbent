@@ -172,10 +172,12 @@ export const notes = new Hono<AppEnv>()
   })
 
   /**
-   * Puts a copy back as the note's title and body, and answers `{ note, kept }`: the
-   * note as it now stands, and the id of the copy kept of what was replaced, so this is
-   * undone the same way it was done. `kept` is null when the copy was already what the
-   * note said and nothing was written.
+   * Puts a copy back — its title and body, and its notebook, tags and field values when
+   * it holds them — and answers `{ note, kept }`: the note as it now stands, and the id
+   * of the copy kept of what was replaced, so this is undone the same way it was done.
+   * `kept` is null when the copy was already what the note said and nothing was written.
+   * `skipped`, when present, names what the copy holds that no longer fits and was left
+   * as the note has it; that is a 200 like any other, never a refusal.
    *
    * The body is optional, read by hand as the duplicate route reads its own. With
    * `ifUpdatedAt`, a note saved since is a 409 carrying it under `stale`, as a patch's is.

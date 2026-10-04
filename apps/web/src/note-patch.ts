@@ -231,7 +231,7 @@ function diffFields(
  * server stores its options in the option list's order, and the editor holds them in the
  * order they were picked, which is not an edit.
  */
-function sameFieldValue(a: FieldValue, b: FieldValue): boolean {
+export function sameFieldValue(a: FieldValue, b: FieldValue): boolean {
   if (Array.isArray(a) || Array.isArray(b)) {
     const as = Array.isArray(a) ? a : [String(a)];
     const bs = Array.isArray(b) ? b : [String(b)];

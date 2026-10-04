@@ -24,7 +24,10 @@ import {
   type Note,
   type NoteFieldsPatch,
   type NoteRevision,
+  type NoteRevisionChange,
+  type NoteRevisionProps,
   type NoteRevisionSummary,
+  type RevisionSkip,
   type RestoredNote,
   type NoteSort,
   type NoteSummary,
@@ -817,14 +820,20 @@ export class NotesStore {
    * passed. The writer is the one that can tell a stale no-op from a harmless one (the
    * editor's `holdsTheirChanges`), so it is the one that gets asked.
    *
-   * A write that changes the title or the body may leave a copy of what it replaced in
-   * the note's history, in this transaction, so the copy exists exactly when the write
-   * does. `by` is who is writing — an assistant's write is not typing, and is kept
-   * differently; see `Revisions.keep`. It is not part of the HTTP patch: the route's
-   * schema has no such key, so only the MCP tools, which call the repo, can say it.
-   * With `restoreRevision`, the only writes that leave copies. The bulk verbs never
-   * touch a body, an import writes a note that has no earlier text, `appendToBody` only
-   * adds, and `setBody` is the import's second step on a note it has just made.
+   * A write may leave a copy of the note as it stood in the note's history, in this
+   * transaction, so the copy exists exactly when the write does. Any write that lands:
+   * the title and body, and since MAK-170 the field values, the tags and the notebook
+   * too, which a version holds and Restore puts back. `by` is who is writing — an
+   * assistant's write is not the person's, and is kept differently; see
+   * `Revisions.keep`. It is not part of the HTTP patch: the route's schema has no such
+   * key, so only the MCP tools, which call the repo, can say it.
+   * With `updateMany` and `restoreRevision`, the only writes that leave copies. An
+   * import writes a note that has nothing earlier, `appendToBody` only adds, and
+   * `setBody` is the import's second step on a note it has just made. What a notebook's
+   * or a tag's own management does to the notes under it — a rename, a delete, a field
+   * converted — keeps nothing either: those are one act on hundreds of notes, a copy of
+   * every body for each would be the archive written again, and Restore does not try to
+   * undo them (see `planRestore`).
    */
   update(
     id: string,
@@ -864,10 +873,13 @@ export class NotesStore {
       const fieldWrites =
         effective.fields !== undefined ? this.prepareFieldWrites(id, effective.fields) : [];
 
-      // Before the text goes, and after everything that could still refuse the patch.
-      if (effective.title !== undefined || effective.body !== undefined) {
-        this.revisions.keep(id, current, stamp, by);
-      }
+      // Before anything goes, and after everything that could still refuse the patch.
+      const parts: NoteRevisionChange[] = [];
+      if (effective.title !== undefined || effective.body !== undefined) parts.push('text');
+      if (fieldWrites.length > 0) parts.push('fields');
+      if (effective.tags !== undefined) parts.push('tags');
+      if (effective.notebook !== undefined) parts.push('notebook');
+      if (parts.length > 0) this.revisions.keep(id, current, stamp, by, parts, () => this.propsOf(current));
 
       const sets: string[] = [];
       const binds: Bind[] = [];
@@ -921,10 +933,22 @@ export class NotesStore {
     return this.revisions.list(id, Date.now());
   }
 
-  /** One copy from a live note's history, whole. */
+  /**
+   * One copy from a live note's history, whole, with what Restore would have to skip if
+   * it were pressed now (`unfit`). Worked out by `planRestore`, the code Restore itself
+   * runs, so what the sheet says beforehand and what the restore does cannot differ.
+   */
   getRevision(id: string, revisionId: number): NoteRevision | null {
-    if (!this.liveNoteById(id)) return null;
-    return this.revisions.get(id, revisionId, Date.now());
+    const current = this.get(id);
+    if (!current) return null;
+    const revision = this.revisions.get(id, revisionId, Date.now());
+    if (!revision) return null;
+    const { skipped, renamedTags } = this.planRestore(current, revision);
+    return {
+      ...revision,
+      ...(skipped.length > 0 ? { unfit: skipped } : {}),
+      ...(renamedTags.length > 0 ? { renamedTags } : {}),
+    };
   }
 
   /**
@@ -948,25 +972,31 @@ export class NotesStore {
   }
 
   /**
-   * Puts a copy from the note's history back as its title and body. Null when the note
-   * is not live or the copy is not one of its own.
+   * Puts a copy from the note's history back: its title and body, and — when the copy
+   * holds them — its notebook, tags and field values. Null when the note is not live or
+   * the copy is not one of its own.
    *
    * What it replaces is kept first, always and whatever the window says, so a restore is
    * itself something the history can undo — including the one made by mistake, to the
    * wrong copy. One transaction for the copy and the write, here rather than as a patch
-   * from the client carrying the old text: a patch is typing as far as `update` can
-   * tell, and typing inside the window keeps nothing.
+   * from the client carrying the old state: a patch is the person's own edit as far as
+   * `update` can tell, and that keeps nothing inside the window.
    *
    * A copy that matches the note as it stands changes nothing and re-dates nothing, the
    * way a no-op patch does, and the answer says so: `kept` is the id of the copy this
    * kept of what it replaced, the one an Undo restores, and null when there was nothing
-   * to replace. Tags, the notebook and field values are not history's and
-   * stay as they are.
+   * to replace.
+   *
+   * What the copy holds that no longer fits — a notebook deleted since, a field
+   * converted — is left as the note has it and named in `skipped`; see `planRestore`.
+   * The restore never fails over it: the text is nearly always what someone came for,
+   * and refusing it because a field was deleted would hold the note hostage to a
+   * settings page.
    *
    * `ifUpdatedAt` is `update`'s precondition, for the same reason and checked in the
    * same place: the caller is putting a copy back over a note it believes it has seen.
    * The Undo on a restore sends it — "undo, if the note is still as the restore left
-   * it" — because that is a fact only this row knows; typing saved since the restore
+   * it" — because that is a fact only this row knows; an edit saved since the restore
    * leaves no copy inside the window, so nothing in the history says it happened.
    */
   restoreRevision(id: string, revisionId: number, ifUpdatedAt?: number): RestoredNote | StaleNote | null {
@@ -976,12 +1006,25 @@ export class NotesStore {
       if (ifUpdatedAt !== undefined && ifUpdatedAt !== current.updatedAt) return { stale: current };
       const revision = this.revisions.get(id, revisionId, Date.now());
       if (!revision) return null;
+
+      const plan = this.planRestore(current, revision);
+      const skipped = plan.skipped.length > 0 ? { skipped: plan.skipped } : {};
+      // Validated before anything is written, as `update` has it. The plan only holds
+      // values it has already read under their definitions, so this builds and does not
+      // refuse.
+      const fieldWrites = Object.keys(plan.fields).length > 0 ? this.prepareFieldWrites(id, plan.fields) : [];
+
+      const parts: NoteRevisionChange[] = [];
+      if (revision.title !== current.title || revision.body !== current.body) parts.push('text');
+      if (fieldWrites.length > 0) parts.push('fields');
+      if (plan.tags !== undefined) parts.push('tags');
+      if (plan.notebookId !== undefined) parts.push('notebook');
       // Said, not only done: `kept: null` is how the caller knows this was no restore.
-      if (revision.title === current.title && revision.body === current.body) return { note: current, kept: null };
+      if (parts.length === 0) return { note: current, kept: null, ...skipped };
 
       // Past the old date, always, as `update` has it: see the stamp there.
       const stamp = Math.max(Date.now(), current.updatedAt + 1);
-      const kept = this.revisions.keep(id, current, stamp, 'restore');
+      const kept = this.revisions.keep(id, current, stamp, 'restore', parts, () => this.propsOf(current));
       this.sql.exec(
         `UPDATE notes SET title = ?1, body = ?2, updated_at = ?3 WHERE id = ?4 AND deleted_at IS NULL`,
         revision.title,
@@ -989,9 +1032,180 @@ export class NotesStore {
         stamp,
         id,
       );
+      if (plan.notebookId !== undefined) {
+        this.sql.exec(`UPDATE notes SET notebook_id = ?1 WHERE id = ?2`, plan.notebookId, id);
+      }
+      if (plan.tags !== undefined) this.setTags(id, plan.tags);
+      if (fieldWrites.length > 0) {
+        this.run(fieldWrites);
+        // Clearing a value can retire the last one a tombstoned definition was holding.
+        this.sweepTombstonedFields();
+      }
       this.feed.record([{ entity: 'note', id }]);
-      return { note: this.get(id)!, kept };
+      return { note: this.get(id)!, kept, ...skipped };
     });
+  }
+
+  /**
+   * What a copy holds besides the note's text, read when one is being kept: the
+   * notebook and the tags with their ids, the field values as the note carries them.
+   *
+   * One read, for the tags' ids — `get` answers with names, which is what every other
+   * caller wants. The ids are what let a restore tell a tag renamed since from one
+   * deleted since; see `NoteRevisionProps`.
+   */
+  private propsOf(current: Note): NoteRevisionProps {
+    const tags = this.sql.exec<{ id: string; name: string }>(
+      // CROSS JOIN for the order, as `get` has it: this note's rows, then each tag.
+      `SELECT t.id, t.name FROM note_tags nt CROSS JOIN tags t ON t.id = nt.tag_id
+        WHERE nt.note_id = ?1 ORDER BY t.name`,
+      current.id,
+    );
+    return {
+      notebook: current.notebookId && current.notebook != null ? { id: current.notebookId, name: current.notebook } : null,
+      tags,
+      fields: current.fields ?? [],
+    };
+  }
+
+  /**
+   * What putting a copy's notebook, tags and field values back would write, and what it
+   * would have to leave: `notebookId` and `tags` are undefined when they stay as they
+   * are, `fields` is a patch for `prepareFieldWrites`, and `skipped` names each thing
+   * the copy holds that no longer fits. Reads only, so `getRevision` can ask the same
+   * question for the sheet.
+   *
+   * A copy with no `props` — one kept before they were part of a version — plans
+   * nothing: not recorded is not "had none", and a restore that cleared a note's fields
+   * because an old copy never knew them would be the opposite of a safety net.
+   *
+   * The target is the note as the copy has it, by id, under today's names:
+   *
+   * - The notebook, if it still exists; one deleted since is skipped and the note stays
+   *   where it is. Not made again under its old name, which `resolveNotebook` would do:
+   *   deleting a notebook is a decision, and its fields would not come back with it.
+   * - The tags that still exist, under whatever they are called now. A tag deleted
+   *   since is skipped, for the same reason. A tag the note has gained since comes off:
+   *   the copy did not have it.
+   * - Each value whose field is still defined and can still hold it. A field deleted
+   *   since (gone, or a tombstone) is skipped; so is a value its field can no longer be
+   *   read as after a conversion, and a choice the field no longer offers. A multi-select
+   *   missing one of several choices is skipped whole rather than restored in part: half
+   *   a value is not the value the copy held, and saying which half is more than a
+   *   snackbar can carry.
+   * - A value the note has gained since is cleared, the copy not having had it — unless
+   *   the notebook could not be put back and the value belongs to the notebook the note
+   *   is staying in. Clearing those would leave the note filed where it is with that
+   *   notebook's fields emptied, which is neither the copy nor the note.
+   *   Nor is a value under a deleted field cleared, whichever way the notebook went:
+   *   that clear could not be undone.
+   *
+   * It restores this note, not the account. A notebook renamed, a field renamed or
+   * converted for every note, a tag merged: those are the management pages' acts and
+   * stay as they are; the copy's values are read under the definitions of today.
+   */
+  private planRestore(
+    current: Note,
+    revision: NoteRevision,
+  ): {
+    notebookId?: string | null;
+    tags?: string[];
+    fields: NoteFieldsPatch;
+    skipped: RevisionSkip[];
+    /** The copy's tags that go by another name today, for the sheet; see `NoteRevision`. */
+    renamedTags: Array<{ id: string; name: string }>;
+  } {
+    const props = revision.props;
+    if (!props) return { fields: {}, skipped: [], renamedTags: [] };
+    const skipped: RevisionSkip[] = [];
+    const renamedTags: Array<{ id: string; name: string }> = [];
+    const plan: { notebookId?: string | null; tags?: string[] } = {};
+
+    let notebookStays = false;
+    const currentNotebookId = current.notebookId ?? null;
+    if (props.notebook === null) {
+      if (currentNotebookId !== null) plan.notebookId = null;
+    } else if (props.notebook.id !== currentNotebookId) {
+      if (this.sql.first<{ id: string }>(`SELECT id FROM notebooks WHERE id = ?1`, props.notebook.id)) {
+        plan.notebookId = props.notebook.id;
+      } else {
+        skipped.push({ what: 'notebook', id: props.notebook.id, name: props.notebook.name, why: 'deleted' });
+        notebookStays = true;
+      }
+    }
+
+    if (props.tags.length > 0 || current.tags.length > 0) {
+      const live = new Map(
+        this.sql
+          .exec<{ id: string; name: string }>(
+            `SELECT id, name FROM tags WHERE id IN (SELECT value FROM json_each(?1))`,
+            JSON.stringify(props.tags.map((t) => t.id)),
+          )
+          .map((t) => [t.id, t.name]),
+      );
+      const tags: string[] = [];
+      for (const tag of props.tags) {
+        const name = live.get(tag.id);
+        if (name !== undefined) {
+          tags.push(name);
+          if (name !== tag.name) renamedTags.push({ id: tag.id, name });
+        } else skipped.push({ what: 'tag', id: tag.id, name: tag.name, why: 'deleted' });
+      }
+      if (!sameTagSet(tags, current.tags)) plan.tags = tags;
+    }
+
+    const fields: NoteFieldsPatch = {};
+    const held = new Map((current.fields ?? []).map((v) => [v.fieldId, v]));
+    const defs = new Map(
+      this.sql
+        .exec<FieldRow & { deleted_at: number | null }>(
+          `SELECT id, notebook_id, name, type, options, scale_max, scale_step, currency, position, deleted_at
+             FROM notebook_fields
+            WHERE id IN (SELECT value FROM json_each(?1))`,
+          // The copy's fields and the note's own: the second loop asks about those too.
+          JSON.stringify([...new Set([...props.fields.map((v) => v.fieldId), ...held.keys()])]),
+        )
+        .map((r) => [r.id, { def: rowToField(r), deleted: r.deleted_at !== null }]),
+    );
+    for (const was of props.fields) {
+      const stands = held.get(was.fieldId);
+      // Already what the note says, whatever has become of the field: nothing to do.
+      if (stands !== undefined && sameFieldText(stands.value, was.value)) continue;
+      const found = defs.get(was.fieldId);
+      if (!found || found.deleted) {
+        skipped.push({ what: 'field', id: was.fieldId, name: was.name, why: 'deleted' });
+        continue;
+      }
+      // Under the definition the write itself reads the value under: a choice the field
+      // has retired is still the note's to hold while the note holds it
+      // (`withHeldOptions`), so a version with one of two such choices is not refused
+      // here and then accepted there.
+      const heldText =
+        stands === undefined ? undefined : Array.isArray(stands.value) ? JSON.stringify(stands.value) : String(stands.value);
+      const encoded = encodeFieldValue(withHeldOptions(found.def, heldText), was.value);
+      if (encoded === null || encoded === 'clear') {
+        const lostOption = found.def.type === was.type && fieldHasOptions(found.def.type);
+        skipped.push({ what: 'field', id: was.fieldId, name: found.def.name, why: lostOption ? 'option' : 'type' });
+        continue;
+      }
+      fields[was.fieldId] = was.value;
+    }
+    const inCopy = new Set(props.fields.map((v) => v.fieldId));
+    for (const [fieldId, stands] of held) {
+      if (inCopy.has(fieldId)) continue;
+      if (notebookStays && stands.notebookId === currentNotebookId) continue;
+      // A value under a deleted field is the note's own data, kept past its notebook on
+      // purpose, and clearing the last one retires the definition for good
+      // (`sweepTombstonedFields`): the copy this restore keeps would hold the value and
+      // no restore could ever put it back. Left, and said.
+      if (defs.get(fieldId)?.deleted) {
+        skipped.push({ what: 'field', id: fieldId, name: stands.name, why: 'deleted' });
+        continue;
+      }
+      fields[fieldId] = null;
+    }
+
+    return { ...plan, fields, skipped, renamedTags };
   }
 
   /**
@@ -1282,6 +1496,15 @@ export class NotesStore {
    * call, naming the note, rather than leaving values on notes that cannot show them. A
    * bad value refuses the whole call too, and nothing is written: validation precedes the
    * first write, and the transaction would take back anything before it.
+   *
+   * Each note actually written may leave a copy of itself in its history first, under
+   * `update`'s rules and for `update`'s reasons (MAK-170): the same half-hour sitting
+   * for a person's selection, and `by: 'assistant'` for the MCP batch tools, whose
+   * refiling of two hundred notes is the edit someone most wants to be able to look
+   * back through. That is the newest copy asked for per changed note, and the note read
+   * whole only when a copy is going to be kept of it — a note per changed note, not per
+   * id sent, so the forty that already had the tag cost nothing here either. `by` is the caller's to say and is not in the HTTP
+   * schema, as on `update`.
    */
   updateMany(
     ids: string[],
@@ -1290,6 +1513,7 @@ export class NotesStore {
       addTags?: string[] | undefined;
       removeTags?: string[] | undefined;
       fields?: NoteFieldsPatch | undefined;
+      by?: 'assistant' | undefined;
     },
   ): { matched: string[]; changed: string[] } {
     const add = uniqueTags(patch.addTags ?? []);
@@ -1297,11 +1521,11 @@ export class NotesStore {
 
     return this.sql.tx(() => {
       // What each note holds now: its notebook and its tags, one row per note.
-      const rows: Array<{ id: string; notebook_id: string | null; tags: string | null }> = [];
+      const rows: Array<{ id: string; notebook_id: string | null; updated_at: number; tags: string | null }> = [];
       for (const run of runs([...new Set(ids)])) {
         rows.push(
-          ...this.sql.exec<{ id: string; notebook_id: string | null; tags: string | null }>(
-            `SELECT n.id, n.notebook_id,
+          ...this.sql.exec<{ id: string; notebook_id: string | null; updated_at: number; tags: string | null }>(
+            `SELECT n.id, n.notebook_id, n.updated_at,
                     (SELECT group_concat(t.name, char(31)) FROM note_tags nt
                        JOIN tags t ON t.id = nt.tag_id
                       WHERE nt.note_id = n.id) AS tags
@@ -1354,6 +1578,28 @@ export class NotesStore {
       }
       if (changed.size === 0) return { matched, changed: [] };
 
+      // Before the first write, each changed note as it stands, for its history. The
+      // stamp is the one the statement at the end gives the note.
+      const now = Date.now();
+      const moved = new Set(moving);
+      const retagged = new Set([...adding.values(), ...removing.values()].flat());
+      for (const row of rows) {
+        const id = row.id;
+        if (!changed.has(id)) continue;
+        const parts: NoteRevisionChange[] = [];
+        if (fieldWrites.has(id)) parts.push('fields');
+        if (retagged.has(id)) parts.push('tags');
+        if (moved.has(id)) parts.push('notebook');
+        const stamp = Math.max(now, row.updated_at + 1);
+        // Asked with the date the first read already has, before the note is read whole:
+        // a selection of notes edited this half hour keeps nothing, and reading each
+        // one's body to find that out was most of what this loop did.
+        if (this.revisions.covers(id, row.updated_at, stamp, patch.by, parts)) continue;
+        const current = this.get(id);
+        if (!current) continue;
+        this.revisions.keep(id, current, stamp, patch.by, parts, () => this.propsOf(current), true);
+      }
+
       for (const run of runs(moving)) {
         this.sql.exec(
           `UPDATE notes SET notebook_id = ?1
@@ -1391,7 +1637,6 @@ export class NotesStore {
 
       for (const statements of fieldWrites.values()) this.run(statements);
 
-      const now = Date.now();
       for (const run of runs([...changed])) {
         this.sql.exec(
           // Past each note's old date, always, as `update` has it: see the stamp there.

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { diffNote, MAX_EDIT_LINES, type DiffRow } from './note-diff.js';
+import { diffNote, diffProps, MAX_EDIT_LINES, type CurrentProps, type DiffRow, type PropValue } from './note-diff.js';
 
 /**
  * What restoring a version would change (MAK-167). From the note now to the version:
@@ -148,5 +148,95 @@ describe('diffNote', () => {
     expect(diffNote(note('One\r\nTwo\r\n'), note('One\nTwo')).body).toBe('same');
     expect(diffNote(note('One\nTwo'), note('One\nTwo\n')).body).toBe('same');
     expect(rows('One\r\nTwo 1\r\n', 'One\nTwo 2')).toEqual(['  One', '~ Two [-1-]{+2+}']);
+  });
+});
+
+/**
+ * The same question for the note's notebook, tags and fields (MAK-170). The store's
+ * `planRestore` decides what a restore writes; these hold this file to its rules.
+ */
+describe('diffProps', () => {
+  const value = (fieldId: string, name: string, v: PropValue['value'], notebookId = 'nb-list'): PropValue & { notebookId: string; notebook: string } => ({
+    fieldId,
+    name,
+    type: typeof v === 'number' ? 'number' : 'text',
+    value: v,
+    notebookId,
+    notebook: 'Watch list',
+  });
+  const now = (over: Partial<CurrentProps> = {}): CurrentProps => ({
+    notebook: { id: 'nb-list', name: 'Watch list' },
+    tags: ['drama'],
+    fields: [value('f-status', 'Status', 'Done'), value('f-year', 'Year', 1999)],
+    ...over,
+  });
+  const version = {
+    notebook: { id: 'nb-list', name: 'Watch list' },
+    tags: [{ id: 't-drama', name: 'drama' }],
+    fields: [value('f-status', 'Status', 'Queued'), value('f-year', 'Year', 1999)],
+  };
+
+  it('lists only what differs', () => {
+    expect(diffProps(now(), version)).toEqual([
+      { kind: 'field', name: 'Status', from: expect.objectContaining({ value: 'Done' }), to: expect.objectContaining({ value: 'Queued' }) },
+    ]);
+    expect(diffProps(now({ fields: version.fields }), version)).toEqual([]);
+  });
+
+  it('reads a number the note holds as text as the same number', () => {
+    expect(diffProps(now({ fields: [value('f-status', 'Status', 'Queued'), value('f-year', 'Year', '1999')] }), version)).toEqual([]);
+  });
+
+  it('reads a multi-select picked in another order as the same value', () => {
+    // The draft holds options in the order they were picked, the version in the option
+    // list's; Restore writes nothing for that, so Changes must not draw a line for it.
+    const picked = { ...version, fields: [...version.fields, value('f-genre', 'Genre', ['Comedy', 'Drama'])] };
+    expect(diffProps(now({ fields: [...version.fields, value('f-genre', 'Genre', ['Drama', 'Comedy'])] }), picked)).toEqual([]);
+  });
+
+  it('says a tag going on and one coming off, and a notebook by its id', () => {
+    const changes = diffProps(now({ notebook: { id: 'nb-list', name: 'Films' }, tags: ['seen'], fields: version.fields }), version);
+    // Renamed since, and still the notebook the version means.
+    expect(changes).toEqual([{ kind: 'tags', same: [], removed: ['seen'], added: ['drama'] }]);
+    expect(diffProps(now({ notebook: null, fields: version.fields }), version)).toEqual([
+      { kind: 'notebook', from: null, to: 'Watch list' },
+    ]);
+  });
+
+  it('reads a tag renamed since under today\'s name, as the restore does', () => {
+    const current = now({ tags: ['Drama'], fields: version.fields });
+    expect(diffProps(current, version, [], [{ id: 't-drama', name: 'Drama' }])).toEqual([]);
+  });
+
+  it('brings back a value the note has lost, and clears one it has gained', () => {
+    const gained = value('f-place', 'Place', 'Hall', 'nb-shelf');
+    expect(diffProps(now({ fields: [value('f-status', 'Status', 'Queued'), gained] }), version)).toEqual([
+      { kind: 'field', name: 'Year', from: null, to: expect.objectContaining({ value: 1999 }) },
+      { kind: 'field', name: 'Place', from: gained, to: null },
+    ]);
+  });
+
+  it('draws what the server would skip as skipped, never as a change', () => {
+    const unfit = [
+      { what: 'tag' as const, id: 't-drama', name: 'drama', why: 'deleted' as const },
+      { what: 'field' as const, id: 'f-status', name: 'Status', why: 'option' as const },
+    ];
+    expect(diffProps(now({ tags: [] }), version, unfit)).toEqual([
+      { kind: 'tags-gone', names: ['drama'] },
+      { kind: 'unfit', skip: unfit[1], held: expect.objectContaining({ value: 'Queued' }) },
+    ]);
+  });
+
+  it('does not clear a value the server says stays, one under a deleted field', () => {
+    const orphan = value('f-old', 'Shelf mark', 'B4', 'nb-gone');
+    const stays = { what: 'field' as const, id: 'f-old', name: 'Shelf mark', why: 'deleted' as const };
+    expect(diffProps(now({ fields: [...version.fields, orphan] }), version, [stays])).toEqual([{ kind: 'unfit', skip: stays, stays: orphan }]);
+  });
+
+  it('leaves the values of the notebook the note stays in, when the version\'s notebook is gone', () => {
+    const gone = { what: 'notebook' as const, id: 'nb-list', name: 'Watch list', why: 'deleted' as const };
+    const place = value('f-place', 'Place', 'Hall', 'nb-shelf');
+    const current = now({ notebook: { id: 'nb-shelf', name: 'Shelf' }, fields: [...version.fields, place] });
+    expect(diffProps(current, version, [gone])).toEqual([{ kind: 'unfit', skip: gone }]);
   });
 });

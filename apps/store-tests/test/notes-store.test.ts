@@ -978,8 +978,8 @@ describe('rows read on an archive-sized store', () => {
     const measure = async (label: string, run: () => Promise<unknown>) => {
       await stub.resetCounters();
       await run();
-      const { rowsRead } = await stub.counters();
-      return { label, rowsRead };
+      const { rowsRead, rowsWritten } = await stub.counters();
+      return { label, rowsRead, rowsWritten };
     };
     const sortField = (await stub.fieldById('amount'))!;
     const results = [
@@ -1046,13 +1046,28 @@ describe('rows read on an archive-sized store', () => {
       // two reads, and a copy put back.
       await measure('save that keeps a copy', () => stub.update('n00020', { body: 'rewritten' })),
       await measure('save inside the window', () => stub.update('n00020', { body: 'rewritten again' })),
+      // A save that changes no text keeps a copy too (MAK-170), and reads the note's
+      // tags once more, by id, for what the copy holds. Then fifty notes changed at
+      // once, each with a full history and outside the window: the worst a bulk verb
+      // does per call, and what an assistant's batch does every time.
+      await measure('tag-only save that keeps a copy', () => stub.update('n00023', { tags: ['filed'] })),
+      await measure(
+        'bulk change that keeps fifty copies',
+        () => stub.updateMany(Array.from({ length: 50 }, (_, k) => `n${String(100 + k).padStart(5, '0')}`), { addTags: ['filed'] }),
+      ),
+      // The same fifty again, now inside their window: nothing is kept, and no note is
+      // read whole to find that out.
+      await measure(
+        'bulk change inside the window',
+        () => stub.updateMany(Array.from({ length: 50 }, (_, k) => `n${String(100 + k).padStart(5, '0')}`), { addTags: ['refiled'] }),
+      ),
       await measure('history list', () => stub.listRevisions('n00021')),
       await measure('history copy', async () => stub.getRevision('n00021', (await stub.listRevisions('n00021'))![5]!.id)),
       await measure('history restore', async () => stub.restoreRevision('n00021', (await stub.listRevisions('n00021'))![5]!.id)),
       // A note with a full history, untouched above.
       await measure('history clear', () => stub.clearRevisions('n00022')),
     ];
-    console.log(results.map((r) => `${r.label}: ${r.rowsRead}`).join('\n'));
+    console.log(results.map((r) => `${r.label}: ${r.rowsRead} read, ${r.rowsWritten} written`).join('\n'));
     const bounds: Record<string, number> = {
       'first page': 400,
       'first page by title': 400,
@@ -1128,9 +1143,24 @@ describe('rows read on an archive-sized store', () => {
       'texts by id': 160,
       // A save reads the note twice, before and after, and its feed rows; history adds
       // two for the newest copy. Keeping one adds the note's run of the index twice for
-      // the prune, about fifty entries each (measured 2026-10-03 at 129 and 25).
+      // the prune, about fifty entries each, and its tags by id for what the copy holds
+      // (measured 2026-10-04 at 134 and 25).
       'save that keeps a copy': 160,
       'save inside the window': 35,
+      // The same save without the text, and with the tags read by id for the copy (127).
+      'tag-only save that keeps a copy': 160,
+      // A save's worth for each note changed: about 126 a note when every one has a full
+      // history to prune, which is the ceiling; a note with a copy or two is about
+      // twenty (6,305 for the fifty, measured 2026-10-04). It grows with the notes
+      // written, never with the ids sent or the size of the archive. The route takes
+      // five hundred ids (`MAX_BATCH_NOTES`), so the ceiling for one call is ten times
+      // this, about 63,000 rows, and only for five hundred notes that each have fifty
+      // copies and are all outside their window; a selection of ordinary notes is
+      // nearer 10,000.
+      'bulk change that keeps fifty copies': 7000,
+      // About fifteen a note: the verb's own reads and feed rows, and each note's newest
+      // copy asked for. No note is read whole (766, measured 2026-10-04).
+      'bulk change inside the window': 900,
       // One note's fifty copies, of fifteen thousand (51 and 53).
       'history list': 65,
       'history copy': 70,
@@ -1141,6 +1171,17 @@ describe('rows read on an archive-sized store', () => {
     };
     for (const r of results) {
       expect(r.rowsRead, r.label).toBeLessThanOrEqual(bounds[r.label]!);
+    }
+    // Rows written are metered too, and a bulk change now keeps a copy of each note
+    // outside its window: the copy, its index entry and the prune of the oldest, about
+    // three rows a note on top of what the verb itself writes (551 against 406 inside
+    // the window, measured 2026-10-04). Five hundred ids is ten times this.
+    const writeBounds: Record<string, number> = {
+      'bulk change that keeps fifty copies': 650,
+      'bulk change inside the window': 480,
+    };
+    for (const r of results) {
+      if (r.label in writeBounds) expect(r.rowsWritten, r.label).toBeLessThanOrEqual(writeBounds[r.label]!);
     }
   });
 });

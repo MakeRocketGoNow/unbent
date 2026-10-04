@@ -50,7 +50,9 @@ import { EditorToolbar, type NoteView } from './EditorToolbar.js';
 import { Attachments } from './Attachments.js';
 import { ResizeHandle } from './ResizeHandle.js';
 import { OverflowMenu } from './OverflowMenu.js';
-import { HistorySheet } from './HistorySheet.js';
+import { HistorySheet, skippedPhrase } from './HistorySheet.js';
+import type { HistoryCurrent } from './HistoryChanges.js';
+import type { PropValue } from '../note-diff.js';
 import { formatRevisionWhen } from './format-when.js';
 import { Button } from './Button';
 import { BackArrow } from './BackArrow.js';
@@ -82,6 +84,9 @@ interface WorkspaceProps {
   /** Where the mobile back arrow returns to. The trash renders this same component. */
   backTo?: '/notes' | '/trash';
 }
+
+/** What the History sheet is handed before it has ever been opened. */
+const CLOSED_HISTORY: HistoryCurrent = { title: '', body: '', notebook: null, tags: [], fields: [] };
 
 export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/notes' }: WorkspaceProps) {
   const navigate = useNavigate();
@@ -801,6 +806,50 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
   useEffect(() => setHistoryFor(null), [noteId]);
 
   /**
+   * The note on screen as the History sheet compares a version against it: the draft,
+   * with each field value given the name and type that draw it. A definition this
+   * session has loaded says those; a value carried from a notebook the note has left
+   * says its own, as the property list draws it. An emptied value is no value, which is
+   * how the save reads it. Called only while the sheet is open, since the sheet stays
+   * mounted after its first opening and this would otherwise run on every keystroke;
+   * the comparison it feeds is memoised by value, so a new object each render is fine.
+   */
+  function historyCurrent(): HistoryCurrent {
+    const defs = new Map(knownFieldDefs.map((def) => [def.id, def]));
+    const carried = new Map((note?.fields ?? []).map((v) => [v.fieldId, v]));
+    return {
+      title: draft.title,
+      body: draft.body,
+      notebook: draft.notebook === null ? null : { id: currentNotebook?.id, name: currentNotebook?.name ?? draft.notebook },
+      tags: draft.tags,
+      fields: Object.entries(draft.fields).flatMap(([fieldId, value]): PropValue[] => {
+        if (value === null || value === '' || (Array.isArray(value) && value.length === 0)) return [];
+        const def = defs.get(fieldId);
+        if (def) {
+          return [{ fieldId, name: def.name, type: def.type, value, scale: def.scale, currency: def.currency, notebookId: def.notebookId }];
+        }
+        const was = carried.get(fieldId);
+        return was ? [{ ...was, value }] : [];
+      }),
+    };
+  }
+
+  /*
+     What the sheet is handed: the note while it is open, and afterwards the last note it
+     was open on, not an empty one. The dialog fades out over a fifth of a second with
+     the version still on its page, and compared against nothing it drew every tag as
+     removed and the whole text as added for those frames.
+
+     The ref is written during render on purpose. Moving the write into an effect would
+     hand the sheet the previous render's note for one frame on every change, and the
+     closing frame would be the empty one again. The write only repeats what this render
+     computed, so a render React throws away leaves nothing wrong behind.
+  */
+  const historyLast = useRef<HistoryCurrent>(CLOSED_HISTORY);
+  if (historyOpen) historyLast.current = historyCurrent();
+  const historyShown = historyLast.current;
+
+  /**
    * Saves what is on screen and says whether the server can be asked to replace it.
    *
    * The server keeps what a restore replaces, and it can only keep what it has: typing
@@ -829,7 +878,9 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
       throw new Error('This note has changes that could not be saved, so nothing was restored.');
     }
     const flushed = draftRef.current;
-    const { note: restored, kept } = await actions.restoreRevision(id, revision.id);
+    const { note: restored, kept, skipped } = await actions.restoreRevision(id, revision.id);
+    // What the version held that no longer fits, said with the result either way.
+    const except = skippedPhrase(skipped ?? []);
     /*
        The version was already what the note says — the one just restored, picked again,
        or the "Before a restore" copy of the text now on screen. Nothing was written and
@@ -839,7 +890,16 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
     if (kept === null) {
       if (noteIdRef.current !== id) return;
       setHistoryFor(null);
-      setSnackbar({ message: 'That version is what the note already says.', tone: 'info', duration: 5000 });
+      setSnackbar({
+        // Names, no reasons: Changes gave each reason beside the thing itself. And not
+        // "could not be put back": a value under a deleted field is in this list for
+        // being left on the note, and the version never had it.
+        message: except
+          ? `Nothing to restore: the rest already matches, and ${except} ${skipped!.length === 1 ? 'stays' : 'stay'} as the note has it.`
+          : 'That version is what the note already says.',
+        tone: 'info',
+        duration: except ? 8000 : 5000,
+      });
       return;
     }
     void queryClient.invalidateQueries({ queryKey: ['search'] });
@@ -854,9 +914,12 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
     if (JSON.stringify(draftRef.current) === JSON.stringify(flushed)) reseed(restored);
     setHistoryFor(null);
     setSnackbar({
-      message: `Restored the version from ${formatRevisionWhen(revision.createdAt, Date.now(), { inSentence: true })}`,
+      message: `Restored the version from ${formatRevisionWhen(revision.createdAt, Date.now(), { inSentence: true })}${
+        except ? `, except ${except}` : ''
+      }`,
       tone: 'info',
-      duration: 8000,
+      // Longer when there is an exception to read as well as an Undo to reach.
+      duration: except ? 10_000 : 8000,
       action: { label: 'Undo', onClick: () => void undoRestore(id, kept, restored.updatedAt) },
     });
   }
@@ -1380,7 +1443,7 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
           anchor={overflowSlot}
           saved={() => historyFlush.current}
           onRestore={restoreFromHistory}
-          current={draft}
+          current={historyShown}
         />
       )}
 

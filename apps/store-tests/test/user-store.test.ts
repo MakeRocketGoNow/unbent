@@ -17,14 +17,14 @@ describe('UserStore lifecycle', () => {
 
     const stats = await stub.stats();
     expect(stats.userId).toBe(userId);
-    expect(stats.migrations).toEqual(['0001-init', '0002-changes', '0003-revisions']);
+    expect(stats.migrations).toEqual(['0001-init', '0002-changes', '0003-revisions', '0004-revision-props']);
     expect(stats.counts.notes).toBe(0);
 
     // A second wake of the same object applies nothing and reads the same schema. The
     // `_meta.user_id` row written on the first wake is what a mismatch is checked against.
     await evictDurableObject(stub);
     const again = env.USER_STORE.get(env.USER_STORE.idFromName(userId));
-    expect((await again.stats()).migrations).toEqual(['0001-init', '0002-changes', '0003-revisions']);
+    expect((await again.stats()).migrations).toEqual(['0001-init', '0002-changes', '0003-revisions', '0004-revision-props']);
     const meta = await runInDurableObject(again, (_i, state) =>
       state.storage.sql.exec<{ value: string }>(`SELECT value FROM _meta WHERE key = 'user_id'`).toArray(),
     );
@@ -44,13 +44,13 @@ describe('UserStore lifecycle', () => {
       // And every file after it, or the object would hold a later file without an earlier
       // one, which no object can.
       sql.exec(`DROP TABLE note_revisions`);
-      sql.exec(`DELETE FROM _migrations WHERE name IN ('0002-changes', '0003-revisions')`);
+      sql.exec(`DELETE FROM _migrations WHERE name IN ('0002-changes', '0003-revisions', '0004-revision-props')`);
       sql.exec(`DELETE FROM _meta WHERE key IN ('seq', 'feed_epoch')`);
     });
     await evictDurableObject(stub);
     const woke = env.USER_STORE.get(env.USER_STORE.idFromName(userId));
     const stats = await woke.stats();
-    expect(stats.migrations).toEqual(['0001-init', '0002-changes', '0003-revisions']);
+    expect(stats.migrations).toEqual(['0001-init', '0002-changes', '0003-revisions', '0004-revision-props']);
     expect(stats.counts.notes).toBe(1);
     expect(stats.counts.changes).toBe(0);
     const meta = await runInDurableObject(woke, (_i, state) =>
@@ -68,7 +68,7 @@ describe('UserStore lifecycle', () => {
     // As production's objects are when 0003 reaches them: notes and a feed, no history.
     await runInDurableObject(stub, (_i, state) => {
       state.storage.sql.exec(`DROP TABLE note_revisions`);
-      state.storage.sql.exec(`DELETE FROM _migrations WHERE name = '0003-revisions'`);
+      state.storage.sql.exec(`DELETE FROM _migrations WHERE name IN ('0003-revisions', '0004-revision-props')`);
     });
     await evictDurableObject(stub);
     const woke = env.USER_STORE.get(env.USER_STORE.idFromName(userId));
@@ -76,6 +76,31 @@ describe('UserStore lifecycle', () => {
     await woke.update(note.id, { body: 'after' });
     expect(await woke.listRevisions(note.id)).toEqual([expect.objectContaining({ title: 'T', size: 6 })]);
     expect((await woke.stats()).counts.note_revisions).toBe(1);
+  });
+
+  it('gives a store in use under 0003 the columns for what a version holds, and reads its old copies as not recorded', async () => {
+    const { userId, stub } = freshStore('history-props-file');
+    const note = await stub.create({ id: crypto.randomUUID(), title: 'T', body: 'before', tags: ['kept'] });
+    await stub.update(note.id, { body: 'after' });
+    // As production's objects are when 0004 reaches them: copies with a title and a body
+    // and nothing else. The columns go and come back; the row is one 0003 would have made.
+    await runInDurableObject(stub, (_i, state) => {
+      state.storage.sql.exec(`ALTER TABLE note_revisions DROP COLUMN props`);
+      state.storage.sql.exec(`ALTER TABLE note_revisions DROP COLUMN changed`);
+      state.storage.sql.exec(`DELETE FROM _migrations WHERE name = '0004-revision-props'`);
+    });
+    await evictDurableObject(stub);
+    const woke = env.USER_STORE.get(env.USER_STORE.idFromName(userId));
+    const [old] = (await woke.listRevisions(note.id))!;
+    expect(old).not.toHaveProperty('changed');
+    const whole = (await woke.getRevision(note.id, old!.id))!;
+    expect(whole.body).toBe('before');
+    // Not recorded, which is not "had no tags": restoring it leaves the note's alone.
+    expect(whole).not.toHaveProperty('props');
+    await woke.update(note.id, { tags: ['kept', 'added since'] });
+    const restored = await woke.restoreRevision(note.id, old!.id);
+    expect(restored).toMatchObject({ note: { body: 'before', tags: ['added since', 'kept'] } });
+    expect(restored).not.toHaveProperty('skipped');
   });
 
   it('enforces foreign keys, so a purged note takes its files, text, tags and values with it', async () => {
@@ -161,7 +186,7 @@ describe('UserStore lifecycle', () => {
     // Reached again on the same instance: schema back, still this user's, empty.
     expect(await stub.schemaSql()).toEqual(expect.arrayContaining([expect.stringContaining('CREATE TABLE notes')]));
     const rebuilt = await stub.stats();
-    expect(rebuilt).toMatchObject({ userId, wiped: false, migrations: ['0001-init', '0002-changes', '0003-revisions'] });
+    expect(rebuilt).toMatchObject({ userId, wiped: false, migrations: ['0001-init', '0002-changes', '0003-revisions', '0004-revision-props'] });
     expect(rebuilt.counts.notes).toBe(0);
 
     // And after an eviction the object wakes as it was left — empty, no schema, and
@@ -171,7 +196,7 @@ describe('UserStore lifecycle', () => {
     const woke = env.USER_STORE.get(env.USER_STORE.idFromName(userId));
     expect(await woke.stats()).toMatchObject({ wiped: true, migrations: [] });
     expect(await woke.schemaSql()).toEqual(expect.arrayContaining([expect.stringContaining('CREATE TABLE notes')]));
-    expect(await woke.stats()).toMatchObject({ wiped: false, migrations: ['0001-init', '0002-changes', '0003-revisions'] });
+    expect(await woke.stats()).toMatchObject({ wiped: false, migrations: ['0001-init', '0002-changes', '0003-revisions', '0004-revision-props'] });
   });
 
   it('dumpPage pages a table by rowid and stops with a null cursor', async () => {

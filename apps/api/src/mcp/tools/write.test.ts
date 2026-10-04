@@ -323,7 +323,9 @@ describe('the batch tools', () => {
 
     const result = answer(await move({ noteIds: [noteId, other], notebook: 'coupons' }));
 
-    expect(calls).toEqual([{ method: 'updateMany', ids: [noteId, other], patch: { notebook: 'coupons' } }]);
+    // `by` is how the store knows to keep a version even inside the typing window: an
+    // assistant's batch is exactly the change someone may want to undo.
+    expect(calls).toEqual([{ method: 'updateMany', ids: [noteId, other], patch: { notebook: 'coupons', by: 'assistant' } }]);
     // The name as stored, not as typed.
     expect(result).toEqual({ notebook: 'Coupons', noteIds: [noteId], changed: 1, missing: [other] });
   });
@@ -331,7 +333,7 @@ describe('the batch tools', () => {
   it('treats the unfiled sentinel as no notebook', async () => {
     const { calls, repo } = batchRepo();
     await collect(repo).get('move_notes')!({ noteIds: [noteId], notebook: '[unfiled]' });
-    expect(calls[0]?.patch).toEqual({ notebook: null });
+    expect(calls[0]?.patch).toEqual({ notebook: null, by: 'assistant' });
   });
 
   it('adds and removes tags in one batch, and refuses a call that names neither', async () => {
@@ -342,7 +344,7 @@ describe('the batch tools', () => {
     expect(calls[0]).toEqual({
       method: 'updateMany',
       ids: [noteId, other],
-      patch: { addTags: ['later'], removeTags: ['deals'] },
+      patch: { addTags: ['later'], removeTags: ['deals'], by: 'assistant' },
     });
     expect(result).toEqual({ noteIds: [noteId], changed: 1, missing: [other] });
 
@@ -563,7 +565,7 @@ describe('update_note_fields', () => {
   it('resolves names against the notes\' notebook and writes once, by id', async () => {
     const { calls, tool } = fieldsRepo();
     const result = answer(await tool({ noteIds: [noteId, other], fields: { store: 'Acme' } }));
-    expect(calls.map((c) => c.patch)).toEqual([{ fields: { 'f-store': 'Acme' } }]);
+    expect(calls.map((c) => c.patch)).toEqual([{ fields: { 'f-store': 'Acme' }, by: 'assistant' }]);
     expect(result).toEqual({ noteIds: [noteId], changed: 1, missing: [other] });
   });
 

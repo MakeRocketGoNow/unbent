@@ -481,6 +481,12 @@ export const updateNoteSchema = z.object({
 export interface RestoredNote {
   note: Note;
   kept: number | null;
+  /**
+   * What the version holds that could not be put back, and was left as the note has it:
+   * a notebook or tag deleted since, a field deleted or changed past what the value fits.
+   * Absent when everything went back. A restore never fails over these; it says them.
+   */
+  skipped?: RevisionSkip[];
 }
 
 /**
@@ -801,8 +807,49 @@ export const REVISION_MAX_AGE_MS = 365 * 24 * 60 * 60 * 1000;
 export type NoteRevisionCause = 'assistant' | 'restore';
 
 /**
- * One entry in a note's history: the title a note had before a write replaced its text,
- * and when. The list carries these without bodies; `NoteRevision` is one of them whole.
+ * The parts of a note a write can change, as a version's row names them: its title or
+ * body, its field values, its tags, the notebook it is filed in.
+ */
+export type NoteRevisionChange = 'text' | 'fields' | 'tags' | 'notebook';
+
+/** In the order a row says them. */
+export const NOTE_REVISION_CHANGES: readonly NoteRevisionChange[] = ['text', 'fields', 'tags', 'notebook'];
+
+/**
+ * What a version holds besides its title and body (MAK-170): where the note was filed,
+ * its tags and its field values, as they stood when the copy was taken.
+ *
+ * The notebook and the tags carry their ids as well as their names. The name is what the
+ * sheet shows, and it is the name of the time; the id is what Restore goes by, so a
+ * notebook renamed since is still the notebook, and one deleted since is known to be
+ * gone rather than quietly made again under its old name. Field values are whole
+ * `NoteFieldValue`s for the same two readers: the definition's name and type as they
+ * were, to draw a value whose field no longer exists, and the field's id to put it back.
+ */
+export interface NoteRevisionProps {
+  notebook: { id: string; name: string } | null;
+  tags: Array<{ id: string; name: string }>;
+  fields: NoteFieldValue[];
+}
+
+/**
+ * One thing a version holds that Restore would leave as the note has it, and why:
+ * `deleted` — the notebook, tag or field is gone; `type` — the field has been converted
+ * to a type the value cannot be read as; `option` — the field no longer has the choice.
+ * `id` is the notebook's, tag's or field's own, which is how the sheet matches a skip to
+ * the row it is about; `name` is for saying it — the name the version knew a deleted
+ * thing by, and today's name for a field that still exists.
+ */
+export interface RevisionSkip {
+  what: 'notebook' | 'tag' | 'field';
+  id: string;
+  name: string;
+  why: 'deleted' | 'type' | 'option';
+}
+
+/**
+ * One entry in a note's history: the title a note had before a write replaced it, and
+ * when. The list carries these without bodies; `NoteRevision` is one of them whole.
  */
 export interface NoteRevisionSummary {
   /** Unique within the account's store, and only meaningful under its note. */
@@ -814,10 +861,34 @@ export interface NoteRevisionSummary {
   createdAt: number;
   /** Absent for ordinary typing. */
   cause?: NoteRevisionCause;
+  /**
+   * What the writes this copy stands for changed, so a row kept for a change of fields
+   * does not read the same as the row before it. Absent on a copy kept before this was
+   * recorded, all of which were kept for a change of text.
+   */
+  changed?: NoteRevisionChange[];
 }
 
 export interface NoteRevision extends NoteRevisionSummary {
   body: string;
+  /**
+   * Absent on a version kept before these were part of one. That is "not recorded", and
+   * must never be read as "the note had none": Restore leaves the note's own alone.
+   */
+  props?: NoteRevisionProps;
+  /**
+   * What Restore would skip if pressed now, worked out by the code that restores, so the
+   * Changes view can say it before the press rather than a snackbar after. Absent when
+   * everything fits.
+   */
+  unfit?: RevisionSkip[];
+  /**
+   * The version's tags that have been renamed since, under today's names. `props` keeps
+   * the name of the time, which is what the version is shown with; Restore goes by id
+   * and leaves a renamed tag alone, and this is how the Changes view knows to as well.
+   * Absent when none has been renamed.
+   */
+  renamedTags?: Array<{ id: string; name: string }>;
 }
 
 /** A notebook as the list reports it. */

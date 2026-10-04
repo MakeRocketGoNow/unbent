@@ -1,3 +1,4 @@
+import { andList } from './and-list.js';
 import type { AutofillSuggestion, FieldDef, FieldValue } from '@unbent/shared';
 import type { NoteDraft } from './note-patch.js';
 
@@ -196,7 +197,5 @@ export function describeChanges(changes: AutofillChanges): string {
   if (changes.fields.length === 1) parts.push(changes.fields[0]!.def.name);
   else if (changes.fields.length > 1) parts.push(`${changes.fields.length} fields`);
 
-  if (parts.length === 0) return 'nothing';
-  if (parts.length === 1) return parts[0]!;
-  return `${parts.slice(0, -1).join(', ')} and ${parts[parts.length - 1]}`;
+  return andList(parts) || 'nothing';
 }

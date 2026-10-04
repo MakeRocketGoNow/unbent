@@ -1,6 +1,14 @@
 import { useEffect, useRef, useState, type KeyboardEvent, type RefObject } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { REVISION_MAX_AGE_MS, REVISION_WINDOW_MS, REVISIONS_KEPT, type NoteRevisionSummary } from '@unbent/shared';
+import {
+  REVISION_MAX_AGE_MS,
+  REVISION_WINDOW_MS,
+  REVISIONS_KEPT,
+  type NoteRevisionProps,
+  type NoteRevisionSummary,
+  type RevisionSkip,
+} from '@unbent/shared';
+import { andList } from '../and-list.js';
 import { useOffline } from '../connectivity.js';
 import * as api from '../notes-api.js';
 import { keys, revisionQuery, revisionsQuery } from '../queries.js';
@@ -9,7 +17,7 @@ import { usePersistentState } from '../usePersistentState.js';
 import { Button } from './Button.js';
 import { Confirm } from './Confirm.js';
 import { formatRevisionWhen } from './format-when.js';
-import { HistoryChanges } from './HistoryChanges.js';
+import { HistoryChanges, PropLine, formatPropValue, type HistoryCurrent } from './HistoryChanges.js';
 import { RowChevronIcon } from './icons.js';
 import { Preview } from './Preview.js';
 import { Sheet } from './Sheet.js';
@@ -34,9 +42,10 @@ interface HistorySheetProps {
    * The note as it is on screen — the workspace's draft, which `saved` has handed to the
    * save — for Changes to compare a version against. Not the stored row: what Restore
    * replaces is what the person is looking at, and a row a save behind would show typing
-   * they can see as something Restore takes out, or miss it.
+   * they can see as something Restore takes out, or miss it. Its notebook, tags and
+   * field values with it, since a version holds those too (MAK-170).
    */
-  current: { title: string; body: string };
+  current: HistoryCurrent;
 }
 
 /** The two ways of looking at a version; see `HistoryChanges` for the second. */
@@ -49,14 +58,23 @@ const VIEWS: { value: HistoryView; label: string; title: string }[] = [
 
 /**
  * What a copy is, in a few words under its time: what replaced it, when that was not
- * ordinary typing, and how much text it holds. The size is the useful half. The copy
- * someone opens this sheet for is nearly always "the long one, before it was gutted",
- * and a count says which that is without opening each in turn.
+ * the person's own edit; which parts of the note changed, when it was more than the
+ * text; and how much text it holds. The size is the useful half for a note of prose.
+ * The copy someone opens this sheet for is nearly always "the long one, before it was
+ * gutted", and a count says which that is without opening each in turn.
+ *
+ * The parts are for the notes that are mostly fields (MAK-170). A version kept because
+ * Status changed holds the same text as the one before it, so without them every such
+ * row read alike. Said only when something besides the text changed: "Text changed" on
+ * every row of an ordinary note would be a label on the common case, and the copies
+ * from before this was recorded, which cannot say it, were all kept for their text.
+ *
+ * "No text", not "Empty", for a body of nothing: a card that is all fields is not empty.
  */
-export function describeRevision(revision: Pick<NoteRevisionSummary, 'cause' | 'size'>): string {
+export function describeRevision(revision: Pick<NoteRevisionSummary, 'cause' | 'size' | 'changed'>): string {
   const size =
     revision.size === 0
-      ? 'Empty'
+      ? 'No text'
       : `${revision.size.toLocaleString()} ${revision.size === 1 ? 'character' : 'characters'}`;
   const before =
     revision.cause === 'assistant'
@@ -64,7 +82,10 @@ export function describeRevision(revision: Pick<NoteRevisionSummary, 'cause' | '
       : revision.cause === 'restore'
         ? 'Before a restore'
         : null;
-  return before ? `${before} · ${size}` : size;
+  const parts = revision.changed ?? [];
+  const named = andList(parts);
+  const what = parts.some((p) => p !== 'text') ? `${named.charAt(0).toUpperCase()}${named.slice(1)} changed` : null;
+  return [before, what, size].filter((part) => part !== null).join(' · ');
 }
 
 /**
@@ -72,8 +93,12 @@ export function describeRevision(revision: Pick<NoteRevisionSummary, 'cause' | '
  * sheet cannot explain a version's absence with a rule the server no longer follows.
  * "Half hour" and "a year" are said the way a person would; any other value is counted.
  *
- * "Before a connected assistant edits it", not "before any edit by" one: a run of an
- * assistant's edits leaves one version, the text before the run, and a sentence promising
+ * "When this note is changed", and "of edits": its fields, tags and notebook count as
+ * its text does. It said "when this note's text is changed" while they did not, which
+ * was true and easy to read past in a notebook where the fields are the note.
+ *
+ * "Before a connected assistant changes it", not "before any change by" one: a run of an
+ * assistant's edits leaves one version, the note before the run, and a sentence promising
  * one per edit would send someone looking for versions that were never kept.
  */
 export function retentionSentence(): string {
@@ -81,7 +106,45 @@ export function retentionSentence(): string {
   const each = minutes === 30 ? 'half hour' : minutes === 60 ? 'hour' : `${minutes} minutes`;
   const days = Math.round(REVISION_MAX_AGE_MS / 86_400_000);
   const age = days === 365 ? 'a year' : `${days} days`;
-  return `A version is kept when this note’s text is changed: about one for each ${each} of typing, and one before a connected assistant edits it. The last ${REVISIONS_KEPT} are kept, for ${age}.`;
+  return `A version is kept when this note is changed, its fields, tags and notebook included: about one for each ${each} of edits, and one before a connected assistant changes it. The last ${REVISIONS_KEPT} are kept, for ${age}.`;
+}
+
+/**
+ * What a restore could not put back, as the middle of a sentence: "Status", "Status and
+ * the tag “drama”", "its notebook, Status and 2 more". Empty when everything went back.
+ *
+ * Names, and no reasons: the snackbar is one line with an Undo on it, and the Changes
+ * view has already given each reason beside the thing itself. Two names and a count,
+ * because a deleted notebook takes every one of its fields with it and a line listing
+ * nine of them is a line nobody reads.
+ */
+export function skippedPhrase(skipped: readonly RevisionSkip[]): string {
+  const names = skipped.map((s) => (s.what === 'notebook' ? 'its notebook' : s.what === 'tag' ? `the tag “${s.name}”` : s.name));
+  return andList(names.length <= 3 ? names : [...names.slice(0, 2), `${names.length - 2} more`]);
+}
+
+/**
+ * What a version holds besides its text, in Preview: where the note was filed, its tags
+ * and its field values, as a plain list between the title and the body — the note's own
+ * head, as it stood. Nothing at all for a note that was unfiled, untagged and without
+ * values, where three lines saying "none" would be noise above the text someone came
+ * to read; and nothing for a version from before these were kept, which Changes
+ * explains where the question of what Restore does is being asked.
+ */
+function VersionProps({ props }: { props: NoteRevisionProps }) {
+  if (props.notebook === null && props.tags.length === 0 && props.fields.length === 0) return null;
+  return (
+    <dl className="history-props">
+      {/* No notebook is "Inbox" everywhere a person reads it; see `FilingRows`. */}
+      <PropLine label="Notebook">{props.notebook?.name ?? 'Inbox'}</PropLine>
+      {props.tags.length > 0 && <PropLine label="Tags">{props.tags.map((t) => t.name).join(', ')}</PropLine>}
+      {props.fields.map((value) => (
+        <PropLine key={value.fieldId} label={value.name}>
+          {formatPropValue(value)}
+        </PropLine>
+      ))}
+    </dl>
+  );
 }
 
 /**
@@ -112,8 +175,10 @@ export function retentionSentence(): string {
  *
  * The copy is drawn by `Preview`, as the note itself would read, rather than as its
  * Markdown source: the question on this page is "is this the version I want", and that
- * is recognised by reading it. Its files resolve against the note as it is now, since
- * history keeps text and not files; one deleted since draws as a missing file would.
+ * is recognised by reading it. Its notebook, tags and field values are listed above the
+ * text, as the note's head has them (MAK-170). Its files resolve against the note as it
+ * is now, since history keeps text and fields and not files; one deleted since draws as
+ * a missing file would.
  *
  * Changes, beside Preview, is the next question — what will Restore do to my note — and
  * is drawn by `HistoryChanges` against `current`, the note on screen (MAK-167). Restore
@@ -185,8 +250,13 @@ export function HistorySheet({ open, onClose, noteId, anchor, saved, onRestore, 
        And on "Loading…", not on the last opening's list. The sheet stays mounted, so its
        query keeps what it last read whatever `gcTime` says, and a reopen drew that — the
        list from before the restore that closed it — until the new answer landed.
+
+       The versions read from it go too. A version's text never changes, but what it
+       says Restore would skip does, with every notebook, tag or field deleted since:
+       kept across openings, Changes drew a notebook as something Restore would put
+       back after that notebook had been deleted in Settings.
     */
-    queryClient.removeQueries({ queryKey: keys.revisions(noteId), exact: true });
+    queryClient.removeQueries({ queryKey: keys.revisions(noteId) });
   }, [open, noteId, queryClient]);
 
   const restore = async () => {
@@ -314,6 +384,7 @@ export function HistorySheet({ open, onClose, noteId, anchor, saved, onRestore, 
             ) : (
               <>
                 <h3 className="history-copy-title">{copy.data.title || 'Untitled'}</h3>
+                {copy.data.props && <VersionProps props={copy.data.props} />}
                 {copy.data.body === '' ? (
                   <p className="muted small">This version had no text.</p>
                 ) : (
