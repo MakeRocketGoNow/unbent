@@ -1364,17 +1364,6 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
         </div>
       </div>
 
-      {/*
-          A save this note refused because another device saved it first (MAK-113). Under
-          the head, where the save state reports, and inline rather than a dialog: the
-          typing it is about stays on screen, locked, to be read before choosing, and a
-          modal would cover exactly that. No dismiss — the typing exists nowhere but here
-          until one of the two is chosen, and closing the question would leave it so.
-
-          Neither action is filled: each throws a version away, and which one is right
-          depends on what was typed where, which only the person knows. The sentence names
-          what each costs so the buttons can stay two words.
-      */}
       {!readOnly && historyMounted && (
         <HistorySheet
           open={historyOpen}
@@ -1386,6 +1375,17 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
         />
       )}
 
+      {/*
+          A save this note refused because another device saved it first (MAK-113). Under
+          the head, where the save state reports, and inline rather than a dialog: the
+          typing it is about stays on screen, locked, to be read before choosing, and a
+          modal would cover exactly that. No dismiss — the typing exists nowhere but here
+          until one of the two is chosen, and closing the question would leave it so.
+
+          Neither action is filled: each throws a version away, and which one is right
+          depends on what was typed where, which only the person knows. The sentence names
+          what each costs so the buttons can stay two words.
+      */}
       {conflicted && (
         <div ref={conflictNotice} className="conflict-notice" role="alert">
           <p>
