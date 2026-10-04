@@ -1105,9 +1105,20 @@ no connection is saved here at once — the note head says "Saved", with a small
 beside it until the server has the note too — and goes to the server, in order, when the
 connection returns. A save that would overwrite
 an edit made on another device meanwhile is refused there and put to you as before: reload
-theirs, or keep yours on top of it. What needs the server now says so and waits: search,
+theirs, or keep yours on top of it. What needs the server now says so and waits:
 Auto-fill, and the settings pages that manage notebooks, tags and fields. A lost connection
 is never taken for signing out.
+
+Search works without a connection too. The device keeps an index of its own beside the
+library — the same FTS5, stemmer and ranking the server uses, in the same WASM SQLite — over
+every note's title, body, tags and field values, and with no connection the search box asks
+it instead: the same results, the same filters. The text inside files is the exception. It
+is the largest thing an account stores after the files themselves, so a device holds it
+only for the notebooks it keeps offline and for the last couple of hundred notes opened on
+it, and a line under the results says when a search was answered on the device and how many
+files' text it could not see — "No matches" offline should never be read as "not in your
+notes". When the connection returns the same search is asked of the server, and its answer
+replaces the device's in place.
 
 Files are the bulk of an archive, so they are on the device by choice rather than by
 default. A file you open is kept, within a budget — 500 MB, the ones opened longest ago

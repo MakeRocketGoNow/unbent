@@ -362,9 +362,10 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
   const tableRows = results?.flatMap((r) => ('note' in r ? [r.note] : [])) ?? null;
   /*
    * The matches on screen are the previous term's while the next one's request is out —
-   * see `searchQuery` — and are dimmed for it. Only then: a search that has ended, or one
-   * held back offline, is a query that never runs, and `keepPreviousData` holds the last
-   * results as its placeholder for as long as it stays that way. Read bare, that left the
+   * see `searchQuery` — and are dimmed for it. Only then: a search that has ended is a
+   * query that never runs, and one that failed for want of a connection runs no further,
+   * and `keepPreviousData` holds the last results as the placeholder of either for as
+   * long as it stays that way. Read bare, that left the
    * notebook's own list dimmed after a search was cleared, until a reload.
    */
   const searchStale = needle !== '' && !searchOffline && search.isPlaceholderData;
