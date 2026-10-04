@@ -437,7 +437,8 @@ async function open(userId: string): Promise<Library> {
   const searching = search;
   // The walk finishing is what makes a library whole, and a notebook kept or released
   // changes which files' text is wanted; the index looks again at both.
-  if (searching) listeners.add(() => searching.sync.wake());
+  // A library that starts over takes its index with it: see `SearchSync.startOver`.
+  if (searching) listeners.add((state) => (state.phase === 'reset' ? searching.sync.startOver() : searching.sync.wake()));
   let keptNow = keeper.status().kept;
   const stopKeptWatch = keeper.subscribe((status) => {
     if (status.kept === keptNow) return;

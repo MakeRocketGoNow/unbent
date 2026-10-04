@@ -163,6 +163,32 @@ describe('SearchSync', () => {
     sync.stop();
   });
 
+  it('empties the index when the library starts over, so a file’s text is fetched again', async () => {
+    const { index, lib, world, make, found } = await setup();
+    lib.notes = [note('kept', { notebookId: 'nb-kept', title: 'Policy' })];
+    lib.attachments = [file('k1', 'kept')];
+    world.texts = { k1: 'the old schedule of cover' };
+    const sync = make();
+    await sync.idle();
+    await index.markOpened('kept');
+    // A restore on the server: the same file id, different text. The feed says reset,
+    // the collections empty, and the walk brings the rows back.
+    world.texts = { k1: 'the restored schedule of cover' };
+    world.settled = false;
+    sync.startOver();
+    await sync.idle();
+    expect(await index.meta(BUILT)).toBe('1');
+    world.settled = true;
+    sync.wake();
+    await sync.idle();
+    expect(await found('restored')).toEqual(['kept']);
+    expect(await found('old')).toEqual([]);
+    expect(await found('policy')).toEqual(['kept']);
+    // What was opened here is the device's, not the library's, and stays.
+    expect(await index.opened()).toEqual(['kept']);
+    sync.stop();
+  });
+
   it('stops at once with a request for text in flight, by ending the request', async () => {
     const { lib, make } = await setup();
     lib.notes = [note('kept', { notebookId: 'nb-kept' })];

@@ -26,7 +26,8 @@ import { BUILT, fieldEntryPrefix, noteEntries, tagEntries, textPlan } from './se
  *    is dropped.
  *
  * A file's text is fetched once. One read again on the server — a scan the vision model
- * took a second pass at — keeps its old text here until the file leaves and returns:
+ * took a second pass at — keeps its old text here until the file leaves and returns, or
+ * the library starts over (`startOver`):
  * the feed's row for a file says only that it has text, not which, and asking again on
  * every row the feed delivers would fetch a notebook's text on every edit to it.
  */
@@ -61,6 +62,13 @@ export interface SearchSync {
   touch: (noteIds: Iterable<string> | null, opts?: { textOnly?: boolean }) => void;
   /** Something moved that decides which files' text is wanted: a file, the kept list, the connection. */
   touchFiles: () => void;
+  /**
+   * The library is starting over: the feed refused its cursor — a restore on the server,
+   * say — and the collections are emptied and copied again. The index is emptied before
+   * the next pass rather than compared, because a comparison cannot see a file's text: an
+   * id that survives the restore would keep the text it was first indexed with.
+   */
+  startOver: () => void;
   /** Asks for a pass with nothing new to look at: the library may have become whole, or this tab the leader. */
   wake: () => void;
   /** A note was opened here: its files' text is wanted for as long as it is among the last few hundred. */
@@ -97,6 +105,8 @@ export function createSearchSync(opts: SearchSyncOptions): SearchSync {
   let dirty = new Set<string>();
   let tagsDirty = true;
   let filesDirty = true;
+  /** Set by `startOver`; the next pass that runs empties the index first. */
+  let emptyFirst = false;
 
   const yieldToPage = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
 
@@ -209,6 +219,12 @@ export function createSearchSync(opts: SearchSyncOptions): SearchSync {
       return;
     }
 
+    if (emptyFirst) {
+      // Cleared only once the emptying has committed, so one that fails is tried again.
+      await index.clear();
+      emptyFirst = false;
+      everything = true;
+    }
     const full = everything;
     const ids = dirty;
     const doTags = full || tagsDirty;
@@ -287,6 +303,11 @@ export function createSearchSync(opts: SearchSyncOptions): SearchSync {
     },
     touchFiles: () => {
       filesDirty = true;
+      nudge();
+    },
+    startOver: () => {
+      emptyFirst = true;
+      everything = true;
       nudge();
     },
     wake: nudge,

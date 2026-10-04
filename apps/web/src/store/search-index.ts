@@ -231,7 +231,7 @@ export class SearchIndex {
     await this.db.execute(`DELETE FROM entries WHERE kind = ?1 AND id IN (SELECT value FROM json_each(?2))`, [kind, idsJson]);
   }
 
-  /** Empties the index, keeping the list of notes opened here: what a library that starts over does. */
+  /** Empties the index, keeping the list of notes opened here: what a library that starts over does (`SearchSync.startOver`). */
   async clear(): Promise<void> {
     await this.ready();
     await this.write(async () => {
