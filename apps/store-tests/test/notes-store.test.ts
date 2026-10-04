@@ -595,6 +595,35 @@ describe('tags and notebooks', () => {
     expect(await stub.listTags()).toEqual([]);
   });
 
+  it('counts tags within a notebook or beside other tags, over live notes only', async () => {
+    const { stub } = freshStore('tag-counts');
+    await stub.create(note({ notebook: 'Coupons', tags: ['Acme', 'Food'] }));
+    await stub.create(note({ notebook: 'Coupons', tags: ['Acme', 'Fuel'] }));
+    await stub.create(note({ notebook: 'coupons', tags: ['Acme'] }));
+    const gone = await stub.create(note({ notebook: 'Coupons', tags: ['Trashed only', 'Food'] }));
+    await stub.create(note({ notebook: 'Taxes', tags: ['Acme', 'Food', 'Filed'] }));
+    await stub.create(note({ tags: ['Acme', 'Loose'] }));
+    await stub.remove(gone.id);
+    const names = async (filter: Parameters<typeof stub.tagCounts>[0]) =>
+      (await stub.tagCounts(filter)).map((t) => [t.name, t.count]);
+
+    // A notebook: its live notes only, named in any case, most used first, ties by name.
+    expect(await names({ notebook: 'COUPONS' })).toEqual([['Acme', 3], ['Food', 1], ['Fuel', 1]]);
+    // A tag with no live note in the set is not there: "Trashed only" is on a trashed note.
+    expect((await names({ notebook: 'Coupons' })).map(([n]) => n)).not.toContain('Trashed only');
+    expect(await names({ notebook: UNFILED })).toEqual([['Acme', 1], ['Loose', 1]]);
+    expect(await names({ notebook: 'No such notebook' })).toEqual([]);
+
+    // Tags: the notes carrying every one, and the tags named are not in the answer.
+    expect(await names({ tags: ['Acme'] })).toEqual([['Food', 2], ['Filed', 1], ['Fuel', 1], ['Loose', 1]]);
+    expect(await names({ tags: ['Acme', 'Food'] })).toEqual([['Filed', 1]]);
+    expect(await names({ tags: ['Nothing'] })).toEqual([]);
+    // Both: the intersection, and counts agree with what `count` says the set holds.
+    expect(await names({ notebook: 'Coupons', tags: ['Food'] })).toEqual([['Acme', 1]]);
+    expect(await stub.count({ notebook: 'Coupons', tags: ['Food'] })).toBe(1);
+    expect(await names({ notebook: 'Coupons', tags: ['Acme'] })).toEqual([['Food', 1], ['Fuel', 1]]);
+  });
+
   it('creates, renames and deletes notebooks, keeping field values readable as tombstones', async () => {
     const { stub } = freshStore('notebooks');
     expect(await stub.createNotebook('  ')).toBeNull();
@@ -797,11 +826,13 @@ describe('rows read on an archive-sized store', () => {
     await runInDurableObject(stub, (_i, state) => {
       const sql = state.storage.sql;
       state.storage.transactionSync(() => {
-        for (let n = 0; n < 5; n++) sql.exec(`INSERT INTO notebooks (id, name, created_at) VALUES (?1, ?2, 1)`, `nb${n}`, `Notebook ${n}`);
+        for (let n = 0; n < 6; n++) sql.exec(`INSERT INTO notebooks (id, name, created_at) VALUES (?1, ?2, 1)`, `nb${n}`, `Notebook ${n}`);
         sql.exec(`INSERT INTO tags (id, name) VALUES ('rare', 'rare'), ('common', 'common')`);
         sql.exec(`INSERT INTO notebook_fields (id, notebook_id, name, type, position, created_at) VALUES ('amount', 'nb0', 'Amount', 'number', 0, 1)`);
         for (let i = 0; i < 3000; i++) {
-          const nb = `nb${i % 5}`;
+          // The last thirty are a notebook of their own: a measure that is fine on a big
+          // notebook can still read the whole account for a small one.
+          const nb = i >= 2970 ? 'nb5' : `nb${i % 5}`;
           sql.exec(
             `INSERT INTO notes (id, title, body, created_at, updated_at, notebook_id) VALUES (?1, ?2, 'receipt total due', ?3, ?3, ?4)`,
             `n${String(i).padStart(5, '0')}`,
@@ -847,6 +878,12 @@ describe('rows read on an archive-sized store', () => {
       await measure('rare tag page', () => stub.list({ limit: 50, tags: ['rare'] })),
       await measure('rare tag count', () => stub.count({ tags: ['rare'], notebook: 'Notebook 0' })),
       await measure('field sort page', () => stub.list({ limit: 50, notebook: 'Notebook 0', sortField })),
+      // The tags of a set, counted within it: the cost is the set's, so these are the
+      // three sizes it can be — a notebook of six hundred, one of thirty, and a tag on three.
+      await measure('tag counts in a big notebook', () => stub.tagCounts({ notebook: 'Notebook 3' })),
+      await measure('tag counts in a small notebook', () => stub.tagCounts({ notebook: 'Notebook 5' })),
+      await measure('tag counts under a rare tag', () => stub.tagCounts({ tags: ['rare'] })),
+      await measure('tag counts under a rare tag in a notebook', () => stub.tagCounts({ tags: ['rare'], notebook: 'Notebook 0' })),
       await measure('get', () => stub.get('n01500')),
       await measure('stored counts', async () => {
         await stub.count();
@@ -888,6 +925,14 @@ describe('rows read on an archive-sized store', () => {
       'rare tag page': 60,
       'rare tag count': 20,
       'field sort page': 600,
+      // A notebook's tags cost about two and a half rows a note — the note, its links —
+      // and no more: 1,489 for 594 notes, 77 for 30 (2026-10-04). A plan that started from
+      // the links would read the account's 1,500 of them whatever the notebook, so the
+      // small one is what shows it.
+      'tag counts in a big notebook': 1800,
+      'tag counts in a small notebook': 120,
+      'tag counts under a rare tag': 60,
+      'tag counts under a rare tag in a notebook': 60,
       get: 10,
       'stored counts': 10,
       usage: 4,

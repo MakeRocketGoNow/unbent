@@ -116,3 +116,40 @@ describe('list_notes with field filters', () => {
     expect(pages[0]?.list['fields']).toBeUndefined();
   });
 });
+
+describe('list_tags with a notebook or tags', () => {
+  function tagsRepo() {
+    const calls: Array<{ method: string; arg?: unknown }> = [];
+    const repo = {
+      listTags: async () => {
+        calls.push({ method: 'listTags' });
+        return [{ id: 't1', name: 'Acme', count: 9 }];
+      },
+      tagCounts: async (filter: unknown) => {
+        calls.push({ method: 'tagCounts', arg: filter });
+        return [{ id: 't2', name: 'Food', count: 2 }];
+      },
+    } as unknown as NotesRepo;
+    return { calls, tool: collect(repo).get('list_tags')! };
+  }
+
+  it('keeps the stored per-tag counts, and the query behind them, when nothing narrows it', async () => {
+    const { calls, tool } = tagsRepo();
+    expect(answer(await tool({}))).toEqual({ tags: [{ id: 't1', name: 'Acme', count: 9 }] });
+    // An empty list narrows nothing, so it must not turn into the walk of a set.
+    await tool({ tag: [] });
+    expect(calls.map((c) => c.method)).toEqual(['listTags', 'listTags']);
+  });
+
+  it('counts within the set when a notebook, tags or both are given', async () => {
+    const { calls, tool } = tagsRepo();
+    expect(answer(await tool({ notebook: 'Coupons' })).tags).toEqual([{ id: 't2', name: 'Food', count: 2 }]);
+    await tool({ tag: ['Acme'] });
+    await tool({ notebook: '[unfiled]', tag: ['Acme', 'Food'] });
+    expect(calls).toEqual([
+      { method: 'tagCounts', arg: { notebook: 'Coupons', tags: undefined } },
+      { method: 'tagCounts', arg: { notebook: undefined, tags: ['Acme'] } },
+      { method: 'tagCounts', arg: { notebook: '[unfiled]', tags: ['Acme', 'Food'] } },
+    ]);
+  });
+});

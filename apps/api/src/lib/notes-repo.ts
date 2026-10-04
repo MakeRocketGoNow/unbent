@@ -198,6 +198,14 @@ export class NotesRepo extends StoreRepo {
     return this.call((s) => s.listTags());
   }
 
+  /** The tags of one notebook's or tag's notes, counted within it; see `NotesStore.tagCounts`. */
+  tagCounts(filter: {
+    notebook?: string | undefined;
+    tags?: string[] | undefined;
+  }): Promise<Array<{ id: string; name: string; count: number }>> {
+    return this.call((s) => s.tagCounts(filter));
+  }
+
   sampleTitles(
     exclude: string,
     perGroup: number,

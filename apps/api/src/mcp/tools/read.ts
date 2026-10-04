@@ -341,10 +341,24 @@ export function registerReadTools(
       description:
         'Every tag with how many notes carry it, most used first. Tags are flat, and their ' +
         'names are case-sensitive: "Receipts" and "receipts" are two tags. Reuse a spelling ' +
-        'from here when tagging, rather than making a near-duplicate.',
-      inputSchema: z.object({}),
+        'from here when tagging, rather than making a near-duplicate. With notebook, tag or ' +
+        'both, the counts are over the live notes of that set only — what else the notes in ' +
+        'a notebook carry, or the notes that carry these tags — and tags with none in it are ' +
+        'left out, as are the tags named in tag, which every note in the set carries.',
+      inputSchema: z.object({
+        notebook: notebookFilter,
+        tag: tagFilter.describe(
+          'Only count the notes carrying every one of these tags, by exact name; they are ' +
+            'left out of the answer.',
+        ),
+      }),
       annotations: { readOnlyHint: true, openWorldHint: false },
     },
-    async () => jsonResult({ tags: await notes.listTags() }),
+    async ({ notebook, tag }) => {
+      // The unfiltered list is the stored per-tag counts, one row a tag; any filter has
+      // to walk the notes in the set, so it only happens when one is asked for.
+      if (notebook === undefined && !tag?.length) return jsonResult({ tags: await notes.listTags() });
+      return jsonResult({ tags: await notes.tagCounts({ notebook, tags: tag?.length ? tag : undefined }) });
+    },
   );
 }

@@ -1736,6 +1736,61 @@ export class NotesStore {
   }
 
   /**
+   * The tags carried by the live notes of one set, with how many of that set carry each,
+   * most-used first: "what else do the notes in Coupons carry", or "what do the notes
+   * tagged Receipts also carry".
+   *
+   * The set is a notebook, a list of tags the note must carry all of, or both, with the
+   * semantics `list` gives them — the same `filterConditions`, so a count here is the
+   * number of notes that list would return under that tag. The tags that define the set
+   * are left out of the answer: every note in it carries them, so they would head the
+   * list with a count that says nothing. Tags with no live note in the set are not in it
+   * at all, which a join makes true without being asked.
+   *
+   * Unlike `listTags` this cannot read the triggers' counts, which are per tag and say
+   * nothing about a notebook: it walks the set's notes and their tag links, so it costs
+   * about the size of the set — a notebook of six hundred reads on the order of a
+   * thousand and a small one reads dozens. Never periodic, and never the unfiltered
+   * call, which stays `listTags` at one row per tag.
+   *
+   * The CROSS JOINs fix the order: the notes first, by whichever filter is the way in,
+   * then each one's links by the primary key, then the tag by id. Left to choose, the
+   * planner is free to start from `note_tags` and read every link in the account, which
+   * is what `+deleted_at` and `+n.notebook_id` (see `liveCondition`) exist to head off on
+   * the notes' side. With a tag in the filter those two are hidden and the way in is the
+   * tag's own links; with a notebook alone the per-notebook index is.
+   */
+  tagCounts(filter: {
+    notebook?: string | undefined;
+    tags?: string[] | undefined;
+  }): Array<{ id: string; name: string; count: number }> {
+    const binds: Bind[] = [];
+    const conditions = [
+      liveCondition(false, filter.tags),
+      ...filterConditions({ tags: filter.tags, notebook: filter.notebook }, binds),
+    ];
+    const named = (filter.tags ?? []).map((name) => {
+      binds.push(name);
+      return `?${binds.length}`;
+    });
+    // Counted by tag id first and named after, so the tags table is read once per tag in
+    // the set rather than once per link: a third of the reads for a notebook of notes
+    // with one or two tags each.
+    return this.sql.exec<{ id: string; name: string; count: number }>(
+      `SELECT t.id, t.name, c.count
+         FROM (SELECT nt.tag_id, COUNT(*) AS count
+                 FROM notes n
+                CROSS JOIN note_tags nt ON nt.note_id = n.id
+                WHERE ${conditions.join(' AND ')}
+                GROUP BY nt.tag_id) c
+         JOIN tags t ON t.id = c.tag_id
+        ${named.length > 0 ? `WHERE t.name NOT IN (${named.join(', ')})` : ''}
+        ORDER BY c.count DESC, t.name COLLATE NOCASE`,
+      ...binds,
+    );
+  }
+
+  /**
    * A few titles from each notebook and each of the most-used tags, as examples of what is
    * filed where, for auto-fill to show the model beside each name; and those tags
    * themselves, since they are the ones auto-fill asks about.

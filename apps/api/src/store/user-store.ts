@@ -522,6 +522,7 @@ export class UserStore extends DurableObject<StoreEnv> {
   }
   purge(scope: 'trashed' | 'all', limit?: number) { return this.writing(() => this.notes.purge(scope, limit)); }
   listTags() { this.ready(); return this.notes.listTags(); }
+  tagCounts(filter: Parameters<NotesStore['tagCounts']>[0]) { this.ready(); return this.notes.tagCounts(filter); }
   sampleTitles(exclude: string, perGroup: number, tagLimit: number) { this.ready(); return this.notes.sampleTitles(exclude, perGroup, tagLimit); }
   renameTag(id: string, name: string, opts?: { merge?: boolean | undefined }) { return this.writing(() => this.notes.renameTag(id, name, opts)); }
   deleteTag(id: string) { return this.writing(() => this.notes.deleteTag(id)); }
