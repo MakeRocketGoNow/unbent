@@ -163,6 +163,23 @@ describe('SearchSync', () => {
     sync.stop();
   });
 
+  it('stops at once with a request for text in flight, by ending the request', async () => {
+    const { lib, make } = await setup();
+    lib.notes = [note('kept', { notebookId: 'nb-kept' })];
+    lib.attachments = [file('k1', 'kept')];
+    let asked = false;
+    const sync = make({
+      // A connection that has stalled: no answer, until the caller gives up.
+      fetchTexts: (_ids, signal) =>
+        new Promise((_resolve, reject) => {
+          asked = true;
+          signal.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')));
+        }),
+    });
+    while (!asked) await new Promise((r) => setTimeout(r, 5));
+    await sync.stop();
+  });
+
   it('waits for a connection, and removes nothing when the kept list cannot be read', async () => {
     const { index, lib, world, make, found } = await setup();
     lib.notes = [note('kept', { notebookId: 'nb-kept' })];

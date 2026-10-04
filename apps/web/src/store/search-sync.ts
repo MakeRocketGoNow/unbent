@@ -41,8 +41,12 @@ export interface SearchSyncOptions {
   /** The notebooks kept offline on this device, by id. Rejects when the list cannot be read, and nothing is dropped on its word. */
   kept: () => Promise<string[]>;
   offline: () => boolean;
-  /** `POST /api/attachments/texts`. Rejects with whatever the request layer throws when there is no connection. */
-  fetchTexts: (ids: string[]) => Promise<AttachmentTexts>;
+  /**
+   * `POST /api/attachments/texts`. Rejects with whatever the request layer throws when
+   * there is no connection, and must give up when the signal aborts: `stop` waits for the
+   * pass in hand, and a sign-out waits for `stop`.
+   */
+  fetchTexts: (ids: string[], signal: AbortSignal) => Promise<AttachmentTexts>;
   /** Whether an error is the absence of a connection, which ends a pass quietly. */
   isOffline: (err: unknown) => boolean;
   /**
@@ -75,6 +79,15 @@ const SLICE = 500;
 export function createSearchSync(opts: SearchSyncOptions): SearchSync {
   const { index } = opts;
   let stopped = false;
+  /*
+   * Aborted by `stop`. A pass can be inside a request for text when the library closes,
+   * and on a connection that has stalled that request is minutes from failing; closing
+   * the library is what a sign-out and an account switch wait on, so the request is
+   * ended rather than waited for. The keeper's `stop` does not wait on its fetches at
+   * all; this one has to, because the index is closed next and a write after that is an
+   * error.
+   */
+  const abort = new AbortController();
   let running: Promise<void> | null = null;
   let again = false;
   let timer: ReturnType<typeof setTimeout> | null = null;
@@ -153,9 +166,9 @@ export function createSearchSync(opts: SearchSyncOptions): SearchSync {
       const asked = queue.slice(0, TEXT_BATCH);
       let answer: AttachmentTexts;
       try {
-        answer = await opts.fetchTexts(asked);
+        answer = await opts.fetchTexts(asked, abort.signal);
       } catch (err) {
-        if (opts.isOffline(err)) return false;
+        if (stopped || opts.isOffline(err)) return false;
         throw err;
       }
       const left = new Set(answer.left);
@@ -299,6 +312,7 @@ export function createSearchSync(opts: SearchSyncOptions): SearchSync {
     },
     stop: async () => {
       stopped = true;
+      abort.abort();
       if (timer) clearTimeout(timer);
       timer = null;
       channel?.close();

@@ -421,8 +421,9 @@ async function open(userId: string): Promise<Library> {
         leading: () => outbox.executor.isOfflineEnabled,
         kept: () => readKeptNotebooks(userId),
         offline: offlineNow,
-        fetchTexts: async (ids) => {
-          const res = await request('/api/attachments/texts', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ids }) });
+        fetchTexts: async (ids, signal) => {
+          // A timeout as well as the signal: a request that never answers would otherwise hold the pass, and every pass after it.
+          const res = await request('/api/attachments/texts', { method: 'POST', signal, timeout: 30_000, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ids }) });
           if (!res.ok) throw new ApiError(res.status, `/api/attachments/texts answered ${res.status}`);
           return (await res.json()) as AttachmentTexts;
         },
