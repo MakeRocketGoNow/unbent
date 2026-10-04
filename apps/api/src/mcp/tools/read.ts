@@ -1,9 +1,18 @@
 import { z } from 'zod';
-import { MAX_TAG_LENGTH, UNFILED, formatAttachmentMarkdown } from '@unbent/shared';
+import {
+  FIELD_FILTER_OPS,
+  MAX_FIELD_VALUE_LENGTH,
+  MAX_TAG_LENGTH,
+  UNFILED,
+  formatAttachmentMarkdown,
+  parseFieldFilter,
+  type FieldFilter,
+} from '@unbent/shared';
 import type { McpServer } from '@modelcontextprotocol/server';
 import type { AttachmentsRepo } from '../../lib/attachments-repo.js';
 import { nextCursor, type NotesRepo } from '../../lib/notes-repo.js';
-import { jsonResult, noteRef, notFound } from './result.js';
+import { notebookIdByName } from './lookup.js';
+import { jsonResult, noteRef, notFound, toolError } from './result.js';
 
 /**
  * The tools that only read.
@@ -35,6 +44,84 @@ const LIST_DATE_RANGE =
   'date; with trashed, the date the note was trashed.';
 
 const dateOnly = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'expected YYYY-MM-DD').optional();
+
+/**
+ * Narrowing by a custom field's value, the MCP's spelling of the web's `field=` filter.
+ *
+ * Fields are named, not numbered, as everywhere else a model meets them, and the op is
+ * one of the shared five. The value is a string whatever the field's type — it is what
+ * the URL form carries — and what it means is the field's: an option for `eq` on a select
+ * or multiselect, `true`/`false` for a checkbox, `YYYY-MM-DD` or a number for a range.
+ */
+const fieldFiltersSchema = z
+  .array(
+    z.object({
+      field: z.string().min(1).describe('A field name, as list_notebooks shows it for the notebook.'),
+      op: z.enum(FIELD_FILTER_OPS),
+      value: z.string().max(MAX_FIELD_VALUE_LENGTH).optional(),
+    }),
+  )
+  .max(10)
+  .optional()
+  .describe(
+    'Narrow by custom field values; every filter must hold. Needs notebook, since fields ' +
+      'belong to one. op "eq" matches a value exactly (an option of a select, one of the ' +
+      'options a multiselect holds, true or false for a checkbox, case included); "gte" and ' +
+      '"lte" bound a number or a YYYY-MM-DD date, inclusive; "set" and "empty" ask whether ' +
+      'the note has any value, and take no value. Example: ' +
+      '{"field":"Expires","op":"lte","value":"2026-12-31"}.',
+  );
+
+/**
+ * Turns named field filters into the id-keyed ones the store takes.
+ *
+ * The names are resolved against the notebook the list is scoped to, case-insensitively,
+ * which is why `fields` needs one: a name means nothing outside a notebook, and two
+ * notebooks may each have a "Date". The wire form is built and read back through
+ * `parseFieldFilter`, the function the URL's `field=` goes through, so a bound that is not
+ * a number or a date, or a value that is too long, is refused by the same rule here rather
+ * than by a second copy of it. An unknown name lists the real ones, since the likeliest
+ * cause is a misremembered name.
+ */
+async function resolveFieldFilters(
+  notes: NotesRepo,
+  notebook: string | undefined,
+  filters: Array<{ field: string; op: FieldFilter['op']; value?: string | undefined }>,
+): Promise<{ filters: FieldFilter[] } | { error: string }> {
+  if (!notebook || notebook === UNFILED) {
+    return {
+      error:
+        'Field filters need a notebook, since fields belong to one. Pass notebook with the ' +
+        'name of the notebook whose fields you mean.',
+    };
+  }
+  const notebookId = await notebookIdByName(notes, notebook);
+  if (!notebookId) return { error: `No such notebook: ${notebook}` };
+  const defs = (await notes.listFields(notebookId)) ?? [];
+
+  const out: FieldFilter[] = [];
+  for (const f of filters) {
+    const def = defs.find((d) => d.name.toLowerCase() === f.field.trim().toLowerCase());
+    if (!def) {
+      return {
+        error:
+          `No field called "${f.field}" on notebook "${notebook}". ` +
+          (defs.length ? `Its fields are: ${defs.map((d) => d.name).join(', ')}.` : 'It has no fields.'),
+      };
+    }
+    const valueless = f.op === 'set' || f.op === 'empty';
+    if (valueless && f.value !== undefined) return { error: `Op "${f.op}" takes no value.` };
+    if (!valueless && !f.value) return { error: `Op "${f.op}" needs a value.` };
+    const parsed = parseFieldFilter(valueless ? `${def.id}:${f.op}` : `${def.id}:${f.op}:${f.value}`);
+    if (!parsed) {
+      return {
+        error: `"${f.value}" is not a usable ${f.op} value for ${def.name}: a range needs a number or a YYYY-MM-DD date.`,
+      };
+    }
+    out.push(parsed);
+  }
+  return { filters: out };
+}
 
 export function registerReadTools(
   server: McpServer,
@@ -88,15 +175,16 @@ export function registerReadTools(
       title: 'List notes',
       description:
         'List notes without searching, newest first by default. Use this to browse, to page ' +
-        'through a notebook or tag, or — with sort "updated" and a from date — to find what ' +
-        'changed recently. Returns an excerpt per note rather than the body; call get_note ' +
-        'for that. When the response carries a cursor there are more notes, and passing it ' +
-        'back returns the next page.',
+        'through a notebook or tag, to narrow a notebook by its custom field values, or — with ' +
+        'sort "updated" and a from date — to find what changed recently. Returns an excerpt ' +
+        'per note rather than the body; call get_note for that. When the response carries a ' +
+        'cursor there are more notes, and passing it back returns the next page.',
       inputSchema: z.object({
         limit: z.number().int().min(1).max(100).default(25),
         cursor: z.string().optional().describe('The cursor from a previous page.'),
         tag: tagFilter,
         notebook: notebookFilter,
+        fields: fieldFiltersSchema,
         sort: z.enum(['updated', 'created', 'title']).default('updated'),
         order: z.enum(['asc', 'desc']).default('desc'),
         from: dateOnly.describe(LIST_DATE_RANGE),
@@ -111,10 +199,16 @@ export function registerReadTools(
       }),
       annotations: { readOnlyHint: true, openWorldHint: false },
     },
-    async ({ limit, cursor, tag, notebook, sort, order, from, to, trashed }) => {
+    async ({ limit, cursor, tag, notebook, fields, sort, order, from, to, trashed }) => {
+      let fieldFilters: FieldFilter[] | undefined;
+      if (fields?.length) {
+        const resolved = await resolveFieldFilters(notes, notebook, fields);
+        if ('error' in resolved) return toolError(resolved.error);
+        fieldFilters = resolved.filters;
+      }
       const { items, total } = await notes.listPage(
-        { limit, cursor, tags: tag, notebook, sort, order, from, to, trashed },
-        { tags: tag, notebook, trashed, from, to, sort },
+        { limit, cursor, tags: tag, notebook, fields: fieldFilters, sort, order, from, to, trashed },
+        { tags: tag, notebook, fields: fieldFilters, trashed, from, to, sort },
       );
       // The same helper the HTTP route uses, so a cursor means the same thing on both and
       // cannot disagree with the sort that produced the page.

@@ -26,6 +26,7 @@ import {
 } from '@unbent/shared';
 import type { McpServer } from '@modelcontextprotocol/server';
 import type { NotesRepo } from '../../lib/notes-repo.js';
+import { notebookIdByName } from './lookup.js';
 import { jsonResult, noteRef, notFound, staleNote, toolError } from './result.js';
 
 /**
@@ -91,12 +92,6 @@ function resolveFieldNames(
     patch[id] = value;
   }
   return { patch };
-}
-
-/** The id of a notebook by name, case-insensitively, or null when there is none yet. */
-async function notebookIdByName(notes: NotesRepo, name: string): Promise<string | null> {
-  const all = await notes.listNotebooks();
-  return all.find((nb) => nb.name.toLowerCase() === name.trim().toLowerCase())?.id ?? null;
 }
 
 const bodySchema = z
