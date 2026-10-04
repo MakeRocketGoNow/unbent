@@ -492,10 +492,7 @@ describe('delete_notebook', () => {
   function notebookRepo(deleted = true) {
     const calls: unknown[][] = [];
     const repo = {
-      notebooksOverview: async () => ({
-        notebooks: [{ id: 'nb-1', name: 'Coupons', count: 12 }],
-        unfiled: 0,
-      }),
+      listNotebooks: async () => [{ id: 'nb-1', name: 'Coupons', count: 12 }],
       deleteNotebook: async (...args: unknown[]) => {
         calls.push(args);
         return deleted;

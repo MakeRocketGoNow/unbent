@@ -686,8 +686,7 @@ export function registerWriteTools(server: McpServer, notes: NotesRepo): void {
     },
     async ({ notebookId, trashNotes }) => {
       // Named and counted before the delete, which is what removes the row they come from.
-      const { notebooks } = await notes.notebooksOverview();
-      const notebook = notebooks.find((nb) => nb.id === notebookId);
+      const notebook = (await notes.listNotebooks()).find((nb) => nb.id === notebookId);
       if (!notebook) return notFound('notebook', notebookId);
       if (!(await notes.deleteNotebook(notebookId, { trashNotes }))) {
         return notFound('notebook', notebookId);
