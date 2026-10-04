@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { httpErrorMessage } from './notes-api.js';
+import { ApiError, errorText, httpErrorMessage } from './notes-api.js';
 
 const response = (status: number, body: string, contentType?: string) =>
   new Response(body, {
@@ -44,5 +44,25 @@ describe('httpErrorMessage', () => {
 
   it('is the status alone when there is no body', async () => {
     expect(await httpErrorMessage(response(401, ''))).toBe('401');
+  });
+});
+
+describe('errorText', () => {
+  it('drops the status httpErrorMessage leads with, and keeps the route’s sentence', async () => {
+    const res = new Response(JSON.stringify({ error: 'The server is busy' }), {
+      status: 503,
+      statusText: 'Service Unavailable',
+      headers: { 'Content-Type': 'application/json' },
+    });
+    expect(errorText(new ApiError(503, await httpErrorMessage(res)))).toBe('The server is busy');
+    // HTTP/2: no reason phrase.
+    expect(errorText(new Error('404: Not found'))).toBe('Not found');
+  });
+
+  it('leaves a message that is not one of ours as it is', () => {
+    expect(errorText(new Error('This note has changes that have not synced yet. Try again in a moment.'))).toBe(
+      'This note has changes that have not synced yet. Try again in a moment.',
+    );
+    expect(errorText('plain')).toBe('plain');
   });
 });

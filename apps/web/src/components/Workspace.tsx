@@ -866,7 +866,7 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
       if (noteIdRef.current === id && JSON.stringify(draftRef.current) === JSON.stringify(flushed)) reseed(back);
     } catch (err) {
       if (noteIdRef.current !== id) return;
-      const message = api.isNoteChanged(err) ? changed : (err as Error).message.replace(/^\d{3}[^:]*: /, '');
+      const message = api.isNoteChanged(err) ? changed : api.errorText(err);
       setSnackbar({ message, tone: 'error' });
     }
   }
@@ -1050,7 +1050,7 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
       // The server's own sentence, without the status it arrives prefixed with: "422:
       // Nothing to read yet…" is not what a person wants to read. A failure stays until
       // dismissed rather than fading — no `duration`.
-      setSnackbar({ message: (err as Error).message.replace(/^\d{3}[^:]*: /, ''), tone: 'error' });
+      setSnackbar({ message: api.errorText(err), tone: 'error' });
     } finally {
       if (noteIdRef.current === startedFor) setAutofilling(false);
     }

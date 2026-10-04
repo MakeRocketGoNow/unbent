@@ -153,6 +153,18 @@ export async function httpErrorMessage(res: Response): Promise<string> {
   return `${status}: ${body.slice(0, MAX_DETAIL)}`;
 }
 
+/**
+ * An error's message as a sentence to show: `httpErrorMessage`'s without the status it
+ * leads with. "503 Service Unavailable: The server is busy" is right in a log and wrong
+ * in a snackbar, and the route's own sentence is the part written to be read. Here, beside
+ * the function that builds that shape, so the two change together; an error that is not
+ * one of ours comes back as it is.
+ */
+export function errorText(err: unknown): string {
+  const message = err instanceof Error ? err.message : String(err);
+  return message.replace(/^\d{3}[^:]*: /, '');
+}
+
 async function json<T>(res: Response): Promise<T> {
   if (!res.ok) throw new ApiError(res.status, await httpErrorMessage(res));
   return res.json() as Promise<T>;

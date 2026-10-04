@@ -156,7 +156,7 @@ export function HistorySheet({ open, onClose, noteId, anchor, saved, onRestore }
     try {
       await onRestore(picked);
     } catch (err) {
-      setFailure((err as Error).message.replace(/^\d{3}[^:]*: /, ''));
+      setFailure(api.errorText(err));
     } finally {
       setRestoring(false);
     }
@@ -171,7 +171,7 @@ export function HistorySheet({ open, onClose, noteId, anchor, saved, onRestore }
       queryClient.removeQueries({ queryKey: keys.revisions(noteId) });
       setClearing(null);
     } catch (err) {
-      setFailure((err as Error).message.replace(/^\d{3}[^:]*: /, ''));
+      setFailure(api.errorText(err));
       setClearing('asking');
     }
   };
