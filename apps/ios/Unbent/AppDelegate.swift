@@ -97,6 +97,11 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
             AppDelegate.pendingPath = nil
             root.open(path: path)
         }
+        // A link or a quick action that launched the app, before the window as the
+        // notification's path above is: made key, the window loads the site at its home,
+        // and a path given after that is a second load of the page instead of its first.
+        options.userActivities.forEach(root.follow)
+        if let item = options.shortcutItem { _ = root.perform(item) }
         AppDelegate.root = root
         let window = UIWindow(windowScene: scene)
         window.rootViewController = root
@@ -104,10 +109,8 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         window.makeKeyAndVisible()
         self.window = window
         self.root = root
-        // A file, a link or a quick action that launched the app arrives here, not below.
+        // A file that launched the app arrives here, not below.
         root.capture(options.urlContexts.map(\.url))
-        options.userActivities.forEach(root.follow)
-        if let item = options.shortcutItem { _ = root.perform(item) }
     }
 
     /// "Open in Unbent" from another app.
