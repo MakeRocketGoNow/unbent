@@ -28,8 +28,9 @@ export const Route = createFileRoute('/notes/')({
 function NoNoteOpen() {
   const search = NotesRoute.useSearch();
   const isMobile = useMediaQuery(MOBILE_QUERY);
-  const total = useLibraryTotal();
   const wholeAccount = showsWholeAccount(search);
+  // Both things this pane does with the total are desktop-only and need the whole account.
+  const total = useLibraryTotal(!isMobile && wholeAccount);
   const opening = useOpenFirstNote({ twoPane: !isMobile, wholeAccount, total, newRequested: search.new === 1 });
 
   if (!isMobile && total === 0 && wholeAccount) {

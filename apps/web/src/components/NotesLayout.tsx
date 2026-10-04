@@ -640,8 +640,14 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
    * whether the list on screen is the whole account. Together they are what tells an
    * empty account from an empty notebook or a search with no matches.
    */
-  const libraryTotal = useLibraryTotal();
   const wholeAccount = showsWholeAccount({ notebook, tag, field, from, to, q });
+  /*
+   * Asked only while the answer can change what is drawn: everything below acts on an
+   * account of none or one, and on All notes the loaded rows are the account's, so a list
+   * of two or more has nothing to ask. Still asked while the list is empty for the
+   * moment of its first load, which is when the empty state must already know.
+   */
+  const libraryTotal = useLibraryTotal(wholeAccount && notes.length <= 1);
   /**
    * The account holds no notes at all, and the list is the whole of it. On a phone the
    * list's empty line gives way to `EmptyLibrary`; on a desktop the workspace pane draws

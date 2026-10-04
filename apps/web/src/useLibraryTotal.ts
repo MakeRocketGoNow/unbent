@@ -21,11 +21,17 @@ import { useFeedState } from './store/use-feed-state.js';
  * — no file system to keep one in (`PersistenceUnavailableError`), or a test — has no feed
  * state, and its count comes from the server or the test's library, both of which are
  * whole.
+ *
+ * `enabled` is the caller saying when the answer can matter, and every caller asks only
+ * then. The query is re-run on every change to the library while it is watched, and on a
+ * device with no library each run is a request to the server; but every caller only acts
+ * on none or one, so a list showing two rows, or a scope that is not the whole account,
+ * has nothing to ask. Off, the answer is null, the same "draw nothing new" as unknown.
  */
-export function useLibraryTotal(): number | null {
+export function useLibraryTotal(enabled = true): number | null {
   const feed = useFeedState();
-  const total = useQuery(libraryTotalQuery(feed ? isWhole(feed) : null));
-  return total.isSuccess ? total.data : null;
+  const total = useQuery(libraryTotalQuery(feed ? isWhole(feed) : null, enabled));
+  return enabled && total.isSuccess ? total.data : null;
 }
 
 /**

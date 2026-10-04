@@ -65,6 +65,7 @@ describe('useLibraryTotal', () => {
   afterEach(() => {
     lib?.uninstall();
     lib = null;
+    vi.clearAllMocks();
   });
 
   const wrapper = ({ children }: { children: ReactNode }) => (
@@ -76,6 +77,32 @@ describe('useLibraryTotal', () => {
     const { result } = renderHook(() => useLibraryTotal(), { wrapper });
     // Unknown first, never zero: zero is what draws the empty state.
     expect(result.current).toBeNull();
+    await waitFor(() => expect(result.current).toBe(1));
+  });
+
+  /** Off, it asks nothing — no count from the library, no request — and answers null. */
+  it('asks nothing while the caller says the answer cannot matter', async () => {
+    vi.mocked(api.listNotes).mockResolvedValue({ items: [], cursor: null, total: 0 });
+    const { result } = renderHook(() => useLibraryTotal(false), { wrapper });
+    await new Promise((r) => setTimeout(r, 20));
+    expect(result.current).toBeNull();
+    expect(api.listNotes).not.toHaveBeenCalled();
+  });
+
+  /** A count from the last time it mattered is not read when it matters again. */
+  it('counts afresh when it is switched back on', async () => {
+    lib = installTestLibrary({ notes: [] });
+    const { result, rerender } = renderHook(({ on }) => useLibraryTotal(on), { wrapper, initialProps: { on: true } });
+    await waitFor(() => expect(result.current).toBe(0));
+    rerender({ on: false });
+    expect(result.current).toBeNull();
+    // `gcTime: 0` drops the unwatched entry on the next turn of the event loop; in the app
+    // the list has to grow and shrink again between off and on, which is many turns.
+    await new Promise((r) => setTimeout(r, 0));
+    lib.upsert('note', note('arrived'));
+    rerender({ on: true });
+    // Never the old zero, not even for the render before the count lands.
+    expect(result.current).not.toBe(0);
     await waitFor(() => expect(result.current).toBe(1));
   });
 

@@ -205,7 +205,7 @@ export const keys = {
   /** Under `notes`, so the invalidations that root gets on every create and trash reach it. */
   noteCount: () => ['notes', 'count'] as const,
   /** Under `notes` like the count; `whole` is the feed's word on it, see `libraryTotalQuery`. */
-  libraryTotal: (whole: boolean | null) => ['notes', 'library-total', { whole }] as const,
+  libraryTotal: (whole: boolean | null, enabled = true) => ['notes', 'library-total', { whole, enabled }] as const,
   /**
    * Under `trash` for the trash and `notes` for the rest, so the invalidations those roots
    * already get on every trash, restore, move and save reach these too.
@@ -325,10 +325,19 @@ export const noteCountQuery = () =>
  * back to it.
  *
  * A device with no library asks the server, whose count is always whole.
+ *
+ * `enabled` is the caller saying the answer matters right now — see `useLibraryTotal`.
+ * It is in the key as well as the options, so a count left over from the last time the
+ * answer mattered is never read when it starts to matter again: switched off, the query
+ * watches an entry of its own that never runs, the enabled entry has no watcher and
+ * `gcTime: 0` drops it, and switched back on the count is taken afresh. Left to the
+ * options alone, a cached zero from an empty account could be read for the render before
+ * the refetch landed, after the account had filled and emptied down to one note.
  */
-export const libraryTotalQuery = (whole: boolean | null) =>
+export const libraryTotalQuery = (whole: boolean | null, enabled = true) =>
   queryOptions({
-    queryKey: keys.libraryTotal(whole),
+    queryKey: keys.libraryTotal(whole, enabled),
+    enabled,
     queryFn: async (): Promise<number | null> => {
       const lib = await library();
       if (!lib) return (await api.listNotes({ limit: 1 })).total ?? 0;
