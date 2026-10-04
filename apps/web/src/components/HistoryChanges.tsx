@@ -108,8 +108,8 @@ export function HistoryChanges({ current, version }: HistoryChangesProps) {
               <Swap from={current.title || 'Untitled'} to={version.title || 'Untitled'} />
             </PropLine>
           )}
-          {props.map((change, i) => (
-            <PropChangeLine key={i} change={change} />
+          {props.map((change) => (
+            <PropChangeLine key={propChangeKey(change)} change={change} />
           ))}
         </dl>
       )}
@@ -184,6 +184,17 @@ function skipReason(skip: RevisionSkip, held?: string): string {
   if (skip.why === 'deleted') return `This field has been deleted, so ${value} is not put back.`;
   if (skip.why === 'option') return `This field no longer offers ${value}, so it stays as it is.`;
   return `This field can no longer hold ${value}, so it stays as it is.`;
+}
+
+/**
+ * A line's key, from what it is about rather than where it sits: the list is derived
+ * again as the draft changes under an open sheet, and a field cleared there moves every
+ * line after it up one.
+ */
+function propChangeKey(change: PropChange): string {
+  if (change.kind === 'field') return `field-${(change.to ?? change.from)!.fieldId}`;
+  if (change.kind === 'unfit') return `unfit-${change.skip.what}-${change.skip.id}`;
+  return change.kind;
 }
 
 function PropChangeLine({ change }: { change: PropChange }) {
