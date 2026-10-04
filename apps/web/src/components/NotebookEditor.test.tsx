@@ -422,7 +422,7 @@ describe('NotebookEditor', () => {
   });
 
   it('asks before narrowing a rating, naming how many values will be cleared', async () => {
-    vi.mocked(api.previewFieldConversion).mockResolvedValue({ values: 5, incompatible: 2 });
+    vi.mocked(api.previewFieldConversion).mockResolvedValue({ values: 5, incompatible: 2, scale: { max: 5, step: 0.5 } });
     vi.mocked(api.updateNotebookField).mockResolvedValue({
       field: { ...rating, scale: { max: 5, step: 0.5 } },
       cleared: 2,
@@ -445,7 +445,7 @@ describe('NotebookEditor', () => {
   });
 
   it('does not write a narrower scale if the confirmation is cancelled', async () => {
-    vi.mocked(api.previewFieldConversion).mockResolvedValue({ values: 5, incompatible: 2 });
+    vi.mocked(api.previewFieldConversion).mockResolvedValue({ values: 5, incompatible: 2, scale: { max: 5, step: 0.5 } });
     mount([rating]);
     await screen.findByText('Stars');
     fireEvent.change(screen.getByLabelText('Rating scale maximum'), { target: { value: '5' } });
@@ -459,7 +459,7 @@ describe('NotebookEditor', () => {
   });
 
   it('asks before dropping half steps', async () => {
-    vi.mocked(api.previewFieldConversion).mockResolvedValue({ values: 5, incompatible: 1 });
+    vi.mocked(api.previewFieldConversion).mockResolvedValue({ values: 5, incompatible: 1, scale: { max: 10, step: 1 } });
     mount([rating]);
     await screen.findByText('Stars');
     fireEvent.click(screen.getByRole('checkbox'));
@@ -474,7 +474,7 @@ describe('NotebookEditor', () => {
   */
   it('still sends the type when a plain number becomes a rating', async () => {
     const plain: FieldDef = { ...rating, scale: null };
-    vi.mocked(api.previewFieldConversion).mockResolvedValue({ values: 4, incompatible: 1 });
+    vi.mocked(api.previewFieldConversion).mockResolvedValue({ values: 4, incompatible: 1, scale: { max: 5, step: 0.5 } });
     vi.mocked(api.updateNotebookField).mockResolvedValue({
       field: { ...plain, scale: { max: 5, step: 0.5 } },
       cleared: 1,
@@ -483,7 +483,10 @@ describe('NotebookEditor', () => {
     await screen.findByText('Stars');
     fireEvent.change(screen.getByLabelText('Type of Stars'), { target: { value: 'rating' } });
 
-    await screen.findByText((_, node) => node?.textContent === 'Change Stars to Rating?');
+    await screen.findByText((_, node) => node?.textContent === 'Change Stars to a rating out of 5?');
+    expect(
+      screen.getByText("4 notes have a value. 3 fit a rating out of 5 and keep their number; 1 can't be a rating from 1 to 5 and will be cleared."),
+    ).toBeTruthy();
     fireEvent.click(screen.getByText('Change and clear 1 value'));
     await waitFor(() =>
       expect(api.updateNotebookField).toHaveBeenCalledWith('nb1', 'f4', {
@@ -494,13 +497,59 @@ describe('NotebookEditor', () => {
   });
 
   /*
+     MAK-80: scores out of 10 turned into five stars and every 6 and up was cleared. The
+     picker now asks the server for the scale the values fit, and says so even when nothing
+     is lost — the scale was chosen for the person, so they are told which one it is.
+  */
+  it('fits a new rating to the numbers it holds, and explains before writing', async () => {
+    const plain: FieldDef = { ...rating, scale: null };
+    vi.mocked(api.previewFieldConversion).mockResolvedValue({ values: 8, incompatible: 0, scale: { max: 10, step: 1 } });
+    vi.mocked(api.updateNotebookField).mockResolvedValue({
+      field: { ...plain, scale: { max: 10, step: 1 } },
+      cleared: 0,
+    });
+    mount([plain]);
+    await screen.findByText('Stars');
+    fireEvent.change(screen.getByLabelText('Type of Stars'), { target: { value: 'rating' } });
+
+    await screen.findByText((_, node) => node?.textContent === 'Change Stars to a rating out of 10?');
+    expect(api.previewFieldConversion).toHaveBeenCalledWith('nb1', 'f4', 'number', 'fit');
+    expect(screen.getByText('8 notes have a value. Every one fits a rating out of 10, so each keeps its number.')).toBeTruthy();
+    expect(api.updateNotebookField).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByText('Change to rating'));
+    await waitFor(() =>
+      expect(api.updateNotebookField).toHaveBeenCalledWith('nb1', 'f4', {
+        type: 'number',
+        scale: { max: 10, step: 1 },
+      }),
+    );
+  });
+
+  it('makes a rating at once when the number holds no values', async () => {
+    const plain: FieldDef = { ...rating, scale: null };
+    vi.mocked(api.previewFieldConversion).mockResolvedValue({ values: 0, incompatible: 0, scale: { max: 5, step: 0.5 } });
+    vi.mocked(api.updateNotebookField).mockResolvedValue({ field: { ...plain, scale: { max: 5, step: 0.5 } }, cleared: 0 });
+    mount([plain]);
+    await screen.findByText('Stars');
+    fireEvent.change(screen.getByLabelText('Type of Stars'), { target: { value: 'rating' } });
+    await waitFor(() =>
+      expect(api.updateNotebookField).toHaveBeenCalledWith('nb1', 'f4', {
+        type: 'number',
+        scale: { max: 5, step: 0.5 },
+      }),
+    );
+    expect(screen.queryByLabelText('Confirm change field type')).toBeNull();
+  });
+
+  /*
      Both halves of the scale can differ from what the server holds at once. The question
      then has to name the halves as well as the max: they are exactly what gets cleared,
      and "out of 5" alone reads as though they survive.
   */
   it('names the lost half steps as well as the new max when both change', async () => {
     const halfStepTen: FieldDef = { ...rating, scale: { max: 10, step: 0.5 } };
-    vi.mocked(api.previewFieldConversion).mockResolvedValue({ values: 5, incompatible: 3 });
+    vi.mocked(api.previewFieldConversion).mockResolvedValue({ values: 5, incompatible: 3, scale: { max: 5, step: 1 } });
     mount([halfStepTen]);
     await screen.findByText('Stars');
 
@@ -535,7 +584,7 @@ describe('NotebookEditor', () => {
 
   it('writes a wider scale without asking, because nothing can be cleared', async () => {
     const five: FieldDef = { ...rating, scale: { max: 5, step: 1 } };
-    vi.mocked(api.previewFieldConversion).mockResolvedValue({ values: 3, incompatible: 0 });
+    vi.mocked(api.previewFieldConversion).mockResolvedValue({ values: 3, incompatible: 0, scale: { max: 10, step: 1 } });
     vi.mocked(api.updateNotebookField).mockResolvedValue({
       field: { ...five, scale: { max: 10, step: 1 } },
       cleared: 0,

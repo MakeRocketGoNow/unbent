@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import {
   createFieldSchema,
   decodeFieldValue,
+  DEFAULT_RATING_SCALE,
+  fitRatingScale,
   encodeFieldValue,
   currencySchema,
   expectedFieldValue,
@@ -526,5 +528,34 @@ describe('re-scaling a rating', () => {
   it('carries a rating into text intact', () => {
     const plan = planConversion('number', 'text', rows('3.5'));
     expect(plan.keep.map((k) => k.text)).toEqual(['3.5']);
+  });
+});
+
+describe('fitting a rating scale to the values a field holds', () => {
+  const rows = (...texts: string[]) => texts.map((text) => ({ text }));
+
+  it('starts on the default when the values fit in five', () => {
+    expect(fitRatingScale('number', rows('1', '3', '5'))).toEqual({ max: 5, step: 0.5 });
+    expect(fitRatingScale('number', [])).toEqual({ max: 5, step: 0.5 });
+  });
+
+  it('widens to the highest value, so scores out of ten keep their numbers', () => {
+    const scale = fitRatingScale('number', rows('7', '8', '10', '3'));
+    expect(scale).toEqual({ max: 10, step: 1 });
+    expect(planConversion('number', 'number', rows('7', '10'), scale).drop).toHaveLength(0);
+  });
+
+  it('keeps half steps on a wide scale when a value needs them', () => {
+    expect(fitRatingScale('number', rows('7.5', '9'))).toEqual({ max: 9, step: 0.5 });
+  });
+
+  it('ignores what no rating could hold rather than stretching for it', () => {
+    expect(fitRatingScale('number', rows('0', '250', '3.7', '8'))).toEqual({ max: 8, step: 1 });
+    expect(fitRatingScale('number', rows('70', '85'))).toEqual(DEFAULT_RATING_SCALE);
+  });
+
+  it('reads values the way the conversion does, for the type they are leaving', () => {
+    expect(fitRatingScale('text', rows('9', 'abc', '0x8'))).toEqual({ max: 9, step: 1 });
+    expect(fitRatingScale('multiselect', rows('["9"]', '["PC","PS5"]'))).toEqual({ max: 9, step: 1 });
   });
 });

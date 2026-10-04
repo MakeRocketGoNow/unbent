@@ -137,9 +137,11 @@ function ConnectedAppsPage() {
   }
 
   return (
-    <section className="settings-panel">
-      <h2>Connected apps</h2>
-      <p className="muted">
+    <section className="panel">
+      <div className="panel-head">
+        <h2>Connected apps</h2>
+      </div>
+      <p className="muted small">
         Apps you have allowed to use your notes on your behalf — an AI assistant, for
         example. Each can read, create and change notes, and move them to the trash, until
         you disconnect it here.
@@ -147,7 +149,7 @@ function ConnectedAppsPage() {
 
       <section className="settings-section">
         <h3>Connect an app</h3>
-        <p className="muted">
+        <p className="muted small">
           Unbent speaks{' '}
           <a href="https://modelcontextprotocol.io" target="_blank" rel="noopener noreferrer">
             MCP
@@ -164,12 +166,12 @@ function ConnectedAppsPage() {
         </p>
       </section>
 
-      {error && <p className="bad">{error}</p>}
+      {error && <p className="bad small">{error}</p>}
 
       {grants === null ? (
-        <p className="muted">Loading…</p>
+        <p className="muted small">Loading…</p>
       ) : grants.length === 0 ? (
-        <p className="muted">Nothing is connected.</p>
+        <p className="muted small">Nothing is connected.</p>
       ) : (
         <ul className="owned-list">
           {grants.map((grant) => (

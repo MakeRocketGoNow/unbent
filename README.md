@@ -1418,7 +1418,7 @@ The site, whole, in one web view, the way the Android app is, with native code o
 what a page cannot do on an iPhone: sign-in, saving files where the phone keeps them, links
 that leave, and the app's own address and version. It is a port of the Android app's shell
 rather than a second design, and where the two differ it is because the platforms do.
-Links that open in the app, and TestFlight, are still to come.
+TestFlight is still to come.
 
 ```
 swift test --package-path apps/ios/Packages/UnbentCore   # unit tests, on the Mac, no simulator
@@ -1591,6 +1591,23 @@ app opens and the one domain its web view is bound to; `UNBENT_INSTANCE_SCHEME` 
 is `https` unless you say otherwise, and the two are apart because `//` begins a comment in
 that file. The third signs a build for a phone; a simulator needs none. `MARKETING_VERSION`
 and `CURRENT_PROJECT_VERSION` are the version and build number App settings shows.
+
+**Links and quick actions.** A link to the instance's notes, trash or settings, tapped in
+Mail, Messages or Safari, opens in the app (a universal link), at the same place on
+whichever instance the app is pointed at. The app claims the host (`applinks:` in the
+entitlements); which paths are the app's is the instance's to say, in the association
+document below, and a link to a host the app is not pointed at now opens in Safari's sheet
+over it. Held on the Home Screen, the icon offers New note and App settings. New note opens
+`/notes?new=1`, which the site answers as its New button: it makes an unfiled note and
+replaces the address, so Back and a reload do not make another. The debug build claims
+`dev.unbent.app` in developer mode, which a simulator always is, so
+`xcrun simctl openurl booted https://dev.unbent.app/notes/<id>` tries it; the first link
+after an install can still open in Safari, while the system is fetching the document.
+
+A store build cannot do either for an instance of your own: universal links and passkeys
+offered by the system both go to the host the build claims, and the store build claims
+unbent.app. Build your own, as above, with `UNBENT_INSTANCE_HOST` set to your host, and serve
+an association document naming it.
 
 **Vouching for the app.** iOS opens this site's links in the app (universal links), and
 offers the site's passkeys to it, only if the site says which app that is: an Apple App
@@ -1867,10 +1884,15 @@ screen and another in the zip. There is no order (a directory tree has no order 
 choosing); `sort` is accepted only to say which column a date range applies to. The filename
 carries the scope, since several slices land in one downloads folder on the same day.
 
-This is the backup mechanism, not a convenience feature: `wrangler d1 export` fails on any
-database containing an FTS5 table and leaves the database wedged in a "processing export"
-state ([workers-sdk#9519](https://github.com/cloudflare/workers-sdk/issues/9519)). Do not
-run it.
+This is the backup mechanism, not a convenience feature: it is the only copy that holds
+both the notes and their files. An account's store dump (see
+[Where your notes live](#where-your-notes-live)) has no files in it, and D1 has held no
+notes since the cutover. `wrangler d1 export` works on D1 again, but what it exports is
+sign-in, connected apps, upload links and the account directory. It used to refuse the
+whole database because of the search tables, which have since moved into each account's
+store, and a refused export left D1 answering every query with "processing export"
+([workers-sdk#9519](https://github.com/cloudflare/workers-sdk/issues/9519)). So never put a
+virtual table — FTS5 or any other — back in D1.
 
 ### Restoring, or moving to another Unbent
 

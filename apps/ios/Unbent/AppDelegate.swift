@@ -97,6 +97,11 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
             AppDelegate.pendingPath = nil
             root.open(path: path)
         }
+        // A link or a quick action that launched the app, before the window as the
+        // notification's path above is: made key, the window loads the site at its home,
+        // and a path given after that is a second load of the page instead of its first.
+        options.userActivities.forEach(root.follow)
+        if let item = options.shortcutItem { _ = root.perform(item) }
         AppDelegate.root = root
         let window = UIWindow(windowScene: scene)
         window.rootViewController = root
@@ -104,13 +109,23 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         window.makeKeyAndVisible()
         self.window = window
         self.root = root
-        // A file opened in the app while it was not running arrives here, not below.
+        // A file that launched the app arrives here, not below.
         root.capture(options.urlContexts.map(\.url))
     }
 
     /// "Open in Unbent" from another app.
     func scene(_ scene: UIScene, openURLContexts contexts: Set<UIOpenURLContext>) {
         root?.capture(contexts.map(\.url))
+    }
+
+    /// A link to the site, tapped in Mail, Messages or Safari, while the app was running.
+    func scene(_ scene: UIScene, continue userActivity: NSUserActivity) {
+        root?.follow(userActivity)
+    }
+
+    /// A quick action from the Home Screen icon, while the app was running.
+    func windowScene(_ windowScene: UIWindowScene, performActionFor shortcutItem: UIApplicationShortcutItem, completionHandler: @escaping (Bool) -> Void) {
+        completionHandler(root?.perform(shortcutItem) ?? false)
     }
 
     func sceneDidBecomeActive(_ scene: UIScene) {

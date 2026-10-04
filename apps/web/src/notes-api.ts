@@ -602,12 +602,15 @@ export async function previewFieldConversion(
   notebookId: string,
   fieldId: string,
   type: FieldType,
-  scale?: FieldScale | null,
-): Promise<{ values: number; incompatible: number }> {
+  scale?: FieldScale | null | 'fit',
+): Promise<{ values: number; incompatible: number; scale: FieldScale | null }> {
   const query = new URLSearchParams({ type });
   // Absent means "whatever the field has now", which is what the repo assumes; an
-  // explicit empty scale is how a rating becoming a plain number asks for the count.
-  if (scale !== undefined) query.set('scale', scale ? `${scale.max}:${scale.step}` : '');
+  // explicit empty scale is how a rating becoming a plain number asks for the count, and
+  // `fit` asks the server to pick the scale the values suggest and name it in the answer.
+  if (scale !== undefined) {
+    query.set('scale', scale === 'fit' ? 'fit' : scale ? `${scale.max}:${scale.step}` : '');
+  }
   return json(
     await request(`/api/notebooks/${notebookId}/fields/${fieldId}/conversion?${query}`),
   );

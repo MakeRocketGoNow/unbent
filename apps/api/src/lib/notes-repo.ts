@@ -297,8 +297,8 @@ export class NotesRepo extends StoreRepo {
     notebookId: string,
     fieldId: string,
     to: FieldType,
-    toScale?: FieldScale | null | undefined,
-  ): Promise<{ values: number; incompatible: number } | null> {
+    toScale?: FieldScale | null | 'fit' | undefined,
+  ): Promise<{ values: number; incompatible: number; scale: FieldScale | null } | null> {
     return this.call((s) => s.previewConversion(notebookId, fieldId, to, toScale));
   }
 

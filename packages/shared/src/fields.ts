@@ -204,6 +204,44 @@ export function ratingSteps(scale: FieldScale): number[] {
   return out;
 }
 
+/** The scale a new rating starts on, in the create form and when nothing says otherwise. */
+export const DEFAULT_RATING_SCALE: FieldScale = { max: 5, step: 0.5 };
+
+/**
+ * The scale a field becoming a rating should take, read from the values it already holds.
+ *
+ * A number field that has been holding scores out of 10 used to become five stars, and
+ * every 6 to 10 was cleared in the process (MAK-80). The values say what scale they were
+ * written on far better than any default does, so the scale is the smallest that holds
+ * them: five if they all fit in five, otherwise up to the highest of them, as far as ten.
+ * Half steps stay on when a value needs them, and on a five-point scale because that is
+ * the default; on a wider scale of whole numbers they would only add levels nobody used.
+ *
+ * Rescaling was the alternative — an 8 out of 10 becoming four stars — and was not taken:
+ * it rewrites every value on a guess about the scale they were written on, where fitting
+ * the scale keeps each number exactly as it was typed. Narrowing afterwards stays the
+ * person's call, through the scale picker and its own confirmation.
+ *
+ * Only values a rating could ever hold count — 1 to `MAX_RATING_MAX`, on half steps — so a
+ * stray 250 or 0 is cleared rather than dragging the scale past what it can be. With none
+ * of those, it is the default. Which values those are is asked of `planConversion` on the
+ * widest scale there is, rather than read here a second way: the conversion decodes each
+ * row for the type it is leaving (a multi-select's `["9"]` is a 9) and holds it to the
+ * same number syntax, so the scale chosen and the values kept cannot disagree.
+ */
+export function fitRatingScale<R extends { text: string }>(from: FieldType, rows: R[]): FieldScale {
+  const widest: FieldScale = { max: MAX_RATING_MAX, step: 0.5 };
+  let top = 0;
+  let halves = false;
+  for (const { num } of planConversion(from, 'number', rows, widest).keep) {
+    if (num === null) continue;
+    top = Math.max(top, num);
+    if (!Number.isInteger(num)) halves = true;
+  }
+  const max = Math.max(DEFAULT_RATING_SCALE.max, Math.ceil(top));
+  return { max, step: halves || max <= DEFAULT_RATING_SCALE.max ? 0.5 : 1 };
+}
+
 export const fieldNameSchema = z
   .string()
   .trim()
