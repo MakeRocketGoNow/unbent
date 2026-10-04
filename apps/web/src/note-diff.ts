@@ -184,6 +184,13 @@ function changeRows(removed: string[], added: string[]): DiffRow[] {
   }
   const words = diffWordsWithSpace(before, after, { maxEditLength: MAX_EDIT_WORDS });
   if (!words) return wholeLines(removed, added);
+  /*
+     A line break only the note has cannot be drawn in one column. The rows below are cut
+     at every newline in the stream, so two lines the version holds as one were drawn as
+     two, the first with no mark on it — the note as it is, where Restore would join them.
+     Whole lines then: both of the note's removed, the version's one added.
+  */
+  if (words.some((w) => w.removed && w.value.includes('\n'))) return wholeLines(removed, added);
 
   const solid = (text: string) => text.replace(/\s+/g, '').length;
   const common = words.filter((w) => !w.added && !w.removed).reduce((n, w) => n + solid(w.value), 0);

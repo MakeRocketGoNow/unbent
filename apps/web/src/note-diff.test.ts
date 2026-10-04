@@ -136,6 +136,14 @@ describe('diffNote', () => {
     ]);
   });
 
+  it('draws two lines the version holds as one as whole lines, not as two unmarked ones', () => {
+    expect(rows('hello there\nworld wide', 'hello there world wide')).toEqual([
+      '- [-hello there-]',
+      '- [-world wide-]',
+      '+ {+hello there world wide+}',
+    ]);
+  });
+
   it('reads CRLF and a trailing newline as no difference', () => {
     expect(diffNote(note('One\r\nTwo\r\n'), note('One\nTwo')).body).toBe('same');
     expect(diffNote(note('One\nTwo'), note('One\nTwo\n')).body).toBe('same');
