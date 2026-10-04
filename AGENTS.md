@@ -192,8 +192,23 @@ straight to a PR. The `fix-linear-issue-cloud` skill carries the full loop.
 
 ## Running things
 
-**Do not leave background processes running.** This has been raised sharply. Don't
-`nohup`, don't background a dev server, don't leave watchers behind.
+**Nothing runs that the user has not been told about.** The rule used to be "stop everything
+when you're done", after sessions left servers behind with no sign they were there. That
+fixed the wrong half: the server was then always down in the middle of a session, just when
+the work was ready to be looked at. The trouble was never that something was running; it
+was that nobody knew.
+
+- **A dev server you started for the work stays up** while the work is open to review, so
+  the user can open the change without asking for it back.
+- **Say so at the end of every response while it is up**, in one line: that it is running,
+  its address (the port `pnpm dev` printed, not an assumed one), and which checkout it
+  serves. Every response, not only the one that started it — the line is how it gets
+  cleaned up, and a server mentioned once is a server forgotten.
+- **Stop it when the user says they are done**, when the branch is merged or abandoned, or
+  when asked. `worktree-down` is how. Say that it is stopped.
+- **Start it with the preview tools**, so the session holds a handle on it. Still never
+  `nohup`, never a detached `&` from `bash`, and no watchers, one-off HTTP servers or
+  anything else left behind: those are stopped in the turn that started them.
 
 The dev server is usually the user's, on :5173 (web) and :8787 (API) — those are the *main
 checkout's* ports. **Check before starting your own:**
@@ -202,7 +217,7 @@ checkout's* ports. **Check before starting your own:**
 curl -s -o /dev/null -w "%{http_code}" http://localhost:5173/
 ```
 
-If it's already up, use it. If you do start something, stop it when you're done. Use the
+If it's already up, use it, and leave it as you found it: it is not yours to stop. Use the
 browser preview tools rather than `bash` for anything server-shaped.
 
 From a worktree the ports are different and derived — `pnpm dev` prints them on its first

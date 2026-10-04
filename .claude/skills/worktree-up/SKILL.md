@@ -139,9 +139,10 @@ You don't need an authenticated browser session to measure CSS or computed style
 
 - **Report what the verification actually said.** If a step failed, say so with the output.
   Don't report success from a zero exit code you didn't read.
-- Background the dev server so the session can keep working, but treat it as owed: the
-  repo's rule is **do not leave background processes running**. `worktree-down` is how the
-  session ends.
+- Background the dev server so the session can keep working, and leave it up while the work
+  is open to review. The repo's rule is that **nothing runs that the user has not been told
+  about**: end every response with one line saying it is running and where, for as long as
+  it is. `worktree-down` stops it, when the user is done or asks.
 - The preview tool resolves its project root when the session *starts*. If this session did
   not start in the worktree, `preview_start` reads the main checkout's `launch.json` and
   reports a conflict that has nothing to do with your branch. Drive the printed URL
