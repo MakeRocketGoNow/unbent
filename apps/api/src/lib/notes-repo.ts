@@ -206,6 +206,11 @@ export class NotesRepo extends StoreRepo {
     return this.call((s) => s.tagCounts(filter));
   }
 
+  /** One notebook by name, with its fields, or null; see `NotesStore.notebookByName`. */
+  notebookByName(name: string): Promise<{ id: string; name: string; fields: FieldDef[] } | null> {
+    return this.call((s) => s.notebookByName(name));
+  }
+
   /** Where a set of notes is filed, and that notebook's fields when it is one; see `NotesStore.fieldTargets`. */
   fieldTargets(ids: string[]): Promise<{
     matched: string[];

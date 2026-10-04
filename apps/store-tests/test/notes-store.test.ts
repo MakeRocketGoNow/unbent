@@ -275,6 +275,19 @@ describe('notes: listing and counting', () => {
     expect(compact!.createdAt).toBe(full!.createdAt);
   });
 
+  it('finds a notebook by name whatever its case, with its own fields and no other notebook\'s', async () => {
+    const { stub } = freshStore('notebook-by-name');
+    const coupons = (await stub.createNotebook('Coupons'))!;
+    const other = (await stub.createNotebook('Podcast Bookmarks'))!;
+    await stub.createField(coupons.id, { name: 'Expires', type: 'date', options: [] });
+    await stub.createField(other.id, { name: 'Episode', type: 'text', options: [] });
+
+    const found = await stub.notebookByName('  coupons ');
+    expect(found).toMatchObject({ id: coupons.id, name: 'Coupons' });
+    expect(found!.fields.map((f) => f.name)).toEqual(['Expires']);
+    expect(await stub.notebookByName('Receipts')).toBeNull();
+  });
+
   it('says where a set of notes is filed, and gives the fields only when that is one notebook', async () => {
     const { stub } = freshStore('field-targets');
     const nb = (await stub.createNotebook('Coupons'))!;
@@ -983,6 +996,7 @@ describe('rows read on an archive-sized store', () => {
         stub.listPage({ limit: 50, untagged: true, notebook: 'Notebook 4' }, { untagged: true, notebook: 'Notebook 4' })),
       await measure('untagged page with its total', () => stub.listPage({ limit: 50, untagged: true }, { untagged: true })),
       await measure('compact page of 500', () => stub.list({ limit: 500, compact: true })),
+      await measure('notebook by name', () => stub.notebookByName('notebook 0')),
       await measure('field targets for 500 notes', () => stub.fieldTargets(Array.from({ length: 500 }, (_, k) => `n${String(k * 5).padStart(5, '0')}`))),
       await measure('get', () => stub.get('n01500')),
       await measure('stored counts', async () => {
@@ -1060,6 +1074,8 @@ describe('rows read on an archive-sized store', () => {
       // names (1,749, measured 2026-10-04). The same page with its field values and files
       // read 2,885, and read every body into the object besides.
       'compact page of 500': 2000,
+      // The notebook's row by name and its definitions: nothing that grows with the notes.
+      'notebook by name': 12,
       // Five hundred notes of one notebook by id, two rows a note — the key, then the
       // row — and the notebook's name and definitions once (1,003, measured 2026-10-04).
       // Joined to its notebook per note it was 1,502.

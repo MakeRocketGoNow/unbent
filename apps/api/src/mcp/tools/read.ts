@@ -116,13 +116,11 @@ async function resolveFieldFilters(
         'name of the notebook whose fields you mean.',
     };
   }
-  // The notebooks and every definition in one call, the one list_notebooks makes: this
-  // runs on each page of a walk, and looking the notebook up and then its fields was two
-  // requests to the store before the page itself.
-  const { notebooks, fields: all = [] } = await notes.notebooksOverview({ fields: true });
-  const found = notebooks.find((nb) => nb.name.toLowerCase() === notebook.trim().toLowerCase());
+  // The notebook and its definitions in one call: this runs on each page of a walk, ahead
+  // of the page itself.
+  const found = await notes.notebookByName(notebook);
   if (!found) return { error: `No such notebook: ${notebook}` };
-  const defs = all.filter((f) => f.notebookId === found.id);
+  const defs = found.fields;
 
   const out: FieldFilter[] = [];
   for (const f of filters) {

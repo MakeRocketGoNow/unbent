@@ -2769,6 +2769,25 @@ export class NotesStore {
   }
 
   /**
+   * One notebook by the name a person or a model gives it, with its field definitions, or
+   * null when there is none.
+   *
+   * For a caller that has a name and needs the ids behind it — a filter on the fields of
+   * the notebook a list is scoped to — on every page of a walk. The overview answers the
+   * same question and was what that caller used, but it reads every notebook, the count
+   * of unfiled notes and every definition in the account to use one notebook's. Matched
+   * as the list's own notebook filter matches, so a name that finds its fields here finds
+   * its notes there.
+   */
+  notebookByName(name: string): { id: string; name: string; fields: FieldDef[] } | null {
+    const row = this.sql.first<{ id: string; name: string }>(
+      `SELECT id, name FROM notebooks WHERE name = ?1 COLLATE NOCASE`,
+      name.trim(),
+    );
+    return row ? { id: row.id, name: row.name, fields: this.listFields(row.id) ?? [] } : null;
+  }
+
+  /**
    * Where a set of notes is filed, for a caller about to write field values to them by
    * name: which of the ids are live notes, the notebooks they are in with a count and one
    * note of each, and — when they are all in one — that notebook's field definitions.
