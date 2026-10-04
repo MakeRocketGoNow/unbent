@@ -1,8 +1,8 @@
 ---
 name: fix-linear-issue-cloud
-description: Take one or more Linear issues from report to open pull request — read them over MCP, move each to In Progress, implement, verify, commit with a "Fixes MAK-NN" trailer, push, open the PR, then move each issue to In Review with the PR linked. Use when the user gives a linear.app issue URL or an issue ID (e.g. "MAK-73") and asks to fix, implement, or work on it, and when a cloud session is started from a Linear issue. This is the repo's own copy, written so it also works in a Claude Code cloud session, where there is no gh CLI and the branch is assigned; prefer it over a personal fix-linear-issue skill of the same shape when running in the cloud. Do not use for GitHub issues, or for work that has no Linear issue.
+description: Take one or more Linear issues from report to open pull request — read them over MCP, move each to In Progress, implement, verify, commit with a "Fixes MAK-NN" trailer, run the review-and-fix loop on anything sizeable, push, open the PR, then move each issue to In Review with the PR linked. Use when the user gives a linear.app issue URL or an issue ID (e.g. "MAK-73") and asks to fix, implement, or work on it, and when a cloud session is started from a Linear issue. This is the repo's own copy, written so it also works in a Claude Code cloud session, where there is no gh CLI and the branch is assigned; prefer it over a personal fix-linear-issue skill of the same shape when running in the cloud. Do not use for GitHub issues, or for work that has no Linear issue.
 compatibility: Needs a Linear MCP connector (tools named get_issue / save_issue / list_issue_statuses / extract_images). Works in a Claude Code cloud session and on a local checkout; the two differ enough that step 0 decides which. Pushes a branch and opens a pull request without asking again — that is the point of the skill.
-allowed-tools: Read, Glob, Grep, Edit, Write, Bash(git:*), Bash(pnpm:*), Bash(node:*), Bash(npx:*), Bash(curl:*), ToolSearch, AskUserQuestion, mcp__Linear, mcp__github
+allowed-tools: Read, Glob, Grep, Edit, Write, Bash(git:*), Bash(pnpm:*), Bash(node:*), Bash(npx:*), Bash(curl:*), ToolSearch, AskUserQuestion, Skill, Agent, mcp__Linear, mcp__github
 ---
 
 # fix-linear-issue-cloud
@@ -14,7 +14,7 @@ the code.
 
 ## 0. Decide which environment you are in
 
-Everything in steps 4 and 7 forks on this, so settle it first:
+Everything in steps 4 and 8 forks on this, so settle it first:
 
 ```bash
 [ -n "$CLAUDE_CODE_REMOTE" ] && echo cloud || echo local
@@ -63,7 +63,7 @@ one PR or several.
 
 An issue that asks open questions rather than describing a fix (MAK-60 was "what are D1's
 backup policies?") is research, not an implementation. Answer it as a Linear comment, skip
-steps 4–8, and say that is what you did.
+steps 4–9, and say that is what you did.
 
 If Linear fails for a reason that is not "no connector" — an id that doesn't resolve, a
 permissions error — ask rather than reconstructing the issue from its title.
@@ -161,7 +161,30 @@ session's attribution trailers below it.
 Commit atomically as you go, each verified logical change as it lands — `AGENTS.md` asks for
 this explicitly. Stage explicit paths, not `git add -A`.
 
-## 7. Push and open the PR
+## 7. Polish before the PR
+
+Once the work is committed and before anything is pushed, run the `pr-polish-cloud` skill
+with no argument. It has the branch reviewed by a separate agent, fixes what that finds in
+atomic commits, and stops at the first round with no blockers, three rounds at most. The
+PR then opens already reviewed. Every moderate or large change used to be opened first and
+then put through review, filing and fixing by hand two or three times, and nobody is
+watching a cloud session to do that.
+
+**Skip it for a small change**: under about 150 changed lines (`git diff --shortstat
+origin/main...HEAD`) in a handful of files, with nothing risky in them — a CSS fix, a copy
+change, a one-function bug. A review round costs more than such a change can repay. Say
+that it was skipped, in the final message and in the PR body, so a reader knows the change
+has had no independent read.
+
+Its fix commits belong to the issue's work but don't each need a `Fixes` trailer; the
+commit from step 6 already carries it.
+
+If it ends with a blocker still open, or something it marked as needing the user: a known
+bug is not opened as a PR from a local checkout — say what is open and stop. In a cloud
+session, and for a decision a person can make at review, open the PR and put what is open
+at the top of its body.
+
+## 8. Push and open the PR
 
 AGENTS.md keeps pushing on request, and **invoking this skill is the request** — the whole
 loop through the PR is what it was asked for. So push and open the PR as soon as the change
@@ -191,7 +214,7 @@ commits applies to the body — describe the case that broke without quoting a r
 Offer to watch the PR afterwards (`subscribe_pr_activity`) so CI failures and review
 comments come back into the session.
 
-## 8. Move each issue to In Review and link the PR
+## 9. Move each issue to In Review and link the PR
 
 One call closes the loop:
 
