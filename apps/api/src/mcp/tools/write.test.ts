@@ -421,3 +421,203 @@ describe('create_notebook_field with a scale', () => {
     expect(created).toHaveLength(0);
   });
 });
+
+/*
+ * Tags are named by the model and addressed by id in the repo, so the lookup between the
+ * two is the logic here: exact and case-sensitive, because "Receipts" and "receipts" are
+ * two tags, and a refusal that says what a merge costs before it is asked for.
+ */
+describe('rename_tag and delete_tag', () => {
+  function tagRepo(renamed: 'ok' | 'conflict' | 'missing' = 'ok') {
+    const calls: Array<{ method: string; args: unknown[] }> = [];
+    const repo = {
+      listTags: async () => [
+        { id: 'tag-1', name: 'Receipts', count: 4 },
+        { id: 'tag-2', name: 'receipts', count: 1 },
+      ],
+      renameTag: async (id: string, name: string, opts: unknown) => {
+        calls.push({ method: 'renameTag', args: [id, name, opts] });
+        if (renamed === 'ok') return { id, name, merged: false };
+        return renamed;
+      },
+      deleteTag: async (id: string) => {
+        calls.push({ method: 'deleteTag', args: [id] });
+        return true;
+      },
+    } as unknown as NotesRepo;
+    return { calls, tools: collect(repo) };
+  }
+
+  const answer = (r: { content: Array<{ text: string }> }) => JSON.parse(r.content[0]!.text);
+
+  it('renames by exact name, resolving it to that tag and not its case-variant', async () => {
+    const { calls, tools } = tagRepo();
+    const result = answer(await tools.get('rename_tag')!({ tag: 'receipts', name: 'Bills', merge: false }));
+    expect(calls).toEqual([{ method: 'renameTag', args: ['tag-2', 'Bills', { merge: false }] }]);
+    expect(result).toEqual({ from: 'receipts', name: 'Bills', merged: false, notes: 1 });
+  });
+
+  it('refuses a rename onto an existing name and says what merge:true would do', async () => {
+    const { tools } = tagRepo('conflict');
+    const result = await tools.get('rename_tag')!({ tag: 'Receipts', name: 'Bills', merge: false });
+    expect(result.isError).toBe(true);
+    expect(result.content[0]!.text).toContain('merge:true');
+    expect(result.content[0]!.text).toContain('cannot be undone');
+  });
+
+  it('passes merge through, and reports a tag it does not know', async () => {
+    const { calls, tools } = tagRepo();
+    await tools.get('rename_tag')!({ tag: 'Receipts', name: 'Bills', merge: true });
+    expect(calls[0]?.args[2]).toEqual({ merge: true });
+
+    const unknown = await tools.get('rename_tag')!({ tag: 'RECEIPTS', name: 'Bills', merge: false });
+    expect(unknown.isError).toBe(true);
+    expect(unknown.content[0]!.text).toContain('No such tag: RECEIPTS');
+    expect(calls).toHaveLength(1);
+  });
+
+  it('deletes by exact name and says how many notes carried the tag', async () => {
+    const { calls, tools } = tagRepo();
+    const result = answer(await tools.get('delete_tag')!({ tag: 'Receipts' }));
+    expect(calls).toEqual([{ method: 'deleteTag', args: ['tag-1'] }]);
+    expect(result).toEqual({ tag: 'Receipts', deleted: true, notes: 4 });
+
+    const unknown = await tools.get('delete_tag')!({ tag: 'Nope' });
+    expect(unknown.isError).toBe(true);
+    expect(calls).toHaveLength(1);
+  });
+});
+
+describe('delete_notebook', () => {
+  function notebookRepo(deleted = true) {
+    const calls: unknown[][] = [];
+    const repo = {
+      listNotebooks: async () => [{ id: 'nb-1', name: 'Coupons', count: 12 }],
+      deleteNotebook: async (...args: unknown[]) => {
+        calls.push(args);
+        return deleted;
+      },
+    } as unknown as NotesRepo;
+    return { calls, tool: collect(repo).get('delete_notebook')! };
+  }
+
+  const answer = (r: { content: Array<{ text: string }> }) => JSON.parse(r.content[0]!.text);
+
+  it('unfiles the notes by default and says how many and which notebook', async () => {
+    const { calls, tool } = notebookRepo();
+    const result = answer(await tool({ notebookId: 'nb-1', trashNotes: false }));
+    expect(calls).toEqual([['nb-1', { trashNotes: false }]]);
+    expect(result).toEqual({ id: 'nb-1', name: 'Coupons', deleted: true, unfiled: 12 });
+  });
+
+  it('trashes the notes when asked, and reports them as trashed', async () => {
+    const { calls, tool } = notebookRepo();
+    const result = answer(await tool({ notebookId: 'nb-1', trashNotes: true }));
+    expect(calls).toEqual([['nb-1', { trashNotes: true }]]);
+    expect(result).toEqual({ id: 'nb-1', name: 'Coupons', deleted: true, trashed: 12 });
+  });
+
+  it('reports a notebook it cannot find without deleting anything', async () => {
+    const { calls, tool } = notebookRepo();
+    const result = await tool({ notebookId: 'nb-9', trashNotes: false });
+    expect(result.isError).toBe(true);
+    expect(calls).toHaveLength(0);
+  });
+});
+
+/*
+ * One notebook's field names over a set of notes. The store holds the rule that every
+ * note is in that notebook; what is pinned here is where the names are resolved from and
+ * that the store's refusal reaches the model as text.
+ */
+describe('update_note_fields', () => {
+  const other = '22222222-2222-4222-8222-222222222222';
+  const fields: FieldDef[] = [
+    { id: 'f-store', notebookId: 'nb-1', name: 'Store', type: 'text', options: [], scale: null, currency: null, position: 0 },
+  ];
+
+  type Target = { id: string | null; name: string | null; notes: number; example: string };
+
+  function fieldsRepo(opts: { refuse?: Error; notebooks?: Target[] } = {}) {
+    const calls: Array<{ ids: string[]; patch: Record<string, unknown> }> = [];
+    const repo = {
+      fieldTargets: async (ids: string[]) => {
+        const matched = ids.filter((id) => id === noteId);
+        const notebooks = matched.length
+          ? (opts.notebooks ?? [{ id: 'nb-1', name: 'Coupons', notes: 1, example: noteId }])
+          : [];
+        return { matched, notebooks, fields: notebooks.length === 1 && notebooks[0]!.id ? fields : [] };
+      },
+      updateMany: async (ids: string[], patch: Record<string, unknown>) => {
+        calls.push({ ids, patch });
+        if (opts.refuse) throw opts.refuse;
+        const matched = ids.filter((id) => id === noteId);
+        return { matched, changed: matched };
+      },
+    } as unknown as NotesRepo;
+    return { calls, tool: collect(repo).get('update_note_fields')! };
+  }
+
+  const answer = (r: { content: Array<{ text: string }> }) => JSON.parse(r.content[0]!.text);
+
+  it('resolves names against the notes\' notebook and writes once, by id', async () => {
+    const { calls, tool } = fieldsRepo();
+    const result = answer(await tool({ noteIds: [noteId, other], fields: { store: 'Acme' } }));
+    expect(calls.map((c) => c.patch)).toEqual([{ fields: { 'f-store': 'Acme' } }]);
+    expect(result).toEqual({ noteIds: [noteId], changed: 1, missing: [other] });
+  });
+
+  it('refuses an unknown name with the notebook\'s real ones, writing nothing', async () => {
+    const { calls, tool } = fieldsRepo();
+    const result = await tool({ noteIds: [noteId], fields: { Vendor: 'Acme' } });
+    expect(result.isError).toBe(true);
+    expect(result.content[0]!.text).toContain('Its fields are: Store');
+    expect(calls).toHaveLength(0);
+  });
+
+  it('refuses notes in no notebook by saying so, not by sending the caller to make a field', async () => {
+    const { calls, tool } = fieldsRepo({ notebooks: [{ id: null, name: null, notes: 1, example: noteId }] });
+    const result = await tool({ noteIds: [noteId], fields: { Store: 'Acme' } });
+    expect(result.isError).toBe(true);
+    expect(result.content[0]!.text).toContain('in no notebook');
+    expect(result.content[0]!.text).toContain('move_notes');
+    // The field exists; the note is in the wrong place. Creating a field would not help.
+    expect(result.content[0]!.text).not.toContain('create_notebook_field');
+    expect(calls).toHaveLength(0);
+  });
+
+  it('refuses a set that spans notebooks, naming each with a note of it', async () => {
+    const { calls, tool } = fieldsRepo({
+      notebooks: [
+        { id: 'nb-1', name: 'Coupons', notes: 2, example: noteId },
+        { id: null, name: null, notes: 1, example: other },
+      ],
+    });
+    const result = await tool({ noteIds: [noteId, other], fields: { Store: 'Acme' } });
+    expect(result.isError).toBe(true);
+    expect(result.content[0]!.text).toContain(`"Coupons" (2 notes, such as ${noteId})`);
+    expect(result.content[0]!.text).toContain(`no notebook (1 note, such as ${other})`);
+    expect(calls).toHaveLength(0);
+  });
+
+  it('passes the store\'s refusal on as text, naming the field and the note', async () => {
+    const { tool } = fieldsRepo({
+      refuse: new InvalidFieldValue('Store', `is not a field of any notebook note ${other} is in`),
+    });
+    const result = await tool({ noteIds: [noteId, other], fields: { Store: 'Acme' } });
+    expect(result.isError).toBe(true);
+    expect(result.content[0]!.text).toBe(`Store is not a field of any notebook note ${other} is in.`);
+  });
+
+  it('answers with everything missing when no id is a live note', async () => {
+    const { calls, tool } = fieldsRepo();
+    const result = answer(await tool({ noteIds: [other], fields: { Store: 'Acme' } }));
+    expect(result).toEqual({ noteIds: [], changed: 0, missing: [other] });
+    expect(calls).toHaveLength(0);
+  });
+
+  it('needs at least one field', async () => {
+    const { tool } = fieldsRepo();
+    expect((await tool({ noteIds: [noteId], fields: {} })).isError).toBe(true);
+  });
+});

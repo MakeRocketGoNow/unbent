@@ -79,6 +79,14 @@ export interface ListOptions {
   tags?: string[] | undefined;
   notebook?: string | undefined;
   fields?: FieldFilter[] | undefined;
+  /** Only notes with no tag at all; see `filterConditions`. */
+  untagged?: boolean | undefined;
+  /**
+   * Rows without their body, field values or files: what a caller that only wants to
+   * know which notes these are, and where each is filed, would throw away. See
+   * `summaryRows`.
+   */
+  compact?: boolean | undefined;
   sort?: NoteSort | undefined;
   order?: 'asc' | 'desc' | undefined;
   from?: string | undefined;
@@ -97,6 +105,8 @@ export interface CountOptions {
   tags?: string[] | undefined;
   notebook?: string | undefined;
   fields?: FieldFilter[] | undefined;
+  /** Only notes with no tag at all; see `filterConditions`. */
+  untagged?: boolean | undefined;
   trashed?: boolean | undefined;
   from?: string | undefined;
   to?: string | undefined;
@@ -291,7 +301,7 @@ export class NotesStore {
   }
 
   private pageRows(opts: ListOptions): SummaryRow[] {
-    const { limit, cursor, tags, notebook, fields, trashed, from, to } = opts;
+    const { limit, cursor, tags, notebook, fields, untagged, trashed, from, to } = opts;
     const sort = opts.sort ?? DEFAULT_NOTE_SORT;
     // Trash has one meaningful order — most recently deleted first — so it ignores both.
     const byField = !trashed && opts.sortField ? opts.sortField : undefined;
@@ -350,12 +360,15 @@ export class NotesStore {
     }
     conditions.push(
       // The range applies to the column being sorted, so the filter and the order agree.
-      ...filterConditions({ tags, notebook, fields, from, to, dateColumn: spec.dateColumn }, binds),
+      ...filterConditions({ tags, notebook, fields, untagged, from, to, dateColumn: spec.dateColumn }, binds),
     );
     binds.push(limit);
     const limitBind = `?${binds.length}`;
 
-    const columns = `n.id, n.title, n.body, n.created_at, n.updated_at, n.deleted_at, n.notebook_id`;
+    // A compact page never selects the body, here or in `summaryRows`: the page is
+    // materialised when it is sorted, and a body selected here would be carried through
+    // the sort to be dropped after it.
+    const columns = `n.id, n.title, ${opts.compact ? `''` : 'n.body'} AS body, n.created_at, n.updated_at, n.deleted_at, n.notebook_id`;
     let page: string;
     if (byField) {
       /*
@@ -426,6 +439,7 @@ export class NotesStore {
       page,
       binds,
       `${byField ? '(n.sort_key IS NULL) ASC, ' : ''}n.sort_key ${direction}, n.id ${direction}`,
+      { compact: opts.compact },
     );
   }
 
@@ -433,8 +447,20 @@ export class NotesStore {
    * The rows `page` chose, with their notebook, tags, fields and files; see `pageRows`.
    * `tags: false` leaves the tag names out, for a caller that reads the join rows itself
    * (`wholeNotes` wants ids too) and would otherwise pay for them twice.
+   *
+   * `compact` leaves out the body, the field values and the files, for a page that is
+   * read for its ids, titles, notebooks and tags and nothing else. Such a page is allowed
+   * to be five times the size of a full one, and that is what makes it matter here rather
+   * than in whoever drops the columns afterwards: five hundred bodies are read into the
+   * object to be excerpted and discarded — a body may be 1.8 MB — and the two subqueries
+   * are a probe each per note for values nobody is shown.
    */
-  private summaryRows(page: string, binds: Bind[], orderBy: string, opts: { tags?: boolean } = {}): SummaryRow[] {
+  private summaryRows(
+    page: string,
+    binds: Bind[],
+    orderBy: string,
+    opts: { tags?: boolean; compact?: boolean | undefined } = {},
+  ): SummaryRow[] {
     const tags =
       opts.tags === false
         ? 'NULL AS tags'
@@ -442,11 +468,11 @@ export class NotesStore {
                  JOIN tags t ON t.id = nt.tag_id
                 WHERE nt.note_id = n.id) AS tags`;
     return this.sql.exec<SummaryRow>(
-      `SELECT n.id, n.title, n.body, n.created_at, n.updated_at, n.deleted_at,
+      `SELECT n.id, n.title, ${opts.compact ? `''` : 'n.body'} AS body, n.created_at, n.updated_at, n.deleted_at,
               nb.name AS notebook, n.notebook_id,
               ${tags},
-              ${FIELDS_SUBQUERY},
-              ${ATTACHMENTS_SUBQUERY}
+              ${opts.compact ? 'NULL AS fields' : FIELDS_SUBQUERY},
+              ${opts.compact ? 'NULL AS attachments' : ATTACHMENTS_SUBQUERY}
          FROM (${page}) n
          LEFT JOIN notebooks nb ON nb.id = n.notebook_id
         ORDER BY ${orderBy}`,
@@ -479,6 +505,7 @@ export class NotesStore {
           tags: opts.tags,
           notebook: opts.notebook,
           fields: opts.fields,
+          untagged: opts.untagged,
           from: opts.from,
           to: opts.to,
           dateColumn: opts.trashed
@@ -511,8 +538,9 @@ export class NotesStore {
    * case-insensitively, a tag exactly. A name that matches nothing is 0 either way.
    */
   private storedCount(opts: CountOptions): number | undefined {
-    const { tags = [], notebook, fields = [], trashed, from, to } = opts;
-    if (from || to || fields.length > 0 || tags.length > 1) return undefined;
+    const { tags = [], notebook, fields = [], untagged, trashed, from, to } = opts;
+    // No stored count is of notes without tags, so it is counted like a field filter is.
+    if (from || to || untagged || fields.length > 0 || tags.length > 1) return undefined;
     if (tags.length === 1 && notebook) return undefined;
 
     if (trashed) return notebook || tags.length > 0 ? undefined : this.totals().trashed;
@@ -1139,10 +1167,27 @@ export class NotesStore {
    * over MCP. Tag rows are get-or-create as `setTags` has them; a tag removed from its
    * last note keeps its row, also as `setTags` leaves it, since `listTags` only counts
    * tags on live notes.
+   *
+   * `fields` sets the same values on every note, by field id, with `update`'s rules —
+   * merge, null clears, and each value validated against its definition by
+   * `prepareFieldWrites`, the one validator — and a note already holding a value keeps its
+   * date, as it does under `update`. What `update` leaves to its caller is made a rule
+   * here: every field must be one of the notebook the note will be in once this call has
+   * run. One note's editor offers only its own notebook's fields, so a value written by id
+   * to a note elsewhere is a mistake it cannot make; a set of notes is where a caller can
+   * make it by naming a field of one notebook over notes from two. That refuses the whole
+   * call, naming the note, rather than leaving values on notes that cannot show them. A
+   * bad value refuses the whole call too, and nothing is written: validation precedes the
+   * first write, and the transaction would take back anything before it.
    */
   updateMany(
     ids: string[],
-    patch: { notebook?: string | null | undefined; addTags?: string[] | undefined; removeTags?: string[] | undefined },
+    patch: {
+      notebook?: string | null | undefined;
+      addTags?: string[] | undefined;
+      removeTags?: string[] | undefined;
+      fields?: NoteFieldsPatch | undefined;
+    },
   ): { matched: string[]; changed: string[] } {
     const add = uniqueTags(patch.addTags ?? []);
     const remove = uniqueTags(patch.removeTags ?? []).filter((t) => !add.includes(t));
@@ -1172,6 +1217,19 @@ export class NotesStore {
       const notebookId =
         patch.notebook === undefined ? undefined : this.resolveNotebook(patch.notebook);
 
+      // Validated and built for every note before the first write, so a bad value or a
+      // field from the wrong notebook leaves nothing half done.
+      const fieldWrites =
+        patch.fields && Object.keys(patch.fields).length > 0
+          ? this.prepareBulkFieldWrites(
+              rows.map((r) => ({
+                id: r.id,
+                notebookId: notebookId === undefined ? r.notebook_id : notebookId,
+              })),
+              patch.fields,
+            )
+          : new Map<string, Statement[]>();
+
       const moving: string[] = [];
       /** Tag name → the notes that lack it, or that carry it. */
       const adding = new Map<string, string[]>();
@@ -1189,6 +1247,7 @@ export class NotesStore {
         const have = new Set(splitTags(row.tags));
         for (const tag of add) if (!have.has(tag)) note(adding, tag, row.id);
         for (const tag of remove) if (have.has(tag)) note(removing, tag, row.id);
+        if (fieldWrites.has(row.id)) changed.add(row.id);
       }
       if (changed.size === 0) return { matched, changed: [] };
 
@@ -1226,6 +1285,8 @@ export class NotesStore {
           );
         }
       }
+
+      for (const statements of fieldWrites.values()) this.run(statements);
 
       const now = Date.now();
       for (const run of runs([...changed])) {
@@ -1700,6 +1761,61 @@ export class NotesStore {
          FROM tags
         WHERE note_count > 0
         ORDER BY note_count DESC, name COLLATE NOCASE`,
+    );
+  }
+
+  /**
+   * The tags carried by the live notes of one set, with how many of that set carry each,
+   * most-used first: "what else do the notes in Coupons carry", or "what do the notes
+   * tagged Receipts also carry".
+   *
+   * The set is a notebook, a list of tags the note must carry all of, or both, with the
+   * semantics `list` gives them — the same `filterConditions`, so a count here is the
+   * number of notes that list would return under that tag. The tags that define the set
+   * are left out of the answer: every note in it carries them, so they would head the
+   * list with a count that says nothing. Tags with no live note in the set are not in it
+   * at all, which a join makes true without being asked.
+   *
+   * Unlike `listTags` this cannot read the triggers' counts, which are per tag and say
+   * nothing about a notebook: it walks the set's notes and their tag links, so it costs
+   * about the size of the set — a notebook of six hundred reads on the order of a
+   * thousand and a small one reads dozens. Never periodic, and never the unfiltered
+   * call, which stays `listTags` at one row per tag.
+   *
+   * The CROSS JOINs fix the order: the notes first, by whichever filter is the way in,
+   * then each one's links by the primary key, then the tag by id. Left to choose, the
+   * planner is free to start from `note_tags` and read every link in the account, which
+   * is what `+deleted_at` and `+n.notebook_id` (see `liveCondition`) exist to head off on
+   * the notes' side. With a tag in the filter those two are hidden and the way in is the
+   * tag's own links; with a notebook alone the per-notebook index is.
+   */
+  tagCounts(filter: {
+    notebook?: string | undefined;
+    tags?: string[] | undefined;
+  }): Array<{ id: string; name: string; count: number }> {
+    const binds: Bind[] = [];
+    const conditions = [
+      liveCondition(false, filter.tags),
+      ...filterConditions({ tags: filter.tags, notebook: filter.notebook }, binds),
+    ];
+    const named = (filter.tags ?? []).map((name) => {
+      binds.push(name);
+      return `?${binds.length}`;
+    });
+    // Counted by tag id first and named after, so the tags table is read once per tag in
+    // the set rather than once per link: a third of the reads for a notebook of notes
+    // with one or two tags each.
+    return this.sql.exec<{ id: string; name: string; count: number }>(
+      `SELECT t.id, t.name, c.count
+         FROM (SELECT nt.tag_id, COUNT(*) AS count
+                 FROM notes n
+                CROSS JOIN note_tags nt ON nt.note_id = n.id
+                WHERE ${conditions.join(' AND ')}
+                GROUP BY nt.tag_id) c
+         JOIN tags t ON t.id = c.tag_id
+        ${named.length > 0 ? `WHERE t.name NOT IN (${named.join(', ')})` : ''}
+        ORDER BY c.count DESC, t.name COLLATE NOCASE`,
+      ...binds,
     );
   }
 
@@ -2644,6 +2760,10 @@ export class NotesStore {
           : encodeFieldValue(withHeldOptions(def, stored), value);
       if (encoded === null) throw new InvalidFieldValue(def.name, expectedFieldValue(def));
       if (encoded !== 'clear' && encoded.text === stored) continue;
+      // A clear of a value the note does not hold writes nothing. `update` strips those
+      // before it gets here (`changedKeysOnly`); a bulk call does not, and without this
+      // every note it cleared a field on would be counted as changed and re-dated.
+      if (encoded === 'clear' && stored === undefined) continue;
 
       statements.push(
         encoded === 'clear'
@@ -2658,6 +2778,118 @@ export class NotesStore {
       );
     }
     return statements;
+  }
+
+  /**
+   * One notebook by the name a person or a model gives it, with its field definitions, or
+   * null when there is none.
+   *
+   * For a caller that has a name and needs the ids behind it — a filter on the fields of
+   * the notebook a list is scoped to — on every page of a walk. The overview answers the
+   * same question and was what that caller used, but it reads every notebook, the count
+   * of unfiled notes and every definition in the account to use one notebook's. Matched
+   * as the list's own notebook filter matches, so a name that finds its fields here finds
+   * its notes there.
+   */
+  notebookByName(name: string): { id: string; name: string; fields: FieldDef[] } | null {
+    const row = this.sql.first<{ id: string; name: string }>(
+      `SELECT id, name FROM notebooks WHERE name = ?1 COLLATE NOCASE`,
+      name.trim(),
+    );
+    return row ? { id: row.id, name: row.name, fields: this.listFields(row.id) ?? [] } : null;
+  }
+
+  /**
+   * Where a set of notes is filed, for a caller about to write field values to them by
+   * name: which of the ids are live notes, the notebooks they are in with a count and one
+   * note of each, and — when they are all in one — that notebook's field definitions.
+   *
+   * It exists so the question is asked of every note rather than guessed from one. A name
+   * means nothing until it is known which notebook's field it names, and a caller that
+   * read a single note to find out got an answer that depended on which note it happened
+   * to read: an unfiled one among fifty filed ones said the field did not exist. One read
+   * here, with the definitions in the same call, also replaces the three a caller made to
+   * learn the same thing (see rule 5 in AGENTS.md: a call is a billable request).
+   *
+   * No definitions for a mixed set or an unfiled one: there is no notebook to resolve
+   * against, and the caller's answer is to say so. A row a note, by primary key.
+   */
+  fieldTargets(ids: string[]): {
+    matched: string[];
+    notebooks: Array<{ id: string | null; name: string | null; notes: number; example: string }>;
+    fields: FieldDef[];
+  } {
+    const matched: string[] = [];
+    const notebooks = new Map<string | null, { id: string | null; name: string | null; notes: number; example: string }>();
+    for (const run of runs([...new Set(ids)])) {
+      const rows = this.sql.exec<{ id: string; notebook_id: string | null }>(
+        `SELECT n.id, n.notebook_id
+           FROM notes n
+          WHERE +n.deleted_at IS NULL
+            AND n.id IN (${placeholders(1, run.length)})`,
+        ...run,
+      );
+      for (const r of rows) {
+        matched.push(r.id);
+        const seen = notebooks.get(r.notebook_id);
+        if (seen) seen.notes += 1;
+        else notebooks.set(r.notebook_id, { id: r.notebook_id, name: null, notes: 1, example: r.id });
+      }
+    }
+    // Named after grouping, one read a notebook: joined to each note it was a read a
+    // note, a third of the call for five hundred notes that share one notebook.
+    for (const nb of notebooks.values()) {
+      if (nb.id) nb.name = this.sql.first<{ name: string }>(`SELECT name FROM notebooks WHERE id = ?1`, nb.id)?.name ?? null;
+    }
+    const all = [...notebooks.values()];
+    const only = all.length === 1 ? all[0]!.id : null;
+    return { matched, notebooks: all, fields: only ? (this.listFields(only) ?? []) : [] };
+  }
+
+  /**
+   * `prepareFieldWrites` for a set of notes: the statements for each note that has any,
+   * after checking that every field belongs to the notebook each note will be in.
+   *
+   * The membership check reads the definitions once for the set; the per-note read is
+   * `prepareFieldWrites`' own, so the validation and encoding stay one piece of code. A
+   * tombstoned definition is not a member — its notebook is gone — so bulk writes can
+   * neither set nor clear values left over from a deleted notebook, which a note's own
+   * editor can still do one at a time.
+   */
+  private prepareBulkFieldWrites(
+    notes: Array<{ id: string; notebookId: string | null }>,
+    patch: NoteFieldsPatch,
+  ): Map<string, Statement[]> {
+    const ids = Object.keys(patch);
+    if (ids.length > 100) throw new InvalidFieldValue('fields', 'Too many fields in one change');
+    const owners = new Map(
+      this.sql
+        .exec<{ id: string; notebook_id: string; name: string }>(
+          `SELECT id, notebook_id, name FROM notebook_fields
+            WHERE deleted_at IS NULL AND id IN (SELECT value FROM json_each(?1))`,
+          JSON.stringify(ids),
+        )
+        .map((r) => [r.id, r]),
+    );
+    for (const id of ids) if (!owners.has(id)) throw new InvalidFieldValue(id, 'No such field');
+
+    for (const n of notes) {
+      for (const id of ids) {
+        const owner = owners.get(id)!;
+        if (owner.notebook_id === n.notebookId) continue;
+        const where = n.notebookId
+          ? `the notebook "${this.sql.first<{ name: string }>(`SELECT name FROM notebooks WHERE id = ?1`, n.notebookId)?.name}", where note ${n.id} is filed`
+          : `any notebook note ${n.id} is in, since it is in none`;
+        throw new InvalidFieldValue(owner.name, `is not a field of ${where}`);
+      }
+    }
+
+    const writes = new Map<string, Statement[]>();
+    for (const n of notes) {
+      const statements = this.prepareFieldWrites(n.id, patch);
+      if (statements.length > 0) writes.set(n.id, statements);
+    }
+    return writes;
   }
 
   /** Runs statements built earlier, inside whatever transaction the caller holds. */

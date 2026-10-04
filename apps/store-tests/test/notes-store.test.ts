@@ -257,6 +257,93 @@ describe('notes: listing and counting', () => {
     expect(await stub.count({ exact: true })).toBe(12);
   });
 
+  it('leaves the body, field values and files out of a compact page, and nothing else', async () => {
+    const { stub } = freshStore('compact');
+    const nb = (await stub.createNotebook('Coupons'))!;
+    const store = (await stub.createField(nb.id, { name: 'Store', type: 'text', options: [] })) as { id: string };
+    const made = await stub.create(
+      note({ title: 'Acme 10% off', body: 'Ten percent off at example.com', notebook: 'Coupons', tags: ['Deals'], fields: { [store.id]: 'Acme' } }),
+    );
+
+    const [full] = await stub.list({ limit: 50 });
+    expect(full).toMatchObject({ excerpt: 'Ten percent off at example.com', fields: [expect.objectContaining({ name: 'Store' })] });
+
+    const [compact] = await stub.list({ limit: 50, compact: true });
+    expect(compact).toMatchObject({ id: made.id, title: 'Acme 10% off', notebook: 'Coupons', tags: ['Deals'], excerpt: '' });
+    expect(compact).not.toHaveProperty('fields');
+    // Paging is by the sort key, which a compact row still carries.
+    expect(compact!.createdAt).toBe(full!.createdAt);
+  });
+
+  it('finds a notebook by name whatever its case, with its own fields and no other notebook\'s', async () => {
+    const { stub } = freshStore('notebook-by-name');
+    const coupons = (await stub.createNotebook('Coupons'))!;
+    const other = (await stub.createNotebook('Podcast Bookmarks'))!;
+    await stub.createField(coupons.id, { name: 'Expires', type: 'date', options: [] });
+    await stub.createField(other.id, { name: 'Episode', type: 'text', options: [] });
+
+    const found = await stub.notebookByName('  coupons ');
+    expect(found).toMatchObject({ id: coupons.id, name: 'Coupons' });
+    expect(found!.fields.map((f) => f.name)).toEqual(['Expires']);
+    expect(await stub.notebookByName('Receipts')).toBeNull();
+  });
+
+  it('says where a set of notes is filed, and gives the fields only when that is one notebook', async () => {
+    const { stub } = freshStore('field-targets');
+    const nb = (await stub.createNotebook('Coupons'))!;
+    await stub.createField(nb.id, { name: 'Expires', type: 'date', options: [] });
+    const a = await stub.create(note({ title: 'Acme 10% off', notebook: 'Coupons' }));
+    const b = await stub.create(note({ title: 'Acme free shipping', notebook: 'Coupons' }));
+    const loose = await stub.create(note({ title: 'Report (final) v2' }));
+    const gone = await stub.create(note({ title: 'Trashed', notebook: 'Coupons' }));
+    await stub.remove(gone.id);
+
+    const one = await stub.fieldTargets([a.id, b.id, gone.id, 'no-such-note']);
+    // A trashed note and an unknown id are equally not there to be written to.
+    expect(one.matched.sort()).toEqual([a.id, b.id].sort());
+    expect(one.notebooks).toEqual([{ id: nb.id, name: 'Coupons', notes: 2, example: expect.any(String) }]);
+    expect(one.fields.map((f) => f.name)).toEqual(['Expires']);
+
+    // Mixed with an unfiled note there is no one notebook to resolve a name against.
+    const mixed = await stub.fieldTargets([a.id, loose.id]);
+    expect(mixed.notebooks).toHaveLength(2);
+    expect(mixed.notebooks.find((n) => n.id === null)).toEqual({ id: null, name: null, notes: 1, example: loose.id });
+    expect(mixed.fields).toEqual([]);
+
+    expect(await stub.fieldTargets([loose.id])).toMatchObject({ matched: [loose.id], fields: [] });
+    expect(await stub.fieldTargets(['no-such-note'])).toEqual({ matched: [], notebooks: [], fields: [] });
+  });
+
+  it('lists and counts the notes with no tag, live only, alone or within a notebook', async () => {
+    const { stub } = freshStore('untagged');
+    const bare = await stub.create(note({ title: 'Bare', notebook: 'Coupons' }));
+    const bareElsewhere = await stub.create(note({ title: 'Bare elsewhere' }));
+    await stub.create(note({ title: 'Tagged', notebook: 'Coupons', tags: ['Acme'] }));
+    const trashed = await stub.create(note({ title: 'Trashed bare', notebook: 'Coupons' }));
+    await stub.remove(trashed.id);
+    // A note that had a tag and lost it is untagged again, though the tag's row stays.
+    const stripped = await stub.create(note({ title: 'Stripped', notebook: 'Coupons', tags: ['Acme'] }));
+    await stub.update(stripped.id, { tags: [] });
+
+    const ids = async (opts: Parameters<typeof stub.list>[0]) => (await stub.list(opts)).map((n) => n.id).sort();
+    expect(await ids({ limit: 50, untagged: true })).toEqual([bare.id, bareElsewhere.id, stripped.id].sort());
+    expect(await ids({ limit: 50, untagged: true, notebook: 'Coupons' })).toEqual([bare.id, stripped.id].sort());
+    expect(await ids({ limit: 50, untagged: true, notebook: UNFILED })).toEqual([bareElsewhere.id]);
+    // The count is not the stored one, which knows nothing of tags; and it agrees with the list.
+    expect(await stub.count({ untagged: true })).toBe(3);
+    expect(await stub.count({ untagged: true, notebook: 'Coupons' })).toBe(2);
+    // Together with a tag the two contradict, and nothing matches.
+    expect(await stub.list({ limit: 50, untagged: true, tags: ['Acme'] })).toEqual([]);
+    expect(await stub.count({ untagged: true, tags: ['Acme'] })).toBe(0);
+    // Off, it narrows nothing.
+    expect(await stub.count({ untagged: false })).toBe(4);
+    // And it pages: a cursor over the narrowed list skips and repeats nothing.
+    const first = await stub.list({ limit: 2, untagged: true, sort: 'created', order: 'asc' });
+    const last = first[first.length - 1]!;
+    const next = await stub.list({ limit: 2, untagged: true, sort: 'created', order: 'asc', cursor: `${last.createdAt}\u001F${last.id}` });
+    expect([...first, ...next].map((n) => n.id).sort()).toEqual([bare.id, bareElsewhere.id, stripped.id].sort());
+  });
+
   it('sorts by a field: valued notes first in value order, then the rest by id, paged across the seam', async () => {
     const { stub } = freshStore('fieldsort');
     const { amount, ids } = await seed(stub);
@@ -394,6 +481,53 @@ describe('notes: bulk actions and purging', () => {
     const before = (await stub.get(a.id))!.updatedAt;
     expect(await stub.updateMany([a.id], { notebook: 'Here', addTags: ['keep'] })).toEqual({ matched: [a.id], changed: [] });
     expect((await stub.get(a.id))!.updatedAt).toBe(before);
+  });
+
+  it('sets a field value across a selection, merging, leaving held values dated and refusing the wrong notebook', async () => {
+    const { stub } = freshStore('bulk-fields');
+    const store = (await stub.createField((await stub.createNotebook('Coupons'))!.id, { name: 'Store', type: 'text', options: [] })) as { id: string };
+    const kind = (await stub.createField((await stub.listNotebooks())[0]!.id, { name: 'Kind', type: 'select', options: ['food', 'fuel'] })) as { id: string };
+    const a = await stub.create(note({ notebook: 'Coupons', fields: { [store.id]: 'Acme', [kind.id]: 'food' } }));
+    const b = await stub.create(note({ notebook: 'Coupons' }));
+    const c = await stub.create(note({ notebook: 'Coupons', fields: { [store.id]: 'Acme' } }));
+    const elsewhere = await stub.create(note({ notebook: 'Taxes' }));
+    const unfiled = await stub.create(note({}));
+    const heldDate = (await stub.get(c.id))!.updatedAt;
+
+    // Only the named field changes; a note already holding the value is matched, not changed.
+    const done = await stub.updateMany([a.id, b.id, c.id, 'ghost'], { fields: { [store.id]: 'Acme' } });
+    expect(done.matched.sort()).toEqual([a.id, b.id, c.id].sort());
+    expect(done.changed).toEqual([b.id]);
+    expect((await stub.get(c.id))!.updatedAt).toBe(heldDate);
+    expect((await stub.get(a.id))!.fields!.map((v) => [v.name, v.value]).sort()).toEqual([['Kind', 'food'], ['Store', 'Acme']]);
+    expect((await stub.get(b.id))!.fields!.map((v) => [v.name, v.value])).toEqual([['Store', 'Acme']]);
+
+    // Null clears, but only where there is something to clear.
+    const cleared = await stub.updateMany([a.id, b.id, c.id], { fields: { [kind.id]: null } });
+    expect(cleared.changed).toEqual([a.id]);
+    expect((await stub.get(a.id))!.fields!.map((v) => v.name)).toEqual(['Store']);
+
+    // A value the field cannot hold refuses the call, and nothing before it lands.
+    await expect(stub.updateMany([a.id, b.id], { addTags: ['half'], fields: { [kind.id]: 'water' } })).rejects.toMatchObject({
+      name: 'InvalidFieldValue',
+      fieldName: 'Kind',
+    });
+    expect((await stub.get(a.id))!.tags).toEqual([]);
+
+    // Notes from another notebook, or none, refuse the whole call and say which note.
+    for (const stray of [elsewhere, unfiled]) {
+      await expect(stub.updateMany([a.id, stray.id], { fields: { [store.id]: 'Beta' } })).rejects.toMatchObject({
+        name: 'InvalidFieldValue',
+        fieldName: 'Store',
+        message: expect.stringContaining(stray.id),
+      });
+    }
+    expect((await stub.get(a.id))!.fields!.find((v) => v.name === 'Store')!.value).toBe('Acme');
+
+    // The destination counts: the same patch is fine alongside a move into the notebook.
+    const moved = await stub.updateMany([elsewhere.id], { notebook: 'Coupons', fields: { [store.id]: 'Beta' } });
+    expect(moved.changed).toEqual([elsewhere.id]);
+    await expect(stub.updateMany([a.id], { fields: { 'no-such-field': 'x' } })).rejects.toMatchObject({ name: 'InvalidFieldValue' });
   });
 
   it('trashes, restores and purges many, skipping ids on the wrong side of the trash', async () => {
@@ -548,6 +682,35 @@ describe('tags and notebooks', () => {
     expect(await stub.listTags()).toEqual([]);
   });
 
+  it('counts tags within a notebook or beside other tags, over live notes only', async () => {
+    const { stub } = freshStore('tag-counts');
+    await stub.create(note({ notebook: 'Coupons', tags: ['Acme', 'Food'] }));
+    await stub.create(note({ notebook: 'Coupons', tags: ['Acme', 'Fuel'] }));
+    await stub.create(note({ notebook: 'coupons', tags: ['Acme'] }));
+    const gone = await stub.create(note({ notebook: 'Coupons', tags: ['Trashed only', 'Food'] }));
+    await stub.create(note({ notebook: 'Taxes', tags: ['Acme', 'Food', 'Filed'] }));
+    await stub.create(note({ tags: ['Acme', 'Loose'] }));
+    await stub.remove(gone.id);
+    const names = async (filter: Parameters<typeof stub.tagCounts>[0]) =>
+      (await stub.tagCounts(filter)).map((t) => [t.name, t.count]);
+
+    // A notebook: its live notes only, named in any case, most used first, ties by name.
+    expect(await names({ notebook: 'COUPONS' })).toEqual([['Acme', 3], ['Food', 1], ['Fuel', 1]]);
+    // A tag with no live note in the set is not there: "Trashed only" is on a trashed note.
+    expect((await names({ notebook: 'Coupons' })).map(([n]) => n)).not.toContain('Trashed only');
+    expect(await names({ notebook: UNFILED })).toEqual([['Acme', 1], ['Loose', 1]]);
+    expect(await names({ notebook: 'No such notebook' })).toEqual([]);
+
+    // Tags: the notes carrying every one, and the tags named are not in the answer.
+    expect(await names({ tags: ['Acme'] })).toEqual([['Food', 2], ['Filed', 1], ['Fuel', 1], ['Loose', 1]]);
+    expect(await names({ tags: ['Acme', 'Food'] })).toEqual([['Filed', 1]]);
+    expect(await names({ tags: ['Nothing'] })).toEqual([]);
+    // Both: the intersection, and counts agree with what `count` says the set holds.
+    expect(await names({ notebook: 'Coupons', tags: ['Food'] })).toEqual([['Acme', 1]]);
+    expect(await stub.count({ notebook: 'Coupons', tags: ['Food'] })).toBe(1);
+    expect(await names({ notebook: 'Coupons', tags: ['Acme'] })).toEqual([['Food', 1], ['Fuel', 1]]);
+  });
+
   it('creates, renames and deletes notebooks, keeping field values readable as tombstones', async () => {
     const { stub } = freshStore('notebooks');
     expect(await stub.createNotebook('  ')).toBeNull();
@@ -675,6 +838,15 @@ describe('composites', () => {
     expect(page.total).toBe(2);
     expect((await stub.listPage({ limit: 10 }, null)).total).toBeNull();
 
+    // A first page that came up short is its own total, and that page above was one, so
+    // on its own it never counts. A full first page cannot know what is past it: it has
+    // to count, from the stored number and from the rows alike, or a list of two says one.
+    const full = await stub.listPage({ limit: 1 }, {});
+    expect(full.items.length).toBe(1);
+    expect(full.total).toBe(2);
+    // One untagged note and a limit of one: full, so counted from the rows.
+    expect((await stub.listPage({ limit: 1, untagged: true }, { untagged: true })).total).toBe(1);
+
     const got = await stub.getWithFiles(a.id);
     expect(got!.note.id).toBe(a.id);
     expect(got!.files).toEqual([{ filename: 'scan.pdf', contentType: 'application/pdf', size: 1 }]);
@@ -752,11 +924,13 @@ describe('rows read on an archive-sized store', () => {
     await runInDurableObject(stub, (_i, state) => {
       const sql = state.storage.sql;
       state.storage.transactionSync(() => {
-        for (let n = 0; n < 5; n++) sql.exec(`INSERT INTO notebooks (id, name, created_at) VALUES (?1, ?2, 1)`, `nb${n}`, `Notebook ${n}`);
+        for (let n = 0; n < 6; n++) sql.exec(`INSERT INTO notebooks (id, name, created_at) VALUES (?1, ?2, 1)`, `nb${n}`, `Notebook ${n}`);
         sql.exec(`INSERT INTO tags (id, name) VALUES ('rare', 'rare'), ('common', 'common')`);
         sql.exec(`INSERT INTO notebook_fields (id, notebook_id, name, type, position, created_at) VALUES ('amount', 'nb0', 'Amount', 'number', 0, 1)`);
         for (let i = 0; i < 3000; i++) {
-          const nb = `nb${i % 5}`;
+          // The last thirty are a notebook of their own: a measure that is fine on a big
+          // notebook can still read the whole account for a small one.
+          const nb = i >= 2970 ? 'nb5' : `nb${i % 5}`;
           sql.exec(
             `INSERT INTO notes (id, title, body, created_at, updated_at, notebook_id) VALUES (?1, ?2, 'receipt total due', ?3, ?3, ?4)`,
             `n${String(i).padStart(5, '0')}`,
@@ -766,7 +940,11 @@ describe('rows read on an archive-sized store', () => {
             1_000_000 + i,
             nb,
           );
-          if (i % 2 === 0) sql.exec(`INSERT INTO note_tags VALUES (?1, 'common')`, `n${String(i).padStart(5, '0')}`);
+          // Notebook 4 is the one that has nearly been tidied: all but three of its notes
+          // carry a tag. Looking for what is left there is the untagged filter's worst case
+          // and its real one — nothing lets a page stop before the end of the notebook.
+          const tidied = nb === 'nb4' && i > 14;
+          if (i % 2 === 0 || tidied) sql.exec(`INSERT INTO note_tags VALUES (?1, 'common')`, `n${String(i).padStart(5, '0')}`);
           if (i % 1000 === 0) sql.exec(`INSERT INTO note_tags VALUES (?1, 'rare')`, `n${String(i).padStart(5, '0')}`);
           if (i % 5 === 0) sql.exec(`INSERT INTO note_fields (note_id, field_id, value_text, value_num) VALUES (?1, 'amount', ?2, ?2)`, `n${String(i).padStart(5, '0')}`, i);
           if (i % 3 === 0) sql.exec(`INSERT INTO attachments (id, note_id, filename, content_type, size, r2_key, created_at) VALUES (?1, ?2, 'scan.pdf', 'application/pdf', 10, ?1, 1)`, `att-n${String(i).padStart(5, '0')}`, `n${String(i).padStart(5, '0')}`);
@@ -802,6 +980,26 @@ describe('rows read on an archive-sized store', () => {
       await measure('rare tag page', () => stub.list({ limit: 50, tags: ['rare'] })),
       await measure('rare tag count', () => stub.count({ tags: ['rare'], notebook: 'Notebook 0' })),
       await measure('field sort page', () => stub.list({ limit: 50, notebook: 'Notebook 0', sortField })),
+      // The tags of a set, counted within it: the cost is the set's, so these are the
+      // three sizes it can be — a notebook of six hundred, one of thirty, and a tag on three.
+      await measure('tag counts in a big notebook', () => stub.tagCounts({ notebook: 'Notebook 3' })),
+      await measure('tag counts in a small notebook', () => stub.tagCounts({ notebook: 'Notebook 5' })),
+      await measure('tag counts under a rare tag', () => stub.tagCounts({ tags: ['rare'] })),
+      await measure('tag counts under a rare tag in a notebook', () => stub.tagCounts({ tags: ['rare'], notebook: 'Notebook 0' })),
+      // Notes without a tag: a page stops once it has fifty, a notebook's count reads each
+      // of its notes once, and the account's reads every note — the one that is dear.
+      await measure('untagged page', () => stub.list({ limit: 50, untagged: true })),
+      await measure('untagged page in a small notebook', () => stub.list({ limit: 50, untagged: true, notebook: 'Notebook 5' })),
+      await measure('untagged count in a big notebook', () => stub.count({ untagged: true, notebook: 'Notebook 3' })),
+      await measure('untagged count in a small notebook', () => stub.count({ untagged: true, notebook: 'Notebook 5' })),
+      await measure('untagged count', () => stub.count({ untagged: true })),
+      await measure('untagged page where few are left', () => stub.list({ limit: 50, untagged: true, notebook: 'Notebook 4' })),
+      await measure('untagged page where few are left, with its total', () =>
+        stub.listPage({ limit: 50, untagged: true, notebook: 'Notebook 4' }, { untagged: true, notebook: 'Notebook 4' })),
+      await measure('untagged page with its total', () => stub.listPage({ limit: 50, untagged: true }, { untagged: true })),
+      await measure('compact page of 500', () => stub.list({ limit: 500, compact: true })),
+      await measure('notebook by name', () => stub.notebookByName('notebook 0')),
+      await measure('field targets for 500 notes', () => stub.fieldTargets(Array.from({ length: 500 }, (_, k) => `n${String(k * 5).padStart(5, '0')}`))),
       await measure('get', () => stub.get('n01500')),
       await measure('stored counts', async () => {
         await stub.count();
@@ -843,6 +1041,47 @@ describe('rows read on an archive-sized store', () => {
       'rare tag page': 60,
       'rare tag count': 20,
       'field sort page': 600,
+      // A notebook's tags cost about two and a half rows a note — the note, its links —
+      // and no more: 1,489 for 594 notes, 77 for 30 (2026-10-04). A plan that started from
+      // the links would read the account's 1,500 of them whatever the notebook, so the
+      // small one is what shows it.
+      'tag counts in a big notebook': 1800,
+      'tag counts in a small notebook': 120,
+      'tag counts under a rare tag': 60,
+      'tag counts under a rare tag in a notebook': 60,
+      // A note is read once and asked once of its links, so a count is a row and a half a
+      // note in scope and a page stops after the first fifty that have no tag (measured
+      // 2026-10-04: 313 and 97 for the pages, 893 and 46 in a notebook, 4,500 for all
+      // 3,000 notes; the account-wide count is 4,796 now that one notebook is nearly all
+      // tagged, a found link being a row where a missing one is not). The account-wide
+      // count is the dear one, and why the tool's description tells a caller with a
+      // large archive to name a notebook.
+      'untagged page': 450,
+      'untagged page in a small notebook': 150,
+      'untagged count in a big notebook': 1200,
+      'untagged count in a small notebook': 80,
+      'untagged count': 5200,
+      // The page that cannot stop early: three untagged notes in a notebook of 597, so
+      // every note is read and asked for its links before the page comes back short —
+      // two rows a note (1,193, measured 2026-10-04). This is what the filter costs when
+      // it is used for what it is for.
+      'untagged page where few are left': 1400,
+      // With its total it costs the same 1,193: a first page that came up short is its
+      // own count, where counting separately walked the notebook a second time.
+      'untagged page where few are left, with its total': 1400,
+      // A full first page still counts, since it cannot know what is past it: the page's
+      // 313 and the account's 4,796 (5,151 measured).
+      'untagged page with its total': 5600,
+      // Three and a half rows a note: the note, its notebook, its tag links and their
+      // names (1,749, measured 2026-10-04). The same page with its field values and files
+      // read 2,885, and read every body into the object besides.
+      'compact page of 500': 2000,
+      // The notebook's row by name and its definitions: nothing that grows with the notes.
+      'notebook by name': 12,
+      // Five hundred notes of one notebook by id, two rows a note — the key, then the
+      // row — and the notebook's name and definitions once (1,003, measured 2026-10-04).
+      // Joined to its notebook per note it was 1,502.
+      'field targets for 500 notes': 1200,
       get: 10,
       'stored counts': 10,
       usage: 4,

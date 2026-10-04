@@ -369,6 +369,139 @@ export function registerWriteTools(server: McpServer, notes: NotesRepo): void {
   );
 
   server.registerTool(
+    'update_note_fields',
+    {
+      title: 'Set custom field values on several notes',
+      description:
+        'Set the same custom field values on one or more notes at once, by field name, ' +
+        'without touching anything else about them. The values follow update_note\'s rules: ' +
+        'only the fields named change, null clears one, and a value must fit its field. All ' +
+        'the notes must be in one notebook, and the fields must be that notebook\'s; notes ' +
+        'from different notebooks, or in none, are refused, so group them first with ' +
+        'list_notes or move_notes. A note that already holds the value given is left alone ' +
+        'and not counted as changed; one holding a different value is overwritten. If ' +
+        'any value is refused nothing is written. Answers with the notes it reached, how ' +
+        'many changed, and any ids it could not find.',
+      inputSchema: z.object({
+        noteIds: noteIdsSchema,
+        fields: fieldsSchema,
+      }),
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    },
+    async ({ noteIds, fields }) => {
+      if (Object.keys(fields).length === 0) {
+        return toolError('Nothing to do: name at least one field and the value to set.');
+      }
+      // Names resolve against the notebook the notes are in, so the store is asked where
+      // all of them are, not where one is: resolving against whichever note came back
+      // first told a caller whose set held one unfiled note that the field did not exist
+      // and to create it. A set in two notebooks, or in none, is refused here by name,
+      // before a field name is looked at.
+      const target = await notes.fieldTargets(noteIds);
+      if (target.matched.length === 0) return jsonResult({ noteIds: [], changed: 0, missing: noteIds });
+      const describe = (nb: (typeof target.notebooks)[number]) =>
+        `${nb.name ? `"${nb.name}"` : 'no notebook'} (${nb.notes} ${nb.notes === 1 ? 'note' : 'notes'}, such as ${nb.example})`;
+      if (target.notebooks.length > 1) {
+        return toolError(
+          `These notes are in more than one place: ${target.notebooks.map(describe).join('; ')}. ` +
+            'Fields belong to one notebook, so every note given must be in the notebook whose ' +
+            'fields you are setting. Move them there with move_notes first, or leave the others out.',
+        );
+      }
+      const notebook = target.notebooks[0]!;
+      if (!notebook.id) {
+        return toolError(
+          'These notes are in no notebook, and fields belong to one. File them with move_notes ' +
+            'first, into the notebook whose fields you are setting.',
+        );
+      }
+      const resolved = resolveFieldNames(fields, target.fields, [], notebook.name);
+      if ('error' in resolved) return toolError(resolved.error);
+      try {
+        // The store checks again that every note is in the notebook those fields belong
+        // to — a note can move between the two calls — and names one that is not; its
+        // answer is passed on as it is.
+        const done = await notes.updateMany(noteIds, { fields: resolved.patch });
+        return jsonResult({
+          noteIds: done.matched,
+          changed: done.changed.length,
+          missing: noteIds.filter((id) => !done.matched.includes(id)),
+        });
+      } catch (err) {
+        if (err instanceof InvalidFieldValue) return toolError(`${err.fieldName} ${err.message}.`);
+        throw err;
+      }
+    },
+  );
+
+  /*
+     Tags are addressed by name here, as every other tool does, and resolved to the id the
+     repo wants from `listTags`. That list is live notes only, so a tag whose every note is
+     in the trash is "no such tag" to these two — the same answer list_tags gives, which is
+     what the assistant has just read.
+  */
+  server.registerTool(
+    'rename_tag',
+    {
+      title: 'Rename or merge a tag',
+      description:
+        'Rename a tag everywhere it is used. The current name matches exactly, case ' +
+        'included; list_tags has the spellings. If another tag already has the new name the ' +
+        'call is refused, since the two would become one: pass merge:true to fold this tag ' +
+        'into that one, so every note that carried it carries the other instead. A merge ' +
+        'cannot be undone, so confirm it with the person first. Notes\' own dates do not ' +
+        'change.',
+      inputSchema: z.object({
+        tag: tagNameSchema.describe('The tag to rename, by its current name.'),
+        name: tagNameSchema.describe('The new name.'),
+        merge: z
+          .boolean()
+          .default(false)
+          .describe('Fold the tag into the existing one with the new name instead of refusing.'),
+      }),
+      // Destructive for the merge, which cannot be taken back, though a plain rename can:
+      // the hint is per tool, and `update_notebook_field` settles it the same way.
+      annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false },
+    },
+    async ({ tag, name, merge }) => {
+      const existing = (await notes.listTags()).find((t) => t.name === tag);
+      if (!existing) return notFound('tag', tag);
+      const result = await notes.renameTag(existing.id, name, { merge });
+      if (result === 'missing') return notFound('tag', tag);
+      if (result === 'conflict') {
+        return toolError(
+          `A tag called "${name}" already exists, so renaming "${tag}" to it would merge the ` +
+            'two. Pass merge:true to fold this tag into it: every note carrying it will carry ' +
+            `"${name}" instead, and that cannot be undone. Or choose another name.`,
+        );
+      }
+      return jsonResult({ from: tag, name: result.name, merged: result.merged, notes: existing.count });
+    },
+  );
+
+  server.registerTool(
+    'delete_tag',
+    {
+      title: 'Delete a tag',
+      description:
+        'Delete a tag by its exact name, taking it off every note that carries it. The notes ' +
+        'themselves stay, with their other tags; only the label goes, and it cannot be ' +
+        'brought back except by tagging again, so confirm it with the person first, saying ' +
+        'how many notes carry it (list_tags has the count). Answers with how many notes ' +
+        'carried it.',
+      inputSchema: z.object({ tag: tagNameSchema.describe('The tag to delete, by name.') }),
+      annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false },
+    },
+    async ({ tag }) => {
+      // The count is read first, since the delete is what removes the thing counted.
+      const existing = (await notes.listTags()).find((t) => t.name === tag);
+      if (!existing) return notFound('tag', tag);
+      if (!(await notes.deleteTag(existing.id))) return notFound('tag', tag);
+      return jsonResult({ tag, deleted: true, notes: existing.count });
+    },
+  );
+
+  server.registerTool(
     'move_notes',
     {
       title: 'Move notes to a notebook',
@@ -528,11 +661,53 @@ export function registerWriteTools(server: McpServer, notes: NotesRepo): void {
     },
   );
 
+  server.registerTool(
+    'delete_notebook',
+    {
+      title: 'Delete a notebook',
+      description:
+        'Delete a notebook by id; get the id from list_notebooks. By default its notes are ' +
+        'kept and filed in no notebook. With trashNotes:true its live notes go to the trash ' +
+        'instead, where restore_notes brings them back, filed in no notebook, so no note is ' +
+        'destroyed either way. The notebook itself, its purpose, emoji and field definitions ' +
+        'are gone and cannot be recovered, so confirm it with the person first, naming the ' +
+        'notebook and how many notes it holds; the values the notes hold in those fields ' +
+        'stay on the notes and still show on get_note, labelled with the notebook they came ' +
+        'from. Prefer move_notes to another notebook first when the notes belong somewhere. ' +
+        'Answers with the notebook and how many live notes were unfiled or trashed; notes of ' +
+        'it already in the trash are not in that number, and lose the notebook too.',
+      inputSchema: z.object({
+        notebookId: z.string().min(1),
+        trashNotes: z
+          .boolean()
+          .default(false)
+          .describe('Move the notebook\'s notes to the trash instead of leaving them unfiled.'),
+      }),
+      annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false },
+    },
+    async ({ notebookId, trashNotes }) => {
+      // Named and counted before the delete, which is what removes the row they come from.
+      const notebook = (await notes.listNotebooks()).find((nb) => nb.id === notebookId);
+      if (!notebook) return notFound('notebook', notebookId);
+      if (!(await notes.deleteNotebook(notebookId, { trashNotes }))) {
+        return notFound('notebook', notebookId);
+      }
+      return jsonResult({
+        id: notebookId,
+        name: notebook.name,
+        deleted: true,
+        [trashNotes ? 'trashed' : 'unfiled']: notebook.count,
+      });
+    },
+  );
+
   /**
    * Field definitions can be made and changed here but not deleted or reordered. Deleting
-   * one takes every value with it, and delete_note's promise — that nothing here is
-   * unrecoverable — is worth more than the symmetry. Order is a display concern for the
-   * person, not the model.
+   * one takes every value with it, and that is the line these tools hold: no note, and
+   * nothing a note holds, is destroyed here. A label or a container can be — delete_tag,
+   * a tag merge and delete_notebook cannot be undone — but the notes and their values
+   * come through each of those, where a deleted field's values would not. That is worth
+   * more than the symmetry. Order is a display concern for the person, not the model.
    */
   server.registerTool(
     'create_notebook_field',

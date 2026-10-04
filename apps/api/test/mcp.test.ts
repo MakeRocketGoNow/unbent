@@ -1002,3 +1002,102 @@ describe('prepare_attachment_upload', () => {
     expect(((await res.json()) as { error: string }).error).toContain('no longer there');
   });
 });
+
+/**
+ * Reorganising an account through MCP, end to end.
+ *
+ * The handlers have unit tests against a mocked repo and the store has its own; what
+ * neither proves is that a field written to a set of notes, a count taken inside a
+ * notebook and a tag folded into another survive the real path — the tool's schema, the
+ * RPC to the object and the SQL — in the order an assistant would actually use them:
+ * look at what a notebook's notes carry, give them a field, retire the tag the field
+ * replaced, and remove the notebook that is left over.
+ */
+describe('reorganising notebooks and tags through MCP', () => {
+  async function call(name: string, args: Record<string, unknown>) {
+    const res = await mcp(alice.token, 'tools/call', { name, arguments: args });
+    return JSON.parse(toolText(res.body));
+  }
+
+  it('counts tags inside a notebook, sets a field on its notes, merges a tag and deletes a notebook', async () => {
+    const stamp = Date.now();
+    const notebook = `Coupons ${stamp}`;
+    const year = `Year 2025 ${stamp}`;
+    const kept = `Deals ${stamp}`;
+
+    const { id: notebookId } = await call('create_notebook', { name: notebook });
+    await call('create_notebook_field', { notebookId, name: 'Year', type: 'number' });
+    const a = await call('create_note', { title: 'Acme 10% off', notebook, tags: [year, kept] });
+    const b = await call('create_note', { title: 'Acme free shipping', notebook, tags: [year] });
+    const c = await call('create_note', { title: 'Report (final) v2', notebook });
+
+    // Only this notebook's notes are counted, and the tag that defines the set is left out.
+    const inNotebook = await call('list_tags', { notebook });
+    expect(inNotebook.tags.map((t: { name: string; count: number }) => [t.name, t.count])).toEqual([
+      [year, 2],
+      [kept, 1],
+    ]);
+    const alongside = await call('list_tags', { tag: [year] });
+    expect(alongside.tags.map((t: { name: string; count: number }) => [t.name, t.count])).toEqual([
+      [kept, 1],
+    ]);
+
+    const untagged = await call('list_notes', { notebook, untagged: true });
+    expect(untagged.notes.map((n: { id: string }) => n.id)).toEqual([c.id]);
+
+    // A compact page is wider than a full one and carries only what a batch write is
+    // checked against; a full page that wide is refused.
+    const compact = await call('list_notes', { notebook, compact: true, limit: 500, sort: 'title', order: 'asc' });
+    expect(compact.total).toBe(3);
+    expect(compact.notes).toEqual([
+      { id: a.id, title: 'Acme 10% off', notebook, tags: expect.arrayContaining([year, kept]) },
+      { id: b.id, title: 'Acme free shipping', notebook, tags: [year] },
+      { id: c.id, title: 'Report (final) v2', notebook, tags: [] },
+    ]);
+    const tooWide = await mcp(alice.token, 'tools/call', {
+      name: 'list_notes',
+      arguments: { notebook, limit: 500 },
+    });
+    expect(tooWide.body.result?.isError).toBe(true);
+
+    // The total comes with the first page; the page after it does not count again.
+    const first = await call('list_notes', { notebook, limit: 2 });
+    expect(first.total).toBe(3);
+    const second = await call('list_notes', { notebook, limit: 2, cursor: first.cursor });
+    expect(second.returned).toBe(1);
+    expect('total' in second).toBe(false);
+
+    // The second call re-sends what is there, and says so rather than re-dating the notes.
+    const set = await call('update_note_fields', { noteIds: [a.id, b.id], fields: { Year: 2025 } });
+    expect(set).toEqual({ noteIds: expect.arrayContaining([a.id, b.id]), changed: 2, missing: [] });
+    const again = await call('update_note_fields', { noteIds: [a.id, b.id], fields: { Year: 2025 } });
+    expect(again.changed).toBe(0);
+
+    const byField = await call('list_notes', {
+      notebook,
+      fields: [{ field: 'Year', op: 'eq', value: '2025' }],
+    });
+    expect(byField.total).toBe(2);
+    const empty = await call('list_notes', { notebook, fields: [{ field: 'Year', op: 'empty' }] });
+    expect(empty.notes.map((n: { id: string }) => n.id)).toEqual([c.id]);
+
+    // A rename onto a name that is taken is refused until merge is asked for.
+    const refused = await mcp(alice.token, 'tools/call', {
+      name: 'rename_tag',
+      arguments: { tag: year, name: kept },
+    });
+    expect(refused.body.result?.isError).toBe(true);
+    const merged = await call('rename_tag', { tag: year, name: kept, merge: true });
+    expect(merged.merged).toBe(true);
+    expect((await call('list_tags', { notebook })).tags).toEqual([
+      expect.objectContaining({ name: kept, count: 2 }),
+    ]);
+
+    expect(await call('delete_tag', { tag: kept })).toEqual({ tag: kept, deleted: true, notes: 2 });
+
+    const gone = await call('delete_notebook', { notebookId });
+    expect(gone).toEqual({ id: notebookId, name: notebook, deleted: true, unfiled: 3 });
+    // The notes outlive the notebook, filed nowhere.
+    expect((await call('get_note', { noteId: a.id })).notebook ?? null).toBeNull();
+  });
+});

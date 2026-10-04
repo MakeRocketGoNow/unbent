@@ -1,9 +1,20 @@
 import { z } from 'zod';
-import { MAX_TAG_LENGTH, UNFILED, formatAttachmentMarkdown } from '@unbent/shared';
+import {
+  FIELD_FILTER_OPS,
+  MAX_BATCH_NOTES,
+  MAX_FIELD_FILTERS,
+  MAX_FIELD_VALUE_LENGTH,
+  MAX_TAG_LENGTH,
+  UNFILED,
+  formatAttachmentMarkdown,
+  formatFieldFilter,
+  parseFieldFilter,
+  type FieldFilter,
+} from '@unbent/shared';
 import type { McpServer } from '@modelcontextprotocol/server';
 import type { AttachmentsRepo } from '../../lib/attachments-repo.js';
 import { nextCursor, type NotesRepo } from '../../lib/notes-repo.js';
-import { jsonResult, noteRef, notFound } from './result.js';
+import { jsonResult, noteRef, notFound, toolError } from './result.js';
 
 /**
  * The tools that only read.
@@ -20,8 +31,12 @@ const tagFilter = z
   .optional()
   .describe('Only notes carrying every one of these tags, by exact name, case included.');
 
+// Trimmed, as the lookups that resolve a notebook by name already trim: the store matches
+// the filter as given, so a name with a stray space resolved its fields and then listed
+// nothing, with no error to say why.
 const notebookFilter = z
   .string()
+  .trim()
   .optional()
   .describe(`Only notes in this notebook, by name. "${UNFILED}" means notes in no notebook.`);
 
@@ -34,7 +49,104 @@ const LIST_DATE_RANGE =
   'Inclusive (UTC). Filters the created date when sort is "created", otherwise the updated ' +
   'date; with trashed, the date the note was trashed.';
 
+/**
+ * How many notes a page of `list_notes` may carry.
+ *
+ * A full row has dates, field values and an excerpt, and a hundred of them is already a
+ * long read. A compact row is an id, a title, a notebook and tags, there to be looked over
+ * and passed on, so its ceiling is the one the batch tools take in a single call: five
+ * hundred ids listed is five hundred ids moved, with no second page to stitch on.
+ *
+ * Compact keeps the notebook and tags rather than ids alone, deliberately. The point of
+ * listing before a batch write is seeing what the write would touch, and "this receipt is
+ * already filed somewhere else" is only visible with the notebook beside the title.
+ */
+const FULL_LIST_LIMIT = 100;
+const COMPACT_LIST_LIMIT = MAX_BATCH_NOTES;
+
 const dateOnly = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'expected YYYY-MM-DD').optional();
+
+/**
+ * Narrowing by a custom field's value, the MCP's spelling of the web's `field=` filter.
+ *
+ * Fields are named, not numbered, as everywhere else a model meets them, and the op is
+ * one of the shared five. The value is a string whatever the field's type — it is what
+ * the URL form carries — and what it means is the field's: an option for `eq` on a select
+ * or multiselect, `true`/`false` for a checkbox, `YYYY-MM-DD` or a number for a range.
+ */
+const fieldFiltersSchema = z
+  .array(
+    z.object({
+      field: z.string().min(1).describe('A field name, as list_notebooks shows it for the notebook.'),
+      op: z.enum(FIELD_FILTER_OPS),
+      value: z.string().max(MAX_FIELD_VALUE_LENGTH).optional(),
+    }),
+  )
+  .max(MAX_FIELD_FILTERS)
+  .optional()
+  .describe(
+    'Narrow by custom field values; every filter must hold. Needs notebook, since fields ' +
+      'belong to one. op "eq" matches a value exactly (an option of a select, one of the ' +
+      'options a multiselect holds, true or false for a checkbox, case included); "gte" and ' +
+      '"lte" bound a number or a YYYY-MM-DD date, inclusive; "set" and "empty" ask whether ' +
+      'the note has any value, and take no value. Example: ' +
+      '{"field":"Expires","op":"lte","value":"2026-12-31"}.',
+  );
+
+/**
+ * Turns named field filters into the id-keyed ones the store takes.
+ *
+ * The names are resolved against the notebook the list is scoped to, case-insensitively,
+ * which is why `fields` needs one: a name means nothing outside a notebook, and two
+ * notebooks may each have a "Date". The wire form is built and read back through
+ * `parseFieldFilter`, the function the URL's `field=` goes through, so a bound that is not
+ * a number or a date, or a value that is too long, is refused by the same rule here rather
+ * than by a second copy of it. An unknown name lists the real ones, since the likeliest
+ * cause is a misremembered name.
+ */
+async function resolveFieldFilters(
+  notes: NotesRepo,
+  notebook: string | undefined,
+  filters: Array<{ field: string; op: FieldFilter['op']; value?: string | undefined }>,
+): Promise<{ filters: FieldFilter[] } | { error: string }> {
+  if (!notebook || notebook === UNFILED) {
+    return {
+      error:
+        'Field filters need a notebook, since fields belong to one. Pass notebook with the ' +
+        'name of the notebook whose fields you mean.',
+    };
+  }
+  // The notebook and its definitions in one call: this runs on each page of a walk, ahead
+  // of the page itself.
+  const found = await notes.notebookByName(notebook);
+  if (!found) return { error: `No such notebook: ${notebook}` };
+  const defs = found.fields;
+
+  const out: FieldFilter[] = [];
+  for (const f of filters) {
+    const def = defs.find((d) => d.name.toLowerCase() === f.field.trim().toLowerCase());
+    if (!def) {
+      return {
+        error:
+          `No field called "${f.field}" on notebook "${notebook}". ` +
+          (defs.length ? `Its fields are: ${defs.map((d) => d.name).join(', ')}.` : 'It has no fields.'),
+      };
+    }
+    const valueless = f.op === 'set' || f.op === 'empty';
+    if (valueless && f.value !== undefined) return { error: `Op "${f.op}" takes no value.` };
+    if (!valueless && !f.value) return { error: `Op "${f.op}" needs a value.` };
+    const parsed = parseFieldFilter(
+      formatFieldFilter({ fieldId: def.id, op: f.op, ...(valueless ? {} : { value: f.value! }) }),
+    );
+    if (!parsed) {
+      return {
+        error: `"${f.value}" is not a usable ${f.op} value for ${def.name}: a range needs a number or a YYYY-MM-DD date.`,
+      };
+    }
+    out.push(parsed);
+  }
+  return { filters: out };
+}
 
 export function registerReadTools(
   server: McpServer,
@@ -88,15 +200,40 @@ export function registerReadTools(
       title: 'List notes',
       description:
         'List notes without searching, newest first by default. Use this to browse, to page ' +
-        'through a notebook or tag, or — with sort "updated" and a from date — to find what ' +
-        'changed recently. Returns an excerpt per note rather than the body; call get_note ' +
-        'for that. When the response carries a cursor there are more notes, and passing it ' +
-        'back returns the next page.',
+        'through a notebook or tag, to narrow a notebook by its custom field values, or — with ' +
+        'sort "updated" and a from date — to find what changed recently. Returns an excerpt ' +
+        'per note rather than the body; call get_note for that. When the response carries a ' +
+        'cursor there are more notes, and passing it back returns the next page. The total ' +
+        'comes with the first page only: a page asked for with a cursor does not repeat it.',
       inputSchema: z.object({
-        limit: z.number().int().min(1).max(100).default(25),
+        limit: z
+          .number()
+          .int()
+          .min(1)
+          .max(COMPACT_LIST_LIMIT)
+          .default(25)
+          .describe(`At most ${FULL_LIST_LIMIT}, or ${COMPACT_LIST_LIMIT} with compact.`),
         cursor: z.string().optional().describe('The cursor from a previous page.'),
+        compact: z
+          .boolean()
+          .default(false)
+          .describe(
+            'Only the id, title, notebook and tags of each note, with no dates, field values ' +
+              `or excerpt, and up to ${COMPACT_LIST_LIMIT} a page. For collecting the ids of a ` +
+              'large set to pass to move_notes, update_note_tags or update_note_fields, while ' +
+              'still seeing what each note is and where it is filed.',
+          ),
         tag: tagFilter,
         notebook: notebookFilter,
+        fields: fieldFiltersSchema,
+        untagged: z
+          .boolean()
+          .default(false)
+          .describe(
+            'Only notes with no tags at all, for finding what is left to tag. Cannot be ' +
+              'combined with tag. Counting them reads every note in scope, so with a large ' +
+              'archive give a notebook.',
+          ),
         sort: z.enum(['updated', 'created', 'title']).default('updated'),
         order: z.enum(['asc', 'desc']).default('desc'),
         from: dateOnly.describe(LIST_DATE_RANGE),
@@ -111,19 +248,40 @@ export function registerReadTools(
       }),
       annotations: { readOnlyHint: true, openWorldHint: false },
     },
-    async ({ limit, cursor, tag, notebook, sort, order, from, to, trashed }) => {
+    async ({ limit, cursor, compact, tag, notebook, fields, untagged, sort, order, from, to, trashed }) => {
+      if (limit > FULL_LIST_LIMIT && !compact) {
+        return toolError(
+          `limit is at most ${FULL_LIST_LIMIT} unless compact is true, which allows ${COMPACT_LIST_LIMIT}.`,
+        );
+      }
+      if (untagged && tag?.length) {
+        return toolError('untagged means notes with no tags, so it cannot be combined with tag.');
+      }
+      let fieldFilters: FieldFilter[] | undefined;
+      if (fields?.length) {
+        const resolved = await resolveFieldFilters(notes, notebook, fields);
+        if ('error' in resolved) return toolError(resolved.error);
+        fieldFilters = resolved.filters;
+      }
       const { items, total } = await notes.listPage(
-        { limit, cursor, tags: tag, notebook, sort, order, from, to, trashed },
-        { tags: tag, notebook, trashed, from, to, sort },
+        { limit, cursor, tags: tag, notebook, fields: fieldFilters, untagged, compact, sort, order, from, to, trashed },
+        // Counted once, on the first page. A count that no stored number answers — a field
+        // filter, a date range, `untagged` — reads every note in scope, and repeating it on
+        // each page of a long walk cost more than the pages did: ten pages of the untagged
+        // notes of a three-thousand-note account read 48,000 rows, 45,000 of them counting.
+        // The answer cannot have changed in a way the caller could use mid-walk anyway.
+        cursor ? null : { tags: tag, notebook, fields: fieldFilters, untagged, trashed, from, to, sort },
       );
       // The same helper the HTTP route uses, so a cursor means the same thing on both and
       // cannot disagree with the sort that produced the page.
       const cursorForNext = nextCursor(items, { limit, sort, trashed });
       return jsonResult({
-        total,
+        ...(total === null ? {} : { total }),
         returned: items.length,
         ...(cursorForNext ? { cursor: cursorForNext } : {}),
-        notes: items.map(noteRef),
+        notes: compact
+          ? items.map((n) => ({ id: n.id, title: n.title, notebook: n.notebook ?? null, tags: n.tags }))
+          : items.map(noteRef),
       });
     },
   );
@@ -247,10 +405,31 @@ export function registerReadTools(
       description:
         'Every tag with how many notes carry it, most used first. Tags are flat, and their ' +
         'names are case-sensitive: "Receipts" and "receipts" are two tags. Reuse a spelling ' +
-        'from here when tagging, rather than making a near-duplicate.',
-      inputSchema: z.object({}),
+        'from here when tagging, rather than making a near-duplicate. With notebook, tag or ' +
+        'both, the counts are over the live notes of that set only — what else the notes in ' +
+        'a notebook carry, or the notes that carry these tags — and tags with none in it are ' +
+        'left out, as are the tags named in tag, which every note in the set carries.',
+      inputSchema: z.object({
+        notebook: notebookFilter,
+        tag: tagFilter.describe(
+          'Only count the notes carrying every one of these tags, by exact name; they are ' +
+            'left out of the answer.',
+        ),
+      }),
       annotations: { readOnlyHint: true, openWorldHint: false },
     },
-    async () => jsonResult({ tags: await notes.listTags() }),
+    async ({ notebook, tag }) => {
+      // The unfiltered list is the stored per-tag counts, one row a tag; any filter has
+      // to walk the notes in the set, so it only happens when one is asked for.
+      if (notebook === undefined && !tag?.length) return jsonResult({ tags: await notes.listTags() });
+      const tags = await notes.tagCounts({ notebook, tags: tag?.length ? tag : undefined });
+      // An empty answer for a notebook that does not exist reads as "its notes have no
+      // tags", which is a finding an assistant would repeat. Checked only when the answer
+      // is empty, so the usual call stays one request.
+      if (tags.length === 0 && notebook !== undefined && notebook !== UNFILED) {
+        if (!(await notes.notebookByName(notebook))) return toolError(`No such notebook: ${notebook}`);
+      }
+      return jsonResult({ tags });
+    },
   );
 }

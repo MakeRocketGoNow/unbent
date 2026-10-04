@@ -150,7 +150,12 @@ export class NotesRepo extends StoreRepo {
 
   updateMany(
     ids: string[],
-    patch: { notebook?: string | null | undefined; addTags?: string[] | undefined; removeTags?: string[] | undefined },
+    patch: {
+      notebook?: string | null | undefined;
+      addTags?: string[] | undefined;
+      removeTags?: string[] | undefined;
+      fields?: NoteFieldsPatch | undefined;
+    },
   ): Promise<{ matched: string[]; changed: string[] }> {
     return this.call((s) => s.updateMany(ids, patch));
   }
@@ -191,6 +196,28 @@ export class NotesRepo extends StoreRepo {
 
   listTags(): Promise<Array<{ id: string; name: string; count: number }>> {
     return this.call((s) => s.listTags());
+  }
+
+  /** The tags of one notebook's or tag's notes, counted within it; see `NotesStore.tagCounts`. */
+  tagCounts(filter: {
+    notebook?: string | undefined;
+    tags?: string[] | undefined;
+  }): Promise<Array<{ id: string; name: string; count: number }>> {
+    return this.call((s) => s.tagCounts(filter));
+  }
+
+  /** One notebook by name, with its fields, or null; see `NotesStore.notebookByName`. */
+  notebookByName(name: string): Promise<{ id: string; name: string; fields: FieldDef[] } | null> {
+    return this.call((s) => s.notebookByName(name));
+  }
+
+  /** Where a set of notes is filed, and that notebook's fields when it is one; see `NotesStore.fieldTargets`. */
+  fieldTargets(ids: string[]): Promise<{
+    matched: string[];
+    notebooks: Array<{ id: string | null; name: string | null; notes: number; example: string }>;
+    fields: FieldDef[];
+  }> {
+    return this.call((s) => s.fieldTargets(ids));
   }
 
   sampleTitles(

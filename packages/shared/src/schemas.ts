@@ -147,6 +147,9 @@ export const tagFilterSchema = z
  * unique on its own, and a filter on a field from a notebook the list is not scoped to
  * simply matches nothing.
  */
+/** How many field filters one list may carry. Shared so the URL and the MCP tool cannot drift. */
+export const MAX_FIELD_FILTERS = 10;
+
 export const fieldFilterSchema = z
   .union([z.string(), z.array(z.string())])
   .optional()
@@ -163,7 +166,7 @@ export const fieldFilterSchema = z
           return parsed;
         }),
       )
-      .max(10)
+      .max(MAX_FIELD_FILTERS)
       .optional(),
   );
 
