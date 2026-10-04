@@ -251,6 +251,9 @@ export function createOutbox(userId: string, lib: Omit<WritableLibrary, 'outbox'
             return await fn(params);
           } catch (err) {
             if (err instanceof NonRetriableError) throw err;
+            // The executor records the message and not the cause, so this is the one
+            // place a queue stuck on a 429 or a lapsed session says so outside a debugger.
+            console.debug('[outbox] kept:', err);
             throw new Error('Not sent yet; it will be tried again', { cause: err });
           }
         },
