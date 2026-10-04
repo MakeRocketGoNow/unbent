@@ -118,7 +118,7 @@ can follow along — but do not wait for a go-ahead.
 
 ## 2. Fix
 
-For each **[Blocker]** and **[Suggestion]**, in order:
+For every finding — **[Blocker]**s first, then **[Suggestion]**s, then **[Nit]**s:
 
 1. **Verify it.** Read the code it cites. A reviewer is wrong sometimes, and a fix for a
    problem that is not there is a new problem.
@@ -133,8 +133,11 @@ For each **[Blocker]** and **[Suggestion]**, in order:
    change to the code, not as "address review feedback". Stage explicit paths. No
    amending, no force-push, no `--no-verify`.
 
-**[Nit]s are not fixed.** They are listed at the end. A nit that is a one-token fix inside
-a line a blocker's commit already rewrites can ride along; nothing else.
+**[Nit]s are fixed too**, on the same terms: verified first, declined with a reason when
+mistaken or not worth the churn, and committed one per nit. Leaving them as a list for the
+user meant a second request every time to say "fix the nits too". A nit that is a
+one-token fix inside a line another finding's commit already rewrites rides along in that
+commit rather than getting its own. A nit never earns another round by itself (step 3).
 
 Then **run the checks AGENTS.md names under Verifying**, for every part the fixes touched
 — `apps/android` and `apps/ios` are outside the workspace and have their own — and fix
@@ -151,7 +154,7 @@ Stop rule, checked after every review:
 
 | The round found | Then |
 | --- | --- |
-| No blockers, small fixes | Fix its suggestions (step 2), and **finish**. No re-review. |
+| No blockers, small fixes | Fix its suggestions and nits (step 2), and **finish**. No re-review. |
 | No blockers, large fixes | Fix, and run one more round on the fix diff — unless this was round 3. |
 | Blockers | Fix (step 2), and run another round — unless this was round 3. |
 | Round 3 | Fix what can be fixed, and **finish**, with any blocker still open said first and a large unreviewed fix diff said plainly. |
@@ -180,11 +183,10 @@ Nothing is posted. Report in the conversation, in this order:
 
 1. Anything marked **needs you**, and any blocker still open — first and plainly,
    especially if the loop hit its cap.
-2. What was declined, each with its reason.
-3. The nits, each with `path:line`, for the user to take or leave.
-4. What was fixed: a count per round and the commits (`git log --oneline <first reviewed
+2. What was declined, nits included, each with its reason and `path:line`.
+3. What was fixed: a count per round and the commits (`git log --oneline <first reviewed
    sha>..HEAD`).
-5. Where the branch stands: pushed to the PR, or local and ready for one.
+4. Where the branch stands: pushed to the PR, or local and ready for one.
 
 ## Notes
 
