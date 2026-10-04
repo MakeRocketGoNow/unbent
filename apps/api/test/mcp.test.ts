@@ -301,6 +301,47 @@ describe('mcp endpoint', () => {
   });
 });
 
+/*
+ * MAK-119's "done when": an assistant can replace any note's text without asking, so what
+ * it replaced has to be there afterwards, however recently the note was last saved.
+ */
+describe('mcp edits and the note history', () => {
+  const asAlice = () => ({ Cookie: alice.cookie, Origin: ORIGIN, 'Content-Type': 'application/json' });
+
+  it('an edit_note replace that guts a note is undone from its history', async () => {
+    const created = await mcp(alice.token, 'tools/call', {
+      name: 'create_note',
+      arguments: { title: 'Minutes', body: 'Agreed: ship on Friday.\n\nOpen: who tells the client.' },
+    });
+    const noteId = JSON.parse(toolText(created.body)).id as string;
+    // Typed in the editor a moment before: inside the window, so by the typing rule
+    // alone the edit below would keep nothing.
+    const typed = 'Agreed: ship on Friday.\n\nOpen: who tells the client. Dana will.';
+    await fetch(`${BASE}/api/notes/${noteId}`, { method: 'PATCH', headers: asAlice(), body: JSON.stringify({ body: typed }) });
+
+    const edit = await mcp(alice.token, 'tools/call', {
+      name: 'edit_note',
+      arguments: { noteId, mode: 'replace', find: typed, content: 'TODO' },
+    });
+    expect(edit.body.result?.isError).toBeFalsy();
+
+    const listed = await fetch(`${BASE}/api/notes/${noteId}/revisions`, { headers: asAlice() }).then((r) => r.json());
+    const revisions = listed.revisions as Array<{ id: number; cause?: string; size: number }>;
+    expect(revisions[0]).toMatchObject({ cause: 'assistant', size: typed.length });
+
+    const restored = await fetch(`${BASE}/api/notes/${noteId}/revisions/${revisions[0]!.id}/restore`, {
+      method: 'POST',
+      headers: asAlice(),
+    });
+    expect(restored.status).toBe(200);
+    expect((await restored.json()).body).toBe(typed);
+
+    // And the assistant's version is in the history in its turn.
+    const again = await fetch(`${BASE}/api/notes/${noteId}/revisions`, { headers: asAlice() }).then((r) => r.json());
+    expect(again.revisions[0]).toMatchObject({ cause: 'restore', size: 'TODO'.length });
+  });
+});
+
 describe('mcp cross-tenant isolation', () => {
   it('bob cannot read an alice note by id', async () => {
     const { body } = await mcp(bob.token, 'tools/call', {

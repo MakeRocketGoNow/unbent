@@ -739,6 +739,32 @@ export interface StaleNote {
   stale: Note;
 }
 
+/**
+ * What replaced a note's text when a copy of it was kept, when it was not typing in the
+ * editor: an assistant's write over MCP, or an earlier copy put back from the history.
+ */
+export type NoteRevisionCause = 'assistant' | 'restore';
+
+/**
+ * One entry in a note's history: the title a note had before a write replaced its text,
+ * and when. The list carries these without bodies; `NoteRevision` is one of them whole.
+ */
+export interface NoteRevisionSummary {
+  /** Unique within the account's store, and only meaningful under its note. */
+  id: number;
+  title: string;
+  /** The body's length in characters, so a row can say how much text the copy holds. */
+  size: number;
+  /** When the copy was taken, which is when the write that replaced it landed. */
+  createdAt: number;
+  /** Absent for ordinary typing. */
+  cause?: NoteRevisionCause;
+}
+
+export interface NoteRevision extends NoteRevisionSummary {
+  body: string;
+}
+
 /** A notebook as the list reports it. */
 export interface NotebookSummary {
   id: string;

@@ -1,0 +1,246 @@
+import { describe, expect, it } from 'vitest';
+import { runInDurableObject } from 'cloudflare:test';
+import { feedRows, feedSeq, freshStore } from './helpers.js';
+
+/**
+ * Note history (schema 0003, MAK-119): which writes leave a copy of what they replaced,
+ * how long copies last, and that putting one back can itself be undone.
+ *
+ * Time is moved by re-dating rows rather than by faking the clock: the rules are all
+ * "how old is the newest copy", and a copy's age is a column.
+ */
+
+type Stub = ReturnType<typeof freshStore>['stub'];
+
+const MINUTE = 60 * 1000;
+const DAY = 24 * 60 * MINUTE;
+
+async function seeded(label: string, body = 'the first draft') {
+  const { stub } = freshStore(label);
+  const note = await stub.create({ id: crypto.randomUUID(), title: 'Packing list', body, tags: ['travel'] });
+  return { stub, id: note.id };
+}
+
+/** Makes every copy of the note `ms` older, as though that long had passed. */
+function age(stub: Stub, id: string, ms: number) {
+  return runInDurableObject(stub, (_i, state) => {
+    state.storage.sql.exec(`UPDATE note_revisions SET created_at = created_at - ?1, through = through - ?1 WHERE note_id = ?2`, ms, id);
+  });
+}
+
+function countRevisions(stub: Stub) {
+  return runInDurableObject(stub, (_i, state) => state.storage.sql.exec<{ n: number }>(`SELECT COUNT(*) AS n FROM note_revisions`).one().n);
+}
+
+describe('history: typing', () => {
+  it('keeps what the first save of a sitting replaced, and nothing for the saves after it', async () => {
+    const { stub, id } = await seeded('typing');
+    await stub.update(id, { body: 'the first draft, and' });
+    await stub.update(id, { body: 'the first draft, and more' });
+    await stub.update(id, { title: 'Packing list for June', body: 'the first draft, and more still' });
+
+    const revisions = (await stub.listRevisions(id))!;
+    expect(revisions).toHaveLength(1);
+    expect(revisions[0]).toMatchObject({ title: 'Packing list', size: 'the first draft'.length });
+    expect(revisions[0]!.cause).toBeUndefined();
+    expect(await stub.getRevision(id, revisions[0]!.id)).toMatchObject({ title: 'Packing list', body: 'the first draft' });
+  });
+
+  it('keeps another once the newest is older than the window', async () => {
+    const { stub, id } = await seeded('window');
+    await stub.update(id, { body: 'monday' });
+    await age(stub, id, 29 * MINUTE);
+    await stub.update(id, { body: 'still monday' });
+    expect(await stub.listRevisions(id)).toHaveLength(1);
+
+    await age(stub, id, 2 * MINUTE);
+    await stub.update(id, { body: 'tuesday' });
+    const revisions = (await stub.listRevisions(id))!;
+    expect(revisions).toHaveLength(2);
+    // Newest first: what the second sitting replaced, then what the first did.
+    expect((await stub.getRevision(id, revisions[0]!.id))!.body).toBe('still monday');
+    expect((await stub.getRevision(id, revisions[1]!.id))!.body).toBe('the first draft');
+  });
+
+  it('keeps nothing for a write that leaves the text alone', async () => {
+    const { stub, id } = await seeded('not-text');
+    await stub.update(id, { tags: ['travel', 'summer'] });
+    await stub.update(id, { notebook: 'Trips' });
+    await stub.update(id, { body: 'the first draft' }); // what is stored: a no-op
+    await stub.appendToBody(id, '![](files/photo.jpg)');
+    await stub.updateMany([id], { addTags: ['bulk'] });
+    expect(await stub.listRevisions(id)).toEqual([]);
+  });
+
+  it('keeps nothing for a save refused as stale', async () => {
+    const { stub, id } = await seeded('stale');
+    const refused = await stub.update(id, { body: 'written against an old copy', ifUpdatedAt: 1 });
+    expect(refused).toHaveProperty('stale');
+    expect(await stub.listRevisions(id)).toEqual([]);
+  });
+});
+
+describe('history: an assistant', () => {
+  it('keeps what its write replaced even inside the window', async () => {
+    const { stub, id } = await seeded('assistant');
+    // A sitting: one copy, of the text before it.
+    await stub.update(id, { body: 'typed a minute ago' });
+    await stub.update(id, { body: 'typed just now, and long' });
+    // And then an edit over MCP that guts it.
+    await stub.update(id, { body: '', by: 'assistant' });
+
+    const revisions = (await stub.listRevisions(id))!;
+    expect(revisions).toHaveLength(2);
+    expect(revisions[0]).toMatchObject({ cause: 'assistant', size: 'typed just now, and long'.length });
+    expect((await stub.getRevision(id, revisions[0]!.id))!.body).toBe('typed just now, and long');
+  });
+
+  it('keeps one copy for a run of its edits: the text before the run', async () => {
+    const { stub, id } = await seeded('run');
+    for (const body of ['one', 'two', 'three', 'four']) await stub.update(id, { body, by: 'assistant' });
+    const revisions = (await stub.listRevisions(id))!;
+    expect(revisions).toHaveLength(1);
+    expect((await stub.getRevision(id, revisions[0]!.id))!.body).toBe('the first draft');
+  });
+
+  it('keeps another when someone has typed between two of its edits', async () => {
+    const { stub, id } = await seeded('between');
+    await stub.update(id, { body: 'tidied', by: 'assistant' });
+    await stub.update(id, { body: 'tidied, then added to by hand' });
+    await stub.update(id, { body: 'gutted', by: 'assistant' });
+    const revisions = (await stub.listRevisions(id))!;
+    expect(revisions).toHaveLength(2);
+    expect((await stub.getRevision(id, revisions[0]!.id))!.body).toBe('tidied, then added to by hand');
+  });
+
+  it('keeps another when its run outlasts the window', async () => {
+    const { stub, id } = await seeded('long-run');
+    await stub.update(id, { body: 'one', by: 'assistant' });
+    await age(stub, id, 31 * MINUTE);
+    await runInDurableObject(stub, (_i, state) => {
+      // The note rests as long as its copy has: `through` still names its date.
+      state.storage.sql.exec(`UPDATE notes SET updated_at = updated_at - ?1 WHERE id = ?2`, 31 * MINUTE, id);
+    });
+    await stub.update(id, { body: 'two', by: 'assistant' });
+    expect(await stub.listRevisions(id)).toHaveLength(2);
+  });
+});
+
+describe('history: retention', () => {
+  it('keeps the newest twenty copies of a note', async () => {
+    const { stub, id } = await seeded('twenty');
+    for (let i = 1; i <= 23; i++) {
+      await stub.update(id, { body: `version ${i}` });
+      await age(stub, id, 31 * MINUTE);
+    }
+    const revisions = (await stub.listRevisions(id))!;
+    expect(revisions).toHaveLength(20);
+    expect(await countRevisions(stub)).toBe(20);
+    // The oldest three went: the first draft, version 1 and version 2.
+    expect((await stub.getRevision(id, revisions.at(-1)!.id))!.body).toBe('version 3');
+    expect((await stub.getRevision(id, revisions[0]!.id))!.body).toBe('version 22');
+  });
+
+  it('shows nothing older than ninety days, and removes it at the next copy kept', async () => {
+    const { stub, id } = await seeded('ninety');
+    await stub.update(id, { body: 'spring' });
+    const [old] = (await stub.listRevisions(id))!;
+    await age(stub, id, 91 * DAY);
+    // Still on disk, since nothing has written to the note, but not shown or served.
+    expect(await countRevisions(stub)).toBe(1);
+    expect(await stub.listRevisions(id)).toEqual([]);
+    expect(await stub.getRevision(id, old!.id)).toBeNull();
+    expect(await stub.restoreRevision(id, old!.id)).toBeNull();
+
+    await stub.update(id, { body: 'summer' });
+    expect(await countRevisions(stub)).toBe(1);
+    expect((await stub.listRevisions(id))!).toHaveLength(1);
+  });
+
+  it('prunes one note without touching another', async () => {
+    const { stub, id } = await seeded('neighbours');
+    const other = await stub.create({ id: crypto.randomUUID(), title: 'Other', body: 'kept', tags: [] });
+    await stub.update(other.id, { body: 'kept, changed' });
+    for (let i = 1; i <= 22; i++) {
+      await stub.update(id, { body: `version ${i}` });
+      await age(stub, id, 31 * MINUTE);
+    }
+    expect(await stub.listRevisions(other.id)).toHaveLength(1);
+  });
+
+  it('goes with the note when the note is purged, and stays while it is in the trash', async () => {
+    const { stub, id } = await seeded('purge');
+    await stub.update(id, { body: 'changed' });
+    await stub.remove(id);
+    expect(await countRevisions(stub)).toBe(1);
+    // A trashed note has no history to show until it is restored.
+    expect(await stub.listRevisions(id)).toBeNull();
+    await stub.restore(id);
+    expect(await stub.listRevisions(id)).toHaveLength(1);
+
+    await stub.remove(id);
+    await stub.purgeOne(id);
+    expect(await countRevisions(stub)).toBe(0);
+  });
+
+  it('goes with everything else when the account is wiped', async () => {
+    const { stub, id } = await seeded('wipe');
+    await stub.update(id, { body: 'changed' });
+    await stub.wipe();
+    // The schema is rebuilt on the next call, empty.
+    expect(await stub.listRevisions(id)).toBeNull();
+    expect(await countRevisions(stub)).toBe(0);
+  });
+});
+
+describe('history: putting a copy back', () => {
+  it('restores the title and body, keeps what it replaced, and records the note in the feed', async () => {
+    const { stub, id } = await seeded('restore', 'a long and careful note');
+    await stub.update(id, { title: 'Gutted', body: '', by: 'assistant' });
+    const [copy] = (await stub.listRevisions(id))!;
+    const before = await feedSeq(stub);
+    const gutted = (await stub.get(id))!;
+
+    const restored = (await stub.restoreRevision(id, copy!.id))!;
+    expect(restored).toMatchObject({ title: 'Packing list', body: 'a long and careful note', tags: ['travel'] });
+    expect(restored.updatedAt).toBeGreaterThan(gutted.updatedAt);
+    expect(await feedRows(stub, before)).toEqual([{ entity: 'note', id }]);
+
+    // The restore is undone the way it was done: the gutted text is the newest copy,
+    // although the copy before it is seconds old.
+    const revisions = (await stub.listRevisions(id))!;
+    expect(revisions).toHaveLength(2);
+    expect(revisions[0]).toMatchObject({ title: 'Gutted', size: 0, cause: 'restore' });
+    const undone = (await stub.restoreRevision(id, revisions[0]!.id))!;
+    expect(undone).toMatchObject({ title: 'Gutted', body: '' });
+    expect(await stub.listRevisions(id)).toHaveLength(3);
+  });
+
+  it('changes nothing when the copy is what the note already says', async () => {
+    const { stub, id } = await seeded('same');
+    await stub.update(id, { body: 'changed' });
+    const [copy] = (await stub.listRevisions(id))!;
+    await stub.update(id, { body: 'the first draft' });
+    const now = (await stub.get(id))!;
+    const before = await feedSeq(stub);
+
+    expect(await stub.restoreRevision(id, copy!.id)).toEqual(now);
+    expect(await feedSeq(stub)).toBe(before);
+    expect(await stub.listRevisions(id)).toHaveLength(1);
+  });
+
+  it('refuses a copy that belongs to another note, and a note in the trash', async () => {
+    const { stub, id } = await seeded('foreign');
+    await stub.update(id, { body: 'changed' });
+    const [copy] = (await stub.listRevisions(id))!;
+    const other = await stub.create({ id: crypto.randomUUID(), title: 'Other', body: 'untouched', tags: [] });
+
+    expect(await stub.getRevision(other.id, copy!.id)).toBeNull();
+    expect(await stub.restoreRevision(other.id, copy!.id)).toBeNull();
+    expect((await stub.get(other.id))!.body).toBe('untouched');
+
+    await stub.remove(id);
+    expect(await stub.getRevision(id, copy!.id)).toBeNull();
+    expect(await stub.restoreRevision(id, copy!.id)).toBeNull();
+  });
+});

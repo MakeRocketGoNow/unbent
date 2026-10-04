@@ -780,6 +780,17 @@ describe('rows read on an archive-sized store', () => {
           sql.exec(`INSERT INTO changes (seq, entity, id, deleted, at) VALUES (?1, 'note', ?2, 0, ?3)`, i + 1, `n${String(i < 3000 ? i : i % 100).padStart(5, '0')}`, now);
         }
         sql.exec(`UPDATE _meta SET value = '4000' WHERE key = 'seq'`);
+        // A full history on the first three hundred notes, the oldest copy an hour old, so
+        // a read of one note's copies that walked the table would show as six thousand.
+        for (let i = 0; i < 300; i++) {
+          for (let k = 0; k < 20; k++) {
+            sql.exec(
+              `INSERT INTO note_revisions (note_id, title, body, created_at, through) VALUES (?1, 'Earlier title', 'an earlier body', ?2, ?2)`,
+              `n${String(i).padStart(5, '0')}`,
+              now - 3_600_000 - k * 3_600_000,
+            );
+          }
+        }
       });
     });
     expect(await stub.recountNotes()).toBe(0);
@@ -830,6 +841,14 @@ describe('rows read on an archive-sized store', () => {
       await measure('snapshot page', () => stub.snapshotPage(null, 100)),
       await measure('snapshot page deep', () => stub.snapshotPage('n02000', 100)),
       await measure('texts by id', () => stub.textsById(Array.from({ length: 25 }, (_, k) => `att-n${String(k * 3).padStart(5, '0')}`))),
+      // History. A save inside the window asks for the newest copy and keeps nothing;
+      // one outside it keeps a copy and prunes the note's twenty-first. Then the sheet's
+      // two reads, and a copy put back.
+      await measure('save that keeps a copy', () => stub.update('n00020', { body: 'rewritten' })),
+      await measure('save inside the window', () => stub.update('n00020', { body: 'rewritten again' })),
+      await measure('history list', () => stub.listRevisions('n00021')),
+      await measure('history copy', async () => stub.getRevision('n00021', (await stub.listRevisions('n00021'))![5]!.id)),
+      await measure('history restore', async () => stub.restoreRevision('n00021', (await stub.listRevisions('n00021'))![5]!.id)),
     ];
     console.log(results.map((r) => `${r.label}: ${r.rowsRead}`).join('\n'));
     const bounds: Record<string, number> = {
@@ -864,6 +883,15 @@ describe('rows read on an archive-sized store', () => {
       'snapshot page deep': 1500,
       // Twenty-five files of a thousand with text, by primary key: a walk of the table would be in the thousands.
       'texts by id': 160,
+      // A save reads the note twice, before and after, and its feed rows; history adds
+      // two for the newest copy. Keeping one adds the note's run of the index twice for
+      // the prune, about twenty entries each (measured 2026-10-03 at 69 and 25).
+      'save that keeps a copy': 90,
+      'save inside the window': 35,
+      // One note's twenty copies, of six thousand.
+      'history list': 30,
+      'history copy': 35,
+      'history restore': 100,
     };
     for (const r of results) {
       expect(r.rowsRead, r.label).toBeLessThanOrEqual(bounds[r.label]!);

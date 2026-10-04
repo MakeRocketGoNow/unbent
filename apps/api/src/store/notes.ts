@@ -22,6 +22,8 @@ import {
   type FeedTag,
   type Note,
   type NoteFieldsPatch,
+  type NoteRevision,
+  type NoteRevisionSummary,
   type NoteSort,
   type NoteSummary,
   type NotebookDefinition,
@@ -31,6 +33,7 @@ import {
   DEFAULT_NOTE_SORT,
 } from '@unbent/shared';
 import type { Change, Feed } from './feed.js';
+import { Revisions } from './revisions.js';
 import type { Bind, Sql } from './sql.js';
 import {
   ATTACHMENTS_SUBQUERY,
@@ -153,7 +156,12 @@ export class NotesStore {
   constructor(
     private readonly sql: Sql,
     private readonly feed: Feed,
-  ) {}
+  ) {
+    this.revisions = new Revisions(sql);
+  }
+
+  /** The copies kept of what a write replaced; see `Revisions.keep`. */
+  private readonly revisions: Revisions;
 
   /**
    * A page of notes, ordered by the requested sort. Keyset pagination keeps deep pages
@@ -778,6 +786,14 @@ export class NotesStore {
    * device had changed — and the next keystroke sent that old text with a precondition that
    * passed. The writer is the one that can tell a stale no-op from a harmless one (the
    * editor's `holdsTheirChanges`), so it is the one that gets asked.
+   *
+   * A write that changes the title or the body may leave a copy of what it replaced in
+   * the note's history, in this transaction, so the copy exists exactly when the write
+   * does. `by` is who is writing — an assistant's write is not typing, and is kept
+   * differently; see `Revisions.keep`. It is not part of the HTTP patch: the route's
+   * schema has no such key, so only the MCP tools, which call the repo, can say it.
+   * This is the one write that leaves copies. The bulk verbs never touch a body, an
+   * import writes a note that has no earlier text, and `appendToBody` only adds.
    */
   update(
     id: string,
@@ -788,9 +804,10 @@ export class NotesStore {
       notebook?: string | null | undefined;
       fields?: NoteFieldsPatch | undefined;
       ifUpdatedAt?: number | undefined;
+      by?: 'assistant' | undefined;
     },
   ): Note | StaleNote | null {
-    const { ifUpdatedAt, ...changes } = patch;
+    const { ifUpdatedAt, by, ...changes } = patch;
     return this.sql.tx(() => {
       const current = this.get(id);
       if (!current) return null;
@@ -815,6 +832,11 @@ export class NotesStore {
       // hold fails the whole patch rather than landing after the title has changed.
       const fieldWrites =
         effective.fields !== undefined ? this.prepareFieldWrites(id, effective.fields) : [];
+
+      // Before the text goes, and after everything that could still refuse the patch.
+      if (effective.title !== undefined || effective.body !== undefined) {
+        this.revisions.keep(id, current, stamp, by);
+      }
 
       const sets: string[] = [];
       const binds: Bind[] = [];
@@ -857,6 +879,55 @@ export class NotesStore {
         this.sql.exec(`UPDATE notes SET updated_at = ?1 WHERE id = ?2`, stamp, id);
       }
 
+      this.feed.record([{ entity: 'note', id }]);
+      return this.get(id);
+    });
+  }
+
+  /** A live note's history, newest first, or null when there is no such live note. */
+  listRevisions(id: string): NoteRevisionSummary[] | null {
+    if (!this.liveNoteById(id)) return null;
+    return this.revisions.list(id, Date.now());
+  }
+
+  /** One copy from a live note's history, whole. */
+  getRevision(id: string, revisionId: number): NoteRevision | null {
+    if (!this.liveNoteById(id)) return null;
+    return this.revisions.get(id, revisionId, Date.now());
+  }
+
+  /**
+   * Puts a copy from the note's history back as its title and body. Null when the note
+   * is not live or the copy is not one of its own.
+   *
+   * What it replaces is kept first, always and whatever the window says, so a restore is
+   * itself something the history can undo — including the one made by mistake, to the
+   * wrong copy. One transaction for the copy and the write, here rather than as a patch
+   * from the client carrying the old text: a patch is typing as far as `update` can
+   * tell, and typing inside the window keeps nothing.
+   *
+   * A copy that matches the note as it stands changes nothing and re-dates nothing, the
+   * way a no-op patch does. Tags, the notebook and field values are not history's and
+   * stay as they are.
+   */
+  restoreRevision(id: string, revisionId: number): Note | null {
+    return this.sql.tx(() => {
+      const current = this.get(id);
+      if (!current) return null;
+      const revision = this.revisions.get(id, revisionId, Date.now());
+      if (!revision) return null;
+      if (revision.title === current.title && revision.body === current.body) return current;
+
+      // Past the old date, always, as `update` has it: see the stamp there.
+      const stamp = Math.max(Date.now(), current.updatedAt + 1);
+      this.revisions.keep(id, current, stamp, 'restore');
+      this.sql.exec(
+        `UPDATE notes SET title = ?1, body = ?2, updated_at = ?3 WHERE id = ?4 AND deleted_at IS NULL`,
+        revision.title,
+        revision.body,
+        stamp,
+        id,
+      );
       this.feed.record([{ entity: 'note', id }]);
       return this.get(id);
     });
