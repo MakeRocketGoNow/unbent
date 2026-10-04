@@ -284,12 +284,20 @@ export async function updateNote(
     // The autosave: see `request` for why it must not hang.
     timeout: SAVE_TIMEOUT,
   });
-  if (res.status === 409) {
-    // A clone, so a 409 without a note in it still reaches `json` with its body unread.
-    const body = (await res.clone().json().catch(() => null)) as { stale?: Note } | null;
-    if (body?.stale) throw new NoteChangedError(body.stale);
-  }
+  await throwIfStale(res);
   return json<Note>(res);
+}
+
+/**
+ * A 409 carrying `stale` is a refused precondition, the same for a save and for a
+ * restore, so the two cannot drift apart in how they read one. Anything else falls
+ * through to `json`.
+ */
+async function throwIfStale(res: Response): Promise<void> {
+  if (res.status !== 409) return;
+  // A clone, so a 409 without a note in it still reaches `json` with its body unread.
+  const body = (await res.clone().json().catch(() => null)) as { stale?: Note } | null;
+  if (body?.stale) throw new NoteChangedError(body.stale);
 }
 
 /**
@@ -345,10 +353,7 @@ export async function restoreRevision(noteId: string, revisionId: number, opts: 
     method: 'POST',
     ...(opts.ifUpdatedAt !== undefined ? { headers: jsonHeaders, body: JSON.stringify(opts) } : {}),
   });
-  if (res.status === 409) {
-    const body = (await res.clone().json().catch(() => null)) as { stale?: Note } | null;
-    if (body?.stale) throw new NoteChangedError(body.stale);
-  }
+  await throwIfStale(res);
   return json<RestoredNote>(res);
 }
 
