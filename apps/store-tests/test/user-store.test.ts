@@ -195,6 +195,8 @@ describe('UserStore lifecycle', () => {
     expect(ids(third.bytes)).toEqual(['n4']);
     expect(third.nextRowid).toBeNull();
     await expect(stub.dumpPage('notes_fts' as 'notes')).rejects.toThrow(/not a data table/);
+    // Counted by `stats`, and deliberately not in a dump; see `DUMP_TABLES`.
+    await expect(stub.dumpPage('note_revisions' as 'notes')).rejects.toThrow(/not a data table/);
   });
 
   it('readOnlySql stops reading at its byte budget rather than loading the result first', async () => {

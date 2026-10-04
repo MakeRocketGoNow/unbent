@@ -201,7 +201,7 @@ describe('history: putting a copy back', () => {
     const before = await feedSeq(stub);
     const gutted = (await stub.get(id))!;
 
-    const restored = (await stub.restoreRevision(id, copy!.id))!;
+    const restored = (await stub.restoreRevision(id, copy!.id)) as { updatedAt: number };
     expect(restored).toMatchObject({ title: 'Packing list', body: 'a long and careful note', tags: ['travel'] });
     expect(restored.updatedAt).toBeGreaterThan(gutted.updatedAt);
     expect(await feedRows(stub, before)).toEqual([{ entity: 'note', id }]);
