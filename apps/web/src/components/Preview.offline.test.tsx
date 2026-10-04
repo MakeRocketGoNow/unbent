@@ -49,3 +49,33 @@ describe('a picture in the preview pane with no connection', () => {
     expect(img.hidden).toBe(true);
   });
 });
+
+/**
+ * A link to a page of this app goes through the router, as it does in the rich editor —
+ * not a navigation that would load the whole app again. In this file because it is the
+ * pane's only test file; nothing here is about the connection.
+ */
+describe('a link to a page of this app in the preview pane', () => {
+  it('opens in place', () => {
+    const openPath = vi.fn(() => true);
+    const { container } = render(<Preview markdown="[Import](/settings/import)" noteId="n1" onOpenPath={openPath} />);
+    const link = container.querySelector('a[href="/settings/import"]')!;
+    const click = new MouseEvent('click', { bubbles: true, cancelable: true, button: 0 });
+    link.dispatchEvent(click);
+    expect(openPath).toHaveBeenCalledWith('/settings/import');
+    expect(click.defaultPrevented).toBe(true);
+  });
+
+  it('leaves a modified click, and a path the app refuses, to the browser', () => {
+    const openPath = vi.fn(() => false);
+    const { container } = render(<Preview markdown="[Import](/settings/import)" noteId="n1" onOpenPath={openPath} />);
+    const link = container.querySelector('a[href="/settings/import"]')!;
+    const modified = new MouseEvent('click', { bubbles: true, cancelable: true, button: 0, metaKey: true });
+    link.dispatchEvent(modified);
+    expect(openPath).not.toHaveBeenCalled();
+    const refused = new MouseEvent('click', { bubbles: true, cancelable: true, button: 0 });
+    link.dispatchEvent(refused);
+    expect(openPath).toHaveBeenCalledTimes(1);
+    expect(refused.defaultPrevented).toBe(false);
+  });
+});

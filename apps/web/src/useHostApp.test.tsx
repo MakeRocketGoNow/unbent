@@ -11,7 +11,7 @@ import {
   type RouterHistory,
 } from '@tanstack/react-router';
 import { openAttachmentViewer } from './attachment-viewer.js';
-import { back, useHostApp } from './useHostApp.js';
+import { back, openSitePath, useHostApp } from './useHostApp.js';
 
 // `HOME` comes from the gate, which imports the auth client; nothing here signs in.
 vi.mock('./auth-client.js', () => ({ ensureSession: vi.fn() }));
@@ -35,6 +35,22 @@ afterEach(() => {
   delete window.UnbentApp;
   delete window.__unbent;
   vi.unstubAllGlobals();
+});
+
+describe('openSitePath', () => {
+  it('navigates to a path from the root of the site, in place', () => {
+    const navigate = vi.fn();
+    expect(openSitePath({ navigate }, '/settings/import')).toBe(true);
+    expect(navigate).toHaveBeenCalledWith({ href: '/settings/import' });
+  });
+
+  it('refuses another site, a relative path, and what the Worker answers', () => {
+    const navigate = vi.fn();
+    for (const path of ['//example.com/x', 'settings/import', 'https://example.com/', '/api/notes/n1/files/a.txt']) {
+      expect(openSitePath({ navigate }, path), path).toBe(false);
+    }
+    expect(navigate).not.toHaveBeenCalled();
+  });
 });
 
 describe('back', () => {

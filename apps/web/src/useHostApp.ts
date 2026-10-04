@@ -42,14 +42,9 @@ export function useHostApp(): void {
       back: (canGoBack) => back(canGoBack, router.state.location.pathname, (to) =>
         void router.navigate({ to, replace: true }),
       ),
-      open: (path) => {
-        // A path on this site and nothing else: the app rebases links onto the instance
-        // before asking, so anything else here is a mistake to refuse, not follow.
-        if (!path.startsWith('/') || path.startsWith('//')) return false;
-        if (servedByWorker(path)) return false;
-        void router.navigate({ href: path });
-        return true;
-      },
+      // A path on this site and nothing else: the app rebases links onto the instance
+      // before asking, so anything else here is a mistake to refuse, not follow.
+      open: (path) => openSitePath(router, path),
     });
   }, [router]);
 
@@ -126,6 +121,22 @@ function closeDialogs(): void {
 
 function servedByWorker(path: string): boolean {
   return WORKER_PREFIXES.some((prefix) => path.startsWith(prefix));
+}
+
+/**
+ * Navigates to a path on this site without reloading it; true when it did.
+ *
+ * One rule for every caller that is handed a path from outside the router: the app's
+ * `open` above, and a link in a note written from the root (`[Import](/settings/import)`,
+ * which the welcome note uses — see `SITE_PATH` in the rich editor). Only a path from the
+ * root, never `//host`, and never one the Worker answers, which the router has no page
+ * for; each caller falls back to what it did before when this refuses.
+ */
+export function openSitePath(router: { navigate: (opts: { href: string }) => unknown }, path: string): boolean {
+  if (!path.startsWith('/') || path.startsWith('//')) return false;
+  if (servedByWorker(path)) return false;
+  void router.navigate({ href: path });
+  return true;
 }
 
 /**
