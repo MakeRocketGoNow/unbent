@@ -764,19 +764,30 @@ Things about working on the store that are easy to get wrong:
 
 ### Note history
 
-`note_revisions` (`0003-revisions`, `store/revisions.ts`) holds the title and body a note
-had before a write replaced them; the README's "Undoing an edit" is the user-facing account.
-What to know before changing it:
+`note_revisions` (`0003-revisions`, `0004-revision-props`, `store/revisions.ts`) holds the
+note as it stood before a write changed it: its title and body, and since MAK-170 its
+notebook, tags and field values (`props`, one JSON column); the README's "Undoing an edit"
+is the user-facing account. What to know before changing it:
 
-- **`NotesStore.update` and `restoreRevision` are the only writes that keep a copy**, in
-  the transaction that replaces the text. A new method that replaces a body has to decide,
-  and say in its comment, why it does or does not. `appendToBody`, import and the bulk
-  verbs do not, each for a reason given on `update`.
-- **Who is writing decides how often.** Typing keeps one copy per `REVISION_WINDOW_MS`.
-  The MCP tools pass `by: 'assistant'`, which keeps a copy even inside the window unless
-  the text being replaced is the output of an assistant's write that already left one
-  (`through` on the row is how that is told). `by` is not in the HTTP schema, so a
-  browser cannot claim it and a new MCP tool that writes a body must pass it.
+- **`NotesStore.update`, `updateMany` and `restoreRevision` are the only writes that keep
+  a copy**, in the transaction that makes the change. A new method that changes a note's
+  text, fields, tags or notebook has to decide, and say in its comment, why it does or
+  does not. `appendToBody` and import do not, and neither does what a notebook's or a
+  tag's own management does to the notes under it, each for a reason given on `update`.
+- **Who is writing decides how often.** A person's edits keep one copy per
+  `REVISION_WINDOW_MS`, whatever part of the note they change. The MCP tools pass
+  `by: 'assistant'`, which keeps a copy even inside the window unless what is being
+  replaced is the output of an assistant's write that already left one (`through` on the
+  row is how that is told). `by` is not in the HTTP schema, so a browser cannot claim it
+  and a new MCP tool that writes a note must pass it.
+- **A copy with no `props` is "not recorded", never "had none".** Every copy kept before
+  0004 is one. It shows no fields and a restore leaves the note's own alone; code that
+  reads `props` must keep that difference.
+- **Restore goes by id and never fails over what no longer fits.** `planRestore` is the
+  one place that decides what a restore writes and what it skips (a deleted notebook, tag
+  or field; a value its field can no longer hold), and `getRevision` answers the same plan
+  as `unfit` so the sheet says it before the press. `diffProps` in the web app mirrors its
+  rules to draw Changes; change one and change the other.
 - **Not in the feed, the export or the local library.** Fifty bodies per note on every
   device is what that would cost. The History sheet reads the server each time it opens.
 - **Pruned on the write that adds a copy, for that note only**, no cron. Bounded in the

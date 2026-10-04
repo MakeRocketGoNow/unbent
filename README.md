@@ -1149,28 +1149,44 @@ holding someone's earlier state.
 
 ## Undoing an edit
 
-The trash covers a note that was deleted. A note whose text was overwritten — a paste over
-the wrong selection, an assistant's `edit_note` that replaced more than it was meant to —
-is covered by its history: **History** in a note's ⋯ menu lists earlier versions of its
-title and body, shows any of them as the note would read, and puts one back.
+The trash covers a note that was deleted. A note that was changed for the worse — a paste
+over the wrong selection, an assistant's `edit_note` that replaced more than it was meant
+to, a batch that refiled the wrong forty notes — is covered by its history: **History** in
+a note's ⋯ menu lists earlier versions, shows any of them as the note would read, shows
+what restoring it would change, and puts one back.
 
-A version is kept when a write replaces the text, and how often depends on who is writing:
+A version is the note's title and body, and its notebook, tags and field values. In a
+notebook that is mostly fields — a watch list, a log, a set of business cards — the fields
+are the note, and changing only those keeps a version like any other edit.
 
-- **Typing** keeps one version per half hour: the note as it was before the sitting began.
-  The editor saves about once a second while you type, and a version per save would be a
-  copy of the whole note per pause.
-- **An assistant's write** over MCP keeps what it replaces even inside that half hour.
-  The usual assistant edit arrives minutes after you stopped typing, and what it replaces
-  is exactly the text worth having back. A run of edits by an assistant leaves one version,
-  the text before the run, so a long job cannot push your own text out of the history.
+A version is kept when a write changes the note, and how often depends on who is writing:
+
+- **Your own edits** keep one version per half hour: the note as it was before the sitting
+  began. The editor saves about once a second while you type, and a version per save would
+  be a copy of the whole note per pause. A run of field changes is one version, not ten;
+  so is tagging or moving a selection of notes from the list.
+- **An assistant's write** over MCP keeps what it replaces even inside that half hour,
+  whether it rewrites the text, sets a field or refiles a batch. The usual assistant edit
+  arrives minutes after you stopped typing, and what it replaces is exactly what is worth
+  having back. A run of edits by an assistant leaves one version, the note before the run,
+  so a long job cannot push your own text out of the history.
 - **A restore** keeps what it replaces, always. Restoring is undone the same way it was
   done, and the message that follows one has an Undo.
 
+Restoring puts the fields, tags and notebook back with the text, as far as they still fit.
+A notebook, tag or field deleted since stays deleted, and a value its field can no longer
+hold — the field was converted, or lost that choice — stays as the note has it. The
+Changes view says so beforehand and the message after the restore names what was left;
+the rest of the version is restored either way. What a notebook's or a tag's own settings
+do to every note under them (a rename, a field converted) is not a note's history, and a
+restore does not undo it.
+
 The newest fifty versions of a note are kept, and none for longer than a year. It is
 a safety net for a recent mistake rather than an archive: versions are not in an export
-and are not copied to your devices, so the sheet needs a connection. They hold text
-only, so a version shows its pictures and files as they are now, and a file deleted since
-stays deleted. Tags, the notebook and field values are not versioned.
+and are not copied to your devices, so the sheet needs a connection. They do not hold
+files, so a version shows its pictures and files as they are now, and a file deleted since
+stays deleted. Versions kept before fields, tags and the notebook were part of one hold
+text only; restoring one of those leaves the rest of the note as it is.
 
 It also means that text you delete from a note is not gone at once. A password pasted into
 a note and then removed is still in that note's History, for anyone signed in to the
