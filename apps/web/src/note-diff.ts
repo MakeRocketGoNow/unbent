@@ -241,13 +241,14 @@ export interface CurrentProps {
  * One line of what Restore would do to the note's notebook, tags and fields. `from` is
  * the note now and `to` the version, as everywhere in this file; null is "none" — no
  * notebook, no value. `unfit` is something the version holds that Restore would leave as
- * the note has it, with the server's reason.
+ * the note has it, with the server's reason: `held` is the value the version has and
+ * Restore cannot put back, `stays` a value the note has and Restore will not take away.
  */
 export type PropChange =
   | { kind: 'notebook'; from: string | null; to: string | null }
   | { kind: 'tags'; same: string[]; removed: string[]; added: string[] }
   | { kind: 'field'; name: string; from: PropValue | null; to: PropValue | null }
-  | { kind: 'unfit'; skip: RevisionSkip; held?: PropValue };
+  | { kind: 'unfit'; skip: RevisionSkip; held?: PropValue; stays?: PropValue };
 
 /** As the store compares two values: a list as a list, anything else as its text. */
 function sameValue(a: FieldValue, b: FieldValue): boolean {
@@ -262,7 +263,8 @@ function sameValue(a: FieldValue, b: FieldValue): boolean {
  * state is the target, by id; what the server said it would skip (`unfit`) is drawn as
  * skipped and never as a change; a value the note has gained since is cleared. The last
  * rule has the store's exception too — when the version's notebook is gone and the note
- * stays where it is, that notebook's values stay with it.
+ * stays where it is, that notebook's values stay with it, and a value under a deleted
+ * field is never cleared.
  *
  * The one place the two can differ is a tag renamed since the version: the version
  * knows the old name and this device compares names, so it shows the old name going in
@@ -311,7 +313,11 @@ export function diffProps(current: CurrentProps, props: NoteRevisionProps, unfit
   for (const stands of current.fields) {
     if (inVersion.has(stands.fieldId)) continue;
     if (notebookSkip && stands.notebookId !== undefined && stands.notebookId === current.notebook?.id) continue;
-    changes.push({ kind: 'field', name: stands.name, from: stands, to: null });
+    // A value under a deleted field stays: this device cannot tell a deleted field from
+    // a live one, so the server's list is how it learns.
+    const skipped = skip('field', stands.fieldId);
+    if (skipped) changes.push({ kind: 'unfit', skip: skipped, stays: stands });
+    else changes.push({ kind: 'field', name: stands.name, from: stands, to: null });
   }
   return changes;
 }

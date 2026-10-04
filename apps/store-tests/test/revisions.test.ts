@@ -272,6 +272,24 @@ describe('history: putting fields, tags and the notebook back', () => {
     expect(valuesOf(restored.note)).toMatchObject({ Place: 'Hall' });
   });
 
+  it('never clears a value held under a deleted field, which no undo could bring back', async () => {
+    const { stub, id, nb } = await filed('tombstone');
+    const rating = (await stub.createField(nb.id, { name: 'Rating', type: 'number', options: [] })) as { id: string };
+    await stub.update(id, { title: 'A film, renamed', by: 'assistant' });
+    const [copy] = (await stub.listRevisions(id))!;
+    // Gained after the copy; then its notebook goes, and the value lives on under a tombstone.
+    await stub.update(id, { fields: { [rating.id]: 4 } });
+    await stub.deleteNotebook(nb.id);
+    expect(valuesOf((await stub.get(id))!)).toMatchObject({ Rating: 4 });
+
+    const stays = { what: 'field', id: rating.id, name: 'Rating', why: 'deleted' };
+    expect((await stub.getRevision(id, copy!.id))!.unfit).toContainEqual(stays);
+    const restored = (await stub.restoreRevision(id, copy!.id)) as RestoredNote;
+    expect(restored.note.title).toBe('A film');
+    expect(restored.skipped).toContainEqual(stays);
+    expect(valuesOf(restored.note)).toMatchObject({ Rating: 4 });
+  });
+
   it('clears a value the note has gained since, when the note goes back to the copy\'s notebook', async () => {
     const { stub, id } = await filed('gained');
     const shelf = (await stub.createNotebook('Shelf'))!;

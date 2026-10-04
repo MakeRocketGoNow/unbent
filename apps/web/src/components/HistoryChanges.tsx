@@ -220,11 +220,17 @@ function PropChangeLine({ change }: { change: PropChange }) {
       </PropLine>
     );
   }
-  const { skip, held } = change;
+  const { skip, held, stays } = change;
   const label = skip.what === 'notebook' ? 'Notebook' : skip.what === 'tag' ? 'Tags' : skip.name;
   return (
     <PropLine label={label}>
-      <span className="muted">{skipReason(skip, held ? shown(held) : undefined)}</span>
+      <span className="muted">
+        {/* The other way round: a value the version never had, which Restore would clear
+            if its field still existed. Clearing it could not be undone, so it stays. */}
+        {stays
+          ? `This field has been deleted, so “${shown(stays)}” stays on the note.`
+          : skipReason(skip, held ? shown(held) : undefined)}
+      </span>
     </PropLine>
   );
 }

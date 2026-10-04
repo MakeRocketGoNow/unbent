@@ -215,6 +215,12 @@ describe('diffProps', () => {
     ]);
   });
 
+  it('does not clear a value the server says stays, one under a deleted field', () => {
+    const orphan = value('f-old', 'Shelf mark', 'B4', 'nb-gone');
+    const stays = { what: 'field' as const, id: 'f-old', name: 'Shelf mark', why: 'deleted' as const };
+    expect(diffProps(now({ fields: [...version.fields, orphan] }), version, [stays])).toEqual([{ kind: 'unfit', skip: stays, stays: orphan }]);
+  });
+
   it('leaves the values of the notebook the note stays in, when the version\'s notebook is gone', () => {
     const gone = { what: 'notebook' as const, id: 'nb-list', name: 'Watch list', why: 'deleted' as const };
     const place = value('f-place', 'Place', 'Hall', 'nb-shelf');

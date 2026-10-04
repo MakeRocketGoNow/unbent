@@ -1093,6 +1093,8 @@ export class NotesStore {
    *   the notebook could not be put back and the value belongs to the notebook the note
    *   is staying in. Clearing those would leave the note filed where it is with that
    *   notebook's fields emptied, which is neither the copy nor the note.
+   *   Nor is a value under a deleted field cleared, whichever way the notebook went:
+   *   that clear could not be undone.
    *
    * It restores this note, not the account. A notebook renamed, a field renamed or
    * converted for every note, a tag merged: those are the management pages' acts and
@@ -1146,7 +1148,8 @@ export class NotesStore {
           `SELECT id, notebook_id, name, type, options, scale_max, scale_step, currency, position, deleted_at
              FROM notebook_fields
             WHERE id IN (SELECT value FROM json_each(?1))`,
-          JSON.stringify(props.fields.map((v) => v.fieldId)),
+          // The copy's fields and the note's own: the second loop asks about those too.
+          JSON.stringify([...new Set([...props.fields.map((v) => v.fieldId), ...held.keys()])]),
         )
         .map((r) => [r.id, { def: rowToField(r), deleted: r.deleted_at !== null }]),
     );
@@ -1171,6 +1174,14 @@ export class NotesStore {
     for (const [fieldId, stands] of held) {
       if (inCopy.has(fieldId)) continue;
       if (notebookStays && stands.notebookId === currentNotebookId) continue;
+      // A value under a deleted field is the note's own data, kept past its notebook on
+      // purpose, and clearing the last one retires the definition for good
+      // (`sweepTombstonedFields`): the copy this restore keeps would hold the value and
+      // no restore could ever put it back. Left, and said.
+      if (defs.get(fieldId)?.deleted) {
+        skipped.push({ what: 'field', id: fieldId, name: stands.name, why: 'deleted' });
+        continue;
+      }
       fields[fieldId] = null;
     }
 
