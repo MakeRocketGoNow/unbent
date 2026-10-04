@@ -184,6 +184,14 @@ describe('history: retention', () => {
     expect(await countRevisions(stub)).toBe(0);
   });
 
+  it('travels in the operator dump, so a store rebuilt from one can still undo an edit', async () => {
+    const { stub, id } = await seeded('dump', 'before');
+    await stub.update(id, { body: 'after' });
+    const page = await stub.dumpPage('note_revisions');
+    expect(page.rows).toBe(1);
+    expect(new TextDecoder().decode(page.bytes)).toContain(`INSERT INTO note_revisions`);
+  });
+
   it('goes with everything else when the account is wiped', async () => {
     const { stub, id } = await seeded('wipe');
     await stub.update(id, { body: 'changed' });

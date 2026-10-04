@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { env, evictDurableObject, runInDurableObject } from 'cloudflare:test';
 import type { Sql } from '@unbent/api/store/sql';
 import { isRestoreUnsupported, readRestoreRefusal } from '@unbent/api/store/restore';
-import { DUMP_TABLES, NOT_DUMPED } from '@unbent/api/store/tables';
+import { DUMP_TABLES } from '@unbent/api/store/tables';
 import { freshStore } from './helpers.js';
 
 /**
@@ -196,8 +196,6 @@ describe('UserStore lifecycle', () => {
     expect(ids(third.bytes)).toEqual(['n4']);
     expect(third.nextRowid).toBeNull();
     await expect(stub.dumpPage('notes_fts' as 'notes')).rejects.toThrow(/not a data table/);
-    // Counted by `stats`, and deliberately not in a dump; see `DUMP_TABLES`.
-    await expect(stub.dumpPage('note_revisions' as 'notes')).rejects.toThrow(/not a data table/);
   });
 
   /*
@@ -208,13 +206,8 @@ describe('UserStore lifecycle', () => {
    * the shadows FTS5 keeps for each (`notes_fts_data`, `_idx`, …) are excluded by name
    * from what the schema says is virtual, not listed, so a new search table needs nothing
    * here; the dump rebuilds them from the data tables (`dumpChunks` in routes/admin.ts).
-   *
-   * A table may be left out on purpose, and then it is named in `NOT_DUMPED` with the
-   * reason beside it (note history is the one there is). What this refuses is a table
-   * in neither list, which is the forgotten one, and a table in both, which is a list
-   * nobody tidied.
    */
-  it('dumps every table the schema has but the search indexes, or names it as left out', async () => {
+  it('dumps every table the schema has but the search indexes', async () => {
     const { stub } = freshStore('dump-coverage');
     const tables = await runInDurableObject(stub, (_i, state) =>
       state.storage.sql
@@ -229,8 +222,7 @@ describe('UserStore lifecycle', () => {
       // key-value storage); neither is the store's to dump.
       .filter((name) => !/^(sqlite_|_cf_)/.test(name))
       .filter((name) => !virtual.some((v) => name === v || name.startsWith(`${v}_`)));
-    expect([...DUMP_TABLES, ...NOT_DUMPED].sort()).toEqual(real.sort());
-    expect(DUMP_TABLES.filter((t) => (NOT_DUMPED as readonly string[]).includes(t))).toEqual([]);
+    expect([...DUMP_TABLES].sort()).toEqual(real.sort());
   });
 
   it('readOnlySql stops reading at its byte budget rather than loading the result first', async () => {

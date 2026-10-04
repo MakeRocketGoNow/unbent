@@ -19,7 +19,12 @@ export const DATA_TABLES = [
   'attachment_text',
   /*
    * Note history (0003). Counted so `stats` shows what the safety net costs an account,
-   * and not dumped; see `DUMP_TABLES`.
+   * and dumped with everything else: the dump is how a schema file is rehearsed against
+   * a real account, and one that left this table empty would rehearse a change to it
+   * against no rows. Leaving it out was tried, for the dump's call budget and to keep
+   * removed text off an operator's disk, and taken back. An archive's dump is about a
+   * dozen store calls of the fifty allowed, so history would have to reach hundreds of
+   * megabytes to matter, and the file already holds every note the account has.
    */
   'note_revisions',
   /*
@@ -37,26 +42,6 @@ export type DataTable = (typeof DATA_TABLES)[number];
  * triggers keep, and the dump writes its rows before its triggers, so it has to travel as
  * a row), and the object's own two, so a file rebuilt from it says which schema files it
  * is at and whose it is. None of the three extras is counted as data.
- *
- * Note history is left out, and its table is rebuilt empty. A dump is what an account is
- * rebuilt from, and history is a safety net for a recent edit rather than part of the
- * account — the export leaves it out on the same grounds. It is also the one table that
- * can outgrow the notes themselves, at up to fifty bodies a note, inside a route whose
- * every page is a store call against the fifty an invocation is allowed. And it holds
- * text its owner removed from a note, which has no business in a file on an operator's
- * disk.
- *
- * Named in `NOT_DUMPED` rather than merely absent, because absent is what a forgotten
- * table looks like. The store tests hold the two lists together to the schema: every
- * table is either dumped or named here on purpose, and a new one that is in neither
- * fails by name.
  */
-export const NOT_DUMPED = ['note_revisions'] as const;
-type DumpedDataTable = Exclude<DataTable, (typeof NOT_DUMPED)[number]>;
-export const DUMP_TABLES = [
-  '_migrations',
-  '_meta',
-  'note_counts',
-  ...DATA_TABLES.filter((t): t is DumpedDataTable => !(NOT_DUMPED as readonly string[]).includes(t)),
-] as const;
+export const DUMP_TABLES = ['_migrations', '_meta', 'note_counts', ...DATA_TABLES] as const;
 export type DumpTable = (typeof DUMP_TABLES)[number];
