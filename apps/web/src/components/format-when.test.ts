@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { rangeLabel } from './format-when.js';
+import { formatRevisionWhen, rangeLabel } from './format-when.js';
 
 /**
  * The date range as a phrase.
@@ -44,5 +44,40 @@ describe('rangeLabel', () => {
     expect(rangeLabel('2026-01-01', undefined)).not.toContain('2025');
     expect(rangeLabel(undefined, '2026-03-01')).toContain('Mar');
     expect(rangeLabel(undefined, '2026-03-01')).not.toContain('Feb');
+  });
+});
+
+/**
+ * When a version in a note's history was taken. Always with the time: two versions from
+ * one afternoon have nothing else to tell them apart.
+ */
+describe('formatRevisionWhen', () => {
+  const now = new Date(2026, 9, 3, 1, 15).getTime(); // 1:15 AM, 3 October, local
+  const time = (d: Date) => d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+
+  it('says Today and Yesterday by calendar day, not by hours elapsed', () => {
+    const earlier = new Date(2026, 9, 3, 0, 5);
+    expect(formatRevisionWhen(earlier.getTime(), now)).toBe(`Today, ${time(earlier)}`);
+    // Two and a quarter hours ago, and yesterday.
+    const lateLastNight = new Date(2026, 9, 2, 23, 0);
+    expect(formatRevisionWhen(lateLastNight.getTime(), now)).toBe(`Yesterday, ${time(lateLastNight)}`);
+  });
+
+  it('lowercases Today and Yesterday in a sentence, and leaves a date alone', () => {
+    const earlier = new Date(2026, 9, 3, 0, 5);
+    expect(formatRevisionWhen(earlier.getTime(), now, { inSentence: true })).toBe(`today, ${time(earlier)}`);
+    const lateLastNight = new Date(2026, 9, 2, 23, 0);
+    expect(formatRevisionWhen(lateLastNight.getTime(), now, { inSentence: true })).toBe(`yesterday, ${time(lateLastNight)}`);
+    const lastWeek = new Date(2026, 8, 26, 16, 12).getTime();
+    expect(formatRevisionWhen(lastWeek, now, { inSentence: true })).toBe(formatRevisionWhen(lastWeek, now));
+  });
+
+  it('gives the date after that, with the year only when it is another one', () => {
+    const lastWeek = new Date(2026, 8, 26, 16, 12);
+    const label = formatRevisionWhen(lastWeek.getTime(), now);
+    expect(label).toContain(time(lastWeek));
+    expect(label).toContain('26');
+    expect(label).not.toContain('2026');
+    expect(formatRevisionWhen(new Date(2025, 11, 30, 9, 0).getTime(), now)).toContain('2025');
   });
 });

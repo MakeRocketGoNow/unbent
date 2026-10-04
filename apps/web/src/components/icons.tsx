@@ -459,6 +459,15 @@ export function MoveLaterIcon() {
 }
 
 /**
+ * The chevron at the end of a row that opens a page of its own — a version in a note's
+ * history. Muted and sized against the row's text: it says "this goes somewhere", which
+ * the row's hover says too, and it is what tells a row that opens from one that selects.
+ */
+export function RowChevronIcon() {
+  return <ChevronRight className="row-chevron" size="1em" aria-hidden="true" focusable="false" />;
+}
+
+/**
  * Two overlapping rectangles, for copying text to the clipboard.
  *
  * Used beside a copiable value like the MCP server URL, where clicking copies. Small and

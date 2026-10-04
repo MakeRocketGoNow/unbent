@@ -471,6 +471,27 @@ export const updateNoteSchema = z.object({
 });
 
 /**
+ * What a restore from a note's history answers with: the note as it now stands, and the
+ * id of the copy the restore kept of what it replaced — the one an Undo puts back.
+ * `kept` is null when the version was already what the note said: nothing was written,
+ * nothing was kept, and there is nothing to undo. The client cannot tell that from a
+ * real restore by looking at the note, and saying "Restored" with an Undo for it once
+ * had that Undo reach for the copy an earlier restore had kept.
+ */
+export interface RestoredNote {
+  note: Note;
+  kept: number | null;
+}
+
+/**
+ * The optional body of a restore from a note's history: `updateNoteSchema`'s
+ * precondition, with the same meaning. Sent by the Undo that follows a restore.
+ */
+export const restoreRevisionSchema = z.object({
+  ifUpdatedAt: z.number().int().nonnegative().optional(),
+});
+
+/**
  * A set of notes to act on at once: the list's selection.
  *
  * Ids rather than a filter, deliberately. "Every note matching the filter" would let a
@@ -740,6 +761,63 @@ export interface Note extends NoteSummary {
  */
 export interface StaleNote {
   stale: Note;
+}
+
+/**
+ * How a note's history is kept, in one place because two sides read it: the store, which
+ * enforces these, and the History sheet, which tells the person what to expect of it. A
+ * sheet that said "the last 20" beside a store keeping 50 would be explaining a version's
+ * absence wrongly.
+ *
+ * The window is how long one copy stands for the typing that follows it. The editor saves
+ * every second or so while someone types, and a copy per save would be a row — with the
+ * whole body in it — per pause. One per half hour is one per sitting.
+ */
+export const REVISION_WINDOW_MS = 30 * 60 * 1000;
+/**
+ * Copies kept per note; the next write past this drops the oldest.
+ *
+ * Fifty rather than the twenty this began with. The cap is what bounds storage — the
+ * tools this sits beside keep by age alone, on plans that charge for it — so there has
+ * to be one, but too few is a loss nobody can take back and too many is a longer list.
+ * Twenty was two or three weeks of a note edited every day, and every restore and its
+ * undo spends one. Fifty costs a prune that reads about a hundred index entries, once
+ * per half hour of editing per note.
+ */
+export const REVISIONS_KEPT = 50;
+/**
+ * And none older than this. A year, not the ninety days it began with: the clock starts
+ * at the write that replaced the text, so this is how long someone has to notice, and
+ * in an archive most notes are opened a few times a year. The age limit saves almost
+ * nothing where it bites — a note edited rarely has one or two small copies — and the
+ * privacy case for a short one is answered by Clear history instead.
+ */
+export const REVISION_MAX_AGE_MS = 365 * 24 * 60 * 60 * 1000;
+
+/**
+ * What replaced a note's text when a copy of it was kept, when it was not typing in the
+ * editor: an assistant's write over MCP, or an earlier copy put back from the history.
+ */
+export type NoteRevisionCause = 'assistant' | 'restore';
+
+/**
+ * One entry in a note's history: the title a note had before a write replaced its text,
+ * and when. The list carries these without bodies; `NoteRevision` is one of them whole.
+ */
+export interface NoteRevisionSummary {
+  /** Unique within the account's store, and only meaningful under its note. */
+  id: number;
+  title: string;
+  /** The body's length in characters, so a row can say how much text the copy holds. */
+  size: number;
+  /** When the copy was taken, which is when the write that replaced it landed. */
+  createdAt: number;
+  /** Absent for ordinary typing. */
+  cause?: NoteRevisionCause;
+}
+
+export interface NoteRevision extends NoteRevisionSummary {
+  body: string;
 }
 
 /** A notebook as the list reports it. */

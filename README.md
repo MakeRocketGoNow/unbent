@@ -817,7 +817,8 @@ create and change notes, and move them to the trash, from then on and without as
 Settings › Connected apps lists what is connected and disconnects any of it; disconnecting
 deletes the app's tokens, and the endpoint checks the grant on every call, so access ends
 rather than lingering until a token expires. There is deliberately no tool that deletes
-permanently — the trash is as far as an assistant can go.
+permanently — the trash is as far as an assistant can go. And what an assistant's edit
+replaces is kept: see [Undoing an edit](#undoing-an-edit).
 
 Client registration is open, because clients register themselves at connect time and there
 is no way to pre-provision credentials for software you have never heard of. A registered
@@ -1145,6 +1146,46 @@ The two go together: local notes live in Durable Objects under `.wrangler/state/
 keyed by the user ids in D1, and resetting one without the other leaves ghost objects
 behind — notes with no account, or a fresh account whose first open finds an object already
 holding someone's earlier state.
+
+## Undoing an edit
+
+The trash covers a note that was deleted. A note whose text was overwritten — a paste over
+the wrong selection, an assistant's `edit_note` that replaced more than it was meant to —
+is covered by its history: **History** in a note's ⋯ menu lists earlier versions of its
+title and body, shows any of them as the note would read, and puts one back.
+
+A version is kept when a write replaces the text, and how often depends on who is writing:
+
+- **Typing** keeps one version per half hour: the note as it was before the sitting began.
+  The editor saves about once a second while you type, and a version per save would be a
+  copy of the whole note per pause.
+- **An assistant's write** over MCP keeps what it replaces even inside that half hour.
+  The usual assistant edit arrives minutes after you stopped typing, and what it replaces
+  is exactly the text worth having back. A run of edits by an assistant leaves one version,
+  the text before the run, so a long job cannot push your own text out of the history.
+- **A restore** keeps what it replaces, always. Restoring is undone the same way it was
+  done, and the message that follows one has an Undo.
+
+The newest fifty versions of a note are kept, and none for longer than a year. It is
+a safety net for a recent mistake rather than an archive: versions are not in an export
+and are not copied to your devices, so the sheet needs a connection. They hold text
+only, so a version shows its pictures and files as they are now, and a file deleted since
+stays deleted. Tags, the notebook and field values are not versioned.
+
+It also means that text you delete from a note is not gone at once. A password pasted into
+a note and then removed is still in that note's History, for anyone signed in to the
+account, until the version ages out. **Clear history**, at the foot of the sheet, deletes
+every version of that note for good and leaves the note as it is; it asks first, since it
+is the one thing in the sheet that cannot be undone. What it cannot reach is the thirty
+days of point-in-time recovery every store keeps (see [Where your notes
+live](#where-your-notes-live)): an operator winding the whole account back to before the
+clear would bring the versions back with everything else. Emptying the trash
+takes a note's history with it, and deleting the account takes all of it.
+
+The API is `GET /api/notes/:id/revisions`, `GET /api/notes/:id/revisions/:revision`,
+`POST /api/notes/:id/revisions/:revision/restore` and `DELETE /api/notes/:id/revisions`.
+There is no MCP tool for it yet: an assistant can cause a version to be kept, but only a
+person can put one back.
 
 ## Deleting notes
 

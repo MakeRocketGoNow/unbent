@@ -211,6 +211,13 @@ export const keys = {
     filter.trashed ? (['trash', 'exact-count'] as const) : (['notes', 'exact-count', filter] as const),
   search: (q: string, filter: NoteFilter = {}, rows = false) => ['search', q, filter, { rows }] as const,
   config: () => ['config'] as const,
+  /**
+   * A note's history and one copy from it. Under a root of their own rather than
+   * `['note', id]`: that key is set by hand on every save, and nothing about a save
+   * should touch a list that is only looked at with the History sheet open.
+   */
+  revisions: (noteId: string) => ['revisions', noteId] as const,
+  revision: (noteId: string, revisionId: number) => ['revisions', noteId, revisionId] as const,
   pendingImages: () => ['pending-images'] as const,
 };
 
@@ -365,6 +372,23 @@ export const tagsQuery = () =>
  */
 export const configQuery = () =>
   queryOptions({ queryKey: keys.config(), queryFn: () => api.getConfig(), staleTime: Infinity });
+
+/**
+ * A note's history, for the History sheet. One of the reads that goes to the server
+ * rather than the local copy: the copies are kept there and nowhere else. Never fresh —
+ * the sheet is opened to find what a write just replaced, and that write may have been
+ * seconds ago, on another device or by an assistant.
+ */
+export const revisionsQuery = (noteId: string) =>
+  queryOptions({ queryKey: keys.revisions(noteId), queryFn: () => api.listRevisions(noteId), staleTime: 0, gcTime: 0 });
+
+/** One copy, whole. A copy never changes once kept, so it is fresh for as long as it is held. */
+export const revisionQuery = (noteId: string, revisionId: number) =>
+  queryOptions({
+    queryKey: keys.revision(noteId, revisionId),
+    queryFn: () => api.getRevision(noteId, revisionId),
+    staleTime: Infinity,
+  });
 
 /**
  * How many files wait for the vision model — the count on Maintenance's button.

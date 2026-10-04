@@ -6,6 +6,7 @@ import {
   InvalidFieldValue,
   listNotesQuerySchema,
   noteBatchSchema,
+  restoreRevisionSchema,
   updateNoteSchema,
   updateNotesSchema,
 } from '@unbent/shared';
@@ -29,6 +30,17 @@ import type { AppEnv } from '../types.js';
  */
 function fieldError(err: InvalidFieldValue): string {
   return `${err.fieldName} ${err.message}`;
+}
+
+/**
+ * A revision's id from the path: a positive integer, or null for anything else, which
+ * the routes answer as they answer an id that names nothing. Checked here because the
+ * value crosses RPC into a bind, and `Number('abc')` there would be a NaN in a query.
+ */
+function revisionIdOf(raw: string): number | null {
+  // Fifteen digits: every such number is a safe integer, which sixteen are not.
+  if (!/^[1-9]\d{0,14}$/.test(raw)) return null;
+  return Number(raw);
 }
 
 /**
@@ -126,6 +138,61 @@ export const notes = new Hono<AppEnv>()
       if (err instanceof InvalidFieldValue) return c.json({ error: fieldError(err) }, 400);
       throw err;
     }
+  })
+
+  /**
+   * The note's history: the copies kept of what a write replaced, newest first, without
+   * their bodies. Read from the server each time and never part of the change feed — a
+   * safety net asked for rarely, not data every device should hold. A trashed note has
+   * none to show; it is restored first.
+   */
+  .get('/notes/:id/revisions', async (c) => {
+    const revisions = await c.get('notes').listRevisions(c.req.param('id'));
+    if (!revisions) return c.json({ error: 'Not found' }, 404);
+    return c.json({ revisions });
+  })
+
+  /**
+   * Clears the note's history: every copy, for good. The note itself is not changed.
+   * The one destructive route here that needs no trip through the trash first, because
+   * what it destroys is the safety net and not the thing it protects; the client asks
+   * before calling it.
+   */
+  .delete('/notes/:id/revisions', async (c) => {
+    const cleared = await c.get('notes').clearRevisions(c.req.param('id'));
+    if (cleared === null) return c.json({ error: 'Not found' }, 404);
+    return c.json({ cleared });
+  })
+
+  .get('/notes/:id/revisions/:revision', async (c) => {
+    const revisionId = revisionIdOf(c.req.param('revision'));
+    const revision = revisionId === null ? null : await c.get('notes').getRevision(c.req.param('id'), revisionId);
+    if (!revision) return c.json({ error: 'Not found' }, 404);
+    return c.json(revision);
+  })
+
+  /**
+   * Puts a copy back as the note's title and body, and answers `{ note, kept }`: the
+   * note as it now stands, and the id of the copy kept of what was replaced, so this is
+   * undone the same way it was done. `kept` is null when the copy was already what the
+   * note said and nothing was written.
+   *
+   * The body is optional, read by hand as the duplicate route reads its own. With
+   * `ifUpdatedAt`, a note saved since is a 409 carrying it under `stale`, as a patch's is.
+   */
+  .post('/notes/:id/revisions/:revision/restore', async (c) => {
+    const revisionId = revisionIdOf(c.req.param('revision'));
+    const body = restoreRevisionSchema.safeParse(await c.req.json().catch(() => ({})));
+    if (!body.success) return c.json({ error: 'ifUpdatedAt must be a timestamp' }, 400);
+    const restored =
+      revisionId === null
+        ? null
+        : await c.get('notes').restoreRevision(c.req.param('id'), revisionId, body.data.ifUpdatedAt);
+    if (!restored) return c.json({ error: 'Not found' }, 404);
+    if ('stale' in restored) {
+      return c.json({ error: 'This note changed after the copy this restore was made from', stale: restored.stale }, 409);
+    }
+    return c.json(restored);
   })
 
   /**

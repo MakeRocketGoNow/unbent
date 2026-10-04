@@ -1712,6 +1712,51 @@ describe('cross-tenant access', () => {
     expect(res.status).toBe(404);
   });
 
+  /*
+   * A note's history (MAK-119) is addressed under the note, so it is the note's owner or
+   * nobody. That revisions do not outlive the account is held in the store's own tests
+   * (`revisions.test.ts`, the wipe): deletion here stops at the emailed link, which this
+   * suite cannot follow.
+   */
+  it("bob cannot list, read or restore an alice note's history", async () => {
+    const note = await createNote(alice, { title: 'Alice history', body: 'the text before' });
+    const json = { 'Content-Type': 'application/json', Origin: ORIGIN };
+    await fetch(`${BASE}/api/notes/${note.id}`, {
+      method: 'PATCH',
+      headers: { ...json, Cookie: alice.cookie },
+      body: JSON.stringify({ body: 'the text after' }),
+    });
+    const listed = await fetch(`${BASE}/api/notes/${note.id}/revisions`, asUser(alice));
+    expect(listed.status).toBe(200);
+    const { revisions } = (await listed.json()) as { revisions: Array<{ id: number }> };
+    expect(revisions).toHaveLength(1);
+    const rev = revisions[0]!.id;
+
+    expect((await fetch(`${BASE}/api/notes/${note.id}/revisions`, asUser(bob))).status).toBe(404);
+    expect((await fetch(`${BASE}/api/notes/${note.id}/revisions/${rev}`, asUser(bob))).status).toBe(404);
+    const restore = await fetch(`${BASE}/api/notes/${note.id}/revisions/${rev}/restore`, {
+      method: 'POST',
+      headers: { ...json, Cookie: bob.cookie },
+    });
+    expect(restore.status).toBe(404);
+    const clear = await fetch(`${BASE}/api/notes/${note.id}/revisions`, { method: 'DELETE', headers: { ...json, Cookie: bob.cookie } });
+    expect(clear.status).toBe(404);
+    expect(((await fetch(`${BASE}/api/notes/${note.id}/revisions`, asUser(alice)).then((r) => r.json())) as { revisions: unknown[] }).revisions).toHaveLength(1);
+    // Nor under a note of his own: the id only means something under its note.
+    const bobs = await createNote(bob, { title: 'Bob', body: 'bob' });
+    expect((await fetch(`${BASE}/api/notes/${bobs.id}/revisions/${rev}`, asUser(bob))).status).toBe(404);
+
+    const after = await fetch(`${BASE}/api/notes/${note.id}`, asUser(alice)).then((r) => r.json());
+    expect(after.body).toBe('the text after');
+    // Alice can clear her own, and the note is as it was.
+    const cleared = await fetch(`${BASE}/api/notes/${note.id}/revisions`, { method: 'DELETE', headers: { ...json, Cookie: alice.cookie } });
+    expect(await cleared.json()).toEqual({ cleared: 1 });
+    expect(((await fetch(`${BASE}/api/notes/${note.id}/revisions`, asUser(alice)).then((r) => r.json())) as { revisions: unknown[] }).revisions).toEqual([]);
+    expect((await fetch(`${BASE}/api/notes/${note.id}`, asUser(alice)).then((r) => r.json())).body).toBe('the text after');
+    // And an id that is not a number at all is a 404, not a 500.
+    expect((await fetch(`${BASE}/api/notes/${note.id}/revisions/abc`, asUser(alice))).status).toBe(404);
+  });
+
   it('bob cannot PATCH an alice note by id', async () => {
     const res = await fetch(`${BASE}/api/notes/${aliceNote.id}`, {
       method: 'PATCH',

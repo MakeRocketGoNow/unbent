@@ -18,6 +18,16 @@ export const DATA_TABLES = [
   'attachments',
   'attachment_text',
   /*
+   * Note history (0003). Counted so `stats` shows what the safety net costs an account,
+   * and dumped with everything else: the dump is how a schema file is rehearsed against
+   * a real account, and one that left this table empty would rehearse a change to it
+   * against no rows. Leaving it out was tried, for the dump's call budget and to keep
+   * removed text off an operator's disk, and taken back. An archive's dump is about a
+   * dozen store calls of the fifty allowed, so history would have to reach hundreds of
+   * megabytes to matter, and the file already holds every note the account has.
+   */
+  'note_revisions',
+  /*
    * The change feed (0002). Not note data, but counted and dumped with it: `stats`
    * showing how long an account's feed is says whether retention is doing its job, and a
    * dump that rebuilds a store must rebuild the feed too or every client of it would

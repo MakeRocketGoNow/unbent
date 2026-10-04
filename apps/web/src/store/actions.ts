@@ -1,6 +1,6 @@
 import { IndexedDBAdapter, NonRetriableError, startOfflineExecutor, type OfflineExecutor, type OnlineDetector, type StorageAdapter } from '@tanstack/offline-transactions';
 import type { Transaction } from '@tanstack/db';
-import { MAX_ATTACHMENT_BYTES, filenameSchema, type FeedNote, type FieldDef, type FieldValue, type Note, type NoteFieldValue } from '@unbent/shared';
+import { MAX_ATTACHMENT_BYTES, filenameSchema, type FeedNote, type FieldDef, type FieldValue, type Note, type NoteFieldValue, type RestoredNote } from '@unbent/shared';
 import * as api from '../notes-api.js';
 import { ApiError, isNoteChanged, isOfflineError } from '../notes-api.js';
 import { offlineNow, recheck, subscribeConnectivity } from '../connectivity.js';
@@ -137,6 +137,12 @@ export interface Outbox {
   cancelUpload: (attachmentId: string) => Promise<'cancelled' | 'sending' | 'gone'>;
   /** Records which notes an entry just queued is about, for `waiting`. */
   trackEntry: (id: string, noteIds: string[]) => void;
+  /**
+   * Writes the server's answer to a write made as a request into the local copy, as a
+   * replayed entry's answer is written (`took`), waiting on a pull only when the answer
+   * names something this device has no id for. For `restoreRevision`.
+   */
+  take: (note: Note) => Promise<void>;
   /** Stops the executor and closes its store, so the outbox's database can be removed. */
   dispose: () => Promise<void>;
 }
@@ -569,6 +575,9 @@ export function createOutbox(userId: string, lib: Omit<WritableLibrary, 'outbox'
     trackSave: (noteId, entry) => {
       waitingSaves.set(noteId, entry);
     },
+    take: async (note) => {
+      if (!took(note)) await settled();
+    },
     trackUpload: (attachmentId, entry) => {
       waitingUploads.set(attachmentId, entry);
     },
@@ -946,6 +955,93 @@ export async function duplicateNote(sourceId: string): Promise<{ id: string }> {
     lib.notes.insert({ ...source, id: copyId, createdAt: now, updatedAt: now, files: [] });
   });
   return { id: copyId };
+}
+
+/** How long `restoreRevision` and `clearHistory` wait for a note's own queued writes to reach the server. */
+const RESTORE_DRAIN_MS = 5000;
+
+/** Resolves true once the outbox has nothing waiting for this note, false if that takes too long. */
+function drained(lib: WritableLibrary, noteId: string, timeout: number): Promise<boolean> {
+  if (!lib.outbox.status().waiting.has(noteId)) return Promise.resolve(true);
+  return new Promise((done) => {
+    const finish = (ok: boolean) => {
+      clearTimeout(timer);
+      unsubscribe();
+      done(ok);
+    };
+    const timer = setTimeout(() => finish(false), timeout);
+    // `subscribe` calls its listener at once, before it has returned the way out.
+    let unsubscribe = () => {};
+    unsubscribe = lib.outbox.subscribe((status) => {
+      if (!status.waiting.has(noteId)) finish(true);
+    });
+  });
+}
+
+/**
+ * Resolves once this note's queued writes have reached the server — true — or have
+ * taken too long to — false. For a read of the server's history, which is only worth
+ * making once the save that may have just added to it has landed.
+ */
+export async function synced(noteId: string, timeout = RESTORE_DRAIN_MS): Promise<boolean> {
+  const lib = await resolve();
+  return lib ? drained(lib, noteId, timeout) : true;
+}
+
+/**
+ * Deletes a note's whole history on the server; how many versions went.
+ *
+ * It waits for the note's own queued writes, as a restore does, and for a sharper
+ * reason. This is pressed to be rid of text — a password pasted in and taken out again
+ * — and the save that took it out may still be in the outbox. Cleared first, the
+ * history would be empty when that save landed, and the server would keep a copy of
+ * what the save replaced: the very text, back in a history the person had just been
+ * told was clear. So a queue that will not drain refuses the clear.
+ */
+export async function clearHistory(noteId: string): Promise<number> {
+  const lib = await resolve();
+  if (lib && !(await drained(lib, noteId, RESTORE_DRAIN_MS))) {
+    throw new Error('This note has changes that have not synced yet. Try again in a moment.');
+  }
+  return api.clearRevisions(noteId);
+}
+
+/**
+ * Puts a copy from a note's history back as its title and body, and answers with the
+ * note as the server then has it and the id of the copy the server kept of what it
+ * replaced (`kept`; null when the version was already the note, and nothing was done).
+ *
+ * A request, not an entry in the outbox, and deliberately. History lives on the server
+ * alone, so the sheet this is pressed in cannot open without a connection; and the
+ * server keeps what the restore replaces in the same transaction, which is what makes a
+ * restore undoable. Queued as a save of the old text it would be typing as far as the
+ * server could tell, and typing inside the half-hour window keeps nothing.
+ *
+ * It waits for the note's own queued writes first. A save still in the outbox would
+ * otherwise reach the server after the restore, find the note moved on, and come back
+ * as a conflict between the person and themselves; and the text it carries would never
+ * have been the server's, so the restore could not keep it. A queue that will not drain
+ * — the server unreachable although the sheet opened — refuses the restore rather than
+ * racing it.
+ *
+ * The answer is written into the local copy before this returns, the way a replayed
+ * save's is, so the row agrees with the note handed back and the editor is not reseeded
+ * from one while the list shows the other.
+ *
+ * `ifUpdatedAt` is the server's precondition, passed through for the Undo of a restore:
+ * a `NoteChangedError` when the note has been saved since the date given.
+ */
+export async function restoreRevision(noteId: string, revisionId: number, opts: { ifUpdatedAt?: number } = {}): Promise<RestoredNote> {
+  const lib = await resolve();
+  if (lib && !(await drained(lib, noteId, RESTORE_DRAIN_MS))) {
+    throw new Error('This note has changes that have not synced yet. Try again in a moment.');
+  }
+  const restored = await api.restoreRevision(noteId, revisionId, opts);
+  // A version that was already the note changed nothing: no write to tell anyone about.
+  if (restored.kept === null) return restored;
+  directListeners.forEach((l) => l());
+  if (lib) await lib.outbox.take(restored.note);
+  return restored;
 }
 
 export async function trashNote(noteId: string): Promise<void> {

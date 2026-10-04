@@ -3,7 +3,7 @@ import { noteOpened } from '../store/library.js';
 import { Link, useNavigate } from '@tanstack/react-router';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { EditorView } from '@codemirror/view';
-import type { FieldDef, FieldType, FieldValue, Note } from '@unbent/shared';
+import type { FieldDef, FieldType, FieldValue, Note, NoteRevisionSummary } from '@unbent/shared';
 import { localizeImageLinks, remoteImageUrls } from '@unbent/shared';
 import * as api from '../notes-api.js';
 import { isOfflineError, isStatus } from '../notes-api.js';
@@ -50,6 +50,8 @@ import { EditorToolbar, type NoteView } from './EditorToolbar.js';
 import { Attachments } from './Attachments.js';
 import { ResizeHandle } from './ResizeHandle.js';
 import { OverflowMenu } from './OverflowMenu.js';
+import { HistorySheet } from './HistorySheet.js';
+import { formatRevisionWhen } from './format-when.js';
 import { Button } from './Button';
 import { BackArrow } from './BackArrow.js';
 import { FilingRows } from './FilingRows.js';
@@ -363,7 +365,7 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
     return outbox.subscribe((status) => {
       const c = status.conflicts.get(noteId);
       if (!c) return;
-      const clean = saveStateRef.current === 'idle' || saveStateRef.current === 'saved';
+      const clean = isClean();
       if (clean && JSON.stringify(c.draft) !== JSON.stringify(draftRef.current)) showDraft(c.draft);
       bases.current.set(noteId, c.base);
       setConflict((prev) => (prev?.id === noteId && prev.current === c.current ? prev : { id: noteId, current: c.current }));
@@ -381,7 +383,7 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
     return outbox.onAcknowledged((id, updated) => {
       bases.current.set(id, updated);
       if (id !== noteId) return;
-      const clean = saveStateRef.current === 'idle' || saveStateRef.current === 'saved';
+      const clean = isClean();
       if (clean && JSON.stringify(seedFrom(updated)) !== JSON.stringify(draftRef.current)) reseed(updated);
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -592,6 +594,8 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
   */
   const saveStateRef = useRef(saveState);
   saveStateRef.current = saveState;
+  /** Nothing typed is waiting or failed: what every "is it safe to replace the draft" asks. */
+  const isClean = () => saveStateRef.current === 'idle' || saveStateRef.current === 'saved';
   /*
      Coming back to the tab is the usual moment another device has saved this note: the
      phone was in use while the tab sat in the background. The library pulls the feed on
@@ -601,7 +605,7 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
   useEffect(() => {
     if (!editing) return;
     const onShow = () => {
-      const clean = saveStateRef.current === 'idle' || saveStateRef.current === 'saved';
+      const clean = isClean();
       if (document.visibilityState === 'visible' && clean) void refetch();
     };
     document.addEventListener('visibilitychange', onShow);
@@ -610,7 +614,7 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
   }, [editing, noteId]);
   useEffect(() => {
     if (!editing || !note || conflicted) return;
-    const clean = saveStateRef.current === 'idle' || saveStateRef.current === 'saved';
+    const clean = isClean();
     const base = bases.current.get(noteId);
     /*
        Only ever forward. A copy older than the base is not another device's save: it is
@@ -773,6 +777,131 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
     const copy = await actions.duplicateNote(noteId);
     void queryClient.invalidateQueries({ queryKey: ['search'] });
     void navigate({ to: '/notes/$noteId', params: { noteId: copy.id }, search: (p) => p });
+  }
+
+  /** The History sheet, and the ⋯ menu it opens from, which its desktop panel sits under. */
+  /*
+     Open for a note, not open: Workspace is reused across notes, and an effect that closed
+     the sheet when the note changed ran after the sheet's own, so for one commit the sheet
+     was open on the new note and asked the server for its history, and for the old note's
+     version by id. Compared here, it is shut in the very render the note changes.
+  */
+  const [historyFor, setHistoryFor] = useState<string | null>(null);
+  const historyOpen = historyFor === noteId;
+  /*
+     The sheet is not in the page until History has been chosen once. It is opened on few
+     notes and its dialog would otherwise sit, closed, in every one; kept mounted after
+     that, so closing it is the sheet's own exit and not an unmount.
+  */
+  const [historyMounted, setHistoryMounted] = useState(false);
+  /** The flush begun as the sheet opened, which its list waits on; see `HistorySheet`. */
+  const historyFlush = useRef<Promise<unknown>>(Promise.resolve());
+  const overflowSlot = useRef<HTMLSpanElement>(null);
+  // And forgotten, so coming back to that note does not open it again.
+  useEffect(() => setHistoryFor(null), [noteId]);
+
+  /**
+   * Saves what is on screen and says whether the server can be asked to replace it.
+   *
+   * The server keeps what a restore replaces, and it can only keep what it has: typing
+   * that never left this tab would be replaced by the reseed that follows and exist
+   * nowhere. So the draft is flushed, and the save has to have worked. `flush` reports
+   * through the save state, which is a render behind it, hence the turn of the event
+   * loop before it is read. A conflict waiting on a choice counts as unsaved even when
+   * the state reads clean — the refusal comes from the outbox, after the save was taken
+   * locally, and can arrive while the History sheet is already open.
+   */
+  async function savedFirst(id: string): Promise<boolean> {
+    await flush();
+    await new Promise((r) => setTimeout(r, 0));
+    if (outbox?.status().conflicts.has(id)) return false;
+    return isClean();
+  }
+
+  /**
+   * Puts a copy from the note's history back (MAK-119), then says so with an Undo.
+   * Thrown errors are the sheet's to show: it stays open on them, with the copy still
+   * in front of the person.
+   */
+  async function restoreFromHistory(revision: NoteRevisionSummary) {
+    const id = noteId;
+    if (!(await savedFirst(id))) {
+      throw new Error('This note has changes that could not be saved, so nothing was restored.');
+    }
+    const flushed = draftRef.current;
+    const { note: restored, kept } = await actions.restoreRevision(id, revision.id);
+    /*
+       The version was already what the note says — the one just restored, picked again,
+       or the "Before a restore" copy of the text now on screen. Nothing was written and
+       nothing kept, so there is nothing to undo, and "Restored" with an Undo would be
+       an offer to reverse something else.
+    */
+    if (kept === null) {
+      if (noteIdRef.current !== id) return;
+      setHistoryFor(null);
+      setSnackbar({ message: 'That version is what the note already says.', tone: 'info', duration: 5000 });
+      return;
+    }
+    void queryClient.invalidateQueries({ queryKey: ['search'] });
+    if (noteIdRef.current !== id) return;
+    /*
+       Only over the draft that was saved. Nothing holds the sheet open while the request
+       is out — the platform's back gesture closes the dialog without asking — so the
+       person can be typing again by the time it lands, and a reseed would drop what is
+       still waiting for the autosave. That typing then saves against the note the restore
+       replaced, and comes back as a conflict, the way `undoRestore` leaves it.
+    */
+    if (JSON.stringify(draftRef.current) === JSON.stringify(flushed)) reseed(restored);
+    setHistoryFor(null);
+    setSnackbar({
+      message: `Restored the version from ${formatRevisionWhen(revision.createdAt, Date.now(), { inSentence: true })}`,
+      tone: 'info',
+      duration: 8000,
+      action: { label: 'Undo', onClick: () => void undoRestore(id, kept, restored.updatedAt) },
+    });
+  }
+
+  /**
+   * Undo, on the snackbar a restore leaves: the copy the restore itself kept, put back,
+   * and only if the note is still exactly as the restore left it.
+   *
+   * `keptId` is that copy, named by the server in the restore's own answer. It was
+   * found before by reading the list back and matching a date, which cost a request and
+   * rested on the copy's date equalling the note's — true, but nothing here should have
+   * to know it. The server is asked to put it back only over a note still carrying the
+   * date the restore gave it (`ifUpdatedAt`): the editor is live while the snackbar is
+   * up, typing saved since leaves no copy of its own inside the window, and an Undo that
+   * replaced it would be taking away text the person had just written. Typing not yet
+   * saved is flushed first, which moves the date, so it is refused the same way rather
+   * than overwritten by the reseed.
+   *
+   * And typing that starts after the flush, while the request below is out, is left
+   * on screen: the draft is noted once flushed, and the note that comes back replaces it
+   * only if it is still that draft. The undo has happened on the server by then, so the
+   * typing's own save is made against the copy from before it and is refused, and the
+   * conflict notice puts the two versions to the person. Locking the editor for the
+   * second this takes was the alternative, and a note that stops taking keys with no
+   * reason on screen is what the offline work moved away from.
+   */
+  async function undoRestore(id: string, keptId: number, restoredAt: number) {
+    const changed = 'The note has changed since; open History to choose a version.';
+    try {
+      if (!(await savedFirst(id))) throw new Error('This note has changes that could not be saved, so nothing was undone.');
+      const flushed = draftRef.current;
+      const { note: back } = await actions.restoreRevision(id, keptId, { ifUpdatedAt: restoredAt });
+      void queryClient.invalidateQueries({ queryKey: ['search'] });
+      // By content, as the other reseeds compare: a letter typed and taken back is not typing.
+      if (noteIdRef.current === id && JSON.stringify(draftRef.current) === JSON.stringify(flushed)) reseed(back);
+    } catch (err) {
+      if (noteIdRef.current !== id) return;
+      // A 404 is the copy itself gone: the history was cleared while the snackbar was up.
+      const message = api.isNoteChanged(err)
+        ? changed
+        : api.isStatus(err, 404)
+          ? 'That version is no longer in the note’s history.'
+          : api.errorText(err);
+      setSnackbar({ message, tone: 'error' });
+    }
   }
 
   /** The addresses the draft's images are drawn from; what "Save web images" counts. */
@@ -954,7 +1083,7 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
       // The server's own sentence, without the status it arrives prefixed with: "422:
       // Nothing to read yet…" is not what a person wants to read. A failure stays until
       // dismissed rather than fading — no `duration`.
-      setSnackbar({ message: (err as Error).message.replace(/^\d{3}[^:]*: /, ''), tone: 'error' });
+      setSnackbar({ message: api.errorText(err), tone: 'error' });
     } finally {
       if (noteIdRef.current === startedFor) setAutofilling(false);
     }
@@ -1195,7 +1324,7 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
           {/* A trashed note has neither action, and a ⋯ that opens an empty box is worse
               than no ⋯ — so the trigger goes with its contents. */}
           {!readOnly && (
-            <span className="overflow-slot">
+            <span className="overflow-slot" ref={overflowSlot}>
               <OverflowMenu
                 label="More actions"
                 // Every item here needs the server. Faded, not withdrawn, for the reason
@@ -1214,6 +1343,23 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
                     : []),
                   { label: 'Duplicate', onSelect: () => void duplicateNote() },
                   { label: 'Download', href: api.noteDownloadUrl(noteId) },
+                  /*
+                     Earlier versions of the note's text, and a way back to one. Beside
+                     Delete on purpose: the two are how a note is lost and how it is got
+                     back. Not while a conflict waits on a choice — a restore would be a
+                     third version arriving in the middle of choosing between two. The
+                     draft is flushed as the sheet opens, so by the time a version is
+                     picked the server already has what is on screen.
+                  */
+                  {
+                    label: 'History',
+                    disabled: frozen,
+                    onSelect: () => {
+                      historyFlush.current = flush();
+                      setHistoryMounted(true);
+                      setHistoryFor(noteId);
+                    },
+                  },
                   {
                     label: 'Delete',
                     tone: 'danger' as const,
@@ -1225,6 +1371,17 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
           )}
         </div>
       </div>
+
+      {!readOnly && historyMounted && (
+        <HistorySheet
+          open={historyOpen}
+          onClose={() => setHistoryFor(null)}
+          noteId={noteId}
+          anchor={overflowSlot}
+          saved={() => historyFlush.current}
+          onRestore={restoreFromHistory}
+        />
+      )}
 
       {/*
           A save this note refused because another device saved it first (MAK-113). Under

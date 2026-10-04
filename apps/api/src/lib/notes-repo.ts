@@ -7,8 +7,11 @@ import type {
   FieldValue,
   Note,
   NoteFieldsPatch,
+  NoteRevision,
+  NoteRevisionSummary,
   NoteSummary,
   NotebookDefinition,
+  RestoredNote,
   NotebookSummary,
   SearchResult,
   SearchResultRow,
@@ -115,9 +118,30 @@ export class NotesRepo extends StoreRepo {
       notebook?: string | null | undefined;
       fields?: NoteFieldsPatch | undefined;
       ifUpdatedAt?: number | undefined;
+      /** Set by the MCP tools: an assistant's write keeps what it replaces. See `NotesStore.update`. */
+      by?: 'assistant' | undefined;
     },
   ): Promise<Note | StaleNote | null> {
     return this.call(async (s) => s.update(id, patch));
+  }
+
+  /** A live note's history, newest first, without bodies; null when there is no such note. */
+  listRevisions(id: string): Promise<NoteRevisionSummary[] | null> {
+    return this.call((s) => s.listRevisions(id));
+  }
+
+  getRevision(id: string, revisionId: number): Promise<NoteRevision | null> {
+    return this.call((s) => s.getRevision(id, revisionId));
+  }
+
+  /** Deletes a live note's whole history; how many copies went, or null for no such note. */
+  clearRevisions(id: string): Promise<number | null> {
+    return this.call((s) => s.clearRevisions(id));
+  }
+
+  /** Puts a copy back, keeping what it replaces; see `NotesStore.restoreRevision`. */
+  restoreRevision(id: string, revisionId: number, ifUpdatedAt?: number): Promise<RestoredNote | StaleNote | null> {
+    return this.call(async (s) => s.restoreRevision(id, revisionId, ifUpdatedAt));
   }
 
   appendToBody(id: string, markdown: string): Promise<boolean> {

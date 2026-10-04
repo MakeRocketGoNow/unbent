@@ -233,6 +233,8 @@ export function registerWriteTools(server: McpServer, notes: NotesRepo): void {
           // ISO-8601 out, so ISO-8601 back in; `noteRef` keeps the milliseconds, which is
           // what makes the round trip exact.
           ...(ifUpdatedAt ? { ifUpdatedAt: Date.parse(ifUpdatedAt) } : {}),
+          // Not typing: what this replaces is kept in the note's history (MAK-119).
+          by: 'assistant',
         });
         if (!note) return notFound('note', noteId);
         if ('stale' in note) return staleNote(note.stale);
@@ -317,7 +319,9 @@ export function registerWriteTools(server: McpServer, notes: NotesRepo): void {
         body = current.body.replace(find!, () => content);
       }
 
-      const note = await notes.update(noteId, { body, ifUpdatedAt: current.updatedAt });
+      // `by`: whatever this replaces is kept in the note's history, so a `replace`
+      // that guts a note can be undone from the History sheet (MAK-119).
+      const note = await notes.update(noteId, { body, ifUpdatedAt: current.updatedAt, by: 'assistant' });
       if (!note) return notFound('note', noteId);
       if ('stale' in note) return staleNote(note.stale);
       return jsonResult(noteRef(note));

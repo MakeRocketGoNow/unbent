@@ -57,6 +57,15 @@ const WRITES: Record<string, (s: Seeded) => Promise<unknown>> = {
   duplicateOrFind: (s) => s.stub.duplicateOrFind(s.noteId, crypto.randomUUID()),
   update: (s) => s.stub.update(s.noteId, { title: 'Changed' }),
   appendToBody: (s) => s.stub.appendToBody(s.noteId, 'more'),
+  restoreRevision: async (s) => {
+    await s.stub.update(s.noteId, { body: 'replaced' });
+    const [copy] = (await s.stub.listRevisions(s.noteId))!;
+    // Measured from here: the update above recorded for itself.
+    const before = await feedSeq(s.stub);
+    await s.stub.resetCounters();
+    await s.stub.restoreRevision(s.noteId, copy!.id);
+    expect(await feedSeq(s.stub), 'a restore from history must record its note').toBeGreaterThan(before);
+  },
   remove: (s) => s.stub.remove(s.noteId),
   restore: (s) => s.stub.restore(s.trashedId),
   purgeOne: (s) => s.stub.purgeOne(s.trashedId),
@@ -94,6 +103,7 @@ const EXEMPT: Record<string, string> = {
   restoreTo: 'winds the whole store back; the restore route changes the epoch afterwards',
   resetCounters: 'the metering, not data',
   feedRestored: 'is the epoch change itself',
+  clearRevisions: 'deletes note history, which is not in the feed and no client holds',
 };
 
 /** Reads, composites and the operator surface: nothing to record. */
@@ -107,6 +117,7 @@ const READS = new Set([
   'listPage', 'searchRows', 'exportPage', 'getWithFiles', 'filesForNote', 'notebooksOverview', 'pendingText',
   'autofillPrelude', 'autofillContext', 'attachmentReadPrelude', 'uploadPrelude',
   'changesSince', 'snapshotPage',
+  'listRevisions', 'getRevision',
 ]);
 
 /** The public methods `UserStore` declares, read off its source. */

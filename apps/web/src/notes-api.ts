@@ -10,9 +10,12 @@ import type {
   FieldType,
   Note,
   NoteFieldsPatch,
+  NoteRevision,
+  NoteRevisionSummary,
   NoteSort,
   NoteSummary,
   NotebookSummary,
+  RestoredNote,
   SearchResult,
   SearchResultRow,
 } from '@unbent/shared';
@@ -151,6 +154,18 @@ export async function httpErrorMessage(res: Response): Promise<string> {
   return `${status}: ${body.slice(0, MAX_DETAIL)}`;
 }
 
+/**
+ * An error's message as a sentence to show: `httpErrorMessage`'s without the status it
+ * leads with. "503 Service Unavailable: The server is busy" is right in a log and wrong
+ * in a snackbar, and the route's own sentence is the part written to be read. Here, beside
+ * the function that builds that shape, so the two change together; an error that is not
+ * one of ours comes back as it is.
+ */
+export function errorText(err: unknown): string {
+  const message = err instanceof Error ? err.message : String(err);
+  return message.replace(/^\d{3}[^:]*: /, '');
+}
+
 async function json<T>(res: Response): Promise<T> {
   if (!res.ok) throw new ApiError(res.status, await httpErrorMessage(res));
   return res.json() as Promise<T>;
@@ -269,12 +284,20 @@ export async function updateNote(
     // The autosave: see `request` for why it must not hang.
     timeout: SAVE_TIMEOUT,
   });
-  if (res.status === 409) {
-    // A clone, so a 409 without a note in it still reaches `json` with its body unread.
-    const body = (await res.clone().json().catch(() => null)) as { stale?: Note } | null;
-    if (body?.stale) throw new NoteChangedError(body.stale);
-  }
+  await throwIfStale(res);
   return json<Note>(res);
+}
+
+/**
+ * A 409 carrying `stale` is a refused precondition, the same for a save and for a
+ * restore, so the two cannot drift apart in how they read one. Anything else falls
+ * through to `json`.
+ */
+async function throwIfStale(res: Response): Promise<void> {
+  if (res.status !== 409) return;
+  // A clone, so a 409 without a note in it still reaches `json` with its body unread.
+  const body = (await res.clone().json().catch(() => null)) as { stale?: Note } | null;
+  if (body?.stale) throw new NoteChangedError(body.stale);
 }
 
 /**
@@ -296,6 +319,42 @@ export async function duplicateNote(id: string, copyId?: string): Promise<Note> 
       ...(copyId ? { headers: jsonHeaders, body: JSON.stringify({ id: copyId }) } : {}),
     }),
   );
+}
+
+/**
+ * A note's history: the copies the server kept of what a write replaced, newest first,
+ * without their bodies. Only ever from the server — history is not in the local copy of
+ * the library — so offline this is an `OfflineError` like any other request.
+ */
+export async function listRevisions(noteId: string): Promise<NoteRevisionSummary[]> {
+  const res = await request(`/api/notes/${encodeURIComponent(noteId)}/revisions`);
+  return (await json<{ revisions: NoteRevisionSummary[] }>(res)).revisions;
+}
+
+/** Deletes a note's whole history, for good; how many versions went. The note is not changed. */
+export async function clearRevisions(noteId: string): Promise<number> {
+  const res = await request(`/api/notes/${encodeURIComponent(noteId)}/revisions`, { method: 'DELETE' });
+  return (await json<{ cleared: number }>(res)).cleared;
+}
+
+/** One copy from a note's history, with its body. */
+export async function getRevision(noteId: string, revisionId: number): Promise<NoteRevision> {
+  return json<NoteRevision>(await request(`/api/notes/${encodeURIComponent(noteId)}/revisions/${revisionId}`));
+}
+
+/**
+ * Puts a copy back as the note's title and body: the note as it then stands, and `kept`,
+ * the id of the copy the server kept of what was replaced — null when the version was
+ * already what the note said, and nothing happened. With `ifUpdatedAt`, only if the note
+ * still carries that date: a `NoteChangedError` otherwise, as a save's precondition gives.
+ */
+export async function restoreRevision(noteId: string, revisionId: number, opts: { ifUpdatedAt?: number } = {}): Promise<RestoredNote> {
+  const res = await request(`/api/notes/${encodeURIComponent(noteId)}/revisions/${revisionId}/restore`, {
+    method: 'POST',
+    ...(opts.ifUpdatedAt !== undefined ? { headers: jsonHeaders, body: JSON.stringify(opts) } : {}),
+  });
+  await throwIfStale(res);
+  return json<RestoredNote>(res);
 }
 
 export async function deleteNote(id: string): Promise<void> {
