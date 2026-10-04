@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { env, evictDurableObject, runInDurableObject } from 'cloudflare:test';
 import type { Sql } from '@unbent/api/store/sql';
 import { isRestoreUnsupported, readRestoreRefusal } from '@unbent/api/store/restore';
+import { DUMP_TABLES } from '@unbent/api/store/tables';
 import { freshStore } from './helpers.js';
 
 /**
@@ -176,6 +177,33 @@ describe('UserStore lifecycle', () => {
     expect(ids(third.bytes)).toEqual(['n4']);
     expect(third.nextRowid).toBeNull();
     await expect(stub.dumpPage('notes_fts' as 'notes')).rejects.toThrow(/not a data table/);
+  });
+
+  /*
+   * The dump pages the tables `DUMP_TABLES` names, not the ones the schema has, so a
+   * schema file that adds a table and forgets the list would ship a dump that rebuilds a
+   * store without it — silently, since a missing table is just one less `INSERT` run. Read
+   * the schema the way the object holds it and hold the list to it. The search tables and
+   * the shadows FTS5 keeps for each (`notes_fts_data`, `_idx`, …) are excluded by name
+   * from what the schema says is virtual, not listed, so a new search table needs nothing
+   * here; the dump rebuilds them from the data tables (`dumpChunks` in routes/admin.ts).
+   */
+  it('dumps every table the schema has but the search indexes', async () => {
+    const { stub } = freshStore('dump-coverage');
+    const tables = await runInDurableObject(stub, (_i, state) =>
+      state.storage.sql
+        .exec<{ name: string; sql: string }>(`SELECT name, sql FROM sqlite_master WHERE type = 'table'`)
+        .toArray(),
+    );
+    const virtual = tables.filter((t) => /^CREATE VIRTUAL TABLE/i.test(t.sql)).map((t) => t.name);
+    expect(virtual.length).toBeGreaterThan(0);
+    const real = tables
+      .map((t) => t.name)
+      // `sqlite_*` is SQLite's own and `_cf_*` the runtime's (where it keeps the object's
+      // key-value storage); neither is the store's to dump.
+      .filter((name) => !/^(sqlite_|_cf_)/.test(name))
+      .filter((name) => !virtual.some((v) => name === v || name.startsWith(`${v}_`)));
+    expect([...DUMP_TABLES].sort()).toEqual(real.sort());
   });
 
   it('readOnlySql stops reading at its byte budget rather than loading the result first', async () => {
