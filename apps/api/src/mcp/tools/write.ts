@@ -437,7 +437,9 @@ export function registerWriteTools(server: McpServer, notes: NotesRepo): void {
           .default(false)
           .describe('Fold the tag into the existing one with the new name instead of refusing.'),
       }),
-      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+      // Destructive for the merge, which cannot be taken back, though a plain rename can:
+      // the hint is per tool, and `update_notebook_field` settles it the same way.
+      annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false },
     },
     async ({ tag, name, merge }) => {
       const existing = (await notes.listTags()).find((t) => t.name === tag);
