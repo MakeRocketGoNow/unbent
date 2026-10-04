@@ -323,6 +323,9 @@ export function HistorySheet({ open, onClose, noteId, anchor, saved, onRestore }
                 actions={[{ label: 'Clear history', busyLabel: 'Clearing…', tone: 'danger', onConfirm: clear }]}
                 busy={clearing === 'busy'}
                 onCancel={() => setClearing(null)}
+                // The button that asked is gone, and focus with it. The question takes
+                // it, on the choice that destroys nothing.
+                focusCancel
               />
             ))}
         </div>
