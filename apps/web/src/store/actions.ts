@@ -327,10 +327,10 @@ export function createOutbox(userId: string, lib: Omit<WritableLibrary, 'outbox'
        * the next flight, and it is as good as opened. Refused for good, there is nothing
        * to keep them for, and the notice says what happened.
        *
-       * A refused session is the one 4xx that is not a refusal of the upload: the entry
-       * stays, the library is closed and kept (`offline-cache.ts`), and the sign-in that
-       * follows replays it. An upload exists nowhere but here; ending it on a 401 would
-       * delete the only copy.
+       * A refused session, a timeout and a rate limit are not refusals of the upload (see
+       * `refusal`): the entry stays, and on a 401 the library is closed and kept
+       * (`offline-cache.ts`) so the sign-in that follows replays it. An upload exists
+       * nowhere but here; ending it on any of them would delete the only copy.
        */
       uploadFile: async ({ transaction }) => {
         const upload = transaction.metadata as unknown as Upload;
