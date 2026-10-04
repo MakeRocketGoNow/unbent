@@ -775,7 +775,7 @@ What to know before changing it:
   the text being replaced is the output of an assistant's write that already left one
   (`through` on the row is how that is told). `by` is not in the HTTP schema, so a
   browser cannot claim it and a new MCP tool that writes a body must pass it.
-- **Not in the feed, the export or the local library.** Twenty bodies per note on every
+- **Not in the feed, the export or the local library.** Fifty bodies per note on every
   device is what that would cost. The History sheet reads the server each time it opens.
 - **Pruned on the write that adds a copy, for that note only**, no cron. Bounded in the
   rows-read test with the other hot queries. The three numbers (`REVISION_WINDOW_MS`,

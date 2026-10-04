@@ -68,7 +68,7 @@ export function retentionSentence(): string {
  * (MAK-119).
  *
  * A sheet, from the note's ⋯ menu. It is about the whole note rather than a place in it,
- * it holds a list that can run to twenty rows and then a page of text, and it is looked
+ * it holds a list that can run to fifty rows and then a page of text, and it is looked
  * at rarely — when something has gone wrong — so it earns no room in the note's own
  * chrome. Two pages in the one dialog, the list and then a copy, for the reason `Sheet`
  * gives for `onBack`: a second sheet over the first is two scrims.

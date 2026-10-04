@@ -41,7 +41,7 @@ export type DataTable = (typeof DATA_TABLES)[number];
  * Note history is left out, and its table is rebuilt empty. A dump is what an account is
  * rebuilt from, and history is a safety net for a recent edit rather than part of the
  * account — the export leaves it out on the same grounds. It is also the one table that
- * can outgrow the notes themselves, at up to twenty bodies a note, inside a route whose
+ * can outgrow the notes themselves, at up to fifty bodies a note, inside a route whose
  * every page is a store call against the fifty an invocation is allowed. And it holds
  * text its owner removed from a note, which has no business in a file on an operator's
  * disk.

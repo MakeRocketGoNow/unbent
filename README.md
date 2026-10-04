@@ -1166,7 +1166,7 @@ A version is kept when a write replaces the text, and how often depends on who i
 - **A restore** keeps what it replaces, always. Restoring is undone the same way it was
   done, and the message that follows one has an Undo.
 
-The newest twenty versions of a note are kept, and none for longer than ninety days. It is
+The newest fifty versions of a note are kept, and none for longer than a year. It is
 a safety net for a recent mistake rather than an archive: versions are not in an export
 and are not copied to your devices, so the sheet needs a connection. They hold text
 only, so a version shows its pictures and files as they are now, and a file deleted since

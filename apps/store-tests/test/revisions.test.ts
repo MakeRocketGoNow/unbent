@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { REVISION_MAX_AGE_MS, REVISIONS_KEPT } from '@unbent/shared';
 import { runInDurableObject } from 'cloudflare:test';
 import { feedRows, feedSeq, freshStore } from './helpers.js';
 
@@ -127,25 +128,25 @@ describe('history: an assistant', () => {
 });
 
 describe('history: retention', () => {
-  it('keeps the newest twenty copies of a note', async () => {
-    const { stub, id } = await seeded('twenty');
-    for (let i = 1; i <= 23; i++) {
+  it('keeps the newest copies of a note, up to the cap', async () => {
+    const { stub, id } = await seeded('cap');
+    for (let i = 1; i <= REVISIONS_KEPT + 3; i++) {
       await stub.update(id, { body: `version ${i}` });
       await age(stub, id, 31 * MINUTE);
     }
     const revisions = (await stub.listRevisions(id))!;
-    expect(revisions).toHaveLength(20);
-    expect(await countRevisions(stub)).toBe(20);
+    expect(revisions).toHaveLength(REVISIONS_KEPT);
+    expect(await countRevisions(stub)).toBe(REVISIONS_KEPT);
     // The oldest three went: the first draft, version 1 and version 2.
     expect((await stub.getRevision(id, revisions.at(-1)!.id))!.body).toBe('version 3');
-    expect((await stub.getRevision(id, revisions[0]!.id))!.body).toBe('version 22');
+    expect((await stub.getRevision(id, revisions[0]!.id))!.body).toBe(`version ${REVISIONS_KEPT + 2}`);
   });
 
-  it('shows nothing older than ninety days, and removes it at the next copy kept', async () => {
-    const { stub, id } = await seeded('ninety');
+  it('shows nothing older than the age limit, and removes it at the next copy kept', async () => {
+    const { stub, id } = await seeded('age');
     await stub.update(id, { body: 'spring' });
     const [old] = (await stub.listRevisions(id))!;
-    await age(stub, id, 91 * DAY);
+    await age(stub, id, REVISION_MAX_AGE_MS + DAY);
     // Still on disk, since nothing has written to the note, but not shown or served.
     expect(await countRevisions(stub)).toBe(1);
     expect(await stub.listRevisions(id)).toEqual([]);
@@ -161,7 +162,7 @@ describe('history: retention', () => {
     const { stub, id } = await seeded('neighbours');
     const other = await stub.create({ id: crypto.randomUUID(), title: 'Other', body: 'kept', tags: [] });
     await stub.update(other.id, { body: 'kept, changed' });
-    for (let i = 1; i <= 22; i++) {
+    for (let i = 1; i <= REVISIONS_KEPT + 2; i++) {
       await stub.update(id, { body: `version ${i}` });
       await age(stub, id, 31 * MINUTE);
     }
@@ -200,7 +201,7 @@ describe('history: clearing it', () => {
     await stub.update(other.id, { body: 'kept, changed' });
     await stub.update(id, { body: 'the account number is in the safe' });
     // A copy past the age limit: hidden from the list, still on disk until now.
-    await age(stub, id, 91 * DAY);
+    await age(stub, id, REVISION_MAX_AGE_MS + DAY);
     await stub.update(id, { body: 'the account number is in the safe.' , by: 'assistant' });
     await runInDurableObject(stub, (_i, state) => {
       state.storage.sql.exec(

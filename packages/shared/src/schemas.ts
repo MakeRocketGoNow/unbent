@@ -758,10 +758,25 @@ export interface StaleNote {
  * whole body in it — per pause. One per half hour is one per sitting.
  */
 export const REVISION_WINDOW_MS = 30 * 60 * 1000;
-/** Copies kept per note. The next write past this drops the oldest. */
-export const REVISIONS_KEPT = 20;
-/** And none older than this: a safety net for a recent mistake, not an archive. */
-export const REVISION_MAX_AGE_MS = 90 * 24 * 60 * 60 * 1000;
+/**
+ * Copies kept per note; the next write past this drops the oldest.
+ *
+ * Fifty rather than the twenty this began with. The cap is what bounds storage — the
+ * tools this sits beside keep by age alone, on plans that charge for it — so there has
+ * to be one, but too few is a loss nobody can take back and too many is a longer list.
+ * Twenty was two or three weeks of a note edited every day, and every restore and its
+ * undo spends one. Fifty costs a prune that reads about a hundred index entries, once
+ * per half hour of editing per note.
+ */
+export const REVISIONS_KEPT = 50;
+/**
+ * And none older than this. A year, not the ninety days it began with: the clock starts
+ * at the write that replaced the text, so this is how long someone has to notice, and
+ * in an archive most notes are opened a few times a year. The age limit saves almost
+ * nothing where it bites — a note edited rarely has one or two small copies — and the
+ * privacy case for a short one is answered by Clear history instead.
+ */
+export const REVISION_MAX_AGE_MS = 365 * 24 * 60 * 60 * 1000;
 
 /**
  * What replaced a note's text when a copy of it was kept, when it was not typing in the

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { runInDurableObject } from 'cloudflare:test';
-import { UNFILED } from '@unbent/shared';
+import { REVISIONS_KEPT, UNFILED } from '@unbent/shared';
 import { freshStore } from './helpers.js';
 
 /**
@@ -780,10 +780,10 @@ describe('rows read on an archive-sized store', () => {
           sql.exec(`INSERT INTO changes (seq, entity, id, deleted, at) VALUES (?1, 'note', ?2, 0, ?3)`, i + 1, `n${String(i < 3000 ? i : i % 100).padStart(5, '0')}`, now);
         }
         sql.exec(`UPDATE _meta SET value = '4000' WHERE key = 'seq'`);
-        // A full history on the first three hundred notes, the oldest copy an hour old, so
-        // a read of one note's copies that walked the table would show as six thousand.
+        // A full history on the first three hundred notes, the newest copy an hour old, so
+        // a read of one note's copies that walked the table would show as fifteen thousand.
         for (let i = 0; i < 300; i++) {
-          for (let k = 0; k < 20; k++) {
+          for (let k = 0; k < REVISIONS_KEPT; k++) {
             sql.exec(
               `INSERT INTO note_revisions (note_id, title, body, size, created_at, through) VALUES (?1, 'Earlier title', 'an earlier body', 15, ?2, ?2)`,
               `n${String(i).padStart(5, '0')}`,
@@ -842,7 +842,7 @@ describe('rows read on an archive-sized store', () => {
       await measure('snapshot page deep', () => stub.snapshotPage('n02000', 100)),
       await measure('texts by id', () => stub.textsById(Array.from({ length: 25 }, (_, k) => `att-n${String(k * 3).padStart(5, '0')}`))),
       // History. A save inside the window asks for the newest copy and keeps nothing;
-      // one outside it keeps a copy and prunes the note's twenty-first. Then the sheet's
+      // one outside it keeps a copy and prunes the note's oldest. Then the sheet's
       // two reads, and a copy put back.
       await measure('save that keeps a copy', () => stub.update('n00020', { body: 'rewritten' })),
       await measure('save inside the window', () => stub.update('n00020', { body: 'rewritten again' })),
@@ -887,16 +887,16 @@ describe('rows read on an archive-sized store', () => {
       'texts by id': 160,
       // A save reads the note twice, before and after, and its feed rows; history adds
       // two for the newest copy. Keeping one adds the note's run of the index twice for
-      // the prune, about twenty entries each (measured 2026-10-03 at 69 and 25).
-      'save that keeps a copy': 90,
+      // the prune, about fifty entries each (measured 2026-10-03 at 129 and 25).
+      'save that keeps a copy': 160,
       'save inside the window': 35,
-      // One note's twenty copies, of six thousand.
-      'history list': 30,
-      'history copy': 35,
-      'history restore': 100,
-      // The note's live row, then its twenty copies and their index entries, of six
-      // thousand (measured 2026-10-03 at 62).
-      'history clear': 80,
+      // One note's fifty copies, of fifteen thousand (51 and 53).
+      'history list': 65,
+      'history copy': 70,
+      // A restore keeps a copy too, so it is the list, the prune and the save (167).
+      'history restore': 200,
+      // The note's live row, then its fifty copies and their index entries (152).
+      'history clear': 180,
     };
     for (const r of results) {
       expect(r.rowsRead, r.label).toBeLessThanOrEqual(bounds[r.label]!);

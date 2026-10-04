@@ -28,7 +28,7 @@ interface NewestRow {
  * `keep` is only ever called from inside the one that replaces the text, so a copy is
  * kept if and only if the write it guards lands. Nothing here records in the change
  * feed either: history is the server's, asked for when the History sheet opens, and a
- * device that held every note's copies would be holding twenty bodies per note.
+ * device that held every note's copies would be holding fifty bodies per note.
  */
 export class Revisions {
   constructor(private readonly sql: Sql) {}
@@ -52,7 +52,7 @@ export class Revisions {
    * nothing has been written since the edits that copy stands for, and it is moved on
    * here so the third edit of a run reads the same as the second. An assistant working
    * through a long note in thirty `edit_note` calls then leaves one copy, the person's
-   * text, rather than thirty that push it out of the twenty kept.
+   * text, rather than thirty that crowd the copies kept.
    *
    * A restore always keeps what it replaces. It is one deliberate act, and being able to
    * undo it is the point.
@@ -92,9 +92,9 @@ export class Revisions {
    * Retention, for this note only and only when a copy was just added: no cron, and no
    * pass over every note of an account. Both halves walk the note's own run of the index
    * — at most a row past the limit, since this runs after every insert — so a note with
-   * a full history reads about twenty index entries here and nothing else.
+   * a full history reads about twice `REVISIONS_KEPT` index entries here and nothing else.
    *
-   * A note nobody writes to again keeps copies past ninety days on disk; `list` and `get`
+   * A note nobody writes to again keeps copies past the age limit on disk; `list` and `get`
    * apply the same cutoff, so they are never shown, and the next write removes them.
    */
   private prune(noteId: string, now: number): void {
@@ -111,7 +111,7 @@ export class Revisions {
   }
 
   /**
-   * A note's copies, newest first, without their bodies: twenty bodies is a megabyte on
+   * A note's copies, newest first, without their bodies: fifty bodies is megabytes on
    * a long note, and the sheet shows one at a time. `size` is the body's length in
    * characters, which is what lets a row say a copy was much longer than the note is now
    * — the gutted note is the case this whole table is for. A column, so the bodies are

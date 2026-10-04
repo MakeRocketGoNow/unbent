@@ -18,7 +18,7 @@
  * a column on the note saying who wrote it last.
  *
  * `size` is the body's length in characters, stored because the list shows it for every
- * copy and must not read twenty bodies to count them: `length(body)` in a query decodes
+ * copy and must not read fifty bodies to count them: `length(body)` in a query decodes
  * the whole value, and the meter that bounds this table's reads counts rows, not bytes.
  *
  * An integer key, unlike every other table here. Rule 2 in AGENTS.md keeps ids globally
