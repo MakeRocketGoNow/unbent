@@ -255,7 +255,7 @@ export function registerReadTools(
         fieldFilters = resolved.filters;
       }
       const { items, total } = await notes.listPage(
-        { limit, cursor, tags: tag, notebook, fields: fieldFilters, untagged, sort, order, from, to, trashed },
+        { limit, cursor, tags: tag, notebook, fields: fieldFilters, untagged, compact, sort, order, from, to, trashed },
         // Counted once, on the first page. A count that no stored number answers — a field
         // filter, a date range, `untagged` — reads every note in scope, and repeating it on
         // each page of a long walk cost more than the pages did: ten pages of the untagged

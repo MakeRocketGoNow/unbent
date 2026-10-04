@@ -80,6 +80,12 @@ export interface ListOptions {
   fields?: FieldFilter[] | undefined;
   /** Only notes with no tag at all; see `filterConditions`. */
   untagged?: boolean | undefined;
+  /**
+   * Rows without their body, field values or files: what a caller that only wants to
+   * know which notes these are, and where each is filed, would throw away. See
+   * `summaryRows`.
+   */
+  compact?: boolean | undefined;
   sort?: NoteSort | undefined;
   order?: 'asc' | 'desc' | undefined;
   from?: string | undefined;
@@ -358,7 +364,10 @@ export class NotesStore {
     binds.push(limit);
     const limitBind = `?${binds.length}`;
 
-    const columns = `n.id, n.title, n.body, n.created_at, n.updated_at, n.deleted_at, n.notebook_id`;
+    // A compact page never selects the body, here or in `summaryRows`: the page is
+    // materialised when it is sorted, and a body selected here would be carried through
+    // the sort to be dropped after it.
+    const columns = `n.id, n.title, ${opts.compact ? `''` : 'n.body'} AS body, n.created_at, n.updated_at, n.deleted_at, n.notebook_id`;
     let page: string;
     if (byField) {
       /*
@@ -429,6 +438,7 @@ export class NotesStore {
       page,
       binds,
       `${byField ? '(n.sort_key IS NULL) ASC, ' : ''}n.sort_key ${direction}, n.id ${direction}`,
+      { compact: opts.compact },
     );
   }
 
@@ -436,8 +446,20 @@ export class NotesStore {
    * The rows `page` chose, with their notebook, tags, fields and files; see `pageRows`.
    * `tags: false` leaves the tag names out, for a caller that reads the join rows itself
    * (`wholeNotes` wants ids too) and would otherwise pay for them twice.
+   *
+   * `compact` leaves out the body, the field values and the files, for a page that is
+   * read for its ids, titles, notebooks and tags and nothing else. Such a page is allowed
+   * to be five times the size of a full one, and that is what makes it matter here rather
+   * than in whoever drops the columns afterwards: five hundred bodies are read into the
+   * object to be excerpted and discarded — a body may be 1.8 MB — and the two subqueries
+   * are a probe each per note for values nobody is shown.
    */
-  private summaryRows(page: string, binds: Bind[], orderBy: string, opts: { tags?: boolean } = {}): SummaryRow[] {
+  private summaryRows(
+    page: string,
+    binds: Bind[],
+    orderBy: string,
+    opts: { tags?: boolean; compact?: boolean | undefined } = {},
+  ): SummaryRow[] {
     const tags =
       opts.tags === false
         ? 'NULL AS tags'
@@ -445,11 +467,11 @@ export class NotesStore {
                  JOIN tags t ON t.id = nt.tag_id
                 WHERE nt.note_id = n.id) AS tags`;
     return this.sql.exec<SummaryRow>(
-      `SELECT n.id, n.title, n.body, n.created_at, n.updated_at, n.deleted_at,
+      `SELECT n.id, n.title, ${opts.compact ? `''` : 'n.body'} AS body, n.created_at, n.updated_at, n.deleted_at,
               nb.name AS notebook, n.notebook_id,
               ${tags},
-              ${FIELDS_SUBQUERY},
-              ${ATTACHMENTS_SUBQUERY}
+              ${opts.compact ? 'NULL AS fields' : FIELDS_SUBQUERY},
+              ${opts.compact ? 'NULL AS attachments' : ATTACHMENTS_SUBQUERY}
          FROM (${page}) n
          LEFT JOIN notebooks nb ON nb.id = n.notebook_id
         ORDER BY ${orderBy}`,

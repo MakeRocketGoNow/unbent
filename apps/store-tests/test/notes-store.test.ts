@@ -257,6 +257,24 @@ describe('notes: listing and counting', () => {
     expect(await stub.count({ exact: true })).toBe(12);
   });
 
+  it('leaves the body, field values and files out of a compact page, and nothing else', async () => {
+    const { stub } = freshStore('compact');
+    const nb = (await stub.createNotebook('Coupons'))!;
+    const store = (await stub.createField(nb.id, { name: 'Store', type: 'text', options: [] })) as { id: string };
+    const made = await stub.create(
+      note({ title: 'Acme 10% off', body: 'Ten percent off at example.com', notebook: 'Coupons', tags: ['Deals'], fields: { [store.id]: 'Acme' } }),
+    );
+
+    const [full] = await stub.list({ limit: 50 });
+    expect(full).toMatchObject({ excerpt: 'Ten percent off at example.com', fields: [expect.objectContaining({ name: 'Store' })] });
+
+    const [compact] = await stub.list({ limit: 50, compact: true });
+    expect(compact).toMatchObject({ id: made.id, title: 'Acme 10% off', notebook: 'Coupons', tags: ['Deals'], excerpt: '' });
+    expect(compact).not.toHaveProperty('fields');
+    // Paging is by the sort key, which a compact row still carries.
+    expect(compact!.createdAt).toBe(full!.createdAt);
+  });
+
   it('says where a set of notes is filed, and gives the fields only when that is one notebook', async () => {
     const { stub } = freshStore('field-targets');
     const nb = (await stub.createNotebook('Coupons'))!;
@@ -947,6 +965,7 @@ describe('rows read on an archive-sized store', () => {
       await measure('untagged count in a big notebook', () => stub.count({ untagged: true, notebook: 'Notebook 3' })),
       await measure('untagged count in a small notebook', () => stub.count({ untagged: true, notebook: 'Notebook 5' })),
       await measure('untagged count', () => stub.count({ untagged: true })),
+      await measure('compact page of 500', () => stub.list({ limit: 500, compact: true })),
       await measure('field targets for 500 notes', () => stub.fieldTargets(Array.from({ length: 500 }, (_, k) => `n${String(k * 5).padStart(5, '0')}`))),
       await measure('get', () => stub.get('n01500')),
       await measure('stored counts', async () => {
@@ -1007,6 +1026,10 @@ describe('rows read on an archive-sized store', () => {
       'untagged count in a big notebook': 1200,
       'untagged count in a small notebook': 80,
       'untagged count': 5200,
+      // Three and a half rows a note: the note, its notebook, its tag links and their
+      // names (1,749, measured 2026-10-04). The same page with its field values and files
+      // read 2,885, and read every body into the object besides.
+      'compact page of 500': 2000,
       // Five hundred notes of one notebook by id, two rows a note — the key, then the
       // row — and the notebook's name and definitions once (1,003, measured 2026-10-04).
       // Joined to its notebook per note it was 1,502.

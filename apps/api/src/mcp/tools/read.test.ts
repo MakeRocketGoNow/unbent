@@ -228,6 +228,8 @@ describe('list_notes pages', () => {
     const { pages, list } = pageRepo();
     const result = answer(await list({ limit: 500, compact: true }));
     expect(pages[0]?.list['limit']).toBe(500);
+    // The store is told, so it does not read five hundred bodies to throw them away.
+    expect(pages[0]?.list['compact']).toBe(true);
     expect(result.notes).toEqual([{ id: 'n-1', title: 'Acme 10% off', notebook: 'Coupons', tags: ['Deals'] }]);
   });
 
