@@ -591,6 +591,45 @@ export function registerWriteTools(server: McpServer, notes: NotesRepo): void {
     },
   );
 
+  server.registerTool(
+    'delete_notebook',
+    {
+      title: 'Delete a notebook',
+      description:
+        'Delete a notebook by id; get the id from list_notebooks. By default its notes are ' +
+        'kept and filed in no notebook. With trashNotes:true its live notes go to the trash ' +
+        'instead, where restore_notes brings them back, so nothing is destroyed either way. ' +
+        'The notebook itself, its purpose, emoji and field definitions are gone and cannot ' +
+        'be recovered; the values the notes hold in those fields stay on the notes and still ' +
+        'show on get_note, labelled with the notebook they came from. Prefer move_notes to ' +
+        'another notebook first when the notes belong somewhere. Answers with the notebook ' +
+        'and how many notes were unfiled or trashed.',
+      inputSchema: z.object({
+        notebookId: z.string().min(1),
+        trashNotes: z
+          .boolean()
+          .default(false)
+          .describe('Move the notebook\'s notes to the trash instead of leaving them unfiled.'),
+      }),
+      annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false },
+    },
+    async ({ notebookId, trashNotes }) => {
+      // Named and counted before the delete, which is what removes the row they come from.
+      const { notebooks } = await notes.notebooksOverview();
+      const notebook = notebooks.find((nb) => nb.id === notebookId);
+      if (!notebook) return notFound('notebook', notebookId);
+      if (!(await notes.deleteNotebook(notebookId, { trashNotes }))) {
+        return notFound('notebook', notebookId);
+      }
+      return jsonResult({
+        id: notebookId,
+        name: notebook.name,
+        deleted: true,
+        [trashNotes ? 'trashed' : 'unfiled']: notebook.count,
+      });
+    },
+  );
+
   /**
    * Field definitions can be made and changed here but not deleted or reordered. Deleting
    * one takes every value with it, and delete_note's promise — that nothing here is

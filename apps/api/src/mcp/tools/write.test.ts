@@ -487,3 +487,43 @@ describe('rename_tag and delete_tag', () => {
     expect(calls).toHaveLength(1);
   });
 });
+
+describe('delete_notebook', () => {
+  function notebookRepo(deleted = true) {
+    const calls: unknown[][] = [];
+    const repo = {
+      notebooksOverview: async () => ({
+        notebooks: [{ id: 'nb-1', name: 'Coupons', count: 12 }],
+        unfiled: 0,
+      }),
+      deleteNotebook: async (...args: unknown[]) => {
+        calls.push(args);
+        return deleted;
+      },
+    } as unknown as NotesRepo;
+    return { calls, tool: collect(repo).get('delete_notebook')! };
+  }
+
+  const answer = (r: { content: Array<{ text: string }> }) => JSON.parse(r.content[0]!.text);
+
+  it('unfiles the notes by default and says how many and which notebook', async () => {
+    const { calls, tool } = notebookRepo();
+    const result = answer(await tool({ notebookId: 'nb-1', trashNotes: false }));
+    expect(calls).toEqual([['nb-1', { trashNotes: false }]]);
+    expect(result).toEqual({ id: 'nb-1', name: 'Coupons', deleted: true, unfiled: 12 });
+  });
+
+  it('trashes the notes when asked, and reports them as trashed', async () => {
+    const { calls, tool } = notebookRepo();
+    const result = answer(await tool({ notebookId: 'nb-1', trashNotes: true }));
+    expect(calls).toEqual([['nb-1', { trashNotes: true }]]);
+    expect(result).toEqual({ id: 'nb-1', name: 'Coupons', deleted: true, trashed: 12 });
+  });
+
+  it('reports a notebook it cannot find without deleting anything', async () => {
+    const { calls, tool } = notebookRepo();
+    const result = await tool({ notebookId: 'nb-9', trashNotes: false });
+    expect(result.isError).toBe(true);
+    expect(calls).toHaveLength(0);
+  });
+});
