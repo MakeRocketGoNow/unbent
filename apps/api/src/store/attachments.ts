@@ -103,6 +103,9 @@ const toPending = (r: PendingRow): PendingFile => ({
   r2Key: r.r2_key,
 });
 
+/** What one answer of `textsById` carries at most; a quarter of a feed page, since it is asked for in the background. */
+export const TEXT_PAGE_BYTES = 1024 * 1024;
+
 /**
  * Attachment metadata for one account, inside that account's own SQLite.
  *
@@ -115,9 +118,6 @@ const toPending = (r: PendingRow): PendingFile => ({
  * R2 keys are stored here and handed back, never built: the key names the user, and the
  * Worker builds it from the session (`buildKey` on the facade). Bytes never come this way.
  */
-/** What one answer of `textsById` carries at most; a quarter of a feed page, since it is asked for in the background. */
-export const TEXT_PAGE_BYTES = 1024 * 1024;
-
 export class AttachmentsStore {
   constructor(
     private readonly sql: Sql,
