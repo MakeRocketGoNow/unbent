@@ -51,6 +51,11 @@ to it.
   not soften one to be kind.
 - **In a later round**, review `git diff <last reviewed sha> <new head>`, and read the
   files it touches whole. Say for each earlier finding marked fixed whether the fix holds.
+  For each fixed **blocker**, also look for the same failure reached another way, and say
+  where you looked: a fix closes the instance that was reported, and the bug is usually a
+  class. "Closing can hang behind a request" was fixed for the request and was still
+  true of the writes beside it; the round that confirmed the fix was never asked. This
+  is the one place a later round reads past the fix diff.
   Do not raise a declined finding again unless the reason given is wrong, and then say
   why. New findings in code the earlier round already saw are welcome — say they are
   that, not regressions.
