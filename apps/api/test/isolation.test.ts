@@ -1423,7 +1423,8 @@ describe('notebook fields', () => {
     // One note now holds two; back to a select keeps the single choices and clears that one.
     expect((await json(alice, 'PATCH', `/api/notes/${ids[1]!}`, { fields: { [kind.id]: ['GP', 'Dentist'] } })).status).toBe(200);
     const preview = await json(alice, 'GET', `/api/notebooks/${nb.id}/fields/${kind.id}/conversion?type=select`).then((r) => r.json());
-    expect(preview).toEqual({ values: 2, incompatible: 1 });
+    // The counts, and the scale the conversion would use: none, for anything but a rating.
+    expect(preview).toEqual({ values: 2, incompatible: 1, scale: null });
     const back = await json(alice, 'PATCH', `/api/notebooks/${nb.id}/fields/${kind.id}`, { type: 'select' }).then((r) => r.json());
     expect(back.cleared).toBe(1);
     expect(new Set(back.field.options)).toEqual(new Set(['GP', 'Dentist']));
@@ -1507,7 +1508,7 @@ describe('notebook fields', () => {
     }
 
     const preview = await json(alice, 'GET', `/api/notebooks/${nb.id}/fields/${code.id}/conversion?type=number`).then((r) => r.json());
-    expect(preview).toEqual({ values: 3, incompatible: 1 });
+    expect(preview).toEqual({ values: 3, incompatible: 1, scale: null });
     // A preview writes nothing.
     expect(byName((await getNote(alice, ids[1]!)).fields).Code).toBe('abc');
 
@@ -1543,7 +1544,8 @@ describe('notebook fields', () => {
       'GET',
       `/api/notebooks/${nb.id}/fields/${stars.id}/conversion?type=number&scale=5:1`,
     ).then((r) => r.json());
-    expect(preview).toEqual({ values: 3, incompatible: 2 });
+    // The scale that was asked for, said back beside the counts.
+    expect(preview).toEqual({ values: 3, incompatible: 2, scale: { max: 5, step: 1 } });
     // A preview writes nothing.
     expect(byName((await getNote(alice, ids[1]!)).fields)[stars.name]).toBe(7);
 
