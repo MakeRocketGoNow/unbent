@@ -257,6 +257,32 @@ describe('notes: listing and counting', () => {
     expect(await stub.count({ exact: true })).toBe(12);
   });
 
+  it('says where a set of notes is filed, and gives the fields only when that is one notebook', async () => {
+    const { stub } = freshStore('field-targets');
+    const nb = (await stub.createNotebook('Coupons'))!;
+    await stub.createField(nb.id, { name: 'Expires', type: 'date', options: [] });
+    const a = await stub.create(note({ title: 'Acme 10% off', notebook: 'Coupons' }));
+    const b = await stub.create(note({ title: 'Acme free shipping', notebook: 'Coupons' }));
+    const loose = await stub.create(note({ title: 'Report (final) v2' }));
+    const gone = await stub.create(note({ title: 'Trashed', notebook: 'Coupons' }));
+    await stub.remove(gone.id);
+
+    const one = await stub.fieldTargets([a.id, b.id, gone.id, 'no-such-note']);
+    // A trashed note and an unknown id are equally not there to be written to.
+    expect(one.matched.sort()).toEqual([a.id, b.id].sort());
+    expect(one.notebooks).toEqual([{ id: nb.id, name: 'Coupons', notes: 2, example: expect.any(String) }]);
+    expect(one.fields.map((f) => f.name)).toEqual(['Expires']);
+
+    // Mixed with an unfiled note there is no one notebook to resolve a name against.
+    const mixed = await stub.fieldTargets([a.id, loose.id]);
+    expect(mixed.notebooks).toHaveLength(2);
+    expect(mixed.notebooks.find((n) => n.id === null)).toEqual({ id: null, name: null, notes: 1, example: loose.id });
+    expect(mixed.fields).toEqual([]);
+
+    expect(await stub.fieldTargets([loose.id])).toMatchObject({ matched: [loose.id], fields: [] });
+    expect(await stub.fieldTargets(['no-such-note'])).toEqual({ matched: [], notebooks: [], fields: [] });
+  });
+
   it('lists and counts the notes with no tag, live only, alone or within a notebook', async () => {
     const { stub } = freshStore('untagged');
     const bare = await stub.create(note({ title: 'Bare', notebook: 'Coupons' }));
@@ -921,6 +947,7 @@ describe('rows read on an archive-sized store', () => {
       await measure('untagged count in a big notebook', () => stub.count({ untagged: true, notebook: 'Notebook 3' })),
       await measure('untagged count in a small notebook', () => stub.count({ untagged: true, notebook: 'Notebook 5' })),
       await measure('untagged count', () => stub.count({ untagged: true })),
+      await measure('field targets for 500 notes', () => stub.fieldTargets(Array.from({ length: 500 }, (_, k) => `n${String(k * 5).padStart(5, '0')}`))),
       await measure('get', () => stub.get('n01500')),
       await measure('stored counts', async () => {
         await stub.count();
@@ -980,6 +1007,10 @@ describe('rows read on an archive-sized store', () => {
       'untagged count in a big notebook': 1200,
       'untagged count in a small notebook': 80,
       'untagged count': 5200,
+      // Five hundred notes of one notebook by id, two rows a note — the key, then the
+      // row — and the notebook's name and definitions once (1,003, measured 2026-10-04).
+      // Joined to its notebook per note it was 1,502.
+      'field targets for 500 notes': 1200,
       get: 10,
       'stored counts': 10,
       usage: 4,

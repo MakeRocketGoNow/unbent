@@ -387,18 +387,35 @@ export function registerWriteTools(server: McpServer, notes: NotesRepo): void {
       if (Object.keys(fields).length === 0) {
         return toolError('Nothing to do: name at least one field and the value to set.');
       }
-      // Names resolve against the notebook the notes are in, which only a note can say.
-      // An update that writes nothing is the one call that says which of the ids are
-      // live notes, so the first of them is read, rather than reading ids that may not exist.
-      const { matched } = await notes.updateMany(noteIds, {});
-      const first = matched[0] ? await notes.get(matched[0]) : null;
-      if (!first) return jsonResult({ noteIds: [], changed: 0, missing: noteIds });
-      const defs = first.notebookId ? ((await notes.listFields(first.notebookId)) ?? []) : [];
-      const resolved = resolveFieldNames(fields, defs, [], first.notebook ?? null);
+      // Names resolve against the notebook the notes are in, so the store is asked where
+      // all of them are, not where one is: resolving against whichever note came back
+      // first told a caller whose set held one unfiled note that the field did not exist
+      // and to create it. A set in two notebooks, or in none, is refused here by name,
+      // before a field name is looked at.
+      const target = await notes.fieldTargets(noteIds);
+      if (target.matched.length === 0) return jsonResult({ noteIds: [], changed: 0, missing: noteIds });
+      const describe = (nb: (typeof target.notebooks)[number]) =>
+        `${nb.name ? `"${nb.name}"` : 'no notebook'} (${nb.notes} ${nb.notes === 1 ? 'note' : 'notes'}, such as ${nb.example})`;
+      if (target.notebooks.length > 1) {
+        return toolError(
+          `These notes are in more than one place: ${target.notebooks.map(describe).join('; ')}. ` +
+            'Fields belong to one notebook, so every note given must be in the notebook whose ' +
+            'fields you are setting. Move them there with move_notes first, or leave the others out.',
+        );
+      }
+      const notebook = target.notebooks[0]!;
+      if (!notebook.id) {
+        return toolError(
+          'These notes are in no notebook, and fields belong to one. File them with move_notes ' +
+            'first, into the notebook whose fields you are setting.',
+        );
+      }
+      const resolved = resolveFieldNames(fields, target.fields, [], notebook.name);
       if ('error' in resolved) return toolError(resolved.error);
       try {
-        // The store checks that every note is in the notebook those fields belong to, and
-        // names the one that is not; its answer is passed on as it is.
+        // The store checks again that every note is in the notebook those fields belong
+        // to — a note can move between the two calls — and names one that is not; its
+        // answer is passed on as it is.
         const done = await notes.updateMany(noteIds, { fields: resolved.patch });
         return jsonResult({
           noteIds: done.matched,

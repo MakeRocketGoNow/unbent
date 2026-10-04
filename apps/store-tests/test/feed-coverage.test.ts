@@ -99,7 +99,7 @@ const EXEMPT: Record<string, string> = {
 /** Reads, composites and the operator surface: nothing to record. */
 const READS = new Set([
   'ping', 'stats', 'usage', 'readOnlySql', 'dumpPage', 'schemaSql', 'counters',
-  'list', 'listFull', 'count', 'get', 'search', 'listTags', 'tagCounts', 'sampleTitles', 'countUnfiledNotes',
+  'list', 'listFull', 'count', 'get', 'search', 'listTags', 'tagCounts', 'fieldTargets', 'sampleTitles', 'countUnfiledNotes',
   'listNotebooks', 'listFields', 'fieldById', 'listAllFields', 'previewConversion', 'countOptionUsage',
   'resolveAttachment', 'listAttachments', 'ownsNote', 'availableFilename', 'needingText', 'needingVision',
   'visionPending', 'pendingTextCount', 'textFor', 'textsForNote', 'textsForNotes', 'textsById', 'attachmentIdFor',

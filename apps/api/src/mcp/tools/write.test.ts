@@ -539,29 +539,34 @@ describe('update_note_fields', () => {
     { id: 'f-store', notebookId: 'nb-1', name: 'Store', type: 'text', options: [], scale: null, currency: null, position: 0 },
   ];
 
-  function fieldsRepo(refuse?: Error) {
+  type Target = { id: string | null; name: string | null; notes: number; example: string };
+
+  function fieldsRepo(opts: { refuse?: Error; notebooks?: Target[] } = {}) {
     const calls: Array<{ ids: string[]; patch: Record<string, unknown> }> = [];
     const repo = {
+      fieldTargets: async (ids: string[]) => {
+        const matched = ids.filter((id) => id === noteId);
+        const notebooks = matched.length
+          ? (opts.notebooks ?? [{ id: 'nb-1', name: 'Coupons', notes: 1, example: noteId }])
+          : [];
+        return { matched, notebooks, fields: notebooks.length === 1 && notebooks[0]!.id ? fields : [] };
+      },
       updateMany: async (ids: string[], patch: Record<string, unknown>) => {
         calls.push({ ids, patch });
+        if (opts.refuse) throw opts.refuse;
         const matched = ids.filter((id) => id === noteId);
-        if (patch['fields'] && refuse) throw refuse;
-        return { matched, changed: patch['fields'] ? matched : [] };
+        return { matched, changed: matched };
       },
-      get: async (id: string) =>
-        id === noteId ? { id, notebook: 'Coupons', notebookId: 'nb-1', tags: [], fields: [] } : null,
-      listFields: async (id: string) => (id === 'nb-1' ? fields : null),
     } as unknown as NotesRepo;
     return { calls, tool: collect(repo).get('update_note_fields')! };
   }
 
   const answer = (r: { content: Array<{ text: string }> }) => JSON.parse(r.content[0]!.text);
 
-  it('resolves names against the notes\' notebook and sends one batch with ids', async () => {
+  it('resolves names against the notes\' notebook and writes once, by id', async () => {
     const { calls, tool } = fieldsRepo();
     const result = answer(await tool({ noteIds: [noteId, other], fields: { store: 'Acme' } }));
-    // The first call only asks which ids are live notes; the second writes.
-    expect(calls.map((c) => c.patch)).toEqual([{}, { fields: { 'f-store': 'Acme' } }]);
+    expect(calls.map((c) => c.patch)).toEqual([{ fields: { 'f-store': 'Acme' } }]);
     expect(result).toEqual({ noteIds: [noteId], changed: 1, missing: [other] });
   });
 
@@ -570,11 +575,38 @@ describe('update_note_fields', () => {
     const result = await tool({ noteIds: [noteId], fields: { Vendor: 'Acme' } });
     expect(result.isError).toBe(true);
     expect(result.content[0]!.text).toContain('Its fields are: Store');
-    expect(calls.every((c) => !c.patch['fields'])).toBe(true);
+    expect(calls).toHaveLength(0);
+  });
+
+  it('refuses notes in no notebook by saying so, not by sending the caller to make a field', async () => {
+    const { calls, tool } = fieldsRepo({ notebooks: [{ id: null, name: null, notes: 1, example: noteId }] });
+    const result = await tool({ noteIds: [noteId], fields: { Store: 'Acme' } });
+    expect(result.isError).toBe(true);
+    expect(result.content[0]!.text).toContain('in no notebook');
+    expect(result.content[0]!.text).toContain('move_notes');
+    // The field exists; the note is in the wrong place. Creating a field would not help.
+    expect(result.content[0]!.text).not.toContain('create_notebook_field');
+    expect(calls).toHaveLength(0);
+  });
+
+  it('refuses a set that spans notebooks, naming each with a note of it', async () => {
+    const { calls, tool } = fieldsRepo({
+      notebooks: [
+        { id: 'nb-1', name: 'Coupons', notes: 2, example: noteId },
+        { id: null, name: null, notes: 1, example: other },
+      ],
+    });
+    const result = await tool({ noteIds: [noteId, other], fields: { Store: 'Acme' } });
+    expect(result.isError).toBe(true);
+    expect(result.content[0]!.text).toContain(`"Coupons" (2 notes, such as ${noteId})`);
+    expect(result.content[0]!.text).toContain(`no notebook (1 note, such as ${other})`);
+    expect(calls).toHaveLength(0);
   });
 
   it('passes the store\'s refusal on as text, naming the field and the note', async () => {
-    const { tool } = fieldsRepo(new InvalidFieldValue('Store', `is not a field of any notebook note ${other} is in`));
+    const { tool } = fieldsRepo({
+      refuse: new InvalidFieldValue('Store', `is not a field of any notebook note ${other} is in`),
+    });
     const result = await tool({ noteIds: [noteId, other], fields: { Store: 'Acme' } });
     expect(result.isError).toBe(true);
     expect(result.content[0]!.text).toBe(`Store is not a field of any notebook note ${other} is in.`);
@@ -584,7 +616,7 @@ describe('update_note_fields', () => {
     const { calls, tool } = fieldsRepo();
     const result = answer(await tool({ noteIds: [other], fields: { Store: 'Acme' } }));
     expect(result).toEqual({ noteIds: [], changed: 0, missing: [other] });
-    expect(calls).toHaveLength(1);
+    expect(calls).toHaveLength(0);
   });
 
   it('needs at least one field', async () => {

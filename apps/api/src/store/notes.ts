@@ -2747,6 +2747,53 @@ export class NotesStore {
   }
 
   /**
+   * Where a set of notes is filed, for a caller about to write field values to them by
+   * name: which of the ids are live notes, the notebooks they are in with a count and one
+   * note of each, and — when they are all in one — that notebook's field definitions.
+   *
+   * It exists so the question is asked of every note rather than guessed from one. A name
+   * means nothing until it is known which notebook's field it names, and a caller that
+   * read a single note to find out got an answer that depended on which note it happened
+   * to read: an unfiled one among fifty filed ones said the field did not exist. One read
+   * here, with the definitions in the same call, also replaces the three a caller made to
+   * learn the same thing (see rule 5 in AGENTS.md: a call is a billable request).
+   *
+   * No definitions for a mixed set or an unfiled one: there is no notebook to resolve
+   * against, and the caller's answer is to say so. A row a note, by primary key.
+   */
+  fieldTargets(ids: string[]): {
+    matched: string[];
+    notebooks: Array<{ id: string | null; name: string | null; notes: number; example: string }>;
+    fields: FieldDef[];
+  } {
+    const matched: string[] = [];
+    const notebooks = new Map<string | null, { id: string | null; name: string | null; notes: number; example: string }>();
+    for (const run of runs([...new Set(ids)])) {
+      const rows = this.sql.exec<{ id: string; notebook_id: string | null }>(
+        `SELECT n.id, n.notebook_id
+           FROM notes n
+          WHERE +n.deleted_at IS NULL
+            AND n.id IN (${placeholders(1, run.length)})`,
+        ...run,
+      );
+      for (const r of rows) {
+        matched.push(r.id);
+        const seen = notebooks.get(r.notebook_id);
+        if (seen) seen.notes += 1;
+        else notebooks.set(r.notebook_id, { id: r.notebook_id, name: null, notes: 1, example: r.id });
+      }
+    }
+    // Named after grouping, one read a notebook: joined to each note it was a read a
+    // note, a third of the call for five hundred notes that share one notebook.
+    for (const nb of notebooks.values()) {
+      if (nb.id) nb.name = this.sql.first<{ name: string }>(`SELECT name FROM notebooks WHERE id = ?1`, nb.id)?.name ?? null;
+    }
+    const all = [...notebooks.values()];
+    const only = all.length === 1 ? all[0]!.id : null;
+    return { matched, notebooks: all, fields: only ? (this.listFields(only) ?? []) : [] };
+  }
+
+  /**
    * `prepareFieldWrites` for a set of notes: the statements for each note that has any,
    * after checking that every field belongs to the notebook each note will be in.
    *
