@@ -250,8 +250,13 @@ export function HistorySheet({ open, onClose, noteId, anchor, saved, onRestore, 
        And on "Loading…", not on the last opening's list. The sheet stays mounted, so its
        query keeps what it last read whatever `gcTime` says, and a reopen drew that — the
        list from before the restore that closed it — until the new answer landed.
+
+       The versions read from it go too. A version's text never changes, but what it
+       says Restore would skip does, with every notebook, tag or field deleted since:
+       kept across openings, Changes drew a notebook as something Restore would put
+       back after that notebook had been deleted in Settings.
     */
-    queryClient.removeQueries({ queryKey: keys.revisions(noteId), exact: true });
+    queryClient.removeQueries({ queryKey: keys.revisions(noteId) });
   }, [open, noteId, queryClient]);
 
   const restore = async () => {

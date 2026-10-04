@@ -382,7 +382,12 @@ export const configQuery = () =>
 export const revisionsQuery = (noteId: string) =>
   queryOptions({ queryKey: keys.revisions(noteId), queryFn: () => api.listRevisions(noteId), staleTime: 0, gcTime: 0 });
 
-/** One copy, whole. A copy never changes once kept, so it is fresh for as long as it is held. */
+/**
+ * One copy, whole. A copy never changes once kept, so it is not asked for twice in one
+ * opening of the sheet. Its `unfit` list does: that is worked out against the note and
+ * its notebooks, tags and fields as they stand, so the sheet drops these when it closes
+ * and reads them again the next time it opens.
+ */
 export const revisionQuery = (noteId: string, revisionId: number) =>
   queryOptions({
     queryKey: keys.revision(noteId, revisionId),
