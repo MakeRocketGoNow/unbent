@@ -1,6 +1,6 @@
 import { IndexedDBAdapter, NonRetriableError, startOfflineExecutor, type OfflineExecutor, type OnlineDetector, type StorageAdapter } from '@tanstack/offline-transactions';
 import type { Transaction } from '@tanstack/db';
-import { MAX_ATTACHMENT_BYTES, filenameSchema, type FeedNote, type FieldDef, type FieldValue, type Note, type NoteFieldValue } from '@unbent/shared';
+import { MAX_ATTACHMENT_BYTES, filenameSchema, type FeedNote, type FieldDef, type FieldValue, type Note, type NoteFieldValue, type RestoredNote } from '@unbent/shared';
 import * as api from '../notes-api.js';
 import { ApiError, isNoteChanged, isOfflineError } from '../notes-api.js';
 import { offlineNow, recheck, subscribeConnectivity } from '../connectivity.js';
@@ -965,7 +965,8 @@ export async function clearHistory(noteId: string): Promise<number> {
 
 /**
  * Puts a copy from a note's history back as its title and body, and answers with the
- * note as the server then has it.
+ * note as the server then has it and the id of the copy the server kept of what it
+ * replaced (`kept`; null when the version was already the note, and nothing was done).
  *
  * A request, not an entry in the outbox, and deliberately. History lives on the server
  * alone, so the sheet this is pressed in cannot open without a connection; and the
@@ -987,15 +988,17 @@ export async function clearHistory(noteId: string): Promise<number> {
  * `ifUpdatedAt` is the server's precondition, passed through for the Undo of a restore:
  * a `NoteChangedError` when the note has been saved since the date given.
  */
-export async function restoreRevision(noteId: string, revisionId: number, opts: { ifUpdatedAt?: number } = {}): Promise<Note> {
+export async function restoreRevision(noteId: string, revisionId: number, opts: { ifUpdatedAt?: number } = {}): Promise<RestoredNote> {
   const lib = await resolve();
   if (lib && !(await drained(lib, noteId, RESTORE_DRAIN_MS))) {
     throw new Error('This note has changes that have not synced yet. Try again in a moment.');
   }
-  const note = await api.restoreRevision(noteId, revisionId, opts);
+  const restored = await api.restoreRevision(noteId, revisionId, opts);
+  // A version that was already the note changed nothing: no write to tell anyone about.
+  if (restored.kept === null) return restored;
   directListeners.forEach((l) => l());
-  if (lib) await lib.outbox.take(note);
-  return note;
+  if (lib) await lib.outbox.take(restored.note);
+  return restored;
 }
 
 export async function trashNote(noteId: string): Promise<void> {

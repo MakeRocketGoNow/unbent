@@ -11,6 +11,7 @@ import type {
   NoteRevisionSummary,
   NoteSummary,
   NotebookDefinition,
+  RestoredNote,
   NotebookSummary,
   SearchResult,
   SearchResultRow,
@@ -139,7 +140,7 @@ export class NotesRepo extends StoreRepo {
   }
 
   /** Puts a copy back, keeping what it replaces; see `NotesStore.restoreRevision`. */
-  restoreRevision(id: string, revisionId: number, ifUpdatedAt?: number): Promise<Note | StaleNote | null> {
+  restoreRevision(id: string, revisionId: number, ifUpdatedAt?: number): Promise<RestoredNote | StaleNote | null> {
     return this.call(async (s) => s.restoreRevision(id, revisionId, ifUpdatedAt));
   }
 

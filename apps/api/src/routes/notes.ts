@@ -172,8 +172,10 @@ export const notes = new Hono<AppEnv>()
   })
 
   /**
-   * Puts a copy back as the note's title and body, and answers with the note. What it
-   * replaces is kept in the history first, so this is undone the same way it was done.
+   * Puts a copy back as the note's title and body, and answers `{ note, kept }`: the
+   * note as it now stands, and the id of the copy kept of what was replaced, so this is
+   * undone the same way it was done. `kept` is null when the copy was already what the
+   * note said and nothing was written.
    *
    * The body is optional, read by hand as the duplicate route reads its own. With
    * `ifUpdatedAt`, a note saved since is a 409 carrying it under `stale`, as a patch's is.
@@ -182,15 +184,15 @@ export const notes = new Hono<AppEnv>()
     const revisionId = revisionIdOf(c.req.param('revision'));
     const body = restoreRevisionSchema.safeParse(await c.req.json().catch(() => ({})));
     if (!body.success) return c.json({ error: 'ifUpdatedAt must be a timestamp' }, 400);
-    const note =
+    const restored =
       revisionId === null
         ? null
         : await c.get('notes').restoreRevision(c.req.param('id'), revisionId, body.data.ifUpdatedAt);
-    if (!note) return c.json({ error: 'Not found' }, 404);
-    if ('stale' in note) {
-      return c.json({ error: 'This note changed after the copy this restore was made from', stale: note.stale }, 409);
+    if (!restored) return c.json({ error: 'Not found' }, 404);
+    if ('stale' in restored) {
+      return c.json({ error: 'This note changed after the copy this restore was made from', stale: restored.stale }, 409);
     }
-    return c.json(note);
+    return c.json(restored);
   })
 
   /**

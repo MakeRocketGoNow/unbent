@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { REVISION_MAX_AGE_MS, REVISIONS_KEPT } from '@unbent/shared';
+import { REVISION_MAX_AGE_MS, REVISIONS_KEPT, type RestoredNote } from '@unbent/shared';
 import { runInDurableObject } from 'cloudflare:test';
 import { feedRows, feedSeq, freshStore } from './helpers.js';
 
@@ -242,7 +242,7 @@ describe('history: putting a copy back', () => {
     const before = await feedSeq(stub);
     const gutted = (await stub.get(id))!;
 
-    const restored = (await stub.restoreRevision(id, copy!.id)) as { updatedAt: number };
+    const { note: restored, kept } = (await stub.restoreRevision(id, copy!.id)) as RestoredNote;
     expect(restored).toMatchObject({ title: 'Packing list', body: 'a long and careful note', tags: ['travel'] });
     expect(restored.updatedAt).toBeGreaterThan(gutted.updatedAt);
     expect(await feedRows(stub, before)).toEqual([{ entity: 'note', id }]);
@@ -252,8 +252,10 @@ describe('history: putting a copy back', () => {
     const revisions = (await stub.listRevisions(id))!;
     expect(revisions).toHaveLength(2);
     expect(revisions[0]).toMatchObject({ title: 'Gutted', size: 0, cause: 'restore' });
-    const undone = (await stub.restoreRevision(id, revisions[0]!.id))!;
-    expect(undone).toMatchObject({ title: 'Gutted', body: '' });
+    // And the answer named it: the copy an Undo puts back.
+    expect(kept).toBe(revisions[0]!.id);
+    const undone = (await stub.restoreRevision(id, kept!)) as RestoredNote;
+    expect(undone.note).toMatchObject({ title: 'Gutted', body: '' });
     expect(await stub.listRevisions(id)).toHaveLength(3);
   });
 
@@ -261,7 +263,7 @@ describe('history: putting a copy back', () => {
     const { stub, id } = await seeded('precondition', 'whole');
     await stub.update(id, { body: '', by: 'assistant' });
     const [copy] = (await stub.listRevisions(id))!;
-    const restored = (await stub.restoreRevision(id, copy!.id)) as { updatedAt: number };
+    const { note: restored } = (await stub.restoreRevision(id, copy!.id)) as RestoredNote;
     // Typed after the restore: inside the window, so no copy of its own.
     await stub.update(id, { body: 'whole, and a line typed since' });
     const [kept] = (await stub.listRevisions(id))!;
@@ -278,9 +280,9 @@ describe('history: putting a copy back', () => {
     const { stub, id } = await seeded('precondition-ok', 'whole');
     await stub.update(id, { body: '', by: 'assistant' });
     const [copy] = (await stub.listRevisions(id))!;
-    const restored = (await stub.restoreRevision(id, copy!.id)) as { updatedAt: number };
+    const { note: restored } = (await stub.restoreRevision(id, copy!.id)) as RestoredNote;
     const [kept] = (await stub.listRevisions(id))!;
-    expect(await stub.restoreRevision(id, kept!.id, restored.updatedAt)).toMatchObject({ body: '' });
+    expect(await stub.restoreRevision(id, kept!.id, restored.updatedAt)).toMatchObject({ note: { body: '' } });
   });
 
   it('changes nothing when the copy is what the note already says', async () => {
@@ -291,7 +293,8 @@ describe('history: putting a copy back', () => {
     const now = (await stub.get(id))!;
     const before = await feedSeq(stub);
 
-    expect(await stub.restoreRevision(id, copy!.id)).toEqual(now);
+    // Nothing written, nothing kept, and the answer says so.
+    expect(await stub.restoreRevision(id, copy!.id)).toEqual({ note: now, kept: null });
     expect(await feedSeq(stub)).toBe(before);
     expect(await stub.listRevisions(id)).toHaveLength(1);
   });

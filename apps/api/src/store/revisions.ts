@@ -56,13 +56,17 @@ export class Revisions {
    *
    * A restore always keeps what it replaces. It is one deliberate act, and being able to
    * undo it is the point.
+   *
+   * Answers with the id of the copy it kept, or null when it kept none. A restore hands
+   * that id to its caller, since it is the copy an Undo puts back and only this insert
+   * knows which row that is.
    */
   keep(
     noteId: string,
     was: { title: string; body: string; updatedAt: number },
     stamp: number,
     by: RevisionWriter,
-  ): void {
+  ): number | null {
     if (by !== 'restore') {
       const newest = this.sql.first<NewestRow>(
         `SELECT id, created_at, through, cause FROM note_revisions
@@ -70,15 +74,16 @@ export class Revisions {
         noteId,
       );
       const recent = newest !== null && stamp - newest.created_at < REVISION_WINDOW_MS;
-      if (recent && by === undefined) return;
+      if (recent && by === undefined) return null;
       if (recent && newest.cause === 'assistant' && newest.through === was.updatedAt) {
         this.sql.exec(`UPDATE note_revisions SET through = ?1 WHERE id = ?2`, stamp, newest.id);
-        return;
+        return null;
       }
     }
-    this.sql.exec(
+    const kept = this.sql.first<{ id: number }>(
       `INSERT INTO note_revisions (note_id, title, body, size, created_at, through, cause)
-       VALUES (?1, ?2, ?3, length(?3), ?4, ?4, ?5)`,
+       VALUES (?1, ?2, ?3, length(?3), ?4, ?4, ?5)
+       RETURNING id`,
       noteId,
       was.title,
       was.body,
@@ -86,6 +91,7 @@ export class Revisions {
       by ?? null,
     );
     this.prune(noteId, stamp);
+    return kept?.id ?? null;
   }
 
   /**

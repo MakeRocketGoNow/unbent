@@ -15,6 +15,7 @@ import type {
   NoteSort,
   NoteSummary,
   NotebookSummary,
+  RestoredNote,
   SearchResult,
   SearchResultRow,
 } from '@unbent/shared';
@@ -334,11 +335,12 @@ export async function getRevision(noteId: string, revisionId: number): Promise<N
 }
 
 /**
- * Puts a copy back as the note's title and body; the note as it then stands. With
- * `ifUpdatedAt`, only if the note still carries that date: a `NoteChangedError` otherwise,
- * as a save's precondition gives.
+ * Puts a copy back as the note's title and body: the note as it then stands, and `kept`,
+ * the id of the copy the server kept of what was replaced — null when the version was
+ * already what the note said, and nothing happened. With `ifUpdatedAt`, only if the note
+ * still carries that date: a `NoteChangedError` otherwise, as a save's precondition gives.
  */
-export async function restoreRevision(noteId: string, revisionId: number, opts: { ifUpdatedAt?: number } = {}): Promise<Note> {
+export async function restoreRevision(noteId: string, revisionId: number, opts: { ifUpdatedAt?: number } = {}): Promise<RestoredNote> {
   const res = await request(`/api/notes/${encodeURIComponent(noteId)}/revisions/${revisionId}/restore`, {
     method: 'POST',
     ...(opts.ifUpdatedAt !== undefined ? { headers: jsonHeaders, body: JSON.stringify(opts) } : {}),
@@ -347,7 +349,7 @@ export async function restoreRevision(noteId: string, revisionId: number, opts: 
     const body = (await res.clone().json().catch(() => null)) as { stale?: Note } | null;
     if (body?.stale) throw new NoteChangedError(body.stale);
   }
-  return json<Note>(res);
+  return json<RestoredNote>(res);
 }
 
 export async function deleteNote(id: string): Promise<void> {

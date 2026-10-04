@@ -571,11 +571,11 @@ describe('a copy put back from a note’s history', () => {
     const { lib, fake, note } = library([row('n1', { title: 'gutted', body: '' })]);
     await lib.outbox.ready;
     const restored = { ...note('n1'), title: 'whole', body: 'the long text', updatedAt: 200 };
-    vi.mocked(api.restoreRevision).mockResolvedValueOnce(restored);
+    vi.mocked(api.restoreRevision).mockResolvedValueOnce({ note: restored, kept: 9 });
     const heard = vi.fn();
     const off = actions.onDirectWrite(heard);
 
-    expect(await actions.restoreRevision('n1', 7)).toEqual(restored);
+    expect(await actions.restoreRevision('n1', 7)).toEqual({ note: restored, kept: 9 });
     off();
     expect(api.restoreRevision).toHaveBeenCalledWith('n1', 7, {});
     // Nothing queued: history is the server's, and so is keeping what the restore replaced.
@@ -590,7 +590,7 @@ describe('a copy put back from a note’s history', () => {
     const base = note('n1');
     await actions.saveNote({ noteId: 'n1', value: { ...seedFrom(base), title: 'typed' }, base });
     await tick();
-    vi.mocked(api.restoreRevision).mockResolvedValueOnce({ ...base, title: 'restored', updatedAt: 300 });
+    vi.mocked(api.restoreRevision).mockResolvedValueOnce({ note: { ...base, title: 'restored', updatedAt: 300 }, kept: 9 });
 
     const restoring = actions.restoreRevision('n1', 7);
     await tick();
@@ -599,7 +599,7 @@ describe('a copy put back from a note’s history', () => {
 
     vi.mocked(api.updateNote).mockResolvedValueOnce({ ...base, title: 'typed', updatedAt: 200 });
     expect(await fake.replayOne()).toBe('done');
-    expect(await restoring).toMatchObject({ title: 'restored' });
+    expect(await restoring).toMatchObject({ note: { title: 'restored' } });
     expect(vi.mocked(api.updateNote).mock.invocationCallOrder[0]).toBeLessThan(
       vi.mocked(api.restoreRevision).mock.invocationCallOrder[0]!,
     );
@@ -649,8 +649,19 @@ describe('a copy put back from a note’s history', () => {
 
   it('with no library, is the request and nothing else', async () => {
     const restored = { id: 'n1', title: 'whole', body: 'text', tags: [], createdAt: 1, updatedAt: 2 } as Note;
-    vi.mocked(api.restoreRevision).mockResolvedValueOnce(restored);
-    expect(await actions.restoreRevision('n1', 7)).toEqual(restored);
+    vi.mocked(api.restoreRevision).mockResolvedValueOnce({ note: restored, kept: 9 });
+    expect(await actions.restoreRevision('n1', 7)).toEqual({ note: restored, kept: 9 });
+  });
+
+  it('tells nobody of a write when the version was already the note', async () => {
+    const { lib, note } = library([row('n1', { title: 'same' })]);
+    await lib.outbox.ready;
+    vi.mocked(api.restoreRevision).mockResolvedValueOnce({ note: note('n1'), kept: null });
+    const heard = vi.fn();
+    const off = actions.onDirectWrite(heard);
+    expect((await actions.restoreRevision('n1', 7)).kept).toBeNull();
+    off();
+    expect(heard).not.toHaveBeenCalled();
   });
 });
 

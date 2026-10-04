@@ -334,11 +334,17 @@ describe('mcp edits and the note history', () => {
       headers: asAlice(),
     });
     expect(restored.status).toBe(200);
-    expect((await restored.json()).body).toBe(typed);
+    const answer = await restored.json();
+    expect(answer.note.body).toBe(typed);
+    expect(answer.kept).toEqual(expect.any(Number));
 
     // And the assistant's version is in the history in its turn.
     const again = await fetch(`${BASE}/api/notes/${noteId}/revisions`, { headers: asAlice() }).then((r) => r.json());
-    expect(again.revisions[0]).toMatchObject({ cause: 'restore', size: 'TODO'.length });
+    expect(again.revisions[0]).toMatchObject({ id: answer.kept, cause: 'restore', size: 'TODO'.length });
+
+    // The same version again changes nothing, and says so.
+    const same = await fetch(`${BASE}/api/notes/${noteId}/revisions/${revisions[0]!.id}/restore`, { method: 'POST', headers: asAlice() });
+    expect(await same.json()).toMatchObject({ kept: null, note: { body: typed } });
 
     // An undo of that restore names the date it left, and is refused once the note has moved on.
     const stale = await fetch(`${BASE}/api/notes/${noteId}/revisions/${again.revisions[0].id}/restore`, {

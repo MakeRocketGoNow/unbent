@@ -102,7 +102,7 @@ afterEach(() => {
 
 describe('restoring a version from History', () => {
   it('puts the version on screen, closes the sheet, and saves nothing of its own', async () => {
-    vi.mocked(api.restoreRevision).mockResolvedValue({ ...note, title: 'Minutes (final)', body: earlier.body, updatedAt: 200 });
+    vi.mocked(api.restoreRevision).mockResolvedValue({ note: { ...note, title: 'Minutes (final)', body: earlier.body, updatedAt: 200 }, kept: 5 });
     const client = mount();
     fireEvent.click(await openVersion());
 
@@ -119,7 +119,7 @@ describe('restoring a version from History', () => {
 
   it('saves what was typed before asking for the restore, so the server can keep it', async () => {
     vi.mocked(api.updateNote).mockImplementation(async (_id, patch) => ({ ...note, ...patch, updatedAt: 150 }) as Note);
-    vi.mocked(api.restoreRevision).mockResolvedValue({ ...note, body: earlier.body, updatedAt: 200 });
+    vi.mocked(api.restoreRevision).mockResolvedValue({ note: { ...note, body: earlier.body, updatedAt: 200 }, kept: 5 });
     mount();
     fireEvent.change(await title(), { target: { value: 'Minutes, typed a second ago' } });
     fireEvent.click(await openVersion());
@@ -143,14 +143,14 @@ describe('restoring a version from History', () => {
   });
 
   it('undoes a restore with the copy the restore kept, if the note is as the restore left it', async () => {
-    vi.mocked(api.restoreRevision).mockResolvedValueOnce({ ...note, body: earlier.body, updatedAt: 200 });
+    vi.mocked(api.restoreRevision).mockResolvedValueOnce({ note: { ...note, body: earlier.body, updatedAt: 200 }, kept: 5 });
     mount();
     fireEvent.click(await openVersion());
     const undo = await screen.findByRole('button', { name: 'Undo' });
 
     // The server's list now leads with what the restore replaced, taken at the note's new date.
     vi.mocked(api.listRevisions).mockResolvedValueOnce([{ id: 5, title: 'Minutes', size: 4, createdAt: 200, cause: 'restore' }, earlier]);
-    vi.mocked(api.restoreRevision).mockResolvedValueOnce({ ...note, title: 'Minutes, as it was', updatedAt: 300 });
+    vi.mocked(api.restoreRevision).mockResolvedValueOnce({ note: { ...note, title: 'Minutes, as it was', updatedAt: 300 }, kept: 5 });
     fireEvent.click(undo);
 
     await waitFor(() => expect(api.restoreRevision).toHaveBeenLastCalledWith('n1', 5, { ifUpdatedAt: 200 }));
@@ -158,7 +158,7 @@ describe('restoring a version from History', () => {
   });
 
   it('does not undo into a version the restore did not make', async () => {
-    vi.mocked(api.restoreRevision).mockResolvedValueOnce({ ...note, body: earlier.body, updatedAt: 200 });
+    vi.mocked(api.restoreRevision).mockResolvedValueOnce({ note: { ...note, body: earlier.body, updatedAt: 200 }, kept: 5 });
     mount();
     fireEvent.click(await openVersion());
     const undo = await screen.findByRole('button', { name: 'Undo' });
@@ -175,7 +175,7 @@ describe('restoring a version from History', () => {
   });
 
   it('saves what was typed after the restore before undoing, and leaves it when the server refuses the undo', async () => {
-    vi.mocked(api.restoreRevision).mockResolvedValueOnce({ ...note, body: earlier.body, updatedAt: 200 });
+    vi.mocked(api.restoreRevision).mockResolvedValueOnce({ note: { ...note, body: earlier.body, updatedAt: 200 }, kept: 5 });
     mount();
     fireEvent.click(await openVersion());
     const undo = await screen.findByRole('button', { name: 'Undo' });
@@ -196,13 +196,13 @@ describe('restoring a version from History', () => {
   });
 
   it('leaves on screen what is typed while the undo is on its way', async () => {
-    vi.mocked(api.restoreRevision).mockResolvedValueOnce({ ...note, body: earlier.body, updatedAt: 200 });
+    vi.mocked(api.restoreRevision).mockResolvedValueOnce({ note: { ...note, body: earlier.body, updatedAt: 200 }, kept: 5 });
     mount();
     fireEvent.click(await openVersion());
     const undo = await screen.findByRole('button', { name: 'Undo' });
 
     vi.mocked(api.listRevisions).mockResolvedValueOnce([{ id: 5, title: 'Minutes', size: 4, createdAt: 200, cause: 'restore' }]);
-    let land: (n: Note) => void = () => {};
+    let land: (r: { note: Note; kept: number | null }) => void = () => {};
     vi.mocked(api.restoreRevision).mockReturnValueOnce(new Promise((r) => (land = r)));
     // The save of what is typed below is made against the restore's copy, and refused.
     vi.mocked(api.updateNote).mockRejectedValue(new NoteChangedError({ ...note, title: 'Minutes, as it was', updatedAt: 300 }));
@@ -210,11 +210,22 @@ describe('restoring a version from History', () => {
     await waitFor(() => expect(api.restoreRevision).toHaveBeenCalledTimes(2));
 
     fireEvent.change(await title(), { target: { value: 'Minutes, typed mid-undo' } });
-    land({ ...note, title: 'Minutes, as it was', updatedAt: 300 });
+    land({ note: { ...note, title: 'Minutes, as it was', updatedAt: 300 }, kept: 7 });
     await new Promise((r) => setTimeout(r, 50));
     expect((await title()).value).toBe('Minutes, typed mid-undo');
     // And it is put to the person rather than dropped: the save names the old copy.
     await waitFor(() => expect(vi.mocked(api.updateNote).mock.calls.at(-1)?.[1]).toMatchObject({ title: 'Minutes, typed mid-undo', ifUpdatedAt: 200 }), { timeout: 3000 });
     expect((await screen.findByRole('alert', {}, { timeout: 3000 })).textContent).toContain('changed on another device');
+  });
+
+  it('says so, and offers no Undo, when the version is what the note already says', async () => {
+    vi.mocked(api.restoreRevision).mockResolvedValueOnce({ note, kept: null });
+    const client = mount();
+    fireEvent.click(await openVersion());
+
+    await waitFor(() => expect(screen.getByRole('status').textContent).toContain('That version is what the note already says.'));
+    expect(screen.queryByRole('button', { name: 'Undo' })).toBeNull();
+    await waitFor(() => expect(document.querySelector<HTMLDialogElement>('dialog.history-sheet')!.open).toBe(false));
+    expect(client.getQueryData<Note>(keys.note('n1'))).toEqual(note);
   });
 });

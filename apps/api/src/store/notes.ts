@@ -24,6 +24,7 @@ import {
   type NoteFieldsPatch,
   type NoteRevision,
   type NoteRevisionSummary,
+  type RestoredNote,
   type NoteSort,
   type NoteSummary,
   type NotebookDefinition,
@@ -928,7 +929,9 @@ export class NotesStore {
    * tell, and typing inside the window keeps nothing.
    *
    * A copy that matches the note as it stands changes nothing and re-dates nothing, the
-   * way a no-op patch does. Tags, the notebook and field values are not history's and
+   * way a no-op patch does, and the answer says so: `kept` is the id of the copy this
+   * kept of what it replaced, the one an Undo restores, and null when there was nothing
+   * to replace. Tags, the notebook and field values are not history's and
    * stay as they are.
    *
    * `ifUpdatedAt` is `update`'s precondition, for the same reason and checked in the
@@ -937,18 +940,19 @@ export class NotesStore {
    * it" — because that is a fact only this row knows; typing saved since the restore
    * leaves no copy inside the window, so nothing in the history says it happened.
    */
-  restoreRevision(id: string, revisionId: number, ifUpdatedAt?: number): Note | StaleNote | null {
+  restoreRevision(id: string, revisionId: number, ifUpdatedAt?: number): RestoredNote | StaleNote | null {
     return this.sql.tx(() => {
       const current = this.get(id);
       if (!current) return null;
       if (ifUpdatedAt !== undefined && ifUpdatedAt !== current.updatedAt) return { stale: current };
       const revision = this.revisions.get(id, revisionId, Date.now());
       if (!revision) return null;
-      if (revision.title === current.title && revision.body === current.body) return current;
+      // Said, not only done: `kept: null` is how the caller knows this was no restore.
+      if (revision.title === current.title && revision.body === current.body) return { note: current, kept: null };
 
       // Past the old date, always, as `update` has it: see the stamp there.
       const stamp = Math.max(Date.now(), current.updatedAt + 1);
-      this.revisions.keep(id, current, stamp, 'restore');
+      const kept = this.revisions.keep(id, current, stamp, 'restore');
       this.sql.exec(
         `UPDATE notes SET title = ?1, body = ?2, updated_at = ?3 WHERE id = ?4 AND deleted_at IS NULL`,
         revision.title,
@@ -957,7 +961,7 @@ export class NotesStore {
         id,
       );
       this.feed.record([{ entity: 'note', id }]);
-      return this.get(id);
+      return { note: this.get(id)!, kept };
     });
   }
 

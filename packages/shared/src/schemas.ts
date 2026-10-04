@@ -468,6 +468,19 @@ export const updateNoteSchema = z.object({
 });
 
 /**
+ * What a restore from a note's history answers with: the note as it now stands, and the
+ * id of the copy the restore kept of what it replaced — the one an Undo puts back.
+ * `kept` is null when the version was already what the note said: nothing was written,
+ * nothing was kept, and there is nothing to undo. The client cannot tell that from a
+ * real restore by looking at the note, and saying "Restored" with an Undo for it once
+ * had that Undo reach for the copy an earlier restore had kept.
+ */
+export interface RestoredNote {
+  note: Note;
+  kept: number | null;
+}
+
+/**
  * The optional body of a restore from a note's history: `updateNoteSchema`'s
  * precondition, with the same meaning. Sent by the Undo that follows a restore.
  */

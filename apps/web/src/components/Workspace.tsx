@@ -819,7 +819,19 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
     if (!(await savedFirst(id))) {
       throw new Error('This note has changes that could not be saved, so nothing was restored.');
     }
-    const restored = await actions.restoreRevision(id, revision.id);
+    const { note: restored, kept } = await actions.restoreRevision(id, revision.id);
+    /*
+       The version was already what the note says — the one just restored, picked again,
+       or the "Before a restore" copy of the text now on screen. Nothing was written and
+       nothing kept, so there is nothing to undo, and "Restored" with an Undo would be
+       an offer to reverse something else.
+    */
+    if (kept === null) {
+      if (noteIdRef.current !== id) return;
+      setHistoryOpen(false);
+      setSnackbar({ message: 'That version is what the note already says.', tone: 'info', duration: 5000 });
+      return;
+    }
     void queryClient.invalidateQueries({ queryKey: ['search'] });
     if (noteIdRef.current !== id) return;
     reseed(restored);
@@ -860,7 +872,7 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
       const flushed = draftRef.current;
       const kept = (await api.listRevisions(id)).find((r) => r.cause === 'restore' && r.createdAt === restoredAt);
       if (!kept) throw new Error(changed);
-      const back = await actions.restoreRevision(id, kept.id, { ifUpdatedAt: restoredAt });
+      const { note: back } = await actions.restoreRevision(id, kept.id, { ifUpdatedAt: restoredAt });
       void queryClient.invalidateQueries({ queryKey: ['search'] });
       // By content, as the other reseeds compare: a letter typed and taken back is not typing.
       if (noteIdRef.current === id && JSON.stringify(draftRef.current) === JSON.stringify(flushed)) reseed(back);
