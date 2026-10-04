@@ -7,6 +7,7 @@
  * it).
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { emptyAccount } from './empty-account.js';
 import { createServer, type Server } from 'node:http';
 
 const BASE = process.env['API_URL'] ?? 'http://localhost:8787';
@@ -26,6 +27,8 @@ async function signUp(email: string, password: string, name: string): Promise<Ac
   if (!res.ok) throw new Error(`sign-up failed: ${res.status} ${await res.text()}`);
   const cookie = (res.headers.get('set-cookie') ?? '').split(';')[0] ?? '';
   const body = (await res.json()) as { user: { id: string } };
+  // Without its welcome note: this suite counts from an empty account. See empty-account.ts.
+  await emptyAccount(BASE, ORIGIN, cookie);
   return { cookie, userId: body.user.id };
 }
 
