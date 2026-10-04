@@ -382,18 +382,24 @@ async function open(userId: string): Promise<Library> {
    * changes and every keystroke.
    */
   const rows = collections;
+  /*
+   * Whole once a walk has finished, which is what a cursor in the engine's state means:
+   * it is set from a stored position with no page left to resume, or at the end of a
+   * walk. Not "the last pull succeeded" — a device opened on a plane never has one, and
+   * that is exactly where someone looks to see their files are here (review of #236).
+   * Not during a walk either: a `reset` empties the collections before it starts one.
+   *
+   * One answer for everything that works over the library in the background — the
+   * keeper of files and the search index — as is which tab does that work: the one that
+   * holds the outbox.
+   */
+  const settled = () => engine.state.cursor !== null && engine.state.phase !== 'hydrating' && engine.state.phase !== 'reset';
+  const leading = () => outbox.executor.isOfflineEnabled;
   const keeper = createKeeper({
     userId,
     snapshot: () => ({ notes: rows.notes.values(), attachments: rows.attachments.values() }),
-    /*
-     * Whole once a walk has finished, which is what a cursor in the engine's state means:
-     * it is set from a stored position with no page left to resume, or at the end of a
-     * walk. Not "the last pull succeeded" — a device opened on a plane never has one, and
-     * that is exactly where someone looks to see their files are here (review of #236).
-     * Not during a walk either: a `reset` empties the collections before it starts one.
-     */
-    settled: () => engine.state.cursor !== null && engine.state.phase !== 'hydrating' && engine.state.phase !== 'reset',
-    leading: () => outbox.executor.isOfflineEnabled,
+    settled,
+    leading,
   });
   const stopKeeping = onLibraryChange((roots) => {
     if (roots.has('attachments')) keeper.nudge();
@@ -408,7 +414,6 @@ async function open(userId: string): Promise<Library> {
    * up for it or failed by it. Its passes run in the tab the keeper's do, and wait for
    * the same thing: a library that is whole.
    */
-  const settled = () => engine.state.cursor !== null && engine.state.phase !== 'hydrating' && engine.state.phase !== 'reset';
   try {
     const index = new SearchIndex(await openSearchDatabase(userId));
     await index.ready();
@@ -418,7 +423,7 @@ async function open(userId: string): Promise<Library> {
         index,
         snapshot: () => ({ notes: rows.notes.values(), notebooks: rows.notebooks.values(), tags: rows.tags.values(), attachments: rows.attachments.values() }),
         settled,
-        leading: () => outbox.executor.isOfflineEnabled,
+        leading,
         kept: () => readKeptNotebooks(userId),
         offline: offlineNow,
         fetchTexts: async (ids, signal) => {
