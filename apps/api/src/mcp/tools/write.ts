@@ -363,6 +363,7 @@ export function registerWriteTools(server: McpServer, notes: NotesRepo): void {
       const { matched, changed } = await notes.updateMany(noteIds, {
         addTags: add,
         removeTags: remove,
+        by: 'assistant',
       });
       return jsonResult({
         noteIds: matched,
@@ -425,7 +426,7 @@ export function registerWriteTools(server: McpServer, notes: NotesRepo): void {
         // The store checks again that every note is in the notebook those fields belong
         // to — a note can move between the two calls — and names one that is not; its
         // answer is passed on as it is.
-        const done = await notes.updateMany(noteIds, { fields: resolved.patch });
+        const done = await notes.updateMany(noteIds, { fields: resolved.patch, by: 'assistant' });
         return jsonResult({
           noteIds: done.matched,
           changed: done.changed.length,
@@ -523,7 +524,7 @@ export function registerWriteTools(server: McpServer, notes: NotesRepo): void {
     },
     async ({ noteIds, notebook }) => {
       const target = normalizeNotebook(notebook) ?? null;
-      const { matched, changed } = await notes.updateMany(noteIds, { notebook: target });
+      const { matched, changed } = await notes.updateMany(noteIds, { notebook: target, by: 'assistant' });
       // The notebook as stored, which is the name the assistant will see everywhere else:
       // a request for "coupons" lands in an existing "Coupons", and the answer says so.
       const first = matched[0] ? await notes.get(matched[0]) : null;

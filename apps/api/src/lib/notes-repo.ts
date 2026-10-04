@@ -179,6 +179,8 @@ export class NotesRepo extends StoreRepo {
       addTags?: string[] | undefined;
       removeTags?: string[] | undefined;
       fields?: NoteFieldsPatch | undefined;
+      /** Who is writing, for the notes' history; see `NotesStore.updateMany`. */
+      by?: 'assistant' | undefined;
     },
   ): Promise<{ matched: string[]; changed: string[] }> {
     return this.call((s) => s.updateMany(ids, patch));

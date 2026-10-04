@@ -1046,6 +1046,15 @@ describe('rows read on an archive-sized store', () => {
       // two reads, and a copy put back.
       await measure('save that keeps a copy', () => stub.update('n00020', { body: 'rewritten' })),
       await measure('save inside the window', () => stub.update('n00020', { body: 'rewritten again' })),
+      // A save that changes no text keeps a copy too (MAK-170), and reads the note's
+      // tags once more, by id, for what the copy holds. Then fifty notes changed at
+      // once, each with a full history and outside the window: the worst a bulk verb
+      // does per call, and what an assistant's batch does every time.
+      await measure('tag-only save that keeps a copy', () => stub.update('n00023', { tags: ['filed'] })),
+      await measure(
+        'bulk change that keeps fifty copies',
+        () => stub.updateMany(Array.from({ length: 50 }, (_, k) => `n${String(100 + k).padStart(5, '0')}`), { addTags: ['filed'] }),
+      ),
       await measure('history list', () => stub.listRevisions('n00021')),
       await measure('history copy', async () => stub.getRevision('n00021', (await stub.listRevisions('n00021'))![5]!.id)),
       await measure('history restore', async () => stub.restoreRevision('n00021', (await stub.listRevisions('n00021'))![5]!.id)),
@@ -1128,9 +1137,17 @@ describe('rows read on an archive-sized store', () => {
       'texts by id': 160,
       // A save reads the note twice, before and after, and its feed rows; history adds
       // two for the newest copy. Keeping one adds the note's run of the index twice for
-      // the prune, about fifty entries each (measured 2026-10-03 at 129 and 25).
+      // the prune, about fifty entries each, and its tags by id for what the copy holds
+      // (measured 2026-10-04 at 134 and 25).
       'save that keeps a copy': 160,
       'save inside the window': 35,
+      // The same save without the text, and with the tags read by id for the copy (127).
+      'tag-only save that keeps a copy': 160,
+      // A save's worth for each note changed: about 126 a note when every one has a full
+      // history to prune, which is the ceiling; a note with a copy or two is about
+      // twenty (6,305 for the fifty, measured 2026-10-04). It grows with the notes
+      // written, never with the ids sent or the size of the archive.
+      'bulk change that keeps fifty copies': 7000,
       // One note's fifty copies, of fifteen thousand (51 and 53).
       'history list': 65,
       'history copy': 70,

@@ -4,8 +4,9 @@ import { runInDurableObject } from 'cloudflare:test';
 import { feedRows, feedSeq, freshStore } from './helpers.js';
 
 /**
- * Note history (schema 0003, MAK-119): which writes leave a copy of what they replaced,
- * how long copies last, and that putting one back can itself be undone.
+ * Note history (schemas 0003 and 0004; MAK-119, MAK-170): which writes leave a copy of
+ * what they replaced, what a copy holds, how long copies last, and that putting one back
+ * can itself be undone.
  *
  * Time is moved by re-dating rows rather than by faking the clock: the rules are all
  * "how old is the newest copy", and a copy's age is a column.
@@ -63,13 +64,12 @@ describe('history: typing', () => {
     expect((await stub.getRevision(id, revisions[1]!.id))!.body).toBe('the first draft');
   });
 
-  it('keeps nothing for a write that leaves the text alone', async () => {
-    const { stub, id } = await seeded('not-text');
-    await stub.update(id, { tags: ['travel', 'summer'] });
-    await stub.update(id, { notebook: 'Trips' });
+  it('keeps nothing for a write that changes nothing, or that only adds a file\'s link', async () => {
+    const { stub, id } = await seeded('no-op');
     await stub.update(id, { body: 'the first draft' }); // what is stored: a no-op
+    await stub.update(id, { tags: ['travel'] });
     await stub.appendToBody(id, '![](files/photo.jpg)');
-    await stub.updateMany([id], { addTags: ['bulk'] });
+    await stub.updateMany([id], { addTags: ['travel'] });
     expect(await stub.listRevisions(id)).toEqual([]);
   });
 
@@ -89,6 +89,199 @@ describe('history: typing', () => {
     const refused = await stub.update(id, { body: 'written against an old copy', ifUpdatedAt: 1 });
     expect(refused).toHaveProperty('stale');
     expect(await stub.listRevisions(id)).toEqual([]);
+  });
+});
+
+/** A notebook with a field of each kind the restore rules turn on, and a note filed in it. */
+async function filed(label: string) {
+  const { stub } = freshStore(label);
+  const nb = (await stub.createNotebook('Watch list'))!;
+  const status = (await stub.createField(nb.id, { name: 'Status', type: 'select', options: ['Queued', 'Watching', 'Done'] })) as { id: string };
+  const year = (await stub.createField(nb.id, { name: 'Year', type: 'number', options: [] })) as { id: string };
+  const note = await stub.create({
+    id: crypto.randomUUID(),
+    title: 'A film',
+    body: '',
+    tags: ['drama'],
+    notebook: 'Watch list',
+    fields: { [status.id]: 'Queued', [year.id]: 1999 },
+  });
+  return { stub, id: note.id, nb, status, year };
+}
+
+/** A tag's id by its name, whether or not a live note still carries it. */
+function tagId(stub: Stub, name: string) {
+  return runInDurableObject(stub, (_i, state) => state.storage.sql.exec<{ id: string }>(`SELECT id FROM tags WHERE name = ?1`, name).one().id);
+}
+
+const valuesOf = (note: { fields?: Array<{ name: string; value: unknown }> }) =>
+  Object.fromEntries((note.fields ?? []).map((v) => [v.name, v.value]));
+
+describe('history: fields, tags and the notebook', () => {
+  it('keeps a version for a save that changes only a field, holding the note as it stood', async () => {
+    const { stub, id, nb, status } = await filed('fields-only');
+    await stub.update(id, { fields: { [status.id]: 'Watching' } });
+
+    const revisions = (await stub.listRevisions(id))!;
+    expect(revisions).toHaveLength(1);
+    // No text in this note at all: the row has to say what the copy was kept for.
+    expect(revisions[0]).toMatchObject({ title: 'A film', size: 0, changed: ['fields'] });
+    const copy = (await stub.getRevision(id, revisions[0]!.id))!;
+    expect(copy.props).toMatchObject({
+      notebook: { id: nb.id, name: 'Watch list' },
+      tags: [{ name: 'drama' }],
+    });
+    expect(valuesOf(copy.props!)).toEqual({ Status: 'Queued', Year: 1999 });
+    expect(copy).not.toHaveProperty('unfit');
+  });
+
+  it('keeps one version for a run of field, tag and notebook edits, and says each part that changed', async () => {
+    const { stub, id, status, year } = await filed('run');
+    await stub.update(id, { fields: { [status.id]: 'Watching' } });
+    await stub.update(id, { fields: { [year.id]: 2001 } });
+    await stub.update(id, { tags: ['drama', 'rewatch'] });
+    await stub.update(id, { body: 'Better than I remembered.' });
+
+    const revisions = (await stub.listRevisions(id))!;
+    expect(revisions).toHaveLength(1);
+    // In the order a row says them, not the order they happened in.
+    expect(revisions[0]!.changed).toEqual(['text', 'fields', 'tags']);
+
+    await age(stub, id, 31 * MINUTE);
+    await stub.update(id, { notebook: null });
+    const later = (await stub.listRevisions(id))!;
+    expect(later).toHaveLength(2);
+    expect(later[0]).toMatchObject({ changed: ['notebook'] });
+    expect(valuesOf((await stub.getRevision(id, later[0]!.id))!.props!)).toEqual({ Status: 'Watching', Year: 2001 });
+  });
+
+  it('keeps nothing for the first fields of a note that held nothing, filed or not', async () => {
+    const { stub } = freshStore('empty-filed');
+    const nb = (await stub.createNotebook('Log'))!;
+    const kind = (await stub.createField(nb.id, { name: 'Kind', type: 'text', options: [] })) as { id: string };
+    const { id } = await stub.create({ id: crypto.randomUUID(), title: '', body: '', tags: [], notebook: 'Log' });
+    await stub.update(id, { fields: { [kind.id]: 'Walk' } });
+    expect(await stub.listRevisions(id)).toEqual([]);
+  });
+
+  it('keeps a version of each note a bulk change writes, and none of a note it leaves alone', async () => {
+    const { stub, id, status } = await filed('bulk');
+    const other = await stub.create({ id: crypto.randomUUID(), title: 'Another', body: 'x', tags: ['drama'], notebook: 'Watch list' });
+    const untouched = await stub.create({ id: crypto.randomUUID(), title: 'Seen', body: 'x', tags: [], notebook: 'Watch list', fields: { [status.id]: 'Done' } });
+
+    await stub.updateMany([id, other.id, untouched.id], { fields: { [status.id]: 'Done' } });
+    expect((await stub.listRevisions(id))!).toEqual([expect.objectContaining({ changed: ['fields'] })]);
+    expect(await stub.listRevisions(other.id)).toHaveLength(1);
+    expect(await stub.listRevisions(untouched.id)).toEqual([]);
+
+    // The person's own selection is a sitting like any other: nothing more inside the window.
+    await stub.updateMany([id], { addTags: ['seen'] });
+    expect((await stub.listRevisions(id))!).toEqual([expect.objectContaining({ changed: ['fields', 'tags'] })]);
+    // An assistant's batch is not: what it replaces is kept, as its text edits are.
+    await stub.updateMany([id], { notebook: null, by: 'assistant' });
+    const revisions = (await stub.listRevisions(id))!;
+    expect(revisions).toHaveLength(2);
+    expect(revisions[0]).toMatchObject({ cause: 'assistant', changed: ['notebook'] });
+    expect((await stub.getRevision(id, revisions[0]!.id))!.props).toMatchObject({ notebook: { name: 'Watch list' }, tags: [{ name: 'drama' }, { name: 'seen' }] });
+  });
+});
+
+describe('history: putting fields, tags and the notebook back', () => {
+  it('restores them with the text, and its undo puts the later ones back', async () => {
+    const { stub, id, status, year } = await filed('restore-props');
+    await stub.update(id, { fields: { [status.id]: 'Done', [year.id]: null }, tags: ['seen'], notebook: null, by: 'assistant' });
+    const [copy] = (await stub.listRevisions(id))!;
+    const before = await feedSeq(stub);
+
+    const restored = (await stub.restoreRevision(id, copy!.id)) as RestoredNote;
+    expect(restored.note).toMatchObject({ notebook: 'Watch list', tags: ['drama'] });
+    expect(valuesOf(restored.note)).toEqual({ Status: 'Queued', Year: 1999 });
+    expect(restored).not.toHaveProperty('skipped');
+    expect(await feedRows(stub, before)).toEqual([{ entity: 'note', id }]);
+
+    const [kept] = (await stub.listRevisions(id))!;
+    expect(kept).toMatchObject({ id: restored.kept, cause: 'restore', changed: ['fields', 'tags', 'notebook'] });
+    const undone = (await stub.restoreRevision(id, restored.kept!, restored.note.updatedAt)) as RestoredNote;
+    expect(undone.note).toMatchObject({ notebook: null, tags: ['seen'] });
+    expect(valuesOf(undone.note)).toEqual({ Status: 'Done' });
+  });
+
+  it('changes nothing when the copy is the note already, fields and all', async () => {
+    const { stub, id, status } = await filed('same-props');
+    await stub.update(id, { fields: { [status.id]: 'Watching' } });
+    const [copy] = (await stub.listRevisions(id))!;
+    await stub.update(id, { fields: { [status.id]: 'Queued' } });
+    const now = (await stub.get(id))!;
+    expect(await stub.restoreRevision(id, copy!.id)).toEqual({ note: now, kept: null });
+  });
+
+  it('goes by id: a renamed notebook, tag and field are still the ones the copy means', async () => {
+    const { stub, id, nb, status } = await filed('renamed');
+    await stub.update(id, { fields: { [status.id]: 'Done' }, tags: [], notebook: null, by: 'assistant' });
+    const [copy] = (await stub.listRevisions(id))!;
+    await stub.updateNotebook(nb.id, { name: 'Films' });
+    await stub.renameTag(await tagId(stub, 'drama'), 'Drama');
+    await stub.updateField(nb.id, status.id, { name: 'State' });
+
+    expect((await stub.getRevision(id, copy!.id))!).not.toHaveProperty('unfit');
+    const restored = (await stub.restoreRevision(id, copy!.id)) as RestoredNote;
+    expect(restored.note).toMatchObject({ notebook: 'Films', tags: ['Drama'] });
+    expect(valuesOf(restored.note)).toEqual({ State: 'Queued', Year: 1999 });
+    expect(await stub.listNotebooks()).toHaveLength(1);
+  });
+
+  it('skips what no longer fits, says so before and after, and restores the rest', async () => {
+    const { stub, id, nb, status, year } = await filed('unfit');
+    await stub.update(id, { title: 'A film, seen', fields: { [status.id]: 'Done', [year.id]: 2001 }, tags: ['seen'], by: 'assistant' });
+    const [copy] = (await stub.listRevisions(id))!;
+    // Since then: the choice the copy holds is gone, the other field is deleted, and so is its tag.
+    await stub.updateField(nb.id, status.id, { options: ['Watching', 'Done'] });
+    await stub.deleteField(nb.id, year.id);
+    await stub.deleteTag(await tagId(stub, 'drama'));
+
+    const skipped = [
+      { what: 'tag', id: expect.any(String), name: 'drama', why: 'deleted' },
+      { what: 'field', id: status.id, name: 'Status', why: 'option' },
+      { what: 'field', id: year.id, name: 'Year', why: 'deleted' },
+    ];
+    expect((await stub.getRevision(id, copy!.id))!.unfit).toEqual(skipped);
+    const restored = (await stub.restoreRevision(id, copy!.id)) as RestoredNote;
+    expect(restored.skipped).toEqual(skipped);
+    // The title came back; the tag the copy lacked came off; the values that could not
+    // be put back are as the note had them, not cleared.
+    expect(restored.note).toMatchObject({ title: 'A film', tags: [] });
+    expect(valuesOf(restored.note)).toMatchObject({ Status: 'Done' });
+    // Not made again under its old name.
+    expect(await runInDurableObject(stub, (_i, state) => state.storage.sql.exec(`SELECT id FROM tags WHERE name = 'drama'`).toArray())).toEqual([]);
+  });
+
+  it('leaves the note where it is, with that notebook\'s values, when the copy\'s notebook is gone', async () => {
+    const { stub, id, nb } = await filed('notebook-gone');
+    const shelf = (await stub.createNotebook('Shelf'))!;
+    const place = (await stub.createField(shelf.id, { name: 'Place', type: 'text', options: [] })) as { id: string };
+    await stub.update(id, { notebook: 'Shelf', by: 'assistant' });
+    await stub.update(id, { body: 'On the top shelf.', fields: { [place.id]: 'Hall' } });
+    const copy = (await stub.listRevisions(id))!.at(-1)!;
+    await stub.deleteNotebook(nb.id);
+
+    const restored = (await stub.restoreRevision(id, copy.id)) as RestoredNote;
+    expect(restored.skipped).toContainEqual({ what: 'notebook', id: nb.id, name: 'Watch list', why: 'deleted' });
+    expect(restored.note).toMatchObject({ notebook: 'Shelf', body: '' });
+    // Not made again under its old name, and Shelf's own value is not emptied.
+    expect((await stub.listNotebooks()).map((n) => n.name)).toEqual(['Shelf']);
+    expect(valuesOf(restored.note)).toMatchObject({ Place: 'Hall' });
+  });
+
+  it('clears a value the note has gained since, when the note goes back to the copy\'s notebook', async () => {
+    const { stub, id } = await filed('gained');
+    const shelf = (await stub.createNotebook('Shelf'))!;
+    const place = (await stub.createField(shelf.id, { name: 'Place', type: 'text', options: [] })) as { id: string };
+    await stub.update(id, { notebook: 'Shelf', fields: { [place.id]: 'Hall' }, by: 'assistant' });
+    const [copy] = (await stub.listRevisions(id))!;
+
+    const restored = (await stub.restoreRevision(id, copy!.id)) as RestoredNote;
+    expect(restored.note.notebook).toBe('Watch list');
+    expect(valuesOf(restored.note)).toEqual({ Status: 'Queued', Year: 1999 });
   });
 });
 
