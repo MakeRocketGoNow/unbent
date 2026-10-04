@@ -1346,7 +1346,14 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
       {!readOnly && (
         <Attachments
           noteId={note.id}
-          body={draft.body}
+          /*
+             The saved body until the draft is this note's. The draft is seeded in an
+             effect, so the first render of a note hands down the previous note's text —
+             or the empty initial draft — and every file looks unlinked for a frame. The
+             panel latches open on unlinked files (`hadUnlinked`), so that one frame left
+             every note with files opening expanded (MAK-149).
+          */
+          body={draftFor === note.id ? draft.body : note.body}
           editorView={editorView}
           onBodyRewrite={rewriteBody}
           readOnly={frozen}
