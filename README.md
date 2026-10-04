@@ -1316,23 +1316,6 @@ files landed, the upload says so and the second job ends without opening a WebVi
 fails, the note is still saved and the file stays on the server's pending list, where the web
 app's pass on open picks it up.
 
-**Links and quick actions.** A link to the instance's notes, trash or settings, tapped in
-Mail, Messages or Safari, opens in the app (a universal link), at the same place on
-whichever instance the app is pointed at. The app claims the host (`applinks:` in the
-entitlements); which paths are the app's is the instance's to say, in the association
-document below, and a link to a host the app is not pointed at now opens in Safari's sheet
-over it. Held on the Home Screen, the icon offers New note and App settings. New note opens
-`/notes?new=1`, which the site answers as its New button: it makes the note and replaces
-the address, so Back and a reload do not make another. The debug build claims
-`dev.unbent.app` in developer mode, which a simulator always is, so
-`xcrun simctl openurl booted https://dev.unbent.app/notes/<id>` tries it; the first link
-after an install can still open in Safari, while the system is fetching the document.
-
-A store build cannot do either for an instance of your own: universal links and passkeys
-offered by the system both go to the host the build claims, and the store build claims
-unbent.app. Build your own, below, with `UNBENT_INSTANCE_HOST` set to your host, and serve
-an association document naming it.
-
 **Pointing it at a dev server.** On the sign-in screen, Change the address to
 `http://10.0.2.2:5173` from an emulator; once signed in the same field is in App settings.
 Cleartext is permitted for loopback addresses in debug builds only (see
@@ -1568,6 +1551,23 @@ app opens and the one domain its web view is bound to; `UNBENT_INSTANCE_SCHEME` 
 is `https` unless you say otherwise, and the two are apart because `//` begins a comment in
 that file. The third signs a build for a phone; a simulator needs none. `MARKETING_VERSION`
 and `CURRENT_PROJECT_VERSION` are the version and build number App settings shows.
+
+**Links and quick actions.** A link to the instance's notes, trash or settings, tapped in
+Mail, Messages or Safari, opens in the app (a universal link), at the same place on
+whichever instance the app is pointed at. The app claims the host (`applinks:` in the
+entitlements); which paths are the app's is the instance's to say, in the association
+document below, and a link to a host the app is not pointed at now opens in Safari's sheet
+over it. Held on the Home Screen, the icon offers New note and App settings. New note opens
+`/notes?new=1`, which the site answers as its New button: it makes the note and replaces
+the address, so Back and a reload do not make another. The debug build claims
+`dev.unbent.app` in developer mode, which a simulator always is, so
+`xcrun simctl openurl booted https://dev.unbent.app/notes/<id>` tries it; the first link
+after an install can still open in Safari, while the system is fetching the document.
+
+A store build cannot do either for an instance of your own: universal links and passkeys
+offered by the system both go to the host the build claims, and the store build claims
+unbent.app. Build your own, as above, with `UNBENT_INSTANCE_HOST` set to your host, and serve
+an association document naming it.
 
 **Vouching for the app.** iOS opens this site's links in the app (universal links), and
 offers the site's passkeys to it, only if the site says which app that is: an Apple App
