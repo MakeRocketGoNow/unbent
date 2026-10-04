@@ -502,19 +502,19 @@ change lands on the local copy at once and goes to the server from a durable out
 (`@tanstack/offline-transactions`), which replays in order, one entry at a time, with a
 growing wait. Two rules keep the queue from sticking, each with a test: every answer the
 server would give again — a 4xx other than a lapsed session, a timeout or a rate limit, a
-refused precondition — is a `NonRetriableError` that ends its entry, and a `saveNote` whose note has a later entry in the queue does nothing, since
-each save carries the whole draft. Only the tab holding the Web Lock replays; a second tab's
-writes made offline are not durable. A file added to a note goes the same way (`uploadFile`): with a
-connection and nothing of the note's waiting it is the request it always was, and otherwise
-its bytes go to the account's `pending` shelf, its row is made at once and marked `pending`,
-and its upload is an entry in the same outbox, behind the note's own. The upload names its
-file's id (`X-Attachment-Id`), so a replay finds the file rather than storing `scan-2.pdf`;
-a direct upload carries the same id its queued retry will, since its answer can be lost
-too; a refused session, a timeout or a rate limit keeps the entry, because the bytes exist
-nowhere else; any other 4xx ends
-it and leaves a notice the attachments panel shows. Notebook, tag and field management stay direct calls
-that need a connection: they are settings-page actions with rules the server decides, and
-the feed delivers what they did to every device.
+refused precondition — is a `NonRetriableError` that ends its entry, and a `saveNote` whose
+note has a later entry in the queue does nothing, since each save carries the whole draft.
+Only the tab holding the Web Lock replays; a second tab's writes made offline are not
+durable. A file added to a note goes the same way (`uploadFile`): with a connection and
+nothing of the note's waiting it is the request it always was, and otherwise its bytes go to
+the account's `pending` shelf, its row is made at once and marked `pending`, and its upload
+is an entry in the same outbox, behind the note's own. The upload names its file's id
+(`X-Attachment-Id`), so a replay finds the file rather than storing `scan-2.pdf`; a direct
+upload carries the same id its queued retry will, since its answer can be lost too; a
+refused session, a timeout or a rate limit keeps the entry, because the bytes exist nowhere
+else; any other 4xx ends it and leaves a notice the attachments panel shows. Notebook, tag
+and field management stay direct calls that need a connection: they are settings-page
+actions with rules the server decides, and the feed delivers what they did to every device.
 
 **A save is the draft and the copy it came from.** Its precondition is that copy's date
 (`ifUpdatedAt`, MAK-113); the refusal comes back from the outbox, through `outbox.conflicts`,
